@@ -1,0 +1,14 @@
+# Example vault configuration
+# Copy to your instance's config/ directory and fill in real values.
+
+vault:
+  name: "My Vault"
+  inbox_path: "00 Inbox"
+  archive_path: "99 Archive"
+  daily_notes_path: "01 Daily"
+  daily_notes_format: "YYYY-MM-DD"
+
+# How to handle processed inbox files
+archive:
+  strategy: "tag"           # "tag" (add #miyo/archived) or "move" (to archive_path)
+  cleanup_days: 30          # Auto-cleanup instruction sets older than this

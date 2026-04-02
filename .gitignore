@@ -1,0 +1,22 @@
+# Tomo instance (created by install-tomo.sh, name may differ)
+# The actual entry is added dynamically by install-tomo.sh
+tomo-instance/
+
+# Tomo Docker home (Claude Code home directory for container)
+tomo-home/
+
+# Install config (contains local paths and tokens)
+tomo-install.json
+
+# Claude Code session files
+.claude.json
+.credentials.json
+
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+
+# Misc
+*.backup-*

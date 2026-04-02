@@ -1,0 +1,8 @@
+# Example Kado connection configuration
+# Copy to your instance's config/ directory and fill in real values.
+
+kado:
+  host: "host.docker.internal"    # Default for Docker; change if Kado runs elsewhere
+  port: 37022
+  protocol: "http"
+  # Bearer token is stored in .mcp.json, not here

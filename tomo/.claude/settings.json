@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [],
+    "deny": []
+  },
+  "enabledPlugins": [],
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/dev-notify-bridge.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

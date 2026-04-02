@@ -1,0 +1,28 @@
+# MiYo Tomo — {{INSTANCE_NAME}}
+
+AI-assisted PKM workflows for Obsidian. All vault access goes through Kado MCP.
+
+## Context
+
+@.claude/rules/project-context.md
+@.claude/rules/vault-config.md
+@.claude/rules/kado-config.md
+
+## Key Commands
+
+- /inbox         — analyse inbox and generate instruction set
+- /execute       — execute an approved instruction set
+- /explore-vault — learn vault structure for LYT/MOC work
+
+## Rules
+
+- ALWAYS use Plan Mode before any task touching more than 2 vault files
+- NEVER modify vault files without an approved instruction set
+- Propose changes as instruction set entries — never execute directly
+- Update .claude/rules/vault-config.md when you discover new vault structure
+- Commit after every completed task
+
+## MCP
+
+Kado runs at {{KADO_PROTOCOL}}://{{KADO_HOST}}:{{KADO_PORT}}
+Auth: configured via .claude/rules/kado-config.md

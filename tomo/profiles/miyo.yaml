@@ -1,0 +1,161 @@
+# version: 1.0
+# MiYo framework profile — Marcus Breiden's personal LYT-derived vault conventions
+# Managed file — do not edit manually. Update via tomo/profiles/miyo.yaml in repo.
+
+name: "MiYo"
+version: "1.0"
+description: "Marcus Breiden's personal LYT-derived vault conventions"
+base_structure: "ACE-modified"  # Atlas, Calendar, Efforts + X support folder
+
+# Concept → folder mapping defaults
+concept_defaults:
+  inbox: "+/"
+
+  atomic_note:
+    base_path: "Atlas/202 Notes/"
+    has_subdirectories: true       # NOT flat — has Dewey-numbered subdirs
+    subdirectories:                # vault-explorer must scan recursively
+      - path: "Atlas/202 Notes/2021 Thoughts/"
+        purpose: "Long-form reflections and thought pieces"
+        dewey_parent: 2000
+      - path: "Atlas/202 Notes/2071 Links/"
+        purpose: "Link/reference collection notes"
+        dewey_parent: 2000
+      - path: "Atlas/202 Notes/2101 Life Goals and Values/"
+        purpose: "Personal goals, values, life planning"
+        dewey_parent: 2100
+      - path: "Atlas/202 Notes/2611 Code Snippets/"
+        purpose: "Technical code snippets and how-tos"
+        dewey_parent: 2600
+      - path: "Atlas/202 Notes/2821 Quotes/"
+        purpose: "Collected quotes"
+        dewey_parent: 2800
+      - path: "Atlas/202 Notes/2921 People/"
+        purpose: "Person notes"
+        dewey_parent: 2900
+
+  map_note:
+    paths:
+      - "Atlas/200 Maps/"
+    tags:
+      - "type/others/moc"
+
+  calendar:
+    base_path: "Calendar/"
+    granularities:
+      daily:     { enabled: true,  path: "Calendar/Days/" }
+      weekly:    { enabled: false, path: null }
+      monthly:   { enabled: false, path: null }
+      quarterly: { enabled: false, path: null }
+      yearly:    { enabled: false, path: null }
+
+  project: "Efforts/Projects/"
+  area: "Efforts/Areas/"
+  source: "Atlas/Sources/"
+  template: "X/900 Support/Templates/"
+  asset: "Atlas/290 Assets/295 Attachments/"
+
+# Classification system (LYT Dewey variant, personalized)
+classification:
+  enabled: true
+  system: "dewey-lyt"
+  categories:
+    2000:
+      name: "Knowledge Management"
+      keywords: [PKM, LYT, notes, learning, knowledge, obsidian, MiYo]
+    2100:
+      name: "Personal Management"
+      keywords: [habits, productivity, goals, routines, health, time, money]
+    2200:
+      name: "Mind-Body Connection"
+      keywords: [philosophy, psychology, spirituality, mind, meditation, flow]
+    2300:
+      name: "Social Sciences"
+      keywords: [society, politics, economics, culture, history-of-ideas]
+    2400:
+      name: "Communication"
+      keywords: [language, rhetoric, writing, linguistics, communication]
+    2500:
+      name: "Natural Sciences"
+      keywords: [science, physics, biology, nature, systems, complexity]
+    2600:
+      name: "Applied Sciences"
+      keywords: [coding, software, AI, docker, tools, engineering, devops, shell]
+    2700:
+      name: "Art & Recreation"
+      keywords: [art, music, movies, games, recreation, travel, japan]
+    2800:
+      name: "Literature"
+      keywords: [literature, fiction, poetry, novels, books]
+    2900:
+      name: "History & Geography"
+      keywords: [history, geography, biography, places]
+
+# Map note maturity states (LYT convention)
+map_note_states:
+  gathering:
+    icon: "🟥"
+    meaning: "Collecting related notes — rough, unpolished"
+  developing:
+    icon: "🟨"
+    meaning: "Exploring connections, finding tensions"
+  navigating:
+    icon: "🟩"
+    meaning: "Stable reference and wayfinding"
+
+# Relationship defaults (Dataview inline fields used in practice)
+relationship_defaults:
+  parent:
+    marker: "up::"
+    format: "up:: {{link}}"
+  peer:
+    marker: "related::"
+    format: "related:: {{link}}"
+
+# Tag prefix conventions observed in vault
+tag_conventions:
+  type:
+    note: "type/note/normal"
+    moc: "type/others/moc"
+  status:
+    in_work: "status/inwork/💭"
+    done: "status/done/✅"
+  topic_prefix: "topic"       # topic/knowledge/*, topic/applied/*
+  project_prefix: "projects"  # projects/60-00/60-06
+
+# Custom callouts observed in vault
+callout_defaults:
+  editable:
+    connect: "Navigation breadcrumbs (up/related links)"
+    anchor: "Overview section"
+    blocks: "Key Concepts"
+    video: "Action Items / Tasks"
+    calendar: "Recent Updates"
+    puzzle: "Related Topics"
+    compass: "Suggestions to explore"
+  protected:
+    boxes: "Unrequited Notes (DataviewJS)"
+    shell: "Same-tag unmentioned (DataviewJS)"
+    keaton: "Title-match notes (DataviewJS)"
+
+# Protected code blocks
+protected_patterns:
+  - "```dataviewjs"
+  - "```dataview"
+  - "```folder-overview"
+
+# Frontmatter schema defaults
+frontmatter_defaults:
+  required:
+    - { key: "UUID",      token: "uuid",      format: "YYYYMMDDHHmmss" }
+    - { key: "DateStamp", token: "datestamp", format: "YYYY-MM-DD" }
+    - { key: "Updated",   token: "updated",   format: "YYYY-MM-DD HH:mm" }
+    - { key: "title",     token: "title" }
+    - { key: "tags",      token: "tags" }
+  optional:
+    - { key: "locale",       token: "locale",       default: "de" }
+    - { key: "Vault",        token: "vault",        default: "Privat" }
+    - { key: "VaultVersion", token: "vault_version", default: "2" }
+    - { key: "Summary",      token: "summary" }
+    - { key: "aliases",      token: "aliases" }
+    - { key: "banner",       token: "banner" }

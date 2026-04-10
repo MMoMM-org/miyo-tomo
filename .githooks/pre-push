@@ -1,0 +1,142 @@
+#!/bin/bash
+# pre-push — lint changed files before push
+#
+# Lints only files changed between the local branch and its merge-base
+# with the remote default branch. Detects available linters per language.
+# Blocks push if any linter fails (bypass with --no-verify).
+#
+# Bash 3.2 compatible (macOS default). No associative arrays.
+#
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+# ── Determine what is being pushed ──────────────────────────
+# Pre-push receives lines: <local ref> <local sha> <remote ref> <remote sha>
+LOCAL_SHA=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  LOCAL_SHA="$local_sha"
+done
+
+# Nothing to push or deleting a remote branch
+if [ -z "$LOCAL_SHA" ] || [ "$LOCAL_SHA" = "0000000000000000000000000000000000000000" ]; then
+  exit 0
+fi
+
+# ── Find the default remote branch ──────────────────────────
+DEFAULT_BRANCH=""
+for candidate in main master; do
+  if git rev-parse --verify "origin/$candidate" > /dev/null 2>&1; then
+    DEFAULT_BRANCH="$candidate"
+    break
+  fi
+done
+
+if [ -z "$DEFAULT_BRANCH" ]; then
+  # Cannot determine default branch — skip linting
+  exit 0
+fi
+
+# ── Get changed files ────────────────────────────────────────
+MERGE_BASE=$(git merge-base "$LOCAL_SHA" "origin/$DEFAULT_BRANCH" 2>/dev/null || echo "")
+if [ -z "$MERGE_BASE" ]; then
+  exit 0
+fi
+
+CHANGED=$(git diff --name-only --diff-filter=d "$MERGE_BASE" "$LOCAL_SHA" 2>/dev/null || echo "")
+if [ -z "$CHANGED" ]; then
+  exit 0
+fi
+
+# ── Group files by language ──────────────────────────────────
+JS_FILES=""
+PY_FILES=""
+GO_FILES=""
+KT_FILES=""
+
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  # Only lint files that still exist in the working tree
+  [ -f "$file" ] || continue
+  case "$file" in
+    *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs)
+      JS_FILES="$JS_FILES $file" ;;
+    *.py)
+      PY_FILES="$PY_FILES $file" ;;
+    *.go)
+      GO_FILES="$GO_FILES $file" ;;
+    *.kt|*.kts)
+      KT_FILES="$KT_FILES $file" ;;
+  esac
+done <<EOF
+$CHANGED
+EOF
+
+ERRORS=0
+
+# ── Lint JS/TS ───────────────────────────────────────────────
+if [ -n "$JS_FILES" ]; then
+  if command -v biome > /dev/null 2>&1; then
+    echo "  ▶ biome check ($(echo $JS_FILES | wc -w | tr -d ' ') files)"
+    if ! biome check --no-errors-on-unmatched $JS_FILES; then
+      ERRORS=1
+    fi
+  elif command -v eslint > /dev/null 2>&1; then
+    echo "  ▶ eslint ($(echo $JS_FILES | wc -w | tr -d ' ') files)"
+    if ! eslint --no-error-on-unmatched-pattern $JS_FILES; then
+      ERRORS=1
+    fi
+  fi
+fi
+
+# ── Lint Python ──────────────────────────────────────────────
+if [ -n "$PY_FILES" ]; then
+  if command -v ruff > /dev/null 2>&1; then
+    echo "  ▶ ruff check ($(echo $PY_FILES | wc -w | tr -d ' ') files)"
+    if ! ruff check $PY_FILES; then
+      ERRORS=1
+    fi
+  elif command -v flake8 > /dev/null 2>&1; then
+    echo "  ▶ flake8 ($(echo $PY_FILES | wc -w | tr -d ' ') files)"
+    if ! flake8 $PY_FILES; then
+      ERRORS=1
+    fi
+  fi
+fi
+
+# ── Lint Go ──────────────────────────────────────────────────
+if [ -n "$GO_FILES" ]; then
+  if command -v golangci-lint > /dev/null 2>&1; then
+    echo "  ▶ golangci-lint ($(echo $GO_FILES | wc -w | tr -d ' ') files)"
+    if ! golangci-lint run $GO_FILES; then
+      ERRORS=1
+    fi
+  elif command -v go > /dev/null 2>&1; then
+    echo "  ▶ go vet ($(echo $GO_FILES | wc -w | tr -d ' ') files)"
+    if ! go vet $GO_FILES; then
+      ERRORS=1
+    fi
+  fi
+fi
+
+# ── Lint Kotlin ──────────────────────────────────────────────
+if [ -n "$KT_FILES" ]; then
+  if command -v ktlint > /dev/null 2>&1; then
+    echo "  ▶ ktlint ($(echo $KT_FILES | wc -w | tr -d ' ') files)"
+    if ! ktlint $KT_FILES; then
+      ERRORS=1
+    fi
+  fi
+fi
+
+# ── Result ───────────────────────────────────────────────────
+if [ "$ERRORS" -ne 0 ]; then
+  echo ""
+  echo "  ✗ Linting failed on changed files."
+  echo "    Fix the issues above, then push again."
+  echo "    To bypass: git push --no-verify"
+  echo ""
+  exit 1
+fi
+
+exit 0

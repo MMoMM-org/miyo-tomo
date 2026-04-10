@@ -1,21 +1,24 @@
-# /explore-vault — Learn vault structure
-# version: 0.1.0
+# /explore-vault
+# version: 0.2.0
 
-Discover and document the vault's structure for LYT/MOC work.
+Scan your Obsidian vault to discover structure, frontmatter patterns, tags, and MOC hierarchy.
+Builds the discovery cache that powers Tomo's PKM intelligence.
 
-## Workflow
+## Usage
 
-1. Read current vault-config.md for known structure
-2. List vault folders recursively via Kado MCP `list_directory`
-3. Identify MOCs (Maps of Content) — notes that primarily link to other notes
-4. Discover tag taxonomy — scan frontmatter and inline tags
-5. Map folder layout — purpose of each top-level folder
-6. Update `.claude/rules/vault-config.md` with discoveries
-7. Report: discovered MOC count, folder count, tag summary
+`/explore-vault` — Full scan with user confirmation (first run) or silent cache rebuild (subsequent)
+`/explore-vault --confirm` — Re-run all detection with user confirmation
 
-## What to Look For
+## What This Does
 
-- Notes with many outgoing links and few inline content → likely MOCs
-- Folder naming patterns (dates, topics, areas)
-- Tag hierarchies (nested tags like `#area/work`)
-- Template patterns in frontmatter
+1. Connects to Kado MCP
+2. Scans vault folder structure
+3. Detects frontmatter patterns, tag taxonomy, relationship markers, callout usage
+4. Indexes all MOCs and builds topic tree
+5. Generates discovery-cache.yaml
+
+You will be asked to confirm each detection step. Your vault is never modified — only Tomo's config files are updated.
+
+## Agent
+
+This command delegates to the `vault-explorer` agent.

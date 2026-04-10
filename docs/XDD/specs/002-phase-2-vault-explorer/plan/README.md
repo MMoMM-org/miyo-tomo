@@ -73,10 +73,10 @@ python3 -c "import yaml"                 # PyYAML available in container
 
 Each phase is defined in a separate file.
 
-- [ ] [Phase 1: Scan Scripts](phase-1.md)
-- [ ] [Phase 2: MOC Discovery + Cache Assembly](phase-2.md)
-- [ ] [Phase 3: Agent Artifacts](phase-3.md)
-- [ ] [Phase 4: Integration Validation](phase-4.md)
+- [x] [Phase 1: Scan Scripts](phase-1.md)
+- [x] [Phase 2: MOC Discovery + Cache Assembly](phase-2.md)
+- [x] [Phase 3: Agent Artifacts](phase-3.md)
+- [x] [Phase 4: Integration Validation](phase-4.md)
 
 ---
 

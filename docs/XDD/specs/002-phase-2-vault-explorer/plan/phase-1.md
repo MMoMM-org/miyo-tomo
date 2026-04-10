@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Scan Scripts"
-status: pending
+status: completed
 version: "1.0"
 phase: 1
 ---

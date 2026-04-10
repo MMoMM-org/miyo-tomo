@@ -1,14 +1,331 @@
-# Example vault configuration
-# Copy to your instance's config/ directory and fill in real values.
+# vault-config.yaml — Example / Reference Configuration
+# version: 1.0
+#
+# This file documents the COMPLETE vault-config.yaml schema with MiYo profile
+# defaults as example values.
+#
+# Usage:
+#   - Copy to your instance's config/ directory as vault-config.yaml
+#   - Fill in values that match your vault structure
+#   - Fields left at their profile default can be omitted (Tomo falls back to profile)
+#   - Fields set to null are intentionally disabled (no fallback to profile)
+#
+# Generation:
+#   Phase 1: Install script produces a minimal config (profile, concepts, lifecycle)
+#   Phase 2: /explore-vault enriches with frontmatter, tags, callouts, relationships
 
-vault:
-  name: "My Vault"
-  inbox_path: "00 Inbox"
-  archive_path: "99 Archive"
-  daily_notes_path: "01 Daily"
-  daily_notes_format: "YYYY-MM-DD"
+# ──────────────────────────────────────────────────────────────────────────────
+# Schema Identity
+# ──────────────────────────────────────────────────────────────────────────────
 
-# How to handle processed inbox files
-archive:
-  strategy: "tag"           # "tag" (add #miyo/archived) or "move" (to archive_path)
-  cleanup_days: 30          # Auto-cleanup instruction sets older than this
+# Validated at session start. If Tomo requires a newer schema version it will
+# present a migration diff before proceeding.
+schema_version: 1
+
+# Which profile to load as baseline. Available: miyo, lyt, para, custom.
+# L3 (this file) always wins over L2 (profile) — omit a field to fall back to profile.
+profile: "miyo"
+profile_version: "1.0"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Concept Mapping
+# ──────────────────────────────────────────────────────────────────────────────
+# Maps Tomo's abstract concepts to your vault's actual folder paths.
+# Override only the concepts that differ from your profile defaults.
+
+concepts:
+  # Where new, unprocessed items land
+  inbox: "+/"
+
+  # Evergreen / atomic notes — single-idea permanent notes
+  atomic_note: "Atlas/202 Notes/"
+
+  # Map of Content — MOC notes. Discovery uses BOTH folder paths AND tags.
+  # Notes tagged with any of the listed tags are treated as MOCs regardless of
+  # their folder location (useful for sub-MOCs scattered throughout the vault).
+  map_note:
+    paths:
+      - "Atlas/200 Maps/"
+    tags:
+      - "type/others/moc"
+
+  # Calendar / daily notes — one base_path with per-granularity sub-paths
+  calendar:
+    base_path: "Calendar/"
+    granularities:
+      daily:
+        enabled: true
+        path: "Calendar/Days/"
+      weekly:
+        enabled: false
+        path: null
+      monthly:
+        enabled: false
+        path: null
+      quarterly:
+        enabled: false
+        path: null
+      yearly:
+        enabled: false
+        path: null
+
+  # Active projects
+  project: "Efforts/Projects/"
+
+  # Ongoing areas of responsibility
+  area: "Efforts/Areas/"
+
+  # Source / reference material
+  source: "Atlas/Sources/"
+
+  # Note templates (Obsidian template folder)
+  template: "X/900 Support/Templates/"
+
+  # Attachments, images, and other binary assets
+  asset: "Atlas/290 Assets/295 Attachments/"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Naming
+# ──────────────────────────────────────────────────────────────────────────────
+# Controls how Tomo refers to concepts in proposals and how calendar files
+# are named. Labels are human-readable display names; patterns follow Moment.js.
+
+naming:
+  # Display labels used in instruction sets and proposals
+  labels:
+    map_note: "MOC"
+    atomic_note: "Note"
+    inbox_item: "Inbox Item"
+    project: "Project"
+    source: "Source"
+
+  # Filename patterns per calendar granularity (Moment.js format tokens)
+  calendar_patterns:
+    daily: "YYYY-MM-DD"
+    weekly: "YYYY-[W]ww"
+    monthly: "YYYY-MM"
+    quarterly: "YYYY-[Q]Q"
+    yearly: "YYYY"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Lifecycle
+# ──────────────────────────────────────────────────────────────────────────────
+# Tomo tags notes it has processed with a lifecycle tag under this prefix.
+# Example: "MiYo-Tomo/processed/2026-04-10"
+
+lifecycle:
+  tag_prefix: "MiYo-Tomo"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Templates
+# ──────────────────────────────────────────────────────────────────────────────
+# Maps concept types to Obsidian template files (relative to base_path).
+# Tomo verifies these files exist via Kado at session start.
+
+templates:
+  base_path: "X/900 Support/Templates/"
+  mapping:
+    atomic_note: "Atomic Note.md"
+    map_note: "MOC.md"
+    daily: "Daily Note.md"
+    weekly: "Weekly Note.md"
+    monthly: "Monthly Note.md"
+    yearly: "Yearly Note.md"
+    project: "Project.md"
+    source: "Source.md"
+  # Optional: custom token overrides applied before standard token resolution
+  # custom_tokens:
+  #   - token: "my_token"
+  #     value: "static value"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Frontmatter Schema
+# ──────────────────────────────────────────────────────────────────────────────
+# Defines which frontmatter fields Tomo reads, writes, and validates.
+#
+# strict: true  → Tomo refuses to write notes missing required fields
+# strict: false → Tomo warns but proceeds
+#
+# Each field entry:
+#   key     — YAML key name as it appears in the note (e.g. "UUID", "tags")
+#   token   — Template token that resolves this field (e.g. "uuid", "title")
+#   format  — Expected format for generated values (e.g. "YYYY-MM-DD")
+#   type    — Expected YAML type: string, number, boolean, list, date
+#   default — Default value for optional fields when token cannot resolve
+
+frontmatter:
+  strict: true
+
+  required:
+    - key: "UUID"
+      token: "uuid"
+      format: "YYYYMMDDHHmmss"
+      type: "string"
+    - key: "DateStamp"
+      token: "datestamp"
+      format: "YYYY-MM-DD"
+      type: "date"
+    - key: "Updated"
+      token: "updated"
+      format: "YYYY-MM-DD HH:mm"
+      type: "string"
+    - key: "title"
+      token: "title"
+      type: "string"
+    - key: "tags"
+      token: "tags"
+      type: "list"
+
+  optional:
+    - key: "locale"
+      token: "locale"
+      type: "string"
+      default: "de"
+    - key: "Vault"
+      token: "vault"
+      type: "string"
+      default: "Privat"
+    - key: "VaultVersion"
+      token: "vault_version"
+      type: "string"
+      default: "2"
+    - key: "Summary"
+      token: "summary"
+      type: "string"
+    - key: "aliases"
+      token: "aliases"
+      type: "list"
+    - key: "banner"
+      token: "banner"
+      type: "string"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Relationships
+# ──────────────────────────────────────────────────────────────────────────────
+# How Tomo detects and writes parent/peer links between notes.
+# Tomo does not depend on Dataview — markers are just text patterns.
+#
+# marker        — prefix that identifies this relationship (used for read + write)
+# format        — template string for writing; must contain {{link}}
+# position      — where in the note: connect_callout | frontmatter |
+#                 top_of_body | end_of_frontmatter
+# location_type — inline (body pattern match) or frontmatter (YAML key)
+# multi         — whether multiple links are allowed
+# separator     — how multiple links are joined (default: ", ")
+
+relationships:
+  parent:
+    marker: "up::"
+    format: "up:: {{link}}"
+    position: "connect_callout"
+    location_type: "inline"
+    multi: true
+    separator: ", "
+  peer:
+    marker: "related::"
+    format: "related:: {{link}}"
+    position: "connect_callout"
+    location_type: "inline"
+    multi: true
+    separator: ", "
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tag Taxonomy
+# ──────────────────────────────────────────────────────────────────────────────
+# Describes the user's hierarchical tag structure. Tomo uses this to propose
+# tags that match existing vault conventions.
+#
+# Each prefix entry:
+#   description  — what this prefix is for
+#   known_values — observed values under this prefix (full paths beyond the prefix)
+#   wildcard     — true: Tomo may propose new values; false: only known_values used
+#   required_for — concept types that must have at least one tag in this prefix
+
+tags:
+  prefixes:
+    type:
+      description: "Note type (structural)"
+      known_values:
+        - "note/normal"
+        - "others/moc"
+      wildcard: false
+      required_for:
+        - atomic_note
+        - map_note
+
+    status:
+      description: "Note status in the thinking process"
+      known_values:
+        - "inwork/💭"
+        - "done/✅"
+      wildcard: true
+      required_for: []
+
+    topic:
+      description: "Topic area (free-form, hierarchical)"
+      known_values:
+        - "knowledge/lyt"
+        - "knowledge/miyo"
+        - "knowledge/personal"
+        - "applied/ai"
+        - "applied/docker"
+        - "applied/tools"
+      wildcard: true
+      required_for: []
+
+    projects:
+      description: "Project association (Dewey-coded)"
+      known_values:
+        - "60-00"
+        - "60-00/60-06"
+      wildcard: true
+      required_for:
+        - project
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Callout Mapping
+# ──────────────────────────────────────────────────────────────────────────────
+# How Tomo classifies Obsidian callouts (> [!name] blocks).
+#
+# enabled: false → Tomo ignores all callouts (treat content as flat markdown)
+# enabled: true  → Tomo reads callout types and respects categories below
+#
+# Categories:
+#   editable  — Tomo may read, insert, or update content inside
+#   protected — Read-only (DataviewJS queries, auto-generated content)
+#   ignore    — Skip entirely (decorative, no semantic value)
+#
+# Default for any callout NOT listed: protected (safe — don't touch unknown callouts)
+
+callouts:
+  enabled: true
+
+  editable:
+    connect:  "Navigation breadcrumbs (up:: / related:: links)"
+    anchor:   "Overview section introduction"
+    blocks:   "Key Concepts section"
+    video:    "Action Items / Tasks"
+    calendar: "Recent Updates"
+    puzzle:   "Related Topics"
+    compass:  "Suggestions and things to explore"
+
+  protected:
+    boxes:    "Unrequited Notes (DataviewJS query output)"
+    shell:    "Same-tag unmentioned (DataviewJS query output)"
+    keaton:   "Title-match notes (DataviewJS query output)"
+
+  ignore:
+    weather:  "Auto-generated weather widget (decorative)"
+    divider:  "Visual separator, no semantic content"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Protected Patterns
+# ──────────────────────────────────────────────────────────────────────────────
+# Code block fences that Tomo must never modify. Any block opened with one of
+# these strings is treated as protected — Tomo will read past it but never write
+# inside it.
+
+protected_patterns:
+  - "```dataviewjs"
+  - "```dataview"
+  - "```folder-overview"

@@ -11,7 +11,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $HOME/.claude/hooks/dev-notify-bridge.sh"
+            "command": "bash .claude/hooks/dev-notify-bridge.sh"
           }
         ]
       }

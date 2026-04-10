@@ -86,12 +86,29 @@ HELPEOF
     exit 0
 fi
 
+# ── ANSI Colors ──────────────────────────────────────────
+
+if [ -t 1 ]; then
+    C_RESET="\033[0m"
+    C_BOLD="\033[1m"
+    C_DIM="\033[2m"
+    C_CYAN="\033[36m"
+    C_GREEN="\033[32m"
+    C_YELLOW="\033[33m"
+    C_RED="\033[31m"
+    C_BLUE="\033[34m"
+    C_WHITE="\033[37m"
+else
+    C_RESET="" C_BOLD="" C_DIM="" C_CYAN="" C_GREEN=""
+    C_YELLOW="" C_RED="" C_BLUE="" C_WHITE=""
+fi
+
 # ── Helpers ───────────────────────────────────────────────
 
-print_step() { echo ""; echo "▸ $1"; }
-print_ok()   { echo "  ✓ $1"; }
-print_warn() { echo "  ⚠ $1"; }
-print_err()  { echo "  ✗ $1" >&2; }
+print_step() { printf "\n${C_BOLD}${C_CYAN}▸ %s${C_RESET}\n" "$1"; }
+print_ok()   { printf "  ${C_GREEN}✓${C_RESET} %s\n" "$1"; }
+print_warn() { printf "  ${C_YELLOW}⚠${C_RESET} %s\n" "$1"; }
+print_err()  { printf "  ${C_RED}✗${C_RESET} %s\n" "$1" >&2; }
 
 # Read a simple YAML value: yaml_value file key
 # Handles top-level and one-level-indented keys (concept_defaults.inbox style)
@@ -145,11 +162,19 @@ prompt_yn() {
 
 # ── Step 1: Welcome ──────────────────────────────────────
 
+# ── ANSI Logo ────────────────────────────────────────────
+
+LOGO_FILE="$SCRIPT_DIR/../tomo-logo.txt"
+if [ -t 1 ] && [ -f "$LOGO_FILE" ]; then
+    echo ""
+    cat "$LOGO_FILE"
+fi
+
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  MiYo Tomo — Setup Wizard v${TOMO_VERSION}"
-echo "  AI-assisted PKM workflows for Obsidian"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
+printf "  ${C_BOLD}MiYo Tomo${C_RESET} — Setup Wizard v${TOMO_VERSION}\n"
+printf "  ${C_DIM}AI-assisted PKM workflows for Obsidian${C_RESET}\n"
+printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
 
 # ── Prerequisites ─────────────────────────────────────────
 
@@ -205,21 +230,16 @@ else
 fi
 
 # Show top-level folders
-echo "  Top-level vault folders:"
-# Build indexed list of top-level directories (Bash 3.2 safe — no arrays needed for display)
-VAULT_FOLDERS=""
+printf "\n  ${C_DIM}Top-level vault folders:${C_RESET}\n"
 FOLDER_COUNT=0
 for d in "$VAULT_PATH"/*/; do
     if [ -d "$d" ]; then
         dname="$(basename "$d")"
-        # Skip hidden folders
         case "$dname" in
             .*) continue ;;
         esac
         FOLDER_COUNT=$((FOLDER_COUNT + 1))
-        VAULT_FOLDERS="${VAULT_FOLDERS}${dname}
-"
-        echo "    ${FOLDER_COUNT}. ${dname}/"
+        printf "    ${C_BOLD}%2d${C_RESET}. %s/\n" "$FOLDER_COUNT" "$dname"
     fi
 done
 if [ "$FOLDER_COUNT" -eq 0 ]; then
@@ -319,8 +339,133 @@ concept_label() {
     esac
 }
 
-# Prompt for a single concept path
-# Returns the confirmed path in CONCEPT_RESULT
+# ── Directory Browser ────────────────────────────────────
+# Interactive directory picker that allows drilling into subdirectories.
+# Usage: browse_path [initial_relative_path]
+# Sets BROWSE_RESULT to the selected relative path (with trailing slash).
+# Allows: number to drill down, 0 to go up, d to confirm, or direct path entry.
+
+BROWSE_RESULT=""
+browse_path() {
+    local rel_path="${1:-}"
+    local concept_name="$2"
+
+    while true; do
+        local full_path="$VAULT_PATH/$rel_path"
+
+        # Header
+        echo ""
+        if [ -n "$rel_path" ]; then
+            printf "  ${C_DIM}Browsing:${C_RESET} ${C_CYAN}%s${C_RESET}\n" "$rel_path"
+        else
+            printf "  ${C_DIM}Browsing:${C_RESET} ${C_CYAN}(vault root)${C_RESET}\n"
+        fi
+        echo ""
+
+        # List subdirectories
+        local count=0
+        local folder_list=""
+        for d in "$full_path"/*/; do
+            [ -d "$d" ] || continue
+            local dname
+            dname="$(basename "$d")"
+            case "$dname" in .*) continue ;; esac
+            count=$((count + 1))
+            folder_list="${folder_list}${dname}
+"
+            printf "    ${C_BOLD}%2d${C_RESET}. %s/\n" "$count" "$dname"
+        done
+
+        if [ "$count" -eq 0 ]; then
+            printf "    ${C_DIM}(no subdirectories)${C_RESET}\n"
+        fi
+
+        # Navigation options
+        echo ""
+        local nav_hint=""
+        if [ -n "$rel_path" ]; then
+            nav_hint="${C_DIM} 0${C_RESET}=↑ up  "
+        fi
+        nav_hint="${nav_hint}${C_DIM}d${C_RESET}=done (use current)  ${C_DIM}or type a path${C_RESET}"
+        printf "  %b\n" "$nav_hint"
+
+        local choice
+        read -rp "  > " choice
+
+        case "$choice" in
+            d|D|done|"")
+                # Empty = accept current path
+                if [ "$choice" = "" ] && [ -z "$rel_path" ] && [ "$count" -gt 0 ]; then
+                    # At root with no selection yet — don't accept empty
+                    printf "  ${C_YELLOW}Please select a folder or type 'd' to use vault root.${C_RESET}\n"
+                    continue
+                fi
+                # Ensure trailing slash for non-empty paths
+                if [ -n "$rel_path" ]; then
+                    case "$rel_path" in
+                        */) BROWSE_RESULT="$rel_path" ;;
+                        *)  BROWSE_RESULT="${rel_path}/" ;;
+                    esac
+                else
+                    BROWSE_RESULT=""
+                fi
+                return
+                ;;
+            0)
+                if [ -n "$rel_path" ]; then
+                    rel_path="$(dirname "$rel_path")"
+                    # dirname of "foo/" gives "foo", dirname of "foo" gives "."
+                    case "$rel_path" in
+                        .|./) rel_path="" ;;
+                    esac
+                    # Strip trailing slash for dirname to work next time
+                    case "$rel_path" in
+                        */) ;; # keep it
+                        "")  ;; # root
+                        *)   rel_path="${rel_path}/" ;;
+                    esac
+                fi
+                ;;
+            [0-9]|[0-9][0-9])
+                # Select numbered folder — drill down
+                local j=0
+                local selected=""
+                for d in "$full_path"/*/; do
+                    [ -d "$d" ] || continue
+                    local dname
+                    dname="$(basename "$d")"
+                    case "$dname" in .*) continue ;; esac
+                    j=$((j + 1))
+                    if [ "$j" -eq "$choice" ]; then
+                        selected="$dname"
+                        break
+                    fi
+                done
+                if [ -n "$selected" ]; then
+                    rel_path="${rel_path}${selected}/"
+                else
+                    printf "  ${C_RED}Invalid selection.${C_RESET}\n"
+                fi
+                ;;
+            *)
+                # Direct path entry
+                case "$choice" in
+                    */) BROWSE_RESULT="$choice" ;;
+                    *)  BROWSE_RESULT="${choice}/" ;;
+                esac
+                # Validate
+                if [ ! -d "$VAULT_PATH/$BROWSE_RESULT" ]; then
+                    print_warn "Folder does not exist yet: ${BROWSE_RESULT} (OK for new setups)"
+                fi
+                return
+                ;;
+        esac
+    done
+}
+
+# ── Concept Prompt (interactive or non-interactive) ──────
+# Sets CONCEPT_RESULT for the given concept.
+
 CONCEPT_RESULT=""
 prompt_concept() {
     local concept="$1"
@@ -338,77 +483,67 @@ prompt_concept() {
         return
     fi
 
+    # Concept header with spacing
     echo ""
-    echo "  ${label}:"
+    printf "  ${C_BOLD}${C_BLUE}── %s ──${C_RESET}\n" "$label"
     if [ -n "$default_path" ]; then
-        echo "    Profile default: ${default_path}"
+        printf "  ${C_DIM}Profile default:${C_RESET} ${C_GREEN}%s${C_RESET}\n" "$default_path"
     else
-        echo "    Profile default: (none)"
+        printf "  ${C_DIM}Profile default:${C_RESET} ${C_YELLOW}(none)${C_RESET}\n"
     fi
 
-    # Show vault folders for reference
-    echo "    Vault top-level folders:"
-    local i=0
-    local IFS_OLD="$IFS"
-    IFS="
-"
-    for folder in $VAULT_FOLDERS; do
-        i=$((i + 1))
-        echo "      ${i}. ${folder}/"
-    done
-    IFS="$IFS_OLD"
+    echo ""
+    printf "  ${C_DIM}d${C_RESET}=accept default  ${C_DIM}b${C_RESET}=browse vault  ${C_DIM}or type a path${C_RESET}\n"
 
     local answer
-    if [ -n "$default_path" ]; then
-        read -rp "    Use default (${default_path}) or enter path: " answer
-    else
-        read -rp "    Enter path: " answer
-    fi
+    read -rp "  > " answer
 
-    if [ -z "$answer" ]; then
-        CONCEPT_RESULT="$default_path"
-    else
-        # Check if answer is a number (folder selection)
-        case "$answer" in
-            [0-9]|[0-9][0-9])
-                local j=0
-                local matched=""
-                IFS="
-"
-                for folder in $VAULT_FOLDERS; do
-                    j=$((j + 1))
-                    if [ "$j" -eq "$answer" ]; then
-                        matched="${folder}/"
-                        break
-                    fi
-                done
-                IFS="$IFS_OLD"
-                if [ -n "$matched" ]; then
-                    CONCEPT_RESULT="$matched"
-                else
-                    CONCEPT_RESULT="$answer"
+    case "$answer" in
+        d|D|"")
+            CONCEPT_RESULT="$default_path"
+            ;;
+        b|B|browse)
+            # Start browser at profile default's parent, or vault root
+            local start_path=""
+            if [ -n "$default_path" ] && [ -d "$VAULT_PATH/$default_path" ]; then
+                start_path="$default_path"
+            elif [ -n "$default_path" ]; then
+                # Try parent of default
+                local parent
+                parent="$(dirname "$default_path")"
+                case "$parent" in .|./) parent="" ;; esac
+                if [ -n "$parent" ] && [ -d "$VAULT_PATH/$parent" ]; then
+                    start_path="${parent}/"
                 fi
-                ;;
-            *)
-                # Ensure trailing slash
-                case "$answer" in
-                    */) CONCEPT_RESULT="$answer" ;;
-                    *)  CONCEPT_RESULT="${answer}/" ;;
-                esac
-                ;;
-        esac
-    fi
+            fi
+            browse_path "$start_path" "$label"
+            CONCEPT_RESULT="$BROWSE_RESULT"
+            ;;
+        *)
+            # Direct path entry
+            case "$answer" in
+                */) CONCEPT_RESULT="$answer" ;;
+                *)  CONCEPT_RESULT="${answer}/" ;;
+            esac
+            ;;
+    esac
 
     # Validate path exists in vault
     if [ -n "$CONCEPT_RESULT" ] && [ ! -d "$VAULT_PATH/$CONCEPT_RESULT" ]; then
         print_warn "Folder does not exist yet: ${CONCEPT_RESULT} (OK for new setups)"
     fi
 
-    print_ok "${label}: ${CONCEPT_RESULT}"
+    if [ -n "$CONCEPT_RESULT" ]; then
+        print_ok "${label}: ${CONCEPT_RESULT}"
+    else
+        print_warn "${label}: (not set)"
+    fi
 }
 
-# Collect all concept paths
+# ── Collect all concept paths (with back-navigation) ─────
+
 CONCEPTS="inbox atomic_note map_note calendar project area source template asset"
+CONCEPT_COUNT=9
 
 # Store results in individual variables (Bash 3.2 — no associative arrays)
 C_INBOX=""
@@ -421,21 +556,130 @@ C_SOURCE=""
 C_TEMPLATE=""
 C_ASSET=""
 
-for concept in $CONCEPTS; do
-    default_path="$(get_profile_default "$concept")"
-    prompt_concept "$concept" "$default_path"
-    case "$concept" in
-        inbox)       C_INBOX="$CONCEPT_RESULT" ;;
-        atomic_note) C_ATOMIC_NOTE="$CONCEPT_RESULT" ;;
-        map_note)    C_MAP_NOTE="$CONCEPT_RESULT" ;;
-        calendar)    C_CALENDAR="$CONCEPT_RESULT" ;;
-        project)     C_PROJECT="$CONCEPT_RESULT" ;;
-        area)        C_AREA="$CONCEPT_RESULT" ;;
-        source)      C_SOURCE="$CONCEPT_RESULT" ;;
-        template)    C_TEMPLATE="$CONCEPT_RESULT" ;;
-        asset)       C_ASSET="$CONCEPT_RESULT" ;;
+# Get concept name by 1-based index
+concept_at() {
+    echo "$CONCEPTS" | tr ' ' '\n' | sed -n "${1}p"
+}
+
+# Store a concept result by name
+store_concept() {
+    case "$1" in
+        inbox)       C_INBOX="$2" ;;
+        atomic_note) C_ATOMIC_NOTE="$2" ;;
+        map_note)    C_MAP_NOTE="$2" ;;
+        calendar)    C_CALENDAR="$2" ;;
+        project)     C_PROJECT="$2" ;;
+        area)        C_AREA="$2" ;;
+        source)      C_SOURCE="$2" ;;
+        template)    C_TEMPLATE="$2" ;;
+        asset)       C_ASSET="$2" ;;
     esac
+}
+
+# Read a stored concept result by name
+read_concept() {
+    case "$1" in
+        inbox)       echo "$C_INBOX" ;;
+        atomic_note) echo "$C_ATOMIC_NOTE" ;;
+        map_note)    echo "$C_MAP_NOTE" ;;
+        calendar)    echo "$C_CALENDAR" ;;
+        project)     echo "$C_PROJECT" ;;
+        area)        echo "$C_AREA" ;;
+        source)      echo "$C_SOURCE" ;;
+        template)    echo "$C_TEMPLATE" ;;
+        asset)       echo "$C_ASSET" ;;
+    esac
+}
+
+# Show summary of configured concepts so far
+show_concept_summary() {
+    local up_to="$1"
+    if [ "$up_to" -le 0 ]; then return; fi
+    printf "\n  ${C_DIM}─── Configured so far ───${C_RESET}\n"
+    local i=1
+    while [ "$i" -le "$up_to" ]; do
+        local c
+        c="$(concept_at "$i")"
+        local lbl
+        lbl="$(concept_label "$c")"
+        local val
+        val="$(read_concept "$c")"
+        if [ -n "$val" ]; then
+            printf "  ${C_GREEN}✓${C_RESET} %-24s %s\n" "$lbl" "$val"
+        else
+            printf "  ${C_YELLOW}–${C_RESET} %-24s ${C_DIM}(not set)${C_RESET}\n" "$lbl"
+        fi
+        i=$((i + 1))
+    done
+}
+
+# Main concept mapping loop with back-navigation
+CIDX=1
+while [ "$CIDX" -le "$CONCEPT_COUNT" ]; do
+    concept="$(concept_at "$CIDX")"
+    default_path="$(get_profile_default "$concept")"
+
+    # Show summary of what's been configured (interactive only)
+    if [ "$NON_INTERACTIVE" != "true" ] && [ "$CIDX" -gt 1 ]; then
+        show_concept_summary "$((CIDX - 1))"
+    fi
+
+    prompt_concept "$concept" "$default_path"
+    store_concept "$concept" "$CONCEPT_RESULT"
+
+    # Back-navigation prompt (interactive only, not after last concept)
+    if [ "$NON_INTERACTIVE" != "true" ] && [ "$CIDX" -lt "$CONCEPT_COUNT" ]; then
+        echo ""
+        printf "  ${C_DIM}[Enter] next  |  [b] go back${C_RESET}\n"
+        nav=""
+        read -rp "  " nav
+        case "$nav" in
+            b|B|back)
+                if [ "$CIDX" -gt 1 ]; then
+                    CIDX=$((CIDX - 1))
+                    continue
+                fi
+                ;;
+        esac
+    fi
+
+    CIDX=$((CIDX + 1))
 done
+
+# Final summary
+if [ "$NON_INTERACTIVE" != "true" ]; then
+    show_concept_summary "$CONCEPT_COUNT"
+    echo ""
+    printf "  ${C_DIM}[Enter] confirm  |  [b] go back to last concept${C_RESET}\n"
+    read -rp "  " final_nav
+    case "$final_nav" in
+        b|B|back)
+            # Jump back to last concept — re-enter loop
+            CIDX=$CONCEPT_COUNT
+            while [ "$CIDX" -ge 1 ]; do
+                concept="$(concept_at "$CIDX")"
+                default_path="$(get_profile_default "$concept")"
+                show_concept_summary "$((CIDX - 1))"
+                prompt_concept "$concept" "$default_path"
+                store_concept "$concept" "$CONCEPT_RESULT"
+                echo ""
+                printf "  ${C_DIM}[Enter] confirm all  |  [b] go back further${C_RESET}\n"
+                read -rp "  " re_nav
+                case "$re_nav" in
+                    b|B|back)
+                        if [ "$CIDX" -gt 1 ]; then
+                            CIDX=$((CIDX - 1))
+                            continue
+                        fi
+                        ;;
+                    *)
+                        break
+                        ;;
+                esac
+            done
+            ;;
+    esac
+fi
 
 # Read extra profile values for complex concepts
 MAP_NOTE_TAG=""
@@ -698,13 +942,7 @@ else
     print_warn "kado-config.md exists — skipped"
 fi
 
-# Example configs (only if not present)
-for cfg in vault-example.yaml kado-example.yaml; do
-    if [ ! -f "$INSTANCE_PATH/config/$cfg" ]; then
-        cp "$TOMO_SOURCE/config/$cfg" "$INSTANCE_PATH/config/$cfg"
-        print_ok "config/$cfg"
-    fi
-done
+# vault-example.yaml stays in tomo/config/ as schema reference — not copied to instance
 
 # ── MCP config ────────────────────────────────────────────
 
@@ -791,18 +1029,20 @@ fi
 # ── Step 10: Done ────────────────────────────────────────
 
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Tomo instance created at: $INSTANCE_PATH"
-echo "  Home directory: $HOME_DIR"
-echo "  Vault config:   $VAULT_CONFIG_PATH"
-echo "  Profile:        ${PROFILE} v${PROFILE_VERSION}"
+printf "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
+printf "  ${C_BOLD}${C_GREEN}✓ Tomo instance created${C_RESET}\n"
 echo ""
-echo "  Next steps:"
-echo "    1. Review config: $INSTANCE_PATH/config/vault-config.yaml"
-echo "    2. Build image:   docker build -t miyo-tomo:latest ./docker/"
-echo "    3. Start Tomo:    bash begin-tomo.sh"
-echo "    4. First run:     use /explore-vault to complete setup"
+printf "  Instance:     ${C_CYAN}%s${C_RESET}\n" "$INSTANCE_PATH"
+printf "  Home:         ${C_CYAN}%s${C_RESET}\n" "$HOME_DIR"
+printf "  Vault config: ${C_CYAN}%s${C_RESET}\n" "$VAULT_CONFIG_PATH"
+printf "  Profile:      ${C_CYAN}%s v%s${C_RESET}\n" "$PROFILE" "$PROFILE_VERSION"
 echo ""
-echo "  Recommended: initialize instance as its own git repo:"
-echo "    cd $INSTANCE_PATH && git init && git add -A && git commit -m 'Initial Tomo instance'"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+printf "  ${C_BOLD}Next steps:${C_RESET}\n"
+printf "    1. Review config: ${C_DIM}%s/config/vault-config.yaml${C_RESET}\n" "$INSTANCE_PATH"
+printf "    2. Build image:   ${C_DIM}docker build -t miyo-tomo:latest ./docker/${C_RESET}\n"
+printf "    3. Start Tomo:    ${C_DIM}bash begin-tomo.sh${C_RESET}\n"
+printf "    4. First run:     ${C_DIM}use /explore-vault to complete setup${C_RESET}\n"
+echo ""
+printf "  ${C_BOLD}Recommended:${C_RESET} initialize instance as its own git repo:\n"
+printf "    ${C_DIM}cd %s && git init && git add -A && git commit -m 'Initial Tomo instance'${C_RESET}\n" "$INSTANCE_PATH"
+printf "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"

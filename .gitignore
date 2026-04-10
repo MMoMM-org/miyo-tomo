@@ -20,3 +20,4 @@ node_modules/
 
 # Misc
 *.backup-*
+__pycache__/

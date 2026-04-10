@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Agent Definitions"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---

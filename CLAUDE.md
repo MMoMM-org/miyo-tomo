@@ -10,15 +10,30 @@ Tomo runs inside a Docker container with sandbox isolation — all vault access 
 
 ## Key Directories
 
-- `tomo/` — source of truth: agents, skills, commands, config templates (versioned)
+- `tomo/` — source of truth: agents, skills, commands, config templates, profiles (versioned)
+- `tomo/profiles/` — framework profiles (miyo.yaml, lyt.yaml)
+- `tomo/config/templates/` — reference templates for note types
+- `scripts/` — install, utility, and Python scan scripts
+- `scripts/lib/` — shared Python library (kado_client)
+- `docs/specs/` — PKM architecture specs (tier 1-3, from Kokoro)
+- `docs/XDD/` — implementation specs and plans
+- `docker/` — Dockerfile and container config
 - `tomo-instance/` — Docker workspace, gitignored, created by install script
 - `tomo-home/` — Docker /home/coder, gitignored
-- `docker/` — Dockerfile and container config
-- `scripts/` — install and update scripts
+
+## Architecture
+
+4-layer Knowledge Stack: Universal PKM Concepts → Framework Profiles → User Config → Discovery Cache.
+2-pass inbox model: Suggestions (Pass 1) → User confirms → Instructions (Pass 2) → User applies.
+MVP execution boundary: Tomo writes only to inbox folder; user applies everything else.
+
+See `docs/specs/tier-1/pkm-intelligence-architecture.md` for full architecture.
 
 ## Rules
 
 - NEVER modify vault files directly — all vault access goes through Kado MCP
-- Propose changes as instruction set entries — never execute without approval
+- Propose changes via 2-pass model — never execute without user approval
 - Instance directory is self-contained — no runtime references back to tomo/
 - All managed files in tomo/ must include a version comment for update tracking
+- Profiles are pure data (YAML) — logic lives in skills
+- Layer precedence: User Config > Profile > Universal Concepts; Discovery Cache is advisory only

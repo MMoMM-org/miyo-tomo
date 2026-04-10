@@ -6,17 +6,53 @@ Tomo runs inside an isolated Docker container. All vault access goes through Kad
 
 ## What Tomo Does
 
-- **`/inbox`** — Analyses inbox files and generates a structured instruction set
-- **`/execute`** — Executes approved actions from an instruction set
-- **`/explore-vault`** — Discovers vault structure (MOCs, tags, folders)
+- **`/inbox`** — 2-pass inbox processing: analyses files, proposes actions, generates detailed instructions
+- **`/explore-vault`** — Discovers vault structure, MOC hierarchy, frontmatter patterns, tag taxonomy
+- Framework-agnostic — supports LYT, PARA, and custom PKM frameworks via profiles
 
 ## How It Works
 
-1. You trigger `/inbox` — Tomo reads your inbox via Kado, analyses each file, and creates an instruction set
-2. You review the instruction set in Obsidian — check the actions you approve
-3. You trigger `/execute` — Tomo processes only the checked actions via Kado
+Tomo uses a **2-pass proposal model**. You always stay in control.
 
-Tomo proposes, you decide.
+### Pass 1 — Suggestions
+
+1. You trigger `/inbox` — Tomo reads inbox via Kado, classifies each file, matches to MOCs
+2. Tomo writes a **suggestions document** with alternatives and confidence scores
+3. You review in Obsidian — approve, modify, or skip each suggestion
+4. You tag the document as `confirmed`
+
+### Pass 2 — Instructions
+
+5. You trigger `/inbox` again — Tomo detects the confirmed suggestions
+6. Tomo generates a **detailed instruction set** with rendered templates, diffs, and exact actions
+7. You apply each action manually in Obsidian (move files, add MOC links, update trackers)
+8. You tag the instruction set as `applied`
+
+### Cleanup
+
+9. You trigger `/inbox` once more — Tomo archives processed documents and transitions states
+
+**Tomo proposes, you decide, you apply.**
+
+## Architecture
+
+### 4-Layer Knowledge Stack
+
+| Layer | What | Format |
+|-------|------|--------|
+| Universal PKM Concepts | Framework-agnostic vocabulary | Skill logic |
+| Framework Profiles | Framework-specific defaults (LYT, PARA, custom) | YAML |
+| User Config | Your vault-specific ground truth | YAML |
+| Discovery Cache | Auto-discovered vault semantics | YAML (advisory) |
+
+User config always wins over profile defaults. Discovery cache informs but never overrides.
+
+### Security Model
+
+- All vault access via Kado MCP (5-gate permission chain)
+- Docker container isolation — no vault filesystem mount
+- MVP execution boundary: Tomo writes only to the inbox folder
+- Every change is a proposal — user approval required before application
 
 ## Quick Start
 
@@ -27,28 +63,57 @@ bash scripts/install-tomo.sh
 bash begin-tomo.sh
 ```
 
-See [docs/setup.md](docs/setup.md) for detailed instructions.
+The install script walks you through vault path, framework profile selection, concept folder mapping, and Kado connection. See [docs/setup.md](docs/setup.md) for details.
 
 ## Prerequisites
 
 - Docker
 - Git, jq
-- [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) running and accessible
-- **macOS:** `brew install terminal-notifier` (for notifications)
-- **Linux:** `libnotify` / `notify-send` (for notifications)
+- [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) v0.1.6+ running and accessible
+- Python 3 (for host-side scripts)
 
 ## Repository Structure
 
 ```
 miyo-tomo/
-├── tomo/               # Source of truth — agents, skills, commands, config templates
-├── docker/             # Dockerfile and container config
-├── scripts/            # Install and update scripts
-├── docs/               # Setup guide, troubleshooting, workflow docs
-├── begin-tomo.sh       # Start a Tomo session
-├── tomo-instance/      # (gitignored) Docker workspace, created by install script
-└── tomo-home/          # (gitignored) Docker /home/coder
+├── tomo/                  # Source of truth — deployed to instance
+│   ├── .claude/           # Agents, commands, skills, rules
+│   ├── config/            # Example configs and reference templates
+│   └── profiles/          # Framework profiles (miyo.yaml, lyt.yaml)
+├── scripts/               # Install, update, and utility scripts
+│   ├── lib/               # Shared Python library (Kado client)
+│   ├── install-tomo.sh    # Setup wizard
+│   ├── vault-scan.py      # Vault structure scanner
+│   ├── topic-extract.py   # Topic keyword extraction
+│   ├── moc-tree-builder.py # MOC discovery and tree building
+│   ├── cache-builder.py   # Discovery cache assembly
+│   ├── token-render.py    # Template token resolution
+│   ├── state-scanner.py   # Lifecycle state discovery
+│   ├── suggestion-parser.py # Parse confirmed suggestions
+│   └── yaml-fixer.py      # YAML error recovery
+├── docs/                  # Setup, troubleshooting, specs
+├── docker/                # Dockerfile and entrypoint
+├── begin-tomo.sh          # Start a Tomo session
+├── tomo-instance/         # (gitignored) Docker workspace
+└── tomo-home/             # (gitignored) Docker /home/coder
 ```
+
+## Agents
+
+| Agent | Role |
+|-------|------|
+| `vault-explorer` | Scans vault structure, builds MOC tree, generates discovery cache |
+| `inbox-analyst` | Classifies inbox items through the 4-layer Knowledge Stack |
+| `suggestion-builder` | Pass 1 — generates suggestions with alternatives and confidence |
+| `instruction-builder` | Pass 2 — generates detailed instruction set with rendered templates |
+| `vault-executor` | Cleanup — archives processed documents, transitions lifecycle states |
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/inbox` | Process inbox (auto-detects: cleanup → Pass 2 → Pass 1) |
+| `/explore-vault` | Scan vault and build discovery cache |
 
 ## Platform Support
 
@@ -58,15 +123,13 @@ miyo-tomo/
 | Linux    | Supported |
 | Windows  | PRs welcome — not maintained by us |
 
-## Architecture
-
-Tomo is part of the [MiYo](https://github.com/MMoMM-org) ecosystem:
+## Part of MiYo
 
 - **Kokoro** (心) — Architecture and decisions (private)
 - **Kouzou** (構造) — Claude Code infrastructure (private)
-- **Kado** (門) — MCP server for Obsidian vault access (public)
-- **Tomo** (友) — AI workflows (this repo, public)
-- **Seigyo** (制御) — Obsidian control plugin (public, post-MVP)
+- **[Kado](https://github.com/MMoMM-org/miyo-kado)** (門) — MCP server for Obsidian vault access
+- **Tomo** (友) — AI workflows (this repo)
+- **Seigyo** (制御) — Obsidian control plugin (post-MVP)
 
 ## License
 

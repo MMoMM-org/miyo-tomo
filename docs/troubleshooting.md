@@ -131,6 +131,28 @@
 2. Docker image was built successfully
 3. Check logs: `docker logs <container_name>`
 
+### Stale Docker Image
+
+**Symptom:** Claude Code or other container tools behave oddly after a Tomo update, or the image is several days old.
+
+**Solution:** Force a rebuild:
+```bash
+bash begin-tomo.sh --rebuild-image
+```
+
+This rebuilds `miyo-tomo:latest` from `<tomo-repo>/docker/Dockerfile` before launching. Useful after pulling Dockerfile changes or dependency updates.
+
+### OAuth Re-authentication
+
+**Symptom:** Claude Code credentials expired, or you want to switch accounts without touching your instance state.
+
+**Solution:**
+```bash
+bash begin-tomo.sh --login
+```
+
+This launches the container with port 10000 exposed for the OAuth callback. Complete the browser login flow and your new credentials are saved to `tomo-home/.claude/.credentials.json`. No cleanup or re-install needed.
+
 ## YAML Errors
 
 ### vault-config.yaml Won't Parse

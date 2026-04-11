@@ -17,12 +17,11 @@ cd miyo-tomo
 # 2. Run the install script
 bash scripts/install-tomo.sh
 
-# 3. Build the Docker image
-docker build -t miyo-tomo:latest ./docker/
-
-# 4. Start Tomo
+# 3. Start Tomo (generated launcher builds the Docker image on first run)
 bash begin-tomo.sh
 ```
+
+The installer generates `begin-tomo.sh` at your chosen instance location. For the default install this lands at the repo root; if you pointed the installer at a custom location, the launcher lives next to your instance there.
 
 ## Install Script Walkthrough
 
@@ -82,9 +81,27 @@ The script creates your Tomo instance directory with agents, commands, skills, a
 
 If the instance directory already contains a `.git/`, the script skips init and leaves it alone. Git failures never abort the install.
 
-### 8. Docker Home Setup
+### 8. Docker Home Setup + Launcher Generation
 
-Sets up `tomo-home/` as the Docker `/home/coder` mount, including Claude Code auth from your host (if available) and the `.gitconfig` from step 6.
+Sets up `tomo-home/` as the Docker `/home/coder` mount, including Claude Code auth from your host (if available) and the `.gitconfig` from step 6. Then renders `scripts/begin-tomo.sh.template` into `$INSTANCE_LOCATION/begin-tomo.sh` with all paths baked in — this is the launcher you run to start Tomo sessions.
+
+## Launcher (begin-tomo.sh)
+
+The installer generates a launcher with hardcoded paths at your chosen instance location. Default: `<tomo-repo>/begin-tomo.sh`.
+
+```bash
+bash begin-tomo.sh                 # start Claude Code in the container
+bash begin-tomo.sh --rebuild-image # force Docker image rebuild
+bash begin-tomo.sh --login         # force OAuth re-auth (exposes port 10000)
+bash begin-tomo.sh --bash          # launch a bash shell (debugging)
+bash begin-tomo.sh --help          # show all options
+```
+
+**First run**: The launcher builds the Docker image from `<tomo-repo>/docker/` automatically. Subsequent runs reuse the existing image unless you pass `--rebuild-image`.
+
+**Re-auth**: When your Claude Code credentials expire or you want to switch accounts, run `bash begin-tomo.sh --login`. This exposes port 10000 for the OAuth callback and lets you re-authenticate without losing your instance state.
+
+**Regenerating**: The launcher is regenerated every time you run `install-tomo.sh` — just re-run the installer if paths change.
 
 ## Non-Interactive Mode
 

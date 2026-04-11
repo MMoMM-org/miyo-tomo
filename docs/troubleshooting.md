@@ -114,6 +114,14 @@
 
 **Solution:** Check internet connection and Docker DNS. If behind a proxy, configure Docker proxy settings.
 
+### UID 1000 Is Not Unique
+
+**Symptom:** `docker build` fails at `useradd -u 1000 coder` with `UID 1000 is not unique`.
+
+**Cause:** Recent `node:22-bookworm-slim` base images ship with a `node` user already at UID 1000. The Dockerfile removes it before creating `coder` — if you see this error, you're on an older Dockerfile.
+
+**Solution:** Pull the latest Tomo changes (`git pull`) and rebuild the image. The fix is in `docker/Dockerfile` — the base image's existing UID-1000 user is removed via `userdel -r node || true` before `coder` is created.
+
 ### Container Exits Immediately
 
 **Symptom:** `begin-tomo.sh` starts but container exits.
@@ -144,3 +152,23 @@ Common fixes: tabs→spaces, unquoted strings with colons, indentation errors.
 ```bash
 python3 -c "import yaml; yaml.safe_load(open('tomo/profiles/miyo.yaml'))"
 ```
+
+## Re-Install / Clean State
+
+### Starting Over After a Bad Config
+
+**Symptom:** You picked wrong concept paths, the wrong profile, or want to reset everything.
+
+**Solution:** Use the cleanup script to remove install artifacts, then re-run the installer:
+```bash
+bash scripts/cleanup-tomo.sh --dry-run    # preview
+bash scripts/cleanup-tomo.sh              # interactive
+bash scripts/install-tomo.sh              # fresh install
+```
+
+To preserve your Claude Code auth between re-runs:
+```bash
+bash scripts/cleanup-tomo.sh --force --keep-home
+```
+
+The cleanup script refuses any path outside the repo root as a safety check.

@@ -83,6 +83,8 @@ miyo-tomo/
 ├── scripts/               # Install, update, and utility scripts
 │   ├── lib/               # Shared Python library (Kado client)
 │   ├── install-tomo.sh    # Setup wizard
+│   ├── cleanup-tomo.sh    # Remove install artifacts (for re-install / testing)
+│   ├── update-tomo.sh     # Update managed files in existing instance
 │   ├── vault-scan.py      # Vault structure scanner
 │   ├── topic-extract.py   # Topic keyword extraction
 │   ├── moc-tree-builder.py # MOC discovery and tree building

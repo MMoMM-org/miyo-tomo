@@ -27,8 +27,15 @@ ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     TERM=xterm-256color
 
+# Suppress Claude Code's "switched to native install" prompt and
+# skip auto-update installation checks on container start.
+ENV DISABLE_INSTALLATION_CHECKS=1
+
 # Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
+
+# Pin to the new init flow so the CLI doesn't nag about migration.
+ENV CLAUDE_CODE_NEW_INIT=true
 
 # Non-root user — remove pre-existing UID 1000 (node) to keep the 1000 convention
 # for host/container UID matching on Linux hosts.

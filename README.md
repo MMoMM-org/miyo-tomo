@@ -1,5 +1,7 @@
 # MiYo Tomo (友)
 
+> ⚠️ **Alpha** — Tomo is under active development. Expect breaking changes, rough edges, and evolving commands. Feedback and issues welcome.
+
 AI-assisted PKM workflows for Obsidian via [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) MCP server.
 
 Tomo runs inside an isolated Docker container. All vault access goes through Kado — no direct filesystem access to your Obsidian vault.

@@ -1,6 +1,11 @@
 {
   "permissions": {
-    "allow": [],
+    "allow": [
+      "mcp__kado__*",
+      "Bash(python3 scripts/*.py:*)",
+      "Bash(python3 scripts/lib/*.py:*)",
+      "Skill(*)"
+    ],
     "deny": []
   },
   "enabledPlugins": {},

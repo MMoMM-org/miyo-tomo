@@ -196,6 +196,28 @@ if docker ps -aq -f "name=^${CONTAINER_NAME}$" 2>/dev/null | grep -q .; then
     docker rm "$CONTAINER_NAME" > /dev/null 2>&1 || true
 fi
 
+# ── First-run detection ──────────────────────────────────
+# The discovery cache is created by /explore-vault. If it's missing,
+# this is either a fresh install or the user hasn't explored yet.
+
+DISCOVERY_CACHE="$INSTANCE_PATH/config/discovery-cache.yaml"
+if [ ! -f "$DISCOVERY_CACHE" ] && [ "$BASH_MODE" != "true" ]; then
+    echo ""
+    printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
+    printf "  ${C_BOLD}First run detected — welcome to Tomo!${C_RESET}\n"
+    echo ""
+    printf "  Your instance is set up but your vault hasn't been explored yet.\n"
+    printf "  Once the Claude Code prompt appears, run these commands:\n"
+    echo ""
+    printf "    ${C_BOLD}/explore-vault${C_RESET}  — scan your vault, detect MOCs, tags,\n"
+    printf "                      frontmatter; builds discovery-cache.yaml\n"
+    printf "    ${C_BOLD}/inbox${C_RESET}          — process items in your inbox (Pass 1:\n"
+    printf "                      suggestions → you confirm → Pass 2: apply)\n"
+    echo ""
+    printf "  Tip: type ${C_BOLD}/help${C_RESET} inside Claude Code for the full command list.\n"
+    printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
+fi
+
 # ── Launch ────────────────────────────────────────────────
 
 print_step "Starting Tomo container: $CONTAINER_NAME"

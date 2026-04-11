@@ -29,8 +29,10 @@ ENV LANG=C.UTF-8 \
 # Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
-# Non-root user
-RUN useradd -m -s /bin/zsh -u 1000 coder
+# Non-root user — remove pre-existing UID 1000 (node) to keep the 1000 convention
+# for host/container UID matching on Linux hosts.
+RUN (userdel -r node 2>/dev/null || true) && \
+    useradd -m -s /bin/zsh -u 1000 coder
 USER coder
 WORKDIR /home/coder
 

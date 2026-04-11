@@ -783,6 +783,71 @@ if [ "$REUSE_KADO" != "true" ]; then
     fi
 fi
 
+# ── Step 6b: Git user configuration ──────────────────────
+
+print_step "Git user configuration"
+
+GIT_NAME=""
+GIT_EMAIL=""
+HOST_GIT_NAME="$(git config --global user.name 2>/dev/null || echo '')"
+HOST_GIT_EMAIL="$(git config --global user.email 2>/dev/null || echo '')"
+
+if [ "$NON_INTERACTIVE" = "true" ]; then
+    GIT_NAME="$HOST_GIT_NAME"
+    GIT_EMAIL="$HOST_GIT_EMAIL"
+    if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
+        print_ok "Git user: $GIT_NAME <$GIT_EMAIL> (from host)"
+    else
+        print_warn "No host git config — skipped."
+    fi
+else
+    if [ -n "$HOST_GIT_NAME" ] && [ -n "$HOST_GIT_EMAIL" ]; then
+        echo "  Host git config: ${HOST_GIT_NAME} <${HOST_GIT_EMAIL}>"
+        echo ""
+        echo "    1. Use host values (recommended)"
+        echo "    2. Enter different values"
+        echo "    3. Skip (no git config)"
+        printf "  ${C_BOLD}[1]${C_RESET} choice: "
+        read -r GIT_CHOICE
+        GIT_CHOICE="${GIT_CHOICE:-1}"
+    else
+        echo "  No git config found on host."
+        echo ""
+        echo "    1. Enter values"
+        echo "    2. Skip (no git config)"
+        printf "  ${C_BOLD}[1]${C_RESET} choice: "
+        read -r GIT_CHOICE
+        GIT_CHOICE="${GIT_CHOICE:-1}"
+        # Remap so '1' = enter, '2' = skip
+        case "$GIT_CHOICE" in
+            1) GIT_CHOICE=2 ;;
+            2) GIT_CHOICE=3 ;;
+        esac
+    fi
+
+    case "$GIT_CHOICE" in
+        1)
+            GIT_NAME="$HOST_GIT_NAME"
+            GIT_EMAIL="$HOST_GIT_EMAIL"
+            print_ok "Git user: $GIT_NAME <$GIT_EMAIL>"
+            ;;
+        2)
+            read -rp "  Name:  " GIT_NAME
+            read -rp "  Email: " GIT_EMAIL
+            if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
+                print_ok "Git user: $GIT_NAME <$GIT_EMAIL>"
+            else
+                print_warn "Empty values — skipping git config."
+                GIT_NAME=""
+                GIT_EMAIL=""
+            fi
+            ;;
+        *)
+            print_warn "Skipped git config (can be set later)."
+            ;;
+    esac
+fi
+
 # ── Step 7: Re-run detection & config generation ─────────
 
 print_step "Generating vault-config.yaml"
@@ -991,6 +1056,23 @@ else
     print_warn "No .credentials.json found — browser auth will be needed"
 fi
 
+# Write .gitconfig for the Docker container user (coder)
+# This applies globally inside the container for all git operations.
+if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
+    cat > "$HOME_DIR/.gitconfig" <<GITEOF
+[user]
+    name = ${GIT_NAME}
+    email = ${GIT_EMAIL}
+
+[init]
+    defaultBranch = main
+
+[safe]
+    directory = *
+GITEOF
+    print_ok ".gitconfig (container git user)"
+fi
+
 # ── Save config ───────────────────────────────────────────
 
 print_step "Saving install config"
@@ -1016,13 +1098,68 @@ cat > "$CONFIG_FILE" << CFGEOF
 CFGEOF
 print_ok "tomo-install.json"
 
-# ── Update .gitignore ────────────────────────────────────
+# ── Update .gitignore (parent repo) ──────────────────────
 
 if ! grep -q "^${INSTANCE_NAME}/" "$REPO_ROOT/.gitignore" 2>/dev/null; then
     # Add instance dir if not the default (already in .gitignore)
     if [ "$INSTANCE_NAME" != "tomo-instance" ]; then
         echo "${INSTANCE_NAME}/" >> "$REPO_ROOT/.gitignore"
         print_ok "Added $INSTANCE_NAME/ to .gitignore"
+    fi
+fi
+
+# ── Initialize instance git repository ───────────────────
+
+print_step "Initializing instance git repository"
+
+# Write instance .gitignore first (excludes secrets and runtime state)
+cat > "$INSTANCE_PATH/.gitignore" <<IGNOREEOF
+# MiYo Tomo instance — secrets and runtime state
+# The bearer token in .mcp.json must never be committed.
+.mcp.json
+
+# Claude Code runtime / local overrides
+.claude/settings.local.json
+.claude/*.log
+.claude/cache/
+
+# OS
+.DS_Store
+Thumbs.db
+IGNOREEOF
+print_ok ".gitignore"
+
+# Detect existing repo: if .git exists, don't touch it.
+if [ -d "$INSTANCE_PATH/.git" ]; then
+    print_warn "Instance already has a .git/ — skipping init."
+else
+    if git -C "$INSTANCE_PATH" init --quiet 2>/dev/null; then
+        print_ok "git init"
+
+        # Set local git user (overrides global in this repo)
+        if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
+            git -C "$INSTANCE_PATH" config user.name "$GIT_NAME" 2>/dev/null || true
+            git -C "$INSTANCE_PATH" config user.email "$GIT_EMAIL" 2>/dev/null || true
+            print_ok "git config user.name/email"
+        fi
+
+        # Ensure default branch is main (for older git versions that default to master)
+        git -C "$INSTANCE_PATH" symbolic-ref HEAD refs/heads/main 2>/dev/null || true
+
+        # Initial commit — requires git user to be set
+        if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
+            if git -C "$INSTANCE_PATH" add -A 2>/dev/null && \
+               git -C "$INSTANCE_PATH" commit -m "Initial Tomo instance" --quiet 2>/dev/null; then
+                print_ok "Initial commit"
+            else
+                print_warn "Initial commit failed — please commit manually."
+            fi
+        else
+            print_warn "No git user set — skipping initial commit."
+            print_warn "  To commit later: cd $INSTANCE_PATH && git add -A && git commit -m 'Initial'"
+        fi
+    else
+        print_warn "git init failed — please initialize manually."
     fi
 fi
 
@@ -1042,7 +1179,4 @@ printf "    1. Review config: ${C_DIM}%s/config/vault-config.yaml${C_RESET}\n" "
 printf "    2. Build image:   ${C_DIM}docker build -t miyo-tomo:latest ./docker/${C_RESET}\n"
 printf "    3. Start Tomo:    ${C_DIM}bash begin-tomo.sh${C_RESET}\n"
 printf "    4. First run:     ${C_DIM}use /explore-vault to complete setup${C_RESET}\n"
-echo ""
-printf "  ${C_BOLD}Recommended:${C_RESET} initialize instance as its own git repo:\n"
-printf "    ${C_DIM}cd %s && git init && git add -A && git commit -m 'Initial Tomo instance'${C_RESET}\n" "$INSTANCE_PATH"
 printf "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"

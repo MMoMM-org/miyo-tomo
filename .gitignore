@@ -8,6 +8,9 @@ tomo-home/
 # Install config (contains local paths and tokens)
 tomo-install.json
 
+# Generated launcher (rendered by install-tomo.sh from scripts/begin-tomo.sh.template)
+begin-tomo.sh
+
 # Claude Code session files
 .claude.json
 .credentials.json

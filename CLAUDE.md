@@ -33,7 +33,7 @@ See `docs/specs/tier-1/pkm-intelligence-architecture.md` for full architecture.
 
 - NEVER modify vault files directly — all vault access goes through Kado MCP
 - Propose changes via 2-pass model — never execute without user approval
-- Instance directory is self-contained — no runtime references back to tomo/
+- Instance directory is self-contained at runtime — agents, commands, skills, configs, and credentials all live inside the instance. The only exception is the generated `begin-tomo.sh` launcher, which references the Tomo source repo for Docker image builds and version checks (a launch-time dependency, not a runtime one).
 - All managed files in tomo/ must include a version comment for update tracking
 - Profiles are pure data (YAML) — logic lives in skills
 - Layer precedence: User Config > Profile > Universal Concepts; Discovery Cache is advisory only

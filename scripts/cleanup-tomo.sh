@@ -56,6 +56,7 @@ Options:
 Targets (reads tomo-install.json to find custom paths):
   - tomo-instance/           (instance workspace, incl. its .git/ repo)
   - tomo-home/               (Docker /home/coder mount with auth)
+  - begin-tomo.sh            (generated launcher at instance location)
   - tomo-install.json        (install config)
 
 Examples:
@@ -82,15 +83,18 @@ done
 
 INSTANCE_PATH=""
 HOME_DIR=""
+LAUNCHER_PATH=""
 
 if [ -f "$CONFIG_FILE" ] && command -v jq > /dev/null 2>&1; then
     INSTANCE_PATH="$(jq -r '.instancePath // empty' "$CONFIG_FILE" 2>/dev/null || echo '')"
     HOME_DIR="$(jq -r '.homePath // empty' "$CONFIG_FILE" 2>/dev/null || echo '')"
+    LAUNCHER_PATH="$(jq -r '.launcherPath // empty' "$CONFIG_FILE" 2>/dev/null || echo '')"
 fi
 
 # Fallbacks to default locations
 [ -z "$INSTANCE_PATH" ] && INSTANCE_PATH="$REPO_ROOT/tomo-instance"
 [ -z "$HOME_DIR" ]      && HOME_DIR="$REPO_ROOT/tomo-home"
+[ -z "$LAUNCHER_PATH" ] && LAUNCHER_PATH="$REPO_ROOT/begin-tomo.sh"
 
 # ── Safety: refuse paths outside repo ────────────────────
 
@@ -131,6 +135,12 @@ if [ "$KEEP_HOME" != "true" ] && [ -e "$HOME_DIR" ]; then
     if [ -f "$HOME_DIR/.claude/.credentials.json" ] || [ -f "$HOME_DIR/.claude.json" ]; then
         print_warn "  contains Claude auth credentials!"
     fi
+    FOUND_ANY=true
+fi
+
+if [ -f "$LAUNCHER_PATH" ]; then
+    check_safe "$LAUNCHER_PATH" "launcher"
+    printf "  ${C_YELLOW}–${C_RESET} launcher: %s\n" "$LAUNCHER_PATH"
     FOUND_ANY=true
 fi
 
@@ -178,6 +188,11 @@ fi
 if [ "$KEEP_HOME" != "true" ] && [ -e "$HOME_DIR" ]; then
     rm -rf "$HOME_DIR"
     print_ok "removed $HOME_DIR"
+fi
+
+if [ -f "$LAUNCHER_PATH" ]; then
+    rm -f "$LAUNCHER_PATH"
+    print_ok "removed $LAUNCHER_PATH"
 fi
 
 if [ -f "$CONFIG_FILE" ]; then

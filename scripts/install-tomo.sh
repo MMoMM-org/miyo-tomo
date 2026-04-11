@@ -712,6 +712,11 @@ if [ -f "$CONFIG_FILE" ]; then
     echo "  Found existing config: $CONFIG_FILE"
     INSTANCE_NAME=$(jq -r '.instanceName' "$CONFIG_FILE")
     INSTANCE_PATH=$(jq -r '.instancePath' "$CONFIG_FILE")
+    # instanceLocation was added in a later version; derive from instancePath as fallback
+    INSTANCE_LOCATION=$(jq -r '.instanceLocation // empty' "$CONFIG_FILE")
+    if [ -z "$INSTANCE_LOCATION" ]; then
+        INSTANCE_LOCATION="$(dirname "$INSTANCE_PATH")"
+    fi
     echo "  Instance: $INSTANCE_NAME at $INSTANCE_PATH"
     USE_EXISTING=$(prompt_yn "Use existing config? [Y/n]" "Y")
     case "$USE_EXISTING" in
@@ -1074,6 +1079,27 @@ GITEOF
     print_ok ".gitconfig (container git user)"
 fi
 
+# ── Generate begin-tomo.sh launcher ──────────────────────
+
+print_step "Generating begin-tomo.sh launcher"
+
+LAUNCHER_TEMPLATE="$REPO_ROOT/scripts/begin-tomo.sh.template"
+LAUNCHER_PATH="$INSTANCE_LOCATION/begin-tomo.sh"
+
+if [ ! -f "$LAUNCHER_TEMPLATE" ]; then
+    print_err "Launcher template not found: $LAUNCHER_TEMPLATE"
+    exit 1
+fi
+
+sed -e "s|{{INSTANCE_PATH}}|${INSTANCE_PATH}|g" \
+    -e "s|{{INSTANCE_NAME}}|${INSTANCE_NAME}|g" \
+    -e "s|{{HOME_DIR}}|${HOME_DIR}|g" \
+    -e "s|{{TOMO_REPO_ROOT}}|${REPO_ROOT}|g" \
+    -e "s|{{DEV_NOTIFY_PORT}}|9999|g" \
+    "$LAUNCHER_TEMPLATE" > "$LAUNCHER_PATH"
+chmod +x "$LAUNCHER_PATH"
+print_ok "begin-tomo.sh → $LAUNCHER_PATH"
+
 # ── Save config ───────────────────────────────────────────
 
 print_step "Saving install config"
@@ -1082,7 +1108,9 @@ cat > "$CONFIG_FILE" << CFGEOF
 {
   "version": "${TOMO_VERSION}",
   "instanceName": "${INSTANCE_NAME}",
+  "instanceLocation": "${INSTANCE_LOCATION}",
   "instancePath": "${INSTANCE_PATH}",
+  "launcherPath": "${LAUNCHER_PATH}",
   "homePath": "${HOME_DIR}",
   "vaultPath": "${VAULT_PATH}",
   "profile": "${PROFILE}",
@@ -1177,7 +1205,7 @@ printf "  Profile:      ${C_CYAN}%s v%s${C_RESET}\n" "$PROFILE" "$PROFILE_VERSIO
 echo ""
 printf "  ${C_BOLD}Next steps:${C_RESET}\n"
 printf "    1. Review config: ${C_DIM}%s/config/vault-config.yaml${C_RESET}\n" "$INSTANCE_PATH"
-printf "    2. Build image:   ${C_DIM}docker build -t miyo-tomo:latest ./docker/${C_RESET}\n"
-printf "    3. Start Tomo:    ${C_DIM}bash begin-tomo.sh${C_RESET}\n"
-printf "    4. First run:     ${C_DIM}use /explore-vault to complete setup${C_RESET}\n"
+printf "    2. Start Tomo:    ${C_DIM}bash %s${C_RESET}\n" "$LAUNCHER_PATH"
+printf "       (builds the Docker image on first run)\n"
+printf "    3. First run:     ${C_DIM}use /explore-vault to complete setup${C_RESET}\n"
 printf "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"

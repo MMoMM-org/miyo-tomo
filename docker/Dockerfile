@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fd-find \
     fzf \
     python3 \
+    python3-yaml \
     ca-certificates \
     locales \
     && rm -rf /var/lib/apt/lists/*

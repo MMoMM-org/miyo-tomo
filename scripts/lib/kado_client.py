@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.1.1
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -88,7 +88,12 @@ class KadoClient:
                 "or add a .mcp.json with kado token in the current directory."
             )
 
-        self._endpoint = resolved_url.rstrip("/") + "/mcp"
+        # Normalize endpoint: tolerate URLs that already include /mcp so we don't
+        # end up with /mcp/mcp. Installer writes the full URL in .mcp.json.
+        normalized = resolved_url.rstrip("/")
+        if not normalized.endswith("/mcp"):
+            normalized += "/mcp"
+        self._endpoint = normalized
         self._token = resolved_token
         self._req_id = 0
 
@@ -335,18 +340,32 @@ def _resolve_config(base_url: str | None, token: str | None) -> tuple[str, str]:
 def _extract_from_mcp_json(cfg: dict) -> tuple[str | None, str | None]:
     """Extract Kado URL and token from a parsed .mcp.json structure.
 
-    Supports both Claude Code MCP format and a bare {kado: {url, token}} shape.
+    Supports three formats:
+    1. Claude Code HTTP MCP: {mcpServers: {kado: {url, headers: {Authorization: "Bearer X"}}}}
+    2. Claude Code env format: {mcpServers: {kado: {url, env: {KADO_TOKEN: X}}}}
+    3. Bare format: {kado: {url, token}}
     """
-    # Claude Code format: {mcpServers: {kado: {url, env: {KADO_TOKEN: ...}}}}
     servers = cfg.get("mcpServers", {})
     kado_server = servers.get("kado") or servers.get("miyo-kado")
     if kado_server:
         url = kado_server.get("url")
+
+        # Format 1: headers.Authorization: "Bearer <token>"
+        headers = kado_server.get("headers", {})
+        auth = headers.get("Authorization") or headers.get("authorization")
+        if auth and isinstance(auth, str) and auth.startswith("Bearer "):
+            return url, auth[len("Bearer "):].strip()
+
+        # Format 2: env.KADO_TOKEN
         env_block = kado_server.get("env", {})
         tok = env_block.get("KADO_TOKEN") or env_block.get("token")
-        return url, tok
+        if tok:
+            return url, tok
 
-    # Bare format: {kado: {url, token}}
+        # URL found but no token in either location
+        return url, None
+
+    # Format 3: bare {kado: {url, token}}
     bare = cfg.get("kado", {})
     return bare.get("url"), bare.get("token")
 

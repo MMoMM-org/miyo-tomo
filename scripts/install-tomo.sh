@@ -1035,6 +1035,7 @@ cat > "$INSTANCE_PATH/.mcp.json" << MCPEOF
 {
   "mcpServers": {
     "kado": {
+      "type": "http",
       "url": "${KADO_PROTOCOL}://${KADO_HOST}:${KADO_PORT}/mcp",
       "headers": {
         "Authorization": "Bearer ${KADO_TOKEN}"

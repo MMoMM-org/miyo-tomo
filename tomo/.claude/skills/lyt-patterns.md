@@ -1,3 +1,7 @@
+---
+name: lyt-patterns
+description: MOC matching algorithm, section placement rules, mental squeeze point detection, and new MOC proposal heuristics for LYT-style vaults. Use when analyzing inbox items for MOC linkage, placing links inside MOC structures, or deciding whether to propose a new Map of Content.
+---
 # LYT Patterns
 # version: 0.1.0
 

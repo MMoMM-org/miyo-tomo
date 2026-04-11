@@ -103,10 +103,11 @@ echo "  Home:     $HOME_DIR"
 docker run -it --rm \
     --name "$CONTAINER_NAME" \
     --hostname tomo \
+    -w "$INSTANCE_PATH" \
     -e "TERM=xterm-256color" \
     -e "TOMO_INSTANCE_DIR=$INSTANCE_PATH" \
     -e "DEV_NOTIFY_PORT=$DEV_NOTIFY_PORT" \
     -v "$INSTANCE_PATH:$INSTANCE_PATH" \
     -v "$HOME_DIR:/home/coder" \
     "$IMAGE_NAME" \
-    claude --project-dir "$INSTANCE_PATH"
+    claude

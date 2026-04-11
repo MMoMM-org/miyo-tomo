@@ -1,12 +1,20 @@
 #!/bin/bash
 # Tomo container entry point.
-# Sets up git config, runs on-start hook if present, then launches Claude Code.
-# version: 0.1.0
+# Sets up git config (fallback only), runs on-start hook if present,
+# then launches Claude Code.
+# version: 0.2.0
 set -e
 
-# ── Git config ────────────────────────────────────────────
-git config --global user.name "${GIT_USER_NAME:-Tomo}"
-git config --global user.email "${GIT_USER_EMAIL:-tomo@miyo.local}"
+# ── Git config (fallback only) ───────────────────────────
+# If tomo-home/.gitconfig is present (written by install-tomo.sh), it already
+# supplies user.name/email — don't overwrite it. Only set defaults when no
+# identity is configured yet.
+if ! git config --global --get user.name > /dev/null 2>&1; then
+    git config --global user.name "${GIT_USER_NAME:-Tomo}"
+fi
+if ! git config --global --get user.email > /dev/null 2>&1; then
+    git config --global user.email "${GIT_USER_EMAIL:-tomo@miyo.local}"
+fi
 git config --global safe.directory '*'
 
 # ── On-start hook ─────────────────────────────────────────

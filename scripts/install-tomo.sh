@@ -91,7 +91,7 @@ fi
 if [ -t 1 ]; then
     C_RESET="\033[0m"
     C_BOLD="\033[1m"
-    C_DIM="\033[2m"
+    C_DIM=""           # disabled — dim is too hard to read on many terminals
     C_CYAN="\033[36m"
     C_GREEN="\033[32m"
     C_YELLOW="\033[33m"
@@ -384,9 +384,9 @@ browse_path() {
         echo ""
         local nav_hint=""
         if [ -n "$rel_path" ]; then
-            nav_hint="${C_DIM} 0${C_RESET}=↑ up  "
+            nav_hint=" 0=↑ up  "
         fi
-        nav_hint="${nav_hint}${C_DIM}d${C_RESET}=done (use current)  ${C_DIM}or type a path${C_RESET}"
+        nav_hint="${nav_hint}${C_BOLD}d${C_RESET}=done (use current)  or type a path"
         printf "  %b\n" "$nav_hint"
 
         local choice
@@ -493,7 +493,7 @@ prompt_concept() {
     fi
 
     echo ""
-    printf "  ${C_DIM}d${C_RESET}=accept default  ${C_DIM}b${C_RESET}=browse vault  ${C_DIM}or type a path${C_RESET}\n"
+    printf "  ${C_BOLD}d${C_RESET}=accept default  b=browse vault  or type a path\n"
 
     local answer
     read -rp "  > " answer
@@ -630,7 +630,7 @@ while [ "$CIDX" -le "$CONCEPT_COUNT" ]; do
     # Back-navigation prompt (interactive only, not after last concept)
     if [ "$NON_INTERACTIVE" != "true" ] && [ "$CIDX" -lt "$CONCEPT_COUNT" ]; then
         echo ""
-        printf "  ${C_DIM}[Enter] next  |  [b] go back${C_RESET}\n"
+        printf "  ${C_BOLD}[Enter]${C_RESET} next  |  [b] go back\n"
         nav=""
         read -rp "  " nav
         case "$nav" in
@@ -650,7 +650,7 @@ done
 if [ "$NON_INTERACTIVE" != "true" ]; then
     show_concept_summary "$CONCEPT_COUNT"
     echo ""
-    printf "  ${C_DIM}[Enter] confirm  |  [b] go back to last concept${C_RESET}\n"
+    printf "  ${C_BOLD}[Enter]${C_RESET} confirm  |  [b] go back to last concept\n"
     read -rp "  " final_nav
     case "$final_nav" in
         b|B|back)
@@ -663,7 +663,7 @@ if [ "$NON_INTERACTIVE" != "true" ]; then
                 prompt_concept "$concept" "$default_path"
                 store_concept "$concept" "$CONCEPT_RESULT"
                 echo ""
-                printf "  ${C_DIM}[Enter] confirm all  |  [b] go back further${C_RESET}\n"
+                printf "  ${C_BOLD}[Enter]${C_RESET} confirm all  |  [b] go back further\n"
                 read -rp "  " re_nav
                 case "$re_nav" in
                     b|B|back)

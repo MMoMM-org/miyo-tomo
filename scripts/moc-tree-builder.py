@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """
 moc-tree-builder.py — Discover all MOCs in the vault, read their content,
 build a parent/child/sibling tree, and output JSON.
@@ -161,13 +161,15 @@ def discover_via_paths(client: KadoClient, paths: list[str]) -> dict[str, str]:
             print(f"[warn] Could not list {folder_path!r}: {exc}", file=sys.stderr)
             continue
 
+        # Kado's listDir returns a flat recursive file listing — every item
+        # is already a file, so drop the type filter and keep only the .md
+        # extension check. See _outbox/for-kado/2026-04-11_tomo-to-kado_listdir-api-gaps.md.
         for item in items:
-            if item.get("type") == "file":
-                name = item.get("name", "")
-                if name.endswith(".md"):
-                    # Build vault-relative path from folder + filename
-                    item_path = item.get("path") or (folder_path.rstrip("/") + "/" + name)
-                    found[item_path] = "path"
+            name = item.get("name", "")
+            item_path = item.get("path", "")
+            if name.endswith(".md") or item_path.endswith(".md"):
+                key = item_path or (folder_path.rstrip("/") + "/" + name)
+                found[key] = "path"
 
     return found
 

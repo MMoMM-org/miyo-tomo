@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """
 vault-scan.py — Scan vault folder structure via Kado and output JSON.
 
@@ -99,14 +99,23 @@ def scan_path(client: KadoClient, path: str) -> dict:
     """
     Scan a single concept path.
 
+    Kado's `listDir` returns a flat, recursive list of files (no folder
+    entries, no `type` field). We derive subdirectories by splitting each
+    item's path relative to the base. See
+    `_outbox/for-kado/2026-04-11_tomo-to-kado_listdir-api-gaps.md` for
+    the upstream gap analysis.
+
     Returns:
         {
-            "note_count": int,
-            "file_count": int,
-            "subdirectories": [ {"name": str, "note_count": int}, ... ]  # folders only
+            "note_count": int,          # .md files anywhere under path
+            "file_count": int,          # every item returned by listDir
+            "subdirectories": [         # derived from item paths
+                {"name": str, "note_count": int},
+                ...
+            ]
         }
     """
-    result = {"note_count": 0, "file_count": 0, "subdirectories": []}
+    result: dict = {"note_count": 0, "file_count": 0, "subdirectories": []}
 
     if not path:
         return result
@@ -117,31 +126,36 @@ def scan_path(client: KadoClient, path: str) -> dict:
         print(f"[warn] Could not list {path!r}: {exc}", file=sys.stderr)
         return result
 
-    for item in items:
-        item_type = item.get("type", "")
-        name = item.get("name", "")
+    base = path.rstrip("/")
+    base_prefix = base + "/" if base else ""
 
-        if item_type == "file":
-            result["file_count"] += 1
-            if name.endswith(".md"):
-                result["note_count"] += 1
-        elif item_type == "folder":
-            # Scan subdirectory for its note count
-            sub_path = path.rstrip("/") + "/" + name + "/"
-            sub_notes = _count_notes_in_dir(client, sub_path)
-            result["subdirectories"].append({"name": name, "note_count": sub_notes})
+    # Track note counts per top-level subdirectory under base
+    subdir_notes: dict[str, int] = {}
+
+    for item in items:
+        item_path = item.get("path", "")
+        name = item.get("name", "")
+        is_note = name.endswith(".md") or item_path.endswith(".md")
+
+        result["file_count"] += 1
+        if is_note:
+            result["note_count"] += 1
+
+        # Derive the top-level subdirectory (relative to base) from the item path
+        if base_prefix and item_path.startswith(base_prefix):
+            rel = item_path[len(base_prefix):]
+            head, sep, _tail = rel.partition("/")
+            if sep and head:
+                bucket = subdir_notes.setdefault(head, 0)
+                if is_note:
+                    subdir_notes[head] = bucket + 1
+
+    result["subdirectories"] = [
+        {"name": name, "note_count": count}
+        for name, count in sorted(subdir_notes.items())
+    ]
 
     return result
-
-
-def _count_notes_in_dir(client: KadoClient, path: str) -> int:
-    """Return count of .md files directly inside path."""
-    try:
-        items = client.list_dir(path)
-    except Exception as exc:
-        print(f"[warn] Could not list {path!r}: {exc}", file=sys.stderr)
-        return 0
-    return sum(1 for i in items if i.get("type") == "file" and i.get("name", "").endswith(".md"))
 
 
 def is_dewey_dir(name: str) -> bool:
@@ -222,16 +236,22 @@ def run_scan(config_path: str) -> dict:
 
         concepts_mapped[key] = entry
 
-    # Scan vault root for unmapped folders
+    # Scan vault root for unmapped folders.
+    # Kado's listDir returns a flat recursive file listing — we derive
+    # top-level folders by taking the first path segment of every item.
     print("[scan] scanning vault root for unmapped folders", file=sys.stderr)
     unmapped_folders: list[str] = []
     try:
         root_items = client.list_dir("")
+        root_folder_names: set[str] = set()
         for item in root_items:
-            if item.get("type") == "folder":
-                name = item.get("name", "")
-                if name and name not in all_configured_roots:
-                    unmapped_folders.append(name + "/")
+            item_path = item.get("path", "")
+            if "/" not in item_path:
+                continue  # file at vault root — not a folder
+            head = item_path.split("/", 1)[0]
+            if head and head not in all_configured_roots:
+                root_folder_names.add(head)
+        unmapped_folders = sorted(name + "/" for name in root_folder_names)
     except Exception as exc:
         print(f"[warn] Could not list vault root: {exc}", file=sys.stderr)
 

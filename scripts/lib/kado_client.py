@@ -1,4 +1,4 @@
-# version: 0.1.1
+# version: 0.1.2
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -125,13 +125,27 @@ class KadoClient:
         return result
 
     def list_dir(self, path: str = "", limit: int = 500) -> list:
-        """List directory contents.
+        """List files under a path — flat and recursive.
 
-        Returns
-        -------
-        list of dicts, each with at minimum: name (str), type ("file"|"folder")
+        Kado's current `listDir` returns every file at any depth under
+        the given path (`app.vault.getFiles().filter(startsWith)`) — no
+        folder entries, no `type` field. Each item is a file with
+        `{path, name, created, modified, size}`. To derive folders,
+        split item paths on '/' relative to the base path.
+
+        Notes on the current API contract:
+        - Trailing slashes on the path can trigger HTTP 406 on some
+          deployments — we strip them as a workaround.
+        - An empty string is rejected by the path-access gate; to list
+          the vault root we must omit the `path` arg entirely.
+
+        See `_outbox/for-kado/2026-04-11_tomo-to-kado_listdir-api-gaps.md`
+        for the full analysis and proposed upstream fixes.
         """
-        return self._search_all("listDir", path=path, limit=limit)
+        clean = path.rstrip("/") if path else ""
+        # Empty string must become None so _search_all omits the arg entirely —
+        # Kado's path-access gate rejects `path: ""` with 'Path must not be empty'.
+        return self._search_all("listDir", path=clean or None, limit=limit)
 
     def search_by_tag(self, tag: str, limit: int = 500) -> list:
         """Find notes that carry the given tag.

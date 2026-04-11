@@ -168,9 +168,9 @@ LOGO_FILE="$SCRIPT_DIR/../tomo-logo.txt"
 if [ -t 1 ] && [ -f "$LOGO_FILE" ]; then
     echo ""
     cat "$LOGO_FILE"
+    printf "\n\n"
 fi
 
-echo ""
 printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
 printf "  ${C_BOLD}MiYo Tomo${C_RESET} — Setup Wizard v${TOMO_VERSION}\n"
 printf "  ${C_DIM}AI-assisted PKM workflows for Obsidian${C_RESET}\n"

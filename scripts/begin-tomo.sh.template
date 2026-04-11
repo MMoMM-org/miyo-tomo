@@ -214,7 +214,8 @@ if [ ! -f "$DISCOVERY_CACHE" ] && [ "$BASH_MODE" != "true" ]; then
     printf "    ${C_BOLD}/inbox${C_RESET}          — process items in your inbox (Pass 1:\n"
     printf "                      suggestions → you confirm → Pass 2: apply)\n"
     echo ""
-    printf "  Tip: type ${C_BOLD}/help${C_RESET} inside Claude Code for the full command list.\n"
+    printf "  Need help? Type ${C_BOLD}/tomo-help${C_RESET} inside Claude Code — it routes\n"
+    printf "  your question to the right topic (kado, inbox, explore, etc.).\n"
     printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
 fi
 

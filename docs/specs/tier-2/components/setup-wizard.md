@@ -27,18 +27,23 @@ Why two phases:
 Runs as part of `install-tomo.sh` on the host. No AI involved — deterministic script.
 
 **Inputs gathered:**
-1. PKM framework → select profile (miyo/lyt/para/custom)
-2. Vault path → validate exists
-3. Top-level folders → `ls` vault root, present to user
-4. Concept mapping → user maps folders to concepts (inbox, notes, maps, etc.)
-5. Lifecycle tag prefix → default "MiYo-Tomo"
-6. Kado connection → host, port, bearer token
+1. Vault path → validate exists, show top-level folders
+2. PKM framework → select profile (miyo/lyt/custom)
+3. Concept mapping → interactive directory browser with drill-down and back-navigation (inbox, notes, maps, calendar, projects, areas, sources, templates, assets)
+4. Lifecycle tag prefix → default "MiYo-Tomo"
+5. Kado connection → host, port, bearer token (HTTP-only, port 23026)
+6. Git user configuration → read host `git config --global`, reuse / override / skip
 
-**Output:** Minimal vault-config.yaml with:
-- `schema_version`, `profile`, `profile_version`
-- `concepts` (folder paths)
-- `lifecycle.tag_prefix`
-- Profile defaults for everything else
+**Outputs:**
+- Minimal `vault-config.yaml` with `schema_version`, `profile`, `profile_version`, `concepts`, `lifecycle.tag_prefix` (profile defaults fill the rest)
+- Instance directory initialized as its own git repo with `.gitignore`, local git user, and an initial commit
+- `tomo-home/` populated with Claude auth and `.gitconfig`
+- **Generated `begin-tomo.sh`** launcher rendered from `scripts/begin-tomo.sh.template` into `$INSTANCE_LOCATION/` (builds Docker image on first run)
+- `tomo-install.json` with all resolved paths for re-runs and cleanup
+
+**Deferred to Phase 2** (via `/explore-vault`):
+- MOC tag detection (`map_note.tags`) — requires reading actual MOC files
+- Daily-note path conventions (`calendar.daily.path`) — requires reading daily note frontmatter
 
 **Detail spec:** [Install Script](../../tier-3/wizard/install-script.md)
 

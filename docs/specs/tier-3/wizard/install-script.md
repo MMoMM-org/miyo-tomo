@@ -1,21 +1,21 @@
 # Tier 3: Install Script (Phase 1)
 
 > Parent: [Setup Wizard](../../tier-2/components/setup-wizard.md)
-> Status: Draft
+> Status: Implemented
 
 ---
 
 ## 1. Purpose
 
-Define the Phase 1 setup that runs during `install-tomo.sh` on the host machine. No Kado required. Produces a starter `vault-config.yaml` sufficient to boot Tomo.
+Define the Phase 1 setup that runs during `install-tomo.sh` on the host machine. No Kado required. Produces a starter `vault-config.yaml`, an initialized instance repo, and a generated `begin-tomo.sh` launcher sufficient to boot Tomo.
 
 ## 2. Environment
 
 - **Runs on:** Host machine (macOS or Linux)
 - **No AI involved:** Deterministic shell script, user-interactive
-- **Filesystem access:** Can `ls` the vault directory directly
+- **Filesystem access:** Can `ls` the vault directory directly (drill-down browser)
 - **No Kado:** Kado may not be running yet
-- **Output:** `vault-config.yaml` + Tomo instance directory
+- **Output:** `vault-config.yaml`, instance directory, `tomo-home/`, generated `begin-tomo.sh` launcher, `tomo-install.json`
 
 ## 3. Script Flow
 
@@ -24,30 +24,31 @@ install-tomo.sh
        │
        ▼
   ┌────────────────────┐
-  │  1. Welcome         │  "Welcome to MiYo Tomo setup"
-  │                     │  Show version, prerequisites
+  │  1. Welcome         │  ANSI logo + version banner
+  │                     │  Check prerequisites (docker, git, jq)
   └──────────┬─────────┘
              │
              ▼
   ┌────────────────────┐
   │  2. Vault Path      │  "Where is your Obsidian vault?"
-  │                     │  Validate: directory exists, contains .obsidian/
-  │                     │  Show top-level folders via `ls`
+  │                     │  Validate directory, warn if no .obsidian/
+  │                     │  List top-level folders (numbered)
   └──────────┬─────────┘
              │
              ▼
   ┌────────────────────┐
   │  3. Framework       │  "Which PKM framework?"
-  │     Selection       │  Options: miyo | lyt | para | custom
-  │                     │  Load profile defaults for selected framework
+  │     Selection       │  Options: miyo | lyt | custom
+  │                     │  Load profile defaults
   └──────────┬─────────┘
              │
              ▼
   ┌────────────────────┐
-  │  4. Concept         │  For each concept (inbox, notes, maps, etc.):
-  │     Mapping         │  Show profile default + vault folder list
-  │                     │  User confirms or overrides the path
-  │                     │  Detect subdirectories where relevant
+  │  4. Concept         │  For each concept (9 total):
+  │     Mapping         │  Prompt d=default / b=browse / type path
+  │                     │  Browser drills into vault subdirectories
+  │                     │  After each concept: [Enter] next | [b] back
+  │                     │  Final summary with last-chance back-nav
   └──────────┬─────────┘
              │
              ▼
@@ -58,11 +59,20 @@ install-tomo.sh
              │
              ▼
   ┌────────────────────┐
-  │  6. Kado            │  "Kado server connection:"
-  │     Connection      │  Host (default: 127.0.0.1)
+  │  6. Kado            │  "Kado MCP connection:"
+  │     Connection      │  Host (default: host.docker.internal)
   │                     │  Port (default: 23026)
-  │                     │  Bearer token (kado_xxx)
-  │                     │  Test connection if Kado is running
+  │                     │  Protocol: http (hardcoded, no prompt)
+  │                     │  Bearer token (must start with kado_)
+  └──────────┬─────────┘
+             │
+             ▼
+  ┌────────────────────┐
+  │  6b. Git User       │  Read host's global git config
+  │     Configuration   │  Options: use host values (recommended)
+  │                     │           / enter different / skip
+  │                     │  Applies to tomo-home/.gitconfig and
+  │                     │  instance repo local config
   └──────────┬─────────┘
              │
              ▼
@@ -72,61 +82,114 @@ install-tomo.sh
   │                     │  - profile + version
   │                     │  - concept paths (confirmed)
   │                     │  - lifecycle prefix
-  │                     │  - Profile defaults for everything else
+  │                     │  Profile defaults for everything else
   └──────────┬─────────┘
              │
              ▼
   ┌────────────────────┐
-  │  8. Instance        │  Create Tomo instance directory
-  │     Setup           │  Copy runtime files (agents, skills, commands)
-  │                     │  Render CLAUDE.md.template with substitutions
-  │                     │  Set up tomo-home/ for Docker
+  │  8. Instance        │  Create instance dir + .claude subtree
+  │     Setup           │  Copy managed files from tomo/
+  │                     │  Render CLAUDE.md, vault-config rule,
+  │                     │  kado-config rule from templates
+  │                     │  Write .mcp.json (Kado bearer)
+  │                     │  Set up tomo-home/ (auth, .gitconfig)
   └──────────┬─────────┘
              │
              ▼
   ┌────────────────────┐
-  │  9. Docker          │  Build Docker image (if not cached)
-  │     Build           │  Create begin-tomo.sh launcher
+  │  8b. Generate       │  sed-render scripts/begin-tomo.sh.template
+  │      Launcher       │  → $INSTANCE_LOCATION/begin-tomo.sh
+  │                     │  with {{INSTANCE_PATH}}, {{HOME_DIR}},
+  │                     │  {{TOMO_REPO_ROOT}}, etc. substituted
+  │                     │  chmod +x the result
   └──────────┬─────────┘
              │
              ▼
   ┌────────────────────┐
-  │  10. Done           │  "Setup complete. Run ./begin-tomo.sh to start."
-  │                     │  "On first run, use /explore-vault to complete setup."
+  │  9. Instance        │  Write instance .gitignore
+  │     Git Init        │  (.mcp.json, runtime state, OS cruft)
+  │                     │  git init + local user config
+  │                     │  symbolic-ref HEAD → main
+  │                     │  Initial commit (non-blocking on failure)
+  │                     │  Skip if instance already has .git/
+  └──────────┬─────────┘
+             │
+             ▼
+  ┌────────────────────┐
+  │  10. Done           │  "Run: bash <launcher path>"
+  │                     │  Docker image is NOT built here —
+  │                     │  the generated launcher builds it on
+  │                     │  first run (or with --rebuild-image).
+  │                     │  "First run: /explore-vault"
   └────────────────────┘
 ```
 
 ## 4. Concept Mapping UX
 
-For each concept, the script shows:
+For each concept the script prints a styled header and three short options:
 
 ```
-📁 Inbox folder:
-   Profile default: +/
-   Your vault has these top-level folders:
-     1. +/
-     2. Atlas/
-     3. Calendar/
-     4. Efforts/
-     5. X/
-   
-   Use default (+/) or enter folder number/path: [1]
+  ── Inbox ──
+  Profile default: 100 Inbox/
+
+  d=accept default  b=browse vault  or type a path
+  >
 ```
 
-If the user presses Enter, the default is used. Otherwise they type a number or a path.
+**Three input modes:**
 
-**For complex concepts (atomic_note with subdirectories):**
+1. **`d` or Enter** — accept the profile default
+2. **`b`** — launch the directory browser
+3. **type a path** — direct entry, trailing slash added automatically
+
+**Directory browser** (`b`): starts at the profile default's parent (or vault root if that fails). Shows numbered subdirectories:
 
 ```
-📁 Notes folder:
-   Profile default: Atlas/202 Notes/
-   Contents of Atlas/:
-     1. 200 Maps/
-     2. 202 Notes/    (281 files, 6 subdirs)
-     3. 290 Assets/
-   
-   Use default (Atlas/202 Notes/) or enter path: [2]
+  Browsing: Atlas/
+
+    1. 200 Maps/
+    2. 202 Notes/
+    3. 290 Assets/
+
+   0=↑ up  d=done (use current)  or type a path
+  >
 ```
+
+- **Number** (1, 2, ...) — drill into that subdirectory
+- **`0`** — go up one level (disabled at vault root)
+- **`d` or Enter** — confirm current path
+- **direct path** — exit browser with that path
+
+**Back-navigation between concepts:**
+
+After each concept is set, the script shows:
+
+```
+  [Enter] next  |  [b] go back
+```
+
+`[b]` re-enters the previous concept so the user can fix mistakes without starting over. After the last concept, a summary is shown:
+
+```
+  ─── Configured so far ───
+  ✓ Inbox                    100 Inbox/
+  ✓ Atomic Notes             Atlas/202 Notes/
+  ...
+  [Enter] confirm  |  [b] go back to last concept
+```
+
+The user can keep pressing `[b]` to step backwards through all concepts until they're happy.
+
+## 4b. Deferred Concept Details
+
+Two concept fields are NOT prompted during install — they are taken from the profile as a starting point and refined later by `/explore-vault`:
+
+| Field | Source during install | Refined by |
+|-------|----------------------|------------|
+| `map_note.tags[0]` | profile `map_note.tags[0]` | `/explore-vault` — reads actual MOC files to detect tag patterns |
+| `calendar.granularities.daily.path` | profile `calendar.daily.path` | `/explore-vault` — reads daily note frontmatter and path conventions |
+
+These require reading actual vault content via Kado, so they intentionally belong to Phase 2.
 
 ## 5. Validation
 
@@ -190,23 +253,51 @@ All of these happen in Phase 2 (`/explore-vault` on first Tomo session).
 ## 8. Re-Running the Install Script
 
 `install-tomo.sh` can be re-run safely:
-- **Existing config:** script detects `vault-config.yaml` and asks: "Config exists. Overwrite, merge, or cancel?"
-- **Existing instance:** script detects instance directory and asks: "Instance exists. Recreate, update, or cancel?"
-- **Docker image:** rebuilds if Dockerfile changed, reuses cached layers otherwise
+- **Existing `tomo-install.json`:** script offers to reuse the config (skips prompts for instance location, Kado, etc.)
+- **Existing `vault-config.yaml`:** script asks "overwrite or cancel"
+- **Existing instance `.git/`:** git init is skipped to preserve history
+- **Existing launcher:** overwritten with freshly rendered values
+- **Docker image:** NOT touched by install-tomo.sh — the generated launcher handles builds
 
-## 9. Non-Interactive Mode
+`scripts/cleanup-tomo.sh` provides a clean-slate option for testing: removes instance, tomo-home, launcher, and install config.
 
-For automation (CI, Docker builds), the script supports flags:
+## 9. Generated Launcher
+
+After the install completes, the user runs `begin-tomo.sh` (generated at `$INSTANCE_LOCATION`). The launcher is a rendered copy of `scripts/begin-tomo.sh.template` with these placeholders substituted at install time:
+
+| Placeholder | Value |
+|-------------|-------|
+| `{{INSTANCE_PATH}}` | Absolute path to instance dir |
+| `{{INSTANCE_NAME}}` | Instance dir basename |
+| `{{HOME_DIR}}` | Path to tomo-home/ |
+| `{{TOMO_REPO_ROOT}}` | Path to this repo (for Docker build + version check) |
+| `{{DEV_NOTIFY_PORT}}` | dev-notify-bridge port (default 9999) |
+
+The launcher accepts:
+- `--rebuild-image` — force `docker build` before launch
+- `--login` — force OAuth re-auth (exposes port 10000)
+- `--bash` — launch bash instead of claude (debugging)
+- `--help` — show help
+
+First-run builds the image automatically from `$TOMO_REPO_ROOT/docker/Dockerfile`. All subsequent runs reuse the cached image unless `--rebuild-image` is passed.
+
+## 10. Non-Interactive Mode
+
+For automation (CI, test harnesses), the script supports flags:
 
 ```bash
 install-tomo.sh \
   --vault /path/to/vault \
   --profile miyo \
-  --kado-host 127.0.0.1 \
+  --kado-host host.docker.internal \
   --kado-port 23026 \
   --kado-token kado_abc123 \
   --prefix MiYo-Tomo \
   --non-interactive
 ```
 
-In non-interactive mode, all prompts use defaults from the profile + provided flags. No user confirmation.
+In non-interactive mode:
+- All prompts use defaults from the profile + provided flags
+- No user confirmation
+- Git user config is taken from the host's `git config --global` (if set), otherwise skipped
+- Instance location defaults to the Tomo repo root; instance name to `tomo-instance`

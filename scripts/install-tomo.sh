@@ -753,10 +753,11 @@ if [ "$REUSE_KADO" != "true" ]; then
     if [ -n "$FLAG_KADO_PORT" ]; then
         KADO_PORT="$FLAG_KADO_PORT"
     else
-        KADO_PORT=$(prompt_default "Kado port" "37022")
+        KADO_PORT=$(prompt_default "Kado port" "23026")
     fi
 
-    KADO_PROTOCOL=$(prompt_default "Kado protocol" "http")
+    # Kado is HTTP-only (local-first, no TLS)
+    KADO_PROTOCOL="http"
 
     if [ -n "$FLAG_KADO_TOKEN" ]; then
         KADO_TOKEN="$FLAG_KADO_TOKEN"

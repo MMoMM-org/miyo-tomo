@@ -65,18 +65,28 @@ update_managed() {
 }
 
 print_step "Updating agents"
+mkdir -p "$INSTANCE_PATH/.claude/agents"
 for f in "$TOMO_SOURCE/.claude/agents/"*.md; do
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/.claude/agents/$name" "agents/$name"
 done
 
+print_step "Updating skills"
+mkdir -p "$INSTANCE_PATH/.claude/skills"
+for f in "$TOMO_SOURCE/.claude/skills/"*.md; do
+    name=$(basename "$f")
+    update_managed "$f" "$INSTANCE_PATH/.claude/skills/$name" "skills/$name"
+done
+
 print_step "Updating commands"
+mkdir -p "$INSTANCE_PATH/.claude/commands"
 for f in "$TOMO_SOURCE/.claude/commands/"*.md; do
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/.claude/commands/$name" "commands/$name"
 done
 
 print_step "Updating hooks"
+mkdir -p "$INSTANCE_PATH/.claude/hooks"
 for f in "$TOMO_SOURCE/.claude/hooks/"*.sh; do
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/.claude/hooks/$name" "hooks/$name"
@@ -88,6 +98,19 @@ update_managed \
     "$TOMO_SOURCE/.claude/rules/project-context.md" \
     "$INSTANCE_PATH/.claude/rules/project-context.md" \
     "rules/project-context.md"
+
+print_step "Updating runtime scripts"
+mkdir -p "$INSTANCE_PATH/scripts/lib"
+for f in "$REPO_ROOT/scripts/"*.py; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    update_managed "$f" "$INSTANCE_PATH/scripts/$name" "scripts/$name"
+done
+for f in "$REPO_ROOT/scripts/lib/"*.py; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    update_managed "$f" "$INSTANCE_PATH/scripts/lib/$name" "scripts/lib/$name"
+done
 
 # ── Merge settings.json ──────────────────────────────────
 

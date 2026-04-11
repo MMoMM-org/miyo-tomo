@@ -962,6 +962,10 @@ print_step "Copying managed files from tomo/ source"
 cp "$TOMO_SOURCE/.claude/agents/"*.md "$INSTANCE_PATH/.claude/agents/"
 print_ok "agents"
 
+# Skills
+cp "$TOMO_SOURCE/.claude/skills/"*.md "$INSTANCE_PATH/.claude/skills/"
+print_ok "skills"
+
 # Commands
 cp "$TOMO_SOURCE/.claude/commands/"*.md "$INSTANCE_PATH/.claude/commands/"
 print_ok "commands"
@@ -977,6 +981,14 @@ print_ok "hooks"
 
 # Settings
 cp "$TOMO_SOURCE/.claude/settings.json" "$INSTANCE_PATH/.claude/settings.json"
+
+# Runtime Python scripts (used by agents via `python3 scripts/<name>.py`)
+# and their shared kado_client library. Host-side scripts (install,
+# cleanup, update, begin-tomo template, test-phase*) are NOT copied.
+cp "$REPO_ROOT/scripts/"*.py "$INSTANCE_PATH/scripts/"
+mkdir -p "$INSTANCE_PATH/scripts/lib"
+cp "$REPO_ROOT/scripts/lib/"*.py "$INSTANCE_PATH/scripts/lib/"
+print_ok "scripts (Python runtime + lib/)"
 print_ok "settings.json"
 
 # ── Render templates ──────────────────────────────────────

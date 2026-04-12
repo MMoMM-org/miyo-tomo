@@ -6,6 +6,11 @@
 
 ---
 
+## Implementation Status
+
+> Steps 1-2 (structure scan, MOC indexing) are **implemented** (`vault-scan.py`, `moc-tree-builder.py`).
+> Steps 3-7 (classification coverage, frontmatter sampling, tag analysis, orphan detection, metadata) are **specified but not yet implemented** — they are Phase 4 items.
+
 ## 1. Purpose
 
 Define how vault-explorer assembles all scan results into the final `discovery-cache.yaml` file. This is the last step of `/explore-vault` — after structure scan, MOC indexing, frontmatter sampling, tag analysis, and orphan detection.
@@ -71,9 +76,9 @@ map_notes:
     classification: integer | null
 
 placeholder_mocs:
-  - link_text: string
-    referenced_from: string
-    section: string | null
+  - target: string
+    referenced_by: string
+    section: string | null      # specified, not yet implemented
 ```
 
 ### 3.4 Classification Coverage
@@ -146,7 +151,7 @@ tag_patterns:
 
 **Optimization:** If listTags returns counts, skip per-tag counting.
 
-### 3.7 Orphan Detection
+### 3.7 Orphan Detection (Specified, not yet implemented)
 
 ```yaml
 orphans:
@@ -190,7 +195,7 @@ Expected sizes for typical vaults:
 
 No compression needed for MVP. If cache files grow >1MB, consider trimming low-value data (frontmatter_usage percentages, rarely-used tag counts).
 
-## 6. Validation
+## 6. Validation (Specified, not yet implemented)
 
 After writing, vault-explorer validates the cache:
 

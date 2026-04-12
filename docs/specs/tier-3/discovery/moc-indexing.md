@@ -46,7 +46,7 @@ For each discovered MOC, read via `kado-read` and extract:
 | Field | Extraction method |
 |-------|-------------------|
 | `path` | File path (from discovery) |
-| `title` | Frontmatter `title:` field, or filename without `.md` |
+| `title` | Frontmatter `title:` field, or first H1 heading, or filename without `.md` |
 | `discovered_via` | `"path"`, `"tag"`, or `"both"` |
 | `state` | Frontmatter `mapState:` if profile uses map_note_states |
 | `topics` | See [Topic Extraction](../vault-exploration/topic-extraction.md) |
@@ -142,9 +142,9 @@ Classification-level MOCs may contain wikilinks to MOCs that **don't exist yet**
 
 ```yaml
 placeholder_mocs:
-  - link_text: "Shell & Terminal (MOC)"
-    referenced_from: "Atlas/200 Maps/2600 - Applied Sciences.md"
-    section: "## Sub-MOCs"
+  - target: "Shell & Terminal (MOC)"
+    referenced_by: "Atlas/200 Maps/2600 - Applied Sciences.md"
+    # note: section field is specified but not yet implemented
 ```
 
 This feeds into [New MOC Proposal](../lyt-moc/new-moc-proposal.md) — when a new note matches a placeholder topic, Tomo can propose creating the placeholder as a real MOC.

@@ -18,12 +18,13 @@ Define how vault-explorer maps the vault's folder structure, counting notes per 
      calendar, project, area, source, template, asset
 
 2. For each concept path:
-   kado-search listDir (depth=1 when available)
-   → count files (type=file) and subfolders (type=folder)
-   → record total notes per concept
+   kado-search listDir (recursive, no depth limit)
+   → count files (type=file) and notes (.md files) separately
+   → detect direct-child subfolders (depth 1) and count notes per subfolder
+   → record note_count, file_count, and subdirectories per concept
 
 3. Scan vault root for unmapped folders
-   kado-search listDir on root (depth=1)
+   kado-search listDir on root (depth=1 — immediate children only)
    → compare against all configured concept paths
    → any folder not claimed by a concept → "unmapped"
 
@@ -41,23 +42,22 @@ Define how vault-explorer maps the vault's folder structure, counting notes per 
 # In discovery-cache.yaml
 vault_structure:
   concepts_mapped:
-    inbox: { path: "+/", note_count: 12, subdirs: 0 }
+    inbox: { path: "+/", note_count: 12, file_count: 12 }
     atomic_note:
-      base: { path: "Atlas/202 Notes/", note_count: 72 }
-      subdirs:
-        - { path: "Atlas/202 Notes/2021 Thoughts/", note_count: 10 }
-        - { path: "Atlas/202 Notes/2611 Code Snippets/", note_count: 51 }
-        - { path: "Atlas/202 Notes/2821 Quotes/", note_count: 64 }
+      path: "Atlas/202 Notes/"
+      note_count: 281
+      file_count: 290
+      subdirectories:
+        - { name: "2021 Thoughts", note_count: 10 }
+        - { name: "2611 Code Snippets", note_count: 51 }
+        - { name: "2821 Quotes", note_count: 64 }
         # ...
-      total_notes: 281
-    map_note: { paths: ["Atlas/200 Maps/"], note_count: 27 }
-    calendar:
-      daily: { path: "Calendar/Days/", note_count: 180 }
-      # ...
-    project: { path: "Efforts/Projects/", note_count: 15 }
-    area: { path: "Efforts/Areas/", note_count: 8 }
-    source: { path: "Atlas/Sources/", note_count: 32 }
-    asset: { path: "Atlas/290 Assets/295 Attachments/", file_count: 59 }
+    map_note: { path: "Atlas/200 Maps/", note_count: 27, file_count: 27 }
+    calendar: { path: "Calendar/Days/", note_count: 180, file_count: 180 }
+    project: { path: "Efforts/Projects/", note_count: 15, file_count: 15 }
+    area: { path: "Efforts/Areas/", note_count: 8, file_count: 8 }
+    source: { path: "Atlas/Sources/", note_count: 32, file_count: 32 }
+    asset: { path: "Atlas/290 Assets/295 Attachments/", note_count: 0, file_count: 59 }
   
   unmapped_folders:
     - "Atlas/Sources/Books/"      # might be a sub-concept
@@ -101,6 +101,8 @@ listDir(path) → all files recursively
 ```
 
 vault-explorer should detect whether `depth` is supported (check for `type` field in response items) and use the optimal strategy.
+
+> **Note:** Kado v0.2.0+ returns `type: 'file' | 'folder'` on each item, so folder detection uses the `type` field directly rather than path parsing.
 
 ## 6. First-Run vs Subsequent Runs
 

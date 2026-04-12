@@ -38,7 +38,8 @@ profile_version: string
 concepts:
   inbox: string
 
-  atomic_note: string
+  atomic_note:
+    base_path: string
 
   map_note:
     paths: string[]            # One or more folders where MOCs live

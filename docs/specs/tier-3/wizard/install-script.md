@@ -182,14 +182,19 @@ The user can keep pressing `[b]` to step backwards through all concepts until th
 
 ## 4b. Deferred Concept Details
 
-Two concept fields are NOT prompted during install — they are taken from the profile as a starting point and refined later by `/explore-vault`:
+One concept field is NOT prompted during install — it is taken from the profile as a starting point and refined later by `/explore-vault`:
 
 | Field | Source during install | Refined by |
 |-------|----------------------|------------|
 | `map_note.tags[0]` | profile `map_note.tags[0]` | `/explore-vault` — reads actual MOC files to detect tag patterns |
-| `calendar.granularities.daily.path` | profile `calendar.daily.path` | `/explore-vault` — reads daily note frontmatter and path conventions |
 
-These require reading actual vault content via Kado, so they intentionally belong to Phase 2.
+This requires reading actual vault content via Kado, so it intentionally belongs to Phase 2.
+
+One additional field is prompted interactively rather than deferred:
+
+| Field | Prompt behavior |
+|-------|----------------|
+| `calendar.granularities.daily.path` | Asked as a follow-up after calendar base path, using the profile default as suggestion. |
 
 ## 5. Validation
 
@@ -277,6 +282,8 @@ The launcher accepts:
 - `--rebuild-image` — force `docker build` before launch
 - `--login` — force OAuth re-auth (exposes port 10000)
 - `--bash` — launch bash instead of claude (debugging)
+- `--auto` — Auto mode — AI classifier approves safe actions (`--permission-mode auto`)
+- `--yolo` — Skip all permission prompts (`--dangerously-skip-permissions`). Safe in Tomo's sandboxed Docker container.
 - `--help` — show help
 
 First-run builds the image automatically from `$TOMO_REPO_ROOT/docker/Dockerfile`. All subsequent runs reuse the cached image unless `--rebuild-image` is passed.

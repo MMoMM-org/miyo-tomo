@@ -12,7 +12,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOMO_SOURCE="$REPO_ROOT/tomo"
 CONFIG_FILE="$REPO_ROOT/tomo-install.json"
 PROFILES_DIR="$TOMO_SOURCE/profiles"
-TOMO_VERSION="0.2.0"
+TOMO_VERSION=$(grep -m1 '^# version:' "$TOMO_SOURCE/.claude/rules/project-context.md" 2>/dev/null \
+    | sed 's/^# version: *//' || echo "0.0.0")
 
 # ── CLI Flags ────────────────────────────────────────────
 

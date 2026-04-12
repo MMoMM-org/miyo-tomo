@@ -99,17 +99,14 @@ def scan_path(client: KadoClient, path: str) -> dict:
     """
     Scan a single concept path.
 
-    Kado's `listDir` returns a flat, recursive list of files (no folder
-    entries, no `type` field). We derive subdirectories by splitting each
-    item's path relative to the base. See
-    `_outbox/for-kado/2026-04-11_tomo-to-kado_listdir-api-gaps.md` for
-    the upstream gap analysis.
+    Uses Kado v0.2.0+ ``listDir`` which returns both files and folders
+    with a ``type`` field (``'file'`` or ``'folder'``).
 
     Returns:
         {
             "note_count": int,          # .md files anywhere under path
-            "file_count": int,          # every item returned by listDir
-            "subdirectories": [         # derived from item paths
+            "file_count": int,          # items with type == 'file'
+            "subdirectories": [         # items with type == 'folder' at depth 1
                 {"name": str, "note_count": int},
                 ...
             ]
@@ -129,26 +126,36 @@ def scan_path(client: KadoClient, path: str) -> dict:
     base = path.rstrip("/")
     base_prefix = base + "/" if base else ""
 
-    # Track note counts per top-level subdirectory under base
+    # Track note counts per direct subdirectory
     subdir_notes: dict[str, int] = {}
 
     for item in items:
+        item_type = item.get("type", "file")
         item_path = item.get("path", "")
         name = item.get("name", "")
-        is_note = name.endswith(".md") or item_path.endswith(".md")
 
+        if item_type == "folder":
+            # Direct child folder — seed the subdir entry
+            if base_prefix and item_path.startswith(base_prefix):
+                rel = item_path[len(base_prefix):].rstrip("/")
+                if "/" not in rel:
+                    subdir_notes.setdefault(rel or name, 0)
+            continue
+
+        # type == 'file'
         result["file_count"] += 1
+        is_note = name.endswith(".md") or item_path.endswith(".md")
         if is_note:
             result["note_count"] += 1
 
-        # Derive the top-level subdirectory (relative to base) from the item path
+        # Attribute note to its top-level subdirectory
         if base_prefix and item_path.startswith(base_prefix):
             rel = item_path[len(base_prefix):]
             head, sep, _tail = rel.partition("/")
             if sep and head:
-                bucket = subdir_notes.setdefault(head, 0)
+                subdir_notes.setdefault(head, 0)
                 if is_note:
-                    subdir_notes[head] = bucket + 1
+                    subdir_notes[head] += 1
 
     result["subdirectories"] = [
         {"name": name, "note_count": count}
@@ -236,21 +243,18 @@ def run_scan(config_path: str) -> dict:
 
         concepts_mapped[key] = entry
 
-    # Scan vault root for unmapped folders.
-    # Kado's listDir returns a flat recursive file listing — we derive
-    # top-level folders by taking the first path segment of every item.
+    # Scan vault root for unmapped folders using depth=1 to get direct children.
     print("[scan] scanning vault root for unmapped folders", file=sys.stderr)
     unmapped_folders: list[str] = []
     try:
-        root_items = client.list_dir("")
+        root_items = client.list_dir("/", depth=1)
         root_folder_names: set[str] = set()
         for item in root_items:
-            item_path = item.get("path", "")
-            if "/" not in item_path:
-                continue  # file at vault root — not a folder
-            head = item_path.split("/", 1)[0]
-            if head and head not in all_configured_roots:
-                root_folder_names.add(head)
+            if item.get("type") != "folder":
+                continue
+            name = item.get("name", "")
+            if name and name not in all_configured_roots:
+                root_folder_names.add(name)
         unmapped_folders = sorted(name + "/" for name in root_folder_names)
     except Exception as exc:
         print(f"[warn] Could not list vault root: {exc}", file=sys.stderr)

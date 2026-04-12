@@ -3,7 +3,8 @@ from: tomo
 to: kado
 date: 2026-04-11
 topic: kado-search listDir — API gaps blocking /explore-vault
-status: pending
+status: done
+status_note: All 4 issues resolved in spec 004 (0.2.0). See _outbox/for-tomo/ for full reply.
 priority: high
 requires_action: true
 ---

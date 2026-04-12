@@ -161,10 +161,9 @@ def discover_via_paths(client: KadoClient, paths: list[str]) -> dict[str, str]:
             print(f"[warn] Could not list {folder_path!r}: {exc}", file=sys.stderr)
             continue
 
-        # Kado's listDir returns a flat recursive file listing — every item
-        # is already a file, so drop the type filter and keep only the .md
-        # extension check. See _outbox/for-kado/2026-04-11_tomo-to-kado_listdir-api-gaps.md.
         for item in items:
+            if item.get("type") == "folder":
+                continue
             name = item.get("name", "")
             item_path = item.get("path", "")
             if name.endswith(".md") or item_path.endswith(".md"):

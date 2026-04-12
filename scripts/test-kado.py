@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """test-kado.py — Verify Kado connectivity and API key permissions.
 
 Reads .mcp.json (for URL + bearer token) and vault-config.yaml (for
@@ -205,7 +205,7 @@ def test_connectivity(client: KadoClient) -> tuple[bool, str | None]:
     """Test 1+2: Can we reach Kado and does the bearer token work?"""
     step("Connectivity & authentication")
     try:
-        items = client.list_dir("", limit=1)
+        items = client.list_dir("/", depth=1, limit=1)
         ok(f"Kado reachable; vault root returned {len(items)} item(s) (page 1)")
         return True, None
     except KadoConnectionError as e:
@@ -224,33 +224,21 @@ def test_connectivity(client: KadoClient) -> tuple[bool, str | None]:
 def test_concept_read(
     client: KadoClient, label: str, path: str, verbose: bool
 ) -> bool:
-    """Test: does listDir work on the given concept path?
-
-    Kado's listDir returns a flat recursive file listing — every item
-    is already a file. We count notes (`.md`) and derive top-level
-    subdirectories from paths rather than the (absent) `type` field.
-    """
+    """Test: does listDir work on the given concept path?"""
     try:
         if verbose:
             items = client.list_dir(path, limit=500)
-            n_files = len(items)
+            n_files = sum(1 for i in items if i.get("type") != "folder")
             n_notes = sum(
                 1
                 for i in items
-                if i.get("name", "").endswith(".md") or i.get("path", "").endswith(".md")
+                if i.get("type") != "folder"
+                and (i.get("name", "").endswith(".md") or i.get("path", "").endswith(".md"))
             )
-            base = path.rstrip("/") + "/" if path else ""
-            subdirs: set[str] = set()
-            for i in items:
-                ip = i.get("path", "")
-                if base and ip.startswith(base):
-                    rel = ip[len(base):]
-                    head, sep, _ = rel.partition("/")
-                    if sep and head:
-                        subdirs.add(head)
+            n_folders = sum(1 for i in items if i.get("type") == "folder")
             ok(
                 f"{label}: {path}/ — {n_files} file(s), {n_notes} note(s), "
-                f"{len(subdirs)} subdir(s)"
+                f"{n_folders} folder(s)"
             )
         else:
             client.list_dir(path, limit=1)
@@ -287,15 +275,14 @@ def test_read_frontmatter(client: KadoClient, concept_paths_list: list[tuple[str
     """Test: read one file's frontmatter (verifies kado-read permission)."""
     step("Frontmatter read")
 
-    # Pick the first concept path we can list a file from.
-    # Kado's listDir returns a flat recursive file listing — no `type` field,
-    # so we check `.md` extension on name/path directly.
     for label, path in concept_paths_list:
         try:
             items = client.list_dir(path, limit=20)
         except KadoError:
             continue
         for item in items:
+            if item.get("type") == "folder":
+                continue
             name = item.get("name", "")
             item_path = item.get("path", "")
             if name.endswith(".md") or item_path.endswith(".md"):

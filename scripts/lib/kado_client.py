@@ -1,4 +1,4 @@
-# version: 0.1.2
+# version: 0.2.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -124,28 +124,26 @@ class KadoClient:
                 pass  # leave as-is if not valid JSON
         return result
 
-    def list_dir(self, path: str = "", limit: int = 500) -> list:
-        """List files under a path — flat and recursive.
+    def list_dir(self, path: str = "/", *, depth: int = None, limit: int = 500) -> list:
+        """List items under a vault path.
 
-        Kado's current `listDir` returns every file at any depth under
-        the given path (`app.vault.getFiles().filter(startsWith)`) — no
-        folder entries, no `type` field. Each item is a file with
-        `{path, name, created, modified, size}`. To derive folders,
-        split item paths on '/' relative to the base path.
+        Returns both files and folders, each carrying a ``type`` field
+        (``'file'`` or ``'folder'``).  Folder items have zero-valued
+        ``size``, ``created``, ``modified`` — guard on
+        ``item['type'] == 'file'`` before using stat fields.
 
-        Notes on the current API contract:
-        - Trailing slashes on the path can trigger HTTP 406 on some
-          deployments — we strip them as a workaround.
-        - An empty string is rejected by the path-access gate; to list
-          the vault root we must omit the `path` arg entirely.
-
-        See `_outbox/for-kado/2026-04-11_tomo-to-kado_listdir-api-gaps.md`
-        for the full analysis and proposed upstream fixes.
+        Parameters
+        ----------
+        path:
+            Vault-relative path, e.g. ``"Calendar"``.
+            Use ``"/"`` (default) for the vault root.
+        depth:
+            Maximum recursion depth.  ``1`` returns direct children only.
+            ``None`` (default) recurses without limit.
+        limit:
+            Page size for Kado's cursor-based pagination.
         """
-        clean = path.rstrip("/") if path else ""
-        # Empty string must become None so _search_all omits the arg entirely —
-        # Kado's path-access gate rejects `path: ""` with 'Path must not be empty'.
-        return self._search_all("listDir", path=clean or None, limit=limit)
+        return self._search_all("listDir", path=path or "/", depth=depth, limit=limit)
 
     def search_by_tag(self, tag: str, limit: int = 500) -> list:
         """Find notes that carry the given tag.
@@ -216,7 +214,7 @@ class KadoClient:
         Prints a human-readable status line to stdout.
         """
         try:
-            items = self.list_dir("", limit=1)
+            items = self.list_dir("/", depth=1, limit=1)
             print(f"[kado] Connection OK — root contains {len(items)} item(s) (page 1)")
             return True
         except KadoConnectionError as exc:
@@ -240,6 +238,7 @@ class KadoClient:
         *,
         query: str = None,
         path: str = None,
+        depth: int = None,
         limit: int = 500,
     ) -> list:
         """Call kado-search, following cursors until all pages are collected."""
@@ -252,6 +251,8 @@ class KadoClient:
                 args["query"] = query
             if path is not None:
                 args["path"] = path
+            if depth is not None:
+                args["depth"] = depth
             if cursor is not None:
                 args["cursor"] = cursor
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.1.0
+# version: 0.2.0
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | Context bar | Kado connectivity + tag access
@@ -7,8 +7,8 @@
 #
 # Input:  JSON from Claude Code via stdin
 # Output: Single formatted line with ANSI colors
-
-set -euo pipefail
+#
+# NOTE: No set -e / set -u — a statusline must never crash.
 
 # ── Colors ────────────────────────────────────────────────
 
@@ -21,24 +21,26 @@ RESET="\033[0m"
 # ── Input ─────────────────────────────────────────────────
 
 IFS= read -r -d '' JSON_INPUT || true
+JSON_INPUT="${JSON_INPUT:-{\}}"
 
-MODEL=$(echo "$JSON_INPUT"   | jq -r '.model.display_name // "?"')
-CTX_PCT=$(echo "$JSON_INPUT" | jq -r '.context_window.used_percentage // 0' \
+MODEL=$(echo "$JSON_INPUT"   | jq -r '.model.display_name // "?"' 2>/dev/null || echo "?")
+CTX_PCT=$(echo "$JSON_INPUT" | jq -r '.context_window.used_percentage // 0' 2>/dev/null \
   | cut -d. -f1)
+CTX_PCT="${CTX_PCT:-0}"
 
 # ── Context bar ──────────────────────────────────────────
 
 block_bar() {
-  local pct="$1"
-  local color="$GREEN"
-  [[ "$pct" -ge 70 ]] && color="$YELLOW"
-  [[ "$pct" -ge 90 ]] && color="$RED"
+  local pct="${1:-0}"
+  local filled_char="🟩" empty_char="⬜"
+  [[ "$pct" -ge 70 ]] && filled_char="🟨"
+  [[ "$pct" -ge 90 ]] && filled_char="🟥"
   local filled=$(( pct / 10 ))
   local empty=$(( 10 - filled ))
-  printf '%b%s%s%b' "$color" \
-    "$(printf "%${filled}s" | tr ' ' '█')" \
-    "$(printf "%${empty}s" | tr ' ' '░')" \
-    "$RESET"
+  local bar=""
+  for (( i=0; i<filled; i++ )); do bar+="$filled_char"; done
+  for (( i=0; i<empty; i++ )); do bar+="$empty_char"; done
+  echo -n "$bar"
 }
 
 # ── Kado check (cached) ─────────────────────────────────
@@ -55,16 +57,21 @@ cache_is_stale() {
   [[ $(( now - mtime )) -ge "$CACHE_TTL" ]]
 }
 
+write_status() {
+  echo "$1" > "$CACHE_FILE" 2>/dev/null
+  echo "$1"
+}
+
 kado_check() {
+  # Return cached result if fresh
   if ! cache_is_stale "$CACHE_FILE"; then
-    cat "$CACHE_FILE"
+    cat "$CACHE_FILE" 2>/dev/null || echo "unknown"
     return
   fi
 
   # Read .mcp.json for URL + token
   if [[ ! -f ".mcp.json" ]]; then
-    echo "no_config" > "$CACHE_FILE"
-    cat "$CACHE_FILE"
+    write_status "no_config"
     return
   fi
 
@@ -72,34 +79,32 @@ kado_check() {
   url=$(jq -r '
     .mcpServers.kado.url //
     .mcpServers["miyo-kado"].url //
-    empty' .mcp.json 2>/dev/null)
+    empty' .mcp.json 2>/dev/null) || true
   token=$(jq -r '
     .mcpServers.kado.headers.Authorization //
     .mcpServers["miyo-kado"].headers.Authorization //
-    empty' .mcp.json 2>/dev/null | sed 's/^Bearer //')
+    empty' .mcp.json 2>/dev/null | sed 's/^Bearer //') || true
 
   if [[ -z "$url" || -z "$token" ]]; then
-    echo "no_config" > "$CACHE_FILE"
-    cat "$CACHE_FILE"
+    write_status "no_config"
     return
   fi
 
-  # Normalize endpoint
+  # Normalize endpoint — .mcp.json may already include /mcp
   local endpoint="${url%/}"
   [[ "$endpoint" != */mcp ]] && endpoint="$endpoint/mcp"
 
   # Test 1: connectivity — listDir root
-  local payload='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"kado-search","arguments":{"operation":"listDir","path":"/","depth":1,"limit":1}}}'
   local response
-  response=$(curl -s --max-time 2 -X POST "$endpoint" \
+  response=$(curl -s --max-time 3 -X POST "$endpoint" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $token" \
-    -H "Accept: application/json" \
-    -d "$payload" 2>/dev/null) || true
+    -H "Accept: application/json, text/event-stream" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"kado-search","arguments":{"operation":"listDir","path":"/","depth":1,"limit":1}}}' \
+    2>/dev/null) || true
 
   if [[ -z "$response" ]]; then
-    echo "unreachable" > "$CACHE_FILE"
-    cat "$CACHE_FILE"
+    write_status "unreachable"
     return
   fi
 
@@ -108,19 +113,18 @@ kado_check() {
   is_error=$(echo "$response" | jq -r '
     if .error then "rpc"
     elif .result.isError then "tool"
-    else "ok" end' 2>/dev/null)
+    else "ok" end' 2>/dev/null) || true
 
   if [[ "$is_error" != "ok" ]]; then
-    echo "error" > "$CACHE_FILE"
-    cat "$CACHE_FILE"
+    write_status "error"
     return
   fi
 
   # Test 2: tag access — read tag_prefix from vault-config, search by tag
   local tag_prefix=""
   if [[ -f "config/vault-config.yaml" ]]; then
-    tag_prefix=$(grep -m1 'tag_prefix:' config/vault-config.yaml \
-      | sed 's/.*tag_prefix:[[:space:]]*//' | tr -d '"' | tr -d "'" || true)
+    tag_prefix=$(grep -m1 'tag_prefix:' config/vault-config.yaml 2>/dev/null \
+      | sed 's/.*tag_prefix:[[:space:]]*//' | tr -d '"' | tr -d "'") || true
   fi
 
   if [[ -n "$tag_prefix" ]]; then
@@ -130,27 +134,28 @@ kado_check() {
       jsonrpc: "2.0", id: 2,
       method: "tools/call",
       params: {name: "kado-search", arguments: {operation: "byTag", query: $q, limit: 1}}
-    }')
-    local tag_response
-    tag_response=$(curl -s --max-time 2 -X POST "$endpoint" \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer $token" \
-      -H "Accept: application/json" \
-      -d "$tag_payload" 2>/dev/null) || true
+    }' 2>/dev/null) || true
 
-    if [[ -n "$tag_response" ]]; then
-      local tag_text
-      tag_text=$(echo "$tag_response" | jq -r '.result.content[0].text // ""' 2>/dev/null)
-      if echo "$tag_text" | grep -qi "forbidden\|denied\|not.allowed"; then
-        echo "tags_denied" > "$CACHE_FILE"
-        cat "$CACHE_FILE"
-        return
+    if [[ -n "$tag_payload" ]]; then
+      local tag_response
+      tag_response=$(curl -s --max-time 3 -X POST "$endpoint" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $token" \
+        -H "Accept: application/json, text/event-stream" \
+        -d "$tag_payload" 2>/dev/null) || true
+
+      if [[ -n "$tag_response" ]]; then
+        local tag_text
+        tag_text=$(echo "$tag_response" | jq -r '.result.content[0].text // ""' 2>/dev/null) || true
+        if echo "$tag_text" | grep -qi "forbidden\|denied\|not.allowed" 2>/dev/null; then
+          write_status "tags_denied"
+          return
+        fi
       fi
     fi
   fi
 
-  echo "ok" > "$CACHE_FILE"
-  cat "$CACHE_FILE"
+  write_status "ok"
 }
 
 # ── Render ────────────────────────────────────────────────

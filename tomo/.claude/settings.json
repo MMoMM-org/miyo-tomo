@@ -8,6 +8,10 @@
     ],
     "deny": []
   },
+  "statusLine": {
+    "type": "command",
+    "command": "bash scripts/tomo-statusline.sh"
+  },
   "enabledPlugins": {},
   "hooks": {
     "Notification": [

@@ -986,9 +986,11 @@ cp "$TOMO_SOURCE/.claude/settings.json" "$INSTANCE_PATH/.claude/settings.json"
 # and their shared kado_client library. Host-side scripts (install,
 # cleanup, update, begin-tomo template, test-phase*) are NOT copied.
 cp "$REPO_ROOT/scripts/"*.py "$INSTANCE_PATH/scripts/"
+cp "$REPO_ROOT/scripts/tomo-statusline.sh" "$INSTANCE_PATH/scripts/"
+chmod +x "$INSTANCE_PATH/scripts/tomo-statusline.sh"
 mkdir -p "$INSTANCE_PATH/scripts/lib"
 cp "$REPO_ROOT/scripts/lib/"*.py "$INSTANCE_PATH/scripts/lib/"
-print_ok "scripts (Python runtime + lib/)"
+print_ok "scripts (Python runtime + statusline + lib/)"
 print_ok "settings.json"
 
 # ── Render templates ──────────────────────────────────────

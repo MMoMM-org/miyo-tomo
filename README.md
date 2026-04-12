@@ -76,8 +76,15 @@ The install script walks you through vault path, framework profile selection, co
 
 - Docker
 - Git, jq
-- [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) v0.1.6+ running and accessible
+- [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) v0.2.0+ running and accessible
 - Python 3 (for host-side scripts)
+
+### Kado API Key Configuration
+
+Tomo's API key in Kado must have:
+- **Read access** to all concept folders configured in `vault-config.yaml`
+- **Write access** to the inbox folder (for writing suggestions and instruction sets)
+- **Tag access** for the lifecycle tag prefix (default: `#MiYo-Tomo`). Kado will return `FORBIDDEN` on tag searches if this prefix is not whitelisted in the API key's tag scope. Add `MiYo-Tomo` (or your custom prefix) to the key's allowed tag prefixes in Kado's settings.
 
 ## Repository Structure
 

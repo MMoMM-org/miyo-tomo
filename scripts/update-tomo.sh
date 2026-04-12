@@ -106,6 +106,11 @@ for f in "$REPO_ROOT/scripts/"*.py; do
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/scripts/$name" "scripts/$name"
 done
+update_managed \
+    "$REPO_ROOT/scripts/tomo-statusline.sh" \
+    "$INSTANCE_PATH/scripts/tomo-statusline.sh" \
+    "scripts/tomo-statusline.sh"
+chmod +x "$INSTANCE_PATH/scripts/tomo-statusline.sh" 2>/dev/null || true
 for f in "$REPO_ROOT/scripts/lib/"*.py; do
     [ -f "$f" ] || continue
     name=$(basename "$f")

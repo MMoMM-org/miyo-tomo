@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.2.0
+# version: 0.3.0
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | Context bar | Kado connectivity + tag access
@@ -94,14 +94,29 @@ kado_check() {
   local endpoint="${url%/}"
   [[ "$endpoint" != */mcp ]] && endpoint="$endpoint/mcp"
 
+  # Helper: POST to Kado and extract JSON from SSE response.
+  # Kado returns Content-Type: text/event-stream with format:
+  #   event: message
+  #   data: {"jsonrpc":"2.0",...}
+  kado_post() {
+    local raw
+    raw=$(curl -s --max-time 3 -X POST "$endpoint" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $token" \
+      -H "Accept: application/json, text/event-stream" \
+      -d "$1" 2>/dev/null) || true
+    [[ -z "$raw" ]] && return 1
+    # Extract JSON: if SSE format, grab the data: line; otherwise use as-is
+    if echo "$raw" | grep -q '^data: ' 2>/dev/null; then
+      echo "$raw" | grep '^data: ' | head -1 | sed 's/^data: //'
+    else
+      echo "$raw"
+    fi
+  }
+
   # Test 1: connectivity — listDir root
   local response
-  response=$(curl -s --max-time 3 -X POST "$endpoint" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $token" \
-    -H "Accept: application/json, text/event-stream" \
-    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"kado-search","arguments":{"operation":"listDir","path":"/","depth":1,"limit":1}}}' \
-    2>/dev/null) || true
+  response=$(kado_post '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"kado-search","arguments":{"operation":"listDir","path":"/","depth":1,"limit":1}}}') || true
 
   if [[ -z "$response" ]]; then
     write_status "unreachable"
@@ -128,9 +143,8 @@ kado_check() {
   fi
 
   if [[ -n "$tag_prefix" ]]; then
-    local tag_query="#${tag_prefix}"
     local tag_payload
-    tag_payload=$(jq -n --arg q "$tag_query" '{
+    tag_payload=$(jq -n --arg q "#${tag_prefix}" '{
       jsonrpc: "2.0", id: 2,
       method: "tools/call",
       params: {name: "kado-search", arguments: {operation: "byTag", query: $q, limit: 1}}
@@ -138,11 +152,7 @@ kado_check() {
 
     if [[ -n "$tag_payload" ]]; then
       local tag_response
-      tag_response=$(curl -s --max-time 3 -X POST "$endpoint" \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $token" \
-        -H "Accept: application/json, text/event-stream" \
-        -d "$tag_payload" 2>/dev/null) || true
+      tag_response=$(kado_post "$tag_payload") || true
 
       if [[ -n "$tag_response" ]]; then
         local tag_text

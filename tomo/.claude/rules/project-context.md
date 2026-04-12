@@ -60,6 +60,9 @@ Outside-inbox changes (create notes, add MOC links, update trackers, apply tag c
 - Profiles are data (YAML), not logic. They encode framework-specific categories, folder defaults, relationship markers, and keywords.
 - Skills contain the logic: classification heuristics, confidence scoring, proposal generation.
 - User Config (`vault-config.yaml`) overrides profile defaults for every field present.
+- **Framework identity comes from the profile `name` field — NEVER infer it from vault structure.**
+  MiYo uses ACE folders and Dewey numbers but is NOT LYT. Calling it "LYT" is wrong.
+  Always read `profile` from vault-config.yaml and load the matching profile YAML for the display name.
 
 ## User Interaction
 

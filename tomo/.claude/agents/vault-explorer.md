@@ -27,15 +27,17 @@ operations.
 
 ## Workflow
 
-### Step 0 — Load Profile
+### Step 0 — Load Profile (CRITICAL)
 
 Read `config/vault-config.yaml` and extract the `profile` field (e.g. `"miyo"`, `"lyt"`).
 Load the matching profile from `profiles/<profile>.yaml` to get its display `name`
 (e.g. `"MiYo"`, `"LYT (Linking Your Thinking)"`).
 
-Use this display name whenever you reference the framework in output — never infer
-or guess the framework from vault structure. The user selected a specific framework
-during installation; respect that choice.
+**STRICT RULE:** The profile `name` field IS the framework name. Use it verbatim in ALL
+output — headers, summaries, reports. NEVER say "LYT" when the profile says "MiYo".
+NEVER infer the framework from vault structure (ACE folders, Dewey numbers, etc.).
+MiYo is a distinct framework derived from LYT — calling it "LYT" is factually wrong.
+The user explicitly chose this framework during installation.
 
 ### Step 1 — Connect to Kado
 

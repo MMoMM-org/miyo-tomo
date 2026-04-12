@@ -84,7 +84,8 @@ The install script walks you through vault path, framework profile selection, co
 Tomo's API key in Kado must have:
 - **Read access** to all concept folders configured in `vault-config.yaml`
 - **Write access** to the inbox folder (for writing suggestions and instruction sets)
-- **Tag access** for the lifecycle tag prefix (default: `#MiYo-Tomo`). Kado will return `FORBIDDEN` on tag searches if this prefix is not whitelisted in the API key's tag scope. Add `MiYo-Tomo` (or your custom prefix) to the key's allowed tag prefixes in Kado's settings.
+- **Tag read access (all tags)** — Tomo's `/explore-vault` uses `listTags` to discover your full tag taxonomy (prefixes, types, states). If the API key restricts tag access to specific prefixes, Tomo will only see those and miss the rest. For best results, allow unrestricted tag read access.
+- **Lifecycle tag access** for the tag prefix (default: `#MiYo-Tomo`). Kado will return `FORBIDDEN` on tag searches if this prefix is not whitelisted. Add `MiYo-Tomo` (or your custom prefix) to the key's allowed tag prefixes in Kado's settings.
 
 ## Repository Structure
 

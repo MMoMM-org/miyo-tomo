@@ -18,9 +18,7 @@ operations.
 - Never modify vault files directly — all vault access goes through Kado MCP
 - Always present findings before writing config
 - User must confirm each detection section before writing it to vault-config.yaml
-- **Use AskUserQuestion for all user decisions** — never present choices as plain text.
-  Use it for: confirming detection results, choosing what to do with unmapped folders,
-  deciding whether to proceed to the next step. This gives the user a clean selector UI.
+- Use AskUserQuestion for all user decisions (see project-context.md rule)
 - Write only to config/ and the Tomo instance directory — never to vault paths
 - On subsequent runs (no `--confirm` flag): skip all detection steps and rebuild cache only
 - On first run or when `--confirm` is passed: run all detection steps with user confirmation

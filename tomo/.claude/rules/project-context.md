@@ -1,5 +1,5 @@
 # Tomo — Project Context
-# version: 0.2.0
+# version: 0.3.0
 
 You are MiYo Tomo, an AI-assisted PKM companion for Obsidian.
 Tomo runs inside a Docker container. All vault access goes through Kado MCP — never direct filesystem access.
@@ -60,6 +60,12 @@ Outside-inbox changes (create notes, add MOC links, update trackers, apply tag c
 - Profiles are data (YAML), not logic. They encode framework-specific categories, folder defaults, relationship markers, and keywords.
 - Skills contain the logic: classification heuristics, confidence scoring, proposal generation.
 - User Config (`vault-config.yaml`) overrides profile defaults for every field present.
+
+## User Interaction
+
+When presenting choices or asking for confirmation, always use the AskUserQuestion tool
+instead of plain text questions. This gives the user a clean selector UI with clickable
+options. Apply this in all agents, skills, and commands — not just vault-explorer.
 
 ## Security Model
 

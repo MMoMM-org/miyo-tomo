@@ -691,6 +691,16 @@ if [ "$PROFILE" != "custom" ] && [ -f "$PROFILE_FILE" ]; then
         | sed -n '/daily:/,/^ /p' | grep 'path:' | head -1 | sed 's/.*: *//' | tr -d '"'"'" | tr -d '{}' | sed 's/^ *//')
 fi
 
+# ── Daily notes subfolder prompt ────────────────────────
+# Ask for the daily notes path if calendar is configured
+if [ -n "$C_CALENDAR" ] && [ "$NON_INTERACTIVE" != "true" ]; then
+    print_step "Daily notes subfolder"
+    echo "  Where are your daily notes stored?"
+    DAILY_DEFAULT="${CALENDAR_DAILY_PATH:-${C_CALENDAR}Days/}"
+    CALENDAR_DAILY_PATH=$(prompt_default "Daily notes path" "$DAILY_DEFAULT")
+    print_ok "Daily: $CALENDAR_DAILY_PATH"
+fi
+
 # ── Step 5: Lifecycle Prefix ─────────────────────────────
 
 print_step "Lifecycle tag prefix"

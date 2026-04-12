@@ -43,7 +43,7 @@ concept_defaults:
   calendar:
     base_path: "Calendar/"
     granularities:
-      daily:     { enabled: true,  path: "Calendar/Days/" }
+      daily:     { enabled: true,  path: "Calendar/301 Daily/" }
       weekly:    { enabled: false, path: null }
       monthly:   { enabled: false, path: null }
       quarterly: { enabled: false, path: null }

@@ -27,9 +27,11 @@ ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     TERM=xterm-256color
 
-# Suppress Claude Code's "switched to native install" prompt and
-# skip auto-update installation checks on container start.
-ENV DISABLE_INSTALLATION_CHECKS=1
+# Suppress Claude Code's "switched to native install" prompt,
+# skip auto-update checks, and disable the autoupdater entirely.
+# npm is the only install method in Docker — native installer doesn't apply.
+ENV DISABLE_INSTALLATION_CHECKS=1 \
+    DISABLE_AUTOUPDATER=1
 
 # Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code

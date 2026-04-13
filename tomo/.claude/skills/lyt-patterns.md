@@ -3,7 +3,7 @@ name: lyt-patterns
 description: MOC matching algorithm, section placement rules, mental squeeze point detection, and new MOC proposal heuristics for LYT-style vaults. Use when analyzing inbox items for MOC linkage, placing links inside MOC structures, or deciding whether to propose a new Map of Content.
 ---
 # LYT Patterns
-# version: 0.1.0
+# version: 0.2.0
 
 Knowledge patterns for MOC matching, section placement, and new MOC proposals.
 
@@ -48,13 +48,41 @@ If the inbox item's title exactly matches a MOC's title or alias, boost confiden
 | Exact title match override | 0.95 | Overrides topic scoring |
 | Batch context boost | +boost for all matching items | When 3+ batch items match the same MOC |
 
-## Fallback to Classification
+## MOC-Only Layers (Classification Guard)
 
-When MOC matching returns no results above threshold:
-1. Use classification-level map as the parent link
-2. Note in suggestions: "No specific MOC found. Linked to classification level — consider creating a dedicated MOC if more notes in this area accumulate."
+Classification-level MOCs (Dewey layer — e.g. `2600 - Applied Sciences`, `2000 - Knowledge
+Management`) are **MOC-only containers**. They link to thematic MOCs, never to individual notes.
 
-When both MOC and classification match: show MOC as primary, classification as context.
+**Detection:** A MOC is classification-level when:
+- Its level in the MOC tree is 0 or 1 (root or first tier below root)
+- Its name matches the Dewey pattern `\d{4} - .+`
+- It has `up:: [[200 Maps]]` or equivalent root-level parent
+
+**STRICT RULE:** When the best MOC match for a note is a classification-level MOC and no
+deeper thematic MOC matches above threshold:
+1. Do NOT link the note directly to the classification MOC
+2. Instead, trigger a **New MOC Proposal** (see Mental Squeeze Point Detection below)
+3. The proposed MOC gets `up::` pointing to the classification MOC
+4. The note links to the proposed MOC, not the classification layer
+
+**Batch grouping:** When multiple items in the same batch would fall back to the same
+classification MOC, group them and propose a single thematic MOC covering the shared topic.
+This is Condition A (Cluster) of Mental Squeeze Point Detection.
+
+**Single item, no cluster:** Even a single note that only matches a classification MOC should
+trigger a MOC proposal suggestion (not a hard requirement). The suggestion notes: "No thematic
+MOC found under [[2600 - Applied Sciences]]. Consider creating one if more notes accumulate."
+Meanwhile, the note gets the classification MOC as **context** (shown in the suggestion) but
+the primary action is `up:: TBD` — the user decides during review.
+
+## Fallback When No MOC Matches At All
+
+When MOC matching returns no results above threshold (not even classification level):
+1. Flag in suggestions: "No MOC match found. User should assign manually or propose a new MOC."
+2. Do NOT silently assign a classification MOC as parent.
+
+When both a thematic MOC and its parent classification MOC match: show the thematic MOC as
+primary link. The classification MOC is implicit via the tree — do not add it as a second link.
 
 ## Placeholder MOC Awareness
 

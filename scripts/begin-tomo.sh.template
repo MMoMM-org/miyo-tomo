@@ -35,7 +35,6 @@ print_err()  { printf "  ${C_RED}✗${C_RESET} %s\n" "$1" >&2; }
 # ── CLI Flags ─────────────────────────────────────────────
 
 FORCE_REBUILD=false
-FORCE_LOGIN=false
 BASH_MODE=false
 YOLO_MODE=false
 AUTO_MODE=false
@@ -44,7 +43,6 @@ SHOW_HELP=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --rebuild-image) FORCE_REBUILD=true; shift ;;
-        --login)         FORCE_LOGIN=true;   shift ;;
         --bash)          BASH_MODE=true;     shift ;;
         --yolo)          YOLO_MODE=true;     shift ;;
         --auto)          AUTO_MODE=true;     shift ;;
@@ -65,9 +63,6 @@ Start a Tomo Docker session for instance: ${INSTANCE_NAME}
 
 Options:
   --rebuild-image   Force rebuild of the Docker image before launch
-  --login           Force OAuth re-authentication (exposes port 10000
-                    for the callback). Use when credentials are stale
-                    or auth state needs refreshing.
   --bash            Launch a bash shell instead of Claude Code.
                     Useful for debugging the container environment.
   --auto            Auto mode — AI classifier approves safe actions
@@ -183,15 +178,13 @@ else
 fi
 
 # ── Auth ──────────────────────────────────────────────────
+# Port 10000 is always exposed for OAuth callback — it's localhost-only
+# and avoids needing to restart the container when credentials expire.
 
-AUTH_FLAGS=()
+AUTH_FLAGS=(-p 10000:10000)
 
-if [ "$FORCE_LOGIN" = "true" ]; then
-    AUTH_FLAGS=(-p 10000:10000)
-    print_warn "Login mode — port 10000 exposed for OAuth callback"
-elif [ ! -f "$HOME_DIR/.claude/.credentials.json" ]; then
-    AUTH_FLAGS=(-p 10000:10000)
-    print_warn "No credentials found — port 10000 exposed for OAuth callback"
+if [ ! -f "$HOME_DIR/.claude/.credentials.json" ]; then
+    print_warn "No credentials found — run 'claude login' inside the container"
 else
     print_ok "Auth state found (.credentials.json)"
 fi

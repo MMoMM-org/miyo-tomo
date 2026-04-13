@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# version: 0.3.0
+# version: 0.4.0
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
-# Shows: Model | Context bar | Kado connectivity + tag access
+# Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access
 # Kado check is cached for 60 seconds.
 #
 # Input:  JSON from Claude Code via stdin
@@ -16,6 +16,7 @@ GREEN="\033[0;32m"
 YELLOW="\033[0;33m"
 RED="\033[0;31m"
 CYAN="\033[0;36m"
+MAGENTA_BOLD="\033[1;35m"
 RESET="\033[0m"
 
 # ── Input ─────────────────────────────────────────────────
@@ -168,11 +169,21 @@ kado_check() {
   write_status "ok"
 }
 
+# ── Instance identity ────────────────────────────────────
+
+INSTANCE_LABEL=""
+if [[ -n "${TOMO_INSTANCE_DIR:-}" ]]; then
+  INSTANCE_LABEL=$(basename "$TOMO_INSTANCE_DIR")
+fi
+
 # ── Render ────────────────────────────────────────────────
 
 KADO_STATUS=$(kado_check)
 
 LINE="${CYAN}[${MODEL}]${RESET}"
+if [[ -n "$INSTANCE_LABEL" ]]; then
+  LINE+=" | ${MAGENTA_BOLD}友${RESET} ${INSTANCE_LABEL}"
+fi
 LINE+=" | 🧠 $(block_bar "$CTX_PCT") ${CTX_PCT}%"
 
 case "$KADO_STATUS" in

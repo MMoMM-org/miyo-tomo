@@ -294,7 +294,7 @@ class KadoClient:
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self._token}",
-                "Accept": "application/json",
+                "Accept": "application/json, text/event-stream",
             },
         )
 
@@ -324,6 +324,9 @@ class KadoClient:
                 f"Network error reaching {self._endpoint}: {reason}"
             ) from exc
 
+        # Handle SSE-framed responses (StreamableHTTP may return
+        # "event: message\ndata: {…}\n\n" instead of bare JSON).
+        raw = _unwrap_sse(raw)
         return _parse_rpc_response(raw, tool_name)
 
 
@@ -386,6 +389,35 @@ def _extract_from_mcp_json(cfg: dict) -> tuple[str | None, str | None]:
 
 
 # ── Response parsing ───────────────────────────────────────────────────────────
+
+def _unwrap_sse(raw: str) -> str:
+    """Extract the JSON payload from an SSE-framed response.
+
+    StreamableHTTP may return the JSON-RPC response wrapped as::
+
+        event: message
+        data: {"jsonrpc":"2.0", ...}
+
+    This function extracts the ``data:`` line content.  If the response
+    is already bare JSON (starts with ``{``), it is returned unchanged.
+    """
+    stripped = raw.strip()
+    if stripped.startswith("{") or stripped.startswith("["):
+        return stripped  # already bare JSON
+
+    # Collect all "data:" lines and join them (multi-line SSE payloads)
+    data_lines = []
+    for line in stripped.splitlines():
+        if line.startswith("data: "):
+            data_lines.append(line[6:])
+        elif line.startswith("data:"):
+            data_lines.append(line[5:])
+    if data_lines:
+        return "".join(data_lines)
+
+    # Fallback — return as-is and let the JSON parser report the error
+    return raw
+
 
 def _parse_rpc_response(raw: str, tool_name: str) -> dict:
     """Parse a JSON-RPC 2.0 response and extract the tool result.

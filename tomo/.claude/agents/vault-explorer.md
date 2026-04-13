@@ -29,7 +29,8 @@ operations.
 - Always present findings before writing config
 - User must confirm each detection section before writing it to vault-config.yaml
 - Use AskUserQuestion for all user decisions (see project-context.md rule)
-- Write only to config/ and the Tomo instance directory — never to vault paths
+- Write config files to `config/` directory ONLY — never to `.claude/` or other locations.
+  This includes `vault-config.yaml` and `discovery-cache.yaml`. The launcher checks `config/`.
 - On subsequent runs (no `--confirm` flag): skip all detection steps and rebuild cache only
 - On first run or when `--confirm` is passed: run all detection steps with user confirmation
 - If `--confirm` is used on a vault with existing config, warn the user that sections will be overwritten
@@ -173,13 +174,19 @@ Run the MOC tree builder, then the cache builder:
 # Discover and index all MOCs
 python3 scripts/moc-tree-builder.py --config config/vault-config.yaml > /tmp/moc-output.json
 
-# Build the discovery cache
+# Build the discovery cache — output MUST go to config/discovery-cache.yaml
 python3 scripts/cache-builder.py \
   --structure /tmp/scan-output.json \
   --mocs /tmp/moc-output.json \
   --output config/discovery-cache.yaml \
   --start-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
+
+**IMPORTANT:** The discovery cache MUST be written to `config/discovery-cache.yaml`.
+Do NOT write it to `.claude/` or any other location. The first-run detection in
+`begin-tomo.sh` checks for this exact path. If the cache-builder script is unavailable
+or fails, write the cache YAML directly to `config/discovery-cache.yaml` via standard
+file write — never to `.claude/discovery-cache.yaml`.
 
 Report progress during MOC reading. This step always runs (first and subsequent runs).
 The discovery cache is always rebuilt fresh.

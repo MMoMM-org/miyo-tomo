@@ -211,8 +211,10 @@ fi
 # The discovery cache is created by /explore-vault. If it's missing,
 # this is either a fresh install or the user hasn't explored yet.
 
+# Check both canonical (config/) and legacy (.claude/) paths
 DISCOVERY_CACHE="$INSTANCE_PATH/config/discovery-cache.yaml"
-if [ ! -f "$DISCOVERY_CACHE" ] && [ "$BASH_MODE" != "true" ]; then
+DISCOVERY_CACHE_ALT="$INSTANCE_PATH/.claude/discovery-cache.yaml"
+if [ ! -f "$DISCOVERY_CACHE" ] && [ ! -f "$DISCOVERY_CACHE_ALT" ] && [ "$BASH_MODE" != "true" ]; then
     echo ""
     printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
     printf "  ${C_BOLD}First run detected — welcome to Tomo!${C_RESET}\n"

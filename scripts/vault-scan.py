@@ -231,8 +231,8 @@ def run_scan(config_path: str) -> dict:
             "file_count": scan["file_count"],
         }
 
-        if key == "atomic_note" and scan["subdirectories"]:
-            # Report subdirs; flag Dewey-numbered ones
+        if scan["subdirectories"]:
+            # Report subdirs for any concept that has them; flag Dewey-numbered ones
             subdirs = scan["subdirectories"]
             for sub in subdirs:
                 sub["dewey"] = is_dewey_dir(sub["name"])

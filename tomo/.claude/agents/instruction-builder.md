@@ -11,7 +11,7 @@ skills:
   - pkm-workflows
 ---
 # Instruction Builder Agent
-# version: 0.5.0
+# version: 0.6.0
 
 You are the instruction builder. You parse a confirmed suggestions document, generate detailed
 per-action instructions with rendered templates and diffs, and write everything to the inbox folder.
@@ -49,11 +49,24 @@ You never leave ambiguity in an instruction.
 
 ## Workflow
 
-### Step 1 — Parse Confirmed Suggestions
+### Step 1 — Parse Approved Suggestions
 
-```bash
-python3 scripts/suggestion-parser.py --file <inbox_path>/YYYY-MM-DD_HHMM_suggestions.md
-```
+**STRICT:** Do NOT write any new scripts or shell wrappers. Do NOT do exploratory
+`ls`/`cat` of existing scripts — `scripts/suggestion-parser.py` already exists and
+accepts either a file path or stdin.
+
+The suggestions file lives in the vault (accessed via Kado), not on the filesystem.
+Use this exact sequence:
+
+1. Read the doc content via Kado MCP: `kado-read` operation `note`, path is the
+   `*_suggestions.md` file in the inbox folder (from auto-discovery).
+2. Write the content to `$TMPDIR/tomo-suggestions.md` via a single Write tool call.
+3. Run the parser:
+   ```bash
+   python3 scripts/suggestion-parser.py --file "$TMPDIR/tomo-suggestions.md"
+   ```
+4. Parse the JSON output — it contains `confirmed_items` with `source_path`, `type`,
+   `action`, `title`, `tags`, `parent_moc`, `classification` per item.
 
 Returns JSON with confirmed items, their actions, titles, tags, MOCs, classifications.
 

@@ -4,7 +4,7 @@ description: Context-aware help for Tomo that routes user queries to the right t
 argument-hint: "optional topic or keyword (e.g., 'kado', 'inbox', 'docker', 'login')"
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.1.0
+# version: 0.2.0
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -23,31 +23,33 @@ The user just wants the menu. Show this (keep formatting tight):
 
   Getting started
     1. First run — what to do after install
-    2. /explore-vault — scan your vault, build discovery cache
-    3. /inbox — process inbox items (2-pass workflow)
+    2. /tomo-setup — full setup wizard (recommended entry point)
+    3. /explore-vault — scan your vault, build discovery cache
+    4. /inbox — process inbox items (2-pass workflow)
 
   Concepts
-    4. Lifecycle tags & state machine
-    5. 2-pass suggestion/instruction model
-    6. Knowledge Stack (profile → config → cache)
-    7. Framework profiles (miyo, lyt, custom)
+    5. Lifecycle tags & state machine
+    6. 2-pass suggestion/instruction model
+    7. Knowledge Stack (profile → config → cache)
+    8. Framework profiles (miyo, lyt, custom)
 
   Configuration
-    8. vault-config.yaml — concept paths, frontmatter, templates
-    9. Kado MCP — connection, bearer token, .mcp.json
-   10. Git user identity
+    9. vault-config.yaml — concept paths, frontmatter, templates
+   10. User rules — vault-specific behavioral conventions
+   11. Kado MCP — connection, bearer token, .mcp.json
+   12. Git user identity
 
   Troubleshooting
-   11. Kado not connected / tools missing
-   12. /explore-vault fails or finds nothing
-   13. Docker / image / container issues
-   14. OAuth / re-auth (outside the container)
-   15. First-run setup issues
+   13. Kado not connected / tools missing
+   14. /explore-vault fails or finds nothing
+   15. Docker / image / container issues
+   16. OAuth / re-auth (outside the container)
+   17. First-run setup issues
 
   Operations
-   16. Update Tomo to a newer source version
-   17. Cleanup & re-install (testing)
-   18. Debug shell in the container
+   18. Update Tomo to a newer source version
+   19. Cleanup & re-install (testing)
+   20. Debug shell in the container
 ```
 
 Then ask: `Which topic? Enter a number or describe what you need.`
@@ -67,10 +69,23 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
 ### Core workflows
 
 - **first run / start / begin / setup finished / what now / what next** →
-  - Run `/explore-vault` once to build `config/discovery-cache.yaml`
-  - Then `/inbox` whenever you want to process new items
-  - The 2-pass model: Tomo proposes → you review/confirm → Tomo generates instructions → you apply
-  - Point at: `.claude/commands/explore-vault.md`, `.claude/commands/inbox.md`, `CLAUDE.md`
+  - Recommended: run `/tomo-setup` once — it chains discovery, user rules, and template verification
+  - After setup: `/inbox` processes new items whenever you want
+  - The 2-pass model: Tomo proposes → you review/approve → Tomo generates instructions → you apply
+  - Point at: `.claude/commands/tomo-setup.md`, `.claude/commands/inbox.md`, `CLAUDE.md`
+
+- **setup / configure / wizard / rules / tomo-setup** →
+  - `/tomo-setup` — single entry point for post-install configuration
+  - Sections: `/tomo-setup rules` (user-rules wizard), `/tomo-setup templates` (verify), `/tomo-setup check` (status), `/tomo-setup explore` (delegate to /explore-vault)
+  - Safe to re-run — idempotent, only writes what changed
+  - Point at: `.claude/commands/tomo-setup.md`, `config/user-rules/`
+
+- **user rules / conventions / vault rules / behavioral rules** →
+  - Vault-specific conventions live in `config/user-rules/*.md` (markdown, not YAML)
+  - Seed topics: tagging, destinations, templates; add custom topics as needed
+  - Referenced descriptively in `CLAUDE.md` → lazy-loaded when relevant
+  - Configure via `/tomo-setup rules` or edit the files directly
+  - Point at: `config/user-rules/README.md`, `CLAUDE.md`
 
 - **explore / explore-vault / scan / discover / cache / moc detection** →
   - `/explore-vault` scans vault via Kado, detects MOCs, frontmatter, tags, callouts, relationships

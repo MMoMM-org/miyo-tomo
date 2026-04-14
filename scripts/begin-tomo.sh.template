@@ -19,12 +19,13 @@ IMAGE_NAME="miyo-tomo:latest"
 if [ -t 1 ]; then
     C_RESET="\033[0m"
     C_BOLD="\033[1m"
+    C_DIM="\033[2m"
     C_CYAN="\033[36m"
     C_GREEN="\033[32m"
     C_YELLOW="\033[33m"
     C_RED="\033[31m"
 else
-    C_RESET="" C_BOLD="" C_CYAN="" C_GREEN="" C_YELLOW="" C_RED=""
+    C_RESET="" C_BOLD="" C_DIM="" C_CYAN="" C_GREEN="" C_YELLOW="" C_RED=""
 fi
 
 print_step() { printf "\n${C_BOLD}${C_CYAN}▸ %s${C_RESET}\n" "$1"; }
@@ -283,16 +284,17 @@ if [ ! -f "$DISCOVERY_CACHE" ] && [ ! -f "$DISCOVERY_CACHE_ALT" ] && [ "$BASH_MO
     printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
     printf "  ${C_BOLD}First run detected — welcome to Tomo!${C_RESET}\n"
     echo ""
-    printf "  Your instance is set up but your vault hasn't been explored yet.\n"
-    printf "  Once the Claude Code prompt appears, run these commands:\n"
+    printf "  Start with a single command:\n"
     echo ""
-    printf "    ${C_BOLD}/explore-vault${C_RESET}  — scan your vault, detect MOCs, tags,\n"
-    printf "                      frontmatter; builds discovery-cache.yaml\n"
-    printf "    ${C_BOLD}/inbox${C_RESET}          — process items in your inbox (Pass 1:\n"
-    printf "                      suggestions → you confirm → Pass 2: apply)\n"
+    printf "    ${C_BOLD}/tomo-setup${C_RESET}     — vault discovery + user rules + templates\n"
+    printf "                      (recommended — covers everything you need)\n"
     echo ""
-    printf "  Need help? Type ${C_BOLD}/tomo-help${C_RESET} inside Claude Code — it routes\n"
-    printf "  your question to the right topic (kado, inbox, explore, etc.).\n"
+    printf "  After setup:\n"
+    echo ""
+    printf "    ${C_BOLD}/inbox${C_RESET}          — process items in your inbox\n"
+    printf "    ${C_BOLD}/tomo-help${C_RESET}      — context-aware help anytime\n"
+    echo ""
+    printf "  ${C_DIM}Power users: /explore-vault standalone, /tomo-setup check for status${C_RESET}\n"
     printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
 fi
 

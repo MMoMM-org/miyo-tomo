@@ -184,8 +184,10 @@ if [ -f "$SOURCE_VERSION_FILE" ] && [ -f "$CONFIG_FILE" ] && command -v jq > /de
     SOURCE_VERSION="$(grep -m1 '^# version:' "$SOURCE_VERSION_FILE" 2>/dev/null | sed 's/^# version: *//' || echo 'unknown')"
     INSTANCE_VERSION="$(jq -r '.tomoVersion // "unknown"' "$CONFIG_FILE")"
     if [ "$INSTANCE_VERSION" != "$SOURCE_VERSION" ] && [ "$SOURCE_VERSION" != "unknown" ]; then
+        echo ""
         print_warn "Instance version (${INSTANCE_VERSION}) differs from source (${SOURCE_VERSION})"
         printf "  Run: ${C_CYAN}bash %s/scripts/update-tomo.sh${C_RESET}\n" "$TOMO_REPO_ROOT"
+        echo ""
         read -rp "  Continue anyway? [y/N] " CONTINUE
         case "$CONTINUE" in
             [yY]*) ;;

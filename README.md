@@ -6,6 +6,11 @@ AI-assisted PKM workflows for Obsidian via [MiYo Kado](https://github.com/MMoMM-
 
 Tomo runs inside an isolated Docker container. All vault access goes through Kado — no direct filesystem access to your Obsidian vault.
 
+<p align="center">
+  <img src="assets/tomo_banner_clean.svg" alt="MiYo Tomo — Personal Knowledge Companion" width="680">
+</p>
+
+
 ## What Tomo Does
 
 - **`/inbox`** — 2-pass inbox processing: analyses files, proposes actions, generates detailed instructions

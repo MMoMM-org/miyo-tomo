@@ -963,6 +963,7 @@ mkdir -p "$INSTANCE_PATH/.claude/commands"
 mkdir -p "$INSTANCE_PATH/.claude/rules"
 mkdir -p "$INSTANCE_PATH/.claude/hooks"
 mkdir -p "$INSTANCE_PATH/config"
+mkdir -p "$INSTANCE_PATH/config/user-rules"
 mkdir -p "$INSTANCE_PATH/scripts"
 
 # ── Copy managed files ────────────────────────────────────
@@ -1039,6 +1040,15 @@ else
 fi
 
 # vault-example.yaml stays in tomo/config/ as schema reference — not copied to instance
+
+# user-rules README (only if not present — user territory)
+if [ ! -f "$INSTANCE_PATH/config/user-rules/README.md" ]; then
+    cp "$TOMO_SOURCE/config/templates/user-rules-README.md" \
+       "$INSTANCE_PATH/config/user-rules/README.md"
+    print_ok "user-rules/README.md (new)"
+else
+    print_warn "user-rules/README.md exists — skipped"
+fi
 
 # ── MCP config ────────────────────────────────────────────
 

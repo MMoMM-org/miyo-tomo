@@ -22,6 +22,18 @@ AI-assisted PKM workflows for Obsidian. All vault access goes through Kado MCP.
 - Update .claude/rules/vault-config.md when you discover new vault structure
 - Commit after every completed task
 
+## Vault Conventions (user-specific)
+
+Consult these only when the active task matches their topic. These are vault-specific
+behavioral rules that override framework defaults:
+
+- For tag-selection rules (which `type/*` per note, template-vs-tag precedence) → see `config/user-rules/tagging.md`
+- For destination rules (where resources go, which targets get MOC links) → see `config/user-rules/destinations.md`
+- For template-selection rules per note type → see `config/user-rules/templates.md`
+
+Add additional topic files under `config/user-rules/` and reference them here as
+your conventions grow. See `config/user-rules/README.md` for the pattern.
+
 ## MCP
 
 Kado runs at {{KADO_PROTOCOL}}://{{KADO_HOST}}:{{KADO_PORT}}

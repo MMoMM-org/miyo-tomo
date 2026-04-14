@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -128,30 +128,37 @@ def _normalise_action(text: str) -> str:
 
 def parse_section(section_id: str, lines: list[str]) -> dict | None:
     """
-    Parse one S## section and return a structured dict, or None on fatal error.
+    Parse one section and return a structured dict, or None on fatal error.
 
-    The section format (from spec) is:
+    Flat format (LLM output from suggestion-builder v0.6.0+):
 
-        ### S01: some-note.md
+        ### A1. Ausdaueraufbau (Endurance Training)
+        - **Source:** `202301031251.md`
+        - **Suggested name:** Ausdaueraufbau
+        - **Type:** #type/note/normal
+        - **Destination:** Atlas/202 Notes/
+        - **Link to MOC:** [[2200 - Mind-Body Connection]]
+        - **Template:** t_note_tomo
+        - **Tags:** #topic/exercise
+        - **Summary:** ...
+        - **Why:** reasoning here
+        - [x] Accept
+        - [ ] Skip (keep in inbox)
+        - [ ] Delete source
 
-        **Source:** `+/some-note.md`
-        **Type:** fleeting_note (confidence: 0.85)
+    Field aliases handled:
+      - "Suggested name" / "Title"       → title
+      - "Link to MOC" / "Parent MOC"     → parent_moc
+      - "Destination"                    → destination
+      - "Template"                       → template
+      - "Summary"                        → summary
+      - "Type"                           → type (strips leading # and backticks)
+      - "Tags" / "Tag"                   → tags list
 
-        **Primary Suggestion:**
-        - [x] Create atomic note "Some Topic" in Atlas/202 Notes/
-        - **Title:** Some Topic
-        - **Tags:** topic/knowledge, type/note/normal
-        - **Parent MOC:** [[Knowledge Management]]
-        - **Classification:** 2600 Applied Sciences
-
-        **Alternatives:**
-        - [ ] Link to existing [[Related Note]] instead
-        - [ ] File as quote under [[Quotes]]
-
-        **Actions:**
-        - [x] Approve
-        - [ ] Skip
-        - [ ] Delete source after processing
+    Approval checkboxes:
+      - "Accept" or "Approve" checked    → approved = true
+      - "Delete source" checked          → delete_source = true
+      - "Skip" checked (and not Accept)  → approved = false
     """
     result: dict = {
         "id": section_id,
@@ -163,136 +170,87 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
         "title": None,
         "tags": [],
         "parent_moc": None,
+        "destination": None,
+        "template": None,
+        "summary": None,
         "classification": None,
-        "alternative_selected": None,
     }
-
-    # ── Zone tracking ──────────────────────────────────────────────
-    # Zones: top / primary / alternatives / actions
-    zone = "top"
-    primary_action_checked = False
-    primary_fields: dict = {}
-    alternatives: list[dict] = []  # [{"checked": bool, "text": str}]
 
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
 
-        # ── Zone transitions ───────────────────────────────────────
-        lower = stripped.lower()
-
-        if re.match(r"\*\*primary", lower) or re.match(r"###\s+primary", lower):
-            zone = "primary"
-            continue
-        if re.match(r"\*\*alternative", lower) or re.match(r"###\s+alternative", lower):
-            zone = "alternatives"
-            continue
-        if re.match(r"\*\*action", lower) or re.match(r"###\s+action", lower):
-            zone = "actions"
-            continue
-        # "Why these suggestions" — ignore the rest
-        if re.match(r"\*\*why|###\s+why", lower):
-            break
-
-        # ── Parse by zone ──────────────────────────────────────────
-
-        if zone == "top":
-            # **Source:** `+/path.md`
-            m = RE_FIELD.match(stripped)
-            if m:
-                key = m.group(1).strip().lower()
-                val = m.group(2).strip()
-                if key == "source":
-                    src = RE_SOURCE.search(val)
-                    if src:
-                        result["source_path"] = src.group(1) or src.group(2)
-                    else:
-                        # Try wikilink
-                        wl = _extract_wikilink(val)
-                        result["source_path"] = wl or val
-                elif key == "type":
-                    tm = RE_TYPE.match(val)
-                    result["type"] = tm.group(1) if tm else val.split()[0]
+        # ── Checkbox lines (approve/skip/delete) ──────────────────
+        cb_checked = RE_CHECKED.match(stripped)
+        cb_unchecked = RE_UNCHECKED.match(stripped)
+        if cb_checked or cb_unchecked:
+            text = _checkbox_text(stripped).lower()
+            if "accept" in text or "approve" in text:
+                result["approved"] = bool(cb_checked)
+            elif "delete source" in text or text.startswith("delete"):
+                result["delete_source"] = bool(cb_checked)
+            # "Skip" is the implicit inverse of Accept — no extra handling needed
             continue
 
-        if zone == "primary":
-            # First checkbox line in primary zone = the primary action
-            cb_match_checked = RE_CHECKED.match(stripped)
-            cb_match_any = RE_UNCHECKED.match(stripped) or cb_match_checked
+        # ── Field lines: - **Field:** value  OR  **Field:** value ─
+        # Strip leading "- " if present so RE_FIELD matches both forms.
+        field_line = stripped
+        if field_line.startswith("- "):
+            field_line = field_line[2:].strip()
 
-            if cb_match_any and result["action"] is None:
-                # This is the primary action checkbox
-                text = _checkbox_text(stripped)
-                primary_action_checked = bool(cb_match_checked)
-                result["action"] = _normalise_action(text)
-                # Title hint may be in the same line: 'Create atomic note "Some Topic"'
-                title_m = re.search(r'"([^"]+)"', text)
-                if title_m:
-                    primary_fields["title"] = title_m.group(1)
-                continue
-
-            # Field lines inside primary: - **Title:** Some Topic
-            m = RE_FIELD.match(stripped)
-            if m:
-                key = m.group(1).strip().lower()
-                val = m.group(2).strip()
-                if key in ("title",):
-                    primary_fields["title"] = val
-                elif key in ("tags", "tag"):
-                    primary_fields["tags"] = _parse_tags(val)
-                elif key in ("parent moc", "parent_moc", "parentmoc"):
-                    wl = _extract_wikilink(val)
-                    primary_fields["parent_moc"] = wl or val
-                elif key in ("classification",):
-                    primary_fields["classification"] = val
+        m = RE_FIELD.match(field_line)
+        if not m:
             continue
 
-        if zone == "alternatives":
-            cb_checked = RE_CHECKED.match(stripped)
-            cb_unchecked = RE_UNCHECKED.match(stripped)
-            if cb_checked or cb_unchecked:
-                text = _checkbox_text(stripped)
-                alternatives.append({
-                    "checked": bool(cb_checked),
-                    "text": text,
-                })
-            continue
+        # Key may include trailing colon when written as **Field:** (colon inside
+        # bold markers). Strip it and any whitespace before comparing.
+        key = m.group(1).strip().rstrip(":").strip().lower()
+        val = m.group(2).strip()
 
-        if zone == "actions":
-            cb_checked = RE_CHECKED.match(stripped)
-            cb_unchecked = RE_UNCHECKED.match(stripped)
-            if cb_checked or cb_unchecked:
-                text = _checkbox_text(stripped).lower()
-                if "approve" in text:
-                    result["approved"] = bool(cb_checked)
-                elif "delete source" in text or "delete" in text:
-                    result["delete_source"] = bool(cb_checked)
-            continue
+        if key == "source":
+            src = RE_SOURCE.search(val)
+            if src:
+                result["source_path"] = src.group(1) or src.group(2)
+            else:
+                wl = _extract_wikilink(val)
+                result["source_path"] = wl or val
 
-    # ── Resolve primary vs alternative ────────────────────────────
+        elif key == "type":
+            # "#type/note/normal" or "fleeting_note (confidence: 0.85)"
+            tm = RE_TYPE.match(val)
+            if tm:
+                result["type"] = tm.group(1)
+            else:
+                # Strip backticks, leading #, take first token
+                cleaned = val.strip("`").lstrip("#").strip()
+                result["type"] = cleaned.split()[0] if cleaned else None
 
-    # Check if any alternative was selected
-    selected_alt = next((a for a in alternatives if a["checked"]), None)
+        elif key in ("title", "suggested name", "suggested title", "name"):
+            result["title"] = val
 
-    if selected_alt:
-        # User picked an alternative — override primary action
-        result["alternative_selected"] = selected_alt["text"]
-        result["action"] = _normalise_action(selected_alt["text"])
-        # Don't carry over primary fields; alternative text may contain a wikilink
-        wl = _extract_wikilink(selected_alt["text"])
-        if wl:
-            result["title"] = wl
-    else:
-        # Use primary fields if primary was checked (or action was already set)
-        if primary_action_checked or result["action"]:
-            result["title"] = primary_fields.get("title")
-            result["tags"] = primary_fields.get("tags", [])
-            result["parent_moc"] = primary_fields.get("parent_moc")
-            result["classification"] = primary_fields.get("classification")
+        elif key in ("tags", "tag"):
+            result["tags"] = _parse_tags(val)
 
-    # ── Delete semantics (spec §6) ─────────────────────────────────
-    # Delete only meaningful when Approve is unchecked. If both checked, Approve wins.
+        elif key in ("parent moc", "parent_moc", "parentmoc", "link to moc", "moc"):
+            wl = _extract_wikilink(val)
+            result["parent_moc"] = wl or val
+
+        elif key == "destination":
+            # Strip wrapping backticks/brackets from a path
+            result["destination"] = val.strip("`").strip()
+
+        elif key == "template":
+            result["template"] = val.strip("`").strip()
+
+        elif key == "summary":
+            result["summary"] = val
+
+        elif key == "classification":
+            result["classification"] = val
+
+    # ── Delete semantics ─────────────────────────────────────────
+    # If Accept is checked, Delete is irrelevant — we keep the source.
     if result["approved"]:
         result["delete_source"] = False
 
@@ -391,7 +349,6 @@ def main() -> int:
             continue
 
         if item["approved"]:
-            # Only include fields relevant to the output; strip internal keys
             confirmed_items.append({
                 "id": item["id"],
                 "source_path": item["source_path"],
@@ -402,6 +359,9 @@ def main() -> int:
                 "title": item["title"],
                 "tags": item["tags"],
                 "parent_moc": item["parent_moc"],
+                "destination": item["destination"],
+                "template": item["template"],
+                "summary": item["summary"],
                 "classification": item["classification"],
             })
         else:

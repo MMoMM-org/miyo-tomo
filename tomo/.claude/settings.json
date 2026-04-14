@@ -26,6 +26,36 @@
     "type": "command",
     "command": "bash scripts/tomo-statusline.sh"
   },
+  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": [
+      "Knocking on 門's gate",
+      "Passing through 門's gate",
+      "Querying the vault",
+      "Traversing MOC tree",
+      "Scanning note frontmatter",
+      "Reading inbox files",
+      "Classifying notes",
+      "Matching to MOCs",
+      "Weighing confidence scores",
+      "Building suggestion set",
+      "Rendering templates",
+      "Writing instruction set",
+      "友 is thinking",
+      "友 is listening",
+      "友 is making sense of things",
+      "Consulting the knowledge stack",
+      "Checking layer precedence",
+      "Honoring user config",
+      "Finding the right home for your notes",
+      "Connecting the dots",
+      "Reading between the lines",
+      "Mapping your thoughts",
+      "Tending the vault",
+      "友 and 門 are best friends",
+      "Unearthing the Gardener"
+    ]
+  },
   "enabledPlugins": {},
   "hooks": {
     "Notification": [

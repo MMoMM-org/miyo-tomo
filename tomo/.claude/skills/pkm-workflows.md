@@ -3,44 +3,51 @@ name: pkm-workflows
 description: Inbox lifecycle state machine, note classification heuristics with confidence scoring, and batch processing patterns. Use when implementing the /inbox workflow, detecting note types from captured items, or deciding run-to-run discovery priority (cleanup → pass2 → pass1).
 ---
 # PKM Workflows
-# version: 0.1.0
+# version: 0.2.0
 
 Knowledge patterns for inbox processing state machine, classification heuristics, and batch workflows.
 
 ## State Machine
 
-### Lifecycle States
+### Source Item Tags (Tomo-managed)
 
-| State | Applied To | Set By | Meaning |
-|-------|-----------|--------|---------|
-| `captured` | Inbox items | User or auto-capture | Fresh, untouched |
-| `proposed` | Suggestions doc | Tomo (suggestion-builder) | Pass 1 complete, awaiting review |
-| `confirmed` | Suggestions doc | **User** | Direction approved, ready for Pass 2 |
-| `instructions` | Instruction set | Tomo (instruction-builder) | Pass 2 complete, awaiting application |
-| `applied` | Instruction set | **User** | Actions applied in vault |
-| `active` | Inbox items | Tomo (vault-executor) | Item integrated into vault |
-| `archived` | Suggestions/Instructions | Tomo (vault-executor) | Document retired |
+Source inbox items use lifecycle tags. The user never needs to see or change these —
+Tomo manages them automatically.
 
-### Tag Format
+| State | Set By | Meaning |
+|-------|--------|---------|
+| `captured` | Tomo (auto-tag on first scan) | Fresh, untouched inbox item |
+| `active` | Tomo (vault-executor) | Item integrated into vault |
 
-`#<prefix>/<state>` where prefix is from `vault-config.yaml lifecycle.tag_prefix` (default: `MiYo-Tomo`).
+**Tag format:** `#<prefix>/<state>` where prefix is from `vault-config.yaml lifecycle.tag_prefix`
+(default: `MiYo-Tomo`). Example: `#MiYo-Tomo/captured`
 
-Example: `#MiYo-Tomo/captured`, `#MiYo-Tomo/proposed`
+### Workflow Document Checkboxes (User-facing)
+
+Workflow documents (suggestions, instructions) use **visible checkboxes** instead of
+frontmatter tags. This lets users interact without opening Properties view.
+
+| Document | Checkbox | Set By | Meaning |
+|----------|----------|--------|---------|
+| Suggestions | `- [ ] Approved` | **User** | Check when direction is confirmed for Pass 2 |
+| Instructions | `- [ ] Applied` (per action) | **User** | Check each action as it's applied in the vault |
+
+**No lifecycle tags on workflow documents.** State is determined by checkbox + filename.
 
 ### Invariants
 
-1. Exactly one lifecycle tag per document at any time
-2. Tomo never sets user-owned states (`confirmed`, `applied`)
-3. Transitions are monotonic — no backwards movement
-4. Terminal states: `active` (for source items), `archived` (for workflow documents)
+1. Source items: exactly one lifecycle tag at any time (`captured` or `active`)
+2. Workflow docs: state is derived from checkbox — no tags to manage
+3. Tomo never checks the Approved box — that is the user's job
+4. Transitions are monotonic — no backwards movement
 
 ### Run-to-Run Discovery Priority
 
 When `/inbox` is invoked, check in this order (first non-empty wins):
 
-1. `#<prefix>/applied` → action: cleanup (vault-executor)
-2. `#<prefix>/confirmed` → action: pass2 (instruction-builder)
-3. `#<prefix>/captured` → action: pass1 (inbox-analyst + suggestion-builder)
+1. Find `*_instructions.md` in inbox with all `[x] Applied` → action: cleanup (vault-executor)
+2. Find `*_suggestions.md` in inbox with `[x] Approved` → action: pass2 (instruction-builder)
+3. `#<prefix>/captured` items (byTag) → action: pass1 (inbox-analyst + suggestion-builder)
 4. Nothing found → action: idle
 
 ## Classification Heuristics

@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """
-state-scanner.py — Discover inbox items by lifecycle state via Kado tag search.
+state-scanner.py — Discover source inbox items by lifecycle state via Kado tag search.
 
-Queries the vault for notes tagged with lifecycle state tags and outputs
-results as JSON. Supports three modes:
+Source items use lifecycle tags (`captured`, `active`). Workflow documents
+(suggestions, instructions) use checkboxes instead of tags — those are
+discovered by the inbox command via `listDir` + content parsing, not by
+this script.
+
+Modes:
 
   --state STATE   Find all items with the given state, output JSON array.
-  --discover      Priority discovery: check applied→confirmed→captured,
-                  return the first state that has items + action hint.
-  --all           Scan all states, output grouped by state.
+                  Valid states: captured, active.
+  --discover      Check for captured items (Pass 1 fallback).
+  --all           Scan captured + active, output grouped by state.
 
 Usage:
     python state-scanner.py --state captured [--config PATH]
@@ -33,24 +37,18 @@ from lib.kado_client import KadoClient, KadoError  # noqa: E402
 
 LIFECYCLE_STATES = [
     "captured",
-    "proposed",
-    "confirmed",
-    "instructions",
-    "applied",
     "active",
-    "archived",
 ]
 
 DEFAULT_TAG_PREFIX = "MiYo-Tomo"
 DEFAULT_CONFIG = "config/vault-config.yaml"
 
-# Priority order for --discover mode (highest priority first)
-DISCOVER_PRIORITY = ["applied", "confirmed", "captured"]
+# --discover mode only checks captured items (Pass 1 fallback).
+# Workflow document states (approved suggestions, applied instructions) are
+# discovered by the inbox command via listDir + checkbox parsing.
+DISCOVER_PRIORITY = ["captured"]
 
-# Action mapping for --discover mode
 DISCOVER_ACTIONS = {
-    "applied": "cleanup",
-    "confirmed": "pass2",
     "captured": "pass1",
 }
 

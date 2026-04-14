@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """
-suggestion-parser.py — Parse a confirmed Tomo suggestions document.
+suggestion-parser.py — Parse an approved Tomo suggestions document.
 
-Reads a MiYo-Tomo suggestions markdown file (tagged #MiYo-Tomo/confirmed) and
-extracts user-approved items with any modifications they made to fields,
+Reads a MiYo-Tomo suggestions markdown file (with `[x] Approved` checkbox)
+and extracts user-approved items with any modifications they made to fields,
 alternatives, and action checkboxes.
+
+Accepts multiple section header formats:
+  - Spec format:    ### S01: filename.md    or    ### S01 — Title
+  - LLM output:     ### A1. Title    or    ### B1. Title    (A-E groups)
 
 Usage:
     python suggestion-parser.py --file PATH
@@ -22,8 +26,10 @@ import sys
 # Patterns
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Section header: ### S01: some-note.md  OR  ## S01 — some-note.md
-RE_SECTION_HEADER = re.compile(r"^#{2,3}\s+(S\d+)[:\s—–-]+", re.IGNORECASE)
+# Section header: accept both spec format (S01:) and LLM output format (A1., B1., etc.)
+#   ### S01: filename.md    ### S01 — Title
+#   ### A1. Title           ### B12. Another
+RE_SECTION_HEADER = re.compile(r"^#{2,3}\s+([A-Z]\d+)[.:\s—–-]+", re.IGNORECASE)
 
 # Checkbox lines
 RE_CHECKED = re.compile(r"^\s*-\s+\[x\]\s*(.*)", re.IGNORECASE)

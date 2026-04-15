@@ -108,7 +108,11 @@ For each confirmed item, determine the action type and dispatch:
 
 ### Step 3 — Action Handler: New Atomic Note
 
-1. Look up template from vault-config `templates.mapping.atomic_note`
+1. Read `template` and `location` directly from the confirmed suggestion —
+   they were filled in by `inbox-analyst` in Pass 1 and may have been edited
+   by the user before approval. Do NOT re-resolve via vault-config unless
+   both fields are missing. If the user renamed them in the suggestions
+   doc, the parser captures the edited values.
 2. Read template via Kado `kado-read`
 3. Resolve tokens:
    ```bash

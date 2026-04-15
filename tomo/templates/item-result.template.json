@@ -8,7 +8,8 @@
     {
       "kind": "create_atomic_note",
       "suggested_title": "<SUGGESTED_TITLE>",
-      "destination_concept": "<DESTINATION_CONCEPT>",
+      "template": "<TEMPLATE>",
+      "location": "<LOCATION>",
       "candidate_mocs": [
         {
           "path": "<PATH>",

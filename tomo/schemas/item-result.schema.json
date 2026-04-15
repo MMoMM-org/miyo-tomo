@@ -45,12 +45,15 @@
   "$defs": {
     "create_atomic_note": {
       "type": "object",
-      "required": ["kind", "suggested_title", "destination_concept", "candidate_mocs", "tags_to_add"],
+      "required": ["kind", "suggested_title", "template", "location", "candidate_mocs", "tags_to_add"],
       "additionalProperties": false,
       "properties": {
         "kind": {"const": "create_atomic_note"},
         "suggested_title": {"type": "string", "minLength": 1},
-        "destination_concept": {"type": "string"},
+        "template": {"type": "string", "minLength": 1,
+                     "description": "Obsidian template file name (e.g. 'Atomic Note.md') or concept key (e.g. 'atomic_note') — whichever the user's templates.mapping exposes."},
+        "location": {"type": "string", "minLength": 1,
+                     "description": "Target folder path, vault-relative, trailing slash (e.g. 'Atlas/202 Notes/')."},
         "candidate_mocs": {
           "type": "array",
           "items": {

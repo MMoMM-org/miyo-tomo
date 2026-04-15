@@ -97,14 +97,37 @@ def moc_link_line(moc: dict) -> str:
     return f"- {marker} [[{link}]]"
 
 
+def _template_link(template: str) -> str:
+    """Render a template reference as a wikilink (bare name, no .md).
+
+    Accepts either a full filename ('Atomic Note.md'), a bare name
+    ('Atomic Note'), or a concept key ('atomic_note'). Emits `[[Atomic Note]]`
+    or `[[atomic_note]]` respectively — the user edits if they want.
+    """
+    name = (template or "").strip()
+    if name.endswith(".md"):
+        name = name[:-3]
+    return f"[[{name}]]" if name else ""
+
+
+def _location_link(location: str) -> str:
+    """Render a folder location. Strip trailing slashes; keep as wikilink
+    target so Obsidian opens the folder on click (where supported)."""
+    loc = (location or "").strip().rstrip("/")
+    return f"[[{loc}/]]" if loc else ""
+
+
 def render_create_atomic_note(action: dict, stem: str) -> str:
     lines: list[str] = []
     title = (action.get("suggested_title") or "").strip() or stem
     lines.append(f"**Source:** [[{stem}]]")
     lines.append(f"**Suggested name:** {title}")
-    dest = action.get("destination_concept")
-    if dest:
-        lines.append(f"**Destination:** {dest}")
+    template = action.get("template")
+    if template:
+        lines.append(f"**Template:** {_template_link(template)}    ← change if you want a different template")
+    location = action.get("location")
+    if location:
+        lines.append(f"**Location:** {_location_link(location)}    ← change if you want a different folder")
 
     mocs = action.get("candidate_mocs") or []
     if mocs:
@@ -117,9 +140,11 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
         topic = action.get("proposed_moc_topic") or ""
         if topic:
             lines.append("")
-            cls = action.get("classification") or {}
-            parent = f" under [[{cls['category']}]]" if cls.get("category") else ""
-            lines.append(f"**Propose new MOC:** {topic} (MOC){parent}")
+            lines.append(
+                f"**Note:** No good thematic MOC matched. A proposed new MOC for this item is "
+                f"shown in the **Proposed MOCs** section below (topic: *{topic}*) where you can "
+                f"approve creation or edit the name."
+            )
 
     tags = [t for t in (action.get("tags_to_add") or []) if t]
     if tags:

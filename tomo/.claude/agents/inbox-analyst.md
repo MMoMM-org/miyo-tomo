@@ -207,17 +207,21 @@ Step 10.2 — substitute placeholders using the values from Steps 2-9:
 | `<PATH>` (top-level) | input `path` | vault path of the source note |
 | `<TYPE>` | Step 3 | e.g. `coding_insight`, `system_action`, `quote`, `fleeting_note`, `attachment` |
 | `<SUGGESTED_TITLE>` | Step 7 | descriptive title from CONTENT of THIS item — never a parroted example |
-| `<DESTINATION_CONCEPT>` | vault-config concept key | `atomic_note`, `asset`, `map_note`, `project`, `area`, `source` — NEVER a path or classification label |
+| `<TEMPLATE>` | vault-config `templates.mapping.<concept>` | Obsidian template filename (e.g. `Atomic Note.md`). Look up the template file name matching the concept (atomic_note → `templates.mapping.atomic_note`). If no template mapping exists for the chosen concept, fall back to the concept key (e.g. `atomic_note`) and let the user fill it in. |
+| `<LOCATION>` | vault-config `concepts.<concept>` | Target folder path, vault-relative, trailing slash (e.g. `Atlas/202 Notes/`). Resolve via `scripts/read-config-field.py --field concepts.<concept>`. |
 | `<CATEGORY>` (classification) | Step 5 | Dewey label like `2600 - Applied Sciences` |
 | `<PROPOSED_MOC_TOPIC>` | Step 4 when `needs_new_moc: true` | short thematic phrase |
 | `<DATE>` | Step 8 date_relevance | `YYYY-MM-DD` |
 | `candidate_mocs[].path` | Step 4 | MOC path including `.md` |
 | Numeric fields | Steps 3/5/7 | actual floats 0.0-1.0 |
 
-**Forbidden aliases (these break the reducer):**
+**Forbidden aliases (these break the reducer and fail validation):**
 - Use `suggested_title` — NOT `title`.
 - Use nested `classification: {category, confidence}` — NOT flat
   `classification_category` + `classification_confidence`.
+- Use SEPARATE `template` + `location` fields — NOT a single
+  `destination_concept` or `destination`. These must be distinct so the
+  user can edit either independently in the Suggestions document.
 - `candidate_mocs[]` entries MUST be objects with `path`, `score`,
   `pre_check` — never bare strings, never missing fields.
 - `issues[]` contains STRINGS, not objects. If you need to record a reason

@@ -236,10 +236,12 @@ Then render `tomo-tmp/suggestions-doc.json` to markdown:
    ## Proposed MOCs  (only if non-empty)
 
    ### Proposed MOC: <topic>
-   **Items:** <items joined>
-   **Parent:** [[<parent>]]
-   - [x] Create new MOC "<topic> (MOC)" under [[<parent>]]
-   - [ ] Skip
+   - **Name:** <topic> (MOC)    ← edit this to rename the MOC before approving
+   - **Parent:** [[<parent>]]    ← change parent MOC if needed
+   - **Supporting items:** <items joined>
+   - **Decision:**
+     - [ ] Approve (create this MOC with the Name above)
+     - [ ] Skip — don't create, items stay with their individual MOC matches
 
    ## Needs Attention  (only if non-empty)
 

@@ -36,7 +36,7 @@ ALLOWED_KINDS = {
 }
 REQUIRED_PER_KIND = {
     "create_atomic_note": {
-        "kind", "suggested_title", "destination_concept", "candidate_mocs", "tags_to_add",
+        "kind", "suggested_title", "template", "location", "candidate_mocs", "tags_to_add",
     },
     "update_daily": {"kind", "date", "daily_note_path", "updates"},
     "link_to_moc": {"kind", "target_moc", "section_name"},
@@ -48,6 +48,8 @@ FORBIDDEN_PER_KIND_ATOMIC = {
     "title": "use `suggested_title` instead",
     "classification_category": "use `classification: {category, confidence}` instead",
     "classification_confidence": "use nested `classification.confidence` instead",
+    "destination_concept": "split into `template` (Obsidian template name) and `location` (target folder path)",
+    "destination": "split into `template` and `location`",
 }
 
 

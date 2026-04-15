@@ -51,6 +51,28 @@ You never leave ambiguity in an instruction.
 
 ## Workflow
 
+### Step 0 — Resolve paths from vault-config (ALWAYS FIRST)
+
+Do NOT hardcode any vault-relative path. Before reading or writing anything
+in the vault, resolve the paths you need. Run each as its own Bash call
+(one command per call, no chaining):
+
+```bash
+python3 scripts/read-config-field.py --field concepts.inbox
+```
+
+```bash
+python3 scripts/read-config-field.py --field concepts.atomic_note --default "Atlas/202 Notes/"
+```
+
+```bash
+python3 scripts/read-config-field.py --field concepts.template --default "X/900 Support/Templates/"
+```
+
+Remember the resolved literals. Wherever the workflow below uses `<inbox>`,
+`<atomic_note_path>`, or `<template_path>`, substitute the resolved value —
+never a hardcoded path like `"Inbox"` or `"Atlas/202 Notes/"`.
+
 ### Step 1 — Parse Approved Suggestions
 
 **STRICT:** Do NOT write any new scripts or shell wrappers. Do NOT do exploratory

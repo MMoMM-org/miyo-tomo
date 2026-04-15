@@ -85,17 +85,21 @@ def normalise_topic(topic: str) -> str:
 # ── Rendering ────────────────────────────────────────────────────────────────
 
 def moc_link_line(moc: dict) -> str:
+    """Render a candidate-MOC checkbox line. MOC must be a dict per schema."""
     path = moc.get("path", "")
-    link = path
-    if link.endswith(".md"):
-        link = link[:-3]
-    marker = "[x]" if moc.get("pre_check") else "[ ]"
+    link = path[:-3] if path.endswith(".md") else path
+    # pre_check is explicit per schema. If omitted, infer from score ≥ 0.5.
+    if "pre_check" in moc:
+        is_checked = bool(moc.get("pre_check"))
+    else:
+        is_checked = (moc.get("score") or 0) >= 0.5
+    marker = "[x]" if is_checked else "[ ]"
     return f"- {marker} [[{link}]]"
 
 
 def render_create_atomic_note(action: dict, stem: str) -> str:
     lines: list[str] = []
-    title = action.get("suggested_title", "").strip() or stem
+    title = (action.get("suggested_title") or "").strip() or stem
     lines.append(f"**Source:** [[{stem}]]")
     lines.append(f"**Suggested name:** {title}")
     dest = action.get("destination_concept")
@@ -113,10 +117,8 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
         topic = action.get("proposed_moc_topic") or ""
         if topic:
             lines.append("")
-            parent = ""
             cls = action.get("classification") or {}
-            if cls.get("category"):
-                parent = f" under [[{cls['category']}]]"
+            parent = f" under [[{cls['category']}]]" if cls.get("category") else ""
             lines.append(f"**Propose new MOC:** {topic} (MOC){parent}")
 
     tags = [t for t in (action.get("tags_to_add") or []) if t]
@@ -127,11 +129,18 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
     cls = action.get("classification") or {}
     why_bits = []
     if cls.get("category"):
-        why_bits.append(f"Classification {cls['category']} ({int((cls.get('confidence') or 0) * 100)}%)")
-    if mocs and mocs[0].get("pre_check"):
-        why_bits.append(f"best MOC match {mocs[0].get('path','')} ({int((mocs[0].get('score') or 0) * 100)}%)")
+        why_bits.append(
+            f"Classification {cls['category']} ({int((cls.get('confidence') or 0) * 100)}%)"
+        )
+    top = mocs[0] if mocs else None
+    if top and (top.get("pre_check") or (top.get("score") or 0) >= 0.5):
+        why_bits.append(
+            f"best MOC match {top.get('path','')} ({int((top.get('score') or 0) * 100)}%)"
+        )
     if action.get("atomic_note_worthiness") is not None:
-        why_bits.append(f"atomic-worthiness {int(action['atomic_note_worthiness'] * 100)}%")
+        why_bits.append(
+            f"atomic-worthiness {int(action['atomic_note_worthiness'] * 100)}%"
+        )
     if why_bits:
         lines.append("")
         lines.append("**Why:** " + "; ".join(why_bits) + ".")

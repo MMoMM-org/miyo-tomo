@@ -88,6 +88,16 @@ Fresh run. **Run each step as a SEPARATE Bash tool call — do NOT chain with
 `&&` or `;`.** After each step, read its stdout/stderr in the tool result
 before issuing the next step.
 
+Step A0 — resolve the inbox path from vault-config (PATHS NEVER HARDCODED):
+
+```bash
+python3 scripts/read-config-field.py --field concepts.inbox
+```
+
+The stdout is the inbox path literal (e.g. `100 Inbox/`). Remember it.
+Use it in Step A5 AND in the final Phase-C `kado-write` target path. If
+this command fails (field missing), stop the run and surface the error.
+
 Step A1 — ensure scratch dir exists:
 
 ```bash
@@ -237,7 +247,9 @@ Then render `tomo-tmp/suggestions-doc.json` to markdown:
    **Error:** <error>
    ```
 3. Write to the vault via `kado-write` at
-   `<inbox>/<YYYY-MM-DD_HHMM>_suggestions.md`.
+   `<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.md` — where `<INBOX_PATH>` is
+   the literal resolved in Step A0 (e.g. `100 Inbox/`). Do NOT reinvent a
+   path like `"Inbox"` or `"inbox/"`.
 
 **Never** emit this document via Bash heredoc. **Always** via `kado-write`.
 

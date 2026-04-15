@@ -119,6 +119,21 @@ should expose it as output, not the doc.
   `scripts/read-config-field.py --field <dotted> --default <fallback>`
   (read a field from `config/vault-config.yaml`). Extend those rather than
   inlining.
+- **NEVER hardcode vault-relative paths** like `"Inbox"`, `"100 Inbox/"`,
+  `"Atlas/200 Maps/"`, `"Calendar/301 Daily/"`. These vary per vault. Always
+  resolve from `config/vault-config.yaml` via
+  `scripts/read-config-field.py --field <dotted>` before any Kado call,
+  then reuse the resolved literal through the rest of the task. Common
+  fields and their typical content:
+    - `concepts.inbox` — inbox folder path (e.g. `100 Inbox/`)
+    - `concepts.atomic_note` — atomic-note folder (e.g. `Atlas/202 Notes/`)
+    - `concepts.map_note.paths` — MOC folder list
+    - `concepts.calendar.granularities.daily.path` — daily-note folder
+    - `concepts.template` or `templates.base_path` — template folder
+    - `concepts.asset` — attachment folder
+    - `profile` — active profile name
+  Illustrative paths in agent prose (e.g. example file references) are
+  fine. Executed paths must always be resolved.
 
 ## Security Model
 

@@ -149,6 +149,13 @@ for f in "$TOMO_SOURCE/schemas/"*.json; do
     print_ok "schemas/$name"
 done
 
+print_step "Regenerating templates from schemas"
+mkdir -p "$INSTANCE_PATH/templates"
+python3 "$REPO_ROOT/scripts/template-from-schema.py" \
+    --schema "$INSTANCE_PATH/schemas/item-result.schema.json" \
+    --output "$INSTANCE_PATH/templates/item-result.template.json" \
+    >/dev/null 2>&1 && print_ok "templates/item-result.template.json"
+
 # ── Ensure tomo-tmp scratch dirs exist ───────────────────
 mkdir -p "$INSTANCE_PATH/tomo-tmp/items"
 

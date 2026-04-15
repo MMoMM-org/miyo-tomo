@@ -13,16 +13,31 @@ Auto-detects what to do next based on workflow document checkboxes.
 
 ## How It Works
 
+### Step 0 — Resolve the inbox path (ALWAYS FIRST)
+
+Before any `listDir` or scan, resolve the vault-relative inbox path from
+`config/vault-config.yaml`. Do NOT hardcode `"Inbox"` or `"100 Inbox/"` —
+the path varies per vault. Run:
+
+```bash
+python3 scripts/read-config-field.py --field concepts.inbox --default "100 Inbox/"
+```
+
+The stdout is the inbox path (e.g. `100 Inbox/`). Use that literal in every
+subsequent `kado-search listDir` call and when dispatching to the orchestrator.
+**STRICT:** do not invent a shorter or prettier path like `"Inbox"`.
+
 ### Auto-Discovery (default)
 
-The command checks in priority order:
+After Step 0 resolves the inbox path, the command checks in priority order:
 
 1. **Instruction sets with Applied actions?** → Run cleanup (vault-executor)
-   - Scan inbox for `*_instructions.md` via Kado `listDir`
+   - Scan the resolved inbox path for `*_instructions.md` via Kado `listDir`
+     (pass the resolved path, not a literal like `"Inbox"`)
    - Read each, count `- [x] Applied` vs total actions
    - Any with at least one Applied → cleanup
 2. **Suggestions with `[x] Approved`?** → Run Pass 2 (instruction-builder)
-   - Scan inbox for `*_suggestions.md` via Kado `listDir`
+   - Scan the resolved inbox path for `*_suggestions.md` via Kado `listDir`
    - Read each, check for `- [x] Approved` at top
 3. **Captured source items?** → Run Pass 1 via `inbox-orchestrator`
    - Dispatches to the `inbox-orchestrator` agent, which runs the fan-out

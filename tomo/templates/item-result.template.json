@@ -1,0 +1,41 @@
+{
+  "schema_version": "1",
+  "stem": "<STEM>",
+  "path": "<PATH>",
+  "type": "<TYPE>",
+  "type_confidence": 0.0,
+  "actions": [
+    {
+      "kind": "create_atomic_note",
+      "suggested_title": "<SUGGESTED_TITLE>",
+      "destination_concept": "<DESTINATION_CONCEPT>",
+      "candidate_mocs": [
+        {
+          "path": "<PATH>",
+          "score": 0.0,
+          "pre_check": false
+        }
+      ],
+      "tags_to_add": [],
+      "classification": {
+        "category": "<CATEGORY>",
+        "confidence": 0.0
+      },
+      "needs_new_moc": false,
+      "proposed_moc_topic": "<PROPOSED_MOC_TOPIC>",
+      "atomic_note_worthiness": 0.0,
+      "alternatives": [
+        {
+          "kind": "<KIND>",
+          "reason": "<REASON>"
+        }
+      ]
+    }
+  ],
+  "date_relevance": {
+    "date": "<DATE>",
+    "source": "filename"
+  },
+  "issues": [],
+  "duration_ms": 0
+}

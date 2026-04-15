@@ -186,26 +186,73 @@ Items can produce MULTIPLE actions:
 **Attachments** (type == "attachment"): one `create_atomic_note` with
 destination_concept = `"asset"`, title = stem, candidate_mocs empty.
 
-### Step 10 — Write result.json
+### Step 10 — Fill the result template and write it
 
-Build the result object matching `schemas/item-result.schema.json` exactly:
+**Do NOT compose the JSON from scratch.** A skeleton template matching
+`schemas/item-result.schema.json` is generated at install/update time and
+lives at `templates/item-result.template.json`. Read it, fill in the
+placeholders, write the result.
 
-```json
-{
-  "schema_version": "1",
-  "stem": "<stem>",
-  "path": "<path>",
-  "type": "<type>",
-  "type_confidence": 0.NN,
-  "date_relevance": null | {"date": "YYYY-MM-DD", "source": "..."},
-  "issues": [],
-  "duration_ms": <int>,
-  "actions": [ { "kind": "create_atomic_note", ... } ]
-}
+Step 10.1 — read the template with the `Read` tool:
+
+```
+templates/item-result.template.json
 ```
 
-Write it with the `Write` tool to `<items_dir>/<stem>.result.json`. Do NOT
-use Bash heredoc. Do NOT use `kado-write`.
+Step 10.2 — substitute placeholders using the values from Steps 2-9:
+
+| Placeholder | Source | Rules |
+|---|---|---|
+| `<STEM>` | input `stem` | literal filename without `.md` |
+| `<PATH>` (top-level) | input `path` | vault path of the source note |
+| `<TYPE>` | Step 3 | e.g. `coding_insight`, `system_action`, `quote`, `fleeting_note`, `attachment` |
+| `<SUGGESTED_TITLE>` | Step 7 | descriptive title from CONTENT of THIS item — never a parroted example |
+| `<DESTINATION_CONCEPT>` | vault-config concept key | `atomic_note`, `asset`, `map_note`, `project`, `area`, `source` — NEVER a path or classification label |
+| `<CATEGORY>` (classification) | Step 5 | Dewey label like `2600 - Applied Sciences` |
+| `<PROPOSED_MOC_TOPIC>` | Step 4 when `needs_new_moc: true` | short thematic phrase |
+| `<DATE>` | Step 8 date_relevance | `YYYY-MM-DD` |
+| `candidate_mocs[].path` | Step 4 | MOC path including `.md` |
+| Numeric fields | Steps 3/5/7 | actual floats 0.0-1.0 |
+
+**Forbidden aliases (these break the reducer):**
+- Use `suggested_title` — NOT `title`.
+- Use nested `classification: {category, confidence}` — NOT flat
+  `classification_category` + `classification_confidence`.
+- `candidate_mocs[]` entries MUST be objects with `path`, `score`,
+  `pre_check` — never bare strings, never missing fields.
+- `issues[]` contains STRINGS, not objects. If you need to record a reason
+  for `needs_new_moc`, put it in the action itself, not in `issues`.
+
+**Cleanup of optional fields:**
+- If `date_relevance` is not detected, either SET IT TO `null` or REMOVE
+  the key entirely from your output. Do NOT leave the placeholder object.
+- If `classification` cannot be determined, REMOVE the key (it is optional).
+- If `needs_new_moc: false`, set `proposed_moc_topic: null` or remove it.
+- `alternatives` can stay `[]` when you have none.
+
+**Pre-check rule for candidate_mocs:**
+- `pre_check: true` only when `score ≥ 0.5` AND the MOC is thematic
+  (`is_classification: false` in shared-ctx). Never pre-check classification-
+  layer MOCs — emit `needs_new_moc: true` with a `proposed_moc_topic` instead.
+
+Step 10.3 — write the filled JSON with the `Write` tool to
+`<items_dir>/<stem>.result.json`. Do NOT use Bash heredoc. Do NOT use
+`kado-write`.
+
+### Step 10b — Validate before announcing done
+
+After writing the result, validate it against the schema:
+
+```bash
+python3 scripts/validate-result.py --result tomo-tmp/items/<stem>.result.json
+```
+
+If validation fails (non-zero exit), DO NOT mark the item done. Instead:
+1. Re-read the validator's stderr output.
+2. Rewrite the result.json with the reported fields corrected.
+3. Re-run the validator.
+4. If it still fails after one retry, mark the item `failed` with
+   `error-kind=schema_invalid` and the first error line as the message.
 
 ### Step 11 — Announce completion
 

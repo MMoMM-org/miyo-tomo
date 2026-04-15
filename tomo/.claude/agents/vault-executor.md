@@ -34,6 +34,15 @@ set is always safe.
 
 ### Step 1 — Find Instruction Sets with Applied Actions
 
+Resolve the inbox path first (NEVER hardcoded):
+
+```bash
+python3 scripts/read-config-field.py --field concepts.inbox
+```
+
+The stdout is the literal inbox path. Use that value in the `listDir` call
+below — not `"Inbox"`, not `"inbox/"`.
+
 List the inbox folder via Kado `kado-search listDir`. Find files matching
 `*_instructions.md`. Read each one and parse the per-action checkboxes.
 

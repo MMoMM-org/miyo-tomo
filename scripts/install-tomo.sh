@@ -1014,6 +1014,16 @@ print_ok "profiles/"
 mkdir -p "$INSTANCE_PATH/schemas"
 cp "$TOMO_SOURCE/schemas/"*.json "$INSTANCE_PATH/schemas/"
 print_ok "schemas/"
+
+# JSON templates — generated from schemas; consumed by agents at runtime
+mkdir -p "$INSTANCE_PATH/templates"
+# Regenerate in the instance from the authoritative schemas so the template
+# is always current. No py-yaml dep — uses stdlib only.
+python3 "$REPO_ROOT/scripts/template-from-schema.py" \
+    --schema "$INSTANCE_PATH/schemas/item-result.schema.json" \
+    --output "$INSTANCE_PATH/templates/item-result.template.json" \
+    >/dev/null 2>&1 || cp "$TOMO_SOURCE/templates/"*.json "$INSTANCE_PATH/templates/" 2>/dev/null
+print_ok "templates/"
 print_ok "settings.json"
 
 # ── Render templates ──────────────────────────────────────

@@ -47,7 +47,7 @@ When `/inbox` is invoked, check in this order (first non-empty wins):
 
 1. Find `*_instructions.md` in inbox with all `[x] Applied` → action: cleanup (vault-executor)
 2. Find `*_suggestions.md` in inbox with `[x] Approved` → action: pass2 (instruction-builder)
-3. `#<prefix>/captured` items (byTag) → action: pass1 (inbox-analyst + suggestion-builder)
+3. `#<prefix>/captured` items (byTag) → action: pass1 (inbox-orchestrator → fan-out inbox-analyst subagents)
 4. Nothing found → action: idle
 
 ## Classification Heuristics

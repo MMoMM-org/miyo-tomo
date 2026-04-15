@@ -66,10 +66,10 @@ If the connection succeeds, report: "Connected to Kado. Vault root reachable."
 Run the structure scanner and save its output for the cache pipeline (Step 9):
 
 ```bash
-python3 scripts/vault-scan.py --config config/vault-config.yaml > "$TMPDIR/scan-output.json"
+python3 scripts/vault-scan.py --config config/vault-config.yaml > "tomo-tmp/scan-output.json"
 ```
 
-Read `$TMPDIR/scan-output.json` to present results as a table showing mapped concepts with
+Read `tomo-tmp/scan-output.json` to present results as a table showing mapped concepts with
 note counts. The file includes subdirectories with Dewey flags for all concepts that have them.
 
 If there are unmapped folders, use AskUserQuestion (multiSelect: true) to let the user pick
@@ -170,17 +170,17 @@ If a template is missing, offer to:
 Run the MOC tree builder, then the cache builder. Both scripts produce JSON that
 `cache-builder.py` assembles into the final `discovery-cache.yaml`.
 
-**IMPORTANT:** The `$TMPDIR/scan-output.json` file was created in Step 2. If it is missing,
+**IMPORTANT:** The `tomo-tmp/scan-output.json` file was created in Step 2. If it is missing,
 re-run Step 2 first.
 
 ```bash
 # Discover and index all MOCs
-python3 scripts/moc-tree-builder.py --config config/vault-config.yaml > "$TMPDIR/moc-output.json"
+python3 scripts/moc-tree-builder.py --config config/vault-config.yaml > "tomo-tmp/moc-output.json"
 
 # Build the discovery cache — output MUST go to config/discovery-cache.yaml
 python3 scripts/cache-builder.py \
-  --structure "$TMPDIR/scan-output.json" \
-  --mocs "$TMPDIR/moc-output.json" \
+  --structure "tomo-tmp/scan-output.json" \
+  --mocs "tomo-tmp/moc-output.json" \
   --output config/discovery-cache.yaml \
   --start-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
@@ -214,6 +214,26 @@ Present a completion summary showing:
 - Cache: output path confirmation
 
 Close with: "Run /inbox to start processing notes."
+
+### Step 10b — Write Human-Readable Summary
+
+Also write a concise Markdown summary to `config/vault-config.md` so the user can
+read and edit it outside the YAML file. Sections (in order):
+- Vault Info (name, inbox path, framework name, total notes/files)
+- Folder Layout (concept → path → note count table, unmapped folders)
+- MOCs (count, key MOC titles, relationship marker pattern)
+- Tag Taxonomy (namespace count, prefix table with examples)
+- Frontmatter Patterns (required/optional/project/daily field lists)
+- Relationships (markers and positions)
+- Callouts (protected/editable/ignore lists)
+- Trackers (if daily notes enabled)
+
+Keep the summary readable and short — the YAML is the source of truth; this file is
+for human scanning. Header frontmatter: `version: 0.2.0` and `Updated by vault-explorer
+on YYYY-MM-DD` as a comment below.
+
+**STRICT:** Write to `config/vault-config.md` only. Do NOT write to
+`.claude/rules/vault-config.md` — that location is obsolete.
 
 ## Re-Run Behavior
 

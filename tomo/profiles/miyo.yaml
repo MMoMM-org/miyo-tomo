@@ -9,7 +9,7 @@ base_structure: "ACE-modified"  # Atlas, Calendar, Efforts + X support folder
 
 # Concept → folder mapping defaults
 concept_defaults:
-  inbox: "+/"
+  inbox: "100 Inbox/"
 
   atomic_note:
     base_path: "Atlas/202 Notes/"
@@ -44,15 +44,15 @@ concept_defaults:
     base_path: "Calendar/"
     granularities:
       daily:     { enabled: true,  path: "Calendar/301 Daily/" }
-      weekly:    { enabled: false, path: null }
-      monthly:   { enabled: false, path: null }
-      quarterly: { enabled: false, path: null }
-      yearly:    { enabled: false, path: null }
+      weekly:    { enabled: true, path: "Calendar/302 Weekly/" }
+      monthly:   { enabled: true, path: "Calendar/303 Monthly/" }
+      quarterly: { enabled: true, path: "Calendar/304 Quarterly/" }
+      yearly:    { enabled: true, path: "Calendar/306 Yearly/" }
 
-  project: "Efforts/Projects/"
-  area: "Efforts/Areas/"
-  source: "Atlas/Sources/"
-  template: "X/900 Support/Templates/"
+  project: "Efforts/400 On/"
+  area: "Efforts/500 OnGoing/"
+  source: "X/600 Resources/602 External Sources/"
+  template: "X/900 Support/930 Templater/"
   asset: "Atlas/290 Assets/295 Attachments/"
 
 # Classification system (LYT Dewey variant, personalized)

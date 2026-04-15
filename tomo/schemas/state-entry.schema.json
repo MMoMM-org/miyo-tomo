@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/state-entry.schema.json",
+  "title": "Inbox State Entry",
+  "description": "One line in tomo-tmp/inbox-state.jsonl. Append-only; last line per stem wins.",
+  "type": "object",
+  "required": ["run_id", "stem", "path", "status", "attempts"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {"type": "string", "minLength": 1},
+    "stem": {"type": "string", "minLength": 1},
+    "path": {"type": "string", "minLength": 1},
+    "status": {"type": "string", "enum": ["pending", "running", "done", "failed"]},
+    "attempts": {"type": "integer", "minimum": 0},
+    "started_at": {"type": ["string", "null"]},
+    "completed_at": {"type": ["string", "null"]},
+    "error": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["kind", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {"type": "string"},
+            "message": {"type": "string", "maxLength": 1024}
+          }
+        }
+      ]
+    }
+  }
+}

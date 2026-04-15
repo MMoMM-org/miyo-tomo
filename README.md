@@ -1,3 +1,8 @@
+
+<p align="center">
+  <img src="assets/tomo_banner_clean.svg" alt="MiYo Tomo — Personal Knowledge Companion" width="680">
+</p>
+
 # MiYo Tomo (友)
 
 > ⚠️ **Alpha** — Tomo is under active development. Expect breaking changes, rough edges, and evolving commands. Feedback and issues welcome.
@@ -5,11 +10,6 @@
 AI-assisted PKM workflows for Obsidian via [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) MCP server.
 
 Tomo runs inside an isolated Docker container. All vault access goes through Kado — no direct filesystem access to your Obsidian vault.
-
-<p align="center">
-  <img src="assets/tomo_banner_clean.svg" alt="MiYo Tomo — Personal Knowledge Companion" width="680">
-</p>
-
 
 ## What Tomo Does
 
@@ -126,8 +126,8 @@ miyo-tomo/
 | Agent | Role |
 |-------|------|
 | `vault-explorer` | Scans vault structure, builds MOC tree, generates discovery cache |
-| `inbox-analyst` | Classifies inbox items through the 4-layer Knowledge Stack |
-| `suggestion-builder` | Pass 1 — generates suggestions with alternatives and confidence |
+| `inbox-orchestrator` | Pass 1 coordinator — fan-out pipeline over the inbox |
+| `inbox-analyst` | Pass 1 subagent — classifies ONE item per invocation |
 | `instruction-builder` | Pass 2 — generates detailed instruction set with rendered templates |
 | `vault-executor` | Cleanup — archives processed documents, transitions lifecycle states |
 

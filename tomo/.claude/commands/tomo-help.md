@@ -149,7 +149,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - Kado MCP config lives in `.mcp.json` at the instance root
   - Default: `http://host.docker.internal:23026/mcp`
   - Bearer token must start with `kado_`
-  - Human-readable docs: `.claude/rules/kado-config.md`
+  - Human-readable docs: `config/kado-config.md`
 
 - **git / git user / git author / .gitconfig** →
   - Container has `~/.gitconfig` written by `install-tomo.sh` from host's global config (or user-entered values)
@@ -181,8 +181,9 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - No cleanup or re-install needed; your instance state survives
 
 - **first run / setup incomplete / nothing happens / don't know where to start** →
-  - After `install-tomo.sh`, the first command to run is `/explore-vault`
-  - That builds `config/discovery-cache.yaml` — without it, `/inbox` has no context
+  - After `install-tomo.sh`, the first command to run is `/tomo-setup`
+  - It delegates to `/explore-vault` to build `config/discovery-cache.yaml` — without
+    that cache, `/inbox` has no context
   - If the installer generated `begin-tomo.sh` correctly, the launcher shows a first-run banner automatically
 
 ### Operations

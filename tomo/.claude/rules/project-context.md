@@ -26,7 +26,7 @@ Tomo is framework-agnostic PKM intelligence. It analyses inbox notes, proposes o
 
 Every inbox workflow runs in two passes:
 
-1. **Pass 1 — Suggestions** (`suggestion-builder`): High-level proposals with alternatives and confidence scores. User reviews and confirms the *direction*.
+1. **Pass 1 — Suggestions** (`inbox-orchestrator` → fan-out to `inbox-analyst` subagents): High-level proposals with alternatives and confidence scores. User reviews and confirms the *direction*.
 2. **Pass 2 — Instruction Set** (`instruction-builder`): Detailed, human-readable instructions based on confirmed direction. User reviews and applies each action.
 
 This catches misclassifications early before detailed work is committed.
@@ -50,8 +50,8 @@ Outside-inbox changes (create notes, add MOC links, update trackers, apply tag c
 | Agent | Role |
 |-------|------|
 | `vault-explorer` | Reads vault structure, MOCs, tags, frontmatter (read-only) |
-| `inbox-analyst` | Classifies inbox items through the 4-layer stack |
-| `suggestion-builder` | Pass 1 — generates high-level Suggestions document |
+| `inbox-orchestrator` | Pass 1 coordinator — Phase A + B + C of fan-out pipeline |
+| `inbox-analyst` | Pass 1 subagent — classifies ONE inbox item, emits one result.json |
 | `instruction-builder` | Pass 2 — generates detailed Instruction Set |
 | `vault-executor` | Inbox-side cleanup only (tagging, archiving) |
 
@@ -70,19 +70,45 @@ When presenting choices or asking for confirmation, always use the AskUserQuesti
 instead of plain text questions. This gives the user a clean selector UI with clickable
 options. Apply this in all agents, skills, and commands — not just vault-explorer.
 
+## Script Contract (for agents and skills)
+
+Agent and skill docs are the CALLER's guide, not script documentation. For each script,
+the doc states:
+1. **Purpose** — what the agent wants (e.g. "parse approved suggestions into JSON")
+2. **Invocation** — the exact command line, with inputs
+3. **Output shape** — the fields the agent will read downstream
+4. **Next step** — what the agent does with the result
+
+Do NOT explain the script's internal algorithm, parsing logic, regex patterns, or
+error-handling strategy. If the script changes its internals, only the script docs
+change — agent docs do not. If the agent needs to know an internal detail, the script
+should expose it as output, not the doc.
+
 ## Bash & Python Rules
 
 - **NEVER use `python3 -c` with inline scripts.** Claude Code's security validation flags
   `#` characters (Python comments) inside quoted arguments as potential injection.
-- **NEVER write new scripts** (bash or python) to `/tmp`, `$TMPDIR`, or anywhere else.
+- **NEVER write new scripts** (bash or python) to `/tmp`, `tomo-tmp/`, or anywhere else.
   All the scripts you need already exist in `scripts/` inside the instance. Ad-hoc
   "wrapper" scripts are a sign you're missing the right tool — ask the user instead.
-- **`$TMPDIR` is for data only** — suggestions content read from Kado, JSON pipeline
-  outputs (`scan-output.json`, `moc-output.json`). Never for executable scripts.
+- **Pipeline scratch dir is `tomo-tmp/`** (relative to the instance root) — use it for
+  data only: suggestions content read from Kado, JSON pipeline outputs
+  (`scan-output.json`, `moc-output.json`). Never for executable scripts.
+  Do NOT use `$TMPDIR` or `/tmp` — the relative `tomo-tmp/` path avoids sandbox
+  and Docker/host path mismatches.
 - **Don't explore existing scripts at runtime.** Don't `ls scripts/` or `cat scripts/foo.py`
   just to see what's available — the agent definitions already tell you which script to
   run for each step. Run it directly.
 - Always call existing `scripts/*.py` over ad-hoc code.
+- **Never append `2>&1; echo "EXIT:$?"`** (or similar exit-code echo tails) to Bash
+  commands. The tool already surfaces exit status; the trailing `echo` trips Claude
+  Code's Bash validator ("Unhandled node type: string") and forces an extra user
+  approval for every command. Run the command plain: `python3 scripts/foo.py --args`.
+  If you need stderr inline, use `2>&1` alone — no `; echo` tail.
+- **Never use Bash heredocs (`cat <<'EOF' > file`) to write files.** Large heredocs
+  trip the command parser ("Parser aborted: over-length") and force approvals. Use
+  the `Write` tool for scratch / `tomo-tmp/`, or `kado-write` for vault files. Those
+  tools handle arbitrary size without parser limits.
 
 ## Security Model
 

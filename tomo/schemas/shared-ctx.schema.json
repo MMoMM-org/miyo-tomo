@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/shared-ctx.schema.json",
+  "title": "Shared Context",
+  "description": "Distilled classifier context shared across all Phase-B subagents in one /inbox run.",
+  "type": "object",
+  "required": ["schema_version", "run_id", "mocs", "tag_prefixes", "classification_keywords"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "mocs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "title", "topics", "is_classification"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "title": {"type": "string", "minLength": 1},
+          "topics": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+          "is_classification": {"type": "boolean"}
+        }
+      }
+    },
+    "tag_prefixes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "wildcard", "known_values"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "wildcard": {"type": "boolean"},
+          "known_values": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "classification_keywords": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "string"}
+      }
+    },
+    "daily_notes": {
+      "type": "object",
+      "required": ["enabled", "path_pattern", "date_formats", "tracker_fields"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "path_pattern": {"type": "string"},
+        "date_formats": {"type": "array", "items": {"type": "string"}},
+        "tracker_fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type", "section", "syntax", "keywords"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string"},
+              "type": {"type": "string", "enum": ["bool", "rating_1_5", "text", "number", "duration"]},
+              "section": {"type": "string"},
+              "syntax": {"type": "string", "enum": ["inline_field", "callout_body", "checkbox"]},
+              "keywords": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    }
+  }
+}

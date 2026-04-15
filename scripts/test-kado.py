@@ -448,7 +448,7 @@ def main() -> int:
         return 0
     else:
         print(f"{C_BOLD}{C_RED}━━━ Some Kado checks failed ━━━{C_RESET}")
-        print(f"  {C_DIM}See .claude/rules/kado-config.md for configuration details.{C_RESET}")
+        print(f"  {C_DIM}See config/kado-config.md for configuration details.{C_RESET}")
         return 1
 
 

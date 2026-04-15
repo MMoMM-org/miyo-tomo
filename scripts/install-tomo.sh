@@ -946,7 +946,7 @@ lifecycle:
 
 # Everything else (naming, templates, frontmatter, relationships,
 # callouts, tags) comes from the profile defaults.
-# Run /explore-vault in Tomo to detect and configure these.
+# Run /tomo-setup in Tomo to detect and configure these (delegates to /explore-vault).
 YAMLEOF
 
     print_ok "vault-config.yaml"
@@ -1003,6 +1003,17 @@ chmod +x "$INSTANCE_PATH/scripts/tomo-statusline.sh"
 mkdir -p "$INSTANCE_PATH/scripts/lib"
 cp "$REPO_ROOT/scripts/lib/"*.py "$INSTANCE_PATH/scripts/lib/"
 print_ok "scripts (Python runtime + statusline + lib/)"
+
+# Profiles — needed at runtime so shared-ctx-builder and other tools can load
+# classification keywords and other profile data.
+mkdir -p "$INSTANCE_PATH/profiles"
+cp "$PROFILES_DIR/"*.yaml "$INSTANCE_PATH/profiles/"
+print_ok "profiles/"
+
+# JSON Schemas — referenced by Python scripts for validation
+mkdir -p "$INSTANCE_PATH/schemas"
+cp "$TOMO_SOURCE/schemas/"*.json "$INSTANCE_PATH/schemas/"
+print_ok "schemas/"
 print_ok "settings.json"
 
 # ── Render templates ──────────────────────────────────────
@@ -1017,26 +1028,26 @@ sed -e "s|{{INSTANCE_NAME}}|${INSTANCE_NAME}|g" \
     "$TOMO_SOURCE/CLAUDE.md.template" > "$INSTANCE_PATH/CLAUDE.md"
 print_ok "CLAUDE.md"
 
-# vault-config rule (rendered with actual vault info)
-if [ ! -f "$INSTANCE_PATH/.claude/rules/vault-config.md" ]; then
+# vault-config human-readable summary (rendered with actual vault info)
+if [ ! -f "$INSTANCE_PATH/config/vault-config.md" ]; then
     VAULT_NAME="$(basename "$VAULT_PATH")"
     sed -e "s|{{VAULT_NAME}}|${VAULT_NAME}|g" \
         -e "s|{{INBOX_PATH}}|${C_INBOX}|g" \
-        "$TOMO_SOURCE/.claude/rules/vault-config.template.md" > "$INSTANCE_PATH/.claude/rules/vault-config.md"
-    print_ok "vault-config.md (new)"
+        "$TOMO_SOURCE/config/vault-config.md.template" > "$INSTANCE_PATH/config/vault-config.md"
+    print_ok "config/vault-config.md (new)"
 else
-    print_warn "vault-config.md exists — skipped"
+    print_warn "config/vault-config.md exists — skipped"
 fi
 
-# kado-config (only if not present — user file)
-if [ ! -f "$INSTANCE_PATH/.claude/rules/kado-config.md" ]; then
+# kado-config human-readable summary (only if not present — user file)
+if [ ! -f "$INSTANCE_PATH/config/kado-config.md" ]; then
     sed -e "s|{{KADO_HOST}}|${KADO_HOST}|g" \
         -e "s|{{KADO_PORT}}|${KADO_PORT}|g" \
         -e "s|{{KADO_PROTOCOL}}|${KADO_PROTOCOL}|g" \
-        "$TOMO_SOURCE/.claude/rules/kado-config.template.md" > "$INSTANCE_PATH/.claude/rules/kado-config.md"
-    print_ok "kado-config.md (new)"
+        "$TOMO_SOURCE/config/kado-config.md.template" > "$INSTANCE_PATH/config/kado-config.md"
+    print_ok "config/kado-config.md (new)"
 else
-    print_warn "kado-config.md exists — skipped"
+    print_warn "config/kado-config.md exists — skipped"
 fi
 
 # vault-example.yaml stays in tomo/config/ as schema reference — not copied to instance
@@ -1188,11 +1199,18 @@ cat > "$INSTANCE_PATH/.gitignore" <<IGNOREEOF
 .claude/*.log
 .claude/cache/
 
+# Tomo scratch dir — pipeline intermediates, cleared between runs
+tomo-tmp/
+
 # OS
 .DS_Store
 Thumbs.db
 IGNOREEOF
 print_ok ".gitignore"
+
+# Create scratch dir for pipeline intermediates
+mkdir -p "$INSTANCE_PATH/tomo-tmp/items"
+print_ok "tomo-tmp/ scratch dir (+ items/)"
 
 # Detect existing repo: if .git exists, don't touch it.
 if [ -d "$INSTANCE_PATH/.git" ]; then
@@ -1243,5 +1261,5 @@ printf "  ${C_BOLD}Next steps:${C_RESET}\n"
 printf "    1. Review config: ${C_DIM}%s/config/vault-config.yaml${C_RESET}\n" "$INSTANCE_PATH"
 printf "    2. Start Tomo:    ${C_DIM}bash %s${C_RESET}\n" "$LAUNCHER_PATH"
 printf "       (builds the Docker image on first run)\n"
-printf "    3. First run:     ${C_DIM}use /explore-vault to complete setup${C_RESET}\n"
+printf "    3. First run:     ${C_DIM}use /tomo-setup to complete setup${C_RESET}\n"
 printf "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"

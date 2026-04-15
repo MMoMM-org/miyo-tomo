@@ -13,6 +13,7 @@
       "Bash(wc:*)",
       "Bash(date:*)",
       "Bash(mkdir:*)",
+      "Bash(echo:*)",
       "Skill(*)",
       "Read(*)",
       "Edit(config/*)",

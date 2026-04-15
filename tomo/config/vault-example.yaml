@@ -329,3 +329,28 @@ protected_patterns:
   - "```dataviewjs"
   - "```dataview"
   - "```folder-overview"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tomo Settings
+# ──────────────────────────────────────────────────────────────────────────────
+# Runtime behaviour controls for Tomo itself (separate from vault schema).
+
+tomo:
+  suggestions:
+    # Tag prefixes the classifier may PROPOSE to add. Other prefixes are never
+    # suggested as new tags during inbox processing. Default: ["topic"].
+    proposable_tag_prefixes:
+      - "topic"
+
+    # Structural / lifecycle prefixes that are NEVER proposed, regardless of
+    # proposable_tag_prefixes. Safety fence against accidental config.
+    excluded_tag_prefixes:
+      - "type"
+      - "status"
+      - "projects"
+      - "content"
+      - "mcp"
+
+    # Maximum concurrent Phase-B subagents during /inbox fan-out. Range 1-5.
+    parallel: 5
+

@@ -136,10 +136,12 @@ check_contains "inbox-analyst — has classification" tomo/.claude/agents/inbox-
 check_contains "inbox-analyst — has MOC matching" tomo/.claude/agents/inbox-analyst.md "MOC"
 check_contains "inbox-analyst — references topic-extract" tomo/.claude/agents/inbox-analyst.md "topic-extract"
 
-check_file "suggestion-builder.md" tomo/.claude/agents/suggestion-builder.md
-check_contains "suggestion-builder — has sections format" tomo/.claude/agents/suggestion-builder.md "S01"
-check_contains "suggestion-builder — has alternatives" tomo/.claude/agents/suggestion-builder.md "Alternative"
-check_contains "suggestion-builder — has proposed tag" tomo/.claude/agents/suggestion-builder.md "proposed"
+# suggestion-builder.md retired in spec 004 (fan-out refactor).
+# Its format rules now live in inbox-orchestrator.md.
+check_file "inbox-orchestrator.md" tomo/.claude/agents/inbox-orchestrator.md
+check_contains "inbox-orchestrator — inherits S-section format" tomo/.claude/agents/inbox-orchestrator.md "S01"
+check_contains "inbox-orchestrator — carries Classification Guard rule" tomo/.claude/agents/inbox-orchestrator.md "Classification Guard"
+check_contains "inbox-orchestrator — anti-parrot rule present" tomo/.claude/agents/inbox-orchestrator.md "Anti-parrot"
 
 check_file "instruction-builder.md" tomo/.claude/agents/instruction-builder.md
 check_contains "instruction-builder — has action handlers" tomo/.claude/agents/instruction-builder.md "New Atomic Note"

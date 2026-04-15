@@ -51,7 +51,8 @@ For each instruction set:
 ### Step 3 — Identify Source Items
 
 From the linked suggestions document, trace back to the original source inbox items.
-Each suggestion section has a `**Source:** [[+/filename.md]]` reference.
+Each suggestion section has a `**Source:** [[notename]]` wikilink — just the note
+name, no path prefix, no `.md` extension (unless disambiguation required a path).
 
 ### Step 4 — Evaluate Application Status
 

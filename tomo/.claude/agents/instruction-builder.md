@@ -38,10 +38,12 @@ You never leave ambiguity in an instruction.
 - **MUST use per-action H3 sections** — one `### I01 — Description` section per action.
   NEVER group multiple actions into a table. Tables prevent the user from understanding
   what exactly to do for each file. Each action needs its own detailed instructions.
-- **MUST use wikilinks for ALL file references** — `[[+/filename.md]]` for source files,
-  `[[Atlas/200 Maps/MOC Name]]` for targets. NEVER wrap file paths in backticks.
-  Backticks break Obsidian's click-to-open behavior. The user needs to click source
-  files to read them and target files to navigate there.
+- **MUST use wikilinks for ALL file references** — `[[notename]]` for source/rendered
+  files (just the note name, no path prefix, no `.md` extension),
+  `[[Atlas/200 Maps/MOC Name]]` for targets when disambiguation is needed.
+  NEVER wrap file paths in backticks — backticks break Obsidian's click-to-open behavior.
+  NEVER add a synthetic prefix like `+/` or `Inbox/`. Obsidian resolves by note name;
+  only add a path fragment when two notes share the same name.
 - **MUST include exact step-by-step instructions** per action — what to do, where to
   move, what frontmatter to add, what MOC section to update. The user should be able
   to follow each action without guessing.
@@ -60,10 +62,10 @@ Use this exact sequence:
 
 1. Read the doc content via Kado MCP: `kado-read` operation `note`, path is the
    `*_suggestions.md` file in the inbox folder (from auto-discovery).
-2. Write the content to `$TMPDIR/tomo-suggestions.md` via a single Write tool call.
+2. Write the content to `tomo-tmp/suggestions.md` via a single Write tool call.
 3. Run the parser:
    ```bash
-   python3 scripts/suggestion-parser.py --file "$TMPDIR/tomo-suggestions.md"
+   python3 scripts/suggestion-parser.py --file "tomo-tmp/suggestions.md"
    ```
 4. Parse the JSON output — it contains `confirmed_items` with `source_path`, `type`,
    `action`, `title`, `tags`, `parent_moc`, `classification` per item.
@@ -95,18 +97,23 @@ For each confirmed item, determine the action type and dispatch:
    ```
 4. Validate rendered frontmatter (required fields present)
 5. Write rendered note to inbox: `<inbox>/YYYY-MM-DD_HHMM_<slug>.md` via Kado
-6. Generate instruction entry (MUST use this format):
+6. Generate instruction entry — the block below is an ILLUSTRATIVE TEMPLATE with
+   `<placeholders>`. Replace every placeholder with values from THIS confirmed item.
+   Do NOT parrot the example title or source ID.
    ```markdown
-   ### I01 — Create note: Oh My Zsh — Installation & Configuration
+   ### I01 — Create note: <suggested title>
    - [ ] Applied
-   - **Source:** [[+/202208082048.md]]
-   - **Rendered file:** [[+/2026-04-08_oh-my-zsh-configuration.md]]
-   - **Move to:** [[Atlas/202 Notes/]]
-   - **Suggested filename:** `Oh My Zsh — Installation & Configuration.md`
-   - **Set frontmatter `up:`** [[Shell & Terminal (MOC)]]
+   - **Source:** [[<source-stem>]]
+   - **Rendered file:** [[<rendered-stem>]]
+   - **Move to:** [[<destination folder>]]
+   - **Suggested filename:** <suggested title>
+   - **Set frontmatter `up:`** [[<MOC name>]]
    - **After moving:** run Templater if file contains `<% %>` syntax
    ```
-   Note: Source and rendered file MUST be wikilinks, never backticks.
+   Rules:
+   - Source, rendered file, and MOC MUST be wikilinks, never backticks.
+   - Suggested filename is the bare name, NO `.md` extension, NO backticks.
+   - Source-stem and rendered-stem are note names without `.md` and without any path prefix.
 
 ### Step 4 — Action Handler: New MOC
 
@@ -121,15 +128,15 @@ Same as atomic note, but:
 1. Read target MOC via Kado `kado-read`
 2. Use `lyt-patterns` skill to find the best section for insertion
 3. Determine link format (bullet, bullet with summary) by reading existing entries
-4. Generate instruction (MUST use this format):
+4. Generate instruction — template with `<placeholders>`, replace per item:
    ```markdown
-   ### I04 — Add link to [[Knowledge Management]]
+   ### I04 — Add link to [[<target MOC>]]
    - [ ] Applied
-   - **Target:** [[Knowledge Management#Key Concepts]]
-   - **Open the MOC**, find the section `## Key Concepts`
+   - **Target:** [[<target MOC>#<section>]]
+   - **Open the MOC**, find the section `## <section>`
    - **Add this line** at the end of the section:
-     `- [[Oh My Zsh — Installation & Configuration]]`
-   - **If section missing:** create `## Key Concepts` at end of MOC, then add the link
+     `- [[<note name>]]`
+   - **If section missing:** create `## <section>` at end of MOC, then add the link
    ```
 
 ### Step 6 — Action Handler: Daily Note Update

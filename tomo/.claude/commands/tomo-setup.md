@@ -66,17 +66,27 @@ Current state:
 
 ### Phase 2 — Discovery
 
-If `config/discovery-cache.yaml` is missing:
+If `config/discovery-cache.yaml` is missing, ask via **AskUserQuestion** (never plain
+text — the user must get a clickable chip, not "reply yes"):
 
-> "I'll run `/explore-vault` first so I can see your MOC tree and tag taxonomy.
-> This usually takes 1-3 minutes depending on vault size."
+- Question: "No discovery cache yet. Run `/explore-vault` now to build it? (takes
+  1-3 minutes depending on vault size)"
+- Options:
+  - `Run explore` (Recommended) — delegate to `/explore-vault`, invoke
+    `vault-explorer`, wait for completion
+  - `Skip discovery` — jump to Phase 3; note that `/inbox` will have degraded
+    context until the cache exists
 
-Then delegate to `/explore-vault` (narratively — Claude will invoke the
-`vault-explorer` agent). Wait for it to finish.
+If the cache already exists, read its top-level stats and report (no question
+needed, just inform):
 
-If the cache already exists, read its top-level stats and report:
 > "Discovery cache already exists: N MOCs indexed, M notes catalogued, last
 > scan YYYY-MM-DD. Skipping explore."
+
+**STRICT:** Never ask the user to "reply yes" in plain text. Every branch point in
+this wizard — including Phase 2 start, template-starter offers, and any interactive
+rule — goes through AskUserQuestion. If a tool schema is not yet loaded, load it via
+ToolSearch *before* reaching the question, silently.
 
 ### Phase 3 — User Rules wizard
 

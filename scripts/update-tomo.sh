@@ -117,6 +117,41 @@ for f in "$REPO_ROOT/scripts/lib/"*.py; do
     update_managed "$f" "$INSTANCE_PATH/scripts/lib/$name" "scripts/lib/$name"
 done
 
+# ── Retire removed managed files (spec 004 migration) ───
+# Agents and scripts that were deleted from source must also be removed from
+# the instance, otherwise stale definitions linger.
+print_step "Retiring removed files"
+RETIRED_AGENTS=(suggestion-builder.md)
+for name in "${RETIRED_AGENTS[@]}"; do
+    dst="$INSTANCE_PATH/.claude/agents/$name"
+    if [ -f "$dst" ]; then
+        rm -f "$dst"
+        print_ok "retired agents/$name"
+    fi
+done
+
+# ── Profiles + JSON schemas (added in spec 004) ──────────
+print_step "Updating profiles"
+mkdir -p "$INSTANCE_PATH/profiles"
+for f in "$REPO_ROOT/tomo/profiles/"*.yaml; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    cp "$f" "$INSTANCE_PATH/profiles/$name"
+    print_ok "profiles/$name"
+done
+
+print_step "Updating schemas"
+mkdir -p "$INSTANCE_PATH/schemas"
+for f in "$TOMO_SOURCE/schemas/"*.json; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    cp "$f" "$INSTANCE_PATH/schemas/$name"
+    print_ok "schemas/$name"
+done
+
+# ── Ensure tomo-tmp scratch dirs exist ───────────────────
+mkdir -p "$INSTANCE_PATH/tomo-tmp/items"
+
 # ── Merge settings.json ──────────────────────────────────
 
 print_step "Merging settings.json"

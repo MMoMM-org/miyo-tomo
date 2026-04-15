@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/suggestions-doc.schema.json",
+  "title": "Suggestions Document (Reducer Output)",
+  "description": "Internal JSON produced by suggestions-reducer.py; orchestrator renders this to the final markdown.",
+  "type": "object",
+  "required": ["schema_version", "generated", "run_id", "profile", "source_items", "sections"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1"},
+    "generated": {"type": "string"},
+    "run_id": {"type": "string"},
+    "profile": {"type": "string"},
+    "source_items": {"type": "integer", "minimum": 0},
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "stem", "actions"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^S[0-9]{2,}$"},
+          "stem": {"type": "string"},
+          "actions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["kind", "rendered_md"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {"type": "string"},
+                "rendered_md": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "proposed_mocs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["topic", "items", "parent"],
+        "additionalProperties": false,
+        "properties": {
+          "topic": {"type": "string"},
+          "items": {"type": "array", "items": {"type": "string", "pattern": "^S[0-9]{2,}$"}},
+          "parent": {"type": "string"}
+        }
+      }
+    },
+    "needs_attention": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stem", "error"],
+        "additionalProperties": false,
+        "properties": {
+          "stem": {"type": "string"},
+          "error": {"type": "string"}
+        }
+      }
+    }
+  }
+}

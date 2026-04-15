@@ -5,21 +5,27 @@ AI-assisted PKM workflows for Obsidian. All vault access goes through Kado MCP.
 ## Context
 
 @.claude/rules/project-context.md
-@.claude/rules/vault-config.md
-@.claude/rules/kado-config.md
+
+For vault structure (MOCs, tags, frontmatter, folder layout), see `config/vault-config.yaml`
+(machine-readable source of truth) and `config/vault-config.md` (human-readable summary,
+updated by `/explore-vault`).
+
+For Kado connection details, see `config/kado-config.md` (human-readable) and `.mcp.json`
+(machine-readable; holds the bearer token).
 
 ## Key Commands
 
+- /tomo-setup    — post-install setup wizard (run first)
 - /inbox         — analyse inbox and generate instruction set
 - /execute       — execute an approved instruction set
-- /explore-vault — learn vault structure for LYT/MOC work
+- /explore-vault — standalone vault rescan (normally invoked by /tomo-setup)
 
 ## Rules
 
 - ALWAYS use Plan Mode before any task touching more than 2 vault files
 - NEVER modify vault files without an approved instruction set
 - Propose changes as instruction set entries — never execute directly
-- Update .claude/rules/vault-config.md when you discover new vault structure
+- Update config/vault-config.md (and vault-config.yaml) when you discover new vault structure
 - Commit after every completed task
 
 ## Vault Conventions (user-specific)
@@ -37,4 +43,4 @@ your conventions grow. See `config/user-rules/README.md` for the pattern.
 ## MCP
 
 Kado runs at {{KADO_PROTOCOL}}://{{KADO_HOST}}:{{KADO_PORT}}
-Auth: configured via .claude/rules/kado-config.md
+Auth: configured via config/kado-config.md (bearer token lives in .mcp.json)

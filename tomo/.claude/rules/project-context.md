@@ -109,6 +109,16 @@ should expose it as output, not the doc.
   trip the command parser ("Parser aborted: over-length") and force approvals. Use
   the `Write` tool for scratch / `tomo-tmp/`, or `kado-write` for vault files. Those
   tools handle arbitrary size without parser limits.
+- **Never chain Bash commands with `&&`, `;`, or `||`.** Compound commands —
+  especially with `$(...)` substitutions or inline `python3 -c "..."` — trip
+  the Bash validator ("Unhandled node type: string"). Run ONE command per
+  Bash tool call, read the result, then issue the next call.
+- **Never inline Python with `python3 -c "..."`.** All Python logic belongs
+  in `scripts/*.py`. Two helpers exist for common agent needs:
+  `scripts/run-id.py --out <path>` (generate a unique run id) and
+  `scripts/read-config-field.py --field <dotted> --default <fallback>`
+  (read a field from `config/vault-config.yaml`). Extend those rather than
+  inlining.
 
 ## Security Model
 

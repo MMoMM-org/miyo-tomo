@@ -31,6 +31,15 @@ and assemble results. You do NOT classify items yourself — that is the
 - Scratch writes ONLY under `tomo-tmp/`. Use the `Write` tool for these.
 - NEVER append `2>&1; echo "EXIT:$?"` to Bash commands. The validator rejects
   it; run commands plain.
+- **ONE command per Bash tool call. NEVER chain with `&&`, `;`, or `||`.**
+  Compound commands with inline `python3 -c "..."` or `$(...)` substitutions
+  trip the Bash validator ("Unhandled node type: string") and force approval
+  prompts on every invocation. Run each step as its own Bash call.
+- **NEVER inline Python with `python3 -c "..."`.** All Python logic lives in
+  `scripts/*.py`. If you need a one-liner, it belongs as a new script.
+  Specifically:
+    - Generating run ids → `scripts/run-id.py --out tomo-tmp/.run_id`
+    - Reading config fields → `scripts/read-config-field.py --field <dotted>`
 - Per-subagent dispatch: maximum 5 concurrent, minimum 3 per batch (when at
   least 3 items are pending). Read `parallel` from
   `config/vault-config.yaml` → `tomo.suggestions.parallel` (default 5).
@@ -75,21 +84,46 @@ and assemble results. You do NOT classify items yourself — that is the
 
 ### Phase A — Build shared context + state file
 
-Fresh run:
+Fresh run. **Run each step as a SEPARATE Bash tool call — do NOT chain with
+`&&` or `;`.** After each step, read its stdout/stderr in the tool result
+before issuing the next step.
+
+Step A1 — ensure scratch dir exists:
 
 ```bash
-RUN_ID="$(date -u +%Y-%m-%dT%H-%M-%SZ)-$(openssl rand -hex 3 2>/dev/null || echo xxxx)"
-python3 scripts/shared-ctx-builder.py \
-  --cache config/discovery-cache.yaml \
-  --vault-config config/vault-config.yaml \
-  --profiles-dir profiles \
-  --run-id "$RUN_ID" \
-  --output tomo-tmp/shared-ctx.json
+mkdir -p tomo-tmp/items
+```
 
-python3 scripts/state-init.py \
-  --inbox-path "$(grep -E '^\s+inbox:' config/vault-config.yaml | head -1 | sed -E 's/.*:\s*\"?([^\"]+)\"?.*/\1/')" \
-  --run-id "$RUN_ID" \
-  --output tomo-tmp/inbox-state.jsonl
+Step A2 — generate run id (writes `tomo-tmp/.run_id`):
+
+```bash
+python3 scripts/run-id.py --out tomo-tmp/.run_id
+```
+
+The run id is in the stdout. Remember it. For subsequent commands, use the
+literal string value (e.g. `2026-04-15T17-03-22Z-ab12cd`). Do NOT use shell
+`$(cat ...)` substitution — that's a compound-command pattern the validator
+dislikes.
+
+Step A3 — read the inbox path from vault-config:
+
+```bash
+python3 scripts/read-config-field.py --field concepts.inbox --default "100 Inbox/"
+```
+
+The inbox path is in the stdout. Remember the literal value.
+
+Step A4 — build shared context (substitute the run-id literal you got in A2):
+
+```bash
+python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
+```
+
+Step A5 — seed the state-file (substitute the run-id literal and the inbox
+path literal):
+
+```bash
+python3 scripts/state-init.py --inbox-path "<INBOX_PATH>" --run-id <RUN_ID> --output tomo-tmp/inbox-state.jsonl
 ```
 
 Resume: skip both. Derive `RUN_ID` from the existing state-file (last entry's
@@ -139,13 +173,19 @@ Continue until no `pending` (or `failed` on resume) items remain.
 
 ### Phase C — Reduce + render + write
 
+Again: each step is a separate Bash call. Substitute run-id and profile
+literals — no shell substitution.
+
+Step C1 — read the active profile name:
+
 ```bash
-python3 scripts/suggestions-reducer.py \
-  --state tomo-tmp/inbox-state.jsonl \
-  --items-dir tomo-tmp/items \
-  --run-id "$RUN_ID" \
-  --profile "$(grep -E '^profile:' config/vault-config.yaml | sed -E 's/profile:\s*\"?([^\"]+)\"?.*/\1/')" \
-  --output tomo-tmp/suggestions-doc.json
+python3 scripts/read-config-field.py --field profile --default miyo
+```
+
+Step C2 — run the reducer (substitute `<RUN_ID>` and `<PROFILE>` literals):
+
+```bash
+python3 scripts/suggestions-reducer.py --state tomo-tmp/inbox-state.jsonl --items-dir tomo-tmp/items --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-doc.json
 ```
 
 Then render `tomo-tmp/suggestions-doc.json` to markdown:

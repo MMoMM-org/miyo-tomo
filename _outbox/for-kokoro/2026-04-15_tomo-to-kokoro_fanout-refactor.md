@@ -3,7 +3,8 @@ from: tomo
 to: kokoro
 date: 2026-04-15
 topic: Inbox Pass-1 refactored to fan-out — Kokoro architecture docs need updating
-status: pending
+status: done
+status_note: 5 tier specs updated with fan-out refactor (2026-04-15 banners + surgical section updates): tier-1 Workflow Map + header; tier-2 inbox-processing Agents table rewritten + workflow diagram + header; tier-3 inbox-analysis per-item + item-result schema; tier-3 suggestions-document reducer+orchestrator producer model; tier-3 state-tag-lifecycle new §11 on ephemeral run-level state file. No Kokoro-side ADR mirrored — deferring unless architectural precedent is needed beyond Tomo's 8 ADRs.
 priority: normal
 requires_action: true
 ---

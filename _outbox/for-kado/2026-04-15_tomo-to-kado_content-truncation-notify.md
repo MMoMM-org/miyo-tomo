@@ -3,7 +3,8 @@ from: tomo
 to: kado
 date: 2026-04-15
 topic: Please notify Tomo when kado-read content truncation ships
-status: pending
+status: done
+status_note: Watchlist registered. README roadmap entry credits Tomo ('Feedback from the Tomo team'). Today's 2026-04-15 kado→tomo handoff also flags the content-truncation item as queued and asks Tomo to scope it. A fresh handoff will be sent when the feature actually ships with the chosen flag name and semantics.
 priority: low
 requires_action: true
 ---

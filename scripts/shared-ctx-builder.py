@@ -224,12 +224,15 @@ def build_daily_notes(vault_cfg: dict) -> dict | None:
         return None
 
     naming = (vault_cfg.get("naming") or {}).get("calendar_patterns") or {}
-    daily_pattern = naming.get("daily") or "YYYY-MM-DD"
-    daily_path = (daily.get("path") or "Calendar/").rstrip("/") + "/"
+    daily_pattern = (naming.get("daily") or "YYYY-MM-DD").strip()
+    # Defensive: vault-config values sometimes have trailing whitespace. Strip
+    # everything, collapse any double-slash that results from concat.
+    raw_path = (daily.get("path") or "Calendar/").strip()
+    daily_path = raw_path.rstrip("/").strip() + "/"
 
     return {
         "enabled": True,
-        "path_pattern": f"{daily_path}{daily_pattern}",
+        "path_pattern": f"{daily_path}{daily_pattern}".replace("//", "/"),
         "date_formats": [daily_pattern, "YYYYMMDD", "DD-MM-YYYY"],
         "tracker_fields": build_tracker_fields(vault_cfg),
     }

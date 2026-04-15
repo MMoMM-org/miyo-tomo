@@ -160,27 +160,58 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
     return "\n".join(lines)
 
 
-def render_update_daily(action: dict, stem: str) -> str:
+def _daily_note_stem(path: str) -> str:
+    """Extract the bare date-stem from a daily-note path.
+
+    `Calendar/301 Daily/2026-04-15.md` → `2026-04-15`
+    `Calendar/301 Daily/ /2026-04-15`  → `2026-04-15`  (defensive)
+    `2026-04-15`                       → `2026-04-15`
+    """
+    if not path:
+        return ""
+    p = path.strip()
+    if p.endswith(".md"):
+        p = p[:-3]
+    # Use the last non-empty path segment (tolerates stray whitespace and
+    # double slashes from mis-joined prefixes).
+    segments = [s.strip() for s in p.split("/") if s.strip()]
+    return segments[-1] if segments else p
+
+
+def render_update_daily(action: dict, stem: str, field_sections: dict[str, str] | None = None) -> str:
+    field_sections = field_sections or {}
     lines: list[str] = []
-    daily_path = action.get("daily_note_path", "")
-    link = daily_path[:-3] if daily_path.endswith(".md") else daily_path
-    lines.append(f"**Daily update:** [[{link}]]")
+    daily_stem = _daily_note_stem(action.get("daily_note_path", ""))
+    # Wikilinks use the note-name only — never the path. Obsidian resolves by name.
+    lines.append(f"**Daily update:** [[{daily_stem}]]")
+
+    # Group updates by section so the user sees ONE "Open ## <section>" per group
     updates = action.get("updates") or []
-    if updates:
-        lines.append("- Apply to the daily note:")
-        for u in updates:
+    grouped: dict[str, list[dict]] = {}
+    for u in updates:
+        field = u.get("field", "")
+        section = field_sections.get(field) or "<unknown section>"
+        grouped.setdefault(section, []).append(u)
+
+    for section, group in grouped.items():
+        lines.append("")
+        lines.append(f"Under `## {section}` (create it if missing):")
+        for u in group:
             field = u.get("field", "")
             value = u.get("value", "")
             syntax = u.get("syntax", "inline_field")
             if syntax == "inline_field":
-                lines.append(f"  - Add `{field}:: {value}`")
+                value_str = "true" if value is True else ("false" if value is False else str(value))
+                lines.append(f"- Add `{field}:: {value_str}`")
             elif syntax == "callout_body":
-                lines.append(f"  - Append to `{field}` section: {value}")
+                # Value goes under the field name inside the section
+                lines.append(f"- Under the `{field}` entry, append: {value}")
             elif syntax == "checkbox":
                 mark = "[x]" if value in (True, "true", 1, "1") else "[ ]"
-                lines.append(f"  - Check `{field}`: {mark}")
+                lines.append(f"- Check `{field}`: `- {mark} {field}`")
             else:
-                lines.append(f"  - `{field}` = {value}")
+                lines.append(f"- `{field}` = {value}")
+
     lines.append("")
     lines.append("**Decision (daily update):**")
     lines.append("- [x] Approve")
@@ -230,6 +261,23 @@ RENDERERS = {
 }
 
 
+def load_field_sections(shared_ctx_path: Path) -> dict[str, str]:
+    """Build a {field_name: section} map from shared-ctx.json."""
+    if not shared_ctx_path or not shared_ctx_path.exists():
+        return {}
+    try:
+        ctx = json.loads(shared_ctx_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    out: dict[str, str] = {}
+    for f in (ctx.get("daily_notes") or {}).get("tracker_fields", []) or []:
+        name = f.get("name")
+        section = f.get("section")
+        if name and section:
+            out[name] = section
+    return out
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -241,8 +289,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--run-id", required=True)
     p.add_argument("--profile", required=True)
     p.add_argument("--output", required=True)
-    p.add_argument("--threshold", type=int, default=3,
-                   help="Minimum cluster size to emit a Proposed MOC (default 3)")
+    p.add_argument("--shared-ctx", default="tomo-tmp/shared-ctx.json",
+                   help="Path to shared-ctx.json (for field→section lookup)")
+    p.add_argument("--threshold", type=int, default=1,
+                   help="Minimum cluster size to emit a Proposed MOC section (default 1 — "
+                        "every needs_new_moc surfaces; cluster size shown in heading)")
     return p
 
 
@@ -251,6 +302,7 @@ def main() -> int:
     state_path = Path(args.state)
     items_dir = Path(args.items_dir)
     out_path = Path(args.output)
+    field_sections = load_field_sections(Path(args.shared_ctx))
 
     state = last_state_per_stem(state_path)
     done_stems = sorted(s for s, e in state.items() if e.get("status") == "done")
@@ -279,7 +331,10 @@ def main() -> int:
             renderer = RENDERERS.get(kind)
             if not renderer:
                 continue
-            rendered = renderer(action, stem)
+            if kind == "update_daily":
+                rendered = renderer(action, stem, field_sections)
+            else:
+                rendered = renderer(action, stem)
             rendered_actions.append({"kind": kind, "rendered_md": rendered})
 
             # Cluster Proposed MOCs from atomic-note actions

@@ -164,8 +164,9 @@ assert len(actions) == 2
 assert actions[0]['kind'] == 'create_atomic_note'
 assert actions[1]['kind'] == 'update_daily'
 ud_md = actions[1]['rendered_md']
-assert '[[Calendar/301 Daily/2026-04-15]]' in ud_md
-assert 'Sport:: True' in ud_md or 'Sport:: true' in ud_md
+assert '[[2026-04-15]]' in ud_md, 'daily-note wikilink must be note-name only (no path)'
+assert '[[Calendar/' not in ud_md, 'daily-note wikilink must not include path'
+assert 'Sport:: true' in ud_md or 'Sport:: True' in ud_md
 assert 'Highlights' in ud_md and 'Morning run' in ud_md
 assert 'Decision (daily update):' in ud_md
 assert 'Decision (atomic note):' in actions[0]['rendered_md']

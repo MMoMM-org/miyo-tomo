@@ -108,10 +108,17 @@ def skeleton(schema: dict, root: dict, field_key: str = "") -> Any:
         min_items = schema.get("minItems") or 0
         if not items:
             return []
+        # When items is polymorphic (oneOf/anyOf), emit one example per branch
+        for combiner in ("oneOf", "anyOf"):
+            if isinstance(items, dict) and combiner in items:
+                non_null = [b for b in items[combiner]
+                            if not (isinstance(b, dict) and b.get("type") == "null")]
+                branches = non_null if non_null else items[combiner]
+                return [skeleton(b, root, field_key + "_ITEM") for b in branches]
         if min_items > 0:
             return [skeleton(items, root, field_key + "_ITEM") for _ in range(min_items)]
         # Optional array — include one illustrative element if items has structure
-        if isinstance(items, dict) and (items.get("type") == "object" or "$ref" in items or "oneOf" in items):
+        if isinstance(items, dict) and (items.get("type") == "object" or "$ref" in items):
             return [skeleton(items, root, field_key + "_ITEM")]
         return []
 

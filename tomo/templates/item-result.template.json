@@ -31,6 +31,53 @@
           "reason": "<REASON>"
         }
       ]
+    },
+    {
+      "kind": "update_daily",
+      "date": "<DATE>",
+      "daily_note_path": "<DAILY_NOTE_PATH>",
+      "updates": [
+        {
+          "kind": "tracker",
+          "field": "<FIELD>",
+          "value": "<VALUE>",
+          "syntax": "inline_field",
+          "confidence": 0.0,
+          "reason": "<REASON>",
+          "section": "<SECTION>"
+        },
+        {
+          "kind": "log_entry",
+          "content": "<CONTENT>",
+          "reason": "<REASON>",
+          "confidence": 0.0,
+          "time": "<TIME>",
+          "time_source": "<TIME_SOURCE>"
+        },
+        {
+          "kind": "log_link",
+          "target_stem": "<TARGET_STEM>",
+          "reason": "<REASON>",
+          "confidence": 0.0,
+          "time": "<TIME>",
+          "time_source": "<TIME_SOURCE>"
+        }
+      ]
+    },
+    {
+      "kind": "link_to_moc",
+      "target_moc": "<TARGET_MOC>",
+      "section_name": "<SECTION_NAME>"
+    },
+    {
+      "kind": "create_moc",
+      "moc_title": "<MOC_TITLE>",
+      "parent_moc": "<PARENT_MOC>"
+    },
+    {
+      "kind": "modify_note",
+      "target_path": "<TARGET_PATH>",
+      "diff_description": "<DIFF_DESCRIPTION>"
     }
   ],
   "date_relevance": {

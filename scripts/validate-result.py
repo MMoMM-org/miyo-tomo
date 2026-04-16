@@ -2,7 +2,7 @@
 # validate-result.py — Validate a tomo-tmp/items/<stem>.result.json
 # against the item-result schema. Used by inbox-analyst immediately after
 # writing the file, before state-update done.
-# version: 0.1.0
+# version: 0.2.0
 """
 Inputs (CLI):
   --result   Path to <stem>.result.json
@@ -52,6 +52,17 @@ FORBIDDEN_PER_KIND_ATOMIC = {
     "destination": "split into `template` and `location`",
 }
 
+REQUIRED_PER_UPDATE_KIND = {
+    "tracker": {"kind", "field", "value", "syntax", "confidence"},
+    "log_entry": {"kind", "content", "reason", "confidence"},
+    "log_link": {"kind", "target_stem", "reason", "confidence"},
+}
+FORBIDDEN_PER_UPDATE_KIND = {
+    "tracker": {"type": "use `kind:` instead"},
+    "log_entry": {"text": "use `content:` instead"},
+    "log_link": {"target": "use `target_stem:` instead"},
+}
+
 
 def validate_hand(result: dict) -> list[str]:
     errors: list[str] = []
@@ -87,6 +98,37 @@ def validate_hand(result: dict) -> list[str]:
                 for f in ("path", "score", "pre_check"):
                     if f not in m:
                         errors.append(f"actions[{i}].candidate_mocs[{mi}] missing `{f}`")
+        if kind == "update_daily":
+            updates = a.get("updates") or []
+            for ui, u in enumerate(updates):
+                if not isinstance(u, dict):
+                    errors.append(f"actions[{i}].updates[{ui}] must be an object")
+                    continue
+                ukind = u.get("kind")
+                is_legacy = ukind is None
+                if is_legacy:
+                    print(
+                        f"WARN: actions[{i}].updates[{ui}] missing kind: — treated as tracker",
+                        file=sys.stderr,
+                    )
+                    ukind = "tracker"
+                if ukind not in REQUIRED_PER_UPDATE_KIND:
+                    errors.append(
+                        f"actions[{i}].updates[{ui}].kind={ukind!r} unknown; "
+                        f"expected one of {sorted(REQUIRED_PER_UPDATE_KIND)}"
+                    )
+                    continue
+                effective_keys = set(u.keys()) | ({"kind"} if is_legacy else set())
+                missing_u = REQUIRED_PER_UPDATE_KIND[ukind] - effective_keys
+                if missing_u:
+                    errors.append(
+                        f"actions[{i}].updates[{ui}] ({ukind}) missing fields: {sorted(missing_u)}"
+                    )
+                for bad, hint in FORBIDDEN_PER_UPDATE_KIND[ukind].items():
+                    if bad in u:
+                        errors.append(
+                            f"actions[{i}].updates[{ui}].{bad} is forbidden — {hint}"
+                        )
     return errors
 
 

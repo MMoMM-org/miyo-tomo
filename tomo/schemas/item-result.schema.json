@@ -111,17 +111,63 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "object",
-            "required": ["field", "value", "syntax", "confidence"],
-            "additionalProperties": false,
-            "properties": {
-              "field": {"type": "string"},
-              "value": {"type": ["string", "number", "boolean"]},
-              "syntax": {"type": "string", "enum": ["inline_field", "callout_body", "checkbox"]},
-              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
-            }
+            "oneOf": [
+              {"$ref": "#/$defs/update_tracker"},
+              {"$ref": "#/$defs/update_log_entry"},
+              {"$ref": "#/$defs/update_log_link"}
+            ]
           }
         }
+      }
+    },
+    "update_tracker": {
+      "type": "object",
+      "required": ["kind", "field", "value", "syntax", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "tracker"},
+        "field": {"type": "string"},
+        "value": {"type": ["string", "number", "boolean"]},
+        "syntax": {"type": "string", "enum": ["inline_field", "callout_body", "checkbox"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "reason": {"type": "string"},
+        "section": {"type": "string"}
+      }
+    },
+    "update_log_entry": {
+      "type": "object",
+      "required": ["kind", "content", "reason", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "log_entry"},
+        "content": {"type": "string"},
+        "reason": {"type": "string"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "time": {
+          "oneOf": [
+            {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$"},
+            {"type": "null"}
+          ]
+        },
+        "time_source": {"type": "string"}
+      }
+    },
+    "update_log_link": {
+      "type": "object",
+      "required": ["kind", "target_stem", "reason", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "log_link"},
+        "target_stem": {"type": "string"},
+        "reason": {"type": "string"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "time": {
+          "oneOf": [
+            {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$"},
+            {"type": "null"}
+          ]
+        },
+        "time_source": {"type": "string"}
       }
     },
     "link_to_moc": {

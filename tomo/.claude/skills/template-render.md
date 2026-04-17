@@ -84,20 +84,27 @@ Sources:
 - **Required tokens** (`uuid`, `datestamp`, `title`): rendering fails if unresolvable
 - **Optional tokens**: resolve to empty string if missing
 
-### YAML List Formatting
+### Tags and List Formatting
 
-When a token value is a list (e.g., tags, aliases), format as indented YAML:
+Tags are passed to the renderer as a **comma-separated string** (not a list).
+This allows templates to embed `{{tags}}` inside inline YAML arrays:
 
-```
-{{tags}} → "\n  - type/note/normal\n  - topic/applied/tools"
-```
-
-Template should use `tags:{{tags}}` (no space before token) to produce:
 ```yaml
-tags:
-  - type/note/normal
-  - topic/applied/tools
+tags: [type/note/normal, status/fleeting/🎗️, {{tags}}]
 ```
+
+Renders to:
+
+```yaml
+tags: [type/note/normal, status/fleeting/🎗️, topic/travel/japan, topic/hokkaido]
+```
+
+**Why comma-separated?** Tomo templates use inline YAML arrays `[...]` because
+the template also contains Templater syntax and static base tags. If `{{tags}}`
+produced YAML block format (`\n  - tag`), it would break the inline array.
+
+For standalone list tokens (aliases), the same rule applies — pass as
+comma-separated string if the template uses inline array syntax.
 
 ### Code Block Protection
 

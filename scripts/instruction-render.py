@@ -197,9 +197,15 @@ def main() -> int:
         if parent_moc:
             up_value = f"[[{parent_moc}]]"
 
+        # Tags as comma-separated string for inline YAML arrays:
+        # tags: [existing, {{tags}}] → tags: [existing, topic/a, topic/b]
+        # If passed as a list, format_list_token() would produce YAML block
+        # syntax which breaks inline arrays in templates.
+        tags_str = ", ".join(tags) if isinstance(tags, list) else (tags or "")
+
         tokens = {
             "title": title,
-            "tags": tags,
+            "tags": tags_str,
             "up": up_value,
             "body": body,
             "summary": summary or "",

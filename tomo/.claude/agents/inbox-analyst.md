@@ -316,7 +316,9 @@ is invalid.
   `atomic_note_worthiness` from Step 7 (the user can always approve/skip).
 
 **Attachments** (type == "attachment"): one `create_atomic_note` with
-destination_concept = `"asset"`, title = stem, candidate_mocs empty.
+`template: <vault's asset template or "asset">`,
+`location: <resolved asset folder path from vault-config concepts.asset>`,
+title = stem, candidate_mocs empty.
 No daily-note actions for attachments.
 
 ### Step 10 — Fill the result template and write it

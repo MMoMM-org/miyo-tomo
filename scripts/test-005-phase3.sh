@@ -202,6 +202,32 @@ assert le['time'] == '07:00', f'time={le["time"]!r}'
 assert le['time_source'] == 'filename', f'time_source={le["time_source"]!r}'
 PY
 
+# ── Test 6b: sleep tracker-only fixture — tracker without log_entry ─────────
+printf "\n${C_DIM}── Test 6b: sleep tracker-only — tracker only, no log_entry${C_RESET}\n"
+F6B="$FIXTURE_DIR/sleep_tracker_only.json"
+STDERR6B="$FIXTURE_DIR/t6b.log"
+if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" --result "$F6B" 2>"$STDERR6B"; then
+    pass "sleep-tracker-only: schema valid"
+else
+    fail "sleep-tracker-only: schema validation failed"
+    cat "$STDERR6B" >&2
+fi
+
+"$PYTHON" - "$F6B" <<'PY' && pass "sleep-tracker-only: single tracker update, no log_entry, no log_link" || fail "sleep-tracker-only: wrong update shape"
+import json, sys
+r = json.load(open(sys.argv[1]))
+assert r['type'] == 'fleeting_note', f'type={r["type"]!r}'
+assert r['atomic_note_worthiness'] < 0.5, f'atomic_note_worthiness={r["atomic_note_worthiness"]}'
+ud = next(a for a in r['actions'] if a['kind'] == 'update_daily')
+kinds = [u['kind'] for u in ud['updates']]
+assert kinds == ['tracker'], f'expected [tracker], got {kinds}'
+t = ud['updates'][0]
+assert t['field'] == 'Sleep', f'field={t["field"]!r}'
+assert t['value'] == 7, f'value={t["value"]!r}'
+assert t['syntax'] == 'inline_field', f'syntax={t["syntax"]!r}'
+assert 'reason' in t and len(t['reason']) <= 80, f'reason missing or too long'
+PY
+
 # ── Test 7: all fixtures have reason ≤80 chars on every update entry ─────
 printf "\n${C_DIM}── Test 7: all fixtures — reason ≤80 chars on every update${C_RESET}\n"
 "$PYTHON" - "$FIXTURE_DIR" <<'PY' && pass "all fixtures: every update entry has reason ≤80 chars" || fail "some fixtures missing reason or too long"

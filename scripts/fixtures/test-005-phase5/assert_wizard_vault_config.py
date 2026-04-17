@@ -8,7 +8,7 @@ Checks:
 1. Parses as valid YAML
 2. Has trackers section with today_fields and end_of_day_fields
 3. All tracker fields have non-empty description
-4. All tracker fields have keywords.positive list
+4. All tracker fields have positive_keywords list (flat form)
 5. Has daily_log section
 6. daily_log has heading, heading_level, time_extraction, cutoff_days
 7. auto_create_if_missing is False (MVP constraint)
@@ -41,10 +41,9 @@ for f in all_fields:
     desc = f.get("description", "")
     check(desc and desc.strip(), f"tracker field '{f.get('name')}' has empty description")
 
-# Test 4: keywords.positive exists (may be empty list, but key must exist)
+# Test 4: positive_keywords exists (flat form — may be empty list, but key must exist)
 for f in all_fields:
-    kw = f.get("keywords", {})
-    check("positive" in kw, f"tracker field '{f.get('name')}' missing keywords.positive")
+    check("positive_keywords" in f, f"tracker field '{f.get('name')}' missing positive_keywords")
 
 # Test 5: daily_log section
 check("daily_log" in cfg, "missing top-level 'daily_log' key")

@@ -36,10 +36,12 @@ printf "${C_DIM}python: %s${C_RESET}\n" "$PYTHON"
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 FIXTURE_SRC="$REPO_ROOT/scripts/fixtures/test-005-phase5"
+FIXTURE_DIR="${TMPDIR:-/tmp}/tomo-005-phase5-fixtures"
+mkdir -p "$FIXTURE_DIR"
 
 # ── Test 1: wizard skill files exist and contain required structure ────────────
 printf "\n${C_DIM}── Test 1: wizard skill files exist and parse${C_RESET}\n"
-STDERR1="$FIXTURE_SRC/t1.log"
+STDERR1="$FIXTURE_DIR/t1.log"
 if "$PYTHON" "$FIXTURE_SRC/assert_wizard_skills.py" "$REPO_ROOT" 2>"$STDERR1"; then
     pass "tomo-trackers-wizard + tomo-daily-log-wizard present, frontmatter + AskUserQuestion verified"
 else
@@ -49,11 +51,16 @@ fi
 
 # ── Test 2: tomo-setup.md has Phase 3b and Mode-B wizard shortcuts ────────────
 printf "\n${C_DIM}── Test 2: tomo-setup.md Phase 3b + Mode-B shortcuts (covered by Test 1)${C_RESET}\n"
-pass "Phase 3b + Mode-B shortcuts verified in Test 1 assert_wizard_skills.py"
+STDERR2="$FIXTURE_DIR/t2.log"
+if [ "$FAILED" -eq 0 ]; then
+    pass "Phase 3b + Mode-B shortcuts verified in Test 1 assert_wizard_skills.py"
+else
+    skip "Phase 3b + Mode-B shortcuts" "Test 1 failed — skipping dependent assertion"
+fi
 
 # ── Test 3: instruction-builder has log_entry and log_link handlers ───────────
 printf "\n${C_DIM}── Test 3: instruction-builder log_entry + log_link handlers${C_RESET}\n"
-STDERR3="$FIXTURE_SRC/t3.log"
+STDERR3="$FIXTURE_DIR/t3.log"
 if "$PYTHON" "$FIXTURE_SRC/assert_instruction_builder_handlers.py" "$REPO_ROOT" 2>"$STDERR3"; then
     pass "instruction-builder Step 6.1 + 6.2 present with correct wikilink + fallback format"
 else
@@ -63,7 +70,7 @@ fi
 
 # ── Test 4: wizard-written vault-config validates ─────────────────────────────
 printf "\n${C_DIM}── Test 4: wizard-written vault-config passes structure validation${C_RESET}\n"
-STDERR4="$FIXTURE_SRC/t4.log"
+STDERR4="$FIXTURE_DIR/t4.log"
 if "$PYTHON" "$FIXTURE_SRC/assert_wizard_vault_config.py" \
     "$FIXTURE_SRC/vault_config_with_trackers.yaml" 2>"$STDERR4"; then
     pass "vault_config_with_trackers.yaml: all required fields present, auto_create_if_missing=false"
@@ -74,7 +81,7 @@ fi
 
 # ── Test 5: incomplete vault-config is detected as missing descriptions ────────
 printf "\n${C_DIM}── Test 5: vault-config missing tracker descriptions detected${C_RESET}\n"
-STDERR5="$FIXTURE_SRC/t5.log"
+STDERR5="$FIXTURE_DIR/t5.log"
 if "$PYTHON" "$FIXTURE_SRC/assert_missing_descriptions.py" \
     "$FIXTURE_SRC/vault_config_missing_descriptions.yaml" 2>"$STDERR5"; then
     pass "vault_config_missing_descriptions.yaml: missing descriptions correctly detected"

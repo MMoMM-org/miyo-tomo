@@ -9,8 +9,6 @@ rather than composing JSON from memory.
 Inputs (CLI):
   --schema    Path to a JSON Schema file (draft-2020-12 supported subset).
   --output    Target path for the skeleton JSON.
-  --oneof     Strategy for oneOf/anyOf: "first" (default) picks the first
-              branch; "all" emits an array of alternatives (use for docs).
 
 Placeholder conventions (LLM must replace):
   string      → "<FIELD_NAME>" (UPPER_SNAKE derived from the field key)

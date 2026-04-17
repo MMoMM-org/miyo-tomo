@@ -16,8 +16,9 @@
         {
           "field": "Sport",
           "value": true,
-          "syntax": "task_checkbox",
-          "confidence": 0.9
+          "syntax": "inline_field",
+          "confidence": 0.9,
+          "reason": "Legacy entry treated as tracker"
         }
       ]
     }

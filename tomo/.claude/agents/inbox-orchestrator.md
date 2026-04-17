@@ -115,22 +115,14 @@ literal string value (e.g. `2026-04-15T17-03-22Z-ab12cd`). Do NOT use shell
 `$(cat ...)` substitution — that's a compound-command pattern the validator
 dislikes.
 
-Step A3 — read the inbox path from vault-config:
-
-```bash
-python3 scripts/read-config-field.py --field concepts.inbox --default "100 Inbox/"
-```
-
-The inbox path is in the stdout. Remember the literal value.
-
-Step A4 — build shared context (substitute the run-id literal you got in A2):
+Step A3 — build shared context (substitute the run-id literal you got in A2):
 
 ```bash
 python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
 ```
 
-Step A5 — seed the state-file (substitute the run-id literal and the inbox
-path literal):
+Step A4 — seed the state-file (substitute the run-id literal and the inbox
+path literal from Step A0):
 
 ```bash
 python3 scripts/state-init.py --inbox-path "<INBOX_PATH>" --run-id <RUN_ID> --output tomo-tmp/inbox-state.jsonl
@@ -237,8 +229,8 @@ Then render `tomo-tmp/suggestions-doc.json` to markdown:
 
    ## Daily Notes Updates  (only if daily_notes_updates non-empty)
 
-   <render_daily_notes_updates_block output — from suggestions-doc.json daily_notes_updates[],
-    already rendered by the reducer into the doc, or re-render from daily_notes_updates[] here>
+   <use suggestions-doc.json `rendered_daily_updates_md` field directly — the reducer
+    pre-renders this block; do not re-render from daily_notes_updates[] yourself>
 
    ## Suggestions
 

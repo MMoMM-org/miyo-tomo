@@ -19,23 +19,20 @@ trackers:
       - name: mood
         kind: scale
         description: "Daily mood score from 1 to 5"
-        keywords:
-          positive: ["mood", "feeling", "how I feel"]
-          negative: ["productivity"]
+        positive_keywords: ["mood", "feeling", "how I feel"]
+        negative_keywords: ["productivity"]
       - name: energy
         kind: scale
         description: "Energy level throughout the day"
-        keywords:
-          positive: ["energy", "tired", "awake"]
-          negative: []
+        positive_keywords: ["energy", "tired", "awake"]
+        negative_keywords: []
   end_of_day_fields:
     fields:
       - name: wins
         kind: text
         description: "Things that went well today"
-        keywords:
-          positive: ["win", "accomplished", "shipped"]
-          negative: []
+        positive_keywords: ["win", "accomplished", "shipped"]
+        negative_keywords: []
 
 daily_log:
   heading: "Daily Log"

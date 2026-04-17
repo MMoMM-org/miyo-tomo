@@ -1,0 +1,31 @@
+{
+  "schema_version": "1",
+  "stem": "20260414-sleep-note",
+  "path": "100 Inbox/20260414-sleep-note.md",
+  "type": "fleeting_note",
+  "type_confidence": 0.3,
+  "atomic_note_worthiness": 0.3,
+  "date_relevance": {
+    "date": "2026-04-14",
+    "source": "filename"
+  },
+  "issues": [],
+  "actions": [
+    {
+      "kind": "update_daily",
+      "date": "2026-04-14",
+      "daily_note_path": "Calendar/301 Daily/2026-04-14.md",
+      "updates": [
+        {
+          "kind": "tracker",
+          "field": "Sleep",
+          "value": 7,
+          "syntax": "inline_field",
+          "confidence": 0.8,
+          "reason": "Content mentions 'slept 7 hours'",
+          "section": "Habit"
+        }
+      ]
+    }
+  ]
+}

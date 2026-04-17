@@ -93,9 +93,9 @@
               "required": ["past", "today", "future"],
               "additionalProperties": false,
               "properties": {
-                "past": {"const": false},
-                "today": {"const": false},
-                "future": {"const": false}
+                "past": {"type": "boolean"},
+                "today": {"type": "boolean"},
+                "future": {"type": "boolean"}
               }
             }
           }

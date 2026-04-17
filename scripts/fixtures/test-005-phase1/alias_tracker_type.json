@@ -18,8 +18,9 @@
           "type": "boolean",
           "field": "Sport",
           "value": true,
-          "syntax": "task_checkbox",
-          "confidence": 0.9
+          "syntax": "inline_field",
+          "confidence": 0.9,
+          "reason": "Content matches Sport tracker keywords"
         }
       ]
     }

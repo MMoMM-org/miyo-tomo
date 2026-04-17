@@ -215,7 +215,7 @@ def render_update_daily(action: dict, stem: str, field_sections: dict[str, str] 
     grouped: dict[str, list[dict]] = {}
     for u in updates:
         field = u.get("field", "")
-        section = field_sections.get(field) or "<unknown section>"
+        section = field_sections.get(field) or u.get("section") or "<unknown section>"
         grouped.setdefault(section, []).append(u)
 
     for section, group in grouped.items():
@@ -326,7 +326,7 @@ def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_material_fuer(log_links_for_stem: list[dict]) -> str:
+def render_log_link_mirror(log_links_for_stem: list[dict]) -> str:
     """Render per-item Material für block for items that produced log_links."""
     if not log_links_for_stem:
         return ""
@@ -450,6 +450,7 @@ def main() -> int:
                         elif ukind == "log_entry":
                             daily_groups[daily_stem]["log_entries"].append({
                                 "time": u.get("time"),
+                                "time_source": u.get("time_source"),
                                 "content": u.get("content", ""),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
@@ -460,6 +461,7 @@ def main() -> int:
                             daily_groups[daily_stem]["log_links"].append({
                                 "target_stem": target,
                                 "time": u.get("time"),
+                                "time_source": u.get("time_source"),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
                                 "source_section": section_id,
@@ -489,7 +491,7 @@ def main() -> int:
 
         # Append Material für mirror blocks to per-item rendered actions
         if stem in stem_log_links:
-            material_md = render_material_fuer(stem_log_links[stem])
+            material_md = render_log_link_mirror(stem_log_links[stem])
             if material_md:
                 # Append to the last create_atomic_note action if present, else last action
                 target_action = None
@@ -531,6 +533,8 @@ def main() -> int:
         })
 
     daily_notes_updates = sorted(daily_groups.values(), key=lambda d: d["daily_note_stem"])
+    daily_notes_updates_sorted = daily_notes_updates
+    rendered_daily_updates_md = render_daily_notes_updates_block(daily_notes_updates_sorted)
 
     doc = {
         "schema_version": "1",
@@ -540,6 +544,7 @@ def main() -> int:
         "source_items": len(done_stems) + len(failed_entries),
         "sections": sections,
         "daily_notes_updates": daily_notes_updates,
+        "rendered_daily_updates_md": rendered_daily_updates_md,
         "decision_precedence_note": (
             "If you Accept in either the Daily Notes Updates block or the per-item Material block, "
             "the decision is captured once. Top-of-doc block takes precedence if both are checked."

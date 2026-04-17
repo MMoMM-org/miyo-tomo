@@ -17,7 +17,7 @@
           "kind": "tracker",
           "field": "Sport",
           "value": true,
-          "syntax": "task_checkbox",
+          "syntax": "inline_field",
           "confidence": 0.9,
           "reason": "user went for a run",
           "section": "Today"

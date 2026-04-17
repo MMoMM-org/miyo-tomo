@@ -106,6 +106,7 @@
       "properties": {
         "kind": {"const": "update_daily"},
         "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "daily_note_stem": {"type": "string"},
         "daily_note_path": {"type": "string"},
         "updates": {
           "type": "array",
@@ -122,7 +123,7 @@
     },
     "update_tracker": {
       "type": "object",
-      "required": ["kind", "field", "value", "syntax", "confidence"],
+      "required": ["kind", "field", "value", "syntax", "confidence", "reason"],
       "additionalProperties": false,
       "properties": {
         "kind": {"const": "tracker"},

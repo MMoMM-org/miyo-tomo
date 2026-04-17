@@ -53,7 +53,7 @@ FORBIDDEN_PER_KIND_ATOMIC = {
 }
 
 REQUIRED_PER_UPDATE_KIND = {
-    "tracker": {"kind", "field", "value", "syntax", "confidence"},
+    "tracker": {"kind", "field", "value", "syntax", "confidence", "reason"},
     "log_entry": {"kind", "content", "reason", "confidence"},
     "log_link": {"kind", "target_stem", "reason", "confidence"},
 }
@@ -148,6 +148,17 @@ def main() -> int:
     except json.JSONDecodeError as exc:
         print(f"ERROR: {result_path} is not valid JSON: {exc}", file=sys.stderr)
         return 1
+
+    # Legacy migration: inject kind="tracker" for update_daily entries missing kind
+    for i, a in enumerate(result.get("actions") or []):
+        if isinstance(a, dict) and a.get("kind") == "update_daily":
+            for j, u in enumerate(a.get("updates") or []):
+                if isinstance(u, dict) and "kind" not in u:
+                    print(
+                        f"WARN: actions[{i}].updates[{j}] missing kind: — treated as tracker",
+                        file=sys.stderr,
+                    )
+                    u["kind"] = "tracker"
 
     errors: list[str] = []
     try:

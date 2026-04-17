@@ -82,6 +82,7 @@
               "additionalProperties": false,
               "properties": {
                 "time": {"type": ["string", "null"]},
+                "time_source": {"type": ["string", "null"]},
                 "content": {"type": "string"},
                 "reason": {"type": "string"},
                 "source_stem": {"type": "string"},
@@ -98,6 +99,7 @@
               "properties": {
                 "target_stem": {"type": "string"},
                 "time": {"type": ["string", "null"]},
+                "time_source": {"type": ["string", "null"]},
                 "reason": {"type": "string"},
                 "source_stem": {"type": "string"},
                 "source_section": {"type": "string", "pattern": "^S[0-9]{2,}$"}
@@ -107,6 +109,7 @@
         }
       }
     },
+    "rendered_daily_updates_md": {"type": "string"},
     "decision_precedence_note": {"type": "string"},
     "needs_attention": {
       "type": "array",

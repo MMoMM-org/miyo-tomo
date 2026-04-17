@@ -154,9 +154,7 @@ def _schema_type(raw: str, scale: str | None) -> str:
     return t
 
 
-def _syntax_for(field_type: str, section: str) -> str:
-    # Long free-text fields in "End of the Day" style sections usually live in
-    # a callout body rather than as inline fields.
+def _syntax_for(field_type: str) -> str:
     if field_type == "text":
         return "callout_body"
     return "inline_field"
@@ -203,7 +201,7 @@ def build_tracker_fields(vault_cfg: dict) -> list[dict]:
                 continue
             seen_names.add(name)
             field_type = _schema_type(f.get("type") or "", f.get("scale"))
-            syntax = _syntax_for(field_type, section)
+            syntax = _syntax_for(field_type)
             keywords = _seed_keywords(name, f.get("keywords"))
             description = f.get("description", "")
             if not description:
@@ -317,26 +315,13 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
     if len(data) <= max_bytes:
         return ctx, 0
 
-    # Pass 2: drop negative_keywords
-    for tf, i in _tracker_fields_iter(ctx):
-        tf[i]["negative_keywords"] = []
-    data = serialize(ctx)
-    if len(data) <= max_bytes:
-        return ctx, 0
-
-    # Pass 3: drop positive_keywords
-    for tf, i in _tracker_fields_iter(ctx):
-        tf[i]["positive_keywords"] = []
-    data = serialize(ctx)
-    if len(data) <= max_bytes:
-        return ctx, 0
-
-    # Pass 4: drop auto-seeded keywords
-    for tf, i in _tracker_fields_iter(ctx):
-        tf[i]["keywords"] = []
-    data = serialize(ctx)
-    if len(data) <= max_bytes:
-        return ctx, 0
+    # Passes 2-4: drop keyword lists in order of importance
+    for field_name in ("negative_keywords", "positive_keywords", "keywords"):
+        for tf, i in _tracker_fields_iter(ctx):
+            tf[i][field_name] = []
+        data = serialize(ctx)
+        if len(data) <= max_bytes:
+            return ctx, 0
 
     # Pass 5: shorten mocs[].topics (original behaviour)
     dropped = 0

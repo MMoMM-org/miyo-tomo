@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "stem": "legacy-update",
+  "path": "100 Inbox/legacy-update.md",
+  "type": "daily_log",
+  "type_confidence": 0.9,
+  "date_relevance": null,
+  "issues": [],
+  "duration_ms": 200,
+  "actions": [
+    {
+      "kind": "update_daily",
+      "date": "2026-04-14",
+      "daily_note_path": "Calendar/Days/2026-04-14.md",
+      "updates": [
+        {
+          "field": "Sport",
+          "value": true,
+          "syntax": "task_checkbox",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}

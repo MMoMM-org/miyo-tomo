@@ -1,0 +1,44 @@
+{
+  "schema_version": "1",
+  "stem": "test-mixed-updates",
+  "path": "100 Inbox/test-mixed-updates.md",
+  "type": "daily_log",
+  "type_confidence": 0.9,
+  "date_relevance": null,
+  "issues": [],
+  "duration_ms": 500,
+  "actions": [
+    {
+      "kind": "update_daily",
+      "date": "2026-04-14",
+      "daily_note_path": "Calendar/Days/2026-04-14.md",
+      "updates": [
+        {
+          "kind": "tracker",
+          "field": "Sport",
+          "value": true,
+          "syntax": "task_checkbox",
+          "confidence": 0.9,
+          "reason": "user went for a run",
+          "section": "Today"
+        },
+        {
+          "kind": "log_entry",
+          "content": "Finished the acceptance test suite",
+          "reason": "significant work milestone",
+          "confidence": 0.85,
+          "time": "14:00",
+          "time_source": "content"
+        },
+        {
+          "kind": "log_link",
+          "target_stem": "test-mixed-updates",
+          "reason": "link back to inbox item",
+          "confidence": 0.8,
+          "time": "14:00",
+          "time_source": "filename"
+        }
+      ]
+    }
+  ]
+}

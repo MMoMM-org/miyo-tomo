@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "stem": "atomic-only-note",
+  "path": "100 Inbox/atomic-only-note.md",
+  "type": "coding_insight",
+  "type_confidence": 0.85,
+  "date_relevance": null,
+  "issues": [],
+  "duration_ms": 300,
+  "actions": [
+    {
+      "kind": "create_atomic_note",
+      "suggested_title": "Python venv best practices",
+      "template": "Atomic Note.md",
+      "location": "Atlas/202 Notes/",
+      "candidate_mocs": [
+        {
+          "path": "Atlas/200 Maps/Shell & Terminal (MOC).md",
+          "score": 0.75,
+          "pre_check": true
+        }
+      ],
+      "tags_to_add": ["topic/applied/tools"],
+      "classification": {
+        "category": "2600 - Applied Sciences",
+        "confidence": 0.7
+      },
+      "needs_new_moc": false,
+      "proposed_moc_topic": null,
+      "atomic_note_worthiness": 0.8,
+      "alternatives": []
+    }
+  ]
+}

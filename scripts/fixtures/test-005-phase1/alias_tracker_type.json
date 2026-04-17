@@ -1,0 +1,27 @@
+{
+  "schema_version": "1",
+  "stem": "alias-tracker",
+  "path": "100 Inbox/alias-tracker.md",
+  "type": "daily_log",
+  "type_confidence": 0.9,
+  "date_relevance": null,
+  "issues": [],
+  "duration_ms": 200,
+  "actions": [
+    {
+      "kind": "update_daily",
+      "date": "2026-04-14",
+      "daily_note_path": "Calendar/Days/2026-04-14.md",
+      "updates": [
+        {
+          "kind": "tracker",
+          "type": "boolean",
+          "field": "Sport",
+          "value": true,
+          "syntax": "task_checkbox",
+          "confidence": 0.9
+        }
+      ]
+    }
+  ]
+}

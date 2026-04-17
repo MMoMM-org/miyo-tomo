@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "stem": "alias-log-link",
+  "path": "100 Inbox/alias-log-link.md",
+  "type": "daily_log",
+  "type_confidence": 0.9,
+  "date_relevance": null,
+  "issues": [],
+  "duration_ms": 200,
+  "actions": [
+    {
+      "kind": "update_daily",
+      "date": "2026-04-14",
+      "daily_note_path": "Calendar/Days/2026-04-14.md",
+      "updates": [
+        {
+          "kind": "log_link",
+          "target": "some-note",
+          "reason": "test alias detection",
+          "confidence": 0.8
+        }
+      ]
+    }
+  ]
+}

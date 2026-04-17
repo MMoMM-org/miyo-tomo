@@ -211,6 +211,7 @@ def main() -> int:
             "title": title,
             "tags": tags_str,
             "up": up_value,
+            "related": "",  # placeholder — populated by MOC creator post-MVP
             "body": body,
             "summary": summary or "",
         }

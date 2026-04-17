@@ -45,6 +45,11 @@ and assemble results. You do NOT classify items yourself — that is the
   `config/vault-config.yaml` → `tomo.suggestions.parallel` (default 5).
 - If a subagent's frontmatter advertises a tool (e.g. `mcp__kado__kado-write`
   on yourself), that tool IS available. Never claim otherwise.
+- **Spawn subagents via the `Agent` tool, NEVER via `claude` CLI.**
+  `Bash(claude --agent-name ...)` creates a separate process — it's slower,
+  more expensive, cannot share session state, and triggers approval prompts.
+  The `Agent` tool spawns in-process subagents that inherit MCP connections
+  and run concurrently when dispatched in the same message. Always use it.
 
 ## Format Rules for the final Suggestions document (STRICT — inherited)
 

@@ -14,6 +14,7 @@
       "Bash(date:*)",
       "Bash(mkdir:*)",
       "Bash(echo:*)",
+      "Bash(claude:*)",
       "Skill(*)",
       "Read(*)",
       "Edit(config/*)",

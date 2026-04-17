@@ -117,7 +117,7 @@ fi
 # ── Splash screen ─────────────────────────────────────────
 
 show_splash() {
-    local logo_file="$TOMO_REPO_ROOT/assets/tomo-small-logo-50.txt"
+    local logo_file="$TOMO_REPO_ROOT/assets/tomo-small-logo-50-2.txt"
     local version="unknown"
     local version_file="$TOMO_REPO_ROOT/tomo/.claude/rules/project-context.md"
     if [ -f "$version_file" ]; then

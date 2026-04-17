@@ -281,7 +281,12 @@ def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
     """Render the ## Daily Notes Updates section from daily_notes_updates[]."""
     if not daily_notes_updates:
         return ""
-    lines: list[str] = ["## Daily Notes Updates", ""]
+    lines: list[str] = [
+        "## Daily Notes Updates",
+        "",
+        "- [ ] Approved — check when all daily note decisions below are final",
+        "",
+    ]
     for entry in daily_notes_updates:
         stem = entry["daily_note_stem"]
         lines.append(f"### [[{stem}]]")

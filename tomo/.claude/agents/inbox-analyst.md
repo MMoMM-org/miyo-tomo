@@ -11,7 +11,7 @@ skills:
   - pkm-workflows
 ---
 # Inbox Analyst Subagent
-# version: 0.5.0 (Phase 4 — emits update_daily actions)
+# version: 0.6.0 (Spec 005 — three-way daily-note classification)
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -127,64 +127,197 @@ Set `date_relevance` if a date appears in filename/frontmatter/content
 matching one of `shared_ctx.daily_notes.date_formats`. Source preference:
 filename > frontmatter > content. Normalise to ISO `YYYY-MM-DD`.
 
-### Step 8b — Detect tracker updates (requires daily_notes + date_relevance)
+### Step 8b — Daily-note classification (requires daily_notes + date_relevance)
 
-Only if BOTH:
-- `shared_ctx.daily_notes` is present with non-empty `tracker_fields[]`
+**Gate:** Only proceed if BOTH conditions are true:
+- `shared_ctx.daily_notes` is present
 - `date_relevance` was set in Step 8
 
-For each tracker field, compute a keyword-match score against the item's
-content (title + body):
-- score = number of unique field `keywords[]` that appear (case-insensitive,
-  whole word) in the content, divided by `len(keywords[])`
-- Threshold: 0.5 for bool/rating, 0.3 for text fields (lower bar — text
-  fields often just need the topic to match)
+If either is missing, skip ALL of Step 8b and proceed to Step 9.
 
-For each field scoring above threshold, infer the `value`:
-- `bool` field: `true` if any keyword hits
-- `rating_1_5`: best integer 1-5 found near a keyword hit (else 3 if energy-
-  like keywords present, else omit)
-- `duration`: parse number+unit near a keyword hit (e.g. "7h", "45 min");
-  omit if none
-- `number`: first integer/float near a keyword hit; omit if none
-- `text`: short (≤ 200 chars) excerpt from the content that mentions the
-  keyword; rough sentence boundary
+#### Step 8b.1 — Date detection
 
-Build an `update_daily` action:
+Keep the date from Step 8. Ensure it is normalised to ISO `YYYY-MM-DD`.
+Record the source (`filename`, `frontmatter`, or `content`).
 
-```json
-{
-  "kind": "update_daily",
-  "date": "<date_relevance.date>",
-  "daily_note_path": "<path substituted from shared_ctx.daily_notes.path_pattern>",
-  "updates": [
-    {"field": "<name>", "value": <inferred>, "syntax": "<from shared-ctx>", "confidence": <score>}
-  ]
-}
+#### Step 8b.2 — Cutoff gate
+
+If `shared_ctx.daily_notes.daily_log.cutoff_days` is set:
+- Compute `cutoff_date = today - cutoff_days`.
+- If `date_relevance.date < cutoff_date` → **STOP all daily-note
+  classification.** Skip Steps 8b.3 and 8b.4 entirely. Proceed to Step 9.
+  The item gets NO `update_daily` action — only atomic-note classification
+  from Step 7 proceeds.
+
+If `cutoff_days` is not set, no cutoff applies — continue.
+
+#### Step 8b.3 — Three-way classifier
+
+Run three INDEPENDENT evaluations on the item content (title + body).
+All three run in one pass — no extra Kado reads.
+
+**Evaluation 1 — Tracker matching:**
+
+For each field in `shared_ctx.daily_notes.tracker_fields[]`:
+
+1. **Keyword check:** If `positive_keywords` is non-empty:
+   - Check if ANY positive keyword appears as a whole word (case-insensitive)
+     in the content (title + body).
+   - If a positive keyword hits, ALSO check `negative_keywords`: if ANY
+     negative keyword appears in the SAME sentence or ±50-word window
+     around the positive hit → SUPPRESS the match (false positive).
+   - Example: "watched a video about yoga" → `yoga` hits positive, but
+     `watched` or `video about` hits negative → SUPPRESS.
+
+2. **Description fallback:** If `positive_keywords` is empty (or absent):
+   - Split the `description` field into words, lowercase.
+   - Check if ANY description word appears as a whole word in the content.
+   - This is a weaker signal — set confidence lower (0.3-0.5).
+
+3. **Value inference** (if match survives):
+   - `bool`: `true`
+   - `rating_1_5`: look for a digit 1-5 near the keyword hit; default 3
+     if the field description suggests energy/mood, else omit
+   - `text`: extract ≤200 char excerpt around the keyword hit
+   - `duration`: parse number+unit near keyword (e.g. "7h", "45 min"); omit if none
+   - `number`: first integer/float near keyword; omit if none
+
+4. **Confidence scoring:**
+   - Single positive keyword only → 0.5
+   - Multiple positive keywords → 0.7
+   - Positive keyword + description word match → 0.9
+
+5. **Reason** (MUST be ≤80 chars): one sentence explaining why.
+   Example: `"Content mentions 'ran 5k' matching Sport positive_keywords"`
+
+Emit each surviving match as a tracker update entry with
+`{kind: "tracker", field, value, section, syntax, confidence, reason}`.
+
+**Evaluation 2 — Log eligibility:**
+
+Determine if this item should appear in the daily note's log section.
+
+- If `shared_ctx.daily_notes.daily_log.enabled` is `false` → no log at all.
+  Skip this evaluation.
+- If `atomic_note_worthiness ≥ 0.5` → this item will become an atomic note
+  → emit `log_link` (reference from daily log to the new note).
+  Set `target_stem` to the stem that `create_atomic_note` will use.
+  Set `reason` (≤80 chars) explaining: e.g. `"Substantive note (worthiness 0.7) → link from daily log"`
+- If `atomic_note_worthiness < 0.5` AND content is short (< 500 chars) AND
+  item has `date_relevance` → emit `log_entry` (embed content inline in
+  daily log).
+  Set `content` to a cleaned summary (≤300 chars, strip frontmatter noise).
+  Set `reason` (≤80 chars): e.g. `"Short reflection (230 chars), not atomic-worthy → inline log"`
+- If neither condition is met → no log update for this item.
+
+Log update entry shape:
+- `log_entry`: `{kind: "log_entry", content, time?, time_source?, confidence, reason}`
+- `log_link`: `{kind: "log_link", target_stem, time?, time_source?, confidence, reason}`
+
+**Evaluation 3 — Time extraction:**
+
+Applies to BOTH `log_entry` and `log_link` (if either was emitted above).
+
+Follow `shared_ctx.daily_notes.daily_log.time_extraction.sources` in
+priority order. Stop at first successful extraction.
+
+- `content`: scan for time patterns in the body text:
+  - `HH:MM` or `H:MM` (24h)
+  - `H:MMam`/`H:MMpm` (12h)
+  - `"um 7"`, `"at 7am"`, `"at 7:30"` (natural language + number)
+  - `"morgens"` → `07:00`, `"abends"` → `19:00`, `"mittags"` → `12:00`
+    (German time-of-day words — approximate)
+- `filename`: parse filename for HHMM pattern.
+  Example: `20260415-0700_run.md` → `07:00`
+
+If found: set `time` to `"HH:MM"` format, `time_source` to the source name
+(e.g. `"content"` or `"filename"`).
+
+If NOT found across all configured sources: set `time` to `null`.
+The reducer will use the fallback from
+`shared_ctx.daily_notes.daily_log.time_extraction.fallback`
+(e.g. `append_end_of_day`).
+
+#### Step 8b.4 — Multi-daily split (log-format heuristic)
+
+Before finalising daily updates, check if the content is a dated log
+(multiple entries targeting different days). This is a PURE REGEX check —
+no LLM cost.
+
+```
+ALGORITHM detect_log_format(content):
+  Split content into non-empty lines.
+  DATE_RE = /^(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\d{4}-\d{2}-\d{2})\s/
+  dated_lines = count lines matching DATE_RE AND len ≤ 200 chars
+  total_lines = count non-empty lines
+
+  IF dated_lines ≥ 2 AND dated_lines / total_lines ≥ 0.6:
+    → LOG FORMAT detected.
+    For each dated line: extract date (normalise to YYYY-MM-DD),
+    build one update_daily action per unique date.
+    Apply cutoff PER-DATE: skip dates older than cutoff.
+    Each action's updates[] contains a log_entry with that line's text.
+    Tracker matches are NOT split — they apply to the PRIMARY
+    date_relevance.date only.
+  ELSE:
+    → PROSE MODE.
+    All tracker matches + log entries/links target the SINGLE
+    date_relevance.date (most recent mentioned date, or today if
+    "heute"/"today" appears).
 ```
 
-Path substitution: `shared_ctx.daily_notes.path_pattern` holds something like
-`Calendar/301 Daily/YYYY-MM-DD`. Replace `YYYY-MM-DD` (or whatever format
-tokens are in the pattern) with the actual date.
+If log-format is detected, the item produces N separate `update_daily`
+actions (one per unique date that passes the cutoff). Each action has:
+- `date`: the specific date for that action
+- `daily_note_stem`: the date segment (e.g. `"2026-04-15"`)
+- `daily_note_path`: substituted from `shared_ctx.daily_notes.path_pattern`
+- `updates[]`: the `log_entry` for that date's line(s)
+
+Tracker matches stay on the primary `date_relevance.date` action only.
 
 ### Step 9 — Build actions[]
 
-Items can produce MULTIPLE actions:
+Items can produce MULTIPLE actions simultaneously. Assemble them from
+Steps 7 and 8b.
 
-- **Always consider** `create_atomic_note` first (per Step 7 worthiness).
-  If atomic_note_worthiness ≥ 0.5, emit the action.
-- **Consider** `update_daily` (per Step 8b). If `updates[]` is non-empty,
-  emit the action.
-- If BOTH qualify, `actions[]` has two entries. The atomic-note action
-  comes first.
-- If NEITHER qualifies but the item IS a plausible tracker entry (very short,
-  no structure, but tracker keywords hit), emit ONLY `update_daily`.
+**Action 1 — Atomic note** (from Step 7):
+- If `atomic_note_worthiness ≥ 0.5` → emit `create_atomic_note` action.
+- If `atomic_note_worthiness < 0.5` but `> 0` → still emit as a lower-
+  confidence alternative (the user can approve/skip in Pass 1).
+
+**Action 2+ — Daily updates** (from Step 8b):
+Emit one or more `update_daily` actions. Each has:
+- `date`: ISO YYYY-MM-DD
+- `daily_note_stem`: the date segment from the path (e.g. `"2026-04-15"`)
+- `daily_note_path`: resolved from `shared_ctx.daily_notes.path_pattern`
+  with date tokens substituted
+- `updates[]`: mixed-kind entries (tracker + log_entry OR log_link)
+
+**Coexistence rules (STRICT — enforce these):**
+
+| Combination | Allowed? | Why |
+|-------------|----------|-----|
+| `create_atomic_note` + `update_daily` with `log_link` | YES | Substantive note + daily log reference to it |
+| `create_atomic_note` + `update_daily` with `log_entry` | NO | If substantive enough for atomic note, use `log_link` not `log_entry` |
+| `update_daily` with tracker + `log_entry` | YES | e.g. "5k run" = Sport tracker + inline log |
+| `update_daily` with tracker + `log_link` | YES | e.g. detailed route note = Sport tracker + link to atomic note |
+| Multiple `update_daily` actions (different dates) | YES | Only when log-format heuristic fires (Step 8b.4) |
+
+**Every entry in `updates[]` MUST have a `reason` field** (≤80 chars) — a
+single sentence explaining why this update was proposed. This applies to
+tracker, log_entry, and log_link entries alike. Without a reason, the entry
+is invalid.
+
+**Fallback rules:**
+- If NEITHER atomic note NOR daily update qualifies, but the item IS a
+  plausible tracker entry (very short, no structure, but tracker keywords
+  hit), emit ONLY `update_daily`.
 - If nothing qualifies at all, emit a single `create_atomic_note` with
-  `atomic_note_worthiness` from Step 7 as a fallback (the user can always
-  approve/skip in Pass 1).
+  `atomic_note_worthiness` from Step 7 (the user can always approve/skip).
 
 **Attachments** (type == "attachment"): one `create_atomic_note` with
 destination_concept = `"asset"`, title = stem, candidate_mocs empty.
+No daily-note actions for attachments.
 
 ### Step 10 — Fill the result template and write it
 
@@ -292,5 +425,6 @@ the state-file and the result.json, not your message.
 - Never append `; echo "EXIT:$?"` to Bash commands — the validator rejects it.
 - Never write files via Bash heredoc — use the `Write` tool.
 - Never call `kado-write` or `kado-search` — not in your tool list.
-- If `shared_ctx.daily_notes` is present, note date_relevance; do NOT emit
-  `update_daily` actions (that's Phase 4).
+- When `shared_ctx.daily_notes` is present, follow Step 8b fully (three-way
+  classification + log-format heuristic). Emit `update_daily` actions per
+  the coexistence rules in Step 9.

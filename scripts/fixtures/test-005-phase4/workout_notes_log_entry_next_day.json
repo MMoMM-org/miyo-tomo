@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "stem": "workout-notes",
+  "path": "100 Inbox/workout-notes.md",
+  "type": "fleeting_note",
+  "type_confidence": 0.75,
+  "date_relevance": {
+    "date": "2026-04-16",
+    "source": "filename"
+  },
+  "issues": [],
+  "actions": [
+    {
+      "kind": "update_daily",
+      "date": "2026-04-16",
+      "daily_note_path": "Calendar/301 Daily/2026-04-16.md",
+      "updates": [
+        {
+          "kind": "log_entry",
+          "content": "30 minute strength training session",
+          "reason": "Brief activity note, inline log entry",
+          "confidence": 0.75,
+          "time": "09:00",
+          "time_source": "content"
+        }
+      ]
+    }
+  ]
+}

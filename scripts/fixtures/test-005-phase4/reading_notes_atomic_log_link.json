@@ -1,0 +1,51 @@
+{
+  "schema_version": "1",
+  "stem": "reading-notes",
+  "path": "100 Inbox/reading-notes.md",
+  "type": "external_source",
+  "type_confidence": 0.7,
+  "date_relevance": {
+    "date": "2026-04-15",
+    "source": "filename"
+  },
+  "issues": [],
+  "actions": [
+    {
+      "kind": "create_atomic_note",
+      "suggested_title": "Deep Work Principles",
+      "template": "Atomic Note.md",
+      "location": "Atlas/202 Notes/",
+      "candidate_mocs": [
+        {
+          "path": "Atlas/200 Maps/Productivity (MOC).md",
+          "score": 0.6,
+          "pre_check": true
+        }
+      ],
+      "classification": {
+        "category": "2600 - Applied Sciences",
+        "confidence": 0.5
+      },
+      "needs_new_moc": false,
+      "proposed_moc_topic": null,
+      "tags_to_add": [],
+      "atomic_note_worthiness": 0.8,
+      "alternatives": []
+    },
+    {
+      "kind": "update_daily",
+      "date": "2026-04-15",
+      "daily_note_path": "Calendar/301 Daily/2026-04-15.md",
+      "updates": [
+        {
+          "kind": "log_link",
+          "target_stem": "reading-notes",
+          "reason": "Substantive note, link from daily log",
+          "confidence": 0.8,
+          "time": null,
+          "time_source": "content"
+        }
+      ]
+    }
+  ]
+}

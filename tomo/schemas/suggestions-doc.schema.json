@@ -50,6 +50,64 @@
         }
       }
     },
+    "daily_notes_updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["daily_note_stem", "exists", "trackers", "log_entries", "log_links"],
+        "additionalProperties": false,
+        "properties": {
+          "daily_note_stem": {"type": "string"},
+          "exists": {"type": "boolean"},
+          "trackers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["field", "value", "reason", "source_stem", "source_section"],
+              "additionalProperties": false,
+              "properties": {
+                "field": {"type": "string"},
+                "value": {},
+                "reason": {"type": "string"},
+                "source_stem": {"type": "string"},
+                "source_section": {"type": "string", "pattern": "^S[0-9]{2,}$"}
+              }
+            }
+          },
+          "log_entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["content", "reason", "source_stem", "source_section"],
+              "additionalProperties": false,
+              "properties": {
+                "time": {"type": ["string", "null"]},
+                "content": {"type": "string"},
+                "reason": {"type": "string"},
+                "source_stem": {"type": "string"},
+                "source_section": {"type": "string", "pattern": "^S[0-9]{2,}$"}
+              }
+            }
+          },
+          "log_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["target_stem", "reason", "source_stem", "source_section"],
+              "additionalProperties": false,
+              "properties": {
+                "target_stem": {"type": "string"},
+                "time": {"type": ["string", "null"]},
+                "reason": {"type": "string"},
+                "source_stem": {"type": "string"},
+                "source_section": {"type": "string", "pattern": "^S[0-9]{2,}$"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "decision_precedence_note": {"type": "string"},
     "needs_attention": {
       "type": "array",
       "items": {

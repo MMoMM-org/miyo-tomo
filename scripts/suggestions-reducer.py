@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 0.2.0
+# version: 0.3.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -277,6 +277,70 @@ def render_modify_note(action: dict, stem: str) -> str:
     )
 
 
+def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
+    """Render the ## Daily Notes Updates section from daily_notes_updates[]."""
+    if not daily_notes_updates:
+        return ""
+    lines: list[str] = ["## Daily Notes Updates", ""]
+    for entry in daily_notes_updates:
+        stem = entry["daily_note_stem"]
+        lines.append(f"### [[{stem}]]")
+        lines.append("")
+        if not entry.get("exists", True):
+            lines.append(f"- [ ] Create daily note [[{stem}]] first")
+            lines.append("")
+
+        trackers = entry.get("trackers") or []
+        if trackers:
+            lines.append("**Possible Trackers:**")
+            for t in trackers:
+                value_str = "true" if t["value"] is True else ("false" if t["value"] is False else str(t["value"]))
+                lines.append(f"- **{t['field']}** → `{value_str}`")
+                lines.append(f"  - Reason: {t['reason']}")
+                lines.append(f"  - Source: [[{t['source_stem']}]] ({t['source_section']})")
+                lines.append("  - [ ] Accept")
+            lines.append("")
+
+        log_entries = entry.get("log_entries") or []
+        if log_entries:
+            lines.append("**Possible Log Entries (inline text):**")
+            for le in log_entries:
+                time_str = le.get("time") or "end of day"
+                lines.append(f"- {time_str} — {le['content']}")
+                lines.append(f"  - Reason: {le['reason']}")
+                lines.append(f"  - Source: [[{le['source_stem']}]]")
+                lines.append("  - [ ] Accept")
+            lines.append("")
+
+        log_links = entry.get("log_links") or []
+        if log_links:
+            lines.append("**Possible Log Links (reference substantive notes):**")
+            for ll in log_links:
+                time_str = ll.get("time") or "end of day"
+                lines.append(f"- [[{ll['target_stem']}]]")
+                lines.append(f"  - Time: {time_str}")
+                lines.append(f"  - Reason: {ll['reason']}")
+                lines.append("  - [ ] Accept")
+            lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_material_fuer(log_links_for_stem: list[dict]) -> str:
+    """Render per-item Material für block for items that produced log_links."""
+    if not log_links_for_stem:
+        return ""
+    lines: list[str] = []
+    for ll in log_links_for_stem:
+        daily_stem = ll["daily_note_stem"]
+        time_str = ll.get("time") or "end of day"
+        lines.append(f"**Material für [[{daily_stem}]]:**")
+        lines.append(f"- Reason: {ll['reason']}")
+        lines.append(f"- Time: {time_str}")
+        lines.append("- [ ] Accept (add link from daily log)")
+    return "\n".join(lines)
+
+
 RENDERERS = {
     "create_atomic_note": render_create_atomic_note,
     "update_daily": render_update_daily,
@@ -338,6 +402,10 @@ def main() -> int:
 
     sections: list[dict] = []
     topic_clusters: dict[str, list[tuple[str, str, str]]] = {}  # norm_topic -> [(section_id, display, parent)]
+    # daily_note_stem -> {trackers, log_entries, log_links}
+    daily_groups: dict[str, dict] = {}
+    # stem -> [(daily_note_stem, time, reason)] for Material für mirror
+    stem_log_links: dict[str, list[dict]] = {}
 
     for idx, stem in enumerate(done_stems, start=1):
         result_path = items_dir / f"{stem}.result.json"
@@ -358,6 +426,50 @@ def main() -> int:
                 continue
             if kind == "update_daily":
                 rendered = renderer(action, stem, field_sections)
+                # Collect daily_notes_updates entries
+                daily_stem = _daily_note_stem(action.get("daily_note_path", "") or action.get("date", ""))
+                if daily_stem:
+                    if daily_stem not in daily_groups:
+                        daily_groups[daily_stem] = {
+                            "daily_note_stem": daily_stem,
+                            "exists": True,
+                            "trackers": [],
+                            "log_entries": [],
+                            "log_links": [],
+                        }
+                    for u in action.get("updates") or []:
+                        ukind = u.get("kind")
+                        if ukind == "tracker":
+                            daily_groups[daily_stem]["trackers"].append({
+                                "field": u.get("field", ""),
+                                "value": u.get("value"),
+                                "reason": u.get("reason", ""),
+                                "source_stem": stem,
+                                "source_section": section_id,
+                            })
+                        elif ukind == "log_entry":
+                            daily_groups[daily_stem]["log_entries"].append({
+                                "time": u.get("time"),
+                                "content": u.get("content", ""),
+                                "reason": u.get("reason", ""),
+                                "source_stem": stem,
+                                "source_section": section_id,
+                            })
+                        elif ukind == "log_link":
+                            target = u.get("target_stem", stem)
+                            daily_groups[daily_stem]["log_links"].append({
+                                "target_stem": target,
+                                "time": u.get("time"),
+                                "reason": u.get("reason", ""),
+                                "source_stem": stem,
+                                "source_section": section_id,
+                            })
+                            # Record for per-item Material für mirror
+                            stem_log_links.setdefault(stem, []).append({
+                                "daily_note_stem": daily_stem,
+                                "time": u.get("time"),
+                                "reason": u.get("reason", ""),
+                            })
             else:
                 rendered = renderer(action, stem)
             rendered_actions.append({"kind": kind, "rendered_md": rendered})
@@ -374,6 +486,20 @@ def main() -> int:
                     topic_clusters.setdefault(norm, []).append(
                         (section_id, topic_raw, parent)
                     )
+
+        # Append Material für mirror blocks to per-item rendered actions
+        if stem in stem_log_links:
+            material_md = render_material_fuer(stem_log_links[stem])
+            if material_md:
+                # Append to the last create_atomic_note action if present, else last action
+                target_action = None
+                for ra in rendered_actions:
+                    if ra["kind"] == "create_atomic_note":
+                        target_action = ra
+                if target_action is None and rendered_actions:
+                    target_action = rendered_actions[-1]
+                if target_action is not None:
+                    target_action["rendered_md"] = target_action["rendered_md"] + "\n\n" + material_md
 
         if rendered_actions:
             sections.append({
@@ -404,6 +530,8 @@ def main() -> int:
             "error": f"{err.get('kind', 'unknown')}: {err.get('message', '')}".strip(": "),
         })
 
+    daily_notes_updates = sorted(daily_groups.values(), key=lambda d: d["daily_note_stem"])
+
     doc = {
         "schema_version": "1",
         "generated": now_iso(),
@@ -411,6 +539,11 @@ def main() -> int:
         "profile": args.profile,
         "source_items": len(done_stems) + len(failed_entries),
         "sections": sections,
+        "daily_notes_updates": daily_notes_updates,
+        "decision_precedence_note": (
+            "If you Accept in either the Daily Notes Updates block or the per-item Material block, "
+            "the decision is captured once. Top-of-doc block takes precedence if both are checked."
+        ),
         "proposed_mocs": proposed_mocs,
         "needs_attention": needs_attention,
     }
@@ -422,8 +555,8 @@ def main() -> int:
 
     print(
         f"suggestions-reducer: done={len(done_stems)} failed={len(failed_entries)} "
-        f"sections={len(sections)} proposed_mocs={len(proposed_mocs)} "
-        f"out={out_path}",
+        f"sections={len(sections)} daily_notes_updates={len(daily_notes_updates)} "
+        f"proposed_mocs={len(proposed_mocs)} out={out_path}",
         file=sys.stderr,
     )
     return 0

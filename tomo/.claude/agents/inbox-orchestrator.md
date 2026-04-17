@@ -11,7 +11,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.3.0 (Plan Phase 3 — atomic-note only)
+# version: 0.4.0 (Plan Phase 4 — daily_notes_updates + Material für mirror)
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -201,7 +201,17 @@ python3 scripts/suggestions-reducer.py --state tomo-tmp/inbox-state.jsonl --item
 Then render `tomo-tmp/suggestions-doc.json` to markdown:
 
 1. Load the JSON with the `Read` tool.
-2. Build the document in memory:
+2. Build the document in memory using the **pinned section order** below. Omit
+   any section whose content is empty (no daily_notes_updates → no
+   `## Daily Notes Updates`, etc.).
+
+   **Document section order (strict — do not reorder):**
+   1. Frontmatter + `- [ ] Approved` + Decision-precedence note + Summary
+   2. `## Daily Notes Updates` (when `daily_notes_updates` is non-empty)
+   3. `## Suggestions` (per-item sections)
+   4. `## Proposed MOCs` (when `proposed_mocs` is non-empty)
+   5. `## Needs Attention` (when `needs_attention` is non-empty)
+
    ```
    ---
    type: tomo-suggestions
@@ -216,12 +226,19 @@ Then render `tomo-tmp/suggestions-doc.json` to markdown:
 
    - [ ] Approved — check this box when you've finished reviewing, then run `/inbox` for Pass 2
 
+   > <decision_precedence_note>
+
    ## Summary
 
    - Items processed: <source_items>
    - Sections: <len(sections)>
    - Proposed MOCs: <len(proposed_mocs)>
    - Needs attention: <len(needs_attention)>
+
+   ## Daily Notes Updates  (only if daily_notes_updates non-empty)
+
+   <render_daily_notes_updates_block output — from suggestions-doc.json daily_notes_updates[],
+    already rendered by the reducer into the doc, or re-render from daily_notes_updates[] here>
 
    ## Suggestions
 
@@ -248,6 +265,15 @@ Then render `tomo-tmp/suggestions-doc.json` to markdown:
    ### <stem>
    **Error:** <error>
    ```
+
+   **Daily Notes Updates rendering rules:**
+   - Each `daily_notes_updates[]` entry renders as `### [[<daily_note_stem>]]`
+   - `- [ ] Create daily note [[<stem>]] first` appears ONLY when `exists: false`
+   - Sub-headers appear ONLY when that category is non-empty
+   - Order within each daily-note block: Create-first → Trackers → Log Entries → Log Links
+   - Time `null` renders as "end of day"
+   - Wikilinks use stem only (no path, no `.md`)
+
 3. Write to the vault via `kado-write` at
    `<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.md` — where `<INBOX_PATH>` is
    the literal resolved in Step A0 (e.g. `100 Inbox/`). Do NOT reinvent a

@@ -354,3 +354,97 @@ tomo:
     # Maximum concurrent Phase-B subagents during /inbox fan-out. Range 1-5.
     parallel: 5
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Trackers
+# ──────────────────────────────────────────────────────────────────────────────
+# Declares tracker fields Tomo reads and proposes updates for in daily notes.
+# Two sub-sections mirror typical daily-note structure:
+#   today_fields   — checked during the day (boolean or scale trackers)
+#   end_of_day_fields.fields — filled at day's end (reflective / summary fields)
+#
+# Per field:
+#   name              — exact field name / label as it appears in the daily note
+#   type              — boolean | integer | text (see tier-2 tracker spec)
+#   syntax            — task_checkbox | inline_field | frontmatter
+#   description       — one-sentence intent (used by classifier to avoid false positives)
+#   positive_keywords — content words that should TRIGGER a match
+#   negative_keywords — content words that SUPPRESS a match even if positives hit
+
+trackers:
+  daily_note_trackers:
+    today_fields:
+      - name: Sport
+        type: boolean
+        syntax: task_checkbox
+        description: "Physical exercise the user actually did today (running, gym, yoga, cycling, swimming, hiking). Watching or reading about exercise does NOT qualify."
+        positive_keywords: [ran, running, gelaufen, Lauf, workout, gym, yoga, cycled, Rad, Fahrrad, swim, schwimmen, hike, wandern, trained, trainiert, Sport gemacht]
+        negative_keywords: [watched, video about, article about, gelesen über, video über, geplant, planning to, wollte]
+
+      - name: WakeUpEnergy
+        type: integer
+        syntax: inline_field
+        scale: "1-5"
+        description: "How rested and energised the user felt upon waking (1=exhausted, 5=fully rested); reflects sleep quality and morning state."
+        positive_keywords: [rested, ausgeschlafen, tired, müde, exhausted, erschöpft, energetic, energiegeladen, sluggish, träge, refreshed, erfrischt]
+        negative_keywords: []
+
+      - name: Meditation
+        type: boolean
+        syntax: task_checkbox
+        description: "Whether the user actually practised meditation or mindfulness today (sitting, breathing, body scan). Passive calming activities do not count."
+        positive_keywords: [meditiert, meditated, Meditation, mindfulness, Atemübung, breathing exercise, body scan, 10 Minuten Stille]
+        negative_keywords: [wollte meditieren, forgot, vergessen, skipped, ausgelassen, video about]
+
+      - name: Coding
+        type: boolean
+        syntax: inline_field
+        description: "Whether the user wrote, reviewed, or meaningfully debugged code today — includes scripting and configuration work."
+        positive_keywords: [coded, programmiert, Skript, script, refactored, debugged, deployed, commit, pull request, PR, gebaut, built, implemented]
+        negative_keywords: [read about, gelesen, video about, planned, geplant, thought about]
+
+    end_of_day_fields:
+      fields:
+        - name: Highlights
+          type: text
+          syntax: inline_field
+          description: "One or two sentences capturing the most memorable or meaningful moment of the day — personal wins, discoveries, or experiences worth remembering."
+          positive_keywords: [highlight, Highlight, bestes Erlebnis, best moment, proud of, stolz auf, memorable, unvergesslich, accomplished, geschafft, discovered, entdeckt]
+          negative_keywords: [nichts besonderes, nothing special, boring, langweilig]
+
+        - name: Sleep
+          type: integer
+          syntax: inline_field
+          scale: "hours"
+          description: "Hours of sleep the night before this daily note, used to correlate energy levels and productivity patterns."
+          positive_keywords: [Stunden geschlafen, hours of sleep, schlief, slept, Schlaf, sleep, 7h, 8h, 6h]
+          negative_keywords: [woke up, aufgewacht, couldn't sleep, nicht geschlafen]
+
+        - name: Mood
+          type: integer
+          syntax: inline_field
+          scale: "1-10"
+          description: "Overall mood rating at end of day (1=very low, 10=excellent); captures emotional state for trend analysis."
+          positive_keywords: [Stimmung, mood, gute Laune, glücklich, happy, content, zufrieden, great day, toller Tag]
+          negative_keywords: [morgens, morning, woke up, aufgewacht]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Daily Log
+# ──────────────────────────────────────────────────────────────────────────────
+# Controls how Tomo appends linked inbox items to the daily note's log section.
+# The log section is a chronological list of [[wikilinks]] to items processed
+# that day, giving the user a daily timeline in their journal.
+
+daily_log:
+  enabled: true                 # set false to disable daily-log updates entirely
+  section: "Daily Log"          # heading text Tomo searches for in the daily note
+  heading_level: 1              # 1 = "# Daily Log"; 2 = "## Daily Log"
+  time_extraction:
+    enabled: true               # attempt to extract a time from the inbox item
+    sources: [content, filename]  # priority order: try content first, then filename
+    fallback: "append_end_of_day"  # what to do when no time found: append_end_of_day | append_start_of_day | skip_time
+  link_format: "bullet"         # "bullet" → - [[stem]]; "plain" → [[stem]]
+  cutoff_days: 30               # items older than this get no update_daily action (avoid touching stale notes)
+  auto_create_if_missing:
+    past: false                 # MVP: never auto-create past daily notes
+    today: false                # MVP: never auto-create today's note (user creates manually)
+    future: false               # MVP: never auto-create future notes

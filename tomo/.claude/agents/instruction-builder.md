@@ -11,7 +11,7 @@ skills:
   - pkm-workflows
 ---
 # Instruction Builder Agent
-# version: 0.8.0
+# version: 0.9.0
 
 You are the instruction builder. You parse a confirmed suggestions document, render templates
 into ready-to-use note files, write those files to the inbox, and generate an instruction set
@@ -91,12 +91,7 @@ never a hardcoded path like `"Inbox"` or `"Atlas/202 Notes/"`.
 
 ### Step 1 — Parse Approved Suggestions
 
-**STRICT:** Do NOT write any new scripts or shell wrappers. Do NOT do exploratory
-`ls`/`cat` of existing scripts — `scripts/suggestion-parser.py` already exists and
-accepts either a file path or stdin.
-
 The suggestions file lives in the vault (accessed via Kado), not on the filesystem.
-Use this exact sequence:
 
 1. Read the doc content via Kado MCP: `kado-read` operation `note`, path is the
    `*_suggestions.md` file in the inbox folder (from auto-discovery).
@@ -105,105 +100,61 @@ Use this exact sequence:
    ```bash
    python3 scripts/suggestion-parser.py --file "tomo-tmp/suggestions.md"
    ```
-4. Parse the JSON output — it contains `confirmed_items` with `source_path`, `type`,
-   `action`, `title`, `tags`, `parent_moc`, `classification` per item.
+4. Write the JSON output to `tomo-tmp/parsed-suggestions.json` via the Write tool.
 
-Returns JSON with confirmed items, their actions, titles, tags, MOCs, classifications.
+### Step 2 — Render all new-note files (deterministic script)
 
-### Step 2 — Dispatch to Action Handlers
+**STRICT:** Do NOT read templates, compose note content, or call token-render.py
+yourself. The `instruction-render.py` script handles the entire rendering pipeline:
+reads templates via Kado, reads source note bodies via Kado, prepares tokens, calls
+token-render.py, and writes rendered files to `tomo-tmp/rendered/`.
 
-For each confirmed item, determine the action type and dispatch:
-
-| Action | Handler | Output |
-|--------|---------|--------|
-| `create_atomic_note` | New Atomic Note | Rendered .md file + instruction entry |
-| `create_moc` | New MOC | Rendered .md file + instruction entry |
-| `link_to_moc` | MOC Link | Instruction entry with exact wikilink |
-| `update_daily` | Daily Note Update | Instruction entry with tracker syntax |
-| `log_entry` | Daily Log Entry | Instruction entry with content to insert |
-| `log_link` | Daily Log Link | Instruction entry with wikilink to insert |
-| `modify_note` | Note Modification | Diff .md file + instruction entry |
-
-### Step 3 — Action Handler: New Atomic Note
-
-This handler produces TWO outputs: a rendered file in the inbox AND an instruction entry.
-
-#### 3a — Read template and location from suggestion
-
-Read `template` and `location` directly from the confirmed suggestion —
-they were filled in by `inbox-analyst` in Pass 1 and may have been edited
-by the user before approval. Do NOT re-resolve via vault-config unless
-both fields are missing.
-
-#### 3b — Read template content from vault
-
-Read the template file via Kado `kado-read` (operation `note`, path from 3a).
-Write the template content to `tomo-tmp/template.md` via the Write tool.
-
-#### 3c — Render the template
-
-Prepare the token JSON and write it to `tomo-tmp/tokens.json` via the Write tool:
-```json
-{
-  "title": "<suggested title>",
-  "tags": ["<tag1>", "<tag2>"],
-  "up": "[[<MOC name>]]",
-  "body": "<source note body content>",
-  "summary": "<one-line summary>"
-}
-```
-
-Then render:
 ```bash
-python3 scripts/token-render.py --template tomo-tmp/template.md --tokens tomo-tmp/tokens.json
+python3 scripts/instruction-render.py --suggestions tomo-tmp/parsed-suggestions.json --output-dir tomo-tmp/rendered
 ```
 
-The script outputs the rendered note to stdout. Capture the output.
+The script produces:
+- One rendered `.md` file per `create_atomic_note` / `create_moc` item
+- A `manifest.json` with metadata (rendered filename, destination, MOCs, tags)
 
-#### 3d — Validate and write rendered file
+**Do NOT hand-assemble note content.** The script is the single source of truth
+for rendered notes. It preserves Templater syntax, Dataview code blocks, and all
+template structure — only `{{moustache}}` tokens are replaced.
 
-Check that the rendered output contains valid YAML frontmatter with `title` and `tags`.
-Write the rendered file to the inbox via Kado:
-- Path: `<inbox>/YYYY-MM-DD_HHMM_<slug>.md`
-- Slug: lowercase, hyphens, derived from the suggested title
+### Step 3 — Write rendered files to inbox
 
-#### 3e — Generate instruction entry
+Read `tomo-tmp/rendered/manifest.json`. For each entry:
 
-The instruction tells the user what to do with the rendered file that now exists
-in the inbox. It does NOT tell them to create a note — the note already exists.
+1. Read the rendered file from `tomo-tmp/rendered/<filename>`
+2. Write to the vault via `kado-write` at `<inbox>/<filename>`
 
-ILLUSTRATIVE TEMPLATE with `<placeholders>` — replace every placeholder with
-values from THIS confirmed item. Do NOT parrot the example title or source ID.
+### Step 4 — Generate instruction entries for new files
+
+For each entry in the manifest, generate an instruction entry. The instruction
+tells the user what to do with the rendered file — NOT to create a note.
+
+ILLUSTRATIVE TEMPLATE with `<placeholders>` — replace per manifest entry.
+Do NOT parrot the example title.
 ```markdown
-### I01 — Move note: <suggested title>
+### I01 — Move note: <title>
 - [ ] Applied
 - **Source:** [[<source-stem>]]
 - **Rendered file:** [[<rendered-stem>]]
-- **Move to:** [[<destination folder>]]
-- **Rename to:** <suggested title>
-- **Set frontmatter `up:`** [[<MOC name>]]
-- **After moving:** if Obsidian shows unresolved Templater expressions (tp.* syntax), run `Templater: Replace Templates in Active File` via Cmd+P
+- **Move to:** [[<destination>]]
+- **Rename to:** <title>
+- **Set frontmatter `up:`** [[<parent_moc>]]
+- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P
 ```
 Rules:
 - Source, rendered file, and MOC MUST be wikilinks, never backticks.
-- Suggested filename is the bare name, NO `.md` extension, NO backticks.
-- Source-stem and rendered-stem are note names without `.md` and without any path prefix.
-- The Templater hint is a conditional — only relevant if the template contained Templater
-  expressions. NEVER write the literal Templater delimiters in instruction text.
+- Rendered-stem is the filename without `.md` and without path prefix.
+- Suggested filename (Rename to) is the bare name, NO `.md`, NO backticks.
 
-### Step 4 — Action Handler: New MOC
+### Step 4b — Generate instruction entries for MOC links
 
-Same rendering workflow as Step 3 (read template → render → write to inbox → instruction),
-with these differences:
-
-1. Use `templates.mapping.map_note` template (resolve via vault-config)
-2. Token JSON includes MOC-specific fields: `up` pointing to parent MOC, tags including
-   the MOC tag from vault-config (`type/others/moc` in MiYo)
-3. After rendering, pre-populate the `[!blocks]` section with initial wikilinks to the
-   cluster notes that triggered this MOC creation — edit the rendered content before
-   writing to inbox via Kado
-4. Instruction entry uses the same "Move note" format as Step 3e, with the parent MOC
-   as the `up:` target
+For each manifest entry with `parent_mocs` (list of MOCs to link to),
+generate a separate link instruction per MOC. These are in addition to
+the "Move note" instruction above.
 
 ### Step 5 — Action Handler: MOC Link
 

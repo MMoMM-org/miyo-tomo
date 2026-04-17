@@ -36,7 +36,7 @@ RE_CHECKED = re.compile(r"^\s*-\s+\[x\]\s*(.*)", re.IGNORECASE)
 RE_UNCHECKED = re.compile(r"^\s*-\s+\[\s\]\s*(.*)", re.IGNORECASE)
 
 # Bold field: **Name:** value
-RE_FIELD = re.compile(r"^\s*\*\*([^*]+)\*\*[:\s]+(.+)")
+RE_FIELD = re.compile(r"^\s*\*\*([^*]+)\*\*[:\s]*(.*)")
 
 # Wikilink: [[Note Name]]  or  [[Note Name#anchor]]
 RE_WIKILINK = re.compile(r"\[\[([^\]#|]+)(?:[#|][^\]]*)?\]\]")
@@ -246,7 +246,9 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
                 result["type"] = cleaned.split()[0] if cleaned else None
 
         elif key in ("title", "suggested name", "suggested title", "name"):
-            result["title"] = val
+            # Strip trailing edit hints like "← change if you want..."
+            clean_val = val.split("←")[0].strip() if "←" in val else val
+            result["title"] = clean_val
 
         elif key in ("tags", "tag", "new tags to add", "new tags"):
             result["tags"] = _parse_tags(val)
@@ -258,13 +260,13 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
                 result["parent_moc"] = wl
 
         elif key in ("destination", "location", "move to"):
-            # Strip wrapping backticks/brackets/wikilinks from a path
-            cleaned = val.strip("`").strip()
+            # Strip wrapping backticks/brackets/wikilinks and edit hints
+            cleaned = val.split("←")[0].strip().strip("`").strip()
             wl = _extract_wikilink(cleaned)
             result["destination"] = wl or cleaned
 
         elif key == "template":
-            cleaned = val.strip("`").strip()
+            cleaned = val.split("←")[0].strip().strip("`").strip()
             wl = _extract_wikilink(cleaned)
             result["template"] = wl or cleaned
 

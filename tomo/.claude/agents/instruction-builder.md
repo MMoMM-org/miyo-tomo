@@ -11,7 +11,7 @@ skills:
   - pkm-workflows
 ---
 # Instruction Builder Agent
-# version: 0.6.0
+# version: 0.7.0
 
 You are the instruction builder. You parse a confirmed suggestions document, generate detailed
 per-action instructions with rendered templates and diffs, and write everything to the inbox folder.
@@ -104,6 +104,8 @@ For each confirmed item, determine the action type and dispatch:
 | `create_moc` | New MOC | Rendered .md file + instruction entry |
 | `link_to_moc` | MOC Link | Instruction entry with exact wikilink |
 | `update_daily` | Daily Note Update | Instruction entry with tracker syntax |
+| `log_entry` | Daily Log Entry | Instruction entry with content to insert |
+| `log_link` | Daily Log Link | Instruction entry with wikilink to insert |
 | `modify_note` | Note Modification | Diff .md file + instruction entry |
 
 ### Step 3 — Action Handler: New Atomic Note
@@ -179,6 +181,58 @@ Same as atomic note, but:
    - **If daily note doesn't exist:** create it first, then add tracker
    ```
    Note: daily note path comes from vault-config `calendar.granularities.daily.path`.
+
+### Step 6.1 — Action Handler: Daily Log Entry
+
+For each `log_entry` update in confirmed suggestions:
+
+1. Resolve `daily_log.section` and `heading_level` from vault-config:
+   ```bash
+   python3 scripts/read-config-field.py --field daily_log.section
+   ```
+   ```bash
+   python3 scripts/read-config-field.py --field daily_log.heading_level --default "1"
+   ```
+2. Get `time` from the confirmed suggestion. If null, resolve fallback:
+   ```bash
+   python3 scripts/read-config-field.py --field daily_log.time_extraction.fallback --default "append at end of log"
+   ```
+3. Generate instruction (template with `<placeholders>`, replace per item):
+   ```markdown
+   ### I<NN> — Add log entry to [[<daily-note-stem>]]
+   - [ ] Applied
+   - **Daily note:** [[<daily-note-stem>]]
+   - **Section:** `# <daily_log.section>` (or `## <daily_log.section>` per heading_level)
+   - **Time slot:** <time or "append at end">
+   - **Content to add:**
+     > <content>
+   - **If daily note doesn't exist:** Create it first (your template plugin or manual), then add the log entry.
+   ```
+   Rules:
+   - Daily note MUST be a wikilink using stem only — no path prefix, no `.md`.
+   - Heading marker (`#` vs `##`) comes from resolved `heading_level`.
+   - `time` is the value from the confirmed suggestion; if null, use the resolved fallback string.
+
+### Step 6.2 — Action Handler: Daily Log Link
+
+For each `log_link` update in confirmed suggestions:
+
+1. Resolve `daily_log.section` from vault-config (same field as Step 6.1).
+2. Get `time` from the confirmed suggestion. If null, resolve fallback (same field as Step 6.1).
+3. Generate instruction (template with `<placeholders>`, replace per item):
+   ```markdown
+   ### I<NN> — Add daily log link to [[<daily-note-stem>]]
+   - [ ] Applied
+   - **Daily note:** [[<daily-note-stem>]]
+   - **Section:** `# <daily_log.section>`
+   - **Time slot:** <time or "append at end">
+   - **Add this line:**
+     `- [[<target_stem>]]`
+   - **If daily note doesn't exist:** Create it first, then add the link.
+   ```
+   Rules:
+   - Daily note and target MUST be wikilinks using stem only — no path prefix, no `.md`.
+   - `time` is the value from the confirmed suggestion; if null, use the resolved fallback string.
 
 ### Step 7 — Action Handler: Note Modification
 

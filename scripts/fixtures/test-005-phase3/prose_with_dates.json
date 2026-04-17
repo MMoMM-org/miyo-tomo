@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "stem": "duesseldorf-trip-notes",
+  "path": "100 Inbox/duesseldorf-trip-notes.md",
+  "type": "fleeting_note",
+  "type_confidence": 0.7,
+  "date_relevance": {
+    "date": "2026-03-17",
+    "source": "content"
+  },
+  "issues": [],
+  "actions": [
+    {
+      "kind": "update_daily",
+      "date": "2026-03-17",
+      "daily_note_path": "Calendar/301 Daily/2026-03-17.md",
+      "updates": [
+        {
+          "kind": "log_entry",
+          "content": "Trip notes: Duesseldorf visit, returned on the 17th",
+          "reason": "Prose with dates → single update at most-recent (2026-03-17)",
+          "confidence": 0.6,
+          "time": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "stem": "20260415-0700_run",
+  "path": "100 Inbox/20260415-0700_run.md",
+  "type": "fleeting_note",
+  "type_confidence": 0.8,
+  "date_relevance": {
+    "date": "2026-04-15",
+    "source": "filename"
+  },
+  "issues": [],
+  "actions": [
+    {
+      "kind": "update_daily",
+      "date": "2026-04-15",
+      "daily_note_path": "Calendar/301 Daily/2026-04-15.md",
+      "updates": [
+        {
+          "kind": "log_entry",
+          "content": "Morning run, easy pace",
+          "reason": "Short reflection (22 chars), not atomic-worthy → inline log",
+          "confidence": 0.7,
+          "time": "07:00",
+          "time_source": "filename"
+        }
+      ]
+    }
+  ]
+}

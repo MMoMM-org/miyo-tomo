@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 0.2.0
+# version: 0.3.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -205,14 +205,54 @@ def build_tracker_fields(vault_cfg: dict) -> list[dict]:
             field_type = _schema_type(f.get("type") or "", f.get("scale"))
             syntax = _syntax_for(field_type, section)
             keywords = _seed_keywords(name, f.get("keywords"))
+            description = f.get("description", "")
+            if not description:
+                print(f"WARN: tracker field '{name}' has no description", file=sys.stderr)
+            positive_keywords = [k.strip() for k in (f.get("positive_keywords") or []) if k and k.strip()]
+            negative_keywords = [k.strip() for k in (f.get("negative_keywords") or []) if k and k.strip()]
             out.append({
                 "name": name,
                 "type": field_type,
                 "section": section,
                 "syntax": syntax,
                 "keywords": keywords,
+                "description": description,
+                "positive_keywords": positive_keywords,
+                "negative_keywords": negative_keywords,
             })
     return out
+
+
+_DAILY_LOG_DEFAULTS: dict = {
+    "section": "Daily Log",
+    "heading_level": 1,
+    "time_extraction": {
+        "enabled": True,
+        "sources": ["content", "filename"],
+        "fallback": "append_end_of_day",
+    },
+    "link_format": "bullet",
+    "cutoff_days": 30,
+    "auto_create_if_missing": {"past": False, "today": False, "future": False},
+}
+
+
+def build_daily_log(vault_cfg: dict) -> dict:
+    """Build daily_log sub-block; forces auto_create_if_missing to false (MVP)."""
+    cfg = vault_cfg.get("daily_log")
+    if not cfg:
+        return {k: v for k, v in _DAILY_LOG_DEFAULTS.items()}
+
+    result: dict = {}
+    for key, default in _DAILY_LOG_DEFAULTS.items():
+        result[key] = cfg.get(key, default)
+
+    acim_cfg = cfg.get("auto_create_if_missing") or {}
+    forced_false = {k: False for k in ("past", "today", "future")}
+    if any(acim_cfg.get(k) for k in ("past", "today", "future")):
+        print("WARN: auto_create_if_missing forced to false in MVP", file=sys.stderr)
+    result["auto_create_if_missing"] = forced_false
+    return result
 
 
 def build_daily_notes(vault_cfg: dict) -> dict | None:
@@ -235,6 +275,7 @@ def build_daily_notes(vault_cfg: dict) -> dict | None:
         "path_pattern": f"{daily_path}{daily_pattern}".replace("//", "/"),
         "date_formats": [daily_pattern, "YYYYMMDD", "DD-MM-YYYY"],
         "tracker_fields": build_tracker_fields(vault_cfg),
+        "daily_log": build_daily_log(vault_cfg),
     }
 
 
@@ -244,20 +285,62 @@ def serialize(ctx: dict) -> bytes:
     return json.dumps(ctx, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
-def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
-    """Shorten mocs[].topics until ctx serialises within max_bytes.
+def _tracker_fields_iter(ctx: dict):
+    """Yield (list_ref, index) for all tracker_fields entries across the ctx."""
+    tf = (ctx.get("daily_notes") or {}).get("tracker_fields") or []
+    for i in range(len(tf)):
+        yield tf, i
 
-    Never drops a MOC. Shortening stops once topics[] reaches length 1.
-    Returns the (possibly-modified) ctx and the number of topics dropped in total.
+
+def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
+    """Trim ctx to fit within max_bytes.
+
+    Budget pass order:
+    1. Trim each tracker description to 200 chars with ellipsis.
+    2. Drop negative_keywords from each tracker.
+    3. Drop positive_keywords from each tracker.
+    4. Drop auto-seeded keywords from each tracker (keeps name/type/section/syntax/description).
+    5. Shorten mocs[].topics (existing behaviour).
+
+    Never drops description itself. Returns (ctx, moc_topics_dropped).
     """
-    dropped = 0
     data = serialize(ctx)
     if len(data) <= max_bytes:
         return ctx, 0
 
-    # Build (idx, current_len) pairs and trim longest-first iteratively
+    # Pass 1: trim tracker descriptions to 200 chars
+    for tf, i in _tracker_fields_iter(ctx):
+        desc = tf[i].get("description", "")
+        if len(desc) > 200:
+            tf[i]["description"] = desc[:200] + "\u2026"
+    data = serialize(ctx)
+    if len(data) <= max_bytes:
+        return ctx, 0
+
+    # Pass 2: drop negative_keywords
+    for tf, i in _tracker_fields_iter(ctx):
+        tf[i]["negative_keywords"] = []
+    data = serialize(ctx)
+    if len(data) <= max_bytes:
+        return ctx, 0
+
+    # Pass 3: drop positive_keywords
+    for tf, i in _tracker_fields_iter(ctx):
+        tf[i]["positive_keywords"] = []
+    data = serialize(ctx)
+    if len(data) <= max_bytes:
+        return ctx, 0
+
+    # Pass 4: drop auto-seeded keywords
+    for tf, i in _tracker_fields_iter(ctx):
+        tf[i]["keywords"] = []
+    data = serialize(ctx)
+    if len(data) <= max_bytes:
+        return ctx, 0
+
+    # Pass 5: shorten mocs[].topics (original behaviour)
+    dropped = 0
     while len(data) > max_bytes:
-        # Find MOC with the most topics
         victim = -1
         most = 1
         for i, moc in enumerate(ctx["mocs"]):
@@ -266,7 +349,7 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
                 most = len(topics)
                 victim = i
         if victim < 0:
-            break  # all MOCs already at 1 topic; nothing left to shorten
+            break
         ctx["mocs"][victim]["topics"].pop()
         dropped += 1
         data = serialize(ctx)

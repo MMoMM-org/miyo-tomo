@@ -55,14 +55,48 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name", "type", "section", "syntax", "keywords"],
+            "required": ["name", "type", "section", "syntax", "keywords", "description", "positive_keywords", "negative_keywords"],
             "additionalProperties": false,
             "properties": {
               "name": {"type": "string"},
               "type": {"type": "string", "enum": ["bool", "rating_1_5", "text", "number", "duration"]},
               "section": {"type": "string"},
               "syntax": {"type": "string", "enum": ["inline_field", "callout_body", "checkbox"]},
-              "keywords": {"type": "array", "items": {"type": "string"}}
+              "keywords": {"type": "array", "items": {"type": "string"}},
+              "description": {"type": "string"},
+              "positive_keywords": {"type": "array", "items": {"type": "string"}},
+              "negative_keywords": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "daily_log": {
+          "type": "object",
+          "required": ["section", "heading_level", "time_extraction", "link_format", "cutoff_days", "auto_create_if_missing"],
+          "additionalProperties": false,
+          "properties": {
+            "section": {"type": "string"},
+            "heading_level": {"type": "integer", "minimum": 1, "maximum": 6},
+            "time_extraction": {
+              "type": "object",
+              "required": ["enabled", "sources", "fallback"],
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "sources": {"type": "array", "items": {"type": "string"}},
+                "fallback": {"type": "string"}
+              }
+            },
+            "link_format": {"type": "string"},
+            "cutoff_days": {"type": "integer", "minimum": 1},
+            "auto_create_if_missing": {
+              "type": "object",
+              "required": ["past", "today", "future"],
+              "additionalProperties": false,
+              "properties": {
+                "past": {"const": false},
+                "today": {"const": false},
+                "future": {"const": false}
+              }
             }
           }
         }

@@ -195,7 +195,11 @@ def main() -> int:
         # 3. Prepare tokens
         up_value = ""
         if parent_moc:
-            up_value = f"[[{parent_moc}]]"
+            # Use note name only (no path, no .md) — Obsidian resolves by name
+            moc_stem = parent_moc.rsplit("/", 1)[-1]
+            if moc_stem.endswith(".md"):
+                moc_stem = moc_stem[:-3]
+            up_value = f"[[{moc_stem}]]"
 
         # Tags as comma-separated string for inline YAML arrays:
         # tags: [existing, {{tags}}] → tags: [existing, topic/a, topic/b]

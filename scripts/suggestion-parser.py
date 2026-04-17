@@ -170,25 +170,41 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
         "title": None,
         "tags": [],
         "parent_moc": None,
+        "parent_mocs": [],  # all checked MOCs from Link to MOC checkboxes
         "destination": None,
         "template": None,
         "summary": None,
         "classification": None,
     }
 
+    # State: when we see "Link to MOC:" header, subsequent checkboxes are
+    # MOC selections (not approve/skip). Reset when we hit a Decision header
+    # or another field.
+    in_moc_list = False
+
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
 
-        # ── Checkbox lines (approve/skip/delete) ──────────────────
+        # ── Checkbox lines ────────────────────────────────────────
         cb_checked = RE_CHECKED.match(stripped)
         cb_unchecked = RE_UNCHECKED.match(stripped)
         if cb_checked or cb_unchecked:
-            text = _checkbox_text(stripped).lower()
-            if "accept" in text or "approve" in text:
+            text = _checkbox_text(stripped)
+
+            # MOC selection checkboxes (under "Link to MOC:" header)
+            if in_moc_list:
+                wl = _extract_wikilink(text)
+                if wl and cb_checked:
+                    result["parent_mocs"].append(wl)
+                continue
+
+            # Decision checkboxes (approve/skip/delete)
+            text_lower = text.lower()
+            if "accept" in text_lower or "approve" in text_lower:
                 result["approved"] = bool(cb_checked)
-            elif "delete source" in text or text.startswith("delete"):
+            elif "delete source" in text_lower or text_lower.startswith("delete"):
                 result["delete_source"] = bool(cb_checked)
             # "Skip" is the implicit inverse of Accept — no extra handling needed
             continue
@@ -207,6 +223,9 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
         # bold markers). Strip it and any whitespace before comparing.
         key = m.group(1).strip().rstrip(":").strip().lower()
         val = m.group(2).strip()
+
+        # Any new field header ends the MOC checkbox region
+        in_moc_list = False
 
         if key == "source":
             src = RE_SOURCE.search(val)
@@ -229,25 +248,37 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
         elif key in ("title", "suggested name", "suggested title", "name"):
             result["title"] = val
 
-        elif key in ("tags", "tag"):
+        elif key in ("tags", "tag", "new tags to add", "new tags"):
             result["tags"] = _parse_tags(val)
 
         elif key in ("parent moc", "parent_moc", "parentmoc", "link to moc", "moc"):
+            in_moc_list = True  # subsequent checkboxes are MOC selections
             wl = _extract_wikilink(val)
-            result["parent_moc"] = wl or val
+            if wl:
+                result["parent_moc"] = wl
 
-        elif key == "destination":
-            # Strip wrapping backticks/brackets from a path
-            result["destination"] = val.strip("`").strip()
+        elif key in ("destination", "location", "move to"):
+            # Strip wrapping backticks/brackets/wikilinks from a path
+            cleaned = val.strip("`").strip()
+            wl = _extract_wikilink(cleaned)
+            result["destination"] = wl or cleaned
 
         elif key == "template":
-            result["template"] = val.strip("`").strip()
+            cleaned = val.strip("`").strip()
+            wl = _extract_wikilink(cleaned)
+            result["template"] = wl or cleaned
 
         elif key == "summary":
             result["summary"] = val
 
         elif key == "classification":
             result["classification"] = val
+
+    # ── MOC consolidation ──────────────────────────────────────
+    # If parent_moc was not set directly but parent_mocs has checked items,
+    # use the first checked MOC as the primary parent_moc.
+    if not result["parent_moc"] and result["parent_mocs"]:
+        result["parent_moc"] = result["parent_mocs"][0]
 
     # ── Delete semantics ─────────────────────────────────────────
     # If Accept is checked, Delete is irrelevant — we keep the source.
@@ -359,6 +390,7 @@ def main() -> int:
                 "title": item["title"],
                 "tags": item["tags"],
                 "parent_moc": item["parent_moc"],
+                "parent_mocs": item["parent_mocs"],
                 "destination": item["destination"],
                 "template": item["template"],
                 "summary": item["summary"],

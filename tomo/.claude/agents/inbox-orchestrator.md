@@ -11,7 +11,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.4.0 (Plan Phase 4 — daily_notes_updates + Material für mirror)
+# version: 0.5.0 (deterministic markdown rendering via suggestions-render.py)
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -195,83 +195,24 @@ Step C2 — run the reducer (substitute `<RUN_ID>` and `<PROFILE>` literals):
 python3 scripts/suggestions-reducer.py --state tomo-tmp/inbox-state.jsonl --items-dir tomo-tmp/items --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-doc.json
 ```
 
-Then render `tomo-tmp/suggestions-doc.json` to markdown:
+Step C3 — render the JSON to final markdown (deterministic script, no LLM):
 
-1. Load the JSON with the `Read` tool.
-2. Build the document in memory using the **pinned section order** below. Omit
-   any section whose content is empty (no daily_notes_updates → no
-   `## Daily Notes Updates`, etc.).
+```bash
+python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md
+```
 
-   **Document section order (strict — do not reorder):**
-   1. Frontmatter + `- [ ] Approved` + Decision-precedence note + Summary
-   2. `## Daily Notes Updates` (when `daily_notes_updates` is non-empty)
-   3. `## Suggestions` (per-item sections)
-   4. `## Proposed MOCs` (when `proposed_mocs` is non-empty)
-   5. `## Needs Attention` (when `needs_attention` is non-empty)
+The script produces the complete suggestions document with all sections in
+the correct order: frontmatter → approved checkbox → summary → daily notes
+updates → per-item suggestions → proposed MOCs → needs attention.
 
-   ```
-   ---
-   type: tomo-suggestions
-   generated: <generated>
-   tomo_version: "0.1.0"
-   profile: <profile>
-   source_items: <source_items>
-   run_id: <run_id>
-   ---
+**Do NOT build the markdown yourself.** The render script is the single
+source of truth for the document format. If you need to change the format,
+change the script — never work around it by hand-assembling markdown.
 
-   # Inbox Suggestions — <date>
+Step C4 — read the rendered markdown and write to vault:
 
-   - [ ] Approved — check this box when you've finished reviewing, then run `/inbox` for Pass 2
-
-   > <decision_precedence_note>
-
-   ## Summary
-
-   - Items processed: <source_items>
-   - Sections: <len(sections)>
-   - Proposed MOCs: <len(proposed_mocs)>
-   - Needs attention: <len(needs_attention)>
-
-   ## Daily Notes Updates  (only if daily_notes_updates non-empty)
-
-   <use suggestions-doc.json `rendered_daily_updates_md` field directly — the reducer
-    pre-renders this block; do not re-render from daily_notes_updates[] yourself>
-
-   ## Suggestions
-
-   ### S01 — <suggested title from first action's "Suggested name" field or stem>
-   <section.actions[0].rendered_md>
-
-   <section.actions[1].rendered_md>  # if multiple
-
-   ### S02 — ...
-   ...
-
-   ## Proposed MOCs  (only if non-empty)
-
-   ### Proposed MOC: <topic>
-   - **Name:** <topic> (MOC)    ← edit this to rename the MOC before approving
-   - **Parent:** [[<parent>]]    ← change parent MOC if needed
-   - **Supporting items:** <items joined>
-   - **Decision:**
-     - [ ] Approve (create this MOC with the Name above)
-     - [ ] Skip — don't create, items stay with their individual MOC matches
-
-   ## Needs Attention  (only if non-empty)
-
-   ### <stem>
-   **Error:** <error>
-   ```
-
-   **Daily Notes Updates rendering rules:**
-   - Each `daily_notes_updates[]` entry renders as `### [[<daily_note_stem>]]`
-   - `- [ ] Create daily note [[<stem>]] first` appears ONLY when `exists: false`
-   - Sub-headers appear ONLY when that category is non-empty
-   - Order within each daily-note block: Create-first → Trackers → Log Entries → Log Links
-   - Time `null` renders as "end of day"
-   - Wikilinks use stem only (no path, no `.md`)
-
-3. Write to the vault via `kado-write` at
+1. Read `tomo-tmp/suggestions-rendered.md` via the `Read` tool.
+2. Write to the vault via `kado-write` at
    `<INBOX_PATH>/<YYYY-MM-DD_HHMM>_suggestions.md` — where `<INBOX_PATH>` is
    the literal resolved in Step A0 (e.g. `100 Inbox/`). Do NOT reinvent a
    path like `"Inbox"` or `"inbox/"`.

@@ -1,0 +1,47 @@
+# Fixture vault-config for phase-5 wizard validation tests.
+# Contains tracker descriptions + daily_log section — should pass validation.
+profile: miyo
+
+concepts:
+  inbox: "100 Inbox/"
+  atomic_note: "Atlas/202 Notes/"
+  map_note:
+    paths: ["Atlas/200 Maps/"]
+  calendar:
+    granularities:
+      daily:
+        path: "Calendar/301 Daily/"
+  template: "X/900 Support/Templates/"
+
+trackers:
+  daily_note_trackers:
+    today_fields:
+      - name: mood
+        kind: scale
+        description: "Daily mood score from 1 to 5"
+        keywords:
+          positive: ["mood", "feeling", "how I feel"]
+          negative: ["productivity"]
+      - name: energy
+        kind: scale
+        description: "Energy level throughout the day"
+        keywords:
+          positive: ["energy", "tired", "awake"]
+          negative: []
+  end_of_day_fields:
+    fields:
+      - name: wins
+        kind: text
+        description: "Things that went well today"
+        keywords:
+          positive: ["win", "accomplished", "shipped"]
+          negative: []
+
+daily_log:
+  heading: "Daily Log"
+  heading_level: 2
+  time_extraction:
+    sources: ["content", "filename"]
+    fallback: append_end_of_day
+  cutoff_days: 30
+  auto_create_if_missing: false

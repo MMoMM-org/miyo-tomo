@@ -1,0 +1,30 @@
+# Fixture vault-config for phase-5 wizard validation tests.
+# Tracker fields have empty descriptions — should be detected as incomplete.
+profile: miyo
+
+concepts:
+  inbox: "100 Inbox/"
+  atomic_note: "Atlas/202 Notes/"
+
+trackers:
+  daily_note_trackers:
+    today_fields:
+      - name: mood
+        kind: scale
+        description: ""
+        keywords:
+          positive: []
+          negative: []
+      - name: energy
+        kind: scale
+        keywords:
+          positive: []
+          negative: []
+  end_of_day_fields:
+    fields:
+      - name: wins
+        kind: text
+        description: "Things that went well today"
+        keywords:
+          positive: []
+          negative: []

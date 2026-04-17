@@ -22,10 +22,12 @@ was just done so the user can see progress.
 
 ### Mode B — Section-direct
 
-- `/tomo-setup rules`     → only the user-rules wizard (Phase 3)
-- `/tomo-setup templates` → only template verification (Phase 4)
-- `/tomo-setup check`     → status report only, no mutations (Phase 1, expanded)
-- `/tomo-setup explore`   → delegate to `/explore-vault` (Phase 2)
+- `/tomo-setup rules`      → only the user-rules wizard (Phase 3)
+- `/tomo-setup trackers`   → delegate directly to `tomo-trackers-wizard` skill
+- `/tomo-setup daily-log`  → delegate directly to `tomo-daily-log-wizard` skill
+- `/tomo-setup templates`  → only template verification (Phase 4)
+- `/tomo-setup check`      → status report only, no mutations (Phase 1, expanded)
+- `/tomo-setup explore`    → delegate to `/explore-vault` (Phase 2)
 
 ### Mode C — Unknown arg
 
@@ -40,13 +42,14 @@ Show a friendly header:
 ```
 Tomo Setup — welcome
 
-I'll walk you through the three things you need after install:
+I'll walk you through the things you need after install:
   1. Vault discovery (MOCs, tags, frontmatter)
   2. User rules (your vault's conventions)
-  3. Template verification
+  3. Daily-note configuration (trackers + daily-log)
+  4. Template verification
 
 This takes a few minutes. You can re-run any part later with:
-  /tomo-setup rules | templates | check | explore
+  /tomo-setup rules | trackers | daily-log | templates | check | explore
 ```
 
 Then read current state:
@@ -136,6 +139,40 @@ file.
   - If yes: ask for the topic name, create `config/user-rules/<topic>.md`,
     interview the user for 2-3 rules, save.
   - Update `CLAUDE.md` "Vault Conventions" section to reference the new file.
+
+### Phase 3b — Daily-note configuration
+
+**Detect missing tracker descriptions:**
+
+Read `config/vault-config.yaml`. Check each entry under
+`trackers.daily_note_trackers.today_fields[]` and `trackers.end_of_day_fields.fields[]`
+for an empty or absent `description` field.
+
+If any tracker field lacks a description, ask via **AskUserQuestion**:
+
+- Question: "Some tracker fields have no description — Tomo uses these for inbox
+  classification accuracy."
+- Options:
+  - `Run tracker wizard` (Recommended) — invoke the `tomo-trackers-wizard` skill
+    (Claude runs the skill inline, walking the user through each field)
+  - `Skip` — proceed without configuring trackers
+
+If no tracker fields are missing descriptions, skip silently (no question needed) and
+report: "✓ All tracker fields have descriptions."
+
+**Detect missing daily_log section:**
+
+Check whether `daily_log:` exists as a top-level key in `config/vault-config.yaml`.
+
+If missing, ask via **AskUserQuestion**:
+
+- Question: "Daily-log config is not set. Without it, Tomo can't file inbox items to
+  daily notes."
+- Options:
+  - `Run daily-log wizard` (Recommended) — invoke the `tomo-daily-log-wizard` skill
+  - `Skip` — proceed; note that daily-log filing will be unavailable
+
+If `daily_log:` already exists, report: "✓ daily_log config present." and skip.
 
 ### Phase 4 — Template verification
 

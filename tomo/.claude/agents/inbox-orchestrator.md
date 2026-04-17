@@ -264,7 +264,6 @@ Then render `tomo-tmp/suggestions-doc.json` to markdown:
    ```
 
    **Daily Notes Updates rendering rules:**
-   - The section starts with `- [ ] Approved` checkbox (rendered by the reducer)
    - Each `daily_notes_updates[]` entry renders as `### [[<daily_note_stem>]]`
    - `- [ ] Create daily note [[<stem>]] first` appears ONLY when `exists: false`
    - Sub-headers appear ONLY when that category is non-empty

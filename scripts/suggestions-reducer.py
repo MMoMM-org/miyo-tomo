@@ -210,10 +210,13 @@ def render_update_daily(action: dict, stem: str, field_sections: dict[str, str] 
     # Wikilinks use the note-name only — never the path. Obsidian resolves by name.
     lines.append(f"**Daily update:** [[{daily_stem}]]")
 
-    # Group updates by section so the user sees ONE "Open ## <section>" per group
+    # Only render tracker updates here — log_entry and log_link are rendered
+    # in the aggregated Daily Notes Updates block, not per-item.
     updates = action.get("updates") or []
+    trackers = [u for u in updates if u.get("kind") == "tracker"]
+
     grouped: dict[str, list[dict]] = {}
-    for u in updates:
+    for u in trackers:
         field = u.get("field", "")
         section = field_sections.get(field) or u.get("section") or "<unknown section>"
         grouped.setdefault(section, []).append(u)
@@ -229,7 +232,6 @@ def render_update_daily(action: dict, stem: str, field_sections: dict[str, str] 
                 value_str = "true" if value is True else ("false" if value is False else str(value))
                 lines.append(f"- Add `{field}:: {value_str}`")
             elif syntax == "callout_body":
-                # Value goes under the field name inside the section
                 lines.append(f"- Under the `{field}` entry, append: {value}")
             elif syntax == "checkbox":
                 mark = "[x]" if value in (True, "true", 1, "1") else "[ ]"
@@ -281,12 +283,7 @@ def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
     """Render the ## Daily Notes Updates section from daily_notes_updates[]."""
     if not daily_notes_updates:
         return ""
-    lines: list[str] = [
-        "## Daily Notes Updates",
-        "",
-        "- [ ] Approved — check when all daily note decisions below are final",
-        "",
-    ]
+    lines: list[str] = ["## Daily Notes Updates", ""]
     for entry in daily_notes_updates:
         stem = entry["daily_note_stem"]
         lines.append(f"### [[{stem}]]")
@@ -508,7 +505,12 @@ def main() -> int:
                 if target_action is not None:
                     target_action["rendered_md"] = target_action["rendered_md"] + "\n\n" + material_md
 
-        if rendered_actions:
+        # Items that ONLY have update_daily actions are fully represented in the
+        # aggregated Daily Notes Updates block — skip per-item section to avoid
+        # duplication. Items that mix update_daily with other actions (e.g.
+        # create_atomic_note + update_daily) still get a per-item section.
+        has_non_daily = any(a["kind"] != "update_daily" for a in rendered_actions)
+        if rendered_actions and has_non_daily:
             sections.append({
                 "id": section_id,
                 "stem": stem,

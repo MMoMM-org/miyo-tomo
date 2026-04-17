@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # state-init.py — Phase A: enumerate inbox, seed state-file with pending items.
-# version: 0.2.0
+# version: 0.3.0
 """
 List the inbox via Kado, emit one JSONL line per item with status="pending".
 Skips derived artefacts (existing suggestions/instruction docs).
@@ -52,6 +52,45 @@ def is_skippable(path: str) -> bool:
     return any(lower.endswith(suffix) for suffix in SKIP_SUFFIXES)
 
 
+def has_lifecycle_tag(client: "KadoClient", path: str, tag_prefix: str) -> bool:
+    """Check if a note already has a lifecycle tag (#prefix/captured or #prefix/active)."""
+    if not path.endswith(".md"):
+        return False
+    try:
+        fm = client.read_frontmatter(path)
+        content = fm.get("content") or {}
+        tags = content.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tags]
+        prefix_lower = tag_prefix.lower()
+        for tag in tags:
+            tag_clean = str(tag).lstrip("#").lower()
+            if tag_clean.startswith(prefix_lower + "/"):
+                return True
+    except KadoError:
+        pass
+    return False
+
+
+def load_tag_prefix() -> str:
+    """Load lifecycle tag_prefix from vault-config.yaml, default MiYo-Tomo."""
+    config_path = os.path.join(os.getcwd(), "config", "vault-config.yaml")
+    if not os.path.isfile(config_path):
+        return "MiYo-Tomo"
+    try:
+        # Lightweight YAML parsing — just find tag_prefix line
+        with open(config_path, encoding="utf-8") as fh:
+            for line in fh:
+                stripped = line.strip()
+                if stripped.startswith("tag_prefix:"):
+                    val = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        return val
+    except OSError:
+        pass
+    return "MiYo-Tomo"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Seed the run state-file by listing the inbox and marking every item pending."
@@ -68,6 +107,8 @@ def main() -> int:
     out_path = Path(args.output)
     run_id = args.run_id or uuid.uuid4().hex[:12]
 
+    tag_prefix = load_tag_prefix()
+
     try:
         client = KadoClient()
         items = client.list_dir(inbox_path, depth=1, limit=500)
@@ -79,6 +120,7 @@ def main() -> int:
 
     found = 0
     skipped = 0
+    tagged = 0
     # Deterministic order: sort by path string
     items_sorted = sorted(
         [i for i in items if isinstance(i, dict)],
@@ -99,6 +141,9 @@ def main() -> int:
             if is_skippable(path):
                 skipped += 1
                 continue
+            if has_lifecycle_tag(client, path, tag_prefix):
+                tagged += 1
+                continue
             stem = extract_stem(path)
             entry = {
                 "run_id": run_id,
@@ -114,7 +159,7 @@ def main() -> int:
             found += 1
 
     print(
-        f"items_found={found} items_skipped={skipped} run_id={run_id} out={out_path}",
+        f"items_found={found} items_skipped={skipped} already_tagged={tagged} run_id={run_id} out={out_path}",
         file=sys.stderr,
     )
     return 0

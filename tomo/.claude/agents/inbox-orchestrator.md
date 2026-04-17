@@ -278,7 +278,25 @@ Then render `tomo-tmp/suggestions-doc.json` to markdown:
 
 **Never** emit this document via Bash heredoc. **Always** via `kado-write`.
 
-### Phase D — Report
+### Phase D — Tag source items as captured
+
+After the suggestions document is successfully written to the vault, tag
+every `done` source item with the lifecycle tag so they are not reprocessed
+on the next Pass 1 run.
+
+1. Resolve the lifecycle tag prefix:
+   ```bash
+   python3 scripts/read-config-field.py --field lifecycle.tag_prefix --default "MiYo-Tomo"
+   ```
+
+2. For each `done` stem in the state-file, read the source note via
+   `kado-read`, add `#<prefix>/captured` to its `tags` frontmatter array
+   (if not already present), and write back via `kado-write`.
+
+   Skip items whose source note no longer exists (deleted by user between
+   Pass 1 start and now).
+
+### Phase E — Report
 
 Tell the user:
 
@@ -302,5 +320,6 @@ Tell the user:
 - You do NOT classify items yourself — subagents do it.
 - You do NOT read item contents — subagents do it.
 - You do NOT call `suggestion-parser.py` — that's Pass 2.
-- You do NOT tag source items (lifecycle tags) — that's `vault-executor`
+- You tag source items `#<prefix>/captured` in Phase D (after writing
+  suggestions). The `vault-executor` later transitions `captured` → `active`
   after the user applies Pass 2.

@@ -69,10 +69,27 @@ def read_note_body(client: KadoClient, path: str) -> str:
 
 
 def read_template(client: KadoClient, template_path: str) -> str | None:
-    """Read a template file from the vault via Kado."""
+    """Read a template file from the vault via Kado.
+
+    Handles both full vault-relative paths (e.g. "Atlas/900 Templates/t_note_tomo.md")
+    and bare stems (e.g. "t_note_tomo"). Bare stems are resolved via kado-search byName.
+    """
     # Ensure .md extension
     if not template_path.endswith(".md"):
         template_path += ".md"
+    # If bare stem (no path separator), resolve via search
+    if "/" not in template_path:
+        try:
+            results = client.search_by_name(template_path)
+            if results:
+                template_path = results[0].get("path", template_path)
+                print(f"  [template] Resolved bare stem to: {template_path}", file=sys.stderr)
+            else:
+                print(f"  [error] Template not found by name: {template_path}", file=sys.stderr)
+                return None
+        except KadoError as exc:
+            print(f"  [error] Could not search for template {template_path}: {exc}", file=sys.stderr)
+            return None
     try:
         result = client.read_note(template_path)
         return result.get("content", "")

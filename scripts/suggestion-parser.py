@@ -490,13 +490,19 @@ def parse_daily_updates(text: str) -> list[dict]:
         if dm:
             _flush_pending()
             current_date = dm.group(1)
-            current_entry = {
-                "date": current_date,
-                "trackers": [],
-                "log_entries": [],
-                "log_links": [],
-            }
-            entries.append(current_entry)
+            # Reuse existing entry for this date (same date can appear
+            # with trackers first, then log entries in a later block)
+            existing = next((e for e in entries if e["date"] == current_date), None)
+            if existing:
+                current_entry = existing
+            else:
+                current_entry = {
+                    "date": current_date,
+                    "trackers": [],
+                    "log_entries": [],
+                    "log_links": [],
+                }
+                entries.append(current_entry)
             block_type = None
             continue
 

@@ -1,7 +1,7 @@
 # Tier 3: Instruction Set Cleanup
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
-> Status: Skeletal
+> Status: Implemented
 > Agent: `vault-executor` (cleanup scope only in MVP)
 > Related: [Instruction Set Apply](instruction-set-apply.md) · [State Tag Lifecycle](state-tag-lifecycle.md)
 

@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Placeholder Completion"
-status: pending
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -29,7 +29,7 @@ phase: 3
 
 Reverse-engineers skeletal Tier 3 specs from the working codebase. Each placeholder gets substantive content that accurately describes current behavior.
 
-- [ ] **T3.1 Flesh out instruction-set-apply spec** `[activity: docs-reverse-engineering]`
+- [x] **T3.1 Flesh out instruction-set-apply spec** `[activity: docs-reverse-engineering]`
 
   1. Prime: Read the skeletal `docs/XDD/reference/tier-3/inbox/instruction-set-apply.md`; then read the actual implementation:
      - `tomo/.claude/commands/execute.md` (legacy executor command)
@@ -49,7 +49,7 @@ Reverse-engineers skeletal Tier 3 specs from the working codebase. Each placehol
   4. Validate: Spec content matches what `instruction-render.py` actually produces; action types match `item-result.schema.json`
   5. Success: instruction-set-apply.md has substantive content verified against codebase `[ref: PRD/AC — Feature 3]`
 
-- [ ] **T3.2 Flesh out instruction-set-cleanup spec** `[activity: docs-reverse-engineering]` `[parallel: true]`
+- [x] **T3.2 Flesh out instruction-set-cleanup spec** `[activity: docs-reverse-engineering]` `[parallel: true]`
 
   1. Prime: Read the skeletal `docs/XDD/reference/tier-3/inbox/instruction-set-cleanup.md`; then read:
      - `tomo/.claude/agents/vault-executor.md` (cleanup responsibilities)
@@ -68,7 +68,7 @@ Reverse-engineers skeletal Tier 3 specs from the working codebase. Each placehol
   4. Validate: Spec content matches `state-update.py` behavior and lifecycle tags in `state-tag-lifecycle.md`
   5. Success: instruction-set-cleanup.md has substantive content verified against codebase `[ref: PRD/AC — Feature 3]`
 
-- [ ] **T3.3 Audit remaining Tier 3 specs for skeletal content** `[activity: docs-audit]`
+- [x] **T3.3 Audit remaining Tier 3 specs for skeletal content** `[activity: docs-audit]`
 
   1. Prime: Scan all 26 Tier 3 specs in `docs/XDD/reference/tier-3/` for substantive content
   2. Test: Identify any additional specs that are skeletal/placeholder beyond the two known ones
@@ -79,7 +79,7 @@ Reverse-engineers skeletal Tier 3 specs from the working codebase. Each placehol
   4. Validate: No spec in `docs/XDD/reference/tier-3/` has fewer than ~50 lines of substantive content
   5. Success: All Tier 3 specs have substantive content `[ref: PRD/AC — Feature 3]`
 
-- [ ] **T3.4 Phase Validation** `[activity: validate]`
+- [x] **T3.4 Phase Validation** `[activity: validate]`
 
   - Every fleshed-out spec has the reverse-engineered annotation header
   - Content matches actual codebase behavior (spot-check against scripts)

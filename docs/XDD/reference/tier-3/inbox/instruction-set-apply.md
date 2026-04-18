@@ -1,7 +1,7 @@
 # Tier 3: Instruction Set Apply (MVP: User)
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
-> Status: Skeletal
+> Status: Implemented
 > Executor: **User** (MVP) / Seigyo (Post-MVP)
 > Related: [Instruction Set Generation](instruction-set-generation.md) · [Instruction Set Cleanup](instruction-set-cleanup.md)
 

@@ -221,21 +221,15 @@ Step C4 — read the rendered markdown and write to vault:
 
 ### Phase D — Tag source items as captured
 
-After the suggestions document is successfully written to the vault, tag
-every `done` source item with the lifecycle tag so they are not reprocessed
-on the next Pass 1 run.
+After the suggestions document is successfully written to the vault, run:
 
-1. Resolve the lifecycle tag prefix:
-   ```bash
-   python3 scripts/read-config-field.py --field lifecycle.tag_prefix --default "MiYo-Tomo"
-   ```
+```bash
+python3 scripts/tag-captured.py --state tomo-tmp/inbox-state.jsonl
+```
 
-2. For each `done` stem in the state-file, read the source note via
-   `kado-read`, add `#<prefix>/captured` to its `tags` frontmatter array
-   (if not already present), and write back via `kado-write`.
-
-   Skip items whose source note no longer exists (deleted by user between
-   Pass 1 start and now).
+The script reads all `done` stems from the state-file, adds
+`#<prefix>/captured` to each item's frontmatter via Kado. Idempotent —
+skips items that already have the tag. Tag prefix comes from vault-config.
 
 ### Phase E — Report
 

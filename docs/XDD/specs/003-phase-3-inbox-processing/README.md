@@ -12,7 +12,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | skipped | Covered by Kokoro Tier 1-3 specs in docs/specs/ |
+| requirements.md | skipped | Covered by Kokoro Tier 1-3 specs in docs/XDD/reference/ |
 | solution.md | skipped | Architecture defined in pkm-intelligence-architecture.md |
 | plan/ | completed | All 4 phases implemented and validated (40/40 tests pass) |
 
@@ -20,7 +20,7 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-04-10 | Skip PRD/SDD — use existing Kokoro specs | All tiers in docs/specs/ |
+| 2026-04-10 | Skip PRD/SDD — use existing Kokoro specs | All tiers in docs/XDD/reference/ |
 | 2026-04-10 | 4-phase implementation: scripts → agents → command+skills → validation | Maximum parallelism within each phase |
 
 ## Context

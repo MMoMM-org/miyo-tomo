@@ -36,14 +36,14 @@ version: "1.0"
 
 **Specification**:
 
-- `docs/specs/tier-1/pkm-intelligence-architecture.md` — Root architecture
-- `docs/specs/tier-2/workflows/vault-exploration.md` — Vault exploration workflow
-- `docs/specs/tier-2/components/discovery-cache.md` — Discovery cache component
-- `docs/specs/tier-3/vault-exploration/` — Structure scan, topic extraction, cache generation
-- `docs/specs/tier-3/discovery/moc-indexing.md` — MOC tree building
-- `docs/specs/tier-3/wizard/first-session-discovery.md` — /explore-vault flow
-- `docs/specs/tier-3/lyt-moc/` — MOC matching, section placement
-- `docs/specs/tier-3/config/` — Frontmatter, relationship, tag, callout detection
+- `docs/XDD/reference/tier-1/pkm-intelligence-architecture.md` — Root architecture
+- `docs/XDD/reference/tier-2/workflows/vault-exploration.md` — Vault exploration workflow
+- `docs/XDD/reference/tier-2/components/discovery-cache.md` — Discovery cache component
+- `docs/XDD/reference/tier-3/vault-exploration/` — Structure scan, topic extraction, cache generation
+- `docs/XDD/reference/tier-3/discovery/moc-indexing.md` — MOC tree building
+- `docs/XDD/reference/tier-3/wizard/first-session-discovery.md` — /explore-vault flow
+- `docs/XDD/reference/tier-3/lyt-moc/` — MOC matching, section placement
+- `docs/XDD/reference/tier-3/config/` — Frontmatter, relationship, tag, callout detection
 
 **Key Design Decisions**:
 

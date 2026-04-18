@@ -12,7 +12,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | skipped | Covered by Kokoro Tier 1+2 specs in docs/specs/ |
+| requirements.md | skipped | Covered by Kokoro Tier 1+2 specs in docs/XDD/reference/ |
 | solution.md | skipped | Architecture defined in pkm-intelligence-architecture.md |
 | plan/ | completed | All 4 phases implemented and validated (28/28 tests pass) |
 
@@ -22,7 +22,7 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-04-10 | Skip PRD/SDD — use existing Kokoro specs | Kokoro completed 38-spec pyramid; all tiers copied to docs/specs/ |
+| 2026-04-10 | Skip PRD/SDD — use existing Kokoro specs | Kokoro completed 38-spec pyramid; all tiers copied to docs/XDD/reference/ |
 | 2026-04-10 | Start at PLAN phase | Phase 1 deliverables defined in Kokoro handoff; need XDD plan format for implement workflow |
 
 ## Context
@@ -31,9 +31,9 @@ Phase 1 (Config Foundation) builds all YAML configs, profiles, templates, and in
 No Kado dependency — everything is local/static configuration.
 
 Source specs:
-- Tier 1: docs/specs/tier-1/pkm-intelligence-architecture.md
-- Tier 2: docs/specs/tier-2/components/ (user-config, framework-profiles, template-system, setup-wizard)
-- Tier 3: docs/specs/tier-3/
+- Tier 1: docs/XDD/reference/tier-1/pkm-intelligence-architecture.md
+- Tier 2: docs/XDD/reference/tier-2/components/ (user-config, framework-profiles, template-system, setup-wizard)
+- Tier 3: docs/XDD/reference/tier-3/
 
 ---
 *This file is managed by the xdd-meta skill.*

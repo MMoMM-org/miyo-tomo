@@ -13,7 +13,7 @@ phase: 4
 
 **Specification References**:
 - All Phase 1-3 deliverables
-- `docs/specs/tier-2/workflows/vault-exploration.md` — end-to-end workflow
+- `docs/XDD/reference/tier-2/workflows/vault-exploration.md` — end-to-end workflow
 
 **Key Decisions**:
 - Integration test validates script pipeline without live Kado (mock responses)

@@ -12,7 +12,7 @@ phase: 4
 **GATE**: Read all referenced files before starting this phase.
 
 **Specification References**:
-- `docs/specs/tier-1/pkm-intelligence-architecture.md` — 4-layer stack, security model
+- `docs/XDD/reference/tier-1/pkm-intelligence-architecture.md` — 4-layer stack, security model
 - `tomo/.claude/rules/project-context.md` — Existing project context rule
 - All Phase 1-3 deliverables
 
@@ -31,7 +31,7 @@ Validates all Phase 1 deliverables work together and updates project context for
 
 - [ ] **T4.1 Project Context Rule Update** `[activity: build-feature]`
 
-  1. Prime: Read architecture spec `[ref: docs/specs/tier-1/pkm-intelligence-architecture.md]` and existing project-context.md `[ref: tomo/.claude/rules/project-context.md]`
+  1. Prime: Read architecture spec `[ref: docs/XDD/reference/tier-1/pkm-intelligence-architecture.md]` and existing project-context.md `[ref: tomo/.claude/rules/project-context.md]`
   2. Test: Rule describes 4-layer knowledge stack; mentions 2-pass inbox model (Suggestions → Instruction Set); documents MVP execution boundary (Tomo writes only to inbox); references profile system and config precedence
   3. Implement: Update `tomo/.claude/rules/project-context.md` to align with architecture spec — add knowledge stack description, execution model, profile/config system
   4. Validate: Rule is accurate per architecture spec; no fabricated information

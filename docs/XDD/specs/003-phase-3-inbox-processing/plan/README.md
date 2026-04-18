@@ -11,10 +11,10 @@ version: "1.0"
 *GATE: Read all files in this section before starting any implementation.*
 
 **Specification**:
-- `docs/specs/tier-1/pkm-intelligence-architecture.md` — Root architecture
-- `docs/specs/tier-2/workflows/inbox-processing.md` — 2-pass workflow
-- `docs/specs/tier-3/inbox/` — All inbox specs (analysis, suggestions, instructions, cleanup, state lifecycle)
-- `docs/specs/tier-3/templates/token-vocabulary.md` — Token resolution system
+- `docs/XDD/reference/tier-1/pkm-intelligence-architecture.md` — Root architecture
+- `docs/XDD/reference/tier-2/workflows/inbox-processing.md` — 2-pass workflow
+- `docs/XDD/reference/tier-3/inbox/` — All inbox specs (analysis, suggestions, instructions, cleanup, state lifecycle)
+- `docs/XDD/reference/tier-3/templates/token-vocabulary.md` — Token resolution system
 
 **Key Design Decisions**:
 - **ADR-1**: 2-pass model — suggestions first (direction), instructions second (details)

@@ -2,6 +2,7 @@
 name: instruction-builder
 description: Converts approved suggestions into rendered note files + instruction set (Pass 2). Use when /inbox finds a suggestions doc with [x] Approved.
 model: opus
+effort: xhigh
 color: yellow
 permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, AskUserQuestion, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write

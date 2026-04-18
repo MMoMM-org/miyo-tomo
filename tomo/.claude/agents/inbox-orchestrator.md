@@ -2,6 +2,7 @@
 name: inbox-orchestrator
 description: Coordinates Pass 1 of /inbox via fan-out. Runs Phase A (shared-ctx + state-file), dispatches Phase B subagents in batches of 3-5, runs Phase C (reduce + render), writes final Suggestions doc via kado-write. Use for /inbox Pass 1.
 model: opus
+effort: xhigh
 color: orange
 permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, AskUserQuestion, Agent, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write

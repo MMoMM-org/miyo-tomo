@@ -1,123 +1,174 @@
 ---
 name: tomo-trackers-wizard
-description: Interactive wizard for configuring tracker field semantics (description, positive/negative keywords) in vault-config.yaml. Invoked via /tomo-setup trackers or directly as /tomo-trackers-wizard.
+description: Interactive wizard for configuring tracker fields — section, syntax, description, and trigger keywords in vault-config.yaml. Invoked via /tomo-setup trackers or directly as /tomo-trackers-wizard.
 argument-hint: "no arguments needed"
 ---
 # Tomo Trackers Wizard
-# version: 0.1.0
+# version: 0.2.0
 
-This wizard walks you through giving each tracker field a human-readable description
-and keyword lists. Tomo uses these to classify inbox items accurately — a well-described
-field with good keywords cuts false positives significantly.
+This wizard walks you through configuring each tracker field with the metadata
+Tomo needs for accurate inbox classification and correct daily-note updates:
 
-When you're done, run `/inbox` to see the improved classification.
+- **section** — which Daily Note section the tracker lives in (e.g. "Habit")
+- **syntax** — how the field is written (`inline_field`, `task_checkbox`, `frontmatter`)
+- **description** — what the tracker actually measures
+- **positive_keywords** — words that trigger this tracker from inbox content
+- **negative_keywords** — words that suppress false positives
 
 ## Workflow
 
 ### Step 1 — Load current tracker config
 
-Read `config/vault-config.yaml` via `scripts/read-config-field.py`. Extract all tracker
-fields from both sections:
+Read `config/vault-config.yaml`. Extract all tracker groups and their fields:
 
+- `trackers.daily_note_trackers.yesterday_fields[]`
 - `trackers.daily_note_trackers.today_fields[]`
+- `trackers.daily_note_trackers.start_of_day_fields[]`
 - `trackers.end_of_day_fields.fields[]`
 
-Build a working list: for each entry, note its `name`, `type`, existing `description`
-(may be absent or empty), existing `keywords.positive[]`, and existing `keywords.negative[]`.
+Also read the group-level `section` if present:
+- `trackers.daily_note_trackers.section` (default: "Habit")
+- `trackers.end_of_day_fields.section` (default: "End of the Day")
+
+For each field note: `name`, `type`, existing `section`, `syntax`, `description`,
+`positive_keywords[]`, `negative_keywords[]`. Any may be absent.
 
 Report to the user:
 
 ```
 Tracker fields found:
 
-  today_fields:
-    - mood (text)
-    - energy (scale)
-    - focus_task (text)
+  daily_note_trackers (section: Habit):
+    yesterday_fields:
+      - Entspannung (boolean) — syntax: ?, description: ✓
+      - Alcohol (boolean) — syntax: ?, description: ✓
+    today_fields:
+      - Sport (boolean) — syntax: ?, description: ✓
+      - WakeUpEnergy (scale) — syntax: ?, description: ✓
 
-  end_of_day_fields:
-    - wins (text)
-    - blockers (text)
+  end_of_day_fields (section: End of the Day):
+    - DayJournal (boolean) — syntax: ?, description: ?
 ```
 
-If vault-config has no tracker sections, say so and offer to skip:
+Use ✓ for present, ? for missing.
 
-> "No tracker fields found in vault-config.yaml. Nothing to configure."
+### Step 2 — Configure group-level section
 
-### Step 2 — Walk each field
+For each tracker group, ask via **AskUserQuestion**:
 
-For each tracker field (today_fields first, then end_of_day_fields):
+"Which Daily Note section contains the `<group>` trackers?"
+- Options:
+  - `Habit` (or current value if set)
+  - `Enter custom section name`
+  - `Keep current` (only if already set)
 
-1. Show the current state clearly:
+Set the `section` key on the group.
+
+### Step 3 — Walk each field
+
+For each tracker field:
+
+1. Show current state:
    ```
-   Field: mood  (type: text)
-   Description : <empty>
-   Positive kw : <none>
-   Negative kw : <none>
+   Field: Sport  (type: boolean, group: today_fields)
+   Section     : Habit (from group)
+   Syntax      : <not set>
+   Description : "Did I exercise today?"
+   Pos keywords: <none>
+   Neg keywords: <none>
    ```
 
-2. Ask via **AskUserQuestion**: "What does `<field>` actually track?"
+2. **Syntax** — Ask via **AskUserQuestion**: "How is `<field>` written in the daily note?"
    - Options:
-     - `Keep current` — only if `description` is already non-empty; pre-fill with the
-       existing text so the user sees it
-     - `Edit` — user provides a free-text description in a follow-up
-     - `Skip this field` — leave unchanged
+     - `inline_field` — Dataview-style `Field:: value` (Recommended for most fields)
+     - `task_checkbox` — `- [x] Field` checkbox
+     - `frontmatter` — YAML property in frontmatter
+     - `Keep current` — only if syntax is already set
 
-3. If Edit: invite a short free-text description. No AskUserQuestion here — just say:
-   > "Describe what `<field>` tracks (one sentence is enough):"
-   Then wait for the user's reply.
-
-4. Ask via **AskUserQuestion**: "Positive keywords for `<field>`? (comma-separated or one per line)"
+3. **Description** — Ask via **AskUserQuestion**: "What does `<field>` track?"
    - Options:
-     - `Enter keywords` — user types them in a follow-up
-     - `Keep existing` — only if keywords already exist; pre-fill
-     - `None` — explicitly empty list
+     - `Keep current` — only if description exists; show current text
+     - `Edit` — user provides free-text description
+     - `Skip` — leave unchanged
 
-5. Ask via **AskUserQuestion**: "Negative keywords for `<field>`? (suppress false positives)"
+   If Edit: say "Describe what `<field>` tracks (one sentence is enough):"
+   and wait for user reply.
+
+4. **Positive keywords** — Ask via **AskUserQuestion**: "Positive keywords for `<field>`?"
+   - Options:
+     - `Enter keywords` — user types comma-separated list
+     - `Keep existing` — only if keywords exist; show current list
+     - `None` — explicitly empty
+
+5. **Negative keywords** — Ask via **AskUserQuestion**: "Negative keywords for `<field>`?"
    - Options:
      - `Enter keywords`
      - `Keep existing` — only if negative keywords exist
      - `None`
 
-6. Show a confirmation summary:
-
+6. Show confirmation:
    ```
-   Field `mood`:
-     description : "Daily mood score from 1–5"
-     positive kw : mood, feeling, energy level, how I feel
-     negative kw : productivity, tasks
+   Field `Sport`:
+     syntax       : inline_field
+     description  : "Physical exercise done today"
+     positive kw  : ran, workout, gym, yoga, Sport gemacht
+     negative kw  : watched, video about
    ```
 
-   Ask via **AskUserQuestion**: "Accept this configuration?"
-   - Options:
-     - `Accept` (Recommended)
-     - `Re-edit` — loop back to step 2 for this field
-     - `Skip` — discard changes for this field, move on
+   Ask via **AskUserQuestion**: "Accept?"
+   - `Accept` (Recommended)
+   - `Re-edit` — loop back
+   - `Skip` — discard changes, move on
 
-After all fields are processed, show a summary of accepted vs skipped before writing.
-
-### Step 3 — Write back
+### Step 4 — Write back
 
 **IMPORTANT:** Use the Edit tool — NOT a full file rewrite.
 
-For each accepted field, update only its entry in `config/vault-config.yaml`:
-- Set `description:` to the new value
-- Set `keywords.positive:` list
-- Set `keywords.negative:` list
+For each accepted field, update its entry in `config/vault-config.yaml`:
+- Set `syntax:` (if changed or newly set)
+- Set `description:` (if changed)
+- Set `positive_keywords:` as YAML list (not nested under `keywords:`)
+- Set `negative_keywords:` as YAML list (not nested under `keywords:`)
 
-If a field had no `keywords:` block, add one. Preserve all other vault-config content
-exactly. Preserve field order within each tracker section.
+For each group, set the `section:` key if changed.
 
-Do NOT touch any section of vault-config outside the modified tracker field entries.
+Preserve all other vault-config content exactly. Preserve field order.
 
-### Step 4 — Report
+**Schema reference** (per field in vault-config.yaml):
+```yaml
+- name: Sport
+  type: boolean
+  syntax: inline_field
+  description: "Physical exercise done today"
+  positive_keywords: [ran, workout, gym, yoga]
+  negative_keywords: [watched, video about]
+```
+
+**Schema reference** (group level):
+```yaml
+trackers:
+  daily_note_trackers:
+    section: "Habit"
+    today_fields:
+      - name: Sport
+        ...
+  end_of_day_fields:
+    section: "End of the Day"
+    fields:
+      - name: DayJournal
+        ...
+```
+
+### Step 5 — Report
 
 ```
 Tracker semantics configured for N of M fields.
 
-  ✓ mood         — description + 4 positive kw
-  ✓ energy       — description + 2 positive kw, 1 negative kw
-  ✗ focus_task   — skipped
+  ✓ Sport          — inline_field, 5 positive kw, 2 negative kw
+  ✓ WakeUpEnergy   — inline_field, 6 positive kw
+  ✗ DayJournal     — skipped
+
+Sections: Habit (daily_note_trackers), End of the Day (end_of_day_fields)
 
 Run /inbox to see the improved classification.
 ```
@@ -125,7 +176,8 @@ Run /inbox to see the improved classification.
 ## Constraints
 
 - Always use AskUserQuestion for choices — never plain text prompts.
-- Resolve all paths via `scripts/read-config-field.py` — never hardcode vault paths.
 - Edit tool only for config writes — preserve the entire file structure.
 - Be idempotent — re-running is safe; existing values are shown as defaults.
-- Never invent field names or keyword suggestions — always derive from vault-config or user input.
+- Never invent keyword suggestions — only show what exists or what the user types.
+- Keywords are flat lists (`positive_keywords: [...]`), NOT nested under `keywords:`.
+- `section` lives at the group level, not per field.

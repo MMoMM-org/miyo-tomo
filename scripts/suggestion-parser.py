@@ -311,7 +311,15 @@ def split_into_sections(text: str) -> list[tuple[str, list[str]]]:
             current_id = m.group(1).upper()
             current_lines = []
         elif current_id is not None:
-            current_lines.append(line)
+            # A level-2 header that isn't an S## section ends the current section.
+            # This prevents "## Proposed MOCs", "## Needs Attention", etc. from
+            # bleeding into the last S## item.
+            if line.startswith("## ") and not RE_SECTION_HEADER.match(line):
+                sections.append((current_id, current_lines))
+                current_id = None
+                current_lines = []
+            else:
+                current_lines.append(line)
 
     if current_id is not None:
         sections.append((current_id, current_lines))

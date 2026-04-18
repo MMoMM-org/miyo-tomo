@@ -1,3 +1,10 @@
+---
+phase: 4
+title: "Reducer + render"
+status: completed
+depends_on: [1, 3]
+---
+
 # Phase 4 — Reducer + orchestrator render
 
 ## Goal

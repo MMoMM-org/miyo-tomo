@@ -1,3 +1,10 @@
+---
+phase: 5
+title: "Wizards + Pass-2 + validation"
+status: in_progress
+depends_on: [1, 2, 3, 4]
+---
+
 # Phase 5 — Wizards + Pass-2 handlers + validation
 
 ## Goal

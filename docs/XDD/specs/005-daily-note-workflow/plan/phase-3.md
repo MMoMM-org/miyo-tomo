@@ -1,3 +1,10 @@
+---
+phase: 3
+title: "Three-way classification"
+status: completed
+depends_on: [1, 2]
+---
+
 # Phase 3 — inbox-analyst three-way classification
 
 ## Goal

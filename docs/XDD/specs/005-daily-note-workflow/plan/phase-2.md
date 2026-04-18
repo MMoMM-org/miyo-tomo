@@ -1,3 +1,10 @@
+---
+phase: 2
+title: "Shared-ctx extension"
+status: completed
+depends_on: [1]
+---
+
 # Phase 2 — shared-ctx-builder extension
 
 ## Goal

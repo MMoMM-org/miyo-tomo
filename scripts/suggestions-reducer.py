@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 0.3.0
+# version: 0.4.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -80,6 +80,53 @@ def normalise_topic(topic: str) -> str:
     elif t.endswith("s") and not t.endswith("ss") and len(t) > 3:
         t = t[:-1]
     return t
+
+
+def _compute_moc_tags(items_tags: list[list[str]]) -> list[str]:
+    """Compute shared parent tags for a Proposed MOC from contributing items' tags.
+
+    For hierarchical tags (slash-separated), if a parent path has children from
+    2+ different tags, the parent replaces the children. Single-item MOCs or
+    tags without shared parents are kept as-is.
+
+    Example: [['topic/games/boardgames/catan'], ['topic/games/boardgames/gloomhaven']]
+    → ['topic/games/boardgames']
+    """
+    all_tags: list[str] = []
+    for tags in items_tags:
+        all_tags.extend(tags)
+    if not all_tags:
+        return []
+
+    # Group tags by their parent path (strip last segment)
+    parent_children: dict[str, set[str]] = {}
+    leaf_tags: list[str] = []
+    for tag in all_tags:
+        parts = tag.split("/")
+        if len(parts) > 1:
+            parent_path = "/".join(parts[:-1])
+            parent_children.setdefault(parent_path, set()).add(tag)
+        else:
+            leaf_tags.append(tag)
+
+    result: list[str] = []
+    seen: set[str] = set()
+    # Parents with 2+ children → emit parent instead of leaves
+    covered: set[str] = set()
+    for parent_path, children in sorted(parent_children.items()):
+        if len(children) >= 2:
+            if parent_path not in seen:
+                result.append(parent_path)
+                seen.add(parent_path)
+            covered.update(children)
+
+    # Tags not covered by a shared parent → keep as-is
+    for tag in all_tags:
+        if tag not in covered and tag not in seen:
+            result.append(tag)
+            seen.add(tag)
+
+    return result
 
 
 # ── Rendering ────────────────────────────────────────────────────────────────
@@ -526,14 +573,10 @@ def main() -> int:
         # Parent: mode across hits
         parents = [h[2] for h in hits if h[2]]
         parent = max(set(parents), key=parents.count) if parents else ""
-        # Tags: union of all contributing items' tags, deduplicated, sorted
-        all_tags: list[str] = []
-        seen_tags: set[str] = set()
-        for h in hits:
-            for tag in h[3]:  # h[3] = item_tags
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    all_tags.append(tag)
+        # Tags: compute shared parent tags instead of dumping all leaf tags.
+        # For tags like [topic/games/boardgames/catan, .../gloomhaven, .../wingspan],
+        # emit [topic/games/boardgames] — the MOC gets the shared parent, items keep leaves.
+        all_tags = _compute_moc_tags([h[3] for h in hits])
         proposed_mocs.append({
             "topic": display_topic,
             "items": [h[0] for h in hits],

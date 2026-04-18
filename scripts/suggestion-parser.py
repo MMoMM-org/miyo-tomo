@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -443,6 +443,147 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Daily Notes Updates parser
+# ──────────────────────────────────────────────────────────────────────────────
+
+RE_DAILY_DATE_HEADER = re.compile(r"^###\s+\[\[([^\]]+)\]\]")
+RE_DAILY_TRACKER_LINE = re.compile(r"^\s*-\s+\*\*([^*]+)\*\*\s*→\s*`?([^`\n]+)`?")
+RE_DAILY_LOG_LINE = re.compile(r"^\s*-\s+(\S+)\s+—\s+(.*)")
+
+
+def parse_daily_updates(text: str) -> list[dict]:
+    """Parse the ## Daily Notes Updates section.
+
+    Returns a list of daily update entries:
+    [{date, trackers: [{field, value, reason, source_stem, accepted}],
+      log_entries: [{time, content, reason, source_stem, accepted}]}]
+    """
+    lines = text.splitlines()
+    in_section = False
+    entries: list[dict] = []
+    current_date: str | None = None
+    current_entry: dict | None = None
+    block_type: str | None = None  # "trackers", "log_entries", "log_links"
+    pending_item: dict | None = None
+
+    def _flush_pending():
+        nonlocal pending_item
+        if pending_item and current_entry:
+            if block_type and block_type in current_entry:
+                current_entry[block_type].append(pending_item)
+        pending_item = None
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped == "## Daily Notes Updates":
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            _flush_pending()
+            break
+        if not in_section:
+            continue
+
+        # Date header: ### [[2026-03-26]]
+        dm = RE_DAILY_DATE_HEADER.match(stripped)
+        if dm:
+            _flush_pending()
+            current_date = dm.group(1)
+            current_entry = {
+                "date": current_date,
+                "trackers": [],
+                "log_entries": [],
+                "log_links": [],
+            }
+            entries.append(current_entry)
+            block_type = None
+            continue
+
+        if not current_entry:
+            continue
+
+        # Block type headers
+        if stripped.startswith("**Possible Trackers:**"):
+            _flush_pending()
+            block_type = "trackers"
+            continue
+        if stripped.startswith("**Possible Log Entries"):
+            _flush_pending()
+            block_type = "log_entries"
+            continue
+        if stripped.startswith("**Possible Log Links"):
+            _flush_pending()
+            block_type = "log_links"
+            continue
+
+        # Accept checkbox for the current pending item
+        cb = RE_CHECKED.match(stripped)
+        if cb and "accept" in cb.group(1).lower():
+            if pending_item:
+                pending_item["accepted"] = True
+            continue
+        cb_un = RE_UNCHECKED.match(stripped)
+        if cb_un and "accept" in cb_un.group(1).lower():
+            if pending_item:
+                pending_item["accepted"] = False
+            continue
+
+        # Sub-fields: Reason, Source, Time
+        if stripped.startswith("- Reason:") and pending_item:
+            pending_item["reason"] = stripped.split(":", 1)[1].strip()
+            continue
+        if stripped.startswith("- Source:") and pending_item:
+            wl = _extract_wikilink(stripped)
+            if wl:
+                pending_item["source_stem"] = wl
+            continue
+        if stripped.startswith("- Time:") and pending_item:
+            pending_item["time"] = stripped.split(":", 1)[1].strip()
+            continue
+
+        # Tracker line: - **Sport** → `true`
+        if block_type == "trackers":
+            tm = RE_DAILY_TRACKER_LINE.match(stripped)
+            if tm:
+                _flush_pending()
+                pending_item = {
+                    "field": tm.group(1).strip(),
+                    "value": tm.group(2).strip(),
+                    "reason": "",
+                    "source_stem": "",
+                    "accepted": False,
+                }
+                continue
+
+        # Log entry line: - end of day — content  OR  - 10:00 — content
+        if block_type in ("log_entries", "log_links"):
+            lm = RE_DAILY_LOG_LINE.match(stripped)
+            if lm:
+                _flush_pending()
+                if block_type == "log_entries":
+                    pending_item = {
+                        "time": lm.group(1).strip(),
+                        "content": lm.group(2).strip(),
+                        "reason": "",
+                        "source_stem": "",
+                        "accepted": False,
+                    }
+                elif block_type == "log_links":
+                    wl = _extract_wikilink(stripped)
+                    pending_item = {
+                        "target_stem": wl or lm.group(1).strip(),
+                        "time": "",
+                        "reason": "",
+                        "accepted": False,
+                    }
+                continue
+
+    _flush_pending()
+    return entries
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -482,7 +623,7 @@ def main() -> int:
         print("warning: no S## sections found in document", file=sys.stderr)
 
     confirmed_items: list[dict] = []
-    skipped_ids: list[str] = []
+    skipped_items: list[dict] = []
     total_sections = len(raw_sections)
 
     for section_id, lines in raw_sections:
@@ -493,7 +634,7 @@ def main() -> int:
                 f"warning: skipping {section_id} — parse error: {exc}",
                 file=sys.stderr,
             )
-            skipped_ids.append(section_id)
+            skipped_items.append({"id": section_id, "disposition": "error"})
             continue
 
         if item is None:
@@ -501,7 +642,7 @@ def main() -> int:
                 f"warning: skipping {section_id} — returned None",
                 file=sys.stderr,
             )
-            skipped_ids.append(section_id)
+            skipped_items.append({"id": section_id, "disposition": "error"})
             continue
 
         if item["approved"]:
@@ -522,7 +663,12 @@ def main() -> int:
                 "classification": item["classification"],
             })
         else:
-            skipped_ids.append(section_id)
+            disposition = "delete_source" if item["delete_source"] else "skip"
+            skipped_items.append({
+                "id": section_id,
+                "source_path": item["source_path"],
+                "disposition": disposition,
+            })
 
     # ── Parse Proposed MOCs ────────────────────────────────────
     # Load MOC template path from vault-config if available
@@ -550,12 +696,26 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    # ── Parse Daily Notes Updates ─────────────────────────────
+    daily_updates = parse_daily_updates(text)
+    if daily_updates:
+        accepted_count = sum(
+            1 for d in daily_updates
+            for lst in (d.get("trackers", []), d.get("log_entries", []), d.get("log_links", []))
+            for item in lst if item.get("accepted")
+        )
+        print(
+            f"daily_updates: {len(daily_updates)} dates, {accepted_count} accepted items",
+            file=sys.stderr,
+        )
+
     output = {
         "confirmed_items": confirmed_items,
-        "skipped": skipped_ids,
+        "daily_updates": daily_updates,
+        "skipped": skipped_items,
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
-        "total_skipped": len(skipped_ids),
+        "total_skipped": len(skipped_items),
     }
 
     print(json.dumps(output, indent=2, ensure_ascii=False))

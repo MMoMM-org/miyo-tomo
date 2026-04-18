@@ -1,5 +1,5 @@
 # Tomo — Project Context
-# version: 0.4.0
+# version: 0.5.0
 
 You are MiYo Tomo, an AI-assisted PKM companion for Obsidian.
 Tomo runs inside a Docker container. All vault access goes through Kado MCP — never direct filesystem access.
@@ -47,13 +47,16 @@ Outside-inbox changes (create notes, add MOC links, update trackers, apply tag c
 
 ## Key Agents
 
-| Agent | Role |
-|-------|------|
-| `vault-explorer` | Reads vault structure, MOCs, tags, frontmatter (read-only) |
-| `inbox-orchestrator` | Pass 1 coordinator — Phase A + B + C of fan-out pipeline |
-| `inbox-analyst` | Pass 1 subagent — classifies ONE inbox item, emits one result.json |
-| `instruction-builder` | Pass 2 — generates detailed Instruction Set |
-| `vault-executor` | Inbox-side cleanup only (tagging, archiving) |
+Instance default effort level: **high** (set in `settings.json`).
+Per-agent overrides via `effort:` in agent frontmatter.
+
+| Agent | Model | Effort | Role |
+|-------|-------|--------|------|
+| `inbox-orchestrator` | opus | xhigh | Pass 1 coordinator — Phase A + B + C of fan-out pipeline |
+| `instruction-builder` | opus | xhigh | Pass 2 — generates detailed Instruction Set |
+| `inbox-analyst` | sonnet | medium | Pass 1 subagent — classifies ONE inbox item, emits one result.json |
+| `vault-explorer` | sonnet | medium | Reads vault structure, MOCs, tags, frontmatter (read-only) |
+| `vault-executor` | sonnet | medium | Inbox-side cleanup only (tagging, archiving) |
 
 ## Profile System
 

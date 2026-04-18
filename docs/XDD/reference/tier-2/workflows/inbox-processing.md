@@ -169,19 +169,33 @@ The user is NOT asked to approve the detailed instruction set separately. Approv
 
 When the user applies actions manually in MVP, they read each instruction as they apply it, so they have full visibility regardless.
 
-### State Tags on Inbox Documents
+### State Tracking
 
-Tomo uses tags to track which document is at which stage:
+State is tracked differently for **source items** vs **workflow documents**:
+
+**Source items** (inbox notes) use frontmatter tags — Tomo-managed:
+```
+captured  →  active
+```
 
 | Tag | What it marks | Set by |
 |-----|--------------|--------|
-| `#MiYo-Tomo/captured` | New inbox item, unprocessed | User (manual or Claude Code auto-capture) |
-| `#MiYo-Tomo/proposed` | Suggestions document waiting for user direction | Tomo (suggestion-builder) |
-| `#MiYo-Tomo/confirmed` | Suggestions document with user direction set | User (manual tag change) |
-| `#MiYo-Tomo/instructions` | Detailed instruction set ready to apply | Tomo (instruction-builder) |
-| `#MiYo-Tomo/applied` | User has applied all actions in the instruction set | User (manual tag change) |
-| `#MiYo-Tomo/active` | Processed inbox item (its content is now in the vault) | Tomo (vault-executor cleanup) |
-| `#MiYo-Tomo/archived` | Suggestions doc / instruction set retired | Tomo (vault-executor cleanup) |
+| `#MiYo-Tomo/captured` | Inbox item has been processed by Pass 1 | Tomo (`tag-captured.py` in Phase C) |
+| `#MiYo-Tomo/active` | Item's content is now in the vault | Tomo (`vault-executor` cleanup) |
+
+**Workflow documents** (suggestions, instructions) use **checkboxes** — user-facing, no tags:
+
+| Document | State signal | Set by |
+|----------|-------------|--------|
+| Suggestions | `- [x] Approved` global checkbox at top | User |
+| Instructions | `- [x] Applied` per-action checkboxes | User |
+
+Discovery by filename pattern: `*_suggestions.md`, `*_instructions.md`.
+
+> **⚠️ Deviation**
+> **Original**: All documents tracked via lifecycle tags (proposed → confirmed → instructions → applied → archived).
+> **Actual**: Workflow documents use visible checkboxes instead of tags. Tags on workflow documents were dropped because frontmatter tags are not easily accessible to the user in Obsidian. Source items still use tags because those are Tomo-managed (user never changes them).
+> **See**: [specs/006-spec-consolidation/solution.md](../../specs/006-spec-consolidation/solution.md)
 
 ### MVP Execution Boundary
 
@@ -226,14 +240,14 @@ The inbox process covers ALL unprocessed items, not just today's:
 
 > **⚠️ Deviation (XDD-004)**
 > **Original**: State tracked purely via lifecycle tags on vault documents.
-> **Actual**: Fan-out pipeline uses a JSONL state file (`tomo-tmp/state.jsonl`) for intra-run state tracking. Per-item entries are appended as subagents complete. The state file enables resume from partial runs and cross-item deduplication at the reducer stage. Lifecycle tags are still used for inter-run state (captured → proposed → confirmed → etc.).
+> **Actual**: Fan-out pipeline uses a JSONL state file (`tomo-tmp/state.jsonl`) for intra-run state tracking. Per-item entries are appended as subagents complete. The state file enables resume from partial runs and cross-item deduplication at the reducer stage. Inter-run state uses tags for source items and checkboxes for workflow documents.
 > **See**: [specs/004-inbox-fanout-refactor/solution.md](../../specs/004-inbox-fanout-refactor/solution.md)
 
 `/inbox` is idempotent across runs. On each invocation, Tomo checks for state in this order:
 
-1. **Are there `#MiYo-Tomo/applied` instruction sets?** → Run cleanup (Step 7) for those, then continue
-2. **Are there `#MiYo-Tomo/confirmed` suggestions docs?** → Run Pass 2 (Step 5) for those
-3. **Are there fresh `#MiYo-Tomo/captured` inbox items?** → Run Pass 1 (Steps 1-3)
+1. **Instruction sets with `[x] Applied` actions?** → Run cleanup (vault-executor) for those, then continue
+2. **Suggestions with `[x] Approved`?** → Run Pass 2 (instruction-builder) for those
+3. **Fresh inbox items (no `#captured` tag)?** → Run Pass 1 (orchestrator, Steps 1-3)
 4. **Nothing pending** → Report idle state, exit
 
 A single user workflow can span multiple `/inbox` invocations:

@@ -105,16 +105,23 @@ def render_proposed_mocs(d: dict) -> list[str]:
         topic = pm.get("topic", "")
         items = ", ".join(pm.get("items", []))
         parent = pm.get("parent", "")
-        lines.extend([
+        tags = ", ".join(pm.get("tags", []))
+        tag_line = f"- **Suggested tags:** {tags}" if tags else ""
+        entry = [
             f"### Proposed MOC: {topic}",
             f"- **Name:** {topic} (MOC)    \u2190 edit this to rename the MOC before approving",
             f"- **Parent:** [[{parent}]]    \u2190 change parent MOC if needed",
             f"- **Supporting items:** {items}",
+        ]
+        if tag_line:
+            entry.append(tag_line)
+        entry.extend([
             "- **Decision:**",
             "  - [ ] Approve (create this MOC with the Name above)",
             "  - [ ] Skip \u2014 don't create, items stay with their individual MOC matches",
             "",
         ])
+        lines.extend(entry)
     return lines
 
 

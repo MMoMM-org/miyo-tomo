@@ -403,7 +403,7 @@ def main() -> int:
     )
 
     sections: list[dict] = []
-    topic_clusters: dict[str, list[tuple[str, str, str]]] = {}  # norm_topic -> [(section_id, display, parent)]
+    topic_clusters: dict[str, list[tuple[str, str, str, list]]] = {}  # norm_topic -> [(section_id, display, parent, tags)]
     # daily_note_stem -> {trackers, log_entries, log_links}
     daily_groups: dict[str, dict] = {}
     # stem -> [(daily_note_stem, time, reason)] for Material für mirror
@@ -487,8 +487,9 @@ def main() -> int:
                     cls = action.get("classification") or {}
                     if cls.get("category"):
                         parent = cls["category"]
+                    item_tags = [t for t in (action.get("tags_to_add") or []) if t]
                     topic_clusters.setdefault(norm, []).append(
-                        (section_id, topic_raw, parent)
+                        (section_id, topic_raw, parent, item_tags)
                     )
 
         # Append Material für mirror blocks to per-item rendered actions
@@ -525,10 +526,19 @@ def main() -> int:
         # Parent: mode across hits
         parents = [h[2] for h in hits if h[2]]
         parent = max(set(parents), key=parents.count) if parents else ""
+        # Tags: union of all contributing items' tags, deduplicated, sorted
+        all_tags: list[str] = []
+        seen_tags: set[str] = set()
+        for h in hits:
+            for tag in h[3]:  # h[3] = item_tags
+                if tag not in seen_tags:
+                    seen_tags.add(tag)
+                    all_tags.append(tag)
         proposed_mocs.append({
             "topic": display_topic,
             "items": [h[0] for h in hits],
             "parent": parent,
+            "tags": all_tags,
         })
 
     needs_attention: list[dict] = []

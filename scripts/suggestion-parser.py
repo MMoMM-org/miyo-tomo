@@ -409,7 +409,7 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
                     parent = wl or val
                 elif key in ("supporting items", "items"):
                     items_str = val
-                elif key in ("tags", "tag", "new tags"):
+                elif key in ("tags", "tag", "new tags", "suggested tags"):
                     tags = _parse_tags(val)
 
         if not approved or not name:

@@ -15,8 +15,8 @@ Tomo runs inside a Docker container with sandbox isolation — all vault access 
 - `tomo/config/templates/` — reference templates for note types
 - `scripts/` — install, utility, and Python scan scripts
 - `scripts/lib/` — shared Python library (kado_client)
-- `docs/specs/` — PKM architecture specs (tier 1-3, from Kokoro)
-- `docs/XDD/` — implementation specs and plans
+- `docs/XDD/` — all specs: implementation (specs/) and architecture reference (reference/tier-1, tier-2, tier-3)
+- `docs/XDD/backlog.md` — open items (post-MVP features, doc debt)
 - `docker/` — Dockerfile and container config
 - `tomo-instance/` — Docker workspace, gitignored, created by install script
 - `tomo-home/` — Docker /home/coder, gitignored
@@ -27,7 +27,8 @@ Tomo runs inside a Docker container with sandbox isolation — all vault access 
 2-pass inbox model: Suggestions (Pass 1) → User confirms → Instructions (Pass 2) → User applies.
 MVP execution boundary: Tomo writes only to inbox folder; user applies everything else.
 
-See `docs/specs/tier-1/pkm-intelligence-architecture.md` for full architecture.
+See `docs/XDD/reference/tier-1/pkm-intelligence-architecture.md` for full architecture.
+See `docs/XDD/README.md` for the consolidated documentation index.
 
 ## Rules
 

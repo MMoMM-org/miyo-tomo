@@ -66,7 +66,7 @@ Each phase is defined in a separate file. Tasks follow: **Prime** (understand co
 - [x] [Phase 1: Structure + Migration](phase-1.md)
 - [x] [Phase 2: Reconciliation + Deviations](phase-2.md)
 - [x] [Phase 3: Placeholder Completion](phase-3.md)
-- [ ] [Phase 4: Index + Backlog + Cleanup](phase-4.md)
+- [x] [Phase 4: Index + Backlog + Cleanup](phase-4.md)
 
 ---
 

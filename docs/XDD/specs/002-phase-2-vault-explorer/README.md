@@ -12,7 +12,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | skipped | Covered by Kokoro Tier 1-3 specs in docs/specs/ |
+| requirements.md | skipped | Covered by Kokoro Tier 1-3 specs in docs/XDD/reference/ |
 | solution.md | skipped | Architecture defined in pkm-intelligence-architecture.md |
 | plan/ | completed | All 4 phases implemented and validated (34/34 tests pass) |
 
@@ -22,7 +22,7 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-04-10 | Skip PRD/SDD — use existing Kokoro specs | All tiers copied to docs/specs/ |
+| 2026-04-10 | Skip PRD/SDD — use existing Kokoro specs | All tiers copied to docs/XDD/reference/ |
 | 2026-04-10 | Python scripts call Kado HTTP API directly | Agents delegate deterministic work to scripts; scripts return compact JSON |
 
 ## Context
@@ -32,7 +32,7 @@ builds MOC tree, detects frontmatter/tag/callout patterns, and generates discove
 
 Requires Kado v0.1.6 running. All vault access via Kado MCP.
 
-Source specs: docs/specs/ (all tiers)
+Source specs: docs/XDD/reference/ (all tiers)
 
 ---
 *This file is managed by the xdd-meta skill.*

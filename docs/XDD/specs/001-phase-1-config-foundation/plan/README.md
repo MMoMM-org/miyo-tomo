@@ -37,12 +37,12 @@ version: "1.0"
 
 **Specification**:
 
-- `docs/specs/tier-1/pkm-intelligence-architecture.md` — Root architecture (4-layer stack, execution model)
-- `docs/specs/tier-2/components/framework-profiles.md` — Profile schema and role
-- `docs/specs/tier-2/components/user-config.md` — vault-config.yaml schema
-- `docs/specs/tier-2/components/template-system.md` — Template rendering pipeline
-- `docs/specs/tier-2/components/setup-wizard.md` — Two-phase setup design
-- `docs/specs/tier-3/` — All Tier 3 detail specs (profiles, templates, wizard, config, inbox, discovery, etc.)
+- `docs/XDD/reference/tier-1/pkm-intelligence-architecture.md` — Root architecture (4-layer stack, execution model)
+- `docs/XDD/reference/tier-2/components/framework-profiles.md` — Profile schema and role
+- `docs/XDD/reference/tier-2/components/user-config.md` — vault-config.yaml schema
+- `docs/XDD/reference/tier-2/components/template-system.md` — Template rendering pipeline
+- `docs/XDD/reference/tier-2/components/setup-wizard.md` — Two-phase setup design
+- `docs/XDD/reference/tier-3/` — All Tier 3 detail specs (profiles, templates, wizard, config, inbox, discovery, etc.)
 
 **Key Design Decisions**:
 

@@ -53,7 +53,7 @@ Files to touch:
   still correct but reference the orchestrator flow if mentioned
 - `tomo/.claude/commands/tomo-help.md` — topic-map entry for "/inbox"
   reflects the new two-stage-with-fan-out model
-- `docs/specs/tier-2/workflows/` — update the 2-pass workflow diagram if it
+- `docs/XDD/reference/tier-2/workflows/` — update the 2-pass workflow diagram if it
   exists to show fan-out in Pass 1
 - README.md — keep the user-facing description; add a note that `/inbox`
   now scales to 100+ items

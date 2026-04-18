@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Index + Backlog + Cleanup"
-status: pending
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -31,7 +31,7 @@ phase: 4
 
 Creates the navigational index, builds the open-items backlog, retires the old docs/specs/ location, and updates all external references.
 
-- [ ] **T4.1 Build open-items backlog** `[activity: docs-analysis]`
+- [x] **T4.1 Build open-items backlog** `[activity: docs-analysis]`
 
   1. Prime: Read all migrated specs in `docs/XDD/reference/` for post-MVP items, parking lot mentions, and TODO markers; read `docs/XDD/specs/004-*/solution.md` and `005-*/solution.md` for deferred items `[ref: SDD/File Formats — Backlog Item Format]`
   2. Test: Collect all post-MVP items, doc-debt references, and known issues from:
@@ -47,7 +47,7 @@ Creates the navigational index, builds the open-items backlog, retires the old d
   4. Validate: Every post-MVP item from tier specs appears in backlog; no duplicates; source references are valid paths
   5. Success: Backlog captures all open work with source traceability `[ref: PRD/AC — Feature 4]`
 
-- [ ] **T4.2 Create XDD master index** `[activity: docs-scaffolding]`
+- [x] **T4.2 Create XDD master index** `[activity: docs-scaffolding]`
 
   1. Prime: Read SDD Master Index Format; inventory all specs (001-006) and all reference docs `[ref: SDD/File Formats — Master Index Format]`
   2. Test: Verify all spec directories and reference files exist at expected paths
@@ -60,7 +60,7 @@ Creates the navigational index, builds the open-items backlog, retires the old d
   4. Validate: Every spec and reference file is linked from the index; all links resolve
   5. Success: Complete navigable index of all Tomo documentation `[ref: PRD/AC — Feature 5]`
 
-- [ ] **T4.3 Create reference directory README** `[activity: docs-scaffolding]` `[parallel: true]`
+- [x] **T4.3 Create reference directory README** `[activity: docs-scaffolding]` `[parallel: true]`
 
   1. Prime: Understand the Kokoro authority model from SDD
   2. Test: Verify `docs/XDD/reference/README.md` does not exist yet
@@ -72,7 +72,7 @@ Creates the navigational index, builds the open-items backlog, retires the old d
   4. Validate: README accurately describes the reference docs collection
   5. Success: Reference docs are self-documenting `[ref: SDD/Building Block View]`
 
-- [ ] **T4.4 Retire docs/specs/ with redirect** `[activity: docs-cleanup]`
+- [x] **T4.4 Retire docs/specs/ with redirect** `[activity: docs-cleanup]`
 
   1. Prime: Read SDD Redirect README Format `[ref: SDD/File Formats — Redirect README Format]`
   2. Test: Verify `docs/specs/` is empty except possibly for README.md
@@ -80,7 +80,7 @@ Creates the navigational index, builds the open-items backlog, retires the old d
   4. Validate: `docs/specs/` contains only the redirect README; redirect links are correct
   5. Success: Old location clearly redirects to new location `[ref: PRD/AC — Feature 1]`
 
-- [ ] **T4.5 Update CLAUDE.md references** `[activity: docs-editing]`
+- [x] **T4.5 Update CLAUDE.md references** `[activity: docs-editing]`
 
   1. Prime: Read `CLAUDE.md` for all `docs/specs/` references `[ref: SDD/Acceptance Criteria — CLAUDE.md]`
   2. Test: Grep CLAUDE.md for `docs/specs/` paths
@@ -90,7 +90,7 @@ Creates the navigational index, builds the open-items backlog, retires the old d
   4. Validate: `grep "docs/specs/" CLAUDE.md` returns no results (except the redirect mention if any)
   5. Success: CLAUDE.md points to consolidated documentation `[ref: SDD/Acceptance Criteria — CLAUDE.md]`
 
-- [ ] **T4.6 Update XDD spec 001-003 references** `[activity: docs-editing]` `[parallel: true]`
+- [x] **T4.6 Update XDD spec 001-003 references** `[activity: docs-editing]` `[parallel: true]`
 
   1. Prime: Read XDD specs 001, 002, 003 README.md files — they reference Kokoro tier specs via `docs/specs/` paths
   2. Test: Grep specs 001-003 for `docs/specs/` paths
@@ -98,7 +98,7 @@ Creates the navigational index, builds the open-items backlog, retires the old d
   4. Validate: No `docs/specs/` references in XDD specs 001-003
   5. Success: Existing XDD specs reference consolidated location `[ref: SDD/Risks — Technical Debt]`
 
-- [ ] **T4.7 Final cross-reference validation** `[activity: validate]`
+- [x] **T4.7 Final cross-reference validation** `[activity: validate]`
 
   1. Prime: All migration, annotation, and cleanup complete
   2. Test: Run comprehensive grep for stale references:
@@ -109,7 +109,7 @@ Creates the navigational index, builds the open-items backlog, retires the old d
   4. Validate: Zero results from stale reference grep (excluding the redirect README itself)
   5. Success: Zero broken cross-references across entire docs/ tree `[ref: PRD/Success Metrics — Reference integrity]`
 
-- [ ] **T4.8 Phase Validation (Final)** `[activity: validate]`
+- [x] **T4.8 Phase Validation (Final)** `[activity: validate]`
 
   - `docs/XDD/README.md` exists and links all specs + reference docs
   - `docs/XDD/backlog.md` exists with categorized items

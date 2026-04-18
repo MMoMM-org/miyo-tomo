@@ -32,7 +32,7 @@ version: "1.0"
   relevance: CRITICAL
   why: "WHAT/WHY — this SDD implements it"
 
-- doc: docs/specs/tier-1/pkm-intelligence-architecture.md
+- doc: docs/XDD/reference/tier-1/pkm-intelligence-architecture.md
   relevance: HIGH
   why: "4-layer Knowledge Stack + 2-pass model context"
 

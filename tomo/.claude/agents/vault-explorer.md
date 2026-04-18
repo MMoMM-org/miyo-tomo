@@ -2,6 +2,7 @@
 name: vault-explorer
 description: Scans vault structure, builds MOC tree, generates discovery cache. Use for /explore-vault.
 model: sonnet
+effort: medium
 color: cyan
 permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, AskUserQuestion, mcp__kado__kado-search, mcp__kado__kado-read

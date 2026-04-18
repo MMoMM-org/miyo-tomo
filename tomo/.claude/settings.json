@@ -59,6 +59,7 @@
       "Blueprinting the Architect"
     ]
   },
+  "effortLevel": "high",
   "enabledPlugins": {},
   "hooks": {
     "Notification": [

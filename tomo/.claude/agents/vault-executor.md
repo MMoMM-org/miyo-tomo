@@ -2,6 +2,7 @@
 name: vault-executor
 description: Inbox-side cleanup after user applies instruction set actions. Checks Applied checkboxes, transitions source items, handles workflow docs.
 model: sonnet
+effort: medium
 color: purple
 tools: Read, Glob, Grep, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write
 skills:

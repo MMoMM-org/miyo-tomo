@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """tag-captured.py — Tag processed inbox items with #<prefix>/captured.
 
 Reads the state-file, finds all items with status=done, and adds the
@@ -145,6 +145,9 @@ def add_tag_to_frontmatter(client: KadoClient, path: str, tag: str) -> bool:
         new_lines.append(f"  - {tag_clean}")
 
     new_fm = "\n".join(new_lines)
+    # Ensure newline before closing --- (body starts with ---)
+    if new_fm and not new_fm.endswith("\n"):
+        new_fm += "\n"
     new_content = f"---{new_fm}{body}"
 
     try:

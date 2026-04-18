@@ -1,7 +1,7 @@
 # Tier 2: Framework Profiles
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md) — Knowledge Layer 2
-> Status: Draft
+> Status: Implemented
 > Children: [MiYo Profile](../../tier-3/profiles/miyo-profile.md) · [LYT Profile](../../tier-3/profiles/lyt-profile.md)
 
 ---

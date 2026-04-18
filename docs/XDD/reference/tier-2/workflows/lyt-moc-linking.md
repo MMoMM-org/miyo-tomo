@@ -1,7 +1,7 @@
 # Tier 2: LYT/MOC Linking Workflow
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
-> Status: Draft
+> Status: Implemented
 > Children: [MOC Matching](../../tier-3/lyt-moc/moc-matching.md) · [Section Placement](../../tier-3/lyt-moc/section-placement.md) · [New MOC Proposal](../../tier-3/lyt-moc/new-moc-proposal.md)
 > Related: [existing workflow doc](../../workflows/lyt-moc.md)
 

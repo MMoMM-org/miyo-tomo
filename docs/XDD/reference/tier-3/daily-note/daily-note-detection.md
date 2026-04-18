@@ -1,7 +1,12 @@
 # Tier 3: Daily Note Detection
 
 > Parent: [Daily Note Workflow](../../tier-2/workflows/daily-note.md)
-> Status: Draft
+> Status: Implemented (with deviations)
+
+> **⚠️ Deviation (XDD-005)**
+> **Original**: Detection focuses on whether daily note exists and what to propose.
+> **Actual**: Detection now includes 3 classification dimensions (tracker match, log-entry candidate, log-link candidate) with 30-day cutoff default. Tomo never creates daily notes — surfaces a checkbox instead.
+> **See**: [specs/005-daily-note-workflow/solution.md](../../../specs/005-daily-note-workflow/solution.md)
 > Related: [Tracker Field Handling](tracker-field-handling.md)
 
 ---

@@ -1,7 +1,12 @@
 # Tier 3: Tracker Field Handling
 
 > Parent: [Daily Note Workflow](../../tier-2/workflows/daily-note.md)
-> Status: Draft
+> Status: Implemented (with deviations)
+
+> **⚠️ Deviation (XDD-005)**
+> **Original**: Tracker handling covers read/propose/update for tracker fields only.
+> **Actual**: Trackers now include semantic descriptions in vault-config.yaml for better matching. Polymorphic `updates[]` with `kind` field supports `tracker`, `log_entry`, and `log_link` update types. Tracker config managed via `/tomo-setup trackers` sub-wizard.
+> **See**: [specs/005-daily-note-workflow/solution.md](../../../specs/005-daily-note-workflow/solution.md)
 > Related: [Daily Note Detection](daily-note-detection.md) · [Inbox Analysis](../inbox/inbox-analysis.md)
 
 ---

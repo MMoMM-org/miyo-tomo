@@ -1,7 +1,7 @@
 # Tier 2: Vault Exploration Workflow
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
-> Status: Draft
+> Status: Implemented
 > Children: [Structure Scan](../../tier-3/vault-exploration/structure-scan.md) · [Topic Extraction](../../tier-3/vault-exploration/topic-extraction.md) · [Cache Generation](../../tier-3/vault-exploration/cache-generation.md)
 
 ---

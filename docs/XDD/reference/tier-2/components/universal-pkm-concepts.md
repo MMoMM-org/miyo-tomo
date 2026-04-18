@@ -1,7 +1,7 @@
 # Tier 2: Universal PKM Concepts
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md) — Knowledge Layer 1
-> Status: Draft
+> Status: Implemented
 > Children: — (concepts are atomic, no Tier 3 decomposition)
 
 ---

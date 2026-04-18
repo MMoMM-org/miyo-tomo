@@ -1,7 +1,7 @@
 # Tier 3: Cache Generation
 
 > Parent: [Vault Exploration](../../tier-2/workflows/vault-exploration.md)
-> Status: Draft
+> Status: Implemented
 > Related: [Structure Scan](structure-scan.md) · [MOC Indexing](../discovery/moc-indexing.md) · [Topic Extraction](topic-extraction.md)
 
 ---

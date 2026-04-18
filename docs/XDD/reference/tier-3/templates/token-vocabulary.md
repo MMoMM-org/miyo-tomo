@@ -1,7 +1,7 @@
 # Tier 3: Token Vocabulary
 
 > Parent: [Template System](../../tier-2/components/template-system.md)
-> Status: Draft
+> Status: Implemented
 > Related: [Frontmatter Schema](../config/frontmatter-schema.md) · [Instruction Set Generation](../inbox/instruction-set-generation.md)
 
 ---

@@ -1,7 +1,7 @@
 # Tier 3: New MOC Proposal (Mental Squeeze Point)
 
 > Parent: [LYT/MOC Linking](../../tier-2/workflows/lyt-moc-linking.md)
-> Status: Draft
+> Status: Implemented
 > Related: [MOC Matching](moc-matching.md) · [MOC Indexing](../discovery/moc-indexing.md)
 
 ---

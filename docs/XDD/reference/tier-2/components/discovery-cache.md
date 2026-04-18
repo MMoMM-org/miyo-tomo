@@ -1,7 +1,7 @@
 # Tier 2: Discovery Cache
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md) — Knowledge Layer 4
-> Status: Draft
+> Status: Implemented
 > Children: [MOC Indexing](../../tier-3/discovery/moc-indexing.md) · [Classification Matching](../../tier-3/discovery/classification-matching.md) · [Staleness Policy](../../tier-3/discovery/staleness-policy.md)
 
 ---

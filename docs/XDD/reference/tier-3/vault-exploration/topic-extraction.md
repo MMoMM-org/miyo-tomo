@@ -1,7 +1,7 @@
 # Tier 3: Topic Extraction
 
 > Parent: [Vault Exploration](../../tier-2/workflows/vault-exploration.md)
-> Status: Draft
+> Status: Implemented
 > Related: [MOC Indexing](../discovery/moc-indexing.md) · [MOC Matching](../lyt-moc/moc-matching.md)
 
 ---

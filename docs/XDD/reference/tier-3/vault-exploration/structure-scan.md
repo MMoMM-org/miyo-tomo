@@ -1,7 +1,7 @@
 # Tier 3: Structure Scan
 
 > Parent: [Vault Exploration](../../tier-2/workflows/vault-exploration.md)
-> Status: Draft
+> Status: Implemented
 > Agent: `vault-explorer`
 
 ---

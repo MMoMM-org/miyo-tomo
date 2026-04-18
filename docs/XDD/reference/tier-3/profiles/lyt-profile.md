@@ -1,7 +1,7 @@
 # Tier 3: LYT Profile
 
 > Parent: [Framework Profiles](../../tier-2/components/framework-profiles.md)
-> Status: Draft
+> Status: Implemented
 > Role: Validation target — standard LYT/Ideaverse conventions
 
 ---

@@ -1,7 +1,7 @@
 # Tier 3: Tag Taxonomy
 
 > Parent: [User Config](../../tier-2/components/user-config.md)
-> Status: Draft
+> Status: Implemented
 
 ---
 

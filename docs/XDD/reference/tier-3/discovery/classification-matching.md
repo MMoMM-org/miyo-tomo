@@ -1,7 +1,7 @@
 # Tier 3: Classification Matching
 
 > Parent: [Discovery Cache](../../tier-2/components/discovery-cache.md)
-> Status: Draft
+> Status: Implemented
 > Related: [MOC Matching](../lyt-moc/moc-matching.md) · [Framework Profiles](../../tier-2/components/framework-profiles.md)
 
 ---

@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Reconciliation + Deviations"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -30,7 +30,7 @@ phase: 2
 
 Annotates migrated specs where implementation deviates from original design. Updates outdated content to reflect what was actually built.
 
-- [ ] **T2.1 Annotate inbox-processing workflow deviations** `[activity: docs-reconciliation]`
+- [x] **T2.1 Annotate inbox-processing workflow deviations** `[activity: docs-reconciliation]`
 
   1. Prime: Read `docs/XDD/reference/tier-2/workflows/inbox-processing.md` AND `docs/XDD/specs/004-inbox-fanout-refactor/solution.md` `[ref: SDD/Acceptance Criteria — Reconciliation]`
   2. Test: Identify all sections describing the old 4-agent monolithic model (inbox-analyst, suggestion-builder, instruction-builder, vault-executor)
@@ -51,7 +51,7 @@ Annotates migrated specs where implementation deviates from original design. Upd
   4. Validate: All outdated agent descriptions have deviation callouts; callouts reference XDD-004
   5. Success: Inbox workflow spec accurately reflects fan-out architecture `[ref: PRD/AC — Feature 2, fan-out]`
 
-- [ ] **T2.2 Annotate daily-note workflow deviations** `[activity: docs-reconciliation]`
+- [x] **T2.2 Annotate daily-note workflow deviations** `[activity: docs-reconciliation]`
 
   1. Prime: Read `docs/XDD/reference/tier-2/workflows/daily-note.md` AND `docs/XDD/specs/005-daily-note-workflow/solution.md` `[ref: SDD/Acceptance Criteria — Reconciliation]`
   2. Test: Identify sections missing tracker semantics and 3-classification-dimension model
@@ -64,7 +64,7 @@ Annotates migrated specs where implementation deviates from original design. Upd
   4. Validate: Daily-note spec has deviation callouts for all XDD-005 extensions
   5. Success: Daily-note spec reflects tracker semantics and classification dimensions `[ref: PRD/AC — Feature 2, daily-note]`
 
-- [ ] **T2.3 Annotate Tier 3 daily-note detail deviations** `[activity: docs-reconciliation]` `[parallel: true]`
+- [x] **T2.3 Annotate Tier 3 daily-note detail deviations** `[activity: docs-reconciliation]` `[parallel: true]`
 
   1. Prime: Read `docs/XDD/reference/tier-3/daily-note/daily-note-detection.md` and `tracker-field-handling.md`; cross-reference with XDD-005 solution.md
   2. Test: Identify content that doesn't match implementation (e.g., detection algorithm, tracker config schema)
@@ -72,7 +72,7 @@ Annotates migrated specs where implementation deviates from original design. Upd
   4. Validate: Tier 3 daily-note specs annotated consistently with Tier 2
   5. Success: Daily-note detail specs reflect actual implementation `[ref: PRD/AC — Feature 2]`
 
-- [ ] **T2.4 Annotate Tier 3 inbox detail deviations** `[activity: docs-reconciliation]` `[parallel: true]`
+- [x] **T2.4 Annotate Tier 3 inbox detail deviations** `[activity: docs-reconciliation]` `[parallel: true]`
 
   1. Prime: Read `docs/XDD/reference/tier-3/inbox/inbox-analysis.md` and `suggestions-document.md`; cross-reference with XDD-004 solution.md
   2. Test: Identify sections describing old agent model or deprecated suggestion-builder role
@@ -82,7 +82,7 @@ Annotates migrated specs where implementation deviates from original design. Upd
   4. Validate: Tier 3 inbox specs annotated consistently with Tier 2
   5. Success: Inbox detail specs reflect fan-out architecture `[ref: PRD/AC — Feature 2]`
 
-- [ ] **T2.5 Update spec status markers** `[activity: docs-editing]`
+- [x] **T2.5 Update spec status markers** `[activity: docs-editing]`
 
   1. Prime: All migrated specs currently show "Draft" status
   2. Test: Identify the status field/marker in each spec's frontmatter or header
@@ -94,7 +94,7 @@ Annotates migrated specs where implementation deviates from original design. Upd
   4. Validate: No specs marked "Draft" that are actually implemented
   5. Success: All spec statuses reflect reality `[ref: PRD — Could Have: Status Normalization]`
 
-- [ ] **T2.6 Phase Validation** `[activity: validate]`
+- [x] **T2.6 Phase Validation** `[activity: validate]`
 
   - Every deviation callout follows the format defined in SDD
   - Each callout links to the correct XDD spec

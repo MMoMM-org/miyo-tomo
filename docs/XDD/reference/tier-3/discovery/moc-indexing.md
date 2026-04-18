@@ -1,7 +1,7 @@
 # Tier 3: MOC Indexing
 
 > Parent: [Discovery Cache](../../tier-2/components/discovery-cache.md)
-> Status: Draft
+> Status: Implemented
 > Related: [Topic Extraction](../vault-exploration/topic-extraction.md) · [MOC Matching](../lyt-moc/moc-matching.md)
 
 ---

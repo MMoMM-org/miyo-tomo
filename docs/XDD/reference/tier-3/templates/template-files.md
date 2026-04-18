@@ -1,7 +1,7 @@
 # Tier 3: Template Files
 
 > Parent: [Template System](../../tier-2/components/template-system.md)
-> Status: Draft
+> Status: Implemented
 > Related: [Token Vocabulary](token-vocabulary.md) · [MiYo Profile](../profiles/miyo-profile.md)
 
 ---

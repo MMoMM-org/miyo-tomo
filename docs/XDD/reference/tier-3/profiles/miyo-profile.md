@@ -1,7 +1,7 @@
 # Tier 3: MiYo Profile
 
 > Parent: [Framework Profiles](../../tier-2/components/framework-profiles.md)
-> Status: Draft
+> Status: Implemented
 > Role: Primary development target — Marcus's actual vault conventions
 
 ---

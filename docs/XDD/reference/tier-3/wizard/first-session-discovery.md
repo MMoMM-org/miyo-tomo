@@ -1,7 +1,7 @@
 # Tier 3: First-Session Discovery (Phase 2)
 
 > Parent: [Setup Wizard](../../tier-2/components/setup-wizard.md)
-> Status: Draft
+> Status: Implemented
 > Agent: `vault-explorer`
 
 ---

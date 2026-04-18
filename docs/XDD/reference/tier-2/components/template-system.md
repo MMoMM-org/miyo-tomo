@@ -1,7 +1,7 @@
 # Tier 2: Template System
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
-> Status: Draft
+> Status: Implemented
 > Children: [Token Vocabulary](../../tier-3/templates/token-vocabulary.md) · [Template Files](../../tier-3/templates/template-files.md)
 
 ---

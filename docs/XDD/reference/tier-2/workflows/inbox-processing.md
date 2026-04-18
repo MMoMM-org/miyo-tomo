@@ -1,7 +1,7 @@
 # Tier 2: Inbox Processing Workflow
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
-> Status: Draft
+> Status: Implemented (with deviations)
 > Children: [Inbox Analysis](../../tier-3/inbox/inbox-analysis.md) · [Suggestions Document](../../tier-3/inbox/suggestions-document.md) · [Instruction Set Generation](../../tier-3/inbox/instruction-set-generation.md) · [Instruction Set Apply](../../tier-3/inbox/instruction-set-apply.md) · [Instruction Set Cleanup](../../tier-3/inbox/instruction-set-cleanup.md) · [State Tag Lifecycle](../../tier-3/inbox/state-tag-lifecycle.md)
 > Related: [existing workflow doc](../../workflows/inbox-process.md)
 
@@ -50,6 +50,16 @@ Inbox processing uses a **two-pass model** where the user reviews Tomo's interpr
 | Build (Pass 2) | `instruction-builder` agent | Read confirmed suggestions, generate detailed Instruction Set |
 | Apply (outside inbox) | **User (MVP)** / Seigyo (Post-MVP) | Manually perform approved changes in Obsidian |
 | Cleanup (inbox-side) | `vault-executor` agent | Tag instruction set, tag inbox items, archive within inbox folder |
+
+> **⚠️ Deviation (XDD-004)**
+> **Original**: 4-agent sequential model — `inbox-analyst` analyses all items, then `suggestion-builder` generates a monolithic suggestions document.
+> **Actual**: Fan-out pipeline with `inbox-orchestrator` + per-item `inbox-analyst` subagents + reducer.
+> - Phase A: Orchestrator builds JSONL state file + distilled shared context (~10KB/subagent vs 75KB full cache)
+> - Phase B: 3-5 parallel subagents, one per inbox item, each returns structured JSON
+> - Phase C: Orchestrator reduces per-item results into final suggestions document
+> - `suggestion-builder` agent was **retired** (merged into orchestrator's reducer logic)
+> **Reason**: Context budget constraint — ~50 items at full context hits 200K tokens. Fan-out keeps per-subagent context under 80K.
+> **See**: [specs/004-inbox-fanout-refactor/solution.md](../../specs/004-inbox-fanout-refactor/solution.md)
 
 **MVP execution boundary:** Tomo writes only to the inbox folder. All vault content changes outside the inbox are performed by the user. See [Tier 1 §7 Execution Model](../../tier-1/pkm-intelligence-architecture.md#7-execution-model).
 
@@ -213,6 +223,11 @@ The inbox process covers ALL unprocessed items, not just today's:
 - Suggestions and instruction sets clearly indicate which date each action relates to
 
 ## 8. Run-to-Run State
+
+> **⚠️ Deviation (XDD-004)**
+> **Original**: State tracked purely via lifecycle tags on vault documents.
+> **Actual**: Fan-out pipeline uses a JSONL state file (`tomo-tmp/state.jsonl`) for intra-run state tracking. Per-item entries are appended as subagents complete. The state file enables resume from partial runs and cross-item deduplication at the reducer stage. Lifecycle tags are still used for inter-run state (captured → proposed → confirmed → etc.).
+> **See**: [specs/004-inbox-fanout-refactor/solution.md](../../specs/004-inbox-fanout-refactor/solution.md)
 
 `/inbox` is idempotent across runs. On each invocation, Tomo checks for state in this order:
 

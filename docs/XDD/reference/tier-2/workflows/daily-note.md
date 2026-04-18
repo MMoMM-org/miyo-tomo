@@ -1,7 +1,7 @@
 # Tier 2: Daily Note Workflow
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
-> Status: Draft
+> Status: Implemented (with deviations)
 > Children: [Daily Note Detection](../../tier-3/daily-note/daily-note-detection.md) · [Tracker Field Handling](../../tier-3/daily-note/tracker-field-handling.md)
 > Related: [existing workflow doc](../../workflows/daily-note.md)
 
@@ -36,6 +36,23 @@ During inbox processing, the inbox-analyst identifies daily-note-relevant items:
 1. **Date extraction** — determine which date each inbox item relates to
 2. **Tracker matching** — match content against known tracker fields
 3. **Content proposals** — what to add to the daily note
+
+> **⚠️ Deviation (XDD-005)**
+> **Original**: Two-step detection (date extraction + tracker matching).
+> **Actual**: Three classification dimensions per inbox item, evaluated in a single subagent pass:
+> 1. **Tracker match** — does the item trigger any configured tracker?
+> 2. **Log-entry candidate** — should this item appear as a log entry in the daily note? (Only if item does NOT produce an atomic note)
+> 3. **Log-link candidate** — should the daily note link to this item's new atomic note? (Only if item DOES produce an atomic note)
+>
+> The `log_entry` vs `log_link` distinction is driven by `atomic_note_worthiness`. Updates use polymorphic `updates[]` with a `kind` field (`tracker` | `log_entry` | `log_link`), carried inside the existing `update_daily` action.
+>
+> Additional extensions:
+> - Tracker descriptions in vault-config.yaml (semantic context for better matching)
+> - Daily-log config section in vault-config.yaml (log section heading, format preferences)
+> - `/tomo-setup trackers` and `/tomo-setup daily-log` sub-wizards
+> - 30-day cutoff default (keeps daily-note actions bounded to realistic recency)
+> - Tomo never creates daily notes — surfaces `- [ ] Create daily note first` checkbox when missing
+> **See**: [specs/005-daily-note-workflow/solution.md](../../specs/005-daily-note-workflow/solution.md)
 
 These become instruction set actions (type: Daily Note Update). Each action contains everything the user needs to apply it:
 

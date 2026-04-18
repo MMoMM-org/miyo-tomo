@@ -1,7 +1,7 @@
 # Tier 3: Instruction Set Generation (Pass 2)
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
-> Status: Draft
+> Status: Implemented
 > Agent: `instruction-builder`
 > Related: [Suggestions Document](suggestions-document.md) · [Instruction Set Apply](instruction-set-apply.md)
 

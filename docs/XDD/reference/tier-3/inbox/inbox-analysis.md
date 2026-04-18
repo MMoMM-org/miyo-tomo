@@ -1,8 +1,13 @@
 # Tier 3: Inbox Analysis
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
-> Status: Draft
+> Status: Implemented (with deviations)
 > Agent: `inbox-analyst`
+
+> **⚠️ Deviation (XDD-004)**
+> **Original**: `inbox-analyst` processes all inbox items in a single monolithic pass, producing analysis objects consumed by `suggestion-builder`.
+> **Actual**: `inbox-analyst` runs as a per-item subagent, spawned by `inbox-orchestrator`. Each subagent receives distilled shared context (~10KB) and processes exactly one item, returning structured JSON. The orchestrator's reducer aggregates results. `suggestion-builder` was retired.
+> **See**: [specs/004-inbox-fanout-refactor/solution.md](../../../specs/004-inbox-fanout-refactor/solution.md)
 
 ---
 

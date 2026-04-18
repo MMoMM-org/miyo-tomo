@@ -1,7 +1,7 @@
 # Tier 3: State Tag Lifecycle
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
-> Status: Draft
+> Status: Implemented
 
 ---
 

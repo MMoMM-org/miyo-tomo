@@ -1,7 +1,7 @@
 # Tier 2: User Config (vault-config.yaml)
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md) — Knowledge Layer 3
-> Status: Draft
+> Status: Implemented
 > Children: [Frontmatter Schema](../../tier-3/config/frontmatter-schema.md) · [Relationship Config](../../tier-3/config/relationship-config.md) · [Tag Taxonomy](../../tier-3/config/tag-taxonomy.md) · [Callout Mapping](../../tier-3/config/callout-mapping.md)
 
 ---

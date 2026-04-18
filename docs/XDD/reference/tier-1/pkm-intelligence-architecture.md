@@ -1,7 +1,7 @@
 # Tier 1: Tomo PKM Intelligence Architecture
 
 > Parent: — (this is the root)
-> Status: Draft
+> Status: Implemented
 > Source: [Brainstorm Spec](../../references/tomo-lyt-knowledge-model-spec.md)
 
 ---

@@ -1,7 +1,7 @@
 # Tier 3: Staleness Policy
 
 > Parent: [Discovery Cache](../../tier-2/components/discovery-cache.md)
-> Status: Draft
+> Status: Implemented
 
 ---
 

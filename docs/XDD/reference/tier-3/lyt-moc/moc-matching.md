@@ -1,7 +1,7 @@
 # Tier 3: MOC Matching
 
 > Parent: [LYT/MOC Linking](../../tier-2/workflows/lyt-moc-linking.md)
-> Status: Draft
+> Status: Implemented
 > Related: [MOC Indexing](../discovery/moc-indexing.md) · [Classification Matching](../discovery/classification-matching.md)
 
 ---

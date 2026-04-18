@@ -1,7 +1,7 @@
 # Tier 2: Setup Wizard
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
-> Status: Draft
+> Status: Implemented
 > Children: [Install Script](../../tier-3/wizard/install-script.md) · [First-Session Discovery](../../tier-3/wizard/first-session-discovery.md)
 
 ---

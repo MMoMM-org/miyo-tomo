@@ -328,6 +328,121 @@ def split_into_sections(text: str) -> list[tuple[str, list[str]]]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Proposed MOCs parser
+# ──────────────────────────────────────────────────────────────────────────────
+
+RE_PROPOSED_MOC_HEADER = re.compile(r"^###\s+Proposed MOC:\s*(.*)", re.IGNORECASE)
+
+
+def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
+    """Parse the ## Proposed MOCs section and return approved MOC items.
+
+    Each approved Proposed MOC becomes a confirmed_item with action=create_moc.
+    """
+    mocs: list[dict] = []
+
+    # Find the ## Proposed MOCs section
+    lines = text.splitlines()
+    in_section = False
+    moc_blocks: list[list[str]] = []
+    current_block: list[str] = []
+
+    for line in lines:
+        if line.startswith("## Proposed MOCs"):
+            in_section = True
+            continue
+        if in_section and line.startswith("## "):
+            # Next top-level section ends Proposed MOCs
+            break
+        if not in_section:
+            continue
+
+        m = RE_PROPOSED_MOC_HEADER.match(line)
+        if m:
+            if current_block:
+                moc_blocks.append(current_block)
+            current_block = [line]
+        elif current_block:
+            current_block.append(line)
+
+    if current_block:
+        moc_blocks.append(current_block)
+
+    for idx, block in enumerate(moc_blocks, start=1):
+        name = ""
+        parent = ""
+        items_str = ""
+        approved = False
+        tags: list[str] = []
+
+        for line in block:
+            stripped = line.strip()
+
+            # Check for approve/skip checkboxes — only the checked one matters
+            cb_checked = RE_CHECKED.match(stripped)
+            cb_unchecked = RE_UNCHECKED.match(stripped)
+            if cb_checked:
+                cb_text = cb_checked.group(1).lower()
+                if "approve" in cb_text:
+                    approved = True
+            elif cb_unchecked:
+                # Only unchecked approve line can revoke approval
+                cb_text = cb_unchecked.group(1).lower()
+                if "approve" in cb_text:
+                    approved = False
+
+            # Parse fields
+            field_line = stripped
+            if field_line.startswith("- "):
+                field_line = field_line[2:].strip()
+            m = RE_FIELD.match(field_line)
+            if m:
+                key = m.group(1).strip().rstrip(":").strip().lower()
+                val = m.group(2).strip()
+                # Strip edit hints
+                if "←" in val:
+                    val = val[:val.index("←")].strip()
+                if key == "name":
+                    name = val
+                elif key == "parent":
+                    wl = _extract_wikilink(val)
+                    parent = wl or val
+                elif key in ("supporting items", "items"):
+                    items_str = val
+                elif key in ("tags", "tag", "new tags"):
+                    tags = _parse_tags(val)
+
+        if not approved or not name:
+            continue
+
+        # Derive MOC destination from parent path or default to Maps folder
+        parent_stem = parent.rsplit("/", 1)[-1] if parent else ""
+        if parent_stem.endswith(".md"):
+            parent_stem = parent_stem[:-3]
+
+        moc_id = f"MOC{idx:02d}"
+        mocs.append({
+            "id": moc_id,
+            "source_path": None,
+            "type": "moc",
+            "approved": True,
+            "delete_source": False,
+            "action": "create_moc",
+            "title": name,
+            "tags": tags,
+            "parent_moc": parent,
+            "parent_mocs": [parent] if parent else [],
+            "destination": "Atlas/200 Maps/",
+            "template": config_template,
+            "summary": None,
+            "classification": None,
+            "supporting_items": items_str,
+        })
+
+    return mocs
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -408,6 +523,32 @@ def main() -> int:
             })
         else:
             skipped_ids.append(section_id)
+
+    # ── Parse Proposed MOCs ────────────────────────────────────
+    # Load MOC template path from vault-config if available
+    moc_template = ""
+    try:
+        import os
+        config_path = os.path.join(os.getcwd(), "config", "vault-config.yaml")
+        if os.path.isfile(config_path):
+            try:
+                import yaml
+                with open(config_path, encoding="utf-8") as cf:
+                    cfg = yaml.safe_load(cf) or {}
+                moc_template = (cfg.get("templates", {}).get("mapping", {})
+                                .get("map_note", ""))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    proposed_mocs = parse_proposed_mocs(text, config_template=moc_template)
+    if proposed_mocs:
+        confirmed_items.extend(proposed_mocs)
+        print(
+            f"proposed_mocs: {len(proposed_mocs)} approved",
+            file=sys.stderr,
+        )
 
     output = {
         "confirmed_items": confirmed_items,

@@ -25,7 +25,7 @@
 | F-14 | Additional PKM concepts | reference/tier-2/components/universal-pkm-concepts.md | Could | resource, reference, log, dashboard — deferred until workflows require them |
 | F-15 | Batch read / chunked search in Kado | reference/tier-2/workflows/vault-exploration.md | Could | If Kado adds these, vault-explorer benefits automatically |
 | F-16 | Relationship marker from config (not hardcoded) | reference/tier-3/config/relationship-config.md, moc-tree-builder.py | Should | `moc-tree-builder.py` hardcodes `up::` and `related::` regexes. Should read markers from profile/config. Also support finding markers in frontmatter (`up: [[Parent]]` as YAML key) and inside callouts (`> up:: [[Parent]]`). Important for reading; writing already uses templates. |
-| F-17 | Callout matching by full first line (type + title) | reference/tier-3/config/callout-mapping.md, vault-example.yaml | Should | Current callout mapping keys on type only (`blocks`, `shell`). But same type can have different titles: `>[!EXAMPLE]- New Notes Today` (editable) vs `>[!EXAMPLE]- Modified Notes Today` (protected/DataviewJS). Need `type + title` as key. Required before Tomo can safely write into MOC callout sections. |
+| F-17 | Callout full-line matching end-to-end | reference/tier-3/config/callout-mapping.md, vault-example.yaml | Should | See details below |
 | F-18 | Frontmatter sampling script | reference/tier-3/config/cache-generation.md §3.5 | Could | Phase 4 deferred. `cache-builder.py` accepts `--frontmatter` input but no script generates it. Cache works without |
 | F-19 | Tag analysis script | reference/tier-3/config/cache-generation.md §3.6 | Could | Phase 4 deferred. `cache-builder.py` accepts `--tags` input but no script generates it. Cache works without |
 | F-20 | Orphan detection script | reference/tier-3/config/cache-generation.md §3.7 | Could | Phase 4 deferred. `cache-builder.py` accepts `--orphans` input but no script generates it. Cache works without |
@@ -33,6 +33,35 @@
 | F-22 | Document splitting for large batches | reference/tier-3/inbox/suggestions-document.md §9 | Could | Soft limit 30 items. No splitting logic in reducer/renderer. Batches are typically <10 |
 | F-23 | Archive subdirectory for processed items | reference/tier-3/inbox/instruction-set-cleanup.md §9 | Could | Optional move to `+/archive/YYYY-MM/`. Tags-only suffices for MVP |
 | F-24 | Delete auxiliary files after cleanup | reference/tier-3/inbox/instruction-set-cleanup.md §10 | Could | Rendered notes and diffs stay in inbox after cleanup. Safer to leave for now |
+
+### F-17 Detail: Callout Full-Line Matching (End-to-End)
+
+**Problem:** Same callout type can have different titles with different semantics:
+- `>[!EXAMPLE]- New Notes Today` → editable (user content)
+- `>[!EXAMPLE]- Modified Notes Today` → protected (DataviewJS output)
+
+Matching on type alone (`EXAMPLE`) is unsafe. Need `type + full first line` as key.
+
+**Current workaround:** instruction-builder reads the MOC at Pass 2 via `kado-read`
+and extracts the callout first line. This works but is fragile — the builder gets
+no guidance on which callouts are safe to edit.
+
+**Proper implementation (4 layers):**
+
+| Layer | Change | Why |
+|-------|--------|-----|
+| **vault-config.yaml** | Callout mapping keys become `type- title` (e.g. `"EXAMPLE- New Notes Today": "editable"`). Existing type-only keys (`blocks`, `shell`) remain as shorthand for callouts without titles. | Config is the source of truth for which callouts are safe |
+| **moc-tree-builder.py** | When reading MOCs, extract callout signatures (type + full first line) per MOC. Store in `sections[]` alongside H2 headings. Format: `{"type": "callout", "callout_type": "blocks", "full_line": "> [!blocks]- Key Concepts", "editable": true}` | Cache knows the actual callout signatures per MOC |
+| **shared-ctx-builder.py** | Include callout signatures in per-MOC data in shared-ctx. Subagent sees which sections are editable vs protected. | Subagent can emit the correct `section_name` with full callout info |
+| **inbox-analyst.md** | `section_name` in `link_to_moc` action becomes the full callout line (e.g. `"> [!blocks]- Key Concepts"`) instead of just the type. | Reducer and instruction-builder get the exact target |
+
+**Dependencies:** Requires vault-config callout mapping to support full-line keys first.
+The current `callouts.editable` structure (`blocks: "Key Concepts section"`) would change to
+include the title: `"blocks- Key Concepts": "Key Concepts section"` or a structured format.
+
+**Validation:** After implementation, instruction-builder no longer needs to read the MOC
+at Pass 2 to find the right callout — the information flows through the pipeline from
+cache → shared-ctx → subagent → reducer → instruction-builder.
 
 ## Documentation Debt
 

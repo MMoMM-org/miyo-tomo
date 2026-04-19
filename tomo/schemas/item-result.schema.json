@@ -137,13 +137,15 @@
     },
     "update_log_entry": {
       "type": "object",
-      "required": ["kind", "content", "reason", "confidence"],
+      "required": ["kind", "content", "reason", "confidence", "position"],
       "additionalProperties": false,
       "properties": {
         "kind": {"const": "log_entry"},
         "content": {"type": "string"},
         "reason": {"type": "string"},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "position": {"type": "string", "enum": ["after_last_line", "before_first_line", "at_time"],
+                     "description": "Where to place the entry in the daily log section. at_time requires time field."},
         "time": {
           "oneOf": [
             {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$"},
@@ -155,13 +157,15 @@
     },
     "update_log_link": {
       "type": "object",
-      "required": ["kind", "target_stem", "reason", "confidence"],
+      "required": ["kind", "target_stem", "reason", "confidence", "position"],
       "additionalProperties": false,
       "properties": {
         "kind": {"const": "log_link"},
         "target_stem": {"type": "string"},
         "reason": {"type": "string"},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "position": {"type": "string", "enum": ["after_last_line", "before_first_line", "at_time"],
+                     "description": "Where to place the link in the daily log section. at_time requires time field."},
         "time": {
           "oneOf": [
             {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$"},

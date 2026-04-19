@@ -449,6 +449,28 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
 RE_DAILY_DATE_HEADER = re.compile(r"^###\s+\[\[([^\]]+)\]\]")
 RE_DAILY_TRACKER_LINE = re.compile(r"^\s*-\s+\*\*([^*]+)\*\*\s*→\s*`?([^`\n]+)`?")
 RE_DAILY_LOG_LINE = re.compile(r"^\s*-\s+(.+?)\s+—\s+(.*)")
+RE_TIME_HH_MM = re.compile(r"^\d{1,2}:\d{2}$")
+
+POSITION_TOKENS = {"after_last_line", "before_first_line"}
+
+
+def _parse_time_position(raw: str) -> tuple[str | None, str]:
+    """Parse a time/position string into (time, position).
+
+    Returns:
+        (time, position) where:
+        - "10:00" → ("10:00", "at_time")
+        - "after_last_line" → (None, "after_last_line")
+        - "before_first_line" → (None, "before_first_line")
+        - "end of day" (legacy) → (None, "after_last_line")
+        - anything else → (None, "after_last_line")
+    """
+    if RE_TIME_HH_MM.match(raw):
+        return raw, "at_time"
+    if raw in POSITION_TOKENS:
+        return None, raw
+    # Legacy fallback: "end of day" or any unrecognized string
+    return None, "after_last_line"
 
 
 def parse_daily_updates(text: str) -> list[dict]:
@@ -562,14 +584,17 @@ def parse_daily_updates(text: str) -> list[dict]:
                 }
                 continue
 
-        # Log entry line: - end of day — content  OR  - 10:00 — content
+        # Log entry line: - after_last_line — content  OR  - 10:00 — content
         if block_type in ("log_entries", "log_links"):
             lm = RE_DAILY_LOG_LINE.match(stripped)
             if lm:
                 _flush_pending()
+                raw_time = lm.group(1).strip()
+                time_val, position_val = _parse_time_position(raw_time)
                 if block_type == "log_entries":
                     pending_item = {
-                        "time": lm.group(1).strip(),
+                        "time": time_val,
+                        "position": position_val,
                         "content": lm.group(2).strip(),
                         "reason": "",
                         "source_stem": "",
@@ -578,8 +603,9 @@ def parse_daily_updates(text: str) -> list[dict]:
                 elif block_type == "log_links":
                     wl = _extract_wikilink(stripped)
                     pending_item = {
-                        "target_stem": wl or lm.group(1).strip(),
-                        "time": "",
+                        "target_stem": wl or raw_time,
+                        "time": time_val,
+                        "position": position_val,
                         "reason": "",
                         "accepted": False,
                     }

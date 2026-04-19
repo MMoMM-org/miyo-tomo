@@ -354,7 +354,8 @@ def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
         if log_entries:
             lines.append("**Possible Log Entries (inline text):**")
             for le in log_entries:
-                time_str = le.get("time") or "end of day"
+                position = le.get("position", "after_last_line")
+                time_str = le.get("time") or position
                 lines.append(f"- {time_str} — {le['content']}")
                 lines.append(f"  - Reason: {le['reason']}")
                 lines.append(f"  - Source: [[{le['source_stem']}]]")
@@ -365,9 +366,10 @@ def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
         if log_links:
             lines.append("**Possible Log Links (reference substantive notes):**")
             for ll in log_links:
-                time_str = ll.get("time") or "end of day"
+                position = ll.get("position", "after_last_line")
+                time_str = ll.get("time") or position
                 lines.append(f"- [[{ll['target_stem']}]]")
-                lines.append(f"  - Time: {time_str}")
+                lines.append(f"  - Position: {time_str}")
                 lines.append(f"  - Reason: {ll['reason']}")
                 lines.append("  - [ ] Accept")
             lines.append("")
@@ -382,10 +384,11 @@ def render_log_link_mirror(log_links_for_stem: list[dict]) -> str:
     lines: list[str] = []
     for ll in log_links_for_stem:
         daily_stem = ll["daily_note_stem"]
-        time_str = ll.get("time") or "end of day"
+        position = ll.get("position", "after_last_line")
+        time_str = ll.get("time") or position
         lines.append(f"**Material für [[{daily_stem}]]:**")
         lines.append(f"- Reason: {ll['reason']}")
-        lines.append(f"- Time: {time_str}")
+        lines.append(f"- Position: {time_str}")
         lines.append("- [ ] Accept (add link from daily log)")
     return "\n".join(lines)
 

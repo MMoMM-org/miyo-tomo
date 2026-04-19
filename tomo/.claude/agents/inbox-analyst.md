@@ -212,8 +212,13 @@ Determine if this item should appear in the daily note's log section.
 - If neither condition is met → no log update for this item.
 
 Log update entry shape:
-- `log_entry`: `{kind: "log_entry", content, time?, time_source?, confidence, reason}`
-- `log_link`: `{kind: "log_link", target_stem, time?, time_source?, confidence, reason}`
+- `log_entry`: `{kind: "log_entry", content, position, time?, time_source?, confidence, reason}`
+- `log_link`: `{kind: "log_link", target_stem, position, time?, time_source?, confidence, reason}`
+
+`position` is REQUIRED. Values:
+- `"at_time"` — time field has a concrete HH:MM value, insert chronologically
+- `"after_last_line"` — append at end of section (fallback when no time found)
+- `"before_first_line"` — prepend at start of section
 
 **Evaluation 3 — Time extraction:**
 
@@ -232,12 +237,13 @@ priority order. Stop at first successful extraction.
   Example: `20260415-0700_run.md` → `07:00`
 
 If found: set `time` to `"HH:MM"` format, `time_source` to the source name
-(e.g. `"content"` or `"filename"`).
+(e.g. `"content"` or `"filename"`), and `position` to `"at_time"`.
 
-If NOT found across all configured sources: set `time` to `null`.
-The reducer will use the fallback from
-`shared_ctx.daily_notes.daily_log.time_extraction.fallback`
-(e.g. `append_end_of_day`).
+If NOT found across all configured sources: set `time` to `null` and
+`position` to the fallback from
+`shared_ctx.daily_notes.daily_log.time_extraction.fallback`:
+- `append_end_of_day` → `position: "after_last_line"`
+- `prepend_start_of_day` → `position: "before_first_line"`
 
 #### Step 8b.4 — Multi-daily split (log-format heuristic)
 

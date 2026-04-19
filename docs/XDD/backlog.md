@@ -2,6 +2,7 @@
 
 > Consolidated from tier specs, XDD specs, and implementation observations.
 > Created: 2026-04-18 (XDD-006 spec consolidation).
+> Updated: 2026-04-19 (spec-vs-IST audit, profile gap analysis).
 > Maintained as a living document — update when new items are identified or items are completed.
 
 ## Features (Post-MVP)
@@ -23,6 +24,15 @@
 | F-13 | Standalone MOC density scan | reference/tier-2/workflows/lyt-moc-linking.md §8 | Should | `/scan-mocs` command for vault-wide clustering (not just inbox batch) |
 | F-14 | Additional PKM concepts | reference/tier-2/components/universal-pkm-concepts.md | Could | resource, reference, log, dashboard — deferred until workflows require them |
 | F-15 | Batch read / chunked search in Kado | reference/tier-2/workflows/vault-exploration.md | Could | If Kado adds these, vault-explorer benefits automatically |
+| F-16 | Relationship marker from config (not hardcoded) | reference/tier-3/config/relationship-config.md, moc-tree-builder.py | Should | `moc-tree-builder.py` hardcodes `up::` and `related::` regexes. Should read markers from profile/config. Also support finding markers in frontmatter (`up: [[Parent]]` as YAML key) and inside callouts (`> up:: [[Parent]]`). Important for reading; writing already uses templates. |
+| F-17 | Callout matching by full first line (type + title) | reference/tier-3/config/callout-mapping.md, vault-example.yaml | Should | Current callout mapping keys on type only (`blocks`, `shell`). But same type can have different titles: `>[!EXAMPLE]- New Notes Today` (editable) vs `>[!EXAMPLE]- Modified Notes Today` (protected/DataviewJS). Need `type + title` as key. Required before Tomo can safely write into MOC callout sections. |
+| F-18 | Frontmatter sampling script | reference/tier-3/config/cache-generation.md §3.5 | Could | Phase 4 deferred. `cache-builder.py` accepts `--frontmatter` input but no script generates it. Cache works without |
+| F-19 | Tag analysis script | reference/tier-3/config/cache-generation.md §3.6 | Could | Phase 4 deferred. `cache-builder.py` accepts `--tags` input but no script generates it. Cache works without |
+| F-20 | Orphan detection script | reference/tier-3/config/cache-generation.md §3.7 | Could | Phase 4 deferred. `cache-builder.py` accepts `--orphans` input but no script generates it. Cache works without |
+| F-21 | Cache staleness warning | reference/tier-3/discovery/staleness-policy.md | Should | No code checks `last_scan` timestamp at session/run start. User doesn't know when cache is outdated (>7 days) |
+| F-22 | Document splitting for large batches | reference/tier-3/inbox/suggestions-document.md §9 | Could | Soft limit 30 items. No splitting logic in reducer/renderer. Batches are typically <10 |
+| F-23 | Archive subdirectory for processed items | reference/tier-3/inbox/instruction-set-cleanup.md §9 | Could | Optional move to `+/archive/YYYY-MM/`. Tags-only suffices for MVP |
+| F-24 | Delete auxiliary files after cleanup | reference/tier-3/inbox/instruction-set-cleanup.md §10 | Could | Rendered notes and diffs stay in inbox after cleanup. Safer to leave for now |
 
 ## Documentation Debt
 
@@ -33,8 +43,21 @@
 | D-03 | Broken cross-reference in workflow specs | reference/tier-2/workflows/inbox-processing.md, daily-note.md | Should | `> Related: [existing workflow doc](../../workflows/inbox-process.md)` — directory doesn't exist after migration |
 | D-04 | Daily-note detection config examples outdated | reference/tier-3/daily-note/daily-note-detection.md | Could | Config YAML examples marked `(future)` but some are now implemented via XDD-005 |
 
+## Deliberate Design Decisions (YAGNI — not gaps)
+
+Documented here so future sessions don't re-investigate these as "missing features".
+
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| No frontmatter baseline in profiles | Templates ARE the frontmatter definition. A separate profile baseline would duplicate the same info and risk drift. Users should define a template, not a schema. | 2026-04-19 |
+| No tag taxonomy baseline in profiles | Tag taxonomy is already fully defined in `vault-config.yaml` under `tags.prefixes` with `known_values`, `wildcard`, `required_for`. `tomo.suggestions.proposable_tag_prefixes` and `excluded_tag_prefixes` provide additional control. Profile baseline would only be seed data for first-session wizard — not needed since wizard scans vault. | 2026-04-19 |
+| Workflow documents use checkboxes, not tags | Frontmatter tags are not easily accessible in Obsidian. Suggestions use `[x] Approved` (global), instructions use `[x] Applied` (per action). Discovery by filename pattern. Source items still use tags (Tomo-managed). | 2026-04-19 |
+| Section placement via LLM, not deterministic scoring | Spec describes a scoring algorithm (H2 matching, depth bonus, callout avoidance). Implementation uses LLM judgment. Works correctly; deterministic scoring is future optimization if drift becomes a problem. | 2026-04-19 |
+| Classification matching via LLM, not weighted scoring | Spec describes weighted keyword scoring (exact=2, cache=1, substring=0.5). Implementation uses LLM keyword-overlap heuristic. Same reasoning as section placement. | 2026-04-19 |
+
 ## Known Issues
 
 | ID | Item | Source | Priority | Notes |
 |----|------|--------|----------|-------|
-| B-01 | (none identified) | — | — | All known implementation issues addressed in XDD 001-005 |
+| B-01 | suggestion-parser.py dropped log entries for re-seen dates | scripts/suggestion-parser.py | Fixed | Fixed 2026-04-18 (commit a963d73) |
+| B-02 | instruction-render.py 404 on bare template stems | scripts/instruction-render.py | Fixed | Fixed 2026-04-18 (commit a963d73) — resolves via kado search_by_name |

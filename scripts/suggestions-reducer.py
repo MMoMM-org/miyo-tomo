@@ -326,11 +326,19 @@ def render_modify_note(action: dict, stem: str) -> str:
     )
 
 
-def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
+def render_daily_notes_updates_block(
+    daily_notes_updates: list[dict],
+    daily_only_stems: set[str] | None = None,
+) -> str:
     """Render the ## Daily Notes Updates section from daily_notes_updates[]."""
     if not daily_notes_updates:
         return ""
+    daily_only_stems = daily_only_stems or set()
     lines: list[str] = ["## Daily Notes Updates", ""]
+    # Collect all source stems referenced across all date entries
+    # to show delete suggestions at the end
+    deletable_sources: set[str] = set()
+
     for entry in daily_notes_updates:
         stem = entry["daily_note_stem"]
         lines.append(f"### [[{stem}]]")
@@ -348,6 +356,8 @@ def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
                 lines.append(f"  - Reason: {t['reason']}")
                 lines.append(f"  - Source: [[{t['source_stem']}]] ({t['source_section']})")
                 lines.append("  - [ ] Accept")
+                if t["source_stem"] in daily_only_stems:
+                    deletable_sources.add(t["source_stem"])
             lines.append("")
 
         log_entries = entry.get("log_entries") or []
@@ -360,6 +370,8 @@ def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
                 lines.append(f"  - Reason: {le['reason']}")
                 lines.append(f"  - Source: [[{le['source_stem']}]]")
                 lines.append("  - [ ] Accept")
+                if le["source_stem"] in daily_only_stems:
+                    deletable_sources.add(le["source_stem"])
             lines.append("")
 
         log_links = entry.get("log_links") or []
@@ -373,6 +385,13 @@ def render_daily_notes_updates_block(daily_notes_updates: list[dict]) -> str:
                 lines.append(f"  - Reason: {ll['reason']}")
                 lines.append("  - [ ] Accept")
             lines.append("")
+
+    # Sources whose content is fully captured in daily note(s) — offer deletion
+    if deletable_sources:
+        lines.append("**Delete source notes (content fully captured above):**")
+        for src in sorted(deletable_sources):
+            lines.append(f"- [ ] Delete [[{src}]]")
+        lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -458,6 +477,8 @@ def main() -> int:
     daily_groups: dict[str, dict] = {}
     # stem -> [(daily_note_stem, time, reason)] for Material für mirror
     stem_log_links: dict[str, list[dict]] = {}
+    # stems whose content is fully captured in daily note(s) — source can be deleted
+    daily_only_stems: set[str] = set()
 
     for idx, stem in enumerate(done_stems, start=1):
         result_path = items_dir / f"{stem}.result.json"
@@ -561,6 +582,10 @@ def main() -> int:
         # duplication. Items that mix update_daily with other actions (e.g.
         # create_atomic_note + update_daily) still get a per-item section.
         has_non_daily = any(a["kind"] != "update_daily" for a in rendered_actions)
+        if rendered_actions and not has_non_daily:
+            # This item is daily-only — content fully captured in daily note(s).
+            # Mark source for deletion in the Daily Notes Updates block.
+            daily_only_stems.add(stem)
         if rendered_actions and has_non_daily:
             sections.append({
                 "id": section_id,
@@ -597,7 +622,9 @@ def main() -> int:
 
     daily_notes_updates = sorted(daily_groups.values(), key=lambda d: d["daily_note_stem"])
     daily_notes_updates_sorted = daily_notes_updates
-    rendered_daily_updates_md = render_daily_notes_updates_block(daily_notes_updates_sorted)
+    rendered_daily_updates_md = render_daily_notes_updates_block(
+        daily_notes_updates_sorted, daily_only_stems=daily_only_stems
+    )
 
     doc = {
         "schema_version": "1",

@@ -146,6 +146,9 @@ prompt_default() {
     fi
     local answer
     read -rp "  ${prompt_text} [${default_val}]: " answer
+    # Trim leading/trailing whitespace from user input
+    answer="${answer#"${answer%%[![:space:]]*}"}"
+    answer="${answer%"${answer##*[![:space:]]}"}"
     echo "${answer:-$default_val}"
 }
 

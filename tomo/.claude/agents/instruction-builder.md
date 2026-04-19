@@ -106,12 +106,22 @@ Read the parsed suggestions to find `parent_mocs` per item and daily update entr
 
 For each MOC link:
 ```markdown
-### I<NN> — Add link to [[<MOC name>]]
+### I<NN> — Add link to [[<MOC name>]] — <note title>
 - [ ] Applied
 - **Target:** [[<MOC name>]]
-- **Open the MOC**, find the `> [!blocks]` section
+- **Open the MOC**, find the `> [!<callout type>]- <full callout title>` section
 - **Add this line:** `- [[<note title>]]`
 ```
+
+To find the correct callout/section:
+1. Read the target MOC via `kado-read` (you have access)
+2. Find the section matching `section_name` from the parsed suggestions
+3. If it's a callout (line starts with `> [!`), use the FULL first line
+   including the title (e.g. `> [!blocks]- Key Concepts`)
+4. If it's an H2 heading, use `## <heading>`
+5. If section_name is empty or not found, scan for the first editable
+   callout (consult `callouts.editable` from vault-config if available,
+   otherwise default to `> [!blocks]`)
 
 For each daily log entry (from the Daily Notes Updates section of suggestions):
 ```markdown

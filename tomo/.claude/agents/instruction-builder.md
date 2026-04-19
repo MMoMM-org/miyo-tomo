@@ -42,23 +42,16 @@ That is the script's job. You only write instruction entries.
 
 ### Step 1 — Resolve paths
 
-Run each as a separate Bash call:
+Single batch call to load all config at once:
 
 ```bash
-python3 scripts/read-config-field.py --field concepts.inbox
+python3 scripts/read-config-field.py --fields concepts.inbox,concepts.calendar.granularities.daily.path,daily_log.section,daily_log.heading_level,profile --format json
 ```
 
-```bash
-python3 scripts/read-config-field.py --field concepts.calendar.granularities.daily.path --default "Calendar/301 Daily/"
-```
-
-```bash
-python3 scripts/read-config-field.py --field daily_log.section --default "Daily Log"
-```
-
-```bash
-python3 scripts/read-config-field.py --field daily_log.heading_level --default "2"
-```
+Parse the JSON output. Missing fields use these defaults:
+- `concepts.calendar.granularities.daily.path` → `"Calendar/301 Daily/"`
+- `daily_log.section` → `"Daily Log"`
+- `daily_log.heading_level` → `"2"`
 
 Remember the resolved values for later steps.
 
@@ -126,10 +119,16 @@ For each daily log entry (from the Daily Notes Updates section of suggestions):
 - [ ] Applied
 - **Daily note:** [[<daily-note-stem>]]
 - **Section:** `## <daily_log.section>` (resolved in Step 1)
+- **Position:** <position description>
 - **Content to add:**
   > <content>
 - **If daily note doesn't exist:** Create it first, then add the entry.
 ```
+
+Position values (from parsed suggestions `position` field):
+- `after_last_line` → "Add after the last line in section ## Daily Log"
+- `before_first_line` → "Add before the first line in section ## Daily Log"
+- `at_time` (with `time` field) → "Add at <HH:MM> in section ## Daily Log (chronological order)"
 
 For each tracker update:
 ```markdown

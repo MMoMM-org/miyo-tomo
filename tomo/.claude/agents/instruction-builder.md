@@ -149,6 +149,16 @@ For each tracker update:
   `<field>:: <value>`
 ```
 
+For each source note that should be deleted (from "Delete source notes" checkboxes
+in the Daily Notes Updates section — these are sources whose content is fully
+captured in daily note actions, with no atomic note created):
+```markdown
+### I<NN> — Delete source note (content captured in daily note)
+- [ ] Applied
+- **Source:** [[<source stem>]]
+- **Action:** Delete the note from the inbox — content is fully captured in the daily note update(s) above.
+```
+
 ### Step 6 — Write instruction set to vault
 
 Assemble all instruction entries into one document:
@@ -164,7 +174,7 @@ action_count: <total>
 ---
 ```
 
-Section order: New Files → MOC Links → Daily Updates
+Section order: New Files → MOC Links → Daily Updates → Source Deletions
 
 Write via `kado-write` at `<inbox>/YYYY-MM-DD_HHMM_instructions.md`.
 

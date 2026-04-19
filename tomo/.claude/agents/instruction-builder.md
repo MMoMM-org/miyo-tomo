@@ -45,12 +45,12 @@ That is the script's job. You only write instruction entries.
 Single batch call to load all config at once:
 
 ```bash
-python3 scripts/read-config-field.py --fields concepts.inbox,concepts.calendar.granularities.daily.path,daily_log.section,daily_log.heading_level,profile --format json
+python3 scripts/read-config-field.py --fields concepts.inbox,concepts.calendar.granularities.daily.path,daily_log.heading,daily_log.heading_level,profile --format json
 ```
 
 Parse the JSON output. Missing fields use these defaults:
 - `concepts.calendar.granularities.daily.path` → `"Calendar/301 Daily/"`
-- `daily_log.section` → `"Daily Log"`
+- `daily_log.heading` → `"Daily Log"`
 - `daily_log.heading_level` → `"2"`
 
 Remember the resolved values for later steps.
@@ -128,7 +128,7 @@ For each daily log entry (from the Daily Notes Updates section of suggestions):
 ### I<NN> — Add log entry to [[<daily-note-stem>]]
 - [ ] Applied
 - **Daily note:** [[<daily-note-stem>]]
-- **Section:** `## <daily_log.section>` (resolved in Step 1)
+- **Section:** `## <daily_log.heading>` (resolved in Step 1)
 - **Position:** <position description>
 - **Content to add:**
   > <content>

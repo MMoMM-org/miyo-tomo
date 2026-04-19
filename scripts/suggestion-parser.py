@@ -448,7 +448,7 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
 
 RE_DAILY_DATE_HEADER = re.compile(r"^###\s+\[\[([^\]]+)\]\]")
 RE_DAILY_TRACKER_LINE = re.compile(r"^\s*-\s+\*\*([^*]+)\*\*\s*→\s*`?([^`\n]+)`?")
-RE_DAILY_LOG_LINE = re.compile(r"^\s*-\s+(\S+)\s+—\s+(.*)")
+RE_DAILY_LOG_LINE = re.compile(r"^\s*-\s+(.+?)\s+—\s+(.*)")
 
 
 def parse_daily_updates(text: str) -> list[dict]:

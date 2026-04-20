@@ -134,21 +134,28 @@ graceful behaviour).
 
 Cache write is atomic: write to `<cache>.tmp`, then `mv`.
 
-## Active-Note Marker — Spike Plan (Phase 1)
+## Active-Note Marker — Resolved (position-only)
 
-Two-step experiment, max 30 minutes:
+**Decision 2026-04-20**: position-only marker. No in-text suffix.
 
-**Step A** — Output `path/to/note.md (active)` for active note. Test:
-- Does Claude Code visually show the suffix? (likely yes)
-- When user picks → does the inserted text include the suffix?
-- Does Claude Code resolve the file content (i.e., does it strip ` (active)`
-  before path lookup, or treat it as part of the path)?
+The active note is emitted at stdout position 0; all other open notes
+follow in the order Kado returns them. There is no visual marker in the
+path itself.
 
-**Step B** — If Step A's resolution fails:
-- Fall back to position-only marker (active = position 0, no suffix).
-- Document the API limitation in spec README.
+**Why**: T1.1 spike Case D proved that non-path text in a picker entry
+inserts as `@"<text>"` — a quoted literal, not a file reference. A
+suffix like `path.md (active)` would therefore render in the picker but
+would not resolve to the file on selection. Position-only is the only
+viable marker strategy given Claude Code's fileSuggestion contract.
 
-Outcome captured in spec README's Decisions Log.
+**Implication for UX**: users must infer "active" from ordering. The
+first entry is always the active note (when one exists). Documentation
+and/or README should make this clear. If we later add a Tomo Hashi
+(Obsidian) plugin that runs this picker, the plugin can render a visual
+marker client-side without affecting the script contract.
+
+Spike decision captured in spec README's Decisions Log (2026-04-20
+entries). Original spike plan moved to the spec git history.
 
 ## Cache Mechanics
 

@@ -32,17 +32,20 @@ then ship a script skeleton that does prefix routing but stubs the handlers.
      non-path text → selectable, inserts as `@"<text>"` quoted literal.
      Decisions promoted to spec README (2026-04-20 entries).
 
-- [ ] **T1.2 Spike: active-note suffix marker** `[activity: spike]`
+- [x] **T1.2 Spike: active-note suffix marker** `[activity: spike]` — **DECIDED WITHOUT SPIKE 2026-04-20**
 
-  1. Prime: SDD Active-Note Marker section.
-  2. Implement: Test script outputs `Atlas/Japan (MOC).md (active)\nAtlas/Other.md`.
-     Pick the first entry; check what's inserted into the prompt.
-  3. Validate:
-     - Suffix appears in picker UI? (likely yes)
-     - Suffix included on insert? (probably yes)
-     - Claude Code resolves the file content? (this is the question)
-     If file resolves → suffix-hack works, document the exact behaviour.
-     Else → mark suffix-hack rejected, note position-only as final design.
+  Rejected by inference from T1.1 Case D. That case showed non-path text
+  inserts as `@"<text>"` quoted literal (no file resolution). The suffix
+  `path.md (active)` would render as `@"path.md (active)"` on selection —
+  Claude Code would see a string literal, not a file reference. Spike not
+  needed to confirm: the evidence is in findings.md and the risk-reward of
+  running a second Tomo-restart cycle is poor.
+
+  **Decision**: Suffix-hack **rejected**. Use **position-only marker** —
+  active note is emitted at stdout position 0, all other open notes
+  follow. No in-text marker. SDD solution.md Active-Note Marker section
+  updated to reflect this. Phase 2 implementation relies on ordering
+  alone.
 
 - [ ] **T1.3 Spike: kado-open-notes path format** `[activity: spike]`
 
@@ -53,37 +56,27 @@ then ship a script skeleton that does prefix routing but stubs the handlers.
   3. Validate: Compare format to what `@` expects to resolve. If mismatch,
      plan a path-transform step in handle_open_notes.
 
-- [ ] **T1.4 Script skeleton** `[activity: backend]`
+- [x] **T1.4 Script skeleton** `[activity: backend]` — **DONE** (commit 2517896)
 
-  1. Prime: Existing scripts in `tomo/dot_claude/` — none today; this is the
-     first script under that managed dir. Use `scripts/lib/` patterns from
-     the host scripts (dir setup, header comments) as inspiration.
-  2. Implement: Create `tomo/dot_claude/scripts/file-suggestion.sh` with:
-     - `# version: 0.1.0` header
-     - bash 3.2 compatible (no `declare -A`, no extended bash-only tests)
-     - Read JSON from stdin, extract `query` via jq
-     - Prefix detection (`/inbox`, `/vault`, default)
-     - Stub handlers that emit one placeholder line each so end-to-end
-       wiring is visible
-     - Always exit 0
-  3. Validate: `bash -n` clean. Manual test:
-     `echo '{"query":"foo"}' | bash file-suggestion.sh` → emits one stubbed line.
+  Skeleton shipped at `tomo/dot_claude/scripts/file-suggestion.sh` v0.1.0:
+  bash 3.2 compatible, reads JSON from stdin via jq, routes on `/inbox` /
+  `/vault` / default, stub handlers emit `STUB-*` lines, always exits 0.
+  Smoke-tested: `echo '{"query":"foo"}' | bash file-suggestion.sh` emits
+  `STUB-open-notes:foo`.
 
-- [ ] **T1.5 Settings.json wiring (managed template)** `[activity: backend]`
+- [x] **T1.5 Settings.json wiring (managed template)** `[activity: backend]` — **DONE** (commit 2517896)
 
-  1. Prime: `tomo/dot_claude/settings.json` is the source-of-truth template.
-     Read it, locate where to add `fileSuggestion`.
-  2. Implement: Add `fileSuggestion` key pointing to `bash .claude/scripts/file-suggestion.sh`.
-     Bump settings version comment.
-  3. Validate: JSON is valid (`jq . settings.json`).
+  `tomo/dot_claude/settings.json` has:
+  `"fileSuggestion": {"type": "command", "command": "bash .claude/scripts/file-suggestion.sh"}`.
+  `jq empty` confirms JSON is valid. `update-tomo.sh` merges the entry
+  into instance settings.
 
-- [ ] **T1.6 Install copy step** `[activity: backend]`
+- [x] **T1.6 Install copy step** `[activity: backend]` — **DONE** (commit 2517896)
 
-  1. Prime: `scripts/install-tomo.sh` copies dot_claude/* into instance.
-  2. Implement: Add a copy of `dot_claude/scripts/` recursively into
-     `INSTANCE_PATH/.claude/scripts/`. Ensure `.sh` files chmod +x.
-     Also: `mkdir -p $INSTANCE_PATH/cache/`.
-  3. Validate: After install, files appear at correct path with executable bit.
+  `scripts/install-tomo.sh` copies `dot_claude/scripts/` recursively into
+  `$INSTANCE_PATH/.claude/scripts/`, `chmod +x`'s `.sh` files, creates
+  `$INSTANCE_PATH/cache/`. `scripts/update-tomo.sh` has the same copy
+  step for update-time sync.
 
 - [ ] **T1.7 Phase Validation** `[activity: validate]`
 

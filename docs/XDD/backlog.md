@@ -37,6 +37,7 @@
 | F-26 | Voice memo transcription | XDD 009 spec | Should | Local whisper transcription of audio files in inbox → markdown with timestamped callouts. See `docs/XDD/specs/009-voice-memo-transcription/` |
 | F-27 | Custom @-file picker (open notes / inbox / vault) | XDD 010 spec | Should | Replace built-in `@` picker with vault-aware variant: default = open Obsidian notes via `kado-open-notes`; `/inbox` and `/vault` as scope prefixes. Cache-backed for typing-rate latency. See `docs/XDD/specs/010-custom-file-picker/` |
 | F-28 | Profile→vault-config copy at install time | vault-explorer cleanup 2026-04-20 | Could | When install-tomo.sh writes vault-config.yaml, copy the selected profile's `frontmatter_defaults:` into the vault-config as `frontmatter:` so `token-render.py` finds defaults without an /explore-vault step. Today users must populate it manually since vault-explorer Step 3 was retired |
+| F-29 | Instance backup + restore + install-time warning | XDD 011 spec | Should | `backup-tomo.sh` packages preservable files (tomo-install.json, vault-config.yaml, user-rules, discovery-cache, .mcp.json) into a timestamped tar.gz. `restore-tomo.sh` re-hydrates onto a fresh install. install-tomo.sh prints an early warning about nested-git trap + `git clean -fdX`. See `docs/XDD/specs/011-instance-backup-restore/` |
 
 ### F-17 Detail: Callout Full-Line Matching (End-to-End)
 

@@ -22,6 +22,7 @@
 |------|----------|-----------|
 | 2026-04-20 | Use Claude Code `fileSuggestion` setting | Native customization point; receives `{query}` via stdin, returns up to 15 paths to stdout |
 | 2026-04-20 | Default `@` shows only open Obsidian notes (via `kado-open-notes`) | Most common use case; minimizes load (single Kado call ~50-100ms) |
+| 2026-04-20 | **Default `@<text>` is merged across open notes ▶ inbox ▶ vault** (supersedes "only open notes" above) | Observed: typing `@inb` or `@catan` showed only 2 open notes and agent typeaheads, never inbox/vault items where matches really lived — discovery failure. Merged default surfaces hits from every scope, with open notes first (active context priority) and substring match (predictable, not fzf-fuzzy). Explicit `inbox/<q>` and `vault/<q>` still narrow for power users. Empty `@` unchanged (open notes only). |
 | 2026-04-20 | Prefix routing: `/inbox` and `/vault` as scope keywords | Opt-in for broader searches; keeps default fast |
 | 2026-04-20 | **Scope prefixes: `inbox/` and `vault/` — suffix-slash, NOT leading-slash** | Superseded initial `/inbox` design. Claude Code bypasses `fileSuggestion` when the query starts with `/`, routing to a built-in absolute-path browser (shows `/boot/`, `/dev/`, etc.) — our handler is never called. Scope prefixes must start with a non-slash char. Script updated to `inbox/*` / `vault/*` patterns. |
 | 2026-04-20 | Vault scope uses fzf on a cached file list | fzf already in container; cache invalidated by `/explore-vault` or TTL 1h |

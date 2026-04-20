@@ -21,10 +21,10 @@
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-04-19 | Skip PRD/SDD | Well-understood refactoring, all decisions made in conversation |
-| 2026-04-19 | instruction-render.py produces both JSON + MD | JSON is source of truth for Seigyo, MD is human-readable view |
+| 2026-04-19 | instruction-render.py produces both JSON + MD | JSON is source of truth for Tomo Hashi, MD is human-readable view |
 | 2026-04-19 | Use parsed-suggestions.json as canonical input | Same JSON the builder already uses — ensures 100% consistency |
 | 2026-04-19 | instruction-builder becomes pure orchestrator | No more LLM-assembled markdown — script renders everything |
-| 2026-04-19 | Seigyo runs as Obsidian plugin, not in Tomo | Full Obsidian API access (incl. Templater), reads instructions.json directly from vault |
+| 2026-04-19 | Tomo Hashi runs as Obsidian plugin, not in Tomo | Full Obsidian API access (incl. Templater), reads instructions.json directly from vault |
 
 ## Context
 
@@ -36,7 +36,7 @@ After this refactoring:
 - `instruction-render.py` produces a canonical `instructions.json` containing ALL actions
 - `instruction-render.py` also renders `instructions.md` deterministically from that JSON
 - The instruction-builder agent only orchestrates (parse → render → kado-write)
-- Seigyo (Obsidian plugin) reads `instructions.json` directly — no markdown parsing
+- Tomo Hashi (Obsidian plugin) reads `instructions.json` directly — no markdown parsing
 
 ## Implementation Status (2026-04-20 status sync)
 

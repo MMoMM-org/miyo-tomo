@@ -1001,6 +1001,18 @@ cp "$TOMO_SOURCE/dot_claude/hooks/"*.sh "$INSTANCE_PATH/.claude/hooks/"
 chmod +x "$INSTANCE_PATH/.claude/hooks/"*.sh
 print_ok "hooks"
 
+# Scripts (file-suggestion.sh and any future .claude-resident scripts)
+mkdir -p "$INSTANCE_PATH/.claude/scripts"
+if [ -d "$TOMO_SOURCE/dot_claude/scripts" ]; then
+    cp -R "$TOMO_SOURCE/dot_claude/scripts/." "$INSTANCE_PATH/.claude/scripts/"
+    find "$INSTANCE_PATH/.claude/scripts" -name "*.sh" -exec chmod +x {} \;
+    print_ok ".claude/scripts (file-suggestion etc.)"
+fi
+
+# Cache directory (used by file-suggestion.sh; mounted into container)
+mkdir -p "$INSTANCE_PATH/cache"
+print_ok "cache/"
+
 # Settings
 cp "$TOMO_SOURCE/dot_claude/settings.json" "$INSTANCE_PATH/.claude/settings.json"
 

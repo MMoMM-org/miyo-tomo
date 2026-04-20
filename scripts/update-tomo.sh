@@ -111,6 +111,23 @@ for f in "$TOMO_SOURCE/dot_claude/hooks/"*.sh; do
     chmod +x "$INSTANCE_PATH/.claude/hooks/$name"
 done
 
+print_step "Updating .claude/scripts (file-suggestion etc.)"
+mkdir -p "$INSTANCE_PATH/.claude/scripts/lib"
+if [ -d "$TOMO_SOURCE/dot_claude/scripts" ]; then
+    for f in "$TOMO_SOURCE/dot_claude/scripts/"*.sh; do
+        [ -f "$f" ] || continue
+        name=$(basename "$f")
+        update_managed "$f" "$INSTANCE_PATH/.claude/scripts/$name" ".claude/scripts/$name"
+        chmod +x "$INSTANCE_PATH/.claude/scripts/$name"
+    done
+    for f in "$TOMO_SOURCE/dot_claude/scripts/lib/"*.sh; do
+        [ -f "$f" ] || continue
+        name=$(basename "$f")
+        update_managed "$f" "$INSTANCE_PATH/.claude/scripts/lib/$name" ".claude/scripts/lib/$name"
+    done
+fi
+mkdir -p "$INSTANCE_PATH/cache"
+
 print_step "Updating rules (managed only)"
 update_managed \
     "$TOMO_SOURCE/dot_claude/rules/project-context.md" \

@@ -28,7 +28,7 @@ phase: 3
      - Rendered note files are written correctly
      - action_count in frontmatter matches actual action count
 
-- [ ] **T3.2 Verify JSON is Seigyo-ready** `[activity: validate]`
+- [ ] **T3.2 Verify JSON is Tomo Hashi-ready** `[activity: validate]`
 
   1. Write a minimal Python script that reads `instructions.json` and prints
      what actions it would execute (dry-run). No Kado calls — just parsing.
@@ -38,5 +38,5 @@ phase: 3
 - [ ] **T3.3 Update docs** `[activity: docs]`
 
   1. Update `docs/XDD/roadmap.md` — mark relevant items
-  2. Update `docs/XDD/backlog.md` — cross-reference F-01 (Seigyo) with XDD 008
-  3. Update `tomo/.claude/commands/inbox.md` if Pass 2 description changed
+  2. Update `docs/XDD/backlog.md` — cross-reference F-01 (Tomo Hashi) with XDD 008
+  3. Update `tomo/dot_claude/commands/inbox.md` if Pass 2 description changed

@@ -36,6 +36,7 @@
 | F-25 | Inbox-note template definition | XDD 009 spec discussion 2026-04-20 | Should | Tomo has atomic-note templates only; inbox-note structure is undefined (user's inbox is zettelkasten-lean). Define explicit template — frontmatter? Lifecycle tags? — so future features (incl. voice transcripts per XDD 009) can inherit it |
 | F-26 | Voice memo transcription | XDD 009 spec | Should | Local whisper transcription of audio files in inbox → markdown with timestamped callouts. See `docs/XDD/specs/009-voice-memo-transcription/` |
 | F-27 | Custom @-file picker (open notes / inbox / vault) | XDD 010 spec | Should | Replace built-in `@` picker with vault-aware variant: default = open Obsidian notes via `kado-open-notes`; `/inbox` and `/vault` as scope prefixes. Cache-backed for typing-rate latency. See `docs/XDD/specs/010-custom-file-picker/` |
+| F-28 | Profile→vault-config copy at install time | vault-explorer cleanup 2026-04-20 | Could | When install-tomo.sh writes vault-config.yaml, copy the selected profile's `frontmatter_defaults:` into the vault-config as `frontmatter:` so `token-render.py` finds defaults without an /explore-vault step. Today users must populate it manually since vault-explorer Step 3 was retired |
 
 ### F-17 Detail: Callout Full-Line Matching (End-to-End)
 

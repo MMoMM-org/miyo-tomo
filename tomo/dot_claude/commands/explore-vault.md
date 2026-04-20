@@ -1,7 +1,7 @@
 # /explore-vault
-# version: 0.2.0
+# version: 0.3.0 (frontmatter detection retired — profile-driven now)
 
-Scan your Obsidian vault to discover structure, frontmatter patterns, tags, and MOC hierarchy.
+Scan your Obsidian vault to discover structure, tags, relationships, callouts, and MOC hierarchy.
 Builds the discovery cache that powers Tomo's PKM intelligence.
 
 ## Usage
@@ -13,7 +13,7 @@ Builds the discovery cache that powers Tomo's PKM intelligence.
 
 1. Connects to Kado MCP
 2. Scans vault folder structure
-3. Detects frontmatter patterns, tag taxonomy, relationship markers, callout usage
+3. Detects tag taxonomy, relationship markers, callout usage (frontmatter is profile-driven)
 4. Indexes all MOCs and builds topic tree
 5. Generates discovery-cache.yaml
 

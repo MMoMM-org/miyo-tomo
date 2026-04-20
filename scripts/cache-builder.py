@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """
 cache-builder.py — Assemble scan results into discovery-cache.yaml.
 
@@ -478,6 +478,25 @@ def main() -> int:
         f"[cache-builder] Discovery cache written: {output_path} ({file_size} bytes)",
         file=sys.stderr,
     )
+
+    # Invalidate the file-picker vault cache (XDD 010). The picker's vault
+    # file list is derived from Kado via kado-search listDir. After a fresh
+    # /explore-vault run the vault contents may have changed, so drop a
+    # sentinel that tells the next @-query to rebuild its cache.
+    try:
+        instance_root = os.path.dirname(os.path.dirname(os.path.abspath(output_path)))
+        picker_cache_dir = os.path.join(instance_root, "cache")
+        if os.path.isdir(picker_cache_dir):
+            sentinel = os.path.join(picker_cache_dir, ".invalidate-vault-files")
+            open(sentinel, "w").close()
+            print(
+                f"[cache-builder] Touched {sentinel} (file-picker cache invalidation)",
+                file=sys.stderr,
+            )
+    except OSError:
+        # Non-fatal — picker falls back to TTL-based invalidation.
+        pass
+
     return 0
 
 

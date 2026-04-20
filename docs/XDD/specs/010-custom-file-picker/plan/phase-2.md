@@ -1,7 +1,7 @@
 ---
 title: "Phase 2: Handler implementations + caching"
-status: pending
-version: "1.0"
+status: in-progress
+version: "1.1"
 phase: 2
 ---
 
@@ -19,97 +19,68 @@ phase: 2
 
 ## Tasks
 
-- [ ] **T2.1 `handle_open_notes` implementation** `[activity: backend]`
+- [x] **T2.1 `handle_open_notes` implementation** `[activity: backend]` — **DONE 2026-04-20**
 
-  1. Prime: SDD `handle_open_notes` pseudocode + spike T1.3 findings on
-     path format.
-  2. Implement:
-     - curl POST to `$KADO_ENDPOINT/mcp` with kado-open-notes call,
-       bearer from `tomo-install.json :: kadoApiKey`.
-     - SSE unwrap (per memory `reference_kado_sse_format` — `_unwrap_sse` pattern).
-     - Parse JSON: extract notes[] with active flag.
-     - Sort: active=true first (max 1 entry), others in returned order.
-     - If query non-empty: case-insensitive substring match on path basename.
-     - Take first 14 results.
-     - If query empty AND >15 returned: append synthetic line `... + N more (type to filter)`.
-     - On any HTTP error or FORBIDDEN/UNAUTHORIZED: emit nothing, exit 0.
-  3. Validate: Tomo session, type `@` → list of open Obsidian notes appears,
-     active first. Type `@meet` with a "meeting" note open → filtered.
+  Implemented in `tomo/dot_claude/scripts/file-suggestion.sh` v0.2.0.
+  Calls `kado_call kado-open-notes {"scope":"all"}`, sorts active-first,
+  applies case-insensitive substring filter when query is non-empty,
+  truncates to 15. Graceful degradation on any Kado failure (empty
+  result, exit 0). Host smoke-test returned 2 open notes, active first.
 
-- [ ] **T2.2 `handle_inbox` with caching** `[activity: backend]`
+- [x] **T2.2 `handle_inbox` with caching** `[activity: backend]` — **DONE 2026-04-20**
 
-  1. Prime: SDD `handle_inbox` pseudocode. Inbox path comes from
-     `vault-config.yaml :: concepts.inbox` (verify via `read-config-field.py`).
-  2. Implement:
-     - Cache path: `$CACHE_DIR/inbox-files.txt` where `$CACHE_DIR` =
-       `/tomo/cache` (mounted from host `tomo-instance/cache/`).
-     - Check cache mtime: if < 30s, skip rebuild.
-     - Else: kado-search inbox path, write paths line-by-line to `$cache.tmp`,
-       atomic mv.
-     - `fzf --filter "$query" < cache | head -15`.
-     - Empty query: `fzf --filter "" < cache | head -15` (fzf returns all).
-  3. Validate: `@/inbox` → inbox files listed. Add a new file via Kado,
-     wait 30s+, type again → new file appears.
+  Implemented in `file-suggestion.sh`. Inbox path resolved via
+  `scripts/read-config-field.py --field concepts.inbox` with awk
+  fallback. Cache at `$CACHE_DIR/inbox-files.txt`, 30s TTL.
+  `rebuild_listdir_cache` paginates via cursor; filters to `.md`
+  files. Host smoke-test: `@/inbox catan` → 2 matches.
 
-- [ ] **T2.3 `handle_vault` with caching** `[activity: backend]`
+- [x] **T2.3 `handle_vault` with caching** `[activity: backend]` — **DONE 2026-04-20**
 
-  1. Prime: SDD `handle_vault` pseudocode. Vault root determined by Kado
-     (no path prefix).
-  2. Implement:
-     - Cache path: `$CACHE_DIR/vault-files.txt`.
-     - Check sentinel `.invalidate-vault-files`: if exists, delete cache and sentinel.
-     - Check cache mtime: if < 3600s (1h) AND no sentinel, skip rebuild.
-     - Else: kado-search "" recursive, paths to `$cache.tmp`, atomic mv.
-     - `fzf --filter "$query" < cache | head -15`.
-  3. Validate: `@/vault yoga` → fuzzy matches. Touch sentinel manually,
-     type again → cache rebuilds.
+  Implemented in `file-suggestion.sh`. Sentinel check drops cache +
+  sentinel; TTL 3600s. Same pagination helper. Host smoke-test: 345
+  `.md` files cached in 131ms cold build; cached-scope query 22ms.
 
-- [ ] **T2.4 Shared kado-call helper** `[activity: backend]`
+- [x] **T2.4 Shared kado-call helper** `[activity: backend]` — **DONE 2026-04-20**
 
-  1. Prime: Both inbox + vault handlers + open-notes handler hit Kado.
-     DRY via shared lib.
-  2. Implement: `tomo/dot_claude/scripts/lib/kado-call.sh` with function
-     `kado_call <tool> <json_args>`:
-     - Reads endpoint + bearer once into env (caches).
-     - Issues curl POST with proper headers.
-     - SSE unwrap.
-     - Returns response JSON on stdout, non-zero on HTTP error.
-  3. Validate: All three handlers refactored to use `kado_call`. Identical
-     behaviour, less code.
+  `tomo/dot_claude/scripts/lib/kado-call.sh` v0.1.1. Reads
+  endpoint + bearer from `.mcp.json` (env `KADO_URL`/`KADO_TOKEN`
+  override for host testing). SSE unwrap via awk, jq-extract of
+  `result.content[0].text`. Guards empty curl output, non-JSON
+  payload, unreachable endpoint → returns non-zero, caller degrades
+  to empty.
 
-- [ ] **T2.5 fzf fallback to grep** `[activity: backend]`
+- [x] **T2.5 fzf fallback to grep** `[activity: backend]` — **DONE 2026-04-20**
 
-  1. Prime: SDD error table — fzf fall-back to grep if missing.
-  2. Implement: At top of script, `command -v fzf >/dev/null || FZF_MISSING=1`.
-     In handlers: if `$FZF_MISSING`, use `grep -i "<query>"` instead of
-     `fzf --filter`. Substring match is degraded but not broken.
-  3. Validate: temporarily mask fzf (alias to /bin/false) → script still
-     produces results via grep.
+  `FZF_AVAILABLE` flag set at script start. `filter_lines` uses
+  `fzf --filter "$q"` when available, `grep -i -F -- "$q"` when not.
+  Host smoke-test: PATH-stripped of fzf, `@/vault catan` still
+  returns the 2 matching files.
 
-- [ ] **T2.6 `/explore-vault` cache invalidation** `[activity: backend]`
+- [x] **T2.6 `/explore-vault` cache invalidation** `[activity: backend]` — **DONE 2026-04-20**
 
-  1. Prime: `tomo/dot_claude/commands/explore-vault.md` defines the existing
-     command. After it completes, the vault file list may be stale.
-  2. Implement: Add a final step in explore-vault command (or in
-     `cache-builder.py` if vault scan happens there): touch
-     `$CACHE_DIR/.invalidate-vault-files`.
-  3. Validate: Run `/explore-vault`. Check sentinel exists. Type `@/vault`
-     → cache rebuilds (verify via mtime change on `vault-files.txt`).
+  Hooked in `scripts/cache-builder.py` v0.2.0 (not the agent markdown,
+  to keep the behaviour deterministic). After the discovery cache
+  writes successfully, the script touches
+  `<instance>/cache/.invalidate-vault-files`. The picker's
+  `handle_vault` deletes that sentinel + cache and rebuilds on the
+  next `@/vault` query. Non-fatal on failure (falls back to TTL).
 
-- [ ] **T2.7 Active-marker decision implementation** `[activity: backend]`
+- [x] **T2.7 Active-marker decision implementation** `[activity: backend]` — **DONE 2026-04-20**
 
-  1. Prime: Phase 1 spike T1.2 outcome.
-  2. Implement (CASE A — suffix-hack works): in handle_open_notes, append
-     ` (active)` to the active note's emitted line.
-  3. Implement (CASE B — suffix-hack rejected): just keep position-0
-     ordering; no suffix.
-  4. Validate: User picks active note → file content actually resolves
-     (CASE A ratifies; CASE B is the safe path).
+  Position-only per T1.2 decision. `handle_open_notes` emits active
+  note at stdout position 0, others after. No in-text marker.
 
 - [ ] **T2.8 Phase Validation** `[activity: validate]`
 
-  - All three scopes work end-to-end in a real Tomo session.
-  - Latency: measure with `time bash file-suggestion.sh < input.json` for
-    each scope; cached scopes ≤ 100ms, default ≤ 200ms (per SDD targets).
-  - Cache invalidation works for both inbox (TTL) and vault (TTL + sentinel).
-  - FORBIDDEN response from kado-open-notes → graceful empty result, no error.
+  - [ ] All three scopes work end-to-end in a real Tomo session
+        (pending live-session test after update-tomo.sh)
+  - [x] Latency (host, with KADO_URL override):
+        - Default (Kado call): ~40ms
+        - Inbox cached: 22ms
+        - Vault cached: 22ms
+        - Vault cold build (345 files): 131ms
+        - All well under SDD targets.
+  - [x] Cache invalidation tested via sentinel + fresh rebuild
+  - [ ] FORBIDDEN response graceful empty: pending (needs Kado key
+        without the feature-gated perms; deferred)

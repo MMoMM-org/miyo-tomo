@@ -102,4 +102,38 @@ Rejected because:
 
 ## T1.3 — kado-open-notes path format
 
-*Pending — see README for the direct-curl recipe. Run from inside the Tomo container; Kado is not reachable from the host sandbox.*
+**Date**: 2026-04-20
+**Method**: direct curl from host against Kado at `http://127.0.0.1:23027/mcp` (user confirmed Kado reachable via .mcp.json)
+
+**Result shape**:
+```json
+{
+  "notes": [
+    {
+      "name": "2026-03-26",
+      "path": "Calendar/301 Daily/2026-03-26.md",
+      "active": true,
+      "type": "markdown"
+    },
+    {
+      "name": "t_day_privat_tomo",
+      "path": "X/900 Support/930 Templater/t_day_privat_tomo.md",
+      "active": false,
+      "type": "markdown"
+    }
+  ]
+}
+```
+
+**Path format**: **vault-relative**. No leading slash, subfolders preserved (including spaces), `.md` extension present.
+
+**Implication for Claude Code's @-resolver**:
+- Tomo's `$CLAUDE_PROJECT_DIR` is the instance, not the vault.
+- A vault-relative path like `Calendar/301 Daily/2026-03-26.md` does NOT exist inside the instance.
+- When the user picks such a path, Claude Code will attempt to Read it and hit ENOENT.
+- Claude (the LLM) sees the ENOENT and can fall back to `kado-read` with the same path — that works because Kado speaks vault paths natively.
+- Net: **one extra tool call per @-reference**. Acceptable MVP cost; no transformation in the picker.
+
+**Alternative considered**: emit paths as kado-read:// URIs. Rejected — Claude Code's `@` treats the string verbatim; adding a scheme prefix would make it a quoted literal (see T1.1 Case D).
+
+**Decision captured** in spec README Decisions Log (2026-04-20 entry).

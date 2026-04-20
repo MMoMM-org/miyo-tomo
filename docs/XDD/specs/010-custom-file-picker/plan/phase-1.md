@@ -1,7 +1,7 @@
 ---
 title: "Phase 1: Spike + script skeleton"
-status: pending
-version: "1.0"
+status: complete
+version: "1.1"
 phase: 1
 ---
 
@@ -47,14 +47,13 @@ then ship a script skeleton that does prefix routing but stubs the handlers.
   updated to reflect this. Phase 2 implementation relies on ordering
   alone.
 
-- [ ] **T1.3 Spike: kado-open-notes path format** `[activity: spike]`
+- [x] **T1.3 Spike: kado-open-notes path format** `[activity: spike]` — **DONE 2026-04-20**
 
-  1. Prime: Need to know if returned paths are vault-relative, absolute, or
-     project-dir-relative.
-  2. Implement: Manual curl to kado-open-notes from inside the Tomo
-     container. Inspect returned `notes[].path`.
-  3. Validate: Compare format to what `@` expects to resolve. If mismatch,
-     plan a path-transform step in handle_open_notes.
+  Direct curl against Kado at `http://127.0.0.1:23027/mcp` (host reachable
+  per .mcp.json). Paths are **vault-relative** (`Calendar/301 Daily/2026-03-26.md`).
+  Since instance ≠ vault, Claude Code's @-resolver hits ENOENT and Claude
+  falls back to kado-read — one extra tool call per @-pick, acceptable.
+  No transformation needed in the picker. Findings in scripts/spikes/xdd-010/findings.md.
 
 - [x] **T1.4 Script skeleton** `[activity: backend]` — **DONE** (commit 2517896)
 
@@ -78,10 +77,11 @@ then ship a script skeleton that does prefix routing but stubs the handlers.
   `$INSTANCE_PATH/cache/`. `scripts/update-tomo.sh` has the same copy
   step for update-time sync.
 
-- [ ] **T1.7 Phase Validation** `[activity: validate]`
+- [x] **T1.7 Phase Validation** `[activity: validate]` — **DONE 2026-04-20**
 
-  - Spike findings (T1.1-T1.3) documented in spec README's Decisions Log.
-  - Script skeleton runs end-to-end with stub output.
-  - Tomo session sees the picker invoke our script (verify by tail-logging
-    inside the script for the duration of Phase 1).
-  - Spec README updated with any design pivots from spike.
+  - [x] Spike findings (T1.1/T1.2/T1.3) documented in spec README's Decisions Log (5 new entries).
+  - [x] Script skeleton runs end-to-end with stub output (commit 2517896 + live T1.1 spike).
+  - [x] Tomo session sees the picker invoke our script (confirmed during T1.1 spike: `SPIKE-ACTIVE` + case queries observed).
+  - [x] Spec README updated with design pivots (suffix-hack rejection, vault-relative path consequence).
+
+Phase 1 complete. Phase 2 handlers now shipped (see `plan/phase-2.md`).

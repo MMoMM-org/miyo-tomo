@@ -4,7 +4,7 @@ description: Frontmatter field handling, relationship marker parsing, callout cl
 user-invocable: false
 ---
 # Obsidian Fields
-# version: 0.1.0
+# version: 0.1.1
 
 Knowledge patterns for handling Obsidian frontmatter, relationships, callouts, and tags.
 

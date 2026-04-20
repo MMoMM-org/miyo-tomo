@@ -4,7 +4,7 @@ description: Inbox lifecycle state machine, note classification heuristics with 
 user-invocable: false
 ---
 # PKM Workflows
-# version: 0.2.0
+# version: 0.2.1
 
 Knowledge patterns for inbox processing state machine, classification heuristics, and batch workflows.
 

@@ -4,7 +4,7 @@ description: MOC matching algorithm, section placement rules, mental squeeze poi
 user-invocable: false
 ---
 # LYT Patterns
-# version: 0.2.0
+# version: 0.2.1
 
 Knowledge patterns for MOC matching, section placement, and new MOC proposals.
 

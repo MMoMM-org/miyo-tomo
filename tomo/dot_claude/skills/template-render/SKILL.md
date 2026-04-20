@@ -4,7 +4,7 @@ description: Token resolution pipeline, category precedence (generated → confi
 user-invocable: false
 ---
 # Template Render
-# version: 0.1.0
+# version: 0.1.1
 
 Knowledge patterns for the token resolution system used when rendering note templates.
 

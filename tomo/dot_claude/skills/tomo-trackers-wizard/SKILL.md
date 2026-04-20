@@ -8,7 +8,7 @@ effort: medium
 ---
 
 # Tomo Trackers Wizard
-# version: 0.3.0
+# version: 0.3.1
 
 ## Persona
 

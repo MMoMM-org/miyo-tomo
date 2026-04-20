@@ -189,7 +189,7 @@ assert m.normalise_topic("") == ""
 PY
 
 # ── Test 7: heredoc/echo discipline — scan only fenced code blocks ─────────
-AGENT_DIR="$REPO_ROOT/tomo/.claude/agents"
+AGENT_DIR="$REPO_ROOT/tomo/dot_claude/agents"
 "$PYTHON" - "$AGENT_DIR/inbox-orchestrator.md" "$AGENT_DIR/inbox-analyst.md" <<'PY' && \
     pass "no heredoc / EXIT tails inside code blocks of new agents" || \
     fail "forbidden command pattern found inside a code block"

@@ -5,8 +5,8 @@ Usage:
   python assert_wizard_skills.py <repo_root>
 
 Checks:
-1. tomo-trackers-wizard.md exists in tomo/.claude/skills/
-2. tomo-daily-log-wizard.md exists in tomo/.claude/skills/
+1. tomo-trackers-wizard.md exists in tomo/dot_claude/skills/
+2. tomo-daily-log-wizard.md exists in tomo/dot_claude/skills/
 3. Both files have YAML frontmatter with name: tomo-*
 4. tomo-trackers-wizard mentions AskUserQuestion and keywords
 5. tomo-daily-log-wizard mentions AskUserQuestion and daily_log
@@ -28,9 +28,9 @@ def check(condition, msg):
         print(f"FAIL: {msg}", file=sys.stderr)
         sys.exit(1)
 
-trackers_path = os.path.join(repo, "tomo/.claude/skills/tomo-trackers-wizard.md")
-daily_log_path = os.path.join(repo, "tomo/.claude/skills/tomo-daily-log-wizard.md")
-setup_path = os.path.join(repo, "tomo/.claude/commands/tomo-setup.md")
+trackers_path = os.path.join(repo, "tomo/dot_claude/skills/tomo-trackers-wizard.md")
+daily_log_path = os.path.join(repo, "tomo/dot_claude/skills/tomo-daily-log-wizard.md")
+setup_path = os.path.join(repo, "tomo/dot_claude/commands/tomo-setup.md")
 
 # Test 1: files exist
 check(os.path.exists(trackers_path), f"tomo-trackers-wizard.md not found at {trackers_path}")

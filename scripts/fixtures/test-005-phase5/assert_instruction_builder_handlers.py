@@ -29,7 +29,7 @@ def check(condition, msg):
         print(f"FAIL: {msg}", file=sys.stderr)
         sys.exit(1)
 
-agent_path = os.path.join(repo, "tomo/.claude/agents/instruction-builder.md")
+agent_path = os.path.join(repo, "tomo/dot_claude/agents/instruction-builder.md")
 check(os.path.exists(agent_path), f"instruction-builder.md not found at {agent_path}")
 
 content = read(agent_path)

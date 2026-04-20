@@ -93,27 +93,27 @@ check_contains "kado_client.py — has test_connection method" scripts/lib/kado_
 echo ""
 echo "── Test 4: Agent artifacts ──────────────────────────────────────────────────────────"
 
-check_file "vault-explorer.md agent" tomo/.claude/agents/vault-explorer.md
-check_contains "vault-explorer.md — has version" tomo/.claude/agents/vault-explorer.md "version:"
-check_contains "vault-explorer.md — has workflow" tomo/.claude/agents/vault-explorer.md "## Workflow"
-check_contains "vault-explorer.md — references vault-scan.py" tomo/.claude/agents/vault-explorer.md "vault-scan.py"
-check_contains "vault-explorer.md — references moc-tree-builder.py" tomo/.claude/agents/vault-explorer.md "moc-tree-builder.py"
-check_contains "vault-explorer.md — references cache-builder.py" tomo/.claude/agents/vault-explorer.md "cache-builder.py"
+check_file "vault-explorer.md agent" tomo/dot_claude/agents/vault-explorer.md
+check_contains "vault-explorer.md — has version" tomo/dot_claude/agents/vault-explorer.md "version:"
+check_contains "vault-explorer.md — has workflow" tomo/dot_claude/agents/vault-explorer.md "## Workflow"
+check_contains "vault-explorer.md — references vault-scan.py" tomo/dot_claude/agents/vault-explorer.md "vault-scan.py"
+check_contains "vault-explorer.md — references moc-tree-builder.py" tomo/dot_claude/agents/vault-explorer.md "moc-tree-builder.py"
+check_contains "vault-explorer.md — references cache-builder.py" tomo/dot_claude/agents/vault-explorer.md "cache-builder.py"
 
-check_file "explore-vault.md command" tomo/.claude/commands/explore-vault.md
-check_contains "explore-vault.md — has version" tomo/.claude/commands/explore-vault.md "version:"
-check_contains "explore-vault.md — references vault-explorer agent" tomo/.claude/commands/explore-vault.md "vault-explorer"
+check_file "explore-vault.md command" tomo/dot_claude/commands/explore-vault.md
+check_contains "explore-vault.md — has version" tomo/dot_claude/commands/explore-vault.md "version:"
+check_contains "explore-vault.md — references vault-explorer agent" tomo/dot_claude/commands/explore-vault.md "vault-explorer"
 
-check_file "lyt-patterns.md skill" tomo/.claude/skills/lyt-patterns.md
-check_contains "lyt-patterns.md — has MOC Matching" tomo/.claude/skills/lyt-patterns.md "MOC Matching"
-check_contains "lyt-patterns.md — has Section Placement" tomo/.claude/skills/lyt-patterns.md "Section Placement"
-check_contains "lyt-patterns.md — has Mental Squeeze" tomo/.claude/skills/lyt-patterns.md "Mental Squeeze"
+check_file "lyt-patterns.md skill" tomo/dot_claude/skills/lyt-patterns.md
+check_contains "lyt-patterns.md — has MOC Matching" tomo/dot_claude/skills/lyt-patterns.md "MOC Matching"
+check_contains "lyt-patterns.md — has Section Placement" tomo/dot_claude/skills/lyt-patterns.md "Section Placement"
+check_contains "lyt-patterns.md — has Mental Squeeze" tomo/dot_claude/skills/lyt-patterns.md "Mental Squeeze"
 
-check_file "obsidian-fields.md skill" tomo/.claude/skills/obsidian-fields.md
-check_contains "obsidian-fields.md — has Frontmatter" tomo/.claude/skills/obsidian-fields.md "Frontmatter"
-check_contains "obsidian-fields.md — has Relationship" tomo/.claude/skills/obsidian-fields.md "Relationship"
-check_contains "obsidian-fields.md — has Callout" tomo/.claude/skills/obsidian-fields.md "Callout"
-check_contains "obsidian-fields.md — has Tag Taxonomy" tomo/.claude/skills/obsidian-fields.md "Tag Taxonomy"
+check_file "obsidian-fields.md skill" tomo/dot_claude/skills/obsidian-fields.md
+check_contains "obsidian-fields.md — has Frontmatter" tomo/dot_claude/skills/obsidian-fields.md "Frontmatter"
+check_contains "obsidian-fields.md — has Relationship" tomo/dot_claude/skills/obsidian-fields.md "Relationship"
+check_contains "obsidian-fields.md — has Callout" tomo/dot_claude/skills/obsidian-fields.md "Callout"
+check_contains "obsidian-fields.md — has Tag Taxonomy" tomo/dot_claude/skills/obsidian-fields.md "Tag Taxonomy"
 
 # ── Test 5: Phase 1 still passes ─────────────────────────────
 echo ""

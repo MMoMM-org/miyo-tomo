@@ -119,7 +119,7 @@ fi
 show_splash() {
     local logo_file="$TOMO_REPO_ROOT/assets/tomo-small-logo-50-2.txt"
     local version="unknown"
-    local version_file="$TOMO_REPO_ROOT/tomo/.claude/rules/project-context.md"
+    local version_file="$TOMO_REPO_ROOT/tomo/dot_claude/rules/project-context.md"
     if [ -f "$version_file" ]; then
         version="$(grep -m1 '^# version:' "$version_file" 2>/dev/null \
             | sed 's/^# version: *//' || echo 'unknown')"
@@ -177,7 +177,7 @@ fi
 
 # ── Version check (optional, skips if tomo source is gone) ──
 
-SOURCE_VERSION_FILE="$TOMO_REPO_ROOT/tomo/.claude/rules/project-context.md"
+SOURCE_VERSION_FILE="$TOMO_REPO_ROOT/tomo/dot_claude/rules/project-context.md"
 CONFIG_FILE="$TOMO_REPO_ROOT/tomo-install.json"
 
 if [ -f "$SOURCE_VERSION_FILE" ] && [ -f "$CONFIG_FILE" ] && command -v jq > /dev/null 2>&1; then

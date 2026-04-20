@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # file-suggestion.sh — custom @-picker for Tomo instance
-# version: 0.4.0
+# version: 0.4.1
 #
 # Spec: docs/XDD/specs/010-custom-file-picker/
 #
@@ -218,31 +218,59 @@ emit_vault_strict() {
 
 # ── Read query + route ────────────────────────────────────────────────
 
+route() {
+    local q="$1"
+    case "$q" in
+        inbox/*)
+            emit_inbox "${q#inbox/}" | head -n "$MAX_RESULTS"
+            ;;
+        vault/*)
+            emit_vault "${q#vault/}" | head -n "$MAX_RESULTS"
+            ;;
+        "")
+            # Empty default: open notes + category-entry hints so users can
+            # discover the `inbox/` and `vault/` prefixes. Whether Claude Code
+            # treats these as path-continuations or quoted literals on pick is
+            # an open question — the debug log will show what happened on the
+            # next keystroke after a pick.
+            {
+                emit_open_notes ""
+                printf 'inbox/\n'
+                printf 'vault/\n'
+            } | head -n "$MAX_RESULTS"
+            ;;
+        *)
+            {
+                emit_open_notes    "$q"
+                emit_inbox         "$q"
+                emit_vault_strict  "$q"
+            } | awk 'NF && !seen[$0]++' | head -n "$MAX_RESULTS"
+            ;;
+    esac
+}
+
 input=$(cat)
 query=$(printf '%s' "$input" | jq -r '.query // ""' 2>/dev/null || printf '')
 
-case "$query" in
-    inbox/*)
-        emit_inbox "${query#inbox/}" | head -n "$MAX_RESULTS"
-        ;;
-    vault/*)
-        emit_vault "${query#vault/}" | head -n "$MAX_RESULTS"
-        ;;
-    "")
-        # Empty default scope: only open notes (don't flood with vault).
-        emit_open_notes "" | head -n "$MAX_RESULTS"
-        ;;
-    *)
-        # Merged default: open notes first (active), then inbox, then vault.
-        # Uses strict substring for inbox + vault (predictable in merged
-        # scope; fuzzy matching would surface buchstaben-streuung noise).
-        # Dedupe (awk !seen) preserves first-seen order, so open always wins.
-        {
-            emit_open_notes    "$query"
-            emit_inbox         "$query"
-            emit_vault_strict  "$query"
-        } | awk 'NF && !seen[$0]++' | head -n "$MAX_RESULTS"
-        ;;
-esac
+# Compute then emit. Capturing via function avoids a bash 3.2 parser bug
+# where `case` inside `$(...)` command substitution fails to parse `;;`.
+output=$(route "$query")
+
+printf '%s' "$output"
+[ -n "$output" ] && printf '\n'
+
+# Debug log: timestamp + raw input + query + line count + first 3 lines.
+# Disable by setting TOMO_PICKER_NO_LOG=1 in env.
+if [ -z "${TOMO_PICKER_NO_LOG:-}" ]; then
+    log="$CACHE_DIR/picker-debug.log"
+    {
+        printf '%s input=%s query=%s lines=%d\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "$(printf '%s' "$input" | tr -d '\n' | head -c 200)" \
+            "$(printf '%s' "$query" | head -c 80)" \
+            "$(printf '%s' "$output" | grep -c '' 2>/dev/null || printf 0)"
+        printf '%s' "$output" | head -n 3 | sed 's/^/  > /'
+    } >> "$log" 2>/dev/null || true
+fi
 
 exit 0

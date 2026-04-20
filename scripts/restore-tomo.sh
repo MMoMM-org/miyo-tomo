@@ -86,7 +86,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 INSTANCE_PATH="$(jq -r '.instancePath' "$CONFIG_FILE")"
-HOME_DIR="$(jq -r '.homeDir // empty' "$CONFIG_FILE")"
+HOME_DIR="$(jq -r '.homePath // empty' "$CONFIG_FILE")"
 
 if [ ! -d "$INSTANCE_PATH" ]; then
     print_err "Instance directory not found: $INSTANCE_PATH"

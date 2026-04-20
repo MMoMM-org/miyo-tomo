@@ -160,15 +160,15 @@ echo "── Test 5: Command and skills ─────────────�
 check_contains "inbox.md — has auto-discovery" tomo/dot_claude/commands/inbox.md "discover"
 check_contains "inbox.md — references all 4 agents" tomo/dot_claude/commands/inbox.md "vault-executor"
 
-check_file "pkm-workflows.md" tomo/dot_claude/skills/pkm-workflows.md
-check_contains "pkm-workflows — has state machine" tomo/dot_claude/skills/pkm-workflows.md "captured"
-check_contains "pkm-workflows — has 7 states" tomo/dot_claude/skills/pkm-workflows.md "archived"
-check_contains "pkm-workflows — has classification" tomo/dot_claude/skills/pkm-workflows.md "fleeting_note"
+check_file "pkm-workflows.md" tomo/dot_claude/skills/pkm-workflows/SKILL.md
+check_contains "pkm-workflows — has state machine" tomo/dot_claude/skills/pkm-workflows/SKILL.md "captured"
+check_contains "pkm-workflows — has 7 states" tomo/dot_claude/skills/pkm-workflows/SKILL.md "archived"
+check_contains "pkm-workflows — has classification" tomo/dot_claude/skills/pkm-workflows/SKILL.md "fleeting_note"
 
-check_file "template-render.md" tomo/dot_claude/skills/template-render.md
-check_contains "template-render — has token categories" tomo/dot_claude/skills/template-render.md "Generated Tokens"
-check_contains "template-render — has YAML list formatting" tomo/dot_claude/skills/template-render.md "YAML List"
-check_contains "template-render — has Templater coexistence" tomo/dot_claude/skills/template-render.md "Templater"
+check_file "template-render.md" tomo/dot_claude/skills/template-render/SKILL.md
+check_contains "template-render — has token categories" tomo/dot_claude/skills/template-render/SKILL.md "Generated Tokens"
+check_contains "template-render — has YAML list formatting" tomo/dot_claude/skills/template-render/SKILL.md "YAML List"
+check_contains "template-render — has Templater coexistence" tomo/dot_claude/skills/template-render/SKILL.md "Templater"
 
 # ── Test 6: Regression check ─────────────────────────────────
 echo ""

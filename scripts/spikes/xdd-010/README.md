@@ -1,38 +1,42 @@
 # XDD 010 Spikes — File Picker
 
-Three live-test scripts to answer Phase-1 unknowns about Claude Code's
-`fileSuggestion` API. Each spike is run by **swapping the
-`fileSuggestion.command` in your instance's `.claude/settings.json`**
-to point at the spike script, restarting Claude in the instance, then
-typing `@<query>` and observing what happens.
+Three live-test tasks that answer Phase-1 unknowns about Claude Code's
+`fileSuggestion` API. Findings feed back into Phase 2 handler design.
 
-After each spike, **revert the settings.json change** to point back at
-the real `file-suggestion.sh`.
+Record all observations in `findings.md` (this directory).
 
 ---
 
-## Spike T1.1 — Exit-code behaviour
+## Spike T1.1 — Exit-code + stdout shape behaviour
 
-**Question**: What happens on non-zero exit? On empty stdout? On stdout
-with non-path text?
+**Question**: What does Claude Code do with non-zero exit codes, empty
+stdout, and non-path stdout lines?
 
-**Setup**:
-```bash
-# Symlink the spike into the instance .claude/scripts/
-ln -sf "$REPO_ROOT/scripts/spikes/xdd-010/spike-exit-codes.sh" \
-       "$INSTANCE_PATH/.claude/scripts/file-suggestion.sh"
-```
+**Workflow** — query-routed, one install, no per-case script edits:
 
-Edit the spike script to comment in/out the various cases, restart Claude,
-type `@x` and observe.
+1. From the host, install the spike into the Tomo instance:
+   ```bash
+   bash scripts/spikes/xdd-010/prep-t1-1.sh
+   ```
+   This backs up the real `file-suggestion.sh` and installs the spike.
 
-**Cases to test**:
-- exit 0, three valid paths → expect picker shows them
-- exit 0, empty stdout → expect ?  (silent? "no results"?)
-- exit 1 → expect ?  (fallback to built-in? error banner?)
-- exit 0, three lines of "not a real path" → expect ?  (shown? insertable?)
+2. Restart your Tomo session (`bash begin-tomo.sh`).
 
-**Record observations** in `findings.md` (this directory).
+3. In the Tomo prompt, type each case and observe:
+   - `@CASE_A` — exit 0 + three valid paths
+   - `@CASE_B` — exit 0 + empty stdout
+   - `@CASE_C` — exit 1 + valid paths
+   - `@CASE_D` — exit 0 + non-path text
+   - `@CASE_E` — exit 0 + mixed valid + non-path (synthetic `... + N more` line)
+   - any other query → `SPIKE-ACTIVE` hint, so you know the spike is live
+
+4. Record observations in `findings.md`.
+
+5. When done, restore the real picker:
+   ```bash
+   bash scripts/spikes/xdd-010/restore-picker.sh
+   ```
+   Restart Tomo.
 
 ---
 
@@ -43,19 +47,9 @@ type `@x` and observe.
 - Include the suffix on insertion into the prompt?
 - Resolve the file content despite the suffix? (most important)
 
-**Setup**: same symlink trick with `spike-suffix-marker.sh`.
-
-In your test vault, have at least one note like `Atlas/Test.md`. Restart
-Claude. Type `@`, pick the entry shown as `Atlas/Test.md (active)`,
-observe what gets inserted and whether the file content is provided to
-Claude.
-
-**Outcomes**:
-- A) Suffix visible AND insertion clean (Claude Code strips the suffix
-  before resolving) → use suffix-hack.
-- B) Suffix visible BUT insertion includes it AND file resolves anyway
-  → use suffix-hack.
-- C) Anything else → fall back to position-only marker.
+**Workflow**: mirror of T1.1 with `spike-suffix-marker.sh` as the
+installed script. A `prep-t1-2.sh` will be added when T1.1 is closed.
+For now: run T1.1 first and capture findings.
 
 ---
 
@@ -64,7 +58,8 @@ Claude.
 **Question**: What format does `notes[].path` come back in? Vault-relative?
 Absolute? CLAUDE_PROJECT_DIR-relative?
 
-**Setup**: no script swap needed — direct curl from inside the container.
+**Workflow**: no picker swap needed. Direct Kado curl from inside the
+Tomo container:
 
 ```bash
 # Inside the running Tomo container:
@@ -81,21 +76,24 @@ curl -sS -N "$KADO_ENDPOINT/mcp" \
   }' | grep '^data:' | sed 's/^data: //' | jq .
 ```
 
-**Inspect** `result.content[0].text` (parsed) for the `notes[]` shape.
+Inspect `result.content[0].text` (parsed) for the `notes[]` shape.
 Confirm `path` field format matches what `@` expects when Claude Code
 resolves a picked entry.
 
-If mismatch → document the transformation needed in
-`findings.md` (e.g., "strip leading slash", "prepend vault root").
+Record format + any required transformation in `findings.md`.
 
 ---
 
-## findings.md
+## Files in this directory
 
-Create `findings.md` in this directory and record:
-- Date of spike
-- Spike (T1.1 / T1.2 / T1.3)
-- Observation
-- Decision (if any)
+| File | Purpose |
+|------|---------|
+| `README.md` | This file |
+| `prep-t1-1.sh` | Host-side: install T1.1 spike into instance (backs up real picker) |
+| `restore-picker.sh` | Host-side: restore real picker after any spike |
+| `spike-exit-codes.sh` | T1.1 script — query-routed (@CASE_A..@CASE_E) |
+| `spike-suffix-marker.sh` | T1.2 script — tests suffix hack |
+| `findings.md` | Template for capturing observations. Fill in during spike. |
 
-Findings drive Phase 2 implementation details.
+Findings drive Phase 2 implementation details. Summary decisions get
+promoted to the spec README's Decisions Log when each spike closes.

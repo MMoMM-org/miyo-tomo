@@ -1,0 +1,6 @@
+{
+  "claudeMdExcludes": [
+    "**/tomo-instance/**",
+    "**/tomo-home/**"
+  ]
+}

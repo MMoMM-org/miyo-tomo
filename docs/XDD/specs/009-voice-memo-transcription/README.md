@@ -31,6 +31,9 @@
 | 2026-04-20 | Warn at 20 min, no hard limit | Meeting memos legitimately run 60+ min; hard cap would block real use cases |
 | 2026-04-20 | All common audio formats via ffmpeg | m4a/mp3/wav/ogg/opus/flac/aac — ffmpeg decodes transparently, whitelist drives only discovery |
 | 2026-04-20 | Same inbox, no voice subdir | Simpler UX — audio sits next to .md fleeting notes |
+| 2026-04-20 | Engine: faster-whisper | Python-native API fits existing scripts/lib pattern; built-in VAD trims silence (faster); CPU-only confirmed — speed matters more than without GPU; pip install simpler than compile-from-source |
+| 2026-04-20 | CPU-only (no GPU passthrough) | Docker Desktop doesn't pass Metal/CUDA by default; keeps setup portable across hosts |
+| 2026-04-20 | Model on host, mounted into container | Image stays lean; model swap (medium → large-v3) requires only re-download, no image rebuild. Still "preloaded" at install time per F2a |
 
 ## Context
 
@@ -50,16 +53,19 @@ Tomo runs in Docker, so Whisper must fit the container footprint. whisper.cpp
 
 ## Open Questions (for SDD)
 
-- **Engine**: whisper.cpp (C++, smaller footprint, ggml models) vs
-  faster-whisper (Python, CTranslate2, faster on CPU)? Both viable; need
-  to benchmark image size and M-series speed.
-- **GPU/Metal acceleration**: whisper.cpp supports Metal on macOS hosts
-  via Core ML or direct Metal. Docker Desktop doesn't pass GPU through by
-  default — likely CPU-only inside container. Confirm at SDD time.
-- **Install wizard UX**: new wizard skill under `/tomo-setup` or inline
-  prompts in `install-tomo.sh`? Existing patterns: `tomo-trackers-wizard`,
-  `tomo-daily-log-wizard`. Voice is install-time, not vault-time, so it
-  probably belongs in `install-tomo.sh` directly.
-- **Model storage path inside image**: `/opt/whisper/models/ggml-<size>.bin`
-  or under instance home? Affects Dockerfile layering and update flow.
-- **ffmpeg in image**: already present? If not, needs install step.
+Resolved 2026-04-20:
+- Engine → **faster-whisper**
+- GPU → **CPU-only** (Docker portability)
+- Model storage → **host-mounted** at `tomo-instance/voice/models/`
+
+Remaining for SDD:
+- **Install wizard placement**: inline prompts in `install-tomo.sh` (consistent
+  with how other install-time settings are captured) vs new skill. Lean inline.
+- **ffmpeg**: verify current Dockerfile — likely needs to be added (apt-get
+  install ffmpeg adds ~60 MB, negligible).
+- **Model URL**: `Systran/faster-whisper-<size>` on HuggingFace is the
+  canonical source for pre-converted CT2 models. Confirm license compatibility.
+- **VAD config**: faster-whisper exposes `vad_filter=True` with min_silence_ms
+  tunable — pick defaults or expose to vault-config.
+- **Agent integration**: does `inbox-orchestrator` invoke transcription
+  directly, or is there a new `voice-transcriber` agent in the fan-out?

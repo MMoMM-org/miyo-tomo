@@ -1,7 +1,7 @@
 ---
 title: "Voice Memo Transcription in Inbox"
 status: draft
-version: "0.1"
+version: "0.2"
 ---
 
 # Product Requirements Document
@@ -85,15 +85,30 @@ leave the user's machine.
 ### Must Have
 
 #### F1 — Audio discovery in inbox
-- `/inbox` discovery step finds audio files in the inbox directory alongside
-  `.md` files.
-- Supported formats at minimum: `.m4a`, `.mp3`, `.wav`.
+- `/inbox` discovery step finds audio files in the **same inbox directory** as
+  `.md` files (no separate voice subdir).
+- Supported formats whitelist: `.m4a .mp3 .wav .ogg .opus .flac .aac`
+  (ffmpeg decodes all of these transparently — whitelist only drives discovery).
 - Symlinks followed (same as existing inbox scan).
+- Discovery is skipped entirely if voice feature is disabled (see F2a).
 
 #### F2 — Local Whisper transcription
 - Transcription runs inside the Docker container — no network calls.
 - Whisper model is multilingual (user language ≠ only English).
-- Output captures segment-level timestamps with start/end per segment.
+- Output captures segment-level timestamps (start/end per segment).
+  Word-level timing is NOT generated (MVP).
+
+#### F2a — Install-time opt-in
+- `install-tomo.sh` asks the user: "Enable voice memo transcription? [y/n]"
+  - If **no**: no Whisper binary, no model, no image bloat. Inbox audio
+    discovery is silently skipped. User can enable later via install --update.
+  - If **yes**: asks "Which Whisper model? [tiny / base / small / medium
+    (recommended) / large-v3]". Default: `medium` (German sweet spot).
+- Selected choices persist in `tomo-install.json` under `voice: { enabled,
+  model }`.
+- Install step then pre-downloads the selected GGML model into the Docker
+  image (fat-image, zero-latency first use).
+- Re-running install with a different choice updates the image accordingly.
 
 #### F3 — Markdown transcript with timestamped callouts
 - For each audio file `X.<ext>`, Tomo writes sibling `X.md` with:
@@ -115,19 +130,20 @@ leave the user's machine.
 
 ### Should Have
 
-#### F6 — Configurable model
-- User can choose model size in vault-config (`voice.whisper_model:
-  tiny|base|small|medium|large-v3`).
-- Default: `medium` (German/multilingual sweet spot) OR `base` (smaller
-  footprint) — decision deferred to SDD.
+#### F6 — Language hint
+- Optional `voice.language` field in vault-config (e.g. `de`, `en`) to skip
+  Whisper's auto-detect and improve short-memo accuracy.
 
-#### F7 — Language hint
-- Optional `voice.language` config (e.g. `de`, `en`) to skip auto-detect
-  and improve accuracy.
-
-#### F8 — Skip-list config
+#### F7 — Skip-list config
 - User can exclude patterns (`voice.exclude: ["**/recorded-meetings/**"]`)
   from auto-transcription.
+
+#### F8 — Long-audio warning
+- Files longer than `voice.warn_minutes` (default: 20) log a warning before
+  transcription starts: "This file is N minutes long — transcription will
+  take ~N minutes wall-clock."
+- No hard limit — user decides whether to wait or cancel. Rationale: meeting
+  memos can legitimately be 60+ min; a hard cap would block real use cases.
 
 ### Could Have
 
@@ -207,11 +223,12 @@ leave the user's machine.
   hand-typed fleeting notes, indicating transcript quality is sufficient
   for the pipeline.
 
-## Open Questions for Review
+## Answered Questions (2026-04-20)
 
-1. **Model default:** `medium` (best quality, 1.5 GB) or `base` (smaller, 140 MB)?
-2. **Audio max duration:** warn-only or hard-limit?
-3. **Audio format scope:** MVP = `.m4a` + `.mp3` + `.wav` enough, or include `.ogg` / `.opus`?
-4. **Timestamps granularity:** segment-level only, or also word-level (`-ml 1` + SRT)?
-5. **Inbox location:** does the vault have a dedicated voice-memo inbox subdir, or does audio land in the standard inbox folder mixed with `.md`?
-6. **Model download:** ship pre-downloaded in Docker image (fat image) vs download on first run (fast build, slow first inbox run)?
+1. **Model default:** `medium` — German/multilingual sweet spot. (User-choice at install, default pre-selected.)
+2. **Audio max duration:** warn-only at 20 min, no hard limit.
+3. **Audio formats:** whitelist all common ones (`.m4a .mp3 .wav .ogg .opus .flac .aac`) — ffmpeg decodes all transparently, negligible implementation cost.
+4. **Timestamp granularity:** segment-level only.
+5. **Inbox location:** same inbox directory — audio files sit next to `.md` fleeting notes.
+6. **Model download:** fat image — pre-downloaded during install, zero first-use latency.
+7. **Install-time opt-in:** YES — feature is optional; install wizard asks enable + model. Keeps Docker image lean for users who don't capture voice.

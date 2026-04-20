@@ -1,6 +1,7 @@
 ---
 name: obsidian-fields
 description: Frontmatter field handling, relationship marker parsing, callout classification, and tag taxonomy resolution for Obsidian vaults. Use when reading or writing note metadata, detecting field patterns during vault exploration, or resolving parent/peer relationships.
+user-invocable: false
 ---
 # Obsidian Fields
 # version: 0.1.0

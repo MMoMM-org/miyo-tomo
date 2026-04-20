@@ -3,6 +3,8 @@ name: tomo-trackers-wizard
 description: Use when configuring or refining tracker fields in vault-config.yaml. Triggers on tracker setup, missing tracker descriptions or keywords, syntax assignment for daily-note tracker fields. Invoked from /tomo-setup or directly when 25 tracker fields have no description.
 allowed-tools: Read, Edit, AskUserQuestion, Bash
 argument-hint: "no arguments needed"
+model: sonnet
+effort: medium
 ---
 
 # Tomo Trackers Wizard

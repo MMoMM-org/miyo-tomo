@@ -2,6 +2,8 @@
 name: tomo-setup
 description: Interactive Tomo setup wizard — vault discovery, user rules, and template verification. Recommended first-run entry point. Also supports direct sections for re-running parts.
 argument-hint: "optional section: rules | templates | check | explore"
+model: sonnet
+effort: medium
 ---
 # /tomo-setup — Post-install setup wizard
 # version: 0.1.0

@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-04-20 |
-| **Current Phase** | SDD |
+| **Current Phase** | PLAN |
 | **Last Updated** | 2026-04-20 |
 
 ## Documents
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | ready | v0.2 — all open questions answered 2026-04-20 |
 | solution.md | draft | v0.1 — architecture, wizard, Dockerfile, Python modules, agent integration |
-| plan/ | pending | |
+| plan/ | draft | 5 phases scaffolded — wizard, modules, agent, orchestrator, E2E |
 
 ## Decisions Log
 

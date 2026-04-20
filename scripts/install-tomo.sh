@@ -977,9 +977,12 @@ print_step "Copying managed files from tomo/ source"
 cp "$TOMO_SOURCE/dot_claude/agents/"*.md "$INSTANCE_PATH/.claude/agents/"
 print_ok "agents"
 
-# Skills
-cp "$TOMO_SOURCE/dot_claude/skills/"*.md "$INSTANCE_PATH/.claude/skills/"
-print_ok "skills"
+# Skills — handle BOTH formats:
+#   - flat .md files (internal reference docs loaded by agents via `skills:` frontmatter)
+#   - <name>/SKILL.md directories (Claude Code native skills, invoked via Skill(name))
+# Recursive copy with -R covers both.
+cp -R "$TOMO_SOURCE/dot_claude/skills/." "$INSTANCE_PATH/.claude/skills/"
+print_ok "skills (flat .md + <name>/SKILL.md)"
 
 # Commands
 cp "$TOMO_SOURCE/dot_claude/commands/"*.md "$INSTANCE_PATH/.claude/commands/"

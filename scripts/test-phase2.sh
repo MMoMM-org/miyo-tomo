@@ -104,16 +104,16 @@ check_file "explore-vault.md command" tomo/dot_claude/commands/explore-vault.md
 check_contains "explore-vault.md — has version" tomo/dot_claude/commands/explore-vault.md "version:"
 check_contains "explore-vault.md — references vault-explorer agent" tomo/dot_claude/commands/explore-vault.md "vault-explorer"
 
-check_file "lyt-patterns.md skill" tomo/dot_claude/skills/lyt-patterns.md
-check_contains "lyt-patterns.md — has MOC Matching" tomo/dot_claude/skills/lyt-patterns.md "MOC Matching"
-check_contains "lyt-patterns.md — has Section Placement" tomo/dot_claude/skills/lyt-patterns.md "Section Placement"
-check_contains "lyt-patterns.md — has Mental Squeeze" tomo/dot_claude/skills/lyt-patterns.md "Mental Squeeze"
+check_file "lyt-patterns.md skill" tomo/dot_claude/skills/lyt-patterns/SKILL.md
+check_contains "lyt-patterns.md — has MOC Matching" tomo/dot_claude/skills/lyt-patterns/SKILL.md "MOC Matching"
+check_contains "lyt-patterns.md — has Section Placement" tomo/dot_claude/skills/lyt-patterns/SKILL.md "Section Placement"
+check_contains "lyt-patterns.md — has Mental Squeeze" tomo/dot_claude/skills/lyt-patterns/SKILL.md "Mental Squeeze"
 
-check_file "obsidian-fields.md skill" tomo/dot_claude/skills/obsidian-fields.md
-check_contains "obsidian-fields.md — has Frontmatter" tomo/dot_claude/skills/obsidian-fields.md "Frontmatter"
-check_contains "obsidian-fields.md — has Relationship" tomo/dot_claude/skills/obsidian-fields.md "Relationship"
-check_contains "obsidian-fields.md — has Callout" tomo/dot_claude/skills/obsidian-fields.md "Callout"
-check_contains "obsidian-fields.md — has Tag Taxonomy" tomo/dot_claude/skills/obsidian-fields.md "Tag Taxonomy"
+check_file "obsidian-fields.md skill" tomo/dot_claude/skills/obsidian-fields/SKILL.md
+check_contains "obsidian-fields.md — has Frontmatter" tomo/dot_claude/skills/obsidian-fields/SKILL.md "Frontmatter"
+check_contains "obsidian-fields.md — has Relationship" tomo/dot_claude/skills/obsidian-fields/SKILL.md "Relationship"
+check_contains "obsidian-fields.md — has Callout" tomo/dot_claude/skills/obsidian-fields/SKILL.md "Callout"
+check_contains "obsidian-fields.md — has Tag Taxonomy" tomo/dot_claude/skills/obsidian-fields/SKILL.md "Tag Taxonomy"
 
 # ── Test 5: Phase 1 still passes ─────────────────────────────
 echo ""

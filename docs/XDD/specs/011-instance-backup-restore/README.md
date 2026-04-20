@@ -23,7 +23,10 @@
 | 2026-04-20 | Scope: warning + backup/restore scripts (not auto-triggers) | User is responsible for backup cadence; we provide the tooling, not a schedule |
 | 2026-04-20 | Archive format: tar.gz | Universal, easy to inspect, no macOS-specific dependencies |
 | 2026-04-20 | Secrets strategy: INCLUDE in archive with chmod 600 | User controls where the archive lives; stripping tokens forces re-entry, which defeats the purpose |
-| 2026-04-20 | Archive destination: prompted at runtime, default `backups/` in repo root | `.backup-*` glob already in host .gitignore → safe |
+| 2026-04-20 | Archive destination: sibling to tomo-instance (`<parent>/tomo-backups/`), `--output` override | User preference — survives a full wipe of tomo-instance. Added to host .gitignore as `tomo-backups/`. Off-device copies still recommended for hard-disaster recovery |
+| 2026-04-20 | No install-tomo.sh integration (no warning, no restore-offer) | Keep scope minimal — two standalone scripts only. Warning lives in XDD 011 backlog item if needed later |
+| 2026-04-20 | Default rotation: keep 10 archives (`--keep 10`) | Bounded growth, easy override with `--keep N` (0 = unlimited) |
+| 2026-04-20 | Always include tomo-home/ (auth) | User preference — restore should not require re-auth |
 
 ## Context
 

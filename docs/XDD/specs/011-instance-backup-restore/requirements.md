@@ -97,20 +97,31 @@ Total: 30+ minutes of careful interactive setup. Loss is costly:
 #### F1 — `scripts/backup-tomo.sh`
 
 - Reads `tomo-install.json` to find `$INSTANCE_PATH` + `$HOME_DIR`.
-- Packages the following into `backups/tomo-backup-<ISO-timestamp>.tar.gz`:
+- Default output: `<parent-of-INSTANCE_PATH>/tomo-backups/tomo-backup-<ISO-timestamp>.tar.gz`.
+  Sibling to `tomo-instance/`, so a wipe of the instance does NOT take
+  archives with it. Added to host repo `.gitignore`.
+  `--output <path>` overrides (path can be a directory → timestamp-named
+  file inside, or a full file path).
+- Archive content:
   - `tomo-install.json` (paths, profile, Kado creds)
   - `tomo-instance/config/` (vault-config.yaml, user-rules/, discovery-cache.yaml)
   - `tomo-instance/.claude/settings.local.json` (if exists)
-  - `tomo-instance/.mcp.json` (contains bearer, regenerable but small)
-- EXCLUDES by default:
+  - `tomo-instance/.mcp.json` (bearer, small, include for completeness)
+  - `tomo-home/` (entire dir — Claude Code auth state, so restore avoids
+    re-authentication). User preference 2026-04-20.
+- EXCLUDES:
   - `tomo-instance/.claude/agents|skills|commands|hooks|rules` (regenerable
     from host repo via `update-tomo.sh`)
   - `tomo-instance/scripts/`, `profiles/`, `schemas/`, `templates/` (same)
   - `tomo-instance/tomo-tmp/` (scratch)
   - `tomo-instance/cache/` (rebuildable via `/explore-vault`)
-  - `tomo-home/` entirely (container-side auth — user re-authenticates)
-- Archive mode 600 (owner-only — contains Kado bearer).
-- Print summary: file list + byte count + archive path.
+  - `tomo-instance/backups/` or any nested backup dir (prevent recursion — not applicable with sibling default but defensive)
+- Archive mode 600 (owner-only — contains Kado bearer + Claude creds).
+- Rotation: by default keep the 10 most recent archives in the output
+  directory, delete older ones. `--keep N` overrides (0 = unlimited).
+- Print summary: file list + byte count + archive path + a gentle
+  reminder: "Archive is a sibling of tomo-instance/ (survives an instance
+  wipe). For real disaster recovery, copy off-device periodically."
 - Exit 0 on success, non-zero with error detail on failure.
 
 #### F2 — `scripts/restore-tomo.sh <archive.tar.gz>`
@@ -125,43 +136,16 @@ Total: 30+ minutes of careful interactive setup. Loss is costly:
   `tomo-install.json`. Ask via read -p "Overwrite? [Y/n]".
 - Exit 0 on success, describes what was restored.
 
-#### F3 — Install-time warning
-
-- Add a step early in `install-tomo.sh` that prints:
-  ```
-  ▸ Instance location & safety
-
-    tomo-instance/ is gitignored infrastructure, not a versioned project.
-
-    AVOID:
-    • `git init` inside tomo-instance/ — install no longer does this
-    • `git clean -fdX` from the host repo (cleans gitignored files)
-
-    BACKUP your instance with: bash scripts/backup-tomo.sh
-    RESTORE after a wipe:       bash scripts/restore-tomo.sh <archive>
-  ```
-- Only shown on first-time install (when `tomo-install.json` doesn't
-  exist). Skipped on re-runs to keep the non-first-time UX snappy.
-
 ### Should Have
 
-#### F4 — Backup rotation helper
-- `backup-tomo.sh --keep N` retains only the N most recent archives,
-  deletes older ones. Default: unlimited (user manages).
-
-#### F5 — Restore offer on fresh install
-- `install-tomo.sh` detects `backups/tomo-backup-*.tar.gz` near the end.
-  If present, offers: "Restore from latest backup (<path>, <date>)?
-  [y/N]". If yes, runs `restore-tomo.sh <latest>` automatically after
-  completing install.
-
-#### F6 — Backup include-flag
-
-- `backup-tomo.sh --include-home` additionally packages `tomo-home/` (auth
-  state) so users who don't want to re-auth on restore can opt in. Default
-  excludes to keep archives small + security-safer.
+(none — scope trimmed to two scripts per conversation 2026-04-20)
 
 ### Could Have
+
+#### F3 — Install-time warning *(deferred — backlog)*
+- Early print in `install-tomo.sh` warning about the nested-git trap +
+  `git clean -fdX` risk + pointing users at `backup-tomo.sh`.
+- Deferred to keep MVP scope to two scripts.
 
 #### F7 — Dry-run mode
 - `backup-tomo.sh --dry-run` prints what would be archived without

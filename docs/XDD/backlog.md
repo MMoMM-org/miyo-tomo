@@ -33,6 +33,8 @@
 | F-22 | Document splitting for large batches | reference/tier-3/inbox/suggestions-document.md §9 | Could | Soft limit 30 items. No splitting logic in reducer/renderer. Batches are typically <10 |
 | F-23 | Archive subdirectory for processed items | reference/tier-3/inbox/instruction-set-cleanup.md §9 | Could | Optional move to `+/archive/YYYY-MM/`. Tags-only suffices for MVP |
 | F-24 | Delete auxiliary files after cleanup | reference/tier-3/inbox/instruction-set-cleanup.md §10 | Could | Rendered notes and diffs stay in inbox after cleanup. Safer to leave for now |
+| F-25 | Inbox-note template definition | XDD 009 spec discussion 2026-04-20 | Should | Tomo has atomic-note templates only; inbox-note structure is undefined (user's inbox is zettelkasten-lean). Define explicit template — frontmatter? Lifecycle tags? — so future features (incl. voice transcripts per XDD 009) can inherit it |
+| F-26 | Voice memo transcription | XDD 009 spec | Should | Local whisper transcription of audio files in inbox → markdown with timestamped callouts. See `docs/XDD/specs/009-voice-memo-transcription/` |
 
 ### F-17 Detail: Callout Full-Line Matching (End-to-End)
 

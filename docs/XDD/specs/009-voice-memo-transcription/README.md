@@ -34,6 +34,8 @@
 | 2026-04-20 | Engine: faster-whisper | Python-native API fits existing scripts/lib pattern; built-in VAD trims silence (faster); CPU-only confirmed — speed matters more than without GPU; pip install simpler than compile-from-source |
 | 2026-04-20 | CPU-only (no GPU passthrough) | Docker Desktop doesn't pass Metal/CUDA by default; keeps setup portable across hosts |
 | 2026-04-20 | Model on host, mounted into container | Image stays lean; model swap (medium → large-v3) requires only re-download, no image rebuild. Still "preloaded" at install time per F2a |
+| 2026-04-20 | Whisper metadata as plain-text block, NOT frontmatter | User's inbox is zettelkasten-inspired, lean; YAML frontmatter slot stays free for any future inbox-note convention |
+| 2026-04-20 | No inbox-note template imposed by this spec | Tomo has atomic-note templates but no inbox template yet — defining it is a separate concern (backlog F-25); transcripts join the existing free-form fleeting-note convention |
 
 ## Context
 

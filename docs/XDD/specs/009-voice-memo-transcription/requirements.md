@@ -111,12 +111,43 @@ leave the user's machine.
 - Re-running install with a different choice updates the image accordingly.
 
 #### F3 — Markdown transcript with timestamped callouts
-- For each audio file `X.<ext>`, Tomo writes sibling `X.md` with:
-  - Frontmatter identifying it as a transcript (source: audio file name, model used, date)
-  - First line: audio embed `![[X.<ext>]]` for playback
-  - One Obsidian callout per segment, header = `mm:ss` start timestamp
-  - Segment body = transcribed text
-- Markdown is a valid fleeting note that the existing Pass 1 pipeline can classify.
+- For each audio file `X.<ext>`, Tomo writes sibling `X.md` with this shape:
+  ```
+  source: X.<ext>
+  transcribed: 2026-04-20T14:32:00
+  model: faster-whisper-medium
+  language: de
+  duration_sec: 247
+
+  ---
+
+  ![[X.<ext>]]
+
+  > [!voice] 00:00
+  > Transcript of first segment.
+
+  > [!voice] 00:03
+  > Transcript of second segment.
+  ```
+- Metadata block is **plain text at the top** (NOT YAML frontmatter) —
+  leaves the frontmatter slot free for whatever inbox-note convention the
+  vault uses.
+- Metadata block is separated from the transcript by a `---` line.
+- Audio embed `![[X.<ext>]]` directly after the separator lets users click
+  to play in Obsidian.
+- One Obsidian callout per Whisper segment, header = `mm:ss` start.
+- Markdown is a valid fleeting note that the existing Pass 1 pipeline can
+  classify.
+
+#### F3a — Inbox note template (out of scope, acknowledged gap)
+- Tomo currently has no formal inbox-note template — only atomic-note
+  template. The user's inbox is zettelkasten-inspired, leaner.
+- For MVP 009: transcripts DO NOT impose any frontmatter or lifecycle tags
+  of their own. Whatever convention the vault already uses for fleeting
+  notes (or none) applies.
+- Defining a formal inbox-note template is a **separate future concern**
+  (added to backlog). When it's defined, transcripts inherit it — F3 above
+  stays additive.
 
 #### F4 — Idempotent
 - If `X.md` already exists alongside `X.<ext>`, skip transcription.

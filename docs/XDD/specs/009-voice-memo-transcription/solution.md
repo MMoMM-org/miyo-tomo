@@ -70,31 +70,71 @@ version: "0.1"
 
 ## Install Wizard Flow
 
+The wizard ALWAYS runs during `install-tomo.sh` and is stateful — it reads
+the current `tomo-install.json` first and offers the current state as the
+default action. No separate `--reconfigure-voice` flag needed.
+
 ```
 install-tomo.sh :: configure_voice()
 ───────────────────────────────────
-1. Skip entirely if tomo-install.json already has voice.enabled=true
-   AND the model file exists on disk (idempotent re-install).
-2. Ask: "Enable voice memo transcription? (default: no)" [y/N]
-3. If no → write voice: { enabled: false } and return.
-4. If yes → show model table (tiny/base/small/medium/large-v3) with
-   sizes and a "recommended" marker on medium. Read choice.
-5. Ask optional language hint: "Primary audio language [de/en/auto]?"
-6. Write tomo-install.json:
+1. Read tomo-install.json → current = voice.enabled, voice.model.
+2. Branch on current state:
+
+   ── Case A: currently DISABLED (or not yet configured) ──
+   2A. Ask: "Enable voice memo transcription? (default: no) [y/N]"
+       If no → write voice: { enabled: false }. Done.
+       If yes → continue to step 3.
+
+   ── Case B: currently ENABLED with model X ──
+   2B. Ask: "Voice transcription is currently ENABLED with model 'X'.
+            Keep / Change model / Disable? [K/c/d] (default: keep)"
+       Keep → no changes. Done.
+       Disable → set enabled=false. Optionally prompt: "Remove model
+                 files (~Y MB)? [Y/n]". Done.
+       Change → continue to step 3.
+
+3. Show model table:
+
+       size       disk     quality
+       tiny       39 MB    fast, weak German
+       base      142 MB    decent English
+       small     466 MB    solid German
+       medium    1.5 GB    very good German   ← recommended
+       large-v3  2.9 GB    best quality, slowest
+
+   Default = current model if changing, else "medium".
+
+4. Ask optional language hint: "Primary audio language? [de/en/auto]
+   (default: current or 'de')"
+
+5. Persist tomo-install.json:
      voice:
        enabled: true
-       model: medium
-       language: de
-7. Download model directory:
-     huggingface.co/Systran/faster-whisper-{model}
-       → tomo-instance/voice/models/faster-whisper-{model}/
-   (uses curl + manifest of known files; no Python needed on host)
-8. Export VOICE_ENABLED=1 for the Docker build step.
+       model: <chosen>
+       language: <chosen>
+
+6. Model-files step (only what's needed):
+   - If chosen model dir already exists on disk → no download.
+   - Otherwise: download huggingface.co/Systran/faster-whisper-{chosen}
+     → tomo-instance/voice/models/faster-whisper-{chosen}/
+     (curl + known-file manifest; no Python needed on host).
+   - Optionally clean up unused model dirs (ask user; default keep
+     for fast switch-back).
+
+7. Set Docker build env: VOICE_ENABLED=1.
+   Image rebuild only happens if VOICE_ENABLED transitioned
+   (off ↔ on). Pure model swap = no rebuild needed (model is
+   bind-mounted at runtime).
 ```
 
-Re-running the wizard with a different model choice: deletes the old model
-directory, downloads the new one, updates `tomo-install.json`. Docker image
-rebuilds only if `VOICE_ENABLED` transitioned (off → on or on → off).
+**Idempotency**: re-running with no intent to change → user picks "Keep" →
+zero work done, zero downloads.
+
+**Model swap path**: re-run wizard → "Change" → pick new size → only the
+new model dir is downloaded; old one stays unless user opts to clean up.
+
+**Disable path**: re-run wizard → "Disable" → `enabled=false`, optional
+model cleanup, next image build drops faster-whisper (~200 MB smaller).
 
 ## Dockerfile Deltas
 

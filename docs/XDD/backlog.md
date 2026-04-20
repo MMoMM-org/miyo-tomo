@@ -35,6 +35,7 @@
 | F-24 | Delete auxiliary files after cleanup | reference/tier-3/inbox/instruction-set-cleanup.md §10 | Could | Rendered notes and diffs stay in inbox after cleanup. Safer to leave for now |
 | F-25 | Inbox-note template definition | XDD 009 spec discussion 2026-04-20 | Should | Tomo has atomic-note templates only; inbox-note structure is undefined (user's inbox is zettelkasten-lean). Define explicit template — frontmatter? Lifecycle tags? — so future features (incl. voice transcripts per XDD 009) can inherit it |
 | F-26 | Voice memo transcription | XDD 009 spec | Should | Local whisper transcription of audio files in inbox → markdown with timestamped callouts. See `docs/XDD/specs/009-voice-memo-transcription/` |
+| F-27 | Custom @-file picker (open notes / inbox / vault) | XDD 010 spec | Should | Replace built-in `@` picker with vault-aware variant: default = open Obsidian notes via `kado-open-notes`; `/inbox` and `/vault` as scope prefixes. Cache-backed for typing-rate latency. See `docs/XDD/specs/010-custom-file-picker/` |
 
 ### F-17 Detail: Callout Full-Line Matching (End-to-End)
 

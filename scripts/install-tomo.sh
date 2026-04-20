@@ -803,7 +803,7 @@ if [ "$REUSE_KADO" != "true" ]; then
     fi
 fi
 
-# ── Step 6b: Git user configuration ──────────────────────
+# ── Step 6b: Git user configuration (for container .gitconfig) ──
 
 print_step "Git user configuration"
 
@@ -818,7 +818,7 @@ if [ "$NON_INTERACTIVE" = "true" ]; then
     if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
         print_ok "Git user: $GIT_NAME <$GIT_EMAIL> (from host)"
     else
-        print_warn "No host git config — skipped."
+        print_warn "No host git config — container .gitconfig will be skipped."
     fi
 else
     if [ -n "$HOST_GIT_NAME" ] && [ -n "$HOST_GIT_EMAIL" ]; then
@@ -826,7 +826,7 @@ else
         echo ""
         echo "    1. Use host values (recommended)"
         echo "    2. Enter different values"
-        echo "    3. Skip (no git config)"
+        echo "    3. Skip (no container git config)"
         printf "  ${C_BOLD}[1]${C_RESET} choice: "
         read -r GIT_CHOICE
         GIT_CHOICE="${GIT_CHOICE:-1}"
@@ -834,7 +834,7 @@ else
         echo "  No git config found on host."
         echo ""
         echo "    1. Enter values"
-        echo "    2. Skip (no git config)"
+        echo "    2. Skip (no container git config)"
         printf "  ${C_BOLD}[1]${C_RESET} choice: "
         read -r GIT_CHOICE
         GIT_CHOICE="${GIT_CHOICE:-1}"
@@ -857,16 +857,20 @@ else
             if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
                 print_ok "Git user: $GIT_NAME <$GIT_EMAIL>"
             else
-                print_warn "Empty values — skipping git config."
+                print_warn "Empty values — skipping container git config."
                 GIT_NAME=""
                 GIT_EMAIL=""
             fi
             ;;
         *)
-            print_warn "Skipped git config (can be set later)."
+            print_warn "Skipped container git config."
             ;;
     esac
 fi
+
+# Values flow into $HOME_DIR/.gitconfig below — used INSIDE the container
+# for any git ops the user might run there. The instance itself is NOT
+# git-init'd (see 'Writing instance .gitignore' step below).
 
 # ── Step 7: Re-run detection & config generation ─────────
 
@@ -1200,13 +1204,27 @@ if ! grep -q "^${INSTANCE_NAME}/" "$REPO_ROOT/.gitignore" 2>/dev/null; then
     fi
 fi
 
-# ── Initialize instance git repository ───────────────────
+# ── Instance scratch dir + .gitignore (optional) ─────────
+#
+# We intentionally do NOT `git init` inside the instance. Rationale:
+#   - Instance is bind-mounted infrastructure, not a code project
+#   - Versioning lives in the HOST repo (miyo-tomo source)
+#   - A nested .git/ invites subtle bugs: when it becomes corrupt,
+#     git commands run with cwd inside the instance walk UP to the
+#     parent repo silently (observed 2026-04-20 — "tomo-instance wipe"
+#     incident where a corrupt inner .git turned `git clean -fdX` from
+#     the host into a tomo-instance-wipe).
+#
+# We still write a .gitignore at the instance root so that users who
+# CHOOSE to `git init` manually have sensible defaults.
 
-print_step "Initializing instance git repository"
+print_step "Writing instance .gitignore + scratch dir"
 
-# Write instance .gitignore first (excludes secrets and runtime state)
 cat > "$INSTANCE_PATH/.gitignore" <<IGNOREEOF
 # MiYo Tomo instance — secrets and runtime state
+# NOTE: instance is NOT auto-git-init'd by install. If you `git init` here
+# manually, these patterns exclude the most sensitive / ephemeral files.
+#
 # The bearer token in .mcp.json must never be committed.
 .mcp.json
 
@@ -1224,43 +1242,8 @@ Thumbs.db
 IGNOREEOF
 print_ok ".gitignore"
 
-# Create scratch dir for pipeline intermediates
 mkdir -p "$INSTANCE_PATH/tomo-tmp/items"
 print_ok "tomo-tmp/ scratch dir (+ items/)"
-
-# Detect existing repo: if .git exists, don't touch it.
-if [ -d "$INSTANCE_PATH/.git" ]; then
-    print_warn "Instance already has a .git/ — skipping init."
-else
-    if git -C "$INSTANCE_PATH" init --quiet 2>/dev/null; then
-        print_ok "git init"
-
-        # Set local git user (overrides global in this repo)
-        if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
-            git -C "$INSTANCE_PATH" config user.name "$GIT_NAME" 2>/dev/null || true
-            git -C "$INSTANCE_PATH" config user.email "$GIT_EMAIL" 2>/dev/null || true
-            print_ok "git config user.name/email"
-        fi
-
-        # Ensure default branch is main (for older git versions that default to master)
-        git -C "$INSTANCE_PATH" symbolic-ref HEAD refs/heads/main 2>/dev/null || true
-
-        # Initial commit — requires git user to be set
-        if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
-            if git -C "$INSTANCE_PATH" add -A 2>/dev/null && \
-               git -C "$INSTANCE_PATH" commit -m "Initial Tomo instance" --quiet 2>/dev/null; then
-                print_ok "Initial commit"
-            else
-                print_warn "Initial commit failed — please commit manually."
-            fi
-        else
-            print_warn "No git user set — skipping initial commit."
-            print_warn "  To commit later: cd $INSTANCE_PATH && git add -A && git commit -m 'Initial'"
-        fi
-    else
-        print_warn "git init failed — please initialize manually."
-    fi
-fi
 
 # ── Step 10: Done ────────────────────────────────────────
 

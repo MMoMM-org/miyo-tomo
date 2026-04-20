@@ -22,7 +22,7 @@ fi
 
 # ── Version ───────────────────────────────────────────────
 
-VERSION="$(grep -m1 '^# version:' "$REPO_ROOT/tomo/.claude/rules/project-context.md" 2>/dev/null \
+VERSION="$(grep -m1 '^# version:' "$REPO_ROOT/tomo/dot_claude/rules/project-context.md" 2>/dev/null \
     | sed 's/^# version: *//' || echo '0.0.0')"
 
 # ── Render ────────────────────────────────────────────────

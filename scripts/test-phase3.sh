@@ -131,44 +131,44 @@ rm -f "$SUGGESTION_TMP" "$PARSE_TMP"
 echo ""
 echo "── Test 4: Agent artifacts ──────────────────────────────────────────────────────────"
 
-check_file "inbox-analyst.md" tomo/.claude/agents/inbox-analyst.md
-check_contains "inbox-analyst — has classification" tomo/.claude/agents/inbox-analyst.md "fleeting_note"
-check_contains "inbox-analyst — has MOC matching" tomo/.claude/agents/inbox-analyst.md "MOC"
-check_contains "inbox-analyst — references topic-extract" tomo/.claude/agents/inbox-analyst.md "topic-extract"
+check_file "inbox-analyst.md" tomo/dot_claude/agents/inbox-analyst.md
+check_contains "inbox-analyst — has classification" tomo/dot_claude/agents/inbox-analyst.md "fleeting_note"
+check_contains "inbox-analyst — has MOC matching" tomo/dot_claude/agents/inbox-analyst.md "MOC"
+check_contains "inbox-analyst — references topic-extract" tomo/dot_claude/agents/inbox-analyst.md "topic-extract"
 
 # suggestion-builder.md retired in spec 004 (fan-out refactor).
 # Its format rules now live in inbox-orchestrator.md.
-check_file "inbox-orchestrator.md" tomo/.claude/agents/inbox-orchestrator.md
-check_contains "inbox-orchestrator — inherits S-section format" tomo/.claude/agents/inbox-orchestrator.md "S01"
-check_contains "inbox-orchestrator — carries Classification Guard rule" tomo/.claude/agents/inbox-orchestrator.md "Classification Guard"
-check_contains "inbox-orchestrator — anti-parrot rule present" tomo/.claude/agents/inbox-orchestrator.md "Anti-parrot"
+check_file "inbox-orchestrator.md" tomo/dot_claude/agents/inbox-orchestrator.md
+check_contains "inbox-orchestrator — inherits S-section format" tomo/dot_claude/agents/inbox-orchestrator.md "S01"
+check_contains "inbox-orchestrator — carries Classification Guard rule" tomo/dot_claude/agents/inbox-orchestrator.md "Classification Guard"
+check_contains "inbox-orchestrator — anti-parrot rule present" tomo/dot_claude/agents/inbox-orchestrator.md "Anti-parrot"
 
-check_file "instruction-builder.md" tomo/.claude/agents/instruction-builder.md
-check_contains "instruction-builder — has action handlers" tomo/.claude/agents/instruction-builder.md "New Atomic Note"
-check_contains "instruction-builder — references token-render" tomo/.claude/agents/instruction-builder.md "token-render"
-check_contains "instruction-builder — references suggestion-parser" tomo/.claude/agents/instruction-builder.md "suggestion-parser"
+check_file "instruction-builder.md" tomo/dot_claude/agents/instruction-builder.md
+check_contains "instruction-builder — has action handlers" tomo/dot_claude/agents/instruction-builder.md "New Atomic Note"
+check_contains "instruction-builder — references token-render" tomo/dot_claude/agents/instruction-builder.md "token-render"
+check_contains "instruction-builder — references suggestion-parser" tomo/dot_claude/agents/instruction-builder.md "suggestion-parser"
 
-check_file "vault-executor.md" tomo/.claude/agents/vault-executor.md
-check_contains "vault-executor — has cleanup workflow" tomo/.claude/agents/vault-executor.md "archived"
-check_contains "vault-executor — references state-scanner" tomo/.claude/agents/vault-executor.md "state-scanner"
-check_contains "vault-executor — is idempotent" tomo/.claude/agents/vault-executor.md "idempotent"
+check_file "vault-executor.md" tomo/dot_claude/agents/vault-executor.md
+check_contains "vault-executor — has cleanup workflow" tomo/dot_claude/agents/vault-executor.md "archived"
+check_contains "vault-executor — references state-scanner" tomo/dot_claude/agents/vault-executor.md "state-scanner"
+check_contains "vault-executor — is idempotent" tomo/dot_claude/agents/vault-executor.md "idempotent"
 
 # ── Test 5: Command and skills ────────────────────────────────
 echo ""
 echo "── Test 5: Command and skills ──────────────────────────────────────────────────────────"
 
-check_contains "inbox.md — has auto-discovery" tomo/.claude/commands/inbox.md "discover"
-check_contains "inbox.md — references all 4 agents" tomo/.claude/commands/inbox.md "vault-executor"
+check_contains "inbox.md — has auto-discovery" tomo/dot_claude/commands/inbox.md "discover"
+check_contains "inbox.md — references all 4 agents" tomo/dot_claude/commands/inbox.md "vault-executor"
 
-check_file "pkm-workflows.md" tomo/.claude/skills/pkm-workflows.md
-check_contains "pkm-workflows — has state machine" tomo/.claude/skills/pkm-workflows.md "captured"
-check_contains "pkm-workflows — has 7 states" tomo/.claude/skills/pkm-workflows.md "archived"
-check_contains "pkm-workflows — has classification" tomo/.claude/skills/pkm-workflows.md "fleeting_note"
+check_file "pkm-workflows.md" tomo/dot_claude/skills/pkm-workflows.md
+check_contains "pkm-workflows — has state machine" tomo/dot_claude/skills/pkm-workflows.md "captured"
+check_contains "pkm-workflows — has 7 states" tomo/dot_claude/skills/pkm-workflows.md "archived"
+check_contains "pkm-workflows — has classification" tomo/dot_claude/skills/pkm-workflows.md "fleeting_note"
 
-check_file "template-render.md" tomo/.claude/skills/template-render.md
-check_contains "template-render — has token categories" tomo/.claude/skills/template-render.md "Generated Tokens"
-check_contains "template-render — has YAML list formatting" tomo/.claude/skills/template-render.md "YAML List"
-check_contains "template-render — has Templater coexistence" tomo/.claude/skills/template-render.md "Templater"
+check_file "template-render.md" tomo/dot_claude/skills/template-render.md
+check_contains "template-render — has token categories" tomo/dot_claude/skills/template-render.md "Generated Tokens"
+check_contains "template-render — has YAML list formatting" tomo/dot_claude/skills/template-render.md "YAML List"
+check_contains "template-render — has Templater coexistence" tomo/dot_claude/skills/template-render.md "Templater"
 
 # ── Test 6: Regression check ─────────────────────────────────
 echo ""

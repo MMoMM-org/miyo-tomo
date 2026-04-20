@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOMO_SOURCE="$REPO_ROOT/tomo"
 CONFIG_FILE="$REPO_ROOT/tomo-install.json"
 PROFILES_DIR="$TOMO_SOURCE/profiles"
-TOMO_VERSION=$(grep -m1 '^# version:' "$TOMO_SOURCE/.claude/rules/project-context.md" 2>/dev/null \
+TOMO_VERSION=$(grep -m1 '^# version:' "$TOMO_SOURCE/dot_claude/rules/project-context.md" 2>/dev/null \
     | sed 's/^# version: *//' || echo "0.0.0")
 
 # ── CLI Flags ────────────────────────────────────────────
@@ -974,28 +974,28 @@ mkdir -p "$INSTANCE_PATH/scripts"
 print_step "Copying managed files from tomo/ source"
 
 # Agents
-cp "$TOMO_SOURCE/.claude/agents/"*.md "$INSTANCE_PATH/.claude/agents/"
+cp "$TOMO_SOURCE/dot_claude/agents/"*.md "$INSTANCE_PATH/.claude/agents/"
 print_ok "agents"
 
 # Skills
-cp "$TOMO_SOURCE/.claude/skills/"*.md "$INSTANCE_PATH/.claude/skills/"
+cp "$TOMO_SOURCE/dot_claude/skills/"*.md "$INSTANCE_PATH/.claude/skills/"
 print_ok "skills"
 
 # Commands
-cp "$TOMO_SOURCE/.claude/commands/"*.md "$INSTANCE_PATH/.claude/commands/"
+cp "$TOMO_SOURCE/dot_claude/commands/"*.md "$INSTANCE_PATH/.claude/commands/"
 print_ok "commands"
 
 # Rules (project-context only — templates are rendered separately)
-cp "$TOMO_SOURCE/.claude/rules/project-context.md" "$INSTANCE_PATH/.claude/rules/"
+cp "$TOMO_SOURCE/dot_claude/rules/project-context.md" "$INSTANCE_PATH/.claude/rules/"
 print_ok "rules/project-context.md"
 
 # Hooks
-cp "$TOMO_SOURCE/.claude/hooks/"*.sh "$INSTANCE_PATH/.claude/hooks/"
+cp "$TOMO_SOURCE/dot_claude/hooks/"*.sh "$INSTANCE_PATH/.claude/hooks/"
 chmod +x "$INSTANCE_PATH/.claude/hooks/"*.sh
 print_ok "hooks"
 
 # Settings
-cp "$TOMO_SOURCE/.claude/settings.json" "$INSTANCE_PATH/.claude/settings.json"
+cp "$TOMO_SOURCE/dot_claude/settings.json" "$INSTANCE_PATH/.claude/settings.json"
 
 # Runtime Python scripts (used by agents via `python3 scripts/<name>.py`)
 # and their shared kado_client library. Host-side scripts (install,

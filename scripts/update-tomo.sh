@@ -66,28 +66,28 @@ update_managed() {
 
 print_step "Updating agents"
 mkdir -p "$INSTANCE_PATH/.claude/agents"
-for f in "$TOMO_SOURCE/.claude/agents/"*.md; do
+for f in "$TOMO_SOURCE/dot_claude/agents/"*.md; do
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/.claude/agents/$name" "agents/$name"
 done
 
 print_step "Updating skills"
 mkdir -p "$INSTANCE_PATH/.claude/skills"
-for f in "$TOMO_SOURCE/.claude/skills/"*.md; do
+for f in "$TOMO_SOURCE/dot_claude/skills/"*.md; do
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/.claude/skills/$name" "skills/$name"
 done
 
 print_step "Updating commands"
 mkdir -p "$INSTANCE_PATH/.claude/commands"
-for f in "$TOMO_SOURCE/.claude/commands/"*.md; do
+for f in "$TOMO_SOURCE/dot_claude/commands/"*.md; do
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/.claude/commands/$name" "commands/$name"
 done
 
 print_step "Updating hooks"
 mkdir -p "$INSTANCE_PATH/.claude/hooks"
-for f in "$TOMO_SOURCE/.claude/hooks/"*.sh; do
+for f in "$TOMO_SOURCE/dot_claude/hooks/"*.sh; do
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/.claude/hooks/$name" "hooks/$name"
     chmod +x "$INSTANCE_PATH/.claude/hooks/$name"
@@ -95,7 +95,7 @@ done
 
 print_step "Updating rules (managed only)"
 update_managed \
-    "$TOMO_SOURCE/.claude/rules/project-context.md" \
+    "$TOMO_SOURCE/dot_claude/rules/project-context.md" \
     "$INSTANCE_PATH/.claude/rules/project-context.md" \
     "rules/project-context.md"
 
@@ -163,7 +163,7 @@ mkdir -p "$INSTANCE_PATH/tomo-tmp/items"
 
 print_step "Merging settings.json"
 
-SRC_SETTINGS="$TOMO_SOURCE/.claude/settings.json"
+SRC_SETTINGS="$TOMO_SOURCE/dot_claude/settings.json"
 DST_SETTINGS="$INSTANCE_PATH/.claude/settings.json"
 
 if [ -f "$DST_SETTINGS" ]; then
@@ -184,7 +184,7 @@ fi
 
 # ── Update install config version ─────────────────────────
 
-SOURCE_VERSION=$(get_version "$TOMO_SOURCE/.claude/rules/project-context.md")
+SOURCE_VERSION=$(get_version "$TOMO_SOURCE/dot_claude/rules/project-context.md")
 jq --arg v "$SOURCE_VERSION" '.tomoVersion = $v | .updatedAt = now | .updatedAt = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))' \
     "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
 

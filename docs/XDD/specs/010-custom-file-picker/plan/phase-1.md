@@ -20,18 +20,17 @@ then ship a script skeleton that does prefix routing but stubs the handlers.
 
 ## Tasks
 
-- [ ] **T1.1 Spike: `fileSuggestion` exit-code behaviour** `[activity: spike]`
+- [x] **T1.1 Spike: `fileSuggestion` exit-code behaviour** `[activity: spike]` — **DONE 2026-04-20**
 
   1. Prime: Read Claude Code docs (already fetched). Behaviour on non-zero
      exit not fully specified.
-  2. Implement: Tiny test script `~/test-fs.sh` that exits with various
-     codes and various stdout shapes. Wire into a throwaway settings.json
-     `fileSuggestion`.
-  3. Validate: Document observed behaviour in spec README:
-     - exit 0 + paths → picker shows paths ✓
-     - exit 0 + empty → picker shows empty ?
-     - exit 1 → fallback to built-in? error banner? silent?
-     - exit 0 + non-path text (e.g. `not a real path`) → behaviour ?
+  2. Implement: `scripts/spikes/xdd-010/spike-exit-codes.sh` (query-routed,
+     installable via `prep-t1-1.sh`).
+  3. Validate: Observations captured in `scripts/spikes/xdd-010/findings.md`.
+     Confirmed: exit 0 + paths → rendered; exit 0 + empty → silent no-op;
+     exit 1 → picker hidden, no fallback, stdout discarded; exit 0 +
+     non-path text → selectable, inserts as `@"<text>"` quoted literal.
+     Decisions promoted to spec README (2026-04-20 entries).
 
 - [ ] **T1.2 Spike: active-note suffix marker** `[activity: spike]`
 

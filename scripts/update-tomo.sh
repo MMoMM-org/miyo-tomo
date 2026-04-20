@@ -73,9 +73,27 @@ done
 
 print_step "Updating skills"
 mkdir -p "$INSTANCE_PATH/.claude/skills"
+# Flat .md files (internal reference docs)
 for f in "$TOMO_SOURCE/dot_claude/skills/"*.md; do
+    [ -f "$f" ] || continue
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/.claude/skills/$name" "skills/$name"
+done
+# Directory-based skills (<name>/SKILL.md — Claude Code native skill format)
+for d in "$TOMO_SOURCE/dot_claude/skills/"*/; do
+    [ -d "$d" ] || continue
+    name=$(basename "$d")
+    src="$d/SKILL.md"
+    [ -f "$src" ] || continue
+    mkdir -p "$INSTANCE_PATH/.claude/skills/$name"
+    update_managed "$src" "$INSTANCE_PATH/.claude/skills/$name/SKILL.md" "skills/$name/SKILL.md"
+    # Copy any reference/templates/examples sub-dirs verbatim (no version tracking yet)
+    for sub in reference templates examples; do
+        if [ -d "$d/$sub" ]; then
+            mkdir -p "$INSTANCE_PATH/.claude/skills/$name/$sub"
+            cp -R "$d/$sub/." "$INSTANCE_PATH/.claude/skills/$name/$sub/"
+        fi
+    done
 done
 
 print_step "Updating commands"

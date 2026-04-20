@@ -28,8 +28,8 @@ def check(condition, msg):
         print(f"FAIL: {msg}", file=sys.stderr)
         sys.exit(1)
 
-trackers_path = os.path.join(repo, "tomo/dot_claude/skills/tomo-trackers-wizard.md")
-daily_log_path = os.path.join(repo, "tomo/dot_claude/skills/tomo-daily-log-wizard.md")
+trackers_path = os.path.join(repo, "tomo/dot_claude/skills/tomo-trackers-wizard/SKILL.md")
+daily_log_path = os.path.join(repo, "tomo/dot_claude/skills/tomo-daily-log-wizard/SKILL.md")
 setup_path = os.path.join(repo, "tomo/dot_claude/commands/tomo-setup.md")
 
 # Test 1: files exist

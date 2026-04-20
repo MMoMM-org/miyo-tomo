@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-04-20 |
-| **Current Phase** | PRD |
+| **Current Phase** | Phase 2 (handlers shipped, live-session validation pending) |
 | **Last Updated** | 2026-04-20 |
 
 ## Documents
@@ -27,6 +27,7 @@
 | 2026-04-20 | Inbox scope uses cached Kado listing (TTL 30s) | Inbox accessed via Kado, not local FS — caching avoids per-keystroke calls |
 | 2026-04-20 | Active note marker = position 0 (start) | API expects raw paths in stdout — markers in path break `@` resolution. Suffix-hack `path (active)` to be spike-tested in Phase 1; fallback = position-only |
 | 2026-04-20 | **Suffix-hack rejected — position-only marker is final** | Decided without running T1.2: T1.1 Case D proved non-path text inserts as `@"<text>"` quoted literal with no file resolution. `path.md (active)` would suffer the same fate. Risk-reward of a second Tomo-restart cycle is poor; decision is inferred from existing evidence. SDD solution.md updated; Phase 2 relies on ordering alone. |
+| 2026-04-20 | **kado-open-notes path format = vault-relative; accept one extra tool call on @-pick** | T1.3: Kado returns `notes[].path` as vault-relative strings (`Calendar/301 Daily/2026-03-26.md`). Tomo's `$CLAUDE_PROJECT_DIR` is the instance, so those paths don't exist locally and Claude Code's @-resolver will Read → ENOENT. Claude (the LLM) then falls back to `kado-read`. Net cost: one extra tool call per @-reference. No transformation applied in the picker. |
 | 2026-04-20 | FORBIDDEN feature-gate from Kado = silent skip | Per Kado contract: not an error, user just hasn't opted in |
 | 2026-04-20 | **`file-suggestion.sh` must always exit 0** | T1.1 spike: non-zero exit hides the picker silently. No fallback to built-in picker, no error banner, stdout discarded. Exit 0 + empty stdout achieves the same hide effect but permits best-effort partial results on recoverable errors. |
 | 2026-04-20 | **Synthetic hint lines (non-path strings) are viable but selectable** | T1.1 spike Case D: non-path text renders verbatim in the picker; selection inserts as `@"<text>"` quoted literal, no file resolution. Safe for FORBIDDEN/UNAUTHORIZED user notices. Must be placed at the bottom of the result list because they are selectable and would otherwise surprise the user. |

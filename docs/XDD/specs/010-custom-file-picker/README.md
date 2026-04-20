@@ -27,6 +27,10 @@
 | 2026-04-20 | Inbox scope uses cached Kado listing (TTL 30s) | Inbox accessed via Kado, not local FS — caching avoids per-keystroke calls |
 | 2026-04-20 | Active note marker = position 0 (start) | API expects raw paths in stdout — markers in path break `@` resolution. Suffix-hack `path (active)` to be spike-tested in Phase 1; fallback = position-only |
 | 2026-04-20 | FORBIDDEN feature-gate from Kado = silent skip | Per Kado contract: not an error, user just hasn't opted in |
+| 2026-04-20 | **`file-suggestion.sh` must always exit 0** | T1.1 spike: non-zero exit hides the picker silently. No fallback to built-in picker, no error banner, stdout discarded. Exit 0 + empty stdout achieves the same hide effect but permits best-effort partial results on recoverable errors. |
+| 2026-04-20 | **Synthetic hint lines (non-path strings) are viable but selectable** | T1.1 spike Case D: non-path text renders verbatim in the picker; selection inserts as `@"<text>"` quoted literal, no file resolution. Safe for FORBIDDEN/UNAUTHORIZED user notices. Must be placed at the bottom of the result list because they are selectable and would otherwise surprise the user. |
+| 2026-04-20 | **F4 "... + N more" affordance deferred to Phase 2** | T1.1 spike Case E: the synthetic overflow line renders and is selectable, inserting as `@"... + 42 more (type to filter)"` on pick. Viable but adds a selectable non-path line. Simpler alternative: silently truncate to 15 real results. Phase 2 decides between the two. |
+| 2026-04-20 | **Active-note suffix-hack: strong negative prior from T1.1** | Case D showed non-path text inserts as `@"<text>"` quoted literal. `path.md (active)` will likely also insert quoted and not resolve. T1.2 still to run to confirm, but expected outcome: position-only marker (drop the `(active)` suffix). |
 
 ## Context
 

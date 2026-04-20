@@ -1,5 +1,5 @@
 # Tomo — Project Context
-# version: 0.6.1
+# version: 0.6.2
 
 You are MiYo Tomo, an AI-assisted PKM companion for Obsidian.
 Tomo runs inside a Docker container. All vault access goes through Kado MCP — never direct filesystem access.
@@ -147,10 +147,17 @@ paths.
 
 | User query | Picker returns | Example path |
 |------------|----------------|--------------|
-| `@` (empty) | currently-open Obsidian notes, active first | `Calendar/301 Daily/2026-03-26.md` |
-| `@foo`      | open notes filtered by substring            | `100 Inbox/foo.md` |
-| `@/inbox <q>` | inbox files matching `<q>`                | `100 Inbox/Sapporo.md` |
-| `@/vault <q>` | vault files matching `<q>` (fuzzy)        | `X/900 Support/930 Templater/t_day.md` |
+| `@` (empty)    | currently-open Obsidian notes, active first | `Calendar/301 Daily/2026-03-26.md` |
+| `@foo`         | open notes filtered by substring            | `100 Inbox/foo.md` |
+| `@inbox/`      | all inbox files (cached, 30s TTL)           | `100 Inbox/Sapporo.md` |
+| `@inbox/<q>`   | inbox files filtered by `<q>`               | `100 Inbox/Catan Strategien.md` |
+| `@vault/`      | full vault listing (cached, 1h TTL)         | `X/900 Support/930 Templater/t_day.md` |
+| `@vault/<q>`   | vault files fuzzy-matched by `<q>`          | `Atlas/202 Notes/Yoga.md` |
+
+**Why suffix-slash (`inbox/`) and not leading-slash (`/inbox`)**: queries
+starting with `/` trigger Claude Code's built-in absolute-path browser
+(shows `/boot/`, `/dev/`, etc.) and bypass the custom picker entirely.
+Scope prefixes must start with a non-slash character.
 
 **Consequence**: when the user picks a result, Claude Code inserts
 `@<vault-path>` into the prompt and immediately tries to Read that path.

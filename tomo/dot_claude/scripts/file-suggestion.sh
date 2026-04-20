@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # file-suggestion.sh — custom @-picker for Tomo instance
-# version: 0.2.0
+# version: 0.3.0
 #
 # Spec: docs/XDD/specs/010-custom-file-picker/
 #
 # Reads `{"query": "<text>"}` from stdin and emits up to 15 newline-separated
 # file paths to stdout. Routes by query prefix:
-#   /inbox <text> → cached kado-search of inbox folder (30s TTL)
-#   /vault <text> → fzf on cached full vault listing (1h TTL + sentinel)
+#   inbox/<text>  → cached kado-search of inbox folder (30s TTL)
+#   vault/<text>  → fzf on cached full vault listing (1h TTL + sentinel)
 #   <anything>    → kado-open-notes (active first, position-only marker)
+#
+# Why `inbox/` and `vault/` suffix-slash (not leading `/inbox`):
+# Queries that start with `/` trigger Claude Code's built-in absolute-path
+# completion (showing /boot /dev /etc etc.) and bypass this script entirely.
+# Any scope prefix must start with a non-slash character.
 #
 # Bash 3.2 compatible. Always exits 0 — Claude Code does not fall back to its
 # built-in picker on non-zero exit (confirmed T1.1), and non-zero just hides
@@ -183,10 +188,8 @@ input=$(cat)
 query=$(printf '%s' "$input" | jq -r '.query // ""' 2>/dev/null || printf '')
 
 case "$query" in
-    /inbox\ *)  handle_inbox       "${query#/inbox }"  ;;
-    /inbox)     handle_inbox       ""                  ;;
-    /vault\ *)  handle_vault       "${query#/vault }"  ;;
-    /vault)     handle_vault       ""                  ;;
+    inbox/*)    handle_inbox       "${query#inbox/}"   ;;
+    vault/*)    handle_vault       "${query#vault/}"   ;;
     *)          handle_open_notes  "$query"            ;;
 esac
 

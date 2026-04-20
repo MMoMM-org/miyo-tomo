@@ -23,6 +23,7 @@
 | 2026-04-20 | Use Claude Code `fileSuggestion` setting | Native customization point; receives `{query}` via stdin, returns up to 15 paths to stdout |
 | 2026-04-20 | Default `@` shows only open Obsidian notes (via `kado-open-notes`) | Most common use case; minimizes load (single Kado call ~50-100ms) |
 | 2026-04-20 | Prefix routing: `/inbox` and `/vault` as scope keywords | Opt-in for broader searches; keeps default fast |
+| 2026-04-20 | **Scope prefixes: `inbox/` and `vault/` — suffix-slash, NOT leading-slash** | Superseded initial `/inbox` design. Claude Code bypasses `fileSuggestion` when the query starts with `/`, routing to a built-in absolute-path browser (shows `/boot/`, `/dev/`, etc.) — our handler is never called. Scope prefixes must start with a non-slash char. Script updated to `inbox/*` / `vault/*` patterns. |
 | 2026-04-20 | Vault scope uses fzf on a cached file list | fzf already in container; cache invalidated by `/explore-vault` or TTL 1h |
 | 2026-04-20 | Inbox scope uses cached Kado listing (TTL 30s) | Inbox accessed via Kado, not local FS — caching avoids per-keystroke calls |
 | 2026-04-20 | Active note marker = position 0 (start) | API expects raw paths in stdout — markers in path break `@` resolution. Suffix-hack `path (active)` to be spike-tested in Phase 1; fallback = position-only |

@@ -14,12 +14,16 @@
 #
 # Usage: bash scripts/backup-tomo.sh [OPTIONS]
 #   --output PATH   Destination — directory or full file path.
-#                   Default: <parent-of-INSTANCE_PATH>/tomo-backups/tomo-backup-<ts>.tar.gz
+#                   Default: <parent-of-INSTANCE_PATH>/tomo-backups/<instance>-<ts>.tar.gz
 #                   (sibling to tomo-instance/, survives `rm -rf tomo-instance`)
-#   --keep N        Retain only the N most recent archives in output dir.
-#                   Default: 10.  0 = unlimited (no rotation).
+#   --keep N        Retain only the N most recent archives for THIS instance
+#                   in the output dir. Default: 10.  0 = unlimited.
 #   --dry-run       Print what would be archived; do not create file.
 #   --help, -h
+#
+# Archive naming uses the instanceName from tomo-install.json so multiple
+# vaults / multiple instances keep their archive sets distinguishable in a
+# shared output dir.
 
 set -e
 
@@ -85,7 +89,8 @@ if ! command -v tar >/dev/null 2>&1; then
 fi
 
 INSTANCE_PATH="$(jq -r '.instancePath' "$CONFIG_FILE")"
-HOME_DIR="$(jq -r '.homeDir // empty' "$CONFIG_FILE")"
+INSTANCE_NAME="$(jq -r '.instanceName // "tomo-instance"' "$CONFIG_FILE")"
+HOME_DIR="$(jq -r '.homePath // empty' "$CONFIG_FILE")"
 
 if [ -z "$INSTANCE_PATH" ] || [ ! -d "$INSTANCE_PATH" ]; then
     print_err "Instance directory not found: $INSTANCE_PATH"
@@ -95,16 +100,19 @@ fi
 # ── Compute output path ──────────────────────────────────
 
 TIMESTAMP="$(date +%Y-%m-%d_%H-%M-%S)"
+# Filename includes instance name so users with multiple instances /
+# vaults keep their archive sets distinguishable in a shared output dir.
+ARCHIVE_NAME="${INSTANCE_NAME}-${TIMESTAMP}.tar.gz"
 # Default: sibling to the instance dir (not inside it), so a wipe of
 # the instance does not take the archives with it.
 DEFAULT_OUTPUT_DIR="$(dirname "$INSTANCE_PATH")/tomo-backups"
 
 if [ -z "$OUTPUT" ]; then
     OUTPUT_DIR="$DEFAULT_OUTPUT_DIR"
-    OUTPUT_FILE="$OUTPUT_DIR/tomo-backup-$TIMESTAMP.tar.gz"
+    OUTPUT_FILE="$OUTPUT_DIR/$ARCHIVE_NAME"
 elif [ -d "$OUTPUT" ]; then
     OUTPUT_DIR="$OUTPUT"
-    OUTPUT_FILE="$OUTPUT_DIR/tomo-backup-$TIMESTAMP.tar.gz"
+    OUTPUT_FILE="$OUTPUT_DIR/$ARCHIVE_NAME"
 else
     OUTPUT_DIR="$(dirname "$OUTPUT")"
     OUTPUT_FILE="$OUTPUT"
@@ -168,10 +176,10 @@ print_ok "$OUTPUT_FILE ($ARCHIVE_SIZE)"
 # ── Rotation ─────────────────────────────────────────────
 
 if [ "$KEEP" -gt 0 ] && [ -d "$OUTPUT_DIR" ]; then
-    print_step "Rotating (keep last $KEEP)"
-    # List archives by mtime desc, skip first $KEEP, delete rest.
-    # Use POSIX-compatible approach (no mapfile, bash 3.2 safe).
-    OLD_ARCHIVES="$(ls -1t "$OUTPUT_DIR"/tomo-backup-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) || true)"
+    print_step "Rotating (keep last $KEEP for instance '$INSTANCE_NAME')"
+    # Rotation is scoped to THIS instance — don't touch other instances'
+    # archives that might live in a shared output dir.
+    OLD_ARCHIVES="$(ls -1t "$OUTPUT_DIR"/${INSTANCE_NAME}-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) || true)"
     if [ -n "$OLD_ARCHIVES" ]; then
         echo "$OLD_ARCHIVES" | while IFS= read -r old; do
             [ -n "$old" ] || continue

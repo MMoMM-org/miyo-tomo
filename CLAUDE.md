@@ -38,3 +38,16 @@ See `docs/XDD/README.md` for the consolidated documentation index.
 - All managed files in tomo/ must include a version comment for update tracking
 - Profiles are pure data (YAML) — logic lives in skills
 - Layer precedence: User Config > Profile > Universal Concepts; Discovery Cache is advisory only
+
+## Memory & Context
+@docs/ai/memory/memory.md
+
+## Routing Rules
+<!-- Run /memory-add to capture learnings. -->
+- Personal/workflow corrections → global (~/.claude/includes/) or ~/Kouzou/standards/
+- Repo conventions/style → docs/ai/memory/general.md
+- Tool/CI/build knowledge → docs/ai/memory/tools.md
+- Domain/business rules → docs/ai/memory/domain.md
+- Architectural decisions → docs/ai/memory/decisions.md
+- Current focus/blockers → docs/ai/memory/context.md
+- Bugs/fixes → docs/ai/memory/troubleshooting.md

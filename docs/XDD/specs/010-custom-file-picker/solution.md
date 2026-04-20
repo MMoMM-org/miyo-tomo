@@ -86,17 +86,20 @@ Cache lives in `tomo-instance/cache/` (gitignored, per-instance).
 ```bash
 # After stripping JSON, $query contains the user's text.
 case "$query" in
-  /inbox\ *)  handle_inbox  "${query#/inbox }"  ;;
-  /inbox)     handle_inbox  ""                  ;;
-  /vault\ *)  handle_vault  "${query#/vault }"  ;;
-  /vault)     handle_vault  ""                  ;;
-  *)          handle_open_notes "$query"        ;;
+  inbox/*)  handle_inbox       "${query#inbox/}"  ;;
+  vault/*)  handle_vault       "${query#vault/}"  ;;
+  *)        handle_open_notes  "$query"           ;;
 esac
 ```
 
-Trailing whitespace tolerated. Other prefixes silently fall through to
-default (so `@/foo` searches open notes for "/foo" — fine, low-cost
-graceful behaviour).
+Other patterns fall through to default open-notes scope. Bare `inbox`
+or `vault` without trailing slash are treated as open-notes filters.
+
+**Why suffix-slash (not leading-slash)**: Claude Code's fileSuggestion
+is bypassed for queries starting with `/` — those route to Claude Code's
+built-in absolute-path browser (`/boot/`, `/dev/`, etc.). Spike-
+verified 2026-04-20 after initial `/inbox` / `/vault` design never
+reached the script. Scope prefixes must start with a non-slash char.
 
 ## Handler Logic
 

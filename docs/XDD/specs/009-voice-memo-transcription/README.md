@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-04-20 |
-| **Current Phase** | PRD |
+| **Current Phase** | SDD |
 | **Last Updated** | 2026-04-20 |
 
 ## Documents
@@ -13,7 +13,7 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | ready | v0.2 — all open questions answered 2026-04-20 |
-| solution.md | pending | Open: Whisper engine (whisper.cpp vs faster-whisper), install wizard hook, ffmpeg staging |
+| solution.md | draft | v0.1 — architecture, wizard, Dockerfile, Python modules, agent integration |
 | plan/ | pending | |
 
 ## Decisions Log

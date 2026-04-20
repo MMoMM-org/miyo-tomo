@@ -28,6 +28,10 @@
     "type": "command",
     "command": "bash scripts/tomo-statusline.sh"
   },
+  "fileSuggestion": {
+    "type": "command",
+    "command": "bash .claude/scripts/file-suggestion.sh"
+  },
   "spinnerVerbs": {
     "mode": "replace",
     "verbs": [

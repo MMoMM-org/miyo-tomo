@@ -97,7 +97,7 @@ also produce `instructions.json` (all actions) and `instructions.md` (human view
        ]
      }
      ```
-  3. Validate: Schema covers all 7 action types. Every field Seigyo needs is present.
+  3. Validate: Schema covers all 7 action types. Every field Tomo Hashi needs is present.
 
 - [ ] **T1.3 Write instructions.json** `[activity: backend]`
 

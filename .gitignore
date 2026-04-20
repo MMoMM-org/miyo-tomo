@@ -5,6 +5,9 @@ tomo-instance/
 # Tomo Docker home (Claude Code home directory for container)
 tomo-home/
 
+# Tomo backup archives (sibling to tomo-instance/, created by backup-tomo.sh)
+tomo-backups/
+
 # Install config (contains local paths and tokens)
 tomo-install.json
 

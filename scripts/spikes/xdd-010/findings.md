@@ -70,7 +70,33 @@
 
 ## T1.2 — active-note suffix marker
 
-*Pending — strong negative prior from T1.1 Case D. Run `prep-t1-2.sh` (to be added) to confirm, or fold the decision if we accept the prior.*
+**Date**: 2026-04-20
+**Resolution**: decided without spike.
+
+**Decision**: **Suffix-hack rejected. Position-only marker is final.**
+
+**Evidence chain**:
+- T1.1 Case D proved non-path text inserts as `@"<text>"` quoted literal.
+- `path.md (active)` is a valid path followed by a non-path suffix.
+- On selection, Claude Code would insert `@"path.md (active)"` — a
+  quoted string literal, not a file reference.
+- Consequently, Claude would not resolve the file content; the user
+  would see a weird quoted literal in their prompt.
+
+**Alternative considered**: run the spike anyway to check for prefix-
+matching tolerance (Claude Code might strip the suffix before resolving).
+Rejected because:
+- Evidence is already consistent across Cases A + D.
+- A second prep/restart cycle is costly in user time.
+- Even if suffix-hack worked, it would be fragile (any Claude Code
+  upgrade could silently break it).
+
+**Consequence for Phase 2**:
+- `handle_open_notes()` emits active note at stdout position 0,
+  followed by other open notes in Kado's returned order.
+- No in-text marker of any kind.
+- UX: users infer "active" from ordering. Documentation in Tomo's
+  help should state this convention explicitly.
 
 ---
 

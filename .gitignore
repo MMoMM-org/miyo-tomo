@@ -17,6 +17,8 @@ begin-tomo.sh
 # Claude Code session files
 .claude.json
 .credentials.json
+.claude/settings.local.json
+.claude/plans/
 
 # macOS
 .DS_Store

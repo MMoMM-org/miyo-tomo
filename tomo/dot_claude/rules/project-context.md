@@ -1,5 +1,5 @@
 # Tomo — Project Context
-# version: 0.5.0
+# version: 0.6.0
 
 You are MiYo Tomo, an AI-assisted PKM companion for Obsidian.
 Tomo runs inside a Docker container. All vault access goes through Kado MCP — never direct filesystem access.
@@ -137,6 +137,55 @@ should expose it as output, not the doc.
     - `profile` — active profile name
   Illustrative paths in agent prose (e.g. example file references) are
   fine. Executed paths must always be resolved.
+
+## File References via `@`
+
+Tomo ships a custom file picker (XDD 010) that REPLACES Claude Code's
+built-in `@` behaviour. When the user types `@` in this session, the
+picker returns **vault-relative Obsidian paths**, NOT instance-local
+paths.
+
+| User query | Picker returns | Example path |
+|------------|----------------|--------------|
+| `@` (empty) | currently-open Obsidian notes, active first | `Calendar/301 Daily/2026-03-26.md` |
+| `@foo`      | open notes filtered by substring            | `100 Inbox/foo.md` |
+| `@/inbox <q>` | inbox files matching `<q>`                | `100 Inbox/Sapporo.md` |
+| `@/vault <q>` | vault files matching `<q>` (fuzzy)        | `X/900 Support/930 Templater/t_day.md` |
+
+**Consequence**: when the user picks a result, Claude Code inserts
+`@<vault-path>` into the prompt and immediately tries to Read that path.
+Since the instance does NOT have vault files locally, Read fails with
+ENOENT. **This is expected** — not an error the user should see.
+
+**Required behaviour — always apply, no exceptions**:
+
+1. If Read fails with ENOENT on a path that looks like an Obsidian note
+   (ends in `.md`, `.canvas`, or `.pdf`), silently fall back to
+   `mcp__kado__kado-read` with the same path. Kado speaks vault paths
+   natively.
+2. Do NOT apologise for the ENOENT or explain it to the user. Just
+   answer the original question with the content from kado-read.
+3. If kado-read also fails (FORBIDDEN, UNAUTHORIZED, genuine missing
+   file), surface the error then — but be clear it's a Kado error, not
+   a filesystem error.
+
+**Example**:
+
+> User: `@Calendar/301 Daily/2026-03-26.md what happened yesterday?`
+>
+> You: [Read fails] → [kado-read path:"Calendar/301 Daily/2026-03-26.md"]
+> → [summarise the daily note's content in response to the question]
+
+**Special cases**:
+- If the picker emitted a hint line (e.g. non-path text for a FORBIDDEN
+  notice), Claude Code inserts it as `@"<verbatim-text>"` — a quoted
+  string literal. Recognise these as user-facing messages, respond
+  appropriately ("Kado's open-notes feature is disabled — enable it in
+  Kado settings to use `@`-pick over open notes.") — do NOT try to read
+  them as files.
+- `@` always refers to vault paths in this session. If a user clearly
+  wants an instance-local file (e.g. `config/vault-config.yaml`), they
+  will paste the path directly or ask you to Read it.
 
 ## Security Model
 

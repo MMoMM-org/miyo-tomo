@@ -2,9 +2,11 @@
 name: tomo-help
 description: Context-aware help for Tomo that routes user queries to the right topic (workflows, configuration, troubleshooting, operations). Shows a menu when called without arguments, or answers directly when the query matches a known topic. Use when users ask how to do something in Tomo, need quick reference on a command, or are stuck on an error.
 argument-hint: "optional topic or keyword (e.g., 'kado', 'inbox', 'docker', 'login')"
+model: sonnet
+effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.0
+# version: 0.2.1
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 

@@ -3,10 +3,12 @@ name: tomo-daily-log-wizard
 description: Use when configuring or refining the daily-log section in vault-config.yaml. Triggers on missing daily_log config, daily-log heading or cutoff changes, time-extraction setup. Invoked from /tomo-setup or directly when daily-log filing fails.
 allowed-tools: Read, Edit, AskUserQuestion, Bash
 argument-hint: "no arguments needed"
+model: sonnet
+effort: medium
 ---
 
 # Tomo Daily Log Wizard
-# version: 0.2.0
+# version: 0.2.1
 
 ## Persona
 

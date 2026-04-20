@@ -1,9 +1,10 @@
 ---
 name: pkm-workflows
 description: Inbox lifecycle state machine, note classification heuristics with confidence scoring, and batch processing patterns. Use when implementing the /inbox workflow, detecting note types from captured items, or deciding run-to-run discovery priority (cleanup → pass2 → pass1).
+user-invocable: false
 ---
 # PKM Workflows
-# version: 0.2.0
+# version: 0.2.1
 
 Knowledge patterns for inbox processing state machine, classification heuristics, and batch workflows.
 

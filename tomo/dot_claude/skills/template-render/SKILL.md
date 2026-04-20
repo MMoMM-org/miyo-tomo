@@ -1,9 +1,10 @@
 ---
 name: template-render
 description: Token resolution pipeline, category precedence (generated → config → content → metadata → custom), and rendering rules for note templates. Use when rendering templates during Pass 2, debugging unresolved tokens, or explaining template/Templater coexistence.
+user-invocable: false
 ---
 # Template Render
-# version: 0.1.0
+# version: 0.1.1
 
 Knowledge patterns for the token resolution system used when rendering note templates.
 

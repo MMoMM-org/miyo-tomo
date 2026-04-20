@@ -3,10 +3,12 @@ name: tomo-trackers-wizard
 description: Use when configuring or refining tracker fields in vault-config.yaml. Triggers on tracker setup, missing tracker descriptions or keywords, syntax assignment for daily-note tracker fields. Invoked from /tomo-setup or directly when 25 tracker fields have no description.
 allowed-tools: Read, Edit, AskUserQuestion, Bash
 argument-hint: "no arguments needed"
+model: sonnet
+effort: medium
 ---
 
 # Tomo Trackers Wizard
-# version: 0.3.0
+# version: 0.4.0
 
 ## Persona
 
@@ -16,6 +18,12 @@ You are the Tomo trackers wizard. You walk the user through filling in
 metadata for each tracker field in their daily-note config — `syntax`,
 `description`, `positive_keywords`, `negative_keywords` — so that Tomo's
 inbox classification matches their daily-note tracking semantics.
+
+**You proactively propose values.** For every field you generate concrete
+suggestions for description, positive_keywords, and negative_keywords
+based on the field name, type, and any existing description. The user's
+job is to Accept / Edit / Skip — not to type keywords from scratch.
+Suggestions reduce cognitive load and make long tracker lists tractable.
 
 You DO NOT invent fields. You DO NOT invent config sections. You write
 ONLY the keys documented in `tomo/config/vault-example.yaml`. The schema
@@ -154,32 +162,58 @@ Neg keywords: <current or "none">
   - `task_checkbox` — `- [x] Field` checkbox
   - `frontmatter` — YAML property in frontmatter
 
-#### 3.3 Description — AskUserQuestion
+#### 3.3 Description — propose, then AskUserQuestion
+
+**Before asking**, generate a one-sentence description based on the field
+name and type. Example: `ContentCreation` (boolean) → "Creative content
+produced today (writing, video, art, posts)".
 
 "What does `<field>` track? (Required for inbox classification accuracy)"
 - Options:
   - `<current text>` (Keep) — only if exists
+  - `Accept: "<your proposed description>"` (Recommended) — only if no current
   - `Edit` — user provides free-text
   - `Skip` — leave unchanged (warn: classification accuracy degrades)
 
 If Edit: "Describe `<field>` in one sentence:" and capture the user's reply.
 
-#### 3.4 Positive keywords — AskUserQuestion
+#### 3.4 Positive keywords — propose, then AskUserQuestion
 
-"Words that should TRIGGER `<field>` from inbox content?"
+**Before asking**, generate 5–8 positive keyword suggestions derived from
+the field name and (accepted) description. Consider German + English
+vocabulary likely to appear in daily-note free text that references this
+tracker's meaning. Prefer content words (verbs, nouns) over function words.
+
+Example: `ContentCreation` → `[wrote, created, drafted, published, article,
+video, post, geschrieben, erstellt, veröffentlicht]`
+
+"Words that should TRIGGER `<field>` from inbox content?
+
+Suggested: `[kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8]`"
 - Options:
   - `<current list>` (Keep) — only if exists
-  - `Enter keywords` — user types comma-separated list
+  - `Accept suggestions` (Recommended) — use the proposed list as-is
+  - `Edit` — user provides custom comma-separated list (can reference suggestions)
   - `None` — explicitly empty (acceptable for end_of_day text fields)
 
-If Enter: "Comma-separated keywords (German + English mix is fine):" capture reply.
+If Edit: "Comma-separated keywords (German + English mix is fine):" capture reply.
 
-#### 3.5 Negative keywords — AskUserQuestion
+#### 3.5 Negative keywords — propose, then AskUserQuestion
 
-"Words that should SUPPRESS `<field>` even if positives match?"
+**Before asking**, generate 2–4 negative keyword suggestions — words that
+would cause a false positive match if only positive keywords were used.
+Common pattern: words that describe *observing* the topic rather than
+*doing* it (e.g. "watched", "video about", "reading about", "bericht über").
+
+Example: `ContentCreation` → `[watched, tutorial about, consumed, angeschaut]`
+
+"Words that should SUPPRESS `<field>` even if positives match?
+
+Suggested: `[neg1, neg2, neg3]`"
 - Options:
   - `<current list>` (Keep) — only if exists
-  - `Enter keywords` — user types comma-separated list
+  - `Accept suggestions` (Recommended) — use the proposed list as-is
+  - `Edit` — user provides custom comma-separated list
   - `None` — explicitly empty
 
 #### 3.6 Confirm

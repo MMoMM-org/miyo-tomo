@@ -7,7 +7,7 @@
 #   VOICE_ENABLED   — "true" or "false"
 #   VOICE_MODEL     — "tiny" | "base" | "small" | "medium" | "large-v3" | ""
 #   VOICE_LANGUAGE  — "de" | "en" | "auto" | ""
-# version: 0.1.0
+# version: 0.2.0
 
 # Known model metadata (bash 3.2 — no associative arrays)
 # Keep in sync with docs/XDD/specs/009-voice-memo-transcription/solution.md
@@ -151,11 +151,17 @@ configure_voice() {
     VOICE_LANGUAGE="${new_lang:-$default_lang}"
 
     # ── Ensure model files present ───────────────────────
+    # Check the .download-complete sentinel rather than model.bin — catches
+    # the case where a prior download was interrupted and left a partial
+    # directory behind (only model.bin succeeded, others missing).
     if [ -n "$models_base_dir" ]; then
         local target_dir="${models_base_dir}/faster-whisper-${VOICE_MODEL}"
-        if [ -f "$target_dir/model.bin" ]; then
-            print_ok "Model already on disk: $target_dir"
+        if [ -f "$target_dir/.download-complete" ]; then
+            print_ok "Model already on disk: $target_dir (verified)"
         else
+            if [ -d "$target_dir" ]; then
+                print_warn "Partial or unverified model dir detected — re-downloading"
+            fi
             local lib_dir
             lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
             local scripts_dir

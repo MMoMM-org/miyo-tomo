@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-04-20 |
-| **Current Phase** | Phase 2 complete — unified picker live-validated in Tomo session |
-| **Last Updated** | 2026-04-20 |
+| **Current Phase** | DONE — unified picker live; Phases 3–4 retrospectively validated 2026-04-21 |
+| **Last Updated** | 2026-04-21 |
 
 ## Documents
 
@@ -57,7 +57,30 @@ notes into context — the picker's UX matters disproportionately there.
 ## Inbox handoff status
 
 This spec is the action on `_inbox/from-kado/2026-04-20_kado-to-tomo_2026-04-20-kado-open-notes-available.md`.
-That handoff will be marked `done` when spec 010 is merged to main.
+The file is a symlink into `Kado/_outbox/for-tomo/` and status must be
+flipped from a Kado-hosted Claude session (cross-repo ownership rule).
+Trigger for next Kado session: mark status=done with reason
+"Consumed by Tomo XDD 010 — kado-open-notes drives default `@` scope."
+
+## Completion Summary (2026-04-21)
+
+**Shipped:**
+- `tomo/dot_claude/scripts/file-suggestion.sh` v0.5.0 — unified picker
+  (rg-snippet pattern: candidates → fzf filter → head 15)
+- `tomo/dot_claude/scripts/lib/kado-call.sh` — shared Kado helper
+- `tomo/dot_claude/settings.json` — `fileSuggestion` wired
+- `scripts/install-tomo.sh` + `scripts/update-tomo.sh` — propagation
+- `docker/Dockerfile` — jq + fzf present + comment
+- Cache: `tomo-instance/cache/{inbox-files.txt, vault-files.txt,
+  picker-debug.log, .invalidate-vault-files}`
+
+**Known limits:**
+- Agent typeaheads still appear in Claude Code's `@` dropdown —
+  no documented way to hide them while preserving Task-tool spawning.
+  Dense file list visually outweighs them in practice.
+- Kado-returned vault-relative paths don't resolve locally; LLM
+  falls back to `kado-read` (one extra tool call per `@`-pick).
+  Acceptable per T1.3 decision.
 
 ## Open Questions for SDD
 

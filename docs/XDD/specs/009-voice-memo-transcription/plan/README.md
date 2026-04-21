@@ -28,7 +28,7 @@ version: "1.0"
 
 ## Implementation Phases
 
-- [ ] [Phase 1: Install wizard + Dockerfile + model download](phase-1.md)
+- [~] [Phase 1: Install wizard + Dockerfile + model download](phase-1.md) — code-complete (c7c9688), pending host Docker validation (T1.6)
 - [ ] [Phase 2: Python modules + CLI script (standalone)](phase-2.md)
 - [ ] [Phase 3: voice-transcriber agent (standalone)](phase-3.md)
 - [ ] [Phase 4: Orchestrator integration (Phase 0 in inbox-orchestrator)](phase-4.md)

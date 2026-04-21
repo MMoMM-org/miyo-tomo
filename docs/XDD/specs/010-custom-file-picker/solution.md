@@ -53,11 +53,12 @@ Claude Code reads settings.json :: fileSuggestion
 ## Component Responsibilities
 
 ### Script: `scripts/file-suggestion.sh`
-Single bash entry point. Parses query, routes to one of three handlers,
-emits paths. Bash 3.2 compatible (per project guardrails). Always exits 0
-unless something is catastrophically broken — non-zero would make Claude
-Code fall back to built-in, which we do NOT want for graceful degradation
-(better to return empty than fall back to filesystem walk of the instance).
+Single bash entry point. Collects candidates (open notes via kado-
+open-notes, cached inbox listing, cached vault listing), dedupes,
+applies the query via fzf (with grep fallback), emits top 15 paths.
+Bash 3.2 compatible (per project guardrails). Always exits 0 — T1.1
+spike confirmed that non-zero hides the picker silently with no
+fallback to built-in.
 
 ### Helper script: `scripts/file-suggestion/kado-call.sh` (or inlined)
 Curl wrapper for Kado MCP calls. Reads endpoint and bearer from
@@ -81,25 +82,40 @@ Add:
 
 Cache lives in `tomo-instance/cache/` (gitignored, per-instance).
 
-## Query Parsing
+## Query Handling (unified — no scope prefixes)
+
+The picker emits ONE candidate stream and applies the query via fzf
+(or grep fallback). No prefix routing.
 
 ```bash
 # After stripping JSON, $query contains the user's text.
-case "$query" in
-  inbox/*)  handle_inbox       "${query#inbox/}"  ;;
-  vault/*)  handle_vault       "${query#vault/}"  ;;
-  *)        handle_open_notes  "$query"           ;;
-esac
+{
+  emit_open_notes      # kado-open-notes, active first
+  cat inbox-files.txt  # cached, 30s TTL
+  cat vault-files.txt  # cached, 1h TTL + /explore-vault sentinel
+} | awk 'NF && !seen[$0]++' | {
+    if [ -z "$query" ]; then
+        cat
+    elif command -v fzf >/dev/null; then
+        fzf --filter "$query"
+    else
+        grep -i -F -- "$query"
+    fi
+} | head -n 15
 ```
 
-Other patterns fall through to default open-notes scope. Bare `inbox`
-or `vault` without trailing slash are treated as open-notes filters.
+**Why no prefixes**: earlier designs used `inbox/<q>` and `vault/<q>`.
+Selecting the prefix-entry (from a hint-line in the picker) inserted
+`@"inbox/"` or `@inbox/ ` (with trailing space) into the user's prompt,
+forcing a backspace before continuing to type. The unified stream
+covers the same use cases — typing `@<inbox-note-name>` naturally
+surfaces inbox matches via fzf.
 
-**Why suffix-slash (not leading-slash)**: Claude Code's fileSuggestion
-is bypassed for queries starting with `/` — those route to Claude Code's
-built-in absolute-path browser (`/boot/`, `/dev/`, etc.). Spike-
-verified 2026-04-20 after initial `/inbox` / `/vault` design never
-reached the script. Scope prefixes must start with a non-slash char.
+**Claude Code's `/`-prefix trap** (retained for reference): queries
+starting with `/` bypass `fileSuggestion` entirely — Claude Code routes
+them to its built-in absolute-path browser (`/boot/`, `/dev/`, etc.).
+The unified design sidesteps this because no synthetic prefix is ever
+suggested, so the user won't type one.
 
 ## Handler Logic
 

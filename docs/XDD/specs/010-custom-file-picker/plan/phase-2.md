@@ -1,7 +1,7 @@
 ---
 title: "Phase 2: Handler implementations + caching"
-status: in-progress
-version: "1.1"
+status: complete
+version: "1.2"
 phase: 2
 ---
 
@@ -71,10 +71,12 @@ phase: 2
   Position-only per T1.2 decision. `handle_open_notes` emits active
   note at stdout position 0, others after. No in-text marker.
 
-- [ ] **T2.8 Phase Validation** `[activity: validate]`
+- [x] **T2.8 Phase Validation** `[activity: validate]` — **DONE 2026-04-21**
 
-  - [ ] All three scopes work end-to-end in a real Tomo session
-        (pending live-session test after update-tomo.sh)
+  - [x] Live Tomo session: empty `@` shows open notes + inbox + vault
+        top 15; `@<query>` applies fzf filter; no prefix syntax needed
+        (unified design supersedes scope-prefix routing; see spec
+        README's 2026-04-21 decision).
   - [x] Latency (host, with KADO_URL override):
         - Default (Kado call): ~40ms
         - Inbox cached: 22ms
@@ -82,5 +84,11 @@ phase: 2
         - Vault cold build (345 files): 131ms
         - All well under SDD targets.
   - [x] Cache invalidation tested via sentinel + fresh rebuild
-  - [ ] FORBIDDEN response graceful empty: pending (needs Kado key
-        without the feature-gated perms; deferred)
+  - [~] FORBIDDEN response graceful empty: deferred (needs Kado key
+        without `allowActiveNote`/`allowOtherNotes` to test; the code
+        path returns empty on any Kado failure, so behaviourally
+        correct — verification when next Kado permission-scope change
+        lands)
+  - [x] Portable-stat fix (v0.4.3): BSD vs GNU `stat -f` was silently
+        breaking every non-empty query in the container. Documented in
+        `reference_stat_bsd_gnu_portability` memory.

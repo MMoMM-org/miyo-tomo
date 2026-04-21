@@ -2,7 +2,8 @@
 from: claude
 to: claude-next-session
 date: 2026-04-20
-status: pending
+status: done
+status_note: Trackers wizard populated 24 fields (user-driven in Tomo). Skill audit: 4 user-facing skills on sonnet/medium, 4 reference skills user-invocable:false. XDD 010 Phase 1+2 shipped: file-suggestion.sh v0.5.0 unified picker (no scope prefixes), kado-call.sh lib, cache invalidation on /explore-vault. Host/instance CLAUDE.md boundary via claudeMdExcludes. Instance project-context.md v0.7.0 teaches @ → vault paths + wikilink display. 5 new memory refs captured (skill frontmatter, fileSuggestion API, host-instance boundary, bash 3.2 case-in-subshell, stat BSD-vs-GNU, Claude-Code filesuggestion). Open follow-ups: XDD 008 (inst-render) + XDD 009 (voice memo) untouched. Agents still appear in @ picker (Claude Code limitation, no hide-from-picker setting exists).
 priority: high
 ---
 

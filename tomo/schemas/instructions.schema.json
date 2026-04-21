@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/instructions.schema.json",
+  "title": "Tomo Instructions",
+  "description": "Canonical, machine-readable instruction set produced by instruction-render.py. Consumed by Tomo Hashi (Obsidian plugin) for execution and rendered to a human-readable markdown view.",
+  "type": "object",
+  "required": ["schema_version", "type", "generated", "profile", "actions"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1"},
+    "type": {"const": "tomo-instructions"},
+    "source_suggestions": {
+      "type": ["string", "null"],
+      "description": "Filename (vault-relative or stem) of the suggestions doc this set was derived from."
+    },
+    "generated": {
+      "type": "string",
+      "description": "ISO-8601 UTC timestamp of generation."
+    },
+    "profile": {
+      "type": ["string", "null"],
+      "description": "Active profile name from vault-config.yaml."
+    },
+    "tomo_version": {
+      "type": ["string", "null"],
+      "description": "Tomo version that produced this file."
+    },
+    "action_count": {"type": "integer", "minimum": 0},
+    "actions": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/move_note"},
+          {"$ref": "#/$defs/link_to_moc"},
+          {"$ref": "#/$defs/update_tracker"},
+          {"$ref": "#/$defs/update_log_entry"},
+          {"$ref": "#/$defs/update_log_link"},
+          {"$ref": "#/$defs/create_moc"},
+          {"$ref": "#/$defs/delete_source"},
+          {"$ref": "#/$defs/skip"}
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "action_id": {
+      "type": "string",
+      "pattern": "^I[0-9]{2,}$",
+      "description": "Monotonic action identifier (I01, I02, …). Unique within the instruction set."
+    },
+    "move_note": {
+      "type": "object",
+      "required": ["id", "action", "source", "destination", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "move_note"},
+        "source": {"type": "string", "description": "Vault-relative full path of the rendered file currently in the inbox (what gets moved), e.g. '100 Inbox/2026-04-21_1200_asahikawa-....md'."},
+        "destination": {"type": "string", "description": "Vault-relative full target path including the final filename, e.g. 'Atlas/202 Notes/Asahikawa — ....md'."},
+        "title": {"type": "string", "description": "Final title of the note (also the stem of the destination filename)."},
+        "rendered_file": {"type": "string", "description": "Basename of the rendered file (redundant with source; kept for display)."},
+        "origin_inbox_item": {"type": ["string", "null"], "description": "Optional vault-relative path of the original inbox item this note was derived from — for traceability only. The delete_source action is the operational signal for cleanup."},
+        "parent_mocs": {"type": "array", "items": {"type": "string"}},
+        "tags": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "link_to_moc": {
+      "type": "object",
+      "required": ["id", "action", "target_moc", "line_to_add"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "link_to_moc"},
+        "target_moc": {"type": "string", "description": "MOC stem (no path, no .md)."},
+        "target_moc_path": {"type": ["string", "null"], "description": "Resolved vault-relative path of the MOC, if known."},
+        "section_name": {"type": ["string", "null"], "description": "Raw section hint from the suggestion (callout type or heading)."},
+        "line_to_add": {"type": "string", "description": "Bullet line to insert under the target section."},
+        "source_note_title": {"type": ["string", "null"]}
+      }
+    },
+    "update_tracker": {
+      "type": "object",
+      "required": ["id", "action", "daily_note_path", "date", "field", "value", "syntax"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "update_tracker"},
+        "daily_note_path": {"type": "string"},
+        "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "field": {"type": "string"},
+        "value": {"type": ["string", "number", "boolean"]},
+        "syntax": {"type": "string", "enum": ["inline_field", "callout_body", "checkbox"]},
+        "section": {"type": ["string", "null"]},
+        "source_stem": {"type": ["string", "null"]},
+        "reason": {"type": ["string", "null"]}
+      }
+    },
+    "update_log_entry": {
+      "type": "object",
+      "required": ["id", "action", "daily_note_path", "date", "section", "position", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "update_log_entry"},
+        "daily_note_path": {"type": "string"},
+        "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "section": {"type": "string", "description": "Daily log heading (e.g. 'Daily Log'), without leading #."},
+        "heading_level": {"type": "integer", "minimum": 1, "maximum": 6},
+        "position": {"type": "string", "enum": ["after_last_line", "before_first_line", "at_time"]},
+        "time": {"type": ["string", "null"], "pattern": "^[0-9]{2}:[0-9]{2}$"},
+        "content": {"type": "string"},
+        "source_stem": {"type": ["string", "null"]},
+        "reason": {"type": ["string", "null"]}
+      }
+    },
+    "update_log_link": {
+      "type": "object",
+      "required": ["id", "action", "daily_note_path", "date", "section", "position", "target_stem"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "update_log_link"},
+        "daily_note_path": {"type": "string"},
+        "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "section": {"type": "string"},
+        "heading_level": {"type": "integer", "minimum": 1, "maximum": 6},
+        "position": {"type": "string", "enum": ["after_last_line", "before_first_line", "at_time"]},
+        "time": {"type": ["string", "null"], "pattern": "^[0-9]{2}:[0-9]{2}$"},
+        "target_stem": {"type": "string"},
+        "reason": {"type": ["string", "null"]}
+      }
+    },
+    "create_moc": {
+      "type": "object",
+      "required": ["id", "action", "source", "destination", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "create_moc"},
+        "source": {"type": "string", "description": "Vault-relative full path of the rendered MOC file currently in the inbox, e.g. '100 Inbox/2026-04-21_1200_brettspiele-moc.md'."},
+        "destination": {"type": "string", "description": "Vault-relative full target path of the MOC, e.g. 'Atlas/200 Maps/Brettspiele (MOC).md'."},
+        "title": {"type": "string"},
+        "rendered_file": {"type": "string", "description": "Basename of the rendered MOC file (redundant with source; kept for display)."},
+        "parent_moc": {"type": ["string", "null"], "description": "Parent MOC stem for up-linking (emitted separately as a link_to_moc action on this MOC)."},
+        "template": {"type": ["string", "null"]},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "supporting_items": {"type": ["string", "null"], "description": "Raw 'Supporting items' field from the Proposed MOC block (e.g. 'S02, S06, S12'). Consumed by the renderer to generate link_to_moc actions for each supporting item into this new MOC."}
+      }
+    },
+    "delete_source": {
+      "type": "object",
+      "required": ["id", "action", "source_path", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "delete_source"},
+        "source_path": {"type": "string"},
+        "reason": {"type": "string"}
+      }
+    },
+    "skip": {
+      "type": "object",
+      "required": ["id", "action", "source_path"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "skip"},
+        "source_path": {"type": ["string", "null"]},
+        "reason": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

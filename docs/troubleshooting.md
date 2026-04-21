@@ -27,8 +27,8 @@
 **Symptom:** MCP connection errors when running `/inbox` or `/explore-vault`.
 
 **Check:**
-1. Kado is running: `curl http://localhost:37022/mcp` (should respond, not timeout)
-2. Correct host/port in `tomo-install.json` and `.mcp.json`
+1. Kado is running: `curl http://localhost:23026/mcp` (should respond, not timeout)
+2. Correct host/port in `tomo-install.json` and `.mcp.json` — Kado binds `127.0.0.1:23026` by default
 3. Bearer token is valid (starts with `kado_`)
 
 **Platform-specific:**
@@ -97,14 +97,30 @@
 2. Required tokens (uuid, datestamp, title) should always resolve
 3. Config-sourced tokens need matching `frontmatter.optional` entries with defaults
 
-### Lifecycle Tags Not Transitioning
+### instructions.json Missing or Malformed
 
-**Symptom:** Running `/inbox` repeatedly does the same thing.
+**Symptom:** Pass 2 finished but `*_instructions.json` wasn't written, or the JSON looks wrong.
 
 **Check:**
-1. You changed the tag in Obsidian (e.g., `proposed` → `confirmed`)
-2. Obsidian synced the tag change (if using sync)
-3. The tag format matches: `#MiYo-Tomo/confirmed` (exact prefix match)
+1. `instruction-render.py` stderr output — it logs each rendered file plus the final paths for `manifest.json`, `instructions.json`, and `instructions.md`.
+2. Validate the JSON is machine-consumable:
+   ```bash
+   python3 scripts/instructions-dryrun.py /path/to/YYYY-MM-DD_HHMM_instructions.json
+   ```
+   This flags unknown action kinds, missing required fields, and prints a one-line summary per action. Exit 0 = ready for Tomo Hashi / manual apply.
+3. `instructions.json` should conform to `tomo/schemas/instructions.schema.json`. The `actions[]` array covers every action the human-readable `instructions.md` references.
+
+### `/inbox` Keeps Running the Same Pass
+
+**Symptom:** Running `/inbox` repeatedly does the same thing (re-runs Pass 1 instead of advancing to Pass 2, or re-runs Pass 2 instead of cleaning up).
+
+**Cause:** `/inbox` is state-driven — it inspects inbox contents to decide what's next. If the expected state marker is missing, it falls back to an earlier pass.
+
+**Check:**
+1. **Pass 1 → Pass 2 transition** — the `*_suggestions.md` doc must contain `- [x] Approved` at the top (the whole-document approval). Without it, `/inbox` assumes Pass 1 is still pending and re-runs it.
+2. **Pass 2 → Cleanup transition** — per-action `- [x] Applied` checkboxes on the `*_instructions.md` doc signal applied actions. Missing checkboxes keep the instruction set "open."
+3. **Source items** still use lifecycle tags (e.g., `#MiYo-Tomo/captured` for inbox items). The tag prefix is set during install; check `tomo-install.json` `prefix` field if unsure.
+4. If Obsidian is syncing, give the checkbox/tag changes a moment to propagate before re-running `/inbox`.
 
 ## Docker
 
@@ -152,6 +168,56 @@ bash begin-tomo.sh --login
 ```
 
 This launches the container with port 10000 exposed for the OAuth callback. Complete the browser login flow and your new credentials are saved to `tomo-home/.claude/.credentials.json`. No cleanup or re-install needed.
+
+## `@` File Picker
+
+### Empty Picker / No Results
+
+**Symptom:** Typing `@` shows nothing, or `@<query>` returns no matches.
+
+**Check:**
+1. `tomo/dot_claude/scripts/file-suggestion.sh` exists in the instance at
+   `.claude/scripts/file-suggestion.sh` and is executable.
+2. `.claude/settings.json` has `fileSuggestion` wired to the script.
+3. Kado is reachable (the picker falls back to cache but the first run
+   needs Kado for `listDir` + `kado-open-notes`).
+4. Check the cache directory at `cache/` inside the instance — the picker
+   writes `inbox-cache`, `vault-cache`, and `open-notes-cache` files there.
+
+The picker always exits 0 by design. A non-zero exit hides the picker
+silently and there's no error banner, so failures surface as "empty
+results" rather than stack traces. Run the script manually with a query
+to see its stderr:
+
+```bash
+echo "catan" | bash .claude/scripts/file-suggestion.sh
+```
+
+### Picked Note Doesn't Resolve
+
+**Symptom:** `@Calendar/301 Daily/2026-03-26.md` ends up as a quoted literal
+or Claude says it can't find the file.
+
+**Cause:** Kado returns vault-relative paths. Claude Code tries `Read`
+locally first, hits `ENOENT`, and the session is expected to fall back to
+`kado-read`. If your session doesn't have Kado MCP tools in scope, the
+fallback can't happen.
+
+**Check:**
+1. The current agent/command has `mcp__kado__kado-read` in its tool list.
+2. Kado connection is live (see "Container Can't Reach Kado" above).
+
+### Open Notes Not Appearing
+
+**Symptom:** `@` doesn't surface currently-open Obsidian notes — only
+inbox + vault files show up.
+
+**Cause:** `kado-open-notes` requires Kado v0.7.0+. Older Kado versions
+return `FORBIDDEN` or no such tool, and the picker silently skips open
+notes.
+
+**Solution:** Upgrade Kado to v0.7.0+ (check the Kado plugin version in
+Obsidian's Community Plugins pane).
 
 ## YAML Errors
 

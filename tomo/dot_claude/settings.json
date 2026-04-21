@@ -15,6 +15,8 @@
       "Bash(mkdir:*)",
       "Bash(echo:*)",
       "Bash(claude:*)",
+      "Bash(rm -f tomo-tmp/*)",
+      "Bash(rm -rf tomo-tmp/*)",
       "Skill(*)",
       "Read(*)",
       "Edit(config/*)",

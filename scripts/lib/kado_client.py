@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.3.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -201,6 +201,36 @@ class KadoClient:
         dict with the server response (typically: path, modified).
         """
         args: dict = {"operation": "note", "path": path, "content": content}
+        if expected_modified is not None:
+            args["expectedModified"] = expected_modified
+        return self._call_tool("kado-write", args)
+
+    def write_file(
+        self, path: str, data: bytes, expected_modified: int = None
+    ) -> dict:
+        """Write (create or overwrite) a binary-or-non-markdown file.
+
+        Kado's `kado-write` operation="note" requires a markdown file —
+        attempting to write .json/.yaml/binary fails with INTERNAL_ERROR.
+        operation="file" accepts any content as base64. Use this for JSON
+        instruction sets, YAML configs, images, PDFs, etc.
+
+        Parameters
+        ----------
+        path:
+            Vault-relative path, e.g. ``Inbox/2026-04-21_1200_instructions.json``.
+        data:
+            File content as bytes. Will be base64-encoded for transport.
+        expected_modified:
+            Optional optimistic-concurrency guard (same semantics as write_note).
+
+        Returns
+        -------
+        dict with the server response.
+        """
+        import base64
+        encoded = base64.b64encode(data).decode("ascii")
+        args: dict = {"operation": "file", "path": path, "content": encoded}
         if expected_modified is not None:
             args["expectedModified"] = expected_modified
         return self._call_tool("kado-write", args)

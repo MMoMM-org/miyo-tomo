@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 0.3.0
+# version: 0.4.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -78,48 +78,103 @@ def build_mocs(cache: dict) -> list[dict]:
 
 
 def build_tag_prefixes(cache: dict, vault_cfg: dict) -> list[dict]:
-    """Intersect discovered prefixes with user's proposable list, minus exclusions."""
-    sugg = ((vault_cfg.get("tomo") or {}).get("suggestions") or {})
-    proposable = sugg.get("proposable_tag_prefixes") or ["topic"]
-    excluded = set(sugg.get("excluded_tag_prefixes") or [
-        "type", "status", "projects", "content", "mcp",
-    ])
+    """Return tag prefixes Tomo may actively propose, per the per-prefix policy.
 
-    # Discovery cache tag layout varies; support both shapes:
-    # 1) vault_cfg.tags.prefixes (authoritative user config)
-    # 2) cache.tag_taxonomy.prefixes (discovered)
+    Reads ONLY from `vault_cfg.tags.prefixes.*`. Each entry MUST be a dict with
+    the shape produced by `vault-config-writer.py tags` (and guarded by
+    `vault-config-tags.schema.json`):
+
+        <prefix_name>:
+          description: <str>
+          known_values: [<str>, ...]
+          wildcard: <bool>      # may invent new values
+          proposable: <bool>    # Tomo may actively propose this prefix
+          required_for: [<concept>, ...]
+
+    Only prefixes with `proposable: true` are emitted. Output merges observed
+    values from the discovery cache (`cache.tag_taxonomy.prefixes.*.known_values`)
+    into each entry's `known_values` so classifiers see both user-curated and
+    freshly-observed values.
+
+    Drift guard: if `tags.prefixes` is missing or any entry is malformed
+    (e.g. a flat list of strings — the bug that blocked Pass 1 on 2026-04-21,
+    or a dict entry missing `proposable`), we exit 1 with an actionable message
+    pointing the user at `/explore-vault --confirm`. No silent defaults.
+    """
+    tags_block = vault_cfg.get("tags")
+    if not isinstance(tags_block, dict) or "prefixes" not in tags_block:
+        print(
+            "ERROR: vault-config.yaml is missing `tags.prefixes`. "
+            "Run `/explore-vault --confirm` to regenerate it via "
+            "scripts/vault-config-writer.py.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    user_prefixes = tags_block["prefixes"]
+    if not isinstance(user_prefixes, dict):
+        print(
+            f"ERROR: `tags.prefixes` must be a dict keyed by prefix name, "
+            f"got {type(user_prefixes).__name__}. The writer "
+            f"(scripts/vault-config-writer.py tags) produces the correct shape; "
+            f"do not hand-edit this section. "
+            f"Run `/explore-vault --confirm` to regenerate it.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     candidates: dict[str, dict] = {}
-
-    user_prefixes = ((vault_cfg.get("tags") or {}).get("prefixes") or {})
     for name, data in user_prefixes.items():
+        if not isinstance(data, dict):
+            print(
+                f"ERROR: `tags.prefixes.{name}` must be a dict with fields "
+                f"description/known_values/wildcard/proposable/required_for, "
+                f"got {type(data).__name__}. "
+                f"Run `/explore-vault --confirm` to regenerate.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        for required in ("wildcard", "proposable", "known_values"):
+            if required not in data:
+                print(
+                    f"ERROR: `tags.prefixes.{name}` is missing `{required}`. "
+                    f"The schema requires description/known_values/wildcard/"
+                    f"proposable/required_for. "
+                    f"Run `/explore-vault --confirm` to regenerate "
+                    f"(vault-config-writer.py enforces the current schema).",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
         candidates[name] = {
             "name": name,
-            "wildcard": bool(data.get("wildcard", True)),
+            "wildcard": bool(data["wildcard"]),
+            "proposable": bool(data["proposable"]),
             "known_values": list(data.get("known_values") or []),
         }
 
+    # Merge in values observed by discovery-cache (optional, advisory).
     cache_prefixes = ((cache.get("tag_taxonomy") or {}).get("prefixes") or {})
     for name, data in cache_prefixes.items():
-        existing = candidates.get(name, {
-            "name": name,
-            "wildcard": bool(data.get("wildcard", True)),
-            "known_values": [],
-        })
-        # Merge known_values
-        merged = list(dict.fromkeys(
-            (existing.get("known_values") or []) + list(data.get("known_values") or [])
-        ))
-        existing["known_values"] = merged
-        candidates[name] = existing
-
-    out = []
-    for name in proposable:
-        if name in excluded:
-            continue
         if name not in candidates:
-            # Prefix configured but not seen in vault — emit with empty values
-            candidates[name] = {"name": name, "wildcard": True, "known_values": []}
-        out.append(candidates[name])
+            continue  # cache may surface prefixes the user hasn't declared yet
+        if not isinstance(data, dict):
+            continue
+        merged = list(dict.fromkeys(
+            candidates[name]["known_values"] + list(data.get("known_values") or [])
+        ))
+        candidates[name]["known_values"] = merged
+
+    # Emit only prefixes the user opted into via proposable: true. Drop the
+    # proposable flag from the output — it's a policy signal, not downstream data.
+    out: list[dict] = []
+    for name, entry in candidates.items():
+        if not entry["proposable"]:
+            continue
+        out.append({
+            "name": entry["name"],
+            "wildcard": entry["wildcard"],
+            "known_values": entry["known_values"],
+        })
     return out
 
 

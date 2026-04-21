@@ -5,7 +5,7 @@
 - Docker installed and running
 - Git, jq
 - Python 3
-- [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) v0.1.6+ running and accessible
+- [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) v0.5.0+ running and accessible on `127.0.0.1:23026` (the Kado default)
 
 ## Quick Start
 
@@ -57,7 +57,7 @@ Choose the tag prefix for Tomo's lifecycle states (default: `MiYo-Tomo`). Tags l
 ### 5. Kado Connection
 
 - **Host** — where Kado runs (default: `host.docker.internal` for Docker)
-- **Port** — Kado port (default: `37022`)
+- **Port** — Kado port (default: `23026`, matching Kado's desktop-only bind on `127.0.0.1:23026`)
 - **Bearer token** — your Kado API key (must start with `kado_`)
 
 ### 6. Git User Configuration

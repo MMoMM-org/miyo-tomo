@@ -34,4 +34,4 @@ Goal: Reduce manual effort for the user.
 Goal: Beyond MVP capabilities.
 
 - [ ] F-02: Periodic notes (weekly, monthly, quarterly, yearly)
-- [ ] F-01: Seigyo execution engine (locked scripts, dual vetting)
+- [ ] F-01: Seigyo / Tomo Hashi execution engine (locked scripts, dual vetting). Contract shipped 2026-04-21 (XDD 008): `instructions.json` + `tomo/schemas/instructions.schema.json`.

@@ -20,19 +20,21 @@ import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
+TESTS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = TESTS_DIR.parent
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 # Also need access to instruction-render for realistic actions[] generation
 _spec_diff = importlib.util.spec_from_file_location(
-    "instructions_diff", SCRIPT_DIR / "instructions-diff.py"
+    "instructions_diff", SCRIPTS_DIR / "instructions-diff.py"
 )
 diff = importlib.util.module_from_spec(_spec_diff)
 assert _spec_diff.loader is not None
 _spec_diff.loader.exec_module(diff)
 
 _spec_ir = importlib.util.spec_from_file_location(
-    "instruction_render", SCRIPT_DIR / "instruction-render.py"
+    "instruction_render", SCRIPTS_DIR / "instruction-render.py"
 )
 ir = importlib.util.module_from_spec(_spec_ir)
 assert _spec_ir.loader is not None

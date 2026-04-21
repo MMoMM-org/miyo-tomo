@@ -17,13 +17,15 @@ import json
 import sys
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
+TESTS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = TESTS_DIR.parent
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 import importlib.util
 
 _spec = importlib.util.spec_from_file_location(
-    "instruction_render", SCRIPT_DIR / "instruction-render.py"
+    "instruction_render", SCRIPTS_DIR / "instruction-render.py"
 )
 ir = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
@@ -276,7 +278,7 @@ def test_action_building():
 
 def test_schema_validity(actions):
     """Validate instructions.json against instructions.schema.json."""
-    schema_path = SCRIPT_DIR.parent / "tomo" / "schemas" / "instructions.schema.json"
+    schema_path = REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"
     schema = json.loads(schema_path.read_text())
 
     doc = {

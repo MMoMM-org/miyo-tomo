@@ -21,11 +21,13 @@ import sys
 from contextlib import redirect_stderr
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
+TESTS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = TESTS_DIR.parent
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 _spec = importlib.util.spec_from_file_location(
-    "shared_ctx_builder", SCRIPT_DIR / "shared-ctx-builder.py"
+    "shared_ctx_builder", SCRIPTS_DIR / "shared-ctx-builder.py"
 )
 scb = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None

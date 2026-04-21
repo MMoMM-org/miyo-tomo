@@ -165,6 +165,22 @@ for name in "${RETIRED_AGENTS[@]}"; do
     fi
 done
 
+# Python unit tests moved from scripts/ to tests/ at repo root (2026-04-21).
+# Tests don't run inside the container runtime — they live at host/repo level.
+RETIRED_SCRIPT_TESTS=(
+    test-008-phase1.py
+    test-instructions-diff.py
+    test-vault-config-writer.py
+    test-shared-ctx-tags.py
+)
+for name in "${RETIRED_SCRIPT_TESTS[@]}"; do
+    dst="$INSTANCE_PATH/scripts/$name"
+    if [ -f "$dst" ]; then
+        rm -f "$dst"
+        print_ok "retired scripts/$name (moved to repo-root tests/)"
+    fi
+done
+
 # ── Profiles + JSON schemas (added in spec 004) ──────────
 print_step "Updating profiles"
 mkdir -p "$INSTANCE_PATH/profiles"

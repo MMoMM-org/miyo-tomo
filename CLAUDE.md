@@ -15,6 +15,7 @@ Tomo runs inside a Docker container with sandbox isolation — all vault access 
 - `tomo/config/templates/` — reference templates for note types
 - `scripts/` — install, utility, and Python scan scripts
 - `scripts/lib/` — shared Python library (kado_client)
+- `tests/` — Python unit tests (host-only, not synced to instance)
 - `docs/XDD/` — all specs: implementation (specs/) and architecture reference (reference/tier-1, tier-2, tier-3)
 - `docs/XDD/backlog.md` — open items (post-MVP features, doc debt)
 - `docker/` — Dockerfile and container config

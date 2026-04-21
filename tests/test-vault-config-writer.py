@@ -20,11 +20,13 @@ from pathlib import Path
 
 import yaml
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
+TESTS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = TESTS_DIR.parent
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 _spec = importlib.util.spec_from_file_location(
-    "vault_config_writer", SCRIPT_DIR / "vault-config-writer.py"
+    "vault_config_writer", SCRIPTS_DIR / "vault-config-writer.py"
 )
 vcw = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None

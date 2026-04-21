@@ -36,7 +36,7 @@ After this refactoring:
 - `instruction-render.py` produces a canonical `instructions.json` containing ALL actions
 - `instruction-render.py` also renders `instructions.md` deterministically from that JSON
 - The instruction-builder agent only orchestrates (parse → render → kado-write)
-- Tomo Hashi (Obsidian plugin) reads `instructions.json` directly — no markdown parsing
+- Tomo Hashi (Obsidian plugin) reads `instructions.json` directly — no markdown parsing. Consumer contract documented at [`docs/instructions-json.md`](../../../instructions-json.md).
 
 ## Implementation Status (2026-04-20 status sync)
 
@@ -55,7 +55,7 @@ After this refactoring:
   Source Deletions → Skips
 - T1.5 — `load_config()` batch-loads every field the pipeline needs once at
   startup (replaces inline yaml reads scattered through the script)
-- T1.6 — `scripts/test-008-phase1.py` covers all three function surfaces
+- T1.6 — `tests/test-008-phase1.py` covers all three function surfaces
   (action building, structural schema conformance, MD rendering)
 - Phase 2 — `instruction-builder.md` slimmed to 90 lines (from 188), pure
   orchestrator, model downgraded opus→sonnet

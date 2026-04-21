@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -876,6 +876,11 @@ def main() -> int:
             "parent_moc": parent_moc,
             "parent_mocs": parent_mocs,
             "tags": tags,
+            # Carry supporting_items so the create_moc action surfaces it in
+            # instructions.json (the link_to_moc expansion already consumes it
+            # from confirmed_items directly, but the field is useful context
+            # for humans reading the instruction set).
+            "supporting_items": item.get("supporting_items"),
         })
 
         # Clean up temp files

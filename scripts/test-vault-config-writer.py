@@ -41,18 +41,28 @@ VALID_INPUT = {
             "description": "Note type (structural)",
             "known_values": ["note/normal", "others/moc"],
             "wildcard": False,
+            "proposable": True,
             "required_for": ["atomic_note", "map_note"],
         },
         "topic": {
             "description": "Topic area (free-form, hierarchical)",
             "known_values": ["knowledge/lyt", "applied/ai"],
             "wildcard": True,
+            "proposable": True,
+            "required_for": [],
+        },
+        "Raindrop": {
+            "description": "Raindrop.io import — external taxonomy; Tomo does not manage.",
+            "known_values": ["Obsidian", "japan"],
+            "wildcard": False,
+            "proposable": False,
             "required_for": [],
         },
         "status": {
-            "description": "Note status",
+            "description": "Note status (covers empty-known_values path)",
             "known_values": [],
             "wildcard": True,
+            "proposable": True,
             "required_for": [],
         },
     }
@@ -131,6 +141,7 @@ def test_validation_rejects_missing_fields():
                 "description": "x",
                 "known_values": [],
                 "wildcard": True,
+                "proposable": True,
                 # missing required_for
             }
         }
@@ -139,12 +150,29 @@ def test_validation_rejects_missing_fields():
     print("[PASS] validation rejects entries missing required fields")
 
 
+def test_validation_rejects_missing_proposable():
+    """Regression guard for the 2-axis → 3-axis migration."""
+    bad = {
+        "prefixes": {
+            "type": {
+                "description": "x",
+                "known_values": [],
+                "wildcard": True,
+                "required_for": [],
+                # missing proposable
+            }
+        }
+    }
+    _expect_fail(vcw.validate_tags_input, bad, label="missing proposable")
+    print("[PASS] validation rejects entries missing proposable (migration guard)")
+
+
 def test_validation_rejects_extra_fields():
     bad = {
         "prefixes": {
             "type": {
                 "description": "x", "known_values": [], "wildcard": True,
-                "required_for": [], "bogus": 1,
+                "proposable": True, "required_for": [], "bogus": 1,
             }
         }
     }
@@ -157,7 +185,7 @@ def test_validation_rejects_bad_required_for():
         "prefixes": {
             "type": {
                 "description": "x", "known_values": [], "wildcard": True,
-                "required_for": ["notathing"],
+                "proposable": True, "required_for": ["notathing"],
             }
         }
     }
@@ -170,12 +198,25 @@ def test_validation_rejects_non_bool_wildcard():
         "prefixes": {
             "type": {
                 "description": "x", "known_values": [], "wildcard": "true",
-                "required_for": [],
+                "proposable": True, "required_for": [],
             }
         }
     }
     _expect_fail(vcw.validate_tags_input, bad, label="string wildcard")
     print("[PASS] validation rejects non-bool wildcard (string 'true')")
+
+
+def test_validation_rejects_non_bool_proposable():
+    bad = {
+        "prefixes": {
+            "type": {
+                "description": "x", "known_values": [], "wildcard": True,
+                "proposable": "yes", "required_for": [],
+            }
+        }
+    }
+    _expect_fail(vcw.validate_tags_input, bad, label="string proposable")
+    print("[PASS] validation rejects non-bool proposable")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -199,6 +240,8 @@ def test_render_format_contract():
     # Booleans lowercase
     _must("wildcard: false" in out, "wildcard false should be lowercase")
     _must("wildcard: true" in out, "wildcard true should be lowercase")
+    _must("proposable: false" in out, "proposable false should be lowercase")
+    _must("proposable: true" in out, "proposable true should be lowercase")
     # required_for entries as bare tokens (no quotes)
     _must("        - atomic_note" in out, "required_for items should be bare tokens")
     print("[PASS] render format matches vault-example.yaml conventions")
@@ -216,6 +259,7 @@ def test_render_is_valid_yaml():
     for name, entry in VALID_INPUT["prefixes"].items():
         got = prefixes[name]
         _must(got["wildcard"] == entry["wildcard"], f"{name}: wildcard mismatch")
+        _must(got["proposable"] == entry["proposable"], f"{name}: proposable mismatch")
         _must(got["known_values"] == entry["known_values"], f"{name}: known_values mismatch")
         _must(got["required_for"] == entry["required_for"], f"{name}: required_for mismatch")
         _must(got["description"] == entry["description"], f"{name}: description mismatch")
@@ -334,9 +378,11 @@ def main() -> int:
     test_validation_accepts_valid()
     test_validation_rejects_list_shape()
     test_validation_rejects_missing_fields()
+    test_validation_rejects_missing_proposable()
     test_validation_rejects_extra_fields()
     test_validation_rejects_bad_required_for()
     test_validation_rejects_non_bool_wildcard()
+    test_validation_rejects_non_bool_proposable()
     test_render_format_contract()
     test_render_is_valid_yaml()
     test_replace_existing_section()

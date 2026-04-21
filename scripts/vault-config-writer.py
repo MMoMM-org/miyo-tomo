@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
@@ -52,7 +52,7 @@ ALLOWED_CONCEPTS = {
     "source", "asset", "template",
 }
 
-PREFIX_REQUIRED = {"description", "known_values", "wildcard", "required_for"}
+PREFIX_REQUIRED = {"description", "known_values", "wildcard", "required_for", "proposable"}
 
 
 def _fail(msg: str) -> None:
@@ -90,6 +90,8 @@ def validate_tags_input(data: dict) -> None:
             _fail(f"prefix {name!r}: known_values must be a list of non-empty strings")
         if not isinstance(entry["wildcard"], bool):
             _fail(f"prefix {name!r}: wildcard must be a bool (not {type(entry['wildcard']).__name__})")
+        if not isinstance(entry["proposable"], bool):
+            _fail(f"prefix {name!r}: proposable must be a bool (not {type(entry['proposable']).__name__})")
         rf = entry["required_for"]
         if not isinstance(rf, list):
             _fail(f"prefix {name!r}: required_for must be a list")
@@ -124,6 +126,7 @@ def render_tags_section(data: dict) -> str:
         else:
             lines.append("      known_values: []")
         lines.append(f"      wildcard: {'true' if entry['wildcard'] else 'false'}")
+        lines.append(f"      proposable: {'true' if entry['proposable'] else 'false'}")
         rf = entry["required_for"]
         if rf:
             lines.append("      required_for:")

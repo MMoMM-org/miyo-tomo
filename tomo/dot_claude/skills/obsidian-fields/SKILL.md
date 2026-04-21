@@ -123,10 +123,14 @@ When `callouts.enabled: true`, every callout (`> [!name]`) is classified as one 
 
 ## Tag Taxonomy
 
-The taxonomy lives in `vault-config.yaml` under `tags.prefixes`. Each prefix entry has:
+The taxonomy lives in `vault-config.yaml` under `tags.prefixes`. Managed by `scripts/vault-config-writer.py tags` (schema: `tomo/schemas/vault-config-tags.schema.json`) — do not hand-edit.
+
+Each prefix entry has five fields (all required):
+
 - `description` — what this prefix category is for
-- `known_values` — observed values under this prefix
-- `wildcard` — whether new values beyond known_values are allowed
+- `known_values` — observed values under this prefix (full path beyond the prefix)
+- `wildcard` — whether new values beyond known_values may be invented
+- `proposable` — whether Tomo may actively propose this prefix at all. External taxonomies (Raindrop/, Readwise/, plugin-managed tags) get `proposable: false`. Combined with `required_for`, this gives three independent axes: Pflicht (`required_for`), Offenheit (`wildcard`), Aktivität (`proposable`).
 - `required_for` — concept types that must have this prefix set
 
 **Tag structure:** hierarchical slash-separated paths. Example: `type/note/normal`

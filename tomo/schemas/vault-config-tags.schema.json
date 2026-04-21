@@ -22,7 +22,7 @@
   "$defs": {
     "prefix_entry": {
       "type": "object",
-      "required": ["description", "known_values", "wildcard", "required_for"],
+      "required": ["description", "known_values", "wildcard", "required_for", "proposable"],
       "additionalProperties": false,
       "properties": {
         "description": {
@@ -37,7 +37,11 @@
         },
         "wildcard": {
           "type": "boolean",
-          "description": "true = Tomo may propose new values under this prefix; false = only known_values are allowed."
+          "description": "true = Tomo may invent new values under this prefix; false = only known_values are allowed. Independent of `proposable`."
+        },
+        "proposable": {
+          "type": "boolean",
+          "description": "true = Tomo may actively propose this prefix when suggesting tags for new notes; false = Tomo leaves this prefix alone (external taxonomy like Raindrop/, Readwise/, or Obsidian lifecycle tags Tomo does not manage). `required_for` still wins — a prefix with `proposable: false` and `required_for: [atomic_note]` is set from known_values without free invention."
         },
         "required_for": {
           "type": "array",

@@ -235,11 +235,21 @@ relationships:
 # Describes the user's hierarchical tag structure. Tomo uses this to propose
 # tags that match existing vault conventions.
 #
-# Each prefix entry:
-#   description  — what this prefix is for
-#   known_values — observed values under this prefix (full paths beyond the prefix)
-#   wildcard     — true: Tomo may propose new values; false: only known_values used
-#   required_for — concept types that must have at least one tag in this prefix
+# Each prefix entry has FOUR semantic axes (all required):
+#   description   — what this prefix is for
+#   known_values  — observed values under this prefix (full paths beyond the prefix)
+#   wildcard      — true: Tomo may invent new values under this prefix
+#                   false: only known_values may be used
+#   proposable    — true: Tomo may actively propose this prefix for new notes
+#                   false: Tomo leaves this prefix alone (external taxonomies
+#                   like Raindrop/, Readwise/, or lifecycle tags Tomo does not
+#                   manage). `required_for` still wins — proposable=false +
+#                   required_for=[...] means values are set from known_values
+#                   without invention.
+#   required_for  — concept types that must have at least one tag in this prefix
+#
+# Managed by: scripts/vault-config-writer.py tags (enforces the schema in
+# tomo/schemas/vault-config-tags.schema.json). Do not hand-edit.
 
 tags:
   prefixes:
@@ -249,6 +259,7 @@ tags:
         - "note/normal"
         - "others/moc"
       wildcard: false
+      proposable: true
       required_for:
         - atomic_note
         - map_note
@@ -259,6 +270,7 @@ tags:
         - "inwork/💭"
         - "done/✅"
       wildcard: true
+      proposable: true
       required_for: []
 
     topic:
@@ -271,6 +283,7 @@ tags:
         - "applied/docker"
         - "applied/tools"
       wildcard: true
+      proposable: true
       required_for: []
 
     projects:
@@ -279,8 +292,18 @@ tags:
         - "60-00"
         - "60-00/60-06"
       wildcard: true
+      proposable: true
       required_for:
         - project
+
+    Raindrop:
+      description: "Raindrop.io import tags — external taxonomy; Tomo does not propose these."
+      known_values:
+        - "Obsidian"
+        - "japan"
+      wildcard: false
+      proposable: false
+      required_for: []
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Callout Mapping
@@ -337,19 +360,10 @@ protected_patterns:
 
 tomo:
   suggestions:
-    # Tag prefixes the classifier may PROPOSE to add. Other prefixes are never
-    # suggested as new tags during inbox processing. Default: ["topic"].
-    proposable_tag_prefixes:
-      - "topic"
-
-    # Structural / lifecycle prefixes that are NEVER proposed, regardless of
-    # proposable_tag_prefixes. Safety fence against accidental config.
-    excluded_tag_prefixes:
-      - "type"
-      - "status"
-      - "projects"
-      - "content"
-      - "mcp"
+    # Tag-prefix allow/deny is driven per-prefix via `tags.prefixes.*.proposable`
+    # (see "Tag Taxonomy" above). The old top-level `proposable_tag_prefixes`
+    # and `excluded_tag_prefixes` lists were retired 2026-04-21 — a single
+    # source of truth keeps classification coherent.
 
     # Maximum concurrent Phase-B subagents during /inbox fan-out. Range 1-5.
     parallel: 5

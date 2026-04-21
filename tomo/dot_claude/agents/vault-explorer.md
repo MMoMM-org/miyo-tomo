@@ -11,7 +11,7 @@ skills:
   - pkm-workflows
 ---
 # Vault Explorer Agent
-# version: 0.9.0 (Step 4 now uses scripts/vault-config-writer.py for deterministic YAML; no free-composed tags block)
+# version: 0.9.1 (Step 4 also classifies `proposable` per prefix — third policy axis; old tomo.suggestions.*_tag_prefixes lists retired)
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -119,14 +119,24 @@ Call Kado `kado-search` with `listTags` to retrieve all tags. Group by prefix (f
 user that the Kado API key may restrict tag access. Tomo needs unrestricted tag read access
 to discover the full taxonomy. Suggest checking the API key's tag scope in Kado settings.
 
-**Classify each prefix.** For every prefix group you detected:
+**Classify each prefix** along five axes (all required by the schema):
 
 - **`description`** (string) — one-sentence human label. Infer from the prefix name + the sample of values. Ask the user if unsure.
 - **`known_values`** (list of strings) — the observed values beyond the prefix (e.g. for prefix `topic` and tag `topic/knowledge/lyt`, the value is `knowledge/lyt`). Dedupe. Include every unique value seen.
 - **`wildcard`** (bool) — heuristic: **many unique values relative to total occurrences** (e.g. `topic/*`, `projects/*`) → `true`. **Few repeated values** (e.g. `type/note/normal`, `type/others/moc`) → `false`. If in doubt, ask.
+- **`proposable`** (bool) — may Tomo actively propose this prefix? Heuristic: prefixes that clearly belong to **external plugins or imports** (`Raindrop`, `Readwise`, `Kindle`, `mcp`) → `false`. User's own thinking/organization prefixes (`type`, `status`, `topic`, `projects`, `content`) → `true`. When you see a prefix whose values look like foreign IDs / import markers, prefer `false` and ask the user to confirm.
 - **`required_for`** (list) — concept types that must carry at least one tag in this prefix. Values MUST come from this set: `atomic_note`, `map_note`, `project`, `area`, `source`, `asset`, `template`. Most prefixes: `[]`. `type` typically: `[atomic_note, map_note]`.
 
-**Present** the classified taxonomy to the user (prefixes × value counts × sample values × proposed `wildcard` / `required_for`). Use **AskUserQuestion** to confirm each classification judgement that isn't obvious. Let the user edit `known_values` before proceeding.
+**Combinations that make sense** (use these as sanity checks on your classification):
+
+| required_for | wildcard | proposable | When |
+|---|---|---|---|
+| `[atomic_note, map_note]` | false | true | `type` — structural, finite, Tomo must set |
+| `[]` | true | true | `topic` — Tomo can free-form propose and extend |
+| `[]` | false | false | `Raindrop`, `Readwise` — external taxonomy, Tomo ignores |
+| `[]` | true | false | External plugin that may grow its own values, still not Tomo's job |
+
+**Present** the classified taxonomy to the user (prefixes × value counts × sample values × proposed `wildcard` / `proposable` / `required_for`). Use **AskUserQuestion** to confirm each classification judgement that isn't obvious. Let the user edit `known_values` before proceeding.
 
 **Write via the deterministic writer — never hand-compose YAML.**
 
@@ -139,12 +149,21 @@ to discover the full taxonomy. Suggest checking the API key's tag scope in Kado 
          "description": "Note type (structural)",
          "known_values": ["note/normal", "others/moc"],
          "wildcard": false,
+         "proposable": true,
          "required_for": ["atomic_note", "map_note"]
        },
        "topic": {
          "description": "Topic area (free-form, hierarchical)",
          "known_values": ["knowledge/lyt", "applied/ai"],
          "wildcard": true,
+         "proposable": true,
+         "required_for": []
+       },
+       "Raindrop": {
+         "description": "Raindrop.io import — external taxonomy; Tomo does not manage.",
+         "known_values": ["Obsidian", "japan"],
+         "wildcard": false,
+         "proposable": false,
          "required_for": []
        }
      }

@@ -1,7 +1,7 @@
 ---
 title: "Phase 5: End-to-end live test + docs"
-status: pending
-version: "1.0"
+status: code-complete
+version: "1.1"
 phase: 5
 ---
 
@@ -22,7 +22,7 @@ phase: 5
 
 ## Tasks
 
-- [ ] **T5.1 Real voice memo end-to-end** `[activity: validate]`
+- [ ] **T5.1 Real voice memo end-to-end** `[activity: validate]` *(pending — host + live Tomo + real vault)*
 
   1. Prime: Use the real production setup (medium model, real vault).
   2. Implement: Record a 2–3 minute voice memo in German on phone, sync to
@@ -34,7 +34,7 @@ phase: 5
      - Click on a callout timestamp → audio seeks correctly (verify Obsidian
        supports `t=N` fragment in audio embeds; if not, document the limit).
 
-- [ ] **T5.2 Performance measurement** `[activity: validate]`
+- [ ] **T5.2 Performance measurement** `[activity: validate]` *(pending — host; medium model download required)*
 
   1. Prime: Performance target = 5-min memo ≤ 5 min wall on M-series CPU
      with medium model.
@@ -46,7 +46,7 @@ phase: 5
      - If exceeds: investigate (was VAD trimming? was int8 active? CPU
        count?). Adjust SDD performance target with measured reality.
 
-- [ ] **T5.3 Update tier-2 inbox-pass-1 reference doc** `[activity: docs]`
+- [x] **T5.3 Update tier-2 inbox-processing reference doc** `[activity: docs]` — Section 4 agents table + new "4b. Optional Pre-Step: Voice Transcription (Phase 0)" added. *(Note: plan originally said `inbox-pass-1.md`; actual filename is `inbox-processing.md`.)*
 
   1. Prime: Read `docs/XDD/reference/tier-2/workflows/inbox-pass-1.md`.
   2. Implement: Add a "Phase 0: Voice Transcription (optional)" section
@@ -54,7 +54,7 @@ phase: 5
      transcripts feed Phase A unchanged.
   3. Validate: Reference doc accurately reflects new pipeline.
 
-- [ ] **T5.4 Update README and project-context** `[activity: docs]`
+- [x] **T5.4 Update README and project-context** `[activity: docs]` — README features + Agents table; project-context v0.7.0 → v0.8.0 + new "Voice Memo Transcription (Optional)" section + agents table update.
 
   1. Prime: Read root `README.md` and `tomo/dot_claude/rules/project-context.md`.
   2. Implement:
@@ -63,14 +63,14 @@ phase: 5
        enabled (`install-tomo.sh` wizard).
   3. Validate: Both files reference the feature accurately.
 
-- [ ] **T5.5 Backlog update** `[activity: docs]`
+- [x] **T5.5 Backlog update** `[activity: docs]` — F-26 marked ✅ Done 2026-04-21 with commit trail.
 
   1. Prime: `docs/XDD/backlog.md` lists F-26 (voice memo transcription)
      as Should.
   2. Implement: Mark F-26 as done with a date and link to spec 009.
   3. Validate: Backlog reflects current truth.
 
-- [ ] **T5.6 Spec status flip** `[activity: docs]`
+- [~] **T5.6 Spec status flip** `[activity: docs]` *(partial — spec README reflects code-complete state + Completion Summary; final DONE flip waits on T5.1/T5.2 live validation)*
 
   1. Prime: `docs/XDD/specs/009-voice-memo-transcription/README.md`
      currently in PLAN phase.
@@ -80,7 +80,7 @@ phase: 5
   3. Validate: All status fields consistent. README serves as the canonical
      "this is what we built" reference.
 
-- [ ] **T5.7 Phase Validation** `[activity: validate]`
+- [ ] **T5.7 Phase Validation** `[activity: validate]` *(pending — blocked on T5.1/T5.2)*
 
   - Live transcription works end-to-end on a real voice memo.
   - Performance target met (or documented if not).

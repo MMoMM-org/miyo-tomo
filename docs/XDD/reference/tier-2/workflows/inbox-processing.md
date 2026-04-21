@@ -44,6 +44,7 @@ Inbox processing uses a **two-pass model** where the user reviews Tomo's interpr
 
 | Step | Actor | Responsibility |
 |------|-------|----------------|
+| Transcribe (Phase 0, optional) | `voice-transcriber` agent | Transcribe inbox audio files via local Whisper into sibling `.md` fleeting notes |
 | Read & Analyse | `inbox-analyst` agent | Read inbox, classify items, find candidates with alternatives |
 | Suggest (Pass 1) | `suggestion-builder` agent | Generate Action Suggestions document with options and confidence |
 | Review (Pass 1) | **User** | Approve/deny/modify suggestions in Obsidian |
@@ -62,6 +63,36 @@ Inbox processing uses a **two-pass model** where the user reviews Tomo's interpr
 > **See**: [specs/004-inbox-fanout-refactor/solution.md](../../specs/004-inbox-fanout-refactor/solution.md)
 
 **MVP execution boundary:** Tomo writes only to the inbox folder. All vault content changes outside the inbox are performed by the user. See [Tier 1 §7 Execution Model](../../tier-1/pkm-intelligence-architecture.md#7-execution-model).
+
+## 4b. Optional Pre-Step: Voice Transcription (Phase 0)
+
+When `.voice.enabled = true` in `tomo-install.json` (opt-in at install
+time via the wizard), `/inbox` runs a conditional Phase 0 before the
+main pipeline.
+
+- **Agent**: `voice-transcriber` (invoked by `inbox-orchestrator`).
+- **Discovery**: `kado-search` the inbox folder for audio extensions
+  (`.m4a`, `.mp3`, `.wav`, `.ogg`, `.opus`, `.flac`, `.aac`).
+- **Idempotency**: per audio file, skip if a sibling `<basename>.md`
+  already exists. Transcription never overwrites a hand-written note.
+- **Batch execution**: one `scripts/voice-transcribe.py` invocation for
+  the whole run — faster-whisper loads the model once, transcribes all
+  queued audios, exits. No daemon.
+- **Output**: sibling `<basename>.md` per audio, matching the standard
+  inbox-note convention (plain-text metadata block, `---` separator,
+  audio embed `![[…]]`, per-segment `> [!voice] mm:ss` callouts).
+- **Failure isolation**: any voice failure (missing model, transcription
+  error) is confined to the voice summary — the text inbox pipeline
+  continues unaffected.
+
+Transcripts are indistinguishable from hand-typed fleeting notes to
+the rest of the pipeline — step 1 ("Read Inbox") discovers them the
+same way it would any other `.md` in the inbox folder. Pass 1
+classification treats them as ordinary content.
+
+**Spec**: [specs/009-voice-memo-transcription](../../specs/009-voice-memo-transcription/README.md)
+(adds Phase 0a to the orchestrator; Phase 0b is the pre-existing resume
+detection).
 
 ## 5. Workflow (2-Pass)
 

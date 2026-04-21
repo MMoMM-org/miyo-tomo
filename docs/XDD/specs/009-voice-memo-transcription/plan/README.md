@@ -32,7 +32,7 @@ version: "1.0"
 - [x] [Phase 2: Python modules + CLI script (standalone)](phase-2.md) — 19 unit tests green + live smoke (faster-whisper 1.2.1 + tiny model) transcribed fixture word-for-word
 - [~] [Phase 3: voice-transcriber agent (standalone)](phase-3.md) — agent written + structural self-check green; live standalone test (T3.6) pending Tomo session
 - [~] [Phase 4: Orchestrator integration (Phase 0a in inbox-orchestrator)](phase-4.md) — code-complete (orchestrator v0.7.0 with Phase 0a + 0b sub-phases); live ON/OFF/error integration tests (T4.5-T4.8) pending Tomo session
-- [ ] [Phase 5: End-to-end live test + docs](phase-5.md)
+- [~] [Phase 5: End-to-end live test + docs](phase-5.md) — docs shipped (tier-2 reference, README, project-context v0.8.0, backlog F-26 done, spec README Completion Summary); live E2E + perf (T5.1/T5.2) + final validation (T5.7) pending host Tomo session
 
 ## Phase Dependencies
 

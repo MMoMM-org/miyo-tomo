@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # file-suggestion.sh — custom @-picker for Tomo instance
-# version: 0.4.1
+# version: 0.4.2
 #
 # Spec: docs/XDD/specs/010-custom-file-picker/
 #
@@ -259,17 +259,68 @@ output=$(route "$query")
 printf '%s' "$output"
 [ -n "$output" ] && printf '\n'
 
-# Debug log: timestamp + raw input + query + line count + first 3 lines.
-# Disable by setting TOMO_PICKER_NO_LOG=1 in env.
+# Debug log: per-call telemetry. Disable by setting TOMO_PICKER_NO_LOG=1.
+#
+# Log target preference order:
+#   1. $CACHE_DIR/picker-debug.log  (gitignored, container-visible)
+#   2. $HOME/.tomo-picker-debug.log (container user's home, always writable)
+#   3. /tmp/tomo-picker-debug.log   (last-ditch)
 if [ -z "${TOMO_PICKER_NO_LOG:-}" ]; then
+    # Pick a writable log path.
     log="$CACHE_DIR/picker-debug.log"
+    if ! : >> "$log" 2>/dev/null; then
+        log="${HOME:-/tmp}/.tomo-picker-debug.log"
+        : >> "$log" 2>/dev/null || log="/tmp/tomo-picker-debug.log"
+    fi
+
+    # Collect diagnostics about this invocation.
+    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '?')
+    uid=$(id -u 2>/dev/null || printf '?')
+    who=$(id -un 2>/dev/null || printf '?')
+    lines=$(printf '%s' "$output" | grep -c '' 2>/dev/null || printf 0)
+
+    inbox_cache="$CACHE_DIR/inbox-files.txt"
+    vault_cache="$CACHE_DIR/vault-files.txt"
+
+    cache_state() {
+        local f="$1"
+        local exists='N' readable='N' writable='N' size='-' count='-'
+        [ -e "$f" ] && exists='Y'
+        [ -r "$f" ] && readable='Y'
+        [ -w "$f" ] && writable='Y'
+        if [ "$exists" = 'Y' ]; then
+            size=$(stat -f %z "$f" 2>/dev/null || stat -c %s "$f" 2>/dev/null || printf '?')
+            count=$(grep -c '' < "$f" 2>/dev/null || printf '?')
+        fi
+        printf 'exists=%s readable=%s writable=%s size=%s count=%s' "$exists" "$readable" "$writable" "$size" "$count"
+    }
+
+    cache_dir_state() {
+        local d="$1"
+        local exists='N' writable='N' entries='-'
+        [ -d "$d" ] && exists='Y'
+        if [ "$exists" = 'Y' ]; then
+            ( : > "$d/.picker-write-test.$$" ) 2>/dev/null && {
+                writable='Y'
+                rm -f "$d/.picker-write-test.$$" 2>/dev/null
+            }
+            entries=$(ls -1A "$d" 2>/dev/null | wc -l | tr -d ' ' || printf '?')
+        fi
+        printf 'exists=%s writable=%s entries=%s' "$exists" "$writable" "$entries"
+    }
+
     {
-        printf '%s input=%s query=%s lines=%d\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            "$(printf '%s' "$input" | tr -d '\n' | head -c 200)" \
-            "$(printf '%s' "$query" | head -c 80)" \
-            "$(printf '%s' "$output" | grep -c '' 2>/dev/null || printf 0)"
-        printf '%s' "$output" | head -n 3 | sed 's/^/  > /'
+        printf '\n=== %s uid=%s (%s) ===\n' "$ts" "$uid" "$who"
+        printf 'env: CLAUDE_PROJECT_DIR=%s\n' "${CLAUDE_PROJECT_DIR:-(unset)}"
+        printf 'env: HOME=%s CACHE_DIR=%s FZF_AVAILABLE=%s\n' \
+            "${HOME:-(unset)}" "$CACHE_DIR" "$FZF_AVAILABLE"
+        printf 'cache-dir: %s\n' "$(cache_dir_state "$CACHE_DIR")"
+        printf 'inbox-cache: %s\n' "$(cache_state "$inbox_cache")"
+        printf 'vault-cache: %s\n' "$(cache_state "$vault_cache")"
+        printf '--- INPUT ---\n%s\n--- END INPUT ---\n' "$input"
+        printf 'parsed-query=%q\n' "$query"
+        printf 'output-lines=%d\n' "$lines"
+        printf '%s\n' "$output" | head -n 5 | sed 's/^/  > /'
     } >> "$log" 2>/dev/null || true
 fi
 

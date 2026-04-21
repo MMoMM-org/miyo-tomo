@@ -65,11 +65,15 @@ After Step 0 resolves the inbox path, the command checks in priority order:
 
 ### Pass 2 — Instructions
 
-1. **instruction-builder** parses approved suggestions
-2. Generates detailed per-action instructions with rendered templates
-3. Instruction set + auxiliary files written to inbox
+1. **instruction-builder** parses approved suggestions (pure orchestrator — no markdown assembly)
+2. `instruction-render.py` deterministically produces rendered notes,
+   `instructions.json` (canonical machine-readable — see
+   `tomo/schemas/instructions.schema.json`), and `instructions.md`
+   (human-readable view, rendered from the JSON)
+3. Instruction set + rendered files written to inbox via Kado
 4. Per-action `- [ ] Applied` checkboxes (no lifecycle tags)
 5. **You apply each action** in Obsidian and check `[x] Applied` per action
+   (future: Tomo Hashi plugin reads `instructions.json` directly and executes)
 6. Run `/inbox` when done — Tomo cleans up
 
 ### Cleanup

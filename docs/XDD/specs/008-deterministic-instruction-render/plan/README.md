@@ -38,6 +38,6 @@ suggestion-parser.py → parsed-suggestions.json
 
 ## Implementation Phases
 
-- [ ] [Phase 1: Extend instruction-render.py](phase-1.md)
-- [ ] [Phase 2: Simplify instruction-builder agent](phase-2.md)
-- [ ] [Phase 3: Validation](phase-3.md)
+- [x] [Phase 1: Extend instruction-render.py](phase-1.md) — shipped 2026-04-21 (commit 8c61983)
+- [x] [Phase 2: Simplify instruction-builder agent](phase-2.md) — shipped 2026-04-21 (agent v2.0.0, 90 lines, sonnet)
+- [~] [Phase 3: Validation](phase-3.md) — T3.2 + T3.3 shipped 2026-04-21; T3.1 live vault test deferred to next `/inbox` run

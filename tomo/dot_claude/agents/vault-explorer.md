@@ -11,7 +11,7 @@ skills:
   - pkm-workflows
 ---
 # Vault Explorer Agent
-# version: 0.9.1 (Step 4 also classifies `proposable` per prefix — third policy axis; old tomo.suggestions.*_tag_prefixes lists retired)
+# version: 0.10.0 (Steps 5, 6, 7 now use scripts/vault-config-writer.py — relationships/callouts/trackers no longer free-composed)
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -188,18 +188,96 @@ Sample 20 notes that contain `::` patterns. Detect relationship markers (`up::`,
 and whether they appear in frontmatter or note body. Cross-reference with template-derived
 markers from Step 2b.
 
-Present findings showing markers, positions, and examples.
-Use AskUserQuestion to confirm before writing to vault-config.yaml `relationships:` section.
+**Classify each relationship type** along six axes (all required by the schema):
+
+- **`marker`** (string) — the prefix that identifies this relationship in prose, e.g. `up::`, `related::`. Include trailing `::` if that's how it appears.
+- **`format`** (string) — write template, MUST contain literal `{{link}}`. E.g. `"up:: {{link}}"`.
+- **`position`** (enum) — where in the note the relationship lives:
+  - `connect_callout` — inside a designated callout (most MiYo/LYT vaults)
+  - `frontmatter` — as a YAML key
+  - `top_of_body` — first non-heading line after the frontmatter fence
+  - `end_of_frontmatter` — last line inside the YAML block
+- **`location_type`** (enum) — `inline` (body pattern match) or `frontmatter` (YAML key lookup).
+- **`multi`** (bool) — whether multiple links are allowed.
+- **`separator`** (string) — how multiple links are joined when `multi=true`. Typical: `", "`.
+
+Present findings with markers, positions, and examples. Use **AskUserQuestion** to confirm classification, then:
+
+**Write via the deterministic writer — never hand-compose YAML.**
+
+1. Build JSON at `tomo-tmp/vault-config/relationships.json` matching `tomo/schemas/vault-config-relationships.schema.json`:
+
+   ```json
+   {
+     "parent": {
+       "marker": "up::", "format": "up:: {{link}}",
+       "position": "connect_callout", "location_type": "inline",
+       "multi": true, "separator": ", "
+     },
+     "peer": {
+       "marker": "related::", "format": "related:: {{link}}",
+       "position": "connect_callout", "location_type": "inline",
+       "multi": true, "separator": ", "
+     }
+   }
+   ```
+
+2. Run:
+
+   ```bash
+   python3 scripts/vault-config-writer.py relationships \
+     --input tomo-tmp/vault-config/relationships.json \
+     --config config/vault-config.yaml
+   ```
+
+3. On non-zero exit: **stop and report**. Do not hand-edit the YAML.
 
 ### Step 6 — Callout Detection
 
-Sample notes for callout patterns (`> [!name]`). Classify each callout type:
-- Protected: contains DataviewJS/Dataview code blocks
-- Editable: free-text callouts
-- Ignore: decorative callouts
+Sample notes for callout patterns (`> [!name]`). Classify each callout type into one of three buckets:
 
-Present findings with classification and reasoning.
-Use AskUserQuestion to confirm before writing to vault-config.yaml `callouts:` section.
+- **`editable`** — Tomo may read, insert, or update content (typical: `connect`, `blocks`, `anchor`, free-text callouts).
+- **`protected`** — Contains DataviewJS/Dataview/plugin code. Tomo never writes inside.
+- **`ignore`** — Decorative (weather widgets, dividers). No semantic content.
+
+Heuristic: if the callout body contains a code block (`\`\`\`dataviewjs`, `\`\`\`dataview`), mark `protected`. If it's empty or contains only prose/wikilinks, mark `editable`. When ambiguous, default to `protected` and ask.
+
+Also decide the master toggle `enabled` — true for vaults that use callouts meaningfully, false for plain-markdown vaults.
+
+Present findings with classification and reasoning. Use **AskUserQuestion** to confirm, then:
+
+**Write via the deterministic writer — never hand-compose YAML.**
+
+1. Build JSON at `tomo-tmp/vault-config/callouts.json` matching `tomo/schemas/vault-config-callouts.schema.json`:
+
+   ```json
+   {
+     "enabled": true,
+     "editable": {
+       "connect": "Navigation breadcrumbs (up:: / related:: links)",
+       "blocks": "Key Concepts section",
+       "anchor": "Overview section introduction"
+     },
+     "protected": {
+       "shell": "DataviewJS query output (same-tag unmentioned)"
+     },
+     "ignore": {
+       "weather": "Auto-generated weather widget (decorative)"
+     }
+   }
+   ```
+
+   Empty buckets can be omitted (e.g. a vault with no `ignore` callouts).
+
+2. Run:
+
+   ```bash
+   python3 scripts/vault-config-writer.py callouts \
+     --input tomo-tmp/vault-config/callouts.json \
+     --config config/vault-config.yaml
+   ```
+
+3. On non-zero exit: **stop and report**. Do not hand-edit the YAML.
 
 ### Step 7 — Tracker Detection (template + recent notes)
 
@@ -253,11 +331,70 @@ Use AskUserQuestion with multiSelect: "Which fields to write to
 vault-config.yaml?" — all pre-selected by default. Users can drop items
 they don't want tracked.
 
-After confirmation, write to `trackers.daily_note_trackers.today_fields[]`
-and `trackers.end_of_day_fields.fields[]` per heuristic (Habit/Morning/Today →
-today_fields, End/Evening/Review → end_of_day_fields; default today_fields).
-Only field names + type + syntax are written. `description`, `positive_keywords`,
-and `negative_keywords` are populated later by `tomo-trackers-wizard`.
+After confirmation, **write via the deterministic writer — never hand-compose YAML.**
+
+Bucket each field using a heuristic based on the section/heading it was
+found under:
+- Habit / Morning / Today / Daily → `today_fields`
+- Yesterday / Recap → `yesterday_fields`
+- End / Evening / Review → `end_of_day_fields.fields`
+- Default (no heading match) → `today_fields`
+
+At this step you emit only: `name`, `type`, `syntax`, and `description`
+(a one-sentence placeholder like `"Detected from daily notes."` — the
+`tomo-trackers-wizard` skill populates the rich `description`, `scale`,
+`positive_keywords`, `negative_keywords` in a follow-up step).
+
+1. Build JSON at `tomo-tmp/vault-config/trackers.json` matching `tomo/schemas/vault-config-trackers.schema.json`:
+
+   ```json
+   {
+     "daily_note_trackers": {
+       "section": "Habit",
+       "today_fields": [
+         {
+           "name": "Sport",
+           "type": "boolean",
+           "syntax": "task_checkbox",
+           "description": "Detected from daily notes — refine via /tomo-setup or the trackers wizard."
+         },
+         {
+           "name": "WakeUpEnergy",
+           "type": "integer",
+           "syntax": "inline_field",
+           "scale": "1-5",
+           "description": "Detected from daily notes — refine via the trackers wizard."
+         }
+       ]
+     },
+     "end_of_day_fields": {
+       "section": "End of the Day",
+       "fields": [
+         {
+           "name": "Sleep",
+           "type": "integer",
+           "syntax": "inline_field",
+           "scale": "hours",
+           "description": "Detected from daily notes — refine via the trackers wizard."
+         }
+       ]
+     }
+   }
+   ```
+
+   Omit `end_of_day_fields` entirely if no end-of-day fields were detected
+   (schema accepts `daily_note_trackers` alone).
+
+2. Run:
+
+   ```bash
+   python3 scripts/vault-config-writer.py trackers \
+     --input tomo-tmp/vault-config/trackers.json \
+     --config config/vault-config.yaml
+   ```
+
+3. On non-zero exit: **stop and report**. The schema validator will tell you
+   exactly which field/path is wrong.
 
 ### Step 8 — Template Check
 

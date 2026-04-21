@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/vault-config-relationships.schema.json",
+  "title": "vault-config.yaml — relationships section",
+  "description": "Canonical input contract for `scripts/vault-config-writer.py relationships`. The writer renders the top-level `relationships:` block of vault-config.yaml from this JSON, replacing any previous block while leaving the rest of the file byte-for-byte untouched.",
+  "type": "object",
+  "minProperties": 1,
+  "patternProperties": {
+    "^[a-z][a-z0-9_]*$": {
+      "$ref": "#/$defs/relationship_entry"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "relationship_entry": {
+      "type": "object",
+      "required": ["marker", "format", "position", "location_type", "multi", "separator"],
+      "additionalProperties": false,
+      "properties": {
+        "marker": {
+          "type": "string",
+          "description": "Prefix that identifies this relationship when reading (e.g. 'up::', 'related::', 'parent').",
+          "minLength": 1
+        },
+        "format": {
+          "type": "string",
+          "description": "Template for writing this relationship. MUST contain the literal token {{link}}.",
+          "pattern": "\\{\\{link\\}\\}"
+        },
+        "position": {
+          "type": "string",
+          "description": "Where in the note the relationship is written.",
+          "enum": ["connect_callout", "frontmatter", "top_of_body", "end_of_frontmatter"]
+        },
+        "location_type": {
+          "type": "string",
+          "description": "inline = body pattern match; frontmatter = YAML key lookup.",
+          "enum": ["inline", "frontmatter"]
+        },
+        "multi": {
+          "type": "boolean",
+          "description": "true = multiple links allowed; false = single link only."
+        },
+        "separator": {
+          "type": "string",
+          "description": "How multiple links are joined when multi=true. Typical: ', '.",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/vault-config-trackers.schema.json",
+  "title": "vault-config.yaml — trackers section",
+  "description": "Canonical input contract for `scripts/vault-config-writer.py trackers`. The writer renders the top-level `trackers:` block of vault-config.yaml from this JSON, replacing any previous block while leaving the rest of the file byte-for-byte untouched.",
+  "type": "object",
+  "required": ["daily_note_trackers"],
+  "additionalProperties": false,
+  "properties": {
+    "daily_note_trackers": {
+      "type": "object",
+      "required": ["today_fields"],
+      "additionalProperties": false,
+      "properties": {
+        "section": {
+          "type": "string",
+          "description": "Heading under which today_fields + yesterday_fields are written (default: 'Habit').",
+          "minLength": 1
+        },
+        "today_fields": {
+          "type": "array",
+          "description": "Trackers filled during the day.",
+          "items": {"$ref": "#/$defs/tracker_field"}
+        },
+        "yesterday_fields": {
+          "type": "array",
+          "description": "Trackers reflecting the previous day.",
+          "items": {"$ref": "#/$defs/tracker_field"}
+        }
+      }
+    },
+    "end_of_day_fields": {
+      "type": "object",
+      "required": ["fields"],
+      "additionalProperties": false,
+      "properties": {
+        "section": {
+          "type": "string",
+          "description": "Heading for end-of-day reflective fields (default: 'End of the Day').",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/tracker_field"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "tracker_field": {
+      "type": "object",
+      "required": ["name", "type", "syntax", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Field name as it appears in the daily note (e.g. 'Sport', 'WakeUpEnergy'). CamelCase preserved.",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "description": "Value type — controls how the classifier coerces input.",
+          "enum": ["boolean", "integer", "text", "duration", "time"]
+        },
+        "syntax": {
+          "type": "string",
+          "description": "How the field is serialised in the daily note.",
+          "enum": ["inline_field", "callout_body", "task_checkbox", "checkbox"]
+        },
+        "scale": {
+          "type": ["string", "null"],
+          "description": "Optional value-range hint (e.g. '1-5', '1-10', 'hours'). Used by the classifier to understand valid ranges."
+        },
+        "description": {
+          "type": "string",
+          "description": "REQUIRED. One-sentence explanation of what this field tracks. Surfaces in shared-ctx for the classifier.",
+          "minLength": 1
+        },
+        "positive_keywords": {
+          "type": "array",
+          "description": "Phrases that indicate the field should be set/incremented.",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "negative_keywords": {
+          "type": "array",
+          "description": "Phrases that indicate NOT to set the field despite surface-level keyword hits (e.g. 'watched a video about exercise' → not actually Sport).",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "keywords": {
+          "type": "array",
+          "description": "Optional flat keyword list (auto-seeded from name if absent).",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

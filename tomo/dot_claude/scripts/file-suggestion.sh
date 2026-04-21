@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # file-suggestion.sh — custom @-picker for Tomo instance
-# version: 0.4.2
+# version: 0.4.3
 #
 # Spec: docs/XDD/specs/010-custom-file-picker/
 #
@@ -86,6 +86,21 @@ filter_fuzzy() {
     fi
 }
 
+# stat_mtime <path>    — portable: Unix mtime epoch seconds on stdout
+# stat_size  <path>    — portable: file size bytes on stdout
+#
+# GNU stat is tried FIRST because its `-c` flag is a hard error on BSD,
+# so the `||` fallback triggers cleanly on macOS. The reverse order
+# DOESN'T work: BSD `stat -f %m` is valid on GNU stat too, but `-f`
+# means "filesystem mode" there — the command succeeds with a multi-
+# line output like "File: ..." that then breaks the caller's arithmetic.
+stat_mtime() {
+    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || printf 0
+}
+stat_size() {
+    stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null || printf 0
+}
+
 # cache_fresh <path> <ttl_seconds>    — exit 0 if cache exists and is fresh
 cache_fresh() {
     local path="$1"
@@ -93,8 +108,7 @@ cache_fresh() {
     [ -f "$path" ] || return 1
     local now mtime age
     now=$(date +%s)
-    # Portable mtime: macOS `stat -f %m`, Linux `stat -c %Y`.
-    mtime=$(stat -f %m "$path" 2>/dev/null || stat -c %Y "$path" 2>/dev/null || printf 0)
+    mtime=$(stat_mtime "$path")
     age=$(( now - mtime ))
     [ "$age" -lt "$ttl" ]
 }
@@ -289,7 +303,7 @@ if [ -z "${TOMO_PICKER_NO_LOG:-}" ]; then
         [ -r "$f" ] && readable='Y'
         [ -w "$f" ] && writable='Y'
         if [ "$exists" = 'Y' ]; then
-            size=$(stat -f %z "$f" 2>/dev/null || stat -c %s "$f" 2>/dev/null || printf '?')
+            size=$(stat_size "$f")
             count=$(grep -c '' < "$f" 2>/dev/null || printf '?')
         fi
         printf 'exists=%s readable=%s writable=%s size=%s count=%s' "$exists" "$readable" "$writable" "$size" "$count"

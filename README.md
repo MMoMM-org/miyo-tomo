@@ -25,19 +25,21 @@ Tomo uses a **2-pass proposal model**. You always stay in control.
 
 1. You trigger `/inbox` — Tomo reads inbox via Kado, classifies each file, matches to MOCs
 2. Tomo writes a **suggestions document** with alternatives and confidence scores
-3. You review in Obsidian — approve, modify, or skip each suggestion
-4. You tag the document as `confirmed`
+3. You review in Obsidian — edit fields, pick alternatives, tick `[x] Accept` / `[ ] Skip` / `[ ] Delete source` per item
+4. You tick the top-level `[x] Approved` checkbox when the whole document looks right
 
 ### Pass 2 — Instructions
 
-5. You trigger `/inbox` again — Tomo detects the confirmed suggestions
-6. Tomo generates a **detailed instruction set** with rendered templates, diffs, and exact actions
-7. You apply each action manually in Obsidian (move files, add MOC links, update trackers)
-8. You tag the instruction set as `applied`
+5. You trigger `/inbox` again — Tomo detects the `[x] Approved` suggestions doc
+6. Tomo deterministically produces three artifacts in the inbox:
+   - **Rendered note files** — new markdown files with tokens resolved from your templates
+   - **`instructions.md`** — human-readable instruction set with per-action `[ ] Applied` checkboxes
+   - **`instructions.json`** — canonical machine-readable version (schema: `tomo/schemas/instructions.schema.json`), consumed by the upcoming Tomo Hashi plugin
+7. You apply each action manually in Obsidian (move files, add MOC links, update daily notes) and tick `[x] Applied` per action
 
 ### Cleanup
 
-9. You trigger `/inbox` once more — Tomo archives processed documents and transitions states
+8. You trigger `/inbox` once more — Tomo archives processed documents and transitions source-item lifecycle tags
 
 **Tomo proposes, you decide, you apply.**
 
@@ -81,7 +83,7 @@ The install script walks you through vault path, framework profile selection, co
 
 - Docker
 - Git, jq
-- [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) v0.2.0+ running and accessible
+- [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) v0.5.0+ running and accessible (default: `127.0.0.1:23026`)
 - Python 3 (for host-side scripts)
 
 ### Kado API Key Configuration
@@ -103,17 +105,26 @@ miyo-tomo/
 ├── scripts/               # Install, update, and utility scripts
 │   ├── lib/               # Shared Python library (Kado client)
 │   ├── install-tomo.sh    # Setup wizard
-│   ├── begin-tomo.sh.template # Launcher template rendered into each instance
-│   ├── cleanup-tomo.sh    # Remove install artifacts (for re-install / testing)
 │   ├── update-tomo.sh     # Update managed files in existing instance
-│   ├── vault-scan.py      # Vault structure scanner
+│   ├── cleanup-tomo.sh    # Remove install artifacts (for re-install / testing)
+│   ├── backup-tomo.sh     # Archive instance config + cache to a tarball
+│   ├── restore-tomo.sh    # Re-hydrate an instance from a backup tarball
+│   ├── begin-tomo.sh.template # Launcher template rendered into each instance
+│   ├── vault-scan.py      # Vault structure scanner (/explore-vault step 1)
 │   ├── topic-extract.py   # Topic keyword extraction
-│   ├── moc-tree-builder.py # MOC discovery and tree building
+│   ├── moc-tree-builder.py # MOC discovery + hierarchy
 │   ├── cache-builder.py   # Discovery cache assembly
 │   ├── token-render.py    # Template token resolution
-│   ├── state-scanner.py   # Lifecycle state discovery
-│   ├── suggestion-parser.py # Parse confirmed suggestions
-│   └── yaml-fixer.py      # YAML error recovery
+│   ├── suggestions-reducer.py # Pass-1 fan-out reducer
+│   ├── suggestions-render.py  # Pass-1 suggestions-doc rendering
+│   ├── suggestion-parser.py   # Parse approved suggestions
+│   ├── instruction-render.py  # Pass-2 deterministic rendering (notes + instructions.{json,md})
+│   ├── instructions-dryrun.py # Validate instructions.json is machine-consumable
+│   ├── state-scanner.py / state-init.py / state-update.py  # Lifecycle state
+│   ├── read-config-field.py   # Batch read vault-config values
+│   ├── vault-reset.sh         # Reset the test vault inbox between pipeline stages
+│   └── yaml-fixer.py          # YAML error recovery
+├── tomo/schemas/          # JSON schemas (suggestions, item-result, instructions)
 ├── docs/                  # Setup, troubleshooting, specs
 ├── docker/                # Dockerfile and entrypoint (source of truth)
 ├── tomo-instance/         # (gitignored) Docker workspace — created by installer
@@ -128,7 +139,7 @@ miyo-tomo/
 | `vault-explorer` | Scans vault structure, builds MOC tree, generates discovery cache |
 | `inbox-orchestrator` | Pass 1 coordinator — fan-out pipeline over the inbox |
 | `inbox-analyst` | Pass 1 subagent — classifies ONE item per invocation |
-| `instruction-builder` | Pass 2 — generates detailed instruction set with rendered templates |
+| `instruction-builder` | Pass 2 orchestrator — runs `instruction-render.py`, writes rendered notes + `instructions.{json,md}` to the vault |
 | `vault-executor` | Cleanup — archives processed documents, transitions lifecycle states |
 
 ## Commands
@@ -152,7 +163,7 @@ miyo-tomo/
 - **Kouzou** (構造) — Claude Code infrastructure (private)
 - **[Kado](https://github.com/MMoMM-org/miyo-kado)** (門) — MCP server for Obsidian vault access
 - **Tomo** (友) — AI workflows (this repo)
-- **Seigyo** (制御) — Obsidian control plugin (post-MVP)
+- **Tomo Hashi** (友橋) — Obsidian plugin that reads `instructions.json` and executes actions in the vault (post-MVP; replaces the "Seigyo" placeholder in earlier specs)
 
 ## License
 

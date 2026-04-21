@@ -29,3 +29,6 @@ node_modules/
 # Misc
 *.backup-*
 __pycache__/
+
+# Python virtualenv (host dev; container has its own)
+venv/

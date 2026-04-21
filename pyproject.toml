@@ -1,0 +1,8 @@
+# Project metadata kept intentionally minimal — Tomo doesn't ship as a
+# Python package. This file exists so pytest can register custom markers
+# and avoid noisy "unknown mark" warnings in the voice test suite.
+
+[tool.pytest.ini_options]
+markers = [
+    "voice_model: tests that require a faster-whisper model dir + the faster_whisper dep (opt-in via TOMO_TEST_MODEL_DIR)",
+]

@@ -6,7 +6,7 @@
 |-------|-------|
 | **Created** | 2026-04-19 |
 | **Current Phase** | COMPLETE — all phases shipped and live-validated 2026-04-21 |
-| **Last Updated** | 2026-04-21 |
+| **Last Updated** | 2026-04-21 (follow-ups resolved) |
 
 ## Documents
 
@@ -72,19 +72,21 @@ After this refactoring:
   both written to the vault via `kado-write` (markdown via `operation=note`,
   JSON via `operation=file` + `scripts/kado-write-file.py`).
 
-## Follow-ups (out of scope for this spec)
+## Follow-ups
 
-Surfaced during live validation — captured for separate work:
+Surfaced during live validation — all resolved:
 
-- The vault-explorer agent's remaining free-composed sections
-  (`relationships:`, `callouts:`, `trackers:`) carry the same LLM-drift
-  risk that was fixed for `tags:` via `scripts/vault-config-writer.py`
-  in this spec. Pattern is ready to apply; see memory note
-  `project_vault_explorer_writer_refactor.md`.
-- `vault-reset.sh archive` treats the Pass-1 suggestions doc as an
-  artifact; preserving a still-approved suggestions doc while cleaning
-  up Pass-2 output requires a finer pattern (or a `--keep-suggestions`
-  flag). Non-blocking; documented for future enhancement.
+- ✅ **vault-explorer deterministic writer extended** (commit `2901dd6`,
+  2026-04-21). `scripts/vault-config-writer.py` v0.3.0 now ships four
+  subcommands (`tags`, `relationships`, `callouts`, `trackers`) with
+  matching schemas under `tomo/schemas/vault-config-*.schema.json`.
+  `vault-explorer.md` v0.10.0 routes Steps 4–7 through the writer —
+  no more free-composed YAML for any section.
+- ✅ **vault-reset.sh preserves the Pass-1 approval marker** (commit
+  `44ed2cf`, 2026-04-21). `is_artifact()` now explicitly excludes
+  `*_suggestions.md`, so `archive` cleans up Pass-2 output while
+  leaving the user's `[x] Approved` state intact for a Pass-2 retry.
+  Use `raw` for a full wipe.
 
 ---
 *This file is managed by the xdd-meta skill.*

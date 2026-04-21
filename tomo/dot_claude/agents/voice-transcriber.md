@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Voice Transcriber Subagent
-# version: 0.1.0
+# version: 0.2.0 (reads voice/config.json — mirrored from tomo-install.json at install time)
 
 You transcribe audio files that appear in the inbox so the rest of the
 `/inbox` pipeline can treat them as regular fleeting notes. You do not
@@ -41,13 +41,21 @@ manifest it produces.
 
 ## Feature-Disabled Check (first step, always)
 
-Read `tomo-install.json` via the `Read` tool. Inspect `.voice.enabled`:
-- If `false` or missing → return immediately with
+Read `voice/config.json` (relative to the instance root — this file is
+mirrored from `tomo-install.json` by `install-tomo.sh` / `update-tomo.sh`
+at install/update time so runtime agents can read it from inside the
+container). Inspect `.enabled`:
+
+- If file is missing → return
   `{"transcribed": 0, "skipped": 0, "errors": [], "reason": "disabled"}`.
-  No kado calls, no Bash calls.
-- If `true` → continue. Remember the chosen `model` and `language` from
-  the same JSON — you pass `language` to the CLI (the CLI picks the
-  model-dir from its own default path inside the container).
+  File-missing means voice was never configured or the install didn't
+  write the mirror — treat as disabled but the latter is fixable by the
+  user re-running `install-tomo.sh`.
+- If `.enabled = false` → same no-op return, `reason: "disabled"`.
+- If `.enabled = true` → continue. Remember `.model` and `.language`
+  from the same JSON — you pass `language` to the CLI. The CLI picks
+  the model-dir from its own default path inside the container
+  (`/tomo/voice/models/faster-whisper-<size>`).
 
 ## Workflow
 
@@ -98,8 +106,8 @@ Where:
   directory — the `/inbox` orchestrator invokes you with `cwd` set to
   the instance root, and the vault is bind-mounted at the inbox path
   Kado uses.
-- `<language>` comes from `.voice.language` in tomo-install.json. Omit
-  the `--language` flag if the value is empty or `"auto"`.
+- `<language>` comes from `.language` in `voice/config.json`. Omit the
+  `--language` flag if the value is empty or `"auto"`.
 - `--model-dir` is NOT passed — the CLI default
   (`/tomo/voice/models/faster-whisper-medium`) is set by the voice
   wizard and won't drift without a re-install.
@@ -171,7 +179,7 @@ to Phase A with the newly-written `.md` transcripts visible to
 
 | Condition | Handler |
 |---|---|
-| `.voice.enabled != true` | Return immediately, summary `reason: "disabled"` |
+| `voice/config.json` missing or `.enabled != true` | Return immediately, summary `reason: "disabled"` |
 | No audio files found | Return immediately, summary `reason: "no_audio"` |
 | All candidates already have sibling `.md` | Return summary with `transcribed: 0`, `skipped: <all>` |
 | Per-file transcription failure (CLI exit 0, entry has `error`) | Write `<stem>.transcribe-error.md` + add to `errors[]` |
@@ -199,4 +207,4 @@ prompt: |
 ```
 
 You ignore the prompt body's specifics beyond "start"; your inputs come
-from `tomo-install.json` and `kado-search`, not the prompt.
+from `voice/config.json` and `kado-search`, not the prompt.

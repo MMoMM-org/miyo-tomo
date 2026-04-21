@@ -3,7 +3,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.2.0
+# version: 0.2.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -265,6 +265,13 @@ jq --argjson enabled "${VOICE_ENABLED:-false}" \
    --arg lang  "${VOICE_LANGUAGE:-}" \
    '.voice = { enabled: $enabled, model: $model, language: $lang }' \
    "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+
+# Mirror the updated voice block into the instance so runtime agents can
+# read it. tomo-install.json is HOST-only; the container only sees
+# $INSTANCE_PATH. See install-tomo.sh for the same mirror logic.
+mkdir -p "$INSTANCE_PATH/voice"
+jq '.voice' "$CONFIG_FILE" > "$INSTANCE_PATH/voice/config.json"
+print_ok "voice/config.json (mirrored into instance)"
 
 # ── Summary ───────────────────────────────────────────────
 

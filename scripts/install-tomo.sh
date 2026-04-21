@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # lifecycle prefix, voice transcription, and vault-config.yaml generation.
-# version: 0.3.0
+# version: 0.3.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1238,6 +1238,16 @@ cat > "$CONFIG_FILE" << CFGEOF
 }
 CFGEOF
 print_ok "tomo-install.json"
+
+# Mirror the voice block into the instance so runtime agents can read it.
+# tomo-install.json lives at the HOST repo root and is NOT accessible from
+# inside the Docker container (only $INSTANCE_PATH is bind-mounted). The
+# voice-transcriber agent and inbox-orchestrator's Phase 0a both read the
+# mirrored file at voice/config.json (relative to the instance cwd).
+mkdir -p "$INSTANCE_PATH/voice"
+jq '.voice // {"enabled": false, "model": "", "language": ""}' "$CONFIG_FILE" \
+    > "$INSTANCE_PATH/voice/config.json"
+print_ok "voice/config.json (mirrored into instance)"
 
 # ── Update .gitignore (parent repo) ──────────────────────
 

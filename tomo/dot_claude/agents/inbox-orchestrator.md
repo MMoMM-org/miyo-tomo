@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.7.0 (Phase 0a voice transcription added; resume detection → Phase 0b)
+# version: 0.7.1 (Phase 0a voice config path fixed: voice/config.json, not tomo-install.json)
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -93,11 +93,14 @@ Runs BEFORE resume detection so newly-written transcripts are visible to
 all downstream phases. Voice is an opt-in feature configured at install
 time; this step is a no-op when disabled.
 
-1. **Check enablement** — `Read` `tomo-install.json` and inspect
-   `.voice.enabled`:
-   - `false` or missing → skip Phase 0a entirely. Do NOT invoke the
-     agent, do NOT log a warning. Continue to Phase 0b.
-   - `true` → proceed to step 2.
+1. **Check enablement** — `Read` `voice/config.json` (mirrored from
+   `tomo-install.json` at install/update time so runtime agents can
+   read it from inside the instance; `tomo-install.json` lives at the
+   HOST repo root and is not accessible from the container). Inspect
+   `.enabled`:
+   - File missing OR `.enabled = false` → skip Phase 0a entirely. Do
+     NOT invoke the agent, do NOT log a warning. Continue to Phase 0b.
+   - `.enabled = true` → proceed to step 2.
 
 2. **Dispatch the `voice-transcriber` subagent** via the `Agent` tool:
 

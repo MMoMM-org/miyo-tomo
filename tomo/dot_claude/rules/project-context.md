@@ -1,5 +1,5 @@
 # Tomo — Project Context
-# version: 0.6.3
+# version: 0.7.0
 
 You are MiYo Tomo, an AI-assisted PKM companion for Obsidian.
 Tomo runs inside a Docker container. All vault access goes through Kado MCP — never direct filesystem access.
@@ -145,30 +145,22 @@ built-in `@` behaviour. When the user types `@` in this session, the
 picker returns **vault-relative Obsidian paths**, NOT instance-local
 paths.
 
-| User query | Picker returns | Example path |
-|------------|----------------|--------------|
-| `@` (empty)    | currently-open Obsidian notes, active first | `Calendar/301 Daily/2026-03-26.md` |
-| `@<text>`      | **merged**: open notes ▶ inbox ▶ vault, substring, top 15 | any path matching `<text>` |
-| `@inbox/`      | all inbox files (cached, 30s TTL)           | `100 Inbox/Sapporo.md` |
-| `@inbox/<q>`   | inbox files filtered by `<q>` (substring)   | `100 Inbox/Catan Strategien.md` |
-| `@vault/`      | full vault listing (cached, 1h TTL)         | `X/900 Support/930 Templater/t_day.md` |
-| `@vault/<q>`   | vault files fuzzy-matched by `<q>` (fzf)    | `Atlas/202 Notes/Yoga.md` |
+| User query | Picker returns |
+|------------|----------------|
+| `@` (empty)    | currently-open Obsidian notes first, then inbox, then vault (top 15) |
+| `@<text>`      | same candidate set, filtered via fzf/grep, top 15 |
 
-**Default scope is merged**: when the user types `@<text>` without a
-prefix, the picker searches open notes, then inbox, then vault (in
-that priority order) with case-insensitive substring matching and
-deduped into the top 15 results. Open notes surface first because
-they're the active reading context; inbox and vault fill remaining
-slots. Empty `@` alone shows just the open notes (active context).
+**No scope prefixes.** The picker emits one combined candidate stream —
+open notes (active first), all inbox files, all vault files — and
+applies the user's query via fzf fuzzy match (or grep substring
+fallback). Open notes appear first because they're the active context
+and the dedupe preserves first-seen order.
 
-**Explicit scopes narrow the search**: `inbox/<q>` queries only the
-inbox; `vault/<q>` queries only the vault (with fzf fuzzy match, since
-users typing `vault/` opt into the broader search).
-
-**Why suffix-slash (`inbox/`) and not leading-slash (`/inbox`)**: queries
-starting with `/` trigger Claude Code's built-in absolute-path browser
-(shows `/boot/`, `/dev/`, etc.) and bypass the custom picker entirely.
-Scope prefixes must start with a non-slash character.
+Earlier designs used `@inbox/` and `@vault/` scope prefixes. Retired
+because picking a prefix-entry inserted `@"inbox/"` or `@inbox/ ` as a
+quoted or space-terminated literal, forcing the user to backspace.
+Unified search covers the same use cases without the friction —
+`@<inbox-note-name>` surfaces inbox matches naturally.
 
 **Consequence**: when the user picks a result, Claude Code inserts
 `@<vault-path>` into the prompt and immediately tries to Read that path.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -202,84 +202,165 @@ def _next_id(counter: list[int]) -> str:
     return f"I{counter[0]:02d}"
 
 
-def _build_move_and_create_moc_actions(manifest: list[dict], counter: list[int]) -> list[dict]:
-    """Turn rendered-file manifest entries into move_note / create_moc actions."""
+def _inbox_join(inbox: str, basename: str) -> str:
+    """Join inbox path + basename, normalising the trailing slash."""
+    return f"{(inbox or '').rstrip('/')}/{basename}"
+
+
+def _dest_join(folder: str, title: str) -> str:
+    """Join destination folder + sanitised title as filename (with .md)."""
+    if not folder:
+        folder = ""
+    folder = folder.rstrip("/") + "/"
+    # Obsidian allows Umlauts, em-dash etc. — no slug; just add .md.
+    filename = title if title.endswith(".md") else f"{title}.md"
+    return f"{folder}{filename}"
+
+
+def _build_create_moc_actions(
+    manifest: list[dict],
+    inbox_path: str,
+    counter: list[int],
+) -> list[dict]:
+    """Emit create_moc actions for rendered MOCs. MUST run before move_note and
+    link_to_moc so IDs for new MOCs precede anything that links into them.
+    """
     out: list[dict] = []
     for m in manifest:
-        if m.get("action") == "create_moc":
-            out.append({
-                "id": _next_id(counter),
-                "action": "create_moc",
-                "title": m.get("title", ""),
-                "destination": m.get("destination", ""),
-                "parent_moc": _moc_stem(m.get("parent_moc")) or None,
-                "template": m.get("template") or None,
-                "rendered_file": m.get("rendered_file"),
-                "tags": m.get("tags", []) or [],
-                "supporting_items": m.get("supporting_items") or None,
-            })
-        else:
-            out.append({
-                "id": _next_id(counter),
-                "action": "move_note",
-                "source_path": m.get("source_path") or None,
-                "rendered_file": m.get("rendered_file", ""),
-                "title": m.get("title", ""),
-                "destination": m.get("destination", ""),
-                "parent_mocs": [_moc_stem(x) for x in (m.get("parent_mocs") or []) if x],
-                "tags": m.get("tags", []) or [],
-                "delete_source": bool(m.get("delete_source")),
-            })
+        if m.get("action") != "create_moc":
+            continue
+        title = m.get("title", "")
+        rendered = m.get("rendered_file", "")
+        out.append({
+            "id": _next_id(counter),
+            "action": "create_moc",
+            "source": _inbox_join(inbox_path, rendered) if rendered else "",
+            "destination": _dest_join(m.get("destination", ""), title),
+            "title": title,
+            "rendered_file": rendered,
+            "parent_moc": _moc_stem(m.get("parent_moc")) or None,
+            "template": m.get("template") or None,
+            "tags": m.get("tags", []) or [],
+            "supporting_items": m.get("supporting_items") or None,
+        })
     return out
 
 
-def _build_link_to_moc_actions(confirmed: list[dict], manifest: list[dict], counter: list[int]) -> list[dict]:
-    """Expand parent_mocs on each confirmed item into one link_to_moc per MOC.
-
-    `section_name` is passed through unresolved — the consuming agent/plugin
-    resolves the concrete section at write time. The plan's MOC-section lookup
-    used to live in the instruction-builder agent; we defer it rather than
-    re-implementing kado-read here.
-    """
-    # Map confirmed item id → rendered filename (if any) for nicer "source note" display
-    id_to_rendered = {m.get("id"): m.get("rendered_file", "") for m in manifest}
+def _build_move_note_actions(
+    manifest: list[dict],
+    inbox_path: str,
+    counter: list[int],
+) -> list[dict]:
+    """Emit move_note actions for rendered atomic notes. Runs after create_moc."""
     out: list[dict] = []
+    for m in manifest:
+        if m.get("action") == "create_moc":
+            continue
+        title = m.get("title", "")
+        rendered = m.get("rendered_file", "")
+        origin_basename = m.get("source_path") or ""
+        if origin_basename and "/" not in origin_basename:
+            origin = _inbox_join(inbox_path, origin_basename)
+        elif origin_basename:
+            origin = origin_basename
+        else:
+            origin = None
+        # Ensure origin has .md when present
+        if origin and not origin.endswith(".md"):
+            origin = origin + ".md"
+        out.append({
+            "id": _next_id(counter),
+            "action": "move_note",
+            "source": _inbox_join(inbox_path, rendered) if rendered else "",
+            "destination": _dest_join(m.get("destination", ""), title),
+            "title": title,
+            "rendered_file": rendered,
+            "origin_inbox_item": origin,
+            "parent_mocs": [_moc_stem(x) for x in (m.get("parent_mocs") or []) if x],
+            "tags": m.get("tags", []) or [],
+        })
+    return out
+
+
+def _parse_supporting_items(raw: str | None) -> list[str]:
+    """Parse 'S02, S06, S12' (or 'S02 S06 S12', or with brackets) → ['S02','S06','S12']."""
+    if not raw:
+        return []
+    s = raw.strip().strip("[](){}").replace(",", " ")
+    out: list[str] = []
+    for tok in s.split():
+        tok = tok.strip().strip("[]()").lstrip("#")
+        if tok:
+            out.append(tok)
+    return out
+
+
+def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:
+    """Emit link_to_moc actions from two sources:
+
+    1. Each confirmed item's parent_mocs[] — the up-links user checked on the
+       item (regular atomic notes) or on the proposed MOC block (for
+       create_moc items, these are the new MOC's parents).
+    2. Each create_moc item's supporting_items — down-links FROM the new MOC
+       TO each confirmed atomic note referenced by ID. Fills the gap where
+       the suggestions doc cannot offer a future-MOC as a parent option when
+       reviewing atomic items.
+
+    Dedup by (target_moc, line_to_add) so a parent_moc that happens to also
+    appear in supporting_items isn't double-emitted.
+    """
+    id_index: dict[str, dict] = {it.get("id"): it for it in confirmed if it.get("id")}
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _emit(target_moc: str, source_title: str) -> None:
+        key = (target_moc, source_title)
+        if not target_moc or not source_title or key in seen:
+            return
+        seen.add(key)
+        out.append({
+            "id": _next_id(counter),
+            "action": "link_to_moc",
+            "target_moc": target_moc,
+            "target_moc_path": None,
+            "section_name": None,
+            "line_to_add": f"- [[{source_title}]]",
+            "source_note_title": source_title,
+        })
+
+    # Pass 1 — parent_mocs up-links from every confirmed item.
     for item in confirmed:
         parents = item.get("parent_mocs") or []
-        if not parents:
-            # Fall back to primary parent_moc if parent_mocs is empty
-            if item.get("parent_moc"):
-                parents = [item["parent_moc"]]
+        if not parents and item.get("parent_moc"):
+            parents = [item["parent_moc"]]
         if not parents:
             continue
-        # For a create_moc item we only link the NEW MOC up to its parent —
-        # not the other way around. Use its title as the link target.
+        # For a create_moc item, the "source" of the up-link is the NEW MOC title.
+        # For a regular atomic note, the source is the note title.
         if item.get("action") == "create_moc":
-            new_moc_title = item.get("title", "")
-            for parent in parents:
-                parent_stem = _moc_stem(parent)
-                out.append({
-                    "id": _next_id(counter),
-                    "action": "link_to_moc",
-                    "target_moc": parent_stem,
-                    "target_moc_path": None,
-                    "section_name": None,
-                    "line_to_add": f"- [[{new_moc_title}]]",
-                    "source_note_title": new_moc_title,
-                })
-            continue
-        title = item.get("title") or _stem(item.get("source_path"))
+            source_title = item.get("title", "")
+        else:
+            source_title = item.get("title") or _stem(item.get("source_path"))
         for parent in parents:
-            parent_stem = _moc_stem(parent)
-            out.append({
-                "id": _next_id(counter),
-                "action": "link_to_moc",
-                "target_moc": parent_stem,
-                "target_moc_path": None,
-                "section_name": None,
-                "line_to_add": f"- [[{title}]]",
-                "source_note_title": title,
-            })
+            _emit(_moc_stem(parent), source_title)
+
+    # Pass 2 — supporting_items down-links: each new MOC pulls its approved
+    # supporting atomic notes as children. Required because the suggestions
+    # doc cannot offer a not-yet-created MOC as a parent option at review time.
+    for item in confirmed:
+        if item.get("action") != "create_moc":
+            continue
+        new_moc_title = item.get("title", "")
+        if not new_moc_title:
+            continue
+        for sid in _parse_supporting_items(item.get("supporting_items")):
+            sup = id_index.get(sid)
+            if not sup or sup.get("action") == "create_moc":
+                continue  # supporting ID not confirmed, or references another MOC
+            sup_title = sup.get("title") or _stem(sup.get("source_path"))
+            if not sup_title:
+                continue
+            _emit(new_moc_title, sup_title)
     return out
 
 
@@ -450,18 +531,30 @@ def build_actions(
 ) -> list[dict]:
     """Assemble the full ordered action list.
 
-    Section order matches the markdown view: new files (move_note/create_moc)
-    → MOC links → daily updates → deletions → skips.
+    Execution order matters: create_moc comes first because subsequent
+    link_to_moc actions may target the newly-created MOCs (via supporting_items
+    expansion). move_note follows, then all links (parent_mocs + supporting
+    items), then daily updates, deletions, and skips.
+
+    Emitted order:
+      1. create_moc   — new MOCs must exist before anything links into them
+      2. move_note    — atomic notes
+      3. link_to_moc  — parent_mocs up-links + supporting_items down-links
+      4. update_tracker / update_log_entry / update_log_link
+      5. delete_source
+      6. skip
     """
     counter = [0]
+    inbox_path = cfg["concepts.inbox"]
     out: list[dict] = []
-    out.extend(_build_move_and_create_moc_actions(manifest, counter))
-    out.extend(_build_link_to_moc_actions(confirmed, manifest, counter))
+    out.extend(_build_create_moc_actions(manifest, inbox_path, counter))
+    out.extend(_build_move_note_actions(manifest, inbox_path, counter))
+    out.extend(_build_link_to_moc_actions(confirmed, counter))
     out.extend(_build_daily_update_actions(daily_updates, cfg, counter))
     out.extend(_build_delete_source_actions(
-        confirmed, daily_updates, skipped, cfg["concepts.inbox"], counter,
+        confirmed, daily_updates, skipped, inbox_path, counter,
     ))
-    out.extend(_build_skip_actions(skipped, cfg["concepts.inbox"], counter))
+    out.extend(_build_skip_actions(skipped, inbox_path, counter))
     return out
 
 
@@ -500,34 +593,34 @@ def _render_action_md(action: dict, cfg: dict) -> str:
     heading_prefix = f"### {aid} — "
 
     if kind == "move_note":
-        title = action.get("title") or _stem(action.get("source_path")) or "(untitled)"
-        lines = [f"{heading_prefix}Move note: {title}", "- [ ] Applied"]
-        src = action.get("source_path")
-        if src:
-            lines.append(f"- **Source:** [[{_stem(src)}]]")
+        title = action.get("title") or "(untitled)"
         rendered = action.get("rendered_file", "")
+        lines = [f"{heading_prefix}Move note: {title}", "- [ ] Applied"]
         if rendered:
             lines.append(f"- **Rendered file:** [[{_stem(rendered)}]]")
-        dest = action.get("destination") or ""
-        if dest:
-            lines.append(f"- **Move to:** [[{dest.rstrip('/')}]]")
-        lines.append(f"- **Rename to:** {title}")
+        if action.get("source"):
+            lines.append(f"- **From:** `{action['source']}`")
+        if action.get("destination"):
+            lines.append(f"- **To:** `{action['destination']}`")
+        if action.get("origin_inbox_item"):
+            lines.append(f"- **Origin (reference):** [[{_stem(action['origin_inbox_item'])}]]")
         lines.append("- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P")
-        if action.get("delete_source"):
-            lines.append("- **Delete original source after move.**")
         return "\n".join(lines)
 
     if kind == "create_moc":
         title = action.get("title") or "(untitled)"
         lines = [f"{heading_prefix}Create MOC: {title}", "- [ ] Applied"]
-        if action.get("rendered_file"):
-            lines.append(f"- **Rendered file:** [[{_stem(action['rendered_file'])}]]")
+        rendered = action.get("rendered_file")
+        if rendered:
+            lines.append(f"- **Rendered file:** [[{_stem(rendered)}]]")
+        if action.get("source"):
+            lines.append(f"- **From:** `{action['source']}`")
         if action.get("destination"):
-            lines.append(f"- **Create at:** [[{action['destination'].rstrip('/')}]]")
+            lines.append(f"- **To:** `{action['destination']}`")
         if action.get("parent_moc"):
             lines.append(f"- **Parent MOC:** [[{action['parent_moc']}]]")
         if action.get("supporting_items"):
-            lines.append(f"- **Supporting items:** {action['supporting_items']}")
+            lines.append(f"- **Supporting items:** {action['supporting_items']} (each one will get a separate link_to_moc action below)")
         return "\n".join(lines)
 
     if kind == "link_to_moc":

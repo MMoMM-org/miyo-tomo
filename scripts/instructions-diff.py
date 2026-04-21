@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -57,6 +57,14 @@ def _moc_stem(name: str | None) -> str:
     return _stem(name)
 
 
+def _parse_supporting_items(raw: str | None) -> list[str]:
+    """Parse 'S02, S06, S12' → ['S02','S06','S12']. Mirrors instruction-render."""
+    if not raw:
+        return []
+    s = raw.strip().strip("[](){}").replace(",", " ")
+    return [tok.strip().strip("[]()").lstrip("#") for tok in s.split() if tok.strip()]
+
+
 def load_json(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -104,8 +112,10 @@ def derive_expected(parsed: dict) -> dict:
     }
 
     by_item: dict[str, dict] = {}
+    id_index: dict[str, dict] = {}
     for item in confirmed:
         item_id = item.get("id", "?")
+        id_index[item_id] = item
         parents = item.get("parent_mocs") or []
         if not parents and item.get("parent_moc"):
             parents = [item["parent_moc"]]
@@ -118,6 +128,7 @@ def derive_expected(parsed: dict) -> dict:
                 "title": title,
                 "expected_links": parent_stems,
                 "source_path": item.get("source_path"),
+                "supporting_items": item.get("supporting_items"),
             }
         else:
             counts["move_note"] += 1
@@ -128,6 +139,40 @@ def derive_expected(parsed: dict) -> dict:
                 "source_path": item.get("source_path"),
             }
         counts["link_to_moc"] += len(parent_stems)
+
+    # Supporting_items down-links: each create_moc pulls its supporting items
+    # as children. Mirror the renderer's dedupe so our expected count matches.
+    link_keys: set[tuple[str, str]] = set()
+    for item in confirmed:
+        parents = item.get("parent_mocs") or []
+        if not parents and item.get("parent_moc"):
+            parents = [item["parent_moc"]]
+        if item.get("action") == "create_moc":
+            src_title = item.get("title", "")
+        else:
+            src_title = item.get("title") or _stem(item.get("source_path"))
+        for p in parents:
+            link_keys.add((_moc_stem(p), src_title))
+    # Now supporting_items — these add NEW keys beyond parent_mocs.
+    supporting_added = 0
+    for item in confirmed:
+        if item.get("action") != "create_moc":
+            continue
+        new_moc_title = item.get("title", "")
+        for sid in _parse_supporting_items(item.get("supporting_items")):
+            sup = id_index.get(sid)
+            if not sup or sup.get("action") == "create_moc":
+                continue
+            sup_title = sup.get("title") or _stem(sup.get("source_path"))
+            if not sup_title:
+                continue
+            key = (new_moc_title, sup_title)
+            if key not in link_keys:
+                link_keys.add(key)
+                supporting_added += 1
+                # Track expected link on the supporting item for per-item coverage
+                by_item[sid]["expected_links"].append(new_moc_title)
+    counts["link_to_moc"] += supporting_added
 
     expected_daily: list[dict] = []
     for day in daily_updates:
@@ -215,7 +260,9 @@ def summarize_actual(instrs: dict) -> dict:
     for a in actions:
         kind = a["action"]
         if kind == "move_note":
-            stem = _stem(a.get("source_path"))
+            # Match by the stem of origin_inbox_item (traceability field);
+            # falls back to the rendered_file stem if origin wasn't captured.
+            stem = _stem(a.get("origin_inbox_item")) or _stem(a.get("rendered_file"))
             move_by_stem[stem] = a
         elif kind == "create_moc":
             create_mocs.append(a)
@@ -363,22 +410,25 @@ def run_diff(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
         f"{'[OK]' if exp_sk == act_sk else '[DIFF]'}"
     )
 
-    # Soft observations
+    # Soft observations — flag create_mocs that will be created empty.
+    # An approved MOC is "empty" when (a) it has no supporting_items AND
+    # (b) no confirmed atomic note has it in its parent_mocs.
     for item_id, info in expected["by_item"].items():
         if info["kind"] != "create_moc":
             continue
         moc_title = info["title"]
-        linking_items = [
-            (other_id, other)
+        has_supporting = bool(_parse_supporting_items(info.get("supporting_items")))
+        has_parent_link = any(
+            moc_title in [_moc_stem(m) for m in other.get("expected_links", [])]
             for other_id, other in expected["by_item"].items()
-            if other_id != item_id and moc_title in [_moc_stem(m) for m in other.get("expected_links", [])]
-        ]
-        if not linking_items:
+            if other_id != item_id
+        )
+        if not has_supporting and not has_parent_link:
             observations.append(
-                f"Approved create_moc {moc_title!r} ({item_id}) has 0 confirmed "
-                f"items linking up to it. New MOC will be created empty; "
-                f"add `{moc_title}` to the Link-to-MOC checkboxes on related items "
-                f"in the suggestions doc if you want them to land under it."
+                f"Approved create_moc {moc_title!r} ({item_id}) will be created "
+                f"empty — no supporting_items on the Proposed MOC block and no "
+                f"confirmed atomic note lists it as parent_moc. Add supporting "
+                f"items (preferred) or parent_moc links before re-running Pass 2."
             )
 
     # Print observations

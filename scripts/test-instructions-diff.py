@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test-instructions-diff.py — Unit tests for instructions-diff.
 
 Covers:
@@ -185,13 +185,62 @@ def test_link_mismatch_fails():
     print("[PASS] wrong link_to_moc target → rc=1 with want/got diagnostic")
 
 
-def test_orphan_create_moc_warns_not_fails():
-    """Create_moc approved but no confirmed items link to it → observation only."""
+def test_supporting_items_expansion_reconciles():
+    """create_moc with supporting_items must produce link_to_moc actions from
+    each supporting atomic note into the new MOC — and the diff must count
+    those as expected, not flag them."""
+    confirmed = [
+        {
+            "id": "A1", "source_path": "Catan.md", "action": None,
+            "title": "Catan Strategy", "tags": [],
+            "parent_moc": "", "parent_mocs": [],
+        },
+        {
+            "id": "A2", "source_path": "Gloomhaven.md", "action": None,
+            "title": "Gloomhaven Combat", "tags": [],
+            "parent_moc": "", "parent_mocs": [],
+        },
+        {
+            "id": "MOC01", "source_path": None, "action": "create_moc",
+            "title": "Brettspiele (MOC)", "tags": [],
+            "parent_moc": "2700", "parent_mocs": ["2700"],
+            "supporting_items": "A1, A2",
+        },
+    ]
+    manifest = [
+        {"id": "A1", "action": None, "title": "Catan Strategy",
+         "source_path": "Catan.md", "rendered_file": "2026-04-21_1200_catan.md",
+         "destination": "Atlas/202 Notes/", "parent_moc": "",
+         "parent_mocs": [], "tags": []},
+        {"id": "A2", "action": None, "title": "Gloomhaven Combat",
+         "source_path": "Gloomhaven.md", "rendered_file": "2026-04-21_1200_gloom.md",
+         "destination": "Atlas/202 Notes/", "parent_moc": "",
+         "parent_mocs": [], "tags": []},
+        {"id": "MOC01", "action": "create_moc", "title": "Brettspiele (MOC)",
+         "source_path": None, "rendered_file": "2026-04-21_1200_brettspiele-moc.md",
+         "destination": "Atlas/200 Maps/", "parent_moc": "2700",
+         "parent_mocs": ["2700"], "supporting_items": "A1, A2", "tags": []},
+    ]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    instrs = _build_instrs_from(manifest, confirmed, [], [])
+    rc, obs, out = _run(parsed, instrs)
+    _must(rc == 0, f"supporting_items expansion must reconcile, got rc={rc}")
+    _must(obs == [], f"no observation expected (MOC has supporting_items), got {obs}")
+    # Count check: 1 MOC up-link (Brettspiele → 2700) + 2 supporting_items
+    # down-links (Brettspiele ← Catan, Brettspiele ← Gloomhaven) = 3 links total
+    _must("link_to_moc" in out, "link_to_moc row must exist in output")
+    print("[PASS] supporting_items expansion: reconciles, no orphan warning")
+
+
+def test_truly_empty_moc_warns():
+    """Create_moc with no supporting_items AND no parent_mocs pointing to it
+    → observation that the MOC will be created empty."""
     confirmed = [{
         "id": "MOC01", "source_path": None, "action": "create_moc",
         "title": "Brettspiele (MOC)", "tags": [],
         "parent_moc": "2700 - Art & Recreation",
         "parent_mocs": ["2700 - Art & Recreation"],
+        "supporting_items": "",  # empty — nothing to pull in
     }]
     manifest = [{
         "id": "MOC01", "action": "create_moc", "title": "Brettspiele (MOC)",
@@ -200,16 +249,17 @@ def test_orphan_create_moc_warns_not_fails():
         "destination": "Atlas/200 Maps/",
         "parent_moc": "2700 - Art & Recreation",
         "parent_mocs": ["2700 - Art & Recreation"],
+        "supporting_items": "",
         "tags": [],
     }]
     parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
     instrs = _build_instrs_from(manifest, confirmed, [], [])
     rc, obs, out = _run(parsed, instrs)
-    _must(rc == 0, f"orphan MOC is a warning, not fail — got rc={rc}")
+    _must(rc == 0, f"truly empty MOC is warn-only, got rc={rc}")
     _must(len(obs) == 1, f"expected 1 observation, got {len(obs)}: {obs}")
-    _must("Brettspiele" in obs[0], f"observation must mention the orphan MOC title: {obs[0]}")
-    _must("RESULT: OK" in out, "summary must still say OK")
-    print("[PASS] orphan create_moc → rc=0 + observation")
+    _must("Brettspiele" in obs[0], f"observation must mention MOC title: {obs[0]}")
+    _must("empty" in obs[0].lower(), f"observation must say 'empty': {obs[0]}")
+    print("[PASS] truly empty create_moc (no supporting_items, no parent refs) → observation")
 
 
 def test_daily_only_delete_inference_reconciles():
@@ -244,7 +294,8 @@ def main() -> int:
     test_happy_path_reconciles()
     test_missing_instruction_fails()
     test_link_mismatch_fails()
-    test_orphan_create_moc_warns_not_fails()
+    test_supporting_items_expansion_reconciles()
+    test_truly_empty_moc_warns()
     test_daily_only_delete_inference_reconciles()
     print("\n\u2713 All instructions-diff tests passed.")
     return 0

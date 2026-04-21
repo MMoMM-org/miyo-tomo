@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -43,7 +43,7 @@ MANIFEST = [
         "id": "A1",
         "action": None,  # regular atomic note
         "title": "Asahikawa — Snow city notes",
-        "source_path": "100 Inbox/Asahikawa.md",
+        "source_path": "Asahikawa.md",
         "template": "t_note_tomo",
         "rendered_file": "2026-04-21_1200_asahikawa-snow-city-notes.md",
         "rendered_path": "/tmp/rendered/2026-04-21_1200_asahikawa-snow-city-notes.md",
@@ -51,6 +51,19 @@ MANIFEST = [
         "parent_moc": "Japan (MOC)",
         "parent_mocs": ["Japan (MOC)", "Travel (MOC)"],
         "tags": ["topic/travel/japan"],
+    },
+    {
+        "id": "A2",
+        "action": None,
+        "title": "Catan Strategy",
+        "source_path": "Catan.md",
+        "template": "t_note_tomo",
+        "rendered_file": "2026-04-21_1200_catan-strategy.md",
+        "rendered_path": "/tmp/rendered/2026-04-21_1200_catan-strategy.md",
+        "destination": "Atlas/202 Notes/",
+        "parent_moc": "",
+        "parent_mocs": [],
+        "tags": [],
     },
     {
         "id": "MOC01",
@@ -63,6 +76,7 @@ MANIFEST = [
         "destination": "Atlas/200 Maps/",
         "parent_moc": "2100 - Health",
         "parent_mocs": ["2100 - Health"],
+        "supporting_items": "A2",
         "tags": ["type/others/moc"],
     },
 ]
@@ -78,11 +92,21 @@ CONFIRMED = [
         "parent_mocs": ["Japan (MOC)", "Travel (MOC)"],
     },
     {
+        "id": "A2",
+        "source_path": "Catan.md",
+        "action": None,
+        "title": "Catan Strategy",
+        "tags": [],
+        "parent_moc": "",
+        "parent_mocs": [],
+    },
+    {
         "id": "MOC01",
         "action": "create_moc",
         "title": "Sport (MOC)",
         "parent_moc": "2100 - Health",
         "parent_mocs": ["2100 - Health"],
+        "supporting_items": "A2",  # pulls Catan in as a child link
     },
 ]
 
@@ -150,12 +174,16 @@ def test_action_building():
     _must(ids == [f"I{i+1:02d}" for i in range(len(ids))],
           f"IDs must be I01..INN, got {ids}")
 
-    # Expected action mix (7 types represented)
+    # Expected action mix:
+    # A1 atomic (move_note) + A2 atomic (move_note) + MOC01 (create_moc)
+    # = 2 move_note, 1 create_moc.
+    # Links: A1 parent_mocs × 2 (Japan, Travel) + MOC01 parent_mocs × 1 (2100)
+    #        + supporting_items down-link (MOC01 → A2) = 4 links.
     counts = {k: kinds.count(k) for k in set(kinds)}
-    _must(counts.get("move_note") == 1, f"expected 1 move_note, got {counts}")
+    _must(counts.get("move_note") == 2, f"expected 2 move_note, got {counts}")
     _must(counts.get("create_moc") == 1, f"expected 1 create_moc, got {counts}")
-    # 2 parent_mocs on A1 + 1 on MOC01 = 3 link_to_moc
-    _must(counts.get("link_to_moc") == 3, f"expected 3 link_to_moc, got {counts}")
+    _must(counts.get("link_to_moc") == 4,
+          f"expected 4 link_to_moc (2 A1 parent + 1 MOC01 parent + 1 supporting_items), got {counts}")
     _must(counts.get("update_tracker") == 1, f"expected 1 update_tracker, got {counts}")
     _must(counts.get("update_log_entry") == 1, f"expected 1 update_log_entry, got {counts}")
     _must(counts.get("update_log_link") == 1, f"expected 1 update_log_link, got {counts}")
@@ -164,24 +192,62 @@ def test_action_building():
     _must(counts.get("delete_source") == 2, f"expected 2 delete_source, got {counts}")
     _must(counts.get("skip") == 1, f"expected 1 skip, got {counts}")
 
-    # move_note carries the rendered file
-    move = next(a for a in actions if a["action"] == "move_note")
-    _must(move["rendered_file"] == "2026-04-21_1200_asahikawa-snow-city-notes.md",
-          f"move_note rendered_file mismatch: {move['rendered_file']}")
-    _must(move["destination"] == "Atlas/202 Notes/",
-          f"move_note destination mismatch")
+    # Ordering: create_moc before move_note before link_to_moc.
+    def _first_idx(kind: str) -> int:
+        for i, k in enumerate(kinds):
+            if k == kind:
+                return i
+        return -1
+    _must(_first_idx("create_moc") >= 0, "create_moc must be emitted")
+    _must(_first_idx("create_moc") < _first_idx("move_note"),
+          f"create_moc must come before move_note, got kinds={kinds}")
+    _must(_first_idx("move_note") < _first_idx("link_to_moc"),
+          f"move_note must come before link_to_moc, got kinds={kinds}")
+    _must(_first_idx("link_to_moc") < _first_idx("update_tracker"),
+          f"link_to_moc must come before daily updates, got kinds={kinds}")
 
-    # link_to_moc uses bare stems (no .md, no path)
+    # move_note now carries source + destination full paths + origin_inbox_item
+    moves = [a for a in actions if a["action"] == "move_note"]
+    a1_move = next(m for m in moves if m["title"] == "Asahikawa — Snow city notes")
+    _must(a1_move["source"] == "100 Inbox/2026-04-21_1200_asahikawa-snow-city-notes.md",
+          f"move_note.source mismatch: {a1_move['source']}")
+    _must(a1_move["destination"] == "Atlas/202 Notes/Asahikawa — Snow city notes.md",
+          f"move_note.destination mismatch: {a1_move['destination']}")
+    _must(a1_move["origin_inbox_item"] == "100 Inbox/Asahikawa.md",
+          f"move_note.origin_inbox_item mismatch: {a1_move['origin_inbox_item']}")
+    # delete_source boolean must not leak into move_note
+    _must("delete_source" not in a1_move, "move_note must not carry a delete_source boolean")
+    # source_path (old field) must be gone
+    _must("source_path" not in a1_move, "move_note must not carry legacy source_path")
+
+    # create_moc also carries source + destination full paths
+    cm = next(a for a in actions if a["action"] == "create_moc")
+    _must(cm["source"] == "100 Inbox/2026-04-21_1200_sport-moc.md",
+          f"create_moc.source mismatch: {cm['source']}")
+    _must(cm["destination"] == "Atlas/200 Maps/Sport (MOC).md",
+          f"create_moc.destination mismatch: {cm['destination']}")
+    _must(cm["supporting_items"] == "A2", "create_moc.supporting_items preserved")
+
+    # link_to_moc uses bare stems + dedupes. The supporting_items expansion
+    # pulls A2 (Catan) into MOC01 (Sport (MOC)).
     links = [a for a in actions if a["action"] == "link_to_moc"]
-    for link in links:
-        _must(not link["target_moc"].endswith(".md"),
-              f"link target still has .md: {link['target_moc']}")
-        _must("/" not in link["target_moc"],
-              f"link target still has path: {link['target_moc']}")
-    # The MOC01 link must reference Sport (MOC) as the source
-    new_moc_link = next(l for l in links if l["source_note_title"] == "Sport (MOC)")
-    _must(new_moc_link["line_to_add"] == "- [[Sport (MOC)]]",
-          f"new MOC link_to_add wrong: {new_moc_link['line_to_add']}")
+    supporting_link = next(
+        (l for l in links if l["target_moc"] == "Sport (MOC)"
+         and l["source_note_title"] == "Catan Strategy"),
+        None,
+    )
+    _must(supporting_link is not None,
+          f"supporting_items expansion must emit Sport (MOC) ← Catan Strategy link, got {links}")
+    _must(supporting_link["line_to_add"] == "- [[Catan Strategy]]",
+          f"supporting_items link_to_add wrong: {supporting_link['line_to_add']}")
+
+    # MOC up-link (Sport (MOC) → 2100) must still exist
+    up_link = next(
+        (l for l in links if l["target_moc"] == "2100 - Health"
+         and l["source_note_title"] == "Sport (MOC)"),
+        None,
+    )
+    _must(up_link is not None, f"Sport (MOC) → 2100 up-link missing, got {links}")
 
     # Tracker action carries date + field + syntax
     tr = next(a for a in actions if a["action"] == "update_tracker")
@@ -195,7 +261,8 @@ def test_action_building():
         _must(d["source_path"].endswith(".md"), f"delete path missing .md: {d}")
         _must(d["reason"], f"delete reason empty: {d}")
 
-    print(f"[PASS] action_building — {len(actions)} actions, {len(set(kinds))} types")
+    print(f"[PASS] action_building — {len(actions)} actions, {len(set(kinds))} types, "
+          f"ordered correctly, supporting_items expanded")
     return actions
 
 

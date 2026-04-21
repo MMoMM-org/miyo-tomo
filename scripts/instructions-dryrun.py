@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """instructions-dryrun.py — Validate an instructions.json is Tomo-Hashi-ready.
 
 Reads an instructions.json file and prints a one-line summary of each action
@@ -22,12 +22,12 @@ import sys
 from pathlib import Path
 
 REQUIRED_FIELDS_BY_KIND = {
-    "move_note": {"id", "action", "rendered_file", "title", "destination"},
+    "move_note": {"id", "action", "source", "destination", "title"},
     "link_to_moc": {"id", "action", "target_moc", "line_to_add"},
     "update_tracker": {"id", "action", "daily_note_path", "date", "field", "value", "syntax"},
     "update_log_entry": {"id", "action", "daily_note_path", "date", "section", "position", "content"},
     "update_log_link": {"id", "action", "daily_note_path", "date", "section", "position", "target_stem"},
-    "create_moc": {"id", "action", "title", "destination"},
+    "create_moc": {"id", "action", "source", "destination", "title"},
     "delete_source": {"id", "action", "source_path", "reason"},
     "skip": {"id", "action"},
 }
@@ -37,10 +37,10 @@ def describe(action: dict) -> str:
     kind = action.get("action", "?")
     aid = action.get("id", "?")
     if kind == "move_note":
-        return (f"{aid} move_note: rendered={action.get('rendered_file')} "
-                f"→ {action.get('destination')} (title={action.get('title')!r})")
+        return (f"{aid} move_note: {action.get('source')} → {action.get('destination')}")
     if kind == "create_moc":
-        return f"{aid} create_moc: {action.get('title')!r} → {action.get('destination')}"
+        return (f"{aid} create_moc: {action.get('source')} → {action.get('destination')} "
+                f"(title={action.get('title')!r})")
     if kind == "link_to_moc":
         return (f"{aid} link_to_moc: target=[[{action.get('target_moc')}]] "
                 f"line={action.get('line_to_add')!r}")

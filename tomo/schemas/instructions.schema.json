@@ -50,18 +50,18 @@
     },
     "move_note": {
       "type": "object",
-      "required": ["id", "action", "source_path", "rendered_file", "title", "destination"],
+      "required": ["id", "action", "source", "destination", "title"],
       "additionalProperties": false,
       "properties": {
         "id": {"$ref": "#/$defs/action_id"},
         "action": {"const": "move_note"},
-        "source_path": {"type": ["string", "null"], "description": "Vault-relative path of the source inbox note (may be null for proposed MOCs)."},
-        "rendered_file": {"type": "string", "description": "Filename (inside inbox) of the rendered note that Tomo wrote."},
-        "title": {"type": "string"},
-        "destination": {"type": "string", "description": "Vault-relative destination folder (trailing slash)."},
+        "source": {"type": "string", "description": "Vault-relative full path of the rendered file currently in the inbox (what gets moved), e.g. '100 Inbox/2026-04-21_1200_asahikawa-....md'."},
+        "destination": {"type": "string", "description": "Vault-relative full target path including the final filename, e.g. 'Atlas/202 Notes/Asahikawa — ....md'."},
+        "title": {"type": "string", "description": "Final title of the note (also the stem of the destination filename)."},
+        "rendered_file": {"type": "string", "description": "Basename of the rendered file (redundant with source; kept for display)."},
+        "origin_inbox_item": {"type": ["string", "null"], "description": "Optional vault-relative path of the original inbox item this note was derived from — for traceability only. The delete_source action is the operational signal for cleanup."},
         "parent_mocs": {"type": "array", "items": {"type": "string"}},
-        "tags": {"type": "array", "items": {"type": "string"}},
-        "delete_source": {"type": "boolean", "description": "True when the original source should be removed after the move (i.e. rendered replaces it)."}
+        "tags": {"type": "array", "items": {"type": "string"}}
       }
     },
     "link_to_moc": {
@@ -132,18 +132,19 @@
     },
     "create_moc": {
       "type": "object",
-      "required": ["id", "action", "title", "destination"],
+      "required": ["id", "action", "source", "destination", "title"],
       "additionalProperties": false,
       "properties": {
         "id": {"$ref": "#/$defs/action_id"},
         "action": {"const": "create_moc"},
+        "source": {"type": "string", "description": "Vault-relative full path of the rendered MOC file currently in the inbox, e.g. '100 Inbox/2026-04-21_1200_brettspiele-moc.md'."},
+        "destination": {"type": "string", "description": "Vault-relative full target path of the MOC, e.g. 'Atlas/200 Maps/Brettspiele (MOC).md'."},
         "title": {"type": "string"},
-        "destination": {"type": "string"},
-        "parent_moc": {"type": ["string", "null"]},
+        "rendered_file": {"type": "string", "description": "Basename of the rendered MOC file (redundant with source; kept for display)."},
+        "parent_moc": {"type": ["string", "null"], "description": "Parent MOC stem for up-linking (emitted separately as a link_to_moc action on this MOC)."},
         "template": {"type": ["string", "null"]},
-        "rendered_file": {"type": ["string", "null"], "description": "Rendered filename if a template was available; null for instruction-only."},
         "tags": {"type": "array", "items": {"type": "string"}},
-        "supporting_items": {"type": ["string", "null"]}
+        "supporting_items": {"type": ["string", "null"], "description": "Raw 'Supporting items' field from the Proposed MOC block (e.g. 'S02, S06, S12'). Consumed by the renderer to generate link_to_moc actions for each supporting item into this new MOC."}
       }
     },
     "delete_source": {

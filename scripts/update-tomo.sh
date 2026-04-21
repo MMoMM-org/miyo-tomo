@@ -1,7 +1,9 @@
 #!/bin/bash
 # update-tomo.sh — Update managed files in an existing Tomo instance.
 # Overwrites managed files, skips user files, attempts to merge settings.json.
-# version: 0.1.0
+# Also re-runs the voice transcription wizard (XDD 009) to allow model
+# changes without a full reinstall.
+# version: 0.2.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -20,6 +22,10 @@ print_err()  { echo "  ✗ $1" >&2; }
 get_version() {
     grep -m1 '^# version:' "$1" 2>/dev/null | sed 's/^# version: *//' || echo "unknown"
 }
+
+# Voice transcription wizard (XDD 009). Requires print_* helpers above.
+# shellcheck source=lib/configure-voice.sh
+. "$SCRIPT_DIR/lib/configure-voice.sh"
 
 # ── Load config ───────────────────────────────────────────
 
@@ -238,6 +244,27 @@ fi
 SOURCE_VERSION=$(get_version "$TOMO_SOURCE/dot_claude/rules/project-context.md")
 jq --arg v "$SOURCE_VERSION" '.tomoVersion = $v | .updatedAt = now | .updatedAt = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))' \
     "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+
+# ── Voice transcription wizard (XDD 009) ─────────────────
+# Read current state, run stateful wizard, persist any changes.
+PRIOR_VOICE_ENABLED=$(jq -r '.voice.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
+PRIOR_VOICE_MODEL=$(jq -r '.voice.model // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+PRIOR_VOICE_LANGUAGE=$(jq -r '.voice.language // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+VOICE_MODELS_DIR="$INSTANCE_PATH/voice/models"
+
+configure_voice \
+    "$PRIOR_VOICE_ENABLED" \
+    "$PRIOR_VOICE_MODEL" \
+    "$PRIOR_VOICE_LANGUAGE" \
+    "$VOICE_MODELS_DIR" \
+    "false"
+
+# Persist voice settings back to tomo-install.json
+jq --argjson enabled "${VOICE_ENABLED:-false}" \
+   --arg model "${VOICE_MODEL:-}" \
+   --arg lang  "${VOICE_LANGUAGE:-}" \
+   '.voice = { enabled: $enabled, model: $model, language: $lang }' \
+   "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
 
 # ── Summary ───────────────────────────────────────────────
 

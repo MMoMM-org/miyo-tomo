@@ -169,6 +169,56 @@ bash begin-tomo.sh --login
 
 This launches the container with port 10000 exposed for the OAuth callback. Complete the browser login flow and your new credentials are saved to `tomo-home/.claude/.credentials.json`. No cleanup or re-install needed.
 
+## `@` File Picker
+
+### Empty Picker / No Results
+
+**Symptom:** Typing `@` shows nothing, or `@<query>` returns no matches.
+
+**Check:**
+1. `tomo/dot_claude/scripts/file-suggestion.sh` exists in the instance at
+   `.claude/scripts/file-suggestion.sh` and is executable.
+2. `.claude/settings.json` has `fileSuggestion` wired to the script.
+3. Kado is reachable (the picker falls back to cache but the first run
+   needs Kado for `listDir` + `kado-open-notes`).
+4. Check the cache directory at `cache/` inside the instance — the picker
+   writes `inbox-cache`, `vault-cache`, and `open-notes-cache` files there.
+
+The picker always exits 0 by design. A non-zero exit hides the picker
+silently and there's no error banner, so failures surface as "empty
+results" rather than stack traces. Run the script manually with a query
+to see its stderr:
+
+```bash
+echo "catan" | bash .claude/scripts/file-suggestion.sh
+```
+
+### Picked Note Doesn't Resolve
+
+**Symptom:** `@Calendar/301 Daily/2026-03-26.md` ends up as a quoted literal
+or Claude says it can't find the file.
+
+**Cause:** Kado returns vault-relative paths. Claude Code tries `Read`
+locally first, hits `ENOENT`, and the session is expected to fall back to
+`kado-read`. If your session doesn't have Kado MCP tools in scope, the
+fallback can't happen.
+
+**Check:**
+1. The current agent/command has `mcp__kado__kado-read` in its tool list.
+2. Kado connection is live (see "Container Can't Reach Kado" above).
+
+### Open Notes Not Appearing
+
+**Symptom:** `@` doesn't surface currently-open Obsidian notes — only
+inbox + vault files show up.
+
+**Cause:** `kado-open-notes` requires Kado v0.7.0+. Older Kado versions
+return `FORBIDDEN` or no such tool, and the picker silently skips open
+notes.
+
+**Solution:** Upgrade Kado to v0.7.0+ (check the Kado plugin version in
+Obsidian's Community Plugins pane).
+
 ## YAML Errors
 
 ### vault-config.yaml Won't Parse

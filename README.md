@@ -149,6 +149,27 @@ miyo-tomo/
 | `/inbox` | Process inbox (auto-detects: cleanup → Pass 2 → Pass 1) |
 | `/explore-vault` | Scan vault and build discovery cache |
 
+## `@` File Picker
+
+Tomo replaces Claude Code's built-in filesystem `@` picker with a vault-aware
+one (`tomo/dot_claude/scripts/file-suggestion.sh`). When you type `@` in a
+Tomo session:
+
+- **Empty `@`** — shows your currently-open Obsidian notes first, then inbox,
+  then other vault files (total: 15 results).
+- **`@<query>`** — fuzzy-matches across open notes + inbox + vault in one pass
+  (via `fzf --filter`), head 15.
+
+No scope prefixes — one unified candidate stream. Results are cached (inbox:
+30 s TTL, vault: 1 h TTL, invalidated by `/explore-vault`). Open-note
+awareness requires Kado v0.7.0+ (`kado-open-notes`); older Kado versions
+silently fall back to inbox + vault only.
+
+Picked notes insert as `@Calendar/301 Daily/2026-03-26.md` into your prompt.
+Claude Code tries to `Read` them locally, hits `ENOENT` (paths are
+vault-relative), and the session falls back to `kado-read` — so expect one
+extra tool call per pick.
+
 ## Platform Support
 
 | Platform | Status |

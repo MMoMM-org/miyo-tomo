@@ -49,17 +49,30 @@ We prove the script runs against a real audio file and produces correct markdown
   3. Validate: Pytest snapshot test against a stub `TranscriptResult` —
      output matches expected string exactly (deterministic).
 
-- [ ] **T2.3 `scripts/voice-transcribe.py`** `[activity: backend]`
+- [ ] **T2.3 `scripts/voice-transcribe.py` (batch CLI)** `[activity: backend]`
 
   1. Prime: Read existing CLI patterns in `scripts/*.py` (e.g. `instruction-render.py`)
-     for argparse style, error handling, exit codes.
-  2. Implement: argparse with `audio_path` positional, `--model-dir` (default
-     `/tomo/voice/models/faster-whisper-medium`), `--language` (default None →
-     auto-detect). Loads model, transcribes, renders, writes markdown to stdout.
-     Exit codes: 0 success, 2 audio-not-found, 3 model-not-found, 4 transcription-error.
-     Errors go to stderr as JSON: `{"error": "<code>", "detail": "<msg>"}`.
+     for argparse style, error handling, exit codes. Confirm the batch shape
+     in `solution.md § scripts/voice-transcribe.py`.
+  2. Implement: argparse with `audio_paths` positional (`nargs="+"`),
+     `--model-dir` (default `/tomo/voice/models/faster-whisper-medium`),
+     `--language` (default None → auto-detect). **Load model ONCE**, then
+     loop over `audio_paths`, accumulating per-file results. Emit a single
+     JSON manifest on stdout:
+     ```json
+     {"model_dir": "...", "results": [
+       {"audio": "x.m4a", "target": "x.md", "markdown": "...", "error": null},
+       {"audio": "y.m4a", "target": "y.md", "markdown": null,
+        "error": {"code": "transcription_error", "detail": "..."}}
+     ]}
+     ```
+     Per-file errors go INSIDE the manifest (never crash the whole batch).
+     Exit codes: 0 = batch completed (inspect `results[].error`), 2 = usage
+     error, 3 = model_dir missing (fatal, no files attempted).
   3. Validate: `python3 scripts/voice-transcribe.py --help` prints usage.
-     Missing audio file → exit 2 with JSON error.
+     Missing model-dir → exit 3. One real file + one bogus path in same
+     batch → exit 0, manifest has `markdown` for the real one and `error`
+     for the bogus one.
 
 - [ ] **T2.4 Test fixture** `[activity: testing]`
 
@@ -90,10 +103,15 @@ We prove the script runs against a real audio file and produces correct markdown
 - [ ] **T2.6 Manual CLI smoke test** `[activity: validate]`
 
   - Download tiny model manually (or use Phase 1's download script).
-  - Run: `python3 scripts/voice-transcribe.py tests/voice/fixtures/hello-world.wav --model-dir <tiny-dir>` → markdown printed to stdout.
-  - Verify output: starts with `source: hello-world.wav`, has `---`
-    separator, includes `![[hello-world.wav]]` embed, has at least one
-    `> [!voice] 00:00` callout with the transcribed text.
+  - **Single-file batch**:
+    `python3 scripts/voice-transcribe.py tests/voice/fixtures/hello-world.wav --model-dir <tiny-dir>`
+    → stdout is a JSON object with `results[0].markdown` containing
+    `source: hello-world.wav`, `---` separator, `![[hello-world.wav]]` embed,
+    and at least one `> [!voice] 00:00` callout.
+  - **Multi-file batch** (copy the fixture to `hello-world-2.wav` first):
+    `python3 scripts/voice-transcribe.py hello-world.wav hello-world-2.wav --model-dir <tiny-dir>`
+    → manifest has two `results[]` entries, both with `markdown` populated.
+    Wall-clock should be ~1× load + 2× transcribe (not 2× load).
 
 - [ ] **T2.7 Phase Validation** `[activity: validate]`
 

@@ -6,14 +6,14 @@
 |-------|-------|
 | **Created** | 2026-04-20 |
 | **Current Phase** | PLAN |
-| **Last Updated** | 2026-04-20 |
+| **Last Updated** | 2026-04-21 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | ready | v0.2 — all open questions answered 2026-04-20 |
-| solution.md | draft | v0.1 — architecture, wizard, Dockerfile, Python modules, agent integration |
+| solution.md | draft | v0.2 — batch-CLI pattern (2026-04-21) |
 | plan/ | draft | 5 phases scaffolded — wizard, modules, agent, orchestrator, E2E |
 
 ## Decisions Log
@@ -36,6 +36,7 @@
 | 2026-04-20 | Model on host, mounted into container | Image stays lean; model swap (medium → large-v3) requires only re-download, no image rebuild. Still "preloaded" at install time per F2a |
 | 2026-04-20 | Whisper metadata as plain-text block, NOT frontmatter | User's inbox is zettelkasten-inspired, lean; YAML frontmatter slot stays free for any future inbox-note convention |
 | 2026-04-20 | No inbox-note template imposed by this spec | Tomo has atomic-note templates but no inbox template yet — defining it is a separate concern (backlog F-25); transcripts join the existing free-form fleeting-note convention |
+| 2026-04-21 | Batch CLI (load model once per `/inbox` run, transcribe all audios, exit) | Amortises ~3–5 s cold-start across N files without a daemon. OS reclaims ~2 GB model RAM on process exit — implicit unload, no lifecycle code. Rejected alternatives: per-file CLI (N× cold-start), long-lived daemon (IPC + idle-timeout complexity for uncertain gain). |
 
 ## Context
 

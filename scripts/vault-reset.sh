@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # vault-reset.sh — Reset the test vault inbox to a known pipeline stage.
-# version: 0.1.0
+# version: 0.2.0
 #
 # Designed for macOS bash 3.2 (no declare -A, no mapfile).
 #
@@ -18,9 +18,11 @@
 #                         Non-source files already in the inbox are moved to
 #                         the archive folder first — nothing is lost.
 #
-#   archive               Archive Tomo-generated artifacts only (suggestions,
-#                         instructions, rendered *_YYYY-MM-DD_HHMM_*.md files).
-#                         Source items are left in place.
+#   archive               Archive Pass-2 artifacts only (rendered notes +
+#                         *_instructions.md + *_instructions.json). Source
+#                         items AND the Pass-1 *_suggestions.md approval
+#                         marker are left in place so a Pass-2 retry works
+#                         without re-reviewing. For a total wipe use `raw`.
 #
 #   snapshot <stage>      Copy the current inbox state to fixtures/<stage>/
 #                         so it can be restored later. Useful after a
@@ -61,12 +63,23 @@ check_vault() {
 timestamp() { date -u +%Y-%m-%d_%H%M%S; }
 
 # ── Pattern detection ───────────────────────────────────────────────────
-# Tomo artifacts (all match YYYY-MM-DD_HHMM_*.md) vs user source items.
+# Tomo's Pass-1/Pass-2 artifacts all share a YYYY-MM-DD_HHMM_ prefix.
+# `archive` only touches Pass-2 artifacts (rendered notes + instruction
+# sets). The Pass-1 suggestions doc (*_suggestions.md) is the user's
+# approval marker — archiving it would lose the [x] Approved state and
+# force a fresh review. For a total wipe use `raw` instead.
 is_artifact() {
     # filename only, no path
-    case "$1" in
-        [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9][0-9][0-9]_*.md) return 0 ;;
+    local name="$1"
+    case "$name" in
+        # Explicitly NEVER archive the suggestions doc — it's the approval
+        # marker, not Pass-2 output.
+        *_suggestions.md) return 1 ;;
+        # Pass-2 instruction sets (machine + human view)
+        [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9][0-9][0-9]_instructions.md) return 0 ;;
         [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9][0-9][0-9]_instructions.json) return 0 ;;
+        # Any other timestamped markdown = rendered Pass-2 note
+        [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9][0-9][0-9]_*.md) return 0 ;;
         *) return 1 ;;
     esac
 }

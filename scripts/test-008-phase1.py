@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -538,7 +538,45 @@ def test_resolve_target_moc_paths():
     _must(resolved3 == 0, "raising client → 0 resolutions")
     _must(actions3[0]["target_moc_path"] is None,
           "raising client → target_moc_path stays null")
-    print("[PASS] resolve_target_moc_paths — happy, cached, graceful-degrade")
+
+    # Tier-1: target_moc matches a create_moc in the SAME instruction set —
+    # resolve from the create_moc.destination without needing Kado. Critical
+    # for new MOCs that don't exist in the vault yet.
+    actions4 = [
+        {"id": "I01", "action": "create_moc",
+         "title": "Brettspiele (MOC)",
+         "source": "100 Inbox/2026-04-21_1200_brettspiele-moc.md",
+         "destination": "Atlas/200 Maps/Brettspiele (MOC).md"},
+        {"id": "I02", "action": "link_to_moc",
+         "target_moc": "Brettspiele (MOC)", "target_moc_path": None,
+         "source_note_title": "Catan", "line_to_add": "- [[Catan]]"},
+    ]
+
+    class NeverCalledClient:
+        def search_by_name(self, name):
+            raise AssertionError("in-set lookup must not fall through to Kado")
+
+    resolved4 = ir.resolve_target_moc_paths(actions4, NeverCalledClient())
+    _must(resolved4 == 1, f"in-set resolve → 1 resolved, got {resolved4}")
+    _must(actions4[1]["target_moc_path"] == "Atlas/200 Maps/Brettspiele (MOC).md",
+          f"in-set target_moc_path wrong: {actions4[1]['target_moc_path']}")
+
+    # Tier-1 also works with client=None (no Kado at all)
+    actions5 = [
+        {"id": "I01", "action": "create_moc",
+         "title": "New (MOC)",
+         "source": "100 Inbox/x.md",
+         "destination": "Atlas/200 Maps/New (MOC).md"},
+        {"id": "I02", "action": "link_to_moc",
+         "target_moc": "New (MOC)", "target_moc_path": None,
+         "source_note_title": "Y", "line_to_add": "- [[Y]]"},
+    ]
+    resolved5 = ir.resolve_target_moc_paths(actions5, None)
+    _must(resolved5 == 1, f"in-set resolve without client → 1, got {resolved5}")
+    _must(actions5[1]["target_moc_path"] == "Atlas/200 Maps/New (MOC).md",
+          "in-set resolve works without Kado")
+
+    print("[PASS] resolve_target_moc_paths — happy, cached, graceful-degrade, in-set tier-1")
 
 
 def main() -> int:

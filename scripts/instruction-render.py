@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -777,21 +777,40 @@ def backfill_supporting_items_parents(confirmed: list[dict]) -> None:
 
 
 def resolve_target_moc_paths(actions: list[dict], client) -> int:
-    """Best-effort: resolve `target_moc_path` on link_to_moc actions via Kado.
+    """Best-effort: resolve `target_moc_path` on link_to_moc actions.
 
-    One `search_by_name` per unique target stem, cached. Actions that can't be
-    resolved (Kado unavailable, no match, ambiguous with no "(MOC)" hit) keep
-    their `target_moc_path: null`. Returns the number of resolutions populated.
+    Two-tier resolution:
+      1. In-set lookup — if the target_moc matches a `create_moc` action in
+         THIS instruction set, use its `destination` directly. The MOC doesn't
+         exist in the vault yet, so Kado can't find it; but we know where it
+         WILL be after Tomo Hashi applies I01.
+      2. Kado `search_by_name` — for MOCs that already exist in the vault.
 
-    Tomo Hashi still searches at execute time for robustness; this is a
-    convenience for human readers of the instruction set.
+    Actions that can't be resolved by either route keep their
+    `target_moc_path: null`. Returns the number of resolutions populated.
     """
-    if client is None:
-        return 0
+    # Tier 1 — index create_moc actions by stem of their title so we can
+    # resolve links that target a new MOC in the same instruction set.
+    in_set: dict[str, str] = {}
+    for a in actions:
+        if a.get("action") == "create_moc":
+            title = a.get("title") or ""
+            dest = a.get("destination")
+            if title and dest:
+                in_set[_moc_stem(title)] = dest
+
     cache: dict[str, str | None] = {}
     def _resolve(stem: str) -> str | None:
         if stem in cache:
             return cache[stem]
+        # Tier 1: in-set create_moc lookup (no Kado call, no I/O)
+        if stem in in_set:
+            cache[stem] = in_set[stem]
+            return in_set[stem]
+        # Tier 2: Kado byName search, cached per unique stem
+        if client is None:
+            cache[stem] = None
+            return None
         try:
             hits = client.search_by_name(stem)
         except Exception:  # noqa: BLE001
@@ -814,7 +833,7 @@ def resolve_target_moc_paths(actions: list[dict], client) -> int:
         target = a.get("target_moc")
         if not target:
             continue
-        path = _resolve(target)
+        path = _resolve(_moc_stem(target))
         if path:
             a["target_moc_path"] = path
             resolved += 1

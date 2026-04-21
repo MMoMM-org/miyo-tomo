@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-04-19 |
-| **Current Phase** | IMPLEMENTATION — Phases 1 + 2 shipped, Phase 3 T3.1 deferred to next live `/inbox` |
+| **Current Phase** | COMPLETE — all phases shipped and live-validated 2026-04-21 |
 | **Last Updated** | 2026-04-21 |
 
 ## Documents
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | skipped | Requirements clear from conversation |
 | solution.md | skipped | Design decisions in conversation |
-| plan/ | in_progress | |
+| plan/ | complete | Phases 1, 2, 3 shipped and live-validated |
 
 ## Decisions Log
 
@@ -64,8 +64,27 @@ After this refactoring:
 - T3.3 — backlog F-01, roadmap Horizon 4, and `tomo/dot_claude/commands/inbox.md`
   all cross-reference XDD 008
 
-**Deferred to next live `/inbox`:**
-- T3.1 — End-to-end live vault test (needs Docker + Kado + real suggestions doc).
+**Live-validated 2026-04-21 against the Privat-Test vault:**
+- T3.1 — Full Pass-2 cycle ran end-to-end through the Tomo Docker container +
+  Kado against 12 source items. 25 actions reconciled 25/25 via
+  `instructions-diff.py`; zero observations after the supporting_items
+  expansion landed. `instructions.json` (new schema) and `instructions.md`
+  both written to the vault via `kado-write` (markdown via `operation=note`,
+  JSON via `operation=file` + `scripts/kado-write-file.py`).
+
+## Follow-ups (out of scope for this spec)
+
+Surfaced during live validation — captured for separate work:
+
+- The vault-explorer agent's remaining free-composed sections
+  (`relationships:`, `callouts:`, `trackers:`) carry the same LLM-drift
+  risk that was fixed for `tags:` via `scripts/vault-config-writer.py`
+  in this spec. Pattern is ready to apply; see memory note
+  `project_vault_explorer_writer_refactor.md`.
+- `vault-reset.sh archive` treats the Pass-1 suggestions doc as an
+  artifact; preserving a still-approved suggestions doc while cleaning
+  up Pass-2 output requires a finer pattern (or a `--keep-suggestions`
+  flag). Non-blocking; documented for future enhancement.
 
 ---
 *This file is managed by the xdd-meta skill.*

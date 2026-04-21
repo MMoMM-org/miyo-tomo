@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test-vault-config-writer.py — Unit tests for vault-config-writer.py.
 
 Covers:
@@ -376,7 +376,226 @@ def test_end_to_end_file_roundtrip():
     print("[PASS] end-to-end: file written, reparsed, unrelated sections preserved")
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# relationships subcommand
+# ──────────────────────────────────────────────────────────────────────────────
+
+VALID_RELATIONSHIPS = {
+    "parent": {
+        "marker": "up::", "format": "up:: {{link}}",
+        "position": "connect_callout", "location_type": "inline",
+        "multi": True, "separator": ", ",
+    },
+    "peer": {
+        "marker": "related::", "format": "related:: {{link}}",
+        "position": "connect_callout", "location_type": "inline",
+        "multi": True, "separator": ", ",
+    },
+}
+
+
+def test_relationships_render_and_roundtrip():
+    vcw.validate_relationships_input(VALID_RELATIONSHIPS)
+    out = vcw.render_relationships_section(VALID_RELATIONSHIPS)
+    _must(out.startswith("relationships:\n"), "must start with relationships:")
+    parsed = yaml.safe_load(out)
+    _must(set(parsed["relationships"]) == {"parent", "peer"}, "roundtrip keys")
+    _must(parsed["relationships"]["parent"]["multi"] is True, "parent.multi bool")
+    _must(parsed["relationships"]["parent"]["format"] == "up:: {{link}}", "format preserved")
+    print("[PASS] relationships — valid input renders + roundtrips")
+
+
+def test_relationships_rejects_missing_link_token():
+    bad = {"parent": {**VALID_RELATIONSHIPS["parent"], "format": "up:: LINK"}}
+    _expect_fail(vcw.validate_relationships_input, bad,
+                 label="format without {{link}} token")
+    print("[PASS] relationships — format must contain {{link}}")
+
+
+def test_relationships_rejects_bad_position():
+    bad = {"parent": {**VALID_RELATIONSHIPS["parent"], "position": "anywhere"}}
+    _expect_fail(vcw.validate_relationships_input, bad, label="bad position enum")
+    print("[PASS] relationships — position enum enforced")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# callouts subcommand
+# ──────────────────────────────────────────────────────────────────────────────
+
+VALID_CALLOUTS = {
+    "enabled": True,
+    "editable": {
+        "connect": "Navigation breadcrumbs",
+        "blocks": "Key Concepts section",
+    },
+    "protected": {
+        "shell": "DataviewJS output — do not touch",
+    },
+    "ignore": {
+        "weather": "Decorative widget",
+    },
+}
+
+
+def test_callouts_render_and_roundtrip():
+    vcw.validate_callouts_input(VALID_CALLOUTS)
+    out = vcw.render_callouts_section(VALID_CALLOUTS)
+    _must(out.startswith("callouts:\n"), "must start with callouts:")
+    _must("enabled: true" in out, "enabled rendered as true")
+    parsed = yaml.safe_load(out)
+    _must(parsed["callouts"]["enabled"] is True, "enabled bool preserved")
+    _must(parsed["callouts"]["editable"]["connect"] == "Navigation breadcrumbs",
+          "editable description preserved")
+    _must(parsed["callouts"]["protected"]["shell"].startswith("DataviewJS"),
+          "protected description preserved")
+    print("[PASS] callouts — valid input renders + roundtrips")
+
+
+def test_callouts_rejects_missing_enabled():
+    bad = {"editable": {"connect": "x"}}
+    _expect_fail(vcw.validate_callouts_input, bad, label="missing enabled")
+    print("[PASS] callouts — enabled required")
+
+
+def test_callouts_rejects_non_bool_enabled():
+    bad = {"enabled": "yes"}
+    _expect_fail(vcw.validate_callouts_input, bad, label="enabled must be bool")
+    print("[PASS] callouts — enabled must be bool")
+
+
+def test_callouts_omits_empty_buckets():
+    out = vcw.render_callouts_section({"enabled": True, "editable": {"connect": "x"}})
+    _must("editable:" in out, "editable rendered")
+    _must("protected:" not in out, "empty protected bucket omitted")
+    _must("ignore:" not in out, "empty ignore bucket omitted")
+    print("[PASS] callouts — empty buckets omitted from output")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# trackers subcommand
+# ──────────────────────────────────────────────────────────────────────────────
+
+VALID_TRACKERS = {
+    "daily_note_trackers": {
+        "section": "Habit",
+        "today_fields": [
+            {
+                "name": "Sport", "type": "boolean", "syntax": "task_checkbox",
+                "description": "Physical exercise the user actually did today.",
+                "positive_keywords": ["ran", "gym"],
+                "negative_keywords": ["watched video about"],
+            },
+            {
+                "name": "WakeUpEnergy", "type": "integer", "syntax": "inline_field",
+                "scale": "1-5",
+                "description": "How rested the user felt on waking.",
+            },
+        ],
+    },
+    "end_of_day_fields": {
+        "section": "End of the Day",
+        "fields": [
+            {
+                "name": "Sleep", "type": "integer", "syntax": "inline_field",
+                "scale": "hours",
+                "description": "Hours of sleep the night before.",
+            },
+        ],
+    },
+}
+
+
+def test_trackers_render_and_roundtrip():
+    vcw.validate_trackers_input(VALID_TRACKERS)
+    out = vcw.render_trackers_section(VALID_TRACKERS)
+    _must(out.startswith("trackers:\n"), "must start with trackers:")
+    parsed = yaml.safe_load(out)
+    today = parsed["trackers"]["daily_note_trackers"]["today_fields"]
+    _must(len(today) == 2, f"expected 2 today_fields, got {len(today)}")
+    _must(today[0]["name"] == "Sport", "first field name preserved")
+    _must(today[0]["syntax"] == "task_checkbox", "syntax preserved")
+    _must(today[1]["scale"] == "1-5", "scale preserved")
+    # positive_keywords roundtrip
+    _must(today[0]["positive_keywords"] == ["ran", "gym"], "keywords list preserved")
+    eod = parsed["trackers"]["end_of_day_fields"]["fields"]
+    _must(eod[0]["name"] == "Sleep", "end-of-day field preserved")
+    print("[PASS] trackers — valid input renders + roundtrips")
+
+
+def test_trackers_rejects_missing_description():
+    bad = {
+        "daily_note_trackers": {
+            "today_fields": [{"name": "X", "type": "boolean", "syntax": "inline_field"}]
+        }
+    }
+    _expect_fail(vcw.validate_trackers_input, bad, label="field without description")
+    print("[PASS] trackers — description required per field")
+
+
+def test_trackers_rejects_bad_syntax():
+    bad = {
+        "daily_note_trackers": {
+            "today_fields": [{
+                "name": "X", "type": "boolean", "syntax": "unknown",
+                "description": "x",
+            }]
+        }
+    }
+    _expect_fail(vcw.validate_trackers_input, bad, label="syntax enum violation")
+    print("[PASS] trackers — syntax enum enforced")
+
+
+def test_trackers_optional_end_of_day_fields():
+    minimal = {
+        "daily_note_trackers": {
+            "today_fields": [
+                {"name": "X", "type": "boolean", "syntax": "inline_field",
+                 "description": "x"}
+            ]
+        }
+    }
+    vcw.validate_trackers_input(minimal)
+    out = vcw.render_trackers_section(minimal)
+    _must("end_of_day_fields" not in out, "end_of_day_fields must be omitted when absent")
+    print("[PASS] trackers — end_of_day_fields optional")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Integration — all 3 new sections survive in one vault-config round-trip
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_all_sections_stack_in_one_config():
+    """Apply tags + relationships + callouts + trackers in sequence and verify
+    each section lands without clobbering the others."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        cfg_path = td_path / "vault-config.yaml"
+        cfg_path.write_text("schema_version: 1\nprofile: miyo\n", encoding="utf-8")
+
+        # Apply each section
+        for section, input_data, validator, renderer in [
+            ("tags", VALID_INPUT, vcw.validate_tags_input, vcw.render_tags_section),
+            ("relationships", VALID_RELATIONSHIPS, vcw.validate_relationships_input, vcw.render_relationships_section),
+            ("callouts", VALID_CALLOUTS, vcw.validate_callouts_input, vcw.render_callouts_section),
+            ("trackers", VALID_TRACKERS, vcw.validate_trackers_input, vcw.render_trackers_section),
+        ]:
+            validator(input_data)
+            block = renderer(input_data)
+            current = cfg_path.read_text(encoding="utf-8")
+            updated = vcw.replace_top_level_section(current, section, block)
+            cfg_path.write_text(updated, encoding="utf-8")
+
+        final = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        for section in ("tags", "relationships", "callouts", "trackers"):
+            _must(section in final, f"{section} missing from final config")
+        _must(final["profile"] == "miyo", "profile preserved")
+        _must(final["schema_version"] == 1, "schema_version preserved")
+    print("[PASS] all 4 sections coexist in a single vault-config.yaml")
+
+
 def main() -> int:
+    # tags
     test_validation_accepts_valid()
     test_validation_rejects_list_shape()
     test_validation_rejects_missing_fields()
@@ -391,6 +610,22 @@ def main() -> int:
     test_append_when_missing()
     test_replace_preserves_neighbours_bytewise()
     test_end_to_end_file_roundtrip()
+    # relationships
+    test_relationships_render_and_roundtrip()
+    test_relationships_rejects_missing_link_token()
+    test_relationships_rejects_bad_position()
+    # callouts
+    test_callouts_render_and_roundtrip()
+    test_callouts_rejects_missing_enabled()
+    test_callouts_rejects_non_bool_enabled()
+    test_callouts_omits_empty_buckets()
+    # trackers
+    test_trackers_render_and_roundtrip()
+    test_trackers_rejects_missing_description()
+    test_trackers_rejects_bad_syntax()
+    test_trackers_optional_end_of_day_fields()
+    # integration
+    test_all_sections_stack_in_one_config()
     print("\n\u2713 All vault-config-writer tests passed.")
     return 0
 

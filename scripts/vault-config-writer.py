@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """vault-config-writer.py — deterministic section writer for vault-config.yaml.
 
 The /explore-vault agent classifies and the user confirms — then this script
 renders the YAML. Pattern: same as XDD 008's instruction-render.py. No more
 LLM-composed vault-config sections.
 
-Current subcommands:
-  tags     Render/replace the top-level `tags:` block from JSON input matching
-           tomo/schemas/vault-config-tags.schema.json.
-
-Future subcommands (not implemented yet): relationships, callouts, trackers.
+Subcommands (one per top-level vault-config section):
+  tags           → tomo/schemas/vault-config-tags.schema.json
+  relationships  → tomo/schemas/vault-config-relationships.schema.json
+  callouts       → tomo/schemas/vault-config-callouts.schema.json
+  trackers       → tomo/schemas/vault-config-trackers.schema.json
 
 The writer does textual section replacement, not a full YAML round-trip, so
 comments, formatting, and unrelated sections stay byte-for-byte identical.
@@ -205,10 +205,17 @@ def replace_top_level_section(yaml_text: str, section_key: str, new_block: str) 
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# `tags` subcommand
+# Shared section-write flow — every subcommand uses the same pipeline:
+#   load JSON → validate → render → (stdout OR replace → verify-YAML → write)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def cmd_tags(args: argparse.Namespace) -> int:
+def _run_section_command(
+    args: argparse.Namespace,
+    section_key: str,
+    validator,
+    renderer,
+    summary_fn,
+) -> int:
     input_path = Path(args.input)
     try:
         data = json.loads(input_path.read_text(encoding="utf-8"))
@@ -219,8 +226,8 @@ def cmd_tags(args: argparse.Namespace) -> int:
         print(f"error: invalid JSON in {input_path}: {exc}", file=sys.stderr)
         return 1
 
-    validate_tags_input(data)
-    new_block = render_tags_section(data)
+    validator(data)
+    new_block = renderer(data)
 
     if args.stdout:
         sys.stdout.write(new_block)
@@ -233,9 +240,8 @@ def cmd_tags(args: argparse.Namespace) -> int:
         print(f"error: config not found: {config_path}", file=sys.stderr)
         return 2
 
-    updated = replace_top_level_section(current, "tags", new_block)
+    updated = replace_top_level_section(current, section_key, new_block)
 
-    # Abort if the result wouldn't be valid YAML.
     try:
         yaml.safe_load(updated)
     except yaml.YAMLError as exc:
@@ -243,12 +249,293 @@ def cmd_tags(args: argparse.Namespace) -> int:
         return 1
 
     config_path.write_text(updated, encoding="utf-8")
-    n_prefixes = len(data["prefixes"])
     print(
-        f"vault-config-writer: tags block written ({n_prefixes} prefix(es)) → {config_path}",
+        f"vault-config-writer: {section_key} block written ({summary_fn(data)}) → {config_path}",
         file=sys.stderr,
     )
     return 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# `tags` subcommand
+# ──────────────────────────────────────────────────────────────────────────────
+
+def cmd_tags(args: argparse.Namespace) -> int:
+    return _run_section_command(
+        args, "tags",
+        validate_tags_input,
+        render_tags_section,
+        lambda d: f"{len(d['prefixes'])} prefix(es)",
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# `relationships` subcommand
+# ──────────────────────────────────────────────────────────────────────────────
+
+RELATIONSHIP_REQUIRED = {"marker", "format", "position", "location_type", "multi", "separator"}
+RELATIONSHIP_POSITIONS = {"connect_callout", "frontmatter", "top_of_body", "end_of_frontmatter"}
+RELATIONSHIP_LOCATION_TYPES = {"inline", "frontmatter"}
+
+
+def validate_relationships_input(data: dict) -> None:
+    if not isinstance(data, dict) or not data:
+        _fail("relationships input must be a non-empty object keyed by relationship name")
+    for name, entry in data.items():
+        if not isinstance(name, str) or not name or not name[0].islower():
+            _fail(f"relationship name {name!r} must be lowercase [a-z][a-z0-9_]*")
+        if not all(c.isalnum() or c == "_" for c in name):
+            _fail(f"relationship name {name!r} must be [a-z][a-z0-9_]*")
+        if not isinstance(entry, dict):
+            _fail(f"relationship {name!r}: entry must be an object")
+        missing = RELATIONSHIP_REQUIRED - set(entry)
+        if missing:
+            _fail(f"relationship {name!r}: missing fields {sorted(missing)}")
+        extra = set(entry) - RELATIONSHIP_REQUIRED
+        if extra:
+            _fail(f"relationship {name!r}: unexpected fields {sorted(extra)}")
+        if not isinstance(entry["marker"], str) or not entry["marker"].strip():
+            _fail(f"relationship {name!r}: marker must be a non-empty string")
+        if not isinstance(entry["format"], str) or "{{link}}" not in entry["format"]:
+            _fail(f"relationship {name!r}: format must be a string containing {{{{link}}}}")
+        if entry["position"] not in RELATIONSHIP_POSITIONS:
+            _fail(f"relationship {name!r}: position must be one of {sorted(RELATIONSHIP_POSITIONS)}")
+        if entry["location_type"] not in RELATIONSHIP_LOCATION_TYPES:
+            _fail(f"relationship {name!r}: location_type must be inline or frontmatter")
+        if not isinstance(entry["multi"], bool):
+            _fail(f"relationship {name!r}: multi must be a bool")
+        if not isinstance(entry["separator"], str) or not entry["separator"]:
+            _fail(f"relationship {name!r}: separator must be a non-empty string")
+
+
+def render_relationships_section(data: dict) -> str:
+    lines = ["relationships:"]
+    for name, entry in data.items():
+        lines.append(f"  {name}:")
+        lines.append(f"    marker: {_qstr(entry['marker'])}")
+        lines.append(f"    format: {_qstr(entry['format'])}")
+        lines.append(f"    position: {_qstr(entry['position'])}")
+        lines.append(f"    location_type: {_qstr(entry['location_type'])}")
+        lines.append(f"    multi: {'true' if entry['multi'] else 'false'}")
+        lines.append(f"    separator: {_qstr(entry['separator'])}")
+    return "\n".join(lines) + "\n"
+
+
+def cmd_relationships(args: argparse.Namespace) -> int:
+    return _run_section_command(
+        args, "relationships",
+        validate_relationships_input,
+        render_relationships_section,
+        lambda d: f"{len(d)} relationship type(s)",
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# `callouts` subcommand
+# ──────────────────────────────────────────────────────────────────────────────
+
+CALLOUT_BUCKETS = ("editable", "protected", "ignore")
+CALLOUT_ALLOWED_TOP = {"enabled", *CALLOUT_BUCKETS}
+
+
+def validate_callouts_input(data: dict) -> None:
+    if not isinstance(data, dict):
+        _fail("callouts input must be an object")
+    if "enabled" not in data:
+        _fail("callouts input missing required field: enabled")
+    if not isinstance(data["enabled"], bool):
+        _fail("callouts.enabled must be a bool")
+    extra = set(data) - CALLOUT_ALLOWED_TOP
+    if extra:
+        _fail(f"callouts: unexpected top-level fields {sorted(extra)}")
+    for bucket in CALLOUT_BUCKETS:
+        if bucket not in data:
+            continue
+        bucket_data = data[bucket]
+        if not isinstance(bucket_data, dict):
+            _fail(f"callouts.{bucket} must be an object (name → description)")
+        for cname, cdesc in bucket_data.items():
+            if not isinstance(cname, str) or not cname or not cname[0].isalpha():
+                _fail(f"callouts.{bucket}: name {cname!r} must match [A-Za-z][A-Za-z0-9_-]*")
+            if not all(c.isalnum() or c in "_-" for c in cname):
+                _fail(f"callouts.{bucket}: name {cname!r} has invalid characters")
+            if not isinstance(cdesc, str) or not cdesc.strip():
+                _fail(f"callouts.{bucket}.{cname}: description must be a non-empty string")
+
+
+def render_callouts_section(data: dict) -> str:
+    lines = ["callouts:"]
+    lines.append(f"  enabled: {'true' if data['enabled'] else 'false'}")
+    for bucket in CALLOUT_BUCKETS:
+        entries = data.get(bucket) or {}
+        if not entries:
+            continue
+        lines.append("")
+        lines.append(f"  {bucket}:")
+        for name, desc in entries.items():
+            lines.append(f"    {name}: {_qstr(desc)}")
+    return "\n".join(lines) + "\n"
+
+
+def cmd_callouts(args: argparse.Namespace) -> int:
+    return _run_section_command(
+        args, "callouts",
+        validate_callouts_input,
+        render_callouts_section,
+        lambda d: (
+            f"enabled={d['enabled']}, "
+            + ", ".join(f"{b}={len(d.get(b) or {})}" for b in CALLOUT_BUCKETS)
+        ),
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# `trackers` subcommand
+# ──────────────────────────────────────────────────────────────────────────────
+
+TRACKER_FIELD_REQUIRED = {"name", "type", "syntax", "description"}
+TRACKER_FIELD_ALLOWED = TRACKER_FIELD_REQUIRED | {
+    "scale", "positive_keywords", "negative_keywords", "keywords",
+}
+TRACKER_TYPES = {"boolean", "integer", "text", "duration", "time"}
+TRACKER_SYNTAXES = {"inline_field", "callout_body", "task_checkbox", "checkbox"}
+
+
+def _validate_tracker_field(entry: dict, path: str) -> None:
+    if not isinstance(entry, dict):
+        _fail(f"{path}: must be an object")
+    missing = TRACKER_FIELD_REQUIRED - set(entry)
+    if missing:
+        _fail(f"{path}: missing fields {sorted(missing)}")
+    extra = set(entry) - TRACKER_FIELD_ALLOWED
+    if extra:
+        _fail(f"{path}: unexpected fields {sorted(extra)}")
+    if not isinstance(entry["name"], str) or not entry["name"].strip():
+        _fail(f"{path}: name must be a non-empty string")
+    if entry["type"] not in TRACKER_TYPES:
+        _fail(f"{path}: type must be one of {sorted(TRACKER_TYPES)}")
+    if entry["syntax"] not in TRACKER_SYNTAXES:
+        _fail(f"{path}: syntax must be one of {sorted(TRACKER_SYNTAXES)}")
+    if not isinstance(entry["description"], str) or not entry["description"].strip():
+        _fail(f"{path}: description must be a non-empty string")
+    for key in ("positive_keywords", "negative_keywords", "keywords"):
+        if key in entry:
+            if not isinstance(entry[key], list):
+                _fail(f"{path}.{key}: must be a list")
+            for kw in entry[key]:
+                if not isinstance(kw, str) or not kw.strip():
+                    _fail(f"{path}.{key}: items must be non-empty strings")
+    if "scale" in entry and entry["scale"] is not None:
+        if not isinstance(entry["scale"], str):
+            _fail(f"{path}.scale: must be a string or null")
+
+
+def validate_trackers_input(data: dict) -> None:
+    if not isinstance(data, dict):
+        _fail("trackers input must be an object")
+    if "daily_note_trackers" not in data:
+        _fail("trackers input missing required: daily_note_trackers")
+    extra = set(data) - {"daily_note_trackers", "end_of_day_fields"}
+    if extra:
+        _fail(f"trackers: unexpected top-level fields {sorted(extra)}")
+
+    dnt = data["daily_note_trackers"]
+    if not isinstance(dnt, dict):
+        _fail("trackers.daily_note_trackers must be an object")
+    dnt_extra = set(dnt) - {"section", "today_fields", "yesterday_fields"}
+    if dnt_extra:
+        _fail(f"trackers.daily_note_trackers: unexpected fields {sorted(dnt_extra)}")
+    if "today_fields" not in dnt:
+        _fail("trackers.daily_note_trackers missing required: today_fields")
+    if "section" in dnt and (not isinstance(dnt["section"], str) or not dnt["section"].strip()):
+        _fail("trackers.daily_note_trackers.section must be a non-empty string")
+    for key in ("today_fields", "yesterday_fields"):
+        fields = dnt.get(key)
+        if fields is None:
+            continue
+        if not isinstance(fields, list):
+            _fail(f"trackers.daily_note_trackers.{key} must be a list")
+        for i, f in enumerate(fields):
+            _validate_tracker_field(f, f"trackers.daily_note_trackers.{key}[{i}]")
+
+    eod = data.get("end_of_day_fields")
+    if eod is not None:
+        if not isinstance(eod, dict):
+            _fail("trackers.end_of_day_fields must be an object")
+        eod_extra = set(eod) - {"section", "fields"}
+        if eod_extra:
+            _fail(f"trackers.end_of_day_fields: unexpected fields {sorted(eod_extra)}")
+        if "fields" not in eod:
+            _fail("trackers.end_of_day_fields missing required: fields")
+        if "section" in eod and (not isinstance(eod["section"], str) or not eod["section"].strip()):
+            _fail("trackers.end_of_day_fields.section must be a non-empty string")
+        if not isinstance(eod["fields"], list):
+            _fail("trackers.end_of_day_fields.fields must be a list")
+        for i, f in enumerate(eod["fields"]):
+            _validate_tracker_field(f, f"trackers.end_of_day_fields.fields[{i}]")
+
+
+def _render_tracker_field(entry: dict, indent: str) -> list[str]:
+    lines = [f"{indent}- name: {_qstr(entry['name'])}"]
+    child = indent + "  "
+    lines.append(f"{child}type: {_qstr(entry['type'])}")
+    lines.append(f"{child}syntax: {_qstr(entry['syntax'])}")
+    if entry.get("scale"):
+        lines.append(f"{child}scale: {_qstr(entry['scale'])}")
+    lines.append(f"{child}description: {_qstr(entry['description'])}")
+    for key in ("keywords", "positive_keywords", "negative_keywords"):
+        vals = entry.get(key)
+        if not vals:
+            continue
+        inner = ", ".join(_qstr(v) for v in vals)
+        lines.append(f"{child}{key}: [{inner}]")
+    return lines
+
+
+def render_trackers_section(data: dict) -> str:
+    lines = ["trackers:"]
+    dnt = data["daily_note_trackers"]
+    lines.append("  daily_note_trackers:")
+    if dnt.get("section"):
+        lines.append(f"    section: {_qstr(dnt['section'])}")
+    for key in ("today_fields", "yesterday_fields"):
+        fields = dnt.get(key)
+        if not fields:
+            continue
+        lines.append(f"    {key}:")
+        for f in fields:
+            lines.extend(_render_tracker_field(f, "      "))
+            lines.append("")
+        while lines and lines[-1] == "":
+            lines.pop()
+    eod = data.get("end_of_day_fields")
+    if eod:
+        lines.append("")
+        lines.append("  end_of_day_fields:")
+        if eod.get("section"):
+            lines.append(f"    section: {_qstr(eod['section'])}")
+        lines.append("    fields:")
+        for f in eod["fields"]:
+            lines.extend(_render_tracker_field(f, "      "))
+            lines.append("")
+        while lines and lines[-1] == "":
+            lines.pop()
+    return "\n".join(lines) + "\n"
+
+
+def cmd_trackers(args: argparse.Namespace) -> int:
+    def _summary(d: dict) -> str:
+        dnt = d["daily_note_trackers"]
+        today = len(dnt.get("today_fields") or [])
+        yest = len(dnt.get("yesterday_fields") or [])
+        eod = len((d.get("end_of_day_fields") or {}).get("fields") or [])
+        return f"today={today} yesterday={yest} end_of_day={eod}"
+    return _run_section_command(
+        args, "trackers",
+        validate_trackers_input,
+        render_trackers_section,
+        _summary,
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -261,20 +548,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    def _common_args(sp, schema_name: str) -> None:
+        sp.add_argument(
+            "--input", required=True,
+            help=f"Path to JSON input matching tomo/schemas/{schema_name}.schema.json",
+        )
+        sp.add_argument(
+            "--config", default="config/vault-config.yaml",
+            help="Path to vault-config.yaml (default: config/vault-config.yaml)",
+        )
+        sp.add_argument(
+            "--stdout", action="store_true",
+            help="Render the new block to stdout; do not modify --config.",
+        )
+
     p_tags = sub.add_parser("tags", help="Render/replace the top-level `tags:` block.")
-    p_tags.add_argument(
-        "--input", required=True,
-        help="Path to JSON input matching tomo/schemas/vault-config-tags.schema.json",
-    )
-    p_tags.add_argument(
-        "--config", default="config/vault-config.yaml",
-        help="Path to vault-config.yaml (default: config/vault-config.yaml)",
-    )
-    p_tags.add_argument(
-        "--stdout", action="store_true",
-        help="Render the new block to stdout; do not modify --config.",
-    )
+    _common_args(p_tags, "vault-config-tags")
     p_tags.set_defaults(func=cmd_tags)
+
+    p_rel = sub.add_parser("relationships", help="Render/replace the top-level `relationships:` block.")
+    _common_args(p_rel, "vault-config-relationships")
+    p_rel.set_defaults(func=cmd_relationships)
+
+    p_cal = sub.add_parser("callouts", help="Render/replace the top-level `callouts:` block.")
+    _common_args(p_cal, "vault-config-callouts")
+    p_cal.set_defaults(func=cmd_callouts)
+
+    p_trk = sub.add_parser("trackers", help="Render/replace the top-level `trackers:` block.")
+    _common_args(p_trk, "vault-config-trackers")
+    p_trk.set_defaults(func=cmd_trackers)
+
     return p
 
 

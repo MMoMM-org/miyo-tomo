@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/vault-config-callouts.schema.json",
+  "title": "vault-config.yaml — callouts section",
+  "description": "Canonical input contract for `scripts/vault-config-writer.py callouts`. The writer renders the top-level `callouts:` block of vault-config.yaml from this JSON, replacing any previous block while leaving the rest of the file byte-for-byte untouched.",
+  "type": "object",
+  "required": ["enabled"],
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "description": "Master toggle. enabled=false makes Tomo ignore all callouts."
+    },
+    "editable": {
+      "$ref": "#/$defs/callout_bucket",
+      "description": "Callout types Tomo may read, insert into, or update. Map of name → description."
+    },
+    "protected": {
+      "$ref": "#/$defs/callout_bucket",
+      "description": "Read-only callout types (typically wrap DataviewJS or plugin output). Tomo never writes inside."
+    },
+    "ignore": {
+      "$ref": "#/$defs/callout_bucket",
+      "description": "Decorative callouts Tomo skips entirely (no read, no write)."
+    }
+  },
+  "$defs": {
+    "callout_bucket": {
+      "type": "object",
+      "description": "Map keyed by callout type name (matches `> [!name]`); value is a short description.",
+      "patternProperties": {
+        "^[A-Za-z][A-Za-z0-9_-]*$": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

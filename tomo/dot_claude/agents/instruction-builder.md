@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Instruction Builder Agent
-# version: 2.0.0
+# version: 2.1.0 (Step 4 writes JSON via scripts/kado-write-file.py — operation=file, base64 — because operation=note only accepts .md)
 
 You are a pure orchestrator. You call three scripts in sequence and write their
 outputs to the vault via Kado. You do NOT compose markdown, assemble instructions,
@@ -57,17 +57,45 @@ If exit 2, report the error and stop.
 
 ### Step 4 — Write outputs to the vault
 
-Read `tomo-tmp/rendered/manifest.json`. For each entry, read the rendered file
-from `tomo-tmp/rendered/<rendered_file>` and write to the vault via `kado-write`
-at `<inbox><rendered_file>` (where `<inbox>` is the value from Step 1).
+Kado has two relevant `kado-write` operations:
 
-Then write the instruction set with a date prefix so it does not collide with
-prior runs. Use today's date + current hour/minute in UTC as the prefix
-(the script's `generated` timestamp is the source of truth — derive the
-prefix from `YYYY-MM-DD_HHMM`):
+- `operation: "note"` — the path MUST end in `.md` and the content is a
+  markdown string. Use for all rendered notes and the `.md` instruction set.
+- `operation: "file"` — base64-encoded content, accepts any extension. Use
+  for the `.json` instruction set. Attempting `operation: "note"` on a
+  `.json` path fails with `INTERNAL_ERROR`.
 
-- `tomo-tmp/rendered/instructions.json` → `<inbox><YYYY-MM-DD_HHMM>_instructions.json`
-- `tomo-tmp/rendered/instructions.md` → `<inbox><YYYY-MM-DD_HHMM>_instructions.md`
+Do not base64-encode by hand in the agent prompt — call `scripts/kado-write-file.py`,
+which wraps the encode + write.
+
+**Markdown writes (direct MCP call):**
+
+Read `tomo-tmp/rendered/manifest.json`. For each entry, read the rendered
+markdown from `tomo-tmp/rendered/<rendered_file>` and call:
+
+```
+kado-write operation=note path="<inbox><rendered_file>" content=<md body>
+```
+
+Then the human-readable instruction set (derive `<YYYY-MM-DD_HHMM>` from the
+`generated` timestamp in `tomo-tmp/rendered/instructions.json`):
+
+```
+kado-write operation=note
+           path="<inbox><YYYY-MM-DD_HHMM>_instructions.md"
+           content=<contents of tomo-tmp/rendered/instructions.md>
+```
+
+**JSON write (via helper script):**
+
+```bash
+python3 scripts/kado-write-file.py \
+  --local tomo-tmp/rendered/instructions.json \
+  --vault "<inbox><YYYY-MM-DD_HHMM>_instructions.json"
+```
+
+The helper base64-encodes the file and calls `kado-write` with
+`operation="file"`. Exit 0 = written; non-zero = report to user and stop.
 
 ### Step 5 — Report
 

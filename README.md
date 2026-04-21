@@ -34,7 +34,7 @@ Tomo uses a **2-pass proposal model**. You always stay in control.
 6. Tomo deterministically produces three artifacts in the inbox:
    - **Rendered note files** — new markdown files with tokens resolved from your templates
    - **`instructions.md`** — human-readable instruction set with per-action `[ ] Applied` checkboxes
-   - **`instructions.json`** — canonical machine-readable version (schema: `tomo/schemas/instructions.schema.json`), consumed by the upcoming Tomo Hashi plugin
+   - **`instructions.json`** — canonical machine-readable version (schema: `tomo/schemas/instructions.schema.json`, consumer contract: [`docs/instructions-json.md`](docs/instructions-json.md)), consumed by the upcoming Tomo Hashi plugin
 7. You apply each action manually in Obsidian (move files, add MOC links, update daily notes) and tick `[x] Applied` per action
 
 ### Cleanup
@@ -124,6 +124,11 @@ miyo-tomo/
 │   ├── read-config-field.py   # Batch read vault-config values
 │   ├── vault-reset.sh         # Reset the test vault inbox between pipeline stages
 │   └── yaml-fixer.py          # YAML error recovery
+├── tests/                 # Python unit tests (host-only; not synced to instance)
+│   ├── test-008-phase1.py        # instruction-render: actions, schema, MD
+│   ├── test-instructions-diff.py # diff coverage audit
+│   ├── test-vault-config-writer.py # tags section writer
+│   └── test-shared-ctx-tags.py   # shared-ctx prefix filtering
 ├── tomo/schemas/          # JSON schemas (suggestions, item-result, instructions)
 ├── docs/                  # Setup, troubleshooting, specs
 ├── docker/                # Dockerfile and entrypoint (source of truth)
@@ -184,7 +189,7 @@ extra tool call per pick.
 - **Kouzou** (構造) — Claude Code infrastructure (private)
 - **[Kado](https://github.com/MMoMM-org/miyo-kado)** (門) — MCP server for Obsidian vault access
 - **Tomo** (友) — AI workflows (this repo)
-- **Tomo Hashi** (友橋) — Obsidian plugin that reads `instructions.json` and executes actions in the vault (post-MVP; replaces the "Seigyo" placeholder in earlier specs)
+- **Tomo Hashi** (友橋) — Obsidian plugin that reads `instructions.json` and executes actions in the vault (post-MVP; replaces the "Seigyo" placeholder in earlier specs). Consumer contract: [`docs/instructions-json.md`](docs/instructions-json.md).
 
 ## License
 

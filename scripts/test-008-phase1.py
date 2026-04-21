@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -240,6 +240,14 @@ def test_action_building():
           f"supporting_items expansion must emit Sport (MOC) ← Catan Strategy link, got {links}")
     _must(supporting_link["line_to_add"] == "- [[Catan Strategy]]",
           f"supporting_items link_to_add wrong: {supporting_link['line_to_add']}")
+    # Dedup: after backfill, parent_mocs and supporting_items paths both produce
+    # the same (target, source) key — must emit exactly once.
+    sport_catan_count = sum(
+        1 for l in links
+        if l["target_moc"] == "Sport (MOC)" and l["source_note_title"] == "Catan Strategy"
+    )
+    _must(sport_catan_count == 1,
+          f"Sport (MOC) ← Catan must appear exactly once, got {sport_catan_count}")
 
     # MOC up-link (Sport (MOC) → 2100) must still exist
     up_link = next(
@@ -372,6 +380,167 @@ def test_config_loading(tmp_config_yaml: Path):
     print("[PASS] config_loading — all fields resolved")
 
 
+def test_backfill_supporting_items_parents():
+    """Supporting items inherit the new MOC as their primary parent so the
+    rendering loop writes `up:: [[<new MOC>]]` into the atomic note."""
+    # Case 1: item with no existing parents → new MOC becomes primary
+    confirmed = [
+        {"id": "A1", "source_path": "Catan.md", "action": None,
+         "title": "Catan Strategy", "parent_moc": "",
+         "parent_mocs": []},
+        {"id": "MOC01", "action": "create_moc", "title": "Brettspiele (MOC)",
+         "parent_moc": "2700", "parent_mocs": ["2700"],
+         "supporting_items": "A1"},
+    ]
+    ir.backfill_supporting_items_parents(confirmed)
+    a1 = next(it for it in confirmed if it["id"] == "A1")
+    _must(a1["parent_moc"] == "Brettspiele (MOC)",
+          f"primary parent_moc must be set to new MOC, got {a1['parent_moc']!r}")
+    _must(a1["parent_mocs"] == ["Brettspiele (MOC)"],
+          f"parent_mocs must contain new MOC, got {a1['parent_mocs']}")
+
+    # Case 2: item with existing parent → new MOC prepended, existing preserved
+    confirmed = [
+        {"id": "A1", "source_path": "Catan.md", "action": None,
+         "title": "Catan Strategy", "parent_moc": "Games (MOC)",
+         "parent_mocs": ["Games (MOC)"]},
+        {"id": "MOC01", "action": "create_moc", "title": "Brettspiele (MOC)",
+         "parent_moc": "2700", "parent_mocs": ["2700"],
+         "supporting_items": "A1"},
+    ]
+    ir.backfill_supporting_items_parents(confirmed)
+    a1 = next(it for it in confirmed if it["id"] == "A1")
+    _must(a1["parent_mocs"][0] == "Brettspiele (MOC)",
+          f"new MOC must be prepended, got {a1['parent_mocs']}")
+    _must("Games (MOC)" in a1["parent_mocs"],
+          f"existing parent must be preserved, got {a1['parent_mocs']}")
+    # parent_moc was already set → NOT overwritten (existing primary wins)
+    _must(a1["parent_moc"] == "Games (MOC)",
+          f"existing parent_moc must not be overwritten, got {a1['parent_moc']!r}")
+
+    # Case 3: idempotence — calling twice shouldn't re-prepend
+    ir.backfill_supporting_items_parents(confirmed)
+    a1 = next(it for it in confirmed if it["id"] == "A1")
+    _must(a1["parent_mocs"].count("Brettspiele (MOC)") == 1,
+          f"idempotence broken: Brettspiele appears twice in {a1['parent_mocs']}")
+    print("[PASS] backfill_supporting_items_parents — prepend, preserve, idempotent")
+
+
+def test_backfill_plus_build_actions_no_duplicate_links():
+    """Real pipeline flow: backfill mutates confirmed → build_actions sees the
+    up-link via parent_mocs AND the down-link via supporting_items, and must
+    dedupe to exactly one action per (target_moc, source_title) pair."""
+    confirmed = [
+        {"id": "A1", "source_path": "Catan.md", "action": None,
+         "title": "Catan Strategy", "tags": [],
+         "parent_moc": "", "parent_mocs": []},
+        {"id": "MOC01", "action": "create_moc", "title": "Brettspiele (MOC)",
+         "tags": [], "parent_moc": "2700", "parent_mocs": ["2700"],
+         "supporting_items": "A1"},
+    ]
+    manifest = [
+        {"id": "A1", "action": None, "title": "Catan Strategy",
+         "source_path": "Catan.md",
+         "rendered_file": "2026-04-21_1200_catan.md",
+         "destination": "Atlas/202 Notes/",
+         "parent_moc": "", "parent_mocs": [], "tags": []},
+        {"id": "MOC01", "action": "create_moc", "title": "Brettspiele (MOC)",
+         "source_path": None,
+         "rendered_file": "2026-04-21_1200_brettspiele-moc.md",
+         "destination": "Atlas/200 Maps/",
+         "parent_moc": "2700", "parent_mocs": ["2700"],
+         "supporting_items": "A1", "tags": []},
+    ]
+
+    # Mimic main(): backfill mutates the confirmed list BEFORE building actions.
+    # Also update the manifest entry for A1 to reflect the new parent — the
+    # rendering loop would do this naturally (it re-reads from confirmed_items
+    # after backfill), so for this integration test we sync it manually.
+    ir.backfill_supporting_items_parents(confirmed)
+    for m in manifest:
+        if m["id"] == "A1":
+            a1 = next(c for c in confirmed if c["id"] == "A1")
+            m["parent_moc"] = a1["parent_moc"]
+            m["parent_mocs"] = list(a1["parent_mocs"])
+
+    actions = ir.build_actions(manifest, confirmed, [], [], CFG)
+    links = [a for a in actions if a["action"] == "link_to_moc"]
+    # Expected:
+    #   1. Brettspiele ← Catan  (from A1's newly-backfilled parent_mocs)
+    #   2. Brettspiele → 2700   (MOC01's own parent_mocs up-link)
+    # Deduped: exactly 2 link_to_moc actions.
+    _must(len(links) == 2,
+          f"expected 2 link_to_moc actions after dedup, got {len(links)}: "
+          f"{[(l['target_moc'], l['source_note_title']) for l in links]}")
+    keys = {(l["target_moc"], l["source_note_title"]) for l in links}
+    _must(("Brettspiele (MOC)", "Catan Strategy") in keys,
+          f"down-link Brettspiele ← Catan missing: {keys}")
+    _must(("2700", "Brettspiele (MOC)") in keys,
+          f"up-link Brettspiele → 2700 missing: {keys}")
+
+    # Also verify the atomic note's manifest entry got the up:: target.
+    a1_mf = next(m for m in manifest if m["id"] == "A1")
+    _must(a1_mf["parent_moc"] == "Brettspiele (MOC)",
+          f"atomic note's parent_moc must be the new MOC: {a1_mf['parent_moc']}")
+    print("[PASS] backfill + build_actions — no duplicate links, up:: target back-filled")
+
+
+def test_resolve_target_moc_paths():
+    """resolve_target_moc_paths populates link_to_moc.target_moc_path via Kado."""
+    actions = [
+        {"id": "I01", "action": "link_to_moc", "target_moc": "Japan (MOC)",
+         "target_moc_path": None, "source_note_title": "Asahikawa",
+         "line_to_add": "- [[Asahikawa]]"},
+        {"id": "I02", "action": "link_to_moc", "target_moc": "Japan (MOC)",
+         "target_moc_path": None, "source_note_title": "Sapporo",
+         "line_to_add": "- [[Sapporo]]"},
+        {"id": "I03", "action": "move_note", "source": "x", "destination": "y", "title": "z"},
+    ]
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+        def search_by_name(self, name):
+            self.calls.append(name)
+            if name == "Japan (MOC)":
+                return [{"path": "Atlas/200 Maps/Japan (MOC).md"}]
+            return []
+
+    client = FakeClient()
+    resolved = ir.resolve_target_moc_paths(actions, client)
+    _must(resolved == 2, f"expected 2 resolved, got {resolved}")
+    _must(actions[0]["target_moc_path"] == "Atlas/200 Maps/Japan (MOC).md",
+          f"I01 target_moc_path wrong: {actions[0]['target_moc_path']}")
+    _must(actions[1]["target_moc_path"] == "Atlas/200 Maps/Japan (MOC).md",
+          f"I02 target_moc_path wrong: {actions[1]['target_moc_path']}")
+    _must(len(client.calls) == 1, f"caching broken — expected 1 call, got {len(client.calls)}")
+    # move_note untouched
+    _must("target_moc_path" not in actions[2], "non-link_to_moc actions must stay untouched")
+
+    # Degrades gracefully with None client
+    actions2 = [{"id": "I01", "action": "link_to_moc", "target_moc": "X",
+                 "target_moc_path": None, "source_note_title": "Y",
+                 "line_to_add": "- [[Y]]"}]
+    resolved2 = ir.resolve_target_moc_paths(actions2, None)
+    _must(resolved2 == 0, "no client → 0 resolutions")
+    _must(actions2[0]["target_moc_path"] is None,
+          "no client → target_moc_path stays null")
+
+    # Degrades gracefully when search raises
+    class RaisingClient:
+        def search_by_name(self, name):
+            raise RuntimeError("kado down")
+
+    actions3 = [{"id": "I01", "action": "link_to_moc", "target_moc": "X",
+                 "target_moc_path": None, "source_note_title": "Y",
+                 "line_to_add": "- [[Y]]"}]
+    resolved3 = ir.resolve_target_moc_paths(actions3, RaisingClient())
+    _must(resolved3 == 0, "raising client → 0 resolutions")
+    _must(actions3[0]["target_moc_path"] is None,
+          "raising client → target_moc_path stays null")
+    print("[PASS] resolve_target_moc_paths — happy, cached, graceful-degrade")
+
+
 def main() -> int:
     import tempfile
     sample_yaml = """
@@ -398,6 +567,9 @@ daily_log:
     actions = test_action_building()
     test_schema_validity(actions)
     test_md_rendering(actions)
+    test_backfill_supporting_items_parents()
+    test_backfill_plus_build_actions_no_duplicate_links()
+    test_resolve_target_moc_paths()
 
     print("\n✓ All XDD-008 Phase 1 tests passed.")
     return 0

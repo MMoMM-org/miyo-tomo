@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -738,6 +738,89 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     return "\n".join(body_parts).rstrip() + "\n"
 
 
+def backfill_supporting_items_parents(confirmed: list[dict]) -> None:
+    """Prepend each create_moc's title into its supporting items' parent_mocs.
+
+    The suggestions doc cannot offer a not-yet-existing MOC as a parent option
+    at review time, so supporting_items on the Proposed MOC block is the only
+    way atomic notes get linked under a new MOC. This back-fill makes the
+    relationship explicit BEFORE the rendering loop runs, so:
+
+      - Rendered atomic notes pick up `up:: [[<new MOC>]]` via the {{up}} token
+        (which reads parent_moc — the primary/first parent).
+      - `build_actions` emits the link_to_moc down-links naturally via parent_mocs;
+        the supporting_items expansion path deduplicates against it.
+
+    Mutates `confirmed` in place. Safe to call multiple times (idempotent).
+    """
+    id_index = {it.get("id"): it for it in confirmed if it.get("id")}
+    for item in confirmed:
+        if item.get("action") != "create_moc":
+            continue
+        new_moc_title = item.get("title", "")
+        if not new_moc_title:
+            continue
+        for sid in _parse_supporting_items(item.get("supporting_items")):
+            sup = id_index.get(sid)
+            if not sup or sup.get("action") == "create_moc":
+                continue
+            parents = sup.get("parent_mocs") or []
+            # Normalise: strip to bare stems for comparison; prepend the new MOC
+            # only if not already present under any naming convention.
+            already = any(_moc_stem(p) == _moc_stem(new_moc_title) for p in parents)
+            if not already:
+                sup["parent_mocs"] = [new_moc_title] + list(parents)
+            # Set primary parent_moc if empty — this is the field the rendering
+            # loop reads to populate {{up}}.
+            if not sup.get("parent_moc"):
+                sup["parent_moc"] = new_moc_title
+
+
+def resolve_target_moc_paths(actions: list[dict], client) -> int:
+    """Best-effort: resolve `target_moc_path` on link_to_moc actions via Kado.
+
+    One `search_by_name` per unique target stem, cached. Actions that can't be
+    resolved (Kado unavailable, no match, ambiguous with no "(MOC)" hit) keep
+    their `target_moc_path: null`. Returns the number of resolutions populated.
+
+    Tomo Hashi still searches at execute time for robustness; this is a
+    convenience for human readers of the instruction set.
+    """
+    if client is None:
+        return 0
+    cache: dict[str, str | None] = {}
+    def _resolve(stem: str) -> str | None:
+        if stem in cache:
+            return cache[stem]
+        try:
+            hits = client.search_by_name(stem)
+        except Exception:  # noqa: BLE001
+            cache[stem] = None
+            return None
+        if not hits:
+            cache[stem] = None
+            return None
+        # Prefer a hit whose filename stem matches exactly (not a substring).
+        exact = [h for h in hits if _stem(h.get("path", "")) == stem]
+        chosen = (exact or hits)[0]
+        path = chosen.get("path") or None
+        cache[stem] = path
+        return path
+
+    resolved = 0
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        target = a.get("target_moc")
+        if not target:
+            continue
+        path = _resolve(target)
+        if path:
+            a["target_moc_path"] = path
+            resolved += 1
+    return resolved
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Render approved suggestions into note files.")
     p.add_argument("--suggestions", required=True, help="Path to parsed suggestions JSON")
@@ -774,6 +857,11 @@ def main() -> int:
         except KadoError as exc:
             print(f"FATAL: Cannot connect to Kado: {exc}", file=sys.stderr)
             return 2
+
+    # Back-fill parent_mocs on supporting items of create_moc items — BEFORE
+    # the rendering loop reads parent_moc to compute {{up}}. Ensures atomic
+    # notes that justify a new MOC actually get `up:: [[<new MOC>]]` written.
+    backfill_supporting_items_parents(confirmed)
 
     now = datetime.now(timezone.utc)
     date_prefix = now.strftime("%Y-%m-%d_%H%M")
@@ -897,6 +985,14 @@ def main() -> int:
 
     # ── Build the unified action list (T1.1) ─────────────────────────────
     actions = build_actions(manifest, confirmed, daily_updates, skipped, cfg)
+
+    # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────
+    # Best-effort; actions stay with `target_moc_path: null` if Kado is
+    # unavailable or no match is found.
+    resolved_paths = resolve_target_moc_paths(actions, client)
+    if resolved_paths:
+        print(f"  [resolve] target_moc_path populated for {resolved_paths} link_to_moc action(s)",
+              file=sys.stderr)
 
     # ── Write instructions.json (T1.3) ───────────────────────────────────
     generated_iso = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")

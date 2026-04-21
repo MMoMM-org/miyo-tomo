@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/vault-config-tags.schema.json",
+  "title": "vault-config.yaml — tags section",
+  "description": "Canonical input contract for scripts/vault-config-writer.py tags. The writer renders the top-level `tags:` block of vault-config.yaml from this JSON, replacing any previous tags block while leaving the rest of the file byte-for-byte untouched.",
+  "type": "object",
+  "required": ["prefixes"],
+  "additionalProperties": false,
+  "properties": {
+    "prefixes": {
+      "type": "object",
+      "description": "Map keyed by tag prefix name (first `/`-segment of a tag path).",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[A-Za-z][A-Za-z0-9_-]*$": {
+          "$ref": "#/$defs/prefix_entry"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "prefix_entry": {
+      "type": "object",
+      "required": ["description", "known_values", "wildcard", "required_for"],
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Short human-readable explanation of this prefix category.",
+          "minLength": 1
+        },
+        "known_values": {
+          "type": "array",
+          "description": "Observed values under this prefix (full path beyond the prefix, no leading slash).",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "wildcard": {
+          "type": "boolean",
+          "description": "true = Tomo may propose new values under this prefix; false = only known_values are allowed."
+        },
+        "required_for": {
+          "type": "array",
+          "description": "Concept types that must carry at least one tag in this prefix.",
+          "items": {
+            "type": "string",
+            "enum": ["atomic_note", "map_note", "project", "area", "source", "asset", "template"]
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

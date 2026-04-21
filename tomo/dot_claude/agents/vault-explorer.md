@@ -11,7 +11,7 @@ skills:
   - pkm-workflows
 ---
 # Vault Explorer Agent
-# version: 0.8.0 (Step 7 no longer gated on daily_log; samples template + recent daily notes)
+# version: 0.9.0 (Step 4 now uses scripts/vault-config-writer.py for deterministic YAML; no free-composed tags block)
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -119,8 +119,49 @@ Call Kado `kado-search` with `listTags` to retrieve all tags. Group by prefix (f
 user that the Kado API key may restrict tag access. Tomo needs unrestricted tag read access
 to discover the full taxonomy. Suggest checking the API key's tag scope in Kado settings.
 
-Present the taxonomy showing prefixes, value counts, and sample values.
-Use AskUserQuestion to confirm before writing to vault-config.yaml `tags:` section.
+**Classify each prefix.** For every prefix group you detected:
+
+- **`description`** (string) — one-sentence human label. Infer from the prefix name + the sample of values. Ask the user if unsure.
+- **`known_values`** (list of strings) — the observed values beyond the prefix (e.g. for prefix `topic` and tag `topic/knowledge/lyt`, the value is `knowledge/lyt`). Dedupe. Include every unique value seen.
+- **`wildcard`** (bool) — heuristic: **many unique values relative to total occurrences** (e.g. `topic/*`, `projects/*`) → `true`. **Few repeated values** (e.g. `type/note/normal`, `type/others/moc`) → `false`. If in doubt, ask.
+- **`required_for`** (list) — concept types that must carry at least one tag in this prefix. Values MUST come from this set: `atomic_note`, `map_note`, `project`, `area`, `source`, `asset`, `template`. Most prefixes: `[]`. `type` typically: `[atomic_note, map_note]`.
+
+**Present** the classified taxonomy to the user (prefixes × value counts × sample values × proposed `wildcard` / `required_for`). Use **AskUserQuestion** to confirm each classification judgement that isn't obvious. Let the user edit `known_values` before proceeding.
+
+**Write via the deterministic writer — never hand-compose YAML.**
+
+1. Build a JSON payload in `tomo-tmp/vault-config/tags.json` that matches `tomo/schemas/vault-config-tags.schema.json`:
+
+   ```json
+   {
+     "prefixes": {
+       "type": {
+         "description": "Note type (structural)",
+         "known_values": ["note/normal", "others/moc"],
+         "wildcard": false,
+         "required_for": ["atomic_note", "map_note"]
+       },
+       "topic": {
+         "description": "Topic area (free-form, hierarchical)",
+         "known_values": ["knowledge/lyt", "applied/ai"],
+         "wildcard": true,
+         "required_for": []
+       }
+     }
+   }
+   ```
+
+2. Run:
+
+   ```bash
+   python3 scripts/vault-config-writer.py tags \
+     --input tomo-tmp/vault-config/tags.json \
+     --config config/vault-config.yaml
+   ```
+
+   The writer validates the input against the schema (rejects flat lists, missing fields, invalid `required_for` entries, non-bool `wildcard`), renders the canonical YAML, and replaces the top-level `tags:` block — leaving every other section of `vault-config.yaml` byte-for-byte intact.
+
+3. On non-zero exit, **stop and report**. Do not retry with a different shape, do not hand-edit the YAML — the error message indicates which field was wrong; fix the JSON and re-run.
 
 ### Step 5 — Relationship Detection
 

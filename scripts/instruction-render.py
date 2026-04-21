@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -52,6 +52,9 @@ CONFIG_DEFAULTS = {
     "daily_log.heading": "Daily Log",
     "daily_log.heading_level": 2,
     "profile": None,
+    # Fallback set of callout names Tomo treats as editable when the user
+    # hasn't run /explore-vault yet. Config wins when present.
+    "callouts.editable": ["connect", "blocks", "anchor"],
 }
 
 
@@ -96,6 +99,16 @@ def load_config(config_path: str) -> dict:
         resolved["daily_log.heading_level"] = int(resolved["daily_log.heading_level"])
     except (TypeError, ValueError):
         resolved["daily_log.heading_level"] = 2
+
+    # Normalise callouts.editable — tolerate both the list form (legacy
+    # /explore-vault output) and the dict form (vault-config-writer output).
+    editable = resolved.get("callouts.editable")
+    if isinstance(editable, dict):
+        resolved["callouts.editable"] = list(editable.keys())
+    elif isinstance(editable, list):
+        resolved["callouts.editable"] = [str(x) for x in editable if x]
+    else:
+        resolved["callouts.editable"] = list(CONFIG_DEFAULTS["callouts.editable"])
     return resolved
 
 
@@ -628,7 +641,14 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         src = action.get("source_note_title", "")
         lines = [f"{heading_prefix}Add link to [[{moc}]] — {src}", "- [ ] Applied"]
         lines.append(f"- **Target:** [[{moc}]]")
-        lines.append("- **Open the MOC**, find the first editable callout (e.g. `> [!blocks]`) or the matching section.")
+        if action.get("target_moc_path"):
+            lines.append(f"- **Path:** `{action['target_moc_path']}`")
+        section = action.get("section_name")
+        if section:
+            lines.append(f"- **Section:** `{section}`")
+            lines.append("- **Open the MOC and find that callout/heading**, then add the line below.")
+        else:
+            lines.append("- **Open the MOC**, find the first editable callout (e.g. `> [!blocks]`) or the matching section.")
         lines.append(f"- **Add this line:** `{action.get('line_to_add', '')}`")
         return "\n".join(lines)
 
@@ -774,6 +794,92 @@ def backfill_supporting_items_parents(confirmed: list[dict]) -> None:
             # loop reads to populate {{up}}.
             if not sup.get("parent_moc"):
                 sup["parent_moc"] = new_moc_title
+
+
+def resolve_section_names(actions: list[dict], client, editable_callouts: list[str]) -> int:
+    """Best-effort: resolve `section_name` on link_to_moc actions by reading the
+    target MOC and finding its first editable callout.
+
+    For each unique target_moc_path (not target_moc — we want a resolved path
+    to actually fetch), open the MOC via Kado, scan for the first line matching
+    `> [!<name>]...` where `<name>` is in `editable_callouts`, and set that
+    full line (sans leading `> `) as the section_name on all link_to_moc
+    actions pointing to that MOC.
+
+    Leaves section_name null when:
+      - client is None (offline / test mode)
+      - target_moc_path is null (MOC doesn't exist yet — e.g. a new MOC from
+        a create_moc in the same instruction set)
+      - the MOC has no editable callout matching the config
+      - Kado read fails
+
+    Returns the count of actions populated.
+    """
+    if client is None or not editable_callouts:
+        return 0
+    import re
+    editable_set = {name for name in editable_callouts if name}
+    callout_re = re.compile(r"^>\s*\[!([A-Za-z][A-Za-z0-9_-]*)\][+-]?.*$")
+
+    # `connect` is conventionally the navigation callout (up:: / related::),
+    # not where content-note bullets belong. Drop it to the back of the line:
+    # prefer `blocks` (Key Concepts) → any other editable → connect as last
+    # resort.
+    def _score(name: str) -> int:
+        if name == "blocks":
+            return 3
+        if name == "connect":
+            return 1
+        return 2
+
+    cache: dict[str, str | None] = {}
+
+    def _resolve(path: str) -> str | None:
+        if path in cache:
+            return cache[path]
+        try:
+            result = client.read_note(path)
+            content = result.get("content", "") or ""
+        except Exception:  # noqa: BLE001
+            cache[path] = None
+            return None
+        # Collect all editable callouts in the MOC with their full first line,
+        # then pick the highest-priority one.
+        candidates: list[tuple[int, str]] = []
+        for raw in content.splitlines():
+            line = raw.rstrip()
+            m = callout_re.match(line)
+            if not m:
+                continue
+            name = m.group(1)
+            if name not in editable_set:
+                continue
+            stripped = line.lstrip()
+            if stripped.startswith(">"):
+                stripped = stripped[1:].lstrip()
+            candidates.append((_score(name), stripped))
+        if not candidates:
+            cache[path] = None
+            return None
+        # Highest score wins; ties resolved by first occurrence (stable).
+        best = max(enumerate(candidates), key=lambda x: (x[1][0], -x[0]))[1][1]
+        cache[path] = best
+        return best
+
+    resolved = 0
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        if a.get("section_name"):
+            continue  # already set
+        path = a.get("target_moc_path")
+        if not path:
+            continue
+        section = _resolve(path)
+        if section:
+            a["section_name"] = section
+            resolved += 1
+    return resolved
 
 
 def resolve_target_moc_paths(actions: list[dict], client) -> int:
@@ -1011,6 +1117,17 @@ def main() -> int:
     resolved_paths = resolve_target_moc_paths(actions, client)
     if resolved_paths:
         print(f"  [resolve] target_moc_path populated for {resolved_paths} link_to_moc action(s)",
+              file=sys.stderr)
+
+    # ── Resolve section_name by reading each target MOC ─────────────────
+    # For each link_to_moc with a resolved target_moc_path, open the MOC via
+    # Kado and capture the full first line of its first editable callout.
+    # Actions targeting not-yet-existing MOCs (tier-1 in-set) stay null —
+    # the create_moc template provides its own callout, which Tomo Hashi
+    # can discover at execute time.
+    resolved_sections = resolve_section_names(actions, client, cfg["callouts.editable"])
+    if resolved_sections:
+        print(f"  [resolve] section_name populated for {resolved_sections} link_to_moc action(s)",
               file=sys.stderr)
 
     # ── Write instructions.json (T1.3) ───────────────────────────────────

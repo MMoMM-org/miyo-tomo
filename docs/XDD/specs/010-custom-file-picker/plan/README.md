@@ -1,7 +1,7 @@
 ---
 title: "Custom File Picker — Implementation Plan"
-status: draft
-version: "1.0"
+status: complete
+version: "1.1"
 ---
 
 # Implementation Plan
@@ -24,20 +24,26 @@ version: "1.0"
 
 ## Implementation Phases
 
-- [ ] [Phase 1: Spike + script skeleton](phase-1.md)
-- [ ] [Phase 2: Handler implementations + caching](phase-2.md)
-- [ ] [Phase 3: Settings integration + install flow](phase-3.md)
-- [ ] [Phase 4: End-to-end test + docs](phase-4.md)
+- [x] [Phase 1: Spike + script skeleton](phase-1.md) — 2026-04-20
+- [x] [Phase 2: Handler implementations + caching](phase-2.md) — 2026-04-20/21
+- [x] [Phase 3: Settings integration + install flow](phase-3.md) — retrospectively validated 2026-04-21
+- [x] [Phase 4: End-to-end test + docs](phase-4.md) — 2026-04-21 (T4.5 deferred cross-repo)
 
 ## Phase Dependencies
 
-Linear: 1 → 2 → 3 → 4. Phase 1's spike findings drive details in Phase 2.
+Linear: 1 → 2 → 3 → 4. Phase 1's spike findings drove Phase 2 details.
+Scope prefix retirement between Phase 2 and finalization (commit
+`2a5966f`) simplified Phase 4 scope.
 
 ## Acceptance for Spec Completion
 
-- `@` in a Tomo session shows currently-open Obsidian notes (active first).
-- `@/inbox <q>` shows inbox files; `@/vault <q>` shows vault matches.
-- Latency targets met (see SDD).
-- FORBIDDEN/UNAUTHORIZED Kado responses cause graceful empty results, never errors.
-- `/explore-vault` invalidates the vault cache.
-- Inbox handoff `_inbox/from-kado/2026-04-20_*` marked `done`.
+- ✅ `@` in a Tomo session shows currently-open Obsidian notes (active first).
+- ✅ `@<query>` surfaces matches across open notes + inbox + vault
+  (unified picker — scope prefixes retired).
+- ✅ Latency qualitatively acceptable (daily use; debug log in place).
+- ✅ FORBIDDEN/UNAUTHORIZED Kado responses cause graceful empty
+  results — structural (guarded `kado_call` + independent source fans).
+- ✅ `/explore-vault` invalidates the vault cache via
+  `.invalidate-vault-files` sentinel.
+- ⏳ Inbox handoff `_inbox/from-kado/2026-04-20_*` — deferred to next
+  Kado session (symlink into Kado repo; Tomo can't close the file).

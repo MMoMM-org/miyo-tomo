@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     fd-find \
     fzf \
+    # jq + fzf are required by .claude/scripts/file-suggestion.sh (XDD 010)
     python3 \
     python3-yaml \
     ca-certificates \

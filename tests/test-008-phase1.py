@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -487,6 +487,126 @@ def test_backfill_plus_build_actions_no_duplicate_links():
     print("[PASS] backfill + build_actions — no duplicate links, up:: target back-filled")
 
 
+def test_resolve_section_names():
+    """resolve_section_names reads each target MOC and captures the first
+    editable callout's full line."""
+    actions = [
+        {"id": "I01", "action": "link_to_moc", "target_moc": "Japan (MOC)",
+         "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
+         "section_name": None, "source_note_title": "Asahikawa",
+         "line_to_add": "- [[Asahikawa]]"},
+        {"id": "I02", "action": "link_to_moc", "target_moc": "Japan (MOC)",
+         "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
+         "section_name": None, "source_note_title": "Sapporo",
+         "line_to_add": "- [[Sapporo]]"},
+        # No resolved path → stays null
+        {"id": "I03", "action": "link_to_moc", "target_moc": "Brettspiele (MOC)",
+         "target_moc_path": None,
+         "section_name": None, "source_note_title": "Catan",
+         "line_to_add": "- [[Catan]]"},
+        # Unrelated action → untouched
+        {"id": "I04", "action": "move_note", "source": "x", "destination": "y", "title": "z"},
+    ]
+
+    japan_moc_body = """---
+tags: [type/others/moc]
+---
+
+# Japan (MOC)
+
+> [!weather]- Current Weather
+> (auto-generated)
+
+> [!blocks]- Key Concepts
+> - [[Tokyo]]
+> - [[Kyoto]]
+
+> [!shell]
+> ```dataviewjs
+> // query
+> ```
+"""
+
+    class FakeClient:
+        def __init__(self):
+            self.reads = []
+        def read_note(self, path):
+            self.reads.append(path)
+            if path == "Atlas/200 Maps/Japan (MOC).md":
+                return {"content": japan_moc_body}
+            return {"content": ""}
+
+    client = FakeClient()
+    resolved = ir.resolve_section_names(actions, client, ["connect", "blocks", "anchor"])
+    _must(resolved == 2, f"expected 2 resolved, got {resolved}")
+    _must(actions[0]["section_name"] == "[!blocks]- Key Concepts",
+          f"I01 section_name wrong: {actions[0]['section_name']!r}")
+    _must(actions[1]["section_name"] == "[!blocks]- Key Concepts",
+          f"I02 section_name wrong: {actions[1]['section_name']!r}")
+    _must(actions[2]["section_name"] is None, "I03 has no path → stays null")
+    _must(len(client.reads) == 1, f"read caching broken — expected 1 read, got {len(client.reads)}")
+
+    # `weather` is NOT in editable → skipped. First MATCHING callout (`blocks`)
+    # is what we pick, even though `weather` appears earlier in the file.
+
+    # Skips when editable list is empty
+    for a in actions:
+        a["section_name"] = None
+    resolved_empty = ir.resolve_section_names(actions, client, [])
+    _must(resolved_empty == 0, "empty editable list → 0 resolutions")
+
+    # Degrades gracefully with None client
+    resolved_no_client = ir.resolve_section_names(actions, None, ["blocks"])
+    _must(resolved_no_client == 0, "no client → 0 resolutions")
+
+    # Degrades gracefully when read_note raises
+    class RaisingClient:
+        def read_note(self, path):
+            raise RuntimeError("kado down")
+    actions_r = [{"id": "I01", "action": "link_to_moc", "target_moc": "X",
+                  "target_moc_path": "Atlas/X.md", "section_name": None,
+                  "source_note_title": "Y", "line_to_add": "- [[Y]]"}]
+    resolved_raise = ir.resolve_section_names(actions_r, RaisingClient(), ["blocks"])
+    _must(resolved_raise == 0, "raising client → 0 resolutions")
+    _must(actions_r[0]["section_name"] is None, "raising client → stays null")
+
+    # Priority regression: `connect` appears FIRST in the MOC but is the
+    # navigation callout — content bullets should prefer `blocks` or any
+    # non-connect editable. Picking `connect` would put atomic-note links
+    # in the up::/related:: area (observed in the live Japan (MOC) output
+    # before this fix).
+    moc_connect_first = """---
+---
+# MOC
+
+> [!connect] Your way around
+> up:: [[Parent]]
+
+> [!blocks]- Key Concepts
+> - [[Existing]]
+"""
+    class PriorityClient:
+        def read_note(self, path):
+            return {"content": moc_connect_first}
+    actions_p = [{"id": "I01", "action": "link_to_moc",
+                  "target_moc": "M", "target_moc_path": "Atlas/M.md",
+                  "section_name": None, "source_note_title": "N",
+                  "line_to_add": "- [[N]]"}]
+    ir.resolve_section_names(actions_p, PriorityClient(), ["connect", "blocks"])
+    _must(actions_p[0]["section_name"] == "[!blocks]- Key Concepts",
+          f"blocks must outrank connect even when connect is first in file "
+          f"and first in editable list; got {actions_p[0]['section_name']!r}")
+    # Fallback: if ONLY connect is editable, connect still wins
+    actions_c = [{"id": "I01", "action": "link_to_moc",
+                  "target_moc": "M", "target_moc_path": "Atlas/M.md",
+                  "section_name": None, "source_note_title": "N",
+                  "line_to_add": "- [[N]]"}]
+    ir.resolve_section_names(actions_c, PriorityClient(), ["connect"])
+    _must(actions_c[0]["section_name"] == "[!connect] Your way around",
+          f"connect is the only editable → should be used as last resort")
+    print("[PASS] resolve_section_names — editable match, caching, graceful degrade, connect-deprioritized")
+
+
 def test_resolve_target_moc_paths():
     """resolve_target_moc_paths populates link_to_moc.target_moc_path via Kado."""
     actions = [
@@ -610,6 +730,7 @@ daily_log:
     test_backfill_supporting_items_parents()
     test_backfill_plus_build_actions_no_duplicate_links()
     test_resolve_target_moc_paths()
+    test_resolve_section_names()
 
     print("\n✓ All XDD-008 Phase 1 tests passed.")
     return 0

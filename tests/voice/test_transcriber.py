@@ -71,12 +71,28 @@ def test_transcribe_model_name_composed_from_info():
 
 
 def test_transcribe_falls_back_when_info_lacks_model_size():
-    model = MagicMock()
-    # Older faster-whisper versions exposed neither attribute — mimic that
-    bad_info = SimpleNamespace(language="en", duration=1.0)
-    model.transcribe.return_value = (iter([]), bad_info)
+    # Genuine worst case: neither info NOR the model object expose the size.
+    model = MagicMock(spec=[])  # no attrs at all
+    model.transcribe = MagicMock(
+        return_value=(iter([]), SimpleNamespace(language="en", duration=1.0))
+    )
     result = transcribe(model, Path("/vault/memo.m4a"))
     assert result.model_name == "faster-whisper"
+
+
+def test_transcribe_uses_tomo_model_size_stash_when_info_is_bare():
+    # faster-whisper 1.2.x: TranscriptionInfo has no model_name and the
+    # WhisperModel object doesn't expose its source path. load_model()
+    # stashes the size on the model as `_tomo_model_size`; transcribe
+    # falls back to it when the info is bare.
+    model = MagicMock()
+    model._tomo_model_size = "medium"
+    model.transcribe.return_value = (
+        iter([]),
+        SimpleNamespace(language="de", duration=3.0),
+    )
+    result = transcribe(model, Path("/vault/memo.m4a"))
+    assert result.model_name == "faster-whisper-medium"
 
 
 def test_transcribe_passes_vad_and_language_to_model():
@@ -121,10 +137,18 @@ def test_live_load_and_transcribe(tmp_path):
         pytest.skip(f"fixture missing: {fixture}")
 
     model = load_model(model_dir)
+    # load_model must stash the size so transcribe can surface it in the
+    # rendered markdown (faster-whisper 1.2.x TranscriptionInfo doesn't).
+    assert getattr(model, "_tomo_model_size", "") == \
+        model_dir.name.removeprefix("faster-whisper-")
+
     result = live_transcribe(model, fixture, language=None)
     assert len(result.segments) > 0
     joined = " ".join(s.text.lower() for s in result.segments)
     assert "test" in joined or "hello" in joined or "hallo" in joined
+    # Regression guard for the bug the user found in the first live run.
+    assert result.model_name.startswith("faster-whisper-"), \
+        f"model_name should carry size suffix; got {result.model_name!r}"
 
 
 if __name__ == "__main__":

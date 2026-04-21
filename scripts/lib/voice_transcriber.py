@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """voice_transcriber.py — Thin wrapper over faster_whisper.WhisperModel.
 
 Exposes:
@@ -39,10 +39,18 @@ def load_model(model_dir: Path):
     CPU-only, int8 quantization — matches the Docker runtime profile.
     Deferred import keeps this module safe to load in environments where
     faster_whisper isn't installed (e.g. running render tests on the host).
+
+    We also stash the model size on the returned object as `_tomo_model_size`.
+    faster-whisper 1.2.x exposes neither `model_size_or_path` on the model
+    nor a reliable `model_name`/`model_name_or_size` on TranscriptionInfo,
+    so without this the rendered transcript would drop the size suffix
+    (e.g. "faster-whisper" instead of "faster-whisper-medium").
     """
     from faster_whisper import WhisperModel  # type: ignore
 
-    return WhisperModel(str(model_dir), device="cpu", compute_type="int8")
+    model = WhisperModel(str(model_dir), device="cpu", compute_type="int8")
+    model._tomo_model_size = model_dir.name.removeprefix("faster-whisper-")
+    return model
 
 
 def transcribe(model, audio_path: Path, language: str | None = None) -> TranscriptResult:
@@ -60,11 +68,16 @@ def transcribe(model, audio_path: Path, language: str | None = None) -> Transcri
     )
     segments = [Segment(s.start, s.end, s.text.strip()) for s in segments_iter]
 
-    # faster-whisper's TranscriptionInfo exposes model size as `model_name`
-    # on some versions, not others. Fall back gracefully.
-    model_size = getattr(info, "model_name_or_size", None) or getattr(
-        info, "model_name", None
-    ) or ""
+    # Model-size resolution, preferring least-surprising sources:
+    # 1. TranscriptionInfo.model_name / model_name_or_size (some versions).
+    # 2. `_tomo_model_size` stashed by our load_model() (1.2.x fallback).
+    # 3. Empty — render will degrade gracefully to "faster-whisper".
+    model_size = (
+        getattr(info, "model_name_or_size", None)
+        or getattr(info, "model_name", None)
+        or getattr(model, "_tomo_model_size", None)
+        or ""
+    )
 
     return TranscriptResult(
         audio_path=audio_path,

@@ -199,7 +199,7 @@ File* after moving. If Tomo Hashi automates this, do it AFTER the move so
   "action": "link_to_moc",
   "target_moc": "Japan (MOC)",
   "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
-  "section_name": null,
+  "section_name": "[!blocks] Key Concepts",
   "line_to_add": "- [[Asahikawa — zweitgrößte Stadt Hokkaidos]]",
   "source_note_title": "Asahikawa — zweitgrößte Stadt Hokkaidos"
 }
@@ -209,9 +209,33 @@ File* after moving. If Tomo Hashi automates this, do it AFTER the move so
 |---|---|---|
 | `target_moc` | string | MOC stem (no path, no `.md`) — the name Obsidian resolves by. |
 | `target_moc_path` | string \| null | Resolved vault-relative full path. See "Resolution rules" below. |
-| `section_name` | string \| null | Hint for which section to write into. Usually null in current Pass-2 output; defer to the default "first editable callout" rule. |
+| `section_name` | string \| null | Callout/heading pointer — deterministically resolved at Pass-2 time. See "section_name resolution" below. |
 | `line_to_add` | string | The exact bullet line to insert. Already formatted (`- [[stem]]`). |
 | `source_note_title` | string \| null | Informational — which note's up-link this represents. |
+
+**`section_name` resolution (current behaviour):**
+
+- When set, the value is the full first line of a callout (leading `> `
+  stripped for display), e.g. `[!blocks] Key Concepts` or
+  `[!compass] Something to look at`. Tomo Hashi should match it against the
+  MOC body by re-adding `> ` and scanning line-by-line.
+- Pass-2 picks the target callout with a priority heuristic: prefer `blocks`
+  (the conventional content callout in MiYo/LYT), then any other editable
+  callout, then `connect` (navigation) as last resort. Editable callout names
+  come from vault-config's `callouts.editable`.
+- **Known limitation (backlog F-30):** the resolver only identifies the
+  OUTER callout. For MOCs with H2/H3 sub-headers inside the callout that
+  topic-group their children (e.g. Sport → Running / Stretching / Gym),
+  the resolver cannot decide which sub-section a new link belongs under.
+  Tomo Hashi can either (a) append at the end of the callout body (simple,
+  works for flat MOCs), (b) surface the sub-structure in a UI so the user
+  picks, or (c) defer to a post-MVP LLM-driven insertion-point step
+  (planned; see backlog F-30).
+- **`section_name` is `null`** when the target MOC doesn't exist in the
+  vault yet (new MOC from a `create_moc` in the same instruction set),
+  when Kado is unreachable during Pass-2, or when the MOC has no editable
+  callout matching the config. Fall back to the first editable callout at
+  execute time.
 
 **Resolution rules for `target_moc_path`:**
 

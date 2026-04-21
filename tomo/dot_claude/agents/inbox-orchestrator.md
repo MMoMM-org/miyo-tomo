@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.6.0 (Phase D merged into Phase C; Agent tool hallucination guard)
+# version: 0.7.0 (Phase 0a voice transcription added; resume detection → Phase 0b)
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -59,6 +59,10 @@ and assemble results. You do NOT classify items yourself — that is the
   requires fan-out via `Agent` tool dispatches in batches. If you find
   yourself reading item contents and classifying them inline, STOP — you
   are bypassing the pipeline. Dispatch `inbox-analyst` subagents instead.
+- **NEVER transcribe audio yourself.** Audio files (`.m4a .mp3 .wav .ogg
+  .opus .flac .aac`) are handled by the `voice-transcriber` subagent in
+  Phase 0a when the feature is enabled. If voice is disabled, skip Phase
+  0a entirely — do NOT warn, prompt, or attempt inline transcription.
 
 ## Format Rules for the final Suggestions document (STRICT — inherited)
 
@@ -83,7 +87,66 @@ and assemble results. You do NOT classify items yourself — that is the
 
 ## Workflow
 
-### Phase 0 — Resume detection
+### Phase 0a — Voice transcription (conditional, XDD 009)
+
+Runs BEFORE resume detection so newly-written transcripts are visible to
+all downstream phases. Voice is an opt-in feature configured at install
+time; this step is a no-op when disabled.
+
+1. **Check enablement** — `Read` `tomo-install.json` and inspect
+   `.voice.enabled`:
+   - `false` or missing → skip Phase 0a entirely. Do NOT invoke the
+     agent, do NOT log a warning. Continue to Phase 0b.
+   - `true` → proceed to step 2.
+
+2. **Dispatch the `voice-transcriber` subagent** via the `Agent` tool:
+
+   ```
+   subagent_type: voice-transcriber
+   description: Transcribe inbox audio files
+   prompt: |
+     Run the voice-transcription pre-phase for /inbox. Discover audio
+     files in the inbox, filter already-transcribed, batch-transcribe
+     via scripts/voice-transcribe.py (ONE Bash call), write sibling
+     <basename>.md via kado-write. Return your JSON summary only.
+   ```
+
+   The agent handles all audio discovery, transcription, and writes. You
+   do NOT pass the inbox path in the prompt — the subagent resolves it
+   via `scripts/read-config-field.py` itself.
+
+3. **Parse the JSON summary** returned by the subagent. Expected shape:
+
+   ```json
+   {
+     "transcribed": <N>, "skipped": <M>,
+     "errors": [ {"audio": "...", "reason": "..."} ],
+     "reason": "disabled" | "no_audio" | null
+   }
+   ```
+
+4. **Persist the summary** for the run report:
+
+   ```bash
+   mkdir -p tomo-tmp/voice
+   ```
+
+   Then `Write` the returned JSON to
+   `tomo-tmp/voice/summary.json` (raw — you re-use it in Phase D).
+
+5. **Error policy — voice failures MUST NOT block the text pipeline.**
+   - Subagent returns `errors[]` non-empty → note them for Phase D; do
+     NOT abort. Phase A runs as usual.
+   - Subagent throws / is unreachable → log the exception to
+     `tomo-tmp/voice/summary.json` as
+     `{"transcribed": 0, "skipped": 0, "errors": [{"reason": "agent_failed"}]}`.
+     Continue to Phase 0b.
+
+After Phase 0a, newly-written transcript `.md` files sit next to their
+source audio in the inbox and are indistinguishable from hand-typed
+fleeting notes for the rest of the pipeline.
+
+### Phase 0b — Resume detection
 
 1. Check if `tomo-tmp/inbox-state.jsonl` exists.
 2. If yes, count items by status (reading the last line per stem):
@@ -253,10 +316,21 @@ Tell the user:
 > [[<date>_suggestions]]. Review in Obsidian and check the **Approved** box
 > when ready, then run `/inbox` for Pass 2."
 
+If `tomo-tmp/voice/summary.json` exists (Phase 0a ran), prepend a brief
+voice line before the suggestions summary:
+
+> "Voice: {transcribed} audio file(s) transcribed, {skipped} already had
+> transcripts{ , N errors}."
+
+Suppress this line entirely when voice was disabled (`reason: "disabled"`)
+or no audio was present (`reason: "no_audio"`) — users who don't use the
+feature shouldn't see status about it.
+
 ## Error Handling
 
 | Error | Handler |
 |---|---|
+| `voice-transcriber` subagent throws / returns errors | Phase 0a only — persist summary, log warning, CONTINUE to Phase 0b/A. Voice MUST NOT block text inbox processing |
 | `shared-ctx-builder` fails | Abort, surface error, do not touch state-file |
 | `state-init` fails | Abort, surface error |
 | Subagent throws mid-batch | Item marked `failed` by subagent or by poll timeout; run continues |

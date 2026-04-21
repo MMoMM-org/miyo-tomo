@@ -1,7 +1,7 @@
 ---
 title: "Phase 3: voice-transcriber agent (standalone)"
-status: pending
-version: "1.0"
+status: code-complete
+version: "1.1"
 phase: 3
 ---
 
@@ -25,7 +25,7 @@ in Phase 4.
 
 ## Tasks
 
-- [ ] **T3.1 Agent frontmatter and persona** `[activity: agent-design]`
+- [x] **T3.1 Agent frontmatter and persona** `[activity: agent-design]`
 
   1. Prime: Read `tomo/dot_claude/agents/inbox-orchestrator.md` frontmatter
      and "Constraints" sections to match the in-house style. Note required
@@ -40,7 +40,7 @@ in Phase 4.
      - `# version: 0.1.0` header
   3. Validate: Frontmatter parses (no YAML errors). Tools list matches actual usage.
 
-- [ ] **T3.2 Workflow: discover → batch-transcribe → write** `[activity: agent-design]`
+- [x] **T3.2 Workflow: discover → batch-transcribe → write** `[activity: agent-design]`
 
   1. Prime: Re-read solution.md § "Agent: voice-transcriber" for the exact
      responsibility list. Re-read inbox-orchestrator's "Constraints (strict)"
@@ -69,7 +69,7 @@ in Phase 4.
      No Bash chaining. No heredocs. No inline Python. Exactly ONE Bash call
      per agent invocation (the batch CLI call).
 
-- [ ] **T3.3 Error handling specifics** `[activity: agent-design]`
+- [x] **T3.3 Error handling specifics** `[activity: agent-design]`
 
   1. Prime: Phase 2 CLI exit codes. Batch CLI: `0` = batch completed
      (individual failures are inside `results[].error`), `2` = usage error,
@@ -82,7 +82,7 @@ in Phase 4.
      - Exit 0: iterate `results[]`, write markdown or error-marker per entry.
   3. Validate: Error path documented; user always sees what failed and where.
 
-- [ ] **T3.4 Anti-parrot + format guardrails** `[activity: agent-design]`
+- [x] **T3.4 Anti-parrot + format guardrails** `[activity: agent-design]`
 
   1. Prime: Memory `feedback_example_bleed_through.md` — examples in the
      agent body must use angle-bracket placeholders, not real-looking IDs.
@@ -93,7 +93,7 @@ in Phase 4.
   3. Validate: No example uses a real-looking concrete filename that
      could bleed into actual output.
 
-- [ ] **T3.5 Sync agent into instance for testing** `[activity: tooling]`
+- [x] **T3.5 Sync agent into instance for testing** `[activity: tooling]`
 
   1. Prime: The agent file lives in `tomo/dot_claude/agents/`. To test in
      a running Tomo session, it must be copied to the instance via
@@ -103,7 +103,7 @@ in Phase 4.
      iteration) and restart Claude in the instance to pick it up.
   3. Validate: Agent appears in the instance's Agent tool list.
 
-- [ ] **T3.6 Standalone agent test** `[activity: validate]`
+- [ ] **T3.6 Standalone agent test** `[activity: validate]` *(pending — requires live Tomo session)*
 
   Manual test in a Tomo session:
   - Pre-condition: voice enabled in `tomo-install.json`, tiny model installed,
@@ -118,7 +118,7 @@ in Phase 4.
   - Disable voice in `tomo-install.json`, re-invoke. Summary returns
     `{reason: "disabled"}`, no Bash calls made.
 
-- [ ] **T3.7 Phase Validation** `[activity: validate]`
+- [x] **T3.7 Phase Validation** `[activity: validate]`
 
   - Agent transcribes new audio files correctly.
   - Idempotent: pre-existing transcripts skipped without re-invoking the CLI.

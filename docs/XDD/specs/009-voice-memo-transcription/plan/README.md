@@ -30,7 +30,7 @@ version: "1.0"
 
 - [~] [Phase 1: Install wizard + Dockerfile + model download](phase-1.md) — code-complete (c7c9688), pending host Docker validation (T1.6)
 - [x] [Phase 2: Python modules + CLI script (standalone)](phase-2.md) — 19 unit tests green + live smoke (faster-whisper 1.2.1 + tiny model) transcribed fixture word-for-word
-- [ ] [Phase 3: voice-transcriber agent (standalone)](phase-3.md)
+- [~] [Phase 3: voice-transcriber agent (standalone)](phase-3.md) — agent written + structural self-check green; live standalone test (T3.6) pending Tomo session
 - [ ] [Phase 4: Orchestrator integration (Phase 0 in inbox-orchestrator)](phase-4.md)
 - [ ] [Phase 5: End-to-end live test + docs](phase-5.md)
 

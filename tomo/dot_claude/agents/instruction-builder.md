@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Instruction Builder Agent
-# version: 2.1.0 (Step 4 writes JSON via scripts/kado-write-file.py — operation=file, base64 — because operation=note only accepts .md)
+# version: 2.2.0 (Step 5 coverage audit via scripts/instructions-diff.py — hard-fail on count/coverage mismatch, report observations)
 
 You are a pure orchestrator. You call three scripts in sequence and write their
 outputs to the vault via Kado. You do NOT compose markdown, assemble instructions,
@@ -97,13 +97,35 @@ python3 scripts/kado-write-file.py \
 The helper base64-encodes the file and calls `kado-write` with
 `operation="file"`. Exit 0 = written; non-zero = report to user and stop.
 
-### Step 5 — Report
+### Step 5 — Coverage audit
+
+Before reporting, run the diff to confirm every approved suggestion has a
+matching instruction (and vice versa):
+
+```bash
+python3 scripts/instructions-diff.py \
+  --suggestions tomo-tmp/parsed-suggestions.json \
+  --instructions tomo-tmp/rendered/instructions.json
+```
+
+Capture stdout — it contains the count table + per-item coverage + any
+soft observations (e.g. approved `create_moc` with no items linking to it).
+
+- Exit 0 → reconciled, include the `RESULT: OK` line + any observations in the report.
+- Exit 1 → count or coverage mismatch. Report the diff output verbatim to
+  the user and stop. Do not retry; the producer (instruction-render.py) or
+  the approved suggestions doc has an issue that needs human review.
+
+### Step 6 — Report
 
 Read `action_count` from `instructions.json` and report:
 
 > Pass 2 complete. Wrote N rendered notes + instruction set (M actions).
 >   - <inbox><YYYY-MM-DD_HHMM>_instructions.md
 >   - <inbox><YYYY-MM-DD_HHMM>_instructions.json
+>
+> Coverage audit: <RESULT line from instructions-diff>
+> <any observations>
 
 ## What you never do
 

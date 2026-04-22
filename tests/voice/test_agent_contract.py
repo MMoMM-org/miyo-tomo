@@ -14,7 +14,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 AGENT_MD = REPO_ROOT / "tomo/dot_claude/agents/voice-transcriber.md"
-CLI_PY = REPO_ROOT / "scripts/voice-transcribe.py"
+# Runtime Python moved from scripts/ to tomo/scripts/ on 2026-04-22 so
+# that scripts/ holds only the user-invoked install/update helpers.
+CLI_PY = REPO_ROOT / "tomo/scripts/voice-transcribe.py"
 CONFIGURE_SH = REPO_ROOT / "scripts/lib/configure-voice.sh"
 
 

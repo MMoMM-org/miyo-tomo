@@ -78,7 +78,7 @@ YAML
 
 # ── Test 1: shared-ctx tracker_fields populated correctly ──────────────────
 OUT="$FIXTURE_DIR/tomo-tmp/shared-ctx.json"
-"$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
   --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
   --vault-config "$FIXTURE_DIR/config/vault-config.yaml" \
   --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -151,7 +151,7 @@ cat > "$FIXTURE_DIR/tomo-tmp/items/run-log.result.json" <<'JSON'
 JSON
 
 DOC="$FIXTURE_DIR/tomo-tmp/suggestions-doc.json"
-"$PYTHON" "$REPO_ROOT/scripts/suggestions-reducer.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/suggestions-reducer.py" \
   --state "$STATE" --items-dir "$FIXTURE_DIR/tomo-tmp/items" \
   --run-id "$RUN_ID" --profile "miyo" --output "$DOC" --threshold 3 2>/dev/null
 
@@ -205,7 +205,7 @@ cat > "$FIXTURE_DIR/tomo-tmp/items/sleep-log.result.json" <<'JSON'
 JSON
 
 DOC2="$FIXTURE_DIR/tomo-tmp/suggestions-doc-2.json"
-"$PYTHON" "$REPO_ROOT/scripts/suggestions-reducer.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/suggestions-reducer.py" \
   --state "$STATE" --items-dir "$FIXTURE_DIR/tomo-tmp/items" \
   --run-id "$RUN_ID" --profile "miyo" --output "$DOC2" --threshold 3 2>/dev/null
 
@@ -238,7 +238,7 @@ trackers:
 YAML
 
 OUT_NO="$FIXTURE_DIR/tomo-tmp/shared-ctx-no-daily.json"
-"$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
   --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
   --vault-config "$FIXTURE_DIR/config/vault-config-no-daily.yaml" \
   --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -275,7 +275,7 @@ trackers:
 YAML
 
 OUT_KW="$FIXTURE_DIR/tomo-tmp/shared-ctx-kw.json"
-"$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
   --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
   --vault-config "$FIXTURE_DIR/config/vault-config-custom-kw.yaml" \
   --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -295,7 +295,7 @@ PY
 # ── Test 6: real-instance dry run (no assertion — informational) ───────────
 if [ -f "$REPO_ROOT/tomo-instance/config/discovery-cache.yaml" ]; then
     REAL_OUT="$FIXTURE_DIR/tomo-tmp/real-shared-ctx.json"
-    if "$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+    if "$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
         --cache "$REPO_ROOT/tomo-instance/config/discovery-cache.yaml" \
         --vault-config "$REPO_ROOT/tomo-instance/config/vault-config.yaml" \
         --profiles-dir "$REPO_ROOT/tomo-instance/profiles" \

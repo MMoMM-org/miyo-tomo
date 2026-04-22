@@ -88,7 +88,7 @@ YAML
 
 # ── Test 1: shared-ctx-builder ──────────────────────────────────────────────
 OUT="$FIXTURE_DIR/tomo-tmp/shared-ctx.json"
-if "$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
     --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -143,7 +143,7 @@ tomo:
 YAML
 
 OUT2="$FIXTURE_DIR/tomo-tmp/shared-ctx-no-daily.json"
-"$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
     --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config-no-daily.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -174,7 +174,7 @@ for i in $(seq 1 50); do
 done
 
 OUT3="$FIXTURE_DIR/tomo-tmp/shared-ctx-large.json"
-"$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
     --cache "$FIXTURE_DIR/config/discovery-cache-large.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -196,7 +196,7 @@ fi
 # ── Test 4: state-init helper checks (regex logic) ─────────────────────────
 "$PYTHON" - <<PY && pass "state-init skip-suffix logic" || fail "state-init skip-suffix logic"
 import importlib.util, sys
-spec = importlib.util.spec_from_file_location("state_init", "$REPO_ROOT/scripts/state-init.py")
+spec = importlib.util.spec_from_file_location("state_init", "$REPO_ROOT/tomo/scripts/state-init.py")
 m = importlib.util.module_from_spec(spec)
 # The module imports kado_client at module-scope. Inject a stub so we don't need Kado.
 import types
@@ -220,7 +220,7 @@ PY
 # ── Test 5: state-init against live Kado (optional) ─────────────────────────
 if [ -n "${KADO_URL:-}" ] && [ -n "${KADO_TOKEN:-}" ]; then
     STATE_OUT="$FIXTURE_DIR/tomo-tmp/inbox-state.jsonl"
-    if "$PYTHON" "$REPO_ROOT/scripts/state-init.py" \
+    if "$PYTHON" "$REPO_ROOT/tomo/scripts/state-init.py" \
         --inbox-path "${KADO_INBOX_PATH:-100 Inbox/}" \
         --run-id "test-004" \
         --output "$STATE_OUT" 2>"$FIXTURE_DIR/state-init.log"; then

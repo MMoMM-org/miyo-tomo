@@ -11,6 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOMO_SOURCE="$REPO_ROOT/tomo"
 CONFIG_FILE="$REPO_ROOT/tomo-install.json"
+# Tests override this to an isolated path so they don't clobber the user's
+# real installation metadata. Resolved from --config-file after argv parse.
 PROFILES_DIR="$TOMO_SOURCE/profiles"
 TOMO_VERSION=$(grep -m1 '^# version:' "$TOMO_SOURCE/dot_claude/rules/project-context.md" 2>/dev/null \
     | sed 's/^# version: *//' || echo "0.0.0")
@@ -26,6 +28,11 @@ FLAG_KADO_TOKEN=""
 FLAG_PREFIX=""
 SHOW_HELP=false
 
+FLAG_INSTANCE_LOCATION=""
+FLAG_INSTANCE_NAME=""
+FLAG_HOME_DIR=""
+FLAG_CONFIG_FILE=""
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --vault)       FLAG_VAULT="$2";     shift 2 ;;
@@ -34,6 +41,10 @@ while [ $# -gt 0 ]; do
         --kado-port)   FLAG_KADO_PORT="$2"; shift 2 ;;
         --kado-token)  FLAG_KADO_TOKEN="$2"; shift 2 ;;
         --prefix)      FLAG_PREFIX="$2";    shift 2 ;;
+        --instance-location) FLAG_INSTANCE_LOCATION="$2"; shift 2 ;;
+        --instance-name)     FLAG_INSTANCE_NAME="$2";     shift 2 ;;
+        --home-dir)          FLAG_HOME_DIR="$2";          shift 2 ;;
+        --config-file)       FLAG_CONFIG_FILE="$2";       shift 2 ;;
         --non-interactive) NON_INTERACTIVE=true; shift ;;
         --help|-h)     SHOW_HELP=true;      shift ;;
         *)
@@ -722,6 +733,12 @@ else
 fi
 print_ok "Prefix: $TAG_PREFIX"
 
+# Resolve the effective config-file path. Tests pass --config-file to
+# isolate their metadata from the user's real $REPO_ROOT/tomo-install.json.
+if [ -n "$FLAG_CONFIG_FILE" ]; then
+    CONFIG_FILE="$FLAG_CONFIG_FILE"
+fi
+
 # ── Instance directory ────────────────────────────────────
 
 print_step "Instance configuration"
@@ -745,8 +762,21 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 if [ "$REUSE" != "true" ]; then
-    INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
-    INSTANCE_LOCATION=$(prompt_default "Instance location" "$REPO_ROOT")
+    # CLI-flag override takes priority over prompt_default — this lets the
+    # integration test scripts target an isolated tmpdir instead of
+    # overwriting the user's real `$REPO_ROOT/tomo-instance`. The default
+    # path behaviour (and the interactive prompt) are unchanged when the
+    # flags are not passed.
+    if [ -n "$FLAG_INSTANCE_NAME" ]; then
+        INSTANCE_NAME="$FLAG_INSTANCE_NAME"
+    else
+        INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
+    fi
+    if [ -n "$FLAG_INSTANCE_LOCATION" ]; then
+        INSTANCE_LOCATION="$FLAG_INSTANCE_LOCATION"
+    else
+        INSTANCE_LOCATION=$(prompt_default "Instance location" "$REPO_ROOT")
+    fi
     INSTANCE_PATH="$INSTANCE_LOCATION/$INSTANCE_NAME"
 fi
 
@@ -1047,11 +1077,11 @@ cp "$TOMO_SOURCE/dot_claude/settings.json" "$INSTANCE_PATH/.claude/settings.json
 # Runtime Python scripts (used by agents via `python3 scripts/<name>.py`)
 # and their shared kado_client library. Host-side scripts (install,
 # cleanup, update, begin-tomo template, test-phase*) are NOT copied.
-cp "$REPO_ROOT/scripts/"*.py "$INSTANCE_PATH/scripts/"
-cp "$REPO_ROOT/scripts/tomo-statusline.sh" "$INSTANCE_PATH/scripts/"
+cp "$TOMO_SOURCE/scripts/"*.py "$INSTANCE_PATH/scripts/"
+cp "$TOMO_SOURCE/scripts/tomo-statusline.sh" "$INSTANCE_PATH/scripts/"
 chmod +x "$INSTANCE_PATH/scripts/tomo-statusline.sh"
 mkdir -p "$INSTANCE_PATH/scripts/lib"
-cp "$REPO_ROOT/scripts/lib/"*.py "$INSTANCE_PATH/scripts/lib/"
+cp "$TOMO_SOURCE/scripts/lib/"*.py "$INSTANCE_PATH/scripts/lib/"
 print_ok "scripts (Python runtime + statusline + lib/)"
 
 # Profiles — needed at runtime so shared-ctx-builder and other tools can load
@@ -1069,7 +1099,7 @@ print_ok "schemas/"
 mkdir -p "$INSTANCE_PATH/templates"
 # Regenerate in the instance from the authoritative schemas so the template
 # is always current. No py-yaml dep — uses stdlib only.
-python3 "$REPO_ROOT/scripts/template-from-schema.py" \
+python3 "$TOMO_SOURCE/scripts/template-from-schema.py" \
     --schema "$INSTANCE_PATH/schemas/item-result.schema.json" \
     --output "$INSTANCE_PATH/templates/item-result.template.json" \
     >/dev/null 2>&1 || cp "$TOMO_SOURCE/templates/"*.json "$INSTANCE_PATH/templates/" 2>/dev/null
@@ -1144,7 +1174,11 @@ print_ok ".mcp.json"
 
 print_step "Setting up tomo-home/"
 
-HOME_DIR="$REPO_ROOT/tomo-home"
+if [ -n "$FLAG_HOME_DIR" ]; then
+    HOME_DIR="$FLAG_HOME_DIR"
+else
+    HOME_DIR="$REPO_ROOT/tomo-home"
+fi
 mkdir -p "$HOME_DIR/.claude"
 
 # Copy entrypoint
@@ -1190,7 +1224,7 @@ fi
 
 print_step "Generating begin-tomo.sh launcher"
 
-LAUNCHER_TEMPLATE="$REPO_ROOT/scripts/begin-tomo.sh.template"
+LAUNCHER_TEMPLATE="$REPO_ROOT/scripts/lib/begin-tomo.sh.template"
 LAUNCHER_PATH="$INSTANCE_LOCATION/begin-tomo.sh"
 
 if [ ! -f "$LAUNCHER_TEMPLATE" ]; then

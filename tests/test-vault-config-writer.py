@@ -22,7 +22,7 @@ import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
-SCRIPTS_DIR = REPO_ROOT / "scripts"
+SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 _spec = importlib.util.spec_from_file_location(

@@ -27,7 +27,7 @@ import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent.parent
-SCRIPTS_DIR = REPO_ROOT / "scripts"
+SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 CLI_PATH = SCRIPTS_DIR / "voice-transcribe.py"
 
 sys.path.insert(0, str(SCRIPTS_DIR))

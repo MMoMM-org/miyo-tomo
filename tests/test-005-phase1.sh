@@ -33,7 +33,7 @@ fi
 printf "${C_DIM}python: %s${C_RESET}\n" "$PYTHON"
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
-FIXTURE_SRC="$REPO_ROOT/scripts/fixtures/test-005-phase1"
+FIXTURE_SRC="$REPO_ROOT/tests/fixtures/test-005-phase1"
 FIXTURE_DIR="${TMPDIR:-/tmp}/tomo-005-phase1-fixtures"
 rm -rf "$FIXTURE_DIR"
 mkdir -p "$FIXTURE_DIR"
@@ -45,7 +45,7 @@ cp "$FIXTURE_SRC/"*.py   "$FIXTURE_DIR/" 2>/dev/null || true
 # ── Test 1: schema validates a valid mixed-kind updates[] result ───────────
 printf "\n${C_DIM}── Test 1: valid mixed-kind updates[]${C_RESET}\n"
 STDERR1="$FIXTURE_DIR/t1.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" \
     --result "$FIXTURE_DIR/valid_mixed_updates.json" \
     2>"$STDERR1"; then
     pass "valid mixed-kind updates[] exits 0"
@@ -57,7 +57,7 @@ fi
 # ── Test 2: atomic-note-only result is valid (backwards compat) ───────────
 printf "\n${C_DIM}── Test 2: atomic-note-only (backwards compat)${C_RESET}\n"
 STDERR2="$FIXTURE_DIR/t2.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" \
     --result "$FIXTURE_DIR/atomic_only.json" \
     2>"$STDERR2"; then
     pass "atomic-note-only result exits 0"
@@ -69,7 +69,7 @@ fi
 # ── Test 3a: log_entry with text: alias → exits 1 with correct message ─────
 printf "\n${C_DIM}── Test 3a: log_entry text: alias${C_RESET}\n"
 STDERR3A="$FIXTURE_DIR/t3a.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" \
     --result "$FIXTURE_DIR/alias_log_entry_text.json" \
     2>"$STDERR3A"; then
     fail "log_entry text: alias should exit 1, but exited 0"
@@ -85,7 +85,7 @@ fi
 # ── Test 3b: log_link with target: alias → exits 1 with correct message ────
 printf "\n${C_DIM}── Test 3b: log_link target: alias${C_RESET}\n"
 STDERR3B="$FIXTURE_DIR/t3b.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" \
     --result "$FIXTURE_DIR/alias_log_link_target.json" \
     2>"$STDERR3B"; then
     fail "log_link target: alias should exit 1, but exited 0"
@@ -101,7 +101,7 @@ fi
 # ── Test 3c: tracker with type: alias → exits 1 with correct message ───────
 printf "\n${C_DIM}── Test 3c: tracker type: alias${C_RESET}\n"
 STDERR3C="$FIXTURE_DIR/t3c.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" \
     --result "$FIXTURE_DIR/alias_tracker_type.json" \
     2>"$STDERR3C"; then
     fail "tracker type: alias should exit 1, but exited 0"
@@ -117,7 +117,7 @@ fi
 # ── Test 4: legacy update (no kind:) → exits 0 + WARN + treated as tracker ─
 printf "\n${C_DIM}── Test 4: legacy update migration${C_RESET}\n"
 STDERR4="$FIXTURE_DIR/t4.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" \
     --result "$FIXTURE_DIR/legacy_no_kind.json" \
     2>"$STDERR4"; then
     if grep -q "WARN" "$STDERR4" && grep -q "treated as tracker" "$STDERR4"; then
@@ -134,7 +134,7 @@ fi
 # ── Test 5: regenerated template validates ─────────────────────────────────
 printf "\n${C_DIM}── Test 5: template validates against schema${C_RESET}\n"
 STDERR5="$FIXTURE_DIR/t5.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" \
     --result "$REPO_ROOT/tomo/templates/item-result.template.json" \
     --schema "$REPO_ROOT/tomo/schemas/item-result.schema.json" \
     2>"$STDERR5"; then
@@ -170,19 +170,19 @@ fi
 
 # ── Test 8: Spec-004 regression ────────────────────────────────────────────
 printf "\n${C_DIM}── Test 8a: spec-004 phase 3 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-004-phase3.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-004-phase3.sh" >/dev/null 2>&1; then
     pass "test-004-phase3.sh passes"
 else
     fail "test-004-phase3.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-004-phase3.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-004-phase3.sh" >&2 || true
 fi
 
 printf "\n${C_DIM}── Test 8b: spec-004 phase 4 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-004-phase4.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-004-phase4.sh" >/dev/null 2>&1; then
     pass "test-004-phase4.sh passes"
 else
     fail "test-004-phase4.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-004-phase4.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-004-phase4.sh" >&2 || true
 fi
 
 echo ""

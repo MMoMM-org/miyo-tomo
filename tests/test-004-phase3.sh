@@ -37,9 +37,9 @@ cat > "$STATE" <<JSONL
 JSONL
 
 # ── Test 1: state-update append + attempts counter ─────────────────────────
-"$PYTHON" "$REPO_ROOT/scripts/state-update.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/state-update.py" \
     --state "$STATE" --stem "item-one" --status running --run-id "$RUN_ID" 2>/dev/null
-"$PYTHON" "$REPO_ROOT/scripts/state-update.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/state-update.py" \
     --state "$STATE" --stem "item-one" --status done --run-id "$RUN_ID" 2>/dev/null
 
 "$PYTHON" - "$STATE" <<'PY' && pass "state-update running→done transition" || fail "state-update running→done"
@@ -54,9 +54,9 @@ assert one[-1]['completed_at'] is not None
 PY
 
 # ── Test 2: state-update failed path with error ────────────────────────────
-"$PYTHON" "$REPO_ROOT/scripts/state-update.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/state-update.py" \
     --state "$STATE" --stem "item-fail" --status running --run-id "$RUN_ID" 2>/dev/null
-"$PYTHON" "$REPO_ROOT/scripts/state-update.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/state-update.py" \
     --state "$STATE" --stem "item-fail" --status failed --run-id "$RUN_ID" \
     --error-kind "parser_error" --error-msg "malformed YAML frontmatter" 2>/dev/null
 
@@ -128,12 +128,12 @@ cat > "$ITEMS_DIR/item-two.result.json" <<'JSON'
 JSON
 
 # Mark both as done in state-file
-"$PYTHON" "$REPO_ROOT/scripts/state-update.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/state-update.py" \
     --state "$STATE" --stem "item-two" --status done --run-id "$RUN_ID" 2>/dev/null
 
 # ── Test 4: suggestions-reducer runs and produces valid doc ────────────────
 REDUCER_OUT="$FIXTURE_DIR/tomo-tmp/suggestions-doc.json"
-if "$PYTHON" "$REPO_ROOT/scripts/suggestions-reducer.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/suggestions-reducer.py" \
     --state "$STATE" --items-dir "$ITEMS_DIR" --run-id "$RUN_ID" \
     --profile "miyo" --output "$REDUCER_OUT" --threshold 1 2>"$FIXTURE_DIR/reducer.log"; then
     pass "suggestions-reducer exits 0"
@@ -166,7 +166,7 @@ PY
 
 # ── Test 5: threshold ≥ 3 does NOT emit Proposed MOC for single item ───────
 REDUCER_OUT2="$FIXTURE_DIR/tomo-tmp/suggestions-doc-threshold3.json"
-"$PYTHON" "$REPO_ROOT/scripts/suggestions-reducer.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/suggestions-reducer.py" \
     --state "$STATE" --items-dir "$ITEMS_DIR" --run-id "$RUN_ID" \
     --profile "miyo" --output "$REDUCER_OUT2" --threshold 3 2>/dev/null
 
@@ -179,7 +179,7 @@ PY
 # ── Test 6: normalise_topic plural fold ────────────────────────────────────
 "$PYTHON" - <<PY && pass "normalise_topic plural fold" || fail "normalise_topic"
 import importlib.util, sys
-spec = importlib.util.spec_from_file_location("sr", "$REPO_ROOT/scripts/suggestions-reducer.py")
+spec = importlib.util.spec_from_file_location("sr", "$REPO_ROOT/tomo/scripts/suggestions-reducer.py")
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 assert m.normalise_topic("Tools") == "tool"
 assert m.normalise_topic("stories") == "story"

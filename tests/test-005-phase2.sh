@@ -101,7 +101,7 @@ YAML
 
 OUT1="$FIXTURE_DIR/tomo-tmp/shared-ctx-trackers.json"
 STDERR1="$FIXTURE_DIR/tomo-tmp/t1.err"
-if "$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
     --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config-trackers.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -176,7 +176,7 @@ tomo:
 YAML
 
 OUT2="$FIXTURE_DIR/tomo-tmp/shared-ctx-no-dl.json"
-"$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
     --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config-no-dl.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -233,7 +233,7 @@ YAML
 
 OUT3="$FIXTURE_DIR/tomo-tmp/shared-ctx-acim.json"
 STDERR3="$FIXTURE_DIR/tomo-tmp/t3.err"
-"$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
     --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config-acim.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -264,7 +264,7 @@ printf "\n${C_DIM}── Test 4: real-instance dry run ≤ 15 KB${C_RESET}\n"
 if [ -f "$REPO_ROOT/tomo-instance/config/discovery-cache.yaml" ]; then
     REAL_OUT="$FIXTURE_DIR/tomo-tmp/real-shared-ctx.json"
     REAL_ERR="$FIXTURE_DIR/tomo-tmp/t4-real.err"
-    if "$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+    if "$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
         --cache "$REPO_ROOT/tomo-instance/config/discovery-cache.yaml" \
         --vault-config "$REPO_ROOT/tomo-instance/config/vault-config.yaml" \
         --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -301,7 +301,7 @@ tomo:
 YAML
 
 OUT5="$FIXTURE_DIR/tomo-tmp/shared-ctx-no-daily.json"
-"$PYTHON" "$REPO_ROOT/scripts/shared-ctx-builder.py" \
+"$PYTHON" "$REPO_ROOT/tomo/scripts/shared-ctx-builder.py" \
     --cache "$FIXTURE_DIR/config/discovery-cache.yaml" \
     --vault-config "$FIXTURE_DIR/config/vault-config-no-daily.yaml" \
     --profiles-dir "$REPO_ROOT/tomo/profiles" \
@@ -316,20 +316,20 @@ PY
 
 # ── Test 6: Spec-004 regression ────────────────────────────────────────────
 printf "\n${C_DIM}── Test 6: spec-004 phase 2 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-004-phase2.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-004-phase2.sh" >/dev/null 2>&1; then
     pass "test-004-phase2.sh passes"
 else
     fail "test-004-phase2.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-004-phase2.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-004-phase2.sh" >&2 || true
 fi
 
 # ── Test 7: Phase-1 regression ─────────────────────────────────────────────
 printf "\n${C_DIM}── Test 7: spec-005 phase 1 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-005-phase1.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-005-phase1.sh" >/dev/null 2>&1; then
     pass "test-005-phase1.sh passes"
 else
     fail "test-005-phase1.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-005-phase1.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-005-phase1.sh" >&2 || true
 fi
 
 echo ""

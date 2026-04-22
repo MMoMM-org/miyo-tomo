@@ -142,17 +142,19 @@ update_managed \
 
 print_step "Updating runtime scripts"
 mkdir -p "$INSTANCE_PATH/scripts/lib"
-for f in "$REPO_ROOT/scripts/"*.py; do
+# Runtime Python scripts now live under $TOMO_SOURCE/scripts/. $REPO_ROOT/scripts/
+# holds only the user-invoked install/update/backup/cleanup/restore helpers.
+for f in "$TOMO_SOURCE/scripts/"*.py; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/scripts/$name" "scripts/$name"
 done
 update_managed \
-    "$REPO_ROOT/scripts/tomo-statusline.sh" \
+    "$TOMO_SOURCE/scripts/tomo-statusline.sh" \
     "$INSTANCE_PATH/scripts/tomo-statusline.sh" \
     "scripts/tomo-statusline.sh"
 chmod +x "$INSTANCE_PATH/scripts/tomo-statusline.sh" 2>/dev/null || true
-for f in "$REPO_ROOT/scripts/lib/"*.py; do
+for f in "$TOMO_SOURCE/scripts/lib/"*.py; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
     update_managed "$f" "$INSTANCE_PATH/scripts/lib/$name" "scripts/lib/$name"
@@ -208,7 +210,7 @@ done
 
 print_step "Regenerating templates from schemas"
 mkdir -p "$INSTANCE_PATH/templates"
-python3 "$REPO_ROOT/scripts/template-from-schema.py" \
+python3 "$TOMO_SOURCE/scripts/template-from-schema.py" \
     --schema "$INSTANCE_PATH/schemas/item-result.schema.json" \
     --output "$INSTANCE_PATH/templates/item-result.template.json" \
     >/dev/null 2>&1 && print_ok "templates/item-result.template.json"

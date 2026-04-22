@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # version: 0.1.0
-"""Tests for scripts/lib/obsidian_filename.py."""
+"""Tests for tomo/scripts/lib/obsidian_filename.py."""
 from __future__ import annotations
 
 import subprocess
@@ -11,7 +11,9 @@ import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent.parent
-LIB_PATH = REPO_ROOT / "scripts" / "lib"
+# Runtime Python moved to tomo/scripts/ 2026-04-22 so scripts/ holds only
+# user-invoked install/update/backup helpers.
+LIB_PATH = REPO_ROOT / "tomo" / "scripts" / "lib"
 
 sys.path.insert(0, str(LIB_PATH))
 from obsidian_filename import FORBIDDEN_CHARS, is_obsidian_safe, sanitize_stem  # noqa: E402
@@ -65,7 +67,7 @@ def test_cli_prints_sanitised_stem(tmp_path):
     """The agent can `python3 scripts/lib/obsidian_filename.py <stem>` to
     get the same transformation the CLI uses — contract test so the
     agent and CLI can't drift."""
-    script = REPO_ROOT / "scripts" / "lib" / "obsidian_filename.py"
+    script = REPO_ROOT / "tomo" / "scripts" / "lib" / "obsidian_filename.py"
     r = subprocess.run(
         [sys.executable, str(script), "memo 11:48:29"],
         capture_output=True, text=True, timeout=10,
@@ -75,7 +77,7 @@ def test_cli_prints_sanitised_stem(tmp_path):
 
 
 def test_cli_errors_on_wrong_argv():
-    script = REPO_ROOT / "scripts" / "lib" / "obsidian_filename.py"
+    script = REPO_ROOT / "tomo" / "scripts" / "lib" / "obsidian_filename.py"
     r = subprocess.run(
         [sys.executable, str(script)],
         capture_output=True, text=True, timeout=10,

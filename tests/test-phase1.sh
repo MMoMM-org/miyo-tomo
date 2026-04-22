@@ -2,7 +2,8 @@
 # test-phase1.sh — Phase 1 integration validation.
 # Validates all Phase 1 deliverables: profiles, install script, templates,
 # yaml-fixer, and vault-config example.
-# version: 0.1.0
+# version: 0.2.0 (moved to tests/; install runs in isolated tmpdir via
+#                 --instance-location / --home-dir / --config-file)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -125,30 +126,48 @@ fi
 
 section "Test 3: Install script non-interactive mode"
 
-TEST_VAULT="$TMPDIR/tomo-test-vault-$$"
-TEST_INSTANCE="$TMPDIR/tomo-test-instance-$$"
-CLEANUP_DIRS="$TEST_VAULT $TEST_INSTANCE"
+# Isolate EVERYTHING this test touches into tmpdirs. install-tomo.sh
+# accepts --instance-location / --instance-name / --home-dir / --config-file
+# precisely so integration tests like this one never overlap with the
+# user's real $REPO_ROOT/tomo-instance. A prior version targeted the
+# default path and then rm -rf'd it — that wiped real installations
+# every time the test ran. Never point install-tomo.sh at the repo root.
+TEST_VAULT="$TMPDIR/tomo-phase1-vault-$$"
+TEST_LOC="$TMPDIR/tomo-phase1-loc-$$"
+TEST_NAME="tomo-instance"
+TEST_INSTANCE="$TEST_LOC/$TEST_NAME"
+TEST_HOME="$TMPDIR/tomo-phase1-home-$$"
+TEST_CONFIG="$TMPDIR/tomo-phase1-config-$$.json"
+INSTALL_OUT="$TMPDIR/tomo-phase1-install-$$.txt"
+CLEANUP_DIRS="$TEST_VAULT $TEST_LOC $TEST_HOME $INSTALL_OUT $TEST_CONFIG"
 
 mkdir -p "$TEST_VAULT/.obsidian"
+mkdir -p "$TEST_LOC"
 
-# Capture install output to a temp file so we can inspect it on failure
-INSTALL_OUT="$TMPDIR/tomo-install-out-$$.txt"
-CLEANUP_DIRS="$CLEANUP_DIRS $INSTALL_OUT"
+# Defensive guard — refuse to proceed if any target already exists. The
+# only way to end up here is a stale tmpdir from a prior crashed run;
+# blow it away so the test starts clean.
+for p in "$TEST_INSTANCE" "$TEST_HOME" "$TEST_CONFIG"; do
+    [ -e "$p" ] && rm -rf "$p"
+done
 
 INSTALL_EXIT=0
 bash "$REPO_ROOT/scripts/install-tomo.sh" \
     --vault "$TEST_VAULT" \
     --profile miyo \
     --kado-token kado_test \
+    --instance-location "$TEST_LOC" \
+    --instance-name "$TEST_NAME" \
+    --home-dir "$TEST_HOME" \
+    --config-file "$TEST_CONFIG" \
     --non-interactive \
     > "$INSTALL_OUT" 2>&1 || INSTALL_EXIT=$?
 
-# Check instance directory was created (the install script defaults to REPO_ROOT/tomo-instance)
-INSTANCE_PATH="$REPO_ROOT/tomo-instance"
+INSTANCE_PATH="$TEST_INSTANCE"
 if [ -d "$INSTANCE_PATH" ]; then
-    pass "Instance directory created: tomo-instance/"
+    pass "Instance directory created at isolated tmp path"
 else
-    fail "Instance directory not created (expected: tomo-instance/)"
+    fail "Instance directory not created (expected: $INSTANCE_PATH)"
     echo "    Install output:"
     while IFS= read -r line; do
         echo "    | $line"
@@ -185,12 +204,9 @@ if [ -n "$VAULT_CONFIG" ]; then
     fi
 fi
 
-# Clean up the generated instance so we don't pollute the repo
-rm -rf "$REPO_ROOT/tomo-instance"
-rm -f "$REPO_ROOT/tomo-install.json"
-if [ -d "$REPO_ROOT/tomo-home" ]; then
-    rm -rf "$REPO_ROOT/tomo-home"
-fi
+# Cleanup happens via the trap on EXIT — CLEANUP_DIRS now points at
+# tmpdirs only. We never touch $REPO_ROOT/tomo-instance,
+# $REPO_ROOT/tomo-home, or $REPO_ROOT/tomo-install.json.
 
 # ── Test 4: Templates exist and have valid structure ──────
 
@@ -227,7 +243,7 @@ done
 
 section "Test 5: yaml-fixer.py"
 
-YAML_FIXER="$REPO_ROOT/scripts/yaml-fixer.py"
+YAML_FIXER="$REPO_ROOT/tomo/scripts/yaml-fixer.py"
 
 # --help exits 0
 if python3 "$YAML_FIXER" --help > /dev/null 2>&1; then

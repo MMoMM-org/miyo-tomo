@@ -1228,16 +1228,21 @@ cat > "$CONFIG_FILE" << CFGEOF
     "port": ${KADO_PORT},
     "protocol": "${KADO_PROTOCOL}"
   },
-  "voice": {
-    "enabled": ${VOICE_ENABLED:-false},
-    "model": "${VOICE_MODEL:-}",
-    "language": "${VOICE_LANGUAGE:-}"
-  },
+  "voice": {},
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "tomoVersion": "${TOMO_VERSION}"
 }
 CFGEOF
 print_ok "tomo-install.json"
+
+# Fill the voice block via jq rather than heredoc interpolation — safer
+# against any future case where VOICE_* globals contain characters that
+# would break JSON (quotes, newlines) if pasted raw (review finding M1).
+jq --argjson enabled "${VOICE_ENABLED:-false}" \
+   --arg model "${VOICE_MODEL:-}" \
+   --arg lang  "${VOICE_LANGUAGE:-}" \
+   '.voice = { enabled: $enabled, model: $model, language: $lang }' \
+   "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
 
 # Mirror the voice block into the instance so runtime agents can read it.
 # tomo-install.json lives at the HOST repo root and is NOT accessible from

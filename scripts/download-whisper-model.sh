@@ -146,10 +146,19 @@ while IFS= read -r entry; do
     fi
 
     # SHA-256 check for LFS-tracked files (reliably catches corruption).
-    # Non-LFS files rely on size check — git-blob-sha1 verification would
-    # need extra plumbing and these files are tiny, so re-download on
-    # failure is nearly free.
+    # Non-LFS files get a lightweight parse-validation check below when
+    # they end in .json — catches a MitM / CDN-level substitution that
+    # preserves size but corrupts content (review finding M2).
     verify_note="size ok"
+    case "$path" in
+        *.json)
+            if ! jq empty "$out" > /dev/null 2>&1; then
+                echo "✗ Downloaded JSON file is malformed: ${path}" >&2
+                exit 3
+            fi
+            verify_note="size ok, json parses"
+            ;;
+    esac
     if [ -n "$lfs_sha" ]; then
         actual_sha="$(sha256_of "$out")"
         if [ -z "$actual_sha" ]; then

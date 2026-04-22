@@ -160,7 +160,18 @@ configure_voice() {
     echo "  Primary audio language: de | en | auto"
     local new_lang
     read -rp "  Language [${default_lang}]: " new_lang
-    VOICE_LANGUAGE="${new_lang:-$default_lang}"
+    new_lang="${new_lang:-$default_lang}"
+    # Allowlist — unvalidated input would inject into tomo-install.json
+    # via jq/heredoc write paths (review finding M1). Also protects the
+    # CLI from receiving a non-Whisper language code.
+    case "$new_lang" in
+        de|en|auto|"") ;;
+        *)
+            print_err "Invalid language '$new_lang' — expected de|en|auto, keeping '$default_lang'"
+            new_lang="$default_lang"
+            ;;
+    esac
+    VOICE_LANGUAGE="$new_lang"
 
     # ── Ensure model files present ───────────────────────
     # Check the .download-complete sentinel rather than model.bin — catches

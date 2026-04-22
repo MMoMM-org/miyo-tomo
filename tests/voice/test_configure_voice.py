@@ -182,6 +182,32 @@ def test_invalid_model_name_falls_back_to_default(tmp_path):
     assert "Invalid model" in r.stdout or "Invalid model" in r.stderr
 
 
+def test_invalid_language_falls_back_to_default(tmp_path):
+    # Language allowlist rejects anything outside de|en|auto (review
+    # finding M1 — unvalidated input could inject into tomo-install.json
+    # and drive faster-whisper into an error path).
+    models = tmp_path / "models"
+    # Fresh install → enable → valid model → invalid language
+    # Inject:  "; injected = true   (JSON-break attempt)
+    r = _run_wizard("false", "", "", models, 'y\nmedium\n"; injected = true\n')
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    result = _parse(r)
+    assert result["ENABLED"] == "true"
+    assert result["MODEL"] == "medium"
+    # Wizard falls back to the default (de for fresh install).
+    assert result["LANGUAGE"] == "de"
+    assert "Invalid language" in r.stderr
+
+
+def test_valid_language_auto_is_accepted(tmp_path):
+    # "auto" should pass the allowlist.
+    models = tmp_path / "models"
+    r = _run_wizard("false", "", "", models, "y\nmedium\nauto\n")
+    assert r.returncode == 0
+    result = _parse(r)
+    assert result["LANGUAGE"] == "auto"
+
+
 def test_fresh_install_decline_stays_disabled(tmp_path):
     # Fresh install, user says "n" to enabling. Nothing downloaded.
     r = _run_wizard("false", "", "", tmp_path / "models", "n\n")

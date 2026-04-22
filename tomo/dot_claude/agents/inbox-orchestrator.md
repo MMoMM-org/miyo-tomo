@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.8.0 (Phase A5: AskUserQuestion when all inbox items already lifecycle-tagged — no more silent exit)
+# version: 0.8.1 (Phase A5: ask about already_tagged items even when fresh items are present — not just when items_found==0)
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -221,38 +221,53 @@ Resume: skip both A3 and A4. Derive `RUN_ID` from the existing state-file
 
 Step A5 — decide whether there's work to do (**MANDATORY — do NOT skip**):
 
-Branch on the state-init counters:
+Branch on the state-init counters. The key invariant: the prompt MUST
+fire whenever `already_tagged > 0`, regardless of whether fresh items
+also exist. Otherwise the tagged items silently age out of the user's
+attention on every run.
 
-1. `items_found > 0` → proceed to Phase B.
+1. `items_found > 0 && already_tagged == 0` → only fresh work. Proceed
+   directly to Phase B — no prompt needed.
 
-2. `items_found == 0 && already_tagged == 0 && items_skipped == 0` → inbox is
-   truly empty. Report "Inbox is empty" and stop. Do NOT prompt.
+2. `items_found == 0 && already_tagged == 0 && items_skipped == 0` →
+   inbox is truly empty. Report "Inbox is empty" and stop. No prompt.
 
-3. `items_found == 0 && already_tagged > 0` → every source item in the
-   inbox already carries a lifecycle tag (captured / active). This usually
-   means a prior `/inbox` run processed them and they're waiting on the
-   user's approval in Pass 2. **Use AskUserQuestion** to let the user
-   decide — NEVER silently exit:
+3. `items_found == 0 && items_skipped > 0 && already_tagged == 0` →
+   only Tomo-generated workflow docs (suggestions/instructions) remain.
+   Report "Inbox has only workflow docs, nothing to process" and stop.
 
-   - Question text: "Alle <already_tagged> Inbox-Items sind bereits als
-     captured/active getaggt. Was soll ich tun?"
-   - Options:
-     - `Ignore` — treat as empty, no Pass 1 run. Suggestions stay as they
-       are. Use this when the user knows Pass 2 is pending.
-     - `Re-process all` — re-run `state-init` with `--include-captured` so
-       the same items go through Pass 1 again (regenerates suggestions
-       from current content; existing tags stay in place, will be
-       idempotently re-applied in Phase C5).
+4. `already_tagged > 0` (either alone OR together with fresh items) →
+   **Use AskUserQuestion** to ask the user how to handle the tagged
+   items. NEVER silently process fresh-only when tagged items are
+   present; the user generally wants to know they exist.
 
-   On "Re-process all": re-run `state-init` with `--include-captured`,
-   capture the new counters, proceed to Phase B. The run-id stays the
-   same as the one you generated in Step A2.
+   - Question text, when `items_found == 0`:
+     "Alle <already_tagged> Inbox-Items sind bereits als captured/active
+     getaggt. Was soll ich tun?"
+   - Question text, when `items_found > 0`:
+     "<items_found> neue Items zu verarbeiten, plus <already_tagged>
+     Items die bereits getaggt sind (captured/active). Was soll ich
+     tun?"
+   - Options (up to 3 — exact set depends on counters):
+     - `Process fresh only` *(only offered when `items_found > 0`)* —
+       standard Pass 1 on just the fresh items, tagged items stay
+       untouched. Use when Pass 2 on them is pending.
+     - `Process fresh + re-process tagged` *(only offered when
+       `items_found > 0 && already_tagged > 0`)* — re-run `state-init`
+       with `--include-captured`, then Phase B runs on BOTH sets.
+     - `Re-process all tagged` *(only offered when `items_found == 0`)*
+       — re-run `state-init --include-captured`, then Phase B.
+     - `Ignore` *(only offered when `items_found == 0`)* — stop with
+       "Skipped — all items already tagged."
 
-   On "Ignore": report "Skipped — all items already tagged." and stop.
+   On "Process fresh + re-process tagged" or "Re-process all tagged":
+   re-run `state-init` with `--include-captured`, capture the new
+   counters, proceed to Phase B. The run-id stays the same.
 
-4. `items_found == 0 && items_skipped > 0 && already_tagged == 0` → only
-   Tomo-generated workflow docs (suggestions/instructions) remain. Report
-   "Inbox has only workflow docs, nothing to process" and stop.
+   On "Process fresh only": proceed to Phase B with the current state
+   file (the tagged items aren't in it).
+
+   On "Ignore": stop.
 
 ### Phase B — Fan-out dispatch
 

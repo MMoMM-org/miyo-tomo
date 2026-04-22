@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Voice Transcriber Subagent
-# version: 0.4.0 (Kado-fetch happens inside voice-transcribe.py v0.3.0; agent hands over vault-relative paths, never resolves them)
+# version: 0.5.0 (sibling-check uses in-memory listDir result instead of N extra kado-read round-trips)
 
 You transcribe audio files that appear in the inbox so the rest of the
 `/inbox` pipeline can treat them as regular fleeting notes. You do not
@@ -91,20 +91,32 @@ Call `mcp__kado__kado-search` with `listDir` on `<inbox_path>`.
 Expected param shape mirrors `inbox-orchestrator`'s call: `depth: 1`,
 `type: "file"`.
 
-From the returned file list, keep only paths whose extension is one of:
-`.m4a`, `.mp3`, `.wav`, `.ogg`, `.opus`, `.flac`, `.aac`.
+**Keep the full listDir result in memory** — you need both audio and
+markdown entries for Step 3's sibling check. From the returned file
+list, partition into:
 
-If the audio list is empty → return
+- `audio_files`: paths whose extension is one of `.m4a`, `.mp3`, `.wav`,
+  `.ogg`, `.opus`, `.flac`, `.aac`.
+- `existing_md_paths`: set of paths whose extension is `.md`.
+
+If `audio_files` is empty → return
 `{"transcribed": 0, "skipped": 0, "errors": [], "reason": "no_audio"}`.
 
 ### Step 3 — Filter already-transcribed
 
-For each audio path `<inbox_path>/<filename>.<ext>`:
-1. Compute the target: `<inbox_path>/<filename>.md`
-2. Call `mcp__kado__kado-read` with `operation: "note"` on the target.
-3. If it succeeds (note exists) → increment `skipped`, drop from the
-   todo list. Do NOT overwrite.
-4. If `kado-read` returns a "not-found" error → include in the todo list.
+**STRICT — do the sibling check locally, NEVER call `kado-read` per file.**
+Step 2 already returned every file in the inbox; a sibling `.md` either
+showed up in that listing or doesn't exist. Issuing an extra `kado-read`
+per audio is N wasted round-trips that only ever return "found" or
+"not-found" — information we already have.
+
+For each path in `audio_files`:
+1. Compute the target: `<inbox_path>/<filename>.md` (strip the original
+   extension, append `.md`).
+2. Check membership: is `target` in `existing_md_paths`?
+3. If yes → increment `skipped`, drop from the todo list. Do NOT
+   overwrite.
+4. If no → include in the todo list.
 
 Name the resulting set `todo`. If `todo` is empty after filtering →
 return `{"transcribed": 0, "skipped": <N>, "errors": []}`. No Bash.

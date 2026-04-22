@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -557,6 +557,20 @@ def parse_daily_updates(text: str) -> list[dict]:
                 pending_item["accepted"] = False
             continue
 
+        # Force Atomic Note checkbox — log_entry only. When checked, the
+        # source note gets promoted to a confirmed create_atomic_note even
+        # if the per-item section's own Approve box is empty. Captured
+        # here as a hint; the main() function reconciles against the
+        # per-item sections at the end.
+        if cb and "force atomic note" in cb.group(1).lower():
+            if pending_item and block_type == "log_entries":
+                pending_item["force_atomic_note"] = True
+            continue
+        if cb_un and "force atomic note" in cb_un.group(1).lower():
+            if pending_item and block_type == "log_entries":
+                pending_item["force_atomic_note"] = False
+            continue
+
         # Sub-fields: Reason, Source, Time
         if stripped.startswith("- Reason:") and pending_item:
             pending_item["reason"] = stripped.split(":", 1)[1].strip()
@@ -599,6 +613,9 @@ def parse_daily_updates(text: str) -> list[dict]:
                         "reason": "",
                         "source_stem": "",
                         "accepted": False,
+                        # Populated when the user ticks the per-entry
+                        # "Force Atomic Note" checkbox — default off.
+                        "force_atomic_note": False,
                     }
                 elif block_type == "log_links":
                     wl = _extract_wikilink(stripped)
@@ -658,6 +675,21 @@ def main() -> int:
     skipped_items: list[dict] = []
     total_sections = len(raw_sections)
 
+    def _stem_of(src: str | None) -> str:
+        """Lowercase stem for source_path/source_stem matching — handles
+        paths with folders, .md suffixes, and wikilink aliases."""
+        if not src:
+            return ""
+        bare = src.rsplit("/", 1)[-1]
+        if bare.endswith(".md"):
+            bare = bare[:-3]
+        return bare.strip().lower()
+
+    # Keep parsed sections by stem so the Force-Atomic reconciliation pass
+    # can promote unapproved items later.
+    parsed_sections: list[dict] = []
+    sections_by_stem: dict[str, dict] = {}
+
     for section_id, lines in raw_sections:
         try:
             item = parse_section(section_id, lines)
@@ -676,6 +708,11 @@ def main() -> int:
             )
             skipped_items.append({"id": section_id, "disposition": "error"})
             continue
+
+        parsed_sections.append(item)
+        stem_key = _stem_of(item.get("source_path"))
+        if stem_key:
+            sections_by_stem[stem_key] = item
 
         if item["approved"]:
             confirmed_items.append({
@@ -738,6 +775,83 @@ def main() -> int:
         )
         print(
             f"daily_updates: {len(daily_updates)} dates, {accepted_count} accepted items",
+            file=sys.stderr,
+        )
+
+    # ── Reconcile Force Atomic Note promotions ─────────────────
+    # When the user ticks [x] Force Atomic Note on a log_entry, they're
+    # saying "also create a standalone note for this source," even if
+    # the per-item section's own Approve box is empty. Promote the
+    # matching per-item section into confirmed_items by stem match.
+    force_atomic_stems: set[str] = set()
+    for d in daily_updates:
+        for le in d.get("log_entries", []):
+            if le.get("force_atomic_note"):
+                stem = _stem_of(le.get("source_stem"))
+                if stem:
+                    force_atomic_stems.add(stem)
+
+    promoted = 0
+    synthesized = 0
+    already_in = {_stem_of(c.get("source_path")) for c in confirmed_items}
+    for stem in force_atomic_stems:
+        if stem in already_in:
+            continue  # user already checked per-item Approve — Force is a no-op
+        sec = sections_by_stem.get(stem)
+        if sec is not None:
+            # Promote the unapproved per-item section: mark approved,
+            # clear delete_source (Force Atomic means "keep as atomic").
+            sec["approved"] = True
+            sec["delete_source"] = False
+            confirmed_items.append({
+                "id": sec["id"],
+                "source_path": sec["source_path"],
+                "type": sec["type"],
+                "approved": True,
+                "delete_source": False,
+                "action": sec.get("action"),
+                "title": sec["title"],
+                "tags": sec["tags"],
+                "parent_moc": sec["parent_moc"],
+                "parent_mocs": sec["parent_mocs"],
+                "destination": sec["destination"],
+                "template": sec["template"],
+                "summary": sec["summary"],
+                "classification": sec["classification"],
+                "force_atomic": True,  # trace marker for instruction-render logs
+            })
+            # Drop the matching skipped entry (if any) so counts stay clean.
+            skipped_items[:] = [
+                s for s in skipped_items
+                if _stem_of(s.get("source_path")) != stem
+            ]
+            promoted += 1
+        else:
+            # Edge case: log_entry has Force Atomic but no per-item
+            # section exists (worthiness exactly 0; analyst skipped
+            # emit). We can't synthesize a full atomic without a
+            # template + destination. Surface the unresolved intent
+            # and let the user either add a per-item section or
+            # unmark Force Atomic. Don't silently drop — always log.
+            print(
+                f"warning: Force Atomic Note set for '{stem}' but no "
+                "per-item section parsed — skipping atomic creation. "
+                "Analyst emitted no create_atomic_note for this source; "
+                "edit the source note or re-run /inbox with higher "
+                "worthiness content.",
+                file=sys.stderr,
+            )
+            synthesized += 1  # tracked for metrics even though not created
+
+    if promoted:
+        print(
+            f"force_atomic: promoted {promoted} per-item section(s) to confirmed",
+            file=sys.stderr,
+        )
+    if synthesized:
+        print(
+            f"force_atomic: {synthesized} log entries had Force Atomic Note "
+            "but no per-item section — not rendered",
             file=sys.stderr,
         )
 

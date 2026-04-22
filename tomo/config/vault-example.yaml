@@ -259,7 +259,10 @@ tags:
         - "note/normal"
         - "others/moc"
       wildcard: false
-      proposable: true
+      # proposable: false — templates set the type tag on render, so Tomo does
+      # not propose type/* during Pass 1. required_for=[atomic_note, map_note]
+      # still ensures the tag is present on filed notes (set by the template).
+      proposable: false
       required_for:
         - atomic_note
         - map_note

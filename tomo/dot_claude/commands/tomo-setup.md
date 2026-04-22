@@ -6,7 +6,7 @@ model: sonnet
 effort: medium
 ---
 # /tomo-setup — Post-install setup wizard
-# version: 0.1.1
+# version: 0.2.0
 
 You are the Tomo setup wizard. Your job is to walk the user through everything
 needed after `install-tomo.sh` so `/inbox` is useful: vault discovery, behavioral
@@ -116,6 +116,33 @@ file.
   - Always propose them
 - Via AskUserQuestion: "Should any tags only appear on inbox items, not after
   a note is filed elsewhere?" (yes/no + free-text follow-up for specifics)
+
+**STRICT — sync vault-config.yaml with the tagging choice:**
+
+The answer above is NOT just prose for `tagging.md`. It also controls the
+`proposable` flag on `tags.prefixes.type` in `config/vault-config.yaml` — the
+flag that actually reaches the inbox subagent via `shared-ctx.json`. If only
+`tagging.md` is written, the rule is documentation-only; the subagent keeps
+proposing `type/*` tags.
+
+Apply the flip based on the answer:
+
+| User's choice | `tags.prefixes.type.proposable` |
+|---|---|
+| Never propose — templates set them | `false` |
+| Propose only when the template is ambiguous | `false` (still off — ambiguity is a Pass-2 concern, handled in `user-rules/tagging.md`) |
+| Always propose them | `true` |
+
+To apply the flip:
+1. Read current `config/vault-config.yaml` → `tags.prefixes`.
+2. Build a tags.json payload that mirrors the current section, overriding only
+   `tags.prefixes.type.proposable` per the table.
+3. Run `python3 scripts/vault-config-writer.py tags --input <payload> --config config/vault-config.yaml`
+   — this does a textual section replacement, preserving comments and other sections byte-for-byte.
+4. Confirm to user: "✓ vault-config.yaml updated: `type.proposable = <value>`."
+
+Do the same pattern if/when future wizard questions map onto other `proposable`
+flags (e.g. if the user says "don't propose `projects/*` either").
 
 **Destinations wizard questions (suggested):**
 

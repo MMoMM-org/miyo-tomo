@@ -1,7 +1,9 @@
 #!/bin/bash
 # update-tomo.sh — Update managed files in an existing Tomo instance.
 # Overwrites managed files, skips user files, attempts to merge settings.json.
-# version: 0.1.0
+# Also re-runs the voice transcription wizard (XDD 009) to allow model
+# changes without a full reinstall.
+# version: 0.3.0 (voice prior-state: instance mirror wins on desync + warns)
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -20,6 +22,10 @@ print_err()  { echo "  ✗ $1" >&2; }
 get_version() {
     grep -m1 '^# version:' "$1" 2>/dev/null | sed 's/^# version: *//' || echo "unknown"
 }
+
+# Voice transcription wizard (XDD 009). Requires print_* helpers above.
+# shellcheck source=lib/configure-voice.sh
+. "$SCRIPT_DIR/lib/configure-voice.sh"
 
 # ── Load config ───────────────────────────────────────────
 
@@ -238,6 +244,63 @@ fi
 SOURCE_VERSION=$(get_version "$TOMO_SOURCE/dot_claude/rules/project-context.md")
 jq --arg v "$SOURCE_VERSION" '.tomoVersion = $v | .updatedAt = now | .updatedAt = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))' \
     "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+
+# ── Voice transcription wizard (XDD 009) ─────────────────
+# Read prior state from BOTH the host config and the instance mirror.
+# If they disagree, prefer the MIRROR (runtime reality) and warn —
+# the runtime agent reads the mirror, so that's the "effective current
+# state" from the user's perspective. Host wins in the final write, so
+# picking mirror as prior means the wizard offers to keep the currently-
+# active state as default rather than silently resurrecting a stale
+# host-side setting.
+
+VOICE_MIRROR="$INSTANCE_PATH/voice/config.json"
+
+_host_enabled="$(jq -r '.voice.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")"
+_host_model="$(jq -r '.voice.model // ""' "$CONFIG_FILE" 2>/dev/null || echo "")"
+_host_lang="$(jq -r '.voice.language // ""' "$CONFIG_FILE" 2>/dev/null || echo "")"
+
+if [ -f "$VOICE_MIRROR" ]; then
+    _mirror_enabled="$(jq -r '.enabled // false' "$VOICE_MIRROR" 2>/dev/null || echo "false")"
+    _mirror_model="$(jq -r '.model // ""' "$VOICE_MIRROR" 2>/dev/null || echo "")"
+    _mirror_lang="$(jq -r '.language // ""' "$VOICE_MIRROR" 2>/dev/null || echo "")"
+    if [ "$_host_enabled" != "$_mirror_enabled" ] \
+       || [ "$_host_model" != "$_mirror_model" ] \
+       || [ "$_host_lang" != "$_mirror_lang" ]; then
+        print_warn "Voice config desync detected:"
+        print_warn "  host:   enabled=$_host_enabled, model=$_host_model, lang=$_host_lang"
+        print_warn "  mirror: enabled=$_mirror_enabled, model=$_mirror_model, lang=$_mirror_lang"
+        print_warn "Using mirror as prior — wizard final answer will overwrite BOTH."
+    fi
+    PRIOR_VOICE_ENABLED="$_mirror_enabled"
+    PRIOR_VOICE_MODEL="$_mirror_model"
+    PRIOR_VOICE_LANGUAGE="$_mirror_lang"
+else
+    PRIOR_VOICE_ENABLED="$_host_enabled"
+    PRIOR_VOICE_MODEL="$_host_model"
+    PRIOR_VOICE_LANGUAGE="$_host_lang"
+fi
+unset _host_enabled _host_model _host_lang _mirror_enabled _mirror_model _mirror_lang
+
+VOICE_MODELS_DIR="$INSTANCE_PATH/voice/models"
+
+configure_voice \
+    "$PRIOR_VOICE_ENABLED" \
+    "$PRIOR_VOICE_MODEL" \
+    "$PRIOR_VOICE_LANGUAGE" \
+    "$VOICE_MODELS_DIR" \
+    "false"
+
+# Persist voice settings via the shared write_voice_config helper —
+# see scripts/lib/configure-voice.sh. Matches install-tomo.sh exactly.
+write_voice_config "$CONFIG_FILE"
+
+# Mirror the updated voice block into the instance so runtime agents can
+# read it. tomo-install.json is HOST-only; the container only sees
+# $INSTANCE_PATH. See install-tomo.sh for the same mirror logic.
+mkdir -p "$INSTANCE_PATH/voice"
+jq '.voice' "$CONFIG_FILE" > "$INSTANCE_PATH/voice/config.json"
+print_ok "voice/config.json (mirrored into instance)"
 
 # ── Summary ───────────────────────────────────────────────
 

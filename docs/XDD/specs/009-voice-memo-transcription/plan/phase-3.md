@@ -1,7 +1,7 @@
 ---
 title: "Phase 3: voice-transcriber agent (standalone)"
-status: pending
-version: "1.0"
+status: code-complete
+version: "1.1"
 phase: 3
 ---
 
@@ -25,7 +25,7 @@ in Phase 4.
 
 ## Tasks
 
-- [ ] **T3.1 Agent frontmatter and persona** `[activity: agent-design]`
+- [x] **T3.1 Agent frontmatter and persona** `[activity: agent-design]`
 
   1. Prime: Read `tomo/dot_claude/agents/inbox-orchestrator.md` frontmatter
      and "Constraints" sections to match the in-house style. Note required
@@ -40,7 +40,7 @@ in Phase 4.
      - `# version: 0.1.0` header
   3. Validate: Frontmatter parses (no YAML errors). Tools list matches actual usage.
 
-- [ ] **T3.2 Workflow: discover + skip-or-transcribe loop** `[activity: agent-design]`
+- [x] **T3.2 Workflow: discover → batch-transcribe → write** `[activity: agent-design]`
 
   1. Prime: Re-read solution.md § "Agent: voice-transcriber" for the exact
      responsibility list. Re-read inbox-orchestrator's "Constraints (strict)"
@@ -51,27 +51,38 @@ in Phase 4.
        If false → return JSON summary `{"transcribed": 0, "skipped": 0, "errors": [], "reason": "disabled"}`.
      - Step 2: `kado-search` inbox for audio extensions (use `byPattern` or
        `listDir` per Kado API; verify exact param shape against existing usage in inbox-orchestrator).
-     - Step 3: For each audio file:
-       a. `kado-read` `<basename>.md`. If exists → skip, increment `skipped` counter.
-       b. Otherwise: ONE Bash call: `python3 scripts/voice-transcribe.py "<path>"`.
-       c. Capture stdout. On exit 0 → kado-write `<basename>.md` with stdout content.
-       d. On non-zero exit → kado-write `<basename>.transcribe-error.md` with stderr content
-          (also as plain text, not frontmatter).
-     - Step 4: Return JSON summary for the orchestrator log.
+     - Step 3: Filter — for each candidate, `kado-read` `<basename>.md`. If
+       exists → increment `skipped`, drop from list. Result: `todo[]`.
+       If `todo[]` is empty → return summary, no CLI call.
+     - Step 4: **Single** Bash call:
+       `python3 scripts/voice-transcribe.py <path1> <path2> ...` (all todo
+       paths as args). One process = one model load for the whole batch.
+     - Step 5: Parse stdout as JSON. For each entry in `results[]`:
+       a. `markdown != null` → `kado-write` `<target>` with the markdown.
+       b. `error != null` → `kado-write` `<basename>.transcribe-error.md`
+          with the error code+detail as plain text.
+     - Step 6: On CLI non-zero exit (fatal, e.g. model_dir missing) → log
+       the fatal error, return summary with `errors: [{reason: "<code>"}]`,
+       do NOT write partial results.
+     - Step 7: Return JSON summary for the orchestrator log.
   3. Validate: Workflow respects all "Constraints (strict)" rules.
-     No Bash chaining. No heredocs. No inline Python.
+     No Bash chaining. No heredocs. No inline Python. Exactly ONE Bash call
+     per agent invocation (the batch CLI call).
 
-- [ ] **T3.3 Error handling specifics** `[activity: agent-design]`
+- [x] **T3.3 Error handling specifics** `[activity: agent-design]`
 
-  1. Prime: Phase 2 CLI exit codes (0 success, 2 audio-not-found, 3 model-not-found, 4 transcription-error).
+  1. Prime: Phase 2 CLI exit codes. Batch CLI: `0` = batch completed
+     (individual failures are inside `results[].error`), `2` = usage error,
+     `3` = model_dir missing (fatal). Per-file errors never escape as a
+     non-zero exit — they appear in the manifest.
   2. Implement: Map exit codes to user-visible behaviour in the agent body:
-     - Exit 3 (model missing): one-time warning to summary, abort entire
-       voice phase (don't try other audios), return summary with error.
-     - Exit 2/4: per-file error marker, continue to next audio.
-     - Other exit codes: same as 4.
+     - Exit 3 (model missing): one-time warning to summary, write NO files,
+       return summary with `errors: [{reason: "model_dir_missing"}]`.
+     - Exit 2 (usage error): same as 3 — indicates agent bug, surface it.
+     - Exit 0: iterate `results[]`, write markdown or error-marker per entry.
   3. Validate: Error path documented; user always sees what failed and where.
 
-- [ ] **T3.4 Anti-parrot + format guardrails** `[activity: agent-design]`
+- [x] **T3.4 Anti-parrot + format guardrails** `[activity: agent-design]`
 
   1. Prime: Memory `feedback_example_bleed_through.md` — examples in the
      agent body must use angle-bracket placeholders, not real-looking IDs.
@@ -82,7 +93,7 @@ in Phase 4.
   3. Validate: No example uses a real-looking concrete filename that
      could bleed into actual output.
 
-- [ ] **T3.5 Sync agent into instance for testing** `[activity: tooling]`
+- [x] **T3.5 Sync agent into instance for testing** `[activity: tooling]`
 
   1. Prime: The agent file lives in `tomo/dot_claude/agents/`. To test in
      a running Tomo session, it must be copied to the instance via
@@ -92,7 +103,7 @@ in Phase 4.
      iteration) and restart Claude in the instance to pick it up.
   3. Validate: Agent appears in the instance's Agent tool list.
 
-- [ ] **T3.6 Standalone agent test** `[activity: validate]`
+- [ ] **T3.6 Standalone agent test** `[activity: validate]` *(pending — requires live Tomo session)*
 
   Manual test in a Tomo session:
   - Pre-condition: voice enabled in `tomo-install.json`, tiny model installed,
@@ -107,7 +118,7 @@ in Phase 4.
   - Disable voice in `tomo-install.json`, re-invoke. Summary returns
     `{reason: "disabled"}`, no Bash calls made.
 
-- [ ] **T3.7 Phase Validation** `[activity: validate]`
+- [x] **T3.7 Phase Validation** `[activity: validate]`
 
   - Agent transcribes new audio files correctly.
   - Idempotent: pre-existing transcripts skipped without re-invoking the CLI.

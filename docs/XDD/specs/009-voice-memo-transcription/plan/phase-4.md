@@ -1,9 +1,16 @@
 ---
-title: "Phase 4: Orchestrator integration (Phase 0 in inbox-orchestrator)"
-status: pending
-version: "1.0"
+title: "Phase 4: Orchestrator integration (Phase 0a in inbox-orchestrator)"
+status: code-complete
+version: "1.1"
 phase: 4
 ---
+
+> **Note on naming**: The existing inbox-orchestrator already had a
+> `Phase 0 — Resume detection` block. To avoid a numbering collision the
+> new voice step is `Phase 0a — Voice transcription` and the old resume
+> block was renamed to `Phase 0b — Resume detection`. All XDD-009 docs
+> still describe the new step as "Phase 0" for brevity; inside the
+> orchestrator the heading is `Phase 0a`.
 
 # Phase 4: Orchestrator integration
 
@@ -21,7 +28,7 @@ existing fan-out pipeline. We only insert a new pre-step.
 
 ## Tasks
 
-- [ ] **T4.1 Insert Phase 0 in inbox-orchestrator workflow** `[activity: agent-design]`
+- [x] **T4.1 Insert Phase 0 in inbox-orchestrator workflow** `[activity: agent-design]`
 
   1. Prime: Read current `inbox-orchestrator.md` end-to-end. Locate the
      "Phase A" heading and document structure. Note version field at top.
@@ -41,13 +48,13 @@ existing fan-out pipeline. We only insert a new pre-step.
      changes needed there. The new transcript files appear naturally
      because they're in the same inbox dir.
 
-- [ ] **T4.2 Bump orchestrator version + update changelog comment** `[activity: agent-design]`
+- [x] **T4.2 Bump orchestrator version + update changelog comment** `[activity: agent-design]`
 
   1. Prime: Existing version comment format: `# version: 0.6.0 (Phase D merged...)`.
   2. Implement: Bump to `0.7.0` with comment `(Phase 0 voice transcription added)`.
   3. Validate: Version comment present, increment is correct.
 
-- [ ] **T4.3 Update orchestrator constraints if needed** `[activity: agent-design]`
+- [x] **T4.3 Update orchestrator constraints if needed** `[activity: agent-design]`
 
   1. Prime: Re-read existing "Constraints (strict)" block — does Phase 0
      introduce any new failure mode the orchestrator should explicitly guard?
@@ -56,7 +63,7 @@ existing fan-out pipeline. We only insert a new pre-step.
      agent. If voice is disabled, simply skip Phase 0; do not warn or prompt."
   3. Validate: Constraints stay actionable, not aspirational.
 
-- [ ] **T4.4 Sync to instance and restart** `[activity: tooling]`
+- [x] **T4.4 Sync to instance and restart** `[activity: tooling]`
 
   1. Prime: Same as Phase 3 T3.5 — instance has its own copy.
   2. Implement: Run `bash scripts/update-tomo.sh` to copy the updated
@@ -64,7 +71,7 @@ existing fan-out pipeline. We only insert a new pre-step.
   3. Validate: Updated agent picked up — version comment 0.7.0 visible in
      the instance copy.
 
-- [ ] **T4.5 Integration test: voice ON path** `[activity: validate]`
+- [ ] **T4.5 Integration test: voice ON path** `[activity: validate]` *(pending — live Tomo session)*
 
   Pre-condition: voice enabled, tiny model installed, test vault inbox has
   one audio file (no `.md` sibling) AND one regular `.md` fleeting note.
@@ -77,7 +84,7 @@ existing fan-out pipeline. We only insert a new pre-step.
     - Phase A discovery picks up BOTH the original `.md` and the new transcript.
     - Pass 1 fan-out analyzes both; Suggestions doc lists both items.
 
-- [ ] **T4.6 Integration test: voice OFF path** `[activity: validate]`
+- [ ] **T4.6 Integration test: voice OFF path** `[activity: validate]` *(pending — live Tomo session)*
 
   Pre-condition: voice disabled in `tomo-install.json`. Test vault inbox has
   one audio file and one regular `.md`.
@@ -91,7 +98,7 @@ existing fan-out pipeline. We only insert a new pre-step.
     - Pass 1 fan-out analyzes only the regular note.
     - Audio file is left untouched.
 
-- [ ] **T4.7 Integration test: voice error path** `[activity: validate]`
+- [ ] **T4.7 Integration test: voice error path** `[activity: validate]` *(pending — live Tomo session)*
 
   Pre-condition: voice enabled, but model dir intentionally renamed to
   simulate missing model. Test vault inbox has one audio file.
@@ -103,7 +110,7 @@ existing fan-out pipeline. We only insert a new pre-step.
     - User sees clear error in the run summary, not a silent failure.
   - Restore model dir. Re-run. Verify recovery (transcribe succeeds).
 
-- [ ] **T4.8 Phase Validation** `[activity: validate]`
+- [ ] **T4.8 Phase Validation** `[activity: validate]` *(pending — gated on T4.5-T4.7)*
 
   - All three integration tests (ON / OFF / error) pass.
   - Pure-text inbox (no audio at all) measures within ±5% of pre-spec

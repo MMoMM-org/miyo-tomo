@@ -166,6 +166,20 @@ fi
 restore_file "tomo-instance/.mcp.json" "$INSTANCE_PATH/.mcp.json"
 restore_file "tomo-instance/.claude/settings.local.json" "$INSTANCE_PATH/.claude/settings.local.json"
 
+# Voice config mirror (XDD 009) — restored if present. As a fallback,
+# if the mirror is absent from the archive but tomo-install.json has a
+# voice block, derive it so runtime agents pick voice back up without
+# the user having to re-run update-tomo.sh.
+restore_file "tomo-instance/voice/config.json" "$INSTANCE_PATH/voice/config.json"
+if [ ! -f "$INSTANCE_PATH/voice/config.json" ] \
+   && [ -f "$CONFIG_FILE" ] \
+   && command -v jq > /dev/null 2>&1 \
+   && [ "$(jq -r '.voice // empty' "$CONFIG_FILE")" != "" ]; then
+    mkdir -p "$INSTANCE_PATH/voice"
+    jq '.voice' "$CONFIG_FILE" > "$INSTANCE_PATH/voice/config.json"
+    print_ok "$INSTANCE_PATH/voice/config.json (derived from tomo-install.json)"
+fi
+
 # Home dir (auth) — restore over existing
 if [ -d "$TMP_DIR/tomo-home" ] && [ -n "$HOME_DIR" ]; then
     mkdir -p "$HOME_DIR"

@@ -11,6 +11,7 @@
       "Bash(head:*)",
       "Bash(tail:*)",
       "Bash(wc:*)",
+      "Bash(awk:*)",
       "Bash(date:*)",
       "Bash(mkdir:*)",
       "Bash(echo:*)",

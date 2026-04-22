@@ -1,7 +1,7 @@
 ---
 title: "Phase 1: Install wizard + Dockerfile + model download"
-status: pending
-version: "1.0"
+status: code-complete
+version: "1.1"
 phase: 1
 ---
 
@@ -25,7 +25,7 @@ arrives in the right place.
 
 ## Tasks
 
-- [ ] **T1.1 Add `configure_voice()` function to install-tomo.sh** `[activity: backend]`
+- [x] **T1.1 Add `configure_voice()` function to install-tomo.sh** `[activity: backend]` — implemented in `scripts/lib/configure-voice.sh`, sourced from install-tomo.sh (commit c7c9688)
 
   1. Prime: Read `install-tomo.sh` to find a sensible insertion point near
      existing config-collection steps. Note existing `print_step` / `print_ok`
@@ -42,7 +42,7 @@ arrives in the right place.
   3. Validate: bash 3.2 compatible (no `declare -A`, no `[[` extended tests
      beyond what bash 3.2 supports). `bash -n install-tomo.sh` passes.
 
-- [ ] **T1.2 Mirror `configure_voice()` call in update-tomo.sh** `[activity: backend]`
+- [x] **T1.2 Mirror `configure_voice()` call in update-tomo.sh** `[activity: backend]` — factored into `scripts/lib/configure-voice.sh` + sourced from both scripts; update-tomo.sh persists voice block via jq (c7c9688)
 
   1. Prime: Read `update-tomo.sh`. It already updates managed files; we want
      it to also re-prompt voice settings on update so users can change
@@ -52,7 +52,7 @@ arrives in the right place.
   3. Validate: Running `update-tomo.sh` triggers the wizard; pressing Enter
      keeps current settings (true no-op).
 
-- [ ] **T1.3 Model download helper** `[activity: backend]`
+- [x] **T1.3 Model download helper** `[activity: backend]` — `scripts/download-whisper-model.sh` uses HF API + curl; tiny model E2E verified (83 MB, 6 files)
 
   1. Prime: HuggingFace `Systran/faster-whisper-<size>` repos contain a
      known set of files: `model.bin`, `tokenizer.json`, `vocabulary.txt`,
@@ -66,7 +66,7 @@ arrives in the right place.
   3. Validate: Run with `tiny` (39 MB, fast). Verify all 4 files arrive,
      `du -sh` matches expected size, exit 0.
 
-- [ ] **T1.4 Dockerfile: ffmpeg always, faster-whisper conditional** `[activity: backend]`
+- [x] **T1.4 Dockerfile: ffmpeg always, faster-whisper conditional** `[activity: backend]` — ffmpeg + python3-pip always; `ARG VOICE_ENABLED=0` gates `pip install faster-whisper>=1.0,<2`; `VOLUME /tomo/voice` declared
 
   1. Prime: Read `docker/Dockerfile`. Note the existing apt-get RUN block
      and `python3` / `python3-yaml` packages.
@@ -80,7 +80,7 @@ arrives in the right place.
      pip step ran (verify with `docker history`). Build with `=1` → faster-whisper
      present (`docker run --rm <img> python3 -c "import faster_whisper"`).
 
-- [ ] **T1.5 begin-tomo.sh: pass VOICE_ENABLED to docker build/run** `[activity: backend]`
+- [x] **T1.5 begin-tomo.sh: pass VOICE_ENABLED to docker build/run** `[activity: backend]` — build-arg + label (`tomo.voice_enabled`) with drift detection to auto-rebuild on voice toggle; `-v voice:/tomo/voice:ro` when enabled
 
   1. Prime: Read `begin-tomo.sh.template` (NOT the generated file). Find
      the docker build invocation and the docker run mount section.
@@ -92,9 +92,13 @@ arrives in the right place.
      to confirm both the build arg and the volume mount appear when enabled,
      are absent (or `=0` only) when disabled.
 
-- [ ] **T1.6 Phase Validation** `[activity: validate]`
+- [ ] **T1.6 Phase Validation** `[activity: validate]` *(pending — host-only, Docker required)*
 
-  Manual end-to-end check (no agents, no transcription yet — just provisioning):
+  Sandbox-side done: syntax-check on all 5 scripts, wizard state transitions
+  (non-interactive + interactive), HF download proven with tiny model, jq
+  write-back round-trip on voice block.
+
+  Manual end-to-end check on host (no agents, no transcription yet — just provisioning):
   - Run `install-tomo.sh` on a fresh instance, choose voice=no.
     → `tomo-install.json` has `voice: { enabled: false }`. Image builds without faster-whisper.
   - Re-run `install-tomo.sh`, choose voice=yes + tiny model (fast for testing).

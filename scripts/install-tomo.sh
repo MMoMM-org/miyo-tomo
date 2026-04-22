@@ -3,8 +3,8 @@
 # Copies agents, skills, commands, and configs into the instance directory.
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
-# lifecycle prefix, and vault-config.yaml generation.
-# version: 0.2.0
+# lifecycle prefix, voice transcription, and vault-config.yaml generation.
+# version: 0.3.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -163,6 +163,11 @@ prompt_yn() {
     read -rp "  ${prompt_text} [${default_val}]: " answer
     echo "${answer:-$default_val}"
 }
+
+# Voice transcription wizard (XDD 009) — sets VOICE_ENABLED / VOICE_MODEL /
+# VOICE_LANGUAGE globals. Uses print_step/print_ok/print_warn/print_err.
+# shellcheck source=lib/configure-voice.sh
+. "$SCRIPT_DIR/lib/configure-voice.sh"
 
 # ── Step 1: Welcome ──────────────────────────────────────
 
@@ -872,6 +877,28 @@ fi
 # for any git ops the user might run there. The instance itself is NOT
 # git-init'd (see 'Writing instance .gitignore' step below).
 
+# ── Step 6c: Voice transcription (XDD 009) ──────────────
+# Load prior voice settings from tomo-install.json when re-running install,
+# then run the stateful wizard. The wizard downloads the selected model
+# into $INSTANCE_PATH/voice/models/ if enabled.
+
+PRIOR_VOICE_ENABLED="false"
+PRIOR_VOICE_MODEL=""
+PRIOR_VOICE_LANGUAGE=""
+if [ -f "$CONFIG_FILE" ]; then
+    PRIOR_VOICE_ENABLED=$(jq -r '.voice.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
+    PRIOR_VOICE_MODEL=$(jq -r '.voice.model // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+    PRIOR_VOICE_LANGUAGE=$(jq -r '.voice.language // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+fi
+
+VOICE_MODELS_DIR="$INSTANCE_PATH/voice/models"
+configure_voice \
+    "$PRIOR_VOICE_ENABLED" \
+    "$PRIOR_VOICE_MODEL" \
+    "$PRIOR_VOICE_LANGUAGE" \
+    "$VOICE_MODELS_DIR" \
+    "$NON_INTERACTIVE"
+
 # ── Step 7: Re-run detection & config generation ─────────
 
 print_step "Generating vault-config.yaml"
@@ -972,6 +999,7 @@ mkdir -p "$INSTANCE_PATH/.claude/hooks"
 mkdir -p "$INSTANCE_PATH/config"
 mkdir -p "$INSTANCE_PATH/config/user-rules"
 mkdir -p "$INSTANCE_PATH/scripts"
+mkdir -p "$INSTANCE_PATH/voice/models"
 
 # ── Copy managed files ────────────────────────────────────
 
@@ -1200,11 +1228,27 @@ cat > "$CONFIG_FILE" << CFGEOF
     "port": ${KADO_PORT},
     "protocol": "${KADO_PROTOCOL}"
   },
+  "voice": {},
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "tomoVersion": "${TOMO_VERSION}"
 }
 CFGEOF
 print_ok "tomo-install.json"
+
+# Persist the voice block via the shared write_voice_config helper —
+# single authoritative writer for schema_version + enabled/model/language.
+# Review findings M1 (jq-safe assembly), L4 (schema_version), M9 (dedup).
+write_voice_config "$CONFIG_FILE"
+
+# Mirror the voice block into the instance so runtime agents can read it.
+# tomo-install.json lives at the HOST repo root and is NOT accessible from
+# inside the Docker container (only $INSTANCE_PATH is bind-mounted). The
+# voice-transcriber agent and inbox-orchestrator's Phase 0a both read the
+# mirrored file at voice/config.json (relative to the instance cwd).
+mkdir -p "$INSTANCE_PATH/voice"
+jq '.voice // {"enabled": false, "model": "", "language": ""}' "$CONFIG_FILE" \
+    > "$INSTANCE_PATH/voice/config.json"
+print_ok "voice/config.json (mirrored into instance)"
 
 # ── Update .gitignore (parent repo) ──────────────────────
 

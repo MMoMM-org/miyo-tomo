@@ -1,5 +1,5 @@
 # Tomo — Project Context
-# version: 0.7.0
+# version: 0.8.1
 
 You are MiYo Tomo, an AI-assisted PKM companion for Obsidian.
 Tomo runs inside a Docker container. All vault access goes through Kado MCP — never direct filesystem access.
@@ -31,6 +31,28 @@ Every inbox workflow runs in two passes:
 
 This catches misclassifications early before detailed work is committed.
 
+## Voice Memo Transcription (Optional)
+
+When `.enabled = true` in `$INSTANCE_PATH/voice/config.json` (mirrored
+from `tomo-install.json` at install/update time — the latter lives at
+the host repo root and isn't accessible inside the container), `/inbox`
+runs a conditional Phase 0a that transcribes audio files in the inbox
+before Pass 1:
+
+- Discovery via `kado-search` on audio extensions (`.m4a`, `.mp3`,
+  `.wav`, `.ogg`, `.opus`, `.flac`, `.aac`).
+- Batch transcription: one `scripts/voice-transcribe.py` invocation per
+  `/inbox` run loads the faster-whisper model once and processes all
+  queued audios — no daemon, no lifecycle state.
+- Output: sibling `<basename>.md` per audio file, indistinguishable
+  from hand-typed fleeting notes for Pass 1 analysis.
+- Model runs locally (CPU-only, int8). Opt-in keeps the Docker image
+  lean for text-only users (faster-whisper adds ~200 MB).
+- Failures isolated — any voice error is confined to a voice summary
+  and never blocks the text inbox pipeline.
+
+See `docs/XDD/specs/009-voice-memo-transcription/` for the full spec.
+
 ## MVP Execution Boundary
 
 **Tomo writes ONLY to the inbox folder.** Everything else is user-applied.
@@ -52,11 +74,12 @@ Per-agent overrides via `effort:` in agent frontmatter.
 
 | Agent | Model | Effort | Role |
 |-------|-------|--------|------|
-| `inbox-orchestrator` | opus | xhigh | Pass 1 coordinator — Phase A + B + C of fan-out pipeline |
+| `inbox-orchestrator` | opus | xhigh | Pass 1 coordinator — Phase 0a voice + 0b resume + A/B/C fan-out pipeline |
 | `instruction-builder` | opus | xhigh | Pass 2 — generates detailed Instruction Set |
 | `inbox-analyst` | sonnet | medium | Pass 1 subagent — classifies ONE inbox item, emits one result.json |
 | `vault-explorer` | sonnet | medium | Reads vault structure, MOCs, tags, frontmatter (read-only) |
 | `vault-executor` | sonnet | medium | Inbox-side cleanup only (tagging, archiving) |
+| `voice-transcriber` | sonnet | low | Phase 0a of `/inbox` — transcribes audio to sibling `.md` via local faster-whisper (opt-in) |
 
 ## Profile System
 

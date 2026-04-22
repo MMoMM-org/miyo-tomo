@@ -15,6 +15,7 @@ Tomo runs inside an isolated Docker container. All vault access goes through Kad
 
 - **`/inbox`** — 2-pass inbox processing: analyses files, proposes actions, generates detailed instructions
 - **`/explore-vault`** — Discovers vault structure, MOC hierarchy, frontmatter patterns, tag taxonomy
+- **Voice memo transcription (optional, local)** — drop audio files (`.m4a`, `.mp3`, `.wav`, …) into the inbox and `/inbox` transcribes them locally via [faster-whisper](https://github.com/SYSTRAN/faster-whisper) before Pass 1. Opt-in via the install wizard; models stay on your machine, no cloud round-trips
 - Framework-agnostic — supports LYT, PARA, and custom PKM frameworks via profiles
 
 ## How It Works
@@ -142,6 +143,7 @@ miyo-tomo/
 | Agent | Role |
 |-------|------|
 | `vault-explorer` | Scans vault structure, builds MOC tree, generates discovery cache |
+| `voice-transcriber` | Phase 0a of `/inbox` — transcribes audio files to sibling `.md` via local faster-whisper (opt-in) |
 | `inbox-orchestrator` | Pass 1 coordinator — fan-out pipeline over the inbox |
 | `inbox-analyst` | Pass 1 subagent — classifies ONE item per invocation |
 | `instruction-builder` | Pass 2 orchestrator — runs `instruction-render.py`, writes rendered notes + `instructions.{json,md}` to the vault |

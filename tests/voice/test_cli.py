@@ -320,5 +320,36 @@ def test_cli_fetches_via_kado_when_fs_path_missing(monkeypatch, tmp_path):
     # the fake to create a real temp file, so we verify it's gone.)
 
 
+def test_cli_sanitises_forbidden_chars_in_target_filename(monkeypatch, tmp_path):
+    """Audio files from external recorders often carry colons in the
+    timestamp portion (iOS Voice Memos: `memo 2026-04-20 11:48:29.m4a`).
+    Obsidian — and therefore `kado-write` — rejects colons and the rest
+    of `\\ / : * ? " < > |` in filenames. The CLI MUST sanitise the
+    `target` stem so the agent can write it without a kado-write reject.
+
+    Audio source name stays original (it already exists in the vault
+    with forbidden chars — we don't rename it). Only the transcript
+    target is safe.
+    """
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    dirty_audio = tmp_path / "memo 2026-04-20 11:48:29.m4a"
+    dirty_audio.write_bytes(b"\x00")
+
+    code, out = _run_cli_with_mocks(
+        ["voice-transcribe.py", str(dirty_audio), "--model-dir", str(model_dir)],
+        monkeypatch,
+    )
+    assert code == 0 or code is None
+    data = json.loads(out)
+    entry = data["results"][0]
+    # Source preserved for round-tripping back to the vault
+    assert entry["audio"] == "memo 2026-04-20 11:48:29.m4a"
+    # Target is sanitised — colons become dashes
+    assert entry["target"] == "memo 2026-04-20 11-48-29.md"
+    assert ":" not in entry["target"]
+    assert entry["error"] is None
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Voice Transcriber Subagent
-# version: 0.5.0 (sibling-check uses in-memory listDir result instead of N extra kado-read round-trips)
+# version: 0.6.0 (sanitise Obsidian-forbidden chars in transcript target stem)
 
 You transcribe audio files that appear in the inbox so the rest of the
 `/inbox` pipeline can treat them as regular fleeting notes. You do not
@@ -111,12 +111,25 @@ per audio is N wasted round-trips that only ever return "found" or
 "not-found" — information we already have.
 
 For each path in `audio_files`:
-1. Compute the target: `<inbox_path>/<filename>.md` (strip the original
-   extension, append `.md`).
-2. Check membership: is `target` in `existing_md_paths`?
-3. If yes → increment `skipped`, drop from the todo list. Do NOT
+1. Compute the target stem:
+   - Start with the filename without extension.
+   - **Replace every occurrence of Obsidian-forbidden characters
+     (`\ / : * ? " < > |` and null) with `-`** — audio files from
+     external recorders (iOS Voice Memos, desktop recorders) often
+     carry colons in timestamp portions like `memo 11:48:29.m4a`,
+     and `kado-write` rejects such filenames with INTERNAL_ERROR.
+     The source audio stays as-is; only the sibling `.md` target we
+     build here is sanitised.
+   - The authoritative implementation is
+     `scripts/lib/obsidian_filename.py` (`sanitize_stem`). If you
+     need to verify the result from an agent workflow, run
+     `python3 scripts/lib/obsidian_filename.py "<stem>"` — both the
+     CLI and this agent MUST agree on the sanitised form.
+2. Compose the target path: `<inbox_path>/<sanitised_stem>.md`.
+3. Check membership: is `target` in `existing_md_paths`?
+4. If yes → increment `skipped`, drop from the todo list. Do NOT
    overwrite.
-4. If no → include in the todo list.
+5. If no → include in the todo list.
 
 Name the resulting set `todo`. If `todo` is empty after filtering →
 return `{"transcribed": 0, "skipped": <N>, "errors": []}`. No Bash.
@@ -191,11 +204,15 @@ For each entry `results[i]`:
   `kado-write` with `operation: "note"`,
   path = `<inbox_path>/<results[i].target>`,
   content = `results[i].markdown`.
-  Increment `transcribed`.
+  (The CLI has already sanitised `target` — you pass it through
+  verbatim.) Increment `transcribed`.
 - If `error != null`:
   `kado-write` with `operation: "note"`,
-  path = `<inbox_path>/<results[i].audio stem>.transcribe-error.md`,
-  content = plain-text block:
+  path = `<inbox_path>/<sanitised_stem>.transcribe-error.md`,
+  where `sanitised_stem` comes from the same Obsidian-safe
+  conversion as Step 3 (`scripts/lib/obsidian_filename.py`). Use the
+  target stem (strip `.md`) from `results[i].target` — it is already
+  sanitised. Content = plain-text block:
   ```
   source: <audio filename>
   error: <error.code>
@@ -204,7 +221,22 @@ For each entry `results[i]`:
 
   <error.detail>
   ```
-  Append the error to the summary's `errors[]`.
+  Append the error to the summary's `errors[]`. STRICT log shape:
+  include BOTH the source audio and the attempted target so the
+  failure line is unambiguous — `{"audio": "<name>.m4a", "target":
+  "<stem>.md", "reason": "<error.code>: <error.detail>"}`. The
+  `audio` field alone is misleading when the failure actually
+  happened during the write of the `.md` sibling.
+
+**If `kado-write` itself fails** (Kado returned INTERNAL_ERROR /
+VALIDATION_ERROR — e.g. because the path still contains forbidden
+characters despite sanitisation, or a conflict occurred):
+- Do NOT retry silently. The transcription work was successful; we
+  just couldn't persist it.
+- Append an error entry of the form `{"audio": "<name>.ext",
+  "target": "<attempted-target>", "reason": "kado-write rejected
+  target <path> (<Kado error code>: <message>)"}`.
+- Do NOT report this as `audio_not_found` — that was already resolved.
 
 ### Step 6 — Return summary
 

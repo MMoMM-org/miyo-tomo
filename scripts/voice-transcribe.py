@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """voice-transcribe.py — Batch CLI for audio → markdown transcription.
 
 Loads the Whisper model once, iterates all inputs, emits a single JSON
@@ -63,6 +63,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 # Re-exported at module scope so tests can monkey-patch them.
 from lib.voice_transcriber import load_model, transcribe  # noqa: E402
 from lib.voice_render import render_markdown  # noqa: E402
+from lib.obsidian_filename import sanitize_stem  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -135,9 +136,15 @@ def main() -> int:
 
     results: list[dict] = []
     for audio in args.audio_paths:
+        # Strip Obsidian-forbidden chars (\\ / : * ? " < > | null) from the
+        # transcript target — audio files from external recorders often
+        # carry colons in timestamp portions (e.g. "memo 11:48:29.m4a").
+        # The source filename stays as-is (that's what lives in the vault);
+        # only the sibling .md target we're about to kado-write is sanitised.
+        target_stem = sanitize_stem(audio.stem)
         entry = {
             "audio": audio.name,
-            "target": f"{audio.stem}.md",
+            "target": f"{target_stem}.md",
             "markdown": None,
             "error": None,
         }

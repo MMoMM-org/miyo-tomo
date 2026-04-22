@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """voice-transcribe.py — Batch CLI for audio → markdown transcription.
 
 Loads the Whisper model once, iterates all inputs, emits a single JSON
@@ -55,6 +55,7 @@ import argparse
 import json
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -132,7 +133,12 @@ def main() -> int:
         _emit_stderr_error("model_dir_missing", str(args.model_dir))
         return 3
 
+    # Model-load wall time — paid once per CLI invocation. Tracked for
+    # T5.2 performance measurement so the agent/user can see whether a
+    # slow run came from the load or the transcription itself.
+    _load_start = time.perf_counter()
     model = load_model(args.model_dir)  # ONE load for the whole batch
+    model_load_sec = round(time.perf_counter() - _load_start, 2)
 
     results: list[dict] = []
     for audio in args.audio_paths:
@@ -147,6 +153,7 @@ def main() -> int:
             "target": f"{target_stem}.md",
             "markdown": None,
             "error": None,
+            "transcribe_sec": None,
         }
         transcribe_path: Path | None = None
         tmp_to_cleanup: Path | None = None
@@ -160,13 +167,17 @@ def main() -> int:
 
         if transcribe_path is not None:
             try:
+                _t_start = time.perf_counter()
                 result = transcribe(model, transcribe_path, language=args.language)
+                entry["transcribe_sec"] = round(time.perf_counter() - _t_start, 2)
                 # Restore the ORIGINAL vault-relative path on the result so the
                 # rendered `source:` metadata and `![[...]]` embed reference the
                 # actual audio file users will see in Obsidian — not the
                 # ephemeral `/tmp/tomo-voice-*.m4a` we fetched through Kado.
                 result.audio_path = audio
-                entry["markdown"] = render_markdown(result)
+                entry["markdown"] = render_markdown(
+                    result, transcribe_sec=entry["transcribe_sec"]
+                )
             except Exception as e:
                 entry["error"] = {
                     "code": "transcription_error",
@@ -181,8 +192,25 @@ def main() -> int:
 
         results.append(entry)
 
+    # Batch-level summary on stderr — one compact line for eyeballing run
+    # performance without parsing the JSON. Example:
+    #   voice-transcribe: 2 files, model_load=3.1s, transcribe_total=263.4s
+    transcribe_total = sum(
+        (r.get("transcribe_sec") or 0) for r in results
+    )
+    print(
+        f"voice-transcribe: {len(results)} files, "
+        f"model_load={model_load_sec}s, "
+        f"transcribe_total={round(transcribe_total, 2)}s",
+        file=sys.stderr,
+    )
+
     json.dump(
-        {"model_dir": str(args.model_dir), "results": results},
+        {
+            "model_dir": str(args.model_dir),
+            "model_load_sec": model_load_sec,
+            "results": results,
+        },
         sys.stdout,
     )
     return 0

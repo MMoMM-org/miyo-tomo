@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """voice_render.py — Deterministic markdown renderer for transcripts.
 
 Consumes a TranscriptResult and produces markdown matching PRD § F3 of
@@ -43,12 +43,18 @@ def _mmss(seconds: float) -> str:
 def render_markdown(
     result: TranscriptResult,
     now: datetime | None = None,
+    transcribe_sec: float | None = None,
 ) -> str:
     """Render a transcript to markdown.
 
     Fully deterministic when `now` is passed; defaults to `datetime.now()`
     so callers don't need to thread a clock through. Tests should pass a
     fixed value to assert the exact ISO-8601 format.
+
+    `transcribe_sec` is the wall-clock time the Whisper engine spent on
+    this file (not model-load, not I/O). When present, it's surfaced as
+    a top-level metadata field so T5.2-style performance audits can read
+    the number directly off the rendered note.
     """
     ts = (now or datetime.now()).isoformat(timespec="seconds")
     audio_name = result.audio_path.name
@@ -58,12 +64,16 @@ def render_markdown(
         f"model: {result.model_name}",
         f"language: {result.language}",
         f"duration_sec: {int(result.duration_sec)}",
+    ]
+    if transcribe_sec is not None:
+        lines.append(f"transcribe_sec: {round(float(transcribe_sec), 2)}")
+    lines.extend([
         "",
         "---",
         "",
         f"![[{audio_name}]]",
         "",
-    ]
+    ])
     for seg in result.segments:
         # Clickable seek link: Obsidian audio embeds accept the `#t=<seconds>`
         # fragment on wikilinks so a click on "01:05" scrubs the embed above

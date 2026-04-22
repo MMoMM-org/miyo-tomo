@@ -96,6 +96,26 @@ def test_render_callout_content_is_next_line():
     raise AssertionError("callout line not found")
 
 
+def test_render_transcribe_sec_metadata_when_provided():
+    """`transcribe_sec` is optional — when the caller passes it, the
+    rendered note carries it as a top-level metadata field alongside
+    duration_sec/model/language. T5.2-style performance audits read
+    the number directly off the note."""
+    result = make_result([(0.0, 3.0, "seg")])
+    out = vr.render_markdown(result, transcribe_sec=12.34)
+    meta, _, _ = out.partition("---")
+    assert "transcribe_sec: 12.34" in meta
+
+
+def test_render_transcribe_sec_omitted_by_default():
+    """Backwards-compatible: existing callers that don't thread timing
+    through get the pre-0.4.0 metadata block (no transcribe_sec line)."""
+    result = make_result([(0.0, 3.0, "seg")])
+    out = vr.render_markdown(result)
+    meta, _, _ = out.partition("---")
+    assert "transcribe_sec" not in meta
+
+
 def test_render_trailing_newline():
     result = make_result([(0.0, 1.0, "x")])
     out = vr.render_markdown(result)

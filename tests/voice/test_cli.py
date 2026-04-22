@@ -376,5 +376,53 @@ def test_cli_sanitises_forbidden_chars_in_target_filename(monkeypatch, tmp_path)
     assert entry["error"] is None
 
 
+def test_cli_records_transcribe_sec_and_model_load_sec(monkeypatch, tmp_path):
+    """Perf instrumentation: CLI emits `model_load_sec` at the top level
+    of the manifest, and `transcribe_sec` on every successful result.
+    Both are rounded to 2 decimals. The stderr summary line surfaces the
+    totals for eyeball checks without parsing JSON."""
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    audio = tmp_path / "memo.m4a"
+    audio.write_bytes(b"\x00")
+
+    mod = _load_cli_module()
+    _FakeModel.load_count = 0
+    monkeypatch.setattr(mod, "load_model", _fake_load_model)
+    monkeypatch.setattr(mod, "transcribe", _fake_transcribe)
+
+    buf_out = io.StringIO()
+    buf_err = io.StringIO()
+    with patch.object(sys, "argv",
+                      ["voice-transcribe.py", str(audio),
+                       "--model-dir", str(model_dir)]), \
+         patch.object(sys, "stdout", buf_out), \
+         patch.object(sys, "stderr", buf_err):
+        try:
+            mod.main()
+        except SystemExit:
+            pass
+
+    data = json.loads(buf_out.getvalue())
+    assert "model_load_sec" in data
+    assert isinstance(data["model_load_sec"], (int, float))
+    assert data["model_load_sec"] >= 0.0
+
+    entry = data["results"][0]
+    assert "transcribe_sec" in entry
+    assert isinstance(entry["transcribe_sec"], (int, float))
+    assert entry["transcribe_sec"] >= 0.0
+
+    # The rendered markdown exposes transcribe_sec too, right next to
+    # duration_sec — the stem of T5.2's audit-by-eye workflow.
+    assert "transcribe_sec:" in entry["markdown"]
+
+    # Stderr summary line exists with expected shape
+    err = buf_err.getvalue()
+    assert "voice-transcribe:" in err
+    assert "model_load=" in err
+    assert "transcribe_total=" in err
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

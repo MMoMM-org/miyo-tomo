@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.7.1 (Phase 0a voice config path fixed: voice/config.json, not tomo-install.json)
+# version: 0.8.0 (Phase A5: AskUserQuestion when all inbox items already lifecycle-tagged — no more silent exit)
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -208,13 +208,51 @@ path literal from Step A0):
 python3 scripts/state-init.py --inbox-path "<INBOX_PATH>" --run-id <RUN_ID> --output tomo-tmp/inbox-state.jsonl
 ```
 
-Resume: skip both. Derive `RUN_ID` from the existing state-file (last entry's
-`run_id`).
+`state-init` prints a single log line on stderr:
+`items_found=<F> items_skipped=<S> already_tagged=<T> run_id=<ID> out=<PATH>`.
+Capture those counters — you need them for the branching in Step A5.
+
+Resume: skip both A3 and A4. Derive `RUN_ID` from the existing state-file
+(last entry's `run_id`).
 
 **Abort conditions** (exit before Phase B):
 - `shared-ctx-builder` nonzero → report error, stop
 - `state-init` nonzero → report error, stop
-- 0 items in state-file → tell user "Inbox is empty", stop
+
+Step A5 — decide whether there's work to do (**MANDATORY — do NOT skip**):
+
+Branch on the state-init counters:
+
+1. `items_found > 0` → proceed to Phase B.
+
+2. `items_found == 0 && already_tagged == 0 && items_skipped == 0` → inbox is
+   truly empty. Report "Inbox is empty" and stop. Do NOT prompt.
+
+3. `items_found == 0 && already_tagged > 0` → every source item in the
+   inbox already carries a lifecycle tag (captured / active). This usually
+   means a prior `/inbox` run processed them and they're waiting on the
+   user's approval in Pass 2. **Use AskUserQuestion** to let the user
+   decide — NEVER silently exit:
+
+   - Question text: "Alle <already_tagged> Inbox-Items sind bereits als
+     captured/active getaggt. Was soll ich tun?"
+   - Options:
+     - `Ignore` — treat as empty, no Pass 1 run. Suggestions stay as they
+       are. Use this when the user knows Pass 2 is pending.
+     - `Re-process all` — re-run `state-init` with `--include-captured` so
+       the same items go through Pass 1 again (regenerates suggestions
+       from current content; existing tags stay in place, will be
+       idempotently re-applied in Phase C5).
+
+   On "Re-process all": re-run `state-init` with `--include-captured`,
+   capture the new counters, proceed to Phase B. The run-id stays the
+   same as the one you generated in Step A2.
+
+   On "Ignore": report "Skipped — all items already tagged." and stop.
+
+4. `items_found == 0 && items_skipped > 0 && already_tagged == 0` → only
+   Tomo-generated workflow docs (suggestions/instructions) remain. Report
+   "Inbox has only workflow docs, nothing to process" and stop.
 
 ### Phase B — Fan-out dispatch
 

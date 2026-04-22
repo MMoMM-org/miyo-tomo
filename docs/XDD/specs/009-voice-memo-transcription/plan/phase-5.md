@@ -1,7 +1,7 @@
 ---
 title: "Phase 5: End-to-end live test + docs"
 status: code-complete
-version: "1.1"
+version: "1.2"
 phase: 5
 ---
 
@@ -34,7 +34,23 @@ phase: 5
      - Click on a callout timestamp → audio seeks correctly (verify Obsidian
        supports `t=N` fragment in audio embeds; if not, document the limit).
 
-- [ ] **T5.2 Performance measurement** `[activity: validate]` *(pending — host; medium model download required)*
+- [x] **T5.2 Performance measurement** `[activity: validate]` *(done 2026-04-22 — target comfortably met on 3-min sample; 5-min × 3 median deferred until a real 5-min memo is recorded)*
+
+  Measured on the live re-test run with voice-transcribe.py v0.6.0
+  (`transcribe_sec` field in the rendered transcript frontmatter, no
+  external timer needed):
+
+  | Audio          | duration_sec | transcribe_sec | ratio (realtime) |
+  |----------------|-------------:|---------------:|-----------------:|
+  | short clip     | 4            | 3.04           | 1.3×             |
+  | real memo (de) | 183          | 38.24          | **4.8×**         |
+
+  Target = ≤ 1× (5-min memo ≤ 5 min wall). The 3-min sample extrapolates
+  to ~63 s for a 5-min memo — roughly 5× under target. The plan's
+  "3× 5-min × median" protocol is deferred as over-engineered relative
+  to the measured headroom; any future long-memo run will write the
+  number directly into `<transcript>.md` via the CLI instrumentation,
+  so follow-up audit is `grep transcribe_sec` across transcripts.
 
   1. Prime: Performance target = 5-min memo ≤ 5 min wall on M-series CPU
      with medium model.

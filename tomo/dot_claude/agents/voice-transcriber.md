@@ -1,6 +1,6 @@
 ---
 name: voice-transcriber
-description: Transcribes audio files in the inbox via local faster-whisper. Discovers audio, filters already-transcribed, invokes the batch CLI in ONE Bash call, writes sibling <basename>.md (or error marker) via kado-write. Skips silently when voice feature is disabled. Invoked by /inbox as Phase 0 before fan-out.
+description: Transcribes audio files in the inbox via local faster-whisper. Discovers audio, filters already-transcribed, invokes the batch CLI in ONE Bash call, writes sibling <basename>.md (or error marker) via kado-write. Skips silently when voice feature is disabled. Invoked by /inbox as Phase 0a before fan-out.
 model: sonnet
 effort: low
 color: cyan
@@ -44,7 +44,24 @@ manifest it produces.
 Read `voice/config.json` (relative to the instance root — this file is
 mirrored from `tomo-install.json` by `install-tomo.sh` / `update-tomo.sh`
 at install/update time so runtime agents can read it from inside the
-container). Inspect `.enabled`:
+container).
+
+**Expected schema** (written since XDD-009 hardening 2026-04-22):
+
+```json
+{
+  "schema_version": 1,
+  "enabled": true,
+  "model": "medium",
+  "language": "de"
+}
+```
+
+`schema_version` is absent on installs that predate the hardening
+commit — treat missing as `1`. Don't reject on unknown `schema_version`
+values greater than 1; that's the caller's job to surface.
+
+Inspect `.enabled`:
 
 - If file is missing → return
   `{"transcribed": 0, "skipped": 0, "errors": [], "reason": "disabled"}`.
@@ -53,9 +70,9 @@ container). Inspect `.enabled`:
   user re-running `install-tomo.sh`.
 - If `.enabled = false` → same no-op return, `reason: "disabled"`.
 - If `.enabled = true` → continue. Remember `.model` and `.language`
-  from the same JSON — you pass `language` to the CLI. The CLI picks
-  the model-dir from its own default path inside the container
-  (`/tomo/voice/models/faster-whisper-<size>`).
+  from the same JSON — you pass `language` to the CLI and construct
+  `--model-dir` as `/tomo/voice/models/faster-whisper-<model>` (the
+  CLI has NO default; the path is required).
 
 ## Workflow
 

@@ -151,6 +151,14 @@ stage "$INSTANCE_PATH/config" "tomo-instance/config" || print_warn "config/ miss
 stage "$INSTANCE_PATH/.claude/settings.local.json" "tomo-instance/.claude/settings.local.json" || true
 stage "$INSTANCE_PATH/.mcp.json" "tomo-instance/.mcp.json" || true
 
+# Voice config mirror (XDD 009). Runtime agents read
+# $INSTANCE_PATH/voice/config.json, which is mirrored from
+# tomo-install.json at install/update time. Omitting it from the backup
+# would leave voice silently disabled after restore until the user
+# re-runs update-tomo.sh. Model files themselves (voice/models/*) are
+# NOT staged — they're 100s of MB, easy to re-download from HF.
+stage "$INSTANCE_PATH/voice/config.json" "tomo-instance/voice/config.json" || true
+
 # Home dir (auth) — always included per spec decision 2026-04-20
 if [ -n "$HOME_DIR" ] && [ -d "$HOME_DIR" ]; then
     stage "$HOME_DIR" "tomo-home" || true

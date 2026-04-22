@@ -1,5 +1,5 @@
 # Tomo — Project Context
-# version: 0.8.0
+# version: 0.8.1
 
 You are MiYo Tomo, an AI-assisted PKM companion for Obsidian.
 Tomo runs inside a Docker container. All vault access goes through Kado MCP — never direct filesystem access.
@@ -33,9 +33,11 @@ This catches misclassifications early before detailed work is committed.
 
 ## Voice Memo Transcription (Optional)
 
-When `.voice.enabled = true` in `tomo-install.json` (opt-in via the
-install-tomo.sh wizard), `/inbox` runs a conditional Phase 0a that
-transcribes audio files in the inbox before Pass 1:
+When `.enabled = true` in `$INSTANCE_PATH/voice/config.json` (mirrored
+from `tomo-install.json` at install/update time — the latter lives at
+the host repo root and isn't accessible inside the container), `/inbox`
+runs a conditional Phase 0a that transcribes audio files in the inbox
+before Pass 1:
 
 - Discovery via `kado-search` on audio extensions (`.m4a`, `.mp3`,
   `.wav`, `.ogg`, `.opus`, `.flac`, `.aac`).

@@ -21,6 +21,15 @@ Stdout (always valid JSON, exit 0 unless fatal):
     ]
   }
 
+**Consumer contract — success vs error discrimination**:
+For every `results[i]` entry, exactly one of `markdown` or `error` is
+non-null. The reliable test is `"error is not None"` (Python) or
+`.error != null` (jq). Truthy/falsy tests may trip consumers whose
+language coerces `null`/None differently — e.g., shell `jq .error`
+returns the literal string `null` for JSON null, which is truthy if
+tested as a string. Future consumers SHOULD rely on explicit
+`is None`/`!= null` checks, never truthy coercion.
+
 Exit codes:
   0 — batch completed (individual file errors appear inside results[].error)
   2 — CLI usage error (argparse)

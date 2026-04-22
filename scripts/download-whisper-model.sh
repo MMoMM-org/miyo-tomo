@@ -97,6 +97,14 @@ fi
 file_count="$(echo "$entries" | grep -c '^' || true)"
 echo "→ ${file_count} files to download"
 
+# Note (review M15): the small non-LFS files could be downloaded in
+# parallel via `xargs -P 4` or background jobs, saving 1–3s per install.
+# Deferred: wall-clock is dominated by the single large LFS file
+# (model.bin, 75 MB – 3 GB depending on size), and parallel bash plumbing
+# (SIGINT propagation, per-worker error aggregation, verified-lines
+# ordering) adds complexity that isn't justified by the savings on a
+# once-per-model install. Revisit if install UX becomes a bottleneck.
+
 idx=0
 verified_lines=""
 while IFS= read -r entry; do

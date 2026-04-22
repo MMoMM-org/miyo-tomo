@@ -44,7 +44,7 @@ Inbox processing uses a **two-pass model** where the user reviews Tomo's interpr
 
 | Step | Actor | Responsibility |
 |------|-------|----------------|
-| Transcribe (Phase 0, optional) | `voice-transcriber` agent | Transcribe inbox audio files via local Whisper into sibling `.md` fleeting notes |
+| Transcribe (Phase 0a, optional) | `voice-transcriber` agent | Transcribe inbox audio files via local Whisper into sibling `.md` fleeting notes |
 | Read & Analyse | `inbox-analyst` agent | Read inbox, classify items, find candidates with alternatives |
 | Suggest (Pass 1) | `suggestion-builder` agent | Generate Action Suggestions document with options and confidence |
 | Review (Pass 1) | **User** | Approve/deny/modify suggestions in Obsidian |
@@ -64,11 +64,11 @@ Inbox processing uses a **two-pass model** where the user reviews Tomo's interpr
 
 **MVP execution boundary:** Tomo writes only to the inbox folder. All vault content changes outside the inbox are performed by the user. See [Tier 1 §7 Execution Model](../../tier-1/pkm-intelligence-architecture.md#7-execution-model).
 
-## 4b. Optional Pre-Step: Voice Transcription (Phase 0)
+## 4b. Optional Pre-Step: Voice Transcription (Phase 0a)
 
-When `.voice.enabled = true` in `tomo-install.json` (opt-in at install
-time via the wizard), `/inbox` runs a conditional Phase 0 before the
-main pipeline.
+When `.enabled = true` in `$INSTANCE_PATH/voice/config.json` (opt-in at
+install time via the wizard; mirrored from `tomo-install.json`),
+`/inbox` runs a conditional Phase 0a before the main pipeline.
 
 - **Agent**: `voice-transcriber` (invoked by `inbox-orchestrator`).
 - **Discovery**: `kado-search` the inbox folder for audio extensions

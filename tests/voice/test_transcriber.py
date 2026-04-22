@@ -80,6 +80,22 @@ def test_transcribe_falls_back_when_info_lacks_model_size():
     assert result.model_name == "faster-whisper"
 
 
+def test_transcribe_strips_prefix_if_info_returns_already_prefixed():
+    # Hypothetical future faster-whisper release where model_name is
+    # the full string "faster-whisper-medium" — our assembly must strip
+    # the prefix rather than double it (review finding L3).
+    model = MagicMock()
+    bad_info = SimpleNamespace(
+        model_name_or_size="faster-whisper-medium",
+        language="de",
+        duration=1.0,
+    )
+    model.transcribe.return_value = (iter([]), bad_info)
+    result = transcribe(model, Path("/vault/memo.m4a"))
+    assert result.model_name == "faster-whisper-medium"
+    assert "faster-whisper-faster-whisper" not in result.model_name
+
+
 def test_transcribe_uses_tomo_model_size_stash_when_info_is_bare():
     # faster-whisper 1.2.x: TranscriptionInfo has no model_name and the
     # WhisperModel object doesn't expose its source path. load_model()

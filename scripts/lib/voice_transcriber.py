@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """voice_transcriber.py — Thin wrapper over faster_whisper.WhisperModel.
 
 Exposes:
@@ -121,6 +121,14 @@ def transcribe(model, audio_path: Path, language: str | None = None) -> Transcri
         or getattr(model, "_tomo_model_size", None)
         or ""
     )
+    # Strip the prefix at the FINAL assembly point rather than trusting
+    # each source's shape. A future faster-whisper release could populate
+    # `model_name_or_size` with the already-prefixed form
+    # ("faster-whisper-medium") and our `f"faster-whisper-{size}"` would
+    # double-prefix to "faster-whisper-faster-whisper-medium"
+    # (review finding L3).
+    if isinstance(model_size, str) and model_size.startswith("faster-whisper-"):
+        model_size = model_size[len("faster-whisper-"):]
 
     return TranscriptResult(
         audio_path=audio_path,

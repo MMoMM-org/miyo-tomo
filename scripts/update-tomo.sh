@@ -259,11 +259,13 @@ configure_voice \
     "$VOICE_MODELS_DIR" \
     "false"
 
-# Persist voice settings back to tomo-install.json
+# Persist voice settings back to tomo-install.json.
+# schema_version: 1 — must match install-tomo.sh; future schema bumps
+# need a migration path before incrementing (review finding L4).
 jq --argjson enabled "${VOICE_ENABLED:-false}" \
    --arg model "${VOICE_MODEL:-}" \
    --arg lang  "${VOICE_LANGUAGE:-}" \
-   '.voice = { enabled: $enabled, model: $model, language: $lang }' \
+   '.voice = { schema_version: 1, enabled: $enabled, model: $model, language: $lang }' \
    "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
 
 # Mirror the updated voice block into the instance so runtime agents can

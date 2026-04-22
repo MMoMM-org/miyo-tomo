@@ -65,19 +65,24 @@ def test_render_one_callout_per_segment():
     assert len(callout_lines) == 3
 
 
-def test_render_callout_timestamp_is_mmss():
+def test_render_callout_timestamp_is_seek_link():
+    """Segment timestamps are rendered as Obsidian wikilinks with the
+    `#t=<seconds>` fragment, aliased to mm:ss. Clicking the link scrubs
+    the audio embed at the top of the note to that point.
+    """
     result = make_result([
         (0.0, 3.0, "Start."),
         (65.5, 70.0, "Nach einer Minute."),
         (3600.0, 3605.0, "Nach einer Stunde — segment start in mm:ss."),
     ])
     out = vr.render_markdown(result)
-    assert "> [!voice] 00:00" in out
-    assert "> [!voice] 01:05" in out
+    # `[[memo.m4a#t=<int-seconds>|<mm:ss>]]`
+    assert "> [!voice] [[memo.m4a#t=0|00:00]]" in out
+    assert "> [!voice] [[memo.m4a#t=65|01:05]]" in out
     # 3600 sec = 60:00 — mm:ss format doesn't roll into hours. That's a
     # conscious choice: voice memos rarely exceed an hour and mm:ss maps
     # directly to Obsidian's audio-seek fragment (#t=<sec>).
-    assert "> [!voice] 60:00" in out
+    assert "> [!voice] [[memo.m4a#t=3600|60:00]]" in out
 
 
 def test_render_callout_content_is_next_line():

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """voice_render.py — Deterministic markdown renderer for transcripts.
 
 Consumes a TranscriptResult and produces markdown matching PRD § F3 of
@@ -51,8 +51,9 @@ def render_markdown(
     fixed value to assert the exact ISO-8601 format.
     """
     ts = (now or datetime.now()).isoformat(timespec="seconds")
+    audio_name = result.audio_path.name
     lines: list[str] = [
-        f"source: {result.audio_path.name}",
+        f"source: {audio_name}",
         f"transcribed: {ts}",
         f"model: {result.model_name}",
         f"language: {result.language}",
@@ -60,11 +61,17 @@ def render_markdown(
         "",
         "---",
         "",
-        f"![[{result.audio_path.name}]]",
+        f"![[{audio_name}]]",
         "",
     ]
     for seg in result.segments:
-        lines.append(f"> [!voice] {_mmss(seg.start)}")
+        # Clickable seek link: Obsidian audio embeds accept the `#t=<seconds>`
+        # fragment on wikilinks so a click on "01:05" scrubs the embed above
+        # to that point. Alias `|01:05` renders as the visible timestamp;
+        # the integer-seconds fragment is what the media-player consumes.
+        seek_sec = int(seg.start)
+        ts_mmss = _mmss(seg.start)
+        lines.append(f"> [!voice] [[{audio_name}#t={seek_sec}|{ts_mmss}]]")
         lines.append(f"> {seg.text}")
         lines.append("")
 

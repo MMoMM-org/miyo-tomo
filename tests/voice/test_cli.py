@@ -313,6 +313,31 @@ def test_cli_fetches_via_kado_when_fs_path_missing(monkeypatch, tmp_path):
     assert len(fetched_paths) == 1
     assert fetched_paths[0] == vault_audio
 
+    # CRITICAL — the rendered markdown refers to the ORIGINAL vault audio,
+    # not the /tmp/tomo-voice-* file the CLI transcribed from. The user
+    # saw `source: tomo-voice-abcd.m4a` leaking through a v0.3.0 → v0.4.0
+    # fix had to restore the original path on the TranscriptResult before
+    # render. Assert both the `source:` metadata and the `![[...]]` embed
+    # reference the vault filename.
+    # `source:` metadata and `![[...]]` embed must both name the vault
+    # file, not the ephemeral tomo-voice-*.m4a temp path.
+    assert "source: test-memo.m4a" in entry["markdown"]
+    assert "![[test-memo.m4a]]" in entry["markdown"]
+    # The bug-specific assertions: no temp-named `source:` or embed leaked.
+    # (Segment BODY text may legitimately mention "tomo-voice-*" — the
+    # fake transcribe mirrors audio.stem into text and we don't rewrite
+    # transcript content.)
+    assert "source: tomo-voice-" not in entry["markdown"], (
+        "temp filename leaked into `source:` metadata — "
+        "result.audio_path was not restored before render_markdown"
+    )
+    assert "![[tomo-voice-" not in entry["markdown"], (
+        "temp filename leaked into the `![[…]]` embed — "
+        "result.audio_path was not restored before render_markdown"
+    )
+    # Seek-link wikilinks must also use the vault name
+    assert "[[test-memo.m4a#t=" in entry["markdown"]
+
     # Temp file was cleaned up after transcription. The fake produced a
     # /tmp path via tempfile.mkstemp; the CLI unlinks it in finally-style
     # cleanup regardless of outcome.

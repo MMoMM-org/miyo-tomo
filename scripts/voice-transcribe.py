@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """voice-transcribe.py — Batch CLI for audio → markdown transcription.
 
 Loads the Whisper model once, iterates all inputs, emits a single JSON
@@ -161,6 +161,11 @@ def main() -> int:
         if transcribe_path is not None:
             try:
                 result = transcribe(model, transcribe_path, language=args.language)
+                # Restore the ORIGINAL vault-relative path on the result so the
+                # rendered `source:` metadata and `![[...]]` embed reference the
+                # actual audio file users will see in Obsidian — not the
+                # ephemeral `/tmp/tomo-voice-*.m4a` we fetched through Kado.
+                result.audio_path = audio
                 entry["markdown"] = render_markdown(result)
             except Exception as e:
                 entry["error"] = {

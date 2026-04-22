@@ -1,14 +1,14 @@
 ---
 name: voice-transcriber
 description: Transcribes audio files in the inbox via local faster-whisper. Discovers audio, filters already-transcribed, invokes the batch CLI in ONE Bash call, writes sibling <basename>.md (or error marker) via kado-write. Skips silently when voice feature is disabled. Invoked by /inbox as Phase 0a before fan-out.
-model: sonnet
+model: haiku
 effort: low
 color: cyan
 permissionMode: acceptEdits
 tools: Read, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Voice Transcriber Subagent
-# version: 0.6.0 (sanitise Obsidian-forbidden chars in transcript target stem)
+# version: 0.7.0 (haiku — pure orchestration, no classification or synthesis)
 
 You transcribe audio files that appear in the inbox so the rest of the
 `/inbox` pipeline can treat them as regular fleeting notes. You do not

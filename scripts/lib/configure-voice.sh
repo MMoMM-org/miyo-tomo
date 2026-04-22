@@ -7,7 +7,15 @@
 #   VOICE_ENABLED   — "true" or "false"
 #   VOICE_MODEL     — "tiny" | "base" | "small" | "medium" | "large-v3" | ""
 #   VOICE_LANGUAGE  — "de" | "en" | "auto" | ""
-# version: 0.3.0
+# version: 0.4.0
+
+# Resolve the directory this file lives in at SOURCE TIME. BASH_SOURCE[0]
+# is reliable here (top-level of the sourced file); deep inside a
+# function called later, bash 3.2 can emit it as an empty string after
+# nested command substitutions — observed 2026-04-22 while writing
+# configure_voice pytest coverage.
+_TOMO_VOICE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_TOMO_VOICE_SCRIPTS_DIR="$(cd "$_TOMO_VOICE_LIB_DIR/.." && pwd)"
 
 # Known model metadata (bash 3.2 — no associative arrays)
 # Keep in sync with docs/XDD/specs/009-voice-memo-transcription/solution.md
@@ -166,11 +174,7 @@ configure_voice() {
             if [ -d "$target_dir" ]; then
                 print_warn "Partial or unverified model dir detected — re-downloading"
             fi
-            local lib_dir
-            lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-            local scripts_dir
-            scripts_dir="$(cd "$lib_dir/.." && pwd)"
-            local dl="$scripts_dir/download-whisper-model.sh"
+            local dl="$_TOMO_VOICE_SCRIPTS_DIR/download-whisper-model.sh"
             if [ ! -x "$dl" ]; then
                 print_err "Download helper not found or not executable: $dl"
                 return 1

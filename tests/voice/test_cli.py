@@ -124,6 +124,13 @@ def _fake_load_model(model_dir):
 
 def _fake_transcribe(model, audio_path, language=None):
     # Deterministic stub: one-segment result, text mirrors filename stem.
+    # Assert the model is the object produced by our fake load_model —
+    # without this, the batch-load assertion in the multi-file test
+    # could pass even if production code called load_model() N times and
+    # kept using the last-returned model (review finding H7).
+    assert isinstance(model, _FakeModel), (
+        f"_fake_transcribe received unexpected model type: {type(model).__name__}"
+    )
     return TranscriptResult(
         audio_path=audio_path,
         model_name="faster-whisper-tiny",

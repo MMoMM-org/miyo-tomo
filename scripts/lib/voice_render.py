@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """voice_render.py — Deterministic markdown renderer for transcripts.
 
 Consumes a TranscriptResult and produces markdown matching PRD § F3 of
@@ -40,12 +40,20 @@ def _mmss(seconds: float) -> str:
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
-def render_markdown(result: TranscriptResult) -> str:
-    """Render a transcript to markdown. Deterministic apart from the
-    `transcribed:` timestamp (ISO 8601, second precision)."""
+def render_markdown(
+    result: TranscriptResult,
+    now: datetime | None = None,
+) -> str:
+    """Render a transcript to markdown.
+
+    Fully deterministic when `now` is passed; defaults to `datetime.now()`
+    so callers don't need to thread a clock through. Tests should pass a
+    fixed value to assert the exact ISO-8601 format.
+    """
+    ts = (now or datetime.now()).isoformat(timespec="seconds")
     lines: list[str] = [
         f"source: {result.audio_path.name}",
-        f"transcribed: {datetime.now().isoformat(timespec='seconds')}",
+        f"transcribed: {ts}",
         f"model: {result.model_name}",
         f"language: {result.language}",
         f"duration_sec: {int(result.duration_sec)}",

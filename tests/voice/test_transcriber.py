@@ -169,16 +169,24 @@ def test_live_load_and_transcribe(tmp_path):
     model = load_model(model_dir)
     # load_model must stash the size so transcribe can surface it in the
     # rendered markdown (faster-whisper 1.2.x TranscriptionInfo doesn't).
-    assert getattr(model, "_tomo_model_size", "") == \
-        model_dir.name.removeprefix("faster-whisper-")
+    expected_size = model_dir.name.removeprefix("faster-whisper-")
+    assert getattr(model, "_tomo_model_size", "") == expected_size, \
+        "load_model() must stash _tomo_model_size for the fallback chain"
 
     result = live_transcribe(model, fixture, language=None)
     assert len(result.segments) > 0
     joined = " ".join(s.text.lower() for s in result.segments)
     assert "test" in joined or "hello" in joined or "hallo" in joined
-    # Regression guard for the bug the user found in the first live run.
-    assert result.model_name.startswith("faster-whisper-"), \
-        f"model_name should carry size suffix; got {result.model_name!r}"
+
+    # Regression guard for the model-name drop (review finding H6).
+    # Must equal the full string, not merely start with the prefix —
+    # the prefix check passed even when `_tomo_model_size` resolved via
+    # a silent fallback to empty string, which is exactly what we're
+    # guarding against.
+    assert result.model_name == f"faster-whisper-{expected_size}", (
+        f"model_name must be fully resolved; expected "
+        f"'faster-whisper-{expected_size}', got {result.model_name!r}"
+    )
 
 
 if __name__ == "__main__":

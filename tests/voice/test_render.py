@@ -106,6 +106,27 @@ def test_render_empty_segment_list_still_produces_metadata_and_embed():
     assert "> [!voice]" not in out
 
 
+def test_render_timestamp_is_iso8601_second_precision():
+    # When a fixed `now` is injected, the `transcribed:` field is fully
+    # deterministic — useful both for snapshot tests and to guard the
+    # exact ISO-8601 format (review finding M12).
+    import re
+    from datetime import datetime
+
+    fixed = datetime(2026, 4, 22, 15, 30, 45)
+    result = make_result([(0.0, 1.0, "x")])
+    out = vr.render_markdown(result, now=fixed)
+
+    assert "transcribed: 2026-04-22T15:30:45" in out
+
+    # Regression guard on the format itself — microseconds, timezone
+    # suffix, or a date-only variant would all break downstream tools
+    # that consume the transcript metadata.
+    match = re.search(r"^transcribed: (.+)$", out, re.MULTILINE)
+    assert match is not None
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", match.group(1))
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-v"]))

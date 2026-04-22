@@ -7,7 +7,7 @@
 #   VOICE_ENABLED   — "true" or "false"
 #   VOICE_MODEL     — "tiny" | "base" | "small" | "medium" | "large-v3" | ""
 #   VOICE_LANGUAGE  — "de" | "en" | "auto" | ""
-# version: 0.2.0
+# version: 0.3.0
 
 # Known model metadata (bash 3.2 — no associative arrays)
 # Keep in sync with docs/XDD/specs/009-voice-memo-transcription/solution.md
@@ -86,7 +86,11 @@ configure_voice() {
                         read -rp "  Remove $existing model dir(s) from $models_base_dir? [y/N]: " remove
                         case "$remove" in
                             y|Y|yes)
-                                rm -rf "$models_base_dir"/faster-whisper-*
+                                # Use find instead of `rm -rf "$dir"/faster-whisper-*` —
+                                # the glob breaks when the base path contains spaces
+                                # (word-splitting shifts the glob anchor).
+                                find "$models_base_dir" -maxdepth 1 \
+                                    -name 'faster-whisper-*' -exec rm -rf {} +
                                 print_ok "Model files removed"
                                 ;;
                         esac

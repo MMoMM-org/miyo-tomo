@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """voice-transcribe.py — Batch CLI for audio → markdown transcription.
 
 Loads the Whisper model once, iterates all inputs, emits a single JSON
@@ -41,9 +41,6 @@ from lib.voice_transcriber import load_model, transcribe  # noqa: E402
 from lib.voice_render import render_markdown  # noqa: E402
 
 
-MODEL_DIR_DEFAULT = Path("/tomo/voice/models/faster-whisper-medium")
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="voice-transcribe",
@@ -51,8 +48,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("audio_paths", type=Path, nargs="+",
                    help="one or more audio files to transcribe")
-    p.add_argument("--model-dir", type=Path, default=MODEL_DIR_DEFAULT,
-                   help="path to a faster-whisper CT2 model directory")
+    # --model-dir is REQUIRED. A hardcoded default silently targeted the
+    # wrong directory when the wizard selected a non-medium model
+    # (reviewed 2026-04-22, H3). The caller knows which model is active
+    # via voice/config.json .model — pass it explicitly.
+    p.add_argument("--model-dir", type=Path, required=True,
+                   help="path to a faster-whisper CT2 model directory "
+                        "(typically /tomo/voice/models/faster-whisper-<size>)")
     p.add_argument("--language", default=None,
                    help="language hint (e.g. de, en) or omit for auto-detect")
     return p

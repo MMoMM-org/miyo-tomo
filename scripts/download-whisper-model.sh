@@ -2,12 +2,28 @@
 # download-whisper-model.sh — Fetch a Systran/faster-whisper-<size> repo
 # from HuggingFace into a local directory. No Python dependency on host.
 # Uses the HF API for file discovery + integrity verification:
+#   - manifest path validation (reject .. / leading /)
 #   - size check for every file (catches truncation)
 #   - sha256 verification for LFS-tracked files (the big model.bin)
 # On success, writes <dest>/.download-complete as a sentinel file so the
 # caller can detect an incomplete/corrupt state after an interrupted run.
-# version: 0.2.0
+# version: 0.3.0
 set -e
+
+# Clean up any partial state if the user Ctrl-Cs mid-download.
+# The caller (configure_voice) only re-invokes us when the sentinel is
+# missing, so wiping DEST on interrupt is always safe.
+_on_interrupt() {
+    local code=$?
+    if [ -n "${DEST:-}" ] && [ -d "$DEST" ]; then
+        echo "" >&2
+        echo "⚠ Interrupted — removing partial download at $DEST" >&2
+        rm -rf "${DEST:?}" 2>/dev/null || true
+    fi
+    trap - EXIT
+    exit "$code"
+}
+trap _on_interrupt INT TERM
 
 SIZE="${1:-}"
 DEST="${2:-}"
@@ -90,6 +106,22 @@ while IFS= read -r entry; do
     lfs_sha="$(echo "$entry" | jq -r '.lfs_sha256 // empty')"
     # HF returns lfs.oid like "sha256:<hex>" — strip the prefix if present.
     lfs_sha="${lfs_sha#sha256:}"
+
+    # Guard against a compromised or spoofed HF API response that injects
+    # a path traversal (../../..) or an absolute path into the manifest —
+    # either would cause us to write outside $DEST under the caller's UID.
+    case "$path" in
+        ""|*/..*|..*|*..|..|/*)
+            echo "✗ Unsafe manifest path rejected: ${path}" >&2
+            exit 3
+            ;;
+    esac
+    case "$path" in
+        *../*)
+            echo "✗ Unsafe manifest path rejected (traversal): ${path}" >&2
+            exit 3
+            ;;
+    esac
 
     url="${FILE_BASE}/${path}"
     out="${DEST}/${path}"

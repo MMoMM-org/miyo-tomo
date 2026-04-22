@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Voice Transcriber Subagent
-# version: 0.2.0 (reads voice/config.json — mirrored from tomo-install.json at install time)
+# version: 0.3.0 (passes --model-dir built from voice/config.json .model; CLI no longer has a default)
 
 You transcribe audio files that appear in the inbox so the rest of the
 `/inbox` pipeline can treat them as regular fleeting notes. You do not
@@ -94,10 +94,15 @@ return `{"transcribed": 0, "skipped": <N>, "errors": []}`. No Bash.
 
 ### Step 4 — Batch transcribe (ONE Bash call)
 
-Build the command by joining all `todo` paths as positional args:
+Build the command by joining all `todo` paths as positional args. Pass
+`--model-dir` explicitly, constructed from `.model` in `voice/config.json`
+(which you already read in Step 1). The CLI has NO default model dir —
+omitting `--model-dir` is a usage error and will exit with code 2.
 
 ```bash
-python3 scripts/voice-transcribe.py "<todo_path_1>" "<todo_path_2>" ... --language <language>
+python3 scripts/voice-transcribe.py "<todo_path_1>" "<todo_path_2>" ... \
+    --model-dir "/tomo/voice/models/faster-whisper-<model>" \
+    --language <language>
 ```
 
 Where:
@@ -106,11 +111,12 @@ Where:
   directory — the `/inbox` orchestrator invokes you with `cwd` set to
   the instance root, and the vault is bind-mounted at the inbox path
   Kado uses.
+- `<model>` is the `.model` value you read from `voice/config.json` in
+  Step 1 (one of `tiny|base|small|medium|large-v3`). The full path is
+  always `/tomo/voice/models/faster-whisper-<model>` — the voice
+  wizard installs there.
 - `<language>` comes from `.language` in `voice/config.json`. Omit the
-  `--language` flag if the value is empty or `"auto"`.
-- `--model-dir` is NOT passed — the CLI default
-  (`/tomo/voice/models/faster-whisper-medium`) is set by the voice
-  wizard and won't drift without a re-install.
+  `--language` flag entirely if the value is empty or `"auto"`.
 
 **Error handling on Bash exit code:**
 - Exit `0` → parse stdout as JSON (Step 5).

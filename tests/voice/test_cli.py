@@ -66,6 +66,19 @@ def test_cli_errors_when_no_audio_paths_given():
     assert r.returncode == 2
 
 
+def test_cli_errors_when_model_dir_flag_missing(tmp_path):
+    # --model-dir is required — there is no hardcoded default. Agents
+    # must build the path explicitly from voice/config.json .model.
+    audio = tmp_path / "memo.m4a"
+    audio.write_bytes(b"\x00")
+    r = subprocess.run(
+        [sys.executable, str(CLI_PATH), str(audio)],
+        capture_output=True, text=True, timeout=10,
+    )
+    assert r.returncode == 2
+    assert "model-dir" in r.stderr.lower() or "required" in r.stderr.lower()
+
+
 def test_cli_exits_3_when_model_dir_missing(tmp_path):
     audio = tmp_path / "memo.m4a"
     audio.write_bytes(b"\x00" * 16)
@@ -79,9 +92,22 @@ def test_cli_exits_3_when_model_dir_missing(tmp_path):
         capture_output=True, text=True, timeout=10,
     )
     assert r.returncode == 3
-    # Error detail on stderr is JSON — nice for tooling
-    err_json = json.loads(r.stderr.strip().splitlines()[-1])
-    assert err_json["error"] == "model_dir_missing"
+
+    # Scan every stderr line and assert at least one parses as our error
+    # JSON — brittle "last line" matching breaks if a future warning or
+    # argparse preamble prints ahead of the JSON blob.
+    found = None
+    for line in r.stderr.strip().splitlines():
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("error") == "model_dir_missing":
+            found = obj
+            break
+    assert found is not None, (
+        f"no model_dir_missing JSON line in stderr: {r.stderr!r}"
+    )
 
 
 # ── JSON manifest shape (mocked engine) ──────────────────────

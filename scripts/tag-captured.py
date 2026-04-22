@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """tag-captured.py — Tag processed inbox items with #<prefix>/captured.
 
 Reads the state-file, finds all items with status=done, and adds the
 lifecycle tag to each item's frontmatter via Kado. Idempotent — skips
-items that already have the tag.
+items that already have the tag. Also skips non-markdown items
+(audio, binaries, stray text files) since they have no frontmatter
+for the tag to live in.
 
 Called by the orchestrator after successfully writing the suggestions
 document to the vault (Phase D).
@@ -187,10 +189,22 @@ def main() -> int:
 
     tagged = 0
     errors = 0
+    skipped_non_md = 0
     for stem in sorted(done_stems):
         entry = state[stem]
         path = entry.get("path", "")
         if not path:
+            continue
+
+        # Lifecycle tags live in markdown frontmatter. Non-markdown items
+        # (audio files, binaries, text files Tomo doesn't classify as notes)
+        # have no frontmatter to edit — Kado's `operation=note` rejects them
+        # with VALIDATION_ERROR, which would otherwise count as a hard
+        # failure and fail the whole tag-captured run.
+        if not path.lower().endswith(".md"):
+            print(f"  [skip] {stem}: non-markdown path, no frontmatter ({path})",
+                  file=sys.stderr)
+            skipped_non_md += 1
             continue
 
         print(f"  [{stem}] tagging {path}", file=sys.stderr)
@@ -200,7 +214,8 @@ def main() -> int:
             errors += 1
 
     print(
-        f"tag-captured: tagged={tagged} errors={errors} prefix={prefix}",
+        f"tag-captured: tagged={tagged} errors={errors} "
+        f"skipped_non_md={skipped_non_md} prefix={prefix}",
         file=sys.stderr,
     )
     return 1 if errors else 0

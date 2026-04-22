@@ -196,11 +196,13 @@ def main() -> int:
         if not path:
             continue
 
-        # Lifecycle tags live in markdown frontmatter. Non-markdown items
-        # (audio files, binaries, text files Tomo doesn't classify as notes)
-        # have no frontmatter to edit — Kado's `operation=note` rejects them
-        # with VALIDATION_ERROR, which would otherwise count as a hard
-        # failure and fail the whole tag-captured run.
+        # Lifecycle tags live in markdown frontmatter. Any non-.md path
+        # is a skip — covers audio (.m4a, .mp3, .wav, .ogg, .opus, .flac,
+        # .aac), plain text (.txt), binaries, and anything else the
+        # inbox may end up carrying (Phase 0a voice makes the inbox
+        # polyglot). Without this guard Kado's `operation=note` rejects
+        # non-.md paths with VALIDATION_ERROR, which would otherwise
+        # count as a hard failure and fail the whole tag-captured run.
         if not path.lower().endswith(".md"):
             print(f"  [skip] {stem}: non-markdown path, no frontmatter ({path})",
                   file=sys.stderr)

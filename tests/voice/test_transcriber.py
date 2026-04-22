@@ -105,6 +105,36 @@ def test_transcribe_passes_vad_and_language_to_model():
     assert call_kwargs["vad_parameters"] == {"min_silence_duration_ms": 500}
     assert call_kwargs["temperature"] == 0.0
     assert call_kwargs["language"] == "en"
+    # beam_size=1 explicit: faster-whisper's default is 5 which is slow on
+    # CPU and contradicts our deterministic (temperature=0) intent.
+    assert call_kwargs["beam_size"] == 1
+
+
+def test_default_cpu_threads_respects_env_override(monkeypatch):
+    from lib.voice_transcriber import _default_cpu_threads
+
+    monkeypatch.setenv("TOMO_VOICE_CPU_THREADS", "3")
+    assert _default_cpu_threads() == 3
+
+
+def test_default_cpu_threads_falls_back_to_half_cores(monkeypatch):
+    from lib.voice_transcriber import _default_cpu_threads
+
+    monkeypatch.delenv("TOMO_VOICE_CPU_THREADS", raising=False)
+    n = _default_cpu_threads()
+    assert n >= 1
+    cores = os.cpu_count() or 4
+    assert n == max(1, cores // 2)
+
+
+def test_default_cpu_threads_ignores_invalid_env(monkeypatch):
+    from lib.voice_transcriber import _default_cpu_threads
+
+    monkeypatch.setenv("TOMO_VOICE_CPU_THREADS", "not-a-number")
+    n = _default_cpu_threads()
+    # Falls back to the computed default, not 0 (which would re-introduce
+    # the ctranslate2 oversubscription bug).
+    assert n >= 1
 
 
 def test_segment_dataclass_is_plain_data():

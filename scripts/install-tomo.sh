@@ -1235,17 +1235,10 @@ cat > "$CONFIG_FILE" << CFGEOF
 CFGEOF
 print_ok "tomo-install.json"
 
-# Fill the voice block via jq rather than heredoc interpolation — safer
-# against any future case where VOICE_* globals contain characters that
-# would break JSON (quotes, newlines) if pasted raw (review finding M1).
-# schema_version: 1 — set now while the config is small, so future
-# fields (voice.exclude globs, warn_minutes) can carry migration hints
-# rather than relying on field-absent sentinels (review finding L4).
-jq --argjson enabled "${VOICE_ENABLED:-false}" \
-   --arg model "${VOICE_MODEL:-}" \
-   --arg lang  "${VOICE_LANGUAGE:-}" \
-   '.voice = { schema_version: 1, enabled: $enabled, model: $model, language: $lang }' \
-   "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+# Persist the voice block via the shared write_voice_config helper —
+# single authoritative writer for schema_version + enabled/model/language.
+# Review findings M1 (jq-safe assembly), L4 (schema_version), M9 (dedup).
+write_voice_config "$CONFIG_FILE"
 
 # Mirror the voice block into the instance so runtime agents can read it.
 # tomo-install.json lives at the HOST repo root and is NOT accessible from

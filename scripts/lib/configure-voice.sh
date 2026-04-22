@@ -7,7 +7,7 @@
 #   VOICE_ENABLED   — "true" or "false"
 #   VOICE_MODEL     — "tiny" | "base" | "small" | "medium" | "large-v3" | ""
 #   VOICE_LANGUAGE  — "de" | "en" | "auto" | ""
-# version: 0.4.0
+# version: 0.5.0
 
 # Resolve the directory this file lives in at SOURCE TIME. BASH_SOURCE[0]
 # is reliable here (top-level of the sourced file); deep inside a
@@ -17,18 +17,49 @@
 _TOMO_VOICE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _TOMO_VOICE_SCRIPTS_DIR="$(cd "$_TOMO_VOICE_LIB_DIR/.." && pwd)"
 
+# Schema version for the `voice` block in tomo-install.json and its
+# mirror. Bump only with a migration path.
+_TOMO_VOICE_SCHEMA_VERSION=1
+
+# Persist the VOICE_* globals into a target JSON file's `.voice` block
+# via jq. Call site: both install-tomo.sh and update-tomo.sh use this;
+# having one authoritative writer collapses the previous three-site
+# duplication (review finding M9).
+#
+# Usage: write_voice_config <target-json-file>
+write_voice_config() {
+    local target="$1"
+    if [ -z "$target" ]; then
+        echo "write_voice_config: missing target file" >&2
+        return 2
+    fi
+    if [ ! -f "$target" ]; then
+        echo "write_voice_config: target does not exist: $target" >&2
+        return 2
+    fi
+    jq --argjson schema "$_TOMO_VOICE_SCHEMA_VERSION" \
+       --argjson enabled "${VOICE_ENABLED:-false}" \
+       --arg model "${VOICE_MODEL:-}" \
+       --arg lang  "${VOICE_LANGUAGE:-}" \
+       '.voice = { schema_version: $schema, enabled: $enabled, model: $model, language: $lang }' \
+       "$target" > "$target.tmp" && mv "$target.tmp" "$target"
+}
+
 # Known model metadata (bash 3.2 — no associative arrays)
 # Keep in sync with docs/XDD/specs/009-voice-memo-transcription/solution.md
 _voice_size_list="tiny base small medium large-v3"
 
 _voice_size_info() {
     # Sizes are on-disk footprint after download (float16 weights).
+    # The second column is approximate resident RAM during inference
+    # (int8 quantization applied at load time) — used for the Docker
+    # Desktop memory guidance below (review finding L8).
     case "$1" in
-        tiny)     echo " 83 MB   fast, weak German" ;;
-        base)     echo "145 MB   decent English" ;;
-        small)    echo "480 MB   solid German" ;;
-        medium)   echo "1.5 GB   very good German  (recommended)" ;;
-        large-v3) echo "3.1 GB   best quality, slowest" ;;
+        tiny)     echo " 83 MB   fast, weak German                 (~0.3 GB RAM)" ;;
+        base)     echo "145 MB   decent English                    (~0.5 GB RAM)" ;;
+        small)    echo "480 MB   solid German                      (~1.0 GB RAM)" ;;
+        medium)   echo "1.5 GB   very good German  (recommended)   (~2.0 GB RAM)" ;;
+        large-v3) echo "3.1 GB   best quality, slowest             (~4.0 GB RAM)" ;;
         *)        echo "" ;;
     esac
 }
@@ -138,6 +169,10 @@ configure_voice() {
     for sz in $_voice_size_list; do
         printf "    %-9s %s\n" "$sz" "$(_voice_size_info "$sz")"
     done
+    echo ""
+    echo "  Tip: Docker Desktop's memory limit (Settings → Resources) needs"
+    echo "       to cover the selected model's RAM footprint + ~1 GB headroom."
+    echo "       Default Docker Desktop memory (8 GB) is plenty for medium."
     echo ""
     local default_model="${VOICE_MODEL:-medium}"
     local new_model

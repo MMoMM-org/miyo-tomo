@@ -109,12 +109,19 @@ For each audio path `<inbox_path>/<filename>.<ext>`:
 Name the resulting set `todo`. If `todo` is empty after filtering →
 return `{"transcribed": 0, "skipped": <N>, "errors": []}`. No Bash.
 
-### Step 4 — Batch transcribe (ONE Bash call)
+### Step 4 — Batch transcribe (ONE Bash call per chunk)
 
 Build the command by joining all `todo` paths as positional args. Pass
 `--model-dir` explicitly, constructed from `.model` in `voice/config.json`
 (which you already read in Step 1). The CLI has NO default model dir —
 omitting `--model-dir` is a usage error and will exit with code 2.
+
+**Argv cap**: if `todo` contains more than **200** paths, split into
+sequential batches of up to 200 per CLI invocation. With deep vault
+paths the total argv length approaches Linux's `ARG_MAX` (~2 MB) and
+exec can silently fail. The CLI loads the model ONCE per invocation,
+so multiple batches of 200 still amortise almost all the load cost —
+far better than per-file invocations.
 
 ```bash
 python3 scripts/voice-transcribe.py "<todo_path_1>" "<todo_path_2>" ... \

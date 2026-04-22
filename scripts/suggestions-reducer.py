@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 0.4.0
+# version: 0.5.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -226,7 +226,9 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
 
     lines.append("")
     lines.append("**Decision (atomic note):**")
-    lines.append("- [x] Approve")
+    worthiness = action.get("atomic_note_worthiness")
+    approve_mark = "[x]" if (worthiness is not None and worthiness >= 0.5) else "[ ]"
+    lines.append(f"- {approve_mark} Approve")
     lines.append("- [ ] Skip (keep in inbox)")
     lines.append("- [ ] Delete source")
     return "\n".join(lines)
@@ -372,6 +374,7 @@ def render_daily_notes_updates_block(
                 lines.append("  - [ ] Accept")
                 if le["source_stem"] in daily_only_stems:
                     deletable_sources.add(le["source_stem"])
+                    lines.append("  - [ ] Force Atomic Note (promote this into a standalone note)")
             lines.append("")
 
         log_links = entry.get("log_links") or []

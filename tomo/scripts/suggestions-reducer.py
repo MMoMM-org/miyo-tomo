@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 0.6.0
+# version: 0.7.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -466,6 +466,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--threshold", type=int, default=1,
                    help="Minimum cluster size to emit a Proposed MOC section (default 1 — "
                         "every needs_new_moc surfaces; cluster size shown in heading)")
+    p.add_argument("--fan-resolve", action="store_true",
+                   help="XDD 012 fan-resolve mode: include ONLY items whose result.json has "
+                        "force_atomic=true; skip daily_notes_updates, proposed_mocs, and "
+                        "needs_attention; emit doc_variant='fan-resolve' for the renderer.")
     return p
 
 
@@ -482,6 +486,22 @@ def main() -> int:
         ((s, e) for s, e in state.items() if e.get("status") == "failed"),
         key=lambda kv: kv[0],
     )
+
+    # XDD 012 fan-resolve mode: filter done_stems to items whose result.json
+    # carries force_atomic=true. This keeps the resolve doc focused on the
+    # FAN-triggered atomic proposals only, regardless of what else the
+    # state-file contains.
+    if args.fan_resolve:
+        def _has_force_atomic(stem: str) -> bool:
+            rp = items_dir / f"{stem}.result.json"
+            if not rp.exists():
+                return False
+            try:
+                return bool(json.loads(rp.read_text(encoding="utf-8")).get("force_atomic"))
+            except (json.JSONDecodeError, OSError):
+                return False
+        done_stems = [s for s in done_stems if _has_force_atomic(s)]
+        failed_entries = []  # resolve doc does not surface other failures
 
     sections: list[dict] = []
     topic_clusters: dict[str, list[tuple[str, str, str, list]]] = {}  # norm_topic -> [(section_id, display, parent, tags)]
@@ -641,22 +661,45 @@ def main() -> int:
         daily_notes_updates_sorted, daily_only_stems=daily_only_stems
     )
 
-    doc = {
-        "schema_version": "1",
-        "generated": now_iso(),
-        "run_id": args.run_id,
-        "profile": args.profile,
-        "source_items": len(done_stems) + len(failed_entries),
-        "sections": sections,
-        "daily_notes_updates": daily_notes_updates,
-        "rendered_daily_updates_md": rendered_daily_updates_md,
-        "decision_precedence_note": (
+    # XDD 012 fan-resolve: drop the aggregated blocks the resolve doc
+    # doesn't need. Keep sections (atomic proposals) and override the
+    # precedence note so the user sees what this doc is for.
+    if args.fan_resolve:
+        daily_notes_updates = []
+        rendered_daily_updates_md = ""
+        proposed_mocs = []
+        needs_attention = []
+        precedence_note = (
+            "This is a **Force-Atomic Resolve** doc. Tomo noticed you ticked "
+            "**Force Atomic Note** on log entries whose inbox items had no "
+            "atomic-note proposal in the primary suggestions doc. Each section "
+            "below is a freshly-proposed atomic for one of those items. Review, "
+            "approve (or skip) the proposals, then tick **[x] Approved** at the "
+            "top and re-run `/inbox` — Pass 2 will merge these approvals back "
+            "into the primary doc and render instructions for both together."
+        )
+        doc_variant = "fan-resolve"
+    else:
+        precedence_note = (
             "Daily-note decisions (trackers, log entries, log links) live in the "
             "Daily Notes Updates block above. Per-item Suggestion sections only "
             "cover the atomic-note decision. Use **Force Atomic Note** on a log "
             "entry to create a standalone note even when the item was only "
             "proposed for the daily log."
-        ),
+        )
+        doc_variant = "primary"
+
+    doc = {
+        "schema_version": "1",
+        "generated": now_iso(),
+        "run_id": args.run_id,
+        "profile": args.profile,
+        "doc_variant": doc_variant,  # XDD 012 — primary | fan-resolve
+        "source_items": len(done_stems) + len(failed_entries),
+        "sections": sections,
+        "daily_notes_updates": daily_notes_updates,
+        "rendered_daily_updates_md": rendered_daily_updates_md,
+        "decision_precedence_note": precedence_note,
         "proposed_mocs": proposed_mocs,
         "needs_attention": needs_attention,
     }

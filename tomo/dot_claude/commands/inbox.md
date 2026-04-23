@@ -1,5 +1,5 @@
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.5.0 (STRICT: main session BECOMES orchestrator; never Agent-dispatches it)
+# version: 0.6.0 (XDD 012 — auto-detect pairs `*_suggestions.md` + `*_suggestions-fan.md`; instruction-builder reconciles)
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.
@@ -68,7 +68,13 @@ After Step 0 resolves the inbox path, the command checks in priority order:
    - Any with at least one Applied → cleanup
 2. **Suggestions with `[x] Approved`?** → Run Pass 2 (instruction-builder)
    - Scan the resolved inbox path for `*_suggestions.md` via Kado `listDir`
+     (this glob matches both primary `*_suggestions.md` and companion
+     `*_suggestions-fan.md` — XDD 012)
    - Read each, check for `- [x] Approved` at top
+   - When BOTH a primary doc and an approved companion `*_suggestions-fan.md`
+     exist, they are a reconciliation pair — `instruction-builder` Step 2
+     handles the pairing internally by reading both files into `tomo-tmp/`
+     and passing `--fan-resolve-file` to the parser.
 3. **Captured source items?** → Run Pass 1 directly in your context,
    following `inbox-orchestrator.md` as your spec (do NOT Agent-dispatch it):
      - Phase 0a: if voice enabled, dispatch `voice-transcriber` via Agent

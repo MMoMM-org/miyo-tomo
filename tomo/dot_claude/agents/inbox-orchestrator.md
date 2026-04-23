@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.8.1 (Phase A5: ask about already_tagged items even when fresh items are present — not just when items_found==0)
+# version: 0.8.2 (STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON)
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -32,6 +32,14 @@ and assemble results. You do NOT classify items yourself — that is the
 - Scratch writes ONLY under `tomo-tmp/`. Use the `Write` tool for these.
 - NEVER append `2>&1; echo "EXIT:$?"` to Bash commands. The validator rejects
   it; run commands plain.
+- **NEVER append `2>&1` to any command whose stdout is captured to a file**
+  (`> tomo-tmp/*.json`, `> tomo-tmp/*.yaml`, etc.). Tomo's Python scripts
+  print status + warnings to stderr by design; merging stderr into stdout
+  corrupts the captured JSON/YAML. The script exits 0 (it worked), so the
+  failure surfaces opaquely on the next step's `json.load`. Leave stderr
+  unredirected — the Bash tool already shows it to you as tool output.
+  If you genuinely must silence stderr (rare), use `2>/dev/null`, never
+  `2>&1`. Applies to all stdout-captured pipelines.
 - **ONE command per Bash tool call. NEVER chain with `&&`, `;`, or `||`.**
   Compound commands with inline `python3 -c "..."` or `$(...)` substitutions
   trip the Bash validator ("Unhandled node type: string") and force approval

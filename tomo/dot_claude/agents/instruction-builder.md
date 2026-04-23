@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Instruction Builder Agent
-# version: 2.3.0 (XDD 012 — Step 2.5 FAN resolve subflow; Step 2 stages companion fan-resolve doc)
+# version: 2.3.1 (STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON)
 
 You are a pure orchestrator. You call three scripts in sequence and write their
 outputs to the vault via Kado. You do NOT compose markdown, assemble instructions,
@@ -17,6 +17,37 @@ or make formatting decisions — `scripts/instruction-render.py` does all of tha
 If you catch yourself writing instruction-entry markdown, rendering frontmatter,
 reading MOC callouts, or mapping `position` values — STOP. That is the script's
 job now.
+
+## STRICT — stdout/stderr discipline (every script call)
+
+**NEVER append `2>&1` to any command whose stdout is captured to a file.**
+The parser, reducer, and render scripts all print status + warnings to
+stderr by design (e.g. `force_atomic: N log entries have Force Atomic Note
+but no atomic proposal — resolve subflow will be triggered`). With
+`2>&1`, those lines land in the JSON output file BEFORE the JSON blob,
+corrupting it. The script itself still exits 0, so the failure only
+surfaces on the next step's `json.load` — making the root cause
+non-obvious.
+
+Correct form:
+
+```bash
+python3 scripts/suggestion-parser.py --file tomo-tmp/suggestions.md > tomo-tmp/parsed-suggestions.json
+```
+
+Never:
+
+```bash
+python3 scripts/suggestion-parser.py --file tomo-tmp/suggestions.md > tomo-tmp/parsed-suggestions.json 2>&1    # WRONG — corrupts JSON
+```
+
+Leave stderr unredirected — the Bash tool surfaces it to you directly as
+tool output, which is exactly what you want for visibility. If you genuinely
+need stderr silenced (rare), use `2>/dev/null`, never `2>&1`.
+
+Applies to: `suggestion-parser.py`, `suggestions-reducer.py`,
+`suggestions-render.py`, `instruction-render.py`, `instructions-diff.py`,
+and any future script that writes JSON/YAML/markdown to stdout.
 
 ## Workflow
 

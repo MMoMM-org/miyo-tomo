@@ -77,6 +77,102 @@ include the title: `"blocks- Key Concepts": "Key Concepts section"` or a structu
 at Pass 2 to find the right callout — the information flows through the pipeline from
 cache → shared-ctx → subagent → reducer → instruction-builder.
 
+### F-34/F-35 Detail: Mental Squeeze Point Completion Plan
+
+> Stashed 2026-04-23 for a later discussion. User priority for next Tomo
+> session — captured before switching focus to Hashi development.
+
+**Context.** Spec defines four MOC-creation triggers (Tier-3 New MOC
+Proposal §2):
+- **A — Batch Cluster** (≥3 items in a single /inbox run share a topic
+  with no MOC). **Implemented** in `tomo/scripts/suggestions-reducer.py`
+  (`topic_clusters` dict line 507, loop lines 594-606, render line 632+).
+  Default threshold = 1 (every `needs_new_moc` surfaces).
+- **B — Accumulation** (current item topics match 2+ existing notes
+  with no MOC link / `up::` absent). **Missing** — F-34.
+- **C — Placeholder Match** (item topics match a `placeholder_mocs[]`
+  entry — a wikilink with no backing file). **Wired upstream, not
+  shipped to Phase-B** — F-35.
+- **D — `/scan-mocs` manual command.** YAGNI per spec; not in MVP.
+
+So today only A fires end-to-end. Completing the MSP feature for MVP
+means landing **B and C**.
+
+**Constraint.** Tomo is in stabilization mode (memory:
+`feedback_near_mvp_no_breakage.md`). All work below must be additive on
+hot paths (`inbox-analyst`, `instruction-render`, `suggestions-reducer`,
+`shared-ctx-builder`). Every step gets a live-run validation against
+`Privat-Test/` before merge.
+
+**Recommended sequencing.**
+
+1. **F-35 first (cheap, lowest risk).** Two surgical changes:
+   - `tomo/scripts/shared-ctx-builder.py` — add `placeholder_mocs[]`
+     to the output envelope. Source already loaded from cache.
+   - `tomo/dot_claude/agents/inbox-analyst.md` Step 8 — add Condition C
+     trigger note: *if item topics match a `placeholder_mocs[]` entry,
+     set `needs_new_moc=true` with `proposed_moc_topic` = the
+     placeholder name*.
+   - Validation: live /inbox run with a known placeholder in the cache;
+     confirm a matching item produces a Proposed MOC suggestion that
+     resolves the dead link.
+   - Risk: subagent ignores fields it doesn't reference, so any
+     existing run that doesn't hit Condition C is byte-identical to
+     today.
+
+2. **F-34 architecture decision before any code.** Two viable options
+   with very different cost/complexity:
+
+   | Option | Where Condition B logic lives | Pass-1 cost impact | Implementation effort |
+   |--------|-------------------------------|--------------------|-----------------------|
+   | **(a)** Add `kado-search` to `inbox-analyst` tool list | Per-item, in subagent (Step 8) | Adds N searches per Pass-1 batch | LOW (tool list + Step 8 logic) |
+   | **(b)** Pre-compute accumulation index in `shared-ctx-builder.py` | Once per run, in shared-ctx envelope | Single batch search at orchestration time | MEDIUM (new builder logic + index format) |
+
+   Tentative lean: **(b)** — keeps Phase-B subagent cost profile
+   unchanged. Pass-1 main-thread cost is already $26 per run (F-32);
+   per-item kado-search would amplify that. (b) also keeps the "no
+   kado-search in subagent" invariant that XDD-009 / XDD-012 designs
+   already rely on.
+
+   Decide via AskUserQuestion at the start of the F-34 session, not
+   inferred.
+
+3. **F-34 implementation behind the chosen architecture.** TDD: spec a
+   fixture vault with a known accumulation cluster (e.g. 3 unclassified
+   `boardgames`-related notes already in vault, plus a 4th in the
+   inbox), write the trigger test, then implement. Validate the
+   trigger fires AND the existing A trigger still works on its own
+   path.
+
+4. **F-36 only if F-34/F-35 surface a real need.** The "new section
+   when no existing fits" gap matters most when proposing a brand-new
+   MOC (no sections yet). Wait until F-34/F-35 land and live-runs hit
+   the case before specifying.
+
+**Deliberately deferred** (do not pull forward without evidence):
+- **F-37 daily-log re-audit** — only if a /inbox run produces a wrong
+  daily-log entry. Speculative cleanup risks regression.
+- **F-38 missing-DN checkbox** — verify-only first. If it works,
+  close. If broken, scope is small.
+- **D — `/scan-mocs`** — stays YAGNI per spec.
+
+**Ordering rationale.** F-35 first because it's effectively free risk
+and proves the shared-ctx-as-trigger-channel pattern that F-34 option
+(b) will reuse. If F-35 ships and works, F-34 (b) becomes the obvious
+shape. If F-35 surfaces unexpected friction, that's signal to revisit
+the architecture decision before committing to F-34.
+
+**Open questions for the discussion:**
+- For F-34 option (b), what's the index shape? Topic → list of stems?
+  Topic → count? Need to define what "match" means at lookup time
+  (string equality on normalised topic? substring? semantic?).
+- Should Condition B/C share the `needs_new_moc` field on
+  `create_atomic_note` actions (current path), or get their own action
+  kind to differentiate triggers in the suggestions doc heading?
+- Does the user want the suggestions doc to label *which* condition
+  fired ("Proposed MOC — accumulation cluster" vs "— placeholder
+  resolution"), or just emit the proposal uniformly?
+
 ## Documentation Debt
 
 | ID | Item | Source | Priority | Notes |

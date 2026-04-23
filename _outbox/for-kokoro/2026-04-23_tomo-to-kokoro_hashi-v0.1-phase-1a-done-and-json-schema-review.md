@@ -3,8 +3,8 @@ from: tomo
 to: kokoro
 date: 2026-04-23
 topic: Hashi v0.1 — Phase 1a labels shipped; Phase 1b .json sibling already in production, schema presented for review
-status: in-progress
-status_note: schema review in progress on docs/inbox-2026-04-23-handoffs
+status: done
+status_note: Schema review handoff sent back (commit 289498a). One change requested: add explicit md_peer field. Five of six flagged decisions accepted as designed. Hashi can be specced against current schema pending md_peer.
 priority: normal
 requires_action: true
 ---

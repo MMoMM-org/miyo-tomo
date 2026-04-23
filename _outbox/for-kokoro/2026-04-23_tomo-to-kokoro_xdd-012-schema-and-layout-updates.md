@@ -3,8 +3,8 @@ from: tomo
 to: kokoro
 date: 2026-04-23
 topic: XDD 012 + schema/layout updates — ADR candidates and stale arch-doc flags
-status: in-progress
-status_note: audit in progress on docs/inbox-2026-04-23-handoffs
+status: done
+status_note: Audit complete. 3 ADR candidates reviewed: FAN synthesis (Tomo XDD 012 is authoritative, no Kokoro ADR), config-driven + sibling-audit (Tomo-internal memory pattern), scripts/ split (Tomo repo layout). None cross-cut to Kokoro. 04-miyo-tomo.md has superseded banner covering stale items.
 priority: normal
 requires_action: true
 ---

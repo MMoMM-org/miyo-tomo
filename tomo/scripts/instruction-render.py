@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1134,6 +1134,11 @@ def main() -> int:
     generated_iso = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     source_suggestions = _stem(args.suggestions)
     tomo_version = os.environ.get("TOMO_VERSION")
+    # md_peer: explicit link back to the human-review .md sibling. Kokoro
+    # 2026-04-23 review requested this over the implicit "same folder +
+    # matching stem" convention — deterministic linkage on the consumer
+    # side, clearer failure mode if the user later renames the .md.
+    md_peer_stem = f"{date_prefix}_instructions"
     instructions_doc = {
         "schema_version": "1",
         "type": "tomo-instructions",
@@ -1142,6 +1147,7 @@ def main() -> int:
         "profile": profile_name,
         "tomo_version": tomo_version,
         "action_count": len(actions),
+        "md_peer": md_peer_stem,
         "actions": actions,
     }
     instructions_json_path = out_dir / "instructions.json"

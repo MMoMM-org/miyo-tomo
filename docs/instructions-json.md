@@ -1,6 +1,6 @@
 # instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-> Last reviewed: 2026-04-23 (covers XDD 008, 009, 012).
+> Last reviewed: 2026-04-23 (covers XDD 008, 009, 012; md_peer added post-Kokoro review).
 
 **Audience:** Authors and integrators of [Tomo Hashi (友橋)](https://github.com/MMoMM-org)
 — the Obsidian community plugin that reads Tomo's Pass-2 instruction set
@@ -51,6 +51,7 @@ re-run.
   "profile": "miyo",
   "tomo_version": "0.7.0",
   "action_count": 25,
+  "md_peer": "2026-04-21_1113_instructions",
   "actions": [ ... ]
 }
 ```
@@ -64,6 +65,7 @@ re-run.
 | `profile` | string \| null | Active PKM profile (miyo / lyt / custom). Useful if your UI adapts to framework conventions. |
 | `tomo_version` | string \| null | Tomo runtime version. Log it in case you need to debug a divergence. |
 | `action_count` | integer | Length of `actions[]`. Mismatch → file corruption, abort. |
+| `md_peer` | string | Stem of the companion human-readable markdown, in the same folder (e.g. `2026-04-21_1113_instructions`). Added 2026-04-23 per Kokoro schema review: explicit linkage rather than inferring from `generated` timestamp + folder convention. Tomo Hashi SHOULD read `<md_peer>.md` alongside the JSON and SHOULD surface a clear error ("peer not found at recorded stem X") if the file is missing, rather than silently falling back to a convention-based search. Always populated by `instruction-render.py` v0.6.0+; older v0.5.x artefacts may lack it (not in the v1 required set — the field is additive). |
 | `actions[]` | array | The executable payload. See below. |
 
 ---
@@ -505,7 +507,20 @@ contains `content` on its own line, skip.
 ### `update_log_link` — add a wikilink line to the daily log
 
 Same shape as `update_log_entry`, but the payload is a wikilink instead of
-prose:
+prose.
+
+> **Why the asymmetry (`content` literal vs. `target_stem` structured)?**
+> `update_log_entry.content` is a fully-formed line that Tomo Hashi
+> inserts verbatim. `update_log_link.target_stem` is the bare wikilink
+> target; Tomo Hashi formats the line as `- [[<target_stem>]]` and, when
+> `position == "at_time"`, prefixes it with `HH:MM - `. The structured
+> shape exists because the time-prefix case has to be rendered at
+> execute time, not at generation time — the `HH:MM` is already in the
+> `time` field, so baking it into a literal would duplicate data and
+> invite drift if one got edited without the other. `update_log_entry`
+> has no such composition need (its content is free-form prose), so it
+> stays literal. Both kinds use the same `position` / `time` / `section`
+> / `heading_level` fields.
 
 ```json
 {

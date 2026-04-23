@@ -26,6 +26,10 @@
       "description": "Tomo version that produced this file."
     },
     "action_count": {"type": "integer", "minimum": 0},
+    "md_peer": {
+      "type": "string",
+      "description": "Stem of the companion human-readable markdown, in the same folder (e.g. '2026-04-21_0918_instructions'). Explicit linkage rather than inferred from timestamp/convention — lets Tomo Hashi refuse with a clear error when the peer is missing or renamed. Always populated by instruction-render.py v0.6.0+; not in the required set so v0.5.x artefacts still validate."
+    },
     "actions": {
       "type": "array",
       "items": {

@@ -174,7 +174,7 @@ check_contains "template-render — has Templater coexistence" tomo/dot_claude/s
 echo ""
 echo "── Test 6: Prior phase regression check ──────────────────────────────────────────────"
 
-if bash scripts/test-phase1.sh > /dev/null 2>&1; then
+if bash tests/test-phase1.sh > /dev/null 2>&1; then
     echo "  [PASS] Phase 1 tests still pass"
     PASS=$((PASS + 1))
 else
@@ -182,7 +182,7 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-if bash scripts/test-phase2.sh > /dev/null 2>&1; then
+if bash tests/test-phase2.sh > /dev/null 2>&1; then
     echo "  [PASS] Phase 2 tests still pass"
     PASS=$((PASS + 1))
 else

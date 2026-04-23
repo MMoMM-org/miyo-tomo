@@ -1,22 +1,42 @@
-# instructions.json — Tomo Hashi Consumer Contract
+# instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-**Audience:** Plugin authors building [Tomo Hashi](https://github.com/MMoMM-org)
-(the Obsidian plugin that executes Tomo's Pass-2 instruction sets inside the
-vault). This document is the authoritative consumer specification.
+> Last reviewed: 2026-04-23 (covers XDD 008, 009, 012).
+
+**Audience:** Authors and integrators of [Tomo Hashi (友橋)](https://github.com/MMoMM-org)
+— the Obsidian community plugin that reads Tomo's Pass-2 instruction set
+and executes it inside the vault. This document is the authoritative
+consumer specification for both companion artefacts.
 
 **Canonical schema:** [`tomo/schemas/instructions.schema.json`](../tomo/schemas/instructions.schema.json)
-— JSON Schema Draft 2020-12, stricter than this prose (it has the final word
-on required fields and enum values).
+— JSON Schema Draft 2020-12, stricter than this prose (it has the final
+word on required fields and enum values).
 
 **Producer:** [`scripts/instruction-render.py`](../scripts/instruction-render.py)
-inside this repo. Produced by the `instruction-builder` agent at the end of
-Pass 2, written to the vault inbox via `kado-write operation="file"` (because
-`operation="note"` only accepts `.md`).
+inside this repo. Produced by the `instruction-builder` agent at the end
+of Pass 2, written to the vault inbox via `kado-write operation="file"`
+(because `operation="note"` only accepts `.md`).
 
-**Companion human view:** the same instruction set is rendered as
-`<date>_instructions.md` with per-action `- [ ] Applied` checkboxes. Tomo
-Hashi should keep the checkbox states in sync with its execution state — it
-is the user-visible contract for "what has been applied."
+## Two files, one contract
+
+Every Pass-2 run produces a matched pair in the inbox:
+
+| File | Role | Who reads it |
+|---|---|---|
+| `<date>_instructions.json` | Canonical machine-readable contract. Every field and execution rule lives here. | **Tomo Hashi** (primary input) |
+| `<date>_instructions.md` | Human-readable view of the same actions, with per-action `- [ ] Applied` checkboxes. | **User** (in Obsidian), **Tomo Hashi** (to sync checkbox state after each execution) |
+
+Both files share a timestamped prefix. They're siblings, written in the
+same Pass-2 invocation. If the `.json` is missing, Tomo Hashi must
+refuse to execute the `.md` — markdown parsing is not a supported
+fallback.
+
+**Sync contract**: Tomo Hashi executes from the `.json`. After each
+successful action apply, it ticks the matching `- [ ] Applied` checkbox
+in the `.md` (action `I##` ↔ third-level heading `### I## — …`). On
+failure, the checkbox is left empty and Tomo Hashi reports the error.
+The user can also tick/untick checkboxes manually (e.g. "apply by hand,
+then have Tomo Hashi skip"); Tomo Hashi honours the current state on
+re-run.
 
 ---
 
@@ -39,7 +59,7 @@ is the user-visible contract for "what has been applied."
 |---|---|---|
 | `schema_version` | `"1"` (const) | Bumps when the structure becomes incompatible. Reject with a clear error if you see a version you don't understand. |
 | `type` | `"tomo-instructions"` (const) | Discriminator in case multiple JSON artefacts share the inbox folder. |
-| `source_suggestions` | string \| null | Stem of the suggestions doc this set was derived from — traceability only. |
+| `source_suggestions` | string \| null | Stem(s) of the suggestions doc(s) this set was derived from — traceability only. A normal Pass-2 run produces a single stem. An XDD-012 Force-Atomic reconciliation run (primary doc + companion `*_suggestions-fan.md`) produces a comma-separated list: `"2026-04-21_0918_suggestions, 2026-04-21_1330_suggestions-fan"`. Tomo Hashi SHOULD treat this as opaque text; it's for human trace only and does not affect execution. |
 | `generated` | ISO-8601 UTC | Use this (not file mtime) when comparing action sets. |
 | `profile` | string \| null | Active PKM profile (miyo / lyt / custom). Useful if your UI adapts to framework conventions. |
 | `tomo_version` | string \| null | Tomo runtime version. Log it in case you need to debug a divergence. |
@@ -59,6 +79,103 @@ is the user-visible contract for "what has been applied."
    these checkboxes.
 4. `- [ ] Applied` at action index N corresponds to `actions[N-1]` in the
    JSON (IDs `I01`, `I02`, … align with the markdown's third-level headings).
+
+### XDD 012 — Force-Atomic Resolve actions are indistinguishable
+
+Actions that originated from an XDD-012 Force-Atomic resolve subflow
+(i.e. the user ticked `Force Atomic Note` on a log entry whose inbox
+item had no analyst-proposed atomic section, and Pass 2 synthesised a
+follow-up suggestions doc) render identically to normal atomic-note
+actions in `instructions.json`. There is no `force_atomic` flag, no
+`from_resolve` marker, no extra execution rule — just the usual
+`move_note` + `link_to_moc` pair for the atomic, plus any approved
+daily-note actions linking to it. Tomo Hashi needs no special-case
+handling. The `source_suggestions` string will list both docs when a
+resolve reconciliation happened (see envelope table above).
+
+---
+
+## Companion markdown: `<date>_instructions.md`
+
+The `.md` is a human-readable projection of the same instruction set.
+It exists so the user can scan, edit-in-place, and tick Applied
+checkboxes in Obsidian. Tomo Hashi uses it as the shared state surface
+for applied/not-applied — but never as the source of truth for action
+parameters (read those from JSON).
+
+### File shape
+
+```markdown
+---
+type: tomo-instructions
+generated: 2026-04-21T11:13:18Z
+tomo_version: "0.1.0"
+source_suggestions: "2026-04-21_0918_suggestions"
+profile: miyo
+action_count: 25
+tags:
+  - MiYo-Tomo/instructions
+---
+
+# Tomo Instructions — 2026-04-21 11:13
+
+Generated from: [[2026-04-21_0918_suggestions]]
+
+## Summary
+- 8 new atomic notes ready in inbox folder
+- 1 new MOC ready in inbox folder
+- 10 MOC link additions
+- 1 daily note tracker update
+- 2 daily log entries
+- 3 source deletions
+
+## Actions
+
+### I01 — create_moc: Brettspiele (MOC)
+- [ ] Applied
+- **Source:** [[2026-04-21_1113_brettspiele-moc]]
+- **Destination:** `Atlas/200 Maps/Brettspiele (MOC).md`
+- **Tags:** `type/others/moc`, `topic/recreation/board-games`
+- **Reason:** 3 atomic proposals about board-game strategy cluster under a missing MOC.
+
+### I02 — move_note: Asahikawa — zweitgrößte Stadt Hokkaidos
+- [ ] Applied
+- **Source:** [[2026-04-21_1113_asahikawa-zweitgroesste-stadt-hokkaidos]]
+- **Destination:** `Atlas/202 Notes/Asahikawa — zweitgrößte Stadt Hokkaidos.md`
+- **Parent MOC(s):** [[Japan (MOC)]]
+
+### … (one H3 per action through I25) …
+```
+
+### Layout rules Tomo Hashi depends on
+
+| Rule | Detail |
+|---|---|
+| Frontmatter tag | `#MiYo-Tomo/instructions` on a fresh set; `#MiYo-Tomo/applied` after the user tags the set as fully done; `#MiYo-Tomo/archived` after cleanup. The lifecycle prefix (`MiYo-Tomo/`) comes from vault-config. |
+| Action entries | Each is an H3 heading `### I##  — <action kind>: <title>`. The `I##` ID matches the JSON's `actions[N-1].id`. |
+| Applied checkbox | The **first** bullet under each H3 is always `- [ ] Applied` (or `- [x] Applied` after the user ticks it). Tomo Hashi writes the tick after a successful apply; any other checkbox in the entry (if any) is decoration. |
+| Action ordering | Identical to `instructions.json.actions[]`. Never re-order. |
+| Wikilinks | Sources of rendered files use `[[<stem>]]` (no folder, no `.md`). Destinations are code-fenced full paths for clarity. |
+
+### What NOT to parse out of the `.md`
+
+Tomo Hashi **must not** derive action parameters (source path,
+destination path, section name, tracker value, etc.) from the markdown.
+Those come from the `.json`. The markdown may be edited by the user —
+Tomo's internal model of "what to execute" stays pinned to the JSON.
+If the markdown is lost or corrupted, Tomo Hashi can regenerate its
+Applied state from vault inspection or from a tracked execution log;
+the JSON is sufficient to replay.
+
+### Cleanup contract
+
+When `/inbox` runs the cleanup phase (`vault-executor`), it needs only
+the `.md`'s frontmatter tag (`#MiYo-Tomo/applied`) and per-action
+`- [x] Applied` checkboxes to decide which source inbox items to
+transition from `captured` → `active`. The `.json` is not consulted
+during cleanup. See
+[tier-3 instruction-set-cleanup](XDD/reference/tier-3/inbox/instruction-set-cleanup.md)
+for the full rules.
 
 ---
 

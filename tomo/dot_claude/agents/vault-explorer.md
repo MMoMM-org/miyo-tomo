@@ -11,7 +11,7 @@ skills:
   - pkm-workflows
 ---
 # Vault Explorer Agent
-# version: 0.10.0 (Steps 5, 6, 7 now use scripts/vault-config-writer.py — relationships/callouts/trackers no longer free-composed)
+# version: 0.11.0 (type.proposable defaults to false — templates set type tags on render)
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -124,15 +124,20 @@ to discover the full taxonomy. Suggest checking the API key's tag scope in Kado 
 - **`description`** (string) — one-sentence human label. Infer from the prefix name + the sample of values. Ask the user if unsure.
 - **`known_values`** (list of strings) — the observed values beyond the prefix (e.g. for prefix `topic` and tag `topic/knowledge/lyt`, the value is `knowledge/lyt`). Dedupe. Include every unique value seen.
 - **`wildcard`** (bool) — heuristic: **many unique values relative to total occurrences** (e.g. `topic/*`, `projects/*`) → `true`. **Few repeated values** (e.g. `type/note/normal`, `type/others/moc`) → `false`. If in doubt, ask.
-- **`proposable`** (bool) — may Tomo actively propose this prefix? Heuristic: prefixes that clearly belong to **external plugins or imports** (`Raindrop`, `Readwise`, `Kindle`, `mcp`) → `false`. User's own thinking/organization prefixes (`type`, `status`, `topic`, `projects`, `content`) → `true`. When you see a prefix whose values look like foreign IDs / import markers, prefer `false` and ask the user to confirm.
+- **`proposable`** (bool) — may Tomo actively propose this prefix during Pass 1 suggestions? Heuristic:
+  - `type` → `false`. Templates set the structural type tag on render; Tomo proposing it during Pass 1 duplicates the template's role. `required_for: [atomic_note, map_note]` still guarantees the tag is present on filed notes.
+  - External plugins/imports (`Raindrop`, `Readwise`, `Kindle`, `mcp`) → `false`.
+  - User's free-form organization prefixes (`status`, `topic`, `projects`, `content`) → `true`.
+  - When in doubt, prefer `false` and ask the user to confirm via AskUserQuestion.
 - **`required_for`** (list) — concept types that must carry at least one tag in this prefix. Values MUST come from this set: `atomic_note`, `map_note`, `project`, `area`, `source`, `asset`, `template`. Most prefixes: `[]`. `type` typically: `[atomic_note, map_note]`.
 
 **Combinations that make sense** (use these as sanity checks on your classification):
 
 | required_for | wildcard | proposable | When |
 |---|---|---|---|
-| `[atomic_note, map_note]` | false | true | `type` — structural, finite, Tomo must set |
+| `[atomic_note, map_note]` | false | false | `type` — structural, finite, template sets it on render (Tomo does NOT propose) |
 | `[]` | true | true | `topic` — Tomo can free-form propose and extend |
+| `[]` | false | true | `status` — lifecycle tags from a finite set that Tomo may propose |
 | `[]` | false | false | `Raindrop`, `Readwise` — external taxonomy, Tomo ignores |
 | `[]` | true | false | External plugin that may grow its own values, still not Tomo's job |
 
@@ -149,7 +154,7 @@ to discover the full taxonomy. Suggest checking the API key's tag scope in Kado 
          "description": "Note type (structural)",
          "known_values": ["note/normal", "others/moc"],
          "wildcard": false,
-         "proposable": true,
+         "proposable": false,
          "required_for": ["atomic_note", "map_note"]
        },
        "topic": {

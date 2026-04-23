@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 0.4.0
+# version: 0.7.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -226,7 +226,9 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
 
     lines.append("")
     lines.append("**Decision (atomic note):**")
-    lines.append("- [x] Approve")
+    worthiness = action.get("atomic_note_worthiness")
+    approve_mark = "[x]" if (worthiness is not None and worthiness >= 0.5) else "[ ]"
+    lines.append(f"- {approve_mark} Approve")
     lines.append("- [ ] Skip (keep in inbox)")
     lines.append("- [ ] Delete source")
     return "\n".join(lines)
@@ -370,6 +372,16 @@ def render_daily_notes_updates_block(
                 lines.append(f"  - Reason: {le['reason']}")
                 lines.append(f"  - Source: [[{le['source_stem']}]]")
                 lines.append("  - [ ] Accept")
+                # Force Atomic Note: always available under every log_entry.
+                # Even when the source already has an atomic-note suggestion
+                # below (possibly with a [ ] default because worthiness < 0.5),
+                # exposing the checkbox here keeps the decision local — the
+                # user doesn't have to scroll down and hunt for the per-item
+                # section to promote a daily-log item into its own note.
+                lines.append(
+                    "  - [ ] Force Atomic Note "
+                    "(create/keep a standalone note for this item)"
+                )
                 if le["source_stem"] in daily_only_stems:
                     deletable_sources.add(le["source_stem"])
             lines.append("")
@@ -454,6 +466,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--threshold", type=int, default=1,
                    help="Minimum cluster size to emit a Proposed MOC section (default 1 — "
                         "every needs_new_moc surfaces; cluster size shown in heading)")
+    p.add_argument("--fan-resolve", action="store_true",
+                   help="XDD 012 fan-resolve mode: include ONLY items whose result.json has "
+                        "force_atomic=true; skip daily_notes_updates, proposed_mocs, and "
+                        "needs_attention; emit doc_variant='fan-resolve' for the renderer.")
     return p
 
 
@@ -470,6 +486,22 @@ def main() -> int:
         ((s, e) for s, e in state.items() if e.get("status") == "failed"),
         key=lambda kv: kv[0],
     )
+
+    # XDD 012 fan-resolve mode: filter done_stems to items whose result.json
+    # carries force_atomic=true. This keeps the resolve doc focused on the
+    # FAN-triggered atomic proposals only, regardless of what else the
+    # state-file contains.
+    if args.fan_resolve:
+        def _has_force_atomic(stem: str) -> bool:
+            rp = items_dir / f"{stem}.result.json"
+            if not rp.exists():
+                return False
+            try:
+                return bool(json.loads(rp.read_text(encoding="utf-8")).get("force_atomic"))
+            except (json.JSONDecodeError, OSError):
+                return False
+        done_stems = [s for s in done_stems if _has_force_atomic(s)]
+        failed_entries = []  # resolve doc does not surface other failures
 
     sections: list[dict] = []
     topic_clusters: dict[str, list[tuple[str, str, str, list]]] = {}  # norm_topic -> [(section_id, display, parent, tags)]
@@ -492,13 +524,22 @@ def main() -> int:
 
         section_id = f"S{idx:02d}"
         rendered_actions: list[dict] = []
+        had_update_daily = False
         for action in result.get("actions", []):
             kind = action.get("kind")
             renderer = RENDERERS.get(kind)
             if not renderer:
                 continue
             if kind == "update_daily":
-                rendered = renderer(action, stem, field_sections)
+                # Do NOT render the per-item `**Daily update:**` /
+                # `**Decision (daily update):**` block — the aggregated
+                # ## Daily Notes Updates block at the top already captures
+                # every tracker / log_entry / log_link for the user to
+                # accept in one place. Per-item duplication was the
+                # 2026-04-22 UX ask ("unten sollte nicht nochmal alles
+                # bzgl. der daily note auftauchen").
+                had_update_daily = True
+                rendered = None
                 # Collect daily_notes_updates entries
                 daily_stem = _daily_note_stem(action.get("daily_note_path", "") or action.get("date", ""))
                 if daily_stem:
@@ -547,7 +588,8 @@ def main() -> int:
                             })
             else:
                 rendered = renderer(action, stem)
-            rendered_actions.append({"kind": kind, "rendered_md": rendered})
+            if rendered is not None:
+                rendered_actions.append({"kind": kind, "rendered_md": rendered})
 
             # Cluster Proposed MOCs from atomic-note actions
             if kind == "create_atomic_note" and action.get("needs_new_moc"):
@@ -563,30 +605,23 @@ def main() -> int:
                         (section_id, topic_raw, parent, item_tags)
                     )
 
-        # Append Material für mirror blocks to per-item rendered actions
-        if stem in stem_log_links:
-            material_md = render_log_link_mirror(stem_log_links[stem])
-            if material_md:
-                # Append to the last create_atomic_note action if present, else last action
-                target_action = None
-                for ra in rendered_actions:
-                    if ra["kind"] == "create_atomic_note":
-                        target_action = ra
-                if target_action is None and rendered_actions:
-                    target_action = rendered_actions[-1]
-                if target_action is not None:
-                    target_action["rendered_md"] = target_action["rendered_md"] + "\n\n" + material_md
+        # The per-item `Material für [[daily]]` mirror block is gone as of
+        # 2026-04-22 — the top Daily Notes Updates block owns the log_link
+        # decision. stem_log_links is still populated above because the
+        # DELETE-SOURCE bookkeeping in the daily-notes renderer needs to
+        # know which stems fed log_links; the rendering itself no longer
+        # happens here.
 
-        # Items that ONLY have update_daily actions are fully represented in the
-        # aggregated Daily Notes Updates block — skip per-item section to avoid
-        # duplication. Items that mix update_daily with other actions (e.g.
-        # create_atomic_note + update_daily) still get a per-item section.
-        has_non_daily = any(a["kind"] != "update_daily" for a in rendered_actions)
-        if rendered_actions and not has_non_daily:
-            # This item is daily-only — content fully captured in daily note(s).
-            # Mark source for deletion in the Daily Notes Updates block.
+        # After the filter above, rendered_actions contains no update_daily
+        # entries — update_daily-only items produce an empty list. Items
+        # that ONLY produce update_daily are "daily-only" → fully captured
+        # by the top block → mark the source for deletion and skip the
+        # per-item section. Items that also produce a non-daily action
+        # (create_atomic_note, etc.) still get a per-item section; the
+        # atomic decision lives there, the daily decision stays at the top.
+        if had_update_daily and not rendered_actions:
             daily_only_stems.add(stem)
-        if rendered_actions and has_non_daily:
+        if rendered_actions:
             sections.append({
                 "id": section_id,
                 "stem": stem,
@@ -626,19 +661,45 @@ def main() -> int:
         daily_notes_updates_sorted, daily_only_stems=daily_only_stems
     )
 
+    # XDD 012 fan-resolve: drop the aggregated blocks the resolve doc
+    # doesn't need. Keep sections (atomic proposals) and override the
+    # precedence note so the user sees what this doc is for.
+    if args.fan_resolve:
+        daily_notes_updates = []
+        rendered_daily_updates_md = ""
+        proposed_mocs = []
+        needs_attention = []
+        precedence_note = (
+            "This is a **Force-Atomic Resolve** doc. Tomo noticed you ticked "
+            "**Force Atomic Note** on log entries whose inbox items had no "
+            "atomic-note proposal in the primary suggestions doc. Each section "
+            "below is a freshly-proposed atomic for one of those items. Review, "
+            "approve (or skip) the proposals, then tick **[x] Approved** at the "
+            "top and re-run `/inbox` — Pass 2 will merge these approvals back "
+            "into the primary doc and render instructions for both together."
+        )
+        doc_variant = "fan-resolve"
+    else:
+        precedence_note = (
+            "Daily-note decisions (trackers, log entries, log links) live in the "
+            "Daily Notes Updates block above. Per-item Suggestion sections only "
+            "cover the atomic-note decision. Use **Force Atomic Note** on a log "
+            "entry to create a standalone note even when the item was only "
+            "proposed for the daily log."
+        )
+        doc_variant = "primary"
+
     doc = {
         "schema_version": "1",
         "generated": now_iso(),
         "run_id": args.run_id,
         "profile": args.profile,
+        "doc_variant": doc_variant,  # XDD 012 — primary | fan-resolve
         "source_items": len(done_stems) + len(failed_entries),
         "sections": sections,
         "daily_notes_updates": daily_notes_updates,
         "rendered_daily_updates_md": rendered_daily_updates_md,
-        "decision_precedence_note": (
-            "If you Accept in either the Daily Notes Updates block or the per-item Material block, "
-            "the decision is captured once. Top-of-doc block takes precedence if both are checked."
-        ),
+        "decision_precedence_note": precedence_note,
         "proposed_mocs": proposed_mocs,
         "needs_attention": needs_attention,
     }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 0.4.0
+# version: 0.6.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -279,6 +279,7 @@ def build_tracker_fields(vault_cfg: dict) -> list[dict]:
 _DAILY_LOG_DEFAULTS: dict = {
     "section": "Daily Log",
     "heading_level": 1,
+    "date_sources": ["content", "frontmatter", "filename"],
     "time_extraction": {
         "enabled": True,
         "sources": ["content", "filename"],
@@ -326,7 +327,20 @@ def build_daily_notes(vault_cfg: dict) -> dict | None:
     return {
         "enabled": True,
         "path_pattern": f"{daily_path}{daily_pattern}".replace("//", "/"),
-        "date_formats": [daily_pattern, "YYYYMMDD", "DD-MM-YYYY"],
+        # Patterns Step 8 of inbox-analyst uses to detect dates in
+        # filename/frontmatter/content. `daily_pattern` drives daily-note filename matching;
+        # the rest cover natural-language date mentions in German / European notes:
+        #   "2026-03-30", "20260330", "30-03-2026" (existing)
+        #   "30.03.2026", "30.03.26", "30.03." — German short forms, year-less OK (→ current year)
+        #   "30/03/2026" — European slash form
+        # The LLM in inbox-analyst is expected to match these literally, so narrow and
+        # explicit patterns here are better than generic regex.
+        "date_formats": [
+            daily_pattern, "YYYYMMDD", "DD-MM-YYYY",
+            "DD.MM.YYYY", "DD.MM.YY", "DD.MM.",
+            "D.M.YYYY", "D.M.",
+            "DD/MM/YYYY", "DD/MM",
+        ],
         "tracker_fields": build_tracker_fields(vault_cfg),
         "daily_log": build_daily_log(vault_cfg),
     }

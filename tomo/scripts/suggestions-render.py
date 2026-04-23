@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -37,9 +37,14 @@ def render_frontmatter(d: dict) -> list[str]:
 
 def render_header(d: dict) -> list[str]:
     date = d["generated"][:10]
+    variant = d.get("doc_variant", "primary")
+    if variant == "fan-resolve":
+        h1 = f"# Inbox Suggestions — Force-Atomic Resolve — {date}"
+    else:
+        h1 = f"# Inbox Suggestions — {date}"
     lines = [
         "",
-        f"# Inbox Suggestions — {date}",
+        h1,
         "",
         "- [ ] Approved — check this box when you have finished reviewing, then run `/inbox` for Pass 2",
         "",

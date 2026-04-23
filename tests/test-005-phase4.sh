@@ -23,7 +23,7 @@ FAILED=0
 PYTHON="python3"
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
-FIXTURE_SRC="$REPO_ROOT/scripts/fixtures/test-005-phase4"
+FIXTURE_SRC="$REPO_ROOT/tests/fixtures/test-005-phase4"
 FIXTURE_DIR="${TMPDIR:-/tmp}/tomo-005-phase4-fixtures"
 rm -rf "$FIXTURE_DIR"
 mkdir -p "$FIXTURE_DIR/items"
@@ -46,7 +46,7 @@ cp "$FIXTURE_SRC/workout_notes_log_entry_next_day.json" "$ITEMS_DIR/workout-note
 # ── Run reducer ───────────────────────────────────────────────────────────
 printf "\n${C_DIM}── Running reducer${C_RESET}\n"
 STDERR_R="$FIXTURE_DIR/reducer.log"
-if "$PYTHON" "$REPO_ROOT/scripts/suggestions-reducer.py" \
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/suggestions-reducer.py" \
     --state "$STATE" \
     --items-dir "$ITEMS_DIR" \
     --run-id test-phase4 \
@@ -75,7 +75,7 @@ fi
 printf "\n${C_DIM}── Test 2: render rules — Create-first, header omission, null time${C_RESET}\n"
 STDERR2="$FIXTURE_DIR/t2.log"
 if "$PYTHON" "$FIXTURE_SRC/assert_render_rules.py" \
-    "$REPO_ROOT/scripts/suggestions-reducer.py" \
+    "$REPO_ROOT/tomo/scripts/suggestions-reducer.py" \
     2>"$STDERR2"; then
     pass "exists=false → Create-first; empty trackers omitted; null time → end of day"
 else
@@ -105,7 +105,7 @@ PY
 # ── Test 4: empty trackers → Trackers header omitted in rendered block ────
 printf "\n${C_DIM}── Test 4: empty trackers → Trackers header omitted${C_RESET}\n"
 STDERR4="$FIXTURE_DIR/t4.log"
-"$PYTHON" - "$OUT_DOC" "$REPO_ROOT/scripts/suggestions-reducer.py" <<'PY' 2>"$STDERR4" && pass "workout-notes (no trackers) renders without Trackers header" || { fail "tracker-omission check failed"; cat "$STDERR4" >&2; }
+"$PYTHON" - "$OUT_DOC" "$REPO_ROOT/tomo/scripts/suggestions-reducer.py" <<'PY' 2>"$STDERR4" && pass "workout-notes (no trackers) renders without Trackers header" || { fail "tracker-omission check failed"; cat "$STDERR4" >&2; }
 import json, sys, importlib.util
 doc = json.load(open(sys.argv[1]))
 
@@ -135,28 +135,28 @@ PY
 
 # ── Test 6: spec-005 Phase 1-3 regression ────────────────────────────────
 printf "\n${C_DIM}── Test 6a: spec-005 phase 1 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-005-phase1.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-005-phase1.sh" >/dev/null 2>&1; then
     pass "test-005-phase1.sh passes"
 else
     fail "test-005-phase1.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-005-phase1.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-005-phase1.sh" >&2 || true
 fi
 
 printf "\n${C_DIM}── Test 6b: spec-005 phase 3 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-005-phase3.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-005-phase3.sh" >/dev/null 2>&1; then
     pass "test-005-phase3.sh passes"
 else
     fail "test-005-phase3.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-005-phase3.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-005-phase3.sh" >&2 || true
 fi
 
 # ── Test 7: spec-004 regression ──────────────────────────────────────────
 printf "\n${C_DIM}── Test 7: spec-004 phase 3 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-004-phase3.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-004-phase3.sh" >/dev/null 2>&1; then
     pass "test-004-phase3.sh passes"
 else
     fail "test-004-phase3.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-004-phase3.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-004-phase3.sh" >&2 || true
 fi
 
 echo ""

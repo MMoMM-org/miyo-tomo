@@ -1,7 +1,7 @@
 ---
 title: "Voice Memo Transcription — Solution Design"
 status: draft
-version: "0.1"
+version: "0.2"
 ---
 
 # Solution Design Document
@@ -57,15 +57,20 @@ version: "0.1"
   `VOICE_ENABLED=1` build arg is set.
 
 ### Runtime-side
-- **`scripts/voice-transcribe.py`** — CLI. Reads audio path from argv, prints
-  rendered markdown to stdout. Scratch writes (if any) under `tomo-tmp/`.
-  Never touches the vault.
+- **`scripts/voice-transcribe.py`** — **Batch CLI**. Variadic: takes N audio
+  paths, loads the Whisper model **once**, transcribes all inputs in order,
+  emits a JSON manifest on stdout (per-file markdown + status). Exits when
+  done — OS reclaims model RAM automatically. Scratch writes (if any) under
+  `tomo-tmp/`. Never touches the vault.
 - **`scripts/lib/voice_transcriber.py`** — thin wrapper over
   `faster_whisper.WhisperModel`. Returns a `TranscriptResult` dataclass
-  (segments + metadata).
+  (segments + metadata). `load_model()` called once per CLI run; reused
+  across all transcriptions in that run.
 - **`scripts/lib/voice_render.py`** — deterministic markdown renderer:
   `TranscriptResult` → markdown string (same pattern as `instruction-render.py`).
-- **`voice-transcriber` agent** — orchestrates discovery and kado-write calls.
+- **`voice-transcriber` agent** — discovers audio files, invokes the batch CLI
+  **once** with the full list, parses the JSON manifest, and performs one
+  `kado-write` per successful entry (plus error-marker writes on failures).
   Invoked by `inbox-orchestrator` as pre-Phase-0 step.
 
 ## Install Wizard Flow
@@ -236,10 +241,31 @@ def render_markdown(result: TranscriptResult) -> str:
 
 ```python
 #!/usr/bin/env python3
-# version: 0.1.0
-"""CLI: transcribe one audio file, emit rendered markdown to stdout.
+# version: 0.2.0
+"""Batch CLI: transcribe one or more audio files in a single process.
 
-Usage: voice-transcribe.py <audio_path> [--model-dir PATH] [--language LANG]
+Loads the Whisper model once, iterates all inputs, emits a JSON manifest
+on stdout describing per-file results. When the process exits, the OS
+releases the model's RAM — no separate unload step needed.
+
+Usage: voice-transcribe.py <audio_path>... [--model-dir PATH] [--language LANG]
+
+Stdout (always valid JSON, exit 0 unless fatal):
+  {
+    "model_dir": "/tomo/voice/models/faster-whisper-medium",
+    "results": [
+      {"audio": "memo-1.m4a", "target": "memo-1.md",
+       "markdown": "...", "error": null},
+      {"audio": "memo-2.m4a", "target": "memo-2.md",
+       "markdown": null,
+       "error": {"code": "transcription-error", "detail": "..."}}
+    ]
+  }
+
+Exit codes:
+  0 — process completed (individual file errors appear inside results[].error)
+  2 — CLI usage error (no inputs, invalid args)
+  3 — model-dir missing or unreadable (fatal, nothing attempted)
 """
 import sys, json, argparse
 from pathlib import Path
@@ -250,18 +276,34 @@ MODEL_DIR_DEFAULT = Path("/tomo/voice/models/faster-whisper-medium")
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("audio_path", type=Path)
+    p.add_argument("audio_paths", type=Path, nargs="+")
     p.add_argument("--model-dir", type=Path, default=MODEL_DIR_DEFAULT)
     p.add_argument("--language", default=None)
     args = p.parse_args()
 
-    if not args.audio_path.exists():
-        print(json.dumps({"error": "audio_not_found"}), file=sys.stderr)
-        sys.exit(2)
+    if not args.model_dir.exists():
+        print(json.dumps({"error": "model_dir_missing",
+                          "detail": str(args.model_dir)}), file=sys.stderr)
+        sys.exit(3)
 
-    model = load_model(args.model_dir)
-    result = transcribe(model, args.audio_path, language=args.language)
-    sys.stdout.write(render_markdown(result))
+    model = load_model(args.model_dir)  # ONE load for the whole batch
+    results = []
+    for audio in args.audio_paths:
+        entry = {"audio": audio.name, "target": f"{audio.stem}.md",
+                 "markdown": None, "error": None}
+        if not audio.exists():
+            entry["error"] = {"code": "audio_not_found", "detail": str(audio)}
+        else:
+            try:
+                r = transcribe(model, audio, language=args.language)
+                entry["markdown"] = render_markdown(r)
+            except Exception as e:
+                entry["error"] = {"code": "transcription_error",
+                                  "detail": f"{type(e).__name__}: {e}"}
+        results.append(entry)
+
+    json.dump({"model_dir": str(args.model_dir), "results": results},
+              sys.stdout)
 
 if __name__ == "__main__":
     main()
@@ -274,11 +316,20 @@ New agent at `tomo/dot_claude/agents/voice-transcriber.md`.
 Responsibilities:
 - Check `tomo-install.json :: voice.enabled`. If false → return empty summary.
 - `kado-search` inbox directory for audio extensions (`.m4a .mp3 .wav .ogg .opus .flac .aac`).
-- For each audio path:
-  1. Check if sibling `.md` already exists via `kado-read`. If yes → skip.
-  2. Invoke `Bash`: `python3 scripts/voice-transcribe.py <path>` (one command per call, per existing orchestrator guardrails).
-  3. Parse stdout → pass to `kado-write` for `<basename>.md`.
-  4. On non-zero exit: call `kado-write` with error marker markdown (`<basename>.transcribe-error.md`).
+- Filter: for each candidate, `kado-read` to check sibling `.md` already exists.
+  Drop already-transcribed paths — produces `todo[]`.
+- If `todo[]` is empty → return summary with `skipped = all_found, transcribed = 0`.
+- **Single** `Bash` call: `python3 scripts/voice-transcribe.py <path1> <path2> ...`
+  (all todo paths in one invocation; model loads once). Respects the "one
+  command per Bash call" orchestrator rule — still one call, just variadic args.
+- Parse stdout JSON manifest:
+  - For each `results[i]` with `markdown != null` → `kado-write` sibling
+    `<target>` with the rendered markdown.
+  - For each `results[i]` with `error != null` → `kado-write`
+    `<basename>.transcribe-error.md` containing the error code + detail.
+- On CLI non-zero exit (fatal, e.g. model-dir missing) → log warning, return
+  `{ transcribed: 0, skipped: N, errors: [{reason: <code>}] }`; orchestrator
+  continues — graceful degrade.
 - Return JSON summary: `{ transcribed: N, skipped: M, errors: [...] }`.
 
 ## Orchestrator Integration
@@ -295,29 +346,38 @@ Phase 0 (NEW, conditional):
 
 No changes to Phase A/B/C beyond that.
 
-## Data Flow (one audio file)
+## Data Flow (batch of N audio files)
 
 ```
-user drops memo.m4a in inbox
+user drops memo-1.m4a, memo-2.m4a in inbox
   │
 /inbox runs
   │
 orchestrator → voice-transcriber agent
                  │
-                 ├─ kado-search *.m4a → [memo.m4a]
-                 ├─ kado-read memo.md → not found
-                 ├─ Bash: python3 voice-transcribe.py memo.m4a
+                 ├─ kado-search *.{m4a,mp3,wav,...} → [memo-1.m4a, memo-2.m4a]
+                 ├─ kado-read memo-1.md / memo-2.md → none found
+                 ├─ Bash (ONE call): python3 voice-transcribe.py memo-1.m4a memo-2.m4a
                  │   │
-                 │   └─ load model (int8, cpu) → transcribe → render MD
-                 │       stdout: (rendered markdown)
+                 │   ├─ load model ONCE (int8, cpu, ~3-5s cold)
+                 │   ├─ transcribe(memo-1) → render MD
+                 │   ├─ transcribe(memo-2) → render MD
+                 │   ├─ json.dump({results: [...]}) → stdout
+                 │   └─ exit → OS frees model RAM
                  │
-                 └─ kado-write memo.md ← stdout
+                 ├─ parse JSON manifest
+                 ├─ kado-write memo-1.md ← results[0].markdown
+                 ├─ kado-write memo-2.md ← results[1].markdown
                  │
-                 summary: {transcribed: 1, skipped: 0, errors: []}
+                 summary: {transcribed: 2, skipped: 0, errors: []}
   │
 orchestrator → Phase A (shared-ctx), B (fan-out), C (reduce + render)
-  └─ memo.md is now one of the fleeting notes analyzed by inbox-analyst
+  └─ memo-1.md, memo-2.md are now fleeting notes analyzed by inbox-analyst
 ```
+
+**Why batch**: Cold-start cost (~3–5 s) amortised across N files. No daemon,
+no IPC, no lifecycle — the Python process exits and the OS reclaims ~2 GB RAM
+automatically. Same simplicity as per-file CLI, without the per-file reload.
 
 ## Config Schema
 
@@ -388,8 +448,9 @@ tomo-instance/                             (at runtime)
 |---|---|
 | 5-min voice memo, medium model, M-series CPU, int8 | ≤ 5 min wall-clock |
 | 30-sec voice memo (typical "thought capture") | ≤ 45 sec wall-clock |
-| Cold model load on first call | ≤ 5 sec |
-| Subsequent calls (model cached in WhisperModel singleton) | negligible load |
+| Cold model load, first file of batch | ≤ 5 sec |
+| Subsequent files in same batch (model reused) | no reload cost |
+| Batch of 5 × 30-sec memos | ≤ 5 s load + 5 × ≤ 45 s transcribe |
 
 Actual numbers to verify during plan phase with a real fixture.
 

@@ -34,7 +34,7 @@ fi
 printf "${C_DIM}python: %s${C_RESET}\n" "$PYTHON"
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
-FIXTURE_SRC="$REPO_ROOT/scripts/fixtures/test-005-phase3"
+FIXTURE_SRC="$REPO_ROOT/tests/fixtures/test-005-phase3"
 FIXTURE_DIR="${TMPDIR:-/tmp}/tomo-005-phase3-fixtures"
 rm -rf "$FIXTURE_DIR"
 mkdir -p "$FIXTURE_DIR"
@@ -45,7 +45,7 @@ cp "$FIXTURE_SRC/"*.json "$FIXTURE_DIR/" 2>/dev/null || true
 printf "\n${C_DIM}── Test 1: run-log — tracker + log_entry${C_RESET}\n"
 F1="$FIXTURE_DIR/run_log_tracker_plus_log_entry.json"
 STDERR1="$FIXTURE_DIR/t1.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" --result "$F1" 2>"$STDERR1"; then
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" --result "$F1" 2>"$STDERR1"; then
     pass "run-log: schema valid"
 else
     fail "run-log: schema validation failed"
@@ -84,7 +84,7 @@ PY
 printf "\n${C_DIM}── Test 2: reading-notes — atomic + log_link${C_RESET}\n"
 F2="$FIXTURE_DIR/reading_notes_atomic_plus_log_link.json"
 STDERR2="$FIXTURE_DIR/t2.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" --result "$F2" 2>"$STDERR2"; then
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" --result "$F2" 2>"$STDERR2"; then
     pass "reading-notes: schema valid"
 else
     fail "reading-notes: schema validation failed"
@@ -116,7 +116,7 @@ PY
 printf "\n${C_DIM}── Test 3: year-old item — no update_daily${C_RESET}\n"
 F3="$FIXTURE_DIR/year_old_no_daily.json"
 STDERR3="$FIXTURE_DIR/t3.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" --result "$F3" 2>"$STDERR3"; then
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" --result "$F3" 2>"$STDERR3"; then
     pass "year-old: schema valid"
 else
     fail "year-old: schema validation failed"
@@ -135,7 +135,7 @@ PY
 printf "\n${C_DIM}── Test 4: multi-date log — N update_daily actions${C_RESET}\n"
 F4="$FIXTURE_DIR/multi_date_log.json"
 STDERR4="$FIXTURE_DIR/t4.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" --result "$F4" 2>"$STDERR4"; then
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" --result "$F4" 2>"$STDERR4"; then
     pass "multi-date: schema valid"
 else
     fail "multi-date: schema validation failed"
@@ -167,7 +167,7 @@ PY
 printf "\n${C_DIM}── Test 5: prose with dates — single most-recent date${C_RESET}\n"
 F5="$FIXTURE_DIR/prose_with_dates.json"
 STDERR5="$FIXTURE_DIR/t5.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" --result "$F5" 2>"$STDERR5"; then
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" --result "$F5" 2>"$STDERR5"; then
     pass "prose-dates: schema valid"
 else
     fail "prose-dates: schema validation failed"
@@ -186,7 +186,7 @@ PY
 printf "\n${C_DIM}── Test 6: filename with time — time extraction${C_RESET}\n"
 F6="$FIXTURE_DIR/filename_with_time.json"
 STDERR6="$FIXTURE_DIR/t6.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" --result "$F6" 2>"$STDERR6"; then
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" --result "$F6" 2>"$STDERR6"; then
     pass "filename-time: schema valid"
 else
     fail "filename-time: schema validation failed"
@@ -206,7 +206,7 @@ PY
 printf "\n${C_DIM}── Test 6b: sleep tracker-only — tracker only, no log_entry${C_RESET}\n"
 F6B="$FIXTURE_DIR/sleep_tracker_only.json"
 STDERR6B="$FIXTURE_DIR/t6b.log"
-if "$PYTHON" "$REPO_ROOT/scripts/validate-result.py" --result "$F6B" 2>"$STDERR6B"; then
+if "$PYTHON" "$REPO_ROOT/tomo/scripts/validate-result.py" --result "$F6B" 2>"$STDERR6B"; then
     pass "sleep-tracker-only: schema valid"
 else
     fail "sleep-tracker-only: schema validation failed"
@@ -246,28 +246,28 @@ PY
 
 # ── Test 8: Spec-005 Phase 1+2 regression ────────────────────────────────
 printf "\n${C_DIM}── Test 8a: spec-005 phase 1 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-005-phase1.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-005-phase1.sh" >/dev/null 2>&1; then
     pass "test-005-phase1.sh passes"
 else
     fail "test-005-phase1.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-005-phase1.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-005-phase1.sh" >&2 || true
 fi
 
 printf "\n${C_DIM}── Test 8b: spec-005 phase 2 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-005-phase2.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-005-phase2.sh" >/dev/null 2>&1; then
     pass "test-005-phase2.sh passes"
 else
     fail "test-005-phase2.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-005-phase2.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-005-phase2.sh" >&2 || true
 fi
 
 # ── Test 9: Spec-004 regression ──────────────────────────────────────────
 printf "\n${C_DIM}── Test 9: spec-004 phase 3 regression${C_RESET}\n"
-if bash "$REPO_ROOT/scripts/test-004-phase3.sh" >/dev/null 2>&1; then
+if bash "$REPO_ROOT/tests/test-004-phase3.sh" >/dev/null 2>&1; then
     pass "test-004-phase3.sh passes"
 else
     fail "test-004-phase3.sh regression failure"
-    bash "$REPO_ROOT/scripts/test-004-phase3.sh" >&2 || true
+    bash "$REPO_ROOT/tests/test-004-phase3.sh" >&2 || true
 fi
 
 echo ""

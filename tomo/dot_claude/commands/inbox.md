@@ -1,8 +1,38 @@
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.4.0 (Pass 1 uses fan-out orchestrator, spec 004)
+# version: 0.6.0 (XDD 012 — auto-detect pairs `*_suggestions.md` + `*_suggestions-fan.md`; instruction-builder reconciles)
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.
+
+## STRICT — How to Run This Command
+
+**You (the Claude session reading this command) run the orchestration
+logic DIRECTLY in your own context.** The inbox-orchestrator agent
+definition at `.claude/agents/inbox-orchestrator.md` is the SPEC you
+follow — treat its "Workflow" section as your instructions.
+
+**NEVER** dispatch `inbox-orchestrator` via the `Agent` / `Task` tool.
+Nested Agent-dispatches don't work in Claude Code (subagents cannot
+spawn further subagents), and the `inbox-orchestrator`'s job requires
+fanning out `inbox-analyst` subagents — so if you spawn the
+orchestrator as a subagent, Phase B fails with "Agent tool not
+available" and the pipeline stalls with no output written.
+
+Concrete mapping:
+- `inbox-orchestrator.md` Workflow Phase 0a / 0b / A / B / C → YOUR steps
+- Phase B's `inbox-analyst` fan-out → dispatched by YOU via the `Agent`
+  tool (3-5 in parallel, per `inbox-orchestrator.md` spec)
+- Phase 0a's `voice-transcriber` dispatch (if voice enabled) →
+  also by YOU via the `Agent` tool
+
+In other words: the inbox-orchestrator is the ONLY agent on your
+workflow that you IMPERSONATE rather than DISPATCH. Every other
+subagent mentioned in its spec (`inbox-analyst`, `voice-transcriber`)
+is dispatched normally.
+
+The same rule applies to `instruction-builder` (Pass 2) and
+`vault-executor` (cleanup) — you impersonate them, dispatching only
+their explicitly-subagent-marked steps.
 
 ## Usage
 
@@ -38,26 +68,33 @@ After Step 0 resolves the inbox path, the command checks in priority order:
    - Any with at least one Applied → cleanup
 2. **Suggestions with `[x] Approved`?** → Run Pass 2 (instruction-builder)
    - Scan the resolved inbox path for `*_suggestions.md` via Kado `listDir`
+     (this glob matches both primary `*_suggestions.md` and companion
+     `*_suggestions-fan.md` — XDD 012)
    - Read each, check for `- [x] Approved` at top
-3. **Captured source items?** → Run Pass 1 via `inbox-orchestrator`
-   - Dispatches to the `inbox-orchestrator` agent, which runs the fan-out
-     pipeline: Phase A (shared-ctx + state-file) → Phase B (parallel
-     `inbox-analyst` subagents, 3-5 at a time) → Phase C (reduce + render
-     + `kado-write` final Suggestions doc)
-   - Resumable: if a prior run's `tomo-tmp/inbox-state.jsonl` exists, the
-     orchestrator asks via AskUserQuestion (Resume / Fresh run / Inspect)
+   - When BOTH a primary doc and an approved companion `*_suggestions-fan.md`
+     exist, they are a reconciliation pair — `instruction-builder` Step 2
+     handles the pairing internally by reading both files into `tomo-tmp/`
+     and passing `--fan-resolve-file` to the parser.
+3. **Captured source items?** → Run Pass 1 directly in your context,
+   following `inbox-orchestrator.md` as your spec (do NOT Agent-dispatch it):
+     - Phase 0a: if voice enabled, dispatch `voice-transcriber` via Agent
+     - Phase 0b: resume detection via AskUserQuestion (Resume / Fresh / Inspect)
+     - Phase A: build shared-ctx + state-file directly (Bash calls)
+     - Phase B: dispatch `inbox-analyst` subagents via Agent (3-5 parallel)
+     - Phase C: reduce + render + kado-write final Suggestions doc
 4. **Nothing pending?** → Report "Inbox clear. Nothing to process."
 
 ### Pass 1 — Suggestions (fan-out)
 
-1. `/inbox` dispatches to the **inbox-orchestrator** agent
-2. Phase A: orchestrator builds `tomo-tmp/shared-ctx.json` and
-   `tomo-tmp/inbox-state.jsonl`
-3. Phase B: orchestrator spawns `inbox-analyst` subagents in batches of 3-5.
-   Each subagent reads one item, classifies it, writes
+1. `/inbox` → you impersonate the `inbox-orchestrator` spec (NEVER
+   Agent-dispatch it — see STRICT section above)
+2. Phase A: build `tomo-tmp/shared-ctx.json` and
+   `tomo-tmp/inbox-state.jsonl` via Bash calls
+3. Phase B: dispatch `inbox-analyst` subagents via the `Agent` tool in
+   batches of 3-5. Each subagent reads one item, classifies it, writes
    `tomo-tmp/items/<stem>.result.json`, updates the state-file
-4. Phase C: orchestrator runs `suggestions-reducer.py`, renders markdown,
-   writes the final `YYYY-MM-DD_HHMM_suggestions.md` via `kado-write`
+4. Phase C: run `suggestions-reducer.py`, render markdown, write the
+   final `YYYY-MM-DD_HHMM_suggestions.md` via `kado-write`
 5. Document contains visible `- [ ] Approved` checkbox + per-action tri-state
    decision checkboxes (Approve / Skip / Delete source)
 6. **You review in Obsidian**, edit, check decisions

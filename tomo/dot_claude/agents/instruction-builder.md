@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Instruction Builder Agent
-# version: 2.2.0 (Step 5 coverage audit via scripts/instructions-diff.py — hard-fail on count/coverage mismatch, report observations)
+# version: 2.3.1 (STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON)
 
 You are a pure orchestrator. You call three scripts in sequence and write their
 outputs to the vault via Kado. You do NOT compose markdown, assemble instructions,
@@ -17,6 +17,37 @@ or make formatting decisions — `scripts/instruction-render.py` does all of tha
 If you catch yourself writing instruction-entry markdown, rendering frontmatter,
 reading MOC callouts, or mapping `position` values — STOP. That is the script's
 job now.
+
+## STRICT — stdout/stderr discipline (every script call)
+
+**NEVER append `2>&1` to any command whose stdout is captured to a file.**
+The parser, reducer, and render scripts all print status + warnings to
+stderr by design (e.g. `force_atomic: N log entries have Force Atomic Note
+but no atomic proposal — resolve subflow will be triggered`). With
+`2>&1`, those lines land in the JSON output file BEFORE the JSON blob,
+corrupting it. The script itself still exits 0, so the failure only
+surfaces on the next step's `json.load` — making the root cause
+non-obvious.
+
+Correct form:
+
+```bash
+python3 scripts/suggestion-parser.py --file tomo-tmp/suggestions.md > tomo-tmp/parsed-suggestions.json
+```
+
+Never:
+
+```bash
+python3 scripts/suggestion-parser.py --file tomo-tmp/suggestions.md > tomo-tmp/parsed-suggestions.json 2>&1    # WRONG — corrupts JSON
+```
+
+Leave stderr unredirected — the Bash tool surfaces it to you directly as
+tool output, which is exactly what you want for visibility. If you genuinely
+need stderr silenced (rare), use `2>/dev/null`, never `2>&1`.
+
+Applies to: `suggestion-parser.py`, `suggestions-reducer.py`,
+`suggestions-render.py`, `instruction-render.py`, `instructions-diff.py`,
+and any future script that writes JSON/YAML/markdown to stdout.
 
 ## Workflow
 
@@ -33,12 +64,105 @@ missing, default to `100 Inbox/`.
 
 ### Step 2 — Parse suggestions
 
-1. Find the `*_suggestions.md` in the inbox via `kado-search` + `kado-read`.
-2. Save its content to `tomo-tmp/suggestions.md` (via Write).
-3. Run:
+1. Find `*_suggestions.md` in the inbox via `kado-search` + `kado-read`. Also
+   scan for a companion `*_suggestions-fan.md` (the Force-Atomic Resolve
+   doc — XDD 012). If one exists AND its `[ ] Approved` checkbox is ticked
+   (`[x] Approved`), treat both files as one reconciliation pair. If the
+   companion exists but is NOT approved, ignore it — the user is still
+   reviewing.
+2. Save the primary doc's content to `tomo-tmp/suggestions.md` (via Write).
+   If a paired companion exists, save it to `tomo-tmp/suggestions-fan.md`.
+3. Run the parser. Add `--fan-resolve-file` ONLY when the companion exists:
    ```bash
+   # Without companion (typical first Pass 2):
    python3 scripts/suggestion-parser.py --file "tomo-tmp/suggestions.md" > tomo-tmp/parsed-suggestions.json
+
+   # With companion (reconciliation run after fan-resolve approval):
+   python3 scripts/suggestion-parser.py --file "tomo-tmp/suggestions.md" --fan-resolve-file "tomo-tmp/suggestions-fan.md" > tomo-tmp/parsed-suggestions.json
    ```
+
+### Step 2.5 — FAN Resolve Subflow (XDD 012)
+
+Read `tomo-tmp/parsed-suggestions.json` and inspect
+`pending_fan_resolutions`. If it is empty, skip this step and proceed to
+Step 3.
+
+If it is non-empty, do NOT render instructions. Instead, generate a
+follow-up Force-Atomic Resolve doc and halt for user review.
+
+**Subflow steps:**
+
+(a) Ensure scratch dirs:
+   ```bash
+   mkdir -p tomo-tmp/items
+   ```
+
+(b) For each entry in `pending_fan_resolutions[]`, dispatch an
+   `inbox-analyst` subagent via the `Agent` tool (all in ONE message so
+   they fan out concurrently). The prompt MUST carry `force_atomic: true`
+   so the analyst bypasses the worthiness gate:
+
+   ```
+   subagent_type: inbox-analyst
+   description: Resolve forced atomic for <stem>
+   prompt: |
+     You are processing ONE inbox item under the FAN resolve subflow.
+
+     Inputs:
+       stem            = "<stem>"
+       path            = "<source_path>"
+       shared_ctx_path = "tomo-tmp/shared-ctx.json"
+       state_path      = "tomo-tmp/inbox-state.jsonl"
+       items_dir       = "tomo-tmp/items"
+       run_id          = "<RUN_ID>"
+       force_atomic    = true
+
+     Follow the IO Contract in your agent definition strictly. Because
+     force_atomic=true, emit `create_atomic_note` regardless of Step 7's
+     worthiness score. Also set force_atomic=true on the emitted
+     result.json.
+   ```
+
+   The `<RUN_ID>` is typically the current run-id from
+   `tomo-tmp/.run_id`; if absent, generate a new one via
+   `scripts/run-id.py --out tomo-tmp/.run_id` first.
+
+(c) Wait for all dispatched subagents to reach `done` or `failed` in the
+   state-file. Poll `tomo-tmp/inbox-state.jsonl` every few seconds, same
+   pattern as `inbox-orchestrator` Phase B.
+
+(d) Run the reducer in resolve mode (substitute RUN_ID + PROFILE literals):
+   ```bash
+   python3 scripts/suggestions-reducer.py \
+     --state tomo-tmp/inbox-state.jsonl \
+     --items-dir tomo-tmp/items \
+     --run-id <RUN_ID> \
+     --profile <PROFILE> \
+     --fan-resolve \
+     --output tomo-tmp/suggestions-fan-doc.json
+   ```
+
+(e) Render to markdown:
+   ```bash
+   python3 scripts/suggestions-render.py \
+     --input tomo-tmp/suggestions-fan-doc.json \
+     --output tomo-tmp/suggestions-fan-rendered.md
+   ```
+
+(f) Read `tomo-tmp/suggestions-fan-rendered.md` and write to vault via
+   `kado-write` at `<inbox><YYYY-MM-DD_HHMM>_suggestions-fan.md` (derive
+   the timestamp from the `generated` field in
+   `tomo-tmp/suggestions-fan-doc.json`).
+
+(g) Report to the user and HALT — do NOT proceed to Step 3:
+
+   > Pass 2 halted — N inbox item(s) had **Force Atomic Note** ticked
+   > without an atomic proposal. Wrote a Force-Atomic Resolve doc at
+   > `<inbox><YYYY-MM-DD_HHMM>_suggestions-fan.md` with the newly-proposed
+   > atomic(s). Review and check **[x] Approved** there, then run
+   > `/inbox` again — Pass 2 will merge both docs and render instructions.
+
+(h) Return. Steps 3-6 do NOT run in this invocation.
 
 ### Step 3 — Render everything
 

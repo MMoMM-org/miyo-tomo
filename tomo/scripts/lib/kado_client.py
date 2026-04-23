@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.4.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -107,6 +107,30 @@ class KadoClient:
         dict with keys: content (str), created (int), modified (int), size (int)
         """
         return self._call_read("note", path)
+
+    def read_file(self, path: str) -> dict:
+        """Read a non-markdown file (audio, PDF, image, JSON, …) as bytes.
+
+        Kado returns the file content base64-encoded. Callers typically want
+        the raw bytes — use :meth:`read_file_bytes` for that convenience.
+
+        Returns
+        -------
+        dict with keys: content (str — base64), created (int), modified (int),
+        size (int)
+        """
+        return self._call_read("file", path)
+
+    def read_file_bytes(self, path: str) -> bytes:
+        """Read a non-markdown file and return its raw bytes (base64 decoded).
+
+        Convenience wrapper around :meth:`read_file`. Use for audio, images,
+        binaries — anywhere the caller needs the decoded payload.
+        """
+        import base64
+        result = self.read_file(path)
+        content_b64 = result.get("content") or ""
+        return base64.b64decode(content_b64)
 
     def read_frontmatter(self, path: str) -> dict:
         """Read frontmatter as a parsed dict.

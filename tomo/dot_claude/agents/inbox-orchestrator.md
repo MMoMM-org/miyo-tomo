@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.6.0 (Phase D merged into Phase C; Agent tool hallucination guard)
+# version: 0.8.2 (STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON)
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -32,6 +32,14 @@ and assemble results. You do NOT classify items yourself — that is the
 - Scratch writes ONLY under `tomo-tmp/`. Use the `Write` tool for these.
 - NEVER append `2>&1; echo "EXIT:$?"` to Bash commands. The validator rejects
   it; run commands plain.
+- **NEVER append `2>&1` to any command whose stdout is captured to a file**
+  (`> tomo-tmp/*.json`, `> tomo-tmp/*.yaml`, etc.). Tomo's Python scripts
+  print status + warnings to stderr by design; merging stderr into stdout
+  corrupts the captured JSON/YAML. The script exits 0 (it worked), so the
+  failure surfaces opaquely on the next step's `json.load`. Leave stderr
+  unredirected — the Bash tool already shows it to you as tool output.
+  If you genuinely must silence stderr (rare), use `2>/dev/null`, never
+  `2>&1`. Applies to all stdout-captured pipelines.
 - **ONE command per Bash tool call. NEVER chain with `&&`, `;`, or `||`.**
   Compound commands with inline `python3 -c "..."` or `$(...)` substitutions
   trip the Bash validator ("Unhandled node type: string") and force approval
@@ -59,6 +67,10 @@ and assemble results. You do NOT classify items yourself — that is the
   requires fan-out via `Agent` tool dispatches in batches. If you find
   yourself reading item contents and classifying them inline, STOP — you
   are bypassing the pipeline. Dispatch `inbox-analyst` subagents instead.
+- **NEVER transcribe audio yourself.** Audio files (`.m4a .mp3 .wav .ogg
+  .opus .flac .aac`) are handled by the `voice-transcriber` subagent in
+  Phase 0a when the feature is enabled. If voice is disabled, skip Phase
+  0a entirely — do NOT warn, prompt, or attempt inline transcription.
 
 ## Format Rules for the final Suggestions document (STRICT — inherited)
 
@@ -83,7 +95,69 @@ and assemble results. You do NOT classify items yourself — that is the
 
 ## Workflow
 
-### Phase 0 — Resume detection
+### Phase 0a — Voice transcription (conditional, XDD 009)
+
+Runs BEFORE resume detection so newly-written transcripts are visible to
+all downstream phases. Voice is an opt-in feature configured at install
+time; this step is a no-op when disabled.
+
+1. **Check enablement** — `Read` `voice/config.json` (mirrored from
+   `tomo-install.json` at install/update time so runtime agents can
+   read it from inside the instance; `tomo-install.json` lives at the
+   HOST repo root and is not accessible from the container). Inspect
+   `.enabled`:
+   - File missing OR `.enabled = false` → skip Phase 0a entirely. Do
+     NOT invoke the agent, do NOT log a warning. Continue to Phase 0b.
+   - `.enabled = true` → proceed to step 2.
+
+2. **Dispatch the `voice-transcriber` subagent** via the `Agent` tool:
+
+   ```
+   subagent_type: voice-transcriber
+   description: Transcribe inbox audio files
+   prompt: |
+     Run the voice-transcription pre-phase for /inbox. Discover audio
+     files in the inbox, filter already-transcribed, batch-transcribe
+     via scripts/voice-transcribe.py (ONE Bash call), write sibling
+     <basename>.md via kado-write. Return your JSON summary only.
+   ```
+
+   The agent handles all audio discovery, transcription, and writes. You
+   do NOT pass the inbox path in the prompt — the subagent resolves it
+   via `scripts/read-config-field.py` itself.
+
+3. **Parse the JSON summary** returned by the subagent. Expected shape:
+
+   ```json
+   {
+     "transcribed": <N>, "skipped": <M>,
+     "errors": [ {"audio": "...", "reason": "..."} ],
+     "reason": "disabled" | "no_audio" | null
+   }
+   ```
+
+4. **Persist the summary** for the run report:
+
+   ```bash
+   mkdir -p tomo-tmp/voice
+   ```
+
+   Then `Write` the returned JSON to
+   `tomo-tmp/voice/summary.json` (raw — you re-use it in Phase D).
+
+5. **Error policy — voice failures MUST NOT block the text pipeline.**
+   - Subagent returns `errors[]` non-empty → note them for Phase D; do
+     NOT abort. Phase A runs as usual.
+   - Subagent throws / is unreachable → log the exception to
+     `tomo-tmp/voice/summary.json` as
+     `{"transcribed": 0, "skipped": 0, "errors": [{"reason": "agent_failed"}]}`.
+     Continue to Phase 0b.
+
+After Phase 0a, newly-written transcript `.md` files sit next to their
+source audio in the inbox and are indistinguishable from hand-typed
+fleeting notes for the rest of the pipeline.
+
+### Phase 0b — Resume detection
 
 1. Check if `tomo-tmp/inbox-state.jsonl` exists.
 2. If yes, count items by status (reading the last line per stem):
@@ -142,13 +216,66 @@ path literal from Step A0):
 python3 scripts/state-init.py --inbox-path "<INBOX_PATH>" --run-id <RUN_ID> --output tomo-tmp/inbox-state.jsonl
 ```
 
-Resume: skip both. Derive `RUN_ID` from the existing state-file (last entry's
-`run_id`).
+`state-init` prints a single log line on stderr:
+`items_found=<F> items_skipped=<S> already_tagged=<T> run_id=<ID> out=<PATH>`.
+Capture those counters — you need them for the branching in Step A5.
+
+Resume: skip both A3 and A4. Derive `RUN_ID` from the existing state-file
+(last entry's `run_id`).
 
 **Abort conditions** (exit before Phase B):
 - `shared-ctx-builder` nonzero → report error, stop
 - `state-init` nonzero → report error, stop
-- 0 items in state-file → tell user "Inbox is empty", stop
+
+Step A5 — decide whether there's work to do (**MANDATORY — do NOT skip**):
+
+Branch on the state-init counters. The key invariant: the prompt MUST
+fire whenever `already_tagged > 0`, regardless of whether fresh items
+also exist. Otherwise the tagged items silently age out of the user's
+attention on every run.
+
+1. `items_found > 0 && already_tagged == 0` → only fresh work. Proceed
+   directly to Phase B — no prompt needed.
+
+2. `items_found == 0 && already_tagged == 0 && items_skipped == 0` →
+   inbox is truly empty. Report "Inbox is empty" and stop. No prompt.
+
+3. `items_found == 0 && items_skipped > 0 && already_tagged == 0` →
+   only Tomo-generated workflow docs (suggestions/instructions) remain.
+   Report "Inbox has only workflow docs, nothing to process" and stop.
+
+4. `already_tagged > 0` (either alone OR together with fresh items) →
+   **Use AskUserQuestion** to ask the user how to handle the tagged
+   items. NEVER silently process fresh-only when tagged items are
+   present; the user generally wants to know they exist.
+
+   - Question text, when `items_found == 0`:
+     "Alle <already_tagged> Inbox-Items sind bereits als captured/active
+     getaggt. Was soll ich tun?"
+   - Question text, when `items_found > 0`:
+     "<items_found> neue Items zu verarbeiten, plus <already_tagged>
+     Items die bereits getaggt sind (captured/active). Was soll ich
+     tun?"
+   - Options (up to 3 — exact set depends on counters):
+     - `Process fresh only` *(only offered when `items_found > 0`)* —
+       standard Pass 1 on just the fresh items, tagged items stay
+       untouched. Use when Pass 2 on them is pending.
+     - `Process fresh + re-process tagged` *(only offered when
+       `items_found > 0 && already_tagged > 0`)* — re-run `state-init`
+       with `--include-captured`, then Phase B runs on BOTH sets.
+     - `Re-process all tagged` *(only offered when `items_found == 0`)*
+       — re-run `state-init --include-captured`, then Phase B.
+     - `Ignore` *(only offered when `items_found == 0`)* — stop with
+       "Skipped — all items already tagged."
+
+   On "Process fresh + re-process tagged" or "Re-process all tagged":
+   re-run `state-init` with `--include-captured`, capture the new
+   counters, proceed to Phase B. The run-id stays the same.
+
+   On "Process fresh only": proceed to Phase B with the current state
+   file (the tagged items aren't in it).
+
+   On "Ignore": stop.
 
 ### Phase B — Fan-out dispatch
 
@@ -253,10 +380,21 @@ Tell the user:
 > [[<date>_suggestions]]. Review in Obsidian and check the **Approved** box
 > when ready, then run `/inbox` for Pass 2."
 
+If `tomo-tmp/voice/summary.json` exists (Phase 0a ran), prepend a brief
+voice line before the suggestions summary:
+
+> "Voice: {transcribed} audio file(s) transcribed, {skipped} already had
+> transcripts{ , N errors}."
+
+Suppress this line entirely when voice was disabled (`reason: "disabled"`)
+or no audio was present (`reason: "no_audio"`) — users who don't use the
+feature shouldn't see status about it.
+
 ## Error Handling
 
 | Error | Handler |
 |---|---|
+| `voice-transcriber` subagent throws / returns errors | Phase 0a only — persist summary, log warning, CONTINUE to Phase 0b/A. Voice MUST NOT block text inbox processing |
 | `shared-ctx-builder` fails | Abort, surface error, do not touch state-file |
 | `state-init` fails | Abort, surface error |
 | Subagent throws mid-batch | Item marked `failed` by subagent or by poll timeout; run continues |

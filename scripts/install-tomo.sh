@@ -3,14 +3,16 @@
 # Copies agents, skills, commands, and configs into the instance directory.
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
-# lifecycle prefix, and vault-config.yaml generation.
-# version: 0.2.0
+# lifecycle prefix, voice transcription, and vault-config.yaml generation.
+# version: 0.3.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOMO_SOURCE="$REPO_ROOT/tomo"
 CONFIG_FILE="$REPO_ROOT/tomo-install.json"
+# Tests override this to an isolated path so they don't clobber the user's
+# real installation metadata. Resolved from --config-file after argv parse.
 PROFILES_DIR="$TOMO_SOURCE/profiles"
 TOMO_VERSION=$(grep -m1 '^# version:' "$TOMO_SOURCE/dot_claude/rules/project-context.md" 2>/dev/null \
     | sed 's/^# version: *//' || echo "0.0.0")
@@ -26,6 +28,11 @@ FLAG_KADO_TOKEN=""
 FLAG_PREFIX=""
 SHOW_HELP=false
 
+FLAG_INSTANCE_LOCATION=""
+FLAG_INSTANCE_NAME=""
+FLAG_HOME_DIR=""
+FLAG_CONFIG_FILE=""
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --vault)       FLAG_VAULT="$2";     shift 2 ;;
@@ -34,6 +41,10 @@ while [ $# -gt 0 ]; do
         --kado-port)   FLAG_KADO_PORT="$2"; shift 2 ;;
         --kado-token)  FLAG_KADO_TOKEN="$2"; shift 2 ;;
         --prefix)      FLAG_PREFIX="$2";    shift 2 ;;
+        --instance-location) FLAG_INSTANCE_LOCATION="$2"; shift 2 ;;
+        --instance-name)     FLAG_INSTANCE_NAME="$2";     shift 2 ;;
+        --home-dir)          FLAG_HOME_DIR="$2";          shift 2 ;;
+        --config-file)       FLAG_CONFIG_FILE="$2";       shift 2 ;;
         --non-interactive) NON_INTERACTIVE=true; shift ;;
         --help|-h)     SHOW_HELP=true;      shift ;;
         *)
@@ -163,6 +174,11 @@ prompt_yn() {
     read -rp "  ${prompt_text} [${default_val}]: " answer
     echo "${answer:-$default_val}"
 }
+
+# Voice transcription wizard (XDD 009) — sets VOICE_ENABLED / VOICE_MODEL /
+# VOICE_LANGUAGE globals. Uses print_step/print_ok/print_warn/print_err.
+# shellcheck source=lib/configure-voice.sh
+. "$SCRIPT_DIR/lib/configure-voice.sh"
 
 # ── Step 1: Welcome ──────────────────────────────────────
 
@@ -717,6 +733,12 @@ else
 fi
 print_ok "Prefix: $TAG_PREFIX"
 
+# Resolve the effective config-file path. Tests pass --config-file to
+# isolate their metadata from the user's real $REPO_ROOT/tomo-install.json.
+if [ -n "$FLAG_CONFIG_FILE" ]; then
+    CONFIG_FILE="$FLAG_CONFIG_FILE"
+fi
+
 # ── Instance directory ────────────────────────────────────
 
 print_step "Instance configuration"
@@ -740,8 +762,21 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 if [ "$REUSE" != "true" ]; then
-    INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
-    INSTANCE_LOCATION=$(prompt_default "Instance location" "$REPO_ROOT")
+    # CLI-flag override takes priority over prompt_default — this lets the
+    # integration test scripts target an isolated tmpdir instead of
+    # overwriting the user's real `$REPO_ROOT/tomo-instance`. The default
+    # path behaviour (and the interactive prompt) are unchanged when the
+    # flags are not passed.
+    if [ -n "$FLAG_INSTANCE_NAME" ]; then
+        INSTANCE_NAME="$FLAG_INSTANCE_NAME"
+    else
+        INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
+    fi
+    if [ -n "$FLAG_INSTANCE_LOCATION" ]; then
+        INSTANCE_LOCATION="$FLAG_INSTANCE_LOCATION"
+    else
+        INSTANCE_LOCATION=$(prompt_default "Instance location" "$REPO_ROOT")
+    fi
     INSTANCE_PATH="$INSTANCE_LOCATION/$INSTANCE_NAME"
 fi
 
@@ -872,6 +907,28 @@ fi
 # for any git ops the user might run there. The instance itself is NOT
 # git-init'd (see 'Writing instance .gitignore' step below).
 
+# ── Step 6c: Voice transcription (XDD 009) ──────────────
+# Load prior voice settings from tomo-install.json when re-running install,
+# then run the stateful wizard. The wizard downloads the selected model
+# into $INSTANCE_PATH/voice/models/ if enabled.
+
+PRIOR_VOICE_ENABLED="false"
+PRIOR_VOICE_MODEL=""
+PRIOR_VOICE_LANGUAGE=""
+if [ -f "$CONFIG_FILE" ]; then
+    PRIOR_VOICE_ENABLED=$(jq -r '.voice.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
+    PRIOR_VOICE_MODEL=$(jq -r '.voice.model // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+    PRIOR_VOICE_LANGUAGE=$(jq -r '.voice.language // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+fi
+
+VOICE_MODELS_DIR="$INSTANCE_PATH/voice/models"
+configure_voice \
+    "$PRIOR_VOICE_ENABLED" \
+    "$PRIOR_VOICE_MODEL" \
+    "$PRIOR_VOICE_LANGUAGE" \
+    "$VOICE_MODELS_DIR" \
+    "$NON_INTERACTIVE"
+
 # ── Step 7: Re-run detection & config generation ─────────
 
 print_step "Generating vault-config.yaml"
@@ -972,6 +1029,7 @@ mkdir -p "$INSTANCE_PATH/.claude/hooks"
 mkdir -p "$INSTANCE_PATH/config"
 mkdir -p "$INSTANCE_PATH/config/user-rules"
 mkdir -p "$INSTANCE_PATH/scripts"
+mkdir -p "$INSTANCE_PATH/voice/models"
 
 # ── Copy managed files ────────────────────────────────────
 
@@ -1019,11 +1077,11 @@ cp "$TOMO_SOURCE/dot_claude/settings.json" "$INSTANCE_PATH/.claude/settings.json
 # Runtime Python scripts (used by agents via `python3 scripts/<name>.py`)
 # and their shared kado_client library. Host-side scripts (install,
 # cleanup, update, begin-tomo template, test-phase*) are NOT copied.
-cp "$REPO_ROOT/scripts/"*.py "$INSTANCE_PATH/scripts/"
-cp "$REPO_ROOT/scripts/tomo-statusline.sh" "$INSTANCE_PATH/scripts/"
+cp "$TOMO_SOURCE/scripts/"*.py "$INSTANCE_PATH/scripts/"
+cp "$TOMO_SOURCE/scripts/tomo-statusline.sh" "$INSTANCE_PATH/scripts/"
 chmod +x "$INSTANCE_PATH/scripts/tomo-statusline.sh"
 mkdir -p "$INSTANCE_PATH/scripts/lib"
-cp "$REPO_ROOT/scripts/lib/"*.py "$INSTANCE_PATH/scripts/lib/"
+cp "$TOMO_SOURCE/scripts/lib/"*.py "$INSTANCE_PATH/scripts/lib/"
 print_ok "scripts (Python runtime + statusline + lib/)"
 
 # Profiles — needed at runtime so shared-ctx-builder and other tools can load
@@ -1041,7 +1099,7 @@ print_ok "schemas/"
 mkdir -p "$INSTANCE_PATH/templates"
 # Regenerate in the instance from the authoritative schemas so the template
 # is always current. No py-yaml dep — uses stdlib only.
-python3 "$REPO_ROOT/scripts/template-from-schema.py" \
+python3 "$TOMO_SOURCE/scripts/template-from-schema.py" \
     --schema "$INSTANCE_PATH/schemas/item-result.schema.json" \
     --output "$INSTANCE_PATH/templates/item-result.template.json" \
     >/dev/null 2>&1 || cp "$TOMO_SOURCE/templates/"*.json "$INSTANCE_PATH/templates/" 2>/dev/null
@@ -1116,7 +1174,11 @@ print_ok ".mcp.json"
 
 print_step "Setting up tomo-home/"
 
-HOME_DIR="$REPO_ROOT/tomo-home"
+if [ -n "$FLAG_HOME_DIR" ]; then
+    HOME_DIR="$FLAG_HOME_DIR"
+else
+    HOME_DIR="$REPO_ROOT/tomo-home"
+fi
 mkdir -p "$HOME_DIR/.claude"
 
 # Copy entrypoint
@@ -1162,7 +1224,7 @@ fi
 
 print_step "Generating begin-tomo.sh launcher"
 
-LAUNCHER_TEMPLATE="$REPO_ROOT/scripts/begin-tomo.sh.template"
+LAUNCHER_TEMPLATE="$REPO_ROOT/scripts/lib/begin-tomo.sh.template"
 LAUNCHER_PATH="$INSTANCE_LOCATION/begin-tomo.sh"
 
 if [ ! -f "$LAUNCHER_TEMPLATE" ]; then
@@ -1200,11 +1262,27 @@ cat > "$CONFIG_FILE" << CFGEOF
     "port": ${KADO_PORT},
     "protocol": "${KADO_PROTOCOL}"
   },
+  "voice": {},
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "tomoVersion": "${TOMO_VERSION}"
 }
 CFGEOF
 print_ok "tomo-install.json"
+
+# Persist the voice block via the shared write_voice_config helper —
+# single authoritative writer for schema_version + enabled/model/language.
+# Review findings M1 (jq-safe assembly), L4 (schema_version), M9 (dedup).
+write_voice_config "$CONFIG_FILE"
+
+# Mirror the voice block into the instance so runtime agents can read it.
+# tomo-install.json lives at the HOST repo root and is NOT accessible from
+# inside the Docker container (only $INSTANCE_PATH is bind-mounted). The
+# voice-transcriber agent and inbox-orchestrator's Phase 0a both read the
+# mirrored file at voice/config.json (relative to the instance cwd).
+mkdir -p "$INSTANCE_PATH/voice"
+jq '.voice // {"enabled": false, "model": "", "language": ""}' "$CONFIG_FILE" \
+    > "$INSTANCE_PATH/voice/config.json"
+print_ok "voice/config.json (mirrored into instance)"
 
 # ── Update .gitignore (parent repo) ──────────────────────
 

@@ -71,11 +71,17 @@
         },
         "daily_log": {
           "type": "object",
-          "required": ["section", "heading_level", "time_extraction", "link_format", "cutoff_days", "auto_create_if_missing"],
+          "required": ["section", "heading_level", "date_sources", "time_extraction", "link_format", "cutoff_days", "auto_create_if_missing"],
           "additionalProperties": false,
           "properties": {
             "section": {"type": "string"},
             "heading_level": {"type": "integer", "minimum": 1, "maximum": 6},
+            "date_sources": {
+              "type": "array",
+              "items": {"type": "string", "enum": ["content", "frontmatter", "filename"]},
+              "minItems": 1,
+              "uniqueItems": true
+            },
             "time_extraction": {
               "type": "object",
               "required": ["enabled", "sources", "fallback"],

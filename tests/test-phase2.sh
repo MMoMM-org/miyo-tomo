@@ -119,8 +119,8 @@ check_contains "obsidian-fields.md — has Tag Taxonomy" tomo/dot_claude/skills/
 echo ""
 echo "── Test 5: Phase 1 regression check ──────────────────────────────────────────────"
 
-if [ -f scripts/test-phase1.sh ]; then
-    if bash scripts/test-phase1.sh > /dev/null 2>&1; then
+if [ -f tests/test-phase1.sh ]; then
+    if bash tests/test-phase1.sh > /dev/null 2>&1; then
         echo "  [PASS] Phase 1 tests still pass"
         PASS=$((PASS + 1))
     else

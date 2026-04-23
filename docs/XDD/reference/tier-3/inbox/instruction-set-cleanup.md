@@ -23,7 +23,7 @@ Define what `vault-executor` does during the cleanup phase of inbox processing. 
 
 It does **not** write content to atomic notes, MOCs, daily notes, or anywhere outside the inbox folder.
 
-**Post-MVP:** Seigyo takes over the content write operations. `vault-executor` remains responsible for inbox-side state in both MVP and post-MVP.
+**Post-MVP:** **Tomo Hashi** (友橋, the Obsidian plugin; formerly referenced as "Seigyo" in pre-2026-04-20 drafts) takes over the content write operations by reading `<date>_instructions.json` directly. `vault-executor` remains responsible for inbox-side state (lifecycle tags, archival) in both MVP and post-MVP — those writes stay inside the inbox folder.
 
 ## 3. Trigger
 

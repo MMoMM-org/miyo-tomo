@@ -2,8 +2,8 @@
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
 > Status: Implemented
-> Executor: **User** (MVP) / Seigyo (Post-MVP)
-> Related: [Instruction Set Generation](instruction-set-generation.md) · [Instruction Set Cleanup](instruction-set-cleanup.md)
+> Executor: **User** (MVP) / **Tomo Hashi** (Post-MVP, in progress)
+> Related: [Instruction Set Generation](instruction-set-generation.md) · [Instruction Set Cleanup](instruction-set-cleanup.md) · [instructions.json + .md contract](../../../../instructions-json.md)
 
 ---
 
@@ -25,7 +25,7 @@ Having the user apply the actions manually:
 - Eliminates AI-induced variance at write time
 - Fits within Tomo's deterministic boundary (the inbox folder)
 
-Post-MVP, Seigyo will apply via locked scripts. Until then, the user is the executor.
+Post-MVP, **Tomo Hashi** (友橋, the Obsidian plugin; formerly "Seigyo" in pre-2026-04-20 drafts) will apply actions deterministically by reading `<date>_instructions.json` — the canonical machine-readable contract produced by Pass 2. Until then, the user is the executor, working from the human-readable `<date>_instructions.md` companion.
 
 ## 3. When the User Applies
 
@@ -169,10 +169,12 @@ To make the user's workflow smooth:
 
 ## 10. Post-MVP Evolution
 
-When Seigyo arrives, this document becomes the template for the **Seigyo script inputs**:
-- Each action becomes a structured script call
-- The user reviews the script proposal (Pass 2 of Seigyo's dual vetting)
-- Seigyo executes the scripts deterministically
-- No manual application step — but the instruction set format can stay similar (human-readable)
+When **Tomo Hashi** ships, this document becomes the operator-side view of the same contract Tomo Hashi automates:
 
-The MVP User Applies workflow is the simplest version of the Seigyo contract. Building it well in MVP prepares the ground for post-MVP automation.
+- Each action is already a structured payload in `<date>_instructions.json` (XDD 008 made JSON canonical; no parsing of the `.md` required).
+- Tomo Hashi reads the JSON, executes actions in the declared order, and syncs the `- [x] Applied` checkboxes in the `.md` companion back to the vault after each successful apply.
+- The user's role shifts from "run the mechanical steps" to "review + approve the proposed set" — the dual-vetting checkpoint remains in Pass 2 (ticking `[x] Approved` on the suggestions doc).
+
+**Contract location:** the authoritative consumer spec (both `.json` envelope and `.md` companion layout) lives in [`docs/instructions-json.md`](../../../../instructions-json.md). Tomo Hashi implementations should read that document; this one describes the manual workflow it replaces.
+
+The MVP User Applies workflow is the simplest version of the Tomo Hashi contract. Building it well in MVP prepares the ground for the plugin.

@@ -11,8 +11,10 @@
       "Bash(head:*)",
       "Bash(tail:*)",
       "Bash(wc:*)",
+      "Bash(awk:*)",
       "Bash(date:*)",
       "Bash(mkdir:*)",
+      "Bash(mkdir -p tomo-tmp/*)",
       "Bash(echo:*)",
       "Bash(claude:*)",
       "Bash(rm -f tomo-tmp/*)",
@@ -22,7 +24,9 @@
       "Edit(config/*)",
       "Write(config/*)",
       "Edit(.claude/*)",
-      "Write(.claude/*)"
+      "Write(.claude/*)",
+      "Edit(tomo-tmp/*)",
+      "Write(tomo-tmp/*)"
     ],
     "deny": []
   },

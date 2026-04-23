@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.0
+# version: 1.1
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -259,7 +259,10 @@ tags:
         - "note/normal"
         - "others/moc"
       wildcard: false
-      proposable: true
+      # proposable: false — templates set the type tag on render, so Tomo does
+      # not propose type/* during Pass 1. required_for=[atomic_note, map_note]
+      # still ensures the tag is present on filed notes (set by the template).
+      proposable: false
       required_for:
         - atomic_note
         - map_note
@@ -452,8 +455,14 @@ daily_log:
   enabled: true                 # set false to disable daily-log updates entirely
   section: "Daily Log"          # heading text Tomo searches for in the daily note
   heading_level: 1              # 1 = "# Daily Log"; 2 = "## Daily Log"
+  date_sources: [content, frontmatter, filename]  # priority when picking WHICH day to file under.
+                                                  # Stops at first source with a parseable date (per date_formats below).
+                                                  # Example: a voice-memo mentioning "am 30.03. um 10:00" gets filed on 2026-03-30
+                                                  # even if its frontmatter.created or filename say today — content wins.
+                                                  # Set [frontmatter, content, filename] if you prefer Obsidian's created-field
+                                                  # to govern the day, or [filename, frontmatter, content] for strict inbox-date flow.
   time_extraction:
-    enabled: true               # attempt to extract a time from the inbox item
+    enabled: true               # attempt to extract a time-of-day from the inbox item (within the chosen day)
     sources: [content, filename]  # priority order: try content first, then filename
     fallback: "append_end_of_day"  # what to do when no time found: append_end_of_day | append_start_of_day | skip_time
   link_format: "bullet"         # "bullet" → - [[stem]]; "plain" → [[stem]]

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # state-init.py — Phase A: enumerate inbox, seed state-file with pending items.
-# version: 0.3.0
+# version: 0.4.0
 """
 List the inbox via Kado, emit one JSONL line per item with status="pending".
 Skips derived artefacts (existing suggestions/instruction docs).
@@ -98,6 +98,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--inbox-path", required=True, help="Vault-relative inbox path")
     p.add_argument("--run-id", default=None, help="Unique run identifier (auto if omitted)")
     p.add_argument("--output", required=True, help="Target path for inbox-state.jsonl")
+    p.add_argument(
+        "--include-captured", action="store_true",
+        help=(
+            "Treat items that already carry a lifecycle tag (#<prefix>/captured, "
+            "#<prefix>/active, …) as fresh-pending too. Use when the user explicitly "
+            "asks to re-process an inbox whose items were tagged in a prior run."
+        ),
+    )
     return p
 
 
@@ -143,7 +151,11 @@ def main() -> int:
                 continue
             if has_lifecycle_tag(client, path, tag_prefix):
                 tagged += 1
-                continue
+                if not args.include_captured:
+                    continue
+                # --include-captured: fall through and seed this item as
+                # pending anyway. The tag is still reported via `already_tagged`
+                # so the orchestrator/log shows what was overridden.
             stem = extract_stem(path)
             entry = {
                 "run_id": run_id,

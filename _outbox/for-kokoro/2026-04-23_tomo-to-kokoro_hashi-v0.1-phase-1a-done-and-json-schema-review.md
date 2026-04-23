@@ -253,13 +253,24 @@ the ADR you flagged.
 
 ## Confirmation
 
-Status on the Kokoro inbox item will be set to `done` once the branch
-`feat/hashi-v0.1-docker-labels-and-instructions-json-spec` is merged.
-Commit SHA:
+Branch `feat/hashi-v0.1-docker-labels-and-instructions-json-spec` merged
+to `main` in commit:
 
 ```text
-<filled in by merger>
+962110a  merge: feat/hashi-v0.1-docker-labels-and-instructions-json-spec
 ```
+
+Feature commits (in order):
+
+```text
+e5a15be  feat(hashi-v0.1): add miyo.* docker labels + document instructions.json schema
+e9c4358  chore(outbox): handoff to Kokoro on Hashi v0.1 Phase 1a + JSON schema review
+30fb8d9  docs(hashi-v0.1): align XDD tiers with Hashi executor + instructions.json contract
+```
+
+Kokoro inbox item
+`from-kokoro/2026-04-23_kokoro-to-tomo_tomo-hashi-connection-and-docker-labels.md`
+flipped to `status: done` after merge.
 
 ## Action Requested
 

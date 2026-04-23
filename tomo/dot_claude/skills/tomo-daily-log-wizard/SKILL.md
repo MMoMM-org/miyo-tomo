@@ -8,7 +8,7 @@ effort: medium
 ---
 
 # Tomo Daily Log Wizard
-# version: 0.2.2
+# version: 0.3.0
 
 ## Persona
 
@@ -78,6 +78,7 @@ If exists, show current values:
 Current daily_log config:
   section              : "Daily Log"
   heading_level        : 2
+  date_sources         : [content, frontmatter, filename]
   time_extraction      : sources=[content, filename] fallback=append_end_of_day
   link_format          : bullet
   cutoff_days          : 30
@@ -107,16 +108,32 @@ directly; do not ask a follow-up question.
   - `# (level 1)`
   - `### (level 3)`
 
-### 4. Time-extraction sources — AskUserQuestion (multiSelect)
+### 4. Date-source priority — AskUserQuestion
 
-"Where should Tomo look for timestamps when filing inbox items?"
+"In which order should Tomo check for the DAY an inbox item belongs to?
+(This decides WHICH daily note gets updated; time-of-day is a separate question.)"
+
+- Options (max 4):
+  - `<current>` (Keep) — only if `date_sources` is already set
+  - `Content → Frontmatter → Filename` (Recommended) — use the event date mentioned inside the note body; fall back to frontmatter `created:` or the filename date
+  - `Frontmatter → Content → Filename` — trust Obsidian's `created:` first (classic daily-notes flow)
+  - `Filename → Frontmatter → Content` — strict inbox-date flow (voice memos named by capture time etc.)
+
+Rationale users should know: a voice memo with "am 30.03. um 10:00 beim Arzt"
+in its body plus a frontmatter.created of today will file under 30.03. with
+the Recommended order, but under today with the Frontmatter-first order.
+Pick whatever matches how YOU capture dates.
+
+### 5. Time-extraction sources — AskUserQuestion (multiSelect)
+
+"Where should Tomo look for the TIME-of-day once the day is chosen?"
 - Options (multiSelect):
   - `content` (Recommended) — parse timestamps from note body
-  - `filename` — infer date from inbox filename
+  - `filename` — infer time from inbox filename
 
 At least one must be selected. If user selects none, re-ask.
 
-### 5. Time fallback — AskUserQuestion
+### 6. Time fallback — AskUserQuestion
 
 "What should Tomo do when no timestamp is found?"
 - Options:
@@ -125,7 +142,7 @@ At least one must be selected. If user selects none, re-ask.
   - `append_start_of_day` — add at top of today's section
   - `skip_time` — file without time anchor
 
-### 6. Cutoff days — AskUserQuestion
+### 7. Cutoff days — AskUserQuestion
 
 "How many days back should Tomo update daily logs? Older items get no update."
 - Options (max 4 — rely on AskUserQuestion's built-in "Other" for custom values):
@@ -137,7 +154,7 @@ At least one must be selected. If user selects none, re-ask.
 If the user picks "Other", parse the reply as an integer (days) and use it
 directly. Reject non-integers by re-asking.
 
-### 7. Auto-create flags — informational only
+### 8. Auto-create flags — informational only
 
 Display:
 ```
@@ -157,7 +174,7 @@ AskUserQuestion: "Pre-set auto_create_if_missing intent for the post-MVP feature
 The values WRITTEN are always `false`. If "Pre-set to true" was chosen, add a
 YAML comment line above the key noting the intent so it's visible later.
 
-### 8. Write config via Edit tool
+### 9. Write config via Edit tool
 
 Construct the `daily_log:` block from collected values. Schema (memorize):
 
@@ -165,6 +182,7 @@ Construct the `daily_log:` block from collected values. Schema (memorize):
     enabled: true
     section: "<heading>"
     heading_level: <1|2|3>
+    date_sources: [<content>, <frontmatter>, <filename>]  # ordered; the order from Step 4 IS the priority
     time_extraction:
       enabled: true
       sources: [<content>, <filename>]
@@ -180,7 +198,7 @@ If `daily_log:` already exists in vault-config, **Edit** it in place,
 preserving surrounding content. If it is missing, **Edit** to append the
 block after the last top-level key. NEVER use **Write** on vault-config.yaml.
 
-### 9. Confirm
+### 10. Confirm
 
 Show the final written config and the path it was written to.
 
@@ -189,6 +207,7 @@ daily_log configuration saved to config/vault-config.yaml:
 
   section         : "Daily Log"
   heading_level   : 2
+  date_sources    : [content, frontmatter, filename]
   time_extraction : sources=[content, filename]  fallback=append_end_of_day
   cutoff_days     : 30
   auto_create     : false (locked until post-MVP)

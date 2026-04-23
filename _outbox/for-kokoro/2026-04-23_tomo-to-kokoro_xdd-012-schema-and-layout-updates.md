@@ -3,7 +3,8 @@ from: tomo
 to: kokoro
 date: 2026-04-23
 topic: XDD 012 + schema/layout updates — ADR candidates and stale arch-doc flags
-status: pending
+status: in-progress
+status_note: audit in progress on docs/inbox-2026-04-23-handoffs
 priority: normal
 requires_action: true
 ---

@@ -66,7 +66,7 @@ captured → processing → proposed → active → archived
 | `captured` | In inbox, unprocessed | Item arrives in inbox |
 | `processing` | Being analyzed by Tomo | `/inbox` command starts |
 | `proposed` | In instruction set, awaiting user approval | Instruction set generated |
-| `active` | In vault, linked, evolving | User approved + applied (MVP: user; Post-MVP: Seigyo) |
+| `active` | In vault, linked, evolving | User approved + applied (MVP: user; Post-MVP: Tomo Hashi via Obsidian Plugin API) |
 | `archived` | Completed/inactive | User or Tomo archives |
 
 ### Lifecycle Properties

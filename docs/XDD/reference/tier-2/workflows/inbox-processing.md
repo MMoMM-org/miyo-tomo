@@ -27,7 +27,7 @@ Capture → Analyse → Suggestions (Pass 1) → User Confirms Direction
 
 ## 3. Two-Pass Proposal Model
 
-Inbox processing uses a **two-pass model** where the user reviews Tomo's interpretation before Tomo commits to detailed instructions. This mirrors the Post-MVP Seigyo dual-vetting pattern.
+Inbox processing uses a **two-pass model** where the user reviews Tomo's interpretation before Tomo commits to detailed instructions. The same pattern carries into the Post-MVP Tomo Hashi executor: Pass 1 approves direction, Pass 2 produces the `instructions.md` the user reviews before triggering Hashi to apply the companion `instructions.json`.
 
 | Pass | Tomo Output | User Input |
 |------|------------|------------|
@@ -38,7 +38,7 @@ Inbox processing uses a **two-pass model** where the user reviews Tomo's interpr
 - User catches Tomo's misclassifications early, before details are generated
 - Tomo can offer alternatives ("link to MOC A or MOC B?") with confidence scores
 - The instruction set is built from confirmed intent, reducing rejection cycles
-- Architecturally consistent with Post-MVP Seigyo dual vetting
+- Architecturally consistent with Post-MVP dual vetting (Tomo Hashi reads the Pass-2 `instructions.json` the user approved via the companion `.md`)
 
 ## 4. Agents and Executor
 
@@ -49,7 +49,7 @@ Inbox processing uses a **two-pass model** where the user reviews Tomo's interpr
 | Suggest (Pass 1) | `suggestion-builder` agent | Generate Action Suggestions document with options and confidence |
 | Review (Pass 1) | **User** | Approve/deny/modify suggestions in Obsidian |
 | Build (Pass 2) | `instruction-builder` agent | Read confirmed suggestions, generate detailed Instruction Set |
-| Apply (outside inbox) | **User (MVP)** / Seigyo (Post-MVP) | Manually perform approved changes in Obsidian |
+| Apply (outside inbox) | **User (MVP)** / Tomo Hashi (Post-MVP) | Manually perform approved changes in Obsidian (MVP); Hashi reads `instructions.json` and applies via the Obsidian Plugin API (Post-MVP) |
 | Cleanup (inbox-side) | `vault-executor` agent | Tag instruction set, tag inbox items, archive within inbox folder |
 
 > **⚠️ Deviation (XDD-004)**
@@ -176,10 +176,12 @@ Manual trigger: /inbox
   │                                       │  - Add MOC links via direct
   │                                       │    [[MOC#Section]] links
   │                                       │
-  │                                       │  Post-MVP: Seigyo executes via
-  │                                       │  locked scripts (no second
-  │                                       │  approval needed — direction
-  │                                       │  was approved in Pass 1).
+  │                                       │  Post-MVP: Tomo Hashi reads
+  │                                       │  instructions.json and applies
+  │                                       │  via Obsidian Plugin API (no
+  │                                       │  second approval — direction
+  │                                       │  was approved in Pass 1 and the
+  │                                       │  user signed off on the .md).
   └──────────────┬───────────────────────┘
                  │
                  ▼  user signals done (tag instructions doc as #applied)

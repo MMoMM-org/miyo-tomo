@@ -136,7 +136,7 @@ If a template contains Templater syntax (`tp.*`), Tomo:
 - Leaves Templater syntax untouched in the rendered output
 - Adds a note to the instruction set entry: "This file contains Templater syntax. After moving it to its target, run `Templater: Replace Templates in Active File` in Obsidian to resolve it."
 
-**Post-MVP:** New-note step 4-6 and modification step 4-6 are replaced by Seigyo invoking locked scripts that do the file move and diff application deterministically. See [Tier 1 §7 Execution Model](../../tier-1/pkm-intelligence-architecture.md#7-execution-model).
+**Post-MVP:** New-note step 4-6 and modification step 4-6 are replaced by **Tomo Hashi** (友橋, the Obsidian plugin — see Kokoro ADR-009) reading the Pass-2 `instructions.json` and applying the moves/diffs deterministically via the Obsidian Plugin API. No LLM in the apply path; the user's approval target is the human-review `instructions.md` that ships alongside the JSON. See [Tier 1 §7 Execution Model](../../tier-1/pkm-intelligence-architecture.md#7-execution-model).
 
 ## 6. Template Creation Responsibility
 

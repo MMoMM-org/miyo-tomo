@@ -34,4 +34,4 @@ Goal: Reduce manual effort for the user.
 Goal: Beyond MVP capabilities.
 
 - [ ] F-02: Periodic notes (weekly, monthly, quarterly, yearly)
-- [ ] F-01: Seigyo / Tomo Hashi execution engine (locked scripts, dual vetting). Contract shipped 2026-04-21 (XDD 008): `instructions.json` + `tomo/schemas/instructions.schema.json`.
+- [ ] F-01: Tomo Hashi executor (Obsidian plugin reading `instructions.json` via the Obsidian Plugin API; see Kokoro ADR-009 for the charter, 2026-04-23). Contract shipped 2026-04-21 (XDD 008): `instructions.json` + `tomo/schemas/instructions.schema.json`. (Earlier roadmap drafts called this "Seigyo"; Seigyo is now on the backburner and, if ever built, is likely a remote-control plugin rather than an executor.)

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """instructions-dryrun.py — Validate an instructions.json is Tomo-Hashi-ready.
 
 Reads an instructions.json file and prints a one-line summary of each action
-that a future executor (Tomo Hashi / Seigyo F-01) would run. No Kado calls,
+that the executor (Tomo Hashi, backlog F-01) would run. No Kado calls,
 no vault writes — a pure parse + projection.
 
 Used for XDD 008 Phase 3 T3.2: verify every action type is parseable and

@@ -3,7 +3,8 @@ from: tomo
 to: kokoro
 date: 2026-04-23
 topic: Hashi v0.1 — Phase 1a labels shipped; Phase 1b .json sibling already in production, schema presented for review
-status: pending
+status: in-progress
+status_note: schema review in progress on docs/inbox-2026-04-23-handoffs
 priority: normal
 requires_action: true
 ---

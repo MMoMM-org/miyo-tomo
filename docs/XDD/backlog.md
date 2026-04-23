@@ -9,7 +9,7 @@
 
 | ID | Item | Source | Priority | Notes |
 |----|------|--------|----------|-------|
-| F-01 | Seigyo / Tomo Hashi execution via locked scripts | reference/tier-1/pkm-intelligence-architecture.md §7, XDD 008 | Must | Replaces user-applied workflow with deterministic execution + dual vetting. **Prereq shipped 2026-04-21 (XDD 008):** `instructions.json` is now the canonical machine-readable contract — see `tomo/schemas/instructions.schema.json`. Tomo Hashi (Obsidian plugin, F-01 successor) reads this directly; no markdown parsing. |
+| F-01 | Tomo Hashi executor — Obsidian plugin reading `instructions.json` via the Obsidian Plugin API | reference/tier-1/pkm-intelligence-architecture.md §7, XDD 008, Kokoro ADR-009 (2026-04-23) | Must | Replaces user-applied workflow with deterministic execution; user approval happens on the companion `instructions.md` before Hashi runs. **Prereq shipped 2026-04-21 (XDD 008):** `instructions.json` is the canonical machine-readable contract — see `tomo/schemas/instructions.schema.json`. Earlier backlog drafts referred to this item as "Seigyo"; Seigyo is now on the backburner per Kokoro ADR-009 and may never be built. |
 | F-02 | Periodic notes beyond daily (weekly, monthly, quarterly, yearly) | reference/tier-2/workflows/daily-note.md §7 | Should | Requires synthesis (LLM judgment), periodic-note config surface, learning from MVP usage first |
 | F-03 | Templater rendering by Tomo | reference/tier-2/components/template-system.md §3 | Should | Eliminate user's manual Templater step; currently parked |
 | F-04 | Profile switching post-install | reference/tier-2/components/framework-profiles.md | Could | Migration path between profiles (e.g., LYT → MiYo); out of scope for MVP |

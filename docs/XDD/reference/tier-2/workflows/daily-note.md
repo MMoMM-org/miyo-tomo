@@ -86,14 +86,17 @@ For each change in action:
    └── Content addition → user pastes the markdown into the section
 ```
 
-### Apply Phase (Post-MVP: Seigyo)
+### Apply Phase (Post-MVP: Tomo Hashi)
 
-Post-MVP, Seigyo executes daily note updates via locked scripts:
-- Tracker field updates use surgical inline-field writes
-- Content additions use section-targeted appends
-- Daily note creation (if missing) uses the user's normal Templater flow, triggered by the script
+Post-MVP, **Tomo Hashi** (友橋, the Obsidian plugin — see Kokoro
+ADR-009) applies daily note updates deterministically via the Obsidian
+Plugin API, reading action payloads from `instructions.json`:
 
-Until Seigyo exists, user-applied is the contract.
+- Tracker field updates via `update_tracker` actions (surgical inline-field, callout-body, or checkbox writes per the action's `syntax`).
+- Content additions via `update_log_entry` / `update_log_link` actions (section-targeted, with `after_last_line` / `before_first_line` / `at_time` positioning).
+- Daily note creation (if missing) uses the vault's normal Templater flow, triggered by Hashi before the first write into the note.
+
+Until Tomo Hashi is installed, user-applied is the contract.
 
 ## 5. Tracker Detection
 

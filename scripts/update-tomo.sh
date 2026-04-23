@@ -135,6 +135,11 @@ fi
 mkdir -p "$INSTANCE_PATH/cache"
 
 print_step "Updating rules (managed only)"
+# mkdir -p was missing pre-2026-04-23; restore-from-old-backup hit
+# `cp: No such file or directory` because the instance predates the
+# rules dir. Every other update_managed block has a matching mkdir —
+# this one just got skipped.
+mkdir -p "$INSTANCE_PATH/.claude/rules"
 update_managed \
     "$TOMO_SOURCE/dot_claude/rules/project-context.md" \
     "$INSTANCE_PATH/.claude/rules/project-context.md" \

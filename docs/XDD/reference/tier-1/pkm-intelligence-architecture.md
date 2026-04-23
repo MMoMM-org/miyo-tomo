@@ -67,7 +67,7 @@ Output: Proposal in instruction set (user approves before execution)
 
 **Apply step (MVP):** User reads the approved instructions and performs each change manually in Obsidian. Tomo only updates inbox-side state (tagging, archiving) once the user signals completion.
 
-**Apply step (Post-MVP):** Seigyo executes locked scripts after dual vetting. See [§7 Execution Model](#7-execution-model).
+**Apply step (Post-MVP):** Tomo Hashi (友橋, the Obsidian plugin — see Kokoro ADR-009) reads the `instructions.json` sibling of the approved set and applies each action deterministically via the Obsidian Plugin API. See [§7 Execution Model](#7-execution-model).
 
 ## 5. Two-Phase Setup Flow
 
@@ -103,7 +103,7 @@ Triggered by `/explore-vault`. Deep scan via Kado MCP.
 | Vault read access | Kado MCP (Obsidian plugin) | Yes |
 | Inbox folder writes | Kado MCP (Obsidian plugin) | Yes |
 | Outside-inbox writes (MVP) | User (manual application) | Yes |
-| Outside-inbox writes (Post-MVP) | Seigyo (locked scripts) | Yes |
+| Outside-inbox writes (Post-MVP) | Tomo Hashi (Obsidian Plugin API, reads `instructions.json`) | Yes |
 | File visibility | Kado security scope | Yes |
 | Container isolation | Docker | Yes |
 | Proposal approval | User (instruction set checkboxes) | Yes |
@@ -141,25 +141,43 @@ For MVP, **Tomo's deterministic boundary is the inbox folder.** Tomo writes only
 
 The instruction set is human-readable **by design** — every approved action contains everything the user needs to perform it manually. Tomo is the proposer; the user is the executor.
 
-### Post-MVP Vision: Seigyo + Locked Scripts
+### Post-MVP Vision: Tomo Hashi executor
 
-Long-term, deterministic execution outside the inbox will be handled by **Seigyo** (the planned Obsidian control plugin) using locked scripts. Two-pass dual vetting:
+Long-term, deterministic execution outside the inbox is handled by **Tomo
+Hashi** (友橋), a separate Obsidian community plugin (see Kokoro ADR-009).
+Hashi has no AI surface — it mechanically executes the Pass-2 instruction
+set against the vault via the Obsidian Plugin API. Two-pass dual vetting
+is preserved; the second pass is the user's review of the rendered
+`instructions.md` before triggering Hashi:
 
 ```
-Pass 1: Tomo proposes ACTIONS
+Pass 1: Tomo proposes DIRECTION (suggestions doc)
         ↓
         User accepts / denies / modifies
         ↓
-Pass 2: Tomo generates SEIGYO SCRIPTS with before/after diffs
+Pass 2: Tomo generates DETAILED INSTRUCTION SET — two siblings:
+          instructions.md   (human review, checkboxes)
+          instructions.json (canonical, machine-readable)
         ↓
-        User accepts / denies / modifies
+        User reviews + approves the .md
         ↓
-        Scripts are LOCKED — Tomo cannot modify, only invoke
-        ↓
-Seigyo executes locked scripts with structured parameters
+Tomo Hashi reads .json and applies each action via Obsidian Plugin API.
+On success, Hashi ticks the matching `- [ ] Applied` checkbox in the .md.
 ```
 
-The user reviews both the action proposals **and** the scripts that will apply them. Once locked, scripts are deterministic — Tomo can only invoke them with parameters, never modify their logic. This achieves **WYSIWYG**: every change to vault content outside the inbox is deterministic and pre-validated.
+Once approval is given, execution is deterministic — Hashi's code is
+reviewed and installed as an Obsidian plugin; the AI never writes outside
+the inbox. This achieves **WYSIWYG**: every change to vault content
+outside the inbox is deterministic, the user saw it in the instruction
+set before triggering Hashi, and the Hashi code path itself contains no
+LLM calls.
+
+> **Note (2026-04-23):** earlier drafts of this spec positioned
+> **Seigyo (制御)** as the post-MVP executor. Per Kokoro's 2026-04-23
+> Tomo Hashi handoff (and ADR-009), that characterisation is stale —
+> Seigyo is on the backburner and, if ever built, is likely to be a
+> remote-control plugin for Obsidian window management and live vault
+> testing, not an executor. Tomo Hashi fills the executor niche.
 
 ### Execution Boundary Summary
 
@@ -167,7 +185,7 @@ The user reviews both the action proposals **and** the scripts that will apply t
 |-----------|-----|----------|
 | Read anywhere | Tomo via Kado | Tomo via Kado |
 | Write to inbox folder | Tomo via Kado | Tomo via Kado |
-| Write outside inbox | User (manually) | Seigyo (locked scripts, dual-vetted) |
+| Write outside inbox | User (manually) | Tomo Hashi (Obsidian Plugin API, reads `instructions.json`) |
 | Decision logic | Tomo skills (AI) | Tomo skills (AI) |
 
 **Key implication for MVP:** The `vault-executor` agent's scope is much narrower than originally planned. It manages **inbox-side state only** (instruction set tagging, inbox item archiving). It does **not** modify content outside the inbox. Vault content changes are user actions, not agent actions.
@@ -234,9 +252,9 @@ Workflows describe HOW components interact. Each workflow spec (Tier 2) referenc
 
 | Workflow | Components used | Tomo agents (propose) | Executor (apply) |
 |----------|----------------|------------------------|------------------|
-| [Inbox Processing](../tier-2/workflows/inbox-processing.md) | User Config, Discovery Cache, Template System, Profiles | inbox-analyst, suggestion-builder (Pass 1), instruction-builder (Pass 2), vault-executor (cleanup) | User (MVP) / Seigyo (Post-MVP) |
-| [Daily Note](../tier-2/workflows/daily-note.md) | User Config, Template System | inbox-analyst, suggestion-builder, instruction-builder | User (MVP) / Seigyo (Post-MVP) |
-| [LYT/MOC Linking](../tier-2/workflows/lyt-moc-linking.md) | Profiles, Discovery Cache, User Config | inbox-analyst, suggestion-builder, instruction-builder | User (MVP) / Seigyo (Post-MVP) |
+| [Inbox Processing](../tier-2/workflows/inbox-processing.md) | User Config, Discovery Cache, Template System, Profiles | inbox-analyst, suggestion-builder (Pass 1), instruction-builder (Pass 2), vault-executor (cleanup) | User (MVP) / Tomo Hashi (Post-MVP) |
+| [Daily Note](../tier-2/workflows/daily-note.md) | User Config, Template System | inbox-analyst, suggestion-builder, instruction-builder | User (MVP) / Tomo Hashi (Post-MVP) |
+| [LYT/MOC Linking](../tier-2/workflows/lyt-moc-linking.md) | Profiles, Discovery Cache, User Config | inbox-analyst, suggestion-builder, instruction-builder | User (MVP) / Tomo Hashi (Post-MVP) |
 | [Vault Exploration](../tier-2/workflows/vault-exploration.md) | User Config, Discovery Cache | vault-explorer | n/a (read-only) |
 
 ## 10. Key Design Decisions
@@ -254,7 +272,7 @@ Workflows describe HOW components interact. Each workflow spec (Tier 2) referenc
 | Setup | Hybrid: install script + Kado discovery | Works without Kado; enriched with Kado |
 | Security | All access via Kado, Docker isolation | Deterministic boundaries, AI only proposes |
 | **Execution (MVP)** | **User Applies — Tomo writes only to inbox folder** | **Deterministic execution; AI cannot introduce variance at write time outside inbox** |
-| **Execution (Post-MVP)** | **Seigyo locked scripts with dual vetting** | **WYSIWYG, scripted execution, no AI in the apply step** |
+| **Execution (Post-MVP)** | **Tomo Hashi Obsidian plugin reads `instructions.json`** | **WYSIWYG, deterministic execution via Obsidian Plugin API, no AI in the apply step** |
 | **Inbox model** | **2-Pass: Suggestions → Instruction Set** | **User approves direction before details are committed; mirrors Post-MVP dual vetting** |
 | **MOC discovery** | **Path AND tag-based, full tree (all levels)** | **Sub-MOCs scattered in different folders are still findable; tree structure surfaces specificity** |
 | **Tracker syntax** | **Multi-syntax (inline field, task checkbox, frontmatter)** | **Not framework-locked to Dataview; supports MiYo, others, custom** |

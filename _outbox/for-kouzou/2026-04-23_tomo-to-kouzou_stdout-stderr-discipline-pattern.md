@@ -3,7 +3,8 @@ from: tomo
 to: kouzou
 date: 2026-04-23
 topic: stdout/stderr discipline — generalizable agent-prompt hardening for JSON-producing scripts
-status: pending
+status: done
+status_note: applied in commit 396d7fb — added to claude-docker/global-config/standards/guardrails.md as a 2026-04-23 entry under Bash tool hygiene
 priority: normal
 requires_action: true
 ---

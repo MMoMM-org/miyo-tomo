@@ -50,9 +50,11 @@ Runs when `/inbox` detects a `#MiYo-Tomo/confirmed` suggestions document. The ru
    → Group by target note for modifications
    → Generate summary stats
 
-5. Write instruction set to inbox folder
-   → Filename: YYYY-MM-DD_HHMM_instructions.md
-   → Tag: #MiYo-Tomo/instructions
+5. Write instruction set to inbox folder — two siblings, same timestamp:
+   → `YYYY-MM-DD_HHMM_instructions.md` — human-review artifact, tagged
+     `#MiYo-Tomo/instructions`
+   → `YYYY-MM-DD_HHMM_instructions.json` — machine-readable sibling
+     consumed by Tomo Hashi's executor (see §11)
 
 6. Write auxiliary files for new notes and diffs
    → Each gets its own file in the inbox folder
@@ -265,3 +267,38 @@ These files are referenced from the instruction set via wikilinks. They live in 
 - **Target MOC doesn't exist (was deleted since suggestions generated):** flag for user, skip the link action, suggest re-running from captured
 - **Token resolution failure for a required token:** render the note anyway with placeholder `<<MISSING: token_name>>`, include warning in instruction set
 - **Diff generation fails (target note changed since suggestions generated):** abort that specific action, user re-runs from captured
+
+## 11. Machine-Readable Sibling (`instructions.json`)
+
+The `.json` sibling is the canonical, machine-readable instruction set consumed
+by **Tomo Hashi** (see Kokoro ADR-009). The `.md` remains the source of truth
+for human review and approval; the `.json` is decoupled so `.md` wording can
+evolve without breaking Hashi's parser.
+
+### Producer-side summary
+
+- Emitted by `scripts/instruction-render.py` in the same run that produces
+  the `.md`. No separate step, no post-processing.
+- Uploaded to the vault by `instruction-builder` via
+  `kado-write operation="file"` (base64 — `operation="note"` is `.md`-only).
+- Shares the timestamped filename stem with its `.md` peer and lives in the
+  same inbox folder.
+- Count parity with the `.md` is an invariant. If the two disagree on
+  action count, that's a generation bug.
+
+### Authoritative contract
+
+The full schema — field-by-field catalog, execution semantics, idempotency
+rules, evolution policy, and the recommended Tomo Hashi implementation
+shape — lives in the consumer contract, not in this spec. Two sources, with
+the JSON Schema being the final word:
+
+- [`docs/instructions-json.md`](../../../../instructions-json.md) — prose
+  contract, worked example, Tomo Hashi execution pseudocode.
+- [`tomo/schemas/instructions.schema.json`](../../../../../tomo/schemas/instructions.schema.json)
+  — JSON Schema Draft 2020-12. Authoritative on required fields, enum
+  values, and type constraints.
+
+Tier-3 is the producer's view of the handoff; don't duplicate the schema
+here. If the schema changes, update the contract + schema file first, then
+reference them from here.

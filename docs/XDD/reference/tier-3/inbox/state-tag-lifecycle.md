@@ -55,6 +55,11 @@ Workflow documents (suggestions, instructions) use **visible checkboxes** instea
 | Instructions | `- [x] Applied` (per action) | Action applied by user |
 
 Discovery is by filename pattern: `*_suggestions.md`, `*_instructions.md`.
+The Pass-2 machine-readable sibling `*_instructions.json` is written next to
+the `.md` but carries no lifecycle tag and is not queried during state
+discovery — the `.md` is the authoritative lifecycle surface (frontmatter
+tag, per-action `- [x] Applied` checkboxes). The `.json` exists to let
+Tomo Hashi execute actions; lifecycle stays on the human-reviewed file.
 
 **Why checkboxes over tags:**
 - Visible in Obsidian reading view — user sees progress at a glance

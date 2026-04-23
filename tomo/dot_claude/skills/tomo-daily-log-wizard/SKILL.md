@@ -8,7 +8,7 @@ effort: medium
 ---
 
 # Tomo Daily Log Wizard
-# version: 0.2.1
+# version: 0.2.2
 
 ## Persona
 
@@ -89,14 +89,14 @@ If missing, note "No daily_log config — using defaults as starting point".
 ### 2. Section heading — AskUserQuestion
 
 "What heading does your daily log section use?"
-- Options:
+- Options (max 4 — rely on AskUserQuestion's built-in "Other" for custom input):
   - `<current>` (Keep) — only if set
   - `Daily Log` (Recommended) — most common
   - `Journal` — common alternative
   - `Log` — short form
-  - `Custom` — user types in follow-up
 
-If Custom: "Type your daily log heading:" capture reply.
+If the user picks "Other", the free-text value is their custom heading — use it
+directly; do not ask a follow-up question.
 
 ### 3. Heading level — AskUserQuestion
 
@@ -128,15 +128,14 @@ At least one must be selected. If user selects none, re-ask.
 ### 6. Cutoff days — AskUserQuestion
 
 "How many days back should Tomo update daily logs? Older items get no update."
-- Options:
+- Options (max 4 — rely on AskUserQuestion's built-in "Other" for custom values):
   - `<current>` (Keep) — only if set
   - `30 days` (Recommended)
   - `7 days`
-  - `14 days`
   - `60 days`
-  - `Custom` — user types a number
 
-If Custom: "Enter cutoff in days:" capture integer.
+If the user picks "Other", parse the reply as an integer (days) and use it
+directly. Reject non-integers by re-asking.
 
 ### 7. Auto-create flags — informational only
 

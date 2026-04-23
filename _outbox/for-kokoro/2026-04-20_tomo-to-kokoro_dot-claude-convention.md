@@ -3,7 +3,8 @@ from: tomo
 to: kokoro
 date: 2026-04-20
 topic: dot_claude/ convention for template source directories
-status: pending
+status: done
+status_note: No stale tomo/.claude refs in authoritative Kokoro arch docs (04-miyo-tomo.md section 2 describes instance runtime, not source). ADR-008 captures the MiYo-wide visible-name convention.
 priority: normal
 requires_action: true
 ---

@@ -248,8 +248,14 @@ Steps 1-3, 5, and 7 are Tomo operations (read or inbox-folder writes only). Step
 
 ### Instruction Set (Pass 2 output)
 
-- Filename: `YYYY-MM-DD_HHMM_instructions.md`
-- Initial tag: `#MiYo-Tomo/instructions`
+- Two siblings, same timestamp stem, written in the same Pass-2 run:
+  - `YYYY-MM-DD_HHMM_instructions.md` — human-review artifact (per-action
+    `- [ ] Applied` checkboxes, visible explanations, wikilinks)
+  - `YYYY-MM-DD_HHMM_instructions.json` — canonical machine-readable sibling
+    consumed by Tomo Hashi's executor. Contract:
+    [`docs/instructions-json.md`](../../../../instructions-json.md) +
+    [`tomo/schemas/instructions.schema.json`](../../../../../tomo/schemas/instructions.schema.json).
+- Initial tag (on the `.md`): `#MiYo-Tomo/instructions`
 - Per approved suggestion: a detailed action ready to be applied
 - Action types:
   - **New Note** — Full rendered note content (created in inbox folder by Tomo, user moves to target)

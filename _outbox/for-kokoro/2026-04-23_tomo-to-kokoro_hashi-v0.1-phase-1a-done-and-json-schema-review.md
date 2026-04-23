@@ -89,17 +89,57 @@ Behavior matches every must-have in your handoff:
   `source_suggestions`. ✓
 - Schema version present. ✓
 
-### Documentation
+### Documentation — authoritative contract already exists
 
-Reference spec updated in the same branch as Phase 1a:
+Side note we realised while writing this reply: the schema isn't just
+shipped, it is *already documented* and has been since XDD 008/012. No
+need to draft a fresh spec — the authoritative sources are:
+
+- **`docs/instructions-json.md`** — prose consumer contract. Per-action
+  field catalog, execution semantics, idempotency rules, recommended
+  Tomo Hashi implementation shape (including the `- [ ] Applied` sync
+  loop), a worked example, and a validation hook. Last reviewed
+  2026-04-23.
+- **`tomo/schemas/instructions.schema.json`** — JSON Schema Draft
+  2020-12. Authoritative on required fields, enum values, and types.
+  Stricter than the prose; it has the final word.
+
+Tomo's XDD tier-3 was updated in this branch to **point at** those two
+files instead of duplicating the catalog. The producer-side spec is
+now:
 
 - `docs/XDD/reference/tier-3/inbox/instruction-set-generation.md` §11
-  (new) — full schema catalog: top-level doc shape, action envelope,
-  one subsection per action type with its fields and semantics, plus
-  a stability contract and an evolution policy (additive = no bump;
-  breaking = schema_version bump + cross-repo handoff).
+  — producer-side summary (emission mechanics, count-parity
+  invariant, evolution policy) + links to the consumer contract and
+  schema file. No field tables; those live in the consumer contract.
 
-### Schema — top-level document
+Cross-repo tier touch-ups in the same branch:
+
+- `docs/XDD/reference/tier-1/pkm-intelligence-architecture.md` —
+  replaced "Seigyo executes locked scripts" with "Tomo Hashi reads
+  `instructions.json` via Obsidian Plugin API" across §4 Apply step,
+  §6 Security Model, §7 Execution Model (including the expanded
+  Post-MVP narrative), §9 Workflow Map executor column, §10 Key
+  Design Decisions. Kept a dated "Note (2026-04-23)" aside in §7
+  explaining the Seigyo → Hashi divergence and citing ADR-009.
+- `docs/XDD/reference/tier-2/workflows/inbox-processing.md` — Pass-2
+  output now lists the `.md` / `.json` sibling pair explicitly,
+  linking the consumer contract + schema file.
+- `docs/XDD/reference/tier-3/inbox/state-tag-lifecycle.md` — added
+  one-line note that the `.json` sibling carries no lifecycle tag;
+  state discovery stays on the `.md`.
+- `docs/XDD/reference/tier-3/inbox/instruction-set-apply.md` already
+  references Tomo Hashi + `docs/instructions-json.md` — unchanged.
+- `docs/XDD/reference/tier-3/inbox/instruction-set-cleanup.md`
+  already references Tomo Hashi + `.json` — unchanged.
+
+Please point your review at `docs/instructions-json.md` +
+`tomo/schemas/instructions.schema.json`. Those are the ground truth.
+The XDD entries are navigation only.
+
+### Schema snapshot — for orientation only
+
+Top-level envelope:
 
 ```json
 {
@@ -114,10 +154,7 @@ Reference spec updated in the same branch as Phase 1a:
 }
 ```
 
-### Schema — action types
-
-All actions carry `id` (`I01`, `I02`, …, matching `.md` headings) and
-`action` (discriminator). Execution order inside the array:
+Action discriminators (8 kinds), in Pass-2 emit order:
 
 1. `create_moc` — new MOC first so later links can target it
 2. `move_note` — atomic notes from inbox to destination
@@ -126,8 +163,8 @@ All actions carry `id` (`I01`, `I02`, …, matching `.md` headings) and
 5. `delete_source` — inbox cleanup once content is captured elsewhere
 6. `skip` — explicit no-op with a reason
 
-Field-by-field catalog is in the spec §11.2. The condensed version for
-your review is below — what Hashi receives for each action type:
+Per-action fields (condensed — `docs/instructions-json.md` has the
+full catalog, idempotency rules, and execution algorithms):
 
 - **create_moc** — `title`, `rendered_file`, `source`, `destination`,
   `parent_moc`, `supporting_items`, `tags`, `template`.
@@ -136,7 +173,7 @@ your review is below — what Hashi receives for each action type:
 - **link_to_moc** — `target_moc`, `target_moc_path` (Kado-resolved by
   Tomo at generation time, `null` only for in-set create_moc targets),
   `section_name` (first line of target callout, `null` for in-set
-  MOCs — Hashi must read the rendered create_moc's own callout at
+  MOCs — Hashi must look up the rendered create_moc's own callout at
   execute time), `source_note_title`, `line_to_add` (literal).
 - **update_tracker** — `date`, `daily_note_path`, `field`, `value`,
   `syntax` (`inline_field` · `task_checkbox` · `frontmatter`),
@@ -207,9 +244,12 @@ the ADR you flagged.
 
 - `vault-executor` unchanged. Keeps running inbox-side cleanup after
   execution regardless of executor (manual or Hashi).
-- Stale tier-1 description of Seigyo as executor: acknowledged. Will
-  flag / update next time the tier-1 spec gets touched, per your "no
-  need to rewrite from this handoff" guidance.
+- Stale tier-1 description of Seigyo as executor: **updated in this
+  branch** rather than deferred. Since we were already touching the
+  inbox-processing and instruction-set spec family, rewriting the
+  tier-1 executor references to Tomo Hashi was a small add. Kept a
+  dated "Note (2026-04-23)" aside in §7 explaining the divergence and
+  citing ADR-009 so future readers aren't confused by older drafts.
 
 ## Confirmation
 

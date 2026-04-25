@@ -1,6 +1,6 @@
 # instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-> Last reviewed: 2026-04-23 (covers XDD 008, 009, 012; md_peer added post-Kokoro review).
+> Last reviewed: 2026-04-25 (per-action `applied` flag added — Hashi-driven applied-state, additive to v1).
 
 **Audience:** Authors and integrators of [Tomo Hashi (友橋)](https://github.com/MMoMM-org)
 — the Obsidian community plugin that reads Tomo's Pass-2 instruction set
@@ -74,12 +74,22 @@ re-run.
 
 1. The user applies each action in the vault (manually, or via Tomo Hashi).
 2. Tomo Hashi **must** treat the instruction set as a monotonic log — actions
-   are applied or unapplied, never mutated in place. Don't rewrite the JSON.
-3. The human-readable view (`*_instructions.md`) carries `- [ ] Applied`
-   checkboxes per action. Tick them as you apply. Unticked checkboxes = not
-   yet applied; the cleanup pass re-discovers partially-applied sets through
-   these checkboxes.
-4. `- [ ] Applied` at action index N corresponds to `actions[N-1]` in the
+   are applied or unapplied, never mutated in place.
+3. **Applied-state lives on each action's `applied` boolean inside the JSON**
+   (added 2026-04-25). Tomo emits `applied: false` on every action; Hashi
+   flips it to `true` after a successful apply and saves the file atomically.
+   The transition is monotonic — Hashi never writes `false`. Re-runs are
+   additive.
+4. The human-readable view (`*_instructions.md`) carries `- [ ] Applied`
+   checkboxes per action. Hashi ticks them best-effort to mirror the JSON
+   `applied` flag, but the **JSON is the source of truth**. Markdown
+   checkboxes are an observation surface for humans, not an authoritative
+   state. Hand-editing the JSON to flip an action's `applied` to `true`
+   causes Hashi to skip that action on the next run — same semantics as a
+   normal Hashi success.
+5. Missing `applied` field is treated as `false` (graceful tolerance for
+   v0.5.x artefacts produced before the field shipped).
+6. `- [ ] Applied` at action index N corresponds to `actions[N-1]` in the
    JSON (IDs `I01`, `I02`, … align with the markdown's third-level headings).
 
 ### XDD 012 — Force-Atomic Resolve actions are indistinguishable
@@ -215,6 +225,10 @@ Within each block, actions are ordered by assignment (monotonic `I01` … `INN`)
 - **`null` vs. missing** — the schema declares `null` where a field is
   defined but intentionally empty. Missing keys are never valid on required
   fields; treat that as a schema violation.
+- **`applied` (boolean, optional, default `false`)** — present on every
+  action kind. Tomo emits `false`; Hashi writes `true` after a successful
+  apply. Missing field is tolerated as `false`. See "Action lifecycle"
+  above for the round-trip contract.
 
 ---
 

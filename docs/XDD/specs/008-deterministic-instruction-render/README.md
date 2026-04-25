@@ -6,7 +6,7 @@
 |-------|-------|
 | **Created** | 2026-04-19 |
 | **Current Phase** | COMPLETE — all phases shipped and live-validated 2026-04-21 |
-| **Last Updated** | 2026-04-21 (follow-ups resolved) |
+| **Last Updated** | 2026-04-25 (additive: per-action `applied` flag for Hashi round-trip) |
 
 ## Documents
 
@@ -25,6 +25,7 @@
 | 2026-04-19 | Use parsed-suggestions.json as canonical input | Same JSON the builder already uses — ensures 100% consistency |
 | 2026-04-19 | instruction-builder becomes pure orchestrator | No more LLM-assembled markdown — script renders everything |
 | 2026-04-19 | Tomo Hashi runs as Obsidian plugin, not in Tomo | Full Obsidian API access (incl. Templater), reads instructions.json directly from vault |
+| 2026-04-25 | Add per-action `applied: false` to `instructions.json` (additive, schema_version stays at 1) | Hashi v0.1 makes the JSON the sole source of truth for applied-state; `.md` checkboxes become best-effort human surface. Field is monotonic (Hashi only writes false→true), missing-field tolerated as false. Per Hashi handoff `_inbox/from-hashi/2026-04-25_hashi-to-tomo_applied-field.md`. |
 
 ## Context
 

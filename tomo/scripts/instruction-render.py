@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.7.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -568,6 +568,11 @@ def build_actions(
         confirmed, daily_updates, skipped, inbox_path, counter,
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
+    # Stamp the per-action applied flag. Tomo Hashi (the consumer) flips this
+    # to true on successful execution; Tomo only ever emits false. See
+    # docs/instructions-json.md.
+    for a in out:
+        a["applied"] = False
     return out
 
 

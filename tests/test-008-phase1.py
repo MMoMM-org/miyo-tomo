@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.3.3
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -271,8 +271,15 @@ def test_action_building():
         _must(d["source_path"].endswith(".md"), f"delete path missing .md: {d}")
         _must(d["reason"], f"delete reason empty: {d}")
 
+    # Every action carries applied=False on emission — consumer (Tomo Hashi)
+    # flips to True after successful execution. See docs/instructions-json.md.
+    for a in actions:
+        _must("applied" in a, f"{a['id']} ({a['action']}) missing applied field")
+        _must(a["applied"] is False,
+              f"{a['id']} ({a['action']}) applied must be False on emission, got {a['applied']!r}")
+
     print(f"[PASS] action_building — {len(actions)} actions, {len(set(kinds))} types, "
-          f"ordered correctly, supporting_items expanded")
+          f"ordered correctly, supporting_items expanded, applied=False stamped")
     return actions
 
 

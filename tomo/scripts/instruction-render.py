@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.7.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -218,6 +218,99 @@ def _next_id(counter: list[int]) -> str:
 def _inbox_join(inbox: str, basename: str) -> str:
     """Join inbox path + basename, normalising the trailing slash."""
     return f"{(inbox or '').rstrip('/')}/{basename}"
+
+
+# Path-shape contract (Hashi-driven, 2026-04-26 handoff): every path field
+# emitted into instructions.json must be vault-relative, absolute within the
+# vault, forward-slash separated, control-char free, and free of plugin
+# aliases. Hashi's executor refuses non-conforming paths with cryptic
+# `Path escapes vault root` / `path-symlink-escape` errors; catching them at
+# emit time produces actionable Tomo-side diagnostics instead.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+# Optional path fields per action kind. Required path fields are derived from
+# the JSON Schema (see tomo/schemas/instructions.schema.json) — this map only
+# names additionally permitted nullable path fields so the validator skips
+# them when null/missing but still validates non-null values.
+_OPTIONAL_PATH_FIELDS = {
+    "move_note": ("origin_inbox_item",),
+    "link_to_moc": ("target_moc_path",),
+    "skip": ("source_path",),
+}
+
+_REQUIRED_PATH_FIELDS = {
+    "create_moc": ("source", "destination"),
+    "move_note": ("source", "destination"),
+    "update_tracker": ("daily_note_path",),
+    "update_log_entry": ("daily_note_path",),
+    "update_log_link": ("daily_note_path",),
+    "delete_source": ("source_path",),
+}
+
+
+def _check_path_shape(value: str) -> str | None:
+    """Return None if `value` conforms to the Path Shape Contract, else the
+    first violation message."""
+    if value.startswith("/"):
+        return "leading-slash absolute path (must be vault-relative)"
+    if value.startswith("~"):
+        return "home-tilde prefix (must be vault-relative)"
+    if "\\" in value:
+        return "backslash separator (must be forward-slash only)"
+    if value.startswith("./"):
+        return "relative './' prefix (must be absolute within vault)"
+    parts = value.split("/")
+    if any(p == ".." for p in parts):
+        return "'..' segment (must be absolute within vault)"
+    if "{{" in value or "<%" in value:
+        return "plugin alias / template syntax (must be a resolved path)"
+    # Drive letter (e.g. 'C:/...') — covers Windows-style absolute paths.
+    if len(value) >= 2 and value[1] == ":" and value[0].isalpha():
+        return "drive-letter absolute path (must be vault-relative)"
+    if _CONTROL_CHARS_RE.search(value):
+        return "control character (\\n, \\r, \\x00, etc.)"
+    return None
+
+
+def _validate_action_paths(actions: list[dict]) -> list[str]:
+    """Validate every path field on every action against the Path Shape Contract.
+
+    Returns a list of violation messages (one per offending field). Empty list
+    means all paths conform. Caller is expected to abort on non-empty result.
+    """
+    violations: list[str] = []
+    for action in actions:
+        kind = action.get("action", "<unknown>")
+        action_id = action.get("id", "<no-id>")
+        for field in _REQUIRED_PATH_FIELDS.get(kind, ()):
+            value = action.get(field)
+            if not isinstance(value, str) or not value:
+                violations.append(
+                    f"{action_id} ({kind}): required path field '{field}' "
+                    f"is missing or empty"
+                )
+                continue
+            err = _check_path_shape(value)
+            if err:
+                violations.append(
+                    f"{action_id} ({kind}): '{field}'={value!r} — {err}"
+                )
+        for field in _OPTIONAL_PATH_FIELDS.get(kind, ()):
+            value = action.get(field)
+            if value in (None, ""):
+                continue
+            if not isinstance(value, str):
+                violations.append(
+                    f"{action_id} ({kind}): optional path field '{field}' "
+                    f"is not a string ({type(value).__name__})"
+                )
+                continue
+            err = _check_path_shape(value)
+            if err:
+                violations.append(
+                    f"{action_id} ({kind}): '{field}'={value!r} — {err}"
+                )
+    return violations
 
 
 def _dest_join(folder: str, title: str) -> str:
@@ -1134,6 +1227,21 @@ def main() -> int:
     if resolved_sections:
         print(f"  [resolve] section_name populated for {resolved_sections} link_to_moc action(s)",
               file=sys.stderr)
+
+    # ── Path Shape Contract guard (Hashi handoff 2026-04-26) ─────────────
+    # Catch non-conforming paths before they reach the JSON. Hashi fails
+    # closed on these with non-actionable error messages — catching upstream
+    # surfaces the renderer-level cause directly.
+    path_violations = _validate_action_paths(actions)
+    if path_violations:
+        print(
+            "instruction-render: aborting — path-shape violations "
+            f"({len(path_violations)}):",
+            file=sys.stderr,
+        )
+        for v in path_violations:
+            print(f"  • {v}", file=sys.stderr)
+        return 2
 
     # ── Write instructions.json (T1.3) ───────────────────────────────────
     generated_iso = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")

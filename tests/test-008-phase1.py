@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.3
+# version: 0.3.4
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -708,6 +708,65 @@ def test_resolve_target_moc_paths():
     print("[PASS] resolve_target_moc_paths — happy, cached, graceful-degrade, in-set tier-1")
 
 
+def test_path_shape_validator(actions):
+    # Happy-path actions emitted by build_actions() must conform to the
+    # Path Shape Contract — the renderer aborts otherwise.
+    violations = ir._validate_action_paths(actions)
+    assert violations == [], (
+        f"build_actions() produced non-conforming paths: {violations}"
+    )
+
+    # Each rule catches exactly the matching violation.
+    cases = [
+        ({"id": "X1", "action": "create_moc",
+          "source": "/abs/path.md", "destination": "Atlas/X.md"},
+         "leading-slash"),
+        ({"id": "X2", "action": "move_note",
+          "source": "../escape.md", "destination": "Atlas/Y.md"},
+         "'..' segment"),
+        ({"id": "X3", "action": "create_moc",
+          "source": "./local.md", "destination": "Atlas/X.md"},
+         "relative './'"),
+        ({"id": "X4", "action": "create_moc",
+          "source": r"a\b.md", "destination": "Atlas/X.md"},
+         "backslash"),
+        ({"id": "X5", "action": "update_tracker",
+          "daily_note_path": "{{daily}}/note.md",
+          "date": "2026-04-26", "field": "f",
+          "value": True, "syntax": "checkbox"},
+         "plugin alias"),
+        ({"id": "X6", "action": "delete_source",
+          "source_path": "with\nnl.md", "reason": "x"},
+         "control character"),
+        ({"id": "X7", "action": "create_moc",
+          "source": "C:/Users/x.md", "destination": "Atlas/X.md"},
+         "drive-letter"),
+        ({"id": "X8", "action": "create_moc",
+          "destination": "Atlas/X.md"},  # missing required `source`
+         "missing or empty"),
+    ]
+    for action, needle in cases:
+        v = ir._validate_action_paths([action])
+        assert len(v) == 1, f"expected 1 violation for {action['id']}, got {v}"
+        assert needle in v[0], f"expected {needle!r} in {v[0]!r} ({action['id']})"
+
+    # Optional fields tolerate null but validate when set.
+    v = ir._validate_action_paths([
+        {"id": "X9", "action": "skip", "source_path": None},
+        {"id": "X10", "action": "link_to_moc",
+         "target_moc": "X", "target_moc_path": None,
+         "line_to_add": "- [[X]]"},
+    ])
+    assert v == [], f"nullable fields rejected: {v}"
+
+    v = ir._validate_action_paths([
+        {"id": "X11", "action": "skip", "source_path": "/abs.md"},
+    ])
+    assert len(v) == 1 and "leading-slash" in v[0]
+
+    print("[PASS] path_shape_validator — happy path clean, all 8 violation kinds caught")
+
+
 def main() -> int:
     import tempfile
     sample_yaml = """
@@ -734,6 +793,7 @@ daily_log:
     actions = test_action_building()
     test_schema_validity(actions)
     test_md_rendering(actions)
+    test_path_shape_validator(actions)
     test_backfill_supporting_items_parents()
     test_backfill_plus_build_actions_no_duplicate_links()
     test_resolve_target_moc_paths()

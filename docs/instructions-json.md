@@ -1,6 +1,6 @@
 # instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-> Last reviewed: 2026-04-25 (per-action `applied` flag added — Hashi-driven applied-state, additive to v1).
+> Last reviewed: 2026-04-26 (Path Shape Contract documented + renderer-side guard added in `instruction-render.py` v0.7.1; additive to v1).
 
 **Audience:** Authors and integrators of [Tomo Hashi (友橋)](https://github.com/MMoMM-org)
 — the Obsidian community plugin that reads Tomo's Pass-2 instruction set
@@ -229,6 +229,81 @@ Within each block, actions are ordered by assignment (monotonic `I01` … `INN`)
   action kind. Tomo emits `false`; Hashi writes `true` after a successful
   apply. Missing field is tolerated as `false`. See "Action lifecycle"
   above for the round-trip contract.
+
+---
+
+## Path Shape Contract
+
+Every path-typed field on every action kind conforms to a single canonical
+shape. Tomo Hashi's path-safety pipeline (schema → normalize → vault-root
+containment → deny-list → `fs.realpath` symlink-escape check → execute)
+assumes paths are already in this form; non-conforming values fail closed
+with non-actionable errors (`Path escapes vault root`, `path-symlink-escape`).
+The renderer (`scripts/instruction-render.py` v0.7.1+, helper
+`_validate_action_paths`) refuses to write `instructions.json` if any path
+violates these rules — a Pass-2 run aborts with exit 2 and per-violation
+diagnostics on stderr.
+
+### The five rules
+
+Every emitted path string is:
+
+1. **Vault-relative** — no leading `/`, no `~`, no drive letter (`C:/...`).
+2. **Absolute within the vault** — no `..` segments, no `./` prefix, no
+   relative-to-something resolution required by the consumer.
+3. **Plugin-alias free** — no `{{daily}}`, no Templater `<% ... %>` blocks,
+   no `[[wikilink]]` shorthand. Wikilinks live only in `line_to_add` /
+   `target_stem` payload fields, never in path fields.
+4. **Forward-slash separated** — no backslashes (Tomo runs in a Linux
+   container so this is automatic; the rule is stated for completeness).
+5. **Control-char free** — no `\n`, `\r`, `\x00`, or other characters in the
+   ranges `\x00-\x1f` / `\x7f`.
+
+### Path field inventory
+
+The complete list of path-typed fields, by action kind. Required fields
+must be non-empty strings; nullable fields may be `null` (or absent on the
+optional-but-not-required `move_note.origin_inbox_item`) but must conform
+to the contract when set.
+
+| Action kind         | Field                  | Required? | Notes |
+|---------------------|------------------------|-----------|-------|
+| `create_moc`        | `source`               | Required  | Vault path of the rendered MOC currently in the inbox. |
+| `create_moc`        | `destination`          | Required  | Vault path of the final MOC location (under `Atlas/200 Maps/` by convention). |
+| `move_note`         | `source`               | Required  | Vault path of the rendered atomic note in the inbox. |
+| `move_note`         | `destination`          | Required  | Vault path of the final atomic-note location (under `Atlas/202 Notes/` by convention). |
+| `move_note`         | `origin_inbox_item`    | Optional, nullable | Path of the original inbox item this note was derived from — informational. Cleanup is via `delete_source`, not this field. |
+| `link_to_moc`       | `target_moc_path`      | Optional, nullable | Resolved vault path of the MOC. `null` is legitimate when the target doesn't exist yet (sibling `create_moc`) or Kado was unreachable at render time. Hashi falls back to `target_moc` (a stem, **not** a path). |
+| `update_tracker`    | `daily_note_path`      | Required  | Vault path of the daily note. Tomo resolves the date-to-path mapping; Hashi receives the resolved value. |
+| `update_log_entry`  | `daily_note_path`      | Required  | Same as above. |
+| `update_log_link`   | `daily_note_path`      | Required  | Same as above. |
+| `delete_source`     | `source_path`          | Required  | Vault path of the file to move to Obsidian's trash. |
+| `skip`              | `source_path`          | Optional, nullable | Vault path of the inbox item the user chose to skip. |
+
+`link_to_moc.target_moc`, `update_log_link.target_stem`, and the various
+`*_stem` traceability fields are **stems** (no folders, no `.md`), not
+paths — Obsidian resolves them by name. They are not subject to the path
+contract.
+
+### What stays out of path fields
+
+- **No wikilink syntax.** `[[Some Note]]` belongs in `line_to_add`,
+  `target_stem`, or `content` — never in a path field.
+- **No Templater syntax.** `<% tp.file.title %>` is rendered into the body
+  of an atomic note's content, never into a destination path.
+- **No Daily Notes plugin aliases.** Tomo expands `{{daily}}` /
+  date-formatted aliases into a concrete `daily_note_path` at Pass-2 time.
+  Hashi has no resolver for these and will not gain one in v0.1.
+
+### Renderer-side enforcement
+
+`scripts/instruction-render.py` (v0.7.1+) runs `_validate_action_paths` over
+the full action list immediately before serialising `instructions.json`.
+Any violation aborts the run with exit code 2 and prints one diagnostic
+line per offending field, naming the action ID, kind, field, value, and
+which rule was broken. The check is defensive — production paths come from
+config + suggestion data and should already conform — but it makes any
+upstream regression visible inside Tomo rather than at Hashi execute time.
 
 ---
 

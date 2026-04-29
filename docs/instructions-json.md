@@ -1,6 +1,6 @@
 # instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-> Last reviewed: 2026-04-26 (Path Shape Contract documented + renderer-side guard added in `instruction-render.py` v0.7.1; additive to v1).
+> Last reviewed: 2026-04-29 (Format conventions per syntax / position mode added; `update_log_link.at_time` shape aligned with `update_log_entry` to `- HH:MM: <payload>` for the miyo profile).
 
 **Audience:** Authors and integrators of [Tomo Hashi (友橋)](https://github.com/MMoMM-org)
 — the Obsidian community plugin that reads Tomo's Pass-2 instruction set
@@ -229,6 +229,119 @@ Within each block, actions are ordered by assignment (monotonic `I01` … `INN`)
   action kind. Tomo emits `false`; Hashi writes `true` after a successful
   apply. Missing field is tolerated as `false`. See "Action lifecycle"
   above for the round-trip contract.
+
+---
+
+## Format conventions per syntax / position mode
+
+> *Tomo emits canonical action payloads. Where the action references an
+> existing field, line, or section in a vault file, the canonical
+> Dataview/Markdown convention applies — fields are matched by **token
+> only** (no leading bullet, no leading `>`), positions are line-anchored,
+> wikilinks are double-bracket. Where the action inserts new content, the
+> emitted format follows the rules below. Hashi must not invent format
+> conventions; if a convention is not documented here, treat it as a
+> Tomo-side oversight and file a handoff.*
+
+This section is the explicit line-shape contract for the action kinds
+whose `syntax` / `position` enums imply a specific vault-side format
+(`update_tracker`, `update_log_entry`, `update_log_link`). The action-kind
+sections below give field semantics; this section gives matchable shapes.
+
+### `update_tracker.syntax`
+
+Tomo always emits double-colon Dataview tokens (`field:: value`).
+Single-colon (`field: value`) is **not** a Tomo-supported syntax — Hashi
+must not match it.
+
+| Value          | Line shape Hashi must match (existing field) | Line shape Hashi inserts (new field) | Example matches |
+|----------------|----------------------------------------------|--------------------------------------|-----------------|
+| `inline_field` | Token `<field>::` anywhere on the line, optional leading whitespace, optional Markdown bullet `- `. The line lives in the named `section` (a heading or callout) but is not itself a callout-line. | `<field>:: <value>` (no bullet) under the named `section`. If the existing line carries a bullet/indent, preserve it on overwrite. | `Sport:: true`<br>`- Sport:: true`<br>`  - Sport:: true` |
+| `callout_body` | A callout-body line (`> `-prefixed) carrying the `<field>::` token. The line lives inside the named callout block. | `> <field>:: <value>` inside the named callout. Preserve the callout's fold-state suffix (`[!name]-` collapsed, `[!name]+` expanded). | `> Temperature:: 4.8` |
+| `checkbox`     | A Markdown task `- [ ] <field>` or `- [x] <field>`. The token after the box is the field name (whitespace separator). | `- [ ] <field>` if `value` is falsy, `- [x] <field>` if truthy. | `- [ ] Sport`<br>`- [x] Sport` |
+
+**Match by token, not by full-line shape.** Vault-specific bullet/indent
+choices are user style; Tomo's contract is the `field::` token anchored
+inside the named `section`. Hashi rewrites the value, leaving surrounding
+whitespace and bullets intact.
+
+**Idempotency:** re-applying with the same value is a no-op. Re-applying
+with a different value overwrites — `update_tracker` semantics are "Tomo's
+intent wins" (per Hashi PRD F4 revision, 2026-04-29).
+
+### `update_log_entry` — `content` + `position`
+
+`update_log_entry.content` is emitted as **bare prose** (no leading
+bullet, no leading time prefix). Hashi composes the inserted line per the
+`position` rule:
+
+| `position`           | Inserted line                                    | Insertion point |
+|----------------------|--------------------------------------------------|-----------------|
+| `after_last_line`    | `- <content>`                                    | At the bottom of the named section, before the next heading at `heading_level` or shallower. Trigger-phrase positioning — content is verbatim prose. |
+| `before_first_line`  | `- <content>`                                    | At the top of the named section, immediately after the heading line. Trigger-phrase positioning — content is verbatim prose. |
+| `at_time`            | `- <time>: <content>` (e.g. `- 14:30: Geistesblitz: ...`) | Sorted insertion: scan the section for existing `- HH:MM: ` lines, find the chronological position for `<time>`, insert there. Falls back to `after_last_line` if no comparable lines exist. |
+
+**Canonical line shape**: `- HH:MM: <content>` matches the miyo daily-log
+convention. Other profiles MAY differ — see "Profile-driven format"
+below.
+
+**Idempotency:** exact-content deduplication. If the section already
+contains the formatted line on its own line, skip.
+
+### `update_log_link` — `target_stem` + `position`
+
+Hashi composes the inserted line from `target_stem` and `position`:
+
+| `position`           | Inserted line                                  | Insertion point |
+|----------------------|------------------------------------------------|-----------------|
+| `after_last_line`    | `- [[<target_stem>]]`                          | Bottom of the named section. |
+| `before_first_line`  | `- [[<target_stem>]]`                          | Top of the named section, after the heading. |
+| `at_time`            | `- <time>: [[<target_stem>]]` (e.g. `- 14:30: [[Asahikawa — ...]]`) | Sorted insertion alongside `update_log_entry` lines using the same `- HH:MM: ` shape (see above). |
+
+`update_log_entry` and `update_log_link` lines coexist in the same Daily
+Log section — they MUST share a single time-prefix shape, otherwise the
+section becomes visually and chronologically inconsistent. The contract
+above aligns them (`- HH:MM: <payload>`).
+
+> **Note on the prior contract.** Earlier prose in this doc described the
+> `update_log_link.at_time` shape as `HH:MM - - [[stem]]` (no leading
+> bullet, em-dash separator, then a second bullet). That shape was an
+> artefact of asymmetric link-vs-entry formatting and produced
+> visually-inconsistent lines next to `update_log_entry` content. The
+> current contract above replaces it with the symmetric form
+> `- HH:MM: [[stem]]`. Hashi v0.1 should implement the new shape; any
+> earlier Hashi prototype matching the two-hyphen form will need to be
+> updated.
+
+**Idempotency:** exact-line deduplication. If the section already
+contains `<line_to_insert>` byte-equal on its own line, skip.
+
+### Profile-driven format (post-MVP)
+
+The `at_time` line shape `- HH:MM: ` is the canonical default for the
+**miyo** profile. The convention is hardcoded in this contract for
+Tomo 0.8.x; profile-driven override is a planned follow-up.
+
+When discovery is added, the time-prefix shape will live in the
+`daily_log` shared-context block — proposed field
+`daily_log.entry_time_format` (template string with `<time>` and
+`<content>` placeholders). Until that ships, Hashi should hardcode
+`- HH:MM: ` for the miyo profile and refuse to apply at_time entries for
+other profiles unless explicitly opted in. See backlog F-37 (post-MVP).
+
+### General convention statement
+
+- **Token-anchored matching for existing fields.** `update_tracker` and
+  any future "find-and-update" action match the named token within the
+  named section. Bullet/indent variants on the matched line are
+  preserved on overwrite.
+- **Line-anchored insertion for new content.** `update_log_entry` /
+  `update_log_link` insert a complete line (`- ...` bullet form) at the
+  position derived from `position` + `time`. Surrounding whitespace
+  inside the section is left alone.
+- **No format inference.** Hashi must not guess the line shape from
+  surrounding entries. If the rules above are silent on a case, treat
+  the action as a Tomo-side oversight and file a handoff.
 
 ---
 
@@ -520,14 +633,10 @@ Preserve the callout's fold state suffix (`[!name]-` = collapsed, `[!name]+`
 | `source_stem` | string \| null | Inbox item the tracker was inferred from — informational. |
 | `reason` | string \| null | LLM's classification reason — informational. |
 
-**Syntax semantics:**
-
-- `inline_field` — Obsidian Dataview style: `field:: value` on its own line,
-  inside the named `section`.
-- `callout_body` — write inside a named tracker callout: a line with
-  `field:: value` prefixed by `> `.
-- `checkbox` — a markdown task: `- [ ] field` or `- [x] field` depending on
-  whether `value` is truthy.
+**Syntax semantics** — see
+[Format conventions § `update_tracker.syntax`](#update_trackersyntax) for
+the line-shape contract (token-anchored matching, double-colon only,
+bullet/indent preservation on overwrite).
 
 **Execution algorithm:**
 
@@ -536,11 +645,7 @@ Preserve the callout's fold state suffix (`[!name]-` = collapsed, `[!name]+`
 2. Find the `section`. If missing, create it at a reasonable position (below
    frontmatter, above the body).
 3. Write `field` according to `syntax`. If the field already has a value,
-   replace it (trackers are scalar).
-
-**Idempotency:** re-applying with the same value is a no-op. Re-applying
-with a different value overwrites — the user is explicit about what they
-want; don't second-guess.
+   replace it (trackers are scalar — Tomo's intent wins).
 
 ---
 
@@ -570,26 +675,25 @@ want; don't second-guess.
 | `heading_level` | integer (1–6) | Depth of the section heading. Combine with `section` to form the full marker (`## Daily Log`). |
 | `position` | `after_last_line` \| `before_first_line` \| `at_time` | Placement within the section. |
 | `time` | `HH:MM` \| null | Required when `position == "at_time"`. |
-| `content` | string | The prose line to insert. |
+| `content` | string | **Bare prose** (no bullet, no time prefix). Hashi composes the inserted line — see [Format conventions § `update_log_entry`](#update_log_entry--content--position). |
 | `source_stem` | string \| null | Informational. |
 | `reason` | string \| null | Informational. |
 
-**Position semantics:**
-
-- `after_last_line` — append to the end of the section (most common).
-- `before_first_line` — prepend to the top of the section.
-- `at_time` — insert in chronological order within the section, using `time`
-  as the sort key. Other entries in the section are assumed to have
-  leading `HH:MM` prefixes too; if not, fall back to `after_last_line`.
+**Position semantics** and **inserted line shape** — see
+[Format conventions § `update_log_entry`](#update_log_entry--content--position).
+At-a-glance: `after_last_line` / `before_first_line` insert `- <content>`
+verbatim; `at_time` inserts `- HH:MM: <content>` in chronological order
+using `time` as the sort key, falling back to `after_last_line` if no
+comparable `- HH:MM: ` lines exist.
 
 **Execution algorithm:**
 
 1. Open `daily_note_path` (create if missing, same rules as `update_tracker`).
 2. Find `section` at `heading_level`. Create it if missing.
-3. Insert `content` according to `position`.
+3. Insert the composed line according to `position`.
 
-**Idempotency:** exact-content deduplication. If the section already
-contains `content` on its own line, skip.
+**Idempotency:** exact-line deduplication. If the section already
+contains the composed line on its own line, skip.
 
 ---
 
@@ -598,18 +702,16 @@ contains `content` on its own line, skip.
 Same shape as `update_log_entry`, but the payload is a wikilink instead of
 prose.
 
-> **Why the asymmetry (`content` literal vs. `target_stem` structured)?**
-> `update_log_entry.content` is a fully-formed line that Tomo Hashi
-> inserts verbatim. `update_log_link.target_stem` is the bare wikilink
-> target; Tomo Hashi formats the line as `- [[<target_stem>]]` and, when
-> `position == "at_time"`, prefixes it with `HH:MM - `. The structured
-> shape exists because the time-prefix case has to be rendered at
-> execute time, not at generation time — the `HH:MM` is already in the
-> `time` field, so baking it into a literal would duplicate data and
-> invite drift if one got edited without the other. `update_log_entry`
-> has no such composition need (its content is free-form prose), so it
-> stays literal. Both kinds use the same `position` / `time` / `section`
-> / `heading_level` fields.
+> **Composition note (`content` vs. `target_stem` are both structured).**
+> Both action kinds carry **bare payloads** — `update_log_entry.content`
+> is bare prose (no bullet, no time prefix); `update_log_link.target_stem`
+> is the bare wikilink target. Hashi composes the inserted line at
+> execute time per the rules in the
+> [Format conventions](#format-conventions-per-syntax--position-mode)
+> section above. The two action kinds share `position` / `time` /
+> `section` / `heading_level` fields and produce coexisting lines in the
+> same Daily Log section, so they share a single time-prefix shape
+> (`- HH:MM: <payload>` for the miyo profile).
 
 ```json
 {
@@ -630,8 +732,10 @@ prose.
 |---|---|---|
 | `target_stem` | string | Bare note stem to link to (no `.md`, no path). |
 
-The line Tomo Hashi writes is `- [[<target_stem>]]` (optionally prefixed by
-`HH:MM - ` when `position == "at_time"`). All other fields mirror
+The line Tomo Hashi writes is `- [[<target_stem>]]` (default) or
+`- HH:MM: [[<target_stem>]]` (when `position == "at_time"`) — see the
+[Format conventions](#format-conventions-per-syntax--position-mode)
+section for the canonical line shapes. All other fields mirror
 `update_log_entry` — same execution, same idempotency rules.
 
 ---

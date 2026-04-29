@@ -256,14 +256,89 @@ must not match it.
 
 | Value          | Line shape Hashi must match (existing field) | Line shape Hashi inserts (new field) | Example matches |
 |----------------|----------------------------------------------|--------------------------------------|-----------------|
-| `inline_field` | Token `<field>::` anywhere on the line, optional leading whitespace, optional Markdown bullet `- `. The line lives in the named `section` (a heading or callout) but is not itself a callout-line. | `<field>:: <value>` (no bullet) under the named `section`. If the existing line carries a bullet/indent, preserve it on overwrite. | `Sport:: true`<br>`- Sport:: true`<br>`  - Sport:: true` |
-| `callout_body` | A callout-body line (`> `-prefixed) carrying the `<field>::` token. The line lives inside the named callout block. | `> <field>:: <value>` inside the named callout. Preserve the callout's fold-state suffix (`[!name]-` collapsed, `[!name]+` expanded). | `> Temperature:: 4.8` |
+| `inline_field` | Token `<field>::` anywhere on a line within the named `section` (a heading area). Optional leading whitespace, optional Markdown bullet `- `, optional callout-line prefix `> `. | `<field>:: <value>` (no bullet) under the named `section`. If the existing line carries a bullet/indent/`> ` prefix, preserve it on overwrite. | `Sport:: true`<br>`- Sport:: true`<br>`  - Sport:: true`<br>`> Sport:: true` |
+| `callout_body` | Token `<field>::` anywhere on a line within the named callout block. **Same matcher as `inline_field`** — `> ` prefix is optional, not required. Obsidian renders body lines as part of the callout whether or not each line is `> `-led, as long as the line is in the callout-opener's paragraph block. | `> <field>:: <value>` inside the named callout (lead with `> ` for explicit callout-body convention). Preserve the callout opener's fold-state suffix (`[!name]-` collapsed, `[!name]+` expanded). | `> Temperature:: 4.8`<br>`Temperature:: 4.8` (when inside an unquoted callout body) |
 | `checkbox`     | A Markdown task `- [ ] <field>` or `- [x] <field>`. The token after the box is the field name (whitespace separator). | `- [ ] <field>` if `value` is falsy, `- [x] <field>` if truthy. | `- [ ] Sport`<br>`- [x] Sport` |
 
-**Match by token, not by full-line shape.** Vault-specific bullet/indent
-choices are user style; Tomo's contract is the `field::` token anchored
-inside the named `section`. Hashi rewrites the value, leaving surrounding
-whitespace and bullets intact.
+#### Token-name matching contract (the shared definition)
+
+This is the **single shared definition** of "the field token" used by
+both Tomo (producer — when discovering existing tracker lines during
+analysis) and Hashi (consumer — when locating the line to overwrite at
+apply time). They MUST agree on this exact rule:
+
+> **A line within the named section/callout matches `<field>` if, after
+> stripping any leading whitespace, optional Markdown bullet (`- ` or
+> `* ` or `+ `), and optional callout-body prefix (`> `, possibly
+> repeated for nested callouts) — all in any order — the remaining text
+> begins with the literal token `<field>::` followed by whitespace or
+> end-of-line.**
+
+Equivalent regex (anchored, case-sensitive on the field name):
+
+```
+^[\s]*(?:>[\s]*)*(?:[-*+][\s]+)?(?:>[\s]*)*<field>::(?:\s|$)
+```
+
+Examples — given `<field> = "Sport"`, all of these MATCH:
+
+```
+Sport:: true
+  Sport:: true
+- Sport:: true
+  - Sport:: true
+> Sport:: true
+> - Sport:: true
+- > Sport:: true
+>> Sport:: true            ← nested callout
+```
+
+These do NOT match:
+
+```
+Sport: true                ← single colon
+sport:: true               ← case mismatch
+SportLevel:: true          ← longer name (no `::` directly after `Sport`)
+Sport ::true               ← whitespace between name and `::`
+SportPlus:: true           ← prefix-only match — token is `SportPlus`, not `Sport`
+```
+
+Note that **nested callout prefixes** (`>>` no-space or `> > ` with
+space) DO match — Obsidian accepts both forms for nested-callout body
+lines, and the regex's `(?:>[\s]*)*` covers both.
+
+**Why these rules:**
+
+- **Bullet prefix optional**: vaults differ on whether tracker lines
+  carry a leading `- `. Both forms are common in real Privat-Test daily
+  notes.
+- **Callout `>` prefix optional**: inside a callout body, Obsidian
+  renders subsequent paragraph lines as part of the callout regardless
+  of whether each line is led with `> `. Users who lead every line with
+  `> ` (Marcus's convention) and users who only lead the opener both
+  produce valid callout bodies.
+- **Both prefixes can co-occur**: `- > Sport:: true` (bullet outside
+  callout-line marker) and `> - Sport:: true` (callout-led bullet line)
+  are both valid.
+- **Case-sensitive on field name**: `Sport` and `sport` are different
+  trackers — vault-config defines exact casing.
+- **Single colon explicitly excluded**: Tomo uses Dataview-style double
+  colons. Single-colon (`Sport: true`) is YAML-frontmatter syntax, not
+  a Dataview inline field, and is reserved for a separate (future)
+  syntax enum value.
+
+**The matcher is identical for `inline_field` and `callout_body`.** The
+only difference between the two `syntax` values is **where** to look:
+
+| `syntax` | Section locator | Insertion format (new line) |
+|----------|-----------------|------------------------------|
+| `inline_field` | The named `section` is a Markdown heading area (`## <name>` then body until next heading at same/shallower level). Search inside that body. | `<field>:: <value>` — no bullet, no `> ` prefix. |
+| `callout_body` | The named `section` is a callout opener (`> [!<callout_id>]` line). Search inside the callout's paragraph block (lines under the opener until the next blank-line paragraph break OR the next non-callout content). | `> <field>:: <value>` — with `> ` prefix for explicit callout-body convention. |
+
+When **overwriting an existing line**, Hashi preserves the line's
+existing prefixes byte-for-byte (whitespace, bullet, `> `) and rewrites
+only the value portion after `<field>::`. The matcher's optional-prefix
+logic exists to **find** the line; overwrite is in-place.
 
 **Idempotency:** re-applying with the same value is a no-op. Re-applying
 with a different value overwrites — `update_tracker` semantics are "Tomo's

@@ -254,95 +254,188 @@ Tomo always emits double-colon Dataview tokens (`field:: value`).
 Single-colon (`field: value`) is **not** a Tomo-supported syntax — Hashi
 must not match it.
 
-| Value          | Line shape Hashi must match (existing field) | Line shape Hashi inserts (new field) | Example matches |
-|----------------|----------------------------------------------|--------------------------------------|-----------------|
-| `inline_field` | Token `<field>::` anywhere on a line within the named `section` (a heading area). Optional leading whitespace, optional Markdown bullet `- `, optional callout-line prefix `> `. | `<field>:: <value>` (no bullet) under the named `section`. If the existing line carries a bullet/indent/`> ` prefix, preserve it on overwrite. | `Sport:: true`<br>`- Sport:: true`<br>`  - Sport:: true`<br>`> Sport:: true` |
-| `callout_body` | Token `<field>::` anywhere on a line within the named callout block. **Same matcher as `inline_field`** — `> ` prefix is optional, not required. Obsidian renders body lines as part of the callout whether or not each line is `> `-led, as long as the line is in the callout-opener's paragraph block. | `> <field>:: <value>` inside the named callout (lead with `> ` for explicit callout-body convention). Preserve the callout opener's fold-state suffix (`[!name]-` collapsed, `[!name]+` expanded). | `> Temperature:: 4.8`<br>`Temperature:: 4.8` (when inside an unquoted callout body) |
-| `checkbox`     | A Markdown task `- [ ] <field>` or `- [x] <field>`. The token after the box is the field name (whitespace separator). | `- [ ] <field>` if `value` is falsy, `- [x] <field>` if truthy. | `- [ ] Sport`<br>`- [x] Sport` |
+| Value          | Position Hashi must match (existing field) | Line shape Hashi inserts (new field) | Example matches |
+|----------------|--------------------------------------------|--------------------------------------|-----------------|
+| `inline_field` | Token `<field>::` in any of the three Dataview positions inside the named `section` (a heading area): line-anchored (with optional bullet / whitespace / `> ` prefix), inline-bracketed `[<field>:: <value>]`, or inline-parenthesized `(<field>:: <value>)`. Multi-word field names with spaces are valid (e.g. `For Me::`, `Learned Words::`). | `<field>:: <value>` (no bullet) under the named `section`. If the existing line carries a bullet/indent/`> ` prefix, preserve it on overwrite. Inline bracketed/parenthesized forms are also preserved on overwrite — Hashi rewrites only the value portion, never reformats. | `Sport:: true`<br>`- Sport:: true`<br>`> Sport:: true`<br>`Heute Workout. [Sport:: true]`<br>`Bewegt: (Sport:: true)`<br>`- For Me:: morgen früh aufstehen` |
+| `callout_body` | Token `<field>::` in any Dataview position inside the named callout block. **Same three-position matcher as `inline_field`** — `> ` prefix is optional, not required. Obsidian renders body lines as part of the callout whether or not each line is `> `-led, as long as the line is in the callout-opener's paragraph block. | `> <field>:: <value>` inside the named callout (lead with `> ` for explicit callout-body convention). Preserve the callout opener's fold-state suffix (`[!name]-` collapsed, `[!name]+` expanded), and preserve the existing line's prefixes byte-for-byte on overwrite. | `> Temperature:: 4.8`<br>`> - Temperature:: 4.8`<br>`Temperature:: 4.8` (unquoted callout body)<br>`> Heute kalt. [Temperature:: 4.8]` |
+| `checkbox`     | A Markdown task `- [ ] <field>` or `- [x] <field>`. The token after the box is the field name (whitespace separator). | `- [ ] <field>` if `value` is falsy, `- [x] <field>` if truthy. | `- [ ] Sport`<br>`- [x] Sport`<br>`- [ ] Daily Review` |
 
 #### Token-name matching contract (the shared definition)
 
 This is the **single shared definition** of "the field token" used by
 both Tomo (producer — when discovering existing tracker lines during
-analysis) and Hashi (consumer — when locating the line to overwrite at
-apply time). They MUST agree on this exact rule:
+analysis) and Hashi (consumer — when locating the field to overwrite at
+apply time). They MUST agree on these rules.
 
-> **A line within the named section/callout matches `<field>` if, after
-> stripping any leading whitespace, optional Markdown bullet (`- ` or
-> `* ` or `+ `), and optional callout-body prefix (`> `, possibly
-> repeated for nested callouts) — all in any order — the remaining text
-> begins with the literal token `<field>::` followed by whitespace or
+Dataview supports **three positions** for inline fields, and a tracker
+field may appear in any of them within the named section/callout. The
+matcher MUST recognise all three:
+
+##### Position 1 — Line-anchored
+
+> **A line matches `<field>` if, after stripping any leading whitespace,
+> optional Markdown bullet (`- ` or `* ` or `+ `), and optional
+> callout-body prefix (`> `, possibly repeated for nested callouts —
+> the prefix tokens may appear in any order), the remaining text begins
+> with the literal token `<field>::` followed by whitespace or
 > end-of-line.**
 
-Equivalent regex (anchored, case-sensitive on the field name):
+Regex (anchored, case-sensitive on the field name; `<field>` is
+regex-escaped if it contains special characters):
 
 ```
 ^[\s]*(?:>[\s]*)*(?:[-*+][\s]+)?(?:>[\s]*)*<field>::(?:\s|$)
 ```
 
-Examples — given `<field> = "Sport"`, all of these MATCH:
+Value extent: from after `:: ` (or `::` + end-of-line for empty value)
+to the end of the line.
 
+##### Position 2 — Inline-bracketed (Dataview `[Field:: value]`)
+
+> **A line matches `<field>` if it contains the substring `[<field>:: `
+> followed by zero or more characters (the value) followed by `]`,
+> anywhere on the line. The line need NOT start with the field; any
+> prose, code, or other content may precede or follow the bracketed
+> field. Multiple bracketed inline fields may coexist on one line.**
+
+Regex (case-sensitive; non-greedy on value to allow multiple inline
+fields per line):
+
+```
+\[<field>::\s*([^\]]*)\]
+```
+
+Value extent: capture group 1 (between `:: ` and the closing `]`).
+
+##### Position 3 — Inline-parenthesized (Dataview `(Field:: value)`)
+
+Same as Position 2 but with parentheses instead of brackets. Dataview
+hides parenthesized inline fields entirely from reader-mode rendering;
+they're functionally identical to the bracketed form for matching.
+
+```
+\(<field>::\s*([^\)]*)\)
+```
+
+Value extent: capture group 1 (between `:: ` and the closing `)`).
+
+##### Match priority and resolution rules
+
+Hashi's matcher evaluates positions in order and uses the **first match
+that occurs lexically earliest** in the named section/callout:
+
+1. Scan each line in the section for Position 1 (line-anchored).
+2. If no Position-1 match in the section, scan all lines for Position 2
+   (bracketed) and Position 3 (parenthesized) — first occurrence wins.
+3. If multiple lines match Position 1, the **first** one wins. Tomo
+   does not emit duplicate trackers; if a daily note has two
+   `Sport:: ...` lines, it's a vault-side anomaly — Hashi rewrites the
+   first and leaves the rest alone.
+
+When overwriting, Hashi **preserves the line's existing prefixes
+byte-for-byte** (whitespace, bullet, `> `, surrounding prose, brackets,
+parens) and rewrites only the value portion. The matcher's
+optional-prefix logic exists to **find** the field; overwrite is
+in-place.
+
+##### Examples — given `<field> = "Sport"`, all of these MATCH
+
+Position 1 (line-anchored):
 ```
 Sport:: true
-  Sport:: true
 - Sport:: true
-  - Sport:: true
 > Sport:: true
-> - Sport:: true
-- > Sport:: true
->> Sport:: true            ← nested callout
+> - Sport:: true            ← Marcus's callout-body convention
+- > Sport:: true            ← bullet then callout-line marker
+>> Sport:: true             ← nested callout (no-space)
+> > Sport:: true            ← nested callout (with space)
 ```
 
-These do NOT match:
-
+Position 2 (inline-bracketed):
 ```
-Sport: true                ← single colon
-sport:: true               ← case mismatch
-SportLevel:: true          ← longer name (no `::` directly after `Sport`)
-Sport ::true               ← whitespace between name and `::`
-SportPlus:: true           ← prefix-only match — token is `SportPlus`, not `Sport`
+Heute Workout gemacht. [Sport:: true]
+[Sport:: true] und gut geschlafen.
+> Tagebuch: hatte einen guten Tag mit [Sport:: true].
 ```
 
-Note that **nested callout prefixes** (`>>` no-space or `> > ` with
-space) DO match — Obsidian accepts both forms for nested-callout body
-lines, and the regex's `(?:>[\s]*)*` covers both.
+Position 3 (inline-parenthesized):
+```
+Bewegt heute. (Sport:: true)
+> Aktivität war ok (Sport:: true) trotz wenig Schlaf.
+```
 
-**Why these rules:**
+##### Examples — multi-word field names
 
-- **Bullet prefix optional**: vaults differ on whether tracker lines
-  carry a leading `- `. Both forms are common in real Privat-Test daily
-  notes.
-- **Callout `>` prefix optional**: inside a callout body, Obsidian
+Given `<field> = "For Me"` (one of the actual Privat-Test trackers):
+
+```
+For Me:: morgen früh aufstehen
+- For Me:: lange spazieren gehen
+> For Me:: ein gutes Buch lesen
+[For Me:: Tee mit Yuki]
+```
+
+The literal `<field>` text in the regex is `For Me` (with a space).
+Hashi must regex-escape the field name OR use a literal-string scan
+that handles whitespace inside the name verbatim.
+
+##### Examples — these do NOT match
+
+```
+Sport: true                 ← single colon (YAML, not Dataview)
+sport:: true                ← case mismatch
+SportLevel:: true           ← longer name (no `::` directly after `Sport`)
+Sport ::true                ← whitespace between name and `::`
+SportPlus:: true            ← prefix-only — token is `SportPlus`, not `Sport`
+[Sport: true]               ← single colon inside brackets
+{Sport:: true}              ← curly braces (not a Dataview position)
+```
+
+##### Why these rules
+
+- **Three Dataview positions, not just line-anchored.** Real users
+  embed inline fields mid-prose using `[]` or `()` for stylistic
+  reasons — to keep daily-log lines readable while still tracking a
+  field. Tomo's contract must accept all three since the analyst
+  reads notes as the user wrote them.
+- **Bullet prefix optional on line-anchored.** Vaults differ on
+  whether tracker lines carry a leading `- `. Both forms are common.
+- **Callout `>` prefix optional.** Inside a callout body, Obsidian
   renders subsequent paragraph lines as part of the callout regardless
-  of whether each line is led with `> `. Users who lead every line with
-  `> ` (Marcus's convention) and users who only lead the opener both
-  produce valid callout bodies.
-- **Both prefixes can co-occur**: `- > Sport:: true` (bullet outside
-  callout-line marker) and `> - Sport:: true` (callout-led bullet line)
-  are both valid.
-- **Case-sensitive on field name**: `Sport` and `sport` are different
+  of whether each line is led with `> `. Users who lead every line
+  with `> ` (Marcus's convention) and users who only lead the opener
+  both produce valid callout bodies.
+- **Prefix order flexible.** `- > Sport:: true` (bullet outside
+  callout-line marker) and `> - Sport:: true` (callout-led bullet
+  line) are both valid line-anchored forms.
+- **Case-sensitive on field name.** `Sport` and `sport` are different
   trackers — vault-config defines exact casing.
-- **Single colon explicitly excluded**: Tomo uses Dataview-style double
-  colons. Single-colon (`Sport: true`) is YAML-frontmatter syntax, not
-  a Dataview inline field, and is reserved for a separate (future)
-  syntax enum value.
+- **Single colon explicitly excluded.** Tomo uses Dataview-style
+  double colons. Single-colon (`Sport: true`) is YAML-frontmatter
+  syntax, not a Dataview inline field, and is reserved for a separate
+  (future) syntax enum value.
 
-**The matcher is identical for `inline_field` and `callout_body`.** The
-only difference between the two `syntax` values is **where** to look:
+##### Section locator vs. matcher
 
-| `syntax` | Section locator | Insertion format (new line) |
-|----------|-----------------|------------------------------|
-| `inline_field` | The named `section` is a Markdown heading area (`## <name>` then body until next heading at same/shallower level). Search inside that body. | `<field>:: <value>` — no bullet, no `> ` prefix. |
-| `callout_body` | The named `section` is a callout opener (`> [!<callout_id>]` line). Search inside the callout's paragraph block (lines under the opener until the next blank-line paragraph break OR the next non-callout content). | `> <field>:: <value>` — with `> ` prefix for explicit callout-body convention. |
+**The matcher is identical for `inline_field` and `callout_body`.**
+The only difference between the two `syntax` values is **where** to
+look (section locator) and **how to format** when inserting a new
+field:
 
-When **overwriting an existing line**, Hashi preserves the line's
-existing prefixes byte-for-byte (whitespace, bullet, `> `) and rewrites
-only the value portion after `<field>::`. The matcher's optional-prefix
-logic exists to **find** the line; overwrite is in-place.
+| `syntax` | Section locator | Insertion format (new line, position 1 only) |
+|----------|-----------------|------------------------------------------------|
+| `inline_field` | The named `section` is a Markdown heading area (`## <name>` then body until next heading at same/shallower level). Search every line inside that body for any of the three positions. | `<field>:: <value>` — no bullet, no `> ` prefix. |
+| `callout_body` | The named `section` is a callout opener (`> [!<callout_id>]` line). Search every line inside the callout's paragraph block (lines under the opener until the next blank-line paragraph break OR the next non-callout content) for any of the three positions. | `> <field>:: <value>` — with `> ` prefix for explicit callout-body convention. |
+
+When **inserting a new field** (no existing match in the section),
+Hashi uses the line-anchored insertion format above. Bracketed and
+parenthesized inline forms are NOT used for new inserts — they exist
+only to allow Hashi to recognise existing user-authored fields in
+those positions.
 
 **Idempotency:** re-applying with the same value is a no-op. Re-applying
-with a different value overwrites — `update_tracker` semantics are "Tomo's
-intent wins" (per Hashi PRD F4 revision, 2026-04-29).
+with a different value overwrites in-place — `update_tracker` semantics
+are "Tomo's intent wins" (per Hashi PRD F4 revision, 2026-04-29).
 
 ### `update_log_entry` — `content` + `position`
 

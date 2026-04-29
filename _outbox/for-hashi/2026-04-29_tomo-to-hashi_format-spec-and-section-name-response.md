@@ -253,3 +253,69 @@ Items Hashi flagged as Hashi-side fixes (independent of this response):
 - Branch: `feat/format-spec-section-name-fallback` (not yet merged to
   main pending review).
 - Original handoff: `Tomo/_inbox/from-hashi/2026-04-29_hashi-to-tomo_format-spec-and-test-coverage.md` (status: in-progress → will be flipped to done after this reply lands).
+
+---
+
+## Addendum 2026-04-29 — Token-name matching contract: 3 Dataview positions
+
+After the initial response above shipped, Marcus reviewed the
+"Format conventions per syntax / position mode" section and flagged
+that the matcher contract was incomplete. The doc was extended (commit
+`a7cf1dd`); read the full updated section in
+`Tomo/docs/instructions-json.md` § Token-name matching contract.
+
+### What changed in the contract
+
+The matcher now formally recognises **all three Dataview inline-field
+positions**, not just line-anchored:
+
+| Position | Form | Example |
+|----------|------|---------|
+| 1 — Line-anchored | `<field>:: <value>` (with optional bullet/whitespace/`> ` prefixes) | `- Sport:: true` |
+| 2 — Inline-bracketed | `[<field>:: <value>]` anywhere on a line | `Heute Workout. [Sport:: true]` |
+| 3 — Inline-parenthesized | `(<field>:: <value>)` anywhere on a line | `Bewegt heute (Sport:: true)` |
+
+Hashi's matcher MUST recognise all three. Match priority:
+line-anchored beats inline; first occurrence wins. When overwriting,
+Hashi preserves the line's existing prefixes/brackets/parens byte-for-
+byte and rewrites only the value portion.
+
+### What stays the same
+
+- **Insertion format for NEW fields stays line-anchored only.**
+  Bracketed and parenthesized forms exist purely to recognise existing
+  user-authored fields, not as Tomo emission targets.
+- The `inline_field` vs `callout_body` distinction is still about
+  **section locator** (heading-area vs callout-body) and **insertion
+  format** (no `> ` prefix vs `> ` prefix), not about the matcher.
+  Both syntax values use the same three-position matcher.
+
+### Multi-word field names
+
+Some real Privat-Test trackers have multi-word names (`For Me`,
+`Learned Words`, etc.). Hashi's matcher must regex-escape the field
+name OR use literal-string scanning that handles whitespace inside the
+name verbatim. The contract section now shows examples:
+
+```
+- For Me:: morgen früh aufstehen
+[For Me:: Tee mit Yuki]
+```
+
+### Implementation note for Hashi v0.1
+
+If Hashi's current matcher is line-anchored only, that's a
+straightforward extension — three regexes evaluated in priority order,
+unified value-extraction. The bracketed/parenthesized forms are
+**read-only** for Hashi (find + overwrite); Hashi never writes new
+brackets/parens.
+
+### Why this came up
+
+User authoring style varies. Marcus's daily notes use line-anchored
+form (`- For Me:: ...`), but other vault authors embed inline fields
+mid-prose for readability. Tomo's contract must accept all three since
+the analyst reads notes as they were written, not in a normalised
+form. The Tomo-side analyst is LLM-driven so it tolerates all three
+naturally; the contract change formalises the same tolerance for
+Hashi's deterministic matcher.

@@ -649,8 +649,20 @@ The line Tomo Hashi writes is `- [[<target_stem>]]` (optionally prefixed by
 
 | Field | Type | Notes |
 |---|---|---|
-| `source_path` | string | Full vault-relative path of the file to delete. |
+| `source_path` | string | Full vault-relative path of the file to delete. Byte-equal to the wikilink target rendered in the `.md` peer (with `.md` re-appended only when the target is a bare or dotted note name). |
 | `reason` | string | Human-readable justification — surface in the UI when confirming. |
+
+**Path-shape rules (Hashi consumes verbatim — no resolution):**
+
+- `source_path` is a vault-relative path that names the file as it exists
+  on disk. For text sources this is `<inbox>/<stem>.md`; for media sources
+  (audio, video, images, etc.) it is `<inbox>/<filename-with-real-extension>`
+  — Tomo does NOT append `.md` to a path whose wikilink target already
+  carries a non-`.md` extension. See `_ensure_md_extension` in
+  `instruction-render.py` for the full extension allowlist.
+- Note titles MAY contain dots (Obsidian permits `Foo.Bar` as a title);
+  the renderer treats a trailing segment as an extension only when it
+  is ≤4 chars and matches a known Obsidian-resolvable extension.
 
 **Execution algorithm:**
 
@@ -668,6 +680,21 @@ The line Tomo Hashi writes is `- [[<target_stem>]]` (optionally prefixed by
    between the suggestions doc's confirmed items and daily-update items.
 
 The `reason` field distinguishes the two.
+
+**Peer files are independent actions.** Voice memos and similar workflows
+produce two files in the inbox — the media (e.g. `Voice…m4a`) and a
+transcript peer (`Voice…m4a.md` or a sibling `Voice…md`). Even when these
+files share a stem-prefix, **each file gets its own `delete_source` (or
+`skip`) action emitted from a separate user decision** in the suggestions
+review. Hashi MUST treat them independently:
+
+- Applying `delete_source` for the media does NOT imply deleting the
+  transcript, and vice versa. Each action stands on its own.
+- The user CAN delete the audio while keeping the transcript (or
+  vice versa) — this is a real, supported workflow.
+- Hashi MUST NOT infer deletion of a peer file from a shared stem,
+  filename prefix, or any other heuristic. The instruction set is the
+  authoritative list of files to act on.
 
 ---
 

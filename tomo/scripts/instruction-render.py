@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.1
+# version: 0.7.2
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -220,6 +220,53 @@ def _inbox_join(inbox: str, basename: str) -> str:
     return f"{(inbox or '').rstrip('/')}/{basename}"
 
 
+# Obsidian-resolvable extensions seen in vault paths derived from wikilinks.
+# Used by `_ensure_md_extension` to discriminate a real file extension
+# (`Voice.m4a`, `Notes.html`) from a dotted note name (`Foo.Bar`,
+# `2026-04-29.draft`). Obsidian allows dots in note titles, so "any dot
+# means extension" is wrong — match against this allowlist instead.
+_KNOWN_FILE_EXTENSIONS = frozenset({
+    "md",
+    "m4a", "mp3", "wav", "flac", "ogg", "aac", "opus",
+    "mp4", "mov", "webm", "mkv", "avi",
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp",
+    "pdf", "html", "txt", "csv", "json", "yaml", "yml",
+    "zip",
+})
+
+
+def _ensure_md_extension(path: str | None) -> str | None:
+    """Append `.md` to a wikilink-derived path unless it already names a file.
+
+    Wikilink-derived paths come in three shapes:
+      1. bare stem (`FooBar`)            — atomic note  → append `.md`
+      2. dotted note name (`Foo.Bar`)    — atomic note  → append `.md`
+      3. file with extension (`X.m4a`,
+         `Y.html`, `Z.md`)               — leave alone
+
+    The discriminator is the suffix after the basename's last dot: if it is
+    ≤4 chars and matches a known Obsidian-resolvable extension, treat as a
+    real file (case 3); otherwise it is part of a dotted note name and `.md`
+    must be appended (case 1 or 2). Mirrors Obsidian's wikilink semantics —
+    `[[FooBar]]` resolves to `FooBar.md`, `[[FooBar.m4a]]` resolves to the
+    literal media file.
+
+    Hashi consumes paths verbatim (no resolution), so the JSON `source_path`
+    must equal the `.md` peer's wikilink target byte-for-byte. See handoff
+    `_inbox/from-hashi/2026-04-29_hashi-to-tomo_audio-peer-path-emission.md`.
+    """
+    if not path:
+        return path
+    basename = path.rsplit("/", 1)[-1]
+    last_dot = basename.rfind(".")
+    if last_dot < 0:
+        return path + ".md"
+    suffix = basename[last_dot + 1:]
+    if len(suffix) <= 4 and suffix.lower() in _KNOWN_FILE_EXTENSIONS:
+        return path
+    return path + ".md"
+
+
 # Path-shape contract (Hashi-driven, 2026-04-26 handoff): every path field
 # emitted into instructions.json must be vault-relative, absolute within the
 # vault, forward-slash separated, control-char free, and free of plugin
@@ -371,9 +418,9 @@ def _build_move_note_actions(
             origin = origin_basename
         else:
             origin = None
-        # Ensure origin has .md when present
-        if origin and not origin.endswith(".md"):
-            origin = origin + ".md"
+        # Append .md only for bare/dotted note names; preserve real
+        # extensions (e.g. `.m4a` for audio sources kept as origin reference).
+        origin = _ensure_md_extension(origin)
         out.append({
             "id": _next_id(counter),
             "action": "move_note",
@@ -579,8 +626,7 @@ def _build_delete_source_actions(
         if not sp:
             continue
         full = sp if "/" in sp else f"{inbox}{sp}"
-        if not full.endswith(".md"):
-            full += ".md"
+        full = _ensure_md_extension(full)
         out.append({
             "id": _next_id(counter),
             "action": "delete_source",
@@ -617,8 +663,7 @@ def _build_skip_actions(skipped: list[dict], inbox_path: str, counter: list[int]
         sp = sk.get("source_path") or None
         if sp and "/" not in sp:
             sp = f"{inbox}{sp}"
-        if sp and not sp.endswith(".md"):
-            sp += ".md"
+        sp = _ensure_md_extension(sp)
         out.append({
             "id": _next_id(counter),
             "action": "skip",

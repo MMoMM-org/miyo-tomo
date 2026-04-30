@@ -157,6 +157,16 @@ DAILY_UPDATES = [
 SKIPPED = [
     {"id": "B1", "source_path": "Trash.md", "disposition": "delete_source"},
     {"id": "B2", "source_path": "Keep.md", "disposition": "skip"},
+    # Audio source — wikilink target is the literal file; emitted source_path
+    # must NOT have `.md` appended (would produce a phantom `<name>.m4a.md`
+    # path that matches no vault file). Regression for handoff
+    # 2026-04-29_hashi-to-tomo_audio-peer-path-emission.md.
+    {"id": "B3", "source_path": "Voice 11__2026-04-20 11:48:29.m4a", "disposition": "delete_source"},
+    # Dotted note name (Obsidian permits `.` in titles) — must still get
+    # `.md` appended; the suffix `Bar` is not a known file extension.
+    {"id": "B4", "source_path": "Foo.Bar", "disposition": "delete_source"},
+    # Audio source kept-in-inbox via skip — same path-preservation rule.
+    {"id": "B5", "source_path": "Voice 11__2026-04-22 10:14:41.m4a", "disposition": "skip"},
 ]
 
 
@@ -189,10 +199,11 @@ def test_action_building():
     _must(counts.get("update_tracker") == 1, f"expected 1 update_tracker, got {counts}")
     _must(counts.get("update_log_entry") == 1, f"expected 1 update_log_entry, got {counts}")
     _must(counts.get("update_log_link") == 1, f"expected 1 update_log_link, got {counts}")
-    # Sport source_stem is daily-only (not in confirmed) → 1 daily-only delete
-    # Plus 1 from skipped disposition=delete_source = 2
-    _must(counts.get("delete_source") == 2, f"expected 2 delete_source, got {counts}")
-    _must(counts.get("skip") == 1, f"expected 1 skip, got {counts}")
+    # Sport source_stem is daily-only (not in confirmed) → 1 daily-only delete.
+    # Plus 3 from skipped disposition=delete_source (B1 .md, B3 .m4a, B4 dotted) = 4.
+    _must(counts.get("delete_source") == 4, f"expected 4 delete_source, got {counts}")
+    # B2 .md skip + B5 .m4a skip = 2.
+    _must(counts.get("skip") == 2, f"expected 2 skip, got {counts}")
 
     # Ordering: create_moc before move_note before link_to_moc.
     def _first_idx(kind: str) -> int:
@@ -265,11 +276,28 @@ def test_action_building():
     _must(tr["field"] == "Sport", "tracker field wrong")
     _must(tr["syntax"] == "inline_field", "tracker syntax wrong")
 
-    # delete_source reasons are populated, paths are vault-relative with .md
+    # delete_source reasons are populated; paths are vault-relative.
+    # `.md` is appended for bare/dotted note names but NOT for paths whose
+    # wikilink target already names a non-md file (audio, video, etc.) — see
+    # _ensure_md_extension in instruction-render.py.
     dels = [a for a in actions if a["action"] == "delete_source"]
+    by_path = {d["source_path"]: d for d in dels}
+    _must("100 Inbox/Trash.md" in by_path,
+          f"B1 .md source must keep .md suffix, got paths={list(by_path)}")
+    _must("100 Inbox/Voice 11__2026-04-20 11:48:29.m4a" in by_path,
+          f"B3 .m4a source must NOT have .md appended, got paths={list(by_path)}")
+    _must("100 Inbox/Foo.Bar.md" in by_path,
+          f"B4 dotted note name must still get .md appended, got paths={list(by_path)}")
     for d in dels:
-        _must(d["source_path"].endswith(".md"), f"delete path missing .md: {d}")
         _must(d["reason"], f"delete reason empty: {d}")
+
+    # skip paths follow the same extension-preservation rule.
+    skips = [a for a in actions if a["action"] == "skip"]
+    skip_paths = {s["source_path"] for s in skips}
+    _must("100 Inbox/Keep.md" in skip_paths,
+          f"B2 .md skip must keep .md, got {skip_paths}")
+    _must("100 Inbox/Voice 11__2026-04-22 10:14:41.m4a" in skip_paths,
+          f"B5 .m4a skip must NOT have .md appended, got {skip_paths}")
 
     # Every action carries applied=False on emission — consumer (Tomo Hashi)
     # flips to True after successful execution. See docs/instructions-json.md.

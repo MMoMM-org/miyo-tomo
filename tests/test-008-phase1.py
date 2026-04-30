@@ -199,9 +199,13 @@ def test_action_building():
     _must(counts.get("update_tracker") == 1, f"expected 1 update_tracker, got {counts}")
     _must(counts.get("update_log_entry") == 1, f"expected 1 update_log_entry, got {counts}")
     _must(counts.get("update_log_link") == 1, f"expected 1 update_log_link, got {counts}")
-    # Sport source_stem is daily-only (not in confirmed) → 1 daily-only delete.
-    # Plus 3 from skipped disposition=delete_source (B1 .md, B3 .m4a, B4 dotted) = 4.
-    _must(counts.get("delete_source") == 4, f"expected 4 delete_source, got {counts}")
+    # delete_source emission has three sources (post-2026-04-30):
+    #   - 1 daily-only: Sport source_stem (in daily_updates, not in confirmed)
+    #   - 3 skipped disposition=delete_source: B1 .md, B3 .m4a, B4 dotted
+    #   - 2 paired with move_note origins: A1 (Asahikawa) + A2 (Furano)
+    #     (both confirmed atomic notes default to delete origin; no keep_origin set)
+    # Total: 6.
+    _must(counts.get("delete_source") == 6, f"expected 6 delete_source, got {counts}")
     # B2 .md skip + B5 .m4a skip = 2.
     _must(counts.get("skip") == 2, f"expected 2 skip, got {counts}")
 
@@ -523,21 +527,28 @@ def test_backfill_plus_build_actions_no_duplicate_links():
 
 
 def test_resolve_section_names():
-    """resolve_section_names reads each target MOC and captures the first
-    editable callout's full line."""
+    """resolve_section_names reads each target MOC and populates anchor.value
+    on callout-typed link_to_moc actions with the first editable callout's
+    full line."""
+    def _co():
+        return {"type": "callout", "value": None}
+
     actions = [
         {"id": "I01", "action": "link_to_moc", "target_moc": "Japan (MOC)",
          "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
-         "section_name": None, "source_note_title": "Asahikawa",
+         "anchor": _co(), "placement": "inside",
+         "source_note_title": "Asahikawa",
          "line_to_add": "- [[Asahikawa]]"},
         {"id": "I02", "action": "link_to_moc", "target_moc": "Japan (MOC)",
          "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
-         "section_name": None, "source_note_title": "Sapporo",
+         "anchor": _co(), "placement": "inside",
+         "source_note_title": "Sapporo",
          "line_to_add": "- [[Sapporo]]"},
         # No resolved path → stays null
         {"id": "I03", "action": "link_to_moc", "target_moc": "Brettspiele (MOC)",
          "target_moc_path": None,
-         "section_name": None, "source_note_title": "Catan",
+         "anchor": _co(), "placement": "inside",
+         "source_note_title": "Catan",
          "line_to_add": "- [[Catan]]"},
         # Unrelated action → untouched
         {"id": "I04", "action": "move_note", "source": "x", "destination": "y", "title": "z"},
@@ -574,11 +585,11 @@ tags: [type/others/moc]
     client = FakeClient()
     resolved = ir.resolve_section_names(actions, client, ["connect", "blocks", "anchor"])
     _must(resolved == 2, f"expected 2 resolved, got {resolved}")
-    _must(actions[0]["section_name"] == "[!blocks]- Key Concepts",
-          f"I01 section_name wrong: {actions[0]['section_name']!r}")
-    _must(actions[1]["section_name"] == "[!blocks]- Key Concepts",
-          f"I02 section_name wrong: {actions[1]['section_name']!r}")
-    _must(actions[2]["section_name"] is None, "I03 has no path → stays null")
+    _must(actions[0]["anchor"]["value"] == "[!blocks]- Key Concepts",
+          f"I01 anchor.value wrong: {actions[0]['anchor']['value']!r}")
+    _must(actions[1]["anchor"]["value"] == "[!blocks]- Key Concepts",
+          f"I02 anchor.value wrong: {actions[1]['anchor']['value']!r}")
+    _must(actions[2]["anchor"]["value"] is None, "I03 has no path → stays null")
     _must(len(client.reads) == 1, f"read caching broken — expected 1 read, got {len(client.reads)}")
 
     # `weather` is NOT in editable → skipped. First MATCHING callout (`blocks`)
@@ -586,7 +597,8 @@ tags: [type/others/moc]
 
     # Skips when editable list is empty
     for a in actions:
-        a["section_name"] = None
+        if isinstance(a.get("anchor"), dict):
+            a["anchor"]["value"] = None
     resolved_empty = ir.resolve_section_names(actions, client, [])
     _must(resolved_empty == 0, "empty editable list → 0 resolutions")
 
@@ -599,17 +611,16 @@ tags: [type/others/moc]
         def read_note(self, path):
             raise RuntimeError("kado down")
     actions_r = [{"id": "I01", "action": "link_to_moc", "target_moc": "X",
-                  "target_moc_path": "Atlas/X.md", "section_name": None,
+                  "target_moc_path": "Atlas/X.md",
+                  "anchor": _co(), "placement": "inside",
                   "source_note_title": "Y", "line_to_add": "- [[Y]]"}]
     resolved_raise = ir.resolve_section_names(actions_r, RaisingClient(), ["blocks"])
     _must(resolved_raise == 0, "raising client → 0 resolutions")
-    _must(actions_r[0]["section_name"] is None, "raising client → stays null")
+    _must(actions_r[0]["anchor"]["value"] is None, "raising client → stays null")
 
     # Priority regression: `connect` appears FIRST in the MOC but is the
     # navigation callout — content bullets should prefer `blocks` or any
-    # non-connect editable. Picking `connect` would put atomic-note links
-    # in the up::/related:: area (observed in the live Japan (MOC) output
-    # before this fix).
+    # non-connect editable.
     moc_connect_first = """---
 ---
 # MOC
@@ -625,19 +636,21 @@ tags: [type/others/moc]
             return {"content": moc_connect_first}
     actions_p = [{"id": "I01", "action": "link_to_moc",
                   "target_moc": "M", "target_moc_path": "Atlas/M.md",
-                  "section_name": None, "source_note_title": "N",
+                  "anchor": _co(), "placement": "inside",
+                  "source_note_title": "N",
                   "line_to_add": "- [[N]]"}]
     ir.resolve_section_names(actions_p, PriorityClient(), ["connect", "blocks"])
-    _must(actions_p[0]["section_name"] == "[!blocks]- Key Concepts",
+    _must(actions_p[0]["anchor"]["value"] == "[!blocks]- Key Concepts",
           f"blocks must outrank connect even when connect is first in file "
-          f"and first in editable list; got {actions_p[0]['section_name']!r}")
+          f"and first in editable list; got {actions_p[0]['anchor']['value']!r}")
     # Fallback: if ONLY connect is editable, connect still wins
     actions_c = [{"id": "I01", "action": "link_to_moc",
                   "target_moc": "M", "target_moc_path": "Atlas/M.md",
-                  "section_name": None, "source_note_title": "N",
+                  "anchor": _co(), "placement": "inside",
+                  "source_note_title": "N",
                   "line_to_add": "- [[N]]"}]
     ir.resolve_section_names(actions_c, PriorityClient(), ["connect"])
-    _must(actions_c[0]["section_name"] == "[!connect] Your way around",
+    _must(actions_c[0]["anchor"]["value"] == "[!connect] Your way around",
           f"connect is the only editable → should be used as last resort")
     print("[PASS] resolve_section_names — editable match, caching, graceful degrade, connect-deprioritized")
 

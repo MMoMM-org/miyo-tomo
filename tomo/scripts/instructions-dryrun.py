@@ -23,7 +23,8 @@ from pathlib import Path
 
 REQUIRED_FIELDS_BY_KIND = {
     "move_note": {"id", "action", "source", "destination", "title"},
-    "link_to_moc": {"id", "action", "target_moc", "line_to_add"},
+    "link_to_moc": {"id", "action", "target_moc", "anchor", "placement", "line_to_add"},
+    "add_relationship": {"id", "action", "target_moc_path", "marker", "line"},
     "update_tracker": {"id", "action", "daily_note_path", "date", "field", "value", "syntax"},
     "update_log_entry": {"id", "action", "daily_note_path", "date", "section", "position", "content"},
     "update_log_link": {"id", "action", "daily_note_path", "date", "section", "position", "target_stem"},
@@ -42,8 +43,14 @@ def describe(action: dict) -> str:
         return (f"{aid} create_moc: {action.get('source')} → {action.get('destination')} "
                 f"(title={action.get('title')!r})")
     if kind == "link_to_moc":
+        anchor = action.get("anchor") or {}
+        placement = action.get("placement", "?")
         return (f"{aid} link_to_moc: target=[[{action.get('target_moc')}]] "
-                f"line={action.get('line_to_add')!r}")
+                f"anchor={anchor.get('type','?')}:{anchor.get('value')!r} "
+                f"placement={placement} line={action.get('line_to_add')!r}")
+    if kind == "add_relationship":
+        return (f"{aid} add_relationship: target={action.get('target_moc_path')!r} "
+                f"marker={action.get('marker')!r} line={action.get('line')!r}")
     if kind == "update_tracker":
         return (f"{aid} update_tracker: {action.get('daily_note_path')} "
                 f"{action.get('field')}={action.get('value')} ({action.get('syntax')})")

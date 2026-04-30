@@ -209,7 +209,11 @@ def derive_expected(parsed: dict) -> dict:
                 "source_stem": _stem(ll.get("source_stem", "")),
             })
 
-    # Delete source: explicit skipped[] + daily-only inferences
+    # Delete source has three sources (post-2026-04-30):
+    #   1. explicit skipped[] disposition=delete_source
+    #   2. daily-only inferences (source_stem in daily_updates but not confirmed)
+    #   3. paired with move_note: confirmed atomic notes default to deleting
+    #      their inbox origin unless the user opted out via "Keep origin".
     confirmed_stems = {_stem(it.get("source_path")) for it in confirmed if it.get("source_path")}
     expected_deletions: list[str] = []
     for sk in skipped:
@@ -226,6 +230,22 @@ def derive_expected(parsed: dict) -> dict:
                 if stem and stem not in confirmed_stems and stem not in daily_only_seen:
                     daily_only_seen.add(stem)
                     expected_deletions.append(stem)
+    # Paired with move_note: every confirmed atomic note with a source_path
+    # AND keep_origin=False expects a paired delete on its origin.
+    paired_origins_seen: set[str] = set()
+    for item in confirmed:
+        if item.get("action") == "create_moc":
+            continue
+        if item.get("keep_origin"):
+            continue
+        sp = item.get("source_path")
+        if not sp:
+            continue
+        stem = _stem(sp)
+        if stem in paired_origins_seen:
+            continue
+        paired_origins_seen.add(stem)
+        expected_deletions.append(stem)
     counts["delete_source"] = len(expected_deletions)
 
     expected_skips: list[str] = []

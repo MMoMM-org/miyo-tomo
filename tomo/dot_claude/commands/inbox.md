@@ -1,5 +1,5 @@
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.6.0 (XDD 012 — auto-detect pairs `*_suggestions.md` + `*_suggestions-fan.md`; instruction-builder reconciles)
+# version: 0.7.0 (instruction-builder is now Agent-dispatched, not impersonated — runs as subagent on sonnet per its frontmatter)
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.
@@ -30,9 +30,31 @@ workflow that you IMPERSONATE rather than DISPATCH. Every other
 subagent mentioned in its spec (`inbox-analyst`, `voice-transcriber`)
 is dispatched normally.
 
-The same rule applies to `instruction-builder` (Pass 2) and
-`vault-executor` (cleanup) — you impersonate them, dispatching only
-their explicitly-subagent-marked steps.
+`vault-executor` (cleanup) follows the same impersonation rule —
+its spec is what you execute in this context.
+
+**EXCEPTION — `instruction-builder` (Pass 2) IS dispatched** via the
+`Agent` tool with `subagent_type: "instruction-builder"`. The agent's
+happy path does NOT fan out further subagents, so nested-dispatch is
+not an issue. Dispatching gives:
+- A measurable subagent run on sonnet (per the agent's frontmatter)
+  instead of the parent's session model — significantly cheaper for
+  pure orchestration work.
+- A separate transcript under
+  `tomo-home/.claude/projects/<project>/<sid>/subagents/` for clean
+  cost attribution.
+- Stronger context isolation — the subagent gets only the dispatch
+  prompt, not the parent's accumulated /inbox state.
+
+Fan-resolve fallback: instruction-builder's Step 2.5 dispatches
+`inbox-analyst` ONLY when `parsed-suggestions.json` has non-empty
+`pending_fan_resolutions` (XDD 012 — force-atomic items without an
+atomic proposal). That nested dispatch may fail; if you hit this rare
+path, fall back to impersonating instruction-builder for that one run.
+The reconciliation-pair case (when both `_suggestions.md` and
+`_suggestions-fan.md` are already approved) does NOT trigger
+fan-resolve — Step 2.5 is skipped because there are no pending
+resolutions.
 
 ## Usage
 
@@ -66,7 +88,9 @@ After Step 0 resolves the inbox path, the command checks in priority order:
      (pass the resolved path, not a literal like `"Inbox"`)
    - Read each, count `- [x] Applied` vs total actions
    - Any with at least one Applied → cleanup
-2. **Suggestions with `[x] Approved`?** → Run Pass 2 (instruction-builder)
+2. **Suggestions with `[x] Approved`?** → Run Pass 2 by **dispatching
+   `instruction-builder` via the `Agent` tool** (see EXCEPTION in the
+   STRICT section above). Do NOT impersonate it.
    - Scan the resolved inbox path for `*_suggestions.md` via Kado `listDir`
      (this glob matches both primary `*_suggestions.md` and companion
      `*_suggestions-fan.md` — XDD 012)
@@ -75,6 +99,16 @@ After Step 0 resolves the inbox path, the command checks in priority order:
      exist, they are a reconciliation pair — `instruction-builder` Step 2
      handles the pairing internally by reading both files into `tomo-tmp/`
      and passing `--fan-resolve-file` to the parser.
+   - **Dispatch shape:**
+     ```
+     Agent({
+       subagent_type: "instruction-builder",
+       description: "Pass 2 — build instruction set",
+       prompt: "Run Pass 2 on the approved suggestions doc(s) in <resolved-inbox>. Follow your agent definition. Report back with the action count + coverage audit result."
+     })
+     ```
+   - The subagent runs on sonnet per its frontmatter; you wait for the
+     final result message and surface it to the user.
 3. **Captured source items?** → Run Pass 1 directly in your context,
    following `inbox-orchestrator.md` as your spec (do NOT Agent-dispatch it):
      - Phase 0a: if voice enabled, dispatch `voice-transcriber` via Agent

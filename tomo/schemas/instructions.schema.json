@@ -36,6 +36,7 @@
         "oneOf": [
           {"$ref": "#/$defs/move_note"},
           {"$ref": "#/$defs/link_to_moc"},
+          {"$ref": "#/$defs/add_relationship"},
           {"$ref": "#/$defs/update_tracker"},
           {"$ref": "#/$defs/update_log_entry"},
           {"$ref": "#/$defs/update_log_link"},
@@ -68,7 +69,7 @@
         "destination": {"type": "string", "description": "Vault-relative full target path including the final filename, e.g. 'Atlas/202 Notes/Asahikawa — ....md'."},
         "title": {"type": "string", "description": "Final title of the note (also the stem of the destination filename)."},
         "rendered_file": {"type": "string", "description": "Basename of the rendered file (redundant with source; kept for display)."},
-        "origin_inbox_item": {"type": ["string", "null"], "description": "Optional vault-relative path of the original inbox item this note was derived from — for traceability only. The delete_source action is the operational signal for cleanup."},
+        "origin_inbox_item": {"type": ["string", "null"], "description": "Optional vault-relative path of the original inbox item this note was derived from. The delete_source action is the operational signal for cleanup; by default the renderer emits a paired delete_source for this origin unless the user opts out via the suggestions doc's 'Keep origin' checkbox."},
         "parent_mocs": {"type": "array", "items": {"type": "string"}},
         "tags": {"type": "array", "items": {"type": "string"}},
         "applied": {"$ref": "#/$defs/applied_field"}
@@ -76,15 +77,40 @@
     },
     "link_to_moc": {
       "type": "object",
-      "required": ["id", "action", "target_moc", "line_to_add"],
+      "required": ["id", "action", "target_moc", "anchor", "placement", "line_to_add"],
       "additionalProperties": false,
       "properties": {
         "id": {"$ref": "#/$defs/action_id"},
         "action": {"const": "link_to_moc"},
         "target_moc": {"type": "string", "description": "MOC stem (no path, no .md)."},
         "target_moc_path": {"type": ["string", "null"], "description": "Resolved vault-relative path of the MOC, if known."},
-        "section_name": {"type": ["string", "null"], "description": "Raw section hint from the suggestion (callout type or heading)."},
-        "line_to_add": {"type": "string", "description": "Bullet line to insert under the target section."},
+        "anchor": {"$ref": "#/$defs/anchor", "description": "Where in the target MOC to find the insertion point. type=callout matches the callout opening line; type=heading matches a heading by text; type=line matches a body line by content."},
+        "placement": {"type": "string", "enum": ["inside", "after"], "description": "Where to write relative to the matched anchor. inside (callout only) appends as last line of callout body with > prefix. after inserts immediately after the matched anchor's terminal line, verbatim."},
+        "line_to_add": {"type": "string", "description": "Pre-formatted line content to insert (bullet style, link form, etc. all decided Tomo-side). Hashi writes this verbatim, prepending '> ' only when placement=inside on a callout anchor."},
+        "source_note_title": {"type": ["string", "null"]},
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "required": ["type", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"type": "string", "enum": ["callout", "heading", "line"], "description": "callout = match callout opening line (e.g. '[!blocks] Key Concepts'); heading = match heading text without # prefix (any heading level); line = match body line by literal content."},
+        "value": {"type": ["string", "null"], "description": "Content of the anchor to match. Null is permitted only at emission time when the renderer cannot resolve a concrete value yet (resolver populates later via Kado read)."}
+      }
+    },
+    "add_relationship": {
+      "type": "object",
+      "required": ["id", "action", "target_moc_path", "marker", "line"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "add_relationship"},
+        "target_moc": {"type": ["string", "null"], "description": "MOC stem for human-readable display (no path, no .md)."},
+        "target_moc_path": {"type": "string", "description": "Resolved vault-relative path of the target MOC."},
+        "marker": {"type": "string", "description": "Dataview inline-field marker that locates the line to replace, e.g. 'up::' or 'related::'. Hashi locates the first line whose stripped content (after optional '> ' callout prefix) starts with this marker."},
+        "line": {"type": "string", "description": "Pre-formatted full line content to write, e.g. 'up:: [[Hobbies (MOC)]]' or 'related:: [[A]], [[B]]'. Hashi replaces the located marker line with this verbatim, preserving the line's leading '> ' prefix if the marker was inside a callout. Multi-link aggregation for related:: is done Tomo-side."},
         "source_note_title": {"type": ["string", "null"]},
         "applied": {"$ref": "#/$defs/applied_field"}
       }
@@ -155,7 +181,7 @@
         "destination": {"type": "string", "description": "Vault-relative full target path of the MOC, e.g. 'Atlas/200 Maps/Brettspiele (MOC).md'."},
         "title": {"type": "string"},
         "rendered_file": {"type": "string", "description": "Basename of the rendered MOC file (redundant with source; kept for display)."},
-        "parent_moc": {"type": ["string", "null"], "description": "Parent MOC stem for up-linking (emitted separately as a link_to_moc action on this MOC)."},
+        "parent_moc": {"type": ["string", "null"], "description": "Parent MOC stem for up-linking (emitted separately as an add_relationship action with marker='up::' on this MOC)."},
         "template": {"type": ["string", "null"]},
         "tags": {"type": "array", "items": {"type": "string"}},
         "supporting_items": {"type": ["string", "null"], "description": "Raw 'Supporting items' field from the Proposed MOC block (e.g. 'S02, S06, S12'). Consumed by the renderer to generate link_to_moc actions for each supporting item into this new MOC."},

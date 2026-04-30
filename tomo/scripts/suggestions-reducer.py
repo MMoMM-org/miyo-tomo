@@ -229,6 +229,7 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
     worthiness = action.get("atomic_note_worthiness")
     approve_mark = "[x]" if (worthiness is not None and worthiness >= 0.5) else "[ ]"
     lines.append(f"- {approve_mark} Approve")
+    lines.append("- [ ] Keep origin (skip the implicit delete of the inbox source after move_note)")
     lines.append("- [ ] Skip (keep in inbox)")
     lines.append("- [ ] Delete source")
     return "\n".join(lines)

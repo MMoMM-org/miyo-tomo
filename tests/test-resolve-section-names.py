@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test-resolve-section-names.py — Unit tests for resolve_section_names.
+# version: 0.2.0
+"""test-resolve-section-names.py — Unit tests for resolve_section_names + paired delete_source.
 
-Covers the two-tier resolution path in instruction-render.py:
+Covers:
 
-  1. Tier-1: live MOC read via Kado succeeds and yields an editable callout.
-  2. Tier-2 (NEW 2026-04-29): live MOC read fails because the MOC is being
-     created in the same instruction set; fall back to reading the
-     create_moc's template and scanning that for an editable callout. This
-     prevents in-set create+link pairs from landing in the navigation
-     callout (`[!connect]`) at execute time.
-  3. Both tiers fail (no template, or template read fails) → section_name
-     stays null.
-  4. Tier-2 cache: a single template body is read at most once, even when
-     many in-set create+link pairs share it.
+  1. resolve_section_names tiers (post-2026-04-30 contract: populates
+     anchor.value on callout-typed link_to_moc actions instead of the
+     removed section_name string field).
 
-Each test stubs a Kado client with a known content map, invokes
-resolve_section_names directly, and asserts section_name on the resulting
-actions.
+       a. Tier-1: live MOC read via Kado succeeds and yields an editable
+          callout.
+       b. Tier-2: live MOC read fails because the MOC is being created in
+          the same instruction set; fall back to reading the create_moc's
+          template and scanning that for an editable callout.
+       c. Both tiers fail (no template, or template read fails) →
+          anchor.value stays null.
+       d. Tier-2 cache: a single template body is read at most once.
+       e. Pre-set anchor.value preserved without I/O.
+       f. Heading/line anchor types are skipped by the resolver (anchor
+          values for those types are populated upstream, not here).
+
+  2. _build_delete_source_actions third source (post-2026-04-30 contract):
+       a. Default-pair: confirmed item with non-null origin_inbox_item AND
+          keep_origin=False → paired delete_source emitted.
+       b. Keep-origin: confirmed item with keep_origin=True → no paired
+          delete_source emitted for that origin.
+       c. Idempotence: skipped[]'s explicit Delete-source flag still works
+          (existing behaviour).
 """
 from __future__ import annotations
 
@@ -31,8 +40,6 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(SCRIPTS_DIR / "lib"))
 
-# Bring KadoError into scope so the stub can raise it (mirrors what the
-# real instruction-render code catches via `except Exception`).
 from kado_client import KadoError, KadoNotFoundError  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location(
@@ -88,6 +95,10 @@ title: Japan (MOC)
 EDITABLE_CALLOUTS = ["connect", "blocks", "anchor", "compass", "video"]
 
 
+def _callout_anchor() -> dict:
+    return {"type": "callout", "value": None}
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Stub Kado client
 # ──────────────────────────────────────────────────────────────────────────────
@@ -127,11 +138,12 @@ def _must(cond: bool, msg: str) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tests
+# resolve_section_names tests (anchor.value population)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_tier1_existing_moc_resolves_to_blocks():
-    """Live MOC has both [!connect] and [!blocks] — `blocks` wins (score 3)."""
+    """Live MOC has both [!connect] and [!blocks] — `blocks` wins (score 3).
+    The resolver populates anchor.value, not the removed section_name field."""
     client = StubClient(
         notes={"Atlas/200 Maps/Japan (MOC).md": EXISTING_MOC_BODY},
     )
@@ -141,15 +153,16 @@ def test_tier1_existing_moc_resolves_to_blocks():
             "action": "link_to_moc",
             "target_moc": "Japan (MOC)",
             "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
-            "section_name": None,
+            "anchor": _callout_anchor(),
+            "placement": "inside",
             "line_to_add": "- [[Asahikawa]]",
         },
     ]
     n = ir.resolve_section_names(actions, client, EDITABLE_CALLOUTS)
     _must(n == 1, f"expected 1 resolution, got {n}")
     _must(
-        actions[0]["section_name"] == "[!blocks] Key Concepts",
-        f"expected blocks callout, got {actions[0]['section_name']!r}",
+        actions[0]["anchor"]["value"] == "[!blocks] Key Concepts",
+        f"expected blocks callout in anchor.value, got {actions[0]['anchor']['value']!r}",
     )
     print("[PASS] tier-1: existing MOC resolves to [!blocks] Key Concepts")
 
@@ -157,8 +170,6 @@ def test_tier1_existing_moc_resolves_to_blocks():
 def test_tier2_in_set_create_moc_falls_back_to_template():
     """Live MOC read fails (in-set create_moc destination, doesn't exist
     yet); fallback reads the template and scans IT for an editable callout."""
-    # Templates are read via read_template → tries search_by_name first when
-    # given a bare stem, then read_note on the resolved path.
     client = StubClient(
         notes={"Atlas/900 Templates/t_moc_tomo.md": T_MOC_TOMO_BODY},
         names={"t_moc_tomo.md": "Atlas/900 Templates/t_moc_tomo.md"},
@@ -176,19 +187,18 @@ def test_tier2_in_set_create_moc_falls_back_to_template():
             "action": "link_to_moc",
             "target_moc": "Brettspiele (MOC)",
             "target_moc_path": "Atlas/200 Maps/Brettspiele (MOC).md",
-            "section_name": None,
+            "anchor": _callout_anchor(),
+            "placement": "inside",
             "line_to_add": "- [[Catan Strategy]]",
         },
     ]
     n = ir.resolve_section_names(actions, client, EDITABLE_CALLOUTS)
     _must(n == 1, f"expected 1 resolution, got {n}")
     _must(
-        actions[1]["section_name"] == "[!blocks] Key Concepts",
+        actions[1]["anchor"]["value"] == "[!blocks] Key Concepts",
         f"expected template-derived blocks callout, "
-        f"got {actions[1]['section_name']!r}",
+        f"got {actions[1]['anchor']['value']!r}",
     )
-    # Sanity: tier-1 was attempted (read_note tried the MOC path and got
-    # KadoNotFoundError), then tier-2 read the template.
     _must(
         "Atlas/200 Maps/Brettspiele (MOC).md" in client.read_calls,
         "expected tier-1 read attempt on MOC destination",
@@ -216,23 +226,23 @@ def test_tier2_cache_reads_template_once_for_many_links():
             "template": "t_moc_tomo.md",
         },
     ]
-    # Three sibling links to the same new MOC.
     for i, stem in enumerate(("Catan", "Splendor", "Wingspan"), start=11):
         actions.append({
             "id": f"I{i:02d}",
             "action": "link_to_moc",
             "target_moc": "Brettspiele (MOC)",
             "target_moc_path": "Atlas/200 Maps/Brettspiele (MOC).md",
-            "section_name": None,
+            "anchor": _callout_anchor(),
+            "placement": "inside",
             "line_to_add": f"- [[{stem}]]",
         })
     n = ir.resolve_section_names(actions, client, EDITABLE_CALLOUTS)
     _must(n == 3, f"expected 3 resolutions, got {n}")
     for a in actions[1:]:
         _must(
-            a["section_name"] == "[!blocks] Key Concepts",
+            a["anchor"]["value"] == "[!blocks] Key Concepts",
             f"all link actions should resolve to blocks, "
-            f"got {a['section_name']!r} on {a['id']}",
+            f"got {a['anchor']['value']!r} on {a['id']}",
         )
     template_reads = [p for p in client.read_calls
                       if p == "Atlas/900 Templates/t_moc_tomo.md"]
@@ -245,7 +255,7 @@ def test_tier2_cache_reads_template_once_for_many_links():
 
 def test_no_template_no_fallback_stays_null():
     """In-set create_moc with no `template` field → tier-2 unavailable,
-    section_name stays null."""
+    anchor.value stays null."""
     client = StubClient(notes={})
     actions = [
         {
@@ -253,51 +263,52 @@ def test_no_template_no_fallback_stays_null():
             "action": "create_moc",
             "title": "Foo (MOC)",
             "destination": "Atlas/200 Maps/Foo (MOC).md",
-            # No template field — emulates a degraded create_moc emission.
         },
         {
             "id": "I11",
             "action": "link_to_moc",
             "target_moc": "Foo (MOC)",
             "target_moc_path": "Atlas/200 Maps/Foo (MOC).md",
-            "section_name": None,
+            "anchor": _callout_anchor(),
+            "placement": "inside",
             "line_to_add": "- [[Bar]]",
         },
     ]
     n = ir.resolve_section_names(actions, client, EDITABLE_CALLOUTS)
     _must(n == 0, f"expected 0 resolutions, got {n}")
     _must(
-        actions[1]["section_name"] is None,
-        f"expected null section_name, got {actions[1]['section_name']!r}",
+        actions[1]["anchor"]["value"] is None,
+        f"expected null anchor.value, got {actions[1]['anchor']['value']!r}",
     )
-    print("[PASS] no template → no tier-2 fallback, section_name stays null")
+    print("[PASS] no template → no tier-2 fallback, anchor.value stays null")
 
 
 def test_no_in_set_create_moc_stays_null():
     """target_moc_path that is NOT a same-set create_moc destination AND
-    not readable via Kado → both tiers fail, section_name stays null."""
-    client = StubClient(notes={})  # nothing readable
+    not readable via Kado → both tiers fail, anchor.value stays null."""
+    client = StubClient(notes={})
     actions = [
         {
             "id": "I10",
             "action": "link_to_moc",
             "target_moc": "Stale (MOC)",
             "target_moc_path": "Atlas/200 Maps/Stale (MOC).md",
-            "section_name": None,
+            "anchor": _callout_anchor(),
+            "placement": "inside",
             "line_to_add": "- [[Whatever]]",
         },
     ]
     n = ir.resolve_section_names(actions, client, EDITABLE_CALLOUTS)
     _must(n == 0, f"expected 0 resolutions, got {n}")
     _must(
-        actions[0]["section_name"] is None,
-        f"expected null section_name, got {actions[0]['section_name']!r}",
+        actions[0]["anchor"]["value"] is None,
+        f"expected null anchor.value, got {actions[0]['anchor']['value']!r}",
     )
-    print("[PASS] no in-set create_moc → no tier-2, section_name stays null")
+    print("[PASS] no in-set create_moc → no tier-2, anchor.value stays null")
 
 
-def test_pre_set_section_name_is_preserved():
-    """If section_name is already set on a link_to_moc, neither tier runs."""
+def test_pre_set_anchor_value_is_preserved():
+    """If anchor.value is already set on a link_to_moc, neither tier runs."""
     client = StubClient(notes={"Atlas/200 Maps/Japan (MOC).md": EXISTING_MOC_BODY})
     actions = [
         {
@@ -305,21 +316,195 @@ def test_pre_set_section_name_is_preserved():
             "action": "link_to_moc",
             "target_moc": "Japan (MOC)",
             "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
-            "section_name": "[!compass] Something to look at perhaps...",
+            "anchor": {"type": "callout", "value": "[!compass] Something to look at perhaps..."},
+            "placement": "after",
             "line_to_add": "- [[X]]",
         },
     ]
     n = ir.resolve_section_names(actions, client, EDITABLE_CALLOUTS)
-    _must(n == 0, f"already-set section_name should not count as resolution, got {n}")
+    _must(n == 0, f"already-set anchor.value should not count as resolution, got {n}")
     _must(
-        actions[0]["section_name"] == "[!compass] Something to look at perhaps...",
-        "pre-set section_name must be preserved verbatim",
+        actions[0]["anchor"]["value"] == "[!compass] Something to look at perhaps...",
+        "pre-set anchor.value must be preserved verbatim",
     )
     _must(
         client.read_calls == [],
         f"no Kado reads should have happened, got {client.read_calls}",
     )
-    print("[PASS] pre-set section_name preserved without I/O")
+    print("[PASS] pre-set anchor.value preserved without I/O")
+
+
+def test_heading_anchor_skipped_by_resolver():
+    """Heading and line anchors are populated upstream, not by resolve_section_names."""
+    client = StubClient(notes={"Atlas/200 Maps/Japan (MOC).md": EXISTING_MOC_BODY})
+    actions = [
+        {
+            "id": "I10",
+            "action": "link_to_moc",
+            "target_moc": "Japan (MOC)",
+            "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
+            "anchor": {"type": "heading", "value": None},
+            "placement": "after",
+            "line_to_add": "- [[X]]",
+        },
+        {
+            "id": "I11",
+            "action": "link_to_moc",
+            "target_moc": "Japan (MOC)",
+            "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
+            "anchor": {"type": "line", "value": None},
+            "placement": "after",
+            "line_to_add": "- [[Y]]",
+        },
+    ]
+    n = ir.resolve_section_names(actions, client, EDITABLE_CALLOUTS)
+    _must(n == 0, f"resolver should skip heading/line anchors, got {n} resolutions")
+    _must(
+        actions[0]["anchor"]["value"] is None and actions[1]["anchor"]["value"] is None,
+        "heading and line anchor values must remain untouched",
+    )
+    print("[PASS] resolver skips heading/line anchors (callout-only)")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# _build_delete_source_actions tests (paired delete for move_note origins)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_paired_delete_default_emits_for_each_origin():
+    """Confirmed items with non-null origin and keep_origin=False produce
+    one paired delete_source per move_note."""
+    confirmed = [
+        {"id": "S01", "source_path": "Asahikawa.md", "approved": True,
+         "keep_origin": False},
+        {"id": "S02", "source_path": "Furano.md", "approved": True,
+         "keep_origin": False},
+    ]
+    move_notes = [
+        {"id": "I01", "action": "move_note",
+         "origin_inbox_item": "100 Inbox/Asahikawa.md"},
+        {"id": "I02", "action": "move_note",
+         "origin_inbox_item": "100 Inbox/Furano.md"},
+    ]
+    counter = [0]
+    out = ir._build_delete_source_actions(
+        confirmed=confirmed,
+        move_notes=move_notes,
+        daily_updates=[],
+        skipped=[],
+        inbox_path="100 Inbox/",
+        counter=counter,
+    )
+    paired = [a for a in out if a["action"] == "delete_source"]
+    _must(len(paired) == 2, f"expected 2 paired deletes, got {len(paired)}")
+    paths = sorted(a["source_path"] for a in paired)
+    _must(
+        paths == ["100 Inbox/Asahikawa.md", "100 Inbox/Furano.md"],
+        f"unexpected origin paths: {paths}",
+    )
+    for a in paired:
+        _must(
+            "Origin consumed by move_note" in a["reason"],
+            f"unexpected reason: {a['reason']!r}",
+        )
+    print("[PASS] paired delete_source emitted by default for each move_note origin")
+
+
+def test_keep_origin_suppresses_paired_delete():
+    """Confirmed items with keep_origin=True must NOT produce a paired
+    delete_source."""
+    confirmed = [
+        {"id": "S01", "source_path": "Asahikawa.md", "approved": True,
+         "keep_origin": False},
+        {"id": "S02", "source_path": "Furano.md", "approved": True,
+         "keep_origin": True},  # ← user opted out
+    ]
+    move_notes = [
+        {"id": "I01", "action": "move_note",
+         "origin_inbox_item": "100 Inbox/Asahikawa.md"},
+        {"id": "I02", "action": "move_note",
+         "origin_inbox_item": "100 Inbox/Furano.md"},
+    ]
+    counter = [0]
+    out = ir._build_delete_source_actions(
+        confirmed=confirmed,
+        move_notes=move_notes,
+        daily_updates=[],
+        skipped=[],
+        inbox_path="100 Inbox/",
+        counter=counter,
+    )
+    paths = sorted(a["source_path"] for a in out if a["action"] == "delete_source")
+    _must(
+        paths == ["100 Inbox/Asahikawa.md"],
+        f"only Asahikawa should be paired-deleted, got {paths}",
+    )
+    print("[PASS] keep_origin=True suppresses paired delete_source for that origin")
+
+
+def test_skipped_delete_source_still_works():
+    """Skipped items with disposition=delete_source still emit deletes
+    (existing behaviour, not regressed by the new third source)."""
+    confirmed = []
+    move_notes = []
+    skipped = [
+        {"id": "S03", "source_path": "Junk.md", "disposition": "delete_source"},
+    ]
+    counter = [0]
+    out = ir._build_delete_source_actions(
+        confirmed=confirmed,
+        move_notes=move_notes,
+        daily_updates=[],
+        skipped=skipped,
+        inbox_path="100 Inbox/",
+        counter=counter,
+    )
+    deletes = [a for a in out if a["action"] == "delete_source"]
+    _must(len(deletes) == 1, f"expected 1 skipped-source delete, got {len(deletes)}")
+    _must(
+        deletes[0]["source_path"] == "100 Inbox/Junk.md",
+        f"unexpected source_path: {deletes[0]['source_path']!r}",
+    )
+    _must(
+        "User marked source for deletion" in deletes[0]["reason"],
+        f"unexpected reason: {deletes[0]['reason']!r}",
+    )
+    print("[PASS] explicit Delete-source on skipped items still emits")
+
+
+def test_audio_peer_is_not_paired_deleted_via_origin():
+    """Audio + transcript peer pairs are independent — peer files do not
+    appear as origin_inbox_item on move_note, so they don't get paired-
+    deleted via the third source. This guards the 2026-04-30 peer-files
+    contract from regressing."""
+    confirmed = [
+        {"id": "S01", "source_path": "Memo.m4a.md", "approved": True,
+         "keep_origin": False},
+    ]
+    # The transcript's move_note has origin_inbox_item pointing back at
+    # the transcript markdown — NOT at the audio peer .m4a file.
+    move_notes = [
+        {"id": "I01", "action": "move_note",
+         "origin_inbox_item": "100 Inbox/Memo.m4a.md"},
+    ]
+    counter = [0]
+    out = ir._build_delete_source_actions(
+        confirmed=confirmed,
+        move_notes=move_notes,
+        daily_updates=[],
+        skipped=[],
+        inbox_path="100 Inbox/",
+        counter=counter,
+    )
+    paths = [a["source_path"] for a in out if a["action"] == "delete_source"]
+    _must(
+        paths == ["100 Inbox/Memo.m4a.md"],
+        f"only the transcript should be paired-deleted, got {paths}",
+    )
+    _must(
+        not any(p.endswith(".m4a") for p in paths),
+        f"audio peer must not appear in deletes, got {paths}",
+    )
+    print("[PASS] audio peer (.m4a) not paired-deleted; only the transcript origin")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -332,7 +517,12 @@ def main() -> None:
     test_tier2_cache_reads_template_once_for_many_links()
     test_no_template_no_fallback_stays_null()
     test_no_in_set_create_moc_stays_null()
-    test_pre_set_section_name_is_preserved()
+    test_pre_set_anchor_value_is_preserved()
+    test_heading_anchor_skipped_by_resolver()
+    test_paired_delete_default_emits_for_each_origin()
+    test_keep_origin_suppresses_paired_delete()
+    test_skipped_delete_source_still_works()
+    test_audio_peer_is_not_paired_deleted_via_origin()
     print("\nAll tests passed.")
 
 

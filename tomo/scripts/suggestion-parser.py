@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.7.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -166,6 +166,7 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
         "type": None,
         "approved": False,
         "delete_source": False,
+        "keep_origin": False,
         "action": None,
         "title": None,
         "tags": [],
@@ -200,10 +201,12 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
                     result["parent_mocs"].append(wl)
                 continue
 
-            # Decision checkboxes (approve/skip/delete)
+            # Decision checkboxes (approve/skip/delete/keep-origin)
             text_lower = text.lower()
             if "accept" in text_lower or "approve" in text_lower:
                 result["approved"] = bool(cb_checked)
+            elif "keep origin" in text_lower:
+                result["keep_origin"] = bool(cb_checked)
             elif "delete source" in text_lower or text_lower.startswith("delete"):
                 result["delete_source"] = bool(cb_checked)
             # "Skip" is the implicit inverse of Accept — no extra handling needed
@@ -730,6 +733,7 @@ def main() -> int:
                 "type": item["type"],
                 "approved": item["approved"],
                 "delete_source": item["delete_source"],
+                "keep_origin": item["keep_origin"],
                 "action": item["action"],
                 "title": item["title"],
                 "tags": item["tags"],
@@ -868,6 +872,7 @@ def main() -> int:
                 "type": sec["type"],
                 "approved": True,
                 "delete_source": False,
+                "keep_origin": bool(sec.get("keep_origin", False)),
                 "action": sec.get("action"),
                 "title": sec["title"],
                 "tags": sec["tags"],

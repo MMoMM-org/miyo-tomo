@@ -200,12 +200,13 @@ each block but MUST NOT move a `link_to_moc` before its `create_moc`.
 ```
 1. create_moc        — new MOC files (must exist before link_to_moc hits them)
 2. move_note         — atomic notes (move + rename)
-3. link_to_moc       — add bullet lines into target MOCs
-4. update_tracker    — daily note tracker fields
-5. update_log_entry  — daily log prose lines
-6. update_log_link   — daily log wikilink lines
-7. delete_source     — remove leftover inbox items
-8. skip              — informational only, no-op
+3. link_to_moc       — insert content lines at MOC anchors (callout/heading/line)
+4. add_relationship  — replace Dataview inline-field lines (up::/related::) on MOCs
+5. update_tracker    — daily note tracker fields
+6. update_log_entry  — daily log prose lines
+7. update_log_link   — daily log wikilink lines
+8. delete_source     — remove leftover inbox items (incl. paired move_note origins)
+9. skip              — informational only, no-op
 ```
 
 Within each block, actions are ordered by assignment (monotonic `I01` … `INN`).
@@ -555,6 +556,7 @@ to the contract when set.
 | `move_note`         | `destination`          | Required  | Vault path of the final atomic-note location (under `Atlas/202 Notes/` by convention). |
 | `move_note`         | `origin_inbox_item`    | Optional, nullable | Path of the original inbox item this note was derived from — informational. Cleanup is via `delete_source`, not this field. |
 | `link_to_moc`       | `target_moc_path`      | Optional, nullable | Resolved vault path of the MOC. `null` is legitimate when the target doesn't exist yet (sibling `create_moc`) or Kado was unreachable at render time. Hashi falls back to `target_moc` (a stem, **not** a path). |
+| `add_relationship`  | `target_moc_path`      | Required  | Resolved vault path of the target MOC. No `target_moc` fallback — Tomo must resolve before emission. |
 | `update_tracker`    | `daily_note_path`      | Required  | Vault path of the daily note. Tomo resolves the date-to-path mapping; Hashi receives the resolved value. |
 | `update_log_entry`  | `daily_note_path`      | Required  | Same as above. |
 | `update_log_link`   | `daily_note_path`      | Required  | Same as above. |
@@ -717,7 +719,7 @@ section per kind with fields, execution semantics, and idempotency.
 | `destination` | string | Target full path including filename (`.md`). Usually under `Atlas/202 Notes/`. |
 | `title` | string | Final note title — also the stem of `destination`. |
 | `rendered_file` | string | Basename of `source`. |
-| `origin_inbox_item` | string \| null | **Informational only.** Path of the original inbox item this note was derived from. Cleanup is handled by the separate `delete_source` action elsewhere in the set; do NOT delete this file as a side-effect of `move_note`. |
+| `origin_inbox_item` | string \| null | Path of the original inbox item this note was derived from. **Cleanup is handled by the separate `delete_source` action** — do NOT delete this file as a side-effect of `move_note`. By default the renderer emits a paired `delete_source` for this origin (see § `delete_source`); the user opts out via the suggestions doc's "Keep origin" checkbox. |
 | `parent_mocs` | string[] | MOCs this note up-links to. Each is emitted as a separate `link_to_moc` action; these are metadata for display. |
 | `tags` | string[] | Tags in the rendered note body — already present, not something to apply. |
 
@@ -736,7 +738,7 @@ File* after moving. If Tomo Hashi automates this, do it AFTER the move so
 
 ---
 
-### `link_to_moc` — append a bullet line inside a MOC
+### `link_to_moc` — insert a content line at a MOC anchor
 
 ```json
 {
@@ -744,7 +746,11 @@ File* after moving. If Tomo Hashi automates this, do it AFTER the move so
   "action": "link_to_moc",
   "target_moc": "Japan (MOC)",
   "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
-  "section_name": "[!blocks] Key Concepts",
+  "anchor": {
+    "type": "callout",
+    "value": "[!blocks] Key Concepts"
+  },
+  "placement": "inside",
   "line_to_add": "- [[Asahikawa — zweitgrößte Stadt Hokkaidos]]",
   "source_note_title": "Asahikawa — zweitgrößte Stadt Hokkaidos"
 }
@@ -754,67 +760,83 @@ File* after moving. If Tomo Hashi automates this, do it AFTER the move so
 |---|---|---|
 | `target_moc` | string | MOC stem (no path, no `.md`) — the name Obsidian resolves by. |
 | `target_moc_path` | string \| null | Resolved vault-relative full path. See "Resolution rules" below. |
-| `section_name` | string \| null | Callout/heading pointer — deterministically resolved at Pass-2 time. See "section_name resolution" below. |
-| `line_to_add` | string | The exact bullet line to insert. Already formatted (`- [[stem]]`). |
-| `source_note_title` | string \| null | Informational — which note's up-link this represents. |
+| `anchor` | object | `{type: "callout"\|"heading"\|"line", value: string\|null}` — where in the MOC to find the insertion point. See "Anchor types" below. |
+| `placement` | string | `"inside"` or `"after"` — where to write relative to the anchor. See "Placement modes". |
+| `line_to_add` | string | Pre-formatted content to insert (bullet style, link form, etc. all decided Tomo-side). Hashi writes it verbatim, prepending `> ` only when `placement="inside"` on a callout anchor. |
+| `source_note_title` | string \| null | Informational — which note's link this represents. |
 
-**`section_name` resolution (current behaviour):**
+**Anchor types** (post-2026-04-30 contract — replaces the old
+`section_name` string field):
 
-- When set, the value is the full first line of a callout (leading `> `
-  stripped for display), e.g. `[!blocks] Key Concepts` or
-  `[!compass] Something to look at`. Tomo Hashi should match it against the
-  MOC body by re-adding `> ` and scanning line-by-line.
-- Pass-2 picks the target callout with a priority heuristic: prefer `blocks`
-  (the conventional content callout in MiYo/LYT), then any other editable
-  callout, then `connect` (navigation) as last resort. Editable callout names
-  come from vault-config's `callouts.editable`.
-- **Known limitation (backlog F-30):** the resolver only identifies the
-  OUTER callout. For MOCs with H2/H3 sub-headers inside the callout that
-  topic-group their children (e.g. Sport → Running / Stretching / Gym),
-  the resolver cannot decide which sub-section a new link belongs under.
-  Tomo Hashi can either (a) append at the end of the callout body (simple,
-  works for flat MOCs), (b) surface the sub-structure in a UI so the user
-  picks, or (c) defer to a post-MVP LLM-driven insertion-point step
-  (planned; see backlog F-30).
-- **`section_name` is `null`** when the target MOC doesn't exist in the
-  vault yet (new MOC from a `create_moc` in the same instruction set),
-  when Kado is unreachable during Pass-2, or when the MOC has no editable
-  callout matching the config. Fall back to the first editable callout at
-  execute time.
+| Type | `value` shape | Match behaviour |
+|---|---|---|
+| `callout` | callout opening line content (e.g. `[!blocks] Key Concepts`) | Match the callout opening line in the MOC body. Hashi re-adds `> ` prefix when scanning. |
+| `heading` | heading text without leading `#` (e.g. `Sources`) | Match any `# Sources` / `## Sources` / etc. line. |
+| `line` | literal line content | Match any non-callout, non-heading body line whose stripped content equals or contains `value`. |
+
+`anchor.value` is `null` only at emission time when the renderer cannot
+resolve a concrete value yet. The Pass-2 resolver populates it via Kado
+read for callout-typed anchors. Heading and line anchors are populated
+upstream by the analyst; the resolver does not touch them.
+
+**Placement modes:**
+
+- **`inside`** — append `line_to_add` as the **last line of the matched
+  anchor's content range**. Valid only when `anchor.type == "callout"`
+  (heading and line anchors have no defined "inside"). Hashi prepends
+  `> ` to `line_to_add` before writing so the line lands in the callout
+  body.
+- **`after`** — insert `line_to_add` immediately **after the matched
+  anchor's terminal line** (for callouts: after the closing `>` line; for
+  headings: after the heading line; for lines: after the matched line).
+  Verbatim, no `> ` prefix.
+
+**Default placement for new emissions:**
+
+- Supporting-items down-links (new MOC's content callout): `inside` on
+  `callout` anchor — content bullets land inside the callout body.
+- Parent-MOC up-links (parent MOC gains a child-listing): also `inside`
+  on `callout` anchor today; `after` on `heading`/`line` anchors when a
+  future emission targets a non-callout MOC layout.
+
+Hashi treats `placement` as REQUIRED — every emitted action declares it
+explicitly. The renderer never elides it.
 
 **Resolution rules for `target_moc_path`:**
 
-- Non-null: use it directly (faster, no search needed).
-- Null: fall back to `target_moc` by name. Two legitimate reasons for null:
-  1. The renderer couldn't find the MOC at Pass-2 time (Kado unreachable,
-     no name match, or disambiguation needed).
-  2. The target is itself being created by a `create_moc` in the same
-     instruction set — the renderer attempts to synthesize the path from
-     the sibling `create_moc.destination`, but this can fail if the sibling
-     hasn't been located yet. Tomo Hashi can safely resolve the target at
-     execute time.
+- Non-null: use it directly.
+- Null: fall back to `target_moc` by name. Legitimate reasons for null:
+  1. Renderer couldn't find the MOC at Pass-2 time (Kado unreachable, no
+     name match, disambiguation needed).
+  2. Target is being created by a sibling `create_moc` in the same
+     instruction set — renderer synthesises from the sibling's
+     `destination` but may fail to resolve at emission time. Hashi
+     resolves at execute time.
 
 **Execution algorithm:**
 
-1. Open the target MOC file (using `target_moc_path` if set, else locate by
-   name).
-2. Find the insertion section (in priority order):
-   a. If `section_name` is set and matches a heading or callout in the MOC,
-      use that section.
-   b. Otherwise, find the **first editable callout** in the MOC. Editable
-      callouts are listed in `vault-config.yaml` under `callouts.editable`.
-      Typical defaults: `connect`, `blocks`, `anchor`.
-   c. If no editable callout exists, append to the end of the MOC body.
-3. Insert `line_to_add` on a new line inside that section, preserving the
-   `> ` line prefix if we're inside a callout.
+1. Open the target MOC file (using `target_moc_path` if set, else locate
+   by name).
+2. Locate `anchor`:
+   a. `callout`: scan for the line `> [!<type>][...] <title>` matching
+      `anchor.value` byte-for-byte (after stripping the `> ` prefix).
+   b. `heading`: scan for any `# <value>` / `## <value>` / etc. line.
+   c. `line`: scan for the first non-callout, non-heading body line
+      whose stripped content equals or contains `anchor.value`.
+3. Apply `placement`:
+   - `inside` (callout only): insert `line_to_add` (with `> ` prefix
+     added by Hashi) as the last line of the callout body — i.e. before
+     the next non-`>` line or end of file, whichever comes first.
+   - `after` (any anchor type): insert `line_to_add` verbatim
+     immediately after the anchor's terminal line.
 
 **Idempotency:**
 
-- If the target section already contains an exact match for `line_to_add`
-  (byte-equal after trim), skip.
-- Partial matches (e.g. the wikilink text is present but in a different
-  bullet) are intentional duplicates — the user may have linked manually.
-  Skip rather than deduplicate aggressively.
+- If the target section already contains an exact match for
+  `line_to_add` (byte-equal after trim), skip.
+- Partial matches (the wikilink appears in a different bullet) are
+  intentional duplicates — Hashi skips rather than deduplicating
+  aggressively.
 
 **Writing inside callouts:**
 
@@ -824,8 +846,78 @@ File* after moving. If Tomo Hashi automates this, do it AFTER the move so
 > - [[previous existing line]]
 ```
 
-Preserve the callout's fold state suffix (`[!name]-` = collapsed, `[!name]+`
-= expanded). Don't change it on write.
+Preserve the callout's fold state suffix (`[!name]-` = collapsed,
+`[!name]+` = expanded). Don't change it on write.
+
+**Migration note (2026-04-30):** the previous `section_name` (string)
+field has been removed. Hashi handlers reading the old shape will
+encounter `KeyError` / missing-field on new emissions; rebuild any in-
+flight instruction set after the contract lands.
+
+---
+
+### `add_relationship` — replace a Dataview inline-field line on a MOC
+
+```json
+{
+  "id": "I12",
+  "action": "add_relationship",
+  "target_moc_path": "Atlas/200 Maps/Brettspiele (MOC).md",
+  "marker": "up::",
+  "line": "up:: [[Hobbies (MOC)]]"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `target_moc` | string \| null | MOC stem for human-readable display (no path, no `.md`). |
+| `target_moc_path` | string | Resolved vault-relative full path of the target MOC. Required (no `target_moc` fallback). |
+| `marker` | string | Dataview inline-field marker that locates the line to replace, e.g. `up::` or `related::`. Hashi locates the first line whose stripped content (after optional `> ` callout prefix) starts with this marker. |
+| `line` | string | Pre-formatted full line content to write, e.g. `up:: [[Hobbies (MOC)]]` or `related:: [[A]], [[B]]`. Hashi replaces the located marker line with this verbatim, preserving the line's leading `> ` prefix if the marker was inside a callout. |
+| `source_note_title` | string \| null | Informational. |
+
+**Why marker-only locator (no `anchor` object):** the marker IS the
+anchor. `up:: [[X]]` lives wherever its marker line lives; there is no
+"after the marker" or "before the marker" distinction — there's just
+the marker line itself, which Hashi replaces wholesale. Multi-link
+aggregation for `related::` (`related:: [[A]], [[B]], [[C]]`) is done
+**Tomo-side** before emission. Tomo reads the existing `related::`
+line, computes the new combined value, and emits one
+`add_relationship` action with the final `line`.
+
+**Why both `marker` and `line` (apparent redundancy):** `marker` is a
+locator (Hashi's grep prefix); `line` is the verbatim content to
+write. Hashi never parses `line`, Tomo never inspects `marker` after
+emission. This keeps Tomo in control of formatting (spacing, comma-sep
+style, future markers) and Hashi's writing rule trivially small.
+
+**Execution algorithm:**
+
+1. Open the target MOC at `target_moc_path`.
+2. Locate the line whose stripped content (after optional `> `
+   callout-body prefix) starts with `marker`.
+3. Replace that whole line with `line`. Preserve the line's leading
+   `> ` prefix if the marker was inside a callout — Hashi adds `> ` to
+   the replacement only when the original line was prefixed.
+4. **Hard fail** if no line starting with `marker` is found in the
+   target MOC. Hashi emits a runtime error in its walk log including
+   `target_moc_path` and `marker`. Tomo regenerates with a corrected
+   template (or, future feature, a `create_marker_line` step) once the
+   failure surfaces.
+
+**No fallback placement.** v0.1 acceptable risk — every Tomo-rendered
+MOC includes the navigation callout with `up::`/`related::`
+placeholder lines via the standard template, so the marker line is
+always present in the common path.
+
+**Current emission paths:** `add_relationship` is reserved for future
+use — relationship updates on existing MOCs (e.g., changing a parent
+or adding a `related::` pointer to an already-existing MOC). v0.1
+emission flows do not currently produce `add_relationship` actions;
+the schema is defined so Hashi can build the handler ahead of demand.
+
+**Idempotency:** if the located marker line is byte-equal to `line`
+(after trim), Hashi skips the write.
 
 ---
 
@@ -998,16 +1090,31 @@ section for the canonical line shapes. All other fields mirror
   setting). **Do not hard-delete.**
 - If the file is already gone: treat as a no-op (previous apply).
 
-**Emitted in two cases:**
+**Emitted in three cases:**
 
-1. The user ticked `[ ] Delete source` on an atomic-note suggestion without
-   accepting it — explicit intent.
+1. The user ticked `[ ] Delete source` on a SKIPPED atomic-note suggestion
+   — explicit intent on a non-accepted item.
 2. Daily-only inference: the source item's content landed entirely in a
    daily note (tracker / log entry / log link) with no atomic note
    created. The renderer infers deletion from `source_stem` cross-checks
    between the suggestions doc's confirmed items and daily-update items.
+3. **Paired with `move_note`** (post-2026-04-30): for every confirmed
+   atomic note that emits a `move_note` action, the renderer emits a
+   paired `delete_source` for its `origin_inbox_item` UNLESS the user
+   opted out via the suggestions doc's "Keep origin" checkbox. The
+   reason field reads `"Origin consumed by move_note <id>."`. This
+   removes the inbox source after Tomo has transformed its content into
+   the rendered atomic note — without the user having to tick "Delete
+   source" twice.
 
-The `reason` field distinguishes the two.
+The `reason` field distinguishes the three cases.
+
+**Default origin-delete contract:** confirmed atomic notes ALWAYS produce
+a paired delete unless the user explicitly checks "Keep origin" on that
+item in the suggestions doc. This is a behaviour change from the pre-
+2026-04-30 contract where origins remained in the inbox by default — see
+the 2026-04-30 walk where 11 origins remained behind because no paired
+delete was emitted.
 
 **Peer files are independent actions.** Voice memos and similar workflows
 produce two files in the inbox — the media (e.g. `Voice…m4a`) and a

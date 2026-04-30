@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.1
+# version: 0.9.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -292,6 +292,7 @@ _REQUIRED_PATH_FIELDS = {
     "update_log_entry": ("daily_note_path",),
     "update_log_link": ("daily_note_path",),
     "delete_source": ("source_path",),
+    "add_relationship": ("target_moc_path",),
 }
 
 
@@ -451,13 +452,20 @@ def _parse_supporting_items(raw: str | None) -> list[str]:
 def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:
     """Emit link_to_moc actions from two sources:
 
-    1. Each confirmed item's parent_mocs[] — the up-links user checked on the
-       item (regular atomic notes) or on the proposed MOC block (for
-       create_moc items, these are the new MOC's parents).
+    1. Each confirmed item's parent_mocs[] — child-listing bullets on the
+       parent MOC. The atomic note's own `up:: [[parent]]` line is written
+       by the template renderer ({{up}} token), not as an instruction-set
+       action.
     2. Each create_moc item's supporting_items — down-links FROM the new MOC
        TO each confirmed atomic note referenced by ID. Fills the gap where
        the suggestions doc cannot offer a future-MOC as a parent option when
        reviewing atomic items.
+
+    Both passes emit content-bullet links into the target MOC's content
+    callout (anchor.type=callout, placement=inside). resolve_anchors
+    populates anchor.value via Kado read; if the target MOC has no editable
+    callout, the action lands with anchor.value=null (Hashi reports a
+    runtime error in that case).
 
     Dedup by (target_moc, line_to_add) so a parent_moc that happens to also
     appear in supporting_items isn't double-emitted.
@@ -476,7 +484,8 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
             "action": "link_to_moc",
             "target_moc": target_moc,
             "target_moc_path": None,
-            "section_name": None,
+            "anchor": {"type": "callout", "value": None},
+            "placement": "inside",
             "line_to_add": f"- [[{source_title}]]",
             "source_note_title": source_title,
         })
@@ -596,25 +605,34 @@ def _build_daily_update_actions(
 
 def _build_delete_source_actions(
     confirmed: list[dict],
+    move_notes: list[dict],
     daily_updates: list[dict],
     skipped: list[dict],
     inbox_path: str,
     counter: list[int],
 ) -> list[dict]:
-    """Emit delete_source actions from two sources:
+    """Emit delete_source actions from three sources:
 
     1. `skipped[]` entries where the user explicitly checked "Delete source"
        (disposition == "delete_source").
     2. Daily-only items — source_stems that appear in accepted daily_updates
        but have no matching confirmed_item (content fully captured in the
        daily note, no atomic note will be created).
+    3. move_note origins — for every move_note action whose corresponding
+       confirmed item did NOT opt out via "Keep origin", emit a paired
+       delete_source for the origin inbox item. Audio + transcript peer
+       pairs are NOT included here (they're independent upstream artifacts);
+       only the origin from which Tomo derived the rendered atomic note.
     """
     out: list[dict] = []
     confirmed_stems: set[str] = set()
+    confirmed_by_stem: dict[str, dict] = {}
     for item in confirmed:
         sp = item.get("source_path")
         if sp:
-            confirmed_stems.add(_stem(sp))
+            stem = _stem(sp)
+            confirmed_stems.add(stem)
+            confirmed_by_stem[stem] = item
 
     inbox = inbox_path.rstrip("/") + "/"
 
@@ -651,6 +669,28 @@ def _build_delete_source_actions(
                     "source_path": f"{inbox}{stem}.md",
                     "reason": "Content fully captured in daily note.",
                 })
+
+    # (3) move_note origins — paired delete by default unless keep_origin
+    paired_seen: set[str] = set()
+    for mn in move_notes:
+        if mn.get("action") != "move_note":
+            continue
+        origin = mn.get("origin_inbox_item")
+        if not origin or origin in paired_seen:
+            continue
+        # Look up the confirmed item via origin stem to check keep_origin.
+        origin_stem = _stem(origin)
+        cf = confirmed_by_stem.get(origin_stem)
+        if cf and cf.get("keep_origin"):
+            continue
+        paired_seen.add(origin)
+        out.append({
+            "id": _next_id(counter),
+            "action": "delete_source",
+            "source_path": origin,
+            "reason": f"Origin consumed by move_note {mn.get('id')}.",
+        })
+
     return out
 
 
@@ -699,11 +739,12 @@ def build_actions(
     inbox_path = cfg["concepts.inbox"]
     out: list[dict] = []
     out.extend(_build_create_moc_actions(manifest, inbox_path, counter))
-    out.extend(_build_move_note_actions(manifest, inbox_path, counter))
+    move_notes = _build_move_note_actions(manifest, inbox_path, counter)
+    out.extend(move_notes)
     out.extend(_build_link_to_moc_actions(confirmed, counter))
     out.extend(_build_daily_update_actions(daily_updates, cfg, counter))
     out.extend(_build_delete_source_actions(
-        confirmed, daily_updates, skipped, inbox_path, counter,
+        confirmed, move_notes, daily_updates, skipped, inbox_path, counter,
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
     # Stamp the per-action applied flag. Tomo Hashi (the consumer) flips this
@@ -731,7 +772,7 @@ def _md_section_for(action: dict) -> str:
     kind = action["action"]
     if kind in ("move_note", "create_moc"):
         return "new_files"
-    if kind == "link_to_moc":
+    if kind in ("link_to_moc", "add_relationship"):
         return "moc_links"
     if kind in ("update_tracker", "update_log_entry", "update_log_link"):
         return "daily_updates"
@@ -786,13 +827,31 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         lines.append(f"- **Target:** [[{moc}]]")
         if action.get("target_moc_path"):
             lines.append(f"- **Path:** `{action['target_moc_path']}`")
-        section = action.get("section_name")
-        if section:
-            lines.append(f"- **Section:** `{section}`")
-            lines.append("- **Open the MOC and find that callout/heading**, then add the line below.")
+        anchor = action.get("anchor") or {}
+        anchor_type = anchor.get("type") or "callout"
+        anchor_value = anchor.get("value")
+        placement = action.get("placement", "after")
+        if anchor_value:
+            lines.append(f"- **Anchor:** `{anchor_value}` ({anchor_type}, placement: {placement})")
+            if anchor_type == "callout" and placement == "inside":
+                lines.append("- **Open the MOC and find that callout**, then add the line below as the last line of its body.")
+            elif placement == "after":
+                lines.append(f"- **Open the MOC and find that {anchor_type}**, then add the line below immediately after it.")
         else:
+            lines.append(f"- **Anchor:** (unresolved {anchor_type}, placement: {placement})")
             lines.append("- **Open the MOC**, find the first editable callout (e.g. `> [!blocks]`) or the matching section.")
         lines.append(f"- **Add this line:** `{action.get('line_to_add', '')}`")
+        return "\n".join(lines)
+
+    if kind == "add_relationship":
+        moc = action.get("target_moc") or _stem(action.get("target_moc_path", ""))
+        marker = action.get("marker", "")
+        line = action.get("line", "")
+        lines = [f"{heading_prefix}Update {marker} on [[{moc}]]", "- [ ] Applied"]
+        if action.get("target_moc_path"):
+            lines.append(f"- **Path:** `{action['target_moc_path']}`")
+        lines.append(f"- **Marker:** `{marker}`")
+        lines.append(f"- **Replace marker line with:** `{line}`")
         return "\n".join(lines)
 
     if kind == "update_tracker":
@@ -940,8 +999,11 @@ def backfill_supporting_items_parents(confirmed: list[dict]) -> None:
 
 
 def resolve_section_names(actions: list[dict], client, editable_callouts: list[str]) -> int:
-    """Best-effort: resolve `section_name` on link_to_moc actions by reading the
-    target MOC and finding its first editable callout.
+    """Best-effort: resolve `anchor.value` on callout-typed link_to_moc actions
+    by reading the target MOC and finding its first editable callout.
+
+    Function name retained for stability of imports; populates the new
+    `anchor.value` field instead of the removed `section_name` field.
 
     Two-tier resolution per action:
 
@@ -1048,7 +1110,12 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
     for a in actions:
         if a.get("action") != "link_to_moc":
             continue
-        if a.get("section_name"):
+        anchor = a.get("anchor")
+        if not isinstance(anchor, dict):
+            continue
+        if anchor.get("type") != "callout":
+            continue  # heading/line anchors are populated upstream, not here
+        if anchor.get("value"):
             continue  # already set
         path = a.get("target_moc_path")
         if not path:
@@ -1062,7 +1129,7 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
                 if template:
                     section = _resolve_from_template(template)
         if section:
-            a["section_name"] = section
+            anchor["value"] = section
             resolved += 1
     return resolved
 
@@ -1304,7 +1371,7 @@ def main() -> int:
         print(f"  [resolve] target_moc_path populated for {resolved_paths} link_to_moc action(s)",
               file=sys.stderr)
 
-    # ── Resolve section_name by reading each target MOC ─────────────────
+    # ── Resolve anchor.value by reading each target MOC ─────────────────
     # For each link_to_moc with a resolved target_moc_path, open the MOC via
     # Kado and capture the full first line of its first editable callout.
     # Actions targeting not-yet-existing MOCs (tier-1 in-set) stay null —
@@ -1312,7 +1379,7 @@ def main() -> int:
     # can discover at execute time.
     resolved_sections = resolve_section_names(actions, client, cfg["callouts.editable"])
     if resolved_sections:
-        print(f"  [resolve] section_name populated for {resolved_sections} link_to_moc action(s)",
+        print(f"  [resolve] anchor.value populated for {resolved_sections} link_to_moc action(s)",
               file=sys.stderr)
 
     # ── Path Shape Contract guard (Hashi handoff 2026-04-26) ─────────────

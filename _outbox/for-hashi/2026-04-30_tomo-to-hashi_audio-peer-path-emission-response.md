@@ -143,6 +143,35 @@ in your QA notes. Once paths are byte-correct, if Obsidian still cannot
 reach colon-bearing media, the fallback (Kado, post-execute hook,
 out-of-band) will need its own handoff.
 
+## Filename character handling — documented contract
+
+Added a new subsection in `docs/instructions-json.md` →
+`## Path Shape Contract` → `### Filename character handling`. Captures
+the constraint Hashi has been navigating implicitly:
+
+- **Path fields reflect what is on disk.** Forbidden-char files
+  (recorder-named `.m4a` with `:`) appear in actions with their literal
+  on-disk name. Use the path verbatim to locate the file.
+- **New files Tomo writes are sanitised at creation.** Transcripts,
+  rendered atomic notes, and new MOCs go through `sanitize_stem` before
+  the path is built — so anything Tomo produces is Obsidian-conformant.
+- **Mismatched media + transcript stems are the intended state** when
+  the recorder bypassed sanitisation upstream. Do not infer one
+  filename from the other; treat each action's path verbatim.
+
+The forbidden-character mapping is documented (informational only —
+Tomo applies it at write time; Hashi does NOT need to reverse it):
+
+| Forbidden | Replacement |
+|---|---|
+| `\` `/` `:` `*` `?` `"` `<` `>` `\|` `\x00` | `-` |
+
+The transform is idempotent and lossy. SSoT:
+`tomo/scripts/lib/obsidian_filename.py:sanitize_stem`. The right fix
+when this becomes a real ergonomic problem is upstream sanitisation at
+inbox-arrival time — not a downstream rename action — and is
+intentionally out of scope for v0.1.
+
 ## References
 
 - Tomo branch: `feat/audio-path-emission` (off `main`, single commit

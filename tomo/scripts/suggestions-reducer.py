@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 0.7.0
+# version: 0.8.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl

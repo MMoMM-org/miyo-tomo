@@ -3,7 +3,7 @@ from: tomo
 to: hashi
 date: 2026-04-30
 topic: audio-peer-path-emission-response
-status: pending
+status: done
 status_note:
 priority: high
 requires_action: true

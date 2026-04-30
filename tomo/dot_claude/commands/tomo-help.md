@@ -113,7 +113,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - Pass 1 is cheap and reversible (a suggestions document you can edit)
   - Pass 2 is detailed and ready to apply (templates rendered, tokens resolved)
   - Separation lets you reshape scope before expensive work happens
-  - Point at: `.claude/commands/inbox.md`, `.claude/skills/pkm-workflows.md`
+  - Point at: `.claude/commands/inbox.md`, `.claude/skills/pkm-workflows/SKILL.md`
 
 - **knowledge stack / 4-layer / precedence / profile vs config / config vs cache** →
   - 4 layers (highest precedence first): User Config > Profile > Universal PKM Concepts; Cache is advisory only
@@ -131,13 +131,13 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
 - **moc / maps of content / moc matching / section placement** →
   - MOCs live at paths in `config/vault-config.yaml` under `concepts.map_note.paths`
   - Detected via tag (default `type/others/moc` in miyo profile) or frontmatter
-  - Point at: `.claude/skills/lyt-patterns.md`
+  - Point at: `.claude/skills/lyt-patterns/SKILL.md`
 
 - **templates / tokens / t_note_tomo / rendering** →
   - Templates rendered by `python3 scripts/token-render.py` during Pass 2
   - Required tokens always resolve: uuid, datestamp, title
   - Config-sourced tokens need matching `frontmatter.optional` entries with defaults
-  - Point at: `.claude/skills/template-render.md`
+  - Point at: `.claude/skills/template-render/SKILL.md`
 
 ### Configuration
 

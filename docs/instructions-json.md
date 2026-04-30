@@ -586,6 +586,62 @@ which rule was broken. The check is defensive — production paths come from
 config + suggestion data and should already conform — but it makes any
 upstream regression visible inside Tomo rather than at Hashi execute time.
 
+### Filename character handling — Obsidian-forbidden characters
+
+Obsidian rejects filenames containing any of `\ / : * ? " < > |` or null
+bytes. External recorders (iOS Voice Memos, desktop audio capture, etc.)
+routinely bypass this constraint and drop files into the inbox with names
+like `memo 2026-04-20 11:48:29.m4a`. The vault FS tolerates such names on
+read, but `kado-write` (Tomo's only vault-write surface) rejects them
+with `INTERNAL_ERROR`.
+
+Tomo's contract:
+
+1. **Path fields reflect what is on disk.** When a forbidden-char file
+   already exists in the inbox, Tomo emits its real, on-disk path —
+   colons and all. Hashi must use that path verbatim to locate the file
+   (read, list, trash); it is the only reference that resolves.
+2. **New files Tomo writes are sanitised at creation.** Anything Tomo
+   produces through `kado-write` (transcripts, rendered atomic notes,
+   new MOCs) goes through `sanitize_stem` before the path is built, so
+   the stem never carries forbidden chars. The transform is the single
+   source of truth in `tomo/scripts/lib/obsidian_filename.py`.
+
+Result: a media + transcript pair derived from a recorder-named audio
+file legitimately has **mismatched stems**:
+
+| File | Stem | Why |
+|---|---|---|
+| `100 Inbox/memo 2026-04-20 11:48:29.m4a` | `memo 2026-04-20 11:48:29` | Original on-disk filename — recorder bypassed Obsidian's sanitiser. |
+| `100 Inbox/memo 2026-04-20 11-48-29.md` | `memo 2026-04-20 11-48-29` | Tomo wrote this via `kado-write`, which required sanitisation. |
+
+This is **not a bug** — it is the intended state given an external
+recorder upstream. Hashi must not infer one filename from the other:
+treat each path verbatim as it appears in the action.
+
+#### Sanitisation rule (informational — Tomo applies it; Hashi does not need to)
+
+`sanitize_stem` is **idempotent** and maps the forbidden set to a single
+replacement character:
+
+| Forbidden character | Replacement |
+|---|---|
+| `\` `/` `:` `*` `?` `"` `<` `>` `\|` | `-` |
+| `\x00` (NUL) | `-` |
+
+The mapping is documented here so consumers can understand Tomo's
+sanitised filenames at a glance, **not** so consumers can re-derive an
+original from a sanitised name (the transform is lossy — `Foo:Bar` and
+`Foo-Bar` both map to `Foo-Bar`). Inverse resolution is impossible by
+design; if a consumer needs the original on-disk name it must read it
+from the action's path field, never reconstruct it.
+
+When forbidden-char filenames at scale become a real ergonomic problem,
+the right fix is upstream — sanitise at inbox-arrival time so the vault
+never sees forbidden chars in the first place — rather than a downstream
+rename action in the instruction set. This is intentionally out of scope
+for v0.1; revisit when the case load justifies it.
+
 ---
 
 ## Action kinds
@@ -921,8 +977,20 @@ section for the canonical line shapes. All other fields mirror
 
 | Field | Type | Notes |
 |---|---|---|
-| `source_path` | string | Full vault-relative path of the file to delete. |
+| `source_path` | string | Full vault-relative path of the file to delete. Byte-equal to the wikilink target rendered in the `.md` peer (with `.md` re-appended only when the target is a bare or dotted note name). |
 | `reason` | string | Human-readable justification — surface in the UI when confirming. |
+
+**Path-shape rules (Hashi consumes verbatim — no resolution):**
+
+- `source_path` is a vault-relative path that names the file as it exists
+  on disk. For text sources this is `<inbox>/<stem>.md`; for media sources
+  (audio, video, images, etc.) it is `<inbox>/<filename-with-real-extension>`
+  — Tomo does NOT append `.md` to a path whose wikilink target already
+  carries a non-`.md` extension. See `_ensure_md_extension` in
+  `instruction-render.py` for the full extension allowlist.
+- Note titles MAY contain dots (Obsidian permits `Foo.Bar` as a title);
+  the renderer treats a trailing segment as an extension only when it
+  is ≤4 chars and matches a known Obsidian-resolvable extension.
 
 **Execution algorithm:**
 
@@ -940,6 +1008,21 @@ section for the canonical line shapes. All other fields mirror
    between the suggestions doc's confirmed items and daily-update items.
 
 The `reason` field distinguishes the two.
+
+**Peer files are independent actions.** Voice memos and similar workflows
+produce two files in the inbox — the media (e.g. `Voice…m4a`) and a
+transcript peer (`Voice…m4a.md` or a sibling `Voice…md`). Even when these
+files share a stem-prefix, **each file gets its own `delete_source` (or
+`skip`) action emitted from a separate user decision** in the suggestions
+review. Hashi MUST treat them independently:
+
+- Applying `delete_source` for the media does NOT imply deleting the
+  transcript, and vice versa. Each action stands on its own.
+- The user CAN delete the audio while keeping the transcript (or
+  vice versa) — this is a real, supported workflow.
+- Hashi MUST NOT infer deletion of a peer file from a shared stem,
+  filename prefix, or any other heuristic. The instruction set is the
+  authoritative list of files to act on.
 
 ---
 

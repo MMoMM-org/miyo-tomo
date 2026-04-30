@@ -3,7 +3,8 @@ from: tomo
 to: kado
 date: 2026-04-15
 topic: Content-truncation on kado-read — proposed scope + semantics from Tomo side
-status: pending
+status: done
+status_note: Scope accepted as proposed (Mode A, max_chars on kado-read note op, whitespace-boundary cut, truncated + full_length_chars response fields); feature queued with no ETA; reply in _outbox/for-tomo/2026-04-24_kado-to-tomo_content-truncation-scope-ack.md
 priority: normal
 requires_action: true
 ---

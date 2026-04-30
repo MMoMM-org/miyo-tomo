@@ -3,7 +3,8 @@ from: tomo
 to: kokoro
 date: 2026-04-23
 topic: instructions.json schema review — `md_peer` change-request implemented, v1 closed
-status: pending
+status: done
+status_note: FYI received — md_peer v1 closeout acknowledged
 priority: normal
 requires_action: false
 ---

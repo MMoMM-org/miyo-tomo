@@ -3,7 +3,7 @@ from: tomo
 to: hashi
 date: 2026-04-29
 topic: format-spec-and-section-name-response
-status: pending
+status: done
 status_note:
 priority: high
 requires_action: true

@@ -3,7 +3,8 @@ from: tomo
 to: kokoro
 date: 2026-04-23
 topic: Residual Seigyo → Tomo Hashi sweep across tier-2 + roadmap — arch-doc surface now consistent
-status: pending
+status: done
+status_note: FYI received — Kokoro arch docs already consistent; 04-miyo-tomo.md retains a Seigyo mention but is marked Superseded 2026-04-09 (historical, intentionally left alone)
 priority: normal
 requires_action: false
 ---

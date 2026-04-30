@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.1
+# version: 0.8.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -898,18 +898,25 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
     """Best-effort: resolve `section_name` on link_to_moc actions by reading the
     target MOC and finding its first editable callout.
 
-    For each unique target_moc_path (not target_moc — we want a resolved path
-    to actually fetch), open the MOC via Kado, scan for the first line matching
-    `> [!<name>]...` where `<name>` is in `editable_callouts`, and set that
-    full line (sans leading `> `) as the section_name on all link_to_moc
-    actions pointing to that MOC.
+    Two-tier resolution per action:
+
+      1. Read the target MOC via Kado at `target_moc_path` and scan for the
+         first editable callout (matched against `editable_callouts`).
+      2. If tier 1 returns None AND the action targets a not-yet-existing MOC
+         (a same-set `create_moc.destination` matches the path), fall back to
+         reading that create_moc's `template` via Kado and scanning the
+         template body for an editable callout. This keeps in-set
+         create+link pairs from landing in the navigation callout at execute
+         time — the template's first editable callout is the semantically
+         correct insertion target.
 
     Leaves section_name null when:
       - client is None (offline / test mode)
-      - target_moc_path is null (MOC doesn't exist yet — e.g. a new MOC from
-        a create_moc in the same instruction set)
-      - the MOC has no editable callout matching the config
-      - Kado read fails
+      - target_moc_path is null
+      - the target MOC has no editable callout matching the config AND
+        either there is no in-set create_moc for the path, the create_moc
+        has no `template` field, or the template has no editable callout
+      - Kado read fails for both the MOC and (where applicable) the template
 
     Returns the count of actions populated.
     """
@@ -930,19 +937,10 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             return 1
         return 2
 
-    cache: dict[str, str | None] = {}
-
-    def _resolve(path: str) -> str | None:
-        if path in cache:
-            return cache[path]
-        try:
-            result = client.read_note(path)
-            content = result.get("content", "") or ""
-        except Exception:  # noqa: BLE001
-            cache[path] = None
-            return None
-        # Collect all editable callouts in the MOC with their full first line,
-        # then pick the highest-priority one.
+    def _pick_editable_callout(content: str) -> str | None:
+        """Scan content for editable callouts and return the highest-priority
+        one's full first line (sans leading `> `). Used for both live MOC
+        bodies and template bodies — same scoring rules apply."""
         candidates: list[tuple[int, str]] = []
         for raw in content.splitlines():
             line = raw.rstrip()
@@ -957,12 +955,49 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
                 stripped = stripped[1:].lstrip()
             candidates.append((_score(name), stripped))
         if not candidates:
-            cache[path] = None
             return None
         # Highest score wins; ties resolved by first occurrence (stable).
-        best = max(enumerate(candidates), key=lambda x: (x[1][0], -x[0]))[1][1]
-        cache[path] = best
-        return best
+        return max(enumerate(candidates), key=lambda x: (x[1][0], -x[0]))[1][1]
+
+    # Tier-1 cache: keyed by MOC path
+    moc_cache: dict[str, str | None] = {}
+
+    def _resolve_from_moc(path: str) -> str | None:
+        if path in moc_cache:
+            return moc_cache[path]
+        try:
+            result = client.read_note(path)
+            content = result.get("content", "") or ""
+        except Exception:  # noqa: BLE001
+            moc_cache[path] = None
+            return None
+        section = _pick_editable_callout(content)
+        moc_cache[path] = section
+        return section
+
+    # Tier-2 cache: keyed by template name (templates are usually shared
+    # across many in-set create_moc actions — read each at most once).
+    tmpl_cache: dict[str, str | None] = {}
+
+    def _resolve_from_template(template: str) -> str | None:
+        if template in tmpl_cache:
+            return tmpl_cache[template]
+        body = read_template(client, template)
+        if body is None:
+            tmpl_cache[template] = None
+            return None
+        section = _pick_editable_callout(body)
+        tmpl_cache[template] = section
+        return section
+
+    # Index in-set create_moc actions by destination so tier-2 can find the
+    # template that the not-yet-existing MOC will be built from.
+    create_moc_by_dest: dict[str, dict] = {}
+    for a in actions:
+        if a.get("action") == "create_moc":
+            dest = a.get("destination")
+            if dest:
+                create_moc_by_dest[dest] = a
 
     resolved = 0
     for a in actions:
@@ -973,7 +1008,14 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         path = a.get("target_moc_path")
         if not path:
             continue
-        section = _resolve(path)
+        section = _resolve_from_moc(path)
+        if section is None:
+            # Tier-2 fallback: in-set create_moc landing at this path
+            create = create_moc_by_dest.get(path)
+            if create:
+                template = create.get("template")
+                if template:
+                    section = _resolve_from_template(template)
         if section:
             a["section_name"] = section
             resolved += 1

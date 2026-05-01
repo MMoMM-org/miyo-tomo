@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 0.8.0
+# version: 0.8.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -566,6 +566,7 @@ def main() -> int:
                             daily_groups[daily_stem]["log_entries"].append({
                                 "time": u.get("time"),
                                 "time_source": u.get("time_source"),
+                                "position": u.get("position"),
                                 "content": u.get("content", ""),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
@@ -577,6 +578,7 @@ def main() -> int:
                                 "target_stem": target,
                                 "time": u.get("time"),
                                 "time_source": u.get("time_source"),
+                                "position": u.get("position"),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
                                 "source_section": section_id,

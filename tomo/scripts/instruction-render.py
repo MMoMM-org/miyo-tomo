@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.0
+# version: 0.9.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -484,8 +484,14 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
             "action": "link_to_moc",
             "target_moc": target_moc,
             "target_moc_path": None,
+            # Default placement is "after" per the 2026-04-30 contract with
+            # Hashi: content-bullet links land BELOW the matched callout, not
+            # inside its body. The user's rule of thumb is "normally it is
+            # always after". inside is reserved for the rare case where a
+            # specific entry must be collected inside a callout's body — none
+            # of today's emission paths produce that.
             "anchor": {"type": "callout", "value": None},
-            "placement": "inside",
+            "placement": "after",
             "line_to_add": f"- [[{source_title}]]",
             "source_note_title": source_title,
         })

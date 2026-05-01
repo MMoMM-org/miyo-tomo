@@ -285,3 +285,26 @@ bash scripts/cleanup-tomo.sh --force --keep-home
 ```
 
 The cleanup script refuses any path outside the repo root as a safety check.
+
+### Resetting Working State Between Test Runs
+
+**Symptom:** You're iterating on Pass 1 / Pass 2 changes and need a clean `tomo-tmp/` between runs without re-installing the whole instance.
+
+**Solution:** Use `scripts/reset-tomo-tmp.sh` with the appropriate scope.
+
+```bash
+bash scripts/reset-tomo-tmp.sh              # default: --pass2 (clear only Pass-2 outputs)
+bash scripts/reset-tomo-tmp.sh --pass1      # full reset for fresh Pass 1
+bash scripts/reset-tomo-tmp.sh --all        # nuclear (also clears archive/ and voice/ models)
+bash scripts/reset-tomo-tmp.sh --dry-run --pass1   # preview what would be removed
+```
+
+What each mode clears:
+
+| Mode | Removes | Keeps |
+|------|---------|-------|
+| `--pass2` | `parsed-suggestions.json`, `rendered/` | Pass 1 state, suggestions doc, voice transcripts |
+| `--pass1` | All Pass-1 + Pass-2 outputs (`items/`, `shared-ctx.json`, `inbox-state.jsonl`, all `suggestions*` files, `.run_id`, `voice/summary.json`) | `archive/` (run history), `voice/` (transcript models) |
+| `--all` | Everything in `tomo-tmp/` including `archive/` and `voice/` | (nothing) |
+
+Use `--pass2` between iterations of suggestions.md edits + Pass 2 testing. Use `--pass1` when changing analyst behavior (skill edits, prompt changes, config that affects Pass-1 emission). Use `--all` only when you want true zero state.

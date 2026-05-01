@@ -131,6 +131,65 @@ def test_render_empty_segment_list_still_produces_metadata_and_embed():
     assert "> [!voice]" not in out
 
 
+def test_render_recorded_extracted_from_filename_with_colons():
+    """External recorders emit filenames like
+    `Apothekerpfädchen 11__2026-04-22 10:14:41.m4a`. Voice-render parses the
+    trailing `__YYYY-MM-DD HH:MM:SS` and surfaces it as a `recorded:`
+    frontmatter field — distinct from `transcribed:` (processing time)."""
+    result = TranscriptResult(
+        audio_path=Path(
+            "/tmp/Apothekerpfädchen 11__2026-04-22 10:14:41.m4a"
+        ),
+        model_name="faster-whisper-tiny",
+        language="de",
+        duration_sec=183.0,
+        segments=[Segment(0.0, 1.0, "x")],
+    )
+    out = vr.render_markdown(result)
+    assert "recorded: 2026-04-22T10:14:41" in out
+
+
+def test_render_recorded_extracted_from_filename_with_dashes():
+    """After Obsidian filename sanitisation strips `:`, the timestamp
+    portion uses `-` separators (e.g. `2026-04-22 10-14-41`). Both
+    forms must be parsed identically."""
+    result = TranscriptResult(
+        audio_path=Path("/tmp/memo__2026-04-22 10-14-41.m4a"),
+        model_name="faster-whisper-tiny",
+        language="de",
+        duration_sec=10.0,
+        segments=[Segment(0.0, 1.0, "x")],
+    )
+    out = vr.render_markdown(result)
+    assert "recorded: 2026-04-22T10:14:41" in out
+
+
+def test_render_omits_recorded_when_no_filename_timestamp():
+    """Filenames without the trailing `__YYYY-MM-DD HH:MM:SS` pattern
+    (e.g. user-renamed files, custom recorders) get no `recorded:` field —
+    additive behaviour, no breakage for existing call sites."""
+    result = make_result([(0.0, 3.0, "x")])  # audio_path = /tmp/memo.m4a
+    out = vr.render_markdown(result)
+    assert "recorded:" not in out
+
+
+def test_render_recorded_appears_after_transcribed_before_model():
+    """Field ordering matters for human-readable diffs. `recorded:` slots
+    between `transcribed:` and `model:` so processing-time and event-time
+    sit together at the top of the metadata block."""
+    result = TranscriptResult(
+        audio_path=Path("/tmp/memo__2026-04-22 10-14-41.m4a"),
+        model_name="faster-whisper-tiny",
+        language="de",
+        duration_sec=10.0,
+        segments=[Segment(0.0, 1.0, "x")],
+    )
+    out = vr.render_markdown(result)
+    meta_lines = [ln for ln in out.splitlines() if ":" in ln and not ln.startswith(">")]
+    keys = [ln.split(":", 1)[0] for ln in meta_lines]
+    assert keys.index("transcribed") < keys.index("recorded") < keys.index("model")
+
+
 def test_render_timestamp_is_iso8601_second_precision():
     # When a fixed `now` is injected, the `transcribed:` field is fully
     # deterministic — useful both for snapshot tests and to guard the

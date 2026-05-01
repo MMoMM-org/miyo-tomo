@@ -12,7 +12,7 @@ skills:
   - pkm-workflows
 ---
 # Inbox Analyst Subagent
-# version: 0.8.0 (XDD 012 — force_atomic input overrides Step 7 worthiness gate)
+# version: 0.9.0 (Step 7 voice-transcript worthiness against full content; Step 8 frontmatter event-date key filter)
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -129,6 +129,20 @@ NO leading `#`).
 Score 0-1: length > 100 words (+0.3), has structure (+0.2), single topic (+0.2),
 original thought (+0.2). Score ≥ 0.5 → emit `create_atomic_note` action.
 
+**Score the FULL ORIGINAL content, never your own summary.** When you write
+a brief synthesis or compressed view of an item while reasoning about it,
+do NOT score that summary against the worthiness criteria — score the
+original input. This matters most for voice transcripts (multi-segment
+`> [!voice]` callouts often carry 1500+ chars of multi-topic substance
+that scores well above 0.5 by length and breadth, but a 350-char summary
+of the same content would fail the gate). Treat the worthiness score as a
+property of the inbox item, not of your interpretation of it.
+
+**Voice-transcript detection.** When the inbox item carries a `transcribed:`
+frontmatter key OR contains `> [!voice]` callout segments, it is a voice
+transcript. Compute "length > 100 words" against the full concatenated
+segment text, not against the synthesis you would write for a human.
+
 **`force_atomic=true` override (XDD 012).** When the orchestrator passed
 `force_atomic: true`, skip the 0.5 gate and ALWAYS emit
 `create_atomic_note`. Still compute and report the score in
@@ -157,6 +171,29 @@ frontmatter and filename reflect the capture moment, not the event. Content-
 first matches that workflow. Users who prefer frontmatter-governed filing
 (Obsidian's `created:` pattern) can set
 `daily_log.date_sources: [frontmatter, content, filename]`.
+
+**Frontmatter scan: prefer event-date keys, ignore maintenance keys.** When
+scanning the frontmatter source for a parseable date, restrict the scan to
+keys that represent the event/capture time. Treat maintenance keys as if
+they were absent.
+
+- **Prefer (event-date keys):** `recorded`, `Recorded`, `created`, `Created`,
+  `date`, `Date`, `event_date`, `EventDate`, `captured`, `Captured`.
+  When multiple are present, use the first one in this priority order.
+- **Ignore (maintenance keys):** `updated`, `Updated`, `modified`, `Modified`,
+  `last_modified`, `LastModified`, `lastmod`. These reflect the most recent
+  edit (often added automatically by Obsidian Linter or Templater hooks)
+  and are NOT event dates. Treat their presence as if the key were absent.
+
+If none of the event-date keys yield a parseable date, the frontmatter
+source has yielded nothing — proceed to the next source in
+`date_sources`. Do NOT fall back to maintenance keys.
+
+Voice transcripts written by Tomo's voice-transcribe pipeline carry a
+`recorded:` field derived from the recorder's filename timestamp (see
+`tomo/scripts/lib/voice_render.py`). That is the canonical event-date
+source for transcripts and beats `transcribed:` (processing time) and any
+host-PKM-added `Updated:` field.
 
 ### Step 8b — Daily-note classification (requires daily_notes + date_relevance)
 

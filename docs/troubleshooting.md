@@ -135,6 +135,36 @@
 
 The cutoff is set during install via `tomo-daily-log-wizard` (`/tomo-setup`) or by editing `vault-config.yaml` directly. Re-run `/tomo-setup` to walk through the wizard's defaults.
 
+### Operational Tip: `/clear` Between Passes Saves Context
+
+**When:** Multi-pass `/inbox` runs in the same Claude Code session.
+
+`/inbox` is split into Pass 1 (analyze) and Pass 2 (render instructions), with optional Step 2.5 fan-resolve in between. Each phase dispatches subagents whose final messages get folded back into the parent session's context — and the parent context is **cumulative across phases** until the session ends or `/clear` is run.
+
+**Concrete numbers from a measured run** (sonnet, 200k context window):
+
+| Phase | Cumulative context |
+|---|---|
+| Pass 1 dispatch + reduce | 41% (82k of 200k) |
+| Pass 2 Step-2.5 trigger | 46% (93k) |
+| Pass 2 reconciliation | **49% (98k)** |
+
+Without `/clear`, peak parent context grows roughly +5-15k per `/inbox` re-trigger. On larger inboxes or multiple Step-2.5 loops it can hit 70-80% — close to the compaction zone where Claude starts summarizing your conversation.
+
+**Recommendation:** Run `/clear` between phases when you're not actively chatting about previous results.
+
+| After phase | Safe to `/clear`? | Why |
+|---|---|---|
+| Pass 1 (suggestions doc in vault) | Yes | All state lives in `tomo-tmp/` + the vault. `/inbox` re-resumes by reading state files. |
+| Step 2.5 (fan doc in vault) | Yes | Fan doc is in vault; `tomo-tmp/inbox-state.jsonl` + `items/` carry the rest. |
+| Pass 2 (instructions in vault) | Yes | Instructions ready for Hashi or manual apply. |
+
+**Caveat:** `/clear` cleans the conversation history — anything you wanted to ask Claude about (e.g. "why was Sport.md skipped?") loses context. Inspect `tomo-tmp/items/<stem>.result.json` directly afterward; the issue field there tells the same story.
+
+`/clear` works well when the workflow is: trigger `/inbox` → review the doc in Obsidian → `/clear` → trigger `/inbox` again. For interactive debugging sessions, keep the context.
+
+---
+
 ### `/inbox` Keeps Running the Same Pass
 
 **Symptom:** Running `/inbox` repeatedly does the same thing (re-runs Pass 1 instead of advancing to Pass 2, or re-runs Pass 2 instead of cleaning up).

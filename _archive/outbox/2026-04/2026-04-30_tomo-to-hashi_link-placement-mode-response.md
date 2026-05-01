@@ -3,7 +3,7 @@ from: tomo
 to: hashi
 date: 2026-04-30
 topic: link-placement-mode-response
-status: pending
+status: done
 status_note:
 priority: medium
 requires_action: true

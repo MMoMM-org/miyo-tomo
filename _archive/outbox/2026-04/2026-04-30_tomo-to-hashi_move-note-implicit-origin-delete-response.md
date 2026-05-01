@@ -3,7 +3,7 @@ from: tomo
 to: hashi
 date: 2026-04-30
 topic: move-note-implicit-origin-delete-response
-status: pending
+status: done
 status_note:
 priority: high
 requires_action: false

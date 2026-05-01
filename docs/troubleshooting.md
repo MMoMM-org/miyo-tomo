@@ -110,6 +110,31 @@
    This flags unknown action kinds, missing required fields, and prints a one-line summary per action. Exit 0 = ready for Tomo Hashi / manual apply.
 3. `instructions.json` should conform to `tomo/schemas/instructions.schema.json`. The `actions[]` array covers every action the human-readable `instructions.md` references.
 
+### Tracker / Daily-Log Update Skipped for an Inbox Item
+
+**Symptom:** A fleeting note (e.g. `Sport.md`) ends up in the **Suggestions** section of the suggestions doc instead of triggering a tracker update or daily-log entry. The analyst marks it `create_atomic_note` even though the content clearly belongs in a daily note.
+
+**Cause:** The note's date is older than `daily_log.cutoff_days` (default `30`). The analyst protects you from accidentally rewriting old daily notes during catch-up runs — items past the cutoff get *no* daily-note action, only an atomic-note proposal as fallback.
+
+**Check:**
+1. Inspect the item's analyst result in the instance:
+   ```bash
+   cat tomo-instance/tomo-tmp/items/<stem>.result.json | python3 -m json.tool | grep -A2 issues
+   ```
+   Look for: `"Date YYYY-MM-DD is older than cutoff (N days before TODAY = …). Daily note update skipped."`
+2. Verify your `vault-config.yaml`:
+   ```yaml
+   daily_log:
+     cutoff_days: 30   # items with content/filename date older than this are skipped
+   ```
+
+**Fix options:**
+- **Update the note's date** to within the cutoff (edit content / filename so the analyst's date heuristic returns a recent date).
+- **Increase `cutoff_days`** to cover your testing window. Recommended for capture-then-batch-process workflows where you accumulate fleeting notes for weeks before running `/inbox`.
+- **Disable the cutoff** by setting `cutoff_days: 9999` (or removing the field — when not set, no cutoff applies). Trade-off: you lose the safety guard against editing very old daily notes.
+
+The cutoff is set during install via `tomo-daily-log-wizard` (`/tomo-setup`) or by editing `vault-config.yaml` directly. Re-run `/tomo-setup` to walk through the wizard's defaults.
+
 ### `/inbox` Keeps Running the Same Pass
 
 **Symptom:** Running `/inbox` repeatedly does the same thing (re-runs Pass 1 instead of advancing to Pass 2, or re-runs Pass 2 instead of cleaning up).

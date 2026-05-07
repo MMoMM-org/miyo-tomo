@@ -71,14 +71,13 @@ The installer generates a launcher with hardcoded paths at your chosen instance 
 ```bash
 bash begin-tomo.sh                 # start Claude Code in the container
 bash begin-tomo.sh --rebuild-image # force Docker image rebuild
-bash begin-tomo.sh --login         # force OAuth re-auth (exposes port 10000)
 bash begin-tomo.sh --bash          # launch a bash shell (debugging)
 bash begin-tomo.sh --help          # show all options
 ```
 
 **First run**: The launcher builds the Docker image from `<tomo-repo>/docker/` automatically. Subsequent runs reuse the existing image unless you pass `--rebuild-image`.
 
-**Re-auth**: When your Claude Code credentials expire or you want to switch accounts, run `bash begin-tomo.sh --login`. This exposes port 10000 for the OAuth callback and lets you re-authenticate without losing your instance state.
+**Re-auth**: When your Claude Code credentials expire or you want to switch accounts, run `claude login` inside the container. The launcher always exposes port 10000 for the OAuth callback, so the in-container login can complete without restarting Tomo.
 
 **Regenerating**: The launcher is regenerated every time you run `install-tomo.sh` — just re-run the installer if paths change.
 

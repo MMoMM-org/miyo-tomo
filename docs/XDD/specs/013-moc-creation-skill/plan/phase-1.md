@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Cross-Repo Handoff & Foundation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -74,6 +74,6 @@ This phase establishes cross-repo handoff, configuration schema, sidecar state, 
   4. Validate: `pytest tests/test_topic_clusters.py -v`; **regression check** — re-run any existing tests that exercise the reducer's clustering path (e.g., `tests/test-008-phase1.py` or sibling); `ruff check`.
   5. Success: New pure function consumable by both `suggestions-reducer.py` (existing inbox flow) and `moc-discovery.py` (Phase 2 task T2.4) `[ref: SDD/Solution Strategy]` `[ref: SDD/Implementation Examples]`. Existing inbox-clustering behaviour unchanged.
 
-- [ ] **T1.6 Phase 1 Validation** `[activity: validate]`
+- [x] **T1.6 Phase 1 Validation** `[activity: validate]` ✅ DONE 2026-05-07: 18/18 Phase 1 unit tests passing; full suite 81 passed / 1 skipped (no regressions); ruff zero new findings vs main baseline; Hashi handoff archived (status: done × 2 in `_archive/outbox/2026-05/`); obsidian-markdown SKILL.md synced bytes-identical to instance; `tests/test-004-phase3.sh` clustering regression green. Phase 1 PASS.
 
   Run `pytest tests/test_moc_proposal_config.py tests/test_squelch_registry.py tests/test_topic_clusters.py -v`. Run `ruff check tomo/scripts/`. Verify `_outbox/for-hashi/2026-05-07-create-moc-collision-guard.md` exists and is committed. Verify `tomo/dot_claude/skills/obsidian-markdown/SKILL.md` syncs to instance via `./scripts/update-tomo.sh`. Verify no regression in existing reducer tests.

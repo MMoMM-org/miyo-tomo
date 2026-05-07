@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_topic_clusters.py — Tests for the extracted topic-clusters helper.
 
 Covers F-43 Phase 1 T1.5: pure-function extraction of the clustering algorithm
@@ -17,14 +17,15 @@ qualifying group:
       "tags":    ["<shared parent tag>", ...],
     }
 
-The pre-refactor algorithm lived inline in `suggestions-reducer.py`; the
-regression test below loads that legacy code path via `importlib`, runs it
-against the same synthetic inbox fixture, and asserts byte-for-byte parity
-with `build_topic_clusters` — that's what proves "no behavioural change".
+The regression test below re-implements the pre-refactor inline algorithm
+(grouping loop + `normalise_topic` + `_compute_moc_tags`) from scratch — no
+imports from the production module — and asserts byte-for-byte parity with
+`build_topic_clusters`. The two sides are independent so any future drift in
+the production normalisation or tag-fold helpers surfaces as a test failure.
 """
 from __future__ import annotations
 
-import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -56,17 +57,6 @@ def _candidate(
         parent=parent,
         tags=list(tags or []),
     )
-
-
-def _load_reducer_module():
-    """Import `suggestions-reducer.py` as a module under a Python-safe name."""
-    spec = importlib.util.spec_from_file_location(
-        "suggestions_reducer", SCRIPTS_DIR / "suggestions-reducer.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
 
 
 # ── Tests ────────────────────────────────────────────────────────────────────
@@ -138,7 +128,14 @@ def test_pure_function_no_side_effects():
 
 
 def test_existing_inbox_run_regression():
-    """Output matches the pre-refactor inline algorithm from suggestions-reducer.
+    """Byte-for-byte parity with the pre-refactor inline algorithm.
+
+    Compares `build_topic_clusters` output against `_legacy_topic_clusters`,
+    which independently re-implements the pre-refactor grouping loop along
+    with its own copies of `normalise_topic` and `_compute_moc_tags`. The
+    two sides share no code, so future drift in the production helpers will
+    surface here as a regression failure rather than being masked by a shared
+    import.
 
     Synthetic fixture mirrors a plausible inbox-batch shape: three boardgame
     atomic notes (cluster), two routine atomic notes (cluster, mixed parents
@@ -188,29 +185,95 @@ def test_existing_inbox_run_regression():
     )
 
 
-# ── Reference implementation (mirrors suggestions-reducer.py:598-651) ────────
+# ── Reference implementation (independent re-impl of pre-refactor inline) ───
+#
+# The bodies below are hand-copied from `suggestions-reducer.py` at commit
+# 83f3ffb (the commit immediately before the F-43 T1.5 extraction in eb20d1f).
+# They MUST stay independent of `lib.topic_clusters` — no imports — so that a
+# future change to the production `normalise_topic` or `_compute_moc_tags`
+# surfaces as a `test_existing_inbox_run_regression` failure rather than
+# silently passing because both sides call the same code object.
+
+
+def _legacy_normalise_topic(topic: str) -> str:
+    """Lowercase, strip punctuation, naive plural fold (pre-refactor copy)."""
+    if not topic:
+        return ""
+    t = topic.strip().lower()
+    t = re.sub(r"[^\w\s-]", "", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    # Naive pluralisation fold (English):
+    #  - "ies" → "y" (e.g. "stories" → "story")
+    #  - sibilant-"es" → strip "es" (buses, boxes, buzzes, churches, dishes)
+    #  - trailing "s" → strip (tools → tool, routines → routine)
+    if t.endswith("ies") and len(t) > 3:
+        t = t[:-3] + "y"
+    elif len(t) > 3 and t.endswith(("ses", "xes", "zes", "ches", "shes")):
+        t = t[:-2]
+    elif t.endswith("s") and not t.endswith("ss") and len(t) > 3:
+        t = t[:-1]
+    return t
+
+
+def _legacy_compute_moc_tags(items_tags: list[list[str]]) -> list[str]:
+    """Compute shared parent tags for a Proposed MOC (pre-refactor copy).
+
+    For hierarchical tags (slash-separated), if a parent path has children
+    contributed by 2+ different leaf tags, the parent replaces the children.
+    Single-item MOCs or tags without shared parents are kept as-is.
+    """
+    all_tags: list[str] = []
+    for tags in items_tags:
+        all_tags.extend(tags)
+    if not all_tags:
+        return []
+
+    # Group tags by their parent path (strip last segment)
+    parent_children: dict[str, set[str]] = {}
+    leaf_tags: list[str] = []
+    for tag in all_tags:
+        parts = tag.split("/")
+        if len(parts) > 1:
+            parent_path = "/".join(parts[:-1])
+            parent_children.setdefault(parent_path, set()).add(tag)
+        else:
+            leaf_tags.append(tag)
+
+    result: list[str] = []
+    seen: set[str] = set()
+    # Parents with 2+ children → emit parent instead of leaves
+    covered: set[str] = set()
+    for parent_path, children in sorted(parent_children.items()):
+        if len(children) >= 2:
+            if parent_path not in seen:
+                result.append(parent_path)
+                seen.add(parent_path)
+            covered.update(children)
+
+    # Tags not covered by a shared parent → keep as-is
+    for tag in all_tags:
+        if tag not in covered and tag not in seen:
+            result.append(tag)
+            seen.add(tag)
+
+    return result
 
 
 def _legacy_topic_clusters(
     items: list[ClusterCandidate], threshold: int
 ) -> list[dict]:
-    """Re-implementation of the pre-refactor inline algorithm.
+    """Self-contained re-implementation of the pre-refactor inline algorithm.
 
-    Imports `normalise_topic` and `_compute_moc_tags` directly from the
-    reducer module so we exercise the *real* helpers — only the grouping
-    loop is replicated here. Drift in the helpers will surface as a test
-    failure on the public regression test above.
+    No production-code imports — uses `_legacy_normalise_topic` and
+    `_legacy_compute_moc_tags` defined above. This is the regression test's
+    independent oracle.
     """
-    reducer = _load_reducer_module()
-    normalise_topic = reducer.normalise_topic
-    _compute_moc_tags = reducer._compute_moc_tags
-
     grouped: dict[str, list[tuple[str, str, str, list[str]]]] = {}
     for c in items:
         topic_raw = (c.topic or "").strip()
         if not topic_raw:
             continue
-        norm = normalise_topic(topic_raw)
+        norm = _legacy_normalise_topic(topic_raw)
         grouped.setdefault(norm, []).append(
             (c.section_id, topic_raw, c.parent, list(c.tags))
         )
@@ -222,7 +285,7 @@ def _legacy_topic_clusters(
         display_topic = hits[0][1]
         parents = [h[2] for h in hits if h[2]]
         parent = max(set(parents), key=parents.count) if parents else ""
-        all_tags = _compute_moc_tags([h[3] for h in hits])
+        all_tags = _legacy_compute_moc_tags([h[3] for h in hits])
         out.append({
             "topic": display_topic,
             "items": [h[0] for h in hits],

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 0.6.0
+# version: 0.7.0 (F-35: surface cache.placeholder_mocs[] for Condition C trigger)
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -74,6 +74,35 @@ def build_mocs(cache: dict) -> list[dict]:
             "topics": topics,
             "is_classification": is_classification_moc(title),
         })
+    return out
+
+
+def build_placeholder_mocs(cache: dict) -> list[dict]:
+    """Pass through cache.placeholder_mocs[] unchanged.
+
+    Source: `moc-tree-builder.py::detect_placeholders` writes entries shaped
+    `{"target": str, "referenced_by": str}` and `cache-builder.py:337` lifts
+    them onto the cache as `cache.placeholder_mocs`. Phase-B subagents
+    (`inbox-analyst`) use this list as a Condition C trigger: when an item's
+    topics match a placeholder `target`, propose creating a thematic MOC to
+    resolve the dead link (Tier-3 New MOC Proposal §2.C).
+
+    Drift guard: drop entries that don't have both fields. Older caches
+    written before F-35 may lack the field — return [] silently. The schema
+    treats `placeholder_mocs` as optional, so absence is fine downstream.
+    """
+    raw = cache.get("placeholder_mocs") or []
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        target = (entry.get("target") or "").strip()
+        referenced_by = (entry.get("referenced_by") or "").strip()
+        if not (target and referenced_by):
+            continue
+        out.append({"target": target, "referenced_by": referenced_by})
     return out
 
 
@@ -459,6 +488,7 @@ def main() -> int:
     tag_prefixes = build_tag_prefixes(cache, vault_cfg)
     classification_keywords = build_classification_keywords(profile)
     daily_notes = build_daily_notes(vault_cfg)
+    placeholder_mocs = build_placeholder_mocs(cache)
 
     ctx: dict = {
         "schema_version": "1",
@@ -467,6 +497,8 @@ def main() -> int:
         "tag_prefixes": tag_prefixes,
         "classification_keywords": classification_keywords,
     }
+    if placeholder_mocs:
+        ctx["placeholder_mocs"] = placeholder_mocs
     if daily_notes is not None:
         ctx["daily_notes"] = daily_notes
 
@@ -482,6 +514,7 @@ def main() -> int:
         f"topics_dropped={dropped} "
         f"tag_prefixes_included={len(ctx['tag_prefixes'])} "
         f"classification_categories={len(ctx['classification_keywords'])} "
+        f"placeholder_mocs={len(placeholder_mocs)} "
         f"daily_notes_enabled={bool(daily_notes)} "
         f"bytes={len(data)} "
         f"run_id={run_id}",

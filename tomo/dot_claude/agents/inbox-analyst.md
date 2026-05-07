@@ -12,7 +12,7 @@ skills:
   - pkm-workflows
 ---
 # Inbox Analyst Subagent
-# version: 0.9.0 (Step 7 voice-transcript worthiness against full content; Step 8 frontmatter event-date key filter)
+# version: 0.10.0 (F-35: Step 4 Condition C — placeholder MOC trigger)
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -70,7 +70,10 @@ shared_ctx = json.load(open("<shared_ctx_path>"))
 ```
 
 You get: `mocs[]`, `tag_prefixes[]`, `classification_keywords{}`,
-optionally `daily_notes{}`.
+optionally `daily_notes{}`, optionally `placeholder_mocs[]` (entries
+shaped `{"target": str, "referenced_by": str}` — wikilink targets in
+existing MOCs that don't resolve to any vault note; consulted in Step 4
+Condition C).
 
 ### Step 2 — Read the item via Kado
 
@@ -107,6 +110,28 @@ For each MOC in `shared_ctx.mocs`:
 If all top matches are classification-layer, flag `needs_new_moc: true` and set
 `proposed_moc_topic` to the best inferred thematic label from the item's
 dominant topic tokens.
+
+**Condition C — Placeholder MOC trigger (Mental Squeeze Point §2.C, F-35).**
+When `shared_ctx.placeholder_mocs` is present, scan it AFTER scoring MOCs
+and BEFORE finalising `needs_new_moc`. For each placeholder entry
+`{target, referenced_by}`, treat `target` as a candidate thematic label
+and compare it (case-insensitive, normalised) against the item's dominant
+topic tokens. If any placeholder `target` matches:
+
+- Set `needs_new_moc: true`.
+- Set `proposed_moc_topic = <target>` (use the placeholder name verbatim,
+  preserving casing — it's already a wikilink target someone wrote).
+- Keep the top-scoring thematic candidate MOCs (if any) in
+  `candidate_mocs[]`; placeholder match does not erase scored matches.
+
+Condition C takes precedence over the Classification-Guard fallback: if
+both fire on the same item, prefer the placeholder name over the inferred
+topic label, because the placeholder is a deliberate dead link the user
+already wrote and it is a higher-confidence signal of intent than a
+freshly-inferred label.
+
+If `placeholder_mocs` is absent or empty, skip Condition C silently — the
+field is optional in the schema (older caches may not surface it).
 
 ### Step 5 — Match classification category
 

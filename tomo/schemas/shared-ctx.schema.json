@@ -36,6 +36,19 @@
         }
       }
     },
+    "placeholder_mocs": {
+      "type": "array",
+      "description": "Wikilink targets in MOC bodies that don't resolve to any known note. Phase-B subagents use these as Condition C triggers (Mental Squeeze Point §2.C): when an item's topics match a placeholder name, propose creating a thematic MOC to resolve the dead link.",
+      "items": {
+        "type": "object",
+        "required": ["target", "referenced_by"],
+        "additionalProperties": false,
+        "properties": {
+          "target": {"type": "string", "minLength": 1},
+          "referenced_by": {"type": "string", "minLength": 1}
+        }
+      }
+    },
     "classification_keywords": {
       "type": "object",
       "additionalProperties": {

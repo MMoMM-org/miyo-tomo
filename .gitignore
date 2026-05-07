@@ -8,6 +8,10 @@ tomo-home/
 # Tomo backup archives (sibling to tomo-instance/, created by backup-tomo.sh)
 tomo-backups/
 
+# Tomo scratch dir — host-side working state (audit reports, session snapshots,
+# intermediate run outputs). Never part of repo history.
+tomo-tmp/
+
 # Install config (contains local paths and tokens)
 tomo-install.json
 

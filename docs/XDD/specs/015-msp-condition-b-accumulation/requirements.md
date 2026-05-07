@@ -1,7 +1,7 @@
-# XDD 013 — Requirements (PRD)
+# XDD 015 — Requirements (PRD)
 
 > **Status:** draft (2026-05-07)
-> **Spec ID:** 013
+> **Spec ID:** 015
 > **Title:** Mental Squeeze Point — Condition B: Accumulation Detection
 > **Backlog ref:** F-34 (Must)
 > **Related:** F-35 (Condition C, code-complete 2026-05-07, commit `5b3a031`); F-43 (MOC-creation skill — complementary, can land independently)
@@ -142,7 +142,7 @@ exceed 15 KB, (iv) per-item lookup hit / miss in the subagent flow
 MUST produce a Proposed MOC suggestion when a known cluster exists.
 
 **A9 — Documentation.** Tier-3 New MOC Proposal spec MUST be updated to
-mark Condition B as implemented and to point at `XDD 013`. Inbox-analyst
+mark Condition B as implemented and to point at `XDD 015`. Inbox-analyst
 agent MUST bump version with a Condition-B note (analogous to F-35's
 v0.10.0 bump).
 

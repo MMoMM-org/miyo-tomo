@@ -1,4 +1,4 @@
-# XDD 013 — MSP Condition B: Accumulation Detection
+# XDD 015 — MSP Condition B: Accumulation Detection
 
 **Status:** PRD draft — 2026-05-07
 **Current phase:** requirements.md (PRD)

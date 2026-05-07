@@ -20,6 +20,9 @@ begin-tomo.sh
 .claude/settings.local.json
 .claude/plans/
 
+# Archived MiYo handoffs (locally-retained outbox copies; not part of repo history)
+_archive/
+
 # macOS
 .DS_Store
 

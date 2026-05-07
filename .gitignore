@@ -20,6 +20,14 @@ begin-tomo.sh
 .claude/settings.local.json
 .claude/plans/
 
+# Handoff buffers — local-only working state.
+# Senders write to _outbox/for-<receiver>/; receivers read via _inbox/from-<sender>/
+# symlinks pointing into the sender's working tree. Per ~/Kouzou/standards/general.md
+# these are gitignored so block-main-edits.sh allows handoff writes on main.
+_outbox/for-*/*
+!_outbox/for-*/.gitkeep
+_inbox/from-*
+
 # Archived MiYo handoffs (locally-retained outbox copies; not part of repo history)
 _archive/
 

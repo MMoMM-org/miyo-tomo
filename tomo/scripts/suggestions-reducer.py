@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 0.8.1
+# version: 0.9.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -30,10 +30,21 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import time
 from pathlib import Path
+
+# F-43 T1.5: clustering algorithm extracted into `lib/topic_clusters.py` so
+# `moc-discovery.py` (Phase 2) can reuse it without copy-paste. Re-export
+# `normalise_topic` and `_compute_moc_tags` here so external callers that
+# import them from this module (e.g. `tests/test-004-phase3.sh`) keep working.
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # noqa: E402
+from lib.topic_clusters import (  # noqa: E402, F401
+    ClusterCandidate,
+    _compute_moc_tags,  # re-export for tests/test-004-phase3.sh
+    build_topic_clusters,
+    normalise_topic,  # re-export for tests/test-004-phase3.sh
+)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -62,71 +73,9 @@ def last_state_per_stem(state_path: Path) -> dict[str, dict]:
     return out
 
 
-def normalise_topic(topic: str) -> str:
-    """Lowercase, strip punctuation, naive plural fold."""
-    if not topic:
-        return ""
-    t = topic.strip().lower()
-    t = re.sub(r"[^\w\s-]", "", t)
-    t = re.sub(r"\s+", " ", t).strip()
-    # Naive pluralisation fold (English):
-    #  - "ies" → "y" (e.g. "stories" → "story")
-    #  - sibilant-"es" → strip "es" (buses, boxes, buzzes, churches, dishes)
-    #  - trailing "s" → strip (tools → tool, routines → routine)
-    if t.endswith("ies") and len(t) > 3:
-        t = t[:-3] + "y"
-    elif len(t) > 3 and t.endswith(("ses", "xes", "zes", "ches", "shes")):
-        t = t[:-2]
-    elif t.endswith("s") and not t.endswith("ss") and len(t) > 3:
-        t = t[:-1]
-    return t
-
-
-def _compute_moc_tags(items_tags: list[list[str]]) -> list[str]:
-    """Compute shared parent tags for a Proposed MOC from contributing items' tags.
-
-    For hierarchical tags (slash-separated), if a parent path has children from
-    2+ different tags, the parent replaces the children. Single-item MOCs or
-    tags without shared parents are kept as-is.
-
-    Example: [['topic/games/boardgames/catan'], ['topic/games/boardgames/gloomhaven']]
-    → ['topic/games/boardgames']
-    """
-    all_tags: list[str] = []
-    for tags in items_tags:
-        all_tags.extend(tags)
-    if not all_tags:
-        return []
-
-    # Group tags by their parent path (strip last segment)
-    parent_children: dict[str, set[str]] = {}
-    leaf_tags: list[str] = []
-    for tag in all_tags:
-        parts = tag.split("/")
-        if len(parts) > 1:
-            parent_path = "/".join(parts[:-1])
-            parent_children.setdefault(parent_path, set()).add(tag)
-        else:
-            leaf_tags.append(tag)
-
-    result: list[str] = []
-    seen: set[str] = set()
-    # Parents with 2+ children → emit parent instead of leaves
-    covered: set[str] = set()
-    for parent_path, children in sorted(parent_children.items()):
-        if len(children) >= 2:
-            if parent_path not in seen:
-                result.append(parent_path)
-                seen.add(parent_path)
-            covered.update(children)
-
-    # Tags not covered by a shared parent → keep as-is
-    for tag in all_tags:
-        if tag not in covered and tag not in seen:
-            result.append(tag)
-            seen.add(tag)
-
-    return result
+# `normalise_topic` and `_compute_moc_tags` previously lived inline here.
+# Both moved to `lib/topic_clusters.py` for F-43 T1.5 (shared with
+# `moc-discovery.py`); re-imported above for module-level access.
 
 
 # ── Rendering ────────────────────────────────────────────────────────────────
@@ -505,7 +454,10 @@ def main() -> int:
         failed_entries = []  # resolve doc does not surface other failures
 
     sections: list[dict] = []
-    topic_clusters: dict[str, list[tuple[str, str, str, list]]] = {}  # norm_topic -> [(section_id, display, parent, tags)]
+    # F-43 T1.5: clustering moved to `lib.topic_clusters.build_topic_clusters`.
+    # We now collect a flat list of candidates while looping over actions and
+    # let the helper handle normalisation + threshold + parent-vote + tag-fold.
+    cluster_candidates: list[ClusterCandidate] = []
     # daily_note_stem -> {trackers, log_entries, log_links}
     daily_groups: dict[str, dict] = {}
     # stem -> [(daily_note_stem, time, reason)] for Material für mirror
@@ -594,18 +546,22 @@ def main() -> int:
             if rendered is not None:
                 rendered_actions.append({"kind": kind, "rendered_md": rendered})
 
-            # Cluster Proposed MOCs from atomic-note actions
+            # Collect Proposed-MOC candidates from atomic-note actions; the
+            # actual normalisation + threshold + parent-vote + shared-tag fold
+            # happens in `build_topic_clusters` after the action loop completes.
             if kind == "create_atomic_note" and action.get("needs_new_moc"):
                 topic_raw = (action.get("proposed_moc_topic") or "").strip()
                 if topic_raw:
-                    norm = normalise_topic(topic_raw)
-                    parent = ""
                     cls = action.get("classification") or {}
-                    if cls.get("category"):
-                        parent = cls["category"]
+                    parent = cls.get("category") or ""
                     item_tags = [t for t in (action.get("tags_to_add") or []) if t]
-                    topic_clusters.setdefault(norm, []).append(
-                        (section_id, topic_raw, parent, item_tags)
+                    cluster_candidates.append(
+                        ClusterCandidate(
+                            section_id=section_id,
+                            topic=topic_raw,
+                            parent=parent,
+                            tags=item_tags,
+                        )
                     )
 
         # The per-item `Material für [[daily]]` mirror block is gone as of
@@ -631,24 +587,12 @@ def main() -> int:
                 "actions": rendered_actions,
             })
 
-    proposed_mocs: list[dict] = []
-    for norm, hits in topic_clusters.items():
-        if len(hits) < args.threshold:
-            continue
-        display_topic = hits[0][1]  # first occurrence's original casing
-        # Parent: mode across hits
-        parents = [h[2] for h in hits if h[2]]
-        parent = max(set(parents), key=parents.count) if parents else ""
-        # Tags: compute shared parent tags instead of dumping all leaf tags.
-        # For tags like [topic/games/boardgames/catan, .../gloomhaven, .../wingspan],
-        # emit [topic/games/boardgames] — the MOC gets the shared parent, items keep leaves.
-        all_tags = _compute_moc_tags([h[3] for h in hits])
-        proposed_mocs.append({
-            "topic": display_topic,
-            "items": [h[0] for h in hits],
-            "parent": parent,
-            "tags": all_tags,
-        })
+    # F-43 T1.5: clustering algorithm extracted; same input, same output.
+    # The helper is also called by `moc-discovery.py` (Phase 2) so the two
+    # call sites cannot drift in normalisation or tag-fold semantics.
+    proposed_mocs: list[dict] = list(
+        build_topic_clusters(cluster_candidates, args.threshold)
+    )
 
     needs_attention: list[dict] = []
     for stem, entry in failed_entries:

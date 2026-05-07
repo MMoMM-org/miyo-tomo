@@ -42,7 +42,7 @@ This phase establishes cross-repo handoff, configuration schema, sidecar state, 
   4. Validate: File present in `_outbox/for-hashi/` with explicit receipt-protocol section. Commit on `main` permitted (path is gitignored exempt per `.gitignore`).
   5. Success: Hashi handoff item filed `[ref: PRD/Feature 6]` `[ref: SDD/Risks]` with explicit receipt protocol. F-43 launch (T6.4) gate verifies one of: (a) `status: received` flag in the handoff doc, OR (b) a `2026-MM-DD-create-moc-collision-guard-ACK.md` reply in `_inbox/from-hashi/`, with a stated target version.
 
-- [ ] **T1.2 `vault-config.yaml::tomo.moc_proposal` schema additions** `[parallel: true]` `[activity: configuration]`
+- [x] **T1.2 `vault-config.yaml::tomo.moc_proposal` schema additions** `[parallel: true]` `[activity: configuration]` ✅ DONE 2026-05-07: `MocProposalConfig` frozen dataclass + `load_moc_proposal_config()` in shared-ctx-builder.py v0.8.0; vault-config block in install-tomo.sh heredoc (no separate example.yaml exists); 5 tests passing (defaults/overrides/unknown-keys/non-dict-block/quoted-int-passes-through-as-string). Commits: `781575d` + `3d9e9b3`.
 
   1. Prime: Read SDD `Data Storage Changes` `[ref: SDD/Data Storage Changes]`. Read existing `tomo/scripts/shared-ctx-builder.py` for config-loading pattern. Read existing `tomo-instance/config/vault-config.yaml` to identify insert location.
   2. Test: `tests/test_moc_proposal_config.py::test_defaults_when_block_missing` (loader returns spec defaults `min_notes=3`, `confidence_threshold=0.15`, `max_results=5`, `candidate_cap=200`, `cache_miss_max_batches=5`, `squelch_runs=3` when `tomo.moc_proposal` block is absent); `test_user_overrides_take_precedence` (user-provided values override defaults); `test_unknown_keys_logged_and_ignored` (unknown keys produce warning, do not crash).
@@ -58,7 +58,7 @@ This phase establishes cross-repo handoff, configuration schema, sidecar state, 
   4. Validate: `pytest tests/test_squelch_registry.py -v`; `ruff check tomo/scripts/lib/squelch.py`.
   5. Success: Squelch state file roundtrips correctly `[ref: SDD/Data Storage Changes]` `[ref: PRD/AC-8.1]` `[ref: PRD/AC-8.2]`.
 
-- [ ] **T1.4 `obsidian-markdown` reference skill** `[parallel: true]` `[activity: skill-author]`
+- [x] **T1.4 `obsidian-markdown` reference skill** `[parallel: true]` `[activity: skill-author]` ✅ DONE 2026-05-07: `tomo/dot_claude/skills/obsidian-markdown/SKILL.md` v0.1.0 with frontmatter (name, description, user-invocable: false, model: sonnet, effort: low); 4 syntax categories (callouts, wikilinks, embeds, dataview-fields); update-tomo.sh sync verified. Commit: `5ab68b5`.
 
   1. Prime: Read existing skill `tomo/dot_claude/skills/obsidian-fields/SKILL.md` for format precedent. Read `feedback_skill_format_distinction.md` (skills must be `<name>/SKILL.md`, not flat `<name>.md`). Read SDD `Pattern Documentation` `[ref: SDD/Pattern Documentation]`.
   2. Test: N/A (reference content). Done = file exists with correct frontmatter (`user-invocable: false`, model + effort, descriptive `description`); `update-tomo.sh` syncs it into `tomo-instance/.claude/skills/`.
@@ -66,7 +66,7 @@ This phase establishes cross-repo handoff, configuration schema, sidecar state, 
   4. Validate: Run `./scripts/update-tomo.sh`; verify `tomo-instance/.claude/skills/obsidian-markdown/SKILL.md` is created.
   5. Success: Skill loadable as a side-effect via agent frontmatter `skills:` reference `[ref: SDD/Pattern Documentation]`.
 
-- [ ] **T1.5 Extract `topic_clusters()` to a pure function** `[activity: refactor]`
+- [x] **T1.5 Extract `topic_clusters()` to a pure function** `[activity: refactor]` ✅ DONE 2026-05-07: `tomo/scripts/lib/topic_clusters.py` v0.1.0 (stdlib-only, pure) with `ClusterCandidate` dataclass, `Cluster` TypedDict, and `build_topic_clusters(items, threshold) -> list[Cluster]`. `suggestions-reducer.py` bumped to v0.9.0; inline algorithm replaced by single helper call; `normalise_topic` and `_compute_moc_tags` re-exported from the lib so existing callers (`tests/test-004-phase3.sh`) keep working. 4 new tests passing; full pytest suite (81 passed, 1 skipped) and `tests/test-004-phase3.sh` clustering regression both green.
 
   1. Prime: Read `tomo/scripts/suggestions-reducer.py` lines 508 (declaration), 598-651 (algorithm) `[ref: SDD/Implementation Examples; suggestions-reducer.py:598-651]`. Understand current callsite shape: `(topic, count, parent, tags)` tuple grouping with `min_notes` threshold.
   2. Test: `tests/test_topic_clusters.py::test_threshold_excludes_small_clusters` (threshold=3; 2-note cluster excluded); `test_normalised_topic_grouping` (different casings collapse to one cluster); `test_pure_function_no_side_effects` (call twice with same input → identical output, no global state); `test_existing_inbox_run_regression` (load a real inbox-run fixture, verify same clusters as pre-refactor).

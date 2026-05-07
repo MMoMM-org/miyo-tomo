@@ -1,5 +1,5 @@
 # Context — Tomo
-<!-- Current sprint focus, active work, known blockers. Updated: 2026-05-01 -->
+<!-- Current sprint focus, active work, known blockers. Updated: 2026-05-07 -->
 <!-- This file is short-lived — prune entries older than 2 weeks via /memory-cleanup -->
 
 ## Open tasks from session 2026-05-01
@@ -8,9 +8,13 @@ Persisted here so they survive session resets. Move to backlog.md when long-term
 
 ### Operational follow-ups (do soon)
 
-- **#11 Origin/main pushen** — lokaler `main` ist 11+ Commits voraus von `origin/main`. Inhalt: outbox archive, Hashi handoff drafts, link-anchor + paired-delete feature, spinner verbs, hashi-spinner-verbs, skill-paths + instruction-builder script + audit fixes, version bumps, /inbox dispatch fix, troubleshooting cutoff doc, sonnet pin in settings.json, placement+position bugfix.
-- **#12 Hashi response handoffs archivieren** — `_outbox/for-hashi/` enthält uncommitted `status: pending → done` flips auf `2026-04-30_tomo-to-hashi_link-placement-mode-response.md` und `2026-04-30_tomo-to-hashi_move-note-implicit-origin-delete-response.md`. Hashi hat geacknowledged. Nach Pattern vom Session-Anfang: nach `_archive/outbox/2026-04/` verschieben + committen.
-- **#13 Memory: 3 pending learnings + 2026-05-01 learnings** — Session-Start hatte 3 pending learnings in der Queue. Dazu kommen aus dieser Session: (a) Impersonation vs Dispatch ~60% Token-Differenz, (b) haiku ist nicht stark genug für STRICT-orchestration agents (zweimal Pass 2 selbst gerendert), (c) `instruction-render.py:1254` `read_template("asset")` ist ein Auto-Render-on-template-Fallstrick, (d) Parent-Modell-Inheritance über `settings.json model:` field steuerbar (Pass 1 Test ausstehend), (e) Reducer-Field-Drop-Pattern (position dropped beim Übergang result.json → suggestions.md → instructions.json — gleiches Risiko bei jedem neuen Feld), (f) `link_to_moc` placement default war `inside` statt vereinbartem `after` (Contract-Drift in der Implementierung). `/memory-add` laufen lassen.
+- ~~**#11 Origin/main pushen**~~ ✅ Done — `main` is in sync with `origin/main` as of 2026-05-07.
+- ~~**#12 Hashi response handoffs archivieren**~~ ✅ Done — both 2026-04-30 hashi response items are in `_archive/outbox/2026-04/`.
+- ~~**#13 Memory: pending learnings**~~ ✅ Done 2026-05-07 — (a)/(b) → `general.md`, (c)/(e)/(f) already in `troubleshooting.md`, (d) tracked below.
+
+### In-flight cost / model investigations
+
+- **F-32 parent-model sonnet pin verification** — `settings.json` `model:` field controls the parent /inbox session's model (parent-model inheritance). Last unpinned Pass-1 cost was ~$26 on opus main thread, ~79% of total Pass-1 cost despite only 30% of messages. Hypothesis: pinning sonnet at the parent drops main-thread cost to ~$7 with no quality regression on orchestration phases (A/A5/C are prompt-only). **Pending verification:** next /inbox live run with the sonnet pin active; record main-thread token count and cost. Touch points: `tomo/dot_claude/settings.json` `model:` field, F-32 in `backlog.md`.
 
 ### Technische Bug-Fixes & Verifikation
 

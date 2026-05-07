@@ -1011,6 +1011,19 @@ lifecycle:
 # Everything else (naming, templates, frontmatter, relationships,
 # callouts, tags) comes from the profile defaults.
 # Run /tomo-setup in Tomo to detect and configure these (delegates to /explore-vault).
+
+# tomo.moc_proposal — tunables for /moc-propose (F-43). The block is OPTIONAL;
+# when absent, the loader (shared-ctx-builder.py::load_moc_proposal_config)
+# returns the spec defaults shown here. Uncomment + override only what you
+# want to change. See docs/XDD/specs/013-moc-creation-skill/solution.md §10.
+# tomo:
+#   moc_proposal:
+#     min_notes: 3                # cluster floor — ignore clusters with <N child notes
+#     confidence_threshold: 0.15  # silhouette/score floor (0.0–1.0); higher = stricter
+#     max_results: 5              # render top-N clusters per /moc-propose run
+#     candidate_cap: 200          # abort if mode selects > N notes
+#     cache_miss_max_batches: 5   # abort if topic-extraction needs > N × 10-note batches
+#     squelch_runs: 3             # rejected clusters stay suppressed for N runs
 YAMLEOF
 
     print_ok "vault-config.yaml"

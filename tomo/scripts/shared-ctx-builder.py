@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 0.7.0 (F-35: surface cache.placeholder_mocs[] for Condition C trigger)
+# version: 0.8.0 (F-43: load_moc_proposal_config — tomo.moc_proposal loader + defaults)
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -28,6 +28,7 @@ import json
 import re
 import sys
 import uuid
+from dataclasses import dataclass, fields as dc_fields
 from pathlib import Path
 
 import yaml
@@ -53,6 +54,73 @@ def load_yaml(path: Path) -> dict:
 
 def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+
+
+# ── tomo.moc_proposal config loader (F-43) ───────────────────────────────────
+#
+# Backs the MOC-creation skill (`/moc-propose`). Defaults match SDD §10 / Data
+# Storage Changes — the loader returns these whenever the
+# `tomo.moc_proposal` block is absent or partially specified, so the skill
+# works without user setup (PRD/AC-7.2). User-provided values override
+# defaults per-key (PRD/AC-7.1). Unknown keys log a stderr warning and are
+# dropped to keep forward-compat painless when new tunables ship.
+
+@dataclass(frozen=True)
+class MocProposalConfig:
+    """Tunables for /moc-propose (spec 013)."""
+    min_notes: int = 3
+    confidence_threshold: float = 0.15
+    max_results: int = 5
+    candidate_cap: int = 200
+    cache_miss_max_batches: int = 5
+    squelch_runs: int = 3
+
+
+def load_moc_proposal_config(vault_config_path: Path | str) -> MocProposalConfig:
+    """Load `tomo.moc_proposal` from vault-config.yaml, falling back to defaults.
+
+    Behaviour:
+      - Block missing → return MocProposalConfig() (all spec defaults).
+      - Block present → user keys override defaults per-key; unspecified keys
+        retain their default.
+      - Unknown keys → emit a WARN line on stderr naming each unknown key and
+        skip it. The user-facing fix is to remove the typo or update Tomo.
+
+    Errors are intentionally non-fatal: the SDD error-handling table (line 839)
+    states "missing keys → loader fallback → use defaults from spec §10. Log
+    warning to run log." Crashing here would block /moc-propose for trivial
+    typos, which is the wrong trade-off.
+    """
+    path = Path(vault_config_path)
+    raw = load_yaml(path) if path.exists() else {}
+    block = ((raw.get("tomo") or {}).get("moc_proposal") or {})
+
+    if not isinstance(block, dict):
+        print(
+            f"WARN: vault-config.yaml::tomo.moc_proposal must be a mapping, "
+            f"got {type(block).__name__}; using spec defaults.",
+            file=sys.stderr,
+        )
+        return MocProposalConfig()
+
+    known = {f.name for f in dc_fields(MocProposalConfig)}
+    overrides: dict = {}
+    unknown: list[str] = []
+    for key, value in block.items():
+        if key in known:
+            overrides[key] = value
+        else:
+            unknown.append(str(key))
+
+    if unknown:
+        print(
+            f"WARN: vault-config.yaml::tomo.moc_proposal has unknown key(s): "
+            f"{', '.join(sorted(unknown))}. Ignoring; using spec defaults for "
+            f"those slots.",
+            file=sys.stderr,
+        )
+
+    return MocProposalConfig(**overrides)
 
 
 # ── Builders ─────────────────────────────────────────────────────────────────

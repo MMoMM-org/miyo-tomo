@@ -29,6 +29,10 @@ _spec = importlib.util.spec_from_file_location(
 )
 scb = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
+# Register in sys.modules before exec — Python 3.14's dataclass machinery
+# inspects sys.modules[cls.__module__] during @dataclass class processing
+# (added when shared-ctx-builder gained MocProposalConfig in F-43).
+sys.modules["shared_ctx_builder"] = scb
 _spec.loader.exec_module(scb)
 
 

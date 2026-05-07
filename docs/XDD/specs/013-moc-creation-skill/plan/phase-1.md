@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Cross-Repo Handoff & Foundation"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -34,7 +34,7 @@ phase: 1
 
 This phase establishes cross-repo handoff, configuration schema, sidecar state, the lazy-loaded reference skill, and a refactored shared `topic_clusters()` function — the structural prerequisites for everything downstream.
 
-- [ ] **T1.1 Hashi destination-collision guard handoff** `[parallel: true]` `[component: hashi]` `[activity: cross-repo-handoff]`
+- [x] **T1.1 Hashi destination-collision guard handoff** `[parallel: true]` `[component: hashi]` `[activity: cross-repo-handoff]` ✅ DONE 2026-05-07: `_archive/outbox/2026-05/2026-05-07_tomo-to-hashi_create-moc-collision-guard.md` (sent + ACK'd + reply closed). Hashi 0.2.0 shipped the guard (`createMoc.ts:40` emits "destination already exists: <path>"; `planner.ts:217` cascades `add_relationship`→`create_moc`). T6.4 launch gate satisfied.
 
   1. Prime: Read SDD ADR-3 + Risks/Cross-repo dependency `[ref: SDD/Architecture Decisions/ADR-3]` `[ref: SDD/Risks/Hashi destination-collision guard not implemented before F-43 ships]`. Read PRD AC-6.1, 6.2, 6.3 `[ref: PRD/Feature 6]`.
   2. Test: N/A (handoff artefact, not code). Done = `_outbox/for-hashi/2026-05-07-create-moc-collision-guard.md` exists with required sections (context, requirement, AC, contract reference).
@@ -50,7 +50,7 @@ This phase establishes cross-repo handoff, configuration schema, sidecar state, 
   4. Validate: `pytest tests/test_moc_proposal_config.py -v`; `ruff check tomo/scripts/shared-ctx-builder.py`.
   5. Success: Loader returns spec defaults when block missing `[ref: PRD/AC-7.2]`; user overrides take precedence `[ref: PRD/AC-7.1]`.
 
-- [ ] **T1.3 Squelch sidecar state file (schema + atomic-write helper)** `[parallel: true]` `[activity: state-management]`
+- [x] **T1.3 Squelch sidecar state file (schema + atomic-write helper)** `[parallel: true]` `[activity: state-management]` ✅ DONE 2026-05-07: `tomo/scripts/lib/squelch.py` (load/save-atomic/decrement/add-or-replace/is_active) + `tests/test_squelch_registry.py` (7 tests passing). Stdlib-only; tmp-then-rename via `tempfile.mkstemp` + `os.replace`; missing/corrupt → empty registry + stderr warning.
 
   1. Prime: Read SDD `state/moc-squelch.json` schema `[ref: SDD/Data Storage Changes]`. Read existing `tomo/scripts/state-update.py` for atomic-write convention (tmp-then-rename).
   2. Test: `tests/test_squelch_registry.py::test_load_missing_returns_empty` (absent file → empty registry, no exception); `test_load_corrupt_returns_empty_with_warning` (corrupt JSON → empty registry + stderr warning, no crash); `test_atomic_write_roundtrip` (write then load yields equal data); `test_decrement_and_remove_zero` (entries with `runs_remaining=0` after decrement are removed); `test_signature_collision_replaces` (writing same signature twice replaces, no duplicates).

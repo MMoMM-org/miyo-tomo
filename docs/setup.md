@@ -1,27 +1,6 @@
 # Tomo Setup Guide
 
-## Prerequisites
-
-- Docker installed and running
-- Git, jq
-- Python 3
-- [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) v0.5.0+ running and accessible on `127.0.0.1:23026` (the Kado default)
-
-## Quick Start
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/MMoMM-org/miyo-tomo.git
-cd miyo-tomo
-
-# 2. Run the install script
-bash scripts/install-tomo.sh
-
-# 3. Start Tomo (generated launcher builds the Docker image on first run)
-bash begin-tomo.sh
-```
-
-The installer generates `begin-tomo.sh` at your chosen instance location. For the default install this lands at the repo root; if you pointed the installer at a custom location, the launcher lives next to your instance there.
+This guide walks through Tomo's interactive setup, the launcher, post-install configuration, and operational tasks like authentication and cleanup. For prerequisites and the bare install command, see [Installation](installation.md).
 
 ## Install Script Walkthrough
 
@@ -184,12 +163,3 @@ bash scripts/cleanup-tomo.sh --keep-home  # preserve Claude auth credentials
 ```
 
 The cleanup script removes `tomo-instance/`, `tomo-home/`, and `tomo-install.json`. It refuses to delete anything outside the repo root as a safety check.
-
-## Updating
-
-```bash
-git pull                        # Get latest source
-bash scripts/update-tomo.sh     # Update managed files in instance
-```
-
-The update script overwrites managed files (agents, commands, hooks) if the version changed, but never touches user files (vault-config, kado-config).

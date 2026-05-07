@@ -1,5 +1,5 @@
 # squelch.py — Sidecar state helper for /moc-propose squelch registry.
-# version: 0.1.0
+# version: 0.1.1
 """Persistence and lifecycle helpers for the MOC-proposal squelch list.
 
 The squelch list records topic clusters the user explicitly rejected during a
@@ -39,7 +39,7 @@ import json
 import os
 import sys
 import tempfile
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 SCHEMA_VERSION = "1"
@@ -179,12 +179,12 @@ def decrement_all(
         new_remaining = entry.runs_remaining - 1
         if new_remaining <= 0:
             continue
-        decremented[signature] = SquelchEntry(
-            topic_signature=entry.topic_signature,
+        # `replace` defensively copies the keywords list so callers of the new
+        # registry can't mutate the input entry's list through aliasing.
+        decremented[signature] = replace(
+            entry,
             topic_keywords=list(entry.topic_keywords),
-            rejected_at_run_id=entry.rejected_at_run_id,
             runs_remaining=new_remaining,
-            first_seen_at=entry.first_seen_at,
         )
     return decremented
 

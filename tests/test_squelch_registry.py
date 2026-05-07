@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_squelch_registry.py — Tests for the squelch sidecar state helper.
 
 Covers F-43 Phase 1 T1.3: load/save roundtrip with atomic-write semantics,
@@ -174,3 +174,60 @@ def test_is_active_true_when_signature_present_and_runs_remaining() -> None:
 
     assert squelch.is_active(registry, "sig-active") is True
     assert squelch.is_active(registry, "sig-missing") is False
+
+
+def test_load_non_list_rejections_returns_empty_with_warning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`rejections` present but not a list (e.g. null) → empty + stderr warning.
+
+    The sidecar file is structurally a JSON object with the right keys, but the
+    `rejections` value is the wrong shape. The loader must not crash; it must
+    log a warning and treat the registry as empty so the run continues.
+    """
+    state_file = tmp_path / "moc-squelch.json"
+    state_file.write_text(
+        json.dumps({"schema_version": "1", "rejections": None}),
+        encoding="utf-8",
+    )
+
+    registry = squelch.load_registry(state_file)
+
+    assert registry == {}
+    captured = capsys.readouterr()
+    assert captured.err  # warning emitted to stderr
+    assert "non-list" in captured.err or "rejections" in captured.err
+
+
+def test_load_partial_corrupt_rows_skips_bad_keeps_good(tmp_path: Path) -> None:
+    """One valid row + one malformed row → registry contains only the valid one.
+
+    The loader skips individual malformed rows (non-dict, missing
+    `topic_signature`, empty signature) rather than failing the whole load.
+    """
+    state_file = tmp_path / "moc-squelch.json"
+    valid_row = {
+        "topic_signature": "sig-good",
+        "topic_keywords": ["zsh", "shell"],
+        "rejected_at_run_id": "run-aaa",
+        "runs_remaining": 3,
+        "first_seen_at": "2026-05-07T14:30:00Z",
+    }
+    malformed_row = "garbage"  # non-dict — must be skipped
+    state_file.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "last_run_id": "run-zzz",
+                "rejections": [valid_row, malformed_row],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    registry = squelch.load_registry(state_file)
+
+    assert len(registry) == 1
+    assert "sig-good" in registry
+    assert registry["sig-good"].topic_keywords == ["zsh", "shell"]
+    assert registry["sig-good"].runs_remaining == 3

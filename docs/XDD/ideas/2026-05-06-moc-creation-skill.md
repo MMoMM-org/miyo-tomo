@@ -3,6 +3,7 @@
 > Brainstorm spec for proactive MOC creation/proposal outside the inbox flow.
 > Created: 2026-05-06 via `/brainstorm`. Next step: `/xdd` to produce PRD.
 > Backlog ID: F-43 (Must). Roadmap track: #1 in `docs/XDD/roadmap-obsidian-power.md`.
+> **Hashi launch gate: ✅ satisfied 2026-05-07** — Hashi 0.2.0 ships the `create_moc` destination-collision guard + `add_relationship → create_moc` cascade (verified in `Hashi/src/actions/createMoc.ts:40` + `Hashi/src/executor/planner.ts:217`). Handoff pair archived in `_archive/outbox/2026-05/`. F-43 implementation is now unblocked once promoted to spec 013.
 
 ## 1. Goal
 

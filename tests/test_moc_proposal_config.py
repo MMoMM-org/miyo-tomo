@@ -14,6 +14,15 @@ Coverage:
     (PRD/AC-7.1 — user can tune candidate_cap, confidence_threshold, etc).
   - test_unknown_keys_logged_and_ignored: unknown keys produce a warning
     on stderr but do not crash (forward-compat).
+  - test_non_dict_block_returns_defaults_with_warn: scalar block (e.g.
+    `moc_proposal: true`) emits stderr WARN and falls back to defaults
+    rather than crashing (defensive guard at shared-ctx-builder.py:98-104).
+  - test_quoted_int_passes_through_as_string: documents the loader's
+    contract — YAML types pass through as-is. Quoted scalars like
+    `min_notes: "5"` land as `str` on the frozen dataclass; downstream
+    arithmetic surfaces the type mismatch cleanly. The loader is
+    intentionally not a coercion layer (keeps it minimal; coercion would
+    hide user typos behind silent str→int conversion).
 """
 from __future__ import annotations
 
@@ -122,6 +131,66 @@ def test_unknown_keys_logged_and_ignored(
     assert "bogus_field" in err
     assert "another_unknown" in err
     assert "WARN" in err or "warn" in err.lower()
+
+
+def test_non_dict_block_returns_defaults_with_warn(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scalar `moc_proposal` (e.g. `true`) → defaults + stderr WARN, no crash.
+
+    Guards the defensive branch at shared-ctx-builder.py:98-104. A user who
+    writes `moc_proposal: true` (or any non-mapping scalar) gets the full
+    spec-defaults `MocProposalConfig` plus a WARN on stderr naming the
+    offending type — same contract as a missing block, just noisier so the
+    misconfiguration shows up in the run log.
+    """
+    cfg = _write_yaml(
+        tmp_path / "vault-config.yaml",
+        (
+            "schema_version: 1\n"
+            "tomo:\n"
+            "  moc_proposal: true\n"
+        ),
+    )
+    out = scb.load_moc_proposal_config(cfg)
+    # Falls back to a fresh defaults instance — every field equals the spec.
+    assert out == scb.MocProposalConfig()
+    assert out.min_notes == SPEC_DEFAULTS["min_notes"]
+    assert out.confidence_threshold == SPEC_DEFAULTS["confidence_threshold"]
+    # WARN hits stderr and names the wrong type so the user can find the typo.
+    err = capsys.readouterr().err
+    assert "WARN" in err
+    assert "moc_proposal" in err
+    assert "bool" in err  # type(block).__name__ for `true`
+
+
+def test_quoted_int_passes_through_as_string(tmp_path: Path) -> None:
+    """Document loader contract: YAML types pass through as-is, no coercion.
+
+    A quoted scalar (`min_notes: "5"`) is a YAML string, and the loader
+    stores it verbatim on the frozen dataclass. Downstream code that does
+    arithmetic on `cfg.min_notes` will then raise `TypeError` cleanly,
+    surfacing the user's quoting mistake instead of papering over it with a
+    silent str→int conversion. This regression test pins that behaviour so
+    a future "helpful" coercion layer cannot land without an explicit
+    contract change.
+    """
+    cfg = _write_yaml(
+        tmp_path / "vault-config.yaml",
+        (
+            "schema_version: 1\n"
+            "tomo:\n"
+            "  moc_proposal:\n"
+            '    min_notes: "5"\n'
+        ),
+    )
+    out = scb.load_moc_proposal_config(cfg)
+    # The quoted value is a str, NOT coerced to int.
+    assert out.min_notes == "5"
+    assert isinstance(out.min_notes, str)
+    # Other fields keep their typed defaults — no cross-contamination.
+    assert out.confidence_threshold == SPEC_DEFAULTS["confidence_threshold"]
+    assert isinstance(out.confidence_threshold, float)
 
 
 if __name__ == "__main__":

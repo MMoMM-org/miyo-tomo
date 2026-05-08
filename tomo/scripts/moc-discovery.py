@@ -51,6 +51,12 @@ import yaml
 # Allow importing from scripts/lib/
 sys.path.insert(0, os.path.dirname(__file__))
 
+# Available for downstream phases (filename slug derivation in T2.6+ duplicate
+# detection and T3.x render). Imported here per F-43 plan T2.5 to centralize
+# the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
+# only, so this is wired ahead of use.
+from lib.slugify import slugify  # noqa: E402, F401
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Paths & defaults

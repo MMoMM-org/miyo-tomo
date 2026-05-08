@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -41,6 +41,7 @@ import json
 import os
 import sys
 import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -253,13 +254,250 @@ def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Discovery phases — stubs for T2.2-T2.7
+# Phase 1 — Candidate selection
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def phase1_select_candidates(*_args, **_kwargs):
-    """Mode-dispatch: tag/folder/class/title/free-text/scan → candidate stems."""
-    raise NotImplementedError("T2.2 — phase1_select_candidates pending")
+@dataclass
+class Candidate:
+    """One atomic-note candidate considered for a Proposed MOC.
+
+    Phase 1 only fills `stem` and `path`. Subsequent phases enrich each
+    candidate in-place with `topics`, `existing_up`, `classification`, and
+    `level`. Keeping the dataclass loose (mutable, default-empty) is
+    deliberate — phase boundaries hand a list of these between handlers
+    without copy-on-write.
+    """
+
+    stem: str
+    path: str
+    topics: list[str] = field(default_factory=list)
+    existing_up: str | None = None
+    classification: str | None = None
+    level: int = 0
+
+
+def _stem_from_path(path: str) -> str:
+    """`Atlas/202 Notes/2611 Code Snippets/zsh.md` → `zsh`."""
+    name = os.path.basename(path)
+    if name.endswith(".md"):
+        name = name[:-3]
+    return name
+
+
+def _candidate_from_path(path: str) -> Candidate:
+    """Build a Phase-1 Candidate from a vault-relative `.md` path."""
+    return Candidate(stem=_stem_from_path(path), path=path)
+
+
+def _atomic_note_paths(profile: dict) -> list[str]:
+    """Allowed prefixes for atomic-note pre-filter.
+
+    Returns the union of `concept_defaults.atomic_note.base_path` and each
+    `subdirectories[].path`. Trailing `/` is preserved — callers do prefix
+    comparison against these strings, so consistency matters.
+    """
+    cd = (profile.get("concept_defaults") or {}).get("atomic_note") or {}
+    out: list[str] = []
+    base = cd.get("base_path")
+    if base:
+        out.append(base)
+    for sd in cd.get("subdirectories") or []:
+        if isinstance(sd, dict) and sd.get("path"):
+            out.append(sd["path"])
+    return out
+
+
+def _is_md_file(item: dict) -> bool:
+    """Client-side `.md` filter for kado-read listDir results (ADR-6).
+
+    Folders carry `type: 'folder'`; files may be `.md`, `.canvas`, images,
+    binaries — only `.md` count as atomic-note candidates.
+    """
+    if item.get("type") == "folder":
+        return False
+    path = item.get("path", "") or ""
+    name = item.get("name", "") or ""
+    return path.endswith(".md") or name.endswith(".md")
+
+
+def _handle_tag(trigger_arg: str, kado_client) -> list[Candidate]:
+    """Tag mode (ADR-7): `byTag` query is `#<tag>*` — literal `*` glob suffix."""
+    query = f"#{trigger_arg}*"
+    _log(f"phase1: byTag query={query!r}")
+    items = kado_client.search_by_tag(query)
+    out: list[Candidate] = []
+    for item in items:
+        path = item.get("path", "") or ""
+        if path.endswith(".md"):
+            out.append(_candidate_from_path(path))
+    return out
+
+
+def _handle_folder(trigger_arg: str, kado_client) -> list[Candidate]:
+    """Folder mode: recursive listDir + client-side `.md` filter (ADR-6)."""
+    _log(f"phase1: listDir folder={trigger_arg!r} depth=10")
+    items = kado_client.list_dir(trigger_arg, depth=10)
+    return [_candidate_from_path(item.get("path", "")) for item in items if _is_md_file(item)]
+
+
+def _resolve_class_subdir(klass: str, profile: dict) -> str | None:
+    """Resolve a Dewey class (e.g. `2600`) to its atomic-note subdirectory.
+
+    Returns the first subdirectory whose `dewey_parent` matches `int(klass)`,
+    or None if no match. Profiles without `dewey_parent` (e.g. lyt.yaml)
+    return None — class mode is miyo-specific by design (the Dewey numbering
+    is part of the miyo conventions).
+    """
+    try:
+        target = int(klass)
+    except (TypeError, ValueError):
+        return None
+    cd = (profile.get("concept_defaults") or {}).get("atomic_note") or {}
+    for sd in cd.get("subdirectories") or []:
+        if isinstance(sd, dict) and sd.get("dewey_parent") == target:
+            return sd.get("path")
+    return None
+
+
+def _handle_class(trigger_arg: str, profile: dict, kado_client) -> list[Candidate]:
+    """Class mode: resolve Dewey class via profile → listDir on the subdir."""
+    subdir = _resolve_class_subdir(trigger_arg, profile)
+    if not subdir:
+        _log(
+            f"WARN: --class {trigger_arg!r} did not match any atomic-note "
+            f"subdirectory in profile (no dewey_parent={trigger_arg})"
+        )
+        return []
+    _log(f"phase1: class={trigger_arg!r} → listDir {subdir!r} depth=10")
+    items = kado_client.list_dir(subdir, depth=10)
+    return [_candidate_from_path(item.get("path", "")) for item in items if _is_md_file(item)]
+
+
+def _handle_title_or_freetext(trigger_arg: str, cache: dict) -> list[Candidate]:
+    """Title / free-text mode: substring-match against `cache.map_notes[].topics`.
+
+    The discovery cache already holds topics per note — title/free-text
+    discovery does not need Kado at all in Phase 1, only the cache. A
+    candidate is selected when ANY of its cached topics contains the
+    trigger string (case-insensitive).
+    """
+    needle = (trigger_arg or "").strip().lower()
+    if not needle:
+        return []
+    out: list[Candidate] = []
+    seen_paths: set[str] = set()
+    for entry in cache.get("map_notes") or []:
+        path = (entry.get("path") or "").strip()
+        if not path or path in seen_paths:
+            continue
+        topics = entry.get("topics") or []
+        if any(needle in (str(t) or "").lower() for t in topics):
+            seen_paths.add(path)
+            out.append(_candidate_from_path(path))
+    _log(f"phase1: title/free-text {trigger_arg!r} matched {len(out)} cached note(s)")
+    return out
+
+
+def _handle_scan(profile: dict, kado_client) -> list[Candidate]:
+    """Scan mode: listDir on each atomic-note subdirectory (whole-vault density)."""
+    cd = (profile.get("concept_defaults") or {}).get("atomic_note") or {}
+    paths = [sd["path"] for sd in (cd.get("subdirectories") or []) if sd.get("path")]
+    if not paths and cd.get("base_path"):
+        paths = [cd["base_path"]]
+    _log(f"phase1: scan over {len(paths)} atomic-note path(s)")
+    seen: set[str] = set()
+    out: list[Candidate] = []
+    for p in paths:
+        items = kado_client.list_dir(p, depth=10)
+        for item in items:
+            if _is_md_file(item):
+                ipath = item.get("path", "") or ""
+                if ipath and ipath not in seen:
+                    seen.add(ipath)
+                    out.append(_candidate_from_path(ipath))
+    return out
+
+
+def restrict_to_atomic_note_paths(
+    candidates: list[Candidate], profile: dict
+) -> list[Candidate]:
+    """Strict pre-filter: keep only candidates whose path lies under atomic-note.
+
+    Emits a stderr WARN when candidates fall outside the allowed prefixes
+    and continues with only the in-scope intersection (no abort here — the
+    caller checks `len(candidates) == 0` after pre-filter for the
+    `zero-candidates` abort).
+    """
+    allowed = _atomic_note_paths(profile)
+    if not allowed:
+        # Nothing to constrain against → pass through unchanged.
+        return list(candidates)
+
+    in_scope: list[Candidate] = []
+    out_of_scope: list[Candidate] = []
+    for c in candidates:
+        if any(c.path.startswith(prefix) for prefix in allowed):
+            in_scope.append(c)
+        else:
+            out_of_scope.append(c)
+
+    if out_of_scope:
+        _log(
+            f"WARN: {len(out_of_scope)} candidate(s) outside atomic-note paths — "
+            f"intersected to {len(in_scope)} in-scope candidate(s)"
+        )
+
+    return in_scope
+
+
+def phase1_select_candidates(
+    mode: str,
+    trigger_arg: str,
+    profile: dict,
+    cache: dict,
+    kado_client,
+    config,
+) -> tuple[list[Candidate], str | None]:
+    """Run mode handler → pre-filter → cap/zero checks.
+
+    Returns
+    -------
+    (candidates, abort_reason)
+        On success: (list of in-scope Candidates, None).
+        On `zero-candidates` or `candidate-cap-exceeded`: ([], abort_reason).
+    """
+    if mode == "tag":
+        raw = _handle_tag(trigger_arg, kado_client)
+    elif mode == "folder":
+        raw = _handle_folder(trigger_arg, kado_client)
+    elif mode == "class":
+        raw = _handle_class(trigger_arg, profile, kado_client)
+    elif mode in ("title", "free-text"):
+        raw = _handle_title_or_freetext(trigger_arg, cache)
+    elif mode == "scan":
+        raw = _handle_scan(profile, kado_client)
+    else:  # pragma: no cover — route_input only emits the six modes above.
+        raise ValueError(f"phase1: unknown mode {mode!r}")
+
+    _log(f"phase1: {len(raw)} raw candidate(s) before pre-filter")
+    filtered = restrict_to_atomic_note_paths(raw, profile)
+    _log(f"phase1: {len(filtered)} candidate(s) after atomic-note pre-filter")
+
+    if len(filtered) == 0:
+        return ([], "zero-candidates")
+
+    cap = getattr(config, "candidate_cap", 200)
+    if len(filtered) > cap:
+        _log(f"phase1: candidate-cap-exceeded ({len(filtered)} > {cap})")
+        return ([], "candidate-cap-exceeded")
+
+    return (filtered, None)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Discovery phases — stubs for T2.3-T2.7
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 def phase2_prefilter_atomic_notes(*_args, **_kwargs):

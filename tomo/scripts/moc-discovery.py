@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -161,17 +161,23 @@ def route_input(args: argparse.Namespace) -> tuple[str, str]:
       --title X   → ("title", X)
       free-text X → ("free-text", X)        # AC-1.7: `foo:bar` stays free-text
       no args     → ("scan", "")            # AC-1.6: whole-vault density scan
+
+    Each scope flag uses an explicit `is not None` check (not truthiness) so
+    that an accidental empty string (`--tag ""`) raises ValueError instead of
+    silently falling through to scan mode.
     """
-    if getattr(args, "tag", None):
-        return ("tag", args.tag)
-    if getattr(args, "folder", None):
-        return ("folder", args.folder)
-    if getattr(args, "klass", None):
-        return ("class", args.klass)
-    if getattr(args, "title", None):
-        return ("title", args.title)
-    if getattr(args, "free_text", None):
-        return ("free-text", args.free_text)
+    for attr, mode, label in (
+        ("tag", "tag", "--tag"),
+        ("folder", "folder", "--folder"),
+        ("klass", "class", "--class"),
+        ("title", "title", "--title"),
+        ("free_text", "free-text", "free-text positional"),
+    ):
+        value = getattr(args, attr, None)
+        if value is not None:
+            if value == "":
+                raise ValueError(f"{label} requires a non-empty value")
+            return (mode, value)
     return ("scan", "")
 
 
@@ -296,7 +302,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    mode, trigger_arg = route_input(args)
+    try:
+        mode, trigger_arg = route_input(args)
+    except ValueError as exc:
+        print(f"{LOG_PREFIX} FATAL: {exc}", file=sys.stderr)
+        return 2
     _log(f"mode={mode} trigger_arg={trigger_arg!r}")
 
     config_path = Path(args.config)

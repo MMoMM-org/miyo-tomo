@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_moc_discovery_cli.py — CLI scaffolding + mode routing for moc-discovery.py.
 
 F-43 Phase 2 T2.1: covers `route_input(args)` mode dispatch (PRD/AC-1.1-1.7),
@@ -101,6 +101,17 @@ def test_route_no_args():
     assert moc_discovery.route_input(args) == ("scan", "")
 
 
+def test_route_input_rejects_empty_string():
+    """An accidental `--tag ""` must raise ValueError, not silently scan.
+
+    Empty-string flag values were previously falsy → fell through every guard
+    and routed to scan mode silently. route_input now uses `is not None` and
+    rejects empty strings explicitly so misrouting is impossible.
+    """
+    with pytest.raises(ValueError, match="non-empty"):
+        moc_discovery.route_input(_ns(tag=""))
+
+
 # ── --dry-run + exit-code paths ────────────────────────────────────────────
 
 
@@ -159,7 +170,7 @@ def test_dry_run_emits_json_to_stdout_and_skips_kado(tmp_path):
     assert report["abort_reason"] is None
     # No "Kado" / connection error in stderr (dry-run must not touch network).
     assert "ConnectionRefused" not in result.stderr
-    assert "kado" not in result.stderr.lower() or "[moc-discovery]" in result.stderr
+    assert "kado" not in result.stderr.lower()
 
 
 def test_exit_code_2_on_missing_profile(tmp_path):

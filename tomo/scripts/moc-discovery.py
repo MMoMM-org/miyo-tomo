@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.7.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -8,13 +8,13 @@ optional free-text positional, or no args (whole-vault density scan), and walks
 through the six discovery phases described in the SDD §Pseudocode (lines
 845-895):
 
-    Phase 1 — Candidate selection (mode handlers + pre-filter + caps)
-    Phase 2 — Topic extraction (cache lookup + LLM cache-miss batching)
-    Phase 3 — Cluster detection (thin wrapper around lib.topic_clusters)
-    Phase 4 — Title generation (per-profile suffix rules + mode override)
-    Phase 5 — Parent resolution (classification keyword overlap, top-3)
-    Phase 6 — Duplicate detection (Jaccard ≥ 0.80) + squelch read-only lookup
-    Phase 6.5 — Existing-up:: validation (T2.7 — pending)
+    Phase 1   — Candidate selection (mode handlers + pre-filter + caps)
+    Phase 2   — Topic extraction (cache lookup + LLM cache-miss batching)
+    Phase 3   — Cluster detection (thin wrapper around lib.topic_clusters)
+    Phase 4   — Title generation (per-profile suffix rules + mode override)
+    Phase 5   — Parent resolution (classification keyword overlap, top-3)
+    Phase 6   — Duplicate detection (Jaccard ≥ 0.80) + squelch read-only lookup
+    Phase 6.5 — Existing-up:: validation per candidate (absent/valid/broken)
 
 The full algorithm lands in T2.2-T2.7. T2.1 ships the CLI surface, mode
 routing (`route_input`), profile resolution, and the `--dry-run` JSON path so
@@ -41,6 +41,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sys
 import uuid
 from dataclasses import dataclass, field
@@ -1238,13 +1239,170 @@ def phase6_dedupe(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Discovery phases — stubs for T2.7
+# Phase 6.5 — Existing-`up::` validation per candidate
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Match a single ``up::`` relationship line whose target is a wikilink. The
+# anchor is a line-start (`(?m)^`) optionally preceded by whitespace; the
+# target captured group strips the surrounding `[[` / `]]`. Multi-line bodies
+# are scanned with `re.MULTILINE` so each `up::` line is a candidate match —
+# Phase 6.5 then picks the first hit and warns on multi-hits.
+_UP_MARKER_RE = re.compile(r"^\s*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
 
-def phase6_5_apply_candidate_cap(*_args, **_kwargs):
-    """Enforce the candidate_cap; set candidates_capped flag."""
-    raise NotImplementedError("T2.7 — phase6_5_apply_candidate_cap pending")
+
+def _extract_first_up_marker(content: str) -> str | None:
+    """Return the first ``up:: [[Target]]`` target, or None when absent.
+
+    Matches multi-line bodies — leading whitespace is allowed, the marker
+    must start its own line, and the wikilink target is returned without
+    the surrounding `[[` / `]]`. Multiple `up::` lines on the same note
+    are the caller's concern: this helper deliberately surfaces only the
+    first match so callers can decide whether to warn.
+
+    A note body without any `up::` line, or with `up::` followed by a
+    non-wikilink target, returns None — Rule 4.1 / 4.4 then applies and
+    the new MOC becomes the child's `up::` regardless of override.
+    """
+    if not content:
+        return None
+    match = _UP_MARKER_RE.search(content)
+    if not match:
+        return None
+    target = match.group(1).strip()
+    return target or None
+
+
+def _moc_stems_from_cache(cache: dict) -> set[str]:
+    """Build a stem-set of every MOC indexed in `cache.map_notes`.
+
+    Phase 6.5 consults this set to decide whether an extracted `up::`
+    target is "valid" (target stem present in cache) or "broken"
+    (target stem absent). Path is reduced to its basename without
+    `.md` to match the wikilink-target shape (which carries the stem,
+    not the full path).
+    """
+    stems: set[str] = set()
+    for entry in cache.get("map_notes") or []:
+        if not isinstance(entry, dict):
+            continue
+        path = (entry.get("path") or "").strip()
+        if path:
+            stems.add(_stem_from_path(path))
+        # Honour explicit titles too — a wikilink target may use the
+        # human-readable title rather than the file stem when they differ.
+        title = (entry.get("title") or "").strip()
+        if title:
+            stems.add(title)
+    return stems
+
+
+def phase65_validate_existing_up(
+    clusters: list[dict],
+    candidates: list[Candidate],
+    kado_client,
+    cache: dict,
+) -> list[dict]:
+    """Decorate each cluster's children with their existing-`up::` state.
+
+    For every child stem in ``cluster.items``, read the candidate's note
+    body via Kado, extract the first `up::` marker, and classify it
+    against `cache.map_notes`:
+
+      - No `up::` line                 → state="absent",  target=None
+      - `up:: [[X]]` and X in cache    → state="valid",   target="X"
+      - `up:: [[X]]` and X NOT in cache → state="broken",  target="X"
+
+    Multiple `up::` lines on the same child surface as a stderr WARN —
+    Phase 6.5 keeps the first match and downstream Rule 4.2 / 4.5 logic
+    operates on it. Reading from Kado is the only side-effect.
+
+    .. note::
+        The plan signature is documented as ``(clusters, kado_client)``;
+        the implementation accepts ``candidates`` and ``cache`` too because
+        (a) Phase-3 clusters carry stems but not paths, so we need the
+        upstream candidates list to resolve stem → path for Kado reads,
+        and (b) cache.map_notes is the authoritative MOC index used to
+        classify `valid` vs. `broken` targets without an extra Kado round
+        trip per candidate. Documented as a deviation in plan/phase-2.md
+        T2.7.
+
+    Args:
+        clusters: Phase-6-kept clusters (`{topic, items, parent, tags,
+            ...}`). Each cluster's `items` is a list of candidate stems.
+        candidates: The Phase-1/2 candidate list, used to resolve
+            stem → path. Stems missing from the lookup map are skipped
+            (defensive — should never happen in normal flow).
+        kado_client: Anything exposing ``read_note(path) -> {"content": str, ...}``.
+        cache: Discovery cache dict; Phase 6.5 reads `map_notes` only.
+
+    Returns:
+        The input clusters, each augmented in-place with an
+        ``existing_up: list[{stem, state, target}]`` field. Order follows
+        ``cluster.items`` for deterministic downstream rendering.
+
+    Side effects:
+        - One `kado_client.read_note` call per candidate.
+        - Stderr WARN per multi-`up::` body.
+    """
+    stem_to_path: dict[str, str] = {c.stem: c.path for c in candidates if c.stem}
+    moc_stems = _moc_stems_from_cache(cache)
+
+    multi_up_count = 0
+
+    for cluster in clusters or []:
+        rows: list[dict] = []
+        for item in cluster.get("items") or []:
+            # Cluster items can be plain stems (Phase-3 default) OR enriched
+            # dicts (forward-compat with downstream tasks). Normalise here.
+            if isinstance(item, str):
+                stem = item
+            elif isinstance(item, dict):
+                stem = item.get("stem") or item.get("path") or ""
+            else:
+                continue
+            if not stem:
+                continue
+
+            path = stem_to_path.get(stem)
+            if not path:
+                # Defensive: cluster references a stem that never appeared
+                # in candidates — skip rather than guess at a path.
+                _log(
+                    f"phase6.5: WARN: cluster item {stem!r} not in candidate "
+                    f"list; skipping existing-up:: validation for this child"
+                )
+                continue
+
+            note = kado_client.read_note(path)
+            content = note.get("content", "") if isinstance(note, dict) else ""
+
+            # Multi-`up::` detection: count regex hits before extracting
+            # so the warning fires per-note, not per-cluster.
+            all_targets = _UP_MARKER_RE.findall(content)
+            if len(all_targets) > 1:
+                multi_up_count += 1
+                _log(
+                    f"WARN: multiple up:: markers in {path}; using first "
+                    f"({all_targets[0]!r}, dropped {len(all_targets) - 1} more)"
+                )
+
+            target = _extract_first_up_marker(content)
+            if target is None:
+                state: str = "absent"
+            elif target in moc_stems:
+                state = "valid"
+            else:
+                state = "broken"
+
+            rows.append({"stem": stem, "state": state, "target": target})
+
+        cluster["existing_up"] = rows
+
+    _log(
+        f"phase6.5: decorated {len(clusters or [])} cluster(s); "
+        f"multi-up:: warnings={multi_up_count}"
+    )
+    return list(clusters or [])
 
 
 # ──────────────────────────────────────────────────────────────────────────────

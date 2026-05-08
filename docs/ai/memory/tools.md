@@ -1,7 +1,18 @@
 # Tools — Tomo
-<!-- CI, build pipeline, API clients, local dev setup. Updated: 2026-05-01 -->
+<!-- CI, build pipeline, API clients, local dev setup. Updated: 2026-05-08 -->
 <!-- What goes here: commands that are non-obvious, tool quirks, CI gotchas, env var names -->
 <!-- What does NOT go here: domain rules (→ domain.md), code style (→ general.md) -->
+
+<!-- 2026-05-08 -->
+
+## Code-quality reviewer diff range — file-scoped filtering for parallel implementers
+
+When N implementers run in parallel on the same branch and each touches different files, git produces clean linear history but the BASE..HEAD ranges they report are **stale relative to sibling commits**. Each implementer's range covers only their own commits when measured against `main`, but the broader span of the branch crosses task boundaries. Implications for `/tcs-workflow:code-quality-reviewer` dispatch:
+
+- **Don't pass the broad delta** (e.g., `f90551d..12ee612` covering all T4.2 fix-passes) — it pulls in a sibling task's commit (`aa4e176` was a T4.3 commit inside the T4.2 timespan), and the reviewer flags it as "out-of-scope" / "missing review", producing a procedural false-positive FAIL.
+- **Pass diff ranges scoped to the specific task's commits only** — use `git log --oneline -- <file_path>` to filter, OR build the range from the implementer-reported commit hashes that touch only the relevant files, OR explicitly tell the reviewer in the prompt: "ignore commit `<sha>` — that's a sibling task already reviewed separately".
+
+Confirmed during F-43 Phase 4 parallel implementation 2026-05-08 (T4.1 + T4.2 + T4.3 in flight simultaneously).
 
 <!-- 2026-05-01 -->
 

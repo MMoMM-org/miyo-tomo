@@ -226,6 +226,51 @@ def test_squelch_active_signature_skips():
     )
 
 
+def test_cluster_without_title_does_not_trigger_exact_match():
+    """Defensive guard: cluster missing/empty title must skip exact-title check.
+
+    The `_find_exact_title_match` helper short-circuits on an empty needle
+    (`if not needle: return None`). Without this test, a regression that
+    started matching empty strings against MOC titles would slip through —
+    every cluster with no title would be reported as an "exact-title"
+    duplicate of every cached MOC.
+
+    Trace:
+        cluster   = {topic: "kubernetes", items: [...], title: ""}
+        cache MOC = {"Shell MOC", topics: ["shell", "zsh", "terminal"]}
+        topics    = {kubernetes} vs {shell, zsh, terminal}
+        jaccard   = 0/4 = 0.0   (well below 0.80 → no Jaccard hit either)
+        → cluster kept; duplicates_skipped empty.
+    """
+    cluster = _cluster(
+        topic="kubernetes",
+        items=["pods", "deployments"],
+        # title intentionally absent → exercises `_find_exact_title_match`
+        # short-circuit on an empty/missing needle.
+    )
+    cache = _cache([
+        {
+            "path": "Atlas/Maps/Shell MOC.md",
+            "title": "Shell MOC",
+            "topics": ["shell", "zsh", "terminal"],
+        }
+    ])
+
+    kept, dups, sq = moc_discovery.phase6_dedupe(
+        [cluster], cache, _empty_registry(), _Config()
+    )
+
+    assert len(kept) == 1, (
+        f"Cluster with no title must NOT match by exact-title; got {kept!r}"
+    )
+    assert kept[0] is cluster
+    assert dups == [], (
+        f"No duplicate skip expected — empty title must not match cached MOC; "
+        f"got {dups!r}"
+    )
+    assert sq == [], f"No squelch expected; got {sq!r}"
+
+
 def test_squelch_inactive_includes_cluster():
     """Signature absent from registry → cluster passes Phase 6 unchanged."""
     cluster = _cluster(

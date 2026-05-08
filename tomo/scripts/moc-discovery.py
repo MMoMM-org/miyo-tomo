@@ -312,13 +312,14 @@ def _is_md_file(item: dict) -> bool:
     """Client-side `.md` filter for kado-read listDir results (ADR-6).
 
     Folders carry `type: 'folder'`; files may be `.md`, `.canvas`, images,
-    binaries — only `.md` count as atomic-note candidates.
+    binaries — only `.md` count as atomic-note candidates. The Kado client
+    guarantees `path` is present, so we require `path` to end in `.md` —
+    no `name` fallback (would yield blank-path candidates downstream).
     """
     if item.get("type") == "folder":
         return False
     path = item.get("path", "") or ""
-    name = item.get("name", "") or ""
-    return path.endswith(".md") or name.endswith(".md")
+    return path.endswith(".md")
 
 
 def _handle_tag(trigger_arg: str, kado_client) -> list[Candidate]:
@@ -500,11 +501,6 @@ def phase1_select_candidates(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def phase2_prefilter_atomic_notes(*_args, **_kwargs):
-    """Restrict candidates to the profile's atomic-note paths."""
-    raise NotImplementedError("T2.3 — phase2_prefilter_atomic_notes pending")
-
-
 def phase3_cluster_by_topic(*_args, **_kwargs):
     """Group candidates by normalised topic (delegates to lib.topic_clusters)."""
     raise NotImplementedError("T2.4 — phase3_cluster_by_topic pending")
@@ -566,8 +562,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("\n")
         return 0
 
-    # Full discovery flow lands in T2.2-T2.7. Until then, surface clearly.
-    _log("ERROR: discovery phases not yet implemented (T2.2-T2.7)")
+    # Full discovery flow lands in T2.3-T2.7. Until then, surface clearly.
+    _log("ERROR: discovery phases not yet implemented (T2.3-T2.7)")
     raise NotImplementedError(
         "moc-discovery.py full pipeline pending — use --dry-run for T2.1 scaffolding"
     )

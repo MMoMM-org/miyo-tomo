@@ -283,8 +283,10 @@ def test_no_args_scans_atomic_note_paths_only(
     assert abort is None
     listdir_paths = [c[1][0] for c in fake.calls if c[0] == "list_dir"]
     # All scanned paths come from the atomic-note subdirectory list.
+    # `_handle_scan` only falls back to `base_path` when subdirs are empty,
+    # which they aren't here — so subdirs is the exact expected set.
     for p in listdir_paths:
-        assert p in subdirs or p == miyo_profile["concept_defaults"]["atomic_note"]["base_path"]
+        assert p in subdirs
     # One candidate per stubbed subdir.
     assert len(candidates) == len(subdirs)
 

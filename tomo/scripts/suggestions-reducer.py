@@ -483,7 +483,6 @@ def _render_cluster_section(
     # Why-narrative (ADR-9): template-rendered, no LLM
     lines.append("#### Why this proposal")
     lines.append("")
-    n_total = n_children
     # Count children with a valid classification parent (state="valid")
     k_classified = sum(
         1 for r in existing_up_rows if r.get("state") == "valid"
@@ -495,7 +494,7 @@ def _render_cluster_section(
         label = (top_opt.get("label") or "").strip()
         parent_label = label if label else None
 
-    first = f"{n_total} Notes mit Topic-Overlap {topics_csv} haben keine dedizierte MOC."
+    first = f"{n_children} Notes mit Topic-Overlap {topics_csv} haben keine dedizierte MOC."
     last = "Diese MOC würde die Lücke füllen."
     if parent_label and k_classified > 0:
         middle = f"{k_classified} davon haben up:: zur Klassifikation {parent_label}."

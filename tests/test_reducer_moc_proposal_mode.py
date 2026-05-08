@@ -15,6 +15,7 @@ function added to `suggestions-reducer.py`:
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -96,11 +97,6 @@ def _cluster(
     }
 
 
-def _parent_opts(cluster_id: str, opts: list[dict]) -> dict:
-    """parent_options_per_cluster entry."""
-    return {cluster_id: opts}
-
-
 def _empty_report() -> dict:
     """Minimal DiscoveryReport skeleton."""
     return {
@@ -127,7 +123,7 @@ def _empty_report() -> dict:
 # ── Tests ────────────────────────────────────────────────────────────────────
 
 
-def test_single_cluster_render(tmp_path: Path) -> None:
+def test_single_cluster_render() -> None:
     """1 cluster → 1 ### MOC01 section with correct shape per ADR-4 + UI Visualization Guide."""
     report = _empty_report()
     report["candidates"] = [
@@ -188,7 +184,7 @@ def test_single_cluster_render(tmp_path: Path) -> None:
     assert "#### Why this proposal" in body
 
 
-def test_multi_cluster_render(tmp_path: Path) -> None:
+def test_multi_cluster_render() -> None:
     """3 clusters → sections MOC01, MOC02, MOC03; sorted by confidence DESC."""
     report = _empty_report()
     report["candidates"] = [
@@ -224,7 +220,7 @@ def test_multi_cluster_render(tmp_path: Path) -> None:
     )
 
 
-def test_overflow_footer(tmp_path: Path) -> None:
+def test_overflow_footer() -> None:
     """max_results=5 with 7 clusters → 5 sections + 'Weitere 2 Cluster gefunden' footer."""
     report = _empty_report()
     report["candidates"] = [_candidate(f"note-{i}") for i in range(7)]
@@ -251,7 +247,7 @@ def test_overflow_footer(tmp_path: Path) -> None:
     assert "Weitere 2 Cluster gefunden" in body
 
 
-def test_filename_top_confidence_slug(tmp_path: Path) -> None:
+def test_filename_top_confidence_slug() -> None:
     """Filename = tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<top-confidence-slug>.md (ADR-2)."""
     report = _empty_report()
     report["candidates"] = [_candidate("note-a"), _candidate("note-b")]
@@ -285,7 +281,7 @@ def test_filename_top_confidence_slug(tmp_path: Path) -> None:
     )
 
 
-def test_per_child_existing_up_annotation(tmp_path: Path) -> None:
+def test_per_child_existing_up_annotation() -> None:
     """Children rendered with correct parenthetical for valid / absent / broken existing_up."""
     report = _empty_report()
     report["candidates"] = [
@@ -311,19 +307,19 @@ def test_per_child_existing_up_annotation(tmp_path: Path) -> None:
 
     path, body = render_moc_proposal_doc(report, _Cfg())
 
-    # Valid: "existing up:: [[...]] → wird related::"
-    assert "wird `related::`" in body or "wird related::" in body, (
+    # Valid: "existing up:: [[...]] → wird `related::`"
+    assert "wird `related::`" in body, (
         f"Valid annotation not found in:\n{body}"
     )
 
     # Absent: "kein up:: bisher"
     assert "kein up:: bisher" in body, f"Absent annotation not found in:\n{body}"
 
-    # Broken: "existing up:: broken"
-    assert "broken" in body, f"Broken annotation not found in:\n{body}"
+    # Broken: full annotation string
+    assert "(existing up:: broken — ignored)" in body, f"Broken annotation not found in:\n{body}"
 
 
-def test_template_why_narrative(tmp_path: Path) -> None:
+def test_template_why_narrative() -> None:
     """Why-section uses template fields; covers parent-present and parent-null branches."""
     # ── Branch 1: parent present ──────────────────────────────────────────────
     report_with_parent = _empty_report()
@@ -397,3 +393,57 @@ def test_template_why_narrative(tmp_path: Path) -> None:
     body2_lines = [l for l in body2.splitlines() if "created:" not in l]
     body3_lines = [l for l in body3.splitlines() if "created:" not in l]
     assert body2_lines == body3_lines, "render_moc_proposal_doc is not deterministic"
+
+
+# ── CLI error-path tests (W3) ────────────────────────────────────────────────
+
+_SCRIPT = str(SCRIPT_PATH)
+
+
+def test_cli_missing_input_flag(tmp_path: Path) -> None:
+    """--moc-proposal-mode without --input → exit 1."""
+    result = subprocess.run(
+        ["python3", _SCRIPT, "--moc-proposal-mode", "--output-dir", str(tmp_path)],
+        capture_output=True,
+    )
+    assert result.returncode == 1, (
+        f"Expected exit 1 for missing --input, got {result.returncode};\n"
+        f"stderr: {result.stderr.decode()}"
+    )
+
+
+def test_cli_nonexistent_input_file(tmp_path: Path) -> None:
+    """--moc-proposal-mode with a path that does not exist → exit 1."""
+    bad_path = tmp_path / "does-not-exist.json"
+    result = subprocess.run(
+        [
+            "python3", _SCRIPT,
+            "--moc-proposal-mode",
+            "--input", str(bad_path),
+            "--output-dir", str(tmp_path),
+        ],
+        capture_output=True,
+    )
+    assert result.returncode == 1, (
+        f"Expected exit 1 for non-existent input, got {result.returncode};\n"
+        f"stderr: {result.stderr.decode()}"
+    )
+
+
+def test_cli_malformed_json_input(tmp_path: Path) -> None:
+    """--moc-proposal-mode with a file containing invalid JSON → exit 1."""
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("{ not valid json !!!", encoding="utf-8")
+    result = subprocess.run(
+        [
+            "python3", _SCRIPT,
+            "--moc-proposal-mode",
+            "--input", str(bad_json),
+            "--output-dir", str(tmp_path),
+        ],
+        capture_output=True,
+    )
+    assert result.returncode == 1, (
+        f"Expected exit 1 for malformed JSON, got {result.returncode};\n"
+        f"stderr: {result.stderr.decode()}"
+    )

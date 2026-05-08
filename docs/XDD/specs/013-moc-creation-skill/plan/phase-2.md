@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Discovery Script `moc-discovery.py`"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -53,7 +53,7 @@ This phase delivers `tomo/scripts/moc-discovery.py` — Phases 1-6.5 of the disc
   4. Validate: `pytest tests/test_moc_discovery_phase1.py -v`; `ruff check`. Manual sanity: `python3 tomo/scripts/moc-discovery.py --tag <real-tag> --dry-run` against Privat-Test fixture.
   5. Success: All 5 modes produce filtered candidate sets; abort messages match spec `[ref: PRD/AC-1.x]` `[ref: PRD/AC-3 abort paths]` `[ref: SDD/Error Handling]`.
 
-- [ ] **T2.3 Phase 2 — Cache lookup + LLM cache-miss extraction (bounded)** `[activity: backend-discovery]`
+- [x] **T2.3 Phase 2 — Cache lookup + LLM cache-miss extraction (bounded)** `[activity: backend-discovery]` ✅ DONE 2026-05-08: `phase2_extract_topics()` returning `(candidates_with_topics, abort_reason)`, `validate_cache_loaded()` pre-check at module start (BEFORE Phase 1), `_batch_llm_extract()` helper, `LLMClient` Protocol, `ABORT_MESSAGES` table (German), `_emit_abort_report()`. 9 tests passing. Commits: `cdb4bb9` + `36b7859`.
 
   1. Prime: Read `discovery-cache.yaml` shape (live file at `tomo-instance/config/discovery-cache.yaml`) `[ref: SDD/Implementation Context/discovery-cache.yaml]`. Read `tomo/scripts/topic-extract.py` for existing LLM extraction pattern.
   2. Test: `tests/test_moc_discovery_phase2.py::test_cache_first_hit_no_llm` (all candidates in cache → 0 LLM calls); `test_cache_miss_batched` (50 candidates not in cache → 5 batches of 10); `test_cache_miss_cap_exceeded_aborts` (60 cache-miss candidates with cap=5×10 → `abort_reason="cache-miss-cap-exceeded"`); `test_cache_empty_aborts_at_startup` (cache file missing or empty → `abort_reason="cache-empty"` BEFORE Phase 1).
@@ -61,7 +61,7 @@ This phase delivers `tomo/scripts/moc-discovery.py` — Phases 1-6.5 of the disc
   4. Validate: `pytest tests/test_moc_discovery_phase2.py -v`; mock LLM client; verify caps fire deterministically.
   5. Success: Cache-first lookup minimises LLM cost; abort paths fire when caps exceeded `[ref: PRD/AC-3 cache-empty case]` `[ref: PRD/Constraints/Cache prerequisite]` `[ref: SDD/Quality Requirements/Performance]`.
 
-- [ ] **T2.4 Phase 3 — Cluster detection (consumes T1.5)** `[activity: backend-discovery]`
+- [x] **T2.4 Phase 3 — Cluster detection (consumes T1.5)** `[activity: backend-discovery]` ✅ DONE 2026-05-08: thin wrapper `phase3_cluster(candidates_with_topics, config) -> list[Cluster]` calling `lib.topic_clusters.build_topic_clusters` from T1.5; explodes one ClusterCandidate per (candidate, topic) pair; threshold sourced via `getattr(config, "min_notes", 3)`. 3 tests passing. Commit: `ba7a8da`.
 
   1. Prime: Read SDD/Solution Strategy (extracted `topic_clusters()`) `[ref: SDD/Solution Strategy]`. Read T1.5 deliverable `tomo/scripts/lib/topic_clusters.py`.
   2. Test: `tests/test_moc_discovery_phase3.py::test_cluster_threshold_default` (default `min_notes=3`); `test_multi_cluster_shared_notes_highest_weight_wins` (note in 2 clusters → assigned to highest-weight per existing reducer algorithm); `test_zero_clusters_returns_empty_report_not_abort` (clusters below threshold → empty, not an abort).
@@ -69,7 +69,7 @@ This phase delivers `tomo/scripts/moc-discovery.py` — Phases 1-6.5 of the disc
   4. Validate: `pytest tests/test_moc_discovery_phase3.py -v`.
   5. Success: Clustering reuses extracted pure function; threshold honoured `[ref: PRD/Feature 7]` `[ref: SDD/Implementation Examples/Example 3]`.
 
-- [ ] **T2.5 Phase 4-5 — Title generation + parent resolution** `[activity: backend-discovery]`
+- [x] **T2.5 Phase 4-5 — Title generation + parent resolution** `[activity: backend-discovery]` ✅ DONE 2026-05-08: `phase4_title()` (profile-aware miyo-MOC-suffix vs lyt-plain, mode-aware title-verbatim) + `phase5_resolve_parents()` (top-3 by classification keyword overlap) + `ParentOption` dataclass. Slugify extracted to `lib/slugify.py` for shared use; instruction-render imports from there. 4 + 3 tests passing. Commits: `c7fd6e5` + `69ee438`.
 
   1. Prime: Read `docs/XDD/reference/tier-3/lyt-moc/new-moc-proposal.md` §7 (title patterns) and `moc-matching.md` (scoring) `[ref: SDD/Implementation Context/Documentation Context]`. Read profile classification keywords (`miyo.yaml::classification.categories.keywords`).
   2. Test: `tests/test_moc_discovery_phase4.py::test_miyo_title_appends_moc_suffix`; `test_lyt_title_plain`; `test_title_mode_uses_user_input_verbatim`; `test_scan_multi_cluster_one_title_per_cluster`. `tests/test_moc_discovery_phase5.py::test_classification_keyword_match_top_parent` (MiYo profile, cluster topics include `shell` → 2600 classification offered top); `test_no_keyword_match_returns_null_parent`; `test_top_3_parents_offered`.
@@ -77,7 +77,7 @@ This phase delivers `tomo/scripts/moc-discovery.py` — Phases 1-6.5 of the disc
   4. Validate: `pytest tests/test_moc_discovery_phase4.py tests/test_moc_discovery_phase5.py -v`.
   5. Success: Profile-aware titles + parent resolution `[ref: PRD/AC-2.1, AC-2.2, AC-2.3, AC-2.4, AC-2.5]`.
 
-- [ ] **T2.6 Phase 6 — Duplicate detection (Jaccard ≥ 0.80) + squelch hookup (read-only)** `[activity: backend-discovery]`
+- [x] **T2.6 Phase 6 — Duplicate detection (Jaccard ≥ 0.80) + squelch hookup (read-only)** `[activity: backend-discovery]` ✅ DONE 2026-05-08: `phase6_dedupe(clusters, cache, squelch_registry, config) -> (kept, duplicates_skipped, squelched)`. `_jaccard()` set similarity, `_compute_topic_signature()` SHA1 of normalised topic + sorted candidate stems, `JACCARD_DUP_THRESHOLD = 0.80`. Squelch lookup via `lib.squelch.is_active` (read-only, no decrement). Jaccard fixture traced: 4/5 = 0.80 → skip ✓. 6 tests passing. Commits: `e6f7ac2` + `6480368`.
 
   1. Prime: Read SDD `Implementation Examples/Example 3` (Jaccard) `[ref: SDD/Implementation Examples/Example 3]`. Read `tomo/scripts/lib/squelch.py` from T1.3.
   2. Test: `tests/test_moc_discovery_phase6.py::test_exact_title_match_skips_cluster`; `test_jaccard_overlap_above_80_skips_cluster` (with traced fixture: cluster topics `{shell,zsh,terminal,dotfiles}` vs MOC topics `{shell,zsh,terminal,dotfiles,fzf}` → Jaccard 0.80, skip); `test_jaccard_overlap_below_80_includes_cluster`; `test_squelch_active_signature_skips` (mocked active squelch entry → cluster not in output); `test_squelch_inactive_includes_cluster`.
@@ -85,7 +85,7 @@ This phase delivers `tomo/scripts/moc-discovery.py` — Phases 1-6.5 of the disc
   4. Validate: `pytest tests/test_moc_discovery_phase6.py -v`. Trace the Jaccard fixture for one positive and one negative case.
   5. Success: Duplicate skipping correct on traced fixture; squelch read-path integrated `[ref: PRD/Feature 8]` `[ref: SDD/Implementation Examples/Example 3]`.
 
-- [ ] **T2.7 Phase 6.5 — Existing-`up::` validation per candidate** `[activity: backend-discovery]`
+- [x] **T2.7 Phase 6.5 — Existing-`up::` validation per candidate** `[activity: backend-discovery]` ✅ DONE 2026-05-08: `phase65_validate_existing_up(clusters, candidates, kado_client, cache)` (signature flexed for stem→path resolution + cache-driven valid/broken classification — documented deviation). `_extract_first_up_marker()` regex helper. State ∈ {absent, valid, broken}. Multi-`up::` uses first + stderr WARN. Kado read guarded with try/except → state="absent" on failure. 7 tests passing. Commits: `980d65b` + `9b9eccf`.
 
   1. Prime: Read SDD `Implementation Examples/Example 1` (per-child existing-up extractor) `[ref: SDD/Implementation Examples/Example 1]`. Read brainstorm §6.5 `[ref: docs/XDD/ideas/2026-05-06-moc-creation-skill.md; lines: 147-153]`.
   2. Test: `tests/test_moc_discovery_phase65.py::test_no_up_marker_state_absent`; `test_valid_up_resolves_state_valid`; `test_broken_up_state_broken` (target file missing → state="broken"); `test_malformed_multi_up_uses_first_with_warning`.
@@ -93,6 +93,6 @@ This phase delivers `tomo/scripts/moc-discovery.py` — Phases 1-6.5 of the disc
   4. Validate: `pytest tests/test_moc_discovery_phase65.py -v`. Mock Kado read with realistic note bodies.
   5. Success: Per-child existing-`up::` state correctly classified; broken-up:: handled gracefully `[ref: PRD/AC-4.3]` `[ref: SDD/Implementation Examples/Example 1]`.
 
-- [ ] **T2.8 Phase 2 Validation** `[activity: validate]`
+- [x] **T2.8 Phase 2 Validation** `[activity: validate]` ✅ DONE 2026-05-08: 49/49 moc_discovery tests passing (CLI 9 + Phase1 8 + Phase2 9 + Phase3 3 + Phase4 4 + Phase5 3 + Phase6 6 + Phase6.5 7); full suite 130 passed / 1 skipped (no regressions); ruff zero new findings vs pre-Phase-2 baseline; `--dry-run` exits 0 with valid DiscoveryReport JSON; schema completeness 17/17 SDD fields. Phase 2 PASS.
 
   Run all `tests/test_moc_discovery_*.py`. Run `ruff check tomo/scripts/moc-discovery.py`. Manual smoke: `python3 tomo/scripts/moc-discovery.py --tag <real-tag>` against Privat-Test (or live cache copy) to confirm a complete end-to-end JSON `DiscoveryReport` is produced. Verify `DiscoveryReport` schema matches SDD `Application Data Models`.

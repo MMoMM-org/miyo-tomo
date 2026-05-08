@@ -133,7 +133,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
 - [x] [Phase 1: Cross-Repo Handoff & Foundation](phase-1.md)
-- [ ] [Phase 2: Discovery Script `moc-discovery.py`](phase-2.md)
+- [x] [Phase 2: Discovery Script `moc-discovery.py`](phase-2.md)
 - [ ] [Phase 3: Producer Surface — Reducer Extension, Agent, Command](phase-3.md)
 - [ ] [Phase 4: Pass-2 Consumer Extensions](phase-4.md)
 - [ ] [Phase 5: Squelch Lifecycle Wiring](phase-5.md)

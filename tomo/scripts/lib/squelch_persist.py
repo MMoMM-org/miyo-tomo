@@ -23,7 +23,6 @@ Stdlib only — no new dependencies.
 from __future__ import annotations
 
 import importlib.util
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,7 +74,6 @@ def persist_rejected_clusters(
         Number of SquelchEntry records written (0 if all clusters accepted or
         document is not a proposal-doc).
     """
-    basename = os.path.basename(filename)
     if not _is_moc_proposal_doc(proposal_doc_text, filename=filename):
         return 0
 

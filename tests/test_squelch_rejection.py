@@ -40,7 +40,7 @@ _spec.loader.exec_module(_mod)  # type: ignore[attr-defined]
 
 render_moc_proposal_doc = _mod.render_moc_proposal_doc  # type: ignore[attr-defined]
 
-from lib import squelch_persist  # noqa: E402
+from lib import squelch, squelch_persist  # noqa: E402
 
 
 # ── Stub config ──────────────────────────────────────────────────────────────
@@ -264,5 +264,3 @@ def test_first_seen_at_iso_timestamp(tmp_path: Path) -> None:
     assert dt.tzinfo is not None, "first_seen_at must be timezone-aware"
 
 
-# Import squelch at module level so the test helpers can use load_registry
-from lib import squelch  # noqa: E402, F811

@@ -133,6 +133,45 @@ def test_cache_miss_batched(small_config):
         assert f"llm-topic-{c.stem}" in enriched_by_path[c.path].topics
 
 
+# ── Mixed hit + miss merge ─────────────────────────────────────────────────
+
+
+def test_cache_mixed_hit_and_miss_merges_correctly(small_config):
+    """3 hits + 7 misses → exactly 1 LLM batch of 7; hits keep cached topics."""
+    candidates = _mk_candidates(10)
+    hits = candidates[:3]
+    misses = candidates[3:]
+
+    cache = {
+        "map_notes": [
+            {
+                "path": c.path,
+                "topics": [f"cached-topic-{c.stem}"],
+            }
+            for c in hits
+        ]
+    }
+    llm = RecordingLLMClient()
+
+    enriched, abort = moc_discovery.phase2_extract_topics(
+        candidates, cache, small_config, llm
+    )
+
+    assert abort is None
+    # Exactly one LLM batch with the 7 cache-miss candidates only.
+    assert len(llm.calls) == 1
+    assert len(llm.calls[0]) == 7
+    assert llm.calls[0] == [c.path for c in misses]
+
+    # All 10 candidates returned; hits carry cached topics, misses carry LLM topics.
+    assert len(enriched) == 10
+    enriched_by_path = {c.path: c for c in enriched}
+    for c in hits:
+        assert f"cached-topic-{c.stem}" in enriched_by_path[c.path].topics
+    for c in misses:
+        assert f"llm-topic-{c.stem}" in enriched_by_path[c.path].topics
+
+
 # ── Cache-miss cap exceeded (Phase 2 abort) ────────────────────────────────
 
 

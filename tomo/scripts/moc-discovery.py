@@ -8,13 +8,13 @@ optional free-text positional, or no args (whole-vault density scan), and walks
 through the six discovery phases described in the SDD §Pseudocode (lines
 845-895):
 
-    Phase 1 — select candidates per mode
-    Phase 2 — pre-filter to atomic-note paths
-    Phase 3 — cluster candidates by topic
-    Phase 4 — title generation per profile
-    Phase 5 — parent-MOC matching against classification map
-    Phase 6 — duplicate / squelch suppression
-    Phase 6.5 — apply candidate cap
+    Phase 1 — Candidate selection (mode handlers + pre-filter + caps)
+    Phase 2 — Topic extraction (cache lookup + LLM cache-miss batching)
+    Phase 3 — Cluster detection (T2.4 — pending)
+    Phase 4 — Title generation (T2.5 — pending)
+    Phase 5 — Parent resolution (T2.5 — pending)
+    Phase 6 — Duplicate detection (T2.6 — pending)
+    Phase 6.5 — Existing-up:: validation (T2.7 — pending)
 
 The full algorithm lands in T2.2-T2.7. T2.1 ships the CLI surface, mode
 routing (`route_input`), profile resolution, and the `--dry-run` JSON path so
@@ -74,10 +74,10 @@ ABORT_MESSAGES: dict[str, str] = {
     ),
     "zero-candidates": "Keine Notes zum Topic gefunden",
     "candidate-cap-exceeded": (
-        "Mehr als <cap> Kandidaten gefunden — Suchbereich einschränken"
+        "Mehr als die erlaubte Anzahl Kandidaten gefunden — Suchbereich einschränken"
     ),
     "cache-miss-cap-exceeded": (
-        "<N> Notes ohne Cache-Eintrag — bitte zuerst /explore-vault laufen lassen"
+        "Notes ohne Cache-Eintrag — bitte zuerst /explore-vault laufen lassen"
     ),
 }
 

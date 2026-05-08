@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.0
+# version: 0.8.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -508,6 +508,89 @@ def _is_moc_proposal_doc(text: str, filename: str = "") -> bool:
         return True
     fm = _extract_frontmatter(text)
     return fm.get("type") == "tomo-proposal"
+
+
+# RE for the Cluster field:  **Cluster:** N Notes — kw1, kw2, kw3
+RE_CLUSTER_LINE = re.compile(
+    r"\*\*Cluster:\*\*\s*\d+\s+Notes\s*[—–-]+\s*(.*)", re.IGNORECASE
+)
+
+# RE for children wikilinks: - [x] `[[stem]]` or - [ ] `[[stem]]`
+RE_CHILD_WIKILINK = re.compile(r"`\[\[([^\]]+)\]\]`")
+
+
+def enumerate_all_moc_sections(
+    content: str,
+) -> list[tuple[str, str, list[str], list[str]]]:
+    """Return ALL ``### MOCxx`` sections from a proposal-doc, accepted or not.
+
+    Each tuple is ``(moc_id, title, candidate_stems, topic_keywords)`` extracted
+    from the rendered body.  Used by the squelch-persist helper (T5.2) to identify
+    rejected clusters (enumerate_all − accepted).
+
+    Extraction strategy:
+    - ``candidate_stems``  — wikilinks from ``#### Children`` items
+    - ``topic_keywords``   — comma-separated list from ``**Cluster:** N Notes — kw1, kw2``
+    """
+    lines = content.splitlines()
+    results: list[tuple[str, str, list[str], list[str]]] = []
+
+    # ── Split into ### MOCxx blocks (same logic as parse_moc_proposal_doc) ───
+    moc_blocks: list[tuple[str, str, list[str]]] = []
+    current_moc_id: str | None = None
+    current_moc_title: str = ""
+    current_moc_lines: list[str] = []
+
+    for line in lines:
+        m = RE_MOC_SECTION_HEADER.match(line)
+        if m:
+            if current_moc_id is not None:
+                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+            current_moc_id = m.group(1).upper()
+            current_moc_title = m.group(2).strip()
+            current_moc_lines = []
+        elif current_moc_id is not None:
+            if line.startswith("## ") or line.startswith("# "):
+                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+                current_moc_id = None
+                current_moc_lines = []
+            else:
+                current_moc_lines.append(line)
+
+    if current_moc_id is not None:
+        moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+
+    # ── Extract stems + keywords from each block ─────────────────────────────
+    for moc_id, title, block_lines in moc_blocks:
+        topic_keywords: list[str] = []
+        candidate_stems: list[str] = []
+        in_children_section = False
+
+        for bl in block_lines:
+            stripped = bl.strip()
+
+            # **Cluster:** N Notes — kw1, kw2, kw3
+            cm = RE_CLUSTER_LINE.search(stripped)
+            if cm:
+                raw_kws = cm.group(1).strip()
+                topic_keywords = [k.strip() for k in raw_kws.split(",") if k.strip()]
+                continue
+
+            # #### Children section
+            if re.match(r"^####\s+Children", stripped, re.IGNORECASE):
+                in_children_section = True
+                continue
+            if in_children_section and stripped.startswith("####"):
+                in_children_section = False
+                continue
+            if in_children_section:
+                wl = RE_CHILD_WIKILINK.search(bl)
+                if wl:
+                    candidate_stems.append(wl.group(1).strip())
+
+        results.append((moc_id, title, candidate_stems, topic_keywords))
+
+    return results
 
 
 def parse_moc_proposal_doc(content: str, filename: str = "") -> list[dict]:

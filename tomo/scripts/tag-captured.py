@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """tag-captured.py — Tag processed inbox items with #<prefix>/captured.
 
 Reads the state-file, finds all items with status=done, and adds the
@@ -32,6 +32,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
+from lib.squelch_persist import persist_rejected_clusters  # noqa: E402
 
 
 def load_tag_prefix(config_path: str = "config/vault-config.yaml") -> str:
@@ -49,6 +50,29 @@ def load_tag_prefix(config_path: str = "config/vault-config.yaml") -> str:
     except OSError:
         pass
     return "MiYo-Tomo"
+
+
+def load_squelch_config(config_path: str = "config/vault-config.yaml") -> dict:
+    """Load squelch-related config from vault-config.yaml.
+
+    Returns a dict with at least ``squelch_runs`` (int, default 3).
+    Tolerates missing or unreadable config file.
+    """
+    squelch_runs = 3
+    if not os.path.isfile(config_path):
+        return {"squelch_runs": squelch_runs}
+    try:
+        import yaml  # type: ignore[import]
+        with open(config_path, encoding="utf-8") as fh:
+            cfg = yaml.safe_load(fh) or {}
+        squelch_runs = int(
+            cfg.get("tomo", {})
+            .get("moc_proposal", {})
+            .get("squelch_runs", 3)
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    return {"squelch_runs": squelch_runs}
 
 
 def last_state_per_stem(state_path: Path) -> dict[str, dict]:
@@ -164,6 +188,11 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Tag done items with lifecycle captured tag.")
     p.add_argument("--state", required=True, help="Path to inbox-state.jsonl")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
+    p.add_argument(
+        "--squelch-registry",
+        default="state/moc-squelch.json",
+        help="Path to MOC squelch registry (default: state/moc-squelch.json)",
+    )
     args = p.parse_args()
 
     state_path = Path(args.state)
@@ -173,6 +202,9 @@ def main() -> int:
 
     prefix = load_tag_prefix(args.config)
     tag = f"{prefix}/captured"
+
+    squelch_cfg = load_squelch_config(args.config)
+    registry_path = Path(args.squelch_registry)
 
     try:
         client = KadoClient()
@@ -190,6 +222,8 @@ def main() -> int:
     tagged = 0
     errors = 0
     skipped_non_md = 0
+    squelched_total = 0
+
     for stem in sorted(done_stems):
         entry = state[stem]
         path = entry.get("path", "")
@@ -214,10 +248,45 @@ def main() -> int:
             tagged += 1
         else:
             errors += 1
+            continue  # Don't attempt squelch-persist if tagging failed
+
+        # ── Squelch-persist: for MOC proposal-docs, record rejected clusters ──
+        filename = os.path.basename(path)
+        if filename.startswith("tomo-moc-proposal-") and filename.endswith(".md"):
+            try:
+                result = client.read_note(path)
+                doc_text = result.get("content", "")
+            except KadoError as exc:
+                print(
+                    f"  [warn] {stem}: cannot read proposal-doc for squelch "
+                    f"({exc}); skipping squelch-persist",
+                    file=sys.stderr,
+                )
+                doc_text = ""
+            if doc_text:
+                try:
+                    n_squelched = persist_rejected_clusters(
+                        doc_text,
+                        filename=filename,
+                        registry_path=registry_path,
+                        config=squelch_cfg,
+                    )
+                    if n_squelched:
+                        print(
+                            f"  [{stem}] squelch-persist: {n_squelched} rejected "
+                            f"cluster(s) written to {registry_path}",
+                            file=sys.stderr,
+                        )
+                        squelched_total += n_squelched
+                except Exception as exc:  # noqa: BLE001
+                    print(
+                        f"  [warn] {stem}: squelch-persist failed ({exc}); continuing",
+                        file=sys.stderr,
+                    )
 
     print(
         f"tag-captured: tagged={tagged} errors={errors} "
-        f"skipped_non_md={skipped_non_md} prefix={prefix}",
+        f"skipped_non_md={skipped_non_md} squelched={squelched_total} prefix={prefix}",
         file=sys.stderr,
     )
     return 1 if errors else 0

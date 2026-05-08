@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.1
+# version: 0.8.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -37,7 +37,6 @@ Exit codes (SDD §Error Handling):
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import math
 import os
@@ -58,6 +57,16 @@ sys.path.insert(0, os.path.dirname(__file__))
 # the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
 # only, so this is wired ahead of use.
 from lib.slugify import slugify  # noqa: E402, F401
+from lib.squelch import (  # noqa: E402
+    decrement_all as _squelch_decrement_all,
+    load_registry as _squelch_load_registry,
+    save_registry_atomic as _squelch_save_registry_atomic,
+)
+from lib.topic_signature import (  # noqa: E402
+    candidate_stems as _lib_candidate_stems,
+    cluster_topic_set as _lib_cluster_topic_set,
+    compute_topic_signature as _lib_compute_topic_signature,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -69,6 +78,12 @@ REPO_ROOT = SCRIPT_DIR.parent.parent
 DEFAULT_CONFIG_PATH = "config/vault-config.yaml"
 DEFAULT_CACHE_PATH = "config/discovery-cache.yaml"
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
+# ADR-8: squelch sidecar at tomo-instance/state/moc-squelch.json. Default
+# resolves relative to TOMO_INSTANCE env var (Docker runtime) or cwd (tests /
+# host dev runs). The `--squelch-state` flag overrides this default.
+DEFAULT_SQUELCH_STATE_PATH = str(
+    Path(os.environ.get("TOMO_INSTANCE", ".")) / "state" / "moc-squelch.json"
+)
 
 LOG_PREFIX = "[moc-discovery]"
 
@@ -176,6 +191,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         default=None,
         help="Override candidate_cap (default: vault-config tomo.moc_proposal).",
+    )
+    parser.add_argument(
+        "--squelch-state",
+        metavar="PATH",
+        default=DEFAULT_SQUELCH_STATE_PATH,
+        help=(
+            f"Path to moc-squelch.json sidecar (ADR-8). "
+            f"Default: $TOMO_INSTANCE/state/moc-squelch.json "
+            f"(currently resolves to {DEFAULT_SQUELCH_STATE_PATH})."
+        ),
     )
 
     return parser
@@ -997,23 +1022,10 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 def _cluster_topic_set(cluster: dict) -> set[str]:
     """Normalised topic bag for Jaccard comparison.
 
-    Mirrors `_cluster_topic_keywords` (Phase 5) but returns a set: lowercased,
-    whitespace-stripped, deduplicated. Honours both the explicit
-    `topic_keywords` list AND the single-string `topic` field (Phase 3 default).
+    Delegates to lib.topic_signature.cluster_topic_set — single implementation
+    shared with squelch-persist (T5.2 factoring).
     """
-    out: set[str] = set()
-    if isinstance(cluster.get("topic_keywords"), list):
-        for t in cluster["topic_keywords"]:
-            if t:
-                norm = str(t).strip().lower()
-                if norm:
-                    out.add(norm)
-    topic = cluster.get("topic")
-    if topic:
-        norm = str(topic).strip().lower()
-        if norm:
-            out.add(norm)
-    return out
+    return _lib_cluster_topic_set(cluster)
 
 
 def _moc_topic_set(map_note: dict) -> set[str]:
@@ -1031,42 +1043,19 @@ def _moc_topic_set(map_note: dict) -> set[str]:
 def _candidate_stems(cluster: dict) -> list[str]:
     """Pull the cluster's per-candidate identifiers for signature stability.
 
-    Phase 3's `Cluster` TypedDict carries `items: list[str]` — the
-    `section_id`s used by the reducer. Where callers enrich the cluster with
-    full Candidate dicts (forward-compat with T2.7), accept those too and
-    fall back to ``stem`` / ``path``.
+    Delegates to lib.topic_signature.candidate_stems — single implementation
+    shared with squelch-persist (T5.2 factoring).
     """
-    items = cluster.get("items") or []
-    stems: list[str] = []
-    for it in items:
-        if isinstance(it, str):
-            if it:
-                stems.append(it)
-        elif isinstance(it, dict):
-            stem = it.get("stem") or it.get("path") or ""
-            if stem:
-                stems.append(stem)
-    return stems
+    return _lib_candidate_stems(cluster)
 
 
 def _compute_topic_signature(cluster: dict) -> str:
     """Stable hash for squelch keying — SDD §Implementation Examples / Example 2.
 
-    Signature shape:
-
-        sha1( "|".join(sorted(lower(topic_keywords)))
-              + "::"
-              + "|".join(sorted(candidate_stems)[:5]) ).hexdigest()[:16]
-
-    Truncating candidate_stems at 5 keeps the signature stable across small
-    candidate-set drift (one note added/removed across runs); truncating the
-    sha1 hex digest at 16 chars is fine for the ~100s of entries the squelch
-    registry will ever hold.
+    Delegates to lib.topic_signature.compute_topic_signature — single
+    implementation shared with squelch-persist (T5.2 factoring).
     """
-    topics = sorted(_cluster_topic_set(cluster))
-    stems = sorted(_candidate_stems(cluster))[:5]
-    payload = "|".join(topics) + "::" + "|".join(stems)
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
+    return _lib_compute_topic_signature(cluster)
 
 
 def _normalise_title(title: str) -> str:

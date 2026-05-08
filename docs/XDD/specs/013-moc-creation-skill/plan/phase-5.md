@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Squelch Lifecycle Wiring"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---

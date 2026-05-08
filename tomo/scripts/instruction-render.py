@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.0
+# version: 0.10.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -303,17 +303,29 @@ _REQUIRED_PATH_FIELDS = {
 def extract_first_up_marker(content: str) -> str | None:
     """Return the first ``up:: [[Target]]`` target from note content, or None.
 
-    Searches the full content string (including frontmatter) for the first line
-    that matches the up:: wikilink pattern.  This mirrors the approach in
-    moc-discovery.py's ``_extract_first_up_marker``, but lives here so the
-    renderer can call it without importing the sibling script.
+    Searches the note body (frontmatter stripped) for the first line that
+    matches the up:: wikilink pattern.  Frontmatter is excluded to prevent
+    false positives when a user's YAML frontmatter contains an ``up::`` key.
+
+    Stripping logic: if content begins with ``---\n`` and contains a closing
+    ``---`` on its own line, the body starts after that closing fence.
+    Otherwise the full content is searched.
+
+    This mirrors the approach in moc-discovery.py's ``_extract_first_up_marker``,
+    but lives here so the renderer can call it without importing the sibling script.
 
     Multiple ``up::`` lines on the same note → only the first is returned;
     callers are responsible for warning when that case is detected.
     """
     if not content:
         return None
-    match = _UP_MARKER_RE.search(content)
+    # Strip YAML frontmatter before regex search to avoid false positives.
+    body = content
+    if content.startswith("---\n"):
+        closing = content.find("\n---", 4)
+        if closing != -1:
+            body = content[closing + 4:]  # skip past closing ---\n
+    match = _UP_MARKER_RE.search(body)
     if not match:
         return None
     target = match.group(1).strip()
@@ -376,12 +388,15 @@ def emit_up_preservation_actions(
         child_path = kado_client.resolve_stem_to_path(child_stem)
     except KadoError:
         # Child deleted between proposal write and apply (SDD edge case).
+        # Option A: emit a schema-valid add_relationship action with string
+        # placeholders so Hashi can filter on applied=False + error=child-missing
+        # without the action violating additionalProperties:false on the schema.
         return [{
             "id": _next_id(counter),
             "action": "add_relationship",
-            "target_moc_path": None,
-            "marker": None,
-            "line": None,
+            "target_moc_path": child_stem,  # best-effort stem as placeholder path
+            "marker": "up::",               # intent was up::
+            "line": f"up:: [[{new_moc_stem}]]",
             "applied": False,
             "error": "child-missing",
         }]
@@ -836,12 +851,55 @@ def _build_skip_actions(skipped: list[dict], inbox_path: str, counter: list[int]
     return out
 
 
+def _build_up_preservation_actions(
+    manifest: list[dict],
+    kado_client,
+    counter: list[int],
+) -> list[dict]:
+    """Emit add_relationship actions for existing-up:: preservation on MOC children.
+
+    Iterates create_moc manifest items that originate from a ConfirmedMOCProposal.
+    The conservative gate: the item must carry BOTH ``supporting_items`` (the
+    accepted-children stems, comma-joined) AND ``override_preserve_existing_up``
+    (presence flag — value may be True or False).  Items that lack either field
+    were produced by the regular inbox flow and are skipped.
+
+    For each qualifying create_moc item, dispatches to
+    ``emit_up_preservation_actions`` once per child stem parsed from
+    ``supporting_items``.  Returned actions are appended in child order.
+
+    Called by ``build_actions`` after create_moc but before link_to_moc so
+    the up:: actions on the children are present in the ordered output.
+    """
+    if kado_client is None:
+        return []
+    out: list[dict] = []
+    for m in manifest:
+        if m.get("action") != "create_moc":
+            continue
+        if not m.get("supporting_items"):
+            continue
+        if "override_preserve_existing_up" not in m:
+            # Inbox-flow create_moc items lack this field → skip preservation.
+            continue
+        new_moc_stem = m.get("title", "")
+        override_flag = bool(m.get("override_preserve_existing_up", False))
+        for child_stem in _parse_supporting_items(m.get("supporting_items")):
+            out.extend(
+                emit_up_preservation_actions(
+                    child_stem, new_moc_stem, override_flag, kado_client, counter,
+                )
+            )
+    return out
+
+
 def build_actions(
     manifest: list[dict],
     confirmed: list[dict],
     daily_updates: list[dict],
     skipped: list[dict],
     cfg: dict,
+    kado_client=None,
 ) -> list[dict]:
     """Assemble the full ordered action list.
 
@@ -851,17 +909,19 @@ def build_actions(
     items), then daily updates, deletions, and skips.
 
     Emitted order:
-      1. create_moc   — new MOCs must exist before anything links into them
-      2. move_note    — atomic notes
-      3. link_to_moc  — parent_mocs up-links + supporting_items down-links
-      4. update_tracker / update_log_entry / update_log_link
-      5. delete_source
-      6. skip
+      1. create_moc         — new MOCs must exist before anything links into them
+      2. up_preservation    — per-child up:: / related:: on ConfirmedMOCProposal children
+      3. move_note          — atomic notes
+      4. link_to_moc        — parent_mocs up-links + supporting_items down-links
+      5. update_tracker / update_log_entry / update_log_link
+      6. delete_source
+      7. skip
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]
     out: list[dict] = []
     out.extend(_build_create_moc_actions(manifest, inbox_path, counter))
+    out.extend(_build_up_preservation_actions(manifest, kado_client, counter))
     move_notes = _build_move_note_actions(manifest, inbox_path, counter)
     out.extend(move_notes)
     out.extend(_build_link_to_moc_actions(confirmed, counter))
@@ -1452,7 +1512,7 @@ def main() -> int:
         rendered_path = out_dir / filename
         rendered_path.write_text(rendered, encoding="utf-8")
 
-        manifest.append({
+        entry: dict = {
             "id": item_id,
             "action": item.get("action", "create_note"),
             "title": title,
@@ -1469,7 +1529,13 @@ def main() -> int:
             # from confirmed_items directly, but the field is useful context
             # for humans reading the instruction set).
             "supporting_items": item.get("supporting_items"),
-        })
+        }
+        # Carry override_preserve_existing_up when present (ConfirmedMOCProposal
+        # path only — inbox-flow create_moc items do not set this field).
+        # _build_up_preservation_actions uses its presence as a gate.
+        if "override_preserve_existing_up" in item:
+            entry["override_preserve_existing_up"] = item["override_preserve_existing_up"]
+        manifest.append(entry)
 
         # Clean up temp files
         tmpl_file.unlink(missing_ok=True)
@@ -1484,7 +1550,7 @@ def main() -> int:
     )
 
     # ── Build the unified action list (T1.1) ─────────────────────────────
-    actions = build_actions(manifest, confirmed, daily_updates, skipped, cfg)
+    actions = build_actions(manifest, confirmed, daily_updates, skipped, cfg, kado_client=client)
 
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────
     # Best-effort; actions stay with `target_moc_path: null` if Kado is

@@ -58,7 +58,9 @@ that contain colons (e.g. `Shell: A Survey`).
 ## How It Works
 
 1. **Parse args** — determine mode from the routing rule above.
-2. **Resolve inbox path** — `python3 scripts/read-config-field.py --field concepts.inbox --default "100 Inbox/"`.
+2. **Resolve config** — Read `config/vault-config.yaml` using the `Read` tool; extract
+   `concepts.inbox` (needed for Step 5). If `vault-config.yaml` is missing or unreadable,
+   abort immediately: `"vault-config.yaml not found — is Tomo configured? Run /explore-vault first."` Do not proceed.
 3. **Run `moc-discovery.py`** — subprocess with the mode flag:
    - `--tag <value>`, `--folder <value>`, `--class <value>`, `--title <value>`,
      `--free-text <value>`, or `--scan` (no args).
@@ -71,7 +73,7 @@ that contain colons (e.g. `Shell: A Survey`).
      and exit — write no proposal-doc.
 4. **Run `suggestions-reducer.py --moc-proposal-mode`** — renders proposal-doc Markdown
    (up to `max_results=5` clusters, sorted by confidence; overflow noted as
-   "Weitere N Cluster gefunden — re-run später").
+   "Weitere N Cluster gefunden").
 5. **Kado write** — writes
    `<inbox_path>/tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<top-slug>.md`.
 6. **Report to user** — tell the user the proposal-doc path, cluster count, and top

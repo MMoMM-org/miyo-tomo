@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 0.9.1
+# version: 1.0.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -44,6 +44,7 @@ from lib.topic_clusters import (  # noqa: E402, F401
     build_topic_clusters,
     normalise_topic,  # re-export for tests/test-004-phase3.sh
 )
+from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -383,6 +384,220 @@ RENDERERS = {
 }
 
 
+# ── MOC Proposal rendering (F-43 T3.1) ───────────────────────────────────────
+
+
+def _child_annotation(stem: str, existing_up_rows: list[dict]) -> str:
+    """Return the parenthetical annotation for a child stem.
+
+    Three branches (per SDD UI Guide §1015-1019 + ADR-1):
+      - state="absent"  → `(kein up:: bisher)`
+      - state="valid"   → `(existing up:: [[<target>]] → wird related::)`
+      - state="broken"  → `(existing up:: broken — ignored)`
+
+    Falls back to absent if the stem has no row in existing_up_rows.
+    """
+    for row in existing_up_rows:
+        if row.get("stem") == stem:
+            state = row.get("state", "absent")
+            target = row.get("target")
+            if state == "valid" and target:
+                return f"(existing up:: `[[{target}]]` → wird `related::`)"
+            elif state == "broken":
+                return "(existing up:: broken — ignored)"
+            else:
+                return "(kein up:: bisher)"
+    return "(kein up:: bisher)"
+
+
+def _render_cluster_section(
+    moc_id: str,
+    cluster: dict,
+    parent_opts: list[dict],
+    trigger_arg: str,
+) -> str:
+    """Render one `### MOCxx — <Title>` section for the proposal-doc body.
+
+    Args:
+        moc_id:       Heading ID, e.g. "MOC01".
+        cluster:      Enriched topic_cluster dict from DiscoveryReport.
+        parent_opts:  parent_options_per_cluster[cluster_id] list.
+        trigger_arg:  The original discovery trigger (for **Trigger:** field).
+    """
+    title = (cluster.get("title") or "").strip()
+    confidence = cluster.get("confidence", 0.0)
+    location = (cluster.get("location") or "Atlas/200 Maps/").rstrip("/") + "/"
+    template = (cluster.get("template") or "t_moc_tomo").strip()
+    if template.endswith(".md"):
+        template = template[:-3]
+    topic_keywords = cluster.get("topic_keywords") or []
+    candidate_stems = cluster.get("candidate_stems") or []
+    existing_up_rows: list[dict] = cluster.get("existing_up") or []
+
+    n_children = len(candidate_stems)
+    topics_csv = ", ".join(str(t) for t in topic_keywords) if topic_keywords else title.lower()
+
+    lines: list[str] = [
+        f"### {moc_id} — {title}",
+        "",
+        "- [ ] Accept",
+        "",
+        f"**Title:** `{title}`",
+        f"**Location:** `{location}`",
+        f"**Template:** [[{template}]]",
+        "",
+        f"**Trigger:** {trigger_arg}",
+        f"**Confidence:** {int(round(confidence * 100))}%",
+        f"**Cluster:** {n_children} Notes — {topics_csv}",
+        "",
+        "#### Parent",
+        "",
+    ]
+
+    if parent_opts:
+        for i, opt in enumerate(parent_opts):
+            moc_stem = opt.get("moc_stem", "")
+            opt_conf = opt.get("confidence", 0.0)
+            marker = "[x]" if i == 0 else "[ ]"
+            lines.append(f"- {marker} up:: `[[{moc_stem}]]` (confidence {opt_conf:.2f})")
+        lines.append("- [ ] kein parent (top-level MOC)")
+    else:
+        lines.append("- [x] kein parent (top-level MOC)")
+    lines.append("")
+
+    lines.append(f"#### Children ({n_children})")
+    lines.append("")
+    for stem in candidate_stems:
+        annotation = _child_annotation(stem, existing_up_rows)
+        lines.append(f"- [x] `[[{stem}]]` {annotation}")
+    lines.append("")
+
+    lines.append("#### up::-Handling Override")
+    lines.append("")
+    lines.append(
+        f"- [ ] **Bestehende up:: behalten, neue MOC als `related::`**"
+        f" (gilt für alle {n_children} Children)"
+    )
+    lines.append("")
+
+    # Why-narrative (ADR-9): template-rendered, no LLM
+    lines.append("#### Why this proposal")
+    lines.append("")
+    # Count children with a valid classification parent (state="valid")
+    k_classified = sum(
+        1 for r in existing_up_rows if r.get("state") == "valid"
+    )
+    # Determine parent label from parent_opts (top option)
+    parent_label: str | None = None
+    if parent_opts:
+        top_opt = parent_opts[0]
+        label = (top_opt.get("label") or "").strip()
+        parent_label = label if label else None
+
+    first = f"{n_children} Notes mit Topic-Overlap {topics_csv} haben keine dedizierte MOC."
+    last = "Diese MOC würde die Lücke füllen."
+    if parent_label and k_classified > 0:
+        middle = f"{k_classified} davon haben up:: zur Klassifikation {parent_label}."
+        why = f"{first}\n{middle} {last}"
+    else:
+        why = f"{first}\n{last}"
+    lines.append(why)
+
+    return "\n".join(lines)
+
+
+def render_moc_proposal_doc(
+    report: dict,
+    config,
+) -> tuple[str, str]:
+    """Render a DiscoveryReport into a MOC proposal-doc (filename, body) pair.
+
+    Implements the `--moc-proposal-mode` producer path (F-43 T3.1, ADR-2/4/9).
+    Pure render function — does NOT write to disk. File-write is the caller's
+    responsibility (CLI wrapper calls this, then writes the file itself).
+
+    Args:
+        report:  DiscoveryReport dict from moc-discovery.py.
+        config:  Any object exposing `max_results: int` (duck-typed).
+
+    Returns:
+        (filename, body) — `filename` is the deterministic filename string
+        (e.g. ``tomo-moc-proposal-20260507-1430-shell-and-terminal.md``);
+        `body` is the full markdown text.
+
+    Behaviour:
+      - Clusters are sorted by `confidence` DESC before rendering.
+      - At most `config.max_results` cluster sections are emitted.
+      - When more clusters exist, a footer line is appended.
+      - The filename slug uses the top-confidence cluster's slug (ADR-2).
+      - Frontmatter fields: type, proposal_kind, created, trigger, status,
+        tomo_skip_inbox_analysis — all required by AC-3.1.
+    """
+    max_results: int = getattr(config, "max_results", 5)
+    trigger_arg: str = report.get("trigger_arg") or ""
+    mode: str = report.get("mode") or "tag"
+
+    clusters: list[dict] = list(report.get("topic_clusters") or [])
+    parent_options: dict[str, list[dict]] = report.get("parent_options_per_cluster") or {}
+
+    # Sort clusters by confidence DESC (stable)
+    clusters.sort(key=lambda c: c.get("confidence", 0.0), reverse=True)
+
+    # Top-confidence cluster → filename slug (ADR-2)
+    top_cluster = clusters[0] if clusters else {}
+    top_slug = (
+        top_cluster.get("slug")
+        or slugify(top_cluster.get("title") or "moc")
+        or "moc"
+    )
+
+    # Timestamp
+    now_str = time.strftime("%Y-%m-%d %H:%M", time.localtime())
+    date_str = time.strftime("%Y%m%d", time.localtime())
+    hhmm_str = time.strftime("%H%M", time.localtime())
+    filename = f"tomo-moc-proposal-{date_str}-{hhmm_str}-{top_slug}.md"
+
+    # Frontmatter
+    trigger_field = f"{mode}:{trigger_arg}" if trigger_arg else mode
+    frontmatter_lines = [
+        "---",
+        "type: tomo-proposal",
+        "proposal_kind: moc",
+        f"created: {now_str}",
+        f"trigger: {trigger_field}",
+        "status: pending",
+        "tomo_skip_inbox_analysis: true",
+        "---",
+    ]
+
+    # Body
+    body_lines: list[str] = [
+        "",
+        "# MOC-Vorschlag",
+        "",
+    ]
+
+    rendered = clusters[:max_results]
+    overflow = len(clusters) - len(rendered)
+
+    for i, cluster in enumerate(rendered, start=1):
+        moc_id = f"MOC{i:02d}"
+        cluster_id = cluster.get("cluster_id") or moc_id
+        opts = parent_options.get(cluster_id) or parent_options.get(moc_id) or []
+        section = _render_cluster_section(moc_id, cluster, opts, trigger_field)
+        body_lines.append(section)
+        body_lines.append("")
+
+    if overflow > 0:
+        body_lines.append("---")
+        body_lines.append(f"*Weitere {overflow} Cluster gefunden*")
+        body_lines.append("")
+
+    full_body = "\n".join(frontmatter_lines) + "\n" + "\n".join(body_lines)
+
+    return filename, full_body
+
+
 def load_field_sections(shared_ctx_path: Path) -> dict[str, str]:
     """Build a {field_name: section} map from shared-ctx.json."""
     if not shared_ctx_path or not shared_ctx_path.exists():
@@ -406,11 +621,32 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Reduce per-item result JSONs into a single suggestions-doc JSON."
     )
-    p.add_argument("--state", required=True)
-    p.add_argument("--items-dir", required=True)
-    p.add_argument("--run-id", required=True)
-    p.add_argument("--profile", required=True)
-    p.add_argument("--output", required=True)
+    # ── MOC-proposal mode (F-43 T3.1) — mutually exclusive with inbox mode ──
+    p.add_argument(
+        "--moc-proposal-mode",
+        action="store_true",
+        help="Render a DiscoveryReport (from moc-discovery.py) into a proposal-doc. "
+             "Requires --input; ignores --state/--items-dir/--run-id/--profile/--output.",
+    )
+    p.add_argument(
+        "--input",
+        default=None,
+        help="Path to DiscoveryReport JSON (required when --moc-proposal-mode is set).",
+    )
+    p.add_argument(
+        "--output-dir",
+        default=None,
+        # T3.1 extension: required for T3.2 agent integration — agent tells the
+        # script where the inbox is; not part of the core spec flags but
+        # operationally unavoidable.
+        help="Directory to write the proposal-doc (required when --moc-proposal-mode is set).",
+    )
+    # ── Inbox mode (existing) ─────────────────────────────────────────────────
+    p.add_argument("--state")
+    p.add_argument("--items-dir")
+    p.add_argument("--run-id")
+    p.add_argument("--profile")
+    p.add_argument("--output")
     p.add_argument("--shared-ctx", default="tomo-tmp/shared-ctx.json",
                    help="Path to shared-ctx.json (for field→section lookup)")
     p.add_argument("--threshold", type=int, default=1,
@@ -423,8 +659,59 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _main_moc_proposal(args: argparse.Namespace) -> int:
+    """Handle --moc-proposal-mode: read DiscoveryReport, render proposal-doc, write to disk."""
+    if not args.input:
+        print(
+            "suggestions-reducer: --moc-proposal-mode requires --input <discovery-report.json>",
+            file=sys.stderr,
+        )
+        return 1
+    input_path = Path(args.input)
+    if not input_path.exists():
+        print(f"suggestions-reducer: input not found: {input_path}", file=sys.stderr)
+        return 1
+
+    try:
+        report = json.loads(input_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"suggestions-reducer: failed to read input: {exc}", file=sys.stderr)
+        return 1
+
+    output_dir = Path(args.output_dir) if args.output_dir else Path(".")
+
+    # Duck-typed config: only max_results is consulted by render_moc_proposal_doc.
+    # max_results comes from MocProposalConfig (not a CLI flag — spec AC-3.1).
+    class _InlineCfg:
+        max_results: int = 5
+
+    cfg = _InlineCfg()
+
+    filename, body = render_moc_proposal_doc(report, cfg)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / filename
+    out_path.write_text(body, encoding="utf-8")
+    print(f"suggestions-reducer: moc-proposal written to {out_path}", file=sys.stderr)
+    # Print just the resolved path to stdout so the agent can capture it
+    print(str(out_path))
+    return 0
+
+
 def main() -> int:
     args = build_arg_parser().parse_args()
+
+    # F-43 T3.1: --moc-proposal-mode is mutually exclusive with the inbox flow.
+    if args.moc_proposal_mode:
+        return _main_moc_proposal(args)
+
+    # Validate required inbox-mode args
+    for flag in ("state", "items_dir", "run_id", "profile", "output"):
+        if getattr(args, flag, None) is None:
+            print(
+                f"suggestions-reducer: --{flag.replace('_', '-')} is required in inbox mode",
+                file=sys.stderr,
+            )
+            return 1
     state_path = Path(args.state)
     items_dir = Path(args.items_dir)
     out_path = Path(args.output)

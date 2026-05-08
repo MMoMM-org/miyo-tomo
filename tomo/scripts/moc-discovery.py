@@ -1475,6 +1475,21 @@ def main(argv: list[str] | None = None) -> int:
         _log(f"cache-empty: cache_path={cache_path} → abort {cache_abort!r}")
         return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
 
+    # ── Squelch: load → decrement → persist (T5.1) ───────────────────────────
+    # SDD §Pseudocode lines 881-884: run at start of each discovery pipeline so
+    # the updated runs_remaining is in effect for Phase-6 filtering.
+    # Missing file → empty registry (first-run case). Corrupt → warn + empty.
+    # Raises on I/O errors during save so partial writes can't silently corrupt
+    # the sidecar (save_registry_atomic uses tmp-then-rename).
+    squelch_path = Path(args.squelch_state)
+    squelch_registry = _squelch_load_registry(squelch_path)
+    squelch_registry = _squelch_decrement_all(squelch_registry)
+    _squelch_save_registry_atomic(squelch_path, squelch_registry)
+    _log(
+        f"squelch: loaded+decremented {len(squelch_registry)} active entries "
+        f"from {squelch_path}"
+    )
+
     # Full discovery flow lands in T2.5-T2.7. Until then, surface clearly.
     _log("ERROR: discovery phases not yet implemented (T2.5-T2.7)")
     raise NotImplementedError(

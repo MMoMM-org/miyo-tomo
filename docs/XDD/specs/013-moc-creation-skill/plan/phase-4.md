@@ -35,7 +35,7 @@ phase: 4
 
 This phase wires the Pass-2 consumer path: Pass-2 parser dispatches on the new doc type, instruction-render emits per-child up::-preservation actions, inbox-analyst skips proposal-docs cleanly. The three tasks T4.1, T4.2, T4.3 modify different files and run in parallel.
 
-- [ ] **T4.1 `suggestion-parser.py` — pre-parse dispatch + `parse_moc_proposal_doc`** `[parallel: true]` `[activity: backend-parsing]`
+- [x] **T4.1 `suggestion-parser.py` — pre-parse dispatch + `parse_moc_proposal_doc`** `[parallel: true]` `[activity: backend-parsing]`
 
   1. Prime: Read `tomo/scripts/suggestion-parser.py` lines 29-32 (`RE_SECTION_HEADER`), 96-122 (action normalisation), 198-202 (`in_moc_list` flag), 642-680 (main entry) `[ref: SDD/Implementation Context/suggestion-parser.py]`. Read T3.4 fixture in `tomo-tmp/` for live shape (per `feedback_fixture_from_live_render.md`).
   2. Test: `tests/test_suggestion_parser_moc_branch.py::test_dispatch_on_filename_pattern`; `test_dispatch_on_frontmatter_type`; `test_skip_when_only_some_clusters_accepted` (multi-cluster doc, 1 of 3 accepted → only 1 confirmed proposal returned); `test_no_clusters_accepted_returns_empty` (parser returns empty list, eligible for squelch); `test_parse_children_list_extracts_ticked_only`; `test_parse_parent_single_select_first_check_wins`; `test_parse_override_toggle_extracts_bool`; `test_editable_text_fields_extracted` (Title/Location/Template extracted as inline `**Field:**` lines).
@@ -64,6 +64,10 @@ This phase wires the Pass-2 consumer path: Pass-2 parser dispatches on the new d
   1. Prime: Read `tomo/dot_claude/agents/inbox-analyst.md` lines 55-63 (Step 0), 75-81 (Step 2 Kado read), 83-109 (Step 3+) `[ref: SDD/Implementation Context/inbox-analyst.md]`. Read `feedback_near_mvp_no_breakage.md` (additive only on hot path).
   2. Test: Manual: simulate inbox-analyst run on a proposal-doc fixture (frontmatter `tomo_skip_inbox_analysis: true`); verify the agent's run-log records a Step-2b skip with no Steps 3-12 invocation. Also: run inbox-analyst on a normal note (frontmatter without the flag); verify Steps 3-12 execute as before (regression).
   3. Implement: In `inbox-analyst.md`, add a new Step 2b section between Step 2 (Kado read) and Step 3 (classify type): "If frontmatter contains `tomo_skip_inbox_analysis: true`: write `state-update.py --status done`, write a stub `result.json` with empty `actions: []`, return `OK stem=<stem> actions=0` (no analysis)." Use STRICT/MUST wording per `feedback_agent_format_enforcement.md`. Do NOT modify Steps 3-12. Bump `# version:`.
+
+     **Deviation (recorded 2026-05-08, commits a2fe5d2 + aa4e176):**
+     - Step 2b does NOT write a stub `result.json`. The result-schema (`tomo/schemas/item-result.schema.json:33`) declares `actions: { minItems: 1 }`, so `actions: []` would have been schema-invalid. `tomo/scripts/suggestions-reducer.py:758` already handles missing result files via "skip gracefully" — the state-file `done` transition alone is sufficient to signal completion for skipped items.
+     - Step 11 also touched (defensive `--path` argument added) — the original "do NOT modify Steps 3-12" guard was about behavior, not correctness; the script's argparse spec requires `--path` on `running`/`done` transitions and Step 0 + Step 2b + Step 11 are now consistent.
   4. Validate: Run `./scripts/update-tomo.sh`; restart container. Run `/inbox` over a vault containing a proposal-doc; verify run-log shows Step-2b skip; verify a sibling normal note is processed normally.
   5. Success: Skip-flag pre-filter additive; existing inbox-analyst behaviour preserved on non-proposal docs `[ref: PRD/AC-5.1]` `[ref: SDD/ADR-5]`.
 

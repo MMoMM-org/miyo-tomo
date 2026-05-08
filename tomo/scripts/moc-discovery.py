@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -10,7 +10,7 @@ through the six discovery phases described in the SDD §Pseudocode (lines
 
     Phase 1 — Candidate selection (mode handlers + pre-filter + caps)
     Phase 2 — Topic extraction (cache lookup + LLM cache-miss batching)
-    Phase 3 — Cluster detection (T2.4 — pending)
+    Phase 3 — Cluster detection (thin wrapper around lib.topic_clusters)
     Phase 4 — Title generation (T2.5 — pending)
     Phase 5 — Parent resolution (T2.5 — pending)
     Phase 6 — Duplicate detection (T2.6 — pending)
@@ -684,13 +684,73 @@ def phase2_extract_topics(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Discovery phases — stubs for T2.4-T2.7
+# Phase 3 — Cluster detection (thin wrapper around lib.topic_clusters)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def phase3_cluster_by_topic(*_args, **_kwargs):
-    """Group candidates by normalised topic (delegates to lib.topic_clusters)."""
-    raise NotImplementedError("T2.4 — phase3_cluster_by_topic pending")
+def phase3_cluster(
+    candidates_with_topics: list[Candidate], config
+) -> list[dict]:
+    """Group candidates by normalised topic — thin wrapper around T1.5.
+
+    Each candidate from Phase 2 carries `topics: list[str]` (one or more).
+    The reducer's existing algorithm operates on one `ClusterCandidate` per
+    `(candidate, topic)` pair, so a candidate that carries `[shell, terminal]`
+    contributes to BOTH the `shell` cluster and the `terminal` cluster — the
+    "shared note across clusters" case the SDD calls out for `/moc-propose`.
+
+    Per SDD §Pseudocode lines 869-871:
+        clusters := topic_clusters(candidates_with_topics, threshold=config.min_notes)
+        if len(clusters) == 0 → return empty report (NOT an abort; the user-facing
+                                "no significant clusters" message is surfaced by
+                                the outer pipeline).
+
+    Phase 3 itself never aborts — empty output is a valid normal outcome.
+    Aborts in this pipeline live in Phase 1 (zero-candidates,
+    candidate-cap-exceeded) and Phase 2 (cache-miss-cap-exceeded).
+
+    Args:
+        candidates_with_topics: Phase-2-enriched Candidates with `topics`
+            populated (cache hits + LLM-extracted misses, merged in input order).
+        config: Anything exposing `min_notes: int` — typically a
+            `MocProposalConfig` from `shared-ctx-builder.load_moc_proposal_config`.
+
+    Returns:
+        `list[Cluster]` from `lib.topic_clusters.build_topic_clusters` (a list
+        of `{topic, items, parent, tags}` TypedDicts). `items` carries the
+        contributing candidate stems (preserved as `section_id` upstream).
+        Pure: input is not mutated; a fresh list is returned each call.
+    """
+    # Local import keeps the lib dependency colocated with its only consumer
+    # in this module (mirrors the other helpers' file-local-import pattern).
+    from lib.topic_clusters import ClusterCandidate, build_topic_clusters
+
+    # Explode one ClusterCandidate per (candidate, topic) pair. Candidates
+    # without topics are skipped — `build_topic_clusters` would drop them
+    # anyway via its empty-topic guard, but skipping here is explicit and
+    # avoids feeding the lib pointless rows.
+    items: list[ClusterCandidate] = []
+    for c in candidates_with_topics:
+        for topic in c.topics or []:
+            items.append(
+                ClusterCandidate(
+                    section_id=c.stem,
+                    topic=topic,
+                    # No parent at Phase 3 — parent_options land in Phase 5.
+                    parent="",
+                    # Candidate carries no leaf tags in Phase 3 yet; tag-fold
+                    # in `_compute_moc_tags` is a no-op on empty input.
+                    tags=[],
+                )
+            )
+
+    threshold = getattr(config, "min_notes", 3)
+    return build_topic_clusters(items, threshold=threshold)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Discovery phases — stubs for T2.5-T2.7
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 def phase4_generate_titles(*_args, **_kwargs):
@@ -779,8 +839,8 @@ def main(argv: list[str] | None = None) -> int:
         _log(f"cache-empty: cache_path={cache_path} → abort {cache_abort!r}")
         return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
 
-    # Full discovery flow lands in T2.4-T2.7. Until then, surface clearly.
-    _log("ERROR: discovery phases not yet implemented (T2.4-T2.7)")
+    # Full discovery flow lands in T2.5-T2.7. Until then, surface clearly.
+    _log("ERROR: discovery phases not yet implemented (T2.5-T2.7)")
     raise NotImplementedError(
         "moc-discovery.py full pipeline pending — use --dry-run for T2.1 scaffolding"
     )

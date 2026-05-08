@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -38,12 +38,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import yaml
 
@@ -62,6 +63,26 @@ DEFAULT_CACHE_PATH = "config/discovery-cache.yaml"
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 
 LOG_PREFIX = "[moc-discovery]"
+
+# User-facing abort messages (SDD §Error Handling, lines 830-833). German strings
+# match the user vault locale; cache-empty intentionally English because it
+# instructs the user to run a Tomo command (`/explore-vault`).
+ABORT_MESSAGES: dict[str, str] = {
+    "cache-empty": (
+        "MOC proposal requires vault cache. Please run /explore-vault first to "
+        "populate discovery-cache.yaml."
+    ),
+    "zero-candidates": "Keine Notes zum Topic gefunden",
+    "candidate-cap-exceeded": (
+        "Mehr als <cap> Kandidaten gefunden — Suchbereich einschränken"
+    ),
+    "cache-miss-cap-exceeded": (
+        "<N> Notes ohne Cache-Eintrag — bitte zuerst /explore-vault laufen lassen"
+    ),
+}
+
+# Phase 2 LLM batching — fixed at 10 per SDD §Pseudocode line 864 (chunk(misses, 10)).
+LLM_BATCH_SIZE = 10
 
 
 def _log(msg: str) -> None:
@@ -497,7 +518,173 @@ def phase1_select_candidates(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Discovery phases — stubs for T2.3-T2.7
+# Cache-empty pre-check (SDD §Pseudocode line 851 — fires BEFORE Phase 1)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def validate_cache_loaded(cache: dict | None) -> str | None:
+    """Return `"cache-empty"` when the discovery cache is unusable, else None.
+
+    A cache is "loaded" when it carries a non-empty `map_notes` list. Any of
+    the three failure modes — file missing (cache=None from a guarded loader),
+    file present but `map_notes` key absent, file present but `map_notes: []` —
+    short-circuits the rest of the pipeline. Per SDD §Error Handling this
+    yields `abort_reason="cache-empty"` and a user-facing message asking the
+    user to run `/explore-vault` first.
+
+    The pre-check is separable so `main()` can fire it before mode routing /
+    Phase 1, matching the spec's pseudocode (`1. VALIDATE → cache exists →
+    else abort cache-empty`). Tests exercise it directly without spinning up
+    the full pipeline.
+    """
+    if cache is None:
+        return "cache-empty"
+    if not isinstance(cache, dict):
+        return "cache-empty"
+    map_notes = cache.get("map_notes")
+    if not map_notes:  # None, missing, or [] all collapse to "no usable cache"
+        return "cache-empty"
+    return None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Phase 2 — Topic extraction (cache lookup + bounded LLM batching)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class LLMClient(Protocol):
+    """Minimal LLM-batch-extract surface consumed by Phase 2.
+
+    Implementations take a list of cache-miss `Candidate`s and return one
+    dict per candidate, shaped `{"path": str, "topics": list[str]}`. Phase 2
+    splits misses into chunks of `LLM_BATCH_SIZE` (10) and fans out one call
+    per chunk; the real production client lives outside T2.3 and gets wired
+    in `main()` later (T2.8).
+    """
+
+    def batch_extract(self, batch: list["Candidate"]) -> list[dict]: ...  # pragma: no cover
+
+
+def _build_topics_index(cache: dict) -> dict[str, list[str]]:
+    """Index `cache.map_notes` by path → topics for O(1) hit lookup."""
+    out: dict[str, list[str]] = {}
+    for entry in cache.get("map_notes") or []:
+        if not isinstance(entry, dict):
+            continue
+        path = (entry.get("path") or "").strip()
+        if not path:
+            continue
+        topics = [str(t) for t in (entry.get("topics") or []) if t]
+        # Last-writer-wins on duplicate paths — cache-builder dedupes these
+        # already, this is a defensive belt-and-braces.
+        out[path] = topics
+    return out
+
+
+def _batch_llm_extract(
+    candidates: list[Candidate],
+    llm_client: LLMClient,
+    batch_size: int = LLM_BATCH_SIZE,
+) -> list[Candidate]:
+    """Chunk cache-miss candidates and call the LLM once per chunk.
+
+    Returns the input candidates with their `topics` field populated from the
+    LLM response. Order is preserved within and across chunks so callers can
+    re-merge with cache hits without losing per-mode ordering.
+
+    Pre-condition: caller has already verified `ceil(len(candidates)/batch_size)
+    <= cache_miss_max_batches`. This helper does NOT enforce the cap — that
+    decision is the caller's so the abort path can short-circuit before any
+    LLM contact.
+    """
+    if not candidates:
+        return []
+
+    # Index input candidates by path so we can apply the LLM response onto
+    # the same instances (preserving any existing fields downstream phases set).
+    by_path: dict[str, Candidate] = {c.path: c for c in candidates}
+
+    for start in range(0, len(candidates), batch_size):
+        chunk = candidates[start : start + batch_size]
+        response = llm_client.batch_extract(chunk)
+        for entry in response or []:
+            path = entry.get("path")
+            topics = entry.get("topics") or []
+            if not path or path not in by_path:
+                continue
+            by_path[path].topics = [str(t) for t in topics if t]
+
+    return candidates
+
+
+def phase2_extract_topics(
+    candidates: list[Candidate],
+    cache: dict,
+    config,
+    llm_client: LLMClient | None,
+) -> tuple[list[Candidate], str | None]:
+    """Resolve topics per candidate via cache-first lookup + bounded LLM fallback.
+
+    Returns
+    -------
+    (candidates_with_topics, abort_reason)
+        On success: (merged hits + LLM-extracted misses, None).
+        On `cache-miss-cap-exceeded`: ([], "cache-miss-cap-exceeded").
+
+    Algorithm (SDD §Pseudocode lines 861-867):
+      hits   := [c for c in candidates if c in cache]
+      misses := [c for c in candidates if c not in cache]
+      batches := chunk(misses, 10)
+      if len(batches) > config.cache_miss_max_batches → abort
+      extracted := llm_batch_extract(batches)
+      candidates_with_topics := merge(hits, extracted)
+    """
+    topics_by_path = _build_topics_index(cache)
+
+    hits: list[Candidate] = []
+    misses: list[Candidate] = []
+    for c in candidates:
+        cached = topics_by_path.get(c.path)
+        if cached is not None:
+            # Copy onto the candidate so downstream phases see populated topics.
+            c.topics = list(cached)
+            hits.append(c)
+        else:
+            misses.append(c)
+
+    cap = getattr(config, "cache_miss_max_batches", 5)
+    batches_needed = math.ceil(len(misses) / LLM_BATCH_SIZE) if misses else 0
+    if batches_needed > cap:
+        _log(
+            f"phase2: cache-miss-cap-exceeded "
+            f"(misses={len(misses)} → batches={batches_needed} > cap={cap})"
+        )
+        return ([], "cache-miss-cap-exceeded")
+
+    _log(
+        f"phase2: cache-hits={len(hits)} cache-misses={len(misses)} "
+        f"batches={batches_needed}"
+    )
+
+    if misses:
+        if llm_client is None:
+            # Caller has not wired an LLM client yet (T2.8 production wiring).
+            # Surface clearly rather than silently emitting empty topics.
+            raise RuntimeError(
+                "phase2_extract_topics: llm_client is required when there are "
+                "cache misses. Pass a real LLMClient or ensure the cache covers "
+                "every Phase 1 candidate."
+            )
+        _batch_llm_extract(misses, llm_client)
+
+    # Merge preserves input order: a candidate's position in the output
+    # matches its position in the input list. Each candidate appears exactly
+    # once because hits and misses are disjoint by construction.
+    return (list(candidates), None)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Discovery phases — stubs for T2.4-T2.7
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -531,6 +718,24 @@ def phase6_5_apply_candidate_cap(*_args, **_kwargs):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _emit_abort_report(
+    mode: str, trigger_arg: str, profile_name: str, abort_reason: str
+) -> int:
+    """Write a DiscoveryReport with `abort_reason` set and return exit 0.
+
+    Per SDD §Error Handling, all four `abort_reason` values are user-facing
+    states (not fatal errors): the agent reads the JSON, surfaces the
+    German/English message, and the user retries. Fatal exits are reserved
+    for unresolved profiles and unreachable Kado.
+    """
+    report = empty_report(mode, trigger_arg, profile_name)
+    report["abort_reason"] = abort_reason
+    report["abort_message"] = ABORT_MESSAGES.get(abort_reason, abort_reason)
+    json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
+    sys.stdout.write("\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Top-level orchestration. Returns exit code 0 / 1 / 2."""
     parser = build_parser()
@@ -554,7 +759,8 @@ def main(argv: list[str] | None = None) -> int:
 
     _log(f"profile={profile_name}")
 
-    # Dry-run path: emit a minimal DiscoveryReport and exit. No Kado calls.
+    # Dry-run path: emit a minimal DiscoveryReport and exit. No Kado calls,
+    # no cache check (the dry-run is the T2.1 scaffolding contract).
     if args.dry_run:
         _log("dry-run — emitting minimal DiscoveryReport, skipping discovery phases")
         report = empty_report(mode, trigger_arg, profile_name)
@@ -562,8 +768,19 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("\n")
         return 0
 
-    # Full discovery flow lands in T2.3-T2.7. Until then, surface clearly.
-    _log("ERROR: discovery phases not yet implemented (T2.3-T2.7)")
+    # Cache-empty pre-check (SDD §Pseudocode line 851 — fires BEFORE Phase 1).
+    # Missing file → load_yaml returns {}; populated `map_notes: []` cache → also
+    # empty. Both collapse to `cache-empty` so the agent can surface the same
+    # "run /explore-vault" hint regardless of which failure mode fired.
+    cache_path = Path(args.cache)
+    cache = _load_yaml(cache_path) if cache_path.exists() else None
+    cache_abort = validate_cache_loaded(cache)
+    if cache_abort is not None:
+        _log(f"cache-empty: cache_path={cache_path} → abort {cache_abort!r}")
+        return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
+
+    # Full discovery flow lands in T2.4-T2.7. Until then, surface clearly.
+    _log("ERROR: discovery phases not yet implemented (T2.4-T2.7)")
     raise NotImplementedError(
         "moc-discovery.py full pipeline pending — use --dry-run for T2.1 scaffolding"
     )

@@ -263,8 +263,8 @@ def test_filename_top_confidence_slug(tmp_path: Path) -> None:
     ]
     report["parent_options_per_cluster"] = {}
 
-    path, body = render_moc_proposal_doc(report, _Cfg(), output_dir=tmp_path)
-    filename = Path(path).name
+    # Two-arg form returns (filename_str, body); file-write is caller's responsibility.
+    filename, body = render_moc_proposal_doc(report, _Cfg())
 
     # Must start with tomo-moc-proposal-
     assert filename.startswith("tomo-moc-proposal-"), f"Bad prefix: {filename!r}"

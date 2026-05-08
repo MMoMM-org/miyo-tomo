@@ -510,25 +510,21 @@ def _render_cluster_section(
 def render_moc_proposal_doc(
     report: dict,
     config,
-    output_dir: Path | None = None,
 ) -> tuple[str, str]:
-    """Render a DiscoveryReport into a MOC proposal-doc (path, body) pair.
+    """Render a DiscoveryReport into a MOC proposal-doc (filename, body) pair.
 
     Implements the `--moc-proposal-mode` producer path (F-43 T3.1, ADR-2/4/9).
+    Pure render function — does NOT write to disk. File-write is the caller's
+    responsibility (CLI wrapper calls this, then writes the file itself).
 
     Args:
-        report:     DiscoveryReport dict from moc-discovery.py.
-        config:     Any object exposing `max_results: int` (duck-typed).
-        output_dir: Directory to write the file. If None, no file is written
-                    (useful for unit tests that only inspect the body).
+        report:  DiscoveryReport dict from moc-discovery.py.
+        config:  Any object exposing `max_results: int` (duck-typed).
 
     Returns:
-        (path_str, body) — `path_str` is the resolved output path (or a
-        filename-only string when output_dir is None); `body` is the full
-        markdown text.
-
-    Raises:
-        ValueError: If the report contains no clusters.
+        (filename, body) — `filename` is the deterministic filename string
+        (e.g. ``tomo-moc-proposal-20260507-1430-shell-and-terminal.md``);
+        `body` is the full markdown text.
 
     Behaviour:
       - Clusters are sorted by `confidence` DESC before rendering.
@@ -600,13 +596,6 @@ def render_moc_proposal_doc(
 
     full_body = "\n".join(frontmatter_lines) + "\n" + "\n".join(body_lines)
 
-    if output_dir is not None:
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        out_path = output_dir / filename
-        out_path.write_text(full_body, encoding="utf-8")
-        return str(out_path), full_body
-
     return filename, full_body
 
 
@@ -648,13 +637,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--output-dir",
         default=None,
+        # T3.1 extension: required for T3.2 agent integration — agent tells the
+        # script where the inbox is; not part of the core spec flags but
+        # operationally unavoidable.
         help="Directory to write the proposal-doc (required when --moc-proposal-mode is set).",
-    )
-    p.add_argument(
-        "--max-results",
-        type=int,
-        default=None,
-        help="Cap on cluster sections in proposal-doc (overrides config; default 5).",
     )
     # ── Inbox mode (existing) ─────────────────────────────────────────────────
     p.add_argument("--state")
@@ -696,16 +682,19 @@ def _main_moc_proposal(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir) if args.output_dir else Path(".")
 
     # Duck-typed config: only max_results is consulted by render_moc_proposal_doc.
+    # max_results comes from MocProposalConfig (not a CLI flag — spec AC-3.1).
     class _InlineCfg:
-        pass
+        max_results: int = 5
 
     cfg = _InlineCfg()
-    cfg.max_results = args.max_results if args.max_results is not None else 5  # type: ignore[attr-defined]
 
-    out_path, _body = render_moc_proposal_doc(report, cfg, output_dir=output_dir)
+    filename, body = render_moc_proposal_doc(report, cfg)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / filename
+    out_path.write_text(body, encoding="utf-8")
     print(f"suggestions-reducer: moc-proposal written to {out_path}", file=sys.stderr)
-    # Print just the filename to stdout so the agent can capture it
-    print(out_path)
+    # Print just the resolved path to stdout so the agent can capture it
+    print(str(out_path))
     return 0
 
 

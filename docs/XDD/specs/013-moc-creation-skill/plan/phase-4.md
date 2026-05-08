@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Pass-2 Consumer Extensions"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -43,7 +43,7 @@ This phase wires the Pass-2 consumer path: Pass-2 parser dispatches on the new d
   4. Validate: `pytest tests/test_suggestion_parser_moc_branch.py -v`; **regression** — run all existing `suggestion-parser` tests to confirm `S##`/`A1` dispatch unchanged.
   5. Success: Parser routes proposal-docs to MOC branch and produces `ConfirmedMOCProposal[]` `[ref: PRD/AC-5.1, AC-5.2, AC-5.3, AC-5.4]`.
 
-- [ ] **T4.2 `instruction-render.py` — per-child existing-`up::` emission (Rule 4.x)** `[parallel: true]` `[activity: backend-rendering]`
+- [x] **T4.2 `instruction-render.py` — per-child existing-`up::` emission (Rule 4.x)** `[parallel: true]` `[activity: backend-rendering]`
 
   1. Prime: Read `tomo/scripts/instruction-render.py` lines 374-400 (`_build_create_moc_actions`), 452-532 (`link_to_moc` builder), 969-1005 (`supporting_items` backfill) `[ref: SDD/Implementation Context/instruction-render.py]`. Read SDD `Implementation Examples/Example 1` traced walkthrough end-to-end.
   2. Test: `tests/test_instruction_render_up_preservation.py` — one test per Rule 4.x:
@@ -59,7 +59,7 @@ This phase wires the Pass-2 consumer path: Pass-2 parser dispatches on the new d
   4. Validate: `pytest tests/test_instruction_render_up_preservation.py -v`; **regression** — existing `instruction-render` tests for create_moc + link_to_moc still pass.
   5. Success: All 6 Rule 4.x outcomes produce correct action sequences `[ref: PRD/AC-4.1, AC-4.2, AC-4.3, AC-4.4, AC-4.5, AC-4.6]` `[ref: SDD/Implementation Examples/Example 1]`.
 
-- [ ] **T4.3 `inbox-analyst.md` — Step 2b additive pre-filter** `[parallel: true]` `[activity: agent-edit]`
+- [x] **T4.3 `inbox-analyst.md` — Step 2b additive pre-filter** `[parallel: true]` `[activity: agent-edit]`
 
   1. Prime: Read `tomo/dot_claude/agents/inbox-analyst.md` lines 55-63 (Step 0), 75-81 (Step 2 Kado read), 83-109 (Step 3+) `[ref: SDD/Implementation Context/inbox-analyst.md]`. Read `feedback_near_mvp_no_breakage.md` (additive only on hot path).
   2. Test: Manual: simulate inbox-analyst run on a proposal-doc fixture (frontmatter `tomo_skip_inbox_analysis: true`); verify the agent's run-log records a Step-2b skip with no Steps 3-12 invocation. Also: run inbox-analyst on a normal note (frontmatter without the flag); verify Steps 3-12 execute as before (regression).
@@ -71,6 +71,6 @@ This phase wires the Pass-2 consumer path: Pass-2 parser dispatches on the new d
   4. Validate: Run `./scripts/update-tomo.sh`; restart container. Run `/inbox` over a vault containing a proposal-doc; verify run-log shows Step-2b skip; verify a sibling normal note is processed normally.
   5. Success: Skip-flag pre-filter additive; existing inbox-analyst behaviour preserved on non-proposal docs `[ref: PRD/AC-5.1]` `[ref: SDD/ADR-5]`.
 
-- [ ] **T4.4 Phase 4 Validation** `[activity: validate]`
+- [x] **T4.4 Phase 4 Validation** `[activity: validate]`
 
   Run all parser + instruction-render tests. Run regression suites for the existing inbox flow. **End-to-end Pass-2 dry run**: take the T3.4 fixture proposal-doc, run `suggestion-parser.py` → `instruction-render.py` → produced `instructions.json`; verify the JSON contains exactly 1 `create_moc` + N `add_relationship` actions per accepted child + the expected `link_to_moc` actions. Open the produced `instructions.json` in `tomo-tmp/` for visual inspection.

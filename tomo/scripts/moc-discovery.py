@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -13,7 +13,7 @@ through the six discovery phases described in the SDD §Pseudocode (lines
     Phase 3 — Cluster detection (thin wrapper around lib.topic_clusters)
     Phase 4 — Title generation (per-profile suffix rules + mode override)
     Phase 5 — Parent resolution (classification keyword overlap, top-3)
-    Phase 6 — Duplicate detection (T2.6 — pending)
+    Phase 6 — Duplicate detection (Jaccard ≥ 0.80) + squelch read-only lookup
     Phase 6.5 — Existing-up:: validation (T2.7 — pending)
 
 The full algorithm lands in T2.2-T2.7. T2.1 ships the CLI surface, mode
@@ -37,6 +37,7 @@ Exit codes (SDD §Error Handling):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -971,13 +972,274 @@ def phase5_resolve_parents(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Discovery phases — stubs for T2.6-T2.7
+# Phase 6 — Duplicate detection (Jaccard ≥ 0.80) + squelch read-only lookup
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Jaccard threshold for duplicate detection (SDD §Implementation Examples /
+# Example 3, line 704). A cluster whose topic-set has ≥ 0.80 set-similarity
+# with any existing MOC's topic-set is treated as a duplicate and skipped.
+JACCARD_DUP_THRESHOLD = 0.80
 
-def phase6_filter_duplicates_and_squelch(*_args, **_kwargs):
-    """Drop near-duplicate clusters; honour the squelch registry."""
-    raise NotImplementedError("T2.6 — phase6_filter_duplicates_and_squelch pending")
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    """Set-similarity score: ``len(a ∩ b) / len(a ∪ b)``.
+
+    Returns 0.0 when either side is empty — an empty input cannot meaningfully
+    overlap with anything, and the SDD's Example 3 explicitly skips empty
+    `moc.topics` rather than letting them score 1.0 by accident.
+    """
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def _cluster_topic_set(cluster: dict) -> set[str]:
+    """Normalised topic bag for Jaccard comparison.
+
+    Mirrors `_cluster_topic_keywords` (Phase 5) but returns a set: lowercased,
+    whitespace-stripped, deduplicated. Honours both the explicit
+    `topic_keywords` list AND the single-string `topic` field (Phase 3 default).
+    """
+    out: set[str] = set()
+    if isinstance(cluster.get("topic_keywords"), list):
+        for t in cluster["topic_keywords"]:
+            if t:
+                norm = str(t).strip().lower()
+                if norm:
+                    out.add(norm)
+    topic = cluster.get("topic")
+    if topic:
+        norm = str(topic).strip().lower()
+        if norm:
+            out.add(norm)
+    return out
+
+
+def _moc_topic_set(map_note: dict) -> set[str]:
+    """Lowercased topic-set for an existing MOC entry from `cache.map_notes`."""
+    topics = map_note.get("topics") or []
+    out: set[str] = set()
+    for t in topics:
+        if t:
+            norm = str(t).strip().lower()
+            if norm:
+                out.add(norm)
+    return out
+
+
+def _candidate_stems(cluster: dict) -> list[str]:
+    """Pull the cluster's per-candidate identifiers for signature stability.
+
+    Phase 3's `Cluster` TypedDict carries `items: list[str]` — the
+    `section_id`s used by the reducer. Where callers enrich the cluster with
+    full Candidate dicts (forward-compat with T2.7), accept those too and
+    fall back to ``stem`` / ``path``.
+    """
+    items = cluster.get("items") or []
+    stems: list[str] = []
+    for it in items:
+        if isinstance(it, str):
+            if it:
+                stems.append(it)
+        elif isinstance(it, dict):
+            stem = it.get("stem") or it.get("path") or ""
+            if stem:
+                stems.append(stem)
+    return stems
+
+
+def _compute_topic_signature(cluster: dict) -> str:
+    """Stable hash for squelch keying — SDD §Implementation Examples / Example 2.
+
+    Signature shape:
+
+        sha1( "|".join(sorted(lower(topic_keywords)))
+              + "::"
+              + "|".join(sorted(candidate_stems)[:5]) ).hexdigest()[:16]
+
+    Truncating candidate_stems at 5 keeps the signature stable across small
+    candidate-set drift (one note added/removed across runs); truncating the
+    sha1 hex digest at 16 chars is fine for the ~100s of entries the squelch
+    registry will ever hold.
+    """
+    topics = sorted(_cluster_topic_set(cluster))
+    stems = sorted(_candidate_stems(cluster))[:5]
+    payload = "|".join(topics) + "::" + "|".join(stems)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _normalise_title(title: str) -> str:
+    """Case-insensitive title comparator — strip + lower."""
+    return (title or "").strip().lower()
+
+
+def _find_exact_title_match(
+    cluster_title: str, map_notes: list[dict]
+) -> str | None:
+    """Return the matching MOC's title (or stem) on a case-insensitive title hit."""
+    needle = _normalise_title(cluster_title)
+    if not needle:
+        return None
+    for entry in map_notes or []:
+        if not isinstance(entry, dict):
+            continue
+        existing_title = _normalise_title(entry.get("title") or "")
+        if existing_title and existing_title == needle:
+            # Prefer the human-readable title for the report; fall back to
+            # path stem so the agent always has something to surface.
+            return (
+                str(entry.get("title")
+                    or _stem_from_path(entry.get("path") or ""))
+            )
+    return None
+
+
+def _find_jaccard_match(
+    cluster_topics: set[str], map_notes: list[dict]
+) -> tuple[str | None, float]:
+    """Scan map_notes for the first MOC whose topics overlap ≥ 0.80.
+
+    Returns (existing_moc_label, jaccard) — `(None, 0.0)` when no MOC clears
+    the threshold. Stops on the first hit so the report names a single
+    "winning" duplicate (matches SDD Example 3's early-return).
+    """
+    if not cluster_topics:
+        return (None, 0.0)
+    for entry in map_notes or []:
+        if not isinstance(entry, dict):
+            continue
+        moc_topics = _moc_topic_set(entry)
+        if not moc_topics:
+            continue
+        score = _jaccard(cluster_topics, moc_topics)
+        if score >= JACCARD_DUP_THRESHOLD:
+            label = (
+                str(entry.get("title")
+                    or _stem_from_path(entry.get("path") or ""))
+            )
+            return (label, score)
+    return (None, 0.0)
+
+
+def phase6_dedupe(
+    clusters: list[dict],
+    cache: dict,
+    squelch_registry: dict,
+    config,
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """Filter near-duplicate clusters and consult the squelch registry.
+
+    Three skip checks run in order, each short-circuiting before the next:
+
+      1. **Exact-title match** — cluster's proposed title (case-insensitive)
+         equals any `cache.map_notes[].title`. Reported as
+         ``reason="exact-title"``.
+      2. **Jaccard ≥ 0.80** — cluster's topic-set against each existing MOC's
+         topic-set. Reported as ``reason="80-percent-overlap"``.
+      3. **Active squelch** — topic signature (sha1 of normalised topic +
+         sorted candidate stems) is present in `squelch_registry` with
+         ``runs_remaining > 0``. Reported in the ``squelched`` list.
+
+    Squelch is **read-only** in this phase. Decrement / persist / append on
+    user rejection happens in Phase 5 wiring (T5.1, T5.2) — Phase 6 only
+    consults `lib.squelch.is_active`.
+
+    Args:
+        clusters: Phase-3 (or Phase-4-enriched) `Cluster` dicts. Each carries
+            ``topic`` (str) plus optional ``topic_keywords`` (list[str]),
+            ``title`` (str — set by Phase 4), ``items`` (list[str]).
+        cache: Discovery cache dict; Phase 6 reads ``map_notes`` only.
+        squelch_registry: ``dict[str, SquelchEntry]`` from
+            `lib.squelch.load_registry`. Empty dict = no entries active.
+        config: Reserved for future tuning (e.g. configurable threshold).
+            Not read in this phase — accepting it keeps the signature stable
+            for downstream tasks.
+
+    Returns:
+        ``(kept_clusters, duplicates_skipped, squelched)`` — matching the
+        DiscoveryReport shape (SDD lines 548-549).
+
+        - ``kept_clusters``: subset of `clusters` (identity-preserved) that
+          passed all three checks.
+        - ``duplicates_skipped``: list of
+          ``{cluster_id, reason, existing_moc}`` dicts.
+        - ``squelched``: list of ``{cluster_id, runs_remaining}`` dicts.
+
+    Pure: input lists / dicts are not mutated. The squelch registry is
+    never decremented or rewritten here.
+    """
+    del config  # reserved — Phase 6 reads no config fields today.
+
+    map_notes: list[dict] = list(cache.get("map_notes") or [])
+
+    kept: list[dict] = []
+    duplicates_skipped: list[dict] = []
+    squelched: list[dict] = []
+
+    # Local import keeps the lib dependency colocated with its only caller in
+    # this module — same pattern as `phase3_cluster`.
+    from lib.squelch import is_active as _squelch_is_active
+
+    for idx, cluster in enumerate(clusters or [], start=1):
+        cluster_id = f"MOC{idx:02d}"
+
+        # ── 1. Exact-title match ────────────────────────────────────────────
+        existing = _find_exact_title_match(cluster.get("title") or "", map_notes)
+        if existing is not None:
+            duplicates_skipped.append({
+                "cluster_id": cluster_id,
+                "reason": "exact-title",
+                "existing_moc": existing,
+            })
+            _log(
+                f"phase6: cluster {cluster_id!r} title={cluster.get('title')!r} "
+                f"matches existing MOC {existing!r} — skipping (exact-title)"
+            )
+            continue
+
+        # ── 2. Jaccard overlap ≥ 0.80 ──────────────────────────────────────
+        cluster_topics = _cluster_topic_set(cluster)
+        match_label, score = _find_jaccard_match(cluster_topics, map_notes)
+        if match_label is not None:
+            duplicates_skipped.append({
+                "cluster_id": cluster_id,
+                "reason": "80-percent-overlap",
+                "existing_moc": match_label,
+            })
+            _log(
+                f"phase6: cluster {cluster_id!r} topic-set overlaps "
+                f"{match_label!r} (jaccard={score:.2f}) — skipping"
+            )
+            continue
+
+        # ── 3. Squelch lookup (read-only) ──────────────────────────────────
+        signature = _compute_topic_signature(cluster)
+        if _squelch_is_active(squelch_registry or {}, signature):
+            entry = (squelch_registry or {}).get(signature)
+            runs_remaining = entry.runs_remaining if entry is not None else 0
+            squelched.append({
+                "cluster_id": cluster_id,
+                "runs_remaining": runs_remaining,
+            })
+            _log(
+                f"phase6: cluster {cluster_id!r} signature={signature!r} is "
+                f"squelched (runs_remaining={runs_remaining}) — skipping"
+            )
+            continue
+
+        kept.append(cluster)
+
+    _log(
+        f"phase6: kept={len(kept)} duplicates={len(duplicates_skipped)} "
+        f"squelched={len(squelched)}"
+    )
+
+    return (kept, duplicates_skipped, squelched)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Discovery phases — stubs for T2.7
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 def phase6_5_apply_candidate_cap(*_args, **_kwargs):

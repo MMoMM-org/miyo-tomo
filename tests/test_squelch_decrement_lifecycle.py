@@ -139,6 +139,29 @@ def test_decrement_on_run_start(tmp_path: Path) -> None:
     assert "sig-beta" not in sigs, "sig-beta (runs_remaining 1→0) must be removed"
 
 
+def test_all_entries_expire_writes_empty_registry(tmp_path: Path) -> None:
+    """Boundary case — sole entry with runs_remaining=1 expires; file remains valid empty registry.
+
+    Verifies the ``rejections == []`` shape round-trips through load_registry
+    so a subsequent run starts cleanly.
+    """
+    squelch_path = tmp_path / "moc-squelch.json"
+    squelch_path.write_text(
+        _make_registry_json([_entry("sig-only", runs_remaining=1)]),
+        encoding="utf-8",
+    )
+
+    argv = _full_pipeline_argv(tmp_path, squelch_path)
+    with pytest.raises(NotImplementedError):
+        moc_discovery.main(argv)
+
+    post_run = json.loads(squelch_path.read_text(encoding="utf-8"))
+    assert post_run["rejections"] == [], "all-expired registry should serialise empty rejections"
+    # Re-load via the public API to confirm round-trip.
+    reloaded = squelch_mod.load_registry(squelch_path)
+    assert reloaded == {}, "load_registry on empty rejections should return empty dict"
+
+
 def test_decrement_persisted_atomically(tmp_path: Path) -> None:
     """If save_registry_atomic raises, the original squelch file must be intact.
 
@@ -156,9 +179,6 @@ def test_decrement_persisted_atomically(tmp_path: Path) -> None:
         fake_os.replace.side_effect = OSError("simulated disk full")
         fake_os.fdopen = real_os.fdopen
         fake_os.fsync = real_os.fsync
-        # makedirs is called by save_registry_atomic — delegate to real impl.
-        fake_os.makedirs = real_os.makedirs
-        # PathLike / fspath not needed since squelch uses pathlib internally.
 
         with pytest.raises(OSError, match="simulated disk full"):
             argv = _full_pipeline_argv(tmp_path, squelch_path)
@@ -168,6 +188,11 @@ def test_decrement_persisted_atomically(tmp_path: Path) -> None:
     assert after_content == original_content, (
         "Squelch file must not be modified when save_registry_atomic raises"
     )
+    # No tmp staging file should be left behind after rollback.
+    leftover = list(squelch_path.parent.glob("*.tmp")) + list(
+        squelch_path.parent.glob(".moc-squelch*")
+    )
+    assert leftover == [], f"staging file leaked after atomic-write rollback: {leftover}"
 
 
 def test_active_signature_filters_cluster(tmp_path: Path) -> None:

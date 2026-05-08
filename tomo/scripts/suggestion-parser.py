@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.8.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import sys
 
@@ -30,6 +31,10 @@ import sys
 #   ### S01: filename.md    ### S01 — Title
 #   ### A1. Title           ### B12. Another
 RE_SECTION_HEADER = re.compile(r"^#{2,3}\s+([A-Z]\d+)[.:\s—–-]+", re.IGNORECASE)
+
+# MOC proposal-doc section header: ### MOCxx — Title  (F-43 T4.1)
+#   ### MOC01 — Shell & Terminal (MOC)
+RE_MOC_SECTION_HEADER = re.compile(r"^###\s+(MOC\d+)\s*[—–-]+\s*(.*)", re.IGNORECASE)
 
 # Checkbox lines
 RE_CHECKED = re.compile(r"^\s*-\s+\[x\]\s*(.*)", re.IGNORECASE)
@@ -117,6 +122,8 @@ def _normalise_action(text: str) -> str:
         return "update_daily_note"
     if "use classification" in low:
         return "use_classification_moc"
+    if "bestehende up::" in low and "behalten" in low:
+        return "override_preserve_existing_up"
     # Fallback: snake_case the first few words
     words = re.split(r"\s+", re.sub(r"[^a-z0-9\s]", "", low))
     return "_".join(w for w in words[:4] if w)
@@ -446,6 +453,242 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# MOC proposal-doc parser  (F-43 T4.1)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Frontmatter YAML block extractor
+RE_FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+def _extract_frontmatter(text: str) -> dict[str, str]:
+    """Extract key→value pairs from a YAML frontmatter block.
+
+    Returns a flat dict of string values.  No full YAML parse — just
+    simple `key: value` lines (sufficient for frontmatter dispatch).
+    """
+    m = RE_FRONTMATTER.match(text)
+    if not m:
+        return {}
+    result: dict[str, str] = {}
+    for line in m.group(1).splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            result[k.strip()] = v.strip()
+    return result
+
+
+def _parse_children_list(section_text: str) -> list[str]:
+    """Return all `[x]`-ticked wikilink stems from a Children section.
+
+    Handles lines like:
+        - [x] `[[note-stem]]` (annotation text)
+        - [x] [[note-stem]]
+
+    Only checked items are extracted; unchecked `[ ]` lines are ignored.
+    """
+    stems: list[str] = []
+    for line in section_text.splitlines():
+        if not RE_CHECKED.match(line.strip()):
+            continue
+        wl = RE_WIKILINK.search(line)
+        if wl:
+            stems.append(wl.group(1).strip())
+    return stems
+
+
+def _is_moc_proposal_doc(text: str, filename: str = "") -> bool:
+    """Return True when the document is a MOC proposal-doc.
+
+    Dispatch criteria (either is sufficient):
+    - filename matches ``tomo-moc-proposal-*``
+    - frontmatter ``type: tomo-proposal``
+    """
+    basename = os.path.basename(filename)
+    if basename.startswith("tomo-moc-proposal-"):
+        return True
+    fm = _extract_frontmatter(text)
+    return fm.get("type") == "tomo-proposal"
+
+
+def parse_moc_proposal_doc(content: str, filename: str = "") -> list[dict]:
+    """Parse a MOC proposal-doc and return a list of ConfirmedMOCProposal dicts.
+
+    Each accepted cluster (``- [x] Accept``) produces one entry:
+    {
+        "moc_id":                       str,   # e.g. "MOC01"
+        "title":                        str,
+        "location":                     str,
+        "template":                     str,
+        "parent":                       str | None,
+        "children":                     list[str],
+        "override_preserve_existing_up": bool,
+    }
+
+    Skips clusters whose ``- [ ] Accept`` is unchecked.
+    Returns [] when no clusters are accepted.
+    """
+    lines = content.splitlines()
+    proposals: list[dict] = []
+
+    # ── Split into ### MOCxx sections ────────────────────────────────────────
+    # Each section starts at a `### MOCxx — …` header.
+    moc_blocks: list[tuple[str, str, list[str]]] = []  # (moc_id, title, lines)
+    current_moc_id: str | None = None
+    current_moc_title: str = ""
+    current_moc_lines: list[str] = []
+
+    for line in lines:
+        m = RE_MOC_SECTION_HEADER.match(line)
+        if m:
+            if current_moc_id is not None:
+                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+            current_moc_id = m.group(1).upper()
+            current_moc_title = m.group(2).strip()
+            current_moc_lines = []
+        elif current_moc_id is not None:
+            # Stop a block when a new h2/h1 starts (document structure guard)
+            if line.startswith("## ") or line.startswith("# "):
+                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+                current_moc_id = None
+                current_moc_lines = []
+            else:
+                current_moc_lines.append(line)
+
+    if current_moc_id is not None:
+        moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+
+    # ── Parse each block ────────────────────────────────────────────────────
+    for moc_id, heading_title, block_lines in moc_blocks:
+        # ── Accept gate ──────────────────────────────────────────────────────
+        accepted = False
+        for bl in block_lines:
+            cb = RE_CHECKED.match(bl.strip())
+            if cb and cb.group(1).strip().lower() == "accept":
+                accepted = True
+                break
+        if not accepted:
+            continue
+
+        # ── Title field (may be edited inline) ───────────────────────────────
+        title = heading_title  # fallback
+        for bl in block_lines:
+            stripped = bl.strip()
+            field_line = stripped[2:].strip() if stripped.startswith("- ") else stripped
+            fm = RE_FIELD.match(field_line)
+            if fm:
+                key = fm.group(1).strip().rstrip(":").strip().lower()
+                val = fm.group(2).strip()
+                if key == "title":
+                    # Strip backticks
+                    title = val.strip("`")
+                    break
+
+        # ── Location field ────────────────────────────────────────────────────
+        location: str = "Atlas/200 Maps/"
+        for bl in block_lines:
+            stripped = bl.strip()
+            field_line = stripped[2:].strip() if stripped.startswith("- ") else stripped
+            fm = RE_FIELD.match(field_line)
+            if fm:
+                key = fm.group(1).strip().rstrip(":").strip().lower()
+                val = fm.group(2).strip()
+                if key in ("location", "destination"):
+                    location = val.strip("`")
+                    break
+
+        # ── Template field ────────────────────────────────────────────────────
+        template: str = ""
+        for bl in block_lines:
+            stripped = bl.strip()
+            field_line = stripped[2:].strip() if stripped.startswith("- ") else stripped
+            fm = RE_FIELD.match(field_line)
+            if fm:
+                key = fm.group(1).strip().rstrip(":").strip().lower()
+                val = fm.group(2).strip()
+                if key == "template":
+                    # Strip wikilink brackets and backticks
+                    wl = _extract_wikilink(val)
+                    template = (wl or val).strip("`").strip()
+                    break
+
+        # ── Parent section (#### Parent) — first [x] wins ────────────────────
+        parent: str | None = None
+        in_parent_section = False
+        for bl in block_lines:
+            stripped = bl.strip()
+            if stripped.startswith("#### Parent"):
+                in_parent_section = True
+                continue
+            if in_parent_section and stripped.startswith("####"):
+                # Next sub-section ends Parent block
+                in_parent_section = False
+                continue
+            if in_parent_section:
+                cb = RE_CHECKED.match(stripped)
+                if cb:
+                    cb_text = cb.group(1).strip()
+                    # Skip "kein parent" option
+                    if "kein parent" not in cb_text.lower():
+                        wl = RE_WIKILINK.search(cb_text)
+                        if wl:
+                            parent = wl.group(1).strip()
+                        else:
+                            # up:: `[[stem]]` pattern: extract from backtick wikilink
+                            bk = re.search(r"`\[\[([^\]]+)\]\]`", cb_text)
+                            if bk:
+                                parent = bk.group(1).strip()
+                        if parent:
+                            break  # first checked wins
+
+        # ── Children section (#### Children) — all [x] ───────────────────────
+        children: list[str] = []
+        in_children_section = False
+        children_lines: list[str] = []
+        for bl in block_lines:
+            stripped = bl.strip()
+            if re.match(r"^####\s+Children", stripped, re.IGNORECASE):
+                in_children_section = True
+                continue
+            if in_children_section and stripped.startswith("####"):
+                in_children_section = False
+                continue
+            if in_children_section:
+                children_lines.append(bl)
+        children = _parse_children_list("\n".join(children_lines))
+
+        # ── Override toggle (#### up::-Handling Override) ─────────────────────
+        override_preserve = False
+        in_override_section = False
+        for bl in block_lines:
+            stripped = bl.strip()
+            if re.match(r"^####\s+up::.*Override", stripped, re.IGNORECASE):
+                in_override_section = True
+                continue
+            if in_override_section and stripped.startswith("####"):
+                in_override_section = False
+                continue
+            if in_override_section:
+                cb = RE_CHECKED.match(stripped)
+                if cb:
+                    cb_text = cb.group(1).lower()
+                    if "bestehende up::" in cb_text and "behalten" in cb_text:
+                        override_preserve = True
+                        break
+
+        proposals.append({
+            "moc_id": moc_id,
+            "title": title,
+            "location": location,
+            "template": template,
+            "parent": parent,
+            "children": children,
+            "override_preserve_existing_up": override_preserve,
+        })
+
+    return proposals
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Daily Notes Updates parser
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -676,6 +919,13 @@ def main() -> int:
     if not text.strip():
         print("error: input is empty", file=sys.stderr)
         return 1
+
+    # ── Pre-parse dispatch: MOC proposal-doc (F-43 T4.1) ─────────
+    filename = args.file or ""
+    if _is_moc_proposal_doc(text, filename=filename):
+        proposals = parse_moc_proposal_doc(text, filename=filename)
+        print(json.dumps(proposals, ensure_ascii=False, indent=2))
+        return 0
 
     # ── Split and parse ───────────────────────────────────────────
     raw_sections = split_into_sections(text)

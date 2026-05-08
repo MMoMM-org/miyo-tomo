@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.2
+# version: 0.10.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -269,6 +269,11 @@ def _ensure_md_extension(path: str | None) -> str | None:
 # emit time produces actionable Tomo-side diagnostics instead.
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
+# Matches the first ``up:: [[Target]]`` line in a note body (Rule 4.x).
+# MULTILINE so ``^`` anchors to each line start.  Non-greedy ``(.+?)`` stops
+# at the first ``]]`` to avoid over-matching when the target contains brackets.
+_UP_MARKER_RE = re.compile(r"^\s*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
+
 # Optional path fields per action kind. Required path fields are derived from
 # the JSON Schema (see tomo/schemas/instructions.schema.json) — this map only
 # names additionally permitted nullable path fields so the validator skips
@@ -288,6 +293,124 @@ _REQUIRED_PATH_FIELDS = {
     "delete_source": ("source_path",),
     "add_relationship": ("target_moc_path",),
 }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Rule 4.x: per-child existing-up:: preservation (F-43 T4.2)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def extract_first_up_marker(content: str) -> str | None:
+    """Return the first ``up:: [[Target]]`` target from note content, or None.
+
+    Searches the full content string (including frontmatter) for the first line
+    that matches the up:: wikilink pattern.  This mirrors the approach in
+    moc-discovery.py's ``_extract_first_up_marker``, but lives here so the
+    renderer can call it without importing the sibling script.
+
+    Multiple ``up::`` lines on the same note → only the first is returned;
+    callers are responsible for warning when that case is detected.
+    """
+    if not content:
+        return None
+    match = _UP_MARKER_RE.search(content)
+    if not match:
+        return None
+    target = match.group(1).strip()
+    return target or None
+
+
+def _make_add_rel(
+    counter: list[int],
+    target_note_path: str,
+    marker: str,
+    target_stem: str,
+) -> dict:
+    """Build a single add_relationship action dict.
+
+    ``target_moc_path`` holds the child note's vault path (the note being
+    modified).  ``marker`` is the dataview field (``up::`` or ``related::``).
+    ``line`` is the pre-formatted replacement line that Hashi will write.
+    """
+    return {
+        "id": _next_id(counter),
+        "action": "add_relationship",
+        "target_moc_path": target_note_path,
+        "marker": marker,
+        "line": f"{marker} [[{target_stem}]]",
+        "source_note_title": None,
+        "applied": None,
+    }
+
+
+def emit_up_preservation_actions(
+    child_stem: str,
+    new_moc_stem: str,
+    override_flag: bool,
+    kado_client,
+    counter: list[int],
+) -> list[dict]:
+    """For one child, emit 1 or 2 add_relationship actions per Rule 4.x.
+
+    Implements SDD Example 1 verbatim.  Called once per accepted child of a
+    ConfirmedMOCProposal.  ``override_flag`` is the group-level up::-handling
+    override toggle from the proposal doc.
+
+    Rules:
+      4.1 / 4.4 — no existing up:: → up:: <newMOC> (Override is a no-op here)
+      4.2        — unchecked Override + valid existing up:: <X> →
+                   up:: <newMOC> + related:: <X>
+      4.5        — checked Override + valid existing up:: <X> →
+                   related:: <newMOC> (existing up:: kept, not touched)
+      4.3        — unchecked Override + broken existing up:: →
+                   up:: <newMOC> only (broken target silently dropped)
+
+    Edge cases:
+      - Self-link: if existing_up_target == new_moc_stem → no actions emitted.
+      - Child missing: KadoError(NOT_FOUND) on resolve → one action with
+        applied=False and error="child-missing"; does NOT raise.
+      - Multiple up:: lines: extract_first_up_marker returns the first; callers
+        may log a warning for multi-up:: notes.
+    """
+    try:
+        child_path = kado_client.resolve_stem_to_path(child_stem)
+    except KadoError:
+        # Child deleted between proposal write and apply (SDD edge case).
+        return [{
+            "id": _next_id(counter),
+            "action": "add_relationship",
+            "target_moc_path": None,
+            "marker": None,
+            "line": None,
+            "applied": False,
+            "error": "child-missing",
+        }]
+
+    note = kado_client.read_note(child_path)
+    content = note.get("content", "") if isinstance(note, dict) else ""
+    existing_up_target = extract_first_up_marker(content)
+
+    actions: list[dict] = []
+
+    if existing_up_target is None:
+        # Rule 4.1 / 4.4 — no existing up::; new MOC becomes up:: regardless of Override
+        actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+    elif existing_up_target == new_moc_stem:
+        # Self-link guard: existing up:: already points to the new MOC → no-op
+        pass
+    elif kado_client.path_exists(existing_up_target):
+        if override_flag:
+            # Rule 4.5 — keep existing up::, new MOC becomes related::
+            actions.append(_make_add_rel(counter, child_path, "related::", new_moc_stem))
+        else:
+            # Rule 4.2 — new MOC becomes up::, existing target moves to related::
+            actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+            actions.append(_make_add_rel(counter, child_path, "related::", existing_up_target))
+    else:
+        # Rule 4.3 — broken existing up::; just set new up:: (no related preservation)
+        actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+
+    return actions
 
 
 def _check_path_shape(value: str) -> str | None:

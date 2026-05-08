@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.7.1
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -1343,6 +1343,7 @@ def phase65_validate_existing_up(
     Side effects:
         - One `kado_client.read_note` call per candidate.
         - Stderr WARN per multi-`up::` body.
+        - Stderr WARN per failed Kado read (treated as absent, loop continues).
     """
     stem_to_path: dict[str, str] = {c.stem: c.path for c in candidates if c.stem}
     moc_stems = _moc_stems_from_cache(cache)
@@ -1373,7 +1374,21 @@ def phase65_validate_existing_up(
                 )
                 continue
 
-            note = kado_client.read_note(path)
+            # Guard against Kado read failures (note deleted between
+            # candidate collection and Phase 6.5, network error, permission
+            # denied, …). A single failing read must NOT abort decoration of
+            # the remaining candidates — we treat the unreadable child as
+            # `state="absent"` so downstream rendering keeps moving.
+            try:
+                note = kado_client.read_note(path)
+            except Exception as exc:  # noqa: BLE001 — defensive boundary
+                _log(
+                    f"phase6.5: WARN: kado read_note({path!r}) failed "
+                    f"({type(exc).__name__}: {exc}); treating as absent"
+                )
+                rows.append({"stem": stem, "state": "absent", "target": None})
+                continue
+
             content = note.get("content", "") if isinstance(note, dict) else ""
 
             # Multi-`up::` detection: count regex hits before extracting

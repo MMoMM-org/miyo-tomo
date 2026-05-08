@@ -217,3 +217,70 @@ def test_malformed_multi_up_uses_first_with_warning(capsys):
     assert "Atlas/202 Notes/multi.md" in captured.err, (
         f"Stderr warning must name the offending path; got {captured.err!r}"
     )
+
+
+def test_kado_read_failure_does_not_crash(capsys):
+    """One failing `read_note` must not abort decoration of the cluster.
+
+    Real-world failure modes: note deleted between candidate collection and
+    Phase 6.5, transient Kado network/permission error. The function must
+    continue, mark the unreadable child as ``state="absent"`` /
+    ``target=None``, and let the rest of the cluster decorate normally.
+    """
+
+    class _FlakyKado:
+        """Raises for one configured stem; behaves like _FakeKado otherwise."""
+
+        def __init__(self, notes_by_path: dict[str, str], failing_path: str):
+            self._notes = dict(notes_by_path)
+            self._failing = failing_path
+
+        def read_note(self, path: str) -> dict:
+            if path == self._failing:
+                raise RuntimeError(f"_FlakyKado: simulated failure for {path!r}")
+            if path not in self._notes:
+                raise FileNotFoundError(f"_FlakyKado: path not registered: {path!r}")
+            return {"content": self._notes[path]}
+
+    candidates = [
+        _candidate("zsh-aliases", "Atlas/202 Notes/zsh-aliases.md"),
+        _candidate("oh-my-zsh", "Atlas/202 Notes/oh-my-zsh.md"),
+    ]
+    clusters = [_cluster("shell", ["zsh-aliases", "oh-my-zsh"])]
+    kado = _FlakyKado(
+        notes_by_path={
+            "Atlas/202 Notes/oh-my-zsh.md": (
+                "# oh-my-zsh\n\nup:: [[2600 - Applied Sciences]]\n"
+            ),
+        },
+        failing_path="Atlas/202 Notes/zsh-aliases.md",
+    )
+    cache = _cache(
+        [("2600 - Applied Sciences", "Atlas/200 Maps/2600 - Applied Sciences.md")]
+    )
+
+    decorated = moc_discovery.phase65_validate_existing_up(
+        clusters, candidates, kado, cache
+    )
+
+    assert len(decorated) == 1, f"Cluster count must be preserved; got {decorated!r}"
+    rows = decorated[0]["existing_up"]
+    assert rows == [
+        {"stem": "zsh-aliases", "state": "absent", "target": None},
+        {
+            "stem": "oh-my-zsh",
+            "state": "valid",
+            "target": "2600 - Applied Sciences",
+        },
+    ], (
+        "Both stems must appear in existing_up; failing one absent/None, the "
+        f"other resolved normally; got {rows!r}"
+    )
+
+    captured = capsys.readouterr()
+    assert "kado read_note" in captured.err, (
+        f"Expected stderr warning about failed kado read_note; got err={captured.err!r}"
+    )
+    assert "Atlas/202 Notes/zsh-aliases.md" in captured.err, (
+        f"Stderr warning must name the failing path; got {captured.err!r}"
+    )

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.1
+# version: 0.9.2
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -112,16 +112,10 @@ def load_config(config_path: str) -> dict:
     return resolved
 
 
-def slugify(text: str) -> str:
-    """Convert a title to a filename-safe slug."""
-    s = text.lower()
-    s = re.sub(r"[äÄ]", "ae", s)
-    s = re.sub(r"[öÖ]", "oe", s)
-    s = re.sub(r"[üÜ]", "ue", s)
-    s = re.sub(r"ß", "ss", s)
-    s = re.sub(r"[^a-z0-9]+", "-", s)
-    s = s.strip("-")
-    return s[:80]  # cap length
+# Re-export for backwards compatibility — the canonical implementation now
+# lives in `lib/slugify.py` so moc-discovery.py can reuse it cleanly without
+# the hyphenated-module import dance. F-43 Phase 2 T2.5 (slugify extraction).
+from lib.slugify import slugify  # noqa: E402,F401  — re-exported for callers
 
 
 def read_note_body(client: KadoClient, path: str) -> str:

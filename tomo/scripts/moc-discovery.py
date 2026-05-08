@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -11,8 +11,8 @@ through the six discovery phases described in the SDD §Pseudocode (lines
     Phase 1 — Candidate selection (mode handlers + pre-filter + caps)
     Phase 2 — Topic extraction (cache lookup + LLM cache-miss batching)
     Phase 3 — Cluster detection (thin wrapper around lib.topic_clusters)
-    Phase 4 — Title generation (T2.5 — pending)
-    Phase 5 — Parent resolution (T2.5 — pending)
+    Phase 4 — Title generation (per-profile suffix rules + mode override)
+    Phase 5 — Parent resolution (classification keyword overlap, top-3)
     Phase 6 — Duplicate detection (T2.6 — pending)
     Phase 6.5 — Existing-up:: validation (T2.7 — pending)
 
@@ -749,23 +749,229 @@ def phase3_cluster(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Discovery phases — stubs for T2.5-T2.7
+# Phase 4 — Title generation (per-profile suffix + mode override)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def phase4_generate_titles(*_args, **_kwargs):
-    """Per-profile title generation (Dewey `(MOC)` suffix vs LYT plain)."""
-    raise NotImplementedError("T2.5 — phase4_generate_titles pending")
+# Profile name → MOC-title suffix appended after the topic. Empty string =
+# plain title (LYT-style). Both profiles use a hardcoded suffix for now;
+# tier-3/lyt-moc/new-moc-proposal.md §7 documents a future "(MOC)" form
+# stored on the profile, but per the spec the canonical TopicTitle for the
+# proposed-MOC pipeline is the plain "<Topic> MOC" / "<Topic>" pair.
+_PROFILE_TITLE_SUFFIX: dict[str, str] = {
+    "miyo": " MOC",
+    "lyt": "",
+}
 
 
-def phase5_match_parents(*_args, **_kwargs):
-    """Match topic keywords against profile.classification.categories."""
-    raise NotImplementedError("T2.6 — phase5_match_parents pending")
+def _topic_title(cluster: dict) -> str:
+    """Title-case a cluster's normalised topic into a TopicTitle.
+
+    Phase 3's reducer normalises topics (lowercase, plural-fold) and emits the
+    cluster keyed off the normalised form. For display we Title-Case it —
+    "shell" → "Shell". Multi-word topics have their internal whitespace
+    preserved ("knowledge management" → "Knowledge Management").
+    """
+    topic_raw = (cluster.get("topic") or "").strip()
+    if not topic_raw:
+        return ""
+    # `str.title()` is good enough here: cluster topics are short
+    # noun-phrases produced by Phase 2's topic extractor and Phase 3's
+    # normalisation already lower-cased them.
+    return topic_raw.title()
+
+
+def phase4_title(
+    cluster: dict,
+    profile: dict,
+    mode: str,
+    trigger_arg: str,
+) -> str:
+    """Per-cluster title generation, profile- and mode-aware.
+
+    Args:
+        cluster: A Phase-3 `Cluster` dict (`{topic, items, parent, tags}`).
+        profile: The active profile dict (post-`yaml.safe_load`). Only the
+            top-level `name` field is consulted — title-suffix policy is keyed
+            off the canonical profile name (`"MiYo"` / `"LYT (...)"`).
+        mode: The /moc-propose run mode (`tag` / `folder` / `class` / `title`
+            / `free-text` / `scan`).
+        trigger_arg: The mode's argument; used verbatim when `mode == "title"`.
+
+    Returns:
+        The proposed MOC title string.
+
+    Behaviour:
+      - `mode == "title"` → user input wins regardless of profile.
+      - Otherwise: TitleCase(cluster.topic) + profile suffix.
+
+    Pure: input dicts are not mutated.
+    """
+    # User-provided title — verbatim, untouched (PRD AC-2.4).
+    if mode == "title":
+        return trigger_arg
+
+    topic_title = _topic_title(cluster)
+    profile_name = (profile.get("name") or "").strip()
+    # Resolve to lowercase short-name key. miyo.yaml → "MiYo"; lyt.yaml →
+    # "LYT (Linking Your Thinking)". The first whitespace-token, lowered,
+    # collapses both to a stable lookup key.
+    short = profile_name.split()[0].lower() if profile_name else "miyo"
+    suffix = _PROFILE_TITLE_SUFFIX.get(short, "")
+    return f"{topic_title}{suffix}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Phase 5 — Parent resolution (classification keyword overlap)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class ParentOption:
+    """One offered parent for a Proposed MOC.
+
+    Per SDD §Application Data Models line 547:
+        parent_options_per_cluster: dict[cluster_id, list of {moc_stem,
+                                                              confidence,
+                                                              label}]
+    """
+
+    moc_stem: str
+    confidence: float
+    label: str
+
+
+def _cluster_topic_keywords(cluster: dict) -> list[str]:
+    """Extract the keyword bag a cluster will be scored against.
+
+    Two shapes are supported:
+      - Phase-3 default: only `cluster.topic` (single normalised string).
+        Returns `[topic]`.
+      - Future / explicit: `cluster.topic_keywords: list[str]` set upstream
+        by callers carrying multi-keyword context.
+
+    The result is lower-cased, whitespace-trimmed, and de-duplicated — same
+    treatment the lib applies to candidates.
+    """
+    raw: list[str] = []
+    if isinstance(cluster.get("topic_keywords"), list):
+        raw.extend(str(t) for t in cluster["topic_keywords"] if t)
+    if cluster.get("topic"):
+        raw.append(str(cluster["topic"]))
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for t in raw:
+        norm = t.strip().lower()
+        if norm and norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+    return out
+
+
+def _category_keywords(cat: dict) -> list[str]:
+    """Lower-cased, deduplicated keyword list from a profile category."""
+    raw = cat.get("keywords") or []
+    seen: set[str] = set()
+    out: list[str] = []
+    for t in raw:
+        norm = str(t).strip().lower()
+        if norm and norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+    return out
+
+
+def _format_parent_label(klass: str, name: str) -> str:
+    """Human-readable label, e.g. `"Applied Sciences (Dewey 2600)"`."""
+    return f"{name} (Dewey {klass})"
+
+
+def _format_parent_stem(klass: str, name: str) -> str:
+    """Canonical classification-MOC stem, e.g. `"2600 - Applied Sciences"`.
+
+    Mirrors the existing convention seen across miyo vault MOCs and the
+    tier-3 docs (e.g. `Atlas/200 Maps/2600 - Applied Sciences.md`).
+    """
+    return f"{klass} - {name}"
+
+
+def phase5_resolve_parents(
+    cluster: dict,
+    profile: dict,
+    cache: dict,
+) -> list[ParentOption]:
+    """Match cluster topics against profile classification → top-3 ParentOptions.
+
+    Args:
+        cluster: Phase-3 `Cluster` (or enriched with `topic_keywords`).
+        profile: The active profile dict. Reads
+            `profile.classification.categories` — a mapping
+            `{NNNN: {name, keywords}}`.
+        cache: The discovery cache. Reserved for future MOC-level matching
+            (per SDD line 877 — `cache.moc_likes`); currently unused by the
+            classification-only resolver.
+
+    Returns:
+        List of `ParentOption` sorted by `confidence` DESC, capped at 3
+        entries. Categories with zero keyword overlap are excluded. An
+        empty list signals "no confident parent" (the caller should fall
+        back to top-level placement per SDD §Pseudocode line 877 +
+        tier-3/lyt-moc/moc-matching.md §5).
+
+    Pure: input dicts are not mutated.
+    """
+    del cache  # reserved for MOC-level matching in T2.6+
+
+    classification = profile.get("classification") or {}
+    categories = classification.get("categories") or {}
+    if not categories:
+        return []
+
+    cluster_keywords = _cluster_topic_keywords(cluster)
+    if not cluster_keywords:
+        return []
+    cluster_set = set(cluster_keywords)
+
+    scored: list[ParentOption] = []
+    for klass_key, cat in categories.items():
+        if not isinstance(cat, dict):
+            continue
+        klass = str(klass_key)
+        name = (cat.get("name") or "").strip()
+        cat_keywords = _category_keywords(cat)
+        if not cat_keywords:
+            continue
+        cat_set = set(cat_keywords)
+        overlap = cluster_set & cat_set
+        if not overlap:
+            continue
+        # Overlap-ratio score, denominator = max(len(cluster_keywords), 1)
+        # to prevent div-by-zero on degenerate empty input (already
+        # short-circuited above, but kept defensive).
+        confidence = len(overlap) / max(len(cluster_keywords), 1)
+        scored.append(
+            ParentOption(
+                moc_stem=_format_parent_stem(klass, name),
+                confidence=round(confidence, 4),
+                label=_format_parent_label(klass, name),
+            )
+        )
+
+    # Sort descending by confidence; stable on ties (insertion order = profile
+    # iteration order, which is YAML-key order — deterministic).
+    scored.sort(key=lambda p: p.confidence, reverse=True)
+    return scored[:3]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Discovery phases — stubs for T2.6-T2.7
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 def phase6_filter_duplicates_and_squelch(*_args, **_kwargs):
     """Drop near-duplicate clusters; honour the squelch registry."""
-    raise NotImplementedError("T2.7 — phase6_filter_duplicates_and_squelch pending")
+    raise NotImplementedError("T2.6 — phase6_filter_duplicates_and_squelch pending")
 
 
 def phase6_5_apply_candidate_cap(*_args, **_kwargs):

@@ -50,7 +50,7 @@ pytest tests/ -v -m "not integration"
 | `test_accept_flow_emits_create_moc_action` | AC-5.3 | Full pipeline → `create_moc` action with `applied: false` |
 | `test_no_accept_emits_no_actions` | AC-5.4 | No Accept ticked → parser returns [] |
 | `test_multi_cluster_partial_accept` | AC-3.4, AC-5.3 | 1 of 2 clusters accepted → 1 proposal |
-| `test_perf_cache_warm_under_45s` | SDD Quality | Cache-warm dry-run < 45s (1.5× SDD target 30s) |
+| `test_perf_cache_warm_under_45s` | SDD Quality | Cache-warm `--title` discovery (real pipeline) < 45s (1.5× SDD target 30s) |
 | `test_perf_pass2_apply_under_25s` | SDD Quality | Render+parse+build_actions < 25s (1.5× SDD target 15s) |
 | `test_perf_multi_cluster_render_under_8s` | SDD Quality | 5-cluster render ×3 < 8s (1.5× SDD target 5s) |
 
@@ -76,11 +76,11 @@ Performance targets in the SDD are measured against Marcus's local development m
 
 The 1.5× CI tolerance is set conservatively:
 
-| SDD Target | CI Tolerance | Regression Threshold |
-|------------|-------------|---------------------|
-| Cache-warm < 30s | < 45s | > 45s = fail |
-| Pass-2 apply < 15s | < 25s | > 25s = fail |
-| 5-cluster render < 5s | < 8s | > 8s = fail |
+| SDD Target | CI Tolerance | Regression Threshold | How exercised |
+|------------|-------------|---------------------|---------------|
+| Cache-warm < 30s | < 45s | > 45s = fail | `--title dataview` with seeded cache (no Kado) |
+| Pass-2 apply < 15s | < 25s | > 25s = fail | render + parse + build_actions in-process |
+| 5-cluster render < 5s | < 8s | > 8s = fail | `render_moc_proposal_doc` × 3 in-process |
 
 A test that consistently needs > 2× the SDD target is a signal of a real performance regression, not runner variability.
 

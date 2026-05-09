@@ -21,21 +21,18 @@ Run with:
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import sys
 import time
 from pathlib import Path
 
 import pytest
-import yaml
 
 # ── Repo paths ────────────────────────────────────────────────────────────────
 
 TESTS_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
-PROFILES_DIR = REPO_ROOT / "tomo" / "profiles"
 
 # ── Script module handles (pre-loaded in conftest) ────────────────────────────
 
@@ -50,7 +47,6 @@ from .conftest import (  # noqa: E402
     make_cluster,
     make_discovery_report,
     PRIVAT_TEST_ROOT,
-    PROFILES_DIR as _PROFILES_DIR,
 )
 
 
@@ -333,36 +329,74 @@ def test_no_args_e2e(privat_test_clone, seeded_discovery_cache, isolated_tomo_st
 
 
 @pytest.mark.integration
-def test_zero_candidates_aborts_no_file_written(tmp_path):
-    """When discovery returns 0 candidates, abort_reason='zero-candidates' and no file written.
+def test_zero_candidates_aborts_no_file_written(tmp_path, seeded_discovery_cache):
+    """When discovery finds 0 matching candidates, moc-discovery.py emits abort_reason
+    'zero-candidates' and the pipeline writes no proposal-doc file.
+
+    Drives moc-discovery.py as a subprocess with a --title that matches no cached
+    note topics. The seeded cache passes the cache-empty pre-check so Phase 1 runs
+    and returns 0 candidates → abort_reason='zero-candidates'. The agent pipeline
+    must NOT call suggestions-reducer when abort_reason is set; this test asserts:
+
+      (a) discovery exits 0 with abort_reason='zero-candidates' in its JSON output
+      (b) the inbox directory contains no proposal-doc file (reducer not called on abort)
 
     Maps to PRD AC-3.5 (abort message) and SDD §Error Handling.
     """
-    report = make_discovery_report(
-        clusters=[],
-        parent_options={},
-        mode="tag",
-        trigger_arg="topic/nonexistent",
-        candidates=[],
-    )
-    # Inject abort reason (simulating what moc-discovery.py emits)
-    report["abort_reason"] = "zero-candidates"
-    report["abort_message"] = "Keine Notes zum Topic gefunden"
+    import subprocess
 
-    # The reducer must skip rendering when abort_reason is set
-    # (abort path: no proposal file created)
+    # Write a minimal vault-config so profile resolution succeeds
+    config_path = tmp_path / "vault-config.yaml"
+    config_path.write_text(
+        "profile: miyo\nconcepts:\n  inbox: 100 Inbox/\n",
+        encoding="utf-8",
+    )
+    # A squelch sidecar is required by main(); empty registry is fine
+    squelch_path = tmp_path / "moc-squelch.json"
+    squelch_path.write_text(
+        '{"schema_version":"1","last_run_id":"","rejections":[]}',
+        encoding="utf-8",
+    )
+
     inbox_dir = tmp_path / "inbox"
     inbox_dir.mkdir()
 
-    # When abort_reason is set and no clusters exist, render_moc_proposal_doc
-    # would produce a doc with no MOC sections — but the real abort path is
-    # enforced in moc-discovery.py's _emit_abort_report. Verify the contract:
-    assert report["abort_reason"] == "zero-candidates"
-    assert report["topic_clusters"] == [], "Zero-candidates: no clusters emitted"
+    # "--title" with a topic string that appears in no cached note topics →
+    # Phase 1 returns 0 candidates → abort_reason="zero-candidates"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS_DIR / "moc-discovery.py"),
+            "--title", "COMPLETELY_NONEXISTENT_TOPIC_XYZ_99999",
+            "--cache", str(seeded_discovery_cache),
+            "--config", str(config_path),
+            "--squelch-state", str(squelch_path),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
 
-    # Confirm no proposal file was written (no render call on abort path)
+    # (a) moc-discovery exits 0 on abort paths (they're user-facing, not errors)
+    assert result.returncode == 0, (
+        f"moc-discovery should exit 0 on zero-candidates abort; got {result.returncode}\n"
+        f"stderr: {result.stderr}"
+    )
+
+    report = json.loads(result.stdout)
+    assert report.get("abort_reason") == "zero-candidates", (
+        f"Expected abort_reason='zero-candidates'; got {report.get('abort_reason')!r}"
+    )
+    assert report.get("topic_clusters") == [], (
+        "zero-candidates abort must emit no clusters"
+    )
+
+    # (b) The agent pipeline must not call suggestions-reducer when abort_reason is set.
+    # Confirm inbox_dir is empty — no proposal file written on the abort path.
     existing = list(inbox_dir.glob("tomo-moc-proposal-*.md"))
-    assert existing == [], f"No proposal file should exist on abort; found {existing}"
+    assert existing == [], (
+        f"No proposal file should exist on abort path; found {existing}"
+    )
 
 
 @pytest.mark.integration
@@ -373,8 +407,8 @@ def test_cache_empty_aborts_no_file_written(tmp_path):
     Maps to PRD AC-3.5.
     """
     # Missing cache file → validate_cache_loaded returns 'cache-empty'
-    missing_cache_path = tmp_path / "missing-cache.yaml"
-    cache = None  # load_yaml on non-existent path returns {}
+    # (cache=None simulates a missing file: load_yaml on a non-existent path returns None)
+    cache = None
     abort = _moc_disc.validate_cache_loaded(cache)
     assert abort == "cache-empty", f"Expected 'cache-empty', got {abort!r}"
 
@@ -531,6 +565,32 @@ def test_collision_guard_e2e(privat_test_clone, isolated_tomo_state):
         f"Destination dir must be Atlas/200 Maps/; got {proposal['location']!r}"
     )
 
+    # Build instruction-render manifest and emit create_moc action (M1 fix).
+    # The core assertion: emitted action's `destination` must match the composed
+    # path for the pre-existing file — proving Tomo emits the right destination
+    # even when a collision exists (Hashi handles the collision at apply-time).
+    manifest_item = {
+        "action": "create_moc",
+        "title": proposal["title"],
+        "destination": proposal["location"],
+        "parent_moc": proposal.get("parent"),
+        "template": proposal.get("template", "t_moc_tomo"),
+        "tags": [],
+        "supporting_items": ", ".join(proposal.get("children", [])),
+        "override_preserve_existing_up": proposal.get("override_preserve_existing_up", False),
+        "rendered_file": "",
+    }
+    counter = [0]
+    actions = instruction_render_build_create_moc([manifest_item], "100 Inbox/", counter)
+
+    assert len(actions) >= 1, "create_moc must emit at least 1 action"
+    create_action = actions[0]
+    expected_destination = f"Atlas/200 Maps/{collision_title}.md"
+    assert create_action["destination"] == expected_destination, (
+        f"create_moc.destination must be {expected_destination!r}; "
+        f"got {create_action['destination']!r}"
+    )
+
     # The pre-existing file is still intact (Tomo doesn't touch it)
     assert collision_file.exists(), "Pre-existing collision file must be untouched by Tomo"
     assert collision_file.read_text(encoding="utf-8").startswith("---"), (
@@ -611,13 +671,23 @@ def test_squelch_e2e(tmp_path):
         f"Registry should be empty after expiry; got {len(final_registry)} entries"
     )
 
+    # 4. Re-proposal (U1 fix): simulate the 4th discovery pass with the same cluster.
+    # Because the registry is empty, the cluster is re-allowed — it must resurface in
+    # a new proposal-doc (re-proposed = actually rendered, not just registry-empty).
+    _filename4, body4 = _reducer.render_moc_proposal_doc(report, _Cfg())
+    assert "### MOC01 — Dataview (MOC)" in body4, (
+        "4th pass: re-allowed cluster must appear as a section in the new proposal-doc"
+    )
+    assert "- [ ] Accept" in body4, (
+        "4th pass: Accept checkbox must be present (cluster is re-proposed, not suppressed)"
+    )
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # T6.1 — Parse → instruction-render pipeline (accept flow)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.integration
 def test_accept_flow_emits_create_moc_action(tmp_path):
     """Accepted proposal-doc → parse → instruction-render → create_moc + add_relationship.
 
@@ -696,7 +766,6 @@ def instruction_render_build_create_moc(
     return actions
 
 
-@pytest.mark.integration
 def test_no_accept_emits_no_actions(tmp_path):
     """Proposal-doc with no Accept ticked → parse returns [] → no create_moc emitted.
 
@@ -724,7 +793,6 @@ def test_no_accept_emits_no_actions(tmp_path):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.integration
 def test_multi_cluster_partial_accept(tmp_path):
     """Multi-cluster doc: 1 accepted + 1 rejected → parser returns only 1 proposal.
 
@@ -745,7 +813,6 @@ def test_multi_cluster_partial_accept(tmp_path):
 
     _filename, body = _reducer.render_moc_proposal_doc(report, _Cfg())
 
-    import re
     # Tick only MOC01's Accept checkbox
     # Find the first "- [ ] Accept" and tick it only
     first_accept = body.index("- [ ] Accept")
@@ -770,13 +837,29 @@ def test_multi_cluster_partial_accept(tmp_path):
 @pytest.mark.integration
 @pytest.mark.perf
 def test_perf_cache_warm_under_45s(tmp_path, seeded_discovery_cache):
-    """moc-discovery cache-warm path (dry-run + DiscoveryReport JSON) < 45s.
+    """moc-discovery cache-warm path (real --title discovery) completes < 45s.
 
     45s = 1.5× the SDD target of 30s. On cold CI runners, plan for variability.
-    This test covers the cache-warm discovery path with the seeded fixture.
+    Uses --title mode so Phase 1 runs against the seeded cache (pure in-memory
+    substring match — no Kado call). This exercises the full non-dry-run pipeline:
+    cache load → Phase 1 title match → Phase 2 topic extraction → clustering →
+    DiscoveryReport JSON.
+
     Maps to SDD Quality Requirements / Performance.
     """
     import subprocess
+
+    # Write a minimal vault-config so profile resolution succeeds
+    config_path = tmp_path / "vault-config.yaml"
+    config_path.write_text(
+        "profile: miyo\nconcepts:\n  inbox: 100 Inbox/\n",
+        encoding="utf-8",
+    )
+    squelch_path = tmp_path / "moc-squelch.json"
+    squelch_path.write_text(
+        '{"schema_version":"1","last_run_id":"","rejections":[]}',
+        encoding="utf-8",
+    )
 
     start = time.perf_counter()
 
@@ -784,10 +867,10 @@ def test_perf_cache_warm_under_45s(tmp_path, seeded_discovery_cache):
         [
             sys.executable,
             str(SCRIPTS_DIR / "moc-discovery.py"),
-            "--tag", "Obsidian/Plugin/Dataview",
+            "--title", "dataview",
             "--cache", str(seeded_discovery_cache),
-            "--config", str(tmp_path / "vault-config.yaml"),
-            "--dry-run",
+            "--config", str(config_path),
+            "--squelch-state", str(squelch_path),
         ],
         capture_output=True,
         text=True,
@@ -796,12 +879,17 @@ def test_perf_cache_warm_under_45s(tmp_path, seeded_discovery_cache):
 
     elapsed = time.perf_counter() - start
 
-    # Dry-run must exit 0 with valid JSON (profile resolves to miyo default)
-    # Note: config may not exist → dry-run still returns a minimal DiscoveryReport
-    # The perf assertion is the primary check; correctness is covered elsewhere.
+    # Must exit 0 (either a DiscoveryReport with clusters or an abort — both are exit 0)
+    assert result.returncode == 0, (
+        f"moc-discovery should exit 0; got {result.returncode}\nstderr: {result.stderr}"
+    )
+    # Output must be valid JSON
+    report = json.loads(result.stdout)
+    assert "schema_version" in report, "Output must be a valid DiscoveryReport"
+
     assert elapsed < 45, (
-        f"Cache-warm discovery (dry-run) took {elapsed:.1f}s — exceeds 45s CI tolerance "
-        f"(SDD target: 30s). Check for regressions in moc-discovery.py startup."
+        f"Cache-warm discovery (--title dataview) took {elapsed:.1f}s — exceeds 45s CI "
+        f"tolerance (SDD target: 30s). Check for regressions in moc-discovery.py."
     )
 
 

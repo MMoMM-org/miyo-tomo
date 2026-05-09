@@ -33,7 +33,7 @@ phase: 6
 
 This phase delivers the safety net before launch: integration tests against Privat-Test, live-vault validation on Marcus's real vault, and user-facing documentation. Final phase validation gates F-43 launch.
 
-- [ ] **T6.0 Backfill `moc-discovery.py main()` orchestration** `[activity: backend-cli]`
+- [x] **T6.0 Backfill `moc-discovery.py main()` orchestration** `[activity: backend-cli]` ✅ DONE 2026-05-09: `tomo/scripts/moc-discovery.py` v0.9.0 with `_run_pipeline` orchestration calling phase1 → phase65 in order; `tests/test_moc_discovery_main.py` (5 tests: title-mode, tag-mode w/Kado-fake, zero-candidates abort, squelched cluster, dry-run regression). Spec compliance + code quality both PASS. Full suite 190 passed / 1 skipped. Commits: `3bec663` (RED) + `cd88f74` (GREEN) + `a014c4b` (test naming) + `5482897` (cleanup).
 
   Surfaced during T6.1 spec-compliance review (2026-05-09): Phase 2's phase-functions (`phase4_title`, `phase5_resolve_parents`, `phase6_dedupe`, `phase65_validate_existing_up`) exist as units but `main()` raises `NotImplementedError` after the squelch-decrement step. Phase 3's T3.4 "Live producer smoke" was never executed (no done-note). Production `/moc-propose tag:X` would crash today. T6.1's perf assertions (`test_perf_cache_warm_under_45s`) cannot exercise the real cache-warm path without this wiring.
 

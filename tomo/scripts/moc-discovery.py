@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.0
+# version: 0.9.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -1414,6 +1414,213 @@ def phase65_validate_existing_up(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _load_moc_config(config_path: Path):
+    """Lazy-load MocProposalConfig from shared-ctx-builder to avoid import cycle.
+
+    The sys.modules registration is required because Python 3.14's dataclass
+    machinery inspects the owning module's ``__dict__`` during class processing
+    (same fix applied in test_moc_proposal_config.py).
+    """
+    import importlib.util as _ilu
+
+    _name = "shared_ctx_builder"
+    if _name not in sys.modules:
+        _path = SCRIPT_DIR / "shared-ctx-builder.py"
+        _spec = _ilu.spec_from_file_location(_name, _path)
+        _mod = _ilu.module_from_spec(_spec)
+        sys.modules[_name] = _mod
+        _spec.loader.exec_module(_mod)
+    return sys.modules[_name].load_moc_proposal_config(config_path)
+
+
+def _build_kado_client():
+    """Instantiate KadoClient; fall back to a null stub on KadoError.
+
+    Title/free-text mode is cache-only in Phase 1, so the stub is enough for
+    those modes. Scan/tag/folder/class modes will raise KadoError on the first
+    Kado call and surface a clear error via the phase1 handler. Phase 6.5 read
+    failures are caught per-candidate and treated as state="absent".
+    """
+    from lib.kado_client import KadoClient as _KC, KadoError as _KE
+
+    class _NullKadoClient:
+        """Stand-in when Kado is unreachable. Read errors degrade to state='absent'."""
+
+        def _fail(self) -> None:
+            raise _KE("Kado unavailable — client not initialised")
+
+        def search_by_tag(self, *_a, **_k):  # pragma: no cover
+            self._fail()
+
+        def list_dir(self, *_a, **_k):  # pragma: no cover
+            self._fail()
+
+        def read_note(self, *_a, **_k):
+            self._fail()
+
+    try:
+        return _KC()
+    except _KE as exc:
+        _log(
+            f"WARN: Kado client unavailable ({exc}); "
+            f"tag/folder/class/scan modes will fail; "
+            f"title/free-text and Phase 6.5 degrade gracefully"
+        )
+        return _NullKadoClient()
+
+
+def _enrich_cluster(
+    cluster: dict,
+    idx: int,
+    profile_dict: dict,
+    cache: dict,
+    mode: str,
+    trigger_arg: str,
+    denom: int,
+    moc_location: str,
+) -> tuple[dict, list[dict]]:
+    """Apply Phase 4 (title) + Phase 5 (parents) + metadata to one raw cluster.
+
+    Returns (enriched_cluster, parent_options_list). Pure — does not mutate input.
+    """
+    cluster_id = f"MOC{idx:02d}"
+    title = phase4_title(cluster, profile_dict, mode, trigger_arg)
+    parent_opts = phase5_resolve_parents(cluster, profile_dict, cache)
+
+    confidence = round(len(cluster.get("items") or []) / denom, 4)
+    topic_kw = [cluster["topic"]] if cluster.get("topic") else []
+
+    enriched = dict(cluster)
+    enriched.update({
+        "cluster_id": cluster_id,
+        "title": title,
+        "confidence": confidence,
+        "candidate_stems": list(cluster.get("items") or []),
+        "topic_keywords": topic_kw,
+        "location": moc_location,
+        "template": "t_moc_tomo",
+        "slug": slugify(title),
+        "existing_up": [],
+    })
+    serialised_parents = [
+        {"moc_stem": p.moc_stem, "confidence": p.confidence, "label": p.label}
+        for p in parent_opts
+    ]
+    return enriched, serialised_parents
+
+
+def _run_pipeline(
+    args,
+    cache: dict,
+    squelch_registry: dict,
+    config_path: Path,
+    profile_name: str,
+    mode: str,
+    trigger_arg: str,
+) -> tuple[dict | None, int]:
+    """Execute Phase 1 → Phase 6.5 and return (report_dict, exit_code).
+
+    Called by main() after the pre-flight checks (cache-empty, squelch
+    decrement) have passed. Returns (None, exit_code) when an abort-report
+    is emitted directly inside this helper (abort_reason paths), so the caller
+    skips the json.dump step. For successful or partial-failure runs, the
+    assembled DiscoveryReport dict is returned.
+
+    Exit codes: 0 = clean, 1 = partial (some dups/squelched), 2 = fatal.
+    """
+    moc_config = _load_moc_config(config_path)
+    if args.candidate_cap is not None:
+        import dataclasses as _dc
+        moc_config = _dc.replace(moc_config, candidate_cap=args.candidate_cap)
+
+    profile_path = DEFAULT_PROFILES_DIR / f"{profile_name}.yaml"
+    profile_dict = _load_yaml(profile_path)
+    kado_client = _build_kado_client()
+
+    # Phase 1 — Candidate selection
+    candidates, abort1 = phase1_select_candidates(
+        mode, trigger_arg, profile_dict, cache, kado_client, moc_config
+    )
+    if abort1 is not None:
+        _log(f"phase1: abort → {abort1!r}")
+        _emit_abort_report(mode, trigger_arg, profile_name, abort1)
+        return None, 0
+
+    candidates_total = len(candidates)
+    _log(f"phase1: {candidates_total} candidate(s) selected")
+
+    # Phase 2 — Topic extraction (llm_client=None; T2.8 will inject real client)
+    candidates_with_topics, abort2 = phase2_extract_topics(
+        candidates, cache, moc_config, llm_client=None
+    )
+    if abort2 is not None:
+        _log(f"phase2: abort → {abort2!r}")
+        _emit_abort_report(mode, trigger_arg, profile_name, abort2)
+        return None, 0
+
+    _log(f"phase2: {len(candidates_with_topics)} candidate(s) with topics")
+
+    # Phase 3 — Cluster detection
+    raw_clusters = phase3_cluster(candidates_with_topics, moc_config)
+    _log(f"phase3: {len(raw_clusters)} raw cluster(s) (threshold={moc_config.min_notes})")
+
+    # Phase 4+5 — Enrich clusters (title, parents, metadata)
+    denom = max(1, len(candidates_with_topics))
+    _map_note_cfg = (profile_dict.get("concept_defaults") or {}).get("map_note") or {}
+    moc_location = (_map_note_cfg.get("paths") or ["Atlas/200 Maps/"])[0]
+
+    enriched_clusters: list[dict] = []
+    parent_options_per_cluster: dict[str, list[dict]] = {}
+    for idx, cluster in enumerate(raw_clusters, start=1):
+        enriched, parents = _enrich_cluster(
+            cluster, idx, profile_dict, cache, mode, trigger_arg, denom, moc_location
+        )
+        enriched_clusters.append(enriched)
+        parent_options_per_cluster[enriched["cluster_id"]] = parents
+
+    _log(f"phase4+5: enriched {len(enriched_clusters)} cluster(s)")
+
+    # Phase 6 — Duplicate detection + squelch
+    kept_clusters, duplicates_skipped, squelched = phase6_dedupe(
+        enriched_clusters, cache, squelch_registry, moc_config
+    )
+    _log(f"phase6: kept={len(kept_clusters)} dup={len(duplicates_skipped)} squelched={len(squelched)}")
+
+    # Phase 6.5 — Existing up:: validation
+    kept_clusters = phase65_validate_existing_up(
+        kept_clusters, candidates_with_topics, kado_client, cache
+    )
+    _log(f"phase6.5: existing_up:: decorated {len(kept_clusters)} cluster(s)")
+
+    kept_clusters.sort(key=lambda c: c.get("confidence", 0.0), reverse=True)
+
+    report = empty_report(mode, trigger_arg, profile_name)
+    report.update({
+        "candidates_total": candidates_total,
+        "candidates_after_prefilter": len(candidates),
+        "candidates_capped": False,
+        "candidates": [
+            {
+                "stem": c.stem,
+                "path": c.path,
+                "topics": c.topics,
+                "existing_up": c.existing_up,
+                "classification": c.classification,
+                "level": c.level,
+            }
+            for c in candidates_with_topics
+        ],
+        "topic_clusters": kept_clusters,
+        "parent_options_per_cluster": parent_options_per_cluster,
+        "duplicates_skipped": duplicates_skipped,
+        "squelched": squelched,
+    })
+
+    _log(f"emitting DiscoveryReport: clusters={len(kept_clusters)} mode={mode!r}")
+    partial = (len(duplicates_skipped) > 0 or len(squelched) > 0) and len(kept_clusters) > 0
+    return report, (1 if partial else 0)
+
+
 def _emit_abort_report(
     mode: str, trigger_arg: str, profile_name: str, abort_reason: str
 ) -> int:
@@ -1490,11 +1697,13 @@ def main(argv: list[str] | None = None) -> int:
         f"from {squelch_path}"
     )
 
-    # Full discovery flow lands in T2.5-T2.7. Until then, surface clearly.
-    _log("ERROR: discovery phases not yet implemented (T2.5-T2.7)")
-    raise NotImplementedError(
-        "moc-discovery.py full pipeline pending — use --dry-run for T2.1 scaffolding"
+    report, exit_code = _run_pipeline(
+        args, cache, squelch_registry, config_path, profile_name, mode, trigger_arg
     )
+    if report is not None:
+        json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+    return exit_code
 
 
 if __name__ == "__main__":

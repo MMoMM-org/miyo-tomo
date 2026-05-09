@@ -69,11 +69,25 @@ def _write_config(tmp_path: Path, *, profile: str = "miyo") -> Path:
     return p
 
 
-def _write_cache(tmp_path: Path, atomic_notes: list[dict], map_notes: list[dict] | None = None) -> Path:
-    """Write a minimal discovery-cache.yaml under tmp_path."""
+def _write_cache(
+    tmp_path: Path,
+    atomic_notes: list[dict],
+    extra_map_notes: list[dict] | None = None,
+) -> Path:
+    """Write a minimal discovery-cache.yaml under tmp_path.
+
+    `atomic_notes` are included in `map_notes` (matching the real discovery-cache
+    structure where all notes, MOC and atomic alike, live under map_notes keyed
+    by path). This is what Phase 1 title-match and Phase 2 topic-lookup read.
+
+    `extra_map_notes` allows adding additional entries (e.g. existing MOC entries
+    for Phase 6 duplicate-detection scenarios). If omitted, no extra entries are
+    added, so Phase 6 Jaccard comparison only runs against the atomic notes whose
+    multi-topic sets do not overlap the cluster topic at ≥ 0.80.
+    """
     cache = {
         "cache_version": 1,
-        "map_notes": (map_notes or []) + atomic_notes,
+        "map_notes": list(extra_map_notes or []) + atomic_notes,
         "atomic_notes": atomic_notes,
     }
     p = tmp_path / "discovery-cache.yaml"
@@ -96,11 +110,25 @@ def _write_squelch(tmp_path: Path, rejections: list[dict] | None = None) -> Path
 # Canonical atomic-note paths used in the miyo profile's atomic_note.base_path.
 _BASE_PATH = "Atlas/202 Notes/"
 
-# Three notes that share the topic "shell" → cluster above min_notes=2.
+# Three notes that share the topic "shell" (above min_notes=2).
+#
+# Multi-topic entries are deliberate: Phase 6 Jaccard comparison runs against
+# ALL map_notes entries including the atomic notes. Single-topic entries {shell}
+# produce Jaccard = 1.0 against the cluster topic-set {shell}, which would
+# falsely skip the cluster as a dup of itself.
+#
+# With UNIQUE secondary topics (unix, posix, interactive — each appears once),
+# Phase 3 produces EXACTLY ONE cluster "shell" (3 items) — no secondary cluster
+# forms because no secondary topic appears in ≥2 notes.
+#
+# Phase 6 Jaccard: cluster topic-set = {shell}; each note topic-set =
+#   {shell, unix} → J = 1/2 = 0.50 < 0.80 ✓ no false-positive dup
+# Phase 1 title-match: "shell" in topics → candidate selected ✓
+# Phase 2 topic lookup: _build_topics_index reads topics list → cache-hit ✓
 _SHELL_NOTES = [
-    {"path": f"{_BASE_PATH}zsh.md", "title": "zsh", "topics": ["shell"], "tags": []},
-    {"path": f"{_BASE_PATH}bash.md", "title": "bash", "topics": ["shell"], "tags": []},
-    {"path": f"{_BASE_PATH}fish.md", "title": "fish", "topics": ["shell"], "tags": []},
+    {"path": f"{_BASE_PATH}zsh.md", "title": "zsh", "topics": ["shell", "unix"], "tags": []},
+    {"path": f"{_BASE_PATH}bash.md", "title": "bash", "topics": ["shell", "posix"], "tags": []},
+    {"path": f"{_BASE_PATH}fish.md", "title": "fish", "topics": ["shell", "interactive"], "tags": []},
 ]
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_squelch_decrement_lifecycle.py — T5.1: squelch decrement-and-persist at main() start.
 
 Four tests verify that moc-discovery.py's main() loads the squelch registry,
@@ -114,9 +114,11 @@ def test_decrement_on_run_start(tmp_path: Path) -> None:
     Entry with runs_remaining=1 decrements to 0 and is removed.
     Entry with runs_remaining=2 decrements to 1 and is kept.
 
-    main() raises NotImplementedError when the un-wired discovery phases are
-    reached — squelch load/decrement/save executes before that stub so we
-    assert on the file state after catching the exception.
+    The squelch load/decrement/save executes before Phase 1. The no-arg
+    (scan) pipeline needs a live Kado connection which is unavailable in
+    unit tests. We assert on the squelch file state after the run regardless
+    of whether main() returns normally or raises (KadoError on scan mode,
+    or exits 0/1/2 on title/free-text mode).
     """
     squelch_path = tmp_path / "moc-squelch.json"
     squelch_path.write_text(
@@ -128,8 +130,10 @@ def test_decrement_on_run_start(tmp_path: Path) -> None:
     )
 
     argv = _full_pipeline_argv(tmp_path, squelch_path)
-    with pytest.raises(NotImplementedError):
+    try:
         moc_discovery.main(argv)
+    except Exception:
+        pass  # KadoError from scan-mode Phase 1 — expected in unit test env
 
     post_run = json.loads(squelch_path.read_text(encoding="utf-8"))
     sigs = {r["topic_signature"]: r["runs_remaining"] for r in post_run["rejections"]}
@@ -152,8 +156,10 @@ def test_all_entries_expire_writes_empty_registry(tmp_path: Path) -> None:
     )
 
     argv = _full_pipeline_argv(tmp_path, squelch_path)
-    with pytest.raises(NotImplementedError):
+    try:
         moc_discovery.main(argv)
+    except Exception:
+        pass  # KadoError from scan-mode Phase 1 — expected in unit test env
 
     post_run = json.loads(squelch_path.read_text(encoding="utf-8"))
     assert post_run["rejections"] == [], "all-expired registry should serialise empty rejections"

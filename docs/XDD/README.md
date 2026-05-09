@@ -12,6 +12,15 @@
 | 004 | [Inbox Fan-Out Refactor](specs/004-inbox-fanout-refactor/) | Completed | Full suite (PRD + SDD + Plan, 21/21 tests) |
 | 005 | [Daily Note Workflow](specs/005-daily-note-workflow/) | Completed | Full suite (PRD + SDD + Plan) |
 | 006 | [Spec Consolidation](specs/006-spec-consolidation/) | Ready | Full suite (PRD + SDD + Plan) |
+| 007 | [Pipeline Tokens & Config Batch](specs/007-pipeline-tokens-and-config-batch/) | Completed | Direct implementation; no formal phase plan |
+| 008 | [Deterministic Instruction Render](specs/008-deterministic-instruction-render/) | Completed | All phases shipped and live-validated 2026-04-21 |
+| 009 | [Voice Memo Transcription](specs/009-voice-memo-transcription/) | Code-complete | Phases 1–5 merged; host validation (T5.1/T5.2) pending |
+| 010 | [Custom File Picker](specs/010-custom-file-picker/) | Completed | Unified picker live; Phases 3–4 validated 2026-04-21 |
+| 011 | [Instance Backup & Restore](specs/011-instance-backup-restore/) | Completed | Scripts shipped 2026-04-20; spec docs backfilled 2026-04-21 |
+| 012 | [Force Atomic Synthesis](specs/012-force-atomic-synthesis/) | Completed | Shipped 2026-04-23 (commit `08a1f22`) |
+| 013 | [MOC Creation Skill](specs/013-moc-creation-skill/) | Implemented | 6 phases, 29 tasks; implemented 2026-05-09 (feat/013-phase-4); live-vault validation pending (T6.2) |
+| 015 | [MSP Condition B — Accumulation](specs/015-msp-condition-b-accumulation/) | PRD-only | PRD drafted 2026-05-07; SDD + plan deferred pending stakeholder input (OQ1–OQ7) |
+| 016 | [Multi-Topic Atomic Notes](specs/016-multi-topic-atomic-notes/) | PRD-only | PRD drafted 2026-05-07; SDD + plan deferred pending stakeholder input (OQ1–OQ8) |
 
 ## Architecture Reference
 

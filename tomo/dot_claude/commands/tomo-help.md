@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.1
+# version: 0.2.2
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -28,6 +28,7 @@ The user just wants the menu. Show this (keep formatting tight):
     2. /tomo-setup — full setup wizard (recommended entry point)
     3. /explore-vault — scan your vault, build discovery cache
     4. /inbox — process inbox items (2-pass workflow)
+    5. /moc-propose — propose a new MOC for a topic, folder, classification, or whole-vault scan
 
   Concepts
     5. Lifecycle tags & state machine
@@ -132,6 +133,17 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - MOCs live at paths in `config/vault-config.yaml` under `concepts.map_note.paths`
   - Detected via tag (default `type/others/moc` in miyo profile) or frontmatter
   - Point at: `.claude/skills/lyt-patterns/SKILL.md`
+
+- **moc-propose / propose moc / create moc / new moc / moc creation** →
+  - `/moc-propose` discovers under-organised topic clusters and proposes a new MOC
+  - Six input modes: `topic` (free-text keyword), `folder` (vault path), `classification`
+    (Dewey sub-code or topic prefix), `tag` (notes carrying a given tag),
+    `placeholder` (unresolved wikilink with no backing file), `whole-vault` (full atlas scan)
+  - Writes a proposal doc to `+/moc-proposals/<topic-slug>.md` — review, tick Accept,
+    then run `/inbox` to materialise the MOC via the normal `create_moc` + `add_relationship` actions
+  - Profile-aware: miyo profile uses Dewey classification; LYT profile uses thematic grouping
+  - Requires Hashi 0.2.0+ for the destination-collision guard
+  - Point at: `.claude/agents/moc-architect.md`, `scripts/moc-discovery.py`
 
 - **templates / tokens / t_note_tomo / rendering** →
   - Templates rendered by `python3 scripts/token-render.py` during Pass 2

@@ -160,6 +160,7 @@ miyo-tomo/
 | `/explore-vault` | Scan vault and build discovery cache |
 | `/execute` | Helper that shows the two paths for applying an instruction set: manual in Obsidian, or via the upcoming Tomo Hashi instruction-set executor. Read-only — never applies actions itself. |
 | `/tomo-setup` | Post-install wizard (vault discovery, user rules, templates, trackers, daily log). Sub-sections: `rules`, `templates`, `trackers`, `daily-log`. |
+| `/moc-propose` | Propose a new MOC for a topic, folder, classification, or whole-vault scan. |
 | `/tomo-help` | Context-aware help inside the session. Pass a topic keyword (e.g. `inbox`, `kado`, `docker`, `login`) or run with no argument for a topic menu. |
 
 ## `@` File Picker

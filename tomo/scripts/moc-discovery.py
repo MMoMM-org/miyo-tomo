@@ -1455,7 +1455,7 @@ def _build_kado_client():
         def list_dir(self, *_a, **_k):  # pragma: no cover
             self._fail()
 
-        def read_note(self, *_a, **_k):
+        def read_note(self, *_a, **_k):  # pragma: no cover
             self._fail()
 
     try:

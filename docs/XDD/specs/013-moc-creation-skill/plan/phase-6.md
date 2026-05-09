@@ -33,6 +33,25 @@ phase: 6
 
 This phase delivers the safety net before launch: integration tests against Privat-Test, live-vault validation on Marcus's real vault, and user-facing documentation. Final phase validation gates F-43 launch.
 
+- [ ] **T6.0 Backfill `moc-discovery.py main()` orchestration** `[activity: backend-cli]`
+
+  Surfaced during T6.1 spec-compliance review (2026-05-09): Phase 2's phase-functions (`phase4_title`, `phase5_resolve_parents`, `phase6_dedupe`, `phase65_validate_existing_up`) exist as units but `main()` raises `NotImplementedError` after the squelch-decrement step. Phase 3's T3.4 "Live producer smoke" was never executed (no done-note). Production `/moc-propose tag:X` would crash today. T6.1's perf assertions (`test_perf_cache_warm_under_45s`) cannot exercise the real cache-warm path without this wiring.
+
+  1. Prime: Read SDD `Runtime View/Primary Flow` + `Building Block View/moc-discovery.py`. Re-read each phase function's signature in `tomo/scripts/moc-discovery.py` (phase1_filter through phase65_validate_existing_up). Re-read the `DiscoveryReport` schema (per `application data models` SDD section).
+  2. Test: `tests/test_moc_discovery_main.py` — new unit test exercising `main()` end-to-end on a small in-memory cache:
+     - `test_main_tag_mode_produces_discovery_report` — argparse → phases run in order → JSON DiscoveryReport on stdout.
+     - `test_main_zero_candidates_emits_abort_reason` — empty cache → JSON with `abort_reason: 'zero_candidates'`, exit 0.
+     - `test_main_handles_squelched_cluster` — squelch state with active topic-signature → cluster filtered before render, surfaced in `squelched_count`.
+     - `test_main_dry_run_path_unchanged` — confirm `--dry-run` still exits cleanly (regression guard for T2.1).
+  3. Implement: Replace the `NotImplementedError` block at `moc-discovery.py:1493-1497` with the orchestration:
+     - Load cache (existing helper).
+     - Run phases in order: `phase1_filter` → `phase2_score` → `phase3_threshold` → `phase4_title` → `phase5_resolve_parents` → `phase6_dedupe` (consumes `squelch_registry` already loaded above) → `phase65_validate_existing_up`.
+     - Assemble `DiscoveryReport` per SDD shape (clusters, abort_reason, run metadata, squelched_count, duplicates_skipped_count).
+     - `json.dump` to stdout. Exit 0 on success, 1 on partial-failure, 2 on fatal (per existing exit-code spec).
+     - Preserve all existing logging conventions (stderr, structured `_log` calls).
+  4. Validate: `pytest tests/test_moc_discovery_main.py -v` plus full regression `pytest tests/ -v`. Manual smoke: `python3 tomo/scripts/moc-discovery.py --tag <real-Privat-Test-tag> --config <fixture-config> --cache <fixture-cache>` produces valid DiscoveryReport JSON on stdout.
+  5. Success: `/moc-propose tag:X` end-to-end through the agent invocation path (per `tomo/dot_claude/agents/moc-architect.md` Step 4) returns a real proposal-doc with no NotImplementedError. Phase 3 T3.4 "Live producer smoke" can finally be executed `[ref: SDD/Runtime View/Primary Flow]` `[ref: PRD/AC-1.x]` `[ref: phase-2.md/T2.8]`.
+
 - [ ] **T6.1 Privat-Test integration suite** `[activity: integration-test]`
 
   1. Prime: Read PRD/Acceptance Criteria for end-to-end coverage. Verify `Privat-Test/` is reachable and has ≥1 cluster of 3+ atomic notes without dedicated MOC. Read `feedback_test_scripts_must_never_touch_real_install.md` — integration tests MUST use isolated tmpdirs / Privat-Test, never default install paths.

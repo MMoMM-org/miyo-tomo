@@ -25,7 +25,6 @@ import importlib.util
 import json
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -136,18 +135,18 @@ _SHELL_NOTES = [
 # ── Fake KadoClient ──────────────────────────────────────────────────────────
 
 
-class _FakeKadoRead:
-    """Fake for Kado read_note — returns empty content for any path.
+class _FakeKadoForTag:
+    """Fake Kado client for search_by_tag and read_note.
 
-    Phase 6.5 calls read_note per candidate; we return a body without any
-    `up::` marker so every child gets `state="absent"`.
+    search_by_tag returns the shell notes; read_note returns empty content
+    without `up::` marker so every child gets `state="absent"`.
     """
+
+    def search_by_tag(self, query: str) -> list[dict]:
+        return [{"path": note["path"]} for note in _SHELL_NOTES]
 
     def read_note(self, path: str) -> dict:
         return {"content": "# stub note\nNo up:: here.\n"}
-
-    def search_by_tag(self, query: str) -> list[dict]:  # pragma: no cover
-        return []
 
     def list_dir(self, path: str, depth: int = 10) -> list[dict]:  # pragma: no cover
         return []
@@ -251,19 +250,7 @@ def test_main_tag_mode_produces_discovery_report(tmp_path: Path, monkeypatch) ->
     cache_path = _write_cache(tmp_path, atomic_notes=_SHELL_NOTES)
     squelch_path = _write_squelch(tmp_path)
 
-    # Fake Kado: search_by_tag returns the same paths as the cache entries so
-    # Phase 2 always gets a cache-hit (no LLM fallback needed).
-    class _FakeKadoForTag:
-        def search_by_tag(self, query: str) -> list[dict]:
-            return [{"path": note["path"]} for note in _SHELL_NOTES]
-
-        def read_note(self, path: str) -> dict:
-            # Phase 6.5 read_note — no up:: marker → state="absent"
-            return {"content": "# stub note\nNo up:: here.\n"}
-
-        def list_dir(self, path: str, depth: int = 10) -> list[dict]:  # pragma: no cover
-            return []
-
+    # Inject the module-scope _FakeKadoForTag by monkeypatching _build_kado_client.
     monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda: _FakeKadoForTag())
 
     # Drive main() directly so the monkeypatch applies (subprocess would spawn

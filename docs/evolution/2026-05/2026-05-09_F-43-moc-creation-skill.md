@@ -90,7 +90,7 @@ not just unit-level assertions.
 - Hashi collision guard: live-confirmed in Hashi 0.2.0 (`createMoc.ts:40`,
   `planner.ts:217`)
 - Live-vault validation: **pending** (T6.2 — Marcus to run against Privat-Test)
-- Hashi version launch gate: T6.4 satisfied (Hashi 0.2.0 shipped 2026-05-07)
+- Hashi prerequisite for T6.4: satisfied (Hashi 0.2.0 shipped 2026-05-07); T6.4 itself pending T6.2 completion.
 
 ## Status
 

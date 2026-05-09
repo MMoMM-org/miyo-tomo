@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.2
+# version: 0.2.3
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -31,28 +31,28 @@ The user just wants the menu. Show this (keep formatting tight):
     5. /moc-propose — propose a new MOC for a topic, folder, classification, or whole-vault scan
 
   Concepts
-    5. Lifecycle tags & state machine
-    6. 2-pass suggestion/instruction model
-    7. Knowledge Stack (profile → config → cache)
-    8. Framework profiles (miyo, lyt, custom)
+    6. Lifecycle tags & state machine
+    7. 2-pass suggestion/instruction model
+    8. Knowledge Stack (profile → config → cache)
+    9. Framework profiles (miyo, lyt, custom)
 
   Configuration
-    9. vault-config.yaml — concept paths, frontmatter, templates
-   10. User rules — vault-specific behavioral conventions
-   11. Kado MCP — connection, bearer token, .mcp.json
-   12. Git user identity
+   10. vault-config.yaml — concept paths, frontmatter, templates
+   11. User rules — vault-specific behavioral conventions
+   12. Kado MCP — connection, bearer token, .mcp.json
+   13. Git user identity
 
   Troubleshooting
-   13. Kado not connected / tools missing
-   14. /explore-vault fails or finds nothing
-   15. Docker / image / container issues
-   16. OAuth / re-auth (outside the container)
-   17. First-run setup issues
+   14. Kado not connected / tools missing
+   15. /explore-vault fails or finds nothing
+   16. Docker / image / container issues
+   17. OAuth / re-auth (outside the container)
+   18. First-run setup issues
 
   Operations
-   18. Update Tomo to a newer source version
-   19. Cleanup & re-install (testing)
-   20. Debug shell in the container
+   19. Update Tomo to a newer source version
+   20. Cleanup & re-install (testing)
+   21. Debug shell in the container
 ```
 
 Then ask: `Which topic? Enter a number or describe what you need.`

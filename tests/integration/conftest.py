@@ -13,7 +13,6 @@ import importlib.util
 import json
 import shutil
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -24,7 +23,6 @@ import yaml
 TESTS_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
-PROFILES_DIR = REPO_ROOT / "tomo" / "profiles"
 
 PRIVAT_TEST_ROOT = Path("/Volumes/Moon/Coding/MiYo/temp/Privat-Test")
 
@@ -318,12 +316,6 @@ def isolated_tomo_state(tmp_path: Path) -> dict[str, Path]:
         "squelch_path": squelch_path,
         "tomo_tmp_dir": tomo_tmp,
     }
-
-
-@pytest.fixture()
-def vault_config_path(tmp_path: Path, privat_test_clone: Path) -> Path:
-    """Write a vault-config.yaml pointing at the cloned vault."""
-    return _seed_vault_config(tmp_path, privat_test_clone)
 
 
 # ── Report / cluster builder helpers ─────────────────────────────────────────

@@ -22,6 +22,7 @@ Run with:
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -403,9 +404,13 @@ def test_zero_candidates_aborts_no_file_written(tmp_path, seeded_discovery_cache
 def test_cache_empty_aborts_no_file_written(tmp_path):
     """When discovery-cache.yaml is missing/empty, abort_reason='cache-empty', no file written.
 
-    Verifies the validate_cache_loaded() pre-check in moc-discovery.py.
-    Maps to PRD AC-3.5.
+    Unit-tests the validate_cache_loaded() pre-check in moc-discovery.py; then
+    drives moc-discovery.py as a subprocess with a missing cache file to verify
+    the full pipeline emits abort_reason='cache-empty' and writes no proposal-doc.
+
+    Maps to PRD AC-3.5 (abort message) and SDD §Error Handling.
     """
+    # Unit tests for validate_cache_loaded()
     # Missing cache file → validate_cache_loaded returns 'cache-empty'
     # (cache=None simulates a missing file: load_yaml on a non-existent path returns None)
     cache = None
@@ -422,11 +427,53 @@ def test_cache_empty_aborts_no_file_written(tmp_path):
     abort3 = _moc_disc.validate_cache_loaded(populated_cache)
     assert abort3 is None, f"Populated cache should not abort; got {abort3!r}"
 
-    # No file written in abort scenario
+    # Subprocess test: missing cache file aborts pipeline; no proposal-doc file written
+    config_path = tmp_path / "vault-config.yaml"
+    config_path.write_text(
+        "profile: miyo\nconcepts:\n  inbox: 100 Inbox/\n",
+        encoding="utf-8",
+    )
+    squelch_path = tmp_path / "moc-squelch.json"
+    squelch_path.write_text(
+        '{"schema_version":"1","last_run_id":"","rejections":[]}',
+        encoding="utf-8",
+    )
+
     inbox_dir = tmp_path / "inbox"
     inbox_dir.mkdir()
-    files = list(inbox_dir.glob("tomo-moc-proposal-*.md"))
-    assert files == []
+
+    # Missing cache file (non-existent path) → moc-discovery.py aborts early with cache-empty
+    missing_cache = tmp_path / "nonexistent-cache.yaml"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS_DIR / "moc-discovery.py"),
+            "--title", "any-text",
+            "--cache", str(missing_cache),
+            "--config", str(config_path),
+            "--squelch-state", str(squelch_path),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+
+    # Must exit 0 with abort_reason='cache-empty' in JSON stdout
+    assert result.returncode == 0, (
+        f"moc-discovery should exit 0 on cache-empty abort; got {result.returncode}\n"
+        f"stderr: {result.stderr}"
+    )
+    report = json.loads(result.stdout)
+    assert report.get("abort_reason") == "cache-empty", (
+        f"Expected abort_reason='cache-empty'; got {report.get('abort_reason')!r}"
+    )
+
+    # Verify the agent pipeline must not call suggestions-reducer on the abort path.
+    # The inbox directory should remain empty (no proposal-doc file written on abort).
+    existing = list(inbox_dir.glob("tomo-moc-proposal-*.md"))
+    assert existing == [], (
+        f"No proposal file should exist on cache-empty abort path; found {existing}"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

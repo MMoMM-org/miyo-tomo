@@ -10,7 +10,8 @@ no live LLM, no live vault. The test fixtures seed just enough state for the
 pipeline to traverse all phases and emit a valid DiscoveryReport.
 
 Test matrix:
-  - test_main_tag_mode_produces_discovery_report   : happy path, tag mode
+  - test_main_title_mode_produces_discovery_report : happy path, title mode (cache-only Phase 1)
+  - test_main_tag_mode_produces_discovery_report   : happy path, tag mode (Kado-fake via monkeypatch)
   - test_main_zero_candidates_emits_abort_reason   : zero-candidates abort
   - test_main_handles_squelched_cluster             : squelch read-only lookup
   - test_main_dry_run_path_unchanged               : --dry-run is still bit-identical
@@ -155,15 +156,16 @@ class _FakeKadoRead:
 # ── Tests ────────────────────────────────────────────────────────────────────
 
 
-def test_main_tag_mode_produces_discovery_report(tmp_path: Path) -> None:
-    """Happy path: tag mode with a cache-covered cluster emits a DiscoveryReport.
+def test_main_title_mode_produces_discovery_report(tmp_path: Path) -> None:
+    """Happy path: title mode with a cache-covered cluster emits a DiscoveryReport.
 
     The cache contains three notes sharing the topic "shell" (above min_notes=2).
-    Phase 1 resolves via free-text/cache (title mode is cache-only in Phase 1;
-    we use title mode here to avoid needing a real Kado server). The DiscoveryReport
-    must have schema_version="1", non-empty topic_clusters, abort_reason=None.
+    Phase 1 resolves via cache (title mode is cache-only in Phase 1 — no Kado
+    needed). The DiscoveryReport must have schema_version="1", non-empty
+    topic_clusters, abort_reason=None.
 
-    Covers PRD AC-1.x (mode routing), AC-3 (report shape), SDD DiscoveryReport schema.
+    Covers PRD AC-1.x (mode routing, title branch), AC-3 (report shape),
+    SDD DiscoveryReport schema.
     """
     config_path = _write_config(tmp_path)
     cache_path = _write_cache(tmp_path, atomic_notes=_SHELL_NOTES)
@@ -228,6 +230,92 @@ def test_main_tag_mode_produces_discovery_report(tmp_path: Path) -> None:
     assert "parent_options_per_cluster" in report
     assert isinstance(report["parent_options_per_cluster"], dict)
     # Structural fields
+    assert "candidates_total" in report
+    assert "candidates_after_prefilter" in report
+    assert isinstance(report["candidates_capped"], bool)
+
+
+def test_main_tag_mode_produces_discovery_report(tmp_path: Path, monkeypatch) -> None:
+    """Happy path: tag mode with a Kado-fake returns a full DiscoveryReport.
+
+    Phase 1 (tag mode) calls kado_client.search_by_tag() — a live Kado server
+    is not available in CI. We inject a fake by monkeypatching _build_kado_client
+    on the already-loaded moc_discovery module. The fake's search_by_tag returns
+    the same three shell-note paths that live in the cache, so Phase 2 gets
+    cache-hits and the full pipeline (Phase 1 → Phase 6.5) completes.
+
+    Covers PRD AC-1.x (mode routing, tag branch), AC-3 (report shape),
+    SDD §Phase 1 tag handler.
+    """
+    config_path = _write_config(tmp_path)
+    cache_path = _write_cache(tmp_path, atomic_notes=_SHELL_NOTES)
+    squelch_path = _write_squelch(tmp_path)
+
+    # Fake Kado: search_by_tag returns the same paths as the cache entries so
+    # Phase 2 always gets a cache-hit (no LLM fallback needed).
+    class _FakeKadoForTag:
+        def search_by_tag(self, query: str) -> list[dict]:
+            return [{"path": note["path"]} for note in _SHELL_NOTES]
+
+        def read_note(self, path: str) -> dict:
+            # Phase 6.5 read_note — no up:: marker → state="absent"
+            return {"content": "# stub note\nNo up:: here.\n"}
+
+        def list_dir(self, path: str, depth: int = 10) -> list[dict]:  # pragma: no cover
+            return []
+
+    monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda: _FakeKadoForTag())
+
+    # Drive main() directly so the monkeypatch applies (subprocess would spawn
+    # a fresh interpreter that doesn't share this process's monkeypatch).
+    import io
+    import contextlib
+
+    captured = io.StringIO()
+    with contextlib.redirect_stdout(captured):
+        exit_code = _moc_disc.main(
+            [
+                "--tag",
+                "shell",
+                "--config",
+                str(config_path),
+                "--cache",
+                str(cache_path),
+                "--squelch-state",
+                str(squelch_path),
+            ]
+        )
+
+    assert exit_code in (0, 1), (
+        f"main() returned exit_code={exit_code} — expected 0 or 1\n"
+        f"stdout={captured.getvalue()!r}"
+    )
+
+    stdout_text = captured.getvalue().strip()
+    assert stdout_text, "stdout was empty — main() emitted no JSON"
+
+    report = json.loads(stdout_text)
+
+    # SDD schema_version + mode fields
+    assert report["schema_version"] == "1"
+    assert report["mode"] == "tag"
+    assert report["trigger_arg"] == "shell"
+    assert report["profile"] == "miyo"
+    assert report["abort_reason"] is None
+    # Must have produced at least one cluster from the 3 shell notes
+    assert len(report["topic_clusters"]) >= 1, (
+        f"Expected ≥1 cluster; got empty topic_clusters"
+    )
+    # Cluster shape
+    cluster = report["topic_clusters"][0]
+    assert "cluster_id" in cluster, "cluster missing cluster_id"
+    assert "title" in cluster, "cluster missing title"
+    assert "confidence" in cluster, "cluster missing confidence"
+    assert "candidate_stems" in cluster, "cluster missing candidate_stems"
+    assert "topic_keywords" in cluster, "cluster missing topic_keywords"
+    # Structural fields
+    assert "parent_options_per_cluster" in report
+    assert isinstance(report["parent_options_per_cluster"], dict)
     assert "candidates_total" in report
     assert "candidates_after_prefilter" in report
     assert isinstance(report["candidates_capped"], bool)

@@ -1,5 +1,5 @@
 # /moc-propose — Propose a new MOC for a topic, folder, classification, or whole-vault scan
-# version: 0.1.0
+# version: 0.1.1
 
 Proactively propose a Map-of-Content (MOC) for an under-organised topic area.
 Routes to the `moc-architect` agent, which runs `moc-discovery.py` then `suggestions-reducer.py`
@@ -61,9 +61,10 @@ that contain colons (e.g. `Shell: A Survey`).
 2. **Resolve config** — Read `config/vault-config.yaml` using the `Read` tool; extract
    `concepts.inbox` (needed for Step 5). If `vault-config.yaml` is missing or unreadable,
    abort immediately: `"vault-config.yaml not found — is Tomo configured? Run /explore-vault first."` Do not proceed.
-3. **Run `moc-discovery.py`** — subprocess with the mode flag:
-   - `--tag <value>`, `--folder <value>`, `--class <value>`, `--title <value>`,
-     `--free-text <value>`, or `--scan` (no args).
+3. **Run `moc-discovery.py`** — subprocess with the mode arg:
+   - Scope flags: `--tag <value>`, `--folder <value>`, `--class <value>`, `--title <value>`.
+   - Free-text mode: pass the value as a **positional** argument (`moc-discovery.py "<text>"`) — there is no `--free-text` flag.
+   - Scan mode: invoke the script with **no scope argument** (no flag, no positional) — there is no `--scan` flag.
    - Script verifies `discovery-cache.yaml` is present. If missing, it returns
      `abort_reason: cache-empty`; you surface the message and exit:
      > "MOC proposal requires vault cache. Please run `/explore-vault` first to

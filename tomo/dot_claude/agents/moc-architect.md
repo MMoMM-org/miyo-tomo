@@ -4,7 +4,7 @@ description: "Use PROACTIVELY when the user types /moc-propose, when topic-densi
 model: sonnet
 effort: medium
 color: green
-tools: Bash, Read
+tools: Bash, Read, Write
 skills:
   - obsidian-markdown
   - lyt-patterns
@@ -13,7 +13,7 @@ permissionMode: acceptEdits
 ---
 **Active agent: moc-architect**
 
-# version: 0.1.0
+# version: 0.2.0 (T6.5: 2-pass discovery with agent-side topic extraction for cache misses)
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault
@@ -76,44 +76,111 @@ not proceed to Step 4.
 in T5.1). The agent does NOT manage `state/moc-squelch.json` directly. This step is an
 acknowledgement only — no action required from the agent.
 
-### Step 4 — Invoke moc-discovery.py
+### Step 4 — Run discovery (2-pass: Phase 1 → topic extraction → Phase 2-6.5)
 
-Invoke the discovery script as a subprocess. **STRICT:** Use the exact form below — no
-variations, no stderr redirect into stdout.
+`moc-discovery.py` is split into two passes so cache misses can be resolved by you
+(the agent) rather than an in-script LLM call. Pass 1 emits Phase-1 candidates with
+note body excerpts for misses; you extract topics from the excerpts; Pass 2 runs
+Phases 2-6.5 with topics pre-populated.
 
-For `tag` mode:
+**STRICT:** Use the exact forms below — no variations, no stderr redirect into stdout.
+
+#### Step 4a — Pass 1: emit Phase-1 candidates
+
+Generate a run ID and a Phase-1 temp path, then run the script with `--emit-phase1`:
+
 ```bash
-python3 scripts/moc-discovery.py --tag <trigger_arg> --config config/vault-config.yaml
+RUN_ID=$(python3 -c "import time; print(int(time.time()))")
+PHASE1_TMP="tomo-tmp/moc-phase1-${RUN_ID}.json"
 ```
 
-For `folder` mode:
-```bash
-python3 scripts/moc-discovery.py --folder <trigger_arg> --config config/vault-config.yaml
+Then invoke with the mode's scope arg AND `--emit-phase1 "$PHASE1_TMP"`:
+
+| Mode      | Invocation                                                                                                   |
+|-----------|--------------------------------------------------------------------------------------------------------------|
+| tag       | `python3 scripts/moc-discovery.py --tag <trigger_arg> --config config/vault-config.yaml --emit-phase1 "$PHASE1_TMP"`     |
+| folder    | `python3 scripts/moc-discovery.py --folder <trigger_arg> --config config/vault-config.yaml --emit-phase1 "$PHASE1_TMP"`  |
+| class     | `python3 scripts/moc-discovery.py --class <trigger_arg> --config config/vault-config.yaml --emit-phase1 "$PHASE1_TMP"`   |
+| title     | `python3 scripts/moc-discovery.py --title <trigger_arg> --config config/vault-config.yaml --emit-phase1 "$PHASE1_TMP"`   |
+| free-text | `python3 scripts/moc-discovery.py "<trigger_arg>" --config config/vault-config.yaml --emit-phase1 "$PHASE1_TMP"`         |
+| scan      | `python3 scripts/moc-discovery.py --config config/vault-config.yaml --emit-phase1 "$PHASE1_TMP"`                        |
+
+**STRICT:** Exit 0 means the JSON was written to `$PHASE1_TMP`. Do NOT append `2>&1` —
+stderr must stay separate. Non-zero exit → surface stderr and stop. Stdout is empty
+for `--emit-phase1`; the data is in the file.
+
+Read `$PHASE1_TMP` with the `Read` tool. The payload shape:
+
+```json
+{
+  "schema_version": "1",
+  "mode": "tag",
+  "trigger_arg": "topic/applied/zsh",
+  "profile": "miyo",
+  "abort_reason": null,
+  "abort_message": null,
+  "candidates": [
+    {"stem": "zsh", "path": "Atlas/202 Notes/zsh.md", "topics": ["shell","unix"]},
+    {"stem": "shell-quirks", "path": "Atlas/202 Notes/shell-quirks.md", "topics": null,
+     "body_excerpt": "First 800 chars of the note body..."}
+  ]
+}
 ```
 
-For `class` mode:
-```bash
-python3 scripts/moc-discovery.py --class <trigger_arg> --config config/vault-config.yaml
+**STRICT:** Check `abort_reason` first. If set (`cache-miss-cap-exceeded`,
+`zero-candidates`, etc.), surface the `abort_message` from the file verbatim and skip
+Steps 4b/4c — no proposal-doc is written. Jump to Step 9 (Emit final report) with
+`Discovery: <abort_reason>`.
+
+#### Step 4b — Extract topics for cache misses
+
+For each candidate with `topics: null`, extract **3–5 topic keywords** that best
+describe what the note is about, using the candidate's `body_excerpt`, `stem`, and `path`.
+
+**STRICT — topic extraction quality:**
+- Skim the `body_excerpt` for concept-bearing nouns/noun phrases (subjects, technologies, methods, places, people, frameworks, named concepts).
+- Avoid generic filler words ("note", "today", "see also", "thoughts", "stuff").
+- Prefer the user's existing vocabulary — tag prefixes appearing in the body, frontmatter hints, MOC-link surface forms.
+- Topics are lowercase, single words or short noun phrases (1–3 words). NO `#` tag prefix. NO leading/trailing whitespace.
+- If `body_excerpt` is empty (Kado read failed), derive 1–2 topics from the `stem` alone.
+- If you genuinely cannot extract a meaningful topic, use `["uncategorised"]` — NEVER leave `null` in the rewritten file.
+
+Then rewrite `$PHASE1_TMP` using the `Write` tool. Same top-level shape, but every
+candidate's `topics` is a populated list. Drop the `body_excerpt` field from the
+rewritten file (no longer needed). The rewritten file becomes the input for Pass 2.
+
+**STRICT:** Use the `Write` tool — NOT `printf` via Bash. The JSON contains nested
+structures and special characters that bash quoting mangles. `Write` handles UTF-8
+and quoting cleanly.
+
+Rewritten shape:
+```json
+{
+  "schema_version": "1",
+  "mode": "tag",
+  "trigger_arg": "topic/applied/zsh",
+  "profile": "miyo",
+  "candidates": [
+    {"stem": "zsh", "path": "Atlas/202 Notes/zsh.md", "topics": ["shell","unix"]},
+    {"stem": "shell-quirks", "path": "Atlas/202 Notes/shell-quirks.md",
+     "topics": ["shell","scripting","posix"]}
+  ]
+}
 ```
 
-For `title` mode:
+Report progress: `"Topics extracted for N cache-miss candidates"` (N = candidates that
+had `topics: null` in Pass 1). If N=0, mention that explicitly — the agent's work was
+trivial and Pass 2 is essentially the only invocation.
+
+#### Step 4c — Pass 2: resume with topics (Phase 2-6.5)
+
 ```bash
-python3 scripts/moc-discovery.py --title <trigger_arg> --config config/vault-config.yaml
+DISC_JSON=$(python3 scripts/moc-discovery.py --phase1-input "$PHASE1_TMP" --config config/vault-config.yaml)
 ```
 
-For `free-text` mode:
-```bash
-python3 scripts/moc-discovery.py "<trigger_arg>" --config config/vault-config.yaml
-```
-
-For `scan` mode (no argument, no scope flag):
-```bash
-python3 scripts/moc-discovery.py --config config/vault-config.yaml
-```
-
-**STRICT:** Capture stdout as the raw JSON DiscoveryReport. Do NOT append `2>&1` — stderr
-must stay separate. A non-zero exit code means the script failed at the process level
-(distinct from a JSON-level `abort_reason`); surface the stderr message and stop.
+**STRICT:** Capture stdout as the raw JSON `DiscoveryReport`. Do NOT append `2>&1` —
+stderr must stay separate. A non-zero exit code means the script failed at the process
+level (distinct from a JSON-level `abort_reason`); surface stderr and stop.
 
 ### Step 5 — Handle abort_reason
 
@@ -137,18 +204,10 @@ is a reference; the script fills in `<cap>` and `<N>` with real values.
 
 ### Step 6 — Write DiscoveryReport JSON to temp path
 
-In Step 4, capture stdout into `DISC_JSON`:
+`DISC_JSON` was captured in Step 4c. Reuse the `$RUN_ID` from Step 4a and write the
+DiscoveryReport to a sibling temp file:
 
 ```bash
-DISC_JSON=$(python3 scripts/moc-discovery.py ... --config config/vault-config.yaml)
-```
-
-**STRICT:** Do NOT append `2>&1` to that capture — stderr must stay separate.
-
-Generate a run ID and write the captured JSON to a temp file:
-
-```bash
-RUN_ID=$(python3 -c "import time; print(int(time.time()))")
 DISC_TMP="tomo-tmp/moc-discovery-${RUN_ID}.json"
 printf '%s' "$DISC_JSON" > "$DISC_TMP"
 ```

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_moc_discovery_main.py — main() orchestration for moc-discovery.py.
 
 F-43 Phase 6 T6.0: covers the full discovery pipeline wired in main():
@@ -15,6 +15,9 @@ Test matrix:
   - test_main_zero_candidates_emits_abort_reason   : zero-candidates abort
   - test_main_handles_squelched_cluster             : squelch read-only lookup
   - test_main_dry_run_path_unchanged               : --dry-run is still bit-identical
+  - test_emit_phase1_writes_candidates_json        : --emit-phase1 round-trip (T6.5.1)
+  - test_emit_phase1_marks_misses_as_null          : cache-miss candidates → topics: null
+  - test_phase1_input_skips_phase1_no_llm_needed   : --phase1-input + pre-populated topics
 
 TDD note: these tests were written BEFORE the orchestration code and
 confirmed failing (NotImplementedError) at commit time.
@@ -480,3 +483,216 @@ def test_main_dry_run_path_unchanged(tmp_path: Path) -> None:
     # Dry-run must not touch Kado
     assert "ConnectionRefused" not in result.stderr
     assert "kado" not in result.stderr.lower()
+
+
+# ── T6.5: two-pass topic-extraction (agent-side LLM) ─────────────────────────
+
+
+def test_emit_phase1_writes_candidates_json(tmp_path: Path) -> None:
+    """--emit-phase1 writes Phase-1 candidates to JSON with topics-from-cache.
+
+    Title mode with cache covering all three shell notes → each candidate's
+    topics list is populated from cache.map_notes. No phase 2-6.5 runs.
+    Exit 0, stdout empty (JSON goes to file, not stdout).
+
+    Covers T6.5.1 emit-phase1 contract.
+    """
+    config_path = _write_config(tmp_path)
+    cache_path = _write_cache(tmp_path, atomic_notes=_SHELL_NOTES)
+    squelch_path = _write_squelch(tmp_path)
+    out_path = tmp_path / "phase1-out.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--title",
+            "shell",
+            "--config",
+            str(config_path),
+            "--cache",
+            str(cache_path),
+            "--squelch-state",
+            str(squelch_path),
+            "--emit-phase1",
+            str(out_path),
+        ],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "TOMO_INSTANCE": str(tmp_path)},
+        timeout=30,
+    )
+
+    assert result.returncode == 0, (
+        f"--emit-phase1 exited {result.returncode}\nstderr={result.stderr}"
+    )
+    assert out_path.exists(), f"--emit-phase1 did not write {out_path}"
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert isinstance(payload, dict)
+    assert payload["mode"] == "title"
+    assert payload["trigger_arg"] == "shell"
+    assert payload["profile"] == "miyo"
+    candidates = payload["candidates"]
+    assert isinstance(candidates, list)
+    assert len(candidates) == 3, f"expected 3 candidates, got {len(candidates)}"
+
+    paths = {c["path"] for c in candidates}
+    assert paths == {n["path"] for n in _SHELL_NOTES}
+
+    # All three are in cache → topics non-null + list-shaped
+    for c in candidates:
+        assert isinstance(c.get("topics"), list), (
+            f"expected list topics for cache-hit candidate {c['path']}; got {c.get('topics')!r}"
+        )
+        assert c["topics"], f"expected non-empty topics for {c['path']}"
+
+
+def test_emit_phase1_marks_misses_as_null(tmp_path: Path, monkeypatch) -> None:
+    """Tag-mode: Kado returns paths NOT in cache → candidates emit topics: null.
+
+    Phase 1 (tag mode) discovers candidates via Kado; phase 2 normally hits
+    cache.map_notes for topics. When cache has no entry for the candidate path,
+    the emit-phase1 JSON should mark topics as null so the agent knows which
+    candidates need LLM-side extraction before --phase1-input.
+
+    Covers T6.5.1 miss-marking contract.
+    """
+    config_path = _write_config(tmp_path)
+    # Cache has NO entries for the shell-note paths → all misses.
+    cache_path = _write_cache(tmp_path, atomic_notes=[])
+    squelch_path = _write_squelch(tmp_path)
+    out_path = tmp_path / "phase1-out.json"
+
+    # Cache is empty → validate_cache_loaded would abort. Seed an unrelated MOC
+    # entry so cache is non-empty but contains no atomic-note paths.
+    cache_path.write_text(
+        yaml.dump(
+            {
+                "cache_version": 1,
+                "map_notes": [
+                    {"path": "Atlas/200 Maps/2600 Tools.md", "title": "Tools", "topics": ["tools"], "tags": []}
+                ],
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda: _FakeKadoForTag())
+
+    exit_code = _moc_disc.main(
+        [
+            "--tag",
+            "shell",
+            "--config",
+            str(config_path),
+            "--cache",
+            str(cache_path),
+            "--squelch-state",
+            str(squelch_path),
+            "--emit-phase1",
+            str(out_path),
+        ]
+    )
+    assert exit_code == 0, f"--emit-phase1 returned {exit_code}"
+    assert out_path.exists()
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    candidates = payload["candidates"]
+    assert len(candidates) == 3
+    assert payload.get("abort_reason") is None
+    # All candidates are misses (cache had no atomic-note entries)
+    for c in candidates:
+        assert c.get("topics") is None, (
+            f"expected topics=null for miss {c['path']}; got {c.get('topics')!r}"
+        )
+        # body_excerpt populated from FakeKadoForTag.read_note
+        assert "body_excerpt" in c, f"miss {c['path']} missing body_excerpt"
+        assert c["body_excerpt"], f"miss {c['path']} body_excerpt is empty"
+        assert c["body_excerpt"].startswith("# stub note"), (
+            f"unexpected body_excerpt: {c['body_excerpt']!r}"
+        )
+
+
+def test_phase1_input_skips_phase1_no_llm_needed(tmp_path: Path) -> None:
+    """--phase1-input loads pre-populated candidates → phase 2 short-circuits.
+
+    Agent has pre-populated topics for every candidate (in real flow, via a
+    topic-extract subagent). Phase 2 must NOT raise RuntimeError about missing
+    llm_client — it should treat all candidates as hits and run phases 2-6.5
+    normally to emit a DiscoveryReport.
+
+    Covers T6.5.2 phase1-input contract + phase 2 topics short-circuit.
+    """
+    config_path = _write_config(tmp_path)
+    # Cache has no atomic-note entries — proves phase 2 doesn't fall back to
+    # cache lookup when topics are pre-populated.
+    cache_path = tmp_path / "discovery-cache.yaml"
+    cache_path.write_text(
+        yaml.dump(
+            {
+                "cache_version": 1,
+                "map_notes": [
+                    {"path": "Atlas/200 Maps/2600 Tools.md", "title": "Tools", "topics": ["tools"], "tags": []}
+                ],
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    squelch_path = _write_squelch(tmp_path)
+
+    # Pre-populated phase-1 payload — topics filled in for all candidates.
+    phase1_payload = {
+        "mode": "tag",
+        "trigger_arg": "shell",
+        "profile": "miyo",
+        "candidates": [
+            {"stem": "zsh", "path": f"{_BASE_PATH}zsh.md", "topics": ["shell", "unix"]},
+            {"stem": "bash", "path": f"{_BASE_PATH}bash.md", "topics": ["shell", "posix"]},
+            {"stem": "fish", "path": f"{_BASE_PATH}fish.md", "topics": ["shell", "interactive"]},
+        ],
+    }
+    phase1_path = tmp_path / "phase1-in.json"
+    phase1_path.write_text(json.dumps(phase1_payload), encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--phase1-input",
+            str(phase1_path),
+            "--config",
+            str(config_path),
+            "--cache",
+            str(cache_path),
+            "--squelch-state",
+            str(squelch_path),
+        ],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "KADO_API_BASE_URL": "http://127.0.0.1:1",
+            "KADO_API_KEY": "no-kado-for-phase1-input-test",
+            "TOMO_INSTANCE": str(tmp_path),
+        },
+        timeout=30,
+    )
+
+    assert result.returncode in (0, 1), (
+        f"--phase1-input exited {result.returncode}\n"
+        f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+    )
+    # No RuntimeError about llm_client must surface in stderr
+    assert "llm_client is required" not in result.stderr, (
+        f"phase 2 must short-circuit on pre-populated topics — but raised:\n{result.stderr}"
+    )
+
+    report = json.loads(result.stdout)
+    assert report["schema_version"] == "1"
+    assert report["mode"] == "tag"
+    assert report["trigger_arg"] == "shell"
+    assert report["abort_reason"] is None
+    assert len(report["topic_clusters"]) >= 1, "expected ≥1 cluster from pre-populated topics"

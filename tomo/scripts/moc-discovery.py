@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.0
+# version: 0.10.0 (T6.5: --emit-phase1/--phase1-input for agent-side topic extraction)
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -200,6 +200,31 @@ def build_parser() -> argparse.ArgumentParser:
             f"Path to moc-squelch.json sidecar (ADR-8). "
             f"Default: $TOMO_INSTANCE/state/moc-squelch.json "
             f"(currently resolves to {DEFAULT_SQUELCH_STATE_PATH})."
+        ),
+    )
+
+    # T6.5: agent-side LLM split. `--emit-phase1` exits after Phase 1 writing
+    # candidate paths + cache-resolved topics (null for cache misses) so the
+    # moc-architect agent can extract missing topics LLM-side and feed them
+    # back via `--phase1-input`. The two flags are mutually exclusive.
+    phase1_io = parser.add_mutually_exclusive_group()
+    phase1_io.add_argument(
+        "--emit-phase1",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Run Phase 1 only; write candidates JSON to PATH with topics from "
+            "cache (null for misses); exit before Phase 2."
+        ),
+    )
+    phase1_io.add_argument(
+        "--phase1-input",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Skip Phase 1; load candidates (with pre-populated topics) from "
+            "PATH. Phase 2 short-circuits on candidates whose topics are "
+            "already set — no LLMClient needed."
         ),
     )
 
@@ -677,6 +702,13 @@ def phase2_extract_topics(
     hits: list[Candidate] = []
     misses: list[Candidate] = []
     for c in candidates:
+        # T6.5: short-circuit on pre-populated topics (--phase1-input flow).
+        # The moc-architect agent ran a topic-extract subagent between
+        # --emit-phase1 and --phase1-input, so cache misses are already
+        # resolved at the candidate level — no LLM call needed here.
+        if c.topics:
+            hits.append(c)
+            continue
         cached = topics_by_path.get(c.path)
         if cached is not None:
             # Copy onto the candidate so downstream phases see populated topics.
@@ -1517,6 +1549,7 @@ def _run_pipeline(
     profile_name: str,
     mode: str,
     trigger_arg: str,
+    pre_loaded_candidates: list[Candidate] | None = None,
 ) -> tuple[dict | None, int]:
     """Execute Phase 1 → Phase 6.5 and return (report_dict, exit_code).
 
@@ -1525,6 +1558,10 @@ def _run_pipeline(
     is emitted directly inside this helper (abort_reason paths), so the caller
     skips the json.dump step. For successful or partial-failure runs, the
     assembled DiscoveryReport dict is returned.
+
+    When `pre_loaded_candidates` is provided (T6.5 `--phase1-input` flow), Phase 1
+    is skipped — the candidates already carry their topics, populated by the
+    moc-architect agent's topic-extract subagent between the two passes.
 
     Exit codes: 0 = clean, 1 = partial (some dups/squelched), 2 = fatal.
     """
@@ -1537,19 +1574,26 @@ def _run_pipeline(
     profile_dict = _load_yaml(profile_path)
     kado_client = _build_kado_client()
 
-    # Phase 1 — Candidate selection
-    candidates, abort1 = phase1_select_candidates(
-        mode, trigger_arg, profile_dict, cache, kado_client, moc_config
-    )
-    if abort1 is not None:
-        _log(f"phase1: abort → {abort1!r}")
-        _emit_abort_report(mode, trigger_arg, profile_name, abort1)
-        return None, 0
+    if pre_loaded_candidates is not None:
+        candidates = pre_loaded_candidates
+        _log(f"phase1: skipped (--phase1-input); {len(candidates)} candidate(s) loaded")
+    else:
+        # Phase 1 — Candidate selection
+        candidates, abort1 = phase1_select_candidates(
+            mode, trigger_arg, profile_dict, cache, kado_client, moc_config
+        )
+        if abort1 is not None:
+            _log(f"phase1: abort → {abort1!r}")
+            _emit_abort_report(mode, trigger_arg, profile_name, abort1)
+            return None, 0
+        _log(f"phase1: {len(candidates)} candidate(s) selected")
 
     candidates_total = len(candidates)
-    _log(f"phase1: {candidates_total} candidate(s) selected")
 
-    # Phase 2 — Topic extraction (llm_client=None; T2.8 will inject real client)
+    # Phase 2 — Topic extraction. With --phase1-input, every candidate already
+    # has `topics` populated by the agent's topic-extract subagent, so the
+    # short-circuit inside phase2_extract_topics treats them all as hits and
+    # never invokes llm_client.
     candidates_with_topics, abort2 = phase2_extract_topics(
         candidates, cache, moc_config, llm_client=None
     )
@@ -1639,19 +1683,167 @@ def _emit_abort_report(
     return 0
 
 
+def _load_phase1_input(path: Path) -> tuple[str, str, str, list[Candidate]]:
+    """Load a phase1-input JSON file → (mode, trigger_arg, profile, candidates).
+
+    Raises ValueError on malformed input. Used by the `--phase1-input` flow
+    after the moc-architect agent has populated topics for cache-miss
+    candidates between the `--emit-phase1` and `--phase1-input` passes.
+    """
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("phase1-input must be a JSON object")
+    mode = payload.get("mode")
+    trigger_arg = payload.get("trigger_arg", "")
+    profile = payload.get("profile")
+    raw_candidates = payload.get("candidates")
+    if not isinstance(mode, str) or not isinstance(profile, str):
+        raise ValueError("phase1-input requires string `mode` and `profile`")
+    if not isinstance(raw_candidates, list):
+        raise ValueError("phase1-input requires list `candidates`")
+
+    candidates: list[Candidate] = []
+    for entry in raw_candidates:
+        if not isinstance(entry, dict):
+            continue
+        topics_raw = entry.get("topics")
+        topics = [str(t) for t in topics_raw if t] if isinstance(topics_raw, list) else []
+        candidates.append(
+            Candidate(
+                stem=str(entry.get("stem") or ""),
+                path=str(entry.get("path") or ""),
+                topics=topics,
+                existing_up=entry.get("existing_up"),
+                classification=entry.get("classification"),
+                level=int(entry.get("level") or 0),
+            )
+        )
+    return mode, str(trigger_arg), profile, candidates
+
+
+_BODY_EXCERPT_CHARS = 800  # cap per-note body included in phase1 JSON for agent extraction
+
+
+def _write_phase1_emit(
+    path: Path,
+    mode: str,
+    trigger_arg: str,
+    profile_name: str,
+    candidates: list[Candidate],
+    cache: dict,
+    moc_config,
+    kado_client,
+) -> str | None:
+    """Write the --emit-phase1 JSON: candidates with cache-resolved topics or null.
+
+    For each cache-miss candidate, includes a `body_excerpt` (first
+    `_BODY_EXCERPT_CHARS` characters) so the moc-architect agent can extract
+    topics inline without needing Kado MCP access. The agent rewrites the
+    file with all topics populated, then re-invokes the script with
+    `--phase1-input`.
+
+    Enforces the cache-miss cap (CON-6: 5 batches × 10 notes = 50) here too,
+    since phase 2's enforcement is skipped on the --phase1-input flow.
+
+    Returns the abort_reason if the cap was exceeded, otherwise None.
+    """
+    topics_by_path = _build_topics_index(cache)
+    misses_count = sum(1 for c in candidates if c.path not in topics_by_path)
+    cap = getattr(moc_config, "cache_miss_max_batches", 5)
+    max_misses = cap * LLM_BATCH_SIZE
+    abort_reason: str | None = None
+    if misses_count > max_misses:
+        _log(
+            f"emit-phase1: cache-miss-cap-exceeded "
+            f"(misses={misses_count} > cap={max_misses})"
+        )
+        abort_reason = "cache-miss-cap-exceeded"
+
+    out_candidates: list[dict] = []
+    for c in candidates:
+        if c.path in topics_by_path:
+            out_candidates.append(
+                {"stem": c.stem, "path": c.path, "topics": list(topics_by_path[c.path])}
+            )
+            continue
+        # Cache miss — fetch body for agent-side topic extraction (unless aborting).
+        body_excerpt = ""
+        if abort_reason is None:
+            try:
+                note = kado_client.read_note(c.path)
+                content = (note.get("content") if isinstance(note, dict) else "") or ""
+                body_excerpt = content[:_BODY_EXCERPT_CHARS]
+            except Exception as exc:  # noqa: BLE001 — kado errors are heterogeneous
+                _log(f"emit-phase1: read_note failed for {c.path}: {exc}; body_excerpt empty")
+        out_candidates.append(
+            {
+                "stem": c.stem,
+                "path": c.path,
+                "topics": None,
+                "body_excerpt": body_excerpt,
+            }
+        )
+
+    out = {
+        "schema_version": "1",
+        "mode": mode,
+        "trigger_arg": trigger_arg,
+        "profile": profile_name,
+        "abort_reason": abort_reason,
+        "abort_message": ABORT_MESSAGES.get(abort_reason) if abort_reason else None,
+        "candidates": out_candidates,
+    }
+    path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return abort_reason
+
+
 def main(argv: list[str] | None = None) -> int:
     """Top-level orchestration. Returns exit code 0 / 1 / 2."""
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    config_path = Path(args.config)
+
+    # ── --phase1-input branch: skip Phase 1, derive mode/trigger from JSON ────
+    # T6.5: agent has already extracted topics for cache misses LLM-side.
+    if args.phase1_input:
+        try:
+            mode, trigger_arg, profile_name, pre_loaded = _load_phase1_input(
+                Path(args.phase1_input)
+            )
+        except (ValueError, FileNotFoundError, json.JSONDecodeError) as exc:
+            print(f"{LOG_PREFIX} FATAL: --phase1-input load failed: {exc}", file=sys.stderr)
+            return 2
+        _log(f"phase1-input: mode={mode} trigger_arg={trigger_arg!r} candidates={len(pre_loaded)}")
+
+        cache_path = Path(args.cache)
+        cache = _load_yaml(cache_path) if cache_path.exists() else None
+        cache_abort = validate_cache_loaded(cache)
+        if cache_abort is not None:
+            _log(f"cache-empty: cache_path={cache_path} → abort {cache_abort!r}")
+            return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
+
+        squelch_path = Path(args.squelch_state)
+        squelch_registry = _squelch_load_registry(squelch_path)
+        squelch_registry = _squelch_decrement_all(squelch_registry)
+        _squelch_save_registry_atomic(squelch_path, squelch_registry)
+
+        report, exit_code = _run_pipeline(
+            args, cache, squelch_registry, config_path, profile_name,
+            mode, trigger_arg, pre_loaded_candidates=pre_loaded,
+        )
+        if report is not None:
+            json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
+            sys.stdout.write("\n")
+        return exit_code
+
+    # ── Normal flow + --emit-phase1 branch ───────────────────────────────────
     try:
         mode, trigger_arg = route_input(args)
     except ValueError as exc:
         print(f"{LOG_PREFIX} FATAL: {exc}", file=sys.stderr)
         return 2
     _log(f"mode={mode} trigger_arg={trigger_arg!r}")
-
-    config_path = Path(args.config)
 
     # Profile resolution — exit 2 fatal if unresolved (SDD line 834).
     try:
@@ -1681,6 +1873,33 @@ def main(argv: list[str] | None = None) -> int:
     if cache_abort is not None:
         _log(f"cache-empty: cache_path={cache_path} → abort {cache_abort!r}")
         return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
+
+    # ── --emit-phase1 branch: run Phase 1 only, write JSON, exit ─────────────
+    # T6.5: no squelch decrement here; squelch is a per-discovery-run counter
+    # and a two-pass invocation counts as one run (decremented in pass 2).
+    if args.emit_phase1:
+        moc_config = _load_moc_config(config_path)
+        if args.candidate_cap is not None:
+            import dataclasses as _dc
+            moc_config = _dc.replace(moc_config, candidate_cap=args.candidate_cap)
+        profile_path = DEFAULT_PROFILES_DIR / f"{profile_name}.yaml"
+        profile_dict = _load_yaml(profile_path)
+        kado_client = _build_kado_client()
+        candidates, abort1 = phase1_select_candidates(
+            mode, trigger_arg, profile_dict, cache, kado_client, moc_config
+        )
+        if abort1 is not None:
+            _log(f"phase1: abort → {abort1!r}")
+            return _emit_abort_report(mode, trigger_arg, profile_name, abort1)
+        abort_emit = _write_phase1_emit(
+            Path(args.emit_phase1), mode, trigger_arg, profile_name,
+            candidates, cache, moc_config, kado_client,
+        )
+        if abort_emit is not None:
+            _log(f"emit-phase1: abort → {abort_emit!r} (written to file)")
+        else:
+            _log(f"emit-phase1: wrote {len(candidates)} candidate(s) to {args.emit_phase1}")
+        return 0
 
     # ── Squelch: load → decrement → persist (T5.1) ───────────────────────────
     # SDD §Pseudocode lines 881-884: run at start of each discovery pipeline so

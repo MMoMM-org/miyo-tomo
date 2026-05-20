@@ -6,7 +6,7 @@
 |-------|-------|
 | **Created** | 2026-05-20 |
 | **Current Phase** | PRD |
-| **Last Updated** | 2026-05-20 |
+| **Last Updated** | 2026-05-20 (post-OQ-lock — 9 of 14 questions resolved, 2 still open) |
 
 ## Documents
 
@@ -28,6 +28,7 @@
 | 2026-05-20 | Pre-locked: State-promoter implementation = Option C (implicit body-read on pending-* docs) for v1 | User sign-off 2026-05-20. Cheaper than Option A (script run before every /inbox) and Option B (Hashi-plugin watcher), at the cost of one body-read per pending-state doc per `/inbox` run — still ~5% of today's token cost |
 | 2026-05-20 | F-43 T6.2 + T6.4 marked blocked-by this spec | F-43 acceptance-flow cannot be live-validated without unified file-discovery; see `docs/XDD/specs/013-moc-creation-skill/plan/phase-6.md` T6.2 pause note |
 | 2026-05-20 | Cross-repo: Tomo→Kado handoff for `kado-write operation=frontmatter` (same-day shipped) | OQ9 resolved BEFORE PRD draft. Tomo opened `_outbox/for-kado/2026-05-20_tomo-to-kado_kado-write-operation-frontmatter.md` (full-body round-trip eliminated, regex-YAML-edit bug class removed). Kado accepted design (merge default, arrays replace, body byte-identical, server normalises closing fence newline) and shipped in **Kado 0.9.6** (PR #49, commit 71ea690) the same day. Tomo replies archived in `_inbox/from-kado/2026-05-20_kado-to-tomo_kado-write-frontmatter-*.md`. **Consequence for F-47**: P1 scope adds a `kado_client.write_frontmatter(path, fm_dict, mode='merge', expected_modified=None)` wrapper; producer-side state writes use the new op from day one; the optional follow-up to migrate `tag-captured.py:96-184` away from regex YAML edit is now in-scope (removes the `feedback_frontmatter_newline_guard.md` failure mode at the Tomo layer too). No legacy fallback needed for the kado-write path. |
+| 2026-05-20 | OQ batch-lock (9 of 14 closed) | User signed off on: OQ1 (hybrid byTag+listDir for fresh items), OQ2 (tag at Pass 1 dispatch), OQ3 (nested tag syntax), OQ4 (**no backward-compat — clean cut-over, Privat-Test reset**), OQ5 (filename rename going-forward only), OQ7 (configurable `tag_prefix` retained), OQ8 (accept byTag-pollution noise), OQ10 (replace tag-transition), OQ11 (suggestions 2-state, drop `converted`), OQ12 (moc-proposal 2-state, drop file-level `rejected`), OQ13 (Hashi auto-cleanup on instructions-applied + manual orphan-delete). Still open: OQ6 (MCP/tool-call layer optimizations — PRD section), OQ14 (PRD must include explicit flow diagrams for `/inbox` + `/moc-propose`). OQ4 is the biggest hebel — drops F-47.P5 entirely (no legacy fallback to remove). |
 
 ## Context
 
@@ -35,38 +36,56 @@ F-47 — Unified frontmatter + byTag discovery for all Tomo-produced docs. Repla
 
 Surfaced from F-43 T6.2 live-validation findings (2026-05-20): `/inbox` Auto-Discovery does `listDir + 3× kado-read` of full file bodies to count `[x] Applied` / `[x] Approved` checkboxes; `tomo-moc-proposal-*` not in SKIP_SUFFIXES (filename uses prefix not suffix); state split across 3 mechanisms. F-43 acceptance-flow for proposal-docs has no discovery path — needs unified model first.
 
-**State machines (locked direction, details to be confirmed in PRD)**:
+**State machines (locked 2026-05-20)**:
 
-- **source**: `pending` → `captured` (Pass 1 Phase C via `tag-captured.py`)
-- **suggestions**: `pending-approval` → `approved` → `converted` (Pass 1 writes pending-approval; user ticks `[x] Approved` → state-promoter sets approved; Pass 2 verbraucht → sets converted)
-- **moc-proposal**: `pending-accept` → `accepted` → `rejected` (`/moc-propose` writes pending-accept; user ticks cluster `[x] Accept` → state-promoter sets accepted; un-accepted clusters at Pass 2 time → rejected + squelch)
-- **instructions**: `pending-apply` → `applied` (Pass 2 / MOC-consumption writes pending-apply; vault-executor flips to applied after all actions done)
+- **source**: `pending` (untagged in inbox) → `captured` (Pass 1 Phase C via `tag-captured.py`). Source items have no `#tomo/*` tag until Pass 1 dispatch — fresh-item discovery uses listDir (untagged = fresh).
+- **suggestions**: `pending-approval` → `approved`. Pass 1 writes `pending-approval`. State-promoter Option C reads the body of `pending-approval` docs to detect `[x] Approved`; on hit, dispatches Pass 2 (instruction-builder); after Pass 2 success, flips suggestions tag to `approved`. The intermediate "user-ticked-but-Pass-2-not-yet-done" state is process-time only (seconds), not a file state.
+- **moc-proposal**: `pending-accept` → `accepted`. `/moc-propose` writes `pending-accept`. State-promoter Option C reads body for any cluster `[x] Accept`; on hit, dispatches MOC-consumption; after success, flips tag to `accepted`. Per-cluster rejection (un-ticked clusters) handled as side-effect via existing squelch-persistence (`state/moc-squelch.json`) — no file-level `rejected` state.
+- **instructions**: `pending-apply` → `applied`. Pass 2 / MOC-consumption writes `pending-apply`. Hashi flips per-action `[x] Applied` as it executes; when ALL actions applied, Hashi flips the file's `#<prefix>/instructions/applied` tag AND deletes/archives the linked input docs per cleanup contract (see below).
 
-**Open questions for PRD brainstorm**:
+**Cleanup pattern (locked 2026-05-20)**:
 
-- OQ1: byTag-only discovery vs hybrid byTag + listDir (for untagged fresh source items that haven't yet been seen by Pass 1)
-- OQ2: source-item tagging boundary — tag on arrival (needs a watcher/script in Obsidian inbox folder) vs tag at Pass 1 dispatch (current model, but means fresh items have no `#tomo/*` tag)
-- OQ3: tag hierarchy syntax — nested `#tomo/<doc-type>/<state>` (e.g. `#tomo/suggestions/pending-approval`) vs flat `#tomo-<doc-type>-<state>`
-- OQ4: backward-compat duration — 2 weeks, 4 weeks, until next major release? Affects when legacy suffix+checkbox path can be removed from state-init
-- OQ5: filename rename strategy — rename existing `tomo-moc-proposal-*.md` in vaults via Hashi migration, or apply new naming only going forward (legacy filename detection by content-type frontmatter)
-- OQ6: any further discovery-flow optimizations beyond byTag+read_frontmatter? (user-asked: "ich frage mich ob wir den discovery flow noch optimieren können")
-- OQ7: tag namespace — keep `tag_prefix` (default `MiYo-Tomo`, configurable per vault) → `#<prefix>/<doc-type>/<state>`, OR hardcode `#tomo/...` for simpler discovery globs? Today's lifecycle tag is `#<prefix>/captured` so keeping configurable matches prior art
-- OQ8: byTag-pollution mitigation — client-side filter results by inbox-path prefix (handles case where user manually applies `#tomo/...` outside inbox), or accept the noise as benign
-- OQ10: tag transition semantics — replacement (today's behaviour: `#captured` → `#active` removes old) vs accumulation (keep both for audit trail). PRD must explicitly lock; replacement matches Kado 0.9.6 `mode=merge` `tags` array-replace semantics naturally
+- **Instructions-done auto-cleanup** — when Hashi reaches `applied` (last action done), it auto-deletes (Obsidian trash) the instructions doc + its linked source docs. Hashi reads `tomo:` frontmatter references (`source_suggestions: <path>`, `source_moc_proposal: <path>` — added in F-47 producer-side writes) to know what to delete alongside. Cross-repo handoff to Hashi tracked in `_outbox/for-hashi/` once F-47 ships P1.
+- **Orphan cleanup** — manual via Obsidian (right-click → delete). Examples: a `pending-approval` suggestion the user abandons; a `pending-accept` moc-proposal the user closes without accepting clusters. Tomo does not auto-archive these; inbox volume doesn't justify a script. State-promoter ignores them (they sit as `pending-*` until user deletes or finally ticks an approve box).
 
-**Resolved during research phase** (move to Decisions Log when PRD picks them up):
+**Locked questions (close 2026-05-20 — move to Decisions Log when PRD picks them up)**:
 
-- **OQ9 (Kado frontmatter patch-op)** — RESOLVED 2026-05-20. Kado shipped `kado-write operation=frontmatter` in Kado 0.9.6 same-day after Tomo handoff (`_outbox/for-kado/2026-05-20_tomo-to-kado_kado-write-operation-frontmatter.md` → `_inbox/from-kado/2026-05-20_kado-to-tomo_kado-write-frontmatter-shipped.md`). F-47.P1 uses `write_frontmatter` directly; no fallback needed.
+- **OQ1** (byTag-only vs hybrid byTag+listDir for fresh source items) → **hybrid**. Implied by OQ2: fresh items are untagged, only listDir finds them; byTag finds the rest.
+- **OQ2** (source-item tagging boundary) → **tag at Pass 1 dispatch**. No on-arrival watcher.
+- **OQ3** (tag hierarchy syntax) → **nested** `#tomo/<doc-type>/<state>`.
+- **OQ4** (backward-compat duration) → **none**. Solo-developer Tomo today; clean cut-over, no legacy fallback in state-init/orchestrator. Privat-Test gets reset as part of F-47 rollout.
+- **OQ5** (filename rename strategy) → **going-forward only**. No bulk-rename of existing `tomo-moc-proposal-*.md` files; Privat-Test reset removes the few that exist.
+- **OQ7** (tag namespace) → **configurable**. Keep `tag_prefix` (default `MiYo-Tomo`) → `#<prefix>/<doc-type>/<state>`. Matches prior-art on `#<prefix>/captured`.
+- **OQ8** (byTag-pollution mitigation) → **accept noise**. No client-side inbox-path filter on byTag results. If a user manually applies `#<prefix>/...` outside inbox it's harmless; we don't defend against self-inflicted misuse.
+- **OQ10** (tag transition semantics) → **replace**. Old state-tag removed when new one is set. Matches Kado 0.9.6 `mode=merge` `tags` array-replace semantics naturally.
+- **OQ9** (Kado frontmatter patch-op) → **RESOLVED 2026-05-20** before PRD draft. Kado shipped `kado-write operation=frontmatter` in Kado 0.9.6 same-day after Tomo handoff. F-47.P1 uses `write_frontmatter` directly.
+- **OQ11** (suggestions state-machine simplification) → **2-state**: `pending-approval → approved`. `converted` dropped — state-promoter runs Pass 2 immediately on `[x] Approved` detection, no intermediate "user-ticked-but-Pass-2-pending" file state.
+- **OQ12** (moc-proposal state-machine simplification) → **2-state**: `pending-accept → accepted`. No file-level `rejected`. Per-cluster rejection handled via squelch-persistence (existing F-43 mechanism).
+- **OQ13** (cleanup pattern) → **Hashi auto-deletes on instructions-applied** (instructions + linked source-suggestions + linked source-moc-proposal via `tomo:` frontmatter refs). **Manual delete for orphans** (abandoned `pending-*` docs). No Tomo-side cleanup script.
 
-**Migration phases (locked)**:
+**Still open — PRD must work these through**:
+
+- **OQ6** (MCP / tool-call layer optimizations beyond byTag + read_frontmatter) — needs ruhig diskutiert im PRD. Candidates to evaluate:
+  - `kado-search byTag` with server-side `path-prefix` filter (avoid client-side filtering of unrelated `#<prefix>/...` matches if we later care about pollution)
+  - Batched `read_frontmatter` — paths[] → frontmatters[] in one call (currently 1 call per file)
+  - Combined `kado-list-by-tag` op returning path + frontmatter + tags in one round-trip (skip the byTag → read_frontmatter chain)
+  - Each candidate is a potential Kado-side handoff (separate spec). PRD evaluates value/cost.
+- **OQ14** (PRD shape requirement — surfaced 2026-05-20): PRD must include **explicit flow diagrams** showing files × tags × phases end-to-end for **`/inbox`** (Pass 1 + Pass 2 + state-promoter) and **`/moc-propose`** (discovery + acceptance + MOC-consumption). Implicit until now; locked as a PRD section.
+
+**Migration phases (locked 2026-05-20 — revised after OQ4 = no backward-compat lock)**:
 
 | Phase | Scope | Risk |
 |---|---|---|
-| F-47.P1 | Producer-side writes — all scripts emit `#tomo/<type>/<state>` tag + `tomo:` frontmatter block via new `kado_client.write_frontmatter()` wrapper (Kado 0.9.6 op) | low — additive |
-| F-47.P2 | Consumer: state-init + Auto-Discovery on byTag refactor, with legacy fallback | mid — discovery logic |
-| F-47.P3 | Filename rename (`tomo-moc-proposal-*` → `YYYY-MM-DD_HHMM_moc-proposal-<slug>.md`) + `-diff.md` → `_instructions-diff.md` | low — file naming |
-| F-47.P4 | MOC-consumption flow (moc-proposal/accepted → instructions/pending-apply) — closes F-43 acceptance-gap | high — new workflow branch |
-| F-47.P5 | Legacy-fallback removal (after 2-4 weeks of dual-path operation) | low |
+| F-47.P1 | Schema (`tomo/schemas/doc-frontmatter.schema.json`) + producer-side writes — all scripts emit `#<prefix>/<doc-type>/<state>` tag + `tomo:` frontmatter block (with `source_suggestions` / `source_moc_proposal` refs where applicable) via new `kado_client.write_frontmatter()` wrapper (Kado 0.9.6 op). Also: migrate `tag-captured.py:96-184` away from regex YAML edit to use the wrapper (removes `feedback_frontmatter_newline_guard.md` failure mode). | low — additive |
+| F-47.P2 | Consumer **clean cut-over**: state-init + Auto-Discovery + orchestrator Phase A switched to byTag + read_frontmatter. **No legacy fallback** (OQ4 lock). Privat-Test gets reset as prereq. | mid — discovery logic + test-vault reset |
+| F-47.P3 | Filename rename (`tomo-moc-proposal-YYYYMMDD-HHMM-<slug>.md` → `YYYY-MM-DD_HHMM_moc-proposal-<slug>.md`) + `-diff.md` → `_instructions-diff.md`. **Going-forward only** (OQ5 lock — no bulk migration). | low — file naming |
+| F-47.P4 | MOC-consumption flow (moc-proposal/accepted → instructions/pending-apply via instruction-builder MOC-branch). Closes F-43 acceptance-gap (T6.2 + T6.4 unblock). | high — new workflow branch |
+| ~~P5~~ | ~~Legacy-fallback removal~~ — **dropped**. OQ4 locked no fallback in P2; nothing to remove. |  |
+
+**Cross-repo handoffs**:
+
+- **Kado** — `kado-write operation=frontmatter` (OQ9). ✅ Shipped Kado 0.9.6 same-day (`_outbox/for-kado/2026-05-20_tomo-to-kado_kado-write-operation-frontmatter.md`).
+- **Hashi** — auto-cleanup-on-applied behaviour. Hashi reads `tomo: source_suggestions` / `source_moc_proposal` refs from the instructions doc's frontmatter; when last action `[x] Applied`, deletes (Obsidian trash) the instructions doc + linked sources. Handoff to be opened during F-47.P1 once the frontmatter ref shape stabilises (PRD locks the schema field names).
 
 **Hard blocker for**: F-43 T6.2 + T6.4 (proposal-doc acceptance live-validation). Inherited by F-44/F-45/F-46 — they'll use the unified model from day one.
 

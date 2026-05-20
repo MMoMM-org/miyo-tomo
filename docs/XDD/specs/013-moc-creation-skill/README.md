@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-05-07 |
-| **Current Phase** | Implemented |
-| **Last Updated** | 2026-05-09 |
+| **Current Phase** | Implemented (T6.2 paused — blocked-by F-47) |
+| **Last Updated** | 2026-05-20 |
 
 ## Documents
 
@@ -37,6 +37,9 @@
 | 2026-05-07 | SDD complete — 9 ADRs confirmed, MiYo Constitution L1/L2 satisfied | Architecture: additive 2-pass extension; new components: moc-architect agent, moc-discovery.py; extensions to suggestions-reducer/parser/render and inbox-analyst Step 2b |
 | 2026-05-07 | PLAN complete — 6 phases, 29 tasks, 9 parallel-eligible | Phase 1 foundation+handoff (parallel-heavy); Phase 2 moc-discovery.py (sequential); Phase 3 producer surface (mostly parallel); Phase 4 consumer extensions (3 parallel); Phase 5 squelch wiring; Phase 6 integration+live+docs+launch gate |
 | 2026-05-07 | Validation passed: 3 minor findings patched | (1) Perf timing assertions added to T6.1 (45s/25s/8s with 1.5× CI tolerance); (2) Hashi receipt protocol made explicit in T1.1 + T6.4 launch gate; (3) Kokoro reflection sub-step added to T6.3. Constitution L1 fully passes |
+| 2026-05-20 | T6.5 fix: agent-side topic extraction (2-pass discovery) | Live-validation 2026-05-20: `phase2_extract_topics` crashed on real cache misses (T2.8 left `llm_client=None` TODO). Fixed via `--emit-phase1`/`--phase1-input` + topic-extract in moc-architect Step 4b. Range: `17d5a00` + `6e66d65`. See `feedback_mock_at_orchestrator_not_helper` memory |
+| 2026-05-20 | T6.5.5 fix: agent kado-write transports proposal-doc to vault | Live-validation 2026-05-20: reducer wrote proposal-doc to container local fs, user couldn't find it in vault. Fixed via moc-architect.md v0.3.0 + `mcp__kado__kado-write` tool. Mirrors inbox-orchestrator Step C4. Commit: `42e4d99` |
+| 2026-05-20 | T6.2 PAUSED — blocks on F-47 Tomo lifecycle tags | Live-validation surfaced architectural debt: `/inbox` Auto-Discovery uses listDir + 3 body-reads to detect file state; `tomo-moc-proposal-*` not in SKIP_SUFFIXES; suggestions/instructions use markdown-checkbox state not frontmatter tags. F-43 acceptance-flow can't be live-validated without first unifying file-discovery via byTag. New spec **017-tomo-lifecycle-tags** (F-47) takes the discovery + state refactor; F-43 T6.2 + T6.4 resume after F-47 ships |
 
 ## Context
 

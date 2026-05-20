@@ -1,5 +1,5 @@
 # /moc-propose — Propose a new MOC for a topic, folder, classification, or whole-vault scan
-# version: 0.1.1
+# version: 0.2.0 (T6.5: collapse How-It-Works detail; moc-architect.md is single source of truth)
 
 Proactively propose a Map-of-Content (MOC) for an under-organised topic area.
 Routes to the `moc-architect` agent, which runs `moc-discovery.py` then `suggestions-reducer.py`
@@ -55,32 +55,27 @@ Whitelisted prefixes: `tag:`, `folder:`, `class:`, `title:`
 Prefixes must match exactly — these fall through by design to avoid misrouting titles
 that contain colons (e.g. `Shell: A Survey`).
 
-## How It Works
+## How It Works (overview)
 
-1. **Parse args** — determine mode from the routing rule above.
-2. **Resolve config** — Read `config/vault-config.yaml` using the `Read` tool; extract
-   `concepts.inbox` (needed for Step 5). If `vault-config.yaml` is missing or unreadable,
-   abort immediately: `"vault-config.yaml not found — is Tomo configured? Run /explore-vault first."` Do not proceed.
-3. **Run `moc-discovery.py`** — subprocess with the mode arg:
-   - Scope flags: `--tag <value>`, `--folder <value>`, `--class <value>`, `--title <value>`.
-   - Free-text mode: pass the value as a **positional** argument (`moc-discovery.py "<text>"`) — there is no `--free-text` flag.
-   - Scan mode: invoke the script with **no scope argument** (no flag, no positional) — there is no `--scan` flag.
-   - Script verifies `discovery-cache.yaml` is present. If missing, it returns
-     `abort_reason: cache-empty`; you surface the message and exit:
-     > "MOC proposal requires vault cache. Please run `/explore-vault` first to
-     > populate `discovery-cache.yaml`."
-   - Other abort reasons: `zero-candidates` ("Keine Notes zum Topic gefunden"),
-     `candidate-cap-exceeded`, `cache-miss-cap-exceeded`. Surface the German message
-     and exit — write no proposal-doc.
-4. **Run `suggestions-reducer.py --moc-proposal-mode`** — renders proposal-doc Markdown
-   (up to `max_results=5` clusters, sorted by confidence; overflow noted as
-   "Weitere N Cluster gefunden").
-5. **Kado write** — writes
-   `<inbox_path>/tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<top-slug>.md`.
-6. **Report to user** — tell the user the proposal-doc path, cluster count, and top
-   confidence score. Remind them to open in Obsidian, tick Accept, then run `/inbox`.
+**STRICT — Do NOT improvise the script invocations from this overview.** The
+authoritative workflow (including the 2-pass `--emit-phase1` / `--phase1-input`
+discovery flow with agent-side topic extraction for cache misses) lives in
+`.claude/agents/moc-architect.md`. Follow that file's Workflow steps verbatim.
 
-Full agent spec: `.claude/agents/moc-architect.md`.
+This overview is a high-level map only — for reader orientation, NOT for execution:
+
+1. **Parse args** — determine mode from the routing rule above (`moc-architect.md` Step 1).
+2. **Resolve config** — Read `config/vault-config.yaml`; abort if missing (Step 2).
+3. **Discovery (2-pass)** — Pass 1 emits Phase-1 candidates with body excerpts for
+   cache misses; you extract topics for the misses inline; Pass 2 runs Phases 2-6.5
+   with topics pre-populated (Step 4a/4b/4c). Surface any `abort_reason` verbatim
+   and stop (Step 5).
+4. **Render** — `suggestions-reducer.py --moc-proposal-mode` writes the proposal-doc
+   to `<inbox_path>/tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<top-slug>.md` (Step 6/7).
+5. **Report** — surface the proposal-doc path + cluster summary; remind the user to
+   open in Obsidian, tick Accept, then run `/inbox` (Step 8/9).
+
+Authoritative spec: `.claude/agents/moc-architect.md`.
 
 ## Agents This Command Coordinates
 

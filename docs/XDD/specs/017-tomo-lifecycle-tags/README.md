@@ -27,6 +27,7 @@
 | 2026-05-20 | Pre-locked: `suggestions/converted` is the post-Pass-2 state name on a suggestions doc | User sign-off 2026-05-20. Alternative considered was `archived` — rejected because the file is not archived, only superseded by an instructions doc; "converted" reads naturally in the discovery log |
 | 2026-05-20 | Pre-locked: State-promoter implementation = Option C (implicit body-read on pending-* docs) for v1 | User sign-off 2026-05-20. Cheaper than Option A (script run before every /inbox) and Option B (Hashi-plugin watcher), at the cost of one body-read per pending-state doc per `/inbox` run — still ~5% of today's token cost |
 | 2026-05-20 | F-43 T6.2 + T6.4 marked blocked-by this spec | F-43 acceptance-flow cannot be live-validated without unified file-discovery; see `docs/XDD/specs/013-moc-creation-skill/plan/phase-6.md` T6.2 pause note |
+| 2026-05-20 | Cross-repo: Tomo→Kado handoff for `kado-write operation=frontmatter` (same-day shipped) | OQ9 resolved BEFORE PRD draft. Tomo opened `_outbox/for-kado/2026-05-20_tomo-to-kado_kado-write-operation-frontmatter.md` (full-body round-trip eliminated, regex-YAML-edit bug class removed). Kado accepted design (merge default, arrays replace, body byte-identical, server normalises closing fence newline) and shipped in **Kado 0.9.6** (PR #49, commit 71ea690) the same day. Tomo replies archived in `_inbox/from-kado/2026-05-20_kado-to-tomo_kado-write-frontmatter-*.md`. **Consequence for F-47**: P1 scope adds a `kado_client.write_frontmatter(path, fm_dict, mode='merge', expected_modified=None)` wrapper; producer-side state writes use the new op from day one; the optional follow-up to migrate `tag-captured.py:96-184` away from regex YAML edit is now in-scope (removes the `feedback_frontmatter_newline_guard.md` failure mode at the Tomo layer too). No legacy fallback needed for the kado-write path. |
 
 ## Context
 
@@ -49,12 +50,19 @@ Surfaced from F-43 T6.2 live-validation findings (2026-05-20): `/inbox` Auto-Dis
 - OQ4: backward-compat duration — 2 weeks, 4 weeks, until next major release? Affects when legacy suffix+checkbox path can be removed from state-init
 - OQ5: filename rename strategy — rename existing `tomo-moc-proposal-*.md` in vaults via Hashi migration, or apply new naming only going forward (legacy filename detection by content-type frontmatter)
 - OQ6: any further discovery-flow optimizations beyond byTag+read_frontmatter? (user-asked: "ich frage mich ob wir den discovery flow noch optimieren können")
+- OQ7: tag namespace — keep `tag_prefix` (default `MiYo-Tomo`, configurable per vault) → `#<prefix>/<doc-type>/<state>`, OR hardcode `#tomo/...` for simpler discovery globs? Today's lifecycle tag is `#<prefix>/captured` so keeping configurable matches prior art
+- OQ8: byTag-pollution mitigation — client-side filter results by inbox-path prefix (handles case where user manually applies `#tomo/...` outside inbox), or accept the noise as benign
+- OQ10: tag transition semantics — replacement (today's behaviour: `#captured` → `#active` removes old) vs accumulation (keep both for audit trail). PRD must explicitly lock; replacement matches Kado 0.9.6 `mode=merge` `tags` array-replace semantics naturally
+
+**Resolved during research phase** (move to Decisions Log when PRD picks them up):
+
+- **OQ9 (Kado frontmatter patch-op)** — RESOLVED 2026-05-20. Kado shipped `kado-write operation=frontmatter` in Kado 0.9.6 same-day after Tomo handoff (`_outbox/for-kado/2026-05-20_tomo-to-kado_kado-write-operation-frontmatter.md` → `_inbox/from-kado/2026-05-20_kado-to-tomo_kado-write-frontmatter-shipped.md`). F-47.P1 uses `write_frontmatter` directly; no fallback needed.
 
 **Migration phases (locked)**:
 
 | Phase | Scope | Risk |
 |---|---|---|
-| F-47.P1 | Producer-side writes — all scripts emit `#tomo/<type>/<state>` tag + `tomo:` frontmatter block | low — additive |
+| F-47.P1 | Producer-side writes — all scripts emit `#tomo/<type>/<state>` tag + `tomo:` frontmatter block via new `kado_client.write_frontmatter()` wrapper (Kado 0.9.6 op) | low — additive |
 | F-47.P2 | Consumer: state-init + Auto-Discovery on byTag refactor, with legacy fallback | mid — discovery logic |
 | F-47.P3 | Filename rename (`tomo-moc-proposal-*` → `YYYY-MM-DD_HHMM_moc-proposal-<slug>.md`) + `-diff.md` → `_instructions-diff.md` | low — file naming |
 | F-47.P4 | MOC-consumption flow (moc-proposal/accepted → instructions/pending-apply) — closes F-43 acceptance-gap | high — new workflow branch |

@@ -83,7 +83,7 @@ This phase delivers the safety net before launch: integration tests against Priv
   4. Validate: All performance targets met (`< 30s` cache-warm, `< 90s` worst-case cache-miss, `< 15s` Pass-2 apply per cluster). All risks in PRD/Risks have either fired-and-mitigated or not-fired-but-monitored entries. **No regression in existing inbox flow.**
   5. Success: Live-vault validation passes the bar set by PRD Quality Requirements `[ref: SDD/Quality Requirements]` `[ref: PRD/Success Metrics/Quality]` `[ref: PRD/Risks and Mitigations]`.
 
-- [ ] **T6.3 Documentation, release notes & memory updates** `[activity: documentation]`
+- [ ] **T6.3 Documentation, release notes & memory updates** `[activity: documentation]` 🔶 STREAM A DONE 2026-05-09: README `/moc-propose` row, evolution log `2026-05-09_F-43-moc-creation-skill.md`, Kokoro reflection handoff `_outbox/for-kokoro/2026-05-09_tomo-to-kokoro_F-43-create-moc-collision-protocol.md`, backlog F-43 done + F-44/F-45/F-46 unblock notes, XDD index spec 013 → Implemented, tomo-help `/moc-propose` listing v0.2.3. Both reviews PASS. Range `e5519be..da86f71`. Stream B (live-validation link in XDD index + `/memory-add` for non-obvious lessons) awaits T6.2.
 
   1. Prime: Read existing release-notes pattern (if any) under `evolution/YYYY-MM/`. Read `docs/XDD/README.md` consolidated index. Read CLAUDE.md routing rules for memory.
   2. Test: N/A (documentation). Done = each artefact below exists and links resolve.

@@ -7,7 +7,7 @@ Two public functions:
       Detect whether the user has ticked the approval/accept box in a
       Tomo-produced workflow doc body.
 
-  flip_state(client, path, doc_type, from_state, to_state, run_id, ...) -> None
+  flip_state(client, path, doc_type, from_state, to_state, run_id, ...) -> bool
       Validate the transition, then write_frontmatter with a merge-mode payload.
       Retry-once on KadoConcurrencyError (idempotent if already at to_state).
 

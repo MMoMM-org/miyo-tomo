@@ -203,6 +203,13 @@ class TestCheckTick:
         result = check_tick("\x00\x01\x02binary garbage", "suggestions")
         assert result is False
 
+    def test_unknown_doc_type_returns_false_and_logs(self, capsys):
+        """Unknown doc_type → False; warning on stderr containing 'unknown doc_type'."""
+        result = check_tick(SUGGESTIONS_BODY_APPROVED, "garden-audit")
+        assert result is False
+        captured = capsys.readouterr()
+        assert "unknown doc_type" in captured.err
+
 
 # ---------------------------------------------------------------------------
 # flip_state tests
@@ -315,6 +322,9 @@ class TestFlipState:
                 "run-r1",
                 expected_modified=100,
             )
+
+        # Verify that the retry write attempt was made
+        assert client.write_frontmatter.call_count == 2
 
     def test_flip_state_returns_false_on_invalid_transition(self, capsys):
         """Invalid transition returns False (no exception, no write)."""

@@ -306,8 +306,9 @@ class KadoClient:
         try:
             return self._call_tool("kado-write", args)
         except KadoToolError as exc:
-            if "expectedModified" in str(exc):
-                raise KadoConcurrencyError(str(exc)) from exc
+            msg = str(exc)
+            if "expectedModified" in msg and "mismatch" in msg:
+                raise KadoConcurrencyError(msg) from exc
             raise
 
     def search_by_frontmatter(
@@ -331,7 +332,7 @@ class KadoClient:
             Optional Unix-ms lower bound on ``modified`` (passed as
             ``filter.modifiedAfter``). Requires Kado 0.11.0+.
         limit:
-            Page size for Kado's cursor-based pagination. Defaults to 500.
+            Maximum number of results to return. Defaults to 500.
 
         Returns
         -------

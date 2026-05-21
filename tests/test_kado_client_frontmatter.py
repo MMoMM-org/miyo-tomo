@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -178,6 +177,31 @@ def test_write_frontmatter_non_concurrency_tool_error_propagates_as_KadoToolErro
 
     # Must NOT be promoted to KadoConcurrencyError
     assert type(exc_info.value) is KadoToolError
+
+
+def test_write_frontmatter_validation_error_mentioning_expectedModified_propagates_as_KadoToolError():
+    """KadoToolError whose message mentions 'expectedModified' as a field name (not a
+    mismatch) must NOT be promoted to KadoConcurrencyError."""
+    client = _make_client()
+
+    def fake_call_tool(tool_name: str, arguments: dict) -> dict:
+        raise KadoToolError(
+            "kado-write returned an error: expectedModified must be an integer"
+        )
+
+    client._call_tool = fake_call_tool  # type: ignore[method-assign]
+
+    with pytest.raises(KadoToolError) as exc_info:
+        client.write_frontmatter(
+            "100 Inbox/note.md",
+            {"tomo": {"state": "approved"}},
+            expected_modified=1716300000000,
+        )
+
+    # Validation error mentions the field name but NOT "mismatch" —
+    # must remain a KadoToolError, not be promoted to KadoConcurrencyError.
+    assert type(exc_info.value) is KadoToolError
+    assert "expectedModified" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

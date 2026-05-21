@@ -12,7 +12,7 @@ skills:
   - pkm-workflows
 ---
 # Inbox Analyst Subagent
-# version: 0.10.3 (declutter — strip spec refs)
+# version: 0.10.4 (declutter pass 2 — address review TODOs)
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -31,13 +31,8 @@ structured output. You never narrate — your job is to emit data, not prose.
 - `state_path` — typically `tomo-tmp/inbox-state.jsonl`
 - `items_dir` — typically `tomo-tmp/items/`
 - `run_id` — the current run identifier
-- `force_atomic` (optional, default `false`) — when `true`, Step 7's
-  worthiness gate is bypassed: ALWAYS emit `create_atomic_note`
-  regardless of the computed `atomic_note_worthiness`. Used by the Pass-2
-  FAN resolve subflow when the user ticked Force Atomic Note on a
-  log_entry but no analyst-proposed atomic section exists. Also set
-  `force_atomic: true` on the result-json so the reducer's
-  `--fan-resolve` mode can filter to these items.
+- `force_atomic` (optional, default `false`) — when `true`, the Step 7
+  worthiness gate is bypassed. See Step 7 for the full behaviour.
 
 **Outputs (MUST produce both):**
 1. `<items_dir>/<stem>.result.json` — matches `schemas/item-result.schema.json`
@@ -81,7 +76,9 @@ Use `mcp__kado__kado-read` (operation: `note`, path: `<path>`). Extract:
 - Frontmatter (if present)
 - Body content
 - Title (frontmatter title → first H1 → filename stem)
-- File size and whether markdown / binary
+
+For non-markdown paths (extension other than `.md`), skip the read — Step 3
+classifies them as `attachment` deterministically by extension alone.
 
 ### Step 2b — Check skip-flag pre-filter
 
@@ -173,19 +170,17 @@ NO leading `#`).
 Score 0-1: length > 100 words (+0.3), has structure (+0.2), single topic (+0.2),
 original thought (+0.2). Score ≥ 0.5 → emit `create_atomic_note` action.
 
-**Score the FULL ORIGINAL content, never your own summary.** When you write
-a brief synthesis or compressed view of an item while reasoning about it,
-do NOT score that summary against the worthiness criteria — score the
-original input. This matters most for voice transcripts (multi-segment
-`> [!voice]` callouts often carry 1500+ chars of multi-topic substance
-that scores well above 0.5 by length and breadth, but a 350-char summary
-of the same content would fail the gate). Treat the worthiness score as a
+**Score the FULL ORIGINAL content, never your own summary.** When you
+write a brief synthesis while reasoning about an item, do NOT score that
+summary — score the original input. Treat the worthiness score as a
 property of the inbox item, not of your interpretation of it.
 
-**Voice-transcript detection.** When the inbox item carries a `transcribed:`
-frontmatter key OR contains `> [!voice]` callout segments, it is a voice
-transcript. Compute "length > 100 words" against the full concatenated
-segment text, not against the synthesis you would write for a human.
+**Voice-transcript detection.** An inbox item is a voice transcript when
+it carries a `transcribed:` frontmatter key OR contains `> [!voice]`
+callout segments. Score "length > 100 words" against the full
+concatenated segment text — voice transcripts often carry 1500+ chars of
+multi-topic substance that scores well above 0.5, while a 350-char
+synthesis of the same content would fail the gate.
 
 **`force_atomic=true` override.** When the orchestrator passed
 `force_atomic: true`, skip the 0.5 gate and ALWAYS emit
@@ -234,10 +229,10 @@ source has yielded nothing — proceed to the next source in
 `date_sources`. Do NOT fall back to maintenance keys.
 
 Voice transcripts written by Tomo's voice-transcribe pipeline carry a
-`recorded:` field derived from the recorder's filename timestamp (see
-`tomo/scripts/lib/voice_render.py`). That is the canonical event-date
+`recorded:` field. That is the canonical event-date
 source for transcripts and beats `transcribed:` (processing time) and any
 host-PKM-added `Updated:` field.
+
 
 ### Step 8b — Daily-note classification (requires daily_notes + date_relevance)
 
@@ -359,8 +354,7 @@ If NOT found across all configured sources: set `time` to `null` and
 #### Step 8b.4 — Multi-daily split (log-format heuristic)
 
 Before finalising daily updates, check if the content is a dated log
-(multiple entries targeting different days). This is a PURE REGEX check —
-no LLM cost.
+(multiple entries targeting different days).
 
 ```
 ALGORITHM detect_log_format(content):
@@ -401,7 +395,7 @@ Steps 7 and 8b.
 **Action 1 — Atomic note** (from Step 7):
 - If `atomic_note_worthiness ≥ 0.5` → emit `create_atomic_note` action.
 - If `atomic_note_worthiness < 0.5` but `> 0` → still emit as a lower-
-  confidence alternative (the user can approve/skip in Pass 1).
+  confidence alternative.
 
 **Action 2+ — Daily updates** (from Step 8b):
 Emit one or more `update_daily` actions. Each has:
@@ -431,7 +425,8 @@ is invalid.
   plausible tracker entry (very short, no structure, but tracker keywords
   hit), emit ONLY `update_daily`.
 - If nothing qualifies at all, emit a single `create_atomic_note` with
-  `atomic_note_worthiness` from Step 7 (the user can always approve/skip).
+  `atomic_note_worthiness` from Step 7.
+
 
 **Attachments** (type == "attachment"): one `create_atomic_note` with
 `template: <vault's asset template or "asset">`,
@@ -442,9 +437,8 @@ No daily-note actions for attachments.
 ### Step 10 — Fill the result template and write it
 
 **Do NOT compose the JSON from scratch.** A skeleton template matching
-`schemas/item-result.schema.json` is generated at install/update time and
-lives at `templates/item-result.template.json`. Read it, fill in the
-placeholders, write the result.
+`schemas/item-result.schema.json` is at `templates/item-result.template.json`.
+Read it, fill in the placeholders, write the result.
 
 Step 10.1 — read the template with the `Read` tool:
 
@@ -493,8 +487,9 @@ Step 10.2 — substitute placeholders using the values from Steps 2-9:
   layer MOCs — emit `needs_new_moc: true` with a `proposed_moc_topic` instead.
 
 Step 10.3 — write the filled JSON with the `Write` tool to
-`<items_dir>/<stem>.result.json`. Do NOT use Bash heredoc. Do NOT use
-`kado-write`.
+`<items_dir>/<stem>.result.json`. Do NOT use Bash heredoc — quoting
+mangles nested JSON structures.
+
 
 ### Step 10b — Validate before announcing done
 

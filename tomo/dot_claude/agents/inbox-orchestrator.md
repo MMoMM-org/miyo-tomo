@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.10.1 (F-47 T4.3: A2.5a real media enumeration via MCP listDir — replaces vapourware fallback)
+# version: 0.10.2 (F-50 branch i: A2.5a stop-gate now gated on transcribed > 0 — existing transcripts flow through)
 # state-init.py deleted (ADR-6). Steps A2.5b–A2.5e replace legacy A4.
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
@@ -241,31 +241,46 @@ IF MEDIA_COUNT > 0:
     via kado-write. Return your JSON summary only.
   ```
 
-  After the subagent returns:
+  After the subagent returns, extract the `transcribed` count from the
+  voice-transcriber summary JSON. Branch on it:
 
-  # STRICT — PRD-LOCKED WORDING (AC-5b.1). DO NOT PARAPHRASE.
-  # Original text (from PRD §4 Feature 5b AC-5b.1):
-  #   "N transcript(s) created. Review/edit them, then re-run `/inbox` to process."
-  # If wording needs to change, update PRD AC-5b.1 first, then update here.
-  #
-  # N = the `transcribed` count from the subagent's JSON summary.
+  # F-50 fix (branch i): when `transcribed == 0` the subagent did no new work
+  # (all media already have sibling .md from a prior run). The stop-gate
+  # should NOT fire — there is nothing new for the user to review. Continue
+  # to A2.5b so existing transcripts + manual .md flow through Pass-1.
+  # PRD AC-5b.4 covers this: "existing notes are not gated by transcription".
 
-  Extract `transcribed` from the voice-transcriber summary JSON. Then emit to stderr:
+  IF transcribed == 0:
+    # No new transcripts produced. Skip stop-gate, continue to A2.5b.
+    Proceed to Step A2.5b below.
 
-  ```
-  echo "<N> transcript(s) created. Review/edit them, then re-run /inbox to process." >&2
-  ```
+  IF transcribed > 0:
 
-  Where <N> is the literal `transcribed` count. If transcription errors occurred,
-  still emit the stop-gate message — partial transcription counts too.
+    # STRICT — PRD-LOCKED WORDING (AC-5b.1). DO NOT PARAPHRASE.
+    # Original text (from PRD §4 Feature 5b AC-5b.1):
+    #   "N transcript(s) created. Review/edit them, then re-run `/inbox` to process."
+    # If wording needs to change, update PRD AC-5b.1 first, then update here.
+    #
+    # N = the `transcribed` count from the subagent's JSON summary.
 
-  EXIT 0 here. Do NOT proceed to A2.5b. The stop-gate prevents the same-run
-  auto-flow into Pass-1 that AC-5b.1 requires. On the NEXT /inbox run the
-  transcripts appear as untagged .md files and flow through normally (AC-5b.2).
+    Emit to stderr:
 
-  EXCEPTION — AC-5b.4: if untagged MANUAL .md notes also exist in the inbox, those
-  are NOT gated. They will be picked up by Pass-1 on the NEXT run (after transcription
-  is complete in this run). The stop-gate applies only to the newly produced transcripts.
+    ```
+    echo "<N> transcript(s) created. Review/edit them, then re-run /inbox to process." >&2
+    ```
+
+    Where <N> is the literal `transcribed` count. If transcription errors occurred,
+    still emit the stop-gate message — partial transcription counts too.
+
+    EXIT 0 here. Do NOT proceed to A2.5b. The stop-gate prevents the same-run
+    auto-flow into Pass-1 that AC-5b.1 requires. On the NEXT /inbox run the
+    transcripts appear as untagged .md files and flow through normally (AC-5b.2).
+
+    KNOWN LIMITATION — F-50 branch (iii) deferred: if untagged MANUAL .md notes
+    also exist in the inbox AND new transcripts were just produced, those manual
+    notes are currently also deferred to the next run (suboptimal vs AC-5b.4
+    strict reading). Proper fix tracked in backlog F-50 branch (iii) — needs
+    per-run skip-list flowing through A2.5c/A2.5e/Phase B newSources filter.
 
 IF MEDIA_COUNT == 0: continue to A2.5b (no transcription needed).
 

@@ -1,5 +1,5 @@
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.8.0 (F-47 T4.1: --recover flag for drift recovery)
+# version: 0.8.1 (declutter — strip spec refs)
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.
@@ -48,9 +48,9 @@ not an issue. Dispatching gives:
 
 Fan-resolve fallback: instruction-builder's Step 2.5 dispatches
 `inbox-analyst` ONLY when `parsed-suggestions.json` has non-empty
-`pending_fan_resolutions` (XDD 012 — force-atomic items without an
-atomic proposal). That nested dispatch may fail; if you hit this rare
-path, fall back to impersonating instruction-builder for that one run.
+`pending_fan_resolutions` — force-atomic items without an atomic
+proposal. That nested dispatch may fail; if you hit this rare path,
+fall back to impersonating instruction-builder for that one run.
 The reconciliation-pair case (when both `_suggestions.md` and
 `_suggestions-fan.md` are already approved) does NOT trigger
 fan-resolve — Step 2.5 is skipped because there are no pending
@@ -115,7 +115,7 @@ After Step 0 resolves the inbox path, the command checks in priority order:
    STRICT section above). Do NOT impersonate it.
    - Scan the resolved inbox path for `*_suggestions.md` via Kado `listDir`
      (this glob matches both primary `*_suggestions.md` and companion
-     `*_suggestions-fan.md` — XDD 012)
+     `*_suggestions-fan.md` for the force-atomic flow)
    - Read each, check for `- [x] Approved` at top
    - When BOTH a primary doc and an approved companion `*_suggestions-fan.md`
      exist, they are a reconciliation pair — `instruction-builder` Step 2

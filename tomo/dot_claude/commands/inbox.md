@@ -1,5 +1,5 @@
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.7.0 (instruction-builder is now Agent-dispatched, not impersonated — runs as subagent on sonnet per its frontmatter)
+# version: 0.8.0 (F-47 T4.1: --recover flag for drift recovery)
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.
@@ -62,6 +62,28 @@ resolutions.
 `/inbox --pass1` — Force Pass 1 (generate suggestions from captured items)
 `/inbox --pass2` — Force Pass 2 (generate instructions from approved suggestions)
 `/inbox --cleanup` — Force cleanup (process applied instruction sets)
+`/inbox --recover` — Drift recovery: treat captured notes as fresh sources for Pass-1
+
+## --recover Flag
+
+Purpose: recover from drift — the state where captured notes exist in the inbox but no
+associated workflow doc (suggestions/instructions) is present. This happens when a
+suggestions or instructions file was manually deleted mid-flow, or a run crashed after
+`mark-captured.py` ran but before the Suggestions doc was written.
+
+Behaviour:
+- Orchestrator treats all `tomo.state=captured` docs as fresh sources for Pass-1.
+- Re-runs the synthesis pipeline (Phase B inbox-analyst fan-out) against those captured docs.
+- `mark-captured.py` re-asserts `tomo.state=captured` at run end — idempotent no-op.
+- No-op if no captured docs exist in the inbox.
+
+Implementation: sets `TOMO_INBOX_RECOVER=1` env var which the orchestrator (inbox-orchestrator.md
+A2.5c.1) reads to override the newSources path list with capturedHits paths.
+
+STRICT: --recover MUST be user-initiated. Tomo never auto-recovers silently — it cannot
+distinguish drift from a steady-state residual (Hashi cleaned up; captured notes are leftovers
+the user will manually file). Auto-recovery risks duplicate suggestions for already-processed
+items. (Per AC-5a.4.)
 
 ## How It Works
 

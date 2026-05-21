@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.9.0 (F-47 T3.3: Phase A rewrite — byFrontmatter discovery + sequential state-promoter loop)
+# version: 0.10.0 (F-47 T4.1–T4.4: drift recovery + transcription stop-gate + parallel-instructions warning)
 # state-init.py deleted (ADR-6). Steps A2.5b–A2.5e replace legacy A4.
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
@@ -205,8 +205,72 @@ use the literal string value (e.g. `2026-04-15T17-03-22Z-ab12cd`). Do NOT use
 shell `$(cat ...)` substitution — that's a compound-command pattern the
 validator dislikes.
 
-Step A2.5a — Media transcription stop-gate (Feature 5b — implemented in
-F-47.P3 T4.3). For now: skip — no media check.
+Step A2.5a — Media transcription stop-gate (T4.3 — F-47 Feature 5b):
+
+Enumerate media files in the inbox via a listDir call. Filter to known media extensions:
+`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`
+
+Run the listDir call (separate Bash call — ONE command, no chaining):
+
+```bash
+python3 scripts/inbox-discovery.py <INBOX_PATH> --media-only --json
+```
+
+If `inbox-discovery.py` does not yet support `--media-only`, fall back to reading the
+discovery JSON produced in A2.5b (if already run) and filtering paths by extension. In
+a fresh run A2.5a runs BEFORE A2.5b, so use a direct listDir approach:
+
+```bash
+python3 scripts/read-config-field.py --field concepts.inbox
+```
+
+(You already have INBOX_PATH from Step A0. Use it.)
+
+Determine MEDIA_COUNT from the listing — count paths whose extension is one of
+`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`.
+
+IF MEDIA_COUNT > 0:
+
+  Dispatch voice-transcriber for the media files. The subagent handles all
+  audio discovery internally (it calls listDir itself). Dispatch via Agent tool:
+
+  ```
+  subagent_type: voice-transcriber
+  description: Transcribe <MEDIA_COUNT> inbox audio file(s) — stop-gate run
+  prompt: |
+    Run the voice-transcription pre-phase for /inbox.
+    Discover audio files in the inbox, filter already-transcribed, batch-transcribe
+    via scripts/voice-transcribe.py (ONE Bash call), write sibling <basename>.md
+    via kado-write. Return your JSON summary only.
+  ```
+
+  After the subagent returns:
+
+  # STRICT — PRD-LOCKED WORDING (AC-5b.1). DO NOT PARAPHRASE.
+  # Original text (from PRD §4 Feature 5b AC-5b.1):
+  #   "N transcript(s) created. Review/edit them, then re-run `/inbox` to process."
+  # If wording needs to change, update PRD AC-5b.1 first, then update here.
+  #
+  # N = the `transcribed` count from the subagent's JSON summary.
+
+  Extract `transcribed` from the voice-transcriber summary JSON. Then emit to stderr:
+
+  ```
+  echo "<N> transcript(s) created. Review/edit them, then re-run /inbox to process." >&2
+  ```
+
+  Where <N> is the literal `transcribed` count. If transcription errors occurred,
+  still emit the stop-gate message — partial transcription counts too.
+
+  EXIT 0 here. Do NOT proceed to A2.5b. The stop-gate prevents the same-run
+  auto-flow into Pass-1 that AC-5b.1 requires. On the NEXT /inbox run the
+  transcripts appear as untagged .md files and flow through normally (AC-5b.2).
+
+  EXCEPTION — AC-5b.4: if untagged MANUAL .md notes also exist in the inbox, those
+  are NOT gated. They will be picked up by Pass-1 on the NEXT run (after transcription
+  is complete in this run). The stop-gate applies only to the newly produced transcripts.
+
+IF MEDIA_COUNT == 0: continue to A2.5b (no transcription needed).
 
 Step A2.5b — Unified inbox discovery:
 
@@ -251,16 +315,61 @@ Remember these as: `PA_COUNT`, `PAC_COUNT`, `PAPPLY_COUNT`, `CAP_COUNT`,
 `NEW_COUNT`, `DRIFT`. You will also need per-item metadata in A2.5e —
 read individual entries from the JSON as needed at that point.
 
-Step A2.5d — Drift surfacing (full UX in Phase 4 T4.2):
+Step A2.5c.1 — --recover override (T4.1):
 
-If `DRIFT` is `true`:
+# STRICT — Per AC-5a.2: --recover treats captured docs as fresh sources.
+# Per AC-5a.4: no auto-recovery when --recover absent — silent re-Pass-1
+#   risks duplicate suggestions (can't distinguish drift from steady-state residual).
+# Per AC-5a.3: mark-captured.py merge-mode write is idempotent — re-asserting
+#   tomo.state=captured is a no-op for already-captured items.
 
-```
-[drift-hint] DRIFT detected — <CAP_COUNT> captured docs, 0 pending.
-Run /inbox --recover to re-promote. (full recovery UX ships in T4.2)
-```
+Check whether the orchestrator was invoked with `TOMO_INBOX_RECOVER=1`
+(set by the /inbox command when the user passes `--recover`):
 
-Emit this to stderr (informational; does NOT halt the run). Continue to A2.5e.
+IF the env var `TOMO_INBOX_RECOVER` equals `1`:
+  - Override NEW_SOURCES path list: treat captured docs as fresh sources.
+    Extract captured paths from discovery JSON (separate Bash call):
+
+    ```bash
+    jq -r '.buckets.captured[].path' tomo-tmp/discovery.json
+    ```
+
+  - Set NEW_COUNT = CAP_COUNT (number of captured docs to re-process).
+  - Set DRIFT = false — suppress the drift hint in A2.5d (we are actively
+    recovering, not warning the user about a potential problem).
+  - Log to stderr:
+    ```
+    echo "[recover] Drift-recovery mode: treating <NEW_COUNT> captured paths as fresh sources" >&2
+    ```
+    Where <NEW_COUNT> is the literal count value.
+
+IF `TOMO_INBOX_RECOVER` is absent or not `1`: no changes — proceed with the
+values extracted in A2.5c normally.
+
+Step A2.5d — Drift surfacing (T4.2):
+
+If `DRIFT` is `true` AND `TOMO_INBOX_RECOVER` is NOT `1` (i.e. not suppressed by
+the --recover override in A2.5c.1):
+
+  # STRICT — PRD-LOCKED WORDING (AC-5a.1). DO NOT PARAPHRASE.
+  # Original text (from PRD §4 Feature 5a AC-5a.1 and §3 N3):
+  #   "⚠ N captured notes have no associated workflow doc. If you deleted a
+  #    suggestions/instructions file, run `/inbox --recover` to redo Pass-1.
+  #    Otherwise these are already-processed residuals."
+  # N is substituted with the literal CAP_COUNT value.
+  # If wording needs to change, update PRD AC-5a.1 first, then update here.
+
+  Emit to stderr (ONE line, informational — does NOT halt the run):
+
+  ```
+  echo "⚠ <CAP_COUNT> captured notes have no associated workflow doc. If you deleted a suggestions/instructions file, run \`/inbox --recover\` to redo Pass-1. Otherwise these are already-processed residuals." >&2
+  ```
+
+  Where <CAP_COUNT> is the literal integer value extracted in A2.5c.
+
+If `DRIFT` is `false` OR `TOMO_INBOX_RECOVER` is `1`: skip the hint entirely.
+
+Continue to A2.5e.
 
 Step A2.5e — Sequential state-promotion loop:
 
@@ -497,6 +606,60 @@ voice line before the suggestions summary:
 Suppress this line entirely when voice was disabled (`reason: "disabled"`)
 or no audio was present (`reason: "no_audio"`) — users who don't use the
 feature shouldn't see status about it.
+
+#### Parallel-instructions warning (T4.4 — PRD §3 N2 + §6.3)
+
+After the main summary, compute:
+
+```
+TOTAL_PENDING_APPLY = PAPPLY_COUNT + transitions_applied
+```
+
+Where `transitions_applied` is the count of docs successfully promoted in
+A2.5e (each successful flip increments this by 1).
+
+IF `TOTAL_PENDING_APPLY > 1`:
+
+  # STRICT — PRD-LOCKED WORDING (PRD §3 N2 + §6.3). DO NOT PARAPHRASE.
+  # Base wording (from PRD §6.3 summary block):
+  #   "⚠ You now have N instructions docs pending Hashi-apply (<paths>).
+  #    Apply ALL of them — Hashi handles each independently."
+  # N and <paths> are substituted with live values.
+  # If wording needs to change, update PRD §3 N2 / §6.3 first, then here.
+
+  Emit to stderr (blank line first for visual separation):
+
+  ```
+  echo "" >&2
+  echo "⚠ You now have <TOTAL_PENDING_APPLY> instructions docs pending Hashi-apply:" >&2
+  ```
+
+  Then list ALL pending-apply paths, one per line. Read existing pendingApply
+  paths from the discovery JSON (separate Bash call — do NOT truncate):
+
+  ```bash
+  jq -r '.buckets.pendingApply[].path' tomo-tmp/discovery.json
+  ```
+
+  Emit each path to stderr:
+
+  ```
+  echo "  - <path>" >&2
+  ```
+
+  For any instructions docs newly produced in THIS run (from transitions_applied),
+  also list those paths. The instruction-builder subagent returns its output path —
+  collect these from each successful dispatch result and emit them here too.
+
+  Then emit the close line:
+
+  ```
+  echo "Apply ALL of them — Hashi handles each independently." >&2
+  ```
+
+  STRICT: the path list MUST NOT be truncated. Every pending-apply path is listed.
+  If the orchestrator tracks newly-produced instructions paths from A2.5e dispatch
+  results, those are added to the list alongside the pre-existing pendingApply paths.
 
 ## Error Handling
 

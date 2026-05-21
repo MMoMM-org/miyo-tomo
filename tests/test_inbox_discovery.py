@@ -414,3 +414,46 @@ def test_inbox_path_without_trailing_slash_is_normalized():
     assert (
         actual_list_dir_prefix == expected_path_prefix
     ), f"list_dir: expected path_prefix={expected_path_prefix!r}, got {actual_list_dir_prefix!r}"
+
+
+def test_metrics_block_present_with_all_prd_properties():
+    """Verify the PRD §7 metrics block is emitted with all required properties
+    (token_estimate, byFrontmatter_hits, listDir_hits, phase_a_duration_ms, run_id).
+
+    Spec: PRD §7 Tracking Requirements — lifecycle.discovery event property list.
+    """
+    mod = _load_script()
+    mock_client = MagicMock()
+    mock_client.search_by_frontmatter.side_effect = [
+        [{"path": "100 Inbox/x.md", "modified": 1, "frontmatter": {"tomo": {"doc_type": "suggestions", "state": "pending-approval"}}}],
+        [],
+        [],
+        [],
+    ]
+    mock_client.list_dir.return_value = []
+
+    result = mod.discover(mock_client, "100 Inbox/", run_id="test-run-123")
+
+    assert "metrics" in result, "metrics block missing from discover() return"
+    m = result["metrics"]
+
+    # Required PRD §7 properties
+    assert m["run_id"] == "test-run-123", "run_id not echoed correctly"
+    assert m["byFrontmatter_hits"] == 1, f"expected 1 hit, got {m['byFrontmatter_hits']}"
+    assert m["listDir_hits"] == 0
+    assert isinstance(m["phase_a_duration_ms"], int) and m["phase_a_duration_ms"] >= 0
+    assert isinstance(m["token_estimate"], int) and m["token_estimate"] >= 0
+
+
+def test_run_id_auto_generated_when_omitted():
+    """If --run-id is not provided, discover() generates a UTC ISO timestamp."""
+    mod = _load_script()
+    mock_client = MagicMock()
+    mock_client.search_by_frontmatter.side_effect = [[], [], [], []]
+    mock_client.list_dir.return_value = []
+
+    result = mod.discover(mock_client, "100 Inbox/")
+    run_id = result["metrics"]["run_id"]
+
+    # ISO 8601 UTC format: 2026-05-21T15:30:00.123456+00:00
+    assert "T" in run_id and "+00:00" in run_id, f"unexpected run_id format: {run_id!r}"

@@ -8,17 +8,16 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-search, mcp__kado__kado-write
 ---
 # Instruction Builder Agent
-# version: 2.5.1 (declutter — strip spec refs)
+# version: 2.5.2 (declutter pass 2 — address review TODOs)
 
 **Active agent: instruction-builder**
 
 You are a pure orchestrator. You call three scripts in sequence and write their
 outputs to the vault via Kado. You do NOT compose markdown, assemble instructions,
-or make formatting decisions — `scripts/instruction-render.py` does all of that.
+or make formatting decisions.
 
 If you catch yourself writing instruction-entry markdown, rendering frontmatter,
-reading MOC callouts, or mapping `position` values — STOP. That is the script's
-job now.
+reading MOC callouts, or mapping `position` values — STOP. 
 
 ## STRICT — stdout/stderr discipline (every script call)
 
@@ -49,8 +48,8 @@ need stderr silenced (rare), use `2>/dev/null`, never `2>&1`.
 
 Applies to: `suggestion-parser.py`, `suggestions-reducer.py`,
 `suggestions-render.py`, `instruction-render.py`, `instructions-diff.py`,
-`upload-rendered.py`, and any future script that writes JSON/YAML/markdown
-to stdout or stderr-only progress.
+`upload-rendered.py`.
+
 
 ## Workflow
 
@@ -83,6 +82,7 @@ missing, default to `100 Inbox/`.
    # With companion (reconciliation run after fan-resolve approval):
    python3 scripts/suggestion-parser.py --file "tomo-tmp/suggestions.md" --fan-resolve-file "tomo-tmp/suggestions-fan.md" > tomo-tmp/parsed-suggestions.json
    ```
+
 
 ### Step 2.5 — FAN Resolve Subflow
 
@@ -120,10 +120,7 @@ follow-up Force-Atomic Resolve doc and halt for user review.
        run_id          = "<RUN_ID>"
        force_atomic    = true
 
-     Follow the IO Contract in your agent definition strictly. Because
-     force_atomic=true, emit `create_atomic_note` regardless of Step 7's
-     worthiness score. Also set force_atomic=true on the emitted
-     result.json.
+     Follow the IO Contract in your agent definition strictly.
    ```
 
    The `<RUN_ID>` is typically the current run-id from
@@ -131,8 +128,20 @@ follow-up Force-Atomic Resolve doc and halt for user review.
    `scripts/run-id.py --out tomo-tmp/.run_id` first.
 
 (c) Wait for all dispatched subagents to reach `done` or `failed` in the
-   state-file. Poll `tomo-tmp/inbox-state.jsonl` every few seconds, same
-   pattern as `inbox-orchestrator` Phase B.
+   state-file. Poll `tomo-tmp/inbox-state.jsonl` every few seconds:
+
+   ```bash
+   # Group entries by stem, take the LATEST status per stem,
+   # count how many reached done|failed for the dispatched stems.
+   jq -r 'group_by(.stem)[] | .[-1] | "\(.stem) \(.status)"' \
+     tomo-tmp/inbox-state.jsonl
+   ```
+
+   Compare the count of `done|failed` against the number of stems you
+   dispatched in (b). Loop until they match. If any stem remains `running`
+   after a long delay (e.g. 5 minutes), treat it as stuck — mark it failed
+   via `state-update.py --status failed --error-kind subagent_stuck` and
+   move on.
 
 (d) Run the reducer in resolve mode (substitute RUN_ID + PROFILE literals):
    ```bash
@@ -183,15 +192,16 @@ python3 scripts/instruction-render.py \
 ```
 
 **Flag guidance:**
-- `--upstream-type` comes from the inbox-orchestrator's dispatch context:
-  - `suggestions` — normal Pass-1 → Pass-2 chain (most common)
-  - `moc-proposal` — MOC-creation chain (upstream is a `tomo-moc-proposal-*.md`)
-  - `suggestions-fan` — force-atomic chain (upstream is a `*_suggestions-fan.md`)
+- `--upstream-type` is determined from the upstream doc's `tomo.doc_type`
+  frontmatter field (read it when finding the doc in Step 2 / MOC-Step 1):
+  - `suggestions` — normal Pass-1 → Pass-2 chain (most common; upstream is `*_suggestions.md`)
+  - `moc-proposal` — MOC-creation chain (upstream is `tomo-moc-proposal-*.md`)
+  - `suggestions-fan` — force-atomic chain (upstream is `*_suggestions-fan.md`)
 - `--upstream-path` is the vault-relative path of the doc that produced this Pass-2
   (the user-ticked suggestions or proposal doc). Used as the value of the `source_*`
   key in the emitted `tomo:` block.
 - `--run-id` is a NEW run_id for THIS Pass-2 invocation — NOT the upstream doc's
-  run_id (per SDD §Implementation Gotchas). Generate a fresh one:
+  run_id. Generate a fresh one:
   ```bash
   PASS2_RUN_ID=$(python3 -c "import time; print(int(time.time()))")
   ```
@@ -200,21 +210,12 @@ python3 scripts/instruction-render.py \
 
 `instruction-render.py` produces a complete `tomo:` block (doc_type=instructions,
 state=pending-apply, source_*, run_id, updated_at). You MUST:
-- Pass the rendered file through to vault byte-identical (via `upload-rendered.py`).
 - NEVER add, modify, or re-emit the `tomo:` block yourself.
-- NEVER add lifecycle tags like `#<prefix>/instructions/pending-apply` —
-  state lives only in frontmatter `tomo.state`.
 
 Exit 0 = all rendered, exit 1 = partial (still write what exists), exit 2 = fatal.
 If exit 2, report the error and stop.
 
 ### Step 4 — Write outputs to the vault
-
-Single deterministic call. The script reads `tomo-tmp/rendered/manifest.json`,
-uploads each rendered note via `kado-write operation=note`, and writes both
-instruction-set artefacts (`.md` via `operation=note`, `.json` via
-`operation=file` base64). The timestamp prefix is derived from
-`instructions.json`'s `generated` field.
 
 ```bash
 python3 scripts/upload-rendered.py \
@@ -229,13 +230,7 @@ input (missing manifest, malformed instructions.json) — report and stop.
 
 **You do NOT call `kado-write` directly here.** The script handles
 the markdown vs binary distinction and the base64 encoding. If you find
-yourself composing per-file `kado-write` MCP calls, STOP — that was the
-2.3.x orchestration pattern and it has been retired.
-
-(Background: previously this step iterated the manifest in the agent
-prompt and emitted one `kado-write` MCP call per file plus a separate
-`scripts/kado-write-file.py` invocation for the JSON. Pure I/O
-orchestration with no judgement involved — moved to a script in 2.4.0.)
+yourself composing per-file `kado-write` MCP calls, STOP
 
 ### Step 5 — Coverage audit
 
@@ -295,14 +290,24 @@ Do NOT redirect stderr (`2>&1` rule applies here too).
 For each entry in `ticked_clusters`, assemble actions into ONE shared
 `instructions.json` payload (not one per cluster). Action sequence per cluster:
 
-1. **`create_moc` action** — target path:
+1. **`create_moc` action** — JSON shape (per `schemas/instructions.schema.json`):
+
+   ```json
+   {
+     "id": "I01",
+     "action": "create_moc",
+     "source":      "<inbox_path>/<YYYY-MM-DD>_<sanitize_stem(title)>.md",
+     "destination": "<inbox_path>/<YYYY-MM-DD>_<sanitize_stem(title)>.md",
+     "title":       "<cluster title>",
+     "tags":        [],
+     "supporting_items": null
+   }
    ```
-   <inbox_path>/<YYYY-MM-DD>_<sanitize_stem(title)>.md
-   ```
-   Use `sanitize_stem` from `scripts/lib/obsidian_filename.py`. Set
-   `source` = same path (MOC is rendered into the inbox initially),
-   `destination` = same path (user moves it later — out of scope here),
-   `title` = cluster title, `tags` = [].
+
+   - `source` and `destination` are both the inbox path — the user moves
+     the file later (out of scope here).
+   - `sanitize_stem` is from `scripts/lib/obsidian_filename.py`.
+   - `id` is sequential (`I01`, `I02`, ...) across the whole bundled doc.
 
 2. **`add_relationship` action per child** — for each wikilink stem in
    `children`:
@@ -315,8 +320,7 @@ Write the resulting `instructions.json` to `tomo-tmp/rendered/instructions.json`
 The `action_count` field must equal the total across all clusters.
 
 STRICT — Multi-cluster acceptance produces ONE instructions doc with ALL
-clusters' actions bundled. NOT N separate instructions docs. Hashi applies
-each cluster's sub-actions transactionally.
+clusters' actions bundled. NOT N separate instructions docs.
 
 ### MOC-Step 3 — Render to markdown
 
@@ -342,16 +346,14 @@ PASS2_RUN_ID=$(python3 -c "import time; print(int(time.time()))")
 python3 scripts/squelch-unticked.py tomo-tmp/moc-parsed.json
 ```
 
-(Reads `unticked_clusters` from the parsed JSON and appends to
-`state/moc-squelch.json` via the squelch API. Script exits 0 even when
-the unticked list is empty.)
+Script exits 0 even when the unticked list is empty.
 
 STRICT — Un-ticked clusters NEVER become a file-level "rejected" state on
 the proposal-doc. They persist to `state/moc-squelch.json` only.
 
 ### MOC-Step 5 — Flip proposal-doc state
 
-After successful render, flip the proposal-doc's `tomo.state` to `accepted`:
+After successful render, run the following:
 
 ```bash
 python3 scripts/state-update.py \
@@ -367,8 +369,7 @@ Steps 4–6 (vault write, coverage audit, report) then run as normal.
 - NEVER compose note content, frontmatter, or instruction markdown.
 - NEVER call `token-render.py` directly.
 - NEVER read MOCs to resolve callout sections — the instruction entry tells the
-  user to find the first editable callout; Tomo Hashi will resolve this at
-  execute time.
+  user to find the first editable callout
 - NEVER map `position` values, assign action IDs, or decide section order.
-- NEVER write a vault file whose content you assembled yourself. Every byte
-  written to Kado comes from a file under `tomo-tmp/rendered/`.
+- NEVER write a vault file whose content you assembled yourself.
+      

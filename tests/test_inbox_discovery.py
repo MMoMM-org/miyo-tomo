@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_inbox_discovery.py — Behavioural tests for inbox-discovery.py.
 
 Covers T3.1 (F-47 Phase 3): unified byFrontmatter discovery, client-side
 bucketing by doc_type/state, drift detection, and newSources set-diff.
 
 Spec: docs/XDD/specs/017-tomo-lifecycle-tags/
-AC:   AC-2.1 (one byFrontmatter call per bucket + one listDir)
-      AC-2.3 (empty inbox: both calls still execute)
+AC:   AC-2.1 (four byFrontmatter calls: 3 pending-<value> + 1 captured + 1 listDir)
+      AC-2.3 (empty inbox: all four calls still execute)
       AC-5a.1 (drift: captured > 0 AND pending* == 0)
+
+Note on wildcard: Kado frontmatterValueMatches (search-adapter.ts:381) performs
+strict equality only.  "tomo.state=pending-*" returns ZERO hits in production.
+Three separate pending-<value> calls are the correct implementation.
 """
 from __future__ import annotations
 
@@ -86,7 +90,11 @@ def _make_listdir_item(path: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def test_bucketing_with_mixed_pending():
-    """Fixture with 5 tomo-managed + 1 untagged source; buckets must be correct."""
+    """Fixture with 5 tomo-managed + 1 untagged source; buckets must be correct.
+
+    search_by_frontmatter is called 4 times: once per pending-<value> (3 states)
+    then once for captured.  Each call returns hits for the matching state only.
+    """
     mod = _load_script()
 
     sugg_path = INBOX_PATH + "2026-05-01_suggestions.md"
@@ -96,11 +104,10 @@ def test_bucketing_with_mixed_pending():
     cap_path2 = INBOX_PATH + "note-captured-b.md"
     new_path = INBOX_PATH + "note-new.md"
 
-    pending_hits = [
-        _make_hit(sugg_path, "suggestions", "pending-approval"),
-        _make_hit(moc_path, "moc-proposal", "pending-accept"),
-        _make_hit(instr_path, "instructions", "pending-apply"),
-    ]
+    # Call order: pending-approval, pending-accept, pending-apply, captured
+    pending_approval_hits = [_make_hit(sugg_path, "suggestions", "pending-approval")]
+    pending_accept_hits = [_make_hit(moc_path, "moc-proposal", "pending-accept")]
+    pending_apply_hits = [_make_hit(instr_path, "instructions", "pending-apply")]
     captured_hits = [
         _make_hit(cap_path1, "source", "captured"),
         _make_hit(cap_path2, "source", "captured"),
@@ -115,7 +122,12 @@ def test_bucketing_with_mixed_pending():
     ]
 
     mock_client = MagicMock()
-    mock_client.search_by_frontmatter.side_effect = [pending_hits, captured_hits]
+    mock_client.search_by_frontmatter.side_effect = [
+        pending_approval_hits,
+        pending_accept_hits,
+        pending_apply_hits,
+        captured_hits,
+    ]
     mock_client.list_dir.return_value = listdir_items
 
     result = mod.discover(mock_client, INBOX_PATH)
@@ -136,11 +148,14 @@ def test_bucketing_with_mixed_pending():
 # ---------------------------------------------------------------------------
 
 def test_empty_inbox_returns_empty_buckets_no_drift():
-    """Empty inbox: all buckets empty, drift=False."""
+    """Empty inbox: all buckets empty, drift=False.
+
+    All four byFrontmatter calls still execute (AC-2.3).
+    """
     mod = _load_script()
 
     mock_client = MagicMock()
-    mock_client.search_by_frontmatter.side_effect = [[], []]
+    mock_client.search_by_frontmatter.side_effect = [[], [], [], []]
     mock_client.list_dir.return_value = []
 
     result = mod.discover(mock_client, INBOX_PATH)
@@ -168,7 +183,7 @@ def test_drift_triggers_when_captured_and_no_pending():
     listdir_items = [_make_listdir_item(p) for p in cap_paths]
 
     mock_client = MagicMock()
-    mock_client.search_by_frontmatter.side_effect = [[], captured_hits]
+    mock_client.search_by_frontmatter.side_effect = [[], [], [], captured_hits]
     mock_client.list_dir.return_value = listdir_items
 
     result = mod.discover(mock_client, INBOX_PATH)
@@ -187,7 +202,8 @@ def test_no_drift_when_any_pending_present():
     cap_path = INBOX_PATH + "note-captured.md"
     pend_path = INBOX_PATH + "2026-05-01_suggestions.md"
 
-    pending_hits = [_make_hit(pend_path, "suggestions", "pending-approval")]
+    # pending-approval call returns 1 hit; pending-accept + pending-apply empty
+    pending_approval_hits = [_make_hit(pend_path, "suggestions", "pending-approval")]
     captured_hits = [_make_hit(cap_path, "source", "captured")]
     listdir_items = [
         _make_listdir_item(cap_path),
@@ -195,7 +211,12 @@ def test_no_drift_when_any_pending_present():
     ]
 
     mock_client = MagicMock()
-    mock_client.search_by_frontmatter.side_effect = [pending_hits, captured_hits]
+    mock_client.search_by_frontmatter.side_effect = [
+        pending_approval_hits,
+        [],
+        [],
+        captured_hits,
+    ]
     mock_client.list_dir.return_value = listdir_items
 
     result = mod.discover(mock_client, INBOX_PATH)
@@ -217,7 +238,7 @@ def test_non_md_files_excluded_from_new_sources():
     md_item = _make_listdir_item(md_path)
 
     mock_client = MagicMock()
-    mock_client.search_by_frontmatter.side_effect = [[], []]
+    mock_client.search_by_frontmatter.side_effect = [[], [], [], []]
     mock_client.list_dir.return_value = [mp3_item, json_item, md_item]
 
     result = mod.discover(mock_client, INBOX_PATH)
@@ -233,17 +254,17 @@ def test_non_md_files_excluded_from_new_sources():
 # ---------------------------------------------------------------------------
 
 def test_filter_path_passed_to_kado_client():
-    """Both search_by_frontmatter calls receive path_prefix=inbox_path."""
+    """All four search_by_frontmatter calls receive path_prefix=inbox_path."""
     mod = _load_script()
 
     mock_client = MagicMock()
-    mock_client.search_by_frontmatter.side_effect = [[], []]
+    mock_client.search_by_frontmatter.side_effect = [[], [], [], []]
     mock_client.list_dir.return_value = []
 
     mod.discover(mock_client, INBOX_PATH)
 
     calls = mock_client.search_by_frontmatter.call_args_list
-    assert len(calls) == 2
+    assert len(calls) == 4
     for c in calls:
         _, kwargs = c
         assert kwargs.get("path_prefix") == INBOX_PATH
@@ -260,8 +281,9 @@ def test_unknown_doc_type_in_hit_logged_and_skipped(capsys):
     mystery_path = INBOX_PATH + "2026-05-01_mystery.md"
     mystery_hit = _make_hit(mystery_path, "mystery", "pending-approval")
 
+    # mystery_hit has state=pending-approval so it comes back on call 1
     mock_client = MagicMock()
-    mock_client.search_by_frontmatter.side_effect = [[mystery_hit], []]
+    mock_client.search_by_frontmatter.side_effect = [[mystery_hit], [], [], []]
     mock_client.list_dir.return_value = [_make_listdir_item(mystery_path)]
 
     result = mod.discover(mock_client, INBOX_PATH)
@@ -280,22 +302,73 @@ def test_unknown_doc_type_in_hit_logged_and_skipped(capsys):
 # Test: exactly two search_by_frontmatter calls
 # ---------------------------------------------------------------------------
 
-def test_two_byfrontmatter_calls_made():
-    """discover() must call search_by_frontmatter exactly twice."""
+def test_four_byfrontmatter_calls_made():
+    """discover() must call search_by_frontmatter exactly four times.
+
+    Call order and query strings:
+      1. tomo.state=pending-approval
+      2. tomo.state=pending-accept
+      3. tomo.state=pending-apply
+      4. tomo.state=captured
+
+    Kado strict-equality constraint: the original "ONE call for pending-*"
+    (AC-2.1 wildcard assumption) is not achievable; three calls are required.
+    """
     mod = _load_script()
 
     mock_client = MagicMock()
-    mock_client.search_by_frontmatter.side_effect = [[], []]
+    mock_client.search_by_frontmatter.side_effect = [[], [], [], []]
     mock_client.list_dir.return_value = []
 
     mod.discover(mock_client, INBOX_PATH)
 
-    assert mock_client.search_by_frontmatter.call_count == 2
+    assert mock_client.search_by_frontmatter.call_count == 4
 
-    # Verify query content: first call targets pending-*, second targets captured
     calls = mock_client.search_by_frontmatter.call_args_list
-    first_query = calls[0][0][0] if calls[0][0] else calls[0][1].get("query", "")
-    second_query = calls[1][0][0] if calls[1][0] else calls[1][1].get("query", "")
+    _query = lambda c: c[0][0] if c[0] else c[1].get("query", "")  # noqa: E731
+    queries = [_query(c) for c in calls]
 
-    assert "pending" in first_query, f"First call should query pending-*, got: {first_query!r}"
-    assert "captured" in second_query, f"Second call should query captured, got: {second_query!r}"
+    assert queries[0] == "tomo.state=pending-approval", f"Call 1: {queries[0]!r}"
+    assert queries[1] == "tomo.state=pending-accept",   f"Call 2: {queries[1]!r}"
+    assert queries[2] == "tomo.state=pending-apply",    f"Call 3: {queries[2]!r}"
+    assert queries[3] == "tomo.state=captured",         f"Call 4: {queries[3]!r}"
+
+
+# ---------------------------------------------------------------------------
+# Test (new): suggestions-fan routes to pendingApproval bucket
+# ---------------------------------------------------------------------------
+
+def test_suggestions_fan_routes_to_pending_approval():
+    """A suggestions-fan doc with state=pending-approval lands in pendingApproval.
+
+    doc_type=suggestions-fan shares the pendingApproval bucket with
+    doc_type=suggestions (per _DOC_TYPE_TO_BUCKET mapping).
+    """
+    mod = _load_script()
+
+    fan_path = INBOX_PATH + "inbox_x.md"
+    fan_hit = {
+        "path": fan_path,
+        "frontmatter": {
+            "tomo": {
+                "doc_type": "suggestions-fan",
+                "state": "pending-approval",
+                "run_id": "r",
+                "updated_at": "2026-05-21T00:00:00Z",
+            }
+        },
+    }
+
+    mock_client = MagicMock()
+    # Call order: pending-approval returns the fan hit; others empty
+    mock_client.search_by_frontmatter.side_effect = [[fan_hit], [], [], []]
+    mock_client.list_dir.return_value = [_make_listdir_item(fan_path)]
+
+    result = mod.discover(mock_client, INBOX_PATH)
+
+    assert len(result["buckets"]["pendingApproval"]) == 1
+    assert result["buckets"]["pendingApproval"][0]["path"] == fan_path
+    assert result["buckets"]["pendingAccept"] == []
+    assert result["buckets"]["pendingApply"] == []
+    assert result["buckets"]["captured"] == []
+    assert result["buckets"]["newSources"] == []

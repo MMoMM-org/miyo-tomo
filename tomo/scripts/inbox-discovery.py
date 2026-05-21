@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """inbox-discovery.py — Unified byFrontmatter discovery + bucketing + drift detection.
 
 Replaces the legacy state-init.py listDir + body-read discovery path (F-47 Phase 3).
@@ -55,8 +55,10 @@ _DOC_TYPE_TO_BUCKET: dict[str, str] = {
 def discover(client: KadoClient, inbox_path: str) -> dict:
     """Discover all Tomo-managed and fresh source docs in inbox_path.
 
-    Two byFrontmatter calls (AC-2.1) + one listDir call.
-    No body-reads — state is derived from frontmatter only.
+    Four byFrontmatter calls + one listDir call.
+    Kado frontmatterValueMatches uses strict equality only — no wildcard support.
+    Three separate calls cover pending-approval / pending-accept / pending-apply;
+    one call covers captured.  No body-reads — state is derived from frontmatter only.
 
     Parameters
     ----------
@@ -70,21 +72,28 @@ def discover(client: KadoClient, inbox_path: str) -> dict:
     # Normalise trailing slash for consistent path_prefix
     path_prefix = inbox_path.rstrip("/") + "/"
 
-    # --- Call 1: pending-* docs (AC-2.1: ONE call for pending bucket) -------
-    pending_hits = client.search_by_frontmatter(
-        "tomo.state=pending-*",
-        path_prefix=path_prefix,
-        limit=500,
-    )
+    # --- Calls 1-3: pending-<value> docs (strict equality; no wildcard) ------
+    # Kado search-adapter performs exact-match only (search-adapter.ts:381).
+    # The original AC-2.1 "ONE call for pending-*" wording assumed wildcard
+    # support that does not exist; three calls are the correct implementation.
+    _pending_states = ["pending-approval", "pending-accept", "pending-apply"]
+    pending_hits: list = []
+    for state in _pending_states:
+        hits = client.search_by_frontmatter(
+            f"tomo.state={state}",
+            path_prefix=path_prefix,
+            limit=500,
+        )
+        pending_hits.extend(hits)
 
-    # --- Call 2: captured docs (AC-2.1: ONE call for captured bucket) --------
+    # --- Call 4: captured docs ------------------------------------------------
     captured_hits = client.search_by_frontmatter(
         "tomo.state=captured",
         path_prefix=path_prefix,
         limit=500,
     )
 
-    # --- Call 3: all files in inbox (for newSources set-diff) ----------------
+    # --- Call 5: all files in inbox (for newSources set-diff) ----------------
     listdir_items = client.list_dir(path_prefix, depth=1, limit=500)
 
     # --- Bucket pending hits by doc_type -------------------------------------

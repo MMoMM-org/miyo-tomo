@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.10.2 (F-50 branch i: A2.5a stop-gate now gated on transcribed > 0 — existing transcripts flow through)
+# version: 0.10.3 (F-52: voice-precheck.py guards voice-transcriber dispatch — sibling-existence check)
 # state-init.py deleted (ADR-6). Steps A2.5b–A2.5e replace legacy A4.
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
@@ -112,7 +112,41 @@ time; this step is a no-op when disabled.
      NOT invoke the agent, do NOT log a warning. Continue to Phase 0b.
    - `.enabled = true` → proceed to step 2.
 
-2. **Dispatch the `voice-transcriber` subagent** via the `Agent` tool:
+2. **Pre-dispatch cache check** — run `voice-precheck.py` to decide
+   whether dispatching the subagent would do any real work. The
+   subagent costs ~17k tokens to load; skipping when every audio file
+   already has its sibling `.md` saves that cost on stable inboxes.
+
+   ```bash
+   python3 scripts/voice-precheck.py "<INBOX_PATH>"
+   ```
+
+   Where `<INBOX_PATH>` is the literal inbox path. Resolve it via:
+
+   ```bash
+   python3 scripts/read-config-field.py --field concepts.inbox
+   ```
+
+   Parse the stdout JSON:
+
+   ```json
+   {"all_cached": <bool>, "audio_count": <N>, "cached_count": <K>,
+    "missing_count": <M>, "missing": [<paths>]}
+   ```
+
+   Branch on `audio_count` and `all_cached`:
+
+   - `audio_count == 0` → no audio in inbox at all. Skip Phase 0a
+     entirely. Continue to Phase 0b without writing any summary.
+   - `all_cached == true` → every audio has a sibling `.md`. Skip
+     dispatch. Write inline summary to `tomo-tmp/voice/summary.json`:
+     `{"transcribed": 0, "skipped": <audio_count>, "errors": [], "reason": "all-cached"}`.
+     Continue to Phase 0b.
+   - `all_cached == false` → at least one audio is missing its sibling.
+     Dispatch the subagent (step 3).
+
+3. **Dispatch the `voice-transcriber` subagent** via the `Agent` tool
+   (only reached when at least one audio lacks a sibling `.md`):
 
    ```
    subagent_type: voice-transcriber
@@ -128,7 +162,7 @@ time; this step is a no-op when disabled.
    do NOT pass the inbox path in the prompt — the subagent resolves it
    via `scripts/read-config-field.py` itself.
 
-3. **Parse the JSON summary** returned by the subagent. Expected shape:
+4. **Parse the JSON summary** returned by the subagent. Expected shape:
 
    ```json
    {
@@ -138,7 +172,7 @@ time; this step is a no-op when disabled.
    }
    ```
 
-4. **Persist the summary** for the run report:
+5. **Persist the summary** for the run report:
 
    ```bash
    mkdir -p tomo-tmp/voice
@@ -147,7 +181,7 @@ time; this step is a no-op when disabled.
    Then `Write` the returned JSON to
    `tomo-tmp/voice/summary.json` (raw — you re-use it in Phase D).
 
-5. **Error policy — voice failures MUST NOT block the text pipeline.**
+6. **Error policy — voice failures MUST NOT block the text pipeline.**
    - Subagent returns `errors[]` non-empty → note them for Phase D; do
      NOT abort. Phase A runs as usual.
    - Subagent throws / is unreachable → log the exception to

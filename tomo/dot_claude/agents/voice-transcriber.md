@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Voice Transcriber Subagent
-# version: 0.8.1 (declutter — strip spec refs, keep contracts)
+# version: 0.8.2
 
 # STRICT — transcript .md files MUST be written WITHOUT a `tomo:` block.
 # Transcripts must look like fresh, untagged source notes to the NEXT /inbox
@@ -120,21 +120,18 @@ per audio is N wasted round-trips that only ever return "found" or
 "not-found" — information we already have.
 
 For each path in `audio_files`:
-1. Compute the target stem:
-   - Start with the filename without extension.
-   - **Replace every occurrence of Obsidian-forbidden characters
-     (`\ / : * ? " < > |` and null) with `-`** — audio files from
-     external recorders (iOS Voice Memos, desktop recorders) often
-     carry colons in timestamp portions like `memo 11:48:29.m4a`,
-     and `kado-write` rejects such filenames with INTERNAL_ERROR.
-     The source audio stays as-is; only the sibling `.md` target we
-     build here is sanitised.
-   - The authoritative implementation is
-     `scripts/lib/obsidian_filename.py` (`sanitize_stem`). If you
-     need to verify the result from an agent workflow, run
-     `python3 scripts/lib/obsidian_filename.py "<stem>"` — both the
-     CLI and this agent MUST agree on the sanitised form.
-2. Compose the target path: `<inbox_path>/<sanitised_stem>.md`.
+1. Compute the target stem by running:
+
+   ```bash
+   SAFE_STEM=$(python3 scripts/lib/obsidian_filename.py "<filename without extension>")
+   ```
+
+   The script replaces Obsidian-forbidden characters (`\ / : * ? " < > |`
+   and null) with `-`. The source audio file stays as-is; only the
+   sibling `.md` target you build here is sanitised. Both this agent
+   and the CLI use this same script — agreement on the sanitised form
+   is required.
+2. Compose the target path: `<inbox_path>/<SAFE_STEM>.md`.
 3. Check membership: is `target` in `existing_md_paths`?
 4. If yes → increment `skipped`, drop from the todo list. Do NOT
    overwrite.
@@ -217,11 +214,10 @@ For each entry `results[i]`:
   verbatim.) Increment `transcribed`.
 - If `error != null`:
   `kado-write` with `operation: "note"`,
-  path = `<inbox_path>/<sanitised_stem>.transcribe-error.md`,
-  where `sanitised_stem` comes from the same Obsidian-safe
-  conversion as Step 3 (`scripts/lib/obsidian_filename.py`). Use the
-  target stem (strip `.md`) from `results[i].target` — it is already
-  sanitised. Content = plain-text block:
+  path = `<inbox_path>/<sanitised_stem>.transcribe-error.md`.
+  Use the target stem (strip `.md`) from `results[i].target` — the CLI
+  has already sanitised it via the same script as Step 3. Content =
+  plain-text block:
   ```
   source: <audio filename>
   error: <error.code>

@@ -13,7 +13,7 @@ permissionMode: acceptEdits
 ---
 **Active agent: moc-architect**
 
-# version: 0.3.2 (declutter — strip spec refs)
+# version: 0.3.3
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault

@@ -12,8 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.10.3 (F-52: voice-precheck.py guards voice-transcriber dispatch — sibling-existence check)
-# state-init.py deleted (ADR-6). Steps A2.5b–A2.5e replace legacy A4.
+# version: 0.10.4 (declutter — strip spec refs)
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
@@ -97,7 +96,7 @@ and assemble results. You do NOT classify items yourself — that is the
 
 ## Workflow
 
-### Phase 0a — Voice transcription (conditional, XDD 009)
+### Phase 0a — Voice transcription (conditional)
 
 Runs BEFORE resume detection so newly-written transcripts are visible to
 all downstream phases. Voice is an opt-in feature configured at install
@@ -239,7 +238,7 @@ use the literal string value (e.g. `2026-04-15T17-03-22Z-ab12cd`). Do NOT use
 shell `$(cat ...)` substitution — that's a compound-command pattern the
 validator dislikes.
 
-Step A2.5a — Media transcription stop-gate (T4.3 — F-47 Feature 5b):
+Step A2.5a — Media transcription stop-gate:
 
 Enumerate media files in the inbox via a listDir call. Filter to known media extensions:
 `.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`
@@ -278,11 +277,11 @@ IF MEDIA_COUNT > 0:
   After the subagent returns, extract the `transcribed` count from the
   voice-transcriber summary JSON. Branch on it:
 
-  # F-50 fix (branch i): when `transcribed == 0` the subagent did no new work
-  # (all media already have sibling .md from a prior run). The stop-gate
-  # should NOT fire — there is nothing new for the user to review. Continue
-  # to A2.5b so existing transcripts + manual .md flow through Pass-1.
-  # PRD AC-5b.4 covers this: "existing notes are not gated by transcription".
+  # When `transcribed == 0` the subagent did no new work (all media already
+  # have sibling .md from a prior run). The stop-gate should NOT fire —
+  # there is nothing new for the user to review. Continue to A2.5b so
+  # existing transcripts + manual .md flow through Pass-1. Existing notes
+  # are not gated by transcription.
 
   IF transcribed == 0:
     # No new transcripts produced. Skip stop-gate, continue to A2.5b.
@@ -290,10 +289,10 @@ IF MEDIA_COUNT > 0:
 
   IF transcribed > 0:
 
-    # STRICT — PRD-LOCKED WORDING (AC-5b.1). DO NOT PARAPHRASE.
-    # Original text (from PRD §4 Feature 5b AC-5b.1):
+    # STRICT — DO NOT PARAPHRASE THIS WORDING.
+    # Verbatim text:
     #   "N transcript(s) created. Review/edit them, then re-run `/inbox` to process."
-    # If wording needs to change, update PRD AC-5b.1 first, then update here.
+    # If this needs to change, find and update the matching spec line first.
     #
     # N = the `transcribed` count from the subagent's JSON summary.
 
@@ -307,14 +306,14 @@ IF MEDIA_COUNT > 0:
     still emit the stop-gate message — partial transcription counts too.
 
     EXIT 0 here. Do NOT proceed to A2.5b. The stop-gate prevents the same-run
-    auto-flow into Pass-1 that AC-5b.1 requires. On the NEXT /inbox run the
-    transcripts appear as untagged .md files and flow through normally (AC-5b.2).
+    auto-flow into Pass-1. On the NEXT /inbox run the transcripts appear as
+    untagged .md files and flow through normally.
 
-    KNOWN LIMITATION — F-50 branch (iii) deferred: if untagged MANUAL .md notes
-    also exist in the inbox AND new transcripts were just produced, those manual
-    notes are currently also deferred to the next run (suboptimal vs AC-5b.4
-    strict reading). Proper fix tracked in backlog F-50 branch (iii) — needs
-    per-run skip-list flowing through A2.5c/A2.5e/Phase B newSources filter.
+    KNOWN LIMITATION: if untagged MANUAL .md notes also exist in the inbox
+    AND new transcripts were just produced, those manual notes are currently
+    also deferred to the next run (suboptimal). Proper fix needs a per-run
+    skip-list flowing through A2.5c/A2.5e/Phase B newSources filter —
+    tracked in backlog.
 
 IF MEDIA_COUNT == 0: continue to A2.5b (no transcription needed).
 
@@ -361,13 +360,13 @@ Remember these as: `PA_COUNT`, `PAC_COUNT`, `PAPPLY_COUNT`, `CAP_COUNT`,
 `NEW_COUNT`, `DRIFT`. You will also need per-item metadata in A2.5e —
 read individual entries from the JSON as needed at that point.
 
-Step A2.5c.1 — --recover override (T4.1):
+Step A2.5c.1 — --recover override:
 
-# STRICT — Per AC-5a.2: --recover treats captured docs as fresh sources.
-# Per AC-5a.4: no auto-recovery when --recover absent — silent re-Pass-1
-#   risks duplicate suggestions (can't distinguish drift from steady-state residual).
-# Per AC-5a.3: mark-captured.py merge-mode write is idempotent — re-asserting
-#   tomo.state=captured is a no-op for already-captured items.
+# STRICT — --recover treats captured docs as fresh sources for this run.
+# No auto-recovery when --recover is absent — silent re-Pass-1 risks
+# duplicate suggestions (can't distinguish drift from steady-state residual).
+# mark-captured.py merge-mode write is idempotent — re-asserting
+# tomo.state=captured is a no-op for already-captured items.
 
 Check whether the orchestrator was invoked with `TOMO_INBOX_RECOVER=1`
 (set by the /inbox command when the user passes `--recover`):
@@ -397,13 +396,13 @@ Step A2.5d — Drift surfacing (T4.2):
 If `DRIFT` is `true` AND `TOMO_INBOX_RECOVER` is NOT `1` (i.e. not suppressed by
 the --recover override in A2.5c.1):
 
-  # STRICT — PRD-LOCKED WORDING (AC-5a.1). DO NOT PARAPHRASE.
-  # Original text (from PRD §4 Feature 5a AC-5a.1 and §3 N3):
+  # STRICT — DO NOT PARAPHRASE THIS WORDING.
+  # Verbatim text:
   #   "⚠ N captured notes have no associated workflow doc. If you deleted a
   #    suggestions/instructions file, run `/inbox --recover` to redo Pass-1.
   #    Otherwise these are already-processed residuals."
   # N is substituted with the literal CAP_COUNT value.
-  # If wording needs to change, update PRD AC-5a.1 first, then update here.
+  # If this needs to change, find and update the matching spec line first.
 
   Emit to stderr (ONE line, informational — does NOT halt the run):
 
@@ -419,7 +418,7 @@ Continue to A2.5e.
 
 Step A2.5e — Sequential state-promotion loop:
 
-STRICT (per ADR-3 + PRD §5 Business Rules):
+STRICT:
 - State-promoter is ORCHESTRATOR LOGIC. Do NOT spawn a new subagent for the
   loop. Do NOT dispatch a dedicated "state-promoter" agent via the Agent tool.
   This is control flow, not LLM reasoning — you run Bash sub-processes inline.
@@ -666,12 +665,12 @@ A2.5e (each successful flip increments this by 1).
 
 IF `TOTAL_PENDING_APPLY > 1`:
 
-  # STRICT — PRD-LOCKED WORDING (PRD §3 N2 + §6.3). DO NOT PARAPHRASE.
-  # Base wording (from PRD §6.3 summary block):
+  # STRICT — DO NOT PARAPHRASE THIS WORDING.
+  # Verbatim text:
   #   "⚠ You now have N instructions docs pending Hashi-apply (<paths>).
   #    Apply ALL of them — Hashi handles each independently."
   # N and <paths> are substituted with live values.
-  # If wording needs to change, update PRD §3 N2 / §6.3 first, then here.
+  # If this needs to change, find and update the matching spec line first.
 
   Emit to stderr (blank line first for visual separation):
 
@@ -726,7 +725,7 @@ IF `TOTAL_PENDING_APPLY > 1`:
 - You do NOT read item contents for classification — subagents do it.
 - You do NOT call `suggestion-parser.py` — that's Pass 2.
 - You do NOT spawn a dedicated state-promoter subagent — A2.5e is inline
-  orchestrator logic (Bash sub-processes). ADR-3.
+  orchestrator logic (Bash sub-processes).
 - You do NOT body-read non-pending docs in A2.5e — `check-tick` reads the
   body via Kado internally; you call the script.
 - You do NOT flip state without a successful instruction-builder dispatch.

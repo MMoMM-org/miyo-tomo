@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-search, mcp__kado__kado-write
 ---
 # Instruction Builder Agent
-# version: 2.5.0 (T5.2: MOC-branch section — bundled actions for ticked clusters + squelch for unticked)
+# version: 2.5.1 (declutter — strip spec refs)
 
 **Active agent: instruction-builder**
 
@@ -69,7 +69,7 @@ missing, default to `100 Inbox/`.
 
 1. Find `*_suggestions.md` in the inbox via `kado-search` + `kado-read`. Also
    scan for a companion `*_suggestions-fan.md` (the Force-Atomic Resolve
-   doc — XDD 012). If one exists AND its `[ ] Approved` checkbox is ticked
+   doc). If one exists AND its `[ ] Approved` checkbox is ticked
    (`[x] Approved`), treat both files as one reconciliation pair. If the
    companion exists but is NOT approved, ignore it — the user is still
    reviewing.
@@ -84,7 +84,7 @@ missing, default to `100 Inbox/`.
    python3 scripts/suggestion-parser.py --file "tomo-tmp/suggestions.md" --fan-resolve-file "tomo-tmp/suggestions-fan.md" > tomo-tmp/parsed-suggestions.json
    ```
 
-### Step 2.5 — FAN Resolve Subflow (XDD 012)
+### Step 2.5 — FAN Resolve Subflow
 
 Read `tomo-tmp/parsed-suggestions.json` and inspect
 `pending_fan_resolutions`. If it is empty, skip this step and proceed to
@@ -185,8 +185,8 @@ python3 scripts/instruction-render.py \
 **Flag guidance:**
 - `--upstream-type` comes from the inbox-orchestrator's dispatch context:
   - `suggestions` — normal Pass-1 → Pass-2 chain (most common)
-  - `moc-proposal` — F-43 MOC-creation chain (upstream is a `tomo-moc-proposal-*.md`)
-  - `suggestions-fan` — XDD 012 force-atomic chain (upstream is a `*_suggestions-fan.md`)
+  - `moc-proposal` — MOC-creation chain (upstream is a `tomo-moc-proposal-*.md`)
+  - `suggestions-fan` — force-atomic chain (upstream is a `*_suggestions-fan.md`)
 - `--upstream-path` is the vault-relative path of the doc that produced this Pass-2
   (the user-ticked suggestions or proposal doc). Used as the value of the `source_*`
   key in the emitted `tomo:` block.
@@ -202,8 +202,8 @@ python3 scripts/instruction-render.py \
 state=pending-apply, source_*, run_id, updated_at). You MUST:
 - Pass the rendered file through to vault byte-identical (via `upload-rendered.py`).
 - NEVER add, modify, or re-emit the `tomo:` block yourself.
-- NEVER add legacy lifecycle tags like `#<prefix>/instructions/pending-apply` —
-  F-47 v1.2 lock: state lives only in frontmatter `tomo.state`.
+- NEVER add lifecycle tags like `#<prefix>/instructions/pending-apply` —
+  state lives only in frontmatter `tomo.state`.
 
 Exit 0 = all rendered, exit 1 = partial (still write what exists), exit 2 = fatal.
 If exit 2, report the error and stop.
@@ -343,12 +343,11 @@ python3 scripts/squelch-unticked.py tomo-tmp/moc-parsed.json
 ```
 
 (Reads `unticked_clusters` from the parsed JSON and appends to
-`state/moc-squelch.json` via F-43 squelch API. Script exits 0 even when
+`state/moc-squelch.json` via the squelch API. Script exits 0 even when
 the unticked list is empty.)
 
 STRICT — Un-ticked clusters NEVER become a file-level "rejected" state on
-the proposal-doc. They persist to `state/moc-squelch.json` only
-(AC-5.2 + OQ12 lock).
+the proposal-doc. They persist to `state/moc-squelch.json` only.
 
 ### MOC-Step 5 — Flip proposal-doc state
 

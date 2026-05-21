@@ -186,6 +186,80 @@ def test_new_run_id_not_upstream_run_id(monkeypatch):
     assert tomo.get("run_id") != "upstream-r1"
 
 
+def test_emits_tomo_block_when_run_id_set_but_no_upstream_type(monkeypatch, capsys):
+    """tomo: block is emitted with no source_* key when run_id set but upstream_type is None.
+
+    Documented behavior path (SDD §_build_tomo_block_for_instructions):
+    - run_id present → tomo block IS built (not None)
+    - upstream_type is None → source_key lookup produces '' → no source_* emitted
+    - No warning printed (warning only fires for EXPLICITLY UNKNOWN upstream_type)
+
+    AC-1.3 edge case: instructions.md still has a valid tomo: block even when
+    the upstream doc type is unknown/absent.
+    """
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    metadata = {
+        "upstream_type": None,
+        "upstream_path": None,
+        "run_id": "pass2-r1",
+        "generated": "2026-05-21T14:00:00Z",
+        "profile": None,
+        "tomo_version": None,
+    }
+    md = ir.render_instructions_md([], metadata, {})
+    fm = _parse_frontmatter(md)
+    tomo = fm.get("tomo", {})
+
+    assert tomo, "Expected tomo: block to be present"
+    assert tomo.get("doc_type") == "instructions"
+    assert tomo.get("state") == "pending-apply"
+    assert tomo.get("run_id") == "pass2-r1"
+
+    # No source_* keys — upstream_type=None means no cross-ref, not an error
+    source_keys = [k for k in tomo if k.startswith("source_")]
+    assert source_keys == [], f"Expected no source_* keys, got {source_keys}"
+
+    # No warning emitted — silent omission is intentional for falsy upstream_type
+    captured = capsys.readouterr()
+    assert "[warn]" not in captured.err, (
+        f"Unexpected warning for upstream_type=None: {captured.err!r}"
+    )
+
+
+def test_legacy_source_suggestions_path_when_no_run_id():
+    """Legacy path: top-level source_suggestions emitted when run_id is absent.
+
+    Pre-F-47 callers supply source_suggestions but no run_id / upstream_type.
+    render_instructions_md must:
+    - emit source_suggestions: at the TOP LEVEL of frontmatter
+    - NOT emit a tomo: block (run_id is the gate)
+
+    Backward-compat guarantee from render_instructions_md docstring comment.
+    """
+    metadata = {
+        "source_suggestions": "inbox/x.md",
+        "run_id": None,
+        "upstream_type": None,
+        "upstream_path": None,
+        "generated": "2026-05-21T14:00:00Z",
+        "profile": None,
+        "tomo_version": None,
+    }
+    md = ir.render_instructions_md([], metadata, {})
+    fm = _parse_frontmatter(md)
+
+    # Top-level source_suggestions key must be present
+    assert "source_suggestions" in fm, (
+        "Expected top-level source_suggestions in frontmatter for legacy path"
+    )
+    assert fm["source_suggestions"] == "inbox/x.md"
+
+    # No tomo: block when run_id is absent
+    assert "tomo" not in fm, (
+        "Expected NO tomo: block when run_id is None (legacy path)"
+    )
+
+
 def test_schema_validation_blocks_invalid_state_in_dev_mode(monkeypatch):
     """In dev mode (TOMO_SCHEMA_STRICT=1), an invalid state raises SchemaValidationError."""
     monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")

@@ -11,12 +11,21 @@ Ensures the reducer's --fan-resolve flag:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REDUCER = REPO_ROOT / "tomo" / "scripts" / "suggestions-reducer.py"
+
+# Subprocess env: forward PYTHONPATH so subprocesses can find jsonschema
+# from the pre-installed host dep tree (see tests/conftest.py for the
+# in-process equivalent that covers importlib-loaded modules).
+_DEPS = "/tmp/claude/py_deps"
+_SCRIPTS_DIR = str(REPO_ROOT / "tomo" / "scripts")
+_extra = ":".join(p for p in [_DEPS, _SCRIPTS_DIR] if os.path.isdir(p))
+_ENV = {**os.environ, "PYTHONPATH": _extra + (":" + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")}
 
 
 def _minimal_shared_ctx(path: Path) -> None:
@@ -99,7 +108,7 @@ def test_fan_resolve_filters_and_sets_variant(tmp_path):
             "--fan-resolve",
             "--output", str(output),
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, check=False, env=_ENV,
     )
     assert result.returncode == 0, (
         f"reducer exit {result.returncode}; stderr:\n{result.stderr}"
@@ -142,7 +151,7 @@ def test_primary_mode_unchanged_without_flag(tmp_path):
             "--shared-ctx", str(shared_ctx),
             "--output", str(output),
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, check=False, env=_ENV,
     )
     assert result.returncode == 0, result.stderr
 

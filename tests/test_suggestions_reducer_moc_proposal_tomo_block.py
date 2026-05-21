@@ -25,9 +25,7 @@ REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 SCRIPT_PATH = SCRIPTS_DIR / "suggestions-reducer.py"
 
-# jsonschema lives in the pre-installed host dep tree (see tools.md)
-sys.path.insert(0, "/tmp/claude/py_deps")
-sys.path.insert(1, str(SCRIPTS_DIR))
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 # Load suggestions-reducer.py as a module (hyphen in filename → importlib).
 _spec = importlib.util.spec_from_file_location("suggestions_reducer", SCRIPT_PATH)

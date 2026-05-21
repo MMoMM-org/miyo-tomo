@@ -29,10 +29,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
-# jsonschema lives in the pre-installed host dep tree (see tools.md).
-# suggestions-reducer.py now imports lib.doc_frontmatter which requires jsonschema.
-sys.path.insert(0, "/tmp/claude/py_deps")
-sys.path.insert(1, str(SCRIPTS_DIR))
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 # ── Load suggestion-parser.py as a module (hyphen → importlib) ─────────────
 

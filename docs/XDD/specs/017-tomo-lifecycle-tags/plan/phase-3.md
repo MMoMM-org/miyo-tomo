@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Consumer Cut-over — Unified byFrontmatter Discovery (F-47.P2)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---

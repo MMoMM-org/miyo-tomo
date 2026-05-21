@@ -188,8 +188,10 @@ RETIRED_SCRIPT_TESTS=(
 )
 
 # Runtime scripts renamed (F-47 T2.1 — 2026-05-21).
+# Runtime scripts deleted (F-47 T3.4 — 2026-05-21): state-init.py superseded by inbox-discovery.py.
 RETIRED_SCRIPTS=(
     tag-captured.py
+    state-init.py
 )
 for name in "${RETIRED_SCRIPT_TESTS[@]}"; do
     dst="$INSTANCE_PATH/scripts/$name"

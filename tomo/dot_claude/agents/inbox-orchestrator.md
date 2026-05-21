@@ -12,7 +12,9 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.8.3 (STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON)
+# version: 0.8.4 (STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON)
+# F-47 T3.4: state-init.py deleted. Step A4 is a placeholder until T3.3 rewrites Phase A
+# with inbox-discovery.py. Do NOT invoke state-init.py — it no longer exists.
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -209,27 +211,27 @@ Step A3 — build shared context (substitute the run-id literal you got in A2):
 python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
 ```
 
-Step A4 — seed the state-file (substitute the run-id literal and the inbox
-path literal from Step A0):
+Step A4 — seed the state-file:
 
-```bash
-python3 scripts/state-init.py --inbox-path "<INBOX_PATH>" --run-id <RUN_ID> --output tomo-tmp/inbox-state.jsonl
-```
-
-`state-init` prints a single log line on stderr:
-`items_found=<F> items_skipped=<S> already_tagged=<T> run_id=<ID> out=<PATH>`.
-Capture those counters — you need them for the branching in Step A5.
+> **F-47 T3.4 placeholder** — `state-init.py` has been deleted (ADR-6 clean
+> cut-over). This step will be rewritten by T3.3 to call
+> `inbox-discovery.py` instead. Until T3.3 lands, do NOT attempt to run
+> `state-init.py` — it no longer exists on disk.
+>
+> Expected output shape (unchanged): a single stderr log line
+> `items_found=<F> items_skipped=<S> already_tagged=<T> run_id=<ID> out=<PATH>`.
+> Capture those counters — you need them for the branching in Step A5.
 
 Resume: skip both A3 and A4. Derive `RUN_ID` from the existing state-file
 (last entry's `run_id`).
 
 **Abort conditions** (exit before Phase B):
 - `shared-ctx-builder` nonzero → report error, stop
-- `state-init` nonzero → report error, stop
+- discovery script (A4) nonzero → report error, stop
 
 Step A5 — decide whether there's work to do (**MANDATORY — do NOT skip**):
 
-Branch on the state-init counters. The key invariant: the prompt MUST
+Branch on the discovery-script (A4) counters. The key invariant: the prompt MUST
 fire whenever `already_tagged > 0`, regardless of whether fresh items
 also exist. Otherwise the tagged items silently age out of the user's
 attention on every run.
@@ -261,15 +263,15 @@ attention on every run.
        standard Pass 1 on just the fresh items, tagged items stay
        untouched. Use when Pass 2 on them is pending.
      - `Process fresh + re-process tagged` *(only offered when
-       `items_found > 0 && already_tagged > 0`)* — re-run `state-init`
-       with `--include-captured`, then Phase B runs on BOTH sets.
+       `items_found > 0 && already_tagged > 0`)* — re-run discovery
+       script (A4) with `--include-captured`, then Phase B runs on BOTH sets.
      - `Re-process all tagged` *(only offered when `items_found == 0`)*
-       — re-run `state-init --include-captured`, then Phase B.
+       — re-run discovery script (A4) with `--include-captured`, then Phase B.
      - `Ignore` *(only offered when `items_found == 0`)* — stop with
        "Skipped — all items already tagged."
 
    On "Process fresh + re-process tagged" or "Re-process all tagged":
-   re-run `state-init` with `--include-captured`, capture the new
+   re-run discovery script (A4) with `--include-captured`, capture the new
    counters, proceed to Phase B. The run-id stays the same.
 
    On "Process fresh only": proceed to Phase B with the current state
@@ -397,7 +399,7 @@ feature shouldn't see status about it.
 |---|---|
 | `voice-transcriber` subagent throws / returns errors | Phase 0a only — persist summary, log warning, CONTINUE to Phase 0b/A. Voice MUST NOT block text inbox processing |
 | `shared-ctx-builder` fails | Abort, surface error, do not touch state-file |
-| `state-init` fails | Abort, surface error |
+| discovery script (A4) fails | Abort, surface error |
 | Subagent throws mid-batch | Item marked `failed` by subagent or by poll timeout; run continues |
 | `suggestions-reducer` fails | Keep all `tomo-tmp/` artefacts, tell user to inspect |
 | `kado-write` fails | Keep `tomo-tmp/suggestions-doc.json`; user can re-run and just the final write retries |

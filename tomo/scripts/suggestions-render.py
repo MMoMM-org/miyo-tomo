@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -20,18 +20,28 @@ import re
 import sys
 import argparse
 
+import yaml
+
+from lib.doc_frontmatter import build_tomo_block
+
 
 def render_frontmatter(d: dict) -> list[str]:
-    lines = [
-        "---",
-        "type: tomo-suggestions",
-        f"generated: {d['generated']}",
-        'tomo_version: "0.1.0"',
-        f"profile: {d['profile']}",
-        f"source_items: {d['source_items']}",
-        f"run_id: {d['run_id']}",
-        "---",
-    ]
+    tomo_block = build_tomo_block(
+        doc_type="suggestions",
+        state="pending-approval",
+        run_id=d["run_id"],
+    )
+    fm: dict = {
+        "type": "tomo-suggestions",
+        "generated": d["generated"],
+        "tomo_version": "0.1.0",
+        "profile": d["profile"],
+        "source_items": d["source_items"],
+        "run_id": d["run_id"],
+        "tomo": tomo_block,
+    }
+    body = yaml.dump(fm, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    lines = ["---"] + body.rstrip("\n").splitlines() + ["---"]
     return lines
 
 

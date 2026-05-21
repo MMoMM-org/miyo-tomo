@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.10.0 (F-47 T4.1–T4.4: drift recovery + transcription stop-gate + parallel-instructions warning)
+# version: 0.10.1 (F-47 T4.3: A2.5a real media enumeration via MCP listDir — replaces vapourware fallback)
 # state-init.py deleted (ADR-6). Steps A2.5b–A2.5e replace legacy A4.
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
@@ -210,24 +210,21 @@ Step A2.5a — Media transcription stop-gate (T4.3 — F-47 Feature 5b):
 Enumerate media files in the inbox via a listDir call. Filter to known media extensions:
 `.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`
 
-Run the listDir call (separate Bash call — ONE command, no chaining):
+Enumerate media files via the `mcp__kado__kado-search` tool (listDir, top-level only):
 
-```bash
-python3 scripts/inbox-discovery.py <INBOX_PATH> --media-only --json
+```
+Use mcp__kado__kado-search with:
+  operation: listDir
+  path: <INBOX_PATH>    ← the literal value resolved in Step A0
+  type: file
+  (omit depth — top-level only)
 ```
 
-If `inbox-discovery.py` does not yet support `--media-only`, fall back to reading the
-discovery JSON produced in A2.5b (if already run) and filtering paths by extension. In
-a fresh run A2.5a runs BEFORE A2.5b, so use a direct listDir approach:
+From the returned entries, filter to those whose filename ends with one of:
+`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`
 
-```bash
-python3 scripts/read-config-field.py --field concepts.inbox
-```
-
-(You already have INBOX_PATH from Step A0. Use it.)
-
-Determine MEDIA_COUNT from the listing — count paths whose extension is one of
-`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`.
+Set `MEDIA_FILES` = the filtered list of full paths.
+Set `MEDIA_COUNT` = count of `MEDIA_FILES`.
 
 IF MEDIA_COUNT > 0:
 

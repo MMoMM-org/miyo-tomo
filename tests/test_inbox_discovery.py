@@ -299,7 +299,7 @@ def test_unknown_doc_type_in_hit_logged_and_skipped(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Test: exactly two search_by_frontmatter calls
+# Test: exactly four search_by_frontmatter calls
 # ---------------------------------------------------------------------------
 
 def test_four_byfrontmatter_calls_made():
@@ -372,3 +372,45 @@ def test_suggestions_fan_routes_to_pending_approval():
     assert result["buckets"]["pendingApply"] == []
     assert result["buckets"]["captured"] == []
     assert result["buckets"]["newSources"] == []
+
+
+# ---------------------------------------------------------------------------
+# Test (new): path_prefix normalization
+# ---------------------------------------------------------------------------
+
+def test_inbox_path_without_trailing_slash_is_normalized():
+    """inbox_path without trailing slash must be normalized by discover().
+
+    Calls discover(mock_client, "100 Inbox") with NO trailing slash.
+    All four search_by_frontmatter calls + the list_dir call must carry
+    path_prefix="100 Inbox/" (with trailing slash added by normalization
+    at inbox-discovery.py:73 — inbox_path.rstrip("/") + "/").
+    """
+    mod = _load_script()
+
+    inbox_path_no_slash = "100 Inbox"
+    expected_path_prefix = "100 Inbox/"
+
+    mock_client = MagicMock()
+    mock_client.search_by_frontmatter.side_effect = [[], [], [], []]
+    mock_client.list_dir.return_value = []
+
+    mod.discover(mock_client, inbox_path_no_slash)
+
+    # Verify all four search_by_frontmatter calls carry the normalized path_prefix
+    calls = mock_client.search_by_frontmatter.call_args_list
+    assert len(calls) == 4, f"Expected 4 calls, got {len(calls)}"
+    for i, c in enumerate(calls):
+        _, kwargs = c
+        actual_prefix = kwargs.get("path_prefix")
+        assert (
+            actual_prefix == expected_path_prefix
+        ), f"Call {i+1}: expected path_prefix={expected_path_prefix!r}, got {actual_prefix!r}"
+
+    # Verify list_dir also carries the normalized path_prefix (as first positional arg)
+    list_dir_call = mock_client.list_dir.call_args
+    args, _ = list_dir_call
+    actual_list_dir_prefix = args[0] if args else None
+    assert (
+        actual_list_dir_prefix == expected_path_prefix
+    ), f"list_dir: expected path_prefix={expected_path_prefix!r}, got {actual_list_dir_prefix!r}"

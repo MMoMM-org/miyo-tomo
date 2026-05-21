@@ -267,7 +267,6 @@ class KadoClient:
         self,
         path: str,
         frontmatter: dict,
-        *,
         mode: str = "merge",
         expected_modified: int | None = None,
     ) -> dict:

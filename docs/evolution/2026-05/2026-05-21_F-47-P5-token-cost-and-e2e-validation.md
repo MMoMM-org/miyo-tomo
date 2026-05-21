@@ -1,16 +1,23 @@
 # 2026-05-21 — F-47.P5 Token-Cost Measurement + Full PRD AC E2E Validation
 
-**Context**: F-47.P5 (Phase 6) closes the spec. T6.3 (token-cost measurement vs PRD §7 baselines) and T6.4 (full PRD AC E2E verification) both require live runs against Privat-Test. Documented here as operator procedures.
+**Context**: F-47.P5 (Phase 6) closes the spec. T6.3 (token-cost measurement vs PRD §7 baselines) and T6.4 (full PRD AC E2E verification) require live runs against Privat-Test. T6.3 **instrumentation + tooling are now permanent** (see "What's already shipped" below); operator just runs the measurement on demand.
 
-**Status**: **DEFERRED — operator action required.** Cannot run from inside the Tomo container or orchestrator session.
+**Status**: Operator-side runs remain deferred. T6.3 infra is live (commit `4849545`).
 
 ---
 
-## T6.3 — Token-cost measurement
+## T6.3 — Token-cost measurement (instrumentation SHIPPED, ongoing observability)
 
 **Targets per PRD §7**:
 - Steady-state `/inbox` discovery: **≤ 2,000 tokens**
 - Heavy-state `/inbox` discovery: **≤ 6,000 tokens**
+
+### What's already shipped (2026-05-21, commit `4849545`)
+
+1. **`inbox-discovery.py` v0.3.0** emits a structured JSON `lifecycle.discovery` event to stderr on every `/inbox` run, with all PRD §7 properties (`token_estimate`, `byFrontmatter_hits`, `listDir_hits`, `pending_body_reads`, `bucket_counts`, `drift_hint_emitted`, `phase_a_duration_ms`, `run_id`).
+2. **`scripts/measure-f47-token-cost.py` v0.1.0** parses a captured stderr trace OR a Claude Code session JSONL transcript, finds the events, aggregates `token_estimate` against PRD §7 budgets, auto-classifies steady vs heavy from bucket counts.
+
+This is **permanent observability infrastructure**, not throwaway F-47 tooling. Keep it in the repo and re-run periodically to catch cost regressions when vault size grows, new doc-types ship, or renderer payloads change.
 
 ### Procedure
 
@@ -18,33 +25,29 @@
    - Steady scenario: Privat-Test inbox has only 1-2 captured docs (post-reset clean state).
    - Heavy scenario: 3 instructions + 2 suggestions + 1 moc-proposal + 5 source items manually placed.
 
-2. **Run + capture**:
+2. **Run** — no special stderr capture needed; Claude Code records every tool call (including `inbox-discovery.py` stderr) in the session JSONL automatically.
    ```bash
-   # Steady scenario
-   /inbox 2> /tmp/F47-P5-token-steady.log
-
-   # Heavy scenario (after re-populating inbox)
-   /inbox 2> /tmp/F47-P5-token-heavy.log
+   # In tomo-instance container:
+   /inbox
+   # repeat after re-populating inbox for the heavy scenario
    ```
 
-3. **Aggregate**:
-
-   Write `scripts/measure-f47-token-cost.py` (deferred — operator builds if needed; ~30 lines):
-   ```python
-   import json, sys, re
-   total = 0
-   for line in open(sys.argv[1]):
-       m = re.search(r'lifecycle\.discovery.*?token_estimate":\s*(\d+)', line)
-       if m:
-           total += int(m.group(1))
-   print(f"total_token_estimate={total}")
-   ```
-
-   Or grep manually:
+3. **Measure** — from host repo (`/Volumes/Moon/Coding/MiYo/Tomo`):
    ```bash
-   grep "lifecycle.discovery" /tmp/F47-P5-token-steady.log
-   grep "lifecycle.discovery" /tmp/F47-P5-token-heavy.log
+   # Latest session (auto-discovers most recent tomo-instance jsonl)
+   python3 scripts/measure-f47-token-cost.py --session-latest
+
+   # Or explicit session jsonl
+   python3 scripts/measure-f47-token-cost.py --session tomo-home/.claude/projects/.../UUID.jsonl
+
+   # Or captured stderr trace (if you piped it during a manual run)
+   python3 scripts/measure-f47-token-cost.py --stderr /tmp/F47-trace.log
+
+   # Override auto-classified scenario if needed
+   python3 scripts/measure-f47-token-cost.py --session-latest --scenario heavy
    ```
+
+   Output per event: `token_estimate`, all bucket counts, phase-A duration, drift status, PASS/FAIL verdict vs budget.
 
 4. **Pass criteria**:
    - Steady `total_token_estimate` ≤ 2,000

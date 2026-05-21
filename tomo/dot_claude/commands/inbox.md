@@ -83,7 +83,7 @@ A2.5c.1) reads to override the newSources path list with capturedHits paths.
 STRICT: --recover MUST be user-initiated. Tomo never auto-recovers silently — it cannot
 distinguish drift from a steady-state residual (Hashi cleaned up; captured notes are leftovers
 the user will manually file). Auto-recovery risks duplicate suggestions for already-processed
-items. (Per AC-5a.4.)
+items.
 
 ## How It Works
 

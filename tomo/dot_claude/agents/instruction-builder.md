@@ -301,7 +301,7 @@ For each entry in `ticked_clusters`, assemble actions into ONE shared
    ```
    Use `sanitize_stem` from `scripts/lib/obsidian_filename.py`. Set
    `source` = same path (MOC is rendered into the inbox initially),
-   `destination` = same path (user moves it later — AC-5.4 scope lock),
+   `destination` = same path (user moves it later — out of scope here),
    `title` = cluster title, `tags` = [].
 
 2. **`add_relationship` action per child** — for each wikilink stem in
@@ -316,7 +316,7 @@ The `action_count` field must equal the total across all clusters.
 
 STRICT — Multi-cluster acceptance produces ONE instructions doc with ALL
 clusters' actions bundled. NOT N separate instructions docs. Hashi applies
-each cluster's sub-actions transactionally per AC-5.1.
+each cluster's sub-actions transactionally.
 
 ### MOC-Step 3 — Render to markdown
 

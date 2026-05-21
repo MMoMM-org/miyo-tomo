@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: State Machine, Schema, and Kado Client Foundation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -37,7 +37,7 @@ phase: 1
 
 This phase ships the three load-bearing libraries that every later phase consumes: the state-machine module, the `tomo:` block schema + helper, and the Kado client extensions. **No production caller changes yet** — those land in Phase 2 onward. Phase 1 must be additive enough that merging it alone causes zero behaviour change to a running `/inbox`.
 
-- [ ] **T1.1 State machine module `tomo_lifecycle.py`** `[parallel: true]` `[activity: domain-modeling]`
+- [x] **T1.1 State machine module `tomo_lifecycle.py`** `[parallel: true]` `[activity: domain-modeling]`
 
   1. Prime: Read SDD Application Data Models STATE_MACHINE definition `[ref: SDD/Application Data Models; lines: 500-560]`. Read README Decisions Log entries for the 5 doc-types and their locked terminal states (`source.captured`, `suggestions.approved`, `suggestions-fan.approved`, `moc-proposal.accepted`, `instructions.applied`). Read SDD ADR-1 rationale `[ref: SDD/Architecture Decisions/ADR-1; lines: 1075-1078]`.
   2. Test: `tests/test_tomo_lifecycle.py::test_suggestions_pending_to_approved_legal`; `test_suggestions_pending_to_applied_rejected` (cross-doc-type transition rejected); `test_moc_proposal_pending_to_accepted_legal`; `test_instructions_pending_to_applied_legal`; `test_source_terminal_no_outgoing`; `test_suggestions_fan_pending_to_approved_legal` (XDD 012 doc_type added); `test_unknown_doc_type_returns_false`; `test_is_pending_returns_true_for_pending_prefix`; `test_is_pending_returns_false_for_terminal`.
@@ -45,7 +45,7 @@ This phase ships the three load-bearing libraries that every later phase consume
   4. Validate: `pytest tests/test_tomo_lifecycle.py -v`; `ruff check tomo/scripts/lib/tomo_lifecycle.py`; `python3 -c "from lib.tomo_lifecycle import STATE_MACHINE; assert 'suggestions-fan' in STATE_MACHINE"`.
   5. Success: All 5 doc-types covered, all locked transitions accepted, every cross-doc-type / illegal transition rejected `[ref: PRD/AC-3.4, AC-7.1]` `[ref: SDD/ADR-1]`. `suggestions-fan` doc_type present `[ref: SDD/Cross-Spec Coordination; lines: 962-970]`.
 
-- [ ] **T1.2 `doc-frontmatter.schema.json` + `doc_frontmatter.py` helper** `[parallel: true]` `[activity: schema-design]`
+- [x] **T1.2 `doc-frontmatter.schema.json` + `doc_frontmatter.py` helper** `[parallel: true]` `[activity: schema-design]`
 
   1. Prime: Read SDD Data Storage Changes `[ref: SDD/Data Storage Changes; lines: 434-458]` for the `tomo:` block shape. Read existing `tomo/schemas/instructions.schema.json` for jsonschema-draft-07 conventions and `additionalProperties` discipline. Read SDD ADR-4 dual-mode rationale `[ref: SDD/Architecture Decisions/ADR-4; lines: 1090-1093]`. Confirm `jsonschema` is already on Tomo's Python deps (else add to install requirements).
   2. Test: `tests/test_doc_frontmatter.py::test_build_tomo_block_minimum_fields` (auto-sets `updated_at`); `test_build_tomo_block_with_source_suggestions_ref` (instructions doc); `test_build_tomo_block_with_source_moc_proposal_ref` (MOC instructions doc); `test_build_tomo_block_with_source_suggestions_fan_ref` (XDD 012 fan-resolve instructions); `test_invalid_state_for_doc_type_rejected_dev_mode` (e.g. suggestions + state=applied → SchemaValidationError when `TOMO_SCHEMA_STRICT=1`); `test_invalid_state_warning_only_prod_mode` (same input, env unset → stderr warning, no raise); `test_parse_tomo_block_returns_none_when_absent`; `test_parse_tomo_block_returns_dict_when_present`; `test_round_trip_preserves_all_fields` (build → serialize → parse → equal). Use `monkeypatch.setenv` for env-flag tests.
@@ -53,7 +53,7 @@ This phase ships the three load-bearing libraries that every later phase consume
   4. Validate: `pytest tests/test_doc_frontmatter.py -v`; `python3 -m jsonschema -i <(echo '{"tomo":{"doc_type":"suggestions","state":"pending-approval","run_id":"r","updated_at":"2026-05-21T00:00:00Z"}}') tomo/schemas/doc-frontmatter.schema.json` exits 0; same with `state=applied` exits non-zero; `ruff check tomo/scripts/lib/doc_frontmatter.py`.
   5. Success: Every valid `tomo:` block per the locked schema passes; every illegal state-for-doc-type combination is caught in dev mode and warned in prod mode `[ref: PRD/AC-1.5, AC-7.2]` `[ref: SDD/ADR-4]`. `source_*` extensibility verified for future F-44/45/46 doc-types (test passes when an unknown `source_garden_audit` key is supplied — schema permits the pattern).
 
-- [ ] **T1.3 `KadoClient` extensions: `write_frontmatter` + `search_by_frontmatter`** `[parallel: true]` `[activity: api-development]`
+- [x] **T1.3 `KadoClient` extensions: `write_frontmatter` + `search_by_frontmatter`** `[parallel: true]` `[activity: api-development]`
 
   1. Prime: Read existing `tomo/scripts/lib/kado_client.py` end-to-end to understand `_call_tool()` shape, error mapping, `_unwrap_sse()`, and how `read_frontmatter` is structured (the natural sibling to the new `write_frontmatter`). Read `_inbox/from-kado/2026-05-21_kado-to-tomo_frontmatter-write-shipped-plus-bonus.md` for BOTH `kado-write operation=frontmatter` merge semantics (arrays replace, scalars replace, untouched keys preserved) AND `kado-search operation=byFrontmatter` query syntax + `filter.path` / `filter.modifiedAfter`. (The earlier 2026-05-20 notice that originally split these is rolled into the 2026-05-21 follow-up.) Read SDD Implementation Examples discover_pending + flip_state `[ref: SDD/Implementation Examples; lines: 624-707]`.
   2. Test: `tests/test_kado_client_frontmatter.py::test_write_frontmatter_merge_mode_call_shape` (mock `_call_tool`, assert JSON-RPC payload includes `operation=frontmatter`, `mode=merge`, the supplied dict, and `expected_modified` when given); `test_write_frontmatter_replace_mode_call_shape`; `test_write_frontmatter_concurrency_error_raises_KadoConcurrencyError` (mock returns Kado's `expectedModified` conflict shape → wrapper raises typed error); `test_search_by_frontmatter_query_call_shape` (verifies `operation=byFrontmatter`, `query` string, optional `filter.path`, optional `filter.modifiedAfter`); `test_search_by_frontmatter_returns_list_of_path_modified_frontmatter` (mock returns SSE shape; wrapper returns normalised list of dicts); `test_search_by_frontmatter_default_limit_is_500`. Mock `requests.post` / `_call_tool` — no live Kado in unit tests.
@@ -61,6 +61,6 @@ This phase ships the three load-bearing libraries that every later phase consume
   4. Validate: `pytest tests/test_kado_client_frontmatter.py -v`; `pytest tests/ -v` (no regression in pre-existing kado_client tests); `ruff check tomo/scripts/lib/kado_client.py`; `python3 -c "from lib.kado_client import KadoClient, KadoConcurrencyError"`.
   5. Success: Wrapper sends correctly-shaped JSON-RPC payloads `[ref: PRD/AC-6.1]` `[ref: SDD/ADR-2]`. Optimistic-concurrency error surfaces as a typed `KadoConcurrencyError` so callers can retry-once without parsing strings `[ref: SDD/Implementation Examples; lines: 690-697]`. `filter.path` server-side narrowing supported for AC-2.4 server-side scope discipline `[ref: PRD/AC-2.4]`.
 
-- [ ] **T1.4 Phase 1 Validation** `[activity: validate]`
+- [x] **T1.4 Phase 1 Validation** `[activity: validate]`
 
   Run `pytest tests/test_tomo_lifecycle.py tests/test_doc_frontmatter.py tests/test_kado_client_frontmatter.py -v`. Run `pytest tests/ -v` to confirm zero regressions in existing tests. Run `ruff check tomo/scripts/lib/`. Run `python3 -c "from lib.tomo_lifecycle import validate_transition, is_pending, is_terminal; from lib.doc_frontmatter import build_tomo_block, parse_tomo_block, SchemaValidationError; from lib.kado_client import KadoClient, KadoConcurrencyError"` — all imports succeed. Run `python3 -m jsonschema -i` against three crafted fixtures (suggestions/pending-approval, instructions/pending-apply, source/captured) — all pass; one negative fixture (suggestions/applied) — fails. Run `./scripts/update-tomo.sh` and confirm the three new module files plus the schema are present in `tomo-instance/` (per `feedback_bump_version_on_managed_file_edit.md` — ensure all three carry a `# version:` and the schema is referenced by relative path).

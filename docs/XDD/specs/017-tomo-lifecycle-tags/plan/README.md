@@ -150,7 +150,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
-- [ ] [Phase 1: State Machine, Schema, and Kado Client Foundation](phase-1.md)
+- [x] [Phase 1: State Machine, Schema, and Kado Client Foundation](phase-1.md)
 - [ ] [Phase 2: Producer-Side Writes (F-47.P1)](phase-2.md)
 - [ ] [Phase 3: Consumer Cut-over — Unified byFrontmatter Discovery (F-47.P2)](phase-3.md)
 - [ ] [Phase 4: Drift Recovery + Transcription Stop-Gate (F-47.P3)](phase-4.md)

@@ -1,5 +1,5 @@
 # squelch_persist.py — Persist squelch entries when a proposal-doc is rejected.
-# version: 0.1.0
+# version: 0.1.1
 """Write SquelchEntry records for each rejected cluster in a MOC proposal-doc.
 
 Called at archival time (via mark-captured.py) when a ``tomo-moc-proposal-*.md``

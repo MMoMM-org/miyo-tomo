@@ -1,5 +1,5 @@
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.8.1 (declutter — strip spec refs)
+# version: 0.8.2
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.

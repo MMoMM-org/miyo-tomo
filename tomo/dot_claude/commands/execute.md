@@ -1,5 +1,5 @@
 # /execute — Helper for applying an instruction set
-# version: 0.2.0 (rewrite — helper, not auto-applier; shows manual + Tomo Hashi paths)
+# version: 0.2.1
 
 Show the user how to apply the latest Pass-2 instruction set. Tomo never writes vault notes outside the inbox itself — application happens either by hand in Obsidian or via Tomo Hashi's instruction-set executor. This command is a reminder of those options, not an executor.
 

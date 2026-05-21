@@ -1,5 +1,5 @@
 # /explore-vault
-# version: 0.3.0 (frontmatter detection retired — profile-driven now)
+# version: 0.3.1
 
 Scan your Obsidian vault to discover structure, tags, relationships, callouts, and MOC hierarchy.
 Builds the discovery cache that powers Tomo's PKM intelligence.

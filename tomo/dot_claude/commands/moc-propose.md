@@ -1,5 +1,5 @@
 # /moc-propose — Propose a new MOC for a topic, folder, classification, or whole-vault scan
-# version: 0.2.0 (T6.5: collapse How-It-Works detail; moc-architect.md is single source of truth)
+# version: 0.2.1
 
 Proactively propose a Map-of-Content (MOC) for an under-organised topic area.
 Routes to the `moc-architect` agent, which runs `moc-discovery.py` then `suggestions-reducer.py`

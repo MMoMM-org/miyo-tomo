@@ -315,3 +315,105 @@ class TestFlipState:
                 "run-r1",
                 expected_modified=100,
             )
+
+    def test_flip_state_returns_false_on_invalid_transition(self, capsys):
+        """Invalid transition returns False (no exception, no write)."""
+        client = self._make_client()
+        result = flip_state(
+            client,
+            "inbox/x.md",
+            "suggestions",
+            "pending-approval",
+            "applied",  # invalid
+            "run-r1",
+            expected_modified=100,
+        )
+        assert result is False
+        assert client.write_frontmatter.call_count == 0
+        captured = capsys.readouterr()
+        assert "transition_rejected" in captured.err
+
+    def test_flip_state_returns_true_on_success(self):
+        """Valid transition returns True."""
+        client = self._make_client()
+        result = flip_state(
+            client,
+            "inbox/x.md",
+            "suggestions",
+            "pending-approval",
+            "approved",
+            "run-r1",
+            expected_modified=100,
+        )
+        assert result is True
+        assert client.write_frontmatter.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# CLI flip tests
+# ---------------------------------------------------------------------------
+
+class TestCLIFlip:
+    """Test CLI flip command exit codes and behavior."""
+
+    def test_cli_flip_invalid_transition_exits_1(self):
+        """CLI flip with invalid transition exits 1."""
+        # Mock KadoClient in the module
+        mod = get_mod()
+        with patch.object(mod, 'KadoClient') as MockClient:
+            client_instance = MagicMock()
+            client_instance.read_note.return_value = {"content": ""}
+            MockClient.return_value = client_instance
+
+            # Call main CLI with invalid transition
+            exit_code = mod.main([
+                'flip',
+                'inbox/x.md',
+                'suggestions',
+                'pending-approval',
+                'applied',  # invalid transition
+                'run-r1',
+                '100',
+            ])
+            assert exit_code == 1
+
+    def test_cli_flip_valid_transition_exits_0(self):
+        """CLI flip with valid transition exits 0."""
+        mod = get_mod()
+        with patch.object(mod, 'KadoClient') as MockClient:
+            client_instance = MagicMock()
+            client_instance.write_frontmatter.return_value = {"path": "inbox/x.md", "modified": 124}
+            MockClient.return_value = client_instance
+
+            # Call main CLI with valid transition
+            exit_code = mod.main([
+                'flip',
+                'inbox/x.md',
+                'suggestions',
+                'pending-approval',
+                'approved',  # valid transition
+                'run-r1',
+                '100',
+            ])
+            assert exit_code == 0
+
+    def test_cli_flip_missing_args_exits_1(self):
+        """CLI flip with missing arguments exits 1."""
+        mod = get_mod()
+        # Not enough arguments
+        exit_code = mod.main(['flip', 'inbox/x.md', 'suggestions'])
+        assert exit_code == 1
+
+    def test_cli_flip_bad_expected_modified_exits_1(self):
+        """CLI flip with non-integer expected_modified exits 1."""
+        mod = get_mod()
+        exit_code = mod.main([
+            'flip',
+            'inbox/x.md',
+            'suggestions',
+            'pending-approval',
+            'approved',
+            'run-r1',
+            'not-a-number',
+        ])
+        assert exit_code == 1

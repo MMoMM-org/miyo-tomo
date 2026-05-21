@@ -98,12 +98,14 @@ def flip_state(
     to_state: str,
     run_id: str,
     expected_modified: int | None = None,
-) -> None:
+) -> bool:
     """Validate transition, then write_frontmatter with merge-mode payload.
 
     Only `state` and `updated_at` are included in the merge payload — all other
     existing frontmatter keys (doc_type, run_id, source_*, user tags) are
     preserved automatically by Kado's merge mode.
+
+    Returns True on successful transition, False if transition is invalid.
 
     Retry-once on KadoConcurrencyError:
       - Re-read frontmatter; if current state == to_state → idempotent no-op.
@@ -115,7 +117,7 @@ def flip_state(
             f"doc_type={doc_type!r} {from_state!r}→{to_state!r}",
             file=sys.stderr,
         )
-        return
+        return False
 
     tomo_block = {
         "state": to_state,
@@ -130,6 +132,7 @@ def flip_state(
         )
     except KadoConcurrencyError:
         _handle_concurrency_retry(client, path, doc_type, from_state, to_state, run_id)
+    return True
 
 
 def _handle_concurrency_retry(
@@ -204,14 +207,14 @@ def _cli_flip(argv: list[str]) -> int:
 
     client = KadoClient()
     try:
-        flip_state(
+        success = flip_state(
             client, path, doc_type, from_state, to_state, run_id,
             expected_modified=expected_modified,
         )
     except KadoConcurrencyError as exc:
         print(f"state-promoter: persistent concurrency conflict on {path!r}: {exc}", file=sys.stderr)
         return 2
-    return 0
+    return 0 if success else 1
 
 
 def main(argv: list[str] | None = None) -> int:

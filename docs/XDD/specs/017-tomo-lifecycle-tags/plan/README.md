@@ -155,7 +155,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 3: Consumer Cut-over — Unified byFrontmatter Discovery (F-47.P2)](phase-3.md)
 - [x] [Phase 4: Drift Recovery + Transcription Stop-Gate (F-47.P3)](phase-4.md)
 - [x] [Phase 5: F-43 MOC-Consumption (F-47.P4)](phase-5.md)
-- [ ] [Phase 6: Hashi Schema Handoff + Final Integration & E2E Validation (F-47.P5)](phase-6.md)
+- [x] [Phase 6: Hashi Schema Handoff + Final Integration & E2E Validation (F-47.P5)](phase-6.md)
 
 ---
 

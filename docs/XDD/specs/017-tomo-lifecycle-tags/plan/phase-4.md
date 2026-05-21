@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Drift Recovery + Transcription Stop-Gate (F-47.P3)"
-status: pending
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -37,7 +37,7 @@ phase: 4
 
 This phase makes `/inbox` resilient to two off-happy-path scenarios: (a) user deletes a workflow doc mid-flow leaving stranded captured sources (drift), (b) user drops audio files and needs a two-run gate to review the transcript before processing. Both behaviours flow through the existing Phase A2.5 wiring from Phase 3 — Phase 4 fills in the UX text + control flow.
 
-- [ ] **T4.1 `inbox.md` — `--recover` flag** `[activity: agent-prompt-update]`
+- [x] **T4.1 `inbox.md` — `--recover` flag** `[activity: agent-prompt-update]`
 
   1. Prime: Read `tomo/dot_claude/commands/inbox.md` entry-point and confirm how it currently dispatches `inbox-orchestrator`. Read PRD AC-5a.2 (recover treats captured as fresh) `[ref: PRD/Feature 5a]`. Read SDD Complex Logic step 4 (drift block when `--recover` set, override `newSources = capturedHits.paths`) `[ref: SDD/Complex Logic; lines: 859-865]`.
   2. Test: N/A (command file). Manual smoke: invoke `/inbox --recover` against a drift inbox (3 captured, 0 pending) — orchestrator overrides newSources with captured paths and runs Pass-1 against them; resulting `<ts>_suggestions.md` produced; captured tags re-asserted idempotently.
@@ -45,7 +45,7 @@ This phase makes `/inbox` resilient to two off-happy-path scenarios: (a) user de
   4. Validate: Run `./scripts/update-tomo.sh`; restart Claude; smoke test per step 2. Verify `mark-captured` second-write against an already-captured doc is a no-op via merge-mode (write payload identical, no state change, no exception, `lifecycle.transition` event still logged as idempotent).
   5. Success: `/inbox --recover` reroutes captured docs into Pass-1; `tomo.state=captured` stays valid across re-assert `[ref: PRD/AC-5a.2, AC-5a.3, AC-5a.4]` `[ref: SDD/CLI command changes; lines: 485-489]`.
 
-- [ ] **T4.2 Drift hint surfacing + UX text** `[activity: agent-prompt-update]` `[parallel: true]`
+- [x] **T4.2 Drift hint surfacing + UX text** `[activity: agent-prompt-update]` `[parallel: true]`
 
   1. Prime: Read PRD AC-5a.1 exact hint text wording (`"⚠ N captured notes have no associated workflow doc..."`) `[ref: PRD/Feature 5a; AC-5a.1]`. Read PRD §6.4 drift recovery diagram for the surfaced-hint scenario. Read PRD §10 "Design note" — drift is a hint, not an action.
   2. Test: N/A (agent prompt text). Manual smoke: arrange a drift inbox (3 captured, 0 pending), invoke `/inbox` WITHOUT `--recover`. Expected: discovery JSON has `drift=true`; orchestrator prints the verbatim hint with `N=3` and the `--recover` command line on a single line; exits without dispatching Pass-1 against captured docs; captured docs untouched.
@@ -53,7 +53,7 @@ This phase makes `/inbox` resilient to two off-happy-path scenarios: (a) user de
   4. Validate: Manual smoke per step 2; grep `inbox-orchestrator.md` for the verbatim PRD hint string — confirm exact match; `./scripts/update-tomo.sh`; restart Claude.
   5. Success: Drift surfaces as one-line hint with verbatim count + flag command `[ref: PRD/AC-5a.1]` `[ref: SDD/Quality Requirements/Usability]`. No auto-recovery when `--recover` absent `[ref: PRD/AC-5a.4]`.
 
-- [ ] **T4.3 Transcription stop-gate (voice-transcriber.md + orchestrator A2.5a)** `[activity: agent-prompt-update]`
+- [x] **T4.3 Transcription stop-gate (voice-transcriber.md + orchestrator A2.5a)** `[activity: agent-prompt-update]`
 
   1. Prime: Read `tomo/dot_claude/agents/voice-transcriber.md` — current behaviour around transcript output. Read PRD AC-5b.1..AC-5b.4 + §3 N4 for the locked two-run-gate contract `[ref: PRD/Feature 5b]`. Read SDD Runtime View step 3 transcription pre-check `[ref: SDD/Runtime View/Primary Flow; lines: 767-768]`. Confirm voice-transcriber currently produces `<stem>.md` files in the inbox folder.
   2. Test: N/A (agent prompts + orchestrator). Manual smoke matrix: (a) inbox contains one `.mp3` + zero `.md` → `/inbox` runs transcription, produces `<stem>.md` WITHOUT `tomo:` block, exits with stop-gate message; (b) inbox contains one `.mp3` + one manual `.md` → transcription runs for the `.mp3`, Pass-1 runs for the manual `.md`, the new transcript is NOT picked up in the same run (deferred); (c) re-run after (a) → transcript flows through Pass-1 normally, gets `tomo.state=captured`; (d) zero media files → A2.5a is a no-op, normal discovery continues.
@@ -64,7 +64,7 @@ This phase makes `/inbox` resilient to two off-happy-path scenarios: (a) user de
   4. Validate: Run `./scripts/update-tomo.sh`; restart Claude; smoke tests (a)-(d) above. Verify the transcript `.md` has zero `tomo` keys in its frontmatter immediately after transcription. Verify the second `/inbox` run captures it as `tomo.state=captured`.
   5. Success: Two-run gate behaves per AC-5b.1..AC-5b.4 `[ref: PRD/Feature 5b]` `[ref: PRD/§6.1/§3 N4]`.
 
-- [ ] **T4.4 Parallel-instructions warning text** `[activity: agent-prompt-update]` `[parallel: true]`
+- [x] **T4.4 Parallel-instructions warning text** `[activity: agent-prompt-update]` `[parallel: true]`
 
   1. Prime: Read PRD §3 N2 for the locked warning text. Read SDD Complex Logic step 6 (parallel-instructions warning) `[ref: SDD/Complex Logic; lines: 877-880]`. Read PRD §6.3 final summary message for verbatim format. Read SDD Quality Requirements/Usability — must list ALL pending-apply paths.
   2. Test: N/A (orchestrator output). Manual smoke: prepare inbox with 1 pre-existing `pending-apply` instructions doc + 1 fresh source. Run `/inbox`. Expected stderr summary includes the warning `"⚠ You now have N instructions docs pending Hashi-apply (<paths>)..."` listing both the pre-existing path and the path of any newly-produced instructions doc (if any). Verify path-list is fully enumerated, not truncated.
@@ -72,7 +72,7 @@ This phase makes `/inbox` resilient to two off-happy-path scenarios: (a) user de
   4. Validate: Smoke per step 2; grep prompt for the verbatim text; `./scripts/update-tomo.sh`; restart Claude.
   5. Success: User sees all pending-apply paths in the summary so they can grep them in Obsidian `[ref: SDD/Quality Requirements/Usability; lines: 1112-1113]` `[ref: PRD/§3 N2]`.
 
-- [ ] **T4.5 Phase 4 Validation** `[activity: validate]`
+- [x] **T4.5 Phase 4 Validation** `[activity: validate]`
 
   Run full `pytest tests/ -v` — expect no test changes in this phase (work is in agent prompts + orchestrator prose). Run `ruff check tomo/scripts/`. Manual smoke matrix:
   1. Drift inbox (3 captured, 0 pending), no `--recover`: hint emitted verbatim with count=3 + recover command; no Pass-1 dispatched against captured.

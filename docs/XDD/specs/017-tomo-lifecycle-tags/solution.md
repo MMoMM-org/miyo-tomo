@@ -901,6 +901,118 @@ OUTPUT: buckets, transitions_applied, summary_message
 - **Rollback Strategy**: each P-phase is independently revertable via git. P1 → P2 → P3 each pass Privat-Test before merging. No DB migrations to undo.
 - **Data Migration Sequencing**: N/A — Privat-Test inbox wipe at P1 start absorbs the only migration cost (locked OQ4/5).
 
+### Cross-Spec Coordination
+
+F-47 sits in the middle of an active spec backlog. The phase ship order also unlocks (or constrains) several adjacent specs.
+
+#### Spec dependency map
+
+```mermaid
+graph LR
+    subgraph "Active before F-47"
+        S012[012 F-33<br/>Force Atomic<br/>plan/phase-1 in progress]
+    end
+
+    subgraph "F-47 phases"
+        P1[F-47.P1<br/>producer writes]
+        P2[F-47.P2<br/>byFrontmatter consumer]
+        P3[F-47.P3<br/>drift + transcription gate]
+        P4[F-47.P4<br/>MOC consumption]
+        P5[F-47.P5<br/>Hashi schema handoff]
+    end
+
+    subgraph "Blocked / paused — resume map"
+        S013_T62[013 F-43<br/>T6.2 remaining 5 modes<br/>PAUSED]
+        S013_T64[013 F-43<br/>T6.4 launch gate<br/>PAUSED]
+    end
+
+    subgraph "Independent — parallel OK"
+        S009[009 F-26<br/>voice T5.1/T5.2<br/>host validation pending]
+        S015[015 F-34<br/>MSP Cond-B<br/>PRD draft]
+        S016[016 F-41<br/>multi-topic atomic<br/>PRD draft]
+        S048[F-48<br/>incremental cache<br/>backlog]
+    end
+
+    S012 -.->|merge before<br/>F-47 starts P1<br/>OR rebase on P1 schema| P1
+    P2 ==>|unblocks| S013_T62
+    P4 ==>|unblocks| S013_T64
+    P5 ==>|enables| S048
+    S015 -.->|inherits<br/>tomo: block schema| P1
+    S016 -.->|inherits<br/>tomo: block schema| P1
+```
+
+#### Coordination rules per spec
+
+**013 F-43 MOC creation (PAUSED, hard-dependent on F-47)**
+- T6.2 remaining modes (folder, class, title, free-text, scan) — **resume after F-47.P2 ships**. P2 gives unified discovery so `/inbox` sees the proposal-doc and routes it; T6.2 tests cover proposal-doc *creation* + discovery, which is what P1+P2 unblock.
+- T6.4 final launch gate — **resume after F-47.P4 ships**. P4 ships the actual MOC-consumption flow (bundled `create_moc` + child-relationship-update actions). T6.4 includes the accept-flow end-to-end test, which only works with P4 live.
+- T6.3 Stream B (live-validation links in XDD index + `/memory-add`) — picks up after T6.2 completes.
+- Action: update `docs/XDD/specs/013-moc-creation-skill/README.md` and `plan/phase-6.md` T6.2 pause note to reference P2 (not P1+P2) and add T6.4 → P4 dependency. Done as a follow-up edit (this session).
+
+**012 F-33 Force Atomic Synthesis (IN-PROGRESS, file-overlap small)**
+- Initial assumption was "012 touches same files as F-47.P1" — closer reading of `docs/XDD/specs/012-force-atomic-synthesis/plan/phase-1.md` shows the overlap is mostly cosmetic (same files, disjoint code paths):
+
+  | File | 012 changes | F-47.P1 changes | Conflict |
+  |---|---|---|---|
+  | `suggestion-parser.py` | NEW `--fan-resolve-file` flag + 3-way branch | not touched by F-47 | none |
+  | `suggestions-reducer.py` | NEW `--fan-resolve` mode flag | F-47 touches `--moc-proposal-mode` | none — different mode flags |
+  | `inbox-analyst.md` | NEW `force_atomic` input + Step 7 gate | not directly touched | none |
+  | `instruction-builder.md` | NEW Step 2.5 (FAN subflow) | adds emitting `tomo.source_*` refs to output | minor — different sections of the prompt |
+  | `inbox.md` | NEW companion-doc auto-detect for `*_suggestions-fan.md` | NEW `--recover`, parallel warning, stop-gate | minor — different sections |
+  | `suggestions-render.py`, `instruction-render.py` | not touched by 012 | NEW `tomo:` block emission | none |
+
+- **Real coordination point**: 012 introduces a NEW workflow doc type — `*_suggestions-fan.md` — that under F-47's schema **should also carry a `tomo:` block** (likely `doc_type: suggestions-fan` or extend the `suggestions` doc_type enum). F-47.P1 schema must account for this when 012 ships.
+- Three viable orderings:
+  - **(A) Ship 012 first**, then F-47.P1 adds `tomo:` block emission to 012's renderer as part of P1's producer sweep. Schema's `doc_type` enum includes `suggestions-fan` from day one.
+  - **(B) Pause 012**, ship F-47.P1 with `suggestions-fan` already in the schema enum, then 012 resumes and its new fan-doc renderer emits the `tomo:` block natively.
+  - **(C) Ship in parallel** (different feature branches). Manageable given the small actual overlap, but rebase work falls on whichever lands second.
+- **Recommended: (A)** — 012 is small, well-scoped, and unblocks F-33 (Force Atomic Synthesis). Ship it first, then F-47.P1's producer sweep is one tidy pass over all renderers including 012's new one. This minimises mode-switching for the implementer.
+- Action: confirm with user. If (A), 012 plan/phase-1 resumes immediately; F-47.P1 starts after 012 merges.
+
+**009 F-26 Voice Memo Transcription (CODE-COMPLETE, host validation pending)**
+- T5.1 (5-min memo end-to-end) and T5.2 (performance ≤ 5 min wall on M-series) are host-side live tests, NOT blocked by F-47 codebase changes.
+- **However**: F-47 Feature 5b (transcription stop-gate) reshapes the voice → /inbox flow. T5.1 should be re-run AFTER F-47.P3 ships to validate the stop-gate doesn't regress the existing voice workflow.
+- Concrete sequencing:
+  1. Run T5.1/T5.2 NOW (against current voice flow) — gets 009 to spec-done independent of F-47.
+  2. After F-47.P3 ships, run a slim 009 regression: same voice memo, verify stop-gate fires, re-/inbox processes transcript correctly on the second run.
+- Action: 009 README gets a "post-F-47.P3 regression" task added to T5.x.
+
+**015 F-34 MSP Condition B + 016 F-41 Multi-topic Atomic (PRD draft, independent)**
+- Both touch `inbox-analyst.md` (Steps 4 and 7-8 respectively) + supporting scripts (`cache-builder.py`, `shared-ctx-builder.py`). F-47 does NOT touch these.
+- They CAN proceed in parallel with F-47 implementation. But: their producers (inbox-analyst outputs → reducer → renderer) will emit suggestions docs, which **will need to carry the `tomo:` block from P1 onward**.
+- Coordination: when 015/016 reach SDD/plan phase, their renderer-touch tasks must include "emits `tomo:` block per F-47 schema". This is a one-line addition to each, not a blocker.
+- Action: when scaffolding 015/016 plan phases, reference `docs/XDD/specs/017-tomo-lifecycle-tags/solution.md` Data Models section.
+
+**F-48 Incremental-Discovery Cache (backlog)**
+- Depends on F-47's discovery layer being byFrontmatter-based + the `filter.modifiedAfter` capability (already in Kado 0.11.0). Hard-prereq for F-45 weekly-review (time-windowed by design).
+- Action: defer until F-47 ships + /moc-propose repeat-run cost is measurable on Privat-Test.
+
+#### Post-F-47 work queue (expected)
+
+| Trigger | Spec | Task |
+|---|---|---|
+| **Before F-47.P1 starts** | 012 (recommended A) | Resume + complete 012 plan/phase-1, ship to main |
+| F-47.P1 starts | 012 outputs | F-47.P1 producer sweep adds `tomo:` block emission to 012's fan-doc renderer too |
+| F-47.P2 merged | 013 | Resume T6.2 modes folder/class/title/free-text/scan |
+| F-47.P2 merged | 009 | Run T5.1/T5.2 if not already done |
+| F-47.P3 merged | 009 | Voice stop-gate regression test |
+| F-47.P4 merged | 013 | Resume T6.4 final launch gate + accept-flow end-to-end |
+| F-47.P4 merged | F-47 itself | Send Hashi schema-lock handoff (`_outbox/for-hashi/2026-XX-XX_state-driven-cleanup-schema-lock.md`) |
+| F-47.P5 merged (Hashi adopts) | F-48 | Eligible to start (depends on F-47 + Kado 0.11.0 — both live) |
+| F-47.P1 schema live | 015, 016 | When their plan phases scaffold, renderer tasks reference the schema |
+
+#### Branch-state coordination (operational)
+
+Current branch: `feat/013-phase-4` carries:
+- 013 T6.5 + T6.5.5 fixes (already shipped, in commits `a12c12f` and earlier)
+- F-47 PRD v1.2 + SDD v1.0 (committed: `3e2d3a0`, `2c99350`)
+- This SDD cross-spec coordination update (committed next)
+
+**Plan (user-confirmed 2026-05-21)**: merge `feat/013-phase-4` directly into `main` without PR — the user does not need PR-flow for this branch. After merge:
+1. 012 plan/phase-1 resumes on a fresh branch (per Cross-Spec Coordination above, option A — ship 012 first).
+2. After 012 merges, `feat/017-tomo-lifecycle-tags` is cut from main for F-47.P1 implementation.
+3. F-47 phases P1–P5 each get their own short-lived feature branch off main, OR all phases land on a single F-47 branch — operator's choice at P1 start.
+
 ## Cross-Cutting Concepts
 
 ### Pattern Documentation

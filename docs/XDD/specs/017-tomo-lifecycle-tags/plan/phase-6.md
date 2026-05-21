@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Hashi Schema Handoff + Final Integration & E2E Validation (F-47.P5)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 6
 ---

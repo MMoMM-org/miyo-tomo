@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.10.4 (declutter — strip spec refs)
+# version: 0.10.5
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
@@ -625,11 +625,6 @@ someone else's responsibility. It is YOUR step, inside YOUR phase.
 ```bash
 python3 scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id <run_id>
 ```
-
-The script reads all `done` stems from the state-file, writes
-`tomo.state=captured` to each item's frontmatter via `write_frontmatter`
-(merge mode). Idempotent — Kado merge mode overwrites the same value on
-re-runs. Non-markdown items are skipped.
 
 If it fails, report the error but do NOT skip the report phase. The user
 can re-run `scripts/mark-captured.py` manually.

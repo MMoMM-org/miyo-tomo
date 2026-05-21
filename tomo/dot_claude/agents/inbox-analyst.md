@@ -12,7 +12,7 @@ skills:
   - pkm-workflows
 ---
 # Inbox Analyst Subagent
-# version: 0.10.4 (declutter pass 2 — address review TODOs)
+# version: 0.10.5
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.

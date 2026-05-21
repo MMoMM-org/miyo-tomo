@@ -170,12 +170,47 @@ def test_writes_tomo_state_captured(state_file, monkeypatch):
     assert "updated_at" in tomo_block
 
     # mode must be "merge" (positional-or-keyword)
-    mode_val = (
-        call_kwargs.kwargs.get("mode")
-        if call_kwargs.kwargs.get("mode") is not None
-        else (call_kwargs.args[2] if len(call_kwargs.args) > 2 else None)
-    )
+    mode_val = call_kwargs.kwargs.get("mode")
     assert mode_val == "merge", f"Expected mode='merge', got {mode_val!r}"
+
+
+# ---------------------------------------------------------------------------
+# T2 — idempotent on already-captured
+# ---------------------------------------------------------------------------
+
+
+def test_writes_multiple_items_in_one_invocation(two_md_state_file, monkeypatch):
+    """Script processes multiple .md items in one invocation, calling write_frontmatter twice."""
+    mod = _load_script_module()
+
+    fake_client = MagicMock()
+    fake_client.write_frontmatter.return_value = {"path": "", "modified": 1}
+
+    monkeypatch.setattr(mod, "KadoClient", lambda: fake_client)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["mark-captured.py", "--state", str(two_md_state_file), "--run-id", "run-multi"],
+    )
+    rc = mod.main()
+
+    assert rc == 0, f"expected exit 0, got {rc}"
+
+    # Two .md items should result in two write_frontmatter calls
+    assert fake_client.write_frontmatter.call_count == 2
+
+    # Verify both calls use mode="merge"
+    calls = fake_client.write_frontmatter.call_args_list
+    assert len(calls) == 2
+
+    for i, call in enumerate(calls):
+        call_kwargs = call
+        mode_val = call_kwargs.kwargs.get("mode")
+        assert mode_val == "merge", f"Call {i}: Expected mode='merge', got {mode_val!r}"
+
+    # Verify the two paths are the correct markdown files
+    paths = [call.args[0] for call in calls]
+    assert "100 Inbox/NoteA.md" in paths
+    assert "100 Inbox/NoteB.md" in paths
 
 
 # ---------------------------------------------------------------------------

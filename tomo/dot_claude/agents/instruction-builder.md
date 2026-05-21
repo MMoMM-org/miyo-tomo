@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-search, mcp__kado__kado-write
 ---
 # Instruction Builder Agent
-# version: 2.5.2 (declutter pass 2 — address review TODOs)
+# version: 2.5.3
 
 **Active agent: instruction-builder**
 
@@ -290,28 +290,34 @@ Do NOT redirect stderr (`2>&1` rule applies here too).
 For each entry in `ticked_clusters`, assemble actions into ONE shared
 `instructions.json` payload (not one per cluster). Action sequence per cluster:
 
-1. **`create_moc` action** — JSON shape (per `schemas/instructions.schema.json`):
+1. **`create_moc` action** — first compute the safe stem from the
+   cluster title:
+
+   ```bash
+   SAFE_STEM=$(python3 scripts/lib/obsidian_filename.py "<cluster title>")
+   ```
+
+   Then construct the JSON (per `schemas/instructions.schema.json`):
 
    ```json
    {
      "id": "I01",
      "action": "create_moc",
-     "source":      "<inbox_path>/<YYYY-MM-DD>_<sanitize_stem(title)>.md",
-     "destination": "<inbox_path>/<YYYY-MM-DD>_<sanitize_stem(title)>.md",
+     "source":      "<inbox_path>/<YYYY-MM-DD>_<SAFE_STEM>.md",
+     "destination": "<inbox_path>/<YYYY-MM-DD>_<SAFE_STEM>.md",
      "title":       "<cluster title>",
      "tags":        [],
      "supporting_items": null
    }
    ```
 
-   - `source` and `destination` are both the inbox path — the user moves
-     the file later (out of scope here).
-   - `sanitize_stem` is from `scripts/lib/obsidian_filename.py`.
-   - `id` is sequential (`I01`, `I02`, ...) across the whole bundled doc.
+   `source` and `destination` are both the inbox path — the user moves
+   the file later. `id` is sequential (`I01`, `I02`, ...) across the
+   whole bundled doc.
 
-2. **`add_relationship` action per child** — for each wikilink stem in
-   `children`:
-   - `target_moc_path` = `<inbox_path>/<YYYY-MM-DD>_<sanitize_stem(title)>.md`
+2. **`add_relationship` action per child** — re-use the same `SAFE_STEM`
+   computed above. For each wikilink stem in `children`:
+   - `target_moc_path` = `<inbox_path>/<YYYY-MM-DD>_<SAFE_STEM>.md`
    - `marker` = `"up::"`
    - `line` = `"up:: [[<title>]]"`
    - `source_note_title` = child stem

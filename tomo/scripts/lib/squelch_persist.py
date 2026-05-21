@@ -2,8 +2,8 @@
 # version: 0.1.0
 """Write SquelchEntry records for each rejected cluster in a MOC proposal-doc.
 
-Called at archival time (via tag-captured.py) when a ``tomo-moc-proposal-*.md``
-file is being tagged as captured.  Identifies rejected clusters (those whose
+Called at archival time (via mark-captured.py) when a ``tomo-moc-proposal-*.md``
+file is being marked as captured.  Identifies rejected clusters (those whose
 ``- [ ] Accept`` was NOT ticked), computes a stable topic signature per cluster,
 and appends/replaces entries in the squelch registry.
 

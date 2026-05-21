@@ -12,7 +12,7 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.8.2 (STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON)
+# version: 0.8.3 (STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON)
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -362,15 +362,16 @@ Do NOT skip it. Do NOT defer it to the parent session. Do NOT claim it is
 someone else's responsibility. It is YOUR step, inside YOUR phase.
 
 ```bash
-python3 scripts/tag-captured.py --state tomo-tmp/inbox-state.jsonl
+python3 scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id <run_id>
 ```
 
-The script reads all `done` stems from the state-file, adds
-`#<prefix>/captured` to each item's frontmatter via Kado. Idempotent —
-skips items that already have the tag. Tag prefix comes from vault-config.
+The script reads all `done` stems from the state-file, writes
+`tomo.state=captured` to each item's frontmatter via `write_frontmatter`
+(merge mode). Idempotent — Kado merge mode overwrites the same value on
+re-runs. Non-markdown items are skipped.
 
 If it fails, report the error but do NOT skip the report phase. The user
-can re-run `tag-captured.py` manually.
+can re-run `scripts/mark-captured.py` manually.
 
 ### Phase D — Report
 
@@ -400,7 +401,7 @@ feature shouldn't see status about it.
 | Subagent throws mid-batch | Item marked `failed` by subagent or by poll timeout; run continues |
 | `suggestions-reducer` fails | Keep all `tomo-tmp/` artefacts, tell user to inspect |
 | `kado-write` fails | Keep `tomo-tmp/suggestions-doc.json`; user can re-run and just the final write retries |
-| `tag-captured` fails | Report error; user can re-run `scripts/tag-captured.py` manually. Still proceed to Phase D report |
+| `mark-captured` fails | Report error; user can re-run `scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id <run_id>` manually. Still proceed to Phase D report |
 | 0 `done` items | Skip the write, tell user "no items processed successfully" |
 
 ## What you do NOT do

@@ -186,11 +186,23 @@ RETIRED_SCRIPT_TESTS=(
     test-vault-config-writer.py
     test-shared-ctx-tags.py
 )
+
+# Runtime scripts renamed (F-47 T2.1 — 2026-05-21).
+RETIRED_SCRIPTS=(
+    tag-captured.py
+)
 for name in "${RETIRED_SCRIPT_TESTS[@]}"; do
     dst="$INSTANCE_PATH/scripts/$name"
     if [ -f "$dst" ]; then
         rm -f "$dst"
         print_ok "retired scripts/$name (moved to repo-root tests/)"
+    fi
+done
+for name in "${RETIRED_SCRIPTS[@]}"; do
+    dst="$INSTANCE_PATH/scripts/$name"
+    if [ -f "$dst" ]; then
+        rm -f "$dst"
+        print_ok "retired scripts/$name (renamed)"
     fi
 done
 

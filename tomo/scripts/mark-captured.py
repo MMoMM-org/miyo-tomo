@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-# version: 0.4.0
-"""tag-captured.py — Tag processed inbox items with #<prefix>/captured.
+# version: 1.0.0
+"""mark-captured.py — Mark processed inbox source items with tomo.state=captured.
 
-Reads the state-file, finds all items with status=done, and adds the
-lifecycle tag to each item's frontmatter via Kado. Idempotent — skips
-items that already have the tag. Also skips non-markdown items
-(audio, binaries, stray text files) since they have no frontmatter
-for the tag to live in.
+Reads the state-file, finds all items with status=done, and writes a
+tomo: frontmatter block (doc_type=source, state=captured) to each item
+via kado_client.write_frontmatter (merge mode). Idempotent — Kado's
+merge mode naturally handles re-runs: the state field is simply
+overwritten with the same value.
+
+Non-markdown items (audio, binaries, stray text) are skipped — they
+carry no frontmatter.
 
 Called by the orchestrator after successfully writing the suggestions
-document to the vault (Phase D).
+document to the vault (Phase C5).
 
 Usage:
-    python3 scripts/tag-captured.py --state tomo-tmp/inbox-state.jsonl
+    python3 scripts/mark-captured.py \
+        --state tomo-tmp/inbox-state.jsonl \
+        --run-id <run-id>
 
 Exit codes:
-    0 — all done items tagged (or already tagged)
+    0 — all done items marked (or already marked)
     1 — one or more items failed (partial, logged to stderr)
     2 — fatal error (no Kado connection, no state-file)
 """
@@ -24,43 +29,29 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+from lib.doc_frontmatter import build_tomo_block  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.squelch_persist import persist_rejected_clusters  # noqa: E402
 
 
-def load_tag_prefix(config_path: str = "config/vault-config.yaml") -> str:
-    """Load lifecycle tag_prefix from vault-config.yaml."""
-    if not os.path.isfile(config_path):
-        return "MiYo-Tomo"
-    try:
-        with open(config_path, encoding="utf-8") as fh:
-            for line in fh:
-                stripped = line.strip()
-                if stripped.startswith("tag_prefix:"):
-                    val = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-                    if val:
-                        return val
-    except OSError:
-        pass
-    return "MiYo-Tomo"
+def last_state_per_stem(state_path: Path) -> dict[str, dict]:
+    """Read state-file and return the last entry per stem."""
+    state: dict[str, dict] = {}
+    for line in state_path.read_text(encoding="utf-8").strip().splitlines():
+        entry = json.loads(line)
+        state[entry["stem"]] = entry
+    return state
 
 
-def load_squelch_config(config_path: str = "config/vault-config.yaml") -> dict:
-    """Load squelch-related config from vault-config.yaml.
-
-    Returns a dict with at least ``squelch_runs`` (int, default 3).
-    Tolerates missing or unreadable config file.
-    """
+def _load_squelch_config(config_path: str) -> dict:
+    """Load squelch_runs from vault-config.yaml; returns default if missing."""
     squelch_runs = 3
-    if not os.path.isfile(config_path):
-        return {"squelch_runs": squelch_runs}
     try:
         import yaml  # type: ignore[import]
         with open(config_path, encoding="utf-8") as fh:
@@ -75,123 +66,21 @@ def load_squelch_config(config_path: str = "config/vault-config.yaml") -> dict:
     return {"squelch_runs": squelch_runs}
 
 
-def last_state_per_stem(state_path: Path) -> dict[str, dict]:
-    """Read state-file and return the last entry per stem."""
-    state: dict[str, dict] = {}
-    for line in state_path.read_text(encoding="utf-8").strip().splitlines():
-        entry = json.loads(line)
-        state[entry["stem"]] = entry
-    return state
-
-
-def has_tag(tags: list, tag: str) -> bool:
-    """Check if a tag (with or without #) is in the list."""
-    tag_clean = tag.lstrip("#")
-    for t in tags:
-        if str(t).lstrip("#") == tag_clean:
-            return True
-    return False
-
-
-def add_tag_to_frontmatter(client: KadoClient, path: str, tag: str) -> bool:
-    """Read note frontmatter, add tag if missing, write back.
-
-    Returns True if tag was added or already present, False on error.
-    """
-    try:
-        result = client.read_note(path)
-        content = result.get("content", "")
-        modified = result.get("modified")
-    except KadoError as exc:
-        print(f"  [error] Cannot read {path}: {exc}", file=sys.stderr)
-        return False
-
-    # Parse frontmatter
-    if not content.startswith("---"):
-        print(f"  [warn] {path}: no frontmatter found, skipping", file=sys.stderr)
-        return False
-
-    fm_end = content.find("---", 3)
-    if fm_end == -1:
-        print(f"  [warn] {path}: malformed frontmatter, skipping", file=sys.stderr)
-        return False
-
-    fm_text = content[3:fm_end]
-    body = content[fm_end:]
-
-    # Find tags in frontmatter
-    tag_clean = tag.lstrip("#")
-
-    # Check if tag already present
-    if tag_clean in fm_text:
-        print(f"  [skip] {path}: already has {tag}", file=sys.stderr)
-        return True
-
-    # Find the tags line/block and append
-    lines = fm_text.splitlines()
-    new_lines = []
-    tag_added = False
-    in_tags_block = False
-
-    for line in lines:
-        new_lines.append(line)
-        stripped = line.strip()
-
-        # Detect tags field
-        if re.match(r"^tags\s*:", stripped):
-            # Inline tags: tags: [a, b] or tags:
-            if "[" in stripped:
-                # Inline array — insert before closing bracket
-                new_lines[-1] = line.rstrip("]").rstrip() + f", {tag_clean}]"
-                tag_added = True
-            elif stripped == "tags:" or stripped == "tags: []":
-                # Empty or block start — next lines are list items
-                in_tags_block = True
-            else:
-                in_tags_block = True
-        elif in_tags_block:
-            if stripped.startswith("- "):
-                continue  # keep collecting tag lines
-            else:
-                # End of tag block — insert new tag before this line
-                # Find indentation from previous tag lines
-                indent = "  "
-                new_lines.insert(-1, f"{indent}- {tag_clean}")
-                tag_added = True
-                in_tags_block = False
-
-    # If we were still in the tag block at EOF
-    if in_tags_block and not tag_added:
-        new_lines.append(f"  - {tag_clean}")
-        tag_added = True
-
-    # If no tags field found at all, add one
-    if not tag_added:
-        new_lines.append("tags:")
-        new_lines.append(f"  - {tag_clean}")
-
-    new_fm = "\n".join(new_lines)
-    # Ensure newline before closing --- (body starts with ---)
-    if new_fm and not new_fm.endswith("\n"):
-        new_fm += "\n"
-    new_content = f"---{new_fm}{body}"
-
-    try:
-        client.write_note(path, new_content, expected_modified=modified)
-        return True
-    except KadoError as exc:
-        print(f"  [error] Cannot write {path}: {exc}", file=sys.stderr)
-        return False
-
-
 def main() -> int:
-    p = argparse.ArgumentParser(description="Tag done items with lifecycle captured tag.")
+    p = argparse.ArgumentParser(
+        description="Mark done inbox items with tomo.state=captured."
+    )
     p.add_argument("--state", required=True, help="Path to inbox-state.jsonl")
-    p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
+    p.add_argument("--run-id", required=True, help="Run-id string for tomo block")
     p.add_argument(
         "--squelch-registry",
         default="state/moc-squelch.json",
         help="Path to MOC squelch registry (default: state/moc-squelch.json)",
+    )
+    p.add_argument(
+        "--config",
+        default="config/vault-config.yaml",
+        help="vault-config.yaml path (used for squelch_runs only)",
     )
     args = p.parse_args()
 
@@ -199,12 +88,6 @@ def main() -> int:
     if not state_path.exists():
         print(f"FATAL: state-file not found: {state_path}", file=sys.stderr)
         return 2
-
-    prefix = load_tag_prefix(args.config)
-    tag = f"{prefix}/captured"
-
-    squelch_cfg = load_squelch_config(args.config)
-    registry_path = Path(args.squelch_registry)
 
     try:
         client = KadoClient()
@@ -216,13 +99,15 @@ def main() -> int:
     done_stems = [s for s, e in state.items() if e.get("status") == "done"]
 
     if not done_stems:
-        print("tag-captured: no done items to tag", file=sys.stderr)
+        print("mark-captured: no done items to mark", file=sys.stderr)
         return 0
 
-    tagged = 0
+    marked = 0
     errors = 0
     skipped_non_md = 0
     squelched_total = 0
+    registry_path = Path(args.squelch_registry)
+    squelch_cfg = _load_squelch_config(args.config)
 
     for stem in sorted(done_stems):
         entry = state[stem]
@@ -230,27 +115,32 @@ def main() -> int:
         if not path:
             continue
 
-        # Lifecycle tags live in markdown frontmatter. Any non-.md path
-        # is a skip — covers audio (.m4a, .mp3, .wav, .ogg, .opus, .flac,
-        # .aac), plain text (.txt), binaries, and anything else the
-        # inbox may end up carrying (Phase 0a voice makes the inbox
-        # polyglot). Without this guard Kado's `operation=note` rejects
-        # non-.md paths with VALIDATION_ERROR, which would otherwise
-        # count as a hard failure and fail the whole tag-captured run.
+        # Frontmatter lives only in markdown files. Skip audio, binaries, etc.
+        # Without this guard, kado-write operation=frontmatter rejects non-.md
+        # paths with VALIDATION_ERROR, which would count as a hard failure.
         if not path.lower().endswith(".md"):
-            print(f"  [skip] {stem}: non-markdown path, no frontmatter ({path})",
-                  file=sys.stderr)
+            print(
+                f"  [skip] {stem}: non-markdown path, no frontmatter ({path})",
+                file=sys.stderr,
+            )
             skipped_non_md += 1
             continue
 
-        print(f"  [{stem}] tagging {path}", file=sys.stderr)
-        if add_tag_to_frontmatter(client, path, tag):
-            tagged += 1
-        else:
+        print(f"  [{stem}] marking {path}", file=sys.stderr)
+        block = build_tomo_block(
+            doc_type="source",
+            state="captured",
+            run_id=args.run_id,
+        )
+        try:
+            client.write_frontmatter(path, {"tomo": block}, mode="merge")
+            marked += 1
+        except KadoError as exc:
+            print(f"  [error] Cannot write {path}: {exc}", file=sys.stderr)
             errors += 1
-            continue  # Don't attempt squelch-persist if tagging failed
+            continue
 
-        # ── Squelch-persist: for MOC proposal-docs, record rejected clusters ──
+        # Squelch-persist: for MOC proposal-docs, record rejected clusters.
         filename = os.path.basename(path)
         if filename.startswith("tomo-moc-proposal-") and filename.endswith(".md"):
             try:
@@ -285,8 +175,8 @@ def main() -> int:
                     )
 
     print(
-        f"tag-captured: tagged={tagged} errors={errors} "
-        f"skipped_non_md={skipped_non_md} squelched={squelched_total} prefix={prefix}",
+        f"mark-captured: marked={marked} errors={errors} "
+        f"skipped_non_md={skipped_non_md} squelched={squelched_total}",
         file=sys.stderr,
     )
     return 1 if errors else 0

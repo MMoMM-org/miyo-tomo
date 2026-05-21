@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.0.0
+# version: 1.1.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -34,11 +34,14 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
+
 # F-43 T1.5: clustering algorithm extracted into `lib/topic_clusters.py` so
 # `moc-discovery.py` (Phase 2) can reuse it without copy-paste. Re-export
 # `normalise_topic` here so external callers that import it from this module
 # (e.g. `tests/test-004-phase3.sh`) keep working.
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # noqa: E402
+from lib.doc_frontmatter import build_tomo_block  # noqa: E402 — F-47 T2.4
 from lib.topic_clusters import (  # noqa: E402, F401
     ClusterCandidate,
     build_topic_clusters,
@@ -559,6 +562,19 @@ def render_moc_proposal_doc(
 
     # Frontmatter
     trigger_field = f"{mode}:{trigger_arg}" if trigger_arg else mode
+    # F-47 T2.4: build tomo: block (doc_type=moc-proposal, state=pending-accept)
+    run_id: str = report.get("run_id") or ""
+    tomo_block = build_tomo_block(
+        doc_type="moc-proposal",
+        state="pending-accept",
+        run_id=run_id,
+    )
+    tomo_yaml = yaml.dump(
+        {"tomo": tomo_block},
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+    ).rstrip("\n")
     frontmatter_lines = [
         "---",
         "type: tomo-proposal",
@@ -567,8 +583,7 @@ def render_moc_proposal_doc(
         f"trigger: {trigger_field}",
         "status: pending",
         "tomo_skip_inbox_analysis: true",
-        "---",
-    ]
+    ] + tomo_yaml.splitlines() + ["---"]
 
     # Body
     body_lines: list[str] = [

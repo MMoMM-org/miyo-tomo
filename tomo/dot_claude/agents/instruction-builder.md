@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-search, mcp__kado__kado-write
 ---
 # Instruction Builder Agent
-# version: 2.4.1 (description rewritten to triggers; kado-search added to tools; active-agent announcement)
+# version: 2.4.2 (T2.6: instruction-render.py new flags --upstream-type/path/run-id; STRICT tomo: block)
 
 **Active agent: instruction-builder**
 
@@ -176,8 +176,34 @@ and `instructions.md` in `tomo-tmp/rendered/`:
 python3 scripts/instruction-render.py \
   --suggestions tomo-tmp/parsed-suggestions.json \
   --output-dir tomo-tmp/rendered \
-  --config config/vault-config.yaml
+  --config config/vault-config.yaml \
+  --upstream-type <suggestions|moc-proposal|suggestions-fan> \
+  --upstream-path <vault-relative-path-to-upstream-doc> \
+  --run-id <pass-2-run-id>
 ```
+
+**Flag guidance:**
+- `--upstream-type` comes from the inbox-orchestrator's dispatch context:
+  - `suggestions` — normal Pass-1 → Pass-2 chain (most common)
+  - `moc-proposal` — F-43 MOC-creation chain (upstream is a `tomo-moc-proposal-*.md`)
+  - `suggestions-fan` — XDD 012 force-atomic chain (upstream is a `*_suggestions-fan.md`)
+- `--upstream-path` is the vault-relative path of the doc that produced this Pass-2
+  (the user-ticked suggestions or proposal doc). Used as the value of the `source_*`
+  key in the emitted `tomo:` block.
+- `--run-id` is a NEW run_id for THIS Pass-2 invocation — NOT the upstream doc's
+  run_id (per SDD §Implementation Gotchas). Generate a fresh one:
+  ```bash
+  PASS2_RUN_ID=$(python3 -c "import time; print(int(time.time()))")
+  ```
+
+**STRICT — DO NOT MODIFY FRONTMATTER**:
+
+`instruction-render.py` produces a complete `tomo:` block (doc_type=instructions,
+state=pending-apply, source_*, run_id, updated_at). You MUST:
+- Pass the rendered file through to vault byte-identical (via `upload-rendered.py`).
+- NEVER add, modify, or re-emit the `tomo:` block yourself.
+- NEVER add legacy lifecycle tags like `#<prefix>/instructions/pending-apply` —
+  F-47 v1.2 lock: state lives only in frontmatter `tomo.state`.
 
 Exit 0 = all rendered, exit 1 = partial (still write what exists), exit 2 = fatal.
 If exit 2, report the error and stop.

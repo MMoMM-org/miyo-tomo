@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-search, mcp__kado__kado-write
 ---
 # Instruction Builder Agent
-# version: 2.4.2 (T2.6: instruction-render.py new flags --upstream-type/path/run-id; STRICT tomo: block)
+# version: 2.5.0 (T5.2: MOC-branch section — bundled actions for ticked clusters + squelch for unticked)
 
 **Active agent: instruction-builder**
 
@@ -266,6 +266,104 @@ Read `action_count` from `instructions.json` and report:
 >
 > Coverage audit: <RESULT line from instructions-diff>
 > <any observations>
+
+## MOC-Branch (when upstream is a moc-proposal)
+
+When dispatched with `--upstream-type=moc-proposal` (i.e. the upstream doc has
+`tomo.doc_type=moc-proposal`), replace Steps 2–3 with the following sequence.
+Steps 1, 4, 5, and 6 are unchanged.
+
+### MOC-Step 1 — Parse proposal-doc (ticked vs unticked)
+
+```bash
+python3 scripts/suggestion-parser.py --moc-branch <upstream-path> > tomo-tmp/moc-parsed.json
+```
+
+The script returns JSON:
+
+```json
+{
+  "ticked_clusters":   [{"title": "...", "children": [...], "supporting_items": "...", "parent_moc_hint": "..."}],
+  "unticked_clusters": [{"title": "...", "topic_signature": "..."}]
+}
+```
+
+Do NOT redirect stderr (`2>&1` rule applies here too).
+
+### MOC-Step 2 — Emit bundled instructions for ticked clusters
+
+For each entry in `ticked_clusters`, assemble actions into ONE shared
+`instructions.json` payload (not one per cluster). Action sequence per cluster:
+
+1. **`create_moc` action** — target path:
+   ```
+   <inbox_path>/<YYYY-MM-DD>_<sanitize_stem(title)>.md
+   ```
+   Use `sanitize_stem` from `scripts/lib/obsidian_filename.py`. Set
+   `source` = same path (MOC is rendered into the inbox initially),
+   `destination` = same path (user moves it later — AC-5.4 scope lock),
+   `title` = cluster title, `tags` = [].
+
+2. **`add_relationship` action per child** — for each wikilink stem in
+   `children`:
+   - `target_moc_path` = `<inbox_path>/<YYYY-MM-DD>_<sanitize_stem(title)>.md`
+   - `marker` = `"up::"`
+   - `line` = `"up:: [[<title>]]"`
+   - `source_note_title` = child stem
+
+Write the resulting `instructions.json` to `tomo-tmp/rendered/instructions.json`.
+The `action_count` field must equal the total across all clusters.
+
+STRICT — Multi-cluster acceptance produces ONE instructions doc with ALL
+clusters' actions bundled. NOT N separate instructions docs. Hashi applies
+each cluster's sub-actions transactionally per AC-5.1.
+
+### MOC-Step 3 — Render to markdown
+
+```bash
+python3 scripts/instruction-render.py \
+  --suggestions tomo-tmp/moc-parsed.json \
+  --output-dir tomo-tmp/rendered \
+  --config config/vault-config.yaml \
+  --upstream-type moc-proposal \
+  --upstream-path <vault-relative-path-to-proposal-doc> \
+  --run-id <PASS2_RUN_ID>
+```
+
+Generate `PASS2_RUN_ID` fresh (not the upstream doc's run_id):
+
+```bash
+PASS2_RUN_ID=$(python3 -c "import time; print(int(time.time()))")
+```
+
+### MOC-Step 4 — Persist unticked clusters to squelch
+
+```bash
+python3 scripts/squelch-unticked.py tomo-tmp/moc-parsed.json
+```
+
+(Reads `unticked_clusters` from the parsed JSON and appends to
+`state/moc-squelch.json` via F-43 squelch API. Script exits 0 even when
+the unticked list is empty.)
+
+STRICT — Un-ticked clusters NEVER become a file-level "rejected" state on
+the proposal-doc. They persist to `state/moc-squelch.json` only
+(AC-5.2 + OQ12 lock).
+
+### MOC-Step 5 — Flip proposal-doc state
+
+After successful render, flip the proposal-doc's `tomo.state` to `accepted`:
+
+```bash
+python3 scripts/state-update.py \
+  --path "<vault-relative-path-to-proposal-doc>" \
+  --set-state accepted
+```
+
+(Or the equivalent `kado-write operation=frontmatter` call — follow the
+pattern used by the normal Pass-2 branch for flipping suggestions → approved.)
+
+Steps 4–6 (vault write, coverage audit, report) then run as normal.
 
 ## What you never do
 

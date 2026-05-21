@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -26,8 +26,15 @@ from lib.doc_frontmatter import build_tomo_block
 
 
 def render_frontmatter(d: dict) -> list[str]:
+    # F-47 T2.5: fan-resolve docs carry doc_type='suggestions-fan' so
+    # byFrontmatter queries for doc_type=suggestions don't match them.
+    doc_type = (
+        "suggestions-fan"
+        if d.get("doc_variant") == "fan-resolve"
+        else "suggestions"
+    )
     tomo_block = build_tomo_block(
-        doc_type="suggestions",
+        doc_type=doc_type,
         state="pending-approval",
         run_id=d["run_id"],
     )

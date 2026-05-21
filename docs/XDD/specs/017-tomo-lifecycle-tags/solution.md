@@ -361,7 +361,7 @@ tomo/
 │   ├── state-promoter.py                   # NEW (small): body-tick detection helper called from orchestrator
 │   ├── suggestions-render.py               # MODIFY: emit `tomo:` block
 │   ├── instruction-render.py               # MODIFY: emit `tomo:` block + source_* refs
-│   ├── suggestions-reducer.py              # MODIFY (--moc-proposal-mode): emit `tomo:` block for proposal-doc
+│   ├── suggestions-reducer.py              # MODIFY: `--moc-proposal-mode` emits `tomo:` block for proposal-doc; `--fan-resolve` (from XDD 012) emits `tomo:` block for fan-doc (doc_type=suggestions-fan)
 │   ├── inbox-discovery.py                  # NEW (small): unified byFrontmatter + listDir + bucketing helper
 │   └── ... (unchanged)
 ├── schemas/
@@ -509,6 +509,16 @@ MODULE: tomo_lifecycle.py (NEW)
       "transitions": [
         {"from": null,                "to": "pending-approval", "trigger": "renderer write"},
         {"from": "pending-approval",  "to": "approved",         "trigger": "state-promoter after Pass-2 success"}
+      ],
+      "terminal":   ["approved"]
+    },
+    "suggestions-fan": {
+      # XDD 012 Force-Atomic Resolve doc — companion to suggestions, same lifecycle shape
+      "initial":    null,
+      "states":     ["pending-approval", "approved"],
+      "transitions": [
+        {"from": null,                "to": "pending-approval", "trigger": "suggestions-reducer --fan-resolve write"},
+        {"from": "pending-approval",  "to": "approved",         "trigger": "state-promoter after FAN-resolve Pass-2 success"}
       ],
       "terminal":   ["approved"]
     },
@@ -909,8 +919,8 @@ F-47 sits in the middle of an active spec backlog. The phase ship order also unl
 
 ```mermaid
 graph LR
-    subgraph "Active before F-47"
-        S012[012 F-33<br/>Force Atomic<br/>plan/phase-1 in progress]
+    subgraph "Already done (verified 2026-05-21)"
+        S012[012 F-33<br/>Force Atomic<br/>✅ shipped 2026-04-23]
     end
 
     subgraph "F-47 phases"
@@ -933,7 +943,7 @@ graph LR
         S048[F-48<br/>incremental cache<br/>backlog]
     end
 
-    S012 -.->|merge before<br/>F-47 starts P1<br/>OR rebase on P1 schema| P1
+    S012 -.->|P1 extends 012's<br/>fan-doc renderer with<br/>tomo: block| P1
     P2 ==>|unblocks| S013_T62
     P4 ==>|unblocks| S013_T64
     P5 ==>|enables| S048
@@ -949,25 +959,15 @@ graph LR
 - T6.3 Stream B (live-validation links in XDD index + `/memory-add`) — picks up after T6.2 completes.
 - Action: update `docs/XDD/specs/013-moc-creation-skill/README.md` and `plan/phase-6.md` T6.2 pause note to reference P2 (not P1+P2) and add T6.4 → P4 dependency. Done as a follow-up edit (this session).
 
-**012 F-33 Force Atomic Synthesis (IN-PROGRESS, file-overlap small)**
-- Initial assumption was "012 touches same files as F-47.P1" — closer reading of `docs/XDD/specs/012-force-atomic-synthesis/plan/phase-1.md` shows the overlap is mostly cosmetic (same files, disjoint code paths):
-
-  | File | 012 changes | F-47.P1 changes | Conflict |
-  |---|---|---|---|
-  | `suggestion-parser.py` | NEW `--fan-resolve-file` flag + 3-way branch | not touched by F-47 | none |
-  | `suggestions-reducer.py` | NEW `--fan-resolve` mode flag | F-47 touches `--moc-proposal-mode` | none — different mode flags |
-  | `inbox-analyst.md` | NEW `force_atomic` input + Step 7 gate | not directly touched | none |
-  | `instruction-builder.md` | NEW Step 2.5 (FAN subflow) | adds emitting `tomo.source_*` refs to output | minor — different sections of the prompt |
-  | `inbox.md` | NEW companion-doc auto-detect for `*_suggestions-fan.md` | NEW `--recover`, parallel warning, stop-gate | minor — different sections |
-  | `suggestions-render.py`, `instruction-render.py` | not touched by 012 | NEW `tomo:` block emission | none |
-
-- **Real coordination point**: 012 introduces a NEW workflow doc type — `*_suggestions-fan.md` — that under F-47's schema **should also carry a `tomo:` block** (likely `doc_type: suggestions-fan` or extend the `suggestions` doc_type enum). F-47.P1 schema must account for this when 012 ships.
-- Three viable orderings:
-  - **(A) Ship 012 first**, then F-47.P1 adds `tomo:` block emission to 012's renderer as part of P1's producer sweep. Schema's `doc_type` enum includes `suggestions-fan` from day one.
-  - **(B) Pause 012**, ship F-47.P1 with `suggestions-fan` already in the schema enum, then 012 resumes and its new fan-doc renderer emits the `tomo:` block natively.
-  - **(C) Ship in parallel** (different feature branches). Manageable given the small actual overlap, but rebase work falls on whichever lands second.
-- **Recommended: (A)** — 012 is small, well-scoped, and unblocks F-33 (Force Atomic Synthesis). Ship it first, then F-47.P1's producer sweep is one tidy pass over all renderers including 012's new one. This minimises mode-switching for the implementer.
-- Action: confirm with user. If (A), 012 plan/phase-1 resumes immediately; F-47.P1 starts after 012 merges.
+**012 F-33 Force Atomic Synthesis (✅ ALREADY DONE — verified 2026-05-21)**
+- Original SDD coordination assumed 012 was in-progress per its README. Code verification on 2026-05-21 found 012 was actually shipped 2026-04-23 (commit `08a1f22 feat(force-atomic): synthesize atomics via resolve doc (XDD 012)`, merged via `301708f`). All 5 phase-1 source-file changes are live + 2 test files exist. 012's README has been corrected to reflect this.
+- **Remaining F-47 coordination**: 012's shipped output includes a new workflow doc type — `<date>_suggestions-fan.md` — that today carries no `tomo:` block. F-47.P1's producer sweep MUST extend 012's fan-doc renderer to emit the block.
+- **Schema decision (small, SDD-level)**: the fan-doc's `tomo.doc_type` value. Two options:
+  - **(a) New enum value** `doc_type: suggestions-fan` — explicit, distinguishes fan-docs in discovery buckets and lifecycle transitions
+  - **(b) Reuse** `doc_type: suggestions` with the filename suffix `-fan` carrying the distinction implicitly
+- **Recommended: (a)** because byFrontmatter queries that want only main suggestions (e.g. `tomo.doc_type=suggestions AND tomo.state=pending-approval`) shouldn't accidentally match fan-docs. Explicit enum keeps the discovery layer clean.
+- Implication for `doc-frontmatter.schema.json`: state machine adds a `suggestions-fan` doc_type with states `pending-approval → approved` (mirrors `suggestions`). Behaviour is the same — user ticks `[x] Approved` on the fan-doc, state-promoter dispatches instruction-builder.
+- **No 012-side work needed**. F-47.P1 producer sweep extends the existing 012 fan-doc renderer in one pass alongside `suggestions-render.py` and `instruction-render.py`.
 
 **009 F-26 Voice Memo Transcription (CODE-COMPLETE, host validation pending)**
 - T5.1 (5-min memo end-to-end) and T5.2 (performance ≤ 5 min wall on M-series) are host-side live tests, NOT blocked by F-47 codebase changes.
@@ -991,8 +991,7 @@ graph LR
 
 | Trigger | Spec | Task |
 |---|---|---|
-| **Before F-47.P1 starts** | 012 (recommended A) | Resume + complete 012 plan/phase-1, ship to main |
-| F-47.P1 starts | 012 outputs | F-47.P1 producer sweep adds `tomo:` block emission to 012's fan-doc renderer too |
+| F-47.P1 starts | 012 outputs (✅ already shipped) | F-47.P1 producer sweep extends 012's `<date>_suggestions-fan.md` renderer to emit `tomo:` block (`doc_type=suggestions-fan`) |
 | F-47.P2 merged | 013 | Resume T6.2 modes folder/class/title/free-text/scan |
 | F-47.P2 merged | 009 | Run T5.1/T5.2 if not already done |
 | F-47.P3 merged | 009 | Voice stop-gate regression test |
@@ -1009,8 +1008,8 @@ Current branch: `feat/013-phase-4` carries:
 - This SDD cross-spec coordination update (committed next)
 
 **Plan (user-confirmed 2026-05-21)**: merge `feat/013-phase-4` directly into `main` without PR — the user does not need PR-flow for this branch. After merge:
-1. 012 plan/phase-1 resumes on a fresh branch (per Cross-Spec Coordination above, option A — ship 012 first).
-2. After 012 merges, `feat/017-tomo-lifecycle-tags` is cut from main for F-47.P1 implementation.
+1. ~~012 resumes~~ — verified 2026-05-21 that 012 was already shipped on 2026-04-23 (commit `08a1f22`). No pre-F-47 work needed.
+2. `feat/017-tomo-lifecycle-tags` is cut from main for F-47.P1 implementation. P1's producer sweep includes extending 012's existing fan-doc renderer to emit `tomo.doc_type=suggestions-fan`.
 3. F-47 phases P1–P5 each get their own short-lived feature branch off main, OR all phases land on a single F-47 branch — operator's choice at P1 start.
 
 ## Cross-Cutting Concepts
@@ -1125,6 +1124,7 @@ EARS-format restatements of PRD acceptance criteria (cross-referenced to PRD AC-
 **Main Flow Criteria: PRD AC-1.x — `tomo:` block emission**
 - [ ] WHEN a fresh source item is dispatched to inbox-analyst, THE SYSTEM SHALL write `tomo.state=captured`, `tomo.doc_type=source`, `tomo.run_id`, `tomo.updated_at` via `kado_client.write_frontmatter(mode='merge')`. (PRD AC-1.1)
 - [ ] WHEN orchestrator writes `<ts>_suggestions.md`, THE SYSTEM SHALL include a `tomo:` block with `doc_type=suggestions`, `state=pending-approval`, `run_id`, `updated_at`. (PRD AC-1.2)
+- [ ] WHEN `suggestions-reducer.py --fan-resolve` writes `<date>_suggestions-fan.md` (XDD 012 FAN-Resolve doc), THE SYSTEM SHALL include a `tomo:` block with `doc_type=suggestions-fan`, `state=pending-approval`, `run_id`, `updated_at`. (extends PRD AC-1.2 via post-PRD discovery; see §Cross-Spec Coordination)
 - [ ] WHEN instruction-builder writes `<ts>_instructions.md`, THE SYSTEM SHALL include `tomo.source_suggestions` (or `tomo.source_moc_proposal`) pointing to the upstream doc. (PRD AC-1.3, AC-1.4)
 - [ ] THE SYSTEM SHALL validate every emitted `tomo:` block against `doc-frontmatter.schema.json` before write. (PRD AC-1.5, AC-7.2)
 

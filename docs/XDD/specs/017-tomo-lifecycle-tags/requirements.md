@@ -143,16 +143,19 @@ Behaviour: `/inbox` detects media files, runs transcription → produces `voice-
 
 ```yaml
 tomo:
-  doc_type: <suggestions | moc-proposal | instructions | source>
+  doc_type: <suggestions | suggestions-fan | moc-proposal | instructions | source>
   state:    <pending-approval | pending-accept | pending-apply |
              approved | accepted | applied | captured>
   run_id:   <string — run that produced this doc>
   updated_at: <ISO-8601 timestamp>
   # optional cross-references:
-  source_suggestions:   "<path>"     # on instructions docs derived from suggestions
-  source_moc_proposal:  "<path>"     # on instructions docs derived from moc-proposal
-  source_<doc_type>:    "<path>"     # generic — F-44/45/46 extend here
+  source_suggestions:     "<path>"   # on instructions docs derived from suggestions
+  source_suggestions_fan: "<path>"   # on instructions docs derived from XDD 012 fan-resolve
+  source_moc_proposal:    "<path>"   # on instructions docs derived from moc-proposal
+  source_<doc_type>:      "<path>"   # generic — F-44/45/46 extend here
 ```
+
+**Note on `suggestions-fan`** (added post-PRD-v1.2, 2026-05-21): XDD 012 (Force Atomic Synthesis, shipped 2026-04-23) produces a `<date>_suggestions-fan.md` companion doc when a user ticks `[x] Force Atomic Note` on a log-entry without an analyst-proposed atomic section. This doc has the same lifecycle shape as the main suggestions doc (pending-approval → approved) but is distinguished by `doc_type=suggestions-fan` so byFrontmatter queries can target it explicitly. F-47.P1 producer sweep extends `suggestions-reducer.py --fan-resolve` to emit the `tomo:` block.
 
 **Acceptance Criteria:**
 

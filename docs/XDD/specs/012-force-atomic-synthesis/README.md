@@ -1,8 +1,9 @@
 # XDD 012 — Force Atomic Note Synthesis
 
-**Status:** In progress — 2026-04-23
-**Current phase:** plan/phase-1.md (implementation)
-**Backlog origin:** F-33
+**Status:** ✅ DONE — shipped 2026-04-23 (commit `08a1f22 feat(force-atomic): synthesize atomics via resolve doc (XDD 012)`, merged via `301708f`)
+**Current phase:** complete — all 6 plan/phase-1 tasks (T1 suggestion-parser, T2 inbox-analyst, T3 suggestions-reducer, T4 instruction-builder, T5 inbox.md, T6 tests) shipped; 2 test files added (`tests/test_suggestion_parser_fan_resolve.py`, `tests/test_suggestions_reducer_fan_resolve.py`)
+**Backlog origin:** F-33 (matched: backlog says ✅ Done 2026-04-23 — README was stale until verified during F-47 SDD coordination 2026-05-21)
+**Post-ship note (2026-05-21):** F-47 PRD v1.2 introduces a `tomo:` frontmatter block on every Tomo-produced workflow doc, including 012's `*_suggestions-fan.md`. F-47.P1's producer sweep extends 012's fan-doc renderer to emit the block. No 012-specific work needed — the change lands in F-47.P1 producer pass.
 
 ## Problem in one paragraph
 

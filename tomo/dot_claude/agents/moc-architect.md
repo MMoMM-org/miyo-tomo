@@ -13,7 +13,7 @@ permissionMode: acceptEdits
 ---
 **Active agent: moc-architect**
 
-# version: 0.3.1 (T2.6: STRICT block — renderer owns tomo: block, agent transports byte-identical)
+# version: 0.3.2 (declutter — strip spec refs)
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault
@@ -282,8 +282,8 @@ You MUST:
 - Read the rendered file byte-identical from `tomo-tmp/`.
 - kado-write the body byte-identical to the vault inbox path.
 - NEVER add, modify, regenerate, or re-emit the `tomo:` block.
-- NEVER add legacy lifecycle tags like `#<prefix>/moc-proposal/pending-accept` —
-  F-47 v1.2 lock: state lives only in frontmatter `tomo.state`.
+- NEVER add lifecycle tags like `#<prefix>/moc-proposal/pending-accept` —
+  state lives only in frontmatter `tomo.state`.
 
 **STRICT — transport only:**
 - Use `operation=note` (not `file` — the path is `.md`, see `reference_kado_write_operations`).

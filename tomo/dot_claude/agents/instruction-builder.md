@@ -360,9 +360,6 @@ python3 scripts/state-update.py \
   --set-state accepted
 ```
 
-(Or the equivalent `kado-write operation=frontmatter` call — follow the
-pattern used by the normal Pass-2 branch for flipping suggestions → approved.)
-
 Steps 4–6 (vault write, coverage audit, report) then run as normal.
 
 ## What you never do

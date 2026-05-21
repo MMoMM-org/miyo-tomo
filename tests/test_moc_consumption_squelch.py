@@ -175,6 +175,10 @@ def test_squelch_state_persistence_atomic(tmp_path: Path) -> None:
         "os.replace must be called at least once for atomic write (tmp-then-rename)"
     )
 
+    # Verify tmp-then-rename invariant — source ends in .tmp
+    assert any(src.endswith(".tmp") for src, _ in replace_calls), \
+        f"No tmp-then-rename pattern detected; replace_calls={replace_calls}"
+
     # Destination of the rename must be the registry path
     dst_paths = [dst for _src, dst in replace_calls]
     assert any(str(registry_path) in dst for dst in dst_paths), (

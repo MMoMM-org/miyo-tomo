@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: F-43 MOC-Consumption (F-47.P4)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---

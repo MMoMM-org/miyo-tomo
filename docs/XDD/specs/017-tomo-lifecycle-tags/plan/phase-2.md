@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Producer-Side Writes (F-47.P1)"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -87,6 +87,6 @@ This phase makes every Tomo producer emit a schema-valid `tomo:` block via `kado
   4. Validate: Run `./scripts/update-tomo.sh` and confirm both agent files reach `tomo-instance/.claude/agents/`. Restart Claude (per `feedback_restart_after_agent_sync`) before the next live-validation run.
   5. Success: Agents transport `tomo:` block intact; do not re-render or add legacy tags `[ref: PRD/AC-1.4, AC-1.3]` `[ref: docs/ai/memory/decisions.md; "scripts produce, agents transport"]`.
 
-- [ ] **T2.7 Phase 2 Validation — additive ship check** `[activity: validate]`
+- [x] **T2.7 Phase 2 Validation — additive ship check** `[activity: validate]`
 
   Run `pytest tests/test_mark_captured.py tests/test_suggestions_render_tomo_block.py tests/test_instruction_render_tomo_block.py tests/test_suggestions_reducer_moc_proposal_tomo_block.py tests/test_suggestions_reducer_fan_resolve_tomo_block.py -v`. Run full `pytest tests/ -v` — **zero regressions** allowed in legacy state-init / Auto-Discovery tests (per ADR-6: P1 ships additively, legacy paths still live). Run `ruff check tomo/scripts/`. Run `./scripts/update-tomo.sh` and verify the instance copy of every modified script. **Live-validation smoke**: in `tomo-instance/`, run `/inbox` against a single fresh source item — verify the produced `<ts>_suggestions.md` carries `tomo.state=pending-approval` AND the source item now carries `tomo.state=captured`. Run `pytest tests/test_suggestion_parser_moc_branch.py -v` (F-43 regression). Schema-CLI check three real produced files against `tomo/schemas/doc-frontmatter.schema.json` — all pass. Confirm `feedback_frontmatter_newline_guard` is no longer reproducible on `mark-captured` (write a 1-line frontmatter doc, mark it captured, parse it — no malformed YAML).

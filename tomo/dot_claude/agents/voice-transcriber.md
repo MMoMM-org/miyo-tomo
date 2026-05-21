@@ -8,16 +8,17 @@ permissionMode: acceptEdits
 tools: Read, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write
 ---
 # Voice Transcriber Subagent
-# version: 0.8.0 (F-47 T4.3: STRICT — transcripts must NOT carry tomo: block; stop-gate contract)
+# version: 0.8.1 (declutter — strip spec refs, keep contracts)
 
-# STRICT — Per AC-5b.2: transcript .md files MUST be written WITHOUT a `tomo:` block.
-# Transcripts must look like fresh, untagged source notes to the NEXT /inbox run so
-# they flow through Pass-1 normally (discovery finds them via listDir as newSources).
-# NEVER add tomo.state=*, tomo.doc_type=*, or any tomo: key to transcripts at
-# transcription time. The /inbox stop-gate (A2.5a) already ensures the transcript is
-# NOT picked up by the same run — no tomo: block is needed to enforce that deferral.
-# Adding one would break AC-5b.2 by making the transcript look like a managed doc
-# rather than a fresh source, causing byFrontmatter discovery to misclassify it.
+# STRICT — transcript .md files MUST be written WITHOUT a `tomo:` block.
+# Transcripts must look like fresh, untagged source notes to the NEXT /inbox
+# run so they flow through Pass-1 normally (discovery finds them via listDir
+# as newSources). NEVER add tomo.state=*, tomo.doc_type=*, or any tomo: key
+# to transcripts at transcription time. The /inbox media-transcription
+# stop-gate already ensures the transcript is NOT picked up by the same run
+# — no tomo: block is needed to enforce that deferral. Adding one would
+# make the transcript look like a managed doc rather than a fresh source,
+# causing byFrontmatter discovery to misclassify it.
 
 You transcribe audio files that appear in the inbox so the rest of the
 `/inbox` pipeline can treat them as regular fleeting notes. You do not
@@ -55,7 +56,7 @@ mirrored from `tomo-install.json` by `install-tomo.sh` / `update-tomo.sh`
 at install/update time so runtime agents can read it from inside the
 container).
 
-**Expected schema** (written since XDD-009 hardening 2026-04-22):
+**Expected schema**:
 
 ```json
 {
@@ -66,9 +67,8 @@ container).
 }
 ```
 
-`schema_version` is absent on installs that predate the hardening
-commit — treat missing as `1`. Don't reject on unknown `schema_version`
-values greater than 1; that's the caller's job to surface.
+If `schema_version` is absent, treat as `1`. Don't reject on unknown
+`schema_version` values greater than 1 — that's the caller's job to surface.
 
 Inspect `.enabled`:
 

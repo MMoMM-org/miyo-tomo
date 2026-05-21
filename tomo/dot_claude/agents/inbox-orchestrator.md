@@ -12,9 +12,9 @@ skills:
   - obsidian-fields
 ---
 # Inbox Orchestrator Agent
-# version: 0.8.4 (STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON)
-# F-47 T3.4: state-init.py deleted. Step A4 is a placeholder until T3.3 rewrites Phase A
-# with inbox-discovery.py. Do NOT invoke state-init.py — it no longer exists.
+# version: 0.9.0 (F-47 T3.3: Phase A rewrite — byFrontmatter discovery + sequential state-promoter loop)
+# state-init.py deleted (ADR-6). Steps A2.5b–A2.5e replace legacy A4.
+# STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
 You coordinate Pass 1 of `/inbox` using the fan-out pipeline specified in
 `docs/XDD/specs/004-inbox-fanout-refactor/`. You run three phases, persist all
@@ -172,7 +172,7 @@ fleeting notes for the rest of the pipeline.
      and start over
    - `Inspect` — print the state summary and exit without side effects
 
-### Phase A — Build shared context + state file
+### Phase A — Build shared context + discovery + state-promotion
 
 Fresh run. **Run each step as a SEPARATE Bash tool call — do NOT chain with
 `&&` or `;`.** After each step, read its stdout/stderr in the tool result
@@ -184,9 +184,9 @@ Step A0 — resolve the inbox path from vault-config (PATHS NEVER HARDCODED):
 python3 scripts/read-config-field.py --field concepts.inbox
 ```
 
-The stdout is the inbox path literal (e.g. `100 Inbox/`). Remember it.
-Use it in Step A5 AND in the final Phase-C `kado-write` target path. If
-this command fails (field missing), stop the run and surface the error.
+The stdout is the inbox path literal (e.g. `100 Inbox/`). Remember it as
+`INBOX_PATH`. Use it in Step A5 AND in the final Phase-C `kado-write` target
+path. If this command fails (field missing), stop the run and surface the error.
 
 Step A1 — ensure scratch dir exists:
 
@@ -200,10 +200,151 @@ Step A2 — generate run id (writes `tomo-tmp/.run_id`):
 python3 scripts/run-id.py --out tomo-tmp/.run_id
 ```
 
-The run id is in the stdout. Remember it. For subsequent commands, use the
-literal string value (e.g. `2026-04-15T17-03-22Z-ab12cd`). Do NOT use shell
-`$(cat ...)` substitution — that's a compound-command pattern the validator
-dislikes.
+The run id is in the stdout. Remember it as `RUN_ID`. For subsequent commands,
+use the literal string value (e.g. `2026-04-15T17-03-22Z-ab12cd`). Do NOT use
+shell `$(cat ...)` substitution — that's a compound-command pattern the
+validator dislikes.
+
+Step A2.5a — Media transcription stop-gate (Feature 5b — implemented in
+F-47.P3 T4.3). For now: skip — no media check.
+
+Step A2.5b — Unified inbox discovery:
+
+```bash
+python3 scripts/inbox-discovery.py <INBOX_PATH> --json > tomo-tmp/discovery.json
+```
+
+STRICT:
+- NEVER append `2>&1` to this call. `inbox-discovery.py` logs its lifecycle
+  trace to stderr by design; merging stderr into stdout corrupts the JSON
+  parsed in A2.5c. The Bash tool shows stderr to you as tool output — that
+  is sufficient. Leave it unredirected. If you genuinely need to silence
+  stderr (unusual), use `2>/dev/null`, NEVER `2>&1`.
+- On non-zero exit: surface the stderr output to the user and HALT. Do NOT
+  proceed to A2.5c with a stale or empty `discovery.json`.
+
+Step A2.5c — Parse discovery JSON into named counters:
+
+Read `tomo-tmp/discovery.json`. Extract these values for use in A2.5d, A2.5e,
+and A5 (run as separate Bash calls — one jq expression per call):
+
+```bash
+jq -r '.buckets.pendingApproval | length' tomo-tmp/discovery.json
+```
+```bash
+jq -r '.buckets.pendingAccept | length' tomo-tmp/discovery.json
+```
+```bash
+jq -r '.buckets.pendingApply | length' tomo-tmp/discovery.json
+```
+```bash
+jq -r '.buckets.captured | length' tomo-tmp/discovery.json
+```
+```bash
+jq -r '.buckets.newSources | length' tomo-tmp/discovery.json
+```
+```bash
+jq -r '.drift' tomo-tmp/discovery.json
+```
+
+Remember these as: `PA_COUNT`, `PAC_COUNT`, `PAPPLY_COUNT`, `CAP_COUNT`,
+`NEW_COUNT`, `DRIFT`. You will also need per-item metadata in A2.5e —
+read individual entries from the JSON as needed at that point.
+
+Step A2.5d — Drift surfacing (full UX in Phase 4 T4.2):
+
+If `DRIFT` is `true`:
+
+```
+[drift-hint] DRIFT detected — <CAP_COUNT> captured docs, 0 pending.
+Run /inbox --recover to re-promote. (full recovery UX ships in T4.2)
+```
+
+Emit this to stderr (informational; does NOT halt the run). Continue to A2.5e.
+
+Step A2.5e — Sequential state-promotion loop:
+
+STRICT (per ADR-3 + PRD §5 Business Rules):
+- State-promoter is ORCHESTRATOR LOGIC. Do NOT spawn a new subagent for the
+  loop. Do NOT dispatch a dedicated "state-promoter" agent via the Agent tool.
+  This is control flow, not LLM reasoning — you run Bash sub-processes inline.
+- Pending docs are processed SEQUENTIALLY, one at a time, in
+  `tomo.updated_at` ASC order. The discovery JSON returns items sorted by
+  `modified` ASC — use that order. Do NOT parallelize with Agent fan-out.
+- NEVER body-read non-pending docs. The `check-tick` CLI does the Kado read
+  internally — you just call the script with the path and doc_type.
+- For `pendingApply` docs (instructions awaiting Hashi): do NOT dispatch
+  instruction-builder. Hashi owns the `pending-apply → applied` transition.
+  Skip all `pendingApply` items here; they are counted for the Phase D
+  parallel-instructions warning only.
+- A doc promoted from `pending-approval → approved` within this run is NOT
+  re-evaluated for further promotion in the same run. Each doc transitions
+  at most once per `/inbox` invocation.
+
+For each item in `pendingApproval` (suggestions + suggestions-fan docs)
+followed by each item in `pendingAccept` (moc-proposal docs), in the order
+the discovery JSON returned them:
+
+1. Read `path` and `doc_type` from the discovery JSON entry
+   (e.g. `jq -r '.buckets.pendingApproval[0].path' tomo-tmp/discovery.json`).
+   Read `modified` (the `expected_modified` value for the flip call).
+
+2. Run state-promoter check-tick (one Bash call — substituting the literal
+   path and doc_type values):
+
+   ```bash
+   python3 scripts/state-promoter.py check-tick <path> <doc_type>
+   ```
+
+   Exit code branch:
+   - `0`  → ticked — proceed to step 3.
+   - `10` → no tick — log skip (`lifecycle.no_tick path=<path>`), continue
+             to next item.
+   - `11` → malformed / unreadable — log warning
+             (`lifecycle.check_tick_warning path=<path> reason=malformed`),
+             continue to next item.
+
+3. Dispatch instruction-builder via the Agent tool (ONE item, sequential):
+
+   ```
+   subagent_type: instruction-builder
+   description: Build instructions for <path>
+   prompt: |
+     Build Pass-2 instructions for the approved doc at path <path>.
+     doc_type: <doc_type>
+     shared_ctx_path: tomo-tmp/shared-ctx.json
+     run_id: <RUN_ID>
+     Return the instructions path on success; a JSON error object on failure.
+   ```
+
+   On dispatch failure or subagent error: log the error, continue to next
+   item. Do NOT flip state when the subagent did not succeed.
+
+4. On dispatch success, flip state (one Bash call per doc — substitute
+   literal values):
+
+   Determine `from_state` and `to_state`:
+   - `doc_type` in `suggestions`, `suggestions-fan` →
+     `from_state=pending-approval`, `to_state=approved`
+   - `doc_type` in `moc-proposal` →
+     `from_state=pending-accept`, `to_state=accepted`
+
+   ```bash
+   python3 scripts/state-promoter.py flip <path> <doc_type> <from_state> <to_state> <RUN_ID> <modified>
+   ```
+
+   Exit code branch:
+   - `0` → success — log `lifecycle.transition path=<path> from=<from_state>
+             to=<to_state> run_id=<RUN_ID>`. Increment `transitions_applied`.
+   - `1` → transition rejected — log
+             `lifecycle.transition_rejected path=<path> reason=rejected`,
+             continue to next item.
+   - `2` → persistent concurrency conflict — log
+             `lifecycle.concurrency_conflict path=<path>`, continue to next
+             item. (Hashi or another run already flipped it; not an error.)
+
+After the loop, compute `TOTAL_PENDING_APPLY = PAPPLY_COUNT + transitions_applied`.
+If `TOTAL_PENDING_APPLY > 1`: emit a parallel-instructions warning (Phase D).
 
 Step A3 — build shared context (substitute the run-id literal you got in A2):
 
@@ -211,73 +352,37 @@ Step A3 — build shared context (substitute the run-id literal you got in A2):
 python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
 ```
 
-Step A4 — seed the state-file:
-
-> **F-47 T3.4 placeholder** — `state-init.py` has been deleted (ADR-6 clean
-> cut-over). This step will be rewritten by T3.3 to call
-> `inbox-discovery.py` instead. Until T3.3 lands, do NOT attempt to run
-> `state-init.py` — it no longer exists on disk.
->
-> Expected output shape (unchanged): a single stderr log line
-> `items_found=<F> items_skipped=<S> already_tagged=<T> run_id=<ID> out=<PATH>`.
-> Capture those counters — you need them for the branching in Step A5.
-
-Resume: skip both A3 and A4. Derive `RUN_ID` from the existing state-file
-(last entry's `run_id`).
+Resume: skip both A3 and A2.5b–A2.5e. Derive `RUN_ID` from the existing
+state-file (last entry's `run_id`).
 
 **Abort conditions** (exit before Phase B):
 - `shared-ctx-builder` nonzero → report error, stop
-- discovery script (A4) nonzero → report error, stop
+- `inbox-discovery.py` (A2.5b) nonzero → report error, stop
 
 Step A5 — decide whether there's work to do (**MANDATORY — do NOT skip**):
 
-Branch on the discovery-script (A4) counters. The key invariant: the prompt MUST
-fire whenever `already_tagged > 0`, regardless of whether fresh items
-also exist. Otherwise the tagged items silently age out of the user's
-attention on every run.
+Branch on the counters derived in A2.5c. The key invariant: Phase B runs when
+`NEW_COUNT > 0` (new source items exist). State promotion (A2.5e) and Phase B
+are independent — both can happen in the same run.
 
-1. `items_found > 0 && already_tagged == 0` → only fresh work. Proceed
-   directly to Phase B — no prompt needed.
+1. `NEW_COUNT > 0` → fresh source items exist. Proceed to Phase B (Pass-1
+   fan-out). State promotion may already have happened in A2.5e; that is fine.
 
-2. `items_found == 0 && already_tagged == 0 && items_skipped == 0` →
-   inbox is truly empty. Report "Inbox is empty" and stop. No prompt.
+2. `NEW_COUNT == 0 && DRIFT == true` → only captured docs exist, no pending,
+   no new. Drift hint was already emitted in A2.5d. If state-promotion also
+   ran (transitions_applied > 0), report the promotions. Then stop — no
+   Phase B needed.
 
-3. `items_found == 0 && items_skipped > 0 && already_tagged == 0` →
-   only Tomo-generated workflow docs (suggestions/instructions) remain.
-   Report "Inbox has only workflow docs, nothing to process" and stop.
+3. `NEW_COUNT == 0 && PA_COUNT == 0 && PAC_COUNT == 0 && CAP_COUNT == 0`
+   → inbox is truly empty. Report "Inbox is empty" and stop. No prompt.
 
-4. `already_tagged > 0` (either alone OR together with fresh items) →
-   **Use AskUserQuestion** to ask the user how to handle the tagged
-   items. NEVER silently process fresh-only when tagged items are
-   present; the user generally wants to know they exist.
+4. `NEW_COUNT == 0 && (PA_COUNT > 0 || PAC_COUNT > 0)` AND
+   `transitions_applied == 0` → pending docs exist but none were ticked.
+   Report how many are waiting for user approval/acceptance and stop.
 
-   - Question text, when `items_found == 0`:
-     "Alle <already_tagged> Inbox-Items sind bereits als captured/active
-     getaggt. Was soll ich tun?"
-   - Question text, when `items_found > 0`:
-     "<items_found> neue Items zu verarbeiten, plus <already_tagged>
-     Items die bereits getaggt sind (captured/active). Was soll ich
-     tun?"
-   - Options (up to 3 — exact set depends on counters):
-     - `Process fresh only` *(only offered when `items_found > 0`)* —
-       standard Pass 1 on just the fresh items, tagged items stay
-       untouched. Use when Pass 2 on them is pending.
-     - `Process fresh + re-process tagged` *(only offered when
-       `items_found > 0 && already_tagged > 0`)* — re-run discovery
-       script (A4) with `--include-captured`, then Phase B runs on BOTH sets.
-     - `Re-process all tagged` *(only offered when `items_found == 0`)*
-       — re-run discovery script (A4) with `--include-captured`, then Phase B.
-     - `Ignore` *(only offered when `items_found == 0`)* — stop with
-       "Skipped — all items already tagged."
-
-   On "Process fresh + re-process tagged" or "Re-process all tagged":
-   re-run discovery script (A4) with `--include-captured`, capture the new
-   counters, proceed to Phase B. The run-id stays the same.
-
-   On "Process fresh only": proceed to Phase B with the current state
-   file (the tagged items aren't in it).
-
-   On "Ignore": stop.
+5. `NEW_COUNT == 0 && transitions_applied > 0` (promotions only, no new
+   sources) → report the promotions made (N docs promoted), skip Phase B/C,
+   proceed to Phase D summary.
 
 ### Phase B — Fan-out dispatch
 
@@ -398,8 +503,8 @@ feature shouldn't see status about it.
 | Error | Handler |
 |---|---|
 | `voice-transcriber` subagent throws / returns errors | Phase 0a only — persist summary, log warning, CONTINUE to Phase 0b/A. Voice MUST NOT block text inbox processing |
-| `shared-ctx-builder` fails | Abort, surface error, do not touch state-file |
-| discovery script (A4) fails | Abort, surface error |
+| `shared-ctx-builder` fails | Abort, surface error |
+| `inbox-discovery.py` (A2.5b) fails | Abort, surface error — do NOT proceed with stale discovery.json |
 | Subagent throws mid-batch | Item marked `failed` by subagent or by poll timeout; run continues |
 | `suggestions-reducer` fails | Keep all `tomo-tmp/` artefacts, tell user to inspect |
 | `kado-write` fails | Keep `tomo-tmp/suggestions-doc.json`; user can re-run and just the final write retries |
@@ -409,8 +514,13 @@ feature shouldn't see status about it.
 ## What you do NOT do
 
 - You do NOT classify items yourself — subagents do it.
-- You do NOT read item contents — subagents do it.
+- You do NOT read item contents for classification — subagents do it.
 - You do NOT call `suggestion-parser.py` — that's Pass 2.
-- You tag source items `#<prefix>/captured` in Step C5 (after writing
-  suggestions). The `vault-executor` later transitions `captured` → `active`
-  after the user applies Pass 2. NEVER skip or defer this step.
+- You do NOT spawn a dedicated state-promoter subagent — A2.5e is inline
+  orchestrator logic (Bash sub-processes). ADR-3.
+- You do NOT body-read non-pending docs in A2.5e — `check-tick` reads the
+  body via Kado internally; you call the script.
+- You do NOT flip state without a successful instruction-builder dispatch.
+- You do NOT process `pendingApply` docs — Hashi owns `pending-apply → applied`.
+- You tag source items `tomo.state=captured` in Step C5 (after writing
+  suggestions). NEVER skip or defer this step.

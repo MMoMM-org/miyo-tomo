@@ -1,5 +1,5 @@
 # /moc-propose — Propose a new MOC for a topic, folder, classification, or whole-vault scan
-# version: 0.2.1
+# version: 0.2.2
 
 Proactively propose a Map-of-Content (MOC) for an under-organised topic area.
 Routes to the `moc-architect` agent, which runs `moc-discovery.py` then `suggestions-reducer.py`
@@ -71,7 +71,7 @@ This overview is a high-level map only — for reader orientation, NOT for execu
    with topics pre-populated (Step 4a/4b/4c). Surface any `abort_reason` verbatim
    and stop (Step 5).
 4. **Render** — `suggestions-reducer.py --moc-proposal-mode` writes the proposal-doc
-   to `<inbox_path>/tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<top-slug>.md` (Step 6/7).
+   to `<inbox_path>/<YYYY-MM-DD>_<HHMM>_moc-proposal-<top-slug>.md` (Step 6/7).
 5. **Report** — surface the proposal-doc path + cluster summary; remind the user to
    open in Obsidian, tick Accept, then run `/inbox` (Step 8/9).
 

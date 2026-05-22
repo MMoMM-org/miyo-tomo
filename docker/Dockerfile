@@ -1,6 +1,6 @@
 # MiYo Tomo Docker image
 # Based on Kouzou secure variant — ClamAV + security hooks for vault data safety.
-# version: 0.3.0
+# version: 0.3.1
 #
 # Build: docker build -t miyo-tomo:latest ./docker/
 #        Optional: --build-arg VOICE_ENABLED=1 for XDD 009 Whisper support.
@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # jq + fzf are required by .claude/scripts/file-suggestion.sh (XDD 010)
     python3 \
     python3-yaml \
+    python3-jsonschema \
     ca-certificates \
     locales \
     && rm -rf /var/lib/apt/lists/*

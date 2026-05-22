@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """doc_frontmatter.py — Producer helper for the 'tomo:' frontmatter block.
 
 Every Tomo-produced doc (suggestions, suggestions-fan, moc-proposal,
@@ -26,7 +26,19 @@ import os
 import sys
 from pathlib import Path
 
-import jsonschema
+# jsonschema is optional — when unavailable, _validate() degrades to a no-op
+# (matching the fallback pattern in validate-result.py and vault-config-writer.py).
+# F-47 originally hard-imported this and broke F-54 live-test 2026-05-22 when the
+# subagent's Python env didn't have it. Strict validation still runs whenever
+# the package IS available; the fallback keeps the producer path alive on
+# minimal installs.
+try:
+    import jsonschema  # type: ignore
+
+    _HAVE_JSONSCHEMA = True
+except ImportError:
+    jsonschema = None  # type: ignore
+    _HAVE_JSONSCHEMA = False
 
 
 class SchemaValidationError(Exception):
@@ -127,7 +139,18 @@ def _validate(block: dict) -> None:
 
     Wraps block in {"tomo": block} for validation because the schema's root
     requires the 'tomo' key.  Dev mode raises; prod mode warns.
+
+    If `jsonschema` is unavailable, validation is skipped silently. Strict
+    mode (TOMO_SCHEMA_STRICT) still raises if jsonschema is missing AND
+    strict was requested — that combination is a misconfigured CI/test env.
     """
+    if not _HAVE_JSONSCHEMA:
+        if os.environ.get("TOMO_SCHEMA_STRICT", ""):
+            raise SchemaValidationError(
+                "TOMO_SCHEMA_STRICT requested but jsonschema package is not "
+                "installed. Install with: pip install jsonschema"
+            )
+        return
     doc = {"tomo": block}
     try:
         jsonschema.validate(doc, _SCHEMA)

@@ -1,42 +1,40 @@
 ---
 name: inbox
-description: Process inbox items using the 2-pass suggestion/instruction workflow. Auto-detects the next action based on workflow document checkboxes — dispatches instruction-builder when an approved suggestions doc exists, otherwise dispatches inbox-orchestrator to scan captured source items.
+description: Process inbox items using the 2-pass suggestion/instruction workflow. Auto-detects the next action based on workflow document checkboxes — impersonates instruction-builder when an approved suggestions doc exists, otherwise impersonates inbox-orchestrator to scan captured source items.
 argument-hint: "optional: --pass1 | --pass2 | --recover"
 ---
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.8.6
+# version: 0.8.7
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.
 
 ## STRICT — How to Run This Command
 
-**Dispatch behaviour per branch:**
-
 | Branch | Agent | How to run |
 |--------|-------|------------|
-| Pass 2 | `instruction-builder` | Dispatch via `Agent` tool |
-| Pass 1 | `inbox-orchestrator` | Dispatch via `Agent` tool |
+| Pass 2 | `instruction-builder` | **Impersonate** — read `agents/instruction-builder.md` and execute its Workflow in your context. Do NOT dispatch via `Agent` tool. |
+| Pass 1 | `inbox-orchestrator` | **Impersonate** — read `agents/inbox-orchestrator.md` and execute its Workflow in your context. Do NOT dispatch via `Agent` tool. |
 
-**Dispatch shape for Pass 1:**
+**Why impersonate both:** F-54 live-test (2026-05-22) proved subagents
+cannot use the `Agent` tool at all. When the orchestrator was dispatched
+as a subagent, its sidechain transcript reported "the Agent tool is not
+available in this execution context" and it fell back to inlining the
+`inbox-analyst` work for all 18 items serially — destroying the
+parallel fan-out (Phase B's batches of 3–5). Same constraint applies
+to `instruction-builder`'s Step 2.5 FAN-resolve dispatch of
+`inbox-analyst`: it only works because the MAIN session impersonates
+instruction-builder and does the dispatch from there.
 
-```
-Agent({
-  subagent_type: "inbox-orchestrator",
-  description: "Pass 1 — orchestrate inbox synthesis",
-  prompt: "Run Pass 1 on the inbox. Follow your agent definition. Pass through TOMO_INBOX_RECOVER=<0|1> per the --recover flag. Report back with the final Suggestions doc path + run summary."
-})
-```
+**Concrete mapping:**
+- `/inbox` (main session) reads `inbox-orchestrator.md` or
+  `instruction-builder.md` and executes its workflow directly.
+- Inside that workflow, the main session dispatches `inbox-analyst`
+  and `voice-transcriber` via the `Agent` tool — those work because
+  the dispatch happens from the main session, not from a nested subagent.
 
-**Dispatch shape for Pass 2:**
-
-```
-Agent({
-  subagent_type: "instruction-builder",
-  description: "Pass 2 — build instruction set",
-  prompt: "Run Pass 2 on the approved suggestions doc(s) in <resolved-inbox>. Follow your agent definition. Report back with the action count + coverage audit result."
-})
-```
+This is a 1-level dispatch (main → leaf agents), which is the only
+nesting depth the platform supports.
 
 
 ## Usage
@@ -80,7 +78,8 @@ python3 scripts/read-config-field.py --field concepts.inbox --default "100 Inbox
 ```
 
 The stdout is the inbox path (e.g. `100 Inbox/`). Use that literal in every
-subsequent `kado-search listDir` call and when dispatching to the orchestrator.
+subsequent `kado-search listDir` call and when executing the orchestrator's
+or instruction-builder's workflow.
 **STRICT:** do not invent a shorter or prettier path like `"Inbox"`.
 
 ### Auto-Discovery (default)
@@ -96,17 +95,21 @@ After Step 0 resolves the inbox path, the command checks in priority order:
      approved companion `*_suggestions-fan.md` exist, they form a
      reconciliation pair — `instruction-builder` Step 2 handles the
      pairing internally.
-   - **If at least one matches** → dispatch `instruction-builder` via
-     the `Agent` tool (shape in STRICT section above). Wait for its
-     result, surface to the user. **Done.**
+   - **If at least one matches** → impersonate `instruction-builder`
+     (read `agents/instruction-builder.md` and execute its Workflow in
+     your context). Step 2.5 may dispatch `inbox-analyst` via the
+     `Agent` tool from this main session context. **Done.**
    - **If none match** → continue to Pass 1.
 
 2. **Pass 1 — captured source items?**
-   - **No detection at command level — dispatch unconditionally** to
-     `inbox-orchestrator` via the `Agent` tool (shape in STRICT section
-     above). The orchestrator's Phase A2.5c truly-empty early-exit
-     handles "nothing to do" gracefully (emits "Inbox is empty —
-     nothing to process." to stderr and returns).
+   - **No detection at command level — impersonate unconditionally**
+     `inbox-orchestrator` (read `agents/inbox-orchestrator.md` and
+     execute its Workflow in your context). Phase B dispatches
+     `inbox-analyst` and Phase 0a dispatches `voice-transcriber` via
+     the `Agent` tool from this main session context. The orchestrator's
+     Phase A2.5c truly-empty early-exit handles "nothing to do"
+     gracefully (emits "Inbox is empty — nothing to process." to
+     stderr and returns).
    - **Why the asymmetry with Pass 2**: Pass 2's signal (an `Approved`
      checkbox in a workflow doc) is a cheap visual scan via `listDir` +
      top-of-file read. Pass 1's signal (`tomo.doc_type=source` +

@@ -9,7 +9,7 @@ tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-sear
 ---
 
 # Instruction Builder Agent
-# version: 2.5.5
+# version: 2.5.6
 
 **Active agent: instruction-builder**
 
@@ -170,11 +170,11 @@ If it is non-empty, do NOT render instructions but follow the following Subflow.
 
 (g) Report to the user and HALT — do NOT proceed to Step 3:
 
-   > Pass 2 halted — N inbox item(s) had **Force Atomic Note** ticked
-   > without an atomic proposal. Wrote a Force-Atomic Resolve doc at
+   > Halted — N inbox item(s) had **Force Atomic Note** ticked without
+   > an atomic proposal. Wrote a Force-Atomic Resolve doc at
    > `<inbox><YYYY-MM-DD_HHMM>_suggestions-fan.md` with the newly-proposed
-   > atomic(s). Review and check **[x] Approved** there, then run
-   > `/inbox` again — Pass 2 will merge both docs and render instructions.
+   > atomic(s). Review and check **[x] Approved** there, then re-run
+   > `/inbox` — the merge and rendering happen automatically.
 
 (h) Return. Steps 3-6 do NOT run in this invocation.
 

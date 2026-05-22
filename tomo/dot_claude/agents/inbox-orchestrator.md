@@ -13,7 +13,7 @@ skills:
 ---
 
 # Inbox Orchestrator Agent
-# version: 0.10.7
+# version: 0.10.8
 
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
@@ -644,8 +644,8 @@ can re-run `scripts/mark-captured.py` manually.
 Tell the user:
 
 > "Pass 1 complete: {source_items} items, {sections} sections written to
-> [[<date>_suggestions]]. Review in Obsidian and check the **Approved** box
-> when ready, then run `/inbox` for Pass 2."
+> [[<date>_suggestions]]. Review in Obsidian, check the **Approved** box,
+> then re-run `/inbox`."
 
 If `tomo-tmp/voice/summary.json` exists (Phase 0a ran), prepend a brief
 voice line before the suggestions summary:

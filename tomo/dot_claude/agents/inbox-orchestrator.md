@@ -613,10 +613,6 @@ Step C3 — render the JSON to final markdown (deterministic script, no LLM):
 python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md
 ```
 
-The LLM does NOT inspect intermediates between C1–C3; all three are
-deterministic. They are kept as separate calls today to make each
-step's stderr individually readable on failure.
-
 **Do NOT build the markdown yourself.** The render script is the single
 source of truth for the document format. Never work around it by hand-assembling markdown.
 

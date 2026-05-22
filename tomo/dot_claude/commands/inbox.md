@@ -1,60 +1,43 @@
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.8.2
+# version: 0.8.3
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.
 
 ## STRICT — How to Run This Command
 
-**You (the Claude session reading this command) run the orchestration
-logic DIRECTLY in your own context.** The inbox-orchestrator agent
-definition at `.claude/agents/inbox-orchestrator.md` is the SPEC you
-follow — treat its "Workflow" section as your instructions.
+**Dispatch behaviour per branch:**
 
-**NEVER** dispatch `inbox-orchestrator` via the `Agent` / `Task` tool.
-Nested Agent-dispatches don't work in Claude Code (subagents cannot
-spawn further subagents), and the `inbox-orchestrator`'s job requires
-fanning out `inbox-analyst` subagents — so if you spawn the
-orchestrator as a subagent, Phase B fails with "Agent tool not
-available" and the pipeline stalls with no output written.
+| Branch | Agent | How to run |
+|--------|-------|------------|
+| Cleanup | `vault-executor` | Impersonate (read the spec, execute in your context) — unchanged from prior version |
+| Pass 2 | `instruction-builder` | Dispatch via `Agent` tool (was already dispatched) |
+| Pass 1 | `inbox-orchestrator` | **Dispatch via `Agent` tool** (changed in this version — experimental) |
 
-Concrete mapping:
-- `inbox-orchestrator.md` Workflow Phase 0a / 0b / A / B / C → YOUR steps
-- Phase B's `inbox-analyst` fan-out → dispatched by YOU via the `Agent`
-  tool (3-5 in parallel, per `inbox-orchestrator.md` spec)
-- Phase 0a's `voice-transcriber` dispatch (if voice enabled) →
-  also by YOU via the `Agent` tool
+**Dispatch shape for inbox-orchestrator (Pass 1):**
 
-In other words: the inbox-orchestrator is the ONLY agent on your
-workflow that you IMPERSONATE rather than DISPATCH. Every other
-subagent mentioned in its spec (`inbox-analyst`, `voice-transcriber`)
-is dispatched normally.
+```
+Agent({
+  subagent_type: "inbox-orchestrator",
+  description: "Pass 1 — orchestrate inbox synthesis",
+  prompt: "Run Pass 1 on the inbox. Follow your agent definition (Phase 0a → 0b → A → B → C → D). Pass through TOMO_INBOX_RECOVER=<0|1> per the --recover flag. Report back with the final Suggestions doc path + run summary."
+})
+```
 
-`vault-executor` (cleanup) follows the same impersonation rule —
-its spec is what you execute in this context.
+The orchestrator runs on sonnet per its frontmatter and dispatches its
+own subagents (`voice-transcriber` in Phase 0a, `inbox-analyst` in
+Phase B) internally. That's a 2-level nesting (`/inbox` →
+`inbox-orchestrator` → leaf agents) which Claude Code supports in
+practice (verified empirically via `instruction-builder` doing the same
+nesting in Step 2.5).
 
-**EXCEPTION — `instruction-builder` (Pass 2) IS dispatched** via the
-`Agent` tool with `subagent_type: "instruction-builder"`. The agent's
-happy path does NOT fan out further subagents, so nested-dispatch is
-not an issue. Dispatching gives:
-- A measurable subagent run on sonnet (per the agent's frontmatter)
-  instead of the parent's session model — significantly cheaper for
-  pure orchestration work.
-- A separate transcript under
-  `tomo-home/.claude/projects/<project>/<sid>/subagents/` for clean
-  cost attribution.
-- Stronger context isolation — the subagent gets only the dispatch
-  prompt, not the parent's accumulated /inbox state.
-
-Fan-resolve fallback: instruction-builder's Step 2.5 dispatches
-`inbox-analyst` ONLY when `parsed-suggestions.json` has non-empty
-`pending_fan_resolutions` — force-atomic items without an atomic
-proposal. That nested dispatch may fail; if you hit this rare path,
-fall back to impersonating instruction-builder for that one run.
-The reconciliation-pair case (when both `_suggestions.md` and
-`_suggestions-fan.md` are already approved) does NOT trigger
-fan-resolve — Step 2.5 is skipped because there are no pending
-resolutions.
+**3-level nesting caveat:** the FAN-resolve subflow inside
+`instruction-builder` (Step 2.5) dispatches `inbox-analyst` only when
+`parsed-suggestions.json` has non-empty `pending_fan_resolutions`. If
+Pass 2 is dispatched (level 1) → instruction-builder (level 2) →
+inbox-analyst (level 3), the inner dispatch may fail. The
+instruction-builder spec documents an inline-impersonation fallback
+for that specific subflow. Normal Pass-2 flow doesn't reach this case.
 
 ## Usage
 
@@ -111,8 +94,8 @@ After Step 0 resolves the inbox path, the command checks in priority order:
    - Read each, count `- [x] Applied` vs total actions
    - Any with at least one Applied → cleanup
 2. **Suggestions with `[x] Approved`?** → Run Pass 2 by **dispatching
-   `instruction-builder` via the `Agent` tool** (see EXCEPTION in the
-   STRICT section above). Do NOT impersonate it.
+   `instruction-builder` via the `Agent` tool** (see STRICT section
+   above). Do NOT impersonate it.
    - Scan the resolved inbox path for `*_suggestions.md` via Kado `listDir`
      (this glob matches both primary `*_suggestions.md` and companion
      `*_suggestions-fan.md` for the force-atomic flow)
@@ -131,26 +114,26 @@ After Step 0 resolves the inbox path, the command checks in priority order:
      ```
    - The subagent runs on sonnet per its frontmatter; you wait for the
      final result message and surface it to the user.
-3. **Captured source items?** → Run Pass 1 directly in your context,
-   following `inbox-orchestrator.md` as your spec (do NOT Agent-dispatch it):
-     - Phase 0a: if voice enabled, dispatch `voice-transcriber` via Agent
-     - Phase 0b: resume detection via AskUserQuestion (Resume / Fresh / Inspect)
-     - Phase A: build shared-ctx + state-file directly (Bash calls)
-     - Phase B: dispatch `inbox-analyst` subagents via Agent (3-5 parallel)
-     - Phase C: reduce + render + kado-write final Suggestions doc
+3. **Captured source items?** → Run Pass 1 by **dispatching
+   `inbox-orchestrator` via the `Agent` tool** (see STRICT section above).
+   The agent runs Phase 0a → 0b → A → B → C → D itself, dispatching
+   `voice-transcriber` and `inbox-analyst` from inside its own context.
+   You wait for the agent's final report and surface it to the user.
 4. **Nothing pending?** → Report "Inbox clear. Nothing to process."
 
 ### Pass 1 — Suggestions (fan-out)
 
-1. `/inbox` → you impersonate the `inbox-orchestrator` spec (NEVER
-   Agent-dispatch it — see STRICT section above)
-2. Phase A: build `tomo-tmp/shared-ctx.json` and
-   `tomo-tmp/inbox-state.jsonl` via Bash calls
-3. Phase B: dispatch `inbox-analyst` subagents via the `Agent` tool in
-   batches of 3-5. Each subagent reads one item, classifies it, writes
-   `tomo-tmp/items/<stem>.result.json`, updates the state-file
-4. Phase C: run `suggestions-reducer.py`, render markdown, write the
-   final `YYYY-MM-DD_HHMM_suggestions.md` via `kado-write`
+1. `/inbox` → dispatch `inbox-orchestrator` via the `Agent` tool (see
+   STRICT section above)
+2. Inside the orchestrator subagent: Phase A builds
+   `tomo-tmp/shared-ctx.json` and `tomo-tmp/inbox-state.jsonl` via
+   Bash calls
+3. Phase B: orchestrator dispatches `inbox-analyst` subagents via the
+   `Agent` tool in batches of 3-5. Each analyst reads one item,
+   classifies it, writes `tomo-tmp/items/<stem>.result.json`, updates
+   the state-file
+4. Phase C: orchestrator runs `suggestions-reducer.py`, renders markdown,
+   writes the final `YYYY-MM-DD_HHMM_suggestions.md` via `kado-write`
 5. Document contains visible `- [ ] Approved` checkbox + per-action tri-state
    decision checkboxes (Approve / Skip / Delete source)
 6. **You review in Obsidian**, edit, check decisions
@@ -191,11 +174,9 @@ Instructions: per action [ ] Applied → [x] Applied  (user checks)
 
 ## Agents
 
-This command dispatches:
-- `inbox-orchestrator` — Pass 1 coordinator (fan-out: Phase A + B + C)
+This command uses:
+- `inbox-orchestrator` — Pass 1 coordinator (dispatched; fan-out: Phase A + B + C)
   - spawns `inbox-analyst` subagents per item (3-5 in parallel)
-- `instruction-builder` — Pass 2 action generation
-- `vault-executor` — cleanup and state transitions
-
-Note: `suggestion-builder` is retired — its format rules live in
-`inbox-orchestrator` now.
+  - spawns `voice-transcriber` if Phase 0a is enabled and audio is present
+- `instruction-builder` — Pass 2 action generation (dispatched)
+- `vault-executor` — cleanup and state transitions (impersonated)

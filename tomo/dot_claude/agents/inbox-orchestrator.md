@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Orchestrator Agent
-# version: 0.10.10
+# version: 0.10.11
 
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
@@ -536,20 +536,36 @@ A5 runs, at least one bucket is non-zero.
 
 ### Phase B — Fan-out dispatch
 
-The state-file lives at `tomo-tmp/inbox-state.jsonl`. It is append-only —
-each row is one status transition for one stem. To collect actionable
-stems (last status per stem is `pending` on fresh, `pending` or `failed`
-on resume), run this jq pipeline:
+The state-file at `tomo-tmp/inbox-state.jsonl` is a transition LOG, not
+a required input. It is append-only — each row records one status
+transition (`running`, `done`, `failed`) written by an `inbox-analyst`
+subagent during its execution. There is NO seeding step that pre-populates
+`pending` rows; do NOT search for one and do NOT improvise per-item
+`state-update.py` calls to seed.
 
-```bash
-jq -rcs 'group_by(.stem)[] | .[-1] | select(.status == "pending" or .status == "failed") | "\(.stem)\t\(.path)"' tomo-tmp/inbox-state.jsonl
-```
+**Collect the items to dispatch — fresh vs resume:**
 
-The output is one stem-path pair per line, tab-separated. On a fresh run
-the state-file is seeded by the discovery + state-promotion pipeline
-(every `newSources` entry from `discovery.json` becomes a `pending` row
-keyed by its stem). On resume, you also pick up `failed` rows from the
-prior run.
+- **Fresh run** (state-file absent OR user picked `Fresh run` in Phase 0b):
+  read newSources directly from `discovery.json` (which Phase A2.5b
+  produced). One Bash call:
+
+  ```bash
+  jq -r '.buckets.newSources[] | "\(.stem)\t\(.path)"' tomo-tmp/discovery.json
+  ```
+
+  Output is one stem-path pair per line, tab-separated. No slurp needed
+  (`discovery.json` is a JSON object, not JSONL).
+
+- **Resume run** (user picked `Resume` in Phase 0b): read pending +
+  failed entries from the existing state-file:
+
+  ```bash
+  jq -rcs 'group_by(.stem)[] | .[-1] | select(.status == "pending" or .status == "failed") | "\(.stem)\t\(.path)"' tomo-tmp/inbox-state.jsonl
+  ```
+
+  The `-s` (slurp) is REQUIRED — inbox-state.jsonl is JSONL, not a JSON
+  array. Without slurp, `group_by` runs per-line and produces wrong
+  grouping.
 
 Read `parallel` from `config/vault-config.yaml` → `tomo.suggestions.parallel`
 (default 5) via `scripts/read-config-field.py --field tomo.suggestions.parallel --default 5`.
@@ -578,10 +594,12 @@ prompt: |
   Return one confirmation line, no prose.
 ```
 
-After each batch, poll the state-file:
+After each batch, poll the state-file to check completion:
 - Every item in the batch must have reached `done` or `failed` before
-  dispatching the next batch. Re-run the jq pipeline above (filter on
-  the batch's stems) to read the latest status per stem.
+  dispatching the next batch. Use the resume-style state-file jq
+  (with `-s` slurp), filtered to the batch's stems, to read the latest
+  status per stem. Do NOT re-read `discovery.json` for this — the
+  status transitions live in the state-file, written by the analysts.
 - If an item is still `running` after 5 minutes, treat it as stuck —
   mark it failed via `state-update.py` and move on:
 

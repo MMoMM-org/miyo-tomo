@@ -525,7 +525,7 @@ def render_moc_proposal_doc(
 
     Returns:
         (filename, body) — `filename` is the deterministic filename string
-        (e.g. ``tomo-moc-proposal-20260507-1430-shell-and-terminal.md``);
+        (e.g. ``2026-05-07_1430_moc-proposal-shell-and-terminal.md``);
         `body` is the full markdown text.
 
     Behaviour:
@@ -554,11 +554,12 @@ def render_moc_proposal_doc(
         or "moc"
     )
 
-    # Timestamp
+    # Timestamp — matches the canonical Tomo artifact pattern used by
+    # suggestions, instructions, suggestions-fan: <YYYY-MM-DD>_<HHMM>_<role>.md
     now_str = time.strftime("%Y-%m-%d %H:%M", time.localtime())
-    date_str = time.strftime("%Y%m%d", time.localtime())
+    date_str = time.strftime("%Y-%m-%d", time.localtime())
     hhmm_str = time.strftime("%H%M", time.localtime())
-    filename = f"tomo-moc-proposal-{date_str}-{hhmm_str}-{top_slug}.md"
+    filename = f"{date_str}_{hhmm_str}_moc-proposal-{top_slug}.md"
 
     # Frontmatter
     trigger_field = f"{mode}:{trigger_arg}" if trigger_arg else mode

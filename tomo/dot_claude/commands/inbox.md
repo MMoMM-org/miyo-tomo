@@ -1,5 +1,5 @@
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.8.4
+# version: 0.8.5
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.
@@ -10,33 +10,29 @@ Auto-detects what to do next based on workflow document checkboxes.
 
 | Branch | Agent | How to run |
 |--------|-------|------------|
-| Pass 2 | `instruction-builder` | Dispatch via `Agent` tool (was already dispatched) |
-| Pass 1 | `inbox-orchestrator` | **Dispatch via `Agent` tool** (changed in this version — experimental) |
+| Pass 2 | `instruction-builder` | Dispatch via `Agent` tool |
+| Pass 1 | `inbox-orchestrator` | Dispatch via `Agent` tool |
 
-**Dispatch shape for inbox-orchestrator (Pass 1):**
+**Dispatch shape for Pass 1:**
 
 ```
 Agent({
   subagent_type: "inbox-orchestrator",
   description: "Pass 1 — orchestrate inbox synthesis",
-  prompt: "Run Pass 1 on the inbox. Follow your agent definition (Phase 0a → 0b → A → B → C → D). Pass through TOMO_INBOX_RECOVER=<0|1> per the --recover flag. Report back with the final Suggestions doc path + run summary."
+  prompt: "Run Pass 1 on the inbox. Follow your agent definition. Pass through TOMO_INBOX_RECOVER=<0|1> per the --recover flag. Report back with the final Suggestions doc path + run summary."
 })
 ```
 
-The orchestrator runs on sonnet per its frontmatter and dispatches its
-own subagents (`voice-transcriber` in Phase 0a, `inbox-analyst` in
-Phase B) internally. That's a 2-level nesting (`/inbox` →
-`inbox-orchestrator` → leaf agents) which Claude Code supports in
-practice (verified empirically via `instruction-builder` doing the same
-nesting in Step 2.5).
+**Dispatch shape for Pass 2:**
 
-**3-level nesting caveat:** the FAN-resolve subflow inside
-`instruction-builder` (Step 2.5) dispatches `inbox-analyst` only when
-`parsed-suggestions.json` has non-empty `pending_fan_resolutions`. If
-Pass 2 is dispatched (level 1) → instruction-builder (level 2) →
-inbox-analyst (level 3), the inner dispatch may fail. The
-instruction-builder spec documents an inline-impersonation fallback
-for that specific subflow. Normal Pass-2 flow doesn't reach this case.
+```
+Agent({
+  subagent_type: "instruction-builder",
+  description: "Pass 2 — build instruction set",
+  prompt: "Run Pass 2 on the approved suggestions doc(s) in <resolved-inbox>. Follow your agent definition. Report back with the action count + coverage audit result."
+})
+```
+
 
 ## Usage
 
@@ -86,94 +82,31 @@ subsequent `kado-search listDir` call and when dispatching to the orchestrator.
 
 After Step 0 resolves the inbox path, the command checks in priority order:
 
-1. **Suggestions with `[x] Approved`?** → Run Pass 2 by **dispatching
-   `instruction-builder` via the `Agent` tool** (see STRICT section
-   above). Do NOT impersonate it.
-   - Scan the resolved inbox path for `*_suggestions.md` via Kado `listDir`
-     (this glob matches both primary `*_suggestions.md` and companion
-     `*_suggestions-fan.md` for the force-atomic flow)
-   - Read each, check for `- [x] Approved` at top
-   - When BOTH a primary doc and an approved companion `*_suggestions-fan.md`
-     exist, they are a reconciliation pair — `instruction-builder` Step 2
-     handles the pairing internally by reading both files into `tomo-tmp/`
-     and passing `--fan-resolve-file` to the parser.
-   - **Dispatch shape:**
-     ```
-     Agent({
-       subagent_type: "instruction-builder",
-       description: "Pass 2 — build instruction set",
-       prompt: "Run Pass 2 on the approved suggestions doc(s) in <resolved-inbox>. Follow your agent definition. Report back with the action count + coverage audit result."
-     })
-     ```
-   - The subagent runs on sonnet per its frontmatter; you wait for the
-     final result message and surface it to the user.
-2. **Captured source items?** → Run Pass 1 by **dispatching
-   `inbox-orchestrator` via the `Agent` tool** (see STRICT section above).
-   The agent runs Phase 0a → 0b → A → B → C → D itself, dispatching
-   `voice-transcriber` and `inbox-analyst` from inside its own context.
-   You wait for the agent's final report and surface it to the user.
-3. **Nothing pending?** → Report "Inbox clear. Nothing to process."
+1. **Pass 2 — suggestions with `[x] Approved`?**
+   - **Detection** (cheap pre-check at command level): scan the resolved
+     inbox path for `*_suggestions.md` via Kado `listDir` — this glob
+     matches both primary `*_suggestions.md` and companion
+     `*_suggestions-fan.md` for the force-atomic flow. Read each, check
+     for `- [x] Approved` at the top. When BOTH a primary and an
+     approved companion `*_suggestions-fan.md` exist, they form a
+     reconciliation pair — `instruction-builder` Step 2 handles the
+     pairing internally.
+   - **If at least one matches** → dispatch `instruction-builder` via
+     the `Agent` tool (shape in STRICT section above). Wait for its
+     result, surface to the user. **Done.**
+   - **If none match** → continue to Pass 1.
 
-**Note on completed instruction docs:** when all `- [x] Applied` boxes are
-ticked in an `*_instructions.md` file, the state-flip from `pending-apply`
-to `applied` is owned by Tomo Hashi (see `tomo_lifecycle.py:73-85` —
-trigger: "Hashi after last [x] Applied"). Pre-Hashi, completed instruction
-docs remain visible in the inbox as `pending-apply` — delete them manually
-once Hashi has executed the actions, or once you have applied them by hand.
-
-### Pass 1 — Suggestions (fan-out)
-
-1. `/inbox` → dispatch `inbox-orchestrator` via the `Agent` tool (see
-   STRICT section above)
-2. Inside the orchestrator subagent: Phase A builds
-   `tomo-tmp/shared-ctx.json` and `tomo-tmp/inbox-state.jsonl` via
-   Bash calls
-3. Phase B: orchestrator dispatches `inbox-analyst` subagents via the
-   `Agent` tool in batches of 3-5. Each analyst reads one item,
-   classifies it, writes `tomo-tmp/items/<stem>.result.json`, updates
-   the state-file
-4. Phase C: orchestrator runs `suggestions-reducer.py`, renders markdown,
-   writes the final `YYYY-MM-DD_HHMM_suggestions.md` via `kado-write`
-5. Document contains visible `- [ ] Approved` checkbox + per-action tri-state
-   decision checkboxes (Approve / Skip / Delete source)
-6. **You review in Obsidian**, edit, check decisions
-7. Check `[x] Approved` when satisfied
-
-### Pass 2 — Instructions
-
-1. **instruction-builder** parses approved suggestions (pure orchestrator — no markdown assembly)
-2. `instruction-render.py` deterministically produces rendered notes,
-   `instructions.json` (canonical machine-readable — see
-   `tomo/schemas/instructions.schema.json`), and `instructions.md`
-   (human-readable view, rendered from the JSON)
-3. Instruction set + rendered files written to inbox via Kado
-4. Per-action `- [ ] Applied` checkboxes (no lifecycle tags)
-5. **You apply each action** in Obsidian and check `[x] Applied` per action
-   (future: Tomo Hashi plugin reads `instructions.json` directly and executes)
-6. Tomo Hashi flips `tomo.state=pending-apply → applied` after the last
-   `[x] Applied` and cleans up the instruction doc. Pre-Hashi: delete
-   completed instruction docs from the inbox manually.
-
-## State Model
-
-Authoritative definition lives in `tomo/scripts/lib/tomo_lifecycle.py`
-(`STATE_MACHINE`). Summary of the runtime-relevant transitions:
-
-- **source** items: `captured` (terminal — set by `mark-captured.py` after
-  Pass-1 succeeds; no further transition in this repo).
-- **suggestions** / **suggestions-fan**: `pending-approval → approved`
-  (state-promoter flips after user ticks `[x] Approved` and Pass-2
-  succeeds).
-- **moc-proposal**: `pending-accept → accepted` (state-promoter flips
-  after user ticks `[x] Accept` and Pass-2 succeeds).
-- **instructions**: `pending-apply → applied` (Hashi flips after the user
-  ticks the last `[x] Applied` checkbox; pre-Hashi the doc remains
-  `pending-apply`).
-
-## Agents
-
-This command uses:
-- `inbox-orchestrator` — Pass 1 coordinator (dispatched; fan-out: Phase A + B + C)
-  - spawns `inbox-analyst` subagents per item (3-5 in parallel)
-  - spawns `voice-transcriber` if Phase 0a is enabled and audio is present
-- `instruction-builder` — Pass 2 action generation (dispatched)
+2. **Pass 1 — captured source items?**
+   - **No detection at command level — dispatch unconditionally** to
+     `inbox-orchestrator` via the `Agent` tool (shape in STRICT section
+     above). The orchestrator's Phase A2.5c truly-empty early-exit
+     handles "nothing to do" gracefully (emits "Inbox is empty —
+     nothing to process." to stderr and returns).
+   - **Why the asymmetry with Pass 2**: Pass 2's signal (an `Approved`
+     checkbox in a workflow doc) is a cheap visual scan via `listDir` +
+     top-of-file read. Pass 1's signal (`tomo.doc_type=source` +
+     `tomo.state=captured`) lives in frontmatter across the whole inbox,
+     AND the orchestrator runs its own discovery scan in Phase A.
+     Duplicating that scan at the command level would waste a Kado call
+     and risk divergence between two discovery paths.
+   - Wait for the orchestrator's final report and surface it to the user.

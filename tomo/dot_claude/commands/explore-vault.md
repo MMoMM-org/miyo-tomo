@@ -1,5 +1,5 @@
-# /explore-vault
-# version: 0.3.1
+# /explore-vault - Scan your Obsidian vault to discover structure, tags, relationships, callouts, and MOC hierarchy.
+# version: 0.3.2
 
 Scan your Obsidian vault to discover structure, tags, relationships, callouts, and MOC hierarchy.
 Builds the discovery cache that powers Tomo's PKM intelligence.
@@ -8,6 +8,17 @@ Builds the discovery cache that powers Tomo's PKM intelligence.
 
 `/explore-vault` — Full scan with user confirmation (first run) or silent cache rebuild (subsequent)
 `/explore-vault --confirm` — Re-run all detection with user confirmation
+
+## STRICT — How to Run This Command
+
+| Step | Agent | How to run |
+|------|-------|------------|
+| All steps | `vault-explorer` | **Impersonate** — read `agents/vault-explorer.md` and execute its workflow in your context. Do NOT dispatch via the `Agent` tool. |
+
+Why impersonate: this command runs once per vault (or on `--confirm`),
+uses `AskUserQuestion` repeatedly, and has no further subagent fan-out
+to coordinate. Impersonation keeps the user-interaction loop in the
+main session where it's most reliable.
 
 ## What This Does
 
@@ -19,6 +30,3 @@ Builds the discovery cache that powers Tomo's PKM intelligence.
 
 You will be asked to confirm each detection step. Your vault is never modified — only Tomo's config files are updated.
 
-## Agent
-
-This command delegates to the `vault-explorer` agent.

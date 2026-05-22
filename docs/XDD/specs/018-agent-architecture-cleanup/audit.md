@@ -159,6 +159,44 @@ removal or rewording.
 
 `moc-architect` merge deferred — see note above.
 
+## Live test (deferred until file-by-file review is complete)
+
+Commits already staged but NOT YET LIVE-TESTED:
+
+- `2d92ff8` — `inbox-orchestrator.md` frontmatter `model: opus` → `sonnet`,
+  `effort: xhigh` → `medium`. Aligns the agent's declared model with the
+  actual workload (pure orchestration + dispatch, no deep reasoning).
+- `d927b41` — `/inbox.md` Pass-1 flipped from impersonation to dispatch
+  via `Agent` tool. Empirical test of the long-held "subagents can't
+  spawn further subagents" assumption — `instruction-builder` already
+  does this nesting successfully in production (Step 2.5).
+
+**Test plan**: once Marcus has reviewed all remaining agent/command/skill
+files and the per-file TODO sweep is complete, run a fresh `/inbox` on
+Privat-Test. Observe:
+
+- Does Pass-1 launch as a proper dispatched subagent? (visible in
+  `tomo-home/.claude/projects/<project>/<sid>/subagents/` transcripts)
+- Does Phase B fan-out (orchestrator → `inbox-analyst` × N) work, or
+  does it fail with "Agent tool not available" / similar?
+- Token-cost split: orchestrator subagent cost vs parent `/inbox`
+  context, via `python3 scripts/measure-f47-token-cost.py --session-latest`.
+
+**On success**: F-54 marked shipped, XDD 018 Phase 2 (inbox-orchestrator
+→ /inbox merge) becomes obsolete — the agent file IS now the dispatched
+subagent's spec, no merge needed. The architecture is cleaner without
+the merge than with it.
+
+**On failure**: `git revert d927b41` restores impersonation. The B commit
+(`2d92ff8`) stays — sonnet is still the right model claim even when
+impersonated. F-54 updated with the concrete failure mode so we know
+what specifically about orchestrator-as-subagent breaks vs
+instruction-builder-as-subagent working.
+
+**Why deferred**: doing the test mid-sweep risks conflating "live-test
+result" with "stale file state" if the orchestrator/analyst files still
+have unprocessed review TODOs. Clean baseline first, then test.
+
 ## Open questions for Marcus
 
 - Should the workflow live entirely inside the command file, or should

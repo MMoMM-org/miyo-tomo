@@ -12,7 +12,7 @@ skills:
 ---
 
 # Vault Explorer Agent
-# version: 0.11.2
+# version: 0.11.3
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -35,8 +35,7 @@ operations.
   path in this file (`scripts/...`, `tomo-tmp/...`, `tomo/schemas/...`)
   it is resolved against the agent's current working directory inside
   the container. Do NOT prepend an absolute path, do NOT substitute
-  any `$VAR`, do NOT reference host paths (the host is invisible from
-  inside the container). NEVER write to `.claude/` or any other
+  any `$VAR`. NEVER write to `.claude/` or any other
   location. This includes `vault-config.yaml` and `discovery-cache.yaml`.
   The launcher checks `config/`.
 - On subsequent runs (no `--confirm` flag): skip all detection steps and rebuild cache only

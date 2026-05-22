@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Orchestrator Agent
-# version: 0.10.9
+# version: 0.10.10
 
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 
@@ -223,8 +223,13 @@ transcription site in this agent — Phase A does NOT re-dispatch.
 2. If yes, count items by status (last line per stem) via this jq call:
 
    ```bash
-   jq -rc 'group_by(.stem)[] | .[-1] | .status' tomo-tmp/inbox-state.jsonl | sort | uniq -c
+   jq -rcs 'group_by(.stem)[] | .[-1] | .status' tomo-tmp/inbox-state.jsonl | sort | uniq -c
    ```
+
+   The `-s` (slurp) flag is REQUIRED — `inbox-state.jsonl` is JSONL
+   (one JSON object per line, not a JSON array), and `group_by` needs
+   all entries in a single array to work across lines. Without slurp,
+   `group_by` runs per-line and produces wrong counts.
 
    The output lines have shape `  <count> <status>` (e.g. `  3 done`,
    `  2 pending`). Aggregate locally — no script wrapper exists.
@@ -537,7 +542,7 @@ stems (last status per stem is `pending` on fresh, `pending` or `failed`
 on resume), run this jq pipeline:
 
 ```bash
-jq -rc 'group_by(.stem)[] | .[-1] | select(.status == "pending" or .status == "failed") | "\(.stem)\t\(.path)"' tomo-tmp/inbox-state.jsonl
+jq -rcs 'group_by(.stem)[] | .[-1] | select(.status == "pending" or .status == "failed") | "\(.stem)\t\(.path)"' tomo-tmp/inbox-state.jsonl
 ```
 
 The output is one stem-path pair per line, tab-separated. On a fresh run

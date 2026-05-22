@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # strip-tomo-frontmatter.py — surgical removal of the `tomo:` block from note(s).
-# version: 0.1.0
+# version: 0.2.0
 """Strip the `tomo:` frontmatter block from one or more vault notes via Kado.
 
 Use when:
@@ -46,7 +46,49 @@ from kado_client import (  # noqa: E402
     KadoConcurrencyError,
     KadoError,
     KadoNotFoundError,
+    _extract_from_mcp_json,
 )
+
+
+def _running_in_container() -> bool:
+    """Best-effort: Docker drops a /.dockerenv marker file."""
+    return Path("/.dockerenv").exists()
+
+
+def build_kado_client() -> KadoClient:
+    """Construct a KadoClient that works from BOTH host and container.
+
+    Resolution order:
+      1. Standard KadoClient() — picks up KADO_URL/KADO_TOKEN env or .mcp.json
+         in cwd (this is what container-side scripts rely on).
+      2. Fallback: walk up from this script to find `tomo-instance/.mcp.json`,
+         which is the Tomo Docker instance's MCP config. Parse it for the Kado
+         URL+token, rewrite `host.docker.internal` → `localhost` when not
+         actually inside a container, and pass explicit args to KadoClient.
+    """
+    try:
+        return KadoClient()
+    except KadoError as first_err:
+        for parent in [SCRIPT_DIR, *SCRIPT_DIR.parents]:
+            candidate = parent / "tomo-instance" / ".mcp.json"
+            if not candidate.is_file():
+                continue
+            try:
+                cfg = json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            url, tok = _extract_from_mcp_json(cfg)
+            if not (url and tok):
+                continue
+            if not _running_in_container():
+                url = url.replace("host.docker.internal", "localhost")
+            print(
+                f"[strip-tomo-frontmatter] using Kado from {candidate} → {url}",
+                file=sys.stderr,
+            )
+            return KadoClient(base_url=url, token=tok)
+        # Nothing worked — re-raise the original error
+        raise first_err
 
 
 def collect_paths(args: argparse.Namespace, client: KadoClient) -> list[str]:
@@ -54,7 +96,7 @@ def collect_paths(args: argparse.Namespace, client: KadoClient) -> list[str]:
     paths: list[str] = list(args.paths or [])
     if args.folder:
         try:
-            items = client.list_dir(args.folder, depth=-1 if args.recursive else 1)
+            items = client.list_dir(args.folder, depth=None if args.recursive else 1)
         except KadoError as exc:
             print(f"ERROR: listDir({args.folder!r}) failed: {exc}", file=sys.stderr)
             sys.exit(1)
@@ -153,7 +195,7 @@ def main() -> int:
     if not args.paths and not args.folder:
         p.error("supply at least one positional path or --folder")
 
-    client = KadoClient()
+    client = build_kado_client()
     paths = collect_paths(args, client)
     if not paths:
         print("No paths to process.", file=sys.stderr)

@@ -7,8 +7,9 @@ color: yellow
 permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-search, mcp__kado__kado-write
 ---
+
 # Instruction Builder Agent
-# version: 2.5.3
+# version: 2.5.4
 
 **Active agent: instruction-builder**
 
@@ -75,6 +76,7 @@ missing, default to `100 Inbox/`.
 2. Save the primary doc's content to `tomo-tmp/suggestions.md` (via Write).
    If a paired companion exists, save it to `tomo-tmp/suggestions-fan.md`.
 3. Run the parser. Add `--fan-resolve-file` ONLY when the companion exists:
+
    ```bash
    # Without companion (typical first Pass 2):
    python3 scripts/suggestion-parser.py --file "tomo-tmp/suggestions.md" > tomo-tmp/parsed-suggestions.json
@@ -83,15 +85,13 @@ missing, default to `100 Inbox/`.
    python3 scripts/suggestion-parser.py --file "tomo-tmp/suggestions.md" --fan-resolve-file "tomo-tmp/suggestions-fan.md" > tomo-tmp/parsed-suggestions.json
    ```
 
-
 ### Step 2.5 — FAN Resolve Subflow
 
 Read `tomo-tmp/parsed-suggestions.json` and inspect
 `pending_fan_resolutions`. If it is empty, skip this step and proceed to
 Step 3.
 
-If it is non-empty, do NOT render instructions. Instead, generate a
-follow-up Force-Atomic Resolve doc and halt for user review.
+If it is non-empty, do NOT render instructions but follow the following Subflow.
 
 **Subflow steps:**
 
@@ -144,6 +144,7 @@ follow-up Force-Atomic Resolve doc and halt for user review.
    move on.
 
 (d) Run the reducer in resolve mode (substitute RUN_ID + PROFILE literals):
+
    ```bash
    python3 scripts/suggestions-reducer.py \
      --state tomo-tmp/inbox-state.jsonl \
@@ -155,6 +156,7 @@ follow-up Force-Atomic Resolve doc and halt for user review.
    ```
 
 (e) Render to markdown:
+
    ```bash
    python3 scripts/suggestions-render.py \
      --input tomo-tmp/suggestions-fan-doc.json \
@@ -178,6 +180,21 @@ follow-up Force-Atomic Resolve doc and halt for user review.
 
 ### Step 3 — Render everything
 
+**Flag guidance:**
+- `--upstream-type` is determined from the upstream doc's `tomo.doc_type`
+frontmatter field (read it when finding the doc in Step 2 / MOC-Step 1):
+- `suggestions` — normal Pass-1 → Pass-2 chain (most common; upstream is `*_suggestions.md`)
+- `moc-proposal` — MOC-creation chain (upstream is `tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<slug>.md`)
+- `suggestions-fan` — force-atomic chain (upstream is `*_suggestions-fan.md`)
+- `--upstream-path` is the vault-relative path of the doc that produced this Pass-2
+(the user-ticked suggestions or proposal doc). Used as the value of the `source_*`
+key in the emitted `tomo:` block.
+- `--run-id` is a NEW run_id for THIS Pass-2 invocation — NOT the upstream doc's
+run_id. Generate a fresh one:
+```bash
+pass-2-run-id=$(python3 -c "import time; print(int(time.time()))")
+```
+
 One script call produces rendered note files, `manifest.json`, `instructions.json`,
 and `instructions.md` in `tomo-tmp/rendered/`:
 
@@ -191,26 +208,7 @@ python3 scripts/instruction-render.py \
   --run-id <pass-2-run-id>
 ```
 
-**Flag guidance:**
-- `--upstream-type` is determined from the upstream doc's `tomo.doc_type`
-  frontmatter field (read it when finding the doc in Step 2 / MOC-Step 1):
-  - `suggestions` — normal Pass-1 → Pass-2 chain (most common; upstream is `*_suggestions.md`)
-  - `moc-proposal` — MOC-creation chain (upstream is `tomo-moc-proposal-*.md`)
-  - `suggestions-fan` — force-atomic chain (upstream is `*_suggestions-fan.md`)
-- `--upstream-path` is the vault-relative path of the doc that produced this Pass-2
-  (the user-ticked suggestions or proposal doc). Used as the value of the `source_*`
-  key in the emitted `tomo:` block.
-- `--run-id` is a NEW run_id for THIS Pass-2 invocation — NOT the upstream doc's
-  run_id. Generate a fresh one:
-  ```bash
-  PASS2_RUN_ID=$(python3 -c "import time; print(int(time.time()))")
-  ```
-
 **STRICT — DO NOT MODIFY FRONTMATTER**:
-
-`instruction-render.py` produces a complete `tomo:` block (doc_type=instructions,
-state=pending-apply, source_*, run_id, updated_at). You MUST:
-- NEVER add, modify, or re-emit the `tomo:` block yourself.
 
 Exit 0 = all rendered, exit 1 = partial (still write what exists), exit 2 = fatal.
 If exit 2, report the error and stop.
@@ -234,7 +232,7 @@ yourself composing per-file `kado-write` MCP calls, STOP
 
 ### Step 5 — Coverage audit
 
-Before reporting, run the diff to confirm every approved suggestion has a
+Before reporting, run the following to confirm every approved suggestion has a
 matching instruction (and vice versa):
 
 ```bash
@@ -290,8 +288,9 @@ Do NOT redirect stderr (`2>&1` rule applies here too).
 For each entry in `ticked_clusters`, assemble actions into ONE shared
 `instructions.json` payload (not one per cluster). Action sequence per cluster:
 
-1. **`create_moc` action** — first compute the safe stem from the
-   cluster title:
+1. **`create_moc` action**
+
+   first compute the safe stem from the cluster title:
 
    ```bash
    SAFE_STEM=$(python3 scripts/lib/obsidian_filename.py "<cluster title>")
@@ -315,12 +314,13 @@ For each entry in `ticked_clusters`, assemble actions into ONE shared
    the file later. `id` is sequential (`I01`, `I02`, ...) across the
    whole bundled doc.
 
-2. **`add_relationship` action per child** — re-use the same `SAFE_STEM`
-   computed above. For each wikilink stem in `children`:
-   - `target_moc_path` = `<inbox_path>/<YYYY-MM-DD>_<SAFE_STEM>.md`
-   - `marker` = `"up::"`
-   - `line` = `"up:: [[<title>]]"`
-   - `source_note_title` = child stem
+2. **`add_relationship` action per child**
+   — re-use the same `SAFE_STEM` computed above.
+   - For each wikilink stem in `children`:
+      - `target_moc_path` = `<inbox_path>/<YYYY-MM-DD>_<SAFE_STEM>.md`
+      - `marker` = `"up::"`
+      - `line` = `"up:: [[<title>]]"`
+      - `source_note_title` = child stem
 
 Write the resulting `instructions.json` to `tomo-tmp/rendered/instructions.json`.
 The `action_count` field must equal the total across all clusters.
@@ -355,7 +355,7 @@ python3 scripts/squelch-unticked.py tomo-tmp/moc-parsed.json
 Script exits 0 even when the unticked list is empty.
 
 STRICT — Un-ticked clusters NEVER become a file-level "rejected" state on
-the proposal-doc. They persist to `state/moc-squelch.json` only.
+the proposal-doc.
 
 ### MOC-Step 5 — Flip proposal-doc state
 

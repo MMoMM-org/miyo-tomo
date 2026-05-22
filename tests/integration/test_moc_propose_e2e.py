@@ -151,7 +151,7 @@ def test_tag_mode_e2e(privat_test_clone, seeded_discovery_cache, isolated_tomo_s
     filename, body = _reducer.render_moc_proposal_doc(report, _Cfg())
 
     # Filename pattern (AC-3.1)
-    assert filename.startswith("tomo-moc-proposal-"), f"bad filename: {filename}"
+    assert "_moc-proposal-" in filename, f"bad filename: {filename}"
     assert filename.endswith(".md")
     assert "dataview" in filename.lower()
 
@@ -190,7 +190,7 @@ def test_folder_mode_e2e(privat_test_clone, seeded_discovery_cache, isolated_tom
 
     filename, body = _reducer.render_moc_proposal_doc(report, _Cfg())
 
-    assert filename.startswith("tomo-moc-proposal-")
+    assert "_moc-proposal-" in filename
     assert "trigger: folder:Atlas/202 Notes/2611 Code Snippets/" in body
     assert "### MOC01 — Dataview (MOC)" in body
     assert "- [ ] Accept" in body
@@ -222,7 +222,7 @@ def test_class_mode_e2e(privat_test_clone, seeded_discovery_cache, isolated_tomo
 
     filename, body = _reducer.render_moc_proposal_doc(report, _Cfg())
 
-    assert filename.startswith("tomo-moc-proposal-")
+    assert "_moc-proposal-" in filename
     assert "trigger: class:2600" in body
     assert "### MOC01 — Code Snippets (MOC)" in body
     # MiYo profile: location defaults to Atlas/200 Maps/ (AC-2.1)
@@ -252,7 +252,7 @@ def test_title_mode_e2e(privat_test_clone, seeded_discovery_cache, isolated_tomo
 
     filename, body = _reducer.render_moc_proposal_doc(report, _Cfg())
 
-    assert filename.startswith("tomo-moc-proposal-")
+    assert "_moc-proposal-" in filename
     # Title verbatim (user input) with profile suffix → appears in section heading
     assert "### MOC01 — Dataview Queries (MOC)" in body
     assert "trigger: title:Dataview Queries" in body
@@ -275,7 +275,7 @@ def test_freetext_e2e(privat_test_clone, seeded_discovery_cache, isolated_tomo_s
 
     filename, body = _reducer.render_moc_proposal_doc(report, _Cfg())
 
-    assert filename.startswith("tomo-moc-proposal-")
+    assert "_moc-proposal-" in filename
     assert "trigger: free-text:map of content" in body
     assert "### MOC01 — Map of Content (MOC)" in body
 
@@ -394,7 +394,7 @@ def test_zero_candidates_aborts_no_file_written(tmp_path, seeded_discovery_cache
 
     # (b) The agent pipeline must not call suggestions-reducer when abort_reason is set.
     # Confirm inbox_dir is empty — no proposal file written on the abort path.
-    existing = list(inbox_dir.glob("tomo-moc-proposal-*.md"))
+    existing = list(inbox_dir.glob("*_moc-proposal-*.md"))
     assert existing == [], (
         f"No proposal file should exist on abort path; found {existing}"
     )
@@ -470,7 +470,7 @@ def test_cache_empty_aborts_no_file_written(tmp_path):
 
     # Verify the agent pipeline must not call suggestions-reducer on the abort path.
     # The inbox directory should remain empty (no proposal-doc file written on abort).
-    existing = list(inbox_dir.glob("tomo-moc-proposal-*.md"))
+    existing = list(inbox_dir.glob("*_moc-proposal-*.md"))
     assert existing == [], (
         f"No proposal file should exist on cache-empty abort path; found {existing}"
     )

@@ -1,5 +1,10 @@
-# /explore-vault - Scan your Obsidian vault to discover structure, tags, relationships, callouts, and MOC hierarchy.
-# version: 0.3.2
+---
+name: explore-vault
+description: Scan your Obsidian vault to discover structure, tags, relationships, callouts, and MOC hierarchy. Builds the discovery cache that powers Tomo's PKM intelligence. Impersonates the vault-explorer agent.
+argument-hint: "optional: --confirm to force re-detection"
+---
+# /explore-vault
+# version: 0.3.3
 
 Scan your Obsidian vault to discover structure, tags, relationships, callouts, and MOC hierarchy.
 Builds the discovery cache that powers Tomo's PKM intelligence.

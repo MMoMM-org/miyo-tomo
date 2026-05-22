@@ -1,5 +1,10 @@
+---
+name: moc-propose
+description: Proactively propose a Map-of-Content (MOC) for an under-organised topic area. Routes to the moc-architect agent, which discovers under-organised topic clusters via vault scan and writes a reviewable proposal-doc to your inbox folder.
+argument-hint: "optional: tag:X | folder:Y | class:Z | title:T | <free-text> | <empty for whole-vault scan>"
+---
 # /moc-propose — Propose a new MOC for a topic, folder, classification, or whole-vault scan
-# version: 0.2.3
+# version: 0.2.4
 
 Proactively propose a Map-of-Content (MOC) for an under-organised topic area.
 Routes to the `moc-architect` agent, which runs `moc-discovery.py` then `suggestions-reducer.py`

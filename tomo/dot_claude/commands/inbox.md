@@ -1,5 +1,10 @@
+---
+name: inbox
+description: Process inbox items using the 2-pass suggestion/instruction workflow. Auto-detects the next action based on workflow document checkboxes — dispatches instruction-builder when an approved suggestions doc exists, otherwise dispatches inbox-orchestrator to scan captured source items.
+argument-hint: "optional: --pass1 | --pass2 | --recover"
+---
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.8.5
+# version: 0.8.6
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.

@@ -9,11 +9,10 @@ tools: Read, Bash, Write, mcp__kado__kado-read
 skills:
   - lyt-patterns
   - obsidian-fields
-  - pkm-workflows
 ---
 
 # Inbox Analyst Subagent
-# version: 0.10.6
+# version: 0.10.7
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.

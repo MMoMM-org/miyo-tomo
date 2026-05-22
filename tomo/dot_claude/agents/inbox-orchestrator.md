@@ -8,12 +8,11 @@ permissionMode: acceptEdits
 tools: Read, Glob, Grep, Bash, Write, AskUserQuestion, Agent, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado-write
 skills:
   - lyt-patterns
-  - pkm-workflows
   - obsidian-fields
 ---
 
 # Inbox Orchestrator Agent
-# version: 0.10.8
+# version: 0.10.9
 
 # STRICT: never `2>&1` on stdout-captured script calls — corrupts JSON.
 

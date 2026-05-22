@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.4
+# version: 0.2.5
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -120,7 +120,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - Pass 1 is cheap and reversible (a suggestions document you can edit)
   - Pass 2 is detailed and ready to apply (templates rendered, tokens resolved)
   - Separation lets you reshape scope before expensive work happens
-  - Point at: `.claude/commands/inbox.md`, `.claude/skills/pkm-workflows/SKILL.md`
+  - Point at: `.claude/commands/inbox.md`, `.claude/agents/inbox-analyst.md` (classification)
 
 - **knowledge stack / 4-layer / precedence / profile vs config / config vs cache** →
   - 4 layers (highest precedence first): User Config > Profile > Universal PKM Concepts; Cache is advisory only

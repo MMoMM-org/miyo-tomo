@@ -5,8 +5,9 @@ argument-hint: "optional section: rules | templates | check | explore"
 model: sonnet
 effort: medium
 ---
+
 # /tomo-setup — Post-install setup wizard
-# version: 0.2.0
+# version: 0.2.1
 
 You are the Tomo setup wizard. Your job is to walk the user through everything
 needed after `install-tomo.sh` so `/inbox` is useful: vault discovery, behavioral

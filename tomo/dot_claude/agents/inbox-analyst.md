@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.10.7
+# version: 0.11.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -334,9 +334,73 @@ Log update entry shape:
 - `"after_last_line"` — append at end of section (fallback when no time found)
 - `"before_first_line"` — prepend at start of section
 
+**Evaluation 2.5 — Explicit position hints:**
+
+Applies to BOTH `log_entry` and `log_link`. Runs BEFORE Evaluation 3.
+
+Some inbox items contain a meta-instruction inside the body that explicitly
+states where the log entry should land (top of day vs. bottom of day).
+Detect these phrases — they have PRECEDENCE over time extraction in
+Evaluation 3.
+
+Scan `content` (case-insensitive, substring match) for these phrase
+families:
+
+- `before_first_line` triggers — top of day:
+  - DE: "ganz am anfang", "anfang des tages", "zu beginn des tages",
+        "ganz am beginn", "oberes ende", "ans obere ende", "ganz oben",
+        "vor allen zeit-slots", "vor den zeit-slots"
+  - EN: "top of the day", "top of day", "start of the day", "start of day",
+        "beginning of the day", "at the very top", "before time slots",
+        "before the time slots"
+
+- `after_last_line` triggers — bottom of day:
+  - DE: "ende des tages", "ganz am ende", "ganz unten", "zum tagesschluss",
+        "nach allen zeit-slots"
+  - EN: "end of the day", "end of day", "bottom of the day", "bottom of day",
+        "at the very bottom", "after time slots", "after the time slots"
+
+If a trigger matches:
+1. Set `position` to the corresponding value (`before_first_line` or
+   `after_last_line`).
+2. Set `time` to `null` (explicit position trumps time slotting; an item
+   asking for "top of day" should NOT also get a `07:00` time stamp).
+3. **Strip the meta-clause from `content`.** Locate the connector that
+   glues the meta-instruction to the rest of the sentence — typically an
+   em-dash (`—`), double-dash (`--`), hyphen with spaces (` - `), colon
+   (`:`), or comma (`,`) immediately before/after the trigger phrase —
+   and remove the connector together with the trigger phrase and any
+   continuation that depends on it. After stripping, trim trailing
+   whitespace and orphan punctuation. If stripping would leave content
+   empty, keep the first clause of the original content unchanged.
+4. Note the strip in `reason` (still ≤80 chars), e.g.
+   `"Short log (120 chars), explicit hint → before_first_line"`.
+
+First match wins (scan order = phrase list above).
+
+If no trigger matches: leave `position`/`time` unset for Evaluation 3.
+
+Worked example:
+
+Input body:
+```
+Morgen-Routine heute durchgezogen, ganz am Anfang des Tages — gehört
+ans obere Ende vom Tageslog vor allen Zeit-Slots.
+```
+
+After Evaluation 2.5:
+- `position`: `"before_first_line"` (matched on "ganz am anfang")
+- `time`: `null`
+- `content`: `"Morgen-Routine heute durchgezogen"` — the comma + trigger
+  phrase + em-dash-attached continuation are stripped together.
+
 **Evaluation 3 — Time extraction:**
 
 Applies to BOTH `log_entry` and `log_link` (if either was emitted above).
+
+**Skip this evaluation entirely if Evaluation 2.5 already set `position`.**
+Explicit position hints have precedence — don't overwrite them with an
+inferred time slot.
 
 Follow `shared_ctx.daily_notes.daily_log.time_extraction.sources` in
 priority order. Stop at first successful extraction.

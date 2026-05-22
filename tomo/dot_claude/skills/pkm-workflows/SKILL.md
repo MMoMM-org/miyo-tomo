@@ -1,10 +1,10 @@
 ---
 name: pkm-workflows
-description: Inbox lifecycle state machine, note classification heuristics with confidence scoring, and batch processing patterns. Use when implementing the /inbox workflow, detecting note types from captured items, or deciding run-to-run discovery priority (cleanup → pass2 → pass1).
+description: Inbox lifecycle state machine, note classification heuristics with confidence scoring, and batch processing patterns. Use when implementing the /inbox workflow, detecting note types from captured items, or deciding run-to-run discovery priority (pass2 → pass1).
 user-invocable: false
 ---
 # PKM Workflows
-# version: 0.2.1
+# version: 0.2.2
 
 Knowledge patterns for inbox processing state machine, classification heuristics, and batch workflows.
 
@@ -17,8 +17,7 @@ Tomo manages them automatically.
 
 | State | Set By | Meaning |
 |-------|--------|---------|
-| `captured` | Tomo (auto-tag on first scan) | Fresh, untouched inbox item |
-| `active` | Tomo (vault-executor) | Item integrated into vault |
+| `captured` | Tomo (`mark-captured.py` after Pass-1) | Inbox item processed by Pass-1; terminal state |
 
 **Tag format:** `#<prefix>/<state>` where prefix is from `vault-config.yaml lifecycle.tag_prefix`
 (default: `MiYo-Tomo`). Example: `#MiYo-Tomo/captured`
@@ -46,10 +45,13 @@ frontmatter tags. This lets users interact without opening Properties view.
 
 When `/inbox` is invoked, check in this order (first non-empty wins):
 
-1. Find `*_instructions.md` in inbox with all `[x] Applied` → action: cleanup (vault-executor)
-2. Find `*_suggestions.md` in inbox with `[x] Approved` → action: pass2 (instruction-builder)
-3. `#<prefix>/captured` items (byTag) → action: pass1 (inbox-orchestrator → fan-out inbox-analyst subagents)
-4. Nothing found → action: idle
+1. Find `*_suggestions.md` in inbox with `[x] Approved` → action: pass2 (instruction-builder)
+2. byFrontmatter `tomo.doc_type=source` + `tomo.state=captured` items → action: pass1 (inbox-orchestrator → fan-out inbox-analyst subagents)
+3. Nothing found → action: idle
+
+Note: `*_instructions.md` with all `[x] Applied` boxes is not a `/inbox`
+branch — the `pending-apply → applied` flip is owned by Hashi
+(`tomo_lifecycle.py:73-85`). Pre-Hashi, the user deletes the doc manually.
 
 ## Classification Heuristics
 

@@ -1,5 +1,5 @@
 # Tomo — Project Context
-# version: 0.8.1
+# version: 0.8.2
 
 You are MiYo Tomo, an AI-assisted PKM companion for Obsidian.
 Tomo runs inside a Docker container. All vault access goes through Kado MCP — never direct filesystem access.
@@ -78,7 +78,6 @@ Per-agent overrides via `effort:` in agent frontmatter.
 | `instruction-builder` | opus | xhigh | Pass 2 — generates detailed Instruction Set |
 | `inbox-analyst` | sonnet | medium | Pass 1 subagent — classifies ONE inbox item, emits one result.json |
 | `vault-explorer` | sonnet | medium | Reads vault structure, MOCs, tags, frontmatter (read-only) |
-| `vault-executor` | sonnet | medium | Inbox-side cleanup only (tagging, archiving) |
 | `voice-transcriber` | sonnet | low | Phase 0a of `/inbox` — transcribes audio to sibling `.md` via local faster-whisper (opt-in) |
 
 ## Profile System

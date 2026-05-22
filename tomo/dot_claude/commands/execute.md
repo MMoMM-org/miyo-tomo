@@ -1,11 +1,11 @@
 # /execute — Helper for applying an instruction set
-# version: 0.2.1
+# version: 0.2.2
 
 Show the user how to apply the latest Pass-2 instruction set. Tomo never writes vault notes outside the inbox itself — application happens either by hand in Obsidian or via Tomo Hashi's instruction-set executor. This command is a reminder of those options, not an executor.
 
 ## STRICT — What this command does NOT do
 
-`/execute` does **not** apply actions to the vault. It does **not** call `kado-write` on action targets. It does **not** flip lifecycle tags or archive workflow docs. All of that is either the user's responsibility (manual path) or Tomo Hashi's responsibility (automated path). Cleanup after application is handled by `/inbox` (vault-executor agent).
+`/execute` does **not** apply actions to the vault. It does **not** call `kado-write` on action targets. It does **not** flip the instruction-set `tomo.state` from `pending-apply` to `applied`. All of that is either the user's responsibility (manual path) or Tomo Hashi's responsibility (automated path). Pre-Hashi: the user deletes completed instruction docs manually once applied.
 
 If you (the assistant reading this command) are tempted to start writing vault notes from the instruction set, **stop**. The MVP execution boundary in `CLAUDE.md` is unambiguous: "Tomo writes only to inbox folder; user applies everything else."
 
@@ -18,7 +18,7 @@ If you (the assistant reading this command) are tempted to start writing vault n
 
 2. **Read its action state.** Read the instruction set via `kado-read`. Count total actions (`- [ ] Applied` + `- [x] Applied`) and how many are already applied.
 
-   - If every action is already applied → tell the user the instruction set is done and recommend `/inbox` (cleanup phase).
+   - If every action is already applied → tell the user the instruction set is done. Delete the instruction doc from the inbox manually (or wait for Hashi to do it). The next `/inbox` run will skip applied instructions either way.
 
 3. **Print the helper output.** Use the format below verbatim — substitute the file path and the action counts.
 
@@ -32,8 +32,9 @@ You apply the actions — Tomo doesn't write outside the inbox. Two paths:
        - Open the instruction set in your Obsidian vault.
        - For each `- [ ] Applied` action: perform it (write the note,
          add the link, set the tag), then tick `- [x] Applied`.
-       - When all actions are applied, re-run `/inbox` to trigger
-         cleanup (lifecycle transitions + archive).
+       - When all actions are applied, delete the instruction doc from
+         the inbox manually. Source items stay `captured` — that's
+         their terminal state.
 
   2) Hand off to Tomo Hashi
        - Open Tomo Hashi (Obsidian plugin: miyo-tomo-hashi) and run
@@ -44,7 +45,8 @@ You apply the actions — Tomo doesn't write outside the inbox. Two paths:
            Preview off       — Hashi applies actions while keeping
                                a visible UI you can interrupt.
            No confirmation   — Background apply with no UI gate.
-       - When Hashi finishes, re-run `/inbox` to trigger cleanup.
+       - Hashi flips `tomo.state=pending-apply → applied` after the
+         last action and cleans up the instruction doc itself.
 
        See: https://github.com/MMoMM-org/miyo-tomo-hashi
 ```

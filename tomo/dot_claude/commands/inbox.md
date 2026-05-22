@@ -1,5 +1,5 @@
 # /inbox — Process inbox with 2-pass workflow
-# version: 0.8.3
+# version: 0.8.4
 
 Process inbox items using the 2-pass suggestion/instruction workflow.
 Auto-detects what to do next based on workflow document checkboxes.
@@ -10,7 +10,6 @@ Auto-detects what to do next based on workflow document checkboxes.
 
 | Branch | Agent | How to run |
 |--------|-------|------------|
-| Cleanup | `vault-executor` | Impersonate (read the spec, execute in your context) — unchanged from prior version |
 | Pass 2 | `instruction-builder` | Dispatch via `Agent` tool (was already dispatched) |
 | Pass 1 | `inbox-orchestrator` | **Dispatch via `Agent` tool** (changed in this version — experimental) |
 
@@ -41,10 +40,9 @@ for that specific subflow. Normal Pass-2 flow doesn't reach this case.
 
 ## Usage
 
-`/inbox` — Auto-detect next action (cleanup → Pass 2 → Pass 1)
+`/inbox` — Auto-detect next action (Pass 2 → Pass 1)
 `/inbox --pass1` — Force Pass 1 (generate suggestions from captured items)
 `/inbox --pass2` — Force Pass 2 (generate instructions from approved suggestions)
-`/inbox --cleanup` — Force cleanup (process applied instruction sets)
 `/inbox --recover` — Drift recovery: treat captured notes as fresh sources for Pass-1
 
 ## --recover Flag
@@ -88,12 +86,7 @@ subsequent `kado-search listDir` call and when dispatching to the orchestrator.
 
 After Step 0 resolves the inbox path, the command checks in priority order:
 
-1. **Instruction sets with Applied actions?** → Run cleanup (vault-executor)
-   - Scan the resolved inbox path for `*_instructions.md` via Kado `listDir`
-     (pass the resolved path, not a literal like `"Inbox"`)
-   - Read each, count `- [x] Applied` vs total actions
-   - Any with at least one Applied → cleanup
-2. **Suggestions with `[x] Approved`?** → Run Pass 2 by **dispatching
+1. **Suggestions with `[x] Approved`?** → Run Pass 2 by **dispatching
    `instruction-builder` via the `Agent` tool** (see STRICT section
    above). Do NOT impersonate it.
    - Scan the resolved inbox path for `*_suggestions.md` via Kado `listDir`
@@ -114,12 +107,19 @@ After Step 0 resolves the inbox path, the command checks in priority order:
      ```
    - The subagent runs on sonnet per its frontmatter; you wait for the
      final result message and surface it to the user.
-3. **Captured source items?** → Run Pass 1 by **dispatching
+2. **Captured source items?** → Run Pass 1 by **dispatching
    `inbox-orchestrator` via the `Agent` tool** (see STRICT section above).
    The agent runs Phase 0a → 0b → A → B → C → D itself, dispatching
    `voice-transcriber` and `inbox-analyst` from inside its own context.
    You wait for the agent's final report and surface it to the user.
-4. **Nothing pending?** → Report "Inbox clear. Nothing to process."
+3. **Nothing pending?** → Report "Inbox clear. Nothing to process."
+
+**Note on completed instruction docs:** when all `- [x] Applied` boxes are
+ticked in an `*_instructions.md` file, the state-flip from `pending-apply`
+to `applied` is owned by Tomo Hashi (see `tomo_lifecycle.py:73-85` —
+trigger: "Hashi after last [x] Applied"). Pre-Hashi, completed instruction
+docs remain visible in the inbox as `pending-apply` — delete them manually
+once Hashi has executed the actions, or once you have applied them by hand.
 
 ### Pass 1 — Suggestions (fan-out)
 
@@ -150,27 +150,25 @@ After Step 0 resolves the inbox path, the command checks in priority order:
 4. Per-action `- [ ] Applied` checkboxes (no lifecycle tags)
 5. **You apply each action** in Obsidian and check `[x] Applied` per action
    (future: Tomo Hashi plugin reads `instructions.json` directly and executes)
-6. Run `/inbox` when done — Tomo cleans up
-
-### Cleanup
-
-1. **vault-executor** finds instruction sets with Applied actions
-2. Transitions fully-applied source items from `captured` → `active`
-3. Asks user about partially-applied items
-4. Asks user whether to keep or delete completed workflow docs
+6. Tomo Hashi flips `tomo.state=pending-apply → applied` after the last
+   `[x] Applied` and cleans up the instruction doc. Pre-Hashi: delete
+   completed instruction docs from the inbox manually.
 
 ## State Model
 
-**Source items** (inbox notes): tag-based, Tomo-managed
-```
-captured  →  active
-```
+Authoritative definition lives in `tomo/scripts/lib/tomo_lifecycle.py`
+(`STATE_MACHINE`). Summary of the runtime-relevant transitions:
 
-**Workflow documents** (suggestions, instructions): checkbox-based, user-facing
-```
-Suggestions: [ ] Approved  →  [x] Approved  (user checks)
-Instructions: per action [ ] Applied → [x] Applied  (user checks)
-```
+- **source** items: `captured` (terminal — set by `mark-captured.py` after
+  Pass-1 succeeds; no further transition in this repo).
+- **suggestions** / **suggestions-fan**: `pending-approval → approved`
+  (state-promoter flips after user ticks `[x] Approved` and Pass-2
+  succeeds).
+- **moc-proposal**: `pending-accept → accepted` (state-promoter flips
+  after user ticks `[x] Accept` and Pass-2 succeeds).
+- **instructions**: `pending-apply → applied` (Hashi flips after the user
+  ticks the last `[x] Applied` checkbox; pre-Hashi the doc remains
+  `pending-apply`).
 
 ## Agents
 
@@ -179,4 +177,3 @@ This command uses:
   - spawns `inbox-analyst` subagents per item (3-5 in parallel)
   - spawns `voice-transcriber` if Phase 0a is enabled and audio is present
 - `instruction-builder` — Pass 2 action generation (dispatched)
-- `vault-executor` — cleanup and state transitions (impersonated)

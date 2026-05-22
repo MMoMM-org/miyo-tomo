@@ -528,14 +528,20 @@ def _is_moc_proposal_doc(text: str, filename: str = "") -> bool:
     """Return True when the document is a MOC proposal-doc.
 
     Dispatch criteria (first match wins, in priority order):
-    1. (PRIMARY, F-47) frontmatter ``tomo.doc_type: moc-proposal``
-    2. (FALLBACK) filename matches ``tomo-moc-proposal-*``
+    1. (PRIMARY) frontmatter ``tomo.doc_type: moc-proposal``
+    2. (FALLBACK) filename matches either of the two known patterns:
+       - new: ``<YYYY-MM-DD>_<HHMM>_moc-proposal-<slug>.md``
+       - old: ``tomo-moc-proposal-<YYYYMMDD>-<HHMM>-<slug>.md``
+       Both are accepted so that files produced before the convention
+       alignment (suggestions-reducer.py L558-561) still match.
     3. (FALLBACK) frontmatter ``type: tomo-proposal``
     """
     if _extract_tomo_doc_type(text) == "moc-proposal":
         return True
     basename = os.path.basename(filename)
-    if basename.startswith("tomo-moc-proposal-"):
+    if basename.startswith("tomo-moc-proposal-"):  # old pattern
+        return True
+    if "_moc-proposal-" in basename and basename.endswith(".md"):  # new pattern
         return True
     fm = _extract_frontmatter(text)
     return fm.get("type") == "tomo-proposal"

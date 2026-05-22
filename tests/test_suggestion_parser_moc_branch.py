@@ -169,12 +169,14 @@ def _single_cluster_report() -> dict:
 
 
 def test_dispatch_on_filename_pattern() -> None:
-    """filename tomo-moc-proposal-*.md routes to the MOC branch (not S## branch)."""
+    """filename <YYYY-MM-DD>_<HHMM>_moc-proposal-<slug>.md routes to the MOC branch."""
     report = _single_cluster_report()
     filename, body = render_moc_proposal_doc(report, _Cfg())
 
-    # Verify the filename matches the dispatch pattern
-    assert filename.startswith("tomo-moc-proposal-"), f"Unexpected filename: {filename!r}"
+    # Verify the filename matches the new dispatch pattern (canonical Tomo form)
+    assert "_moc-proposal-" in filename and filename.endswith(".md"), (
+        f"Unexpected filename: {filename!r}"
+    )
 
     # Parse via the MOC branch using the generated body
     results = parse_moc_proposal_doc(body, filename=filename)

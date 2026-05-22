@@ -9,7 +9,7 @@ tools: Read, Glob, Grep, Bash, Write, mcp__kado__kado-read, mcp__kado__kado-sear
 ---
 
 # Instruction Builder Agent
-# version: 2.5.4
+# version: 2.5.5
 
 **Active agent: instruction-builder**
 
@@ -184,7 +184,7 @@ If it is non-empty, do NOT render instructions but follow the following Subflow.
 - `--upstream-type` is determined from the upstream doc's `tomo.doc_type`
 frontmatter field (read it when finding the doc in Step 2 / MOC-Step 1):
 - `suggestions` — normal Pass-1 → Pass-2 chain (most common; upstream is `*_suggestions.md`)
-- `moc-proposal` — MOC-creation chain (upstream is `tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<slug>.md`)
+- `moc-proposal` — MOC-creation chain (upstream is `<YYYY-MM-DD>_<HHMM>_moc-proposal-<slug>.md`)
 - `suggestions-fan` — force-atomic chain (upstream is `*_suggestions-fan.md`)
 - `--upstream-path` is the vault-relative path of the doc that produced this Pass-2
 (the user-ticked suggestions or proposal doc). Used as the value of the `source_*`

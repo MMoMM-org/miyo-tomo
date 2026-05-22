@@ -141,8 +141,15 @@ def main() -> int:
             continue
 
         # Squelch-persist: for MOC proposal-docs, record rejected clusters.
+        # Accept both naming conventions: the new canonical Tomo form
+        # `<YYYY-MM-DD>_<HHMM>_moc-proposal-<slug>.md` and the legacy
+        # `tomo-moc-proposal-<YYYYMMDD>-<HHMM>-<slug>.md` (pre-F-55).
         filename = os.path.basename(path)
-        if filename.startswith("tomo-moc-proposal-") and filename.endswith(".md"):
+        is_moc_proposal = filename.endswith(".md") and (
+            filename.startswith("tomo-moc-proposal-")
+            or "_moc-proposal-" in filename
+        )
+        if is_moc_proposal:
             try:
                 result = client.read_note(path)
                 doc_text = result.get("content", "")

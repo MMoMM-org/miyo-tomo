@@ -1,4 +1,4 @@
-# version: 0.4.1
+# version: 0.4.2
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -298,7 +298,14 @@ class KadoClient:
         args: dict = {
             "operation": "frontmatter",
             "path": path,
-            "frontmatter": frontmatter,
+            # Kado uses "content" as the universal payload slot across
+            # operations (note → markdown, file → base64, frontmatter →
+            # dict). Our 2026-05-20 handoff proposed "frontmatter" as the
+            # field name, but Kado implemented consistent with their
+            # existing convention. Field name discovered via F-47 live
+            # test 2026-05-22 — VALIDATION_ERROR "missing required field
+            # 'content'" was the symptom.
+            "content": frontmatter,
             "mode": mode,
         }
         if expected_modified is not None:

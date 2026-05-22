@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 1.0.0
+# version: 1.0.1
 """mark-captured.py — Mark processed inbox source items with tomo.state=captured.
 
 Reads the state-file, finds all items with status=done, and writes a
@@ -133,7 +133,18 @@ def main() -> int:
             run_id=args.run_id,
         )
         try:
-            client.write_frontmatter(path, {"tomo": block}, mode="merge")
+            # Read first to get the modified timestamp, then write with
+            # expected_modified for optimistic-concurrency guard. Matches
+            # state-promoter.py's existing pattern — protects against
+            # concurrent edits (e.g. user editing the note in Obsidian
+            # while /inbox runs). Without this guard, a concurrent edit
+            # would be silently overwritten.
+            read_result = client.read_frontmatter(path)
+            expected_modified = read_result.get("modified")
+            client.write_frontmatter(
+                path, {"tomo": block}, mode="merge",
+                expected_modified=expected_modified,
+            )
             marked += 1
         except KadoError as exc:
             print(f"  [error] Cannot write {path}: {exc}", file=sys.stderr)

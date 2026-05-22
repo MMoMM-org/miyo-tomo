@@ -13,7 +13,7 @@ permissionMode: acceptEdits
 ---
 **Active agent: moc-architect**
 
-# version: 0.3.3
+# version: 0.3.4
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault
@@ -247,7 +247,7 @@ into `LOCAL_PROPOSAL`:
 LOCAL_PROPOSAL=$(python3 scripts/suggestions-reducer.py --moc-proposal-mode --input tomo-tmp/moc-discovery-${RUN_ID}.json --output-dir tomo-tmp/)
 ```
 
-The local path resolves to `tomo-tmp/tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<top-confidence-slug>.md`.
+The local path resolves to `tomo-tmp/<YYYY-MM-DD>_<HHMM>_moc-proposal-<top-confidence-slug>.md`.
 Extract the filename (last path segment) — that becomes the vault filename in Step 7.5.
 
 ### Step 7.5 — Transport proposal-doc to vault via kado-write
@@ -266,7 +266,7 @@ Read the local proposal-doc and write it to the vault via `mcp__kado__kado-write
 
    ```
    VAULT_PATH = <inbox_path> + basename($LOCAL_PROPOSAL)
-   # e.g. "100 Inbox/" + "tomo-moc-proposal-20260520-1359-notemaking-moc.md"
+   # e.g. "100 Inbox/" + "2026-05-20_1359_moc-proposal-notemaking-moc.md"
    ```
 
 3. **Invoke `mcp__kado__kado-write`** with `operation=note`, the computed vault path, and
@@ -297,7 +297,7 @@ You MUST:
 
 After a successful `kado-write`, print to the user:
 
-`"MOC-Vorschlag geschrieben: <inbox_path>/tomo-moc-proposal-....md"`
+`"MOC-Vorschlag geschrieben: <inbox_path>/<YYYY-MM-DD>_<HHMM>_moc-proposal-<slug>.md"`
 
 If the reducer emitted a multi-cluster overflow footer (`"Weitere N Cluster gefunden"`),
 relay it verbatim so the user knows to re-run with a narrower query.
@@ -333,7 +333,7 @@ Mode: tag
 Trigger arg: topic/applied/zsh
 Profile: miyo
 Discovery: OK — 12 candidates → 2 clusters
-Proposal-doc: 100 Inbox/tomo-moc-proposal-20260508-1430-zsh-shell-tools.md
+Proposal-doc: 100 Inbox/2026-05-08_1430_moc-proposal-zsh-shell-tools.md
 Aborts/notes:
   - Reducer reported 1 additional cluster beyond max_results
 ```

@@ -1,11 +1,11 @@
 # squelch_persist.py — Persist squelch entries when a proposal-doc is rejected.
-# version: 0.1.1
+# version: 0.1.2
 """Write SquelchEntry records for each rejected cluster in a MOC proposal-doc.
 
-Called at archival time (via mark-captured.py) when a ``tomo-moc-proposal-*.md``
-file is being marked as captured.  Identifies rejected clusters (those whose
-``- [ ] Accept`` was NOT ticked), computes a stable topic signature per cluster,
-and appends/replaces entries in the squelch registry.
+Called at archival time (via mark-captured.py) when a MOC proposal-doc is being
+marked as captured.  Identifies rejected clusters (those whose ``- [ ] Accept``
+was NOT ticked), computes a stable topic signature per cluster, and
+appends/replaces entries in the squelch registry.
 
 Public API:
 
@@ -64,7 +64,7 @@ def persist_rejected_clusters(
     """Parse a proposal-doc, identify rejected clusters, write squelch entries.
 
     Args:
-        proposal_doc_text: Full text of the ``tomo-moc-proposal-*.md`` document.
+        proposal_doc_text: Full text of the MOC proposal-doc.
         filename:          Filename (or path) used for dispatch detection.
         registry_path:     Path to ``state/moc-squelch.json`` sidecar.
         config:            Dict with at least ``squelch_runs`` (int, default 3).

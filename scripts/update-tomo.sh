@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.4.1
+# version: 0.4.2
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -96,15 +96,13 @@ mark_did() {
     esac
 }
 
-# Extract version token from a file's `# version: X.Y.Z` comment.
-# Returns only the first whitespace-delimited token after the prefix, so any
-# trailing parenthetical or commentary is dropped from display output. (The
-# version-comments-number-only convention forbids parentheticals, but this
-# extractor stays robust against violations in still-stale instance copies.)
+# Extract version comment from a file (# version: X.Y.Z).
+# Returns the full text after the prefix verbatim — convention says number
+# only, no parenthetical. If a file violates the convention, the noise
+# leaks into update-tomo.sh's display output on purpose, so the violation
+# stays visible and gets fixed at the source.
 get_version() {
-    grep -m1 '^# version:' "$1" 2>/dev/null \
-        | sed -E 's/^# version:[[:space:]]*([^[:space:]]+).*/\1/' \
-        || echo "unknown"
+    grep -m1 '^# version:' "$1" 2>/dev/null | sed 's/^# version: *//' || echo "unknown"
 }
 
 # Voice transcription wizard (XDD 009). Requires print_* helpers above.

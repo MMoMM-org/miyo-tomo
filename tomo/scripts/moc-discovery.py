@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.0 (T6.5: --emit-phase1/--phase1-input for agent-side topic extraction)
+# version: 0.10.1
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a

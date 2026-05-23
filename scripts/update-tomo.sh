@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.4.0
+# version: 0.4.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -96,9 +96,15 @@ mark_did() {
     esac
 }
 
-# Extract version comment from a file (# version: X.Y.Z)
+# Extract version token from a file's `# version: X.Y.Z` comment.
+# Returns only the first whitespace-delimited token after the prefix, so any
+# trailing parenthetical or commentary is dropped from display output. (The
+# version-comments-number-only convention forbids parentheticals, but this
+# extractor stays robust against violations in still-stale instance copies.)
 get_version() {
-    grep -m1 '^# version:' "$1" 2>/dev/null | sed 's/^# version: *//' || echo "unknown"
+    grep -m1 '^# version:' "$1" 2>/dev/null \
+        | sed -E 's/^# version:[[:space:]]*([^[:space:]]+).*/\1/' \
+        || echo "unknown"
 }
 
 # Voice transcription wizard (XDD 009). Requires print_* helpers above.

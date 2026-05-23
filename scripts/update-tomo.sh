@@ -1,9 +1,10 @@
 #!/bin/bash
 # update-tomo.sh — Update managed files in an existing Tomo instance.
+# Two-pass UX: scans + plans first (no writes), confirms with user, then executes.
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.3.0 (voice prior-state: instance mirror wins on desync + warns)
+# version: 0.4.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -11,12 +12,89 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOMO_SOURCE="$REPO_ROOT/tomo"
 CONFIG_FILE="$REPO_ROOT/tomo-install.json"
 
+# ── CLI parsing ──────────────────────────────────────────
+
+FORCE=false
+KEEP_VOICE=false
+YES=false
+DRY_RUN=false
+
+print_help() {
+    cat <<'EOF'
+Usage: update-tomo.sh [OPTIONS]
+
+Updates managed files in an existing Tomo instance. Runs in two passes:
+  1. Pre-flight scan — shows the plan (no writes) with status per file:
+       ✓ current   — in sync, no action
+       ↑ update    — content differs, will be overwritten
+       + create    — destination missing, will be created
+       - retire    — file removed from source, will be deleted
+       ! problem   — read/scan error
+  2. Confirmation — asks GO/Abort (skipped with --yes or --yolo).
+  3. Execute — performs the writes and prints past-tense results:
+       ✓ ok / ↑ updated / + created / - deleted / ! failed
+
+Options:
+  -f, --force        Update all files regardless of detected change
+                     (treats every "current" file as "update").
+      --keep-voice   Skip the voice-config wizard (keep current settings).
+  -y, --yes          Skip the GO/Abort confirmation prompt.
+      --yolo         Equivalent to --keep-voice --yes.
+  -n, --dry-run      Show the plan and exit; never write.
+  -h, --help         Show this help and exit.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -f|--force)      FORCE=true ;;
+        --keep-voice)    KEEP_VOICE=true ;;
+        -y|--yes)        YES=true ;;
+        --yolo)          KEEP_VOICE=true; YES=true ;;
+        -n|--dry-run)    DRY_RUN=true ;;
+        -h|--help)       print_help; exit 0 ;;
+        *)
+            echo "Unknown option: $1" >&2
+            print_help >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
 # ── Helpers ───────────────────────────────────────────────
 
 print_step() { echo ""; echo "▸ $1"; }
-print_ok()   { echo "  ✓ $1"; }
+print_info() { echo "  $1"; }
 print_warn() { echo "  ⚠ $1"; }
 print_err()  { echo "  ✗ $1" >&2; }
+print_ok()   { echo "  ✓ $1"; }  # kept for compat with configure-voice.sh
+
+# Plan-phase markers (future-tense — what WILL happen)
+mark_planned() {
+    local status="$1"; local label="$2"; local detail="$3"
+    case "$status" in
+        current) echo "  ✓ current  $label${detail:+  $detail}" ;;
+        update)  echo "  ↑ update   $label${detail:+  $detail}" ;;
+        create)  echo "  + create   $label${detail:+  $detail}" ;;
+        retire)  echo "  - retire   $label${detail:+  $detail}" ;;
+        problem) echo "  ! problem  $label${detail:+  $detail}" >&2 ;;
+        *)       echo "  ? $status  $label${detail:+  $detail}" ;;
+    esac
+}
+
+# Execute-phase markers (past-tense — what HAPPENED)
+mark_did() {
+    local status="$1"; local label="$2"; local detail="$3"
+    case "$status" in
+        ok)      echo "  ✓ ok       $label${detail:+  $detail}" ;;
+        updated) echo "  ↑ updated  $label${detail:+  $detail}" ;;
+        created) echo "  + created  $label${detail:+  $detail}" ;;
+        deleted) echo "  - deleted  $label${detail:+  $detail}" ;;
+        failed)  echo "  ! failed   $label${detail:+  $detail}" >&2 ;;
+        *)       echo "  ? $status  $label${detail:+  $detail}" ;;
+    esac
+}
 
 # Extract version comment from a file (# version: X.Y.Z)
 get_version() {
@@ -42,238 +120,289 @@ if [ ! -d "$INSTANCE_PATH" ]; then
 fi
 
 print_step "Updating instance at $INSTANCE_PATH"
+[ "$DRY_RUN" = "true" ] && print_info "(dry-run: no writes will be performed)"
+[ "$FORCE" = "true" ]   && print_info "(force: every file marked update regardless of content)"
 
-# ── Update managed files ─────────────────────────────────
+# ── Plan tables (parallel arrays — bash 3.2 compatible) ──
 
-UPDATED=0
-SKIPPED=0
-TODO_LIST=""
+PLAN_KIND=()    # versioned | bytewise | retire | settings | voice-mirror | install-config
+PLAN_SRC=()
+PLAN_DST=()
+PLAN_LABEL=()
+PLAN_STATUS=()  # current | update | create | retire | problem
+PLAN_DETAIL=()
+PLAN_SECTION=()
 
-# Function to update a managed file with version check
-update_managed() {
-    local src="$1"
-    local dst="$2"
-    local label="$3"
-
-    local src_ver
-    src_ver=$(get_version "$src")
-    local dst_ver
-    dst_ver=$(get_version "$dst")
-
-    if [ "$src_ver" = "$dst_ver" ]; then
-        SKIPPED=$((SKIPPED + 1))
-        return
-    fi
-
-    cp "$src" "$dst"
-    print_ok "$label ($dst_ver → $src_ver)"
-    UPDATED=$((UPDATED + 1))
+add_plan() {
+    PLAN_KIND+=("$1")
+    PLAN_SRC+=("$2")
+    PLAN_DST+=("$3")
+    PLAN_LABEL+=("$4")
+    PLAN_STATUS+=("$5")
+    PLAN_DETAIL+=("$6")
+    PLAN_SECTION+=("$7")
 }
 
-print_step "Updating agents"
-mkdir -p "$INSTANCE_PATH/.claude/agents"
+# Decide status for a versioned file (uses `# version:` comment).
+# Echoes "<status>|<detail>".
+scan_versioned() {
+    local src="$1"; local dst="$2"
+    local src_ver dst_ver
+    src_ver=$(get_version "$src")
+    if [ ! -f "$dst" ]; then
+        echo "create|new (→ $src_ver)"
+        return
+    fi
+    dst_ver=$(get_version "$dst")
+    if [ "$FORCE" = "true" ]; then
+        echo "update|forced (was $dst_ver, src $src_ver)"
+    elif [ "$src_ver" = "$dst_ver" ]; then
+        echo "current|$src_ver"
+    else
+        echo "update|$dst_ver → $src_ver"
+    fi
+}
+
+# Decide status for a bytewise-compared file (schemas, profiles, templates).
+scan_bytewise() {
+    local src="$1"; local dst="$2"
+    if [ ! -f "$dst" ]; then
+        echo "create|new"
+        return
+    fi
+    if [ "$FORCE" = "true" ]; then
+        echo "update|forced"
+    elif cmp -s "$src" "$dst"; then
+        echo "current|"
+    else
+        echo "update|content differs"
+    fi
+}
+
+add_versioned() {
+    local src="$1"; local dst="$2"; local label="$3"; local section="$4"
+    local result status detail
+    result=$(scan_versioned "$src" "$dst")
+    status="${result%%|*}"
+    detail="${result#*|}"
+    add_plan "versioned" "$src" "$dst" "$label" "$status" "$detail" "$section"
+}
+
+add_bytewise() {
+    local src="$1"; local dst="$2"; local label="$3"; local section="$4"
+    local result status detail
+    result=$(scan_bytewise "$src" "$dst")
+    status="${result%%|*}"
+    detail="${result#*|}"
+    add_plan "bytewise" "$src" "$dst" "$label" "$status" "$detail" "$section"
+}
+
+# ── Pre-flight scan ──────────────────────────────────────
+
+print_step "Pre-flight scan (no writes yet)"
+
+# Agents
 for f in "$TOMO_SOURCE/dot_claude/agents/"*.md; do
+    [ -f "$f" ] || continue
     name=$(basename "$f")
-    update_managed "$f" "$INSTANCE_PATH/.claude/agents/$name" "agents/$name"
+    add_versioned "$f" "$INSTANCE_PATH/.claude/agents/$name" "agents/$name" "agents"
 done
 
-print_step "Updating skills"
-mkdir -p "$INSTANCE_PATH/.claude/skills"
-# Flat .md files (internal reference docs)
+# Skills (flat .md and directory-based)
 for f in "$TOMO_SOURCE/dot_claude/skills/"*.md; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
-    update_managed "$f" "$INSTANCE_PATH/.claude/skills/$name" "skills/$name"
+    add_versioned "$f" "$INSTANCE_PATH/.claude/skills/$name" "skills/$name" "skills"
 done
-# Directory-based skills (<name>/SKILL.md — Claude Code native skill format)
 for d in "$TOMO_SOURCE/dot_claude/skills/"*/; do
     [ -d "$d" ] || continue
     name=$(basename "$d")
     src="$d/SKILL.md"
     [ -f "$src" ] || continue
-    mkdir -p "$INSTANCE_PATH/.claude/skills/$name"
-    update_managed "$src" "$INSTANCE_PATH/.claude/skills/$name/SKILL.md" "skills/$name/SKILL.md"
-    # Copy any reference/templates/examples sub-dirs verbatim (no version tracking yet)
-    for sub in reference templates examples; do
-        if [ -d "$d/$sub" ]; then
-            mkdir -p "$INSTANCE_PATH/.claude/skills/$name/$sub"
-            cp -R "$d/$sub/." "$INSTANCE_PATH/.claude/skills/$name/$sub/"
-        fi
-    done
+    add_versioned "$src" "$INSTANCE_PATH/.claude/skills/$name/SKILL.md" "skills/$name/SKILL.md" "skills"
 done
 
-print_step "Updating commands"
-mkdir -p "$INSTANCE_PATH/.claude/commands"
+# Commands
 for f in "$TOMO_SOURCE/dot_claude/commands/"*.md; do
+    [ -f "$f" ] || continue
     name=$(basename "$f")
-    update_managed "$f" "$INSTANCE_PATH/.claude/commands/$name" "commands/$name"
+    add_versioned "$f" "$INSTANCE_PATH/.claude/commands/$name" "commands/$name" "commands"
 done
 
-print_step "Updating hooks"
-mkdir -p "$INSTANCE_PATH/.claude/hooks"
+# Hooks
 for f in "$TOMO_SOURCE/dot_claude/hooks/"*.sh; do
+    [ -f "$f" ] || continue
     name=$(basename "$f")
-    update_managed "$f" "$INSTANCE_PATH/.claude/hooks/$name" "hooks/$name"
-    chmod +x "$INSTANCE_PATH/.claude/hooks/$name"
+    add_versioned "$f" "$INSTANCE_PATH/.claude/hooks/$name" "hooks/$name" "hooks"
 done
 
-print_step "Updating .claude/scripts (file-suggestion etc.)"
-mkdir -p "$INSTANCE_PATH/.claude/scripts/lib"
+# .claude/scripts (file-suggestion etc.)
 if [ -d "$TOMO_SOURCE/dot_claude/scripts" ]; then
     for f in "$TOMO_SOURCE/dot_claude/scripts/"*.sh; do
         [ -f "$f" ] || continue
         name=$(basename "$f")
-        update_managed "$f" "$INSTANCE_PATH/.claude/scripts/$name" ".claude/scripts/$name"
-        chmod +x "$INSTANCE_PATH/.claude/scripts/$name"
+        add_versioned "$f" "$INSTANCE_PATH/.claude/scripts/$name" ".claude/scripts/$name" "claude-scripts"
     done
     for f in "$TOMO_SOURCE/dot_claude/scripts/lib/"*.sh; do
         [ -f "$f" ] || continue
         name=$(basename "$f")
-        update_managed "$f" "$INSTANCE_PATH/.claude/scripts/lib/$name" ".claude/scripts/lib/$name"
+        add_versioned "$f" "$INSTANCE_PATH/.claude/scripts/lib/$name" ".claude/scripts/lib/$name" "claude-scripts"
     done
 fi
-mkdir -p "$INSTANCE_PATH/cache"
 
-print_step "Updating rules (managed only)"
-# mkdir -p was missing pre-2026-04-23; restore-from-old-backup hit
-# `cp: No such file or directory` because the instance predates the
-# rules dir. Every other update_managed block has a matching mkdir —
-# this one just got skipped.
-mkdir -p "$INSTANCE_PATH/.claude/rules"
-update_managed \
+# Rules
+add_versioned \
     "$TOMO_SOURCE/dot_claude/rules/project-context.md" \
     "$INSTANCE_PATH/.claude/rules/project-context.md" \
-    "rules/project-context.md"
+    "rules/project-context.md" \
+    "rules"
 
-print_step "Updating runtime scripts"
-mkdir -p "$INSTANCE_PATH/scripts/lib"
-# Runtime Python scripts now live under $TOMO_SOURCE/scripts/. $REPO_ROOT/scripts/
-# holds only the user-invoked install/update/backup/cleanup/restore helpers.
+# Runtime scripts (Python + shell)
 for f in "$TOMO_SOURCE/scripts/"*.py; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
-    update_managed "$f" "$INSTANCE_PATH/scripts/$name" "scripts/$name"
+    add_versioned "$f" "$INSTANCE_PATH/scripts/$name" "scripts/$name" "runtime-scripts"
 done
-update_managed \
+add_versioned \
     "$TOMO_SOURCE/scripts/tomo-statusline.sh" \
     "$INSTANCE_PATH/scripts/tomo-statusline.sh" \
-    "scripts/tomo-statusline.sh"
-chmod +x "$INSTANCE_PATH/scripts/tomo-statusline.sh" 2>/dev/null || true
+    "scripts/tomo-statusline.sh" \
+    "runtime-scripts"
 for f in "$TOMO_SOURCE/scripts/lib/"*.py; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
-    update_managed "$f" "$INSTANCE_PATH/scripts/lib/$name" "scripts/lib/$name"
+    add_versioned "$f" "$INSTANCE_PATH/scripts/lib/$name" "scripts/lib/$name" "runtime-scripts"
 done
 
-# ── Retire removed managed files (spec 004 migration) ───
-# Agents and scripts that were deleted from source must also be removed from
-# the instance, otherwise stale definitions linger.
-print_step "Retiring removed files"
+# Retired files (delete from instance if present)
 RETIRED_AGENTS=(suggestion-builder.md)
 for name in "${RETIRED_AGENTS[@]}"; do
     dst="$INSTANCE_PATH/.claude/agents/$name"
     if [ -f "$dst" ]; then
-        rm -f "$dst"
-        print_ok "retired agents/$name"
+        add_plan "retire" "" "$dst" "agents/$name" "retire" "removed from source" "retired"
     fi
 done
-
-# Python unit tests moved from scripts/ to tests/ at repo root (2026-04-21).
-# Tests don't run inside the container runtime — they live at host/repo level.
 RETIRED_SCRIPT_TESTS=(
     test-008-phase1.py
     test-instructions-diff.py
     test-vault-config-writer.py
     test-shared-ctx-tags.py
 )
-
-# Runtime scripts renamed (F-47 T2.1 — 2026-05-21).
-# Runtime scripts deleted (F-47 T3.4 — 2026-05-21): state-init.py superseded by inbox-discovery.py.
 RETIRED_SCRIPTS=(
     tag-captured.py
     state-init.py
 )
-for name in "${RETIRED_SCRIPT_TESTS[@]}"; do
+for name in "${RETIRED_SCRIPT_TESTS[@]}" "${RETIRED_SCRIPTS[@]}"; do
     dst="$INSTANCE_PATH/scripts/$name"
     if [ -f "$dst" ]; then
-        rm -f "$dst"
-        print_ok "retired scripts/$name (moved to repo-root tests/)"
-    fi
-done
-for name in "${RETIRED_SCRIPTS[@]}"; do
-    dst="$INSTANCE_PATH/scripts/$name"
-    if [ -f "$dst" ]; then
-        rm -f "$dst"
-        print_ok "retired scripts/$name (renamed)"
+        add_plan "retire" "" "$dst" "scripts/$name" "retire" "moved or renamed" "retired"
     fi
 done
 
-# ── Profiles + JSON schemas (added in spec 004) ──────────
-print_step "Updating profiles"
-mkdir -p "$INSTANCE_PATH/profiles"
+# Profiles (bytewise)
 for f in "$REPO_ROOT/tomo/profiles/"*.yaml; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
-    cp "$f" "$INSTANCE_PATH/profiles/$name"
-    print_ok "profiles/$name"
+    add_bytewise "$f" "$INSTANCE_PATH/profiles/$name" "profiles/$name" "profiles"
 done
 
-print_step "Updating schemas"
-mkdir -p "$INSTANCE_PATH/schemas"
+# Schemas (bytewise)
 for f in "$TOMO_SOURCE/schemas/"*.json; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
-    cp "$f" "$INSTANCE_PATH/schemas/$name"
-    print_ok "schemas/$name"
+    add_bytewise "$f" "$INSTANCE_PATH/schemas/$name" "schemas/$name" "schemas"
 done
 
-print_step "Regenerating templates from schemas"
-mkdir -p "$INSTANCE_PATH/templates"
-python3 "$TOMO_SOURCE/scripts/template-from-schema.py" \
-    --schema "$INSTANCE_PATH/schemas/item-result.schema.json" \
-    --output "$INSTANCE_PATH/templates/item-result.template.json" \
-    >/dev/null 2>&1 && print_ok "templates/item-result.template.json"
-
-# ── Ensure tomo-tmp scratch dirs exist ───────────────────
-mkdir -p "$INSTANCE_PATH/tomo-tmp/items"
-
-# ── Merge settings.json ──────────────────────────────────
-
-print_step "Merging settings.json"
-
-SRC_SETTINGS="$TOMO_SOURCE/dot_claude/settings.json"
-DST_SETTINGS="$INSTANCE_PATH/.claude/settings.json"
-
-if [ -f "$DST_SETTINGS" ]; then
-    # Best-effort merge: add new hooks from source that don't exist in destination
-    # If this fails, add to TODO list
-    if jq -s '.[0] * .[1]' "$DST_SETTINGS" "$SRC_SETTINGS" > "$DST_SETTINGS.merged" 2>/dev/null; then
-        mv "$DST_SETTINGS.merged" "$DST_SETTINGS"
-        print_ok "settings.json (merged)"
+# Templates — regenerated from schemas; check if regen would change anything.
+# We compute the expected content into a tmp file and cmp.
+TEMPLATE_TMP="$(mktemp)"
+trap 'rm -f "$TEMPLATE_TMP"' EXIT
+TEMPLATE_DST="$INSTANCE_PATH/templates/item-result.template.json"
+if python3 "$TOMO_SOURCE/scripts/template-from-schema.py" \
+        --schema "$TOMO_SOURCE/schemas/item-result.schema.json" \
+        --output "$TEMPLATE_TMP" >/dev/null 2>&1; then
+    if [ ! -f "$TEMPLATE_DST" ]; then
+        add_plan "template" "$TEMPLATE_TMP" "$TEMPLATE_DST" "templates/item-result.template.json" "create" "regenerated" "templates"
+    elif [ "$FORCE" = "true" ]; then
+        add_plan "template" "$TEMPLATE_TMP" "$TEMPLATE_DST" "templates/item-result.template.json" "update" "forced" "templates"
+    elif cmp -s "$TEMPLATE_TMP" "$TEMPLATE_DST"; then
+        add_plan "template" "$TEMPLATE_TMP" "$TEMPLATE_DST" "templates/item-result.template.json" "current" "" "templates"
     else
-        rm -f "$DST_SETTINGS.merged"
-        print_warn "settings.json merge failed — added to TODO list"
-        TODO_LIST="${TODO_LIST}\n- [ ] Manually merge settings.json: compare $SRC_SETTINGS with $DST_SETTINGS"
+        add_plan "template" "$TEMPLATE_TMP" "$TEMPLATE_DST" "templates/item-result.template.json" "update" "schema-driven regen" "templates"
     fi
 else
-    cp "$SRC_SETTINGS" "$DST_SETTINGS"
-    print_ok "settings.json (new)"
+    add_plan "template" "" "$TEMPLATE_DST" "templates/item-result.template.json" "problem" "template-from-schema.py failed" "templates"
 fi
 
-# ── Update install config version ─────────────────────────
+# Settings.json: scan only — actual merge happens at execute time (jq is the merge engine).
+SRC_SETTINGS="$TOMO_SOURCE/dot_claude/settings.json"
+DST_SETTINGS="$INSTANCE_PATH/.claude/settings.json"
+if [ ! -f "$DST_SETTINGS" ]; then
+    add_plan "settings" "$SRC_SETTINGS" "$DST_SETTINGS" "settings.json" "create" "new" "settings"
+else
+    # Try the same merge logic; compare result to current to decide status.
+    SETTINGS_TMP="$(mktemp)"
+    if jq -s '.[0] * .[1]' "$DST_SETTINGS" "$SRC_SETTINGS" > "$SETTINGS_TMP" 2>/dev/null; then
+        if [ "$FORCE" = "true" ]; then
+            add_plan "settings" "$SETTINGS_TMP" "$DST_SETTINGS" "settings.json" "update" "forced" "settings"
+        elif cmp -s "$SETTINGS_TMP" "$DST_SETTINGS"; then
+            add_plan "settings" "$SETTINGS_TMP" "$DST_SETTINGS" "settings.json" "current" "" "settings"
+        else
+            add_plan "settings" "$SETTINGS_TMP" "$DST_SETTINGS" "settings.json" "update" "merge changed" "settings"
+        fi
+    else
+        rm -f "$SETTINGS_TMP"
+        add_plan "settings" "$SRC_SETTINGS" "$DST_SETTINGS" "settings.json" "problem" "jq merge failed — manual fix" "settings"
+    fi
+fi
 
-SOURCE_VERSION=$(get_version "$TOMO_SOURCE/dot_claude/rules/project-context.md")
-jq --arg v "$SOURCE_VERSION" '.tomoVersion = $v | .updatedAt = now | .updatedAt = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))' \
-    "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+# ── Print plan grouped by section ─────────────────────────
 
-# ── Voice transcription wizard (XDD 009) ─────────────────
-# Read prior state from BOTH the host config and the instance mirror.
-# If they disagree, prefer the MIRROR (runtime reality) and warn —
-# the runtime agent reads the mirror, so that's the "effective current
-# state" from the user's perspective. Host wins in the final write, so
-# picking mirror as prior means the wizard offers to keep the currently-
-# active state as default rather than silently resurrecting a stale
-# host-side setting.
+print_section_plan() {
+    local section="$1"; local header="$2"
+    local i printed=0
+    for i in "${!PLAN_KIND[@]}"; do
+        if [ "${PLAN_SECTION[$i]}" = "$section" ]; then
+            if [ "$printed" = "0" ]; then
+                print_step "$header"
+                printed=1
+            fi
+            mark_planned "${PLAN_STATUS[$i]}" "${PLAN_LABEL[$i]}" "${PLAN_DETAIL[$i]}"
+        fi
+    done
+}
+
+print_section_plan "agents"          "Agents"
+print_section_plan "skills"          "Skills"
+print_section_plan "commands"        "Commands"
+print_section_plan "hooks"           "Hooks"
+print_section_plan "claude-scripts"  ".claude/scripts"
+print_section_plan "rules"           "Rules"
+print_section_plan "runtime-scripts" "Runtime scripts"
+print_section_plan "retired"         "Retiring removed files"
+print_section_plan "profiles"        "Profiles"
+print_section_plan "schemas"         "Schemas"
+print_section_plan "templates"       "Templates (regenerated from schemas)"
+print_section_plan "settings"        "Settings.json"
+
+# Plan summary tally
+plan_count_status() {
+    local target="$1"; local n=0 s
+    for s in "${PLAN_STATUS[@]}"; do
+        [ "$s" = "$target" ] && n=$((n + 1))
+    done
+    echo "$n"
+}
+
+print_step "Plan summary"
+print_info "✓ current : $(plan_count_status current)"
+print_info "↑ update  : $(plan_count_status update)"
+print_info "+ create  : $(plan_count_status create)"
+print_info "- retire  : $(plan_count_status retire)"
+PROBLEMS=$(plan_count_status problem)
+[ "$PROBLEMS" -gt 0 ] && print_warn "! problem : $PROBLEMS"
+
+# ── Voice wizard (interactive but defers writes until execute phase) ──
 
 VOICE_MIRROR="$INSTANCE_PATH/voice/config.json"
 
@@ -305,35 +434,222 @@ unset _host_enabled _host_model _host_lang _mirror_enabled _mirror_model _mirror
 
 VOICE_MODELS_DIR="$INSTANCE_PATH/voice/models"
 
-configure_voice \
-    "$PRIOR_VOICE_ENABLED" \
-    "$PRIOR_VOICE_MODEL" \
-    "$PRIOR_VOICE_LANGUAGE" \
-    "$VOICE_MODELS_DIR" \
-    "false"
+if [ "$KEEP_VOICE" = "true" ]; then
+    print_step "Voice memo transcription (kept current — --keep-voice)"
+    VOICE_ENABLED="$PRIOR_VOICE_ENABLED"
+    VOICE_MODEL="$PRIOR_VOICE_MODEL"
+    VOICE_LANGUAGE="$PRIOR_VOICE_LANGUAGE"
+    print_info "enabled=$VOICE_ENABLED model=$VOICE_MODEL lang=${VOICE_LANGUAGE:-auto}"
+else
+    configure_voice \
+        "$PRIOR_VOICE_ENABLED" \
+        "$PRIOR_VOICE_MODEL" \
+        "$PRIOR_VOICE_LANGUAGE" \
+        "$VOICE_MODELS_DIR" \
+        "false"
+fi
 
-# Persist voice settings via the shared write_voice_config helper —
-# see scripts/lib/configure-voice.sh. Matches install-tomo.sh exactly.
-write_voice_config "$CONFIG_FILE"
+# Decide whether voice config or mirror need writes (status for the plan summary).
+voice_host_changed=false
+voice_mirror_changed=false
+if [ "$VOICE_ENABLED" != "$PRIOR_VOICE_ENABLED" ] \
+   || [ "$VOICE_MODEL" != "$PRIOR_VOICE_MODEL" ] \
+   || [ "$VOICE_LANGUAGE" != "$PRIOR_VOICE_LANGUAGE" ]; then
+    voice_host_changed=true
+    voice_mirror_changed=true
+fi
+# Mirror may also be stale even if wizard returned unchanged values
+if [ ! -f "$VOICE_MIRROR" ]; then
+    voice_mirror_changed=true
+fi
+if [ "$FORCE" = "true" ]; then
+    voice_host_changed=true
+    voice_mirror_changed=true
+fi
 
-# Mirror the updated voice block into the instance so runtime agents can
-# read it. tomo-install.json is HOST-only; the container only sees
-# $INSTANCE_PATH. See install-tomo.sh for the same mirror logic.
-mkdir -p "$INSTANCE_PATH/voice"
-jq '.voice' "$CONFIG_FILE" > "$INSTANCE_PATH/voice/config.json"
-print_ok "voice/config.json (mirrored into instance)"
+# ── Confirmation ─────────────────────────────────────────
 
-# ── Summary ───────────────────────────────────────────────
+if [ "$DRY_RUN" = "true" ]; then
+    print_step "Dry-run — no writes performed"
+    print_info "Run again without --dry-run to apply the plan above."
+    exit 0
+fi
+
+if [ "$YES" != "true" ]; then
+    print_step "Confirm execution"
+    NEEDS_WRITE=$(( $(plan_count_status update) + $(plan_count_status create) + $(plan_count_status retire) ))
+    if [ "$voice_host_changed" = "true" ];   then NEEDS_WRITE=$((NEEDS_WRITE + 1)); fi
+    if [ "$voice_mirror_changed" = "true" ]; then NEEDS_WRITE=$((NEEDS_WRITE + 1)); fi
+    if [ "$NEEDS_WRITE" -eq 0 ]; then
+        print_info "Nothing to do (every file is current). Proceeding to refresh install-config only."
+    else
+        print_info "About to write $NEEDS_WRITE change(s)."
+    fi
+    printf "  Continue? [Y/n] "
+    read -r REPLY
+    case "$REPLY" in
+        ""|y|Y|yes|Yes|YES) ;;
+        *)
+            print_warn "Aborted by user — no changes made."
+            exit 1
+            ;;
+    esac
+fi
+
+# ── Execute phase ────────────────────────────────────────
+
+DID_UPDATED=0
+DID_CREATED=0
+DID_DELETED=0
+DID_FAILED=0
+DID_CURRENT=0
+
+ensure_dir() { mkdir -p "$1" 2>/dev/null || true; }
+
+execute_one() {
+    local i="$1"
+    local kind="${PLAN_KIND[$i]}"
+    local src="${PLAN_SRC[$i]}"
+    local dst="${PLAN_DST[$i]}"
+    local label="${PLAN_LABEL[$i]}"
+    local status="${PLAN_STATUS[$i]}"
+    local detail="${PLAN_DETAIL[$i]}"
+
+    case "$status" in
+        current)
+            DID_CURRENT=$((DID_CURRENT + 1))
+            # don't print per-file for "current" in execute phase — keeps output tight
+            return
+            ;;
+        problem)
+            mark_did "failed" "$label" "$detail"
+            DID_FAILED=$((DID_FAILED + 1))
+            return
+            ;;
+        retire)
+            if rm -f "$dst" 2>/dev/null; then
+                mark_did "deleted" "$label" ""
+                DID_DELETED=$((DID_DELETED + 1))
+            else
+                mark_did "failed" "$label" "rm failed"
+                DID_FAILED=$((DID_FAILED + 1))
+            fi
+            return
+            ;;
+    esac
+
+    # status is "update" or "create" — perform a write
+    ensure_dir "$(dirname "$dst")"
+
+    case "$kind" in
+        versioned|bytewise|template|settings)
+            if cp "$src" "$dst" 2>/dev/null; then
+                # Hooks and statusline need executable bit
+                case "$label" in
+                    hooks/*|scripts/tomo-statusline.sh|.claude/scripts/*) chmod +x "$dst" 2>/dev/null || true ;;
+                esac
+                if [ "$status" = "create" ]; then
+                    mark_did "created" "$label" "$detail"
+                    DID_CREATED=$((DID_CREATED + 1))
+                else
+                    mark_did "updated" "$label" "$detail"
+                    DID_UPDATED=$((DID_UPDATED + 1))
+                fi
+            else
+                mark_did "failed" "$label" "cp failed"
+                DID_FAILED=$((DID_FAILED + 1))
+            fi
+            ;;
+        *)
+            mark_did "failed" "$label" "unknown kind: $kind"
+            DID_FAILED=$((DID_FAILED + 1))
+            ;;
+    esac
+}
+
+# Walk the plan in section order so the output mirrors the plan layout.
+execute_section() {
+    local section="$1"; local header="$2"; local i printed=0
+    for i in "${!PLAN_KIND[@]}"; do
+        if [ "${PLAN_SECTION[$i]}" = "$section" ]; then
+            local status="${PLAN_STATUS[$i]}"
+            # Skip "current" entries entirely in execute phase
+            if [ "$status" = "current" ]; then
+                DID_CURRENT=$((DID_CURRENT + 1))
+                continue
+            fi
+            if [ "$printed" = "0" ]; then
+                print_step "$header"
+                printed=1
+            fi
+            execute_one "$i"
+        fi
+    done
+}
+
+execute_section "agents"          "Agents"
+execute_section "skills"          "Skills"
+execute_section "commands"        "Commands"
+execute_section "hooks"           "Hooks"
+execute_section "claude-scripts"  ".claude/scripts"
+execute_section "rules"           "Rules"
+execute_section "runtime-scripts" "Runtime scripts"
+execute_section "retired"         "Retiring removed files"
+execute_section "profiles"        "Profiles"
+execute_section "schemas"         "Schemas"
+execute_section "templates"       "Templates"
+execute_section "settings"        "Settings.json"
+
+# tomo-tmp scratch dirs (idempotent, no plan entry)
+ensure_dir "$INSTANCE_PATH/tomo-tmp/items"
+ensure_dir "$INSTANCE_PATH/cache"
+
+# ── Persist voice settings ───────────────────────────────
+
+if [ "$voice_host_changed" = "true" ] || [ "$voice_mirror_changed" = "true" ]; then
+    print_step "Voice configuration"
+    if [ "$voice_host_changed" = "true" ]; then
+        if write_voice_config "$CONFIG_FILE" 2>/dev/null; then
+            mark_did "updated" "tomo-install.json (.voice)" ""
+            DID_UPDATED=$((DID_UPDATED + 1))
+        else
+            mark_did "failed" "tomo-install.json (.voice)" "write_voice_config failed"
+            DID_FAILED=$((DID_FAILED + 1))
+        fi
+    fi
+    if [ "$voice_mirror_changed" = "true" ]; then
+        ensure_dir "$INSTANCE_PATH/voice"
+        if jq '.voice' "$CONFIG_FILE" > "$VOICE_MIRROR" 2>/dev/null; then
+            if [ -f "$VOICE_MIRROR" ]; then
+                mark_did "updated" "voice/config.json (instance mirror)" ""
+                DID_UPDATED=$((DID_UPDATED + 1))
+            else
+                mark_did "created" "voice/config.json (instance mirror)" ""
+                DID_CREATED=$((DID_CREATED + 1))
+            fi
+        else
+            mark_did "failed" "voice/config.json (instance mirror)" "jq write failed"
+            DID_FAILED=$((DID_FAILED + 1))
+        fi
+    fi
+fi
+
+# ── Update install config version ─────────────────────────
+
+SOURCE_VERSION=$(get_version "$TOMO_SOURCE/dot_claude/rules/project-context.md")
+jq --arg v "$SOURCE_VERSION" '.tomoVersion = $v | .updatedAt = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))' \
+    "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+
+# ── Final summary ────────────────────────────────────────
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Updated: $UPDATED files"
-echo "  Skipped: $SKIPPED files (already current)"
-
-if [ -n "$TODO_LIST" ]; then
-    echo ""
-    echo "  Manual steps required:"
-    echo -e "$TODO_LIST"
-fi
-
+echo "  ✓ current : $DID_CURRENT  files"
+echo "  ↑ updated : $DID_UPDATED  files"
+echo "  + created : $DID_CREATED  files"
+echo "  - deleted : $DID_DELETED  files"
+[ "$DID_FAILED" -gt 0 ] && echo "  ! failed  : $DID_FAILED  files"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+[ "$DID_FAILED" -gt 0 ] && exit 1
+exit 0

@@ -16,6 +16,7 @@ Tomo runs inside a Docker container with sandbox isolation — all vault access 
 - `scripts/` — install, utility, and Python scan scripts
 - `scripts/lib/` — shared Python library (kado_client)
 - `tests/` — Python unit tests (host-only, not synced to instance)
+- `docs/tomo/`- All documentation for the files in `tomo/`
 - `docs/XDD/` — all specs: implementation (specs/) and architecture reference (reference/tier-1, tier-2, tier-3)
 - `docs/XDD/backlog.md` — open items (post-MVP features, doc debt)
 - `docker/` — Dockerfile and container config
@@ -33,12 +34,14 @@ See `docs/XDD/README.md` for the consolidated documentation index.
 
 ## Rules
 
-- NEVER modify vault files directly — all vault access goes through Kado MCP
 - Propose changes via 2-pass model — never execute without user approval
 - Instance directory is self-contained at runtime — agents, commands, skills, configs, and credentials all live inside the instance. The only exception is the generated `begin-tomo.sh` launcher, which references the Tomo source repo for Docker image builds and version checks (a launch-time dependency, not a runtime one).
-- All managed files in tomo/ must include a version comment for update tracking
+- Versioning is done by using `# version: X.Y.Z` in the file header — number only, no parenthetical
 - Profiles are pure data (YAML) — logic lives in skills
 - Layer precedence: User Config > Profile > Universal Concepts; Discovery Cache is advisory only
+- Runtime files in `tomo/` (especially `tomo/dot_claude/{agents,skills,commands}` and `tomo/skills/`) are LLM-loaded line-by-line at runtime — there is no "comment for humans only" mechanism. They contain only imperatives, tool invocations, and branching logic. Descriptions of what a called script does belong in the script's own docstring/--help, NOT in the file that invokes it — pointing the LLM at "this script reads X and computes Y" risks it reasoning that it should read X and compute Y itself. All explanatory content (architecture, rationale, history, spec refs F-NN/ADR-N, dates) lives in `docs/tomo/<mirrored-path>.md`. Carve-out: script-header docstrings in `tomo/scripts/*.py` are part of the code.
+- `STRICT` blocks with one-line `Why:` are an emergency lever, not a default. Use ONLY when an unadorned imperative has been observed producing runtime deviation. The `Why:` states the failure mode in one line — no discovery history, no backlog refs, no dates.
+- `docs/tomo/<mirrored-path>.md` is the WHY-persistence layer for the runtime file at `tomo/<same-path>` — it explains every decision baked into the runtime (why this script, why this STRICT, why pattern A over B, what platform constraint forced this) for the user/maintainer audience. Example: `WHY: subagents cannot use the Agent tool — Anthropic platform constraint; revisit if the platform ever allows nested Agent dispatch.` Before stripping any rationale-shaped content from a runtime file, verify the docs/tomo counterpart has captured the WHY. If missing, write to docs/tomo first, strip from runtime second. Order matters — strip-first destroys institutional knowledge.
 
 ## Memory & Context
 @docs/ai/memory/memory.md

@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Skills & WHY Docs (Layer C + AC-14)"
-status: pending
+status: completed
 version: "1.0"
 phase: 3
 ---

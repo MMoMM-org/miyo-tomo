@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Triage Script (Layer A)"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---

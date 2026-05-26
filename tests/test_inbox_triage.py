@@ -538,6 +538,32 @@ class TestHasAudioFalseWhenAllCached:
 
         assert state.has_audio is False
 
+    def test_audio_with_sanitized_sibling_md(self, tmp_path):
+        """Audio with colons in stem has sibling .md with hyphens (sanitize_stem)."""
+        mod = _load_module()
+
+        audio_path = INBOX_PATH + "memo__2026-04-20 11:48:29.m4a"
+        md_path = INBOX_PATH + "memo__2026-04-20 11-48-29.md"
+
+        client = FakeKadoClient(
+            listdir_items=[
+                _listdir_item(audio_path),
+                _listdir_item(md_path),
+            ],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+            },
+        )
+
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+
+        assert state.has_audio is False, (
+            "Audio with sanitized sibling .md should be detected as cached"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Test 11: kado unreachable exits 1

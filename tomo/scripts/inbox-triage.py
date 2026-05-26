@@ -32,6 +32,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.audio_constants import AUDIO_EXTS  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
+from lib.obsidian_filename import sanitize_stem  # noqa: E402
 
 _RE_APPROVED = re.compile(r"^\s*-\s+\[x\]\s+Approved", re.MULTILINE | re.IGNORECASE)
 _RE_ACCEPT = re.compile(r"^\s*-\s+\[x\]\s+Accept", re.MULTILINE | re.IGNORECASE)
@@ -187,8 +188,9 @@ def check_audio(audio_files: list[dict], md_files: list[dict]) -> bool:
         md_stems.add(Path(f["path"]).stem.lower())
 
     for af in audio_files:
-        stem = Path(af["path"]).stem.lower()
-        if stem not in md_stems:
+        raw_stem = Path(af["path"]).stem
+        safe_stem = sanitize_stem(raw_stem).lower()
+        if safe_stem not in md_stems:
             return True
 
     return False

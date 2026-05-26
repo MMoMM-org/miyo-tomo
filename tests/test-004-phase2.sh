@@ -1,7 +1,7 @@
 #!/bin/bash
 # test-004-phase2.sh — Acceptance tests for spec 004 Plan Phase 2.
-#   Covers: shared-ctx-builder + state-init.
-# version: 0.1.0
+#   Covers: shared-ctx-builder. (state-init removed F-47 T3.4 — deleted script)
+# version: 0.2.0
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -193,46 +193,8 @@ assert size <= 15360, f'still over budget: {size}'
 PY
 fi
 
-# ── Test 4: state-init helper checks (regex logic) ─────────────────────────
-"$PYTHON" - <<PY && pass "state-init skip-suffix logic" || fail "state-init skip-suffix logic"
-import importlib.util, sys
-spec = importlib.util.spec_from_file_location("state_init", "$REPO_ROOT/tomo/scripts/state-init.py")
-m = importlib.util.module_from_spec(spec)
-# The module imports kado_client at module-scope. Inject a stub so we don't need Kado.
-import types
-sys.modules.setdefault("lib", types.ModuleType("lib"))
-class _StubClient:
-    def __init__(self, *a, **k): pass
-    def list_dir(self, *a, **k): return []
-class _StubError(Exception): pass
-_kado_mod = types.ModuleType("lib.kado_client")
-_kado_mod.KadoClient = _StubClient
-_kado_mod.KadoError = _StubError
-sys.modules["lib.kado_client"] = _kado_mod
-spec.loader.exec_module(m)
-assert m.is_skippable('100 Inbox/2026-04-10_1430_suggestions.md')
-assert m.is_skippable('100 Inbox/2026-04-10_1430_instructions.md')
-assert m.is_skippable('100 Inbox/note-diff.md')
-assert not m.is_skippable('100 Inbox/20260410_note.md')
-assert m.extract_stem('100 Inbox/foo.md') == 'foo'
-PY
-
-# ── Test 5: state-init against live Kado (optional) ─────────────────────────
-if [ -n "${KADO_URL:-}" ] && [ -n "${KADO_TOKEN:-}" ]; then
-    STATE_OUT="$FIXTURE_DIR/tomo-tmp/inbox-state.jsonl"
-    if "$PYTHON" "$REPO_ROOT/tomo/scripts/state-init.py" \
-        --inbox-path "${KADO_INBOX_PATH:-100 Inbox/}" \
-        --run-id "test-004" \
-        --output "$STATE_OUT" 2>"$FIXTURE_DIR/state-init.log"; then
-        COUNT=$(wc -l < "$STATE_OUT" | tr -d ' ')
-        pass "state-init live run produced $COUNT lines"
-    else
-        fail "state-init live run failed"
-        cat "$FIXTURE_DIR/state-init.log" >&2
-    fi
-else
-    skip "state-init live run" "KADO_URL/KADO_TOKEN not set"
-fi
+# Tests 4 and 5 (state-init skip-suffix logic + live run) removed F-47 T3.4.
+# state-init.py deleted; discovery logic now lives in inbox-discovery.py (T3.1).
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

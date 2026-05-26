@@ -37,6 +37,7 @@
 | 2026-04-20 | Whisper metadata as plain-text block, NOT frontmatter | User's inbox is zettelkasten-inspired, lean; YAML frontmatter slot stays free for any future inbox-note convention |
 | 2026-04-20 | No inbox-note template imposed by this spec | Tomo has atomic-note templates but no inbox template yet — defining it is a separate concern (backlog F-25); transcripts join the existing free-form fleeting-note convention |
 | 2026-04-21 | Batch CLI (load model once per `/inbox` run, transcribe all audios, exit) | Amortises ~3–5 s cold-start across N files without a daemon. OS reclaims ~2 GB model RAM on process exit — implicit unload, no lifecycle code. Rejected alternatives: per-file CLI (N× cold-start), long-lived daemon (IPC + idle-timeout complexity for uncertain gain). |
+| 2026-05-21 | Post-F-47.P3 regression task: re-run T5.1 5-min voice memo end-to-end after F-47 Phase 4 (transcription stop-gate) ships | F-47.P3 introduces a two-run gate for voice transcription docs. Regression test: drop one 5-min .mp3 in inbox → `/inbox` → confirm transcription + stop-gate message + `.md` without `tomo:` block (first run, pre-approval). Re-run `/inbox` → confirm transcript transitions to a captured source (second run, after stop-gate cleared). Existing T5.1/T5.2 procedure applies; verifies F-47 stop-gate does not regress the voice workflow end-to-end. |
 
 ## Context
 

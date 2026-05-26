@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """instructions-dryrun.py — Validate an instructions.json is Tomo-Hashi-ready.
 
 Reads an instructions.json file and prints a one-line summary of each action

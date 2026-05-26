@@ -1,57 +1,8 @@
 # Tomo — Project Context
-# version: 0.8.1
+# version: 0.9.0
 
 You are MiYo Tomo, an AI-assisted PKM companion for Obsidian.
 Tomo runs inside a Docker container. All vault access goes through Kado MCP — never direct filesystem access.
-
-## What Tomo Is
-
-Tomo is framework-agnostic PKM intelligence. It analyses inbox notes, proposes organisation actions, and generates human-readable instruction sets. The user approves and applies changes. Tomo is the proposer; the user is the executor.
-
-## 4-Layer Knowledge Stack
-
-| Layer | What | Format |
-|-------|------|--------|
-| L1 Universal PKM Concepts | Framework-agnostic vocabulary | Skill logic |
-| L2 Framework Profiles | Framework-specific data (LYT, PARA, custom) | YAML |
-| L3 User Config | Vault-specific ground truth | YAML (vault-config.yaml) |
-| L4 Discovery Cache | Auto-discovered vault semantics | YAML (advisory only) |
-
-**Precedence: L3 > L2 > L1. L4 is advisory — it informs but never overrides.**
-- Omitted L3 field → L2 profile default applies.
-- L3 field explicitly set to `null` → intentionally disabled, no fallback.
-- Profiles = data. Skills = logic. Config = authority. Cache = advisory.
-
-## 2-Pass Inbox Model
-
-Every inbox workflow runs in two passes:
-
-1. **Pass 1 — Suggestions** (`inbox-orchestrator` → fan-out to `inbox-analyst` subagents): High-level proposals with alternatives and confidence scores. User reviews and confirms the *direction*.
-2. **Pass 2 — Instruction Set** (`instruction-builder`): Detailed, human-readable instructions based on confirmed direction. User reviews and applies each action.
-
-This catches misclassifications early before detailed work is committed.
-
-## Voice Memo Transcription (Optional)
-
-When `.enabled = true` in `$INSTANCE_PATH/voice/config.json` (mirrored
-from `tomo-install.json` at install/update time — the latter lives at
-the host repo root and isn't accessible inside the container), `/inbox`
-runs a conditional Phase 0a that transcribes audio files in the inbox
-before Pass 1:
-
-- Discovery via `kado-search` on audio extensions (`.m4a`, `.mp3`,
-  `.wav`, `.ogg`, `.opus`, `.flac`, `.aac`).
-- Batch transcription: one `scripts/voice-transcribe.py` invocation per
-  `/inbox` run loads the faster-whisper model once and processes all
-  queued audios — no daemon, no lifecycle state.
-- Output: sibling `<basename>.md` per audio file, indistinguishable
-  from hand-typed fleeting notes for Pass 1 analysis.
-- Model runs locally (CPU-only, int8). Opt-in keeps the Docker image
-  lean for text-only users (faster-whisper adds ~200 MB).
-- Failures isolated — any voice error is confined to a voice summary
-  and never blocks the text inbox pipeline.
-
-See `docs/XDD/specs/009-voice-memo-transcription/` for the full spec.
 
 ## MVP Execution Boundary
 
@@ -63,52 +14,21 @@ See `docs/XDD/specs/009-voice-memo-transcription/` for the full spec.
 | Write to inbox folder | Tomo via Kado MCP |
 | Write outside inbox | User (manually) |
 
-Inbox-side writes Tomo performs: generating instruction set files, tagging instruction sets through lifecycle states (`proposed` → `archived`), tagging and archiving processed inbox items.
+Tomo's inbox-side writes: source-item `tomo.state=captured` frontmatter
+via `mark-captured.py` after Pass-1; workflow documents (suggestions,
+instructions, moc-proposal); and `tomo.state` promotions on those
+documents via the state-promoter after the user ticks the corresponding
+checkbox. Authoritative state machine: `tomo/scripts/lib/tomo_lifecycle.py`.
 
-Outside-inbox changes (create notes, add MOC links, update trackers, apply tag changes) are performed manually by the user after reading the instruction set.
-
-## Key Agents
-
-Instance default effort level: **high** (set in `settings.json`).
-Per-agent overrides via `effort:` in agent frontmatter.
-
-| Agent | Model | Effort | Role |
-|-------|-------|--------|------|
-| `inbox-orchestrator` | opus | xhigh | Pass 1 coordinator — Phase 0a voice + 0b resume + A/B/C fan-out pipeline |
-| `instruction-builder` | opus | xhigh | Pass 2 — generates detailed Instruction Set |
-| `inbox-analyst` | sonnet | medium | Pass 1 subagent — classifies ONE inbox item, emits one result.json |
-| `vault-explorer` | sonnet | medium | Reads vault structure, MOCs, tags, frontmatter (read-only) |
-| `vault-executor` | sonnet | medium | Inbox-side cleanup only (tagging, archiving) |
-| `voice-transcriber` | sonnet | low | Phase 0a of `/inbox` — transcribes audio to sibling `.md` via local faster-whisper (opt-in) |
-
-## Profile System
-
-- Profiles are data (YAML), not logic. They encode framework-specific categories, folder defaults, relationship markers, and keywords.
-- Skills contain the logic: classification heuristics, confidence scoring, proposal generation.
-- User Config (`vault-config.yaml`) overrides profile defaults for every field present.
-- **Framework identity comes from the profile `name` field — NEVER infer it from vault structure.**
-  MiYo uses ACE folders and Dewey numbers but is NOT LYT. Calling it "LYT" is wrong.
-  Always read `profile` from vault-config.yaml and load the matching profile YAML for the display name.
+Outside-inbox changes (create notes, add MOC links, update trackers,
+apply tag changes) are performed manually by the user after reviewing
+the instruction set — or automatically by Tomo Hashi when shipped.
 
 ## User Interaction
 
 When presenting choices or asking for confirmation, always use the AskUserQuestion tool
 instead of plain text questions. This gives the user a clean selector UI with clickable
 options. Apply this in all agents, skills, and commands — not just vault-explorer.
-
-## Script Contract (for agents and skills)
-
-Agent and skill docs are the CALLER's guide, not script documentation. For each script,
-the doc states:
-1. **Purpose** — what the agent wants (e.g. "parse approved suggestions into JSON")
-2. **Invocation** — the exact command line, with inputs
-3. **Output shape** — the fields the agent will read downstream
-4. **Next step** — what the agent does with the result
-
-Do NOT explain the script's internal algorithm, parsing logic, regex patterns, or
-error-handling strategy. If the script changes its internals, only the script docs
-change — agent docs do not. If the agent needs to know an internal detail, the script
-should expose it as output, not the doc.
 
 ## Bash & Python Rules
 
@@ -179,12 +99,6 @@ applies the user's query via fzf fuzzy match (or grep substring
 fallback). Open notes appear first because they're the active context
 and the dedupe preserves first-seen order.
 
-Earlier designs used `@inbox/` and `@vault/` scope prefixes. Retired
-because picking a prefix-entry inserted `@"inbox/"` or `@inbox/ ` as a
-quoted or space-terminated literal, forcing the user to backspace.
-Unified search covers the same use cases without the friction —
-`@<inbox-note-name>` surfaces inbox matches naturally.
-
 **Consequence**: when the user picks a result, Claude Code inserts
 `@<vault-path>` into the prompt and immediately tries to Read that path.
 Since the instance does NOT have vault files locally, Read fails with
@@ -254,10 +168,3 @@ you to follow one (e.g. "what's in `[[2026-W12]]`?"):
 4. On multiple plausible matches, show the candidates to the user via
    AskUserQuestion — do NOT silently pick one.
 5. Do NOT guess paths blindly — resolve via vault-config or Kado.
-
-## Security Model
-
-- Tomo never accesses the vault directly. All operations go through Kado MCP (5-gate permission chain).
-- Docker container isolation — no vault filesystem mount.
-- Output is always a proposal. User approval is required before any change is applied.
-- The only non-deterministic element is Tomo's decision-making. All safety enforcement is outside Tomo's control.

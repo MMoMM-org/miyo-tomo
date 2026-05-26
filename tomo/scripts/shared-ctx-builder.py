@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 0.8.0 (F-43: load_moc_proposal_config — tomo.moc_proposal loader + defaults)
+# version: 0.9.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import uuid
@@ -35,6 +36,15 @@ import yaml
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
+
+# Lazy import — only loaded when reconcile is enabled (skip-reconcile keeps
+# shared-ctx-builder usable in offline tests without a live Kado).
+try:
+    sys.path.insert(0, str(SCRIPT_DIR / "lib"))
+    from kado_client import KadoClient, KadoError  # type: ignore
+except ImportError:
+    KadoClient = None  # type: ignore
+    KadoError = Exception  # type: ignore
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -121,6 +131,77 @@ def load_moc_proposal_config(vault_config_path: Path | str) -> MocProposalConfig
         )
 
     return MocProposalConfig(**overrides)
+
+
+# ── Cache reconcile ──────────────────────────────────────────────────────────
+
+def reconcile_map_notes_against_vault(
+    cache: dict,
+    *,
+    client=None,
+) -> tuple[int, list[str]]:
+    """Drop `cache["map_notes"]` entries whose file no longer exists in the vault.
+
+    discovery-cache.yaml is rebuilt by `/explore-vault`, not by `/inbox`.
+    Between rebuilds, MOC files get deleted/moved by the user, but the cache
+    still lists them. The shared-ctx-builder fed those ghost entries into
+    `ctx["mocs"]`, which inbox-analyst then offered as link targets — pointing
+    at paths that no longer exist (e.g. `[[100 Inbox/2026-05-01_1008_board-games-moc]]`).
+
+    This reconcile groups MOC paths by parent folder, issues ONE Kado
+    `listDir(depth=1)` per unique parent, and keeps only paths still present.
+    On Kado failure for a folder: keep all entries from that folder (fail safe
+    — better to show a ghost link than to drop a live MOC).
+
+    Mutates `cache["map_notes"]` in place. Returns (kept_count, dropped_paths).
+    """
+    raw = cache.get("map_notes") or []
+    if not raw:
+        return 0, []
+
+    if client is None:
+        if KadoClient is None:
+            raise RuntimeError(
+                "kado_client unavailable — pass --skip-reconcile or fix the import path"
+            )
+        client = KadoClient()
+
+    by_parent: dict[str, list[dict]] = {}
+    for entry in raw:
+        path = (entry.get("path") or "").strip()
+        if not path:
+            continue
+        parent = os.path.dirname(path) or "/"
+        by_parent.setdefault(parent, []).append(entry)
+
+    kept: list[dict] = []
+    dropped: list[str] = []
+
+    for parent, group in by_parent.items():
+        try:
+            items = client.list_dir(parent, depth=1)
+        except KadoError as exc:
+            print(
+                f"[shared-ctx] reconcile: listDir({parent!r}) failed: {exc} — "
+                f"keeping {len(group)} entr{'y' if len(group) == 1 else 'ies'} from this folder",
+                file=sys.stderr,
+            )
+            kept.extend(group)
+            continue
+        existing = {
+            (item.get("path") or "").lstrip("/")
+            for item in items
+            if isinstance(item, dict) and item.get("type") == "file"
+        }
+        for entry in group:
+            entry_path = (entry.get("path") or "").lstrip("/")
+            if entry_path in existing:
+                kept.append(entry)
+            else:
+                dropped.append(entry_path)
+
+    cache["map_notes"] = kept
+    return len(kept), dropped
 
 
 # ── Builders ─────────────────────────────────────────────────────────────────
@@ -523,6 +604,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--run-id", default=None, help="Unique run identifier (auto-generated if omitted)")
     p.add_argument("--output", required=True, help="Target path for shared-ctx.json")
     p.add_argument("--max-bytes", type=int, default=15360, help="Size budget (default 15 KB)")
+    p.add_argument(
+        "--skip-reconcile",
+        action="store_true",
+        help="Skip the listDir-vs-cache MOC reconcile step (offline / test mode)",
+    )
     return p
 
 
@@ -552,6 +638,39 @@ def main() -> int:
 
     run_id = args.run_id or f"{uuid.uuid4().hex[:12]}"
 
+    # Reconcile cache against live vault (drops ghost MOCs from stale cache).
+    map_notes_total_before = len(cache.get("map_notes") or [])
+    reconcile_dropped: list[str] = []
+    if args.skip_reconcile:
+        print("[shared-ctx] reconcile skipped (--skip-reconcile)", file=sys.stderr)
+    else:
+        try:
+            _, reconcile_dropped = reconcile_map_notes_against_vault(cache)
+            if reconcile_dropped:
+                print(
+                    f"[shared-ctx] reconcile: dropped {len(reconcile_dropped)} ghost MOC(s) "
+                    f"from cache (paths no longer in vault):",
+                    file=sys.stderr,
+                )
+                for p in reconcile_dropped[:10]:
+                    print(f"  - {p}", file=sys.stderr)
+                if len(reconcile_dropped) > 10:
+                    print(f"  ... and {len(reconcile_dropped) - 10} more", file=sys.stderr)
+            else:
+                print(
+                    f"[shared-ctx] reconcile: cache clean "
+                    f"({map_notes_total_before} MOC(s) verified)",
+                    file=sys.stderr,
+                )
+        except (RuntimeError, KadoError) as exc:
+            # Don't fail the build if reconcile blows up — log loudly and
+            # continue with the full (potentially stale) cache.
+            print(
+                f"[shared-ctx] reconcile FAILED: {exc} — proceeding with unfiltered cache "
+                f"(may include ghost MOCs)",
+                file=sys.stderr,
+            )
+
     mocs = build_mocs(cache)
     tag_prefixes = build_tag_prefixes(cache, vault_cfg)
     classification_keywords = build_classification_keywords(profile)
@@ -577,7 +696,9 @@ def main() -> int:
     out_path.write_bytes(data)
 
     print(
-        f"mocs_total={len(cache.get('map_notes') or [])} "
+        f"mocs_total={map_notes_total_before} "
+        f"mocs_after_reconcile={len(cache.get('map_notes') or [])} "
+        f"mocs_reconcile_dropped={len(reconcile_dropped)} "
         f"mocs_included={len(ctx['mocs'])} "
         f"topics_dropped={dropped} "
         f"tag_prefixes_included={len(ctx['tag_prefixes'])} "

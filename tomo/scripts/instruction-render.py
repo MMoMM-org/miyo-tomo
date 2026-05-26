@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.2
+# version: 0.11.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -39,6 +39,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+from lib.doc_frontmatter import build_tomo_block  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 
 
@@ -1110,11 +1111,69 @@ def _render_action_md(action: dict, cfg: dict) -> str:
     return f"{heading_prefix}(unknown action: {kind})\n- [ ] Applied"
 
 
+# Maps upstream_type (CLI flag value) → source_* key name in the tomo: block.
+# F-47 AC-1.3: EXACTLY ONE source_* key per instructions doc.
+_UPSTREAM_TYPE_TO_SOURCE_KEY: dict[str, str] = {
+    "suggestions": "source_suggestions",
+    "moc-proposal": "source_moc_proposal",
+    "suggestions-fan": "source_suggestions_fan",
+}
+
+
+def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
+    """Build the tomo: block for an instructions doc from renderer metadata.
+
+    Returns the inner block dict (without the 'tomo' wrapper key) or None
+    if the metadata lacks the fields required to build a valid block.
+
+    AC-1.3: emits EXACTLY ONE source_* key based on upstream_type.
+    SDD §Implementation Gotchas: uses metadata['run_id'] (Pass-2 run),
+    NOT any upstream run_id.
+    """
+    upstream_type = metadata.get("upstream_type")
+    upstream_path = metadata.get("upstream_path")
+    run_id = metadata.get("run_id")
+    if not run_id:
+        return None
+    source_key = _UPSTREAM_TYPE_TO_SOURCE_KEY.get(upstream_type or "")
+    if upstream_type and not source_key:
+        print(
+            f"  [warn] Unknown upstream_type {upstream_type!r} — "
+            "omitting source_* key from tomo: block",
+            file=sys.stderr,
+        )
+    source_refs: dict[str, str] = {}
+    if source_key and upstream_path:
+        source_refs[source_key] = upstream_path
+    return build_tomo_block(
+        doc_type="instructions",
+        state="pending-apply",
+        run_id=run_id,
+        **source_refs,
+    )
+
+
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:
     """Produce the full human-readable instruction set markdown."""
+    import yaml
+
     fm_lines = ["---"]
     fm_lines.append("type: tomo-instructions")
-    if metadata.get("source_suggestions"):
+    # Emit the tomo: block (F-47 AC-1.3) when run_id is present in metadata.
+    tomo_block = _build_tomo_block_for_instructions(metadata)
+    if tomo_block is not None:
+        # Serialize the nested block as indented YAML (strip trailing newline).
+        tomo_yaml = yaml.dump(
+            {"tomo": tomo_block},
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+        ).rstrip()
+        fm_lines.append(tomo_yaml)
+    # Legacy source_suggestions field kept for callers that pre-date F-47
+    # and do not supply upstream_type/run_id.  When tomo_block is present
+    # the cross-ref is already inside the block, so skip the top-level field.
+    if metadata.get("source_suggestions") and tomo_block is None:
         fm_lines.append(f"source_suggestions: {metadata['source_suggestions']}")
     fm_lines.append(f"generated: {metadata['generated']}")
     if metadata.get("profile"):
@@ -1386,6 +1445,23 @@ def main() -> int:
     p.add_argument("--suggestions", required=True, help="Path to parsed suggestions JSON")
     p.add_argument("--output-dir", required=True, help="Directory for rendered files")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
+    # F-47 T2.3: upstream doc identity for the tomo: block + source_* cross-ref.
+    p.add_argument(
+        "--upstream-type",
+        choices=list(_UPSTREAM_TYPE_TO_SOURCE_KEY),
+        default=None,
+        help="Upstream doc type: suggestions | moc-proposal | suggestions-fan",
+    )
+    p.add_argument(
+        "--upstream-path",
+        default=None,
+        help="Vault-relative path to the upstream doc (populates tomo.source_* field)",
+    )
+    p.add_argument(
+        "--run-id",
+        default=None,
+        help="Pass-2 run ID (NOT the upstream doc's run_id — SDD §Implementation Gotchas)",
+    )
     args = p.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -1615,6 +1691,11 @@ def main() -> int:
     md = render_instructions_md(
         actions,
         {
+            # F-47 T2.3: new fields drive the tomo: block + source_* cross-ref.
+            "upstream_type": args.upstream_type,
+            "upstream_path": args.upstream_path,
+            "run_id": args.run_id,
+            # Legacy field kept for backwards compat when --run-id not supplied.
             "source_suggestions": source_suggestions,
             "generated": generated_iso,
             "profile": profile_name,

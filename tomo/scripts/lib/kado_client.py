@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.4.2
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -50,6 +50,10 @@ class KadoNotFoundError(KadoError):
 
 class KadoToolError(KadoError):
     """Raised when the MCP tool returns isError: true."""
+
+
+class KadoConcurrencyError(KadoToolError):
+    """Raised when a kado-write operation=frontmatter fails optimistic-concurrency check (expectedModified mismatch)."""
 
 
 # ── Client ─────────────────────────────────────────────────────────────────────
@@ -258,6 +262,105 @@ class KadoClient:
         if expected_modified is not None:
             args["expectedModified"] = expected_modified
         return self._call_tool("kado-write", args)
+
+    def write_frontmatter(
+        self,
+        path: str,
+        frontmatter: dict,
+        mode: str = "merge",
+        expected_modified: int | None = None,
+    ) -> dict:
+        """Write frontmatter via kado-write operation=frontmatter.
+
+        Parameters
+        ----------
+        path:
+            Vault-relative path of the note to update.
+        frontmatter:
+            Dict of frontmatter keys to write. mode='merge' deep-merges with
+            existing frontmatter (arrays replace, scalars replace, untouched
+            keys preserved). mode='replace' clears the block and writes verbatim.
+        mode:
+            'merge' (default) or 'replace'.
+        expected_modified:
+            Optimistic-concurrency guard. Pass the ``modified`` timestamp from
+            a previous read to prevent overwriting concurrent edits.
+
+        Returns
+        -------
+        dict with keys: path (str), modified (int).
+
+        Raises
+        ------
+        KadoConcurrencyError  — expectedModified mismatch.
+        KadoToolError         — other tool-level errors.
+        """
+        args: dict = {
+            "operation": "frontmatter",
+            "path": path,
+            # Kado uses "content" as the universal payload slot across
+            # operations (note → markdown, file → base64, frontmatter →
+            # dict). Our 2026-05-20 handoff proposed "frontmatter" as the
+            # field name, but Kado implemented consistent with their
+            # existing convention. Field name discovered via F-47 live
+            # test 2026-05-22 — VALIDATION_ERROR "missing required field
+            # 'content'" was the symptom.
+            "content": frontmatter,
+            "mode": mode,
+        }
+        if expected_modified is not None:
+            args["expectedModified"] = expected_modified
+        try:
+            return self._call_tool("kado-write", args)
+        except KadoToolError as exc:
+            msg = str(exc)
+            if "expectedModified" in msg and "mismatch" in msg:
+                raise KadoConcurrencyError(msg) from exc
+            raise
+
+    def search_by_frontmatter(
+        self,
+        query: str,
+        *,
+        path_prefix: str | None = None,
+        modified_after: int | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """Search via kado-search operation=byFrontmatter.
+
+        Parameters
+        ----------
+        query:
+            Frontmatter query string, e.g. ``"tomo.state=pending-approval"``.
+        path_prefix:
+            Optional vault path prefix to restrict results (passed as
+            ``filter.path``).
+        modified_after:
+            Optional Unix-ms lower bound on ``modified`` (passed as
+            ``filter.modifiedAfter``). Requires Kado 0.11.0+.
+        limit:
+            Maximum number of results to return. Defaults to 500.
+
+        Returns
+        -------
+        list of dicts, each with: path (str), modified (int), frontmatter (dict).
+        """
+        args: dict = {
+            "operation": "byFrontmatter",
+            "query": query,
+            "limit": limit,
+        }
+
+        filter_block: dict = {}
+        if path_prefix is not None:
+            filter_block["path"] = path_prefix
+        if modified_after is not None:
+            filter_block["modifiedAfter"] = modified_after
+        if filter_block:
+            args["filter"] = filter_block
+
+        result = self._call_tool("kado-search", args)
+        return result.get("items", [])
 
     def test_connection(self) -> bool:
         """Verify connectivity by listing the vault root.

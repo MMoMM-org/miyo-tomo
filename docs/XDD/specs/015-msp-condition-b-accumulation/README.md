@@ -50,3 +50,7 @@ per-item Kado searches at /inbox time, so Pass-1 cost stays unchanged.
 
 See requirements.md §8 (OQ1–OQ7). Tentative leans noted; stakeholder
 input required before SDD locks the surface.
+
+## Notes
+
+**F-47 schema requirement (2026-05-21):** Any new renderer this spec introduces that emits workflow documents (suggestions-fan, instructions docs, or similar pipeline outputs) MUST emit the `tomo:` block per `tomo/schemas/doc-frontmatter.schema.json` (F-47 Phase 1 SoT). Use `build_tomo_block()` from `tomo/scripts/lib/doc_frontmatter.py`. When this spec reaches SDD/plan phase, renderer-touch tasks must include "emits `tomo:` block per F-47 schema". See `docs/XDD/specs/017-tomo-lifecycle-tags/solution.md` §Data Models for the canonical field definitions.

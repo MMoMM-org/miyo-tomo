@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.1
+# version: 0.9.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -496,15 +496,52 @@ def _parse_children_list(section_text: str) -> list[str]:
     return stems
 
 
+def _extract_tomo_doc_type(text: str) -> str | None:
+    """Return the value of ``tomo.doc_type`` from a nested YAML frontmatter block.
+
+    The ``tomo:`` key introduces an indented sub-block; standard flat-key
+    parsing misses nested values.  This helper scans within the frontmatter
+    for a ``tomo:`` section and reads the first ``doc_type:`` line indented
+    under it.
+    """
+    m = RE_FRONTMATTER.match(text)
+    if not m:
+        return None
+    in_tomo = False
+    for line in m.group(1).splitlines():
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if not in_tomo:
+            if stripped.startswith("tomo:"):
+                in_tomo = True
+            continue
+        # Inside the tomo: sub-block — exit when a non-indented key appears
+        if indent == 0 and stripped and not stripped.startswith("#"):
+            break
+        if stripped.startswith("doc_type:"):
+            _, _, v = stripped.partition(":")
+            return v.strip()
+    return None
+
+
 def _is_moc_proposal_doc(text: str, filename: str = "") -> bool:
     """Return True when the document is a MOC proposal-doc.
 
-    Dispatch criteria (either is sufficient):
-    - filename matches ``tomo-moc-proposal-*``
-    - frontmatter ``type: tomo-proposal``
+    Dispatch criteria (first match wins, in priority order):
+    1. (PRIMARY) frontmatter ``tomo.doc_type: moc-proposal``
+    2. (FALLBACK) filename matches either of the two known patterns:
+       - new: ``<YYYY-MM-DD>_<HHMM>_moc-proposal-<slug>.md``
+       - old: ``tomo-moc-proposal-<YYYYMMDD>-<HHMM>-<slug>.md``
+       Both are accepted so that files produced before the convention
+       alignment (suggestions-reducer.py L558-561) still match.
+    3. (FALLBACK) frontmatter ``type: tomo-proposal``
     """
+    if _extract_tomo_doc_type(text) == "moc-proposal":
+        return True
     basename = os.path.basename(filename)
-    if basename.startswith("tomo-moc-proposal-"):
+    if basename.startswith("tomo-moc-proposal-"):  # old pattern
+        return True
+    if "_moc-proposal-" in basename and basename.endswith(".md"):  # new pattern
         return True
     fm = _extract_frontmatter(text)
     return fm.get("type") == "tomo-proposal"
@@ -591,6 +628,116 @@ def enumerate_all_moc_sections(
         results.append((moc_id, title, candidate_stems, topic_keywords))
 
     return results
+
+
+def enumerate_moc_sections_split(
+    content: str,
+) -> tuple[list[dict], list[dict]]:
+    """Split a proposal-doc's MOC sections into ticked and unticked clusters.
+
+    Each returned cluster dict contains:
+        moc_id          — e.g. "MOC01"
+        title           — heading title string
+        children        — list of wikilink stem strings from #### Children
+        candidate_stems — same list (alias for topic_signature computation)
+        topic_keywords  — list from **Cluster:** N Notes — kw1, kw2 line
+        topic_signature — 16-char hex from topic_signature.compute_topic_signature
+
+    Returns ``(ticked, unticked)`` where each element is a list of such dicts.
+    A cluster is ticked when its block contains ``- [x] Accept`` (case-insensitive).
+
+    Used by the F-47 MOC-consumption branch to dispatch instruction-builder
+    and persist unticked clusters to squelch (AC-5.2).
+    """
+    # Lazy-import to avoid mandatory dependency for callers that don't need it.
+    try:
+        from lib.topic_signature import compute_topic_signature
+    except ImportError:
+        # Fallback for direct-module-load outside the scripts/ sys.path context.
+        import sys as _sys
+        import os as _os
+        _lib_path = _os.path.join(_os.path.dirname(__file__), "lib")
+        _sys.path.insert(0, _lib_path)
+        from topic_signature import compute_topic_signature  # type: ignore[no-redef]
+
+    lines = content.splitlines()
+
+    # ── Split into ### MOCxx blocks (same logic as enumerate_all_moc_sections) ─
+    moc_blocks: list[tuple[str, str, list[str]]] = []
+    current_moc_id: str | None = None
+    current_moc_title: str = ""
+    current_moc_lines: list[str] = []
+
+    for line in lines:
+        m = RE_MOC_SECTION_HEADER.match(line)
+        if m:
+            if current_moc_id is not None:
+                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+            current_moc_id = m.group(1).upper()
+            current_moc_title = m.group(2).strip()
+            current_moc_lines = []
+        elif current_moc_id is not None:
+            if line.startswith("## ") or line.startswith("# "):
+                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+                current_moc_id = None
+                current_moc_lines = []
+            else:
+                current_moc_lines.append(line)
+
+    if current_moc_id is not None:
+        moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+
+    ticked: list[dict] = []
+    unticked: list[dict] = []
+
+    for moc_id, title, block_lines in moc_blocks:
+        # ── Accept check ─────────────────────────────────────────────────────
+        is_ticked = any(
+            RE_CHECKED.match(bl.strip()) and
+            RE_CHECKED.match(bl.strip()).group(1).strip().lower() == "accept"
+            for bl in block_lines
+        )
+
+        # ── Extract topic_keywords ────────────────────────────────────────────
+        topic_keywords: list[str] = []
+        for bl in block_lines:
+            cm = RE_CLUSTER_LINE.search(bl.strip())
+            if cm:
+                raw_kws = cm.group(1).strip()
+                topic_keywords = [k.strip() for k in raw_kws.split(",") if k.strip()]
+                break
+
+        # ── Extract children from #### Children section ───────────────────────
+        children: list[str] = []
+        in_children = False
+        for bl in block_lines:
+            stripped = bl.strip()
+            if re.match(r"^####\s+Children", stripped, re.IGNORECASE):
+                in_children = True
+                continue
+            if in_children and stripped.startswith("####"):
+                break
+            if in_children:
+                wl = RE_CHILD_WIKILINK.search(bl)
+                if wl:
+                    children.append(wl.group(1).strip())
+
+        # ── Build cluster dict ────────────────────────────────────────────────
+        cluster: dict = {
+            "moc_id": moc_id,
+            "title": title,
+            "children": children,
+            "candidate_stems": children,  # children ARE the candidate stems here
+            "topic_keywords": topic_keywords,
+        }
+        cluster["topic_signature"] = compute_topic_signature(cluster)
+
+        if is_ticked:
+            ticked.append(cluster)
+        else:
+            unticked.append(cluster)
+
+    return ticked, unticked
 
 
 def parse_moc_proposal_doc(content: str, filename: str = "") -> list[dict]:

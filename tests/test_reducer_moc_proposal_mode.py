@@ -248,7 +248,11 @@ def test_overflow_footer() -> None:
 
 
 def test_filename_top_confidence_slug() -> None:
-    """Filename = tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<top-confidence-slug>.md (ADR-2)."""
+    """Filename = <YYYY-MM-DD>_<HHMM>_moc-proposal-<top-confidence-slug>.md.
+
+    Matches the canonical Tomo artifact pattern shared with suggestions,
+    instructions, and suggestions-fan.
+    """
     report = _empty_report()
     report["candidates"] = [_candidate("note-a"), _candidate("note-b")]
     report["topic_clusters"] = [
@@ -262,9 +266,6 @@ def test_filename_top_confidence_slug() -> None:
     # Two-arg form returns (filename_str, body); file-write is caller's responsibility.
     filename, body = render_moc_proposal_doc(report, _Cfg())
 
-    # Must start with tomo-moc-proposal-
-    assert filename.startswith("tomo-moc-proposal-"), f"Bad prefix: {filename!r}"
-
     # Must end with .md
     assert filename.endswith(".md"), f"Bad suffix: {filename!r}"
 
@@ -273,11 +274,11 @@ def test_filename_top_confidence_slug() -> None:
         f"Top-confidence slug 'shell-terminal-moc' not in filename {filename!r}"
     )
 
-    # Date portion: YYYYMMDD (8 digits)
+    # Pattern: YYYY-MM-DD_HHMM_moc-proposal-<slug>.md
     import re
-    date_pattern = r"tomo-moc-proposal-\d{8}-\d{4}-"
-    assert re.search(date_pattern, filename), (
-        f"Filename does not match tomo-moc-proposal-YYYYMMDD-HHmm- pattern: {filename!r}"
+    pattern = r"^\d{4}-\d{2}-\d{2}_\d{4}_moc-proposal-"
+    assert re.match(pattern, filename), (
+        f"Filename does not match YYYY-MM-DD_HHMM_moc-proposal- pattern: {filename!r}"
     )
 
 

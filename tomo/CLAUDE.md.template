@@ -17,7 +17,6 @@ For Kado connection details, see `config/kado-config.md` (human-readable) and `.
 
 - /tomo-setup    — post-install setup wizard (run first)
 - /inbox         — analyse inbox and generate instruction set
-- /execute       — execute an approved instruction set
 - /explore-vault — standalone vault rescan (normally invoked by /tomo-setup)
 
 ## Rules

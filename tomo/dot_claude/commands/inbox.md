@@ -4,7 +4,7 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --recover"
 ---
 # /inbox
-# version: 0.9.0
+# version: 0.10.0
 
 ## Arguments
 
@@ -17,7 +17,7 @@ argument-hint: "optional: --pass1 | --pass2 | --recover"
 ### 1. Run triage
 
 ```bash
-python3 tomo/scripts/inbox-triage.py [--force-pass1] [--force-pass2] [--recover] --output-dir tomo-tmp
+python3 scripts/inbox-triage.py [--force-pass1] [--force-pass2] [--recover] --output-dir tomo-tmp
 ```
 
 Pass through any flags the user provided: `--pass1` → `--force-pass1`, `--pass2` → `--force-pass2`, `--recover` → `--recover`.
@@ -25,8 +25,10 @@ Pass through any flags the user provided: `--pass1` → `--force-pass1`, `--pass
 ### 2. Read routing plan
 
 ```bash
-python3 -c "import json; plan = json.load(open('tomo-tmp/routing-plan.json')); print(plan['action'])"
+cat tomo-tmp/routing-plan.json
 ```
+
+Extract the `action` field from the JSON output.
 
 ### 3. Route on action
 

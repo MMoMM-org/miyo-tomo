@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.0
+# version: 0.13.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1116,6 +1116,21 @@ def _render_action_md(action: dict, cfg: dict) -> str:
 _UPSTREAM_TYPES: list[str] = ["suggestions", "moc-proposal", "suggestions-fan"]
 
 
+def _compute_sha256(file_path: str) -> str | None:
+    """Compute SHA-256 checksum of a file's text contents.
+
+    Returns 'sha256:<hex>' or None on read error. Reads as UTF-8 to match
+    how vault docs are stored and transmitted.
+    """
+    import hashlib
+
+    try:
+        content = Path(file_path).read_text(encoding="utf-8")
+        return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
+    except (FileNotFoundError, OSError):
+        return None
+
+
 def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
     """Build the tomo: block for an instructions doc from renderer metadata.
 
@@ -1123,12 +1138,14 @@ def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
     if the metadata lacks the fields required to build a valid block.
 
     T1.3 (XDD-018): upstream cross-ref now stored as sources=[{path}] list.
-    Checksum population is deferred to T1.4.
+    T1.4 (XDD-018): when upstream_body_path is present, sources[0] also
+    carries a sha256 checksum computed from the cached body file.
     SDD §Implementation Gotchas: uses metadata['run_id'] (Pass-2 run),
     NOT any upstream run_id.
     """
     upstream_type = metadata.get("upstream_type")
     upstream_path = metadata.get("upstream_path")
+    upstream_body_path = metadata.get("upstream_body_path")
     run_id = metadata.get("run_id")
     if not run_id:
         return None
@@ -1140,7 +1157,12 @@ def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
         )
     sources_list = []
     if upstream_path and upstream_type in _UPSTREAM_TYPES:
-        sources_list.append({"path": upstream_path})
+        source: dict[str, str] = {"path": upstream_path}
+        if upstream_body_path:
+            checksum = _compute_sha256(upstream_body_path)
+            if checksum:
+                source["checksum"] = checksum
+        sources_list.append(source)
     return build_tomo_block(
         doc_type="instructions",
         state="pending-apply",
@@ -1166,11 +1188,6 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
             sort_keys=False,
         ).rstrip()
         fm_lines.append(tomo_yaml)
-    # Legacy source_suggestions field kept for callers that pre-date F-47
-    # and do not supply upstream_type/run_id.  When tomo_block is present
-    # the cross-ref is already inside the block, so skip the top-level field.
-    if metadata.get("source_suggestions") and tomo_block is None:
-        fm_lines.append(f"source_suggestions: {metadata['source_suggestions']}")
     fm_lines.append(f"generated: {metadata['generated']}")
     if metadata.get("profile"):
         fm_lines.append(f"profile: {metadata['profile']}")
@@ -1458,6 +1475,11 @@ def main() -> int:
         default=None,
         help="Pass-2 run ID (NOT the upstream doc's run_id — SDD §Implementation Gotchas)",
     )
+    p.add_argument(
+        "--upstream-body",
+        default=None,
+        help="Local path to cached upstream doc body (for SHA-256 checksum computation)",
+    )
     args = p.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -1690,9 +1712,8 @@ def main() -> int:
             # F-47 T2.3: new fields drive the tomo: block + source_* cross-ref.
             "upstream_type": args.upstream_type,
             "upstream_path": args.upstream_path,
+            "upstream_body_path": args.upstream_body,
             "run_id": args.run_id,
-            # Legacy field kept for backwards compat when --run-id not supplied.
-            "source_suggestions": source_suggestions,
             "generated": generated_iso,
             "profile": profile_name,
             "tomo_version": tomo_version,

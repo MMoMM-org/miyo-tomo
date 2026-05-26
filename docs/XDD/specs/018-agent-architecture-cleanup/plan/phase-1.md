@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Schema Foundation (Layer D)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -55,7 +55,7 @@ Establishes the data contracts (schemas) and Python API changes that all downstr
   4. Validate: `python3 -m pytest tests/test_doc_frontmatter.py tests/test_instruction_render_tomo_block.py -v`; `python3 -m mypy tomo/scripts/lib/doc_frontmatter.py`
   5. Success: API accepts sources as list of dicts; old `source_*` kwargs rejected `[ref: PRD/F-6]` `[ref: SDD/build_tomo_block() API Change]`
 
-- [ ] **T1.4 instruction-render.py sources[] population** `[activity: backend-implementation]`
+- [x] **T1.4 instruction-render.py sources[] population** `[activity: backend-implementation]`
 
   1. Prime: Read instruction-render.py source_refs usage `[ref: tomo/scripts/instruction-render.py]` and SDD notes on `_UPSTREAM_TO_SOURCE_KEY` replacement `[ref: SDD/Risks and Technical Debt — Known Technical Issues; lines: 1065-1069]`
   2. Test: Rendered instructions doc frontmatter contains `sources: [{path: "...", checksum: "sha256:..."}]` for each input document; checksum computed from input doc body; sources list includes all upstream docs (suggestions, fan, moc-proposal); update `tests/test_instruction_render_tomo_block.py`

@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_instruction_render_tomo_block.py — tomo: block emission in instructions.md.
 
 T1.3 (XDD-018): Verifies that instruction-render.py injects a valid
 `tomo:` block into the instructions.md frontmatter with sources=[{path}] list
 replacing the old source_* kwargs pattern.
 
-Five tests:
+T1.4 (XDD-018): Verifies SHA-256 checksum population in sources[] when
+upstream body is available via upstream_body_path metadata field.
+
+Tests:
   1. test_emits_tomo_block_from_suggestions_source
   2. test_emits_tomo_block_from_moc_proposal_source
   3. test_emits_tomo_block_from_suggestions_fan_source
   4. test_new_run_id_not_upstream_run_id
   5. test_schema_validation_blocks_invalid_state_in_dev_mode
+  6. test_sources_include_checksum_when_body_available
+  7. test_sources_omit_checksum_when_no_body
 
 Spec: docs/XDD/specs/017-tomo-lifecycle-tags/
       docs/XDD/specs/018-agent-architecture-cleanup/
 AC:   AC-1.3 (instruction-render emits sources cross-ref),
+      AC-1.4 (sources[] SHA-256 checksums),
       AC-5.1 (bundled create_moc + child refs from moc-proposal)
 SDD:  §Implementation Gotchas — new run_id, not upstream's
 """
@@ -234,38 +240,60 @@ def test_emits_tomo_block_when_run_id_set_but_no_upstream_type(monkeypatch, caps
     )
 
 
-def test_legacy_source_suggestions_path_when_no_run_id():
-    """Legacy path: top-level source_suggestions emitted when run_id is absent.
+def test_sources_include_checksum_when_body_available(monkeypatch, tmp_path):
+    """sources[0] contains sha256 checksum when upstream body is available.
 
-    Pre-F-47 callers supply source_suggestions but no run_id / upstream_type.
-    render_instructions_md must:
-    - emit source_suggestions: at the TOP LEVEL of frontmatter
-    - NOT emit a tomo: block (run_id is the gate)
-
-    Backward-compat guarantee from render_instructions_md docstring comment.
+    T1.4 (XDD-018): When upstream_body_path is provided in metadata,
+    the renderer computes SHA-256 of the file contents and includes it
+    in sources[0] as checksum: 'sha256:<hex>'.
     """
-    metadata = {
-        "source_suggestions": "inbox/x.md",
-        "run_id": None,
-        "upstream_type": None,
-        "upstream_path": None,
-        "generated": "2026-05-21T14:00:00Z",
-        "profile": None,
-        "tomo_version": None,
-    }
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    body_content = "# Suggestions\n\nSome content here\n"
+    body_file = tmp_path / "suggestions.md"
+    body_file.write_text(body_content, encoding="utf-8")
+
+    import hashlib
+
+    expected_checksum = "sha256:" + hashlib.sha256(body_content.encode("utf-8")).hexdigest()
+
+    metadata = _make_metadata(
+        upstream_type="suggestions",
+        upstream_path="100 Inbox/2026-05-22_suggestions.md",
+        run_id="pass2-r1",
+    )
+    metadata["upstream_body_path"] = str(body_file)
+
     md = ir.render_instructions_md([], metadata, {})
     fm = _parse_frontmatter(md)
+    tomo = fm.get("tomo", {})
+    sources = tomo.get("sources", [])
 
-    # Top-level source_suggestions key must be present
-    assert "source_suggestions" in fm, (
-        "Expected top-level source_suggestions in frontmatter for legacy path"
-    )
-    assert fm["source_suggestions"] == "inbox/x.md"
+    assert len(sources) == 1
+    assert sources[0]["path"] == "100 Inbox/2026-05-22_suggestions.md"
+    assert sources[0]["checksum"] == expected_checksum
 
-    # No tomo: block when run_id is absent
-    assert "tomo" not in fm, (
-        "Expected NO tomo: block when run_id is None (legacy path)"
+
+def test_sources_omit_checksum_when_no_body(monkeypatch):
+    """sources[0] has path only when no upstream body is available.
+
+    T1.4 (XDD-018): When upstream_body_path is absent from metadata,
+    no checksum key is added to sources[0] (checksum is optional per schema).
+    """
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    metadata = _make_metadata(
+        upstream_type="suggestions",
+        upstream_path="100 Inbox/2026-05-22_suggestions.md",
+        run_id="pass2-r1",
     )
+    # No upstream_body_path in metadata
+    md = ir.render_instructions_md([], metadata, {})
+    fm = _parse_frontmatter(md)
+    tomo = fm.get("tomo", {})
+    sources = tomo.get("sources", [])
+
+    assert len(sources) == 1
+    assert sources[0]["path"] == "100 Inbox/2026-05-22_suggestions.md"
+    assert "checksum" not in sources[0]
 
 
 def test_schema_validation_blocks_invalid_state_in_dev_mode(monkeypatch):

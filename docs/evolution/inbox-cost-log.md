@@ -104,3 +104,34 @@ input/output/cache_create/cache_read). Actual billed cost may differ
 - Batch dispatch working: 4 batches (5/5/5/3), parallel within each batch.
 - Cost up ~12% vs previous run ($12.01 vs $10.71). Subagent cache read +34% (13.1M vs 9.8M) — likely due to skill context loading adding to each analyst's prompt. Main session slightly cheaper ($1.73 vs $1.86).
 - Coexistence enforcement (reducer v1.2.0) active — no duplication bugs observed.
+
+---
+
+### 2026-05-26 — Fan-resolve, 3 items, skill-owned pipeline (fixed path)
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-05-26 |
+| **Phase** | Fan-resolve (force atomic) |
+| **Items** | 3 (Furano, Sapporo, Beppu Onsen) |
+| **Vault** | Privat-Test |
+| **Model** | Sonnet 4.6 |
+| **Versions** | suggestion-conductor v0.6.0, force-atomic-handling skill v0.3.0, inbox-analyst v0.12.1, inbox-triage v0.5.0 |
+
+| Metric | Main | Subagents (3) | Total |
+|--------|------|---------------|-------|
+| Turns | 30 | 60 | 90 |
+| Input tokens | 43 | 66 | 109 |
+| Cache read | 778,912 | 2,037,470 | 2,816,382 |
+| Cache create | 20,638 | 285,788 | 306,426 |
+| Output tokens | 12,555 | 14,384 | 26,939 |
+| Total context | 778,955 | 2,037,536 | 2,816,491 |
+| Peak turn ctx | 31,153 | 46,960 | — |
+| **Est. cost** | **$0.50** | **$1.90** | **$2.40** |
+
+**Per-item average**: $0.63/item (subagent only), $0.80/item (total).
+
+**Notes**:
+- v0.3.0 fix: analysts now get `<inbox_path>/<stem>.md` instead of `source_path` (suggestions doc). Previous run classified suggestions doc content as "Knowledge Management".
+- All 3 dispatched in parallel (single batch). Pipeline compliance: 6/6 scripts, 0 errors.
+- Per-item cost slightly higher than suggest ($0.80 vs $0.67) due to fixed overhead amortized over fewer items.

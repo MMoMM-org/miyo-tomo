@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -201,9 +201,29 @@ def check_audio(audio_files: list[dict], md_files: list[dict]) -> bool:
 # ---------------------------------------------------------------------------
 
 def _get_doc_type(hit: dict) -> str:
-    """Extract tomo.doc_type from a frontmatter hit."""
+    """Extract tomo.doc_type from a frontmatter hit.
+
+    Kado byFrontmatter returns empty frontmatter:{}, so we fall back to
+    filename-based inference using the canonical naming convention:
+      *_suggestions-fan.md  → suggestions-fan
+      *_suggestions.md      → suggestions
+      *_moc-proposal-*.md   → moc-proposal
+      *_instructions.md     → instructions
+    """
     tomo = (hit.get("frontmatter") or {}).get("tomo") or {}
-    return tomo.get("doc_type", "")
+    doc_type = tomo.get("doc_type", "")
+    if doc_type:
+        return doc_type
+    stem = Path(hit.get("path", "")).stem
+    if stem.endswith("_suggestions-fan"):
+        return "suggestions-fan"
+    if stem.endswith("_suggestions"):
+        return "suggestions"
+    if "_moc-proposal" in stem:
+        return "moc-proposal"
+    if stem.endswith("_instructions"):
+        return "instructions"
+    return ""
 
 
 def _compute_checksum(content: str) -> str:
@@ -274,7 +294,13 @@ def read_approval_state(
 
     tagged_pending: list[tuple[dict, str]] = []
     for doc in pending_approval_hits:
-        doc_type = _get_doc_type(doc) or "suggestions"
+        doc_type = _get_doc_type(doc)
+        if not doc_type:
+            print(
+                f"[inbox-triage] WARNING: unknown doc_type for {doc.get('path', '?')}",
+                file=sys.stderr,
+            )
+            continue
         tagged_pending.append((doc, doc_type))
     for doc in pending_accept_hits:
         doc_type = _get_doc_type(doc) or "moc-proposal"

@@ -220,7 +220,4 @@ Agent(
 
 - You do NOT classify items yourself — subagents do it.
 - You do NOT read item contents for classification.
-- You do NOT call suggestion-parser.py — that is Pass 2.
-- You do NOT handle voice transcription — /inbox routes that before you run.
-- You do NOT handle approval checkbox scanning — that is inbox-triage.py.
-- You do NOT produce instructions — that is synthesis-conductor.
+

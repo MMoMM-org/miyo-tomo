@@ -32,6 +32,89 @@ Persisted here so they survive session resets. Move to backlog.md when long-term
 
 - **#14 instruction-builder ICMDA-Refactor (optional)** — Body-Layout entspricht nicht TCS-ICMDA-Convention (Identity/Constraints/Mission/Decision/Activities/Output). Funktional kein Gewinn, nur Convention-Conformance. Nur angehen wenn andere Agents auch konvertiert werden.
 
+## Deferred Review Items
+
+From code review of `feat/018-inbox-routing-redesign` (2026-05-26, commit f1600e5).
+27 of 33 findings were fixed; these 13 are deferred.
+
+### R1 — instruction-render.py 1742 LOC refactor (2026-05-26)
+- Location: tomo/scripts/instruction-render.py
+- Concern: 3-6x Constitution L2 limit (300-500 LOC). Split into actions, render, resolve modules.
+- Reason deferred: Large refactoring — needs dedicated PR to avoid regressions
+- Branch: feat/018-inbox-routing-redesign
+
+### R2 — suggestion-parser.py 1433 LOC refactor (2026-05-26)
+- Location: tomo/scripts/suggestion-parser.py
+- Concern: Approaching L2 limit. Extract moc_proposal_parser.py.
+- Reason deferred: Same as R1 — dedicated refactoring PR
+- Branch: feat/018-inbox-routing-redesign
+
+### R3 — FakeKadoClient test duplication (2026-05-26)
+- Location: tests/test_inbox_triage.py:30, tests/integration/test_018_pipeline.py:57
+- Concern: FakeKadoClient copy-pasted between files, drift risk
+- Reason deferred: Test maintenance, not a bug. Both copies work.
+- Branch: feat/018-inbox-routing-redesign
+
+### R4 — Action priority cascade untested (2026-05-26)
+- Location: tests/test_inbox_triage.py
+- Concern: No test verifies priority order when multiple conditions are true simultaneously
+- Reason deferred: Individual actions tested; cascade is deterministic if/elif chain
+- Branch: feat/018-inbox-routing-redesign
+
+### R5 — mark-captured squelch-persist path untested (2026-05-26)
+- Location: tomo/scripts/mark-captured.py:158-193
+- Concern: MOC proposal rejection persistence path has no test coverage
+- Reason deferred: Secondary code path, not in critical flow
+- Branch: feat/018-inbox-routing-redesign
+
+### R6 — /inbox --cleanup removal undocumented (2026-05-26)
+- Location: tomo/dot_claude/commands/inbox.md
+- Concern: Old --cleanup flag silently dropped; cleanup is now implicit
+- Reason deferred: Docs gap, not a bug — cleanup behavior is correct
+- Branch: feat/018-inbox-routing-redesign
+
+### R7 — Private _extract_from_mcp_json import (2026-05-26)
+- Location: scripts/strip-tomo-frontmatter.py:52
+- Concern: Imports private API across module boundary
+- Reason deferred: Dev-only tool, minor coupling
+- Branch: feat/018-inbox-routing-redesign
+
+### R8 — strip-tomo-frontmatter --recursive defaults True (2026-05-26)
+- Location: scripts/strip-tomo-frontmatter.py:199
+- Concern: Recursive vault mutation by default is risky
+- Reason deferred: Dev-only tool; zero-config mode already overrides to non-recursive
+- Branch: feat/018-inbox-routing-redesign
+
+### R9 — Inbox cache contains full note bodies (2026-05-26)
+- Location: tomo/scripts/inbox-triage.py:276
+- Concern: tomo-tmp/inbox-cache/ stores full note content (Constitution L2 spirit)
+- Reason deferred: Container-local, ephemeral. L2 advisory.
+- Branch: feat/018-inbox-routing-redesign
+
+### R10 — doc_frontmatter raises at import time (2026-05-26)
+- Location: tomo/scripts/lib/doc_frontmatter.py:56
+- Concern: Missing schema file crashes all importing scripts at import
+- Reason deferred: Schema always present in Docker image; only affects broken deployments
+- Branch: feat/018-inbox-routing-redesign
+
+### R11 — No WHY docs for 6 new skills (2026-05-26)
+- Location: docs/tomo/dot_claude/skills/ (missing directory)
+- Concern: force-atomic-handling, instructions-coverage, kado-discovery-patterns, routing-plan-consumer, suggestions-doc-format, tomo-lifecycle-states — no WHY docs
+- Reason deferred: Docs debt — track in backlog
+- Branch: feat/018-inbox-routing-redesign
+
+### R12 — Naming inconsistency _hits suffix (2026-05-26)
+- Location: tomo/scripts/inbox-triage.py:66
+- Concern: Mixed _hits suffix on raw fields vs processed fields
+- Reason deferred: Internal naming, no external impact
+- Branch: feat/018-inbox-routing-redesign
+
+### R13 — XDD reference docs stale (2026-05-26)
+- Location: docs/XDD/reference/tier-2/workflows/, docs/XDD/reference/tier-3/inbox/
+- Concern: Still describe vault-executor, tag-captured.py, old tag-based lifecycle
+- Reason deferred: Docs debt — track in backlog
+- Branch: feat/018-inbox-routing-redesign
+
 ## Verifikation für nächste Pass-1/Pass-2 Runs
 
 - Sonnet-Pin in `settings.json` greift → Parent /inbox sollte unter 2.5M tokens liegen (heute 7.14M auf opus)

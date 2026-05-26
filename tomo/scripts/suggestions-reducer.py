@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.1.0
+# version: 1.2.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -115,6 +115,58 @@ def _location_link(location: str) -> str:
     target so Obsidian opens the folder on click (where supported)."""
     loc = (location or "").strip().rstrip("/")
     return f"[[{loc}/]]" if loc else ""
+
+
+def _enforce_coexistence(actions: list[dict]) -> list[dict]:
+    """Deterministic coexistence enforcement (analyst Step 9 table).
+
+    If an item has both create_atomic_note AND update_daily with log_entry,
+    resolve based on worthiness:
+      >= 0.5: keep create_atomic_note, convert log_entry to log_link
+      <  0.5: drop create_atomic_note, keep log_entry
+    """
+    has_atomic = any(a.get("kind") == "create_atomic_note" for a in actions)
+    if not has_atomic:
+        return actions
+
+    has_log_entry = False
+    for a in actions:
+        if a.get("kind") != "update_daily":
+            continue
+        for u in a.get("updates") or []:
+            if u.get("kind") == "log_entry":
+                has_log_entry = True
+                break
+
+    if not has_log_entry:
+        return actions
+
+    atomic_action = next(a for a in actions if a.get("kind") == "create_atomic_note")
+    worthiness = atomic_action.get("atomic_note_worthiness", 0)
+
+    if worthiness >= 0.5:
+        for a in actions:
+            if a.get("kind") != "update_daily":
+                continue
+            new_updates = []
+            for u in a.get("updates") or []:
+                if u.get("kind") == "log_entry":
+                    stem = atomic_action.get("suggested_title") or atomic_action.get("stem", "")
+                    new_updates.append({
+                        "kind": "log_link",
+                        "target_stem": stem,
+                        "time": u.get("time"),
+                        "time_source": u.get("time_source"),
+                        "position": u.get("position"),
+                        "reason": u.get("reason", ""),
+                    })
+                else:
+                    new_updates.append(u)
+            a["updates"] = new_updates
+    else:
+        actions = [a for a in actions if a.get("kind") != "create_atomic_note"]
+
+    return actions
 
 
 def render_create_atomic_note(action: dict, stem: str) -> str:
@@ -781,7 +833,8 @@ def main() -> int:
         section_id = f"S{idx:02d}"
         rendered_actions: list[dict] = []
         had_update_daily = False
-        for action in result.get("actions", []):
+        actions = _enforce_coexistence(result.get("actions", []))
+        for action in actions:
             kind = action.get("kind")
             renderer = RENDERERS.get(kind)
             if not renderer:

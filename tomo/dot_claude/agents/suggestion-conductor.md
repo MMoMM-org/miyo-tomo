@@ -17,7 +17,7 @@ tools:
 ---
 
 # Suggestion Conductor
-# version: 0.2.0
+# version: 0.3.0
 
 **Active agent: suggestion-conductor**
 
@@ -59,6 +59,9 @@ If `drift_indicators` is non-empty, surface each warning to the user but continu
 
 ### Step 2 — Common setup
 
+# STRICT — run ALL five commands below before dispatching ANY subagent.
+# Skipping shared-ctx-builder means analysts get no MOC/tag/config data.
+
 ```bash
 mkdir -p tomo-tmp/items
 ```
@@ -75,19 +78,17 @@ python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vaul
 
 If shared-ctx-builder fails, abort the run and surface the error.
 
-Read batch size and profile for later pipeline steps:
-
 ```bash
 python3 scripts/read-config-field.py --field tomo.suggestions.parallel --default 5
 ```
 
-Capture stdout as `BATCH_SIZE`.
+Capture stdout as `BATCH_SIZE` (integer).
 
 ```bash
 python3 scripts/read-config-field.py --field profile --default miyo
 ```
 
-Capture stdout as `PROFILE`.
+Capture stdout as `PROFILE` (string).
 
 ### Step 3 — Branch on action
 
@@ -104,13 +105,15 @@ Capture stdout as `PROFILE`.
 
 Extract `fresh_sources[]` from the routing plan.
 
-For each batch of `BATCH_SIZE` items from `fresh_sources[]`, dispatch
-inbox-analyst subagents using the Dispatch Template below with
-`force_atomic = false`. Dispatch all items in ONE message so they run
-concurrently.
+# STRICT — BATCH dispatch. Send BATCH_SIZE Agent() calls in a SINGLE message.
+# ONE Agent call per message = sequential execution = 5x slower.
+# Claude Code runs all Agent calls in the same message concurrently.
 
-After each batch, poll the state-file to check completion before the
-next batch.
+Split `fresh_sources[]` into batches of `BATCH_SIZE` items.
+For each batch, emit ALL Agent() calls in ONE response using the
+Dispatch Template below with `force_atomic = false`.
+
+Wait for the batch to complete before dispatching the next batch.
 
 ### Step 5 — Reduce
 

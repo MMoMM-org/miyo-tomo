@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Conductors & Router (Layer B)"
-status: pending
+status: completed
 version: "1.0"
 phase: 4
 ---

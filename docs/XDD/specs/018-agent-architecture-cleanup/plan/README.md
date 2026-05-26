@@ -148,7 +148,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 1: Schema Foundation (Layer D)](phase-1.md)
 - [x] [Phase 2: Triage Script (Layer A)](phase-2.md)
 - [x] [Phase 3: Skills & WHY Docs (Layer C + AC-14)](phase-3.md)
-- [ ] [Phase 4: Conductors & Router (Layer B)](phase-4.md)
+- [x] [Phase 4: Conductors & Router (Layer B)](phase-4.md)
 - [ ] [Phase 5: Integration, Live Test & Migration](phase-5.md)
 
 ---

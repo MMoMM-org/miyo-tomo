@@ -252,3 +252,47 @@ def test_sources_path_only_valid():
         }
     }
     jsonschema.validate(doc, schema)  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# T1.3 (XDD-018): build_tomo_block() API — sources list replaces source_refs
+# ---------------------------------------------------------------------------
+
+
+def test_build_tomo_block_with_sources_list(monkeypatch):
+    """Instructions doc with sources=[{path, checksum}] produces correct dict."""
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    sources = [
+        {"path": "100 Inbox/2026-05-22_suggestions.md", "checksum": "sha256:" + "a" * 64},
+    ]
+    block = build_tomo_block(
+        doc_type="instructions",
+        state="pending-apply",
+        run_id="2026-05-26-1430-abc",
+        sources=sources,
+    )
+    assert block["sources"] == sources
+    assert block["doc_type"] == "instructions"
+
+
+def test_build_tomo_block_without_sources_omits_field(monkeypatch):
+    """Non-instructions doc (no sources arg) produces dict without sources key."""
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    block = build_tomo_block(
+        doc_type="suggestions",
+        state="pending-approval",
+        run_id="r1",
+    )
+    assert "sources" not in block
+
+
+def test_build_tomo_block_sources_none_omits_field(monkeypatch):
+    """Explicitly passing sources=None omits sources from dict."""
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    block = build_tomo_block(
+        doc_type="suggestions",
+        state="pending-approval",
+        run_id="r1",
+        sources=None,
+    )
+    assert "sources" not in block

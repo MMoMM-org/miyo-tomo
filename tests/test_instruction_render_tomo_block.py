@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_instruction_render_tomo_block.py — tomo: block emission in instructions.md.
 
-F-47 Phase 2 T2.3: Verifies that instruction-render.py injects a valid
-`tomo:` block into the instructions.md frontmatter with EXACTLY ONE
-source_* cross-ref key based on the upstream doc type.
+T1.3 (XDD-018): Verifies that instruction-render.py injects a valid
+`tomo:` block into the instructions.md frontmatter with sources=[{path}] list
+replacing the old source_* kwargs pattern.
 
 Five tests:
   1. test_emits_tomo_block_from_suggestions_source
@@ -14,7 +14,8 @@ Five tests:
   5. test_schema_validation_blocks_invalid_state_in_dev_mode
 
 Spec: docs/XDD/specs/017-tomo-lifecycle-tags/
-AC:   AC-1.3 (instruction-render emits source_suggestions / source_moc_proposal),
+      docs/XDD/specs/018-agent-architecture-cleanup/
+AC:   AC-1.3 (instruction-render emits sources cross-ref),
       AC-5.1 (bundled create_moc + child refs from moc-proposal)
 SDD:  §Implementation Gotchas — new run_id, not upstream's
 """
@@ -93,7 +94,7 @@ def _make_metadata(
 
 
 def test_emits_tomo_block_from_suggestions_source(monkeypatch):
-    """instructions.md frontmatter has tomo.source_suggestions and no other source_* keys."""
+    """instructions.md frontmatter has tomo.sources with upstream path and no source_* keys."""
     monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
     upstream_path = "100 Inbox/2026-05-21T12:00_suggestions.md"
     metadata = _make_metadata(
@@ -107,16 +108,17 @@ def test_emits_tomo_block_from_suggestions_source(monkeypatch):
 
     assert tomo.get("doc_type") == "instructions"
     assert tomo.get("state") == "pending-apply"
-    assert tomo.get("source_suggestions") == upstream_path
-    # EXACTLY ONE source_* key present
+    assert tomo.get("sources") is not None
+    sources = tomo["sources"]
+    assert len(sources) == 1
+    assert sources[0]["path"] == upstream_path
+    # No old source_* keys
     source_keys = [k for k in tomo if k.startswith("source_")]
-    assert source_keys == ["source_suggestions"], (
-        f"Expected exactly [source_suggestions], got {source_keys}"
-    )
+    assert source_keys == [], f"Expected no source_* keys, got {source_keys}"
 
 
 def test_emits_tomo_block_from_moc_proposal_source(monkeypatch):
-    """instructions.md frontmatter has tomo.source_moc_proposal and no other source_* keys."""
+    """instructions.md frontmatter has tomo.sources with moc-proposal upstream path."""
     monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
     upstream_path = "100 Inbox/2026-05-21T10:00_moc-proposal-notemaking.md"
     metadata = _make_metadata(
@@ -130,15 +132,17 @@ def test_emits_tomo_block_from_moc_proposal_source(monkeypatch):
 
     assert tomo.get("doc_type") == "instructions"
     assert tomo.get("state") == "pending-apply"
-    assert tomo.get("source_moc_proposal") == upstream_path
+    assert tomo.get("sources") is not None
+    sources = tomo["sources"]
+    assert len(sources) == 1
+    assert sources[0]["path"] == upstream_path
+    # No old source_* keys
     source_keys = [k for k in tomo if k.startswith("source_")]
-    assert source_keys == ["source_moc_proposal"], (
-        f"Expected exactly [source_moc_proposal], got {source_keys}"
-    )
+    assert source_keys == [], f"Expected no source_* keys, got {source_keys}"
 
 
 def test_emits_tomo_block_from_suggestions_fan_source(monkeypatch):
-    """instructions.md frontmatter has tomo.source_suggestions_fan and no other source_* keys."""
+    """instructions.md frontmatter has tomo.sources with suggestions-fan upstream path."""
     monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
     upstream_path = "100 Inbox/2026-05-21_suggestions-fan.md"
     metadata = _make_metadata(
@@ -152,11 +156,13 @@ def test_emits_tomo_block_from_suggestions_fan_source(monkeypatch):
 
     assert tomo.get("doc_type") == "instructions"
     assert tomo.get("state") == "pending-apply"
-    assert tomo.get("source_suggestions_fan") == upstream_path
+    assert tomo.get("sources") is not None
+    sources = tomo["sources"]
+    assert len(sources) == 1
+    assert sources[0]["path"] == upstream_path
+    # No old source_* keys
     source_keys = [k for k in tomo if k.startswith("source_")]
-    assert source_keys == ["source_suggestions_fan"], (
-        f"Expected exactly [source_suggestions_fan], got {source_keys}"
-    )
+    assert source_keys == [], f"Expected no source_* keys, got {source_keys}"
 
 
 def test_new_run_id_not_upstream_run_id(monkeypatch):
@@ -187,11 +193,11 @@ def test_new_run_id_not_upstream_run_id(monkeypatch):
 
 
 def test_emits_tomo_block_when_run_id_set_but_no_upstream_type(monkeypatch, capsys):
-    """tomo: block is emitted with no source_* key when run_id set but upstream_type is None.
+    """tomo: block is emitted without sources when run_id set but upstream_type is None.
 
     Documented behavior path (SDD §_build_tomo_block_for_instructions):
     - run_id present → tomo block IS built (not None)
-    - upstream_type is None → source_key lookup produces '' → no source_* emitted
+    - upstream_type is None → no sources emitted
     - No warning printed (warning only fires for EXPLICITLY UNKNOWN upstream_type)
 
     AC-1.3 edge case: instructions.md still has a valid tomo: block even when
@@ -215,7 +221,9 @@ def test_emits_tomo_block_when_run_id_set_but_no_upstream_type(monkeypatch, caps
     assert tomo.get("state") == "pending-apply"
     assert tomo.get("run_id") == "pass2-r1"
 
-    # No source_* keys — upstream_type=None means no cross-ref, not an error
+    # No sources field — upstream_type=None means no cross-ref, not an error
+    assert "sources" not in tomo, f"Expected no sources key, got {tomo.get('sources')}"
+    # No old source_* keys either
     source_keys = [k for k in tomo if k.startswith("source_")]
     assert source_keys == [], f"Expected no source_* keys, got {source_keys}"
 
@@ -275,5 +283,5 @@ def test_schema_validation_blocks_invalid_state_in_dev_mode(monkeypatch):
             doc_type="instructions",
             state="totally-bogus-state",
             run_id="r1",
-            source_suggestions="100 Inbox/test.md",
+            sources=[{"path": "100 Inbox/test.md"}],
         )

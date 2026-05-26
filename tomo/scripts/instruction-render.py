@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.11.0
+# version: 0.12.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1111,13 +1111,9 @@ def _render_action_md(action: dict, cfg: dict) -> str:
     return f"{heading_prefix}(unknown action: {kind})\n- [ ] Applied"
 
 
-# Maps upstream_type (CLI flag value) → source_* key name in the tomo: block.
-# F-47 AC-1.3: EXACTLY ONE source_* key per instructions doc.
-_UPSTREAM_TYPE_TO_SOURCE_KEY: dict[str, str] = {
-    "suggestions": "source_suggestions",
-    "moc-proposal": "source_moc_proposal",
-    "suggestions-fan": "source_suggestions_fan",
-}
+# Known upstream doc types for the --upstream-type CLI flag.
+# T1.3 (XDD-018): source_* kwargs replaced by sources list in build_tomo_block.
+_UPSTREAM_TYPES: list[str] = ["suggestions", "moc-proposal", "suggestions-fan"]
 
 
 def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
@@ -1126,7 +1122,8 @@ def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
     Returns the inner block dict (without the 'tomo' wrapper key) or None
     if the metadata lacks the fields required to build a valid block.
 
-    AC-1.3: emits EXACTLY ONE source_* key based on upstream_type.
+    T1.3 (XDD-018): upstream cross-ref now stored as sources=[{path}] list.
+    Checksum population is deferred to T1.4.
     SDD §Implementation Gotchas: uses metadata['run_id'] (Pass-2 run),
     NOT any upstream run_id.
     """
@@ -1135,21 +1132,20 @@ def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
     run_id = metadata.get("run_id")
     if not run_id:
         return None
-    source_key = _UPSTREAM_TYPE_TO_SOURCE_KEY.get(upstream_type or "")
-    if upstream_type and not source_key:
+    if upstream_type and upstream_type not in _UPSTREAM_TYPES:
         print(
             f"  [warn] Unknown upstream_type {upstream_type!r} — "
-            "omitting source_* key from tomo: block",
+            "omitting source from tomo: block",
             file=sys.stderr,
         )
-    source_refs: dict[str, str] = {}
-    if source_key and upstream_path:
-        source_refs[source_key] = upstream_path
+    sources_list = []
+    if upstream_path and upstream_type in _UPSTREAM_TYPES:
+        sources_list.append({"path": upstream_path})
     return build_tomo_block(
         doc_type="instructions",
         state="pending-apply",
         run_id=run_id,
-        **source_refs,
+        sources=sources_list if sources_list else None,
     )
 
 
@@ -1448,7 +1444,7 @@ def main() -> int:
     # F-47 T2.3: upstream doc identity for the tomo: block + source_* cross-ref.
     p.add_argument(
         "--upstream-type",
-        choices=list(_UPSTREAM_TYPE_TO_SOURCE_KEY),
+        choices=_UPSTREAM_TYPES,
         default=None,
         help="Upstream doc type: suggestions | moc-proposal | suggestions-fan",
     )

@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.3.0
 """doc_frontmatter.py — Producer helper for the 'tomo:' frontmatter block.
 
 Every Tomo-produced doc (suggestions, suggestions-fan, moc-proposal,
@@ -67,7 +67,7 @@ def build_tomo_block(
     doc_type: str,
     state: str,
     run_id: str,
-    **source_refs: str,
+    sources: list[dict[str, str]] | None = None,
 ) -> dict:
     """Construct the inner 'tomo' block dict. Auto-sets updated_at.
 
@@ -79,9 +79,11 @@ def build_tomo_block(
         Lifecycle state; must be valid for the given doc_type.
     run_id:
         Run-id string produced by run-id.py.
-    **source_refs:
-        Optional cross-references, e.g. source_suggestions="100 Inbox/...".
-        Keys must match pattern ^source_[a-z_]+$ or schema validation fails.
+    sources:
+        Optional list of source-reference dicts, each with at minimum a 'path'
+        key and an optional 'checksum' key (sha256:<hex64> format). Used by
+        instructions docs to cross-reference their upstream suggestion file(s).
+        Pass None (default) to omit the field entirely.
 
     Returns
     -------
@@ -99,8 +101,9 @@ def build_tomo_block(
         "state": state,
         "run_id": run_id,
         "updated_at": _utc_now(),
-        **source_refs,
     }
+    if sources is not None:
+        block["sources"] = sources
     _validate(block)
     return block
 

@@ -1494,9 +1494,6 @@ def main() -> int:
 
     cfg = load_config(args.config)
     inbox_path = cfg["concepts.inbox"]
-    daily_path = cfg["concepts.calendar.granularities.daily.path"]
-    daily_heading = cfg["daily_log.heading"]
-    daily_level = cfg["daily_log.heading_level"]
     profile_name = cfg["profile"]
 
     # No confirmed items AND no daily updates AND no skipped items → nothing to do.

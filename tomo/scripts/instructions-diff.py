@@ -462,7 +462,7 @@ def run_diff(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
     lines.append("")
     lines.append("-" * 72)
     if hard_fail:
-        lines.append(f"RESULT: FAIL — count or coverage mismatch above.")
+        lines.append("RESULT: FAIL — count or coverage mismatch above.")
     else:
         lines.append(
             f"RESULT: OK — {total_actual}/{total_expected} actions reconciled"

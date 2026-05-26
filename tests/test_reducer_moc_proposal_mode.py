@@ -17,7 +17,6 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -391,8 +390,8 @@ def test_template_why_narrative() -> None:
     # produces same body (modulo datetime in frontmatter)
     path3, body3 = render_moc_proposal_doc(report_no_parent, _Cfg())
     # Strip first-line (frontmatter created timestamp may differ by seconds)
-    body2_lines = [l for l in body2.splitlines() if "created:" not in l]
-    body3_lines = [l for l in body3.splitlines() if "created:" not in l]
+    body2_lines = [line for line in body2.splitlines() if "created:" not in line]
+    body3_lines = [line for line in body3.splitlines() if "created:" not in line]
     assert body2_lines == body3_lines, "render_moc_proposal_doc is not deterministic"
 
 

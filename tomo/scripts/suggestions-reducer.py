@@ -731,7 +731,7 @@ def main() -> int:
     state_path = Path(args.state)
     items_dir = Path(args.items_dir)
     out_path = Path(args.output)
-    field_sections = load_field_sections(Path(args.shared_ctx))
+    load_field_sections(Path(args.shared_ctx))
 
     state = last_state_per_stem(state_path)
     done_stems = sorted(s for s, e in state.items() if e.get("status") == "done")

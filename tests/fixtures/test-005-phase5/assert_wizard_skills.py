@@ -15,7 +15,6 @@ Checks:
 """
 import sys
 import os
-import re
 
 repo = sys.argv[1]
 

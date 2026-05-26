@@ -275,7 +275,6 @@ def _split_segments(text):
     Returns list of (content, is_protected) tuples.
     """
     segments = []
-    pos = 0
     length = len(text)
 
     # Patterns for protected regions

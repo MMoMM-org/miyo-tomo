@@ -247,7 +247,7 @@ def test_rule_46_per_child_individual_target() -> None:
     assert len(actions_b) == 2, f"child-b: expected 2 actions; got {actions_b!r}"
     assert actions_b[0]["marker"] == "up::"
     assert "MOC-B" in actions_b[1]["line"], f"child-b: expected MOC-B in related::; got {actions_b[1]['line']!r}"
-    assert "MOC-A" not in actions_b[1]["line"], f"child-b: must not reference MOC-A from child-a"
+    assert "MOC-A" not in actions_b[1]["line"], "child-b: must not reference MOC-A from child-a"
 
     # child-c: 1 action (up:: new only)
     assert len(actions_c) == 1, f"child-c: expected 1 action; got {actions_c!r}"

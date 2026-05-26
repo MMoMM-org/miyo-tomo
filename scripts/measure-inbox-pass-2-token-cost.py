@@ -318,7 +318,7 @@ def main() -> int:
     peak_ctx = max((t["in"] + t["cr"]) for t in main_turns)
     main_cost = estimate_cost(total_in, total_out, total_cc, total_cr, price)
     print()
-    print(f"Main session totals:")
+    print("Main session totals:")
     print(f"  total context loaded:  {total_ctx:>10,}")
     print(f"  peak single-turn ctx:  {peak_ctx:>10,}")
     print(f"  total output:          {total_out:>10,}")
@@ -351,14 +351,16 @@ def main() -> int:
                         if isinstance(content, str):
                             m = STEM_RE.search(content)
                             if m:
-                                stem = m.group(1); break
+                                stem = m.group(1)
+                                break
                         elif isinstance(content, list):
                             for c in content:
                                 v = c.get("text") if isinstance(c, dict) else None
                                 if isinstance(v, str):
                                     m = STEM_RE.search(v)
                                     if m:
-                                        stem = m.group(1); break
+                                        stem = m.group(1)
+                                        break
                             if stem != "?": break
                 in_t = sum(t["in"] for t in turns)
                 out_t = sum(t["out"] for t in turns)
@@ -374,7 +376,7 @@ def main() -> int:
                 sub_total_cr += cr
             sub_cost = estimate_cost(sub_total_in, sub_total_out, sub_total_cc, sub_total_cr, price)
             print()
-            print(f"Subagent totals:")
+            print("Subagent totals:")
             print(f"  total context loaded:  {sub_total_in + sub_total_cr:>10,}")
             print(f"  total output:          {sub_total_out:>10,}")
             print(f"  est. cost:             ${sub_cost:>9.2f}")

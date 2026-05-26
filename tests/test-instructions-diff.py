@@ -134,13 +134,6 @@ def test_missing_instruction_fails():
         {"id": "S01", "source_path": "A.md", "action": None,
          "title": "A", "tags": [], "parent_moc": "", "parent_mocs": []},
     ]
-    manifest = [{
-        "id": "S01", "action": None, "title": "A",
-        "source_path": "A.md",
-        "rendered_file": "2026-04-21_1200_a.md",
-        "destination": "Atlas/202 Notes/",
-        "parent_moc": "", "parent_mocs": [], "tags": [],
-    }]
     parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
     # Hand-build instructions.json WITHOUT the move_note action
     instrs = {

@@ -14,7 +14,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = TESTS_DIR.parent
@@ -589,7 +588,6 @@ class TestSourcesInInstructionsMatchSchema:
     def test_instructions_sources_field_matches_frontmatter_schema(self, tmp_path):
         """Instructions doc sources[] field matches doc-frontmatter schema."""
         sugg_path = INBOX + "2026-05-22_1432_suggestions.md"
-        instr_path = INBOX + "2026-05-24_0900_instructions.md"
 
         mod = _load_module()
         body = _suggestions_body(approved=True)

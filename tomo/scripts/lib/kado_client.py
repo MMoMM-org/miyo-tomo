@@ -495,8 +495,8 @@ class KadoClient:
                 ) from exc
             if exc.code == 404:
                 raise KadoNotFoundError(
-                    f"Kado endpoint not found (HTTP 404). "
-                    f"Check that KADO_URL points to the right server and port."
+                    "Kado endpoint not found (HTTP 404). "
+                    "Check that KADO_URL points to the right server and port."
                 ) from exc
             raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}") from exc
         except urllib.error.URLError as exc:

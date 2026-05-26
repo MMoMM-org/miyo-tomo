@@ -1037,10 +1037,8 @@ class TestRoutingPlan:
             }],
         )
         metrics = {
-            "listDir_ms": 10.0,
-            "byFrontmatter_ms": 5.0,
-            "body_reads_ms": 3.0,
             "total_ms": 18.0,
+            "discover_ms": 10.0,
             "kado_calls": 5,
             "docs_cached": 1,
         }
@@ -1073,8 +1071,7 @@ class TestRoutingPlan:
             drift_indicators=[],
             idle_reasons=idle_reasons,
             metrics={
-                "listDir_ms": 0, "byFrontmatter_ms": 0,
-                "body_reads_ms": 0, "total_ms": 0,
+                "total_ms": 0, "discover_ms": 0,
                 "kado_calls": 0, "docs_cached": 0,
             },
         )
@@ -1098,8 +1095,7 @@ class TestRoutingPlan:
             drift_indicators=drift,
             idle_reasons=["nothing"],
             metrics={
-                "listDir_ms": 0, "byFrontmatter_ms": 0,
-                "body_reads_ms": 0, "total_ms": 0,
+                "total_ms": 0, "discover_ms": 0,
                 "kado_calls": 0, "docs_cached": 0,
             },
         )

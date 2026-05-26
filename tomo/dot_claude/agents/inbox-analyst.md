@@ -1,6 +1,6 @@
 ---
 name: inbox-analyst
-description: Classifies ONE inbox item from the fan-out pipeline. Reads shared-ctx + note content via Kado, writes a structured result.json, updates state-file. Invoked per-item by inbox-orchestrator.
+description: Classifies ONE inbox item from the fan-out pipeline. Reads shared-ctx + note content via Kado, writes a structured result.json, updates state-file. Invoked per-item by suggestion-conductor.
 model: sonnet
 effort: medium
 color: blue

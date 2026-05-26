@@ -556,23 +556,13 @@ RE_CLUSTER_LINE = re.compile(
 RE_CHILD_WIKILINK = re.compile(r"`\[\[([^\]]+)\]\]`")
 
 
-def enumerate_all_moc_sections(
-    content: str,
-) -> list[tuple[str, str, list[str], list[str]]]:
-    """Return ALL ``### MOCxx`` sections from a proposal-doc, accepted or not.
+def _split_moc_blocks(lines: list[str]) -> list[tuple[str, str, list[str]]]:
+    """Split document lines into ``### MOCxx`` blocks.
 
-    Each tuple is ``(moc_id, title, candidate_stems, topic_keywords)`` extracted
-    from the rendered body.  Used by the squelch-persist helper (T5.2) to identify
-    rejected clusters (enumerate_all − accepted).
-
-    Extraction strategy:
-    - ``candidate_stems``  — wikilinks from ``#### Children`` items
-    - ``topic_keywords``   — comma-separated list from ``**Cluster:** N Notes — kw1, kw2``
+    Returns a list of ``(moc_id, title, block_lines)`` tuples — one per
+    ``### MOCxx — Title`` header found.  A block ends when the next MOC header
+    or an h1/h2 section boundary is encountered.
     """
-    lines = content.splitlines()
-    results: list[tuple[str, str, list[str], list[str]]] = []
-
-    # ── Split into ### MOCxx blocks (same logic as parse_moc_proposal_doc) ───
     moc_blocks: list[tuple[str, str, list[str]]] = []
     current_moc_id: str | None = None
     current_moc_title: str = ""
@@ -596,6 +586,27 @@ def enumerate_all_moc_sections(
 
     if current_moc_id is not None:
         moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+
+    return moc_blocks
+
+
+def enumerate_all_moc_sections(
+    content: str,
+) -> list[tuple[str, str, list[str], list[str]]]:
+    """Return ALL ``### MOCxx`` sections from a proposal-doc, accepted or not.
+
+    Each tuple is ``(moc_id, title, candidate_stems, topic_keywords)`` extracted
+    from the rendered body.  Used by the squelch-persist helper (T5.2) to identify
+    rejected clusters (enumerate_all − accepted).
+
+    Extraction strategy:
+    - ``candidate_stems``  — wikilinks from ``#### Children`` items
+    - ``topic_keywords``   — comma-separated list from ``**Cluster:** N Notes — kw1, kw2``
+    """
+    lines = content.splitlines()
+    results: list[tuple[str, str, list[str], list[str]]] = []
+
+    moc_blocks = _split_moc_blocks(lines)
 
     # ── Extract stems + keywords from each block ─────────────────────────────
     for moc_id, title, block_lines in moc_blocks:
@@ -661,31 +672,7 @@ def enumerate_moc_sections_split(
         from topic_signature import compute_topic_signature  # type: ignore[no-redef]
 
     lines = content.splitlines()
-
-    # ── Split into ### MOCxx blocks (same logic as enumerate_all_moc_sections) ─
-    moc_blocks: list[tuple[str, str, list[str]]] = []
-    current_moc_id: str | None = None
-    current_moc_title: str = ""
-    current_moc_lines: list[str] = []
-
-    for line in lines:
-        m = RE_MOC_SECTION_HEADER.match(line)
-        if m:
-            if current_moc_id is not None:
-                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
-            current_moc_id = m.group(1).upper()
-            current_moc_title = m.group(2).strip()
-            current_moc_lines = []
-        elif current_moc_id is not None:
-            if line.startswith("## ") or line.startswith("# "):
-                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
-                current_moc_id = None
-                current_moc_lines = []
-            else:
-                current_moc_lines.append(line)
-
-    if current_moc_id is not None:
-        moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+    moc_blocks = _split_moc_blocks(lines)
 
     ticked: list[dict] = []
     unticked: list[dict] = []
@@ -761,31 +748,7 @@ def parse_moc_proposal_doc(content: str, filename: str = "") -> list[dict]:
     proposals: list[dict] = []
 
     # ── Split into ### MOCxx sections ────────────────────────────────────────
-    # Each section starts at a `### MOCxx — …` header.
-    moc_blocks: list[tuple[str, str, list[str]]] = []  # (moc_id, title, lines)
-    current_moc_id: str | None = None
-    current_moc_title: str = ""
-    current_moc_lines: list[str] = []
-
-    for line in lines:
-        m = RE_MOC_SECTION_HEADER.match(line)
-        if m:
-            if current_moc_id is not None:
-                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
-            current_moc_id = m.group(1).upper()
-            current_moc_title = m.group(2).strip()
-            current_moc_lines = []
-        elif current_moc_id is not None:
-            # Stop a block when a new h2/h1 starts (document structure guard)
-            if line.startswith("## ") or line.startswith("# "):
-                moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
-                current_moc_id = None
-                current_moc_lines = []
-            else:
-                current_moc_lines.append(line)
-
-    if current_moc_id is not None:
-        moc_blocks.append((current_moc_id, current_moc_title, current_moc_lines))
+    moc_blocks = _split_moc_blocks(lines)
 
     # ── Parse each block ────────────────────────────────────────────────────
     for moc_id, heading_title, block_lines in moc_blocks:

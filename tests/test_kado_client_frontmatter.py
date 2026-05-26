@@ -71,7 +71,7 @@ def test_write_frontmatter_merge_mode_call_shape():
     assert captured["args"]["operation"] == "frontmatter"
     assert captured["args"]["mode"] == "merge"
     assert captured["args"]["path"] == "100 Inbox/note.md"
-    assert captured["args"]["frontmatter"] == {"tomo": {"state": "approved"}}
+    assert captured["args"]["content"] == {"tomo": {"state": "approved"}}
     assert "expectedModified" not in captured["args"]
     assert result["path"] == "100 Inbox/note.md"
 

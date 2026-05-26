@@ -91,7 +91,7 @@ Phases 2-6.5 with topics pre-populated.
 Generate a run ID and a Phase-1 temp path via the following:
 
 ```bash
-RUN_ID=$(python3 -c "import time; print(int(time.time()))")
+RUN_ID=$(date +%s)
 PHASE1_TMP="tomo-tmp/moc-phase1-${RUN_ID}.json"
 ```
 

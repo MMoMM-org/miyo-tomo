@@ -8,35 +8,49 @@ user-invocable: false
 
 ## Listing Files
 
-```bash
-python3 -c "
-import sys; sys.path.insert(0, 'tomo/scripts')
+Write a small script to `tomo-tmp/list_dir.py` then run it:
+
+```python
+# tomo-tmp/list_dir.py
+import sys, json
+sys.path.insert(0, 'scripts')
 from lib.kado_client import KadoClient
 client = KadoClient()
 files = client.list_dir('100 Inbox/', depth=1)
 for f in files:
-    print(f\"{f['type']:5} {f['path']}\")
-"
+    print(f"{f['type']:5} {f['path']}")
+```
+
+```bash
+python3 tomo-tmp/list_dir.py
 ```
 
 ## Querying by Frontmatter
 
-```bash
-python3 -c "
-import sys, json; sys.path.insert(0, 'tomo/scripts')
+Write a script to `tomo-tmp/query_fm.py` then run it:
+
+```python
+# tomo-tmp/query_fm.py
+import sys, json
+sys.path.insert(0, 'scripts')
 from lib.kado_client import KadoClient
 client = KadoClient()
 hits = client.search_by_frontmatter('tomo.state=pending-approval', path_prefix='100 Inbox/')
 print(json.dumps(hits, indent=2))
-"
+```
+
+```bash
+python3 tomo-tmp/query_fm.py
 ```
 
 byFrontmatter is strict equality only. No wildcards, no partial matching.
 
-To query multiple states, make separate calls and merge:
-```bash
-python3 -c "
-import sys, json; sys.path.insert(0, 'tomo/scripts')
+To query multiple states, make separate calls and merge — write one script, run it:
+
+```python
+# tomo-tmp/query_multi.py
+import sys, json
+sys.path.insert(0, 'scripts')
 from lib.kado_client import KadoClient
 client = KadoClient()
 pending_approval = client.search_by_frontmatter('tomo.state=pending-approval', path_prefix='100 Inbox/')
@@ -44,19 +58,28 @@ pending_accept = client.search_by_frontmatter('tomo.state=pending-accept', path_
 captured = client.search_by_frontmatter('tomo.state=captured', path_prefix='100 Inbox/')
 all_hits = pending_approval + pending_accept + captured
 print(json.dumps(all_hits, indent=2))
-"
+```
+
+```bash
+python3 tomo-tmp/query_multi.py
 ```
 
 ## Reading Note Content
 
-```bash
-python3 -c "
-import sys; sys.path.insert(0, 'tomo/scripts')
+Write a script to `tomo-tmp/read_note.py` then run it:
+
+```python
+# tomo-tmp/read_note.py
+import sys
+sys.path.insert(0, 'scripts')
 from lib.kado_client import KadoClient
 client = KadoClient()
 result = client.read_note('100 Inbox/note.md')
 print(result['content'][:500])
-"
+```
+
+```bash
+python3 tomo-tmp/read_note.py
 ```
 
 ## Error Handling

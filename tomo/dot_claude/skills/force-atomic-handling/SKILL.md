@@ -17,7 +17,7 @@ Load this skill when:
 ### 1. Read force_atomic_items from routing plan
 
 ```bash
-python3 -c "import json; items = json.load(open('tomo-tmp/routing-plan.json'))['force_atomic_items']; print(json.dumps(items, indent=2))"
+cat tomo-tmp/routing-plan.json | jq '.force_atomic_items'
 ```
 
 ### 2. Dispatch per-item inbox-analyst subagents
@@ -42,13 +42,7 @@ python3 scripts/kado-write-file.py "<inbox_path>/<fan_filename>" "<local_path>"
 ### 4. Tag the fan doc with tomo frontmatter
 
 ```bash
-python3 -c "
-import sys, json
-sys.path.insert(0, 'tomo/scripts')
-from lib.doc_frontmatter import build_tomo_block
-block = build_tomo_block('suggestions-fan', 'pending-approval', '<run_id>')
-print(json.dumps({'tomo': block}))
-" | python3 scripts/kado-write-file.py --operation frontmatter "<vault_path>"
+python3 scripts/state-promoter.py flip "<vault_path>" suggestions-fan captured pending-approval "<run_id>"
 ```
 
 ## Force Atomic Items Schema

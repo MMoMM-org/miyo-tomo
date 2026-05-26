@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -30,14 +30,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+from lib.audio_constants import AUDIO_EXTS  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
-
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-AUDIO_EXTS = frozenset({".m4a", ".mp3", ".wav", ".ogg", ".webm", ".mp4"})
 
 _RE_APPROVED = re.compile(r"^\s*-\s+\[x\]\s+Approved", re.MULTILINE | re.IGNORECASE)
 _RE_ACCEPT = re.compile(r"^\s*-\s+\[x\]\s+Accept", re.MULTILINE | re.IGNORECASE)
@@ -736,10 +730,8 @@ def main(
     discover_ms = round((t_discover - t_start) * 1000, 1)
 
     metrics = {
-        "listDir_ms": round(discover_ms * 0.2, 1),
-        "byFrontmatter_ms": round(discover_ms * 0.4, 1),
-        "body_reads_ms": round(discover_ms * 0.4, 1),
         "total_ms": total_ms,
+        "discover_ms": discover_ms,
         "kado_calls": _count_kado_calls(state),
         "docs_cached": len(state.manifest),
     }

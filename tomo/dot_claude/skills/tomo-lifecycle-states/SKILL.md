@@ -18,23 +18,28 @@ user-invocable: false
 
 ## Checking Current State
 
-```bash
-python3 -c "
+Write a script to `tomo-tmp/check_state.py` then run it:
+
+```python
+# tomo-tmp/check_state.py
 import json, sys
-sys.path.insert(0, 'tomo/scripts')
+sys.path.insert(0, 'scripts')
 from lib.kado_client import KadoClient
 client = KadoClient()
 hits = client.search_by_frontmatter('tomo.state=pending-approval', path_prefix='100 Inbox/')
 for h in hits:
-    print(f\"{h['path']}: {h['frontmatter'].get('tomo', {}).get('state', 'unknown')}\")
-"
+    print(f"{h['path']}: {h['frontmatter'].get('tomo', {}).get('state', 'unknown')}")
+```
+
+```bash
+python3 tomo-tmp/check_state.py
 ```
 
 ## Flipping State
 
 Use state-promoter.py for validated transitions:
 ```bash
-python3 tomo/scripts/state-promoter.py flip --path "<vault_path>" --to "<target_state>"
+python3 scripts/state-promoter.py flip "<vault_path>" <doc_type> <from_state> <to_state> "<run_id>"
 ```
 
 The promoter validates the transition against the state machine and retries once on optimistic-concurrency failure.
@@ -42,19 +47,11 @@ The promoter validates the transition against the state machine and retries once
 ## Checking Approval Checkbox
 
 ```bash
-python3 tomo/scripts/state-promoter.py check_tick --path "<vault_path>" --checkbox "Approved"
+python3 scripts/state-promoter.py check-tick "<vault_path>" <doc_type>
 ```
 
-Returns exit 0 if ticked, exit 1 if not. Check before flipping to approved.
+Returns exit 0 if ticked, exit 10 if not, exit 11 if unreadable. Check before flipping to approved.
 
 ## Frontmatter Validation
 
-```bash
-TOMO_SCHEMA_STRICT=1 python3 -c "
-import sys
-sys.path.insert(0, 'tomo/scripts')
-from lib.doc_frontmatter import build_tomo_block
-block = build_tomo_block('<doc_type>', '<state>', '<run_id>')
-print('Valid' if block else 'Invalid')
-"
-```
+Frontmatter is built and written exclusively via state-promoter.py — direct calls to build_tomo_block are not needed from agent context.

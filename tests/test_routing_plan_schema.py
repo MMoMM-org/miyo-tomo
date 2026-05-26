@@ -85,10 +85,8 @@ def test_valid_full_routing_plan(schema):
             ],
             "skip_stems": ["already-done"],
             "metrics": {
-                "listDir_ms": 12.5,
-                "byFrontmatter_ms": 8.0,
-                "body_reads_ms": 3.1,
                 "total_ms": 23.6,
+                "discover_ms": 12.5,
                 "kado_calls": 5,
                 "docs_cached": 2,
             },
@@ -386,10 +384,8 @@ def test_metrics_valid_properties_pass(schema):
             "timestamp": "2026-05-26T10:00:00Z",
             "inbox_path": "100 Inbox",
             "metrics": {
-                "listDir_ms": 10.0,
-                "byFrontmatter_ms": 5.5,
-                "body_reads_ms": 2.1,
                 "total_ms": 17.6,
+                "discover_ms": 10.0,
                 "kado_calls": 3,
                 "docs_cached": 1,
             },

@@ -66,24 +66,16 @@ def check_tick(body: str, doc_type: str) -> bool:
         )
         return False
 
-    try:
-        if doc_type in ("suggestions", "suggestions-fan"):
-            return bool(_RE_APPROVED.search(body))
-        if doc_type == "moc-proposal":
-            return bool(_RE_ACCEPT.search(body))
-        # Unknown doc_type: log and return False
-        print(
-            f"state-promoter.check_tick: unknown doc_type={doc_type!r}; returning False",
-            file=sys.stderr,
-        )
-        return False
-    except Exception as exc:  # noqa: BLE001 — safety net for malformed input
-        print(
-            f"state-promoter.check_tick: error parsing body for doc_type={doc_type!r}: {exc}; "
-            "lifecycle.check_tick_warning: parse error",
-            file=sys.stderr,
-        )
-        return False
+    if doc_type in ("suggestions", "suggestions-fan"):
+        return bool(_RE_APPROVED.search(body))
+    if doc_type == "moc-proposal":
+        return bool(_RE_ACCEPT.search(body))
+    # Unknown doc_type: log and return False
+    print(
+        f"state-promoter.check_tick: unknown doc_type={doc_type!r}; returning False",
+        file=sys.stderr,
+    )
+    return False
 
 
 # ---------------------------------------------------------------------------

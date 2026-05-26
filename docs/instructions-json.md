@@ -12,7 +12,7 @@ consumer specification for both companion artefacts.
 word on required fields and enum values).
 
 **Producer:** [`scripts/instruction-render.py`](../scripts/instruction-render.py)
-inside this repo. Produced by the `instruction-builder` agent at the end
+inside this repo. Invoked by the `synthesis-conductor` agent at the end
 of Pass 2, written to the vault inbox via `kado-write operation="file"`
 (because `operation="note"` only accepts `.md`).
 
@@ -181,7 +181,7 @@ the JSON is sufficient to replay.
 
 ### Cleanup contract
 
-When `/inbox` runs the cleanup phase (`vault-executor`), it needs only
+When `/inbox` runs the cleanup phase (`state-promoter.py` + `mark-captured.py`), it needs only
 the `.md`'s frontmatter tag (`#MiYo-Tomo/applied`) and per-action
 `- [x] Applied` checkboxes to decide which source inbox items to
 transition from `captured` → `active`. The `.json` is not consulted

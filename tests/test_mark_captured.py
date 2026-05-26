@@ -365,5 +365,83 @@ def test_non_md_paths_are_skipped(state_file, monkeypatch, capsys):
     assert ".m4a" not in call_path
 
 
+# ---------------------------------------------------------------------------
+# T7 — write failure returns exit code 1 with error count in stderr
+# ---------------------------------------------------------------------------
+
+
+def test_write_failure_returns_exit_code_1(state_file, monkeypatch, capsys):
+    """When write_frontmatter raises KadoError, main() returns 1 and reports errors."""
+    from lib.kado_client import KadoError
+
+    mod = _load_script_module()
+
+    fake_client = MagicMock()
+    fake_client.read_frontmatter.return_value = {"modified": 1}
+    fake_client.write_frontmatter.side_effect = KadoError("write denied")
+
+    monkeypatch.setattr(mod, "KadoClient", lambda: fake_client)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-t7"],
+    )
+    rc = mod.main()
+
+    assert rc == 1, f"expected exit 1 on write failure, got {rc}"
+
+    captured = capsys.readouterr()
+    assert "errors=1" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# T8 — nonexistent state file returns exit code 2 with FATAL in stderr
+# ---------------------------------------------------------------------------
+
+
+def test_missing_state_file_returns_exit_code_2(tmp_path, monkeypatch, capsys):
+    """Passing a nonexistent --state path causes main() to return 2 with FATAL message."""
+    mod = _load_script_module()
+
+    nonexistent = tmp_path / "no-such-file.jsonl"
+
+    monkeypatch.setattr(
+        sys, "argv",
+        ["mark-captured.py", "--state", str(nonexistent), "--run-id", "run-t8"],
+    )
+    rc = mod.main()
+
+    assert rc == 2, f"expected exit 2 for missing state file, got {rc}"
+
+    captured = capsys.readouterr()
+    assert "FATAL" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# T9 — Kado connection failure returns exit code 2 with FATAL in stderr
+# ---------------------------------------------------------------------------
+
+
+def test_kado_connection_failure_returns_exit_code_2(state_file, monkeypatch, capsys):
+    """When KadoClient() raises KadoError, main() returns 2 with FATAL message."""
+    from lib.kado_client import KadoError
+
+    mod = _load_script_module()
+
+    def failing_client():
+        raise KadoError("no connection")
+
+    monkeypatch.setattr(mod, "KadoClient", failing_client)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-t9"],
+    )
+    rc = mod.main()
+
+    assert rc == 2, f"expected exit 2 for Kado connection failure, got {rc}"
+
+    captured = capsys.readouterr()
+    assert "FATAL" in captured.err
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

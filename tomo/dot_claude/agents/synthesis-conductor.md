@@ -32,12 +32,12 @@ Why: stderr contamination into JSON output causes silent parse failures on the n
 
 Correct:
 ```bash
-python3 tomo/scripts/suggestion-parser.py --file <path> > tomo-tmp/parsed-suggestions.json
+python3 scripts/suggestion-parser.py --file <path> > tomo-tmp/parsed-suggestions.json
 ```
 
 Never:
 ```bash
-python3 tomo/scripts/suggestion-parser.py --file <path> > tomo-tmp/parsed-suggestions.json 2>&1
+python3 scripts/suggestion-parser.py --file <path> > tomo-tmp/parsed-suggestions.json 2>&1
 ```
 
 ## Workflow
@@ -45,7 +45,7 @@ python3 tomo/scripts/suggestion-parser.py --file <path> > tomo-tmp/parsed-sugges
 ### Step 1 — Read routing plan
 
 ```bash
-python3 -c "import json; plan = json.load(open('tomo-tmp/routing-plan.json')); print(json.dumps(plan, indent=2))"
+cat tomo-tmp/routing-plan.json
 ```
 
 Verify `plan["action"] == "synthesize"`. If not, report the mismatch and stop.
@@ -62,7 +62,7 @@ If `plan["drift_indicators"]` is non-empty, surface each warning to the user but
 ### Step 2 — Generate run-id
 
 ```bash
-python3 tomo/scripts/run-id.py
+python3 scripts/run-id.py
 ```
 
 Capture stdout as `RUN_ID`.
@@ -77,24 +77,24 @@ then moc-proposals.
 
 For suggestions and fan docs:
 ```bash
-python3 tomo/scripts/suggestion-parser.py --file "<cache_path>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/suggestion-parser.py --file "<cache_path>" > tomo-tmp/parsed-suggestions.json
 ```
 
 When both a suggestions doc and its fan companion are approved, add the
 fan companion:
 ```bash
-python3 tomo/scripts/suggestion-parser.py --file "<suggestions_cache_path>" --fan-resolve-file "<fan_cache_path>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/suggestion-parser.py --file "<suggestions_cache_path>" --fan-resolve-file "<fan_cache_path>" > tomo-tmp/parsed-suggestions.json
 ```
 
 For moc-proposals:
 ```bash
-python3 tomo/scripts/suggestion-parser.py --file "<cache_path>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/suggestion-parser.py --file "<cache_path>" > tomo-tmp/parsed-suggestions.json
 ```
 
 #### 3b — Render instructions
 
 ```bash
-python3 tomo/scripts/instruction-render.py \
+python3 scripts/instruction-render.py \
   --suggestions tomo-tmp/parsed-suggestions.json \
   --output-dir tomo-tmp/rendered \
   --config config/vault-config.yaml \
@@ -111,7 +111,7 @@ Exit 0 = success. Exit 1 = partial (still upload what exists). Exit 2 = fatal, s
 #### 3c — Upload rendered files
 
 ```bash
-python3 tomo/scripts/upload-rendered.py \
+python3 scripts/upload-rendered.py \
   --rendered-dir tomo-tmp/rendered \
   --inbox "<inbox_path>"
 ```
@@ -123,17 +123,17 @@ do not retry batch). Exit 2 = bad input, stop.
 
 For suggestions:
 ```bash
-python3 tomo/scripts/state-promoter.py flip "<vault_path>" suggestions pending-approval approved "<RUN_ID>"
+python3 scripts/state-promoter.py flip "<vault_path>" suggestions pending-approval approved "<RUN_ID>"
 ```
 
 For suggestions-fan:
 ```bash
-python3 tomo/scripts/state-promoter.py flip "<vault_path>" suggestions-fan pending-approval approved "<RUN_ID>"
+python3 scripts/state-promoter.py flip "<vault_path>" suggestions-fan pending-approval approved "<RUN_ID>"
 ```
 
 For moc-proposals:
 ```bash
-python3 tomo/scripts/state-promoter.py flip "<vault_path>" moc-proposal pending-accept accepted "<RUN_ID>"
+python3 scripts/state-promoter.py flip "<vault_path>" moc-proposal pending-accept accepted "<RUN_ID>"
 ```
 
 Exit 0 = success. Exit 1 = transition rejected (report and continue).
@@ -142,7 +142,7 @@ Exit 2 = concurrency conflict (report and continue).
 #### 3e — Coverage audit
 
 ```bash
-python3 tomo/scripts/instructions-diff.py \
+python3 scripts/instructions-diff.py \
   --suggestions tomo-tmp/parsed-suggestions.json \
   --instructions tomo-tmp/rendered/instructions.json
 ```

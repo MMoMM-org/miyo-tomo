@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """voice-precheck.py — Cheap sibling-existence check before dispatching voice-transcriber.
 
 The voice-transcriber subagent costs ~17k tokens to load even when it
@@ -31,10 +31,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tomo" / "scripts"))
 
+from lib.audio_constants import AUDIO_EXTS  # noqa: E402
 from lib.kado_client import KadoClient  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
-
-AUDIO_EXTS = frozenset({".mp3", ".m4a", ".wav", ".ogg", ".flac"})
 
 
 def _audio_stem(path: str) -> str:

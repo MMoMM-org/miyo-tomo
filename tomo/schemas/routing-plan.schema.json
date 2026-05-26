@@ -133,10 +133,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "listDir_ms": {"type": "number"},
-        "byFrontmatter_ms": {"type": "number"},
-        "body_reads_ms": {"type": "number"},
         "total_ms": {"type": "number"},
+        "discover_ms": {"type": "number"},
         "kado_calls": {"type": "integer"},
         "docs_cached": {"type": "integer"}
       }

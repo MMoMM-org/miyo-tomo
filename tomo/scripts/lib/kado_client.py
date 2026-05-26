@@ -1,4 +1,4 @@
-# version: 0.4.2
+# version: 0.4.3
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -191,6 +191,19 @@ class KadoClient:
         """
         return self._search_all("byName", query=query, limit=limit)
 
+    def resolve_stem_to_path(self, stem: str) -> "str | None":
+        """Resolve a note stem to its vault path, or None if not found."""
+        results = self.search_by_name(stem, limit=1)
+        return results[0]["path"] if results else None
+
+    def path_exists(self, path: str) -> bool:
+        """Check whether a vault path exists."""
+        try:
+            self.read_frontmatter(path)
+            return True
+        except KadoNotFoundError:
+            return False
+
     def search_by_content(self, query: str, limit: int = 500) -> list:
         """Find notes whose body contains the query string.
 
@@ -345,7 +358,7 @@ class KadoClient:
         -------
         list of dicts, each with: path (str), modified (int), frontmatter (dict).
         """
-        args: dict = {
+        base_args: dict = {
             "operation": "byFrontmatter",
             "query": query,
             "limit": limit,
@@ -357,10 +370,26 @@ class KadoClient:
         if modified_after is not None:
             filter_block["modifiedAfter"] = modified_after
         if filter_block:
-            args["filter"] = filter_block
+            base_args["filter"] = filter_block
 
-        result = self._call_tool("kado-search", args)
-        return result.get("items", [])
+        all_items: list = []
+        cursor: str | None = None
+
+        while True:
+            args = dict(base_args)
+            if cursor is not None:
+                args["cursor"] = cursor
+
+            result = self._call_tool("kado-search", args)
+            page_items = result.get("items", [])
+            all_items.extend(page_items)
+
+            next_cursor = result.get("nextCursor") or result.get("cursor")
+            if not next_cursor or not page_items:
+                break
+            cursor = next_cursor
+
+        return all_items
 
     def test_connection(self) -> bool:
         """Verify connectivity by listing the vault root.
@@ -591,7 +620,7 @@ def _parse_rpc_response(raw: str, tool_name: str) -> dict:
     try:
         rpc = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise KadoError(f"Non-JSON response from Kado: {raw[:200]}") from exc
+        raise KadoError(f"Non-JSON response from Kado: {raw[:60]}") from exc
 
     # JSON-RPC level error (e.g. method not found, invalid params)
     if "error" in rpc:
@@ -602,7 +631,7 @@ def _parse_rpc_response(raw: str, tool_name: str) -> dict:
 
     result = rpc.get("result")
     if result is None:
-        raise KadoError(f"Unexpected Kado response (no result field): {raw[:200]}")
+        raise KadoError(f"Unexpected Kado response (no result field): {raw[:60]}")
 
     # MCP tool-level error
     if result.get("isError"):

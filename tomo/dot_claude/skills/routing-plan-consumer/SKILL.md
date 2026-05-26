@@ -9,7 +9,7 @@ user-invocable: false
 ## Reading the Plan
 
 ```bash
-python3 -c "import json; plan = json.load(open('tomo-tmp/routing-plan.json')); print(json.dumps(plan, indent=2))"
+cat tomo-tmp/routing-plan.json
 ```
 
 ## Action Branching

@@ -279,11 +279,25 @@ for f in "$TOMO_SOURCE/scripts/lib/"*.py; do
 done
 
 # Retired files (delete from instance if present)
-RETIRED_AGENTS=(suggestion-builder.md)
+RETIRED_AGENTS=(suggestion-builder.md vault-executor.md)
 for name in "${RETIRED_AGENTS[@]}"; do
     dst="$INSTANCE_PATH/.claude/agents/$name"
     if [ -f "$dst" ]; then
         add_plan "retire" "" "$dst" "agents/$name" "retire" "removed from source" "retired"
+    fi
+done
+RETIRED_COMMANDS=(execute.md)
+for name in "${RETIRED_COMMANDS[@]}"; do
+    dst="$INSTANCE_PATH/.claude/commands/$name"
+    if [ -f "$dst" ]; then
+        add_plan "retire" "" "$dst" "commands/$name" "retire" "removed from source" "retired"
+    fi
+done
+RETIRED_SKILLS_DIRS=(pkm-workflows)
+for skill_dir in "${RETIRED_SKILLS_DIRS[@]}"; do
+    dst="$INSTANCE_PATH/.claude/skills/$skill_dir"
+    if [ -d "$dst" ]; then
+        add_plan "retire" "" "$dst" "skills/$skill_dir" "retire" "removed from source" "retired"
     fi
 done
 RETIRED_SCRIPT_TESTS=(
@@ -320,7 +334,7 @@ done
 # Templates — regenerated from schemas; check if regen would change anything.
 # We compute the expected content into a tmp file and cmp.
 TEMPLATE_TMP="$(mktemp)"
-trap 'rm -f "$TEMPLATE_TMP"' EXIT
+trap 'rm -f "$TEMPLATE_TMP" "${SETTINGS_TMP:-}"' EXIT
 TEMPLATE_DST="$INSTANCE_PATH/templates/item-result.template.json"
 if python3 "$TOMO_SOURCE/scripts/template-from-schema.py" \
         --schema "$TOMO_SOURCE/schemas/item-result.schema.json" \
@@ -531,7 +545,12 @@ execute_one() {
             return
             ;;
         retire)
-            if rm -f "$dst" 2>/dev/null; then
+            if [ -d "$dst" ]; then
+                rm_cmd="rm -rf"
+            else
+                rm_cmd="rm -f"
+            fi
+            if $rm_cmd "$dst" 2>/dev/null; then
                 mark_did "deleted" "$label" ""
                 DID_DELETED=$((DID_DELETED + 1))
             else

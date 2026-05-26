@@ -1,7 +1,7 @@
 # XDD 018 — Inbox Routing Redesign & Agent Decomposition
 
-**Status:** PRD draft — 2026-05-24
-**Current phase:** requirements.md (PRD)
+**Status:** PLAN complete — 2026-05-26
+**Current phase:** plan/README.md (PLAN)
 **Branch when implementation starts:** `feat/018-inbox-routing-redesign`
 **Supersedes scope:** F-53, F-56, F-57, F-59, F-50 (iii), F-51, F-32 (partial)
 **Unblocks:** F-43 operator-live-validation (013-moc-creation-skill)
@@ -39,10 +39,10 @@ agent files are deleted as part of the big-bang migration.
 
 ## Files
 
-- [requirements.md](requirements.md) — product requirements (PRD), draft
+- [requirements.md](requirements.md) — product requirements (PRD v0.2)
 - [audit.md](audit.md) — pre-existing audit from 2026-05-21 (input material, not authoritative)
-- solution.md — technical design (SDD), pending OQ resolution
-- plan/phase-N.md — implementation plan, pending SDD
+- [solution.md](solution.md) — technical design (SDD v0.3)
+- [plan/README.md](plan/README.md) — implementation plan (5 phases, 21 tasks)
 
 ## Tracking
 

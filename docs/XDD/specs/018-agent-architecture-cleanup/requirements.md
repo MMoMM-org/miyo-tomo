@@ -1,7 +1,7 @@
 ---
 title: "XDD 018 — Inbox Routing Redesign & Agent Decomposition"
 status: draft
-version: "0.1"
+version: "0.2"
 ---
 
 # Product Requirements Document
@@ -54,7 +54,7 @@ is approved, what is already covered". It listDirs the inbox, fetches
 frontmatter buckets via `kado-search byFrontmatter`, reads full bodies
 of workflow docs (suggestions / fan / moc-proposal / instructions),
 scans for `[x] Approved` and `[x] Force Atomic Note` checkboxes,
-parses instruction `source_*` fields for coverage, and emits a
+parses instruction `sources` fields for coverage, and emits a
 `routing-plan.json` plus a local file cache (`tomo-tmp/inbox-cache/`).
 The script materialises the docs it has already read so downstream
 conductors don't re-fetch via Kado.
@@ -65,12 +65,14 @@ conductors don't re-fetch via Kado.
 - `suggestion-conductor` — handles fresh inputs (audio, untagged .md,
   captured-state notes) → produces suggestions doc, optional
   suggestions-fan companion, optional moc-proposal docs. Dispatches
-  `voice-transcriber` and `inbox-analyst` as leaves.
+  `voice-transcriber` for audio transcription and a per-item leaf
+  agent for content analysis and suggestion generation (see OQ11 for
+  naming).
 - `synthesis-conductor` — handles approved inputs (approved
   suggestions, approved suggestions-fan, accepted moc-proposals,
   force-atomic items needing FAN resolve) → produces instructions doc
-  + atomic note files + new MOC files. Dispatches `inbox-analyst` as
-  leaf for FAN Step 2.5 resolution.
+  + atomic note files + new MOC files. Dispatches per-item leaf agent
+  for FAN Step 2.5 resolution.
 
 Each conductor stays small — orchestration logic only, no inline
 domain knowledge. Conductors are impersonated from the main session
@@ -86,24 +88,25 @@ branches that need them:
 - `routing-plan-consumer` — how to read & branch on routing-plan.json
 - `force-atomic-handling` — FAN sub-flow logic (today's Step 2.5)
 - `suggestions-doc-format` — doc layout, approval-checkbox conventions
-- `instructions-coverage` — source_* fields, coverage semantics
+- `instructions-coverage` — sources field, coverage semantics
 
 Skill set is the initial proposal; final granularity is OQ1.
 
 **Layer D — Schema extension.** `instructions` doc-type
-frontmatter gains three flat-string-array fields:
+frontmatter gains a flat string array field:
 
 ```yaml
 tomo:
   doc_type: instructions
   state: pending-apply
-  source_suggestions: ["100 Inbox/2026-05-22_1432_suggestions.md"]
-  source_fan: ["100 Inbox/2026-05-23_1328_suggestions-fan.md"]
-  source_moc_proposals: ["100 Inbox/2026-05-22_1832_moc-proposal-board-games.md"]
+  sources:
+    - "100 Inbox/2026-05-22_1432_suggestions.md"
+    - "100 Inbox/2026-05-23_1328_suggestions-fan.md"
+    - "100 Inbox/2026-05-22_1832_moc-proposal-board-games.md"
 ```
 
 `inbox-triage.py` reads these to compute coverage:
-`to_process = approved_set − union(all instructions.source_*)`.
+`to_process = approved_set − union(all instructions.sources)`.
 
 ## 3. Personas
 
@@ -129,7 +132,7 @@ Outputs `tomo-tmp/routing-plan.json` + populates
 it inspected. Scans approval checkboxes in body (no partial body
 reads — Kado doesn't support them; we need full docs downstream
 anyway). Detects force-atomic items per suggestion item. Computes
-coverage from existing instructions `source_*` fields.
+coverage from existing instructions `sources` field.
 
 **F-2 — `/inbox` command becomes router.** Reads routing-plan,
 impersonates one of `suggestion-conductor` / `synthesis-conductor` /
@@ -138,13 +141,13 @@ markdown logic (currently 90-101). Keeps `--pass1` / `--pass2` /
 `--recover` flags as overrides.
 
 **F-3 — `suggestion-conductor` agent.** Replaces Phase 0a + Phase A +
-Phase B + Phase C + Phase D of `inbox-orchestrator.md`. ≤ ~150 lines.
+Phase B + Phase C + Phase D of `inbox-orchestrator.md`.
 Loads `routing-plan-consumer` + `suggestions-doc-format` skills always;
 loads `force-atomic-handling` skill only when routing-plan has
 force-atomic items.
 
 **F-4 — `synthesis-conductor` agent.** Replaces all of
-`instruction-builder.md`. ≤ ~150 lines. Loads
+`instruction-builder.md`. Loads
 `routing-plan-consumer` + `instructions-coverage` skills always;
 loads `force-atomic-handling` skill only when FAN resolve items
 exist.
@@ -153,13 +156,14 @@ exist.
 `inbox-triage.py` lists `*_moc-proposal-*.md`, reads approval
 checkbox, classifies into `approved_moc_proposals` bucket.
 synthesis-conductor consumes the bucket and merges proposed MOCs into
-the instructions output.
+an existing instructions output or creates a new one if none exists.
 
 **F-6 — Instructions coverage schema.**
 `tomo/schemas/doc-frontmatter.schema.json` instructions doc-type gains
-optional `source_suggestions: string[]`, `source_fan: string[]`,
-`source_moc_proposals: string[]`. `build_tomo_block()` accepts and
-emits these. `instruction-render.py` populates them at render time.
+optional `sources: string[]` — a flat array of vault paths for all
+input documents (suggestions, fan companions, moc-proposals).
+`build_tomo_block()` accepts and emits this field.
+`instruction-render.py` populates it at render time.
 
 **F-7 — Skill scaffolding.** Initial six skills created in
 `tomo/skills/<name>/SKILL.md` (granularity per OQ1). Skills define
@@ -223,8 +227,8 @@ Given an inbox contains a *_moc-proposal-*.md with `- [x] Accept` ticked
 And no approved suggestions or fan companion exist
 When /inbox runs
 Then synthesis-conductor is invoked
-And the resulting instructions doc has source_moc_proposals listing the
-proposal's vault path
+And the resulting instructions doc has sources listing the proposal's
+vault path
 ```
 
 **AC-2 — approved moc-proposal AND approved suggestions both trigger one Pass-2**
@@ -274,7 +278,7 @@ And surfaces idle_reasons explaining what is waiting on user action
 
 **AC-7 — covered docs are skipped on subsequent runs**
 ```
-Given an instructions doc lists source_suggestions: ["X"] in frontmatter
+Given an instructions doc lists sources: ["X"] in frontmatter
 And X.md still exists in the inbox with `- [x] Approved`
 When /inbox runs again
 Then routing-plan does not include X in approved_suggestions[] for processing
@@ -284,18 +288,20 @@ And the instructions doc is NOT regenerated for X
 **AC-8 — partial coverage triggers partial processing**
 ```
 Given approved suggestions A and B exist
-And an instructions doc covers A only (source_suggestions: ["A"])
+And an instructions doc covers A only (sources: ["A"])
 When /inbox runs
 Then synthesis-conductor processes B (only)
 ```
 
 ### Agent decomposition
 
-**AC-9 — both conductors ≤ 200 lines runtime spec**
+**AC-9 — conductors contain only orchestration content**
 ```
 Given the redesigned suggestion-conductor.md and synthesis-conductor.md
-When line-count via `wc -l` is computed
-Then each is ≤ 200 lines (excluding skill imports)
+When the files are inspected
+Then each contains only orchestration logic (routing, dispatch, branching)
+And domain knowledge, format specs, and reusable patterns live in skills
+And no inline documentation or rationale is present (per AC-13)
 ```
 
 **AC-10 — conductors do not contain force-atomic-handling prose**
@@ -317,8 +323,7 @@ And instruction-builder.md does NOT exist
 
 **AC-12 — token cost regression bound**
 ```
-Given a representative inbox with 5 captured items, 1 approved suggestion,
-1 approved moc-proposal
+Given the Privat-Test vault in its current state
 When /inbox runs end-to-end
 Then peak Pass-2 context is at most 40k tokens (target: 30k)
 And the measurement is recorded via measure-inbox-pass-2-token-cost.py
@@ -338,10 +343,10 @@ And they contain no historical references — spec IDs (F-NN, ADR-N, XDD-NNN),
    dates (YYYY-MM-DD), or parenthetical citations ("per X", "see Y", "ref Z")
 ```
 
-STRICT blocks may appear without a `Why:` pairing when the unadorned
-imperative was insufficient but no risk of accidental removal exists.
-`Why:` is added only when the STRICT itself would be misunderstood or
-silently deleted by a future editor.
+`Why:` in a STRICT block is added only when Claude Code needs the
+reasoning to correctly execute the directive — not as a safeguard
+against deletion or future editing. Safeguard rationale lives in
+`docs/tomo/<mirrored-path>.md` (see AC-14).
 
 **AC-14 — Rationale is preserved in docs/tomo before runtime strip**
 ```
@@ -364,7 +369,7 @@ And the docs/tomo entry uses WHY-shaped phrasing readable by a human
 - Adding Kado partial-body reads (would shift the approval-scan, but
   costs a Kado release).
 - Hashi-side changes (instructions consumption stays the same shape
-  apart from the new optional `source_*` fields).
+  apart from the new optional `sources` field).
 - Adding new doc-types (weekly-review, garden-audit etc.) — extension
   pattern is documented but specific types are separate specs.
 - /moc-propose command rewrite — 013's moc-architect agent stays as-is;
@@ -376,7 +381,7 @@ And the docs/tomo entry uses WHY-shaped phrasing readable by a human
 |--------|--------|-------------|
 | /inbox Pass-2 peak context | ≤ 30k tokens (was 65k) | `measure-inbox-pass-2-token-cost.py` |
 | /inbox Pass-1 main-thread cost | ≤ 75% of pre-018 (F-32 lever) | `measure-inbox-phase-b-token-cost.py` |
-| Conductor file size | ≤ 200 lines each | `wc -l` |
+| Conductor content fitness | Orchestration-only (no inline domain knowledge or docs) | Manual inspection per AC-9 |
 | moc-proposal pickup rate | 100% (was 0%) | AC-1 / AC-2 manual run |
 | Coverage false-negatives | 0 (no re-processing of covered docs) | AC-7 / AC-8 |
 
@@ -386,50 +391,57 @@ And the docs/tomo entry uses WHY-shaped phrasing readable by a human
 `tomo-lifecycle-states`, `kado-discovery-patterns`,
 `routing-plan-consumer`, `force-atomic-handling`,
 `suggestions-doc-format`, `instructions-coverage`. Are these the right
-seams, or should some merge / split? Tentative lean: ship the six,
-merge in SDD if any pair has < 50 lines.
+seams, or should some merge / split? **Lean: content-driven.** Use a
+skill when the content is reusable across multiple agents/commands and
+benefits from skill-loader capabilities; use an external readable file
+when passive reference suffices. Final granularity decided in SDD
+based on actual content.
 
 **OQ2 — Conductor model.** Sonnet default for both? When (if ever)
-does opus get justified? Tentative lean: sonnet default, opus only for
-synthesis-conductor IF FAN-resolve quality degrades below the F-47
-baseline measurably.
+does opus get justified? **Lean: sonnet default with opus override
+mechanism.** Opus for tasks requiring deeper reasoning or larger
+context windows (e.g. MOC path, investigational flows). Since the
+Claude Code environment hardcodes sonnet, conductors need an explicit
+override path to escalate to opus when needed.
 
 **OQ3 — routing-plan.json schema strictness.** Strict typed schema
 (`tomo/schemas/routing-plan.schema.json`) with `additionalProperties:
 false` to prevent the F-47 force_atomic drift recurring, OR
-lighter-weight document with just a top-level `action` enum? Tentative
-lean: strict-typed — we burned that lesson already (memory
+lighter-weight document with just a top-level `action` enum?
+**Decided: strict-typed** — we burned that lesson already (memory
 `[[feedback_spec_schema_consumer_three_way_drift]]`).
 
-**OQ4 — Drift / re-modified docs.** Marcus said "checksum is egal" for
-coverage. If a covered suggestions doc is modified after instructions
-were rendered, today we'd silently miss the change. Acceptable for v1?
-Tentative lean: yes, log a soft warning in `drift_indicators[]` but
-don't gate. Defer real handling to a follow-up.
+**OQ4 — Drift / re-modified docs.** If a covered suggestions doc is
+modified after instructions were rendered, today we'd silently miss
+the change. **Decided: implement checksum-based drift detection.**
+`inbox-triage.py` computes and stores checksums for processed docs;
+on subsequent runs, compares current checksum against stored value.
+Changed docs surface in `drift_indicators[]` with the checksum delta.
+Gating behaviour (re-process vs. warn-only) deferred to SDD.
 
 **OQ5 — Voice-transcriber hoist.** Today suggestion-conductor would
 dispatch voice-transcriber. But voice-precheck.py already runs
 deterministically; could inbox-triage.py call voice-transcriber
 directly via Bash (no LLM dispatch), reducing one agent hop?
-Tentative lean: keep dispatch in conductor — voice-transcriber needs a
+**Decided: keep dispatch in conductor** — voice-transcriber needs a
 model call (Whisper or equivalent), so it stays an agent.
 
 **OQ6 — FAN-resolve dispatch path.** synthesis-conductor dispatching
-inbox-analyst per force-atomic item — same impersonation rules as
-today's instruction-builder Step 2.5? Tentative lean: yes, identical.
+per-item leaf agent per force-atomic item — same impersonation rules as
+today's instruction-builder Step 2.5? **Decided: yes, identical.**
 The conductor is impersonated, dispatch from main session.
 
 **OQ7 — F-43 (013) live validation gating.** Does 018 ship with 013's
 operator-validation completed, or does 018 ship the routing fix and
-013's validation is a separate user-led activity? Tentative lean:
-018's AC-1/AC-2 include a manual operator-run that effectively
-validates 013's MOC pickup — 013 closes when 018 ships.
+013's validation is a separate user-led activity? **Decided:** 018's
+AC-1/AC-2 include a manual operator-run that effectively validates
+013's MOC pickup — 013 closes when 018 ships.
 
 **OQ8 — Migration test order.** Big-bang means old agents are deleted.
 Test sequence: (a) build new files, (b) write all unit/integration
 tests against new files, (c) live-test on a copy of Privat-Test
 vault, (d) delete old files in same PR? OR (a)(b)(d)(c) — delete then
-live-test — to prove no fallback exists. Tentative lean: (a)(b)(c)(d) —
+live-test — to prove no fallback exists. **Decided: (a)(b)(c)(d)** —
 keep the safety net during live test; deletion is the very last
 commit on the branch.
 
@@ -437,15 +449,21 @@ commit on the branch.
 `tomo/scripts/inbox-discovery.py` does Phase A byFrontmatter bucketing.
 `inbox-triage.py` subsumes its function. Delete or keep as a thin
 wrapper for backward compatibility (tomo-instance environments mid-
-migration)? Tentative lean: delete — big-bang implies no half-way.
+migration)? **Decided: delete** — big-bang implies no half-way.
 
-**OQ10 — Skill format.** Skills directory has multiple formats today
-(Technique, Pattern, Reference, Coordination — per memory
-`[[feedback_skill_format_distinction]]`). Which format for each of the
-six proposed skills? Tentative leans: lifecycle-states = Reference,
-kado-discovery = Pattern, routing-plan-consumer = Coordination,
-force-atomic-handling = Technique, suggestions-doc-format = Reference,
-instructions-coverage = Reference.
+**OQ10 — Skill format.** All skills use `<name>/SKILL.md` directory
+format (per established convention). Content structure for each skill
+(imperative how-to vs. reference lookup vs. coordination protocol)
+determined in SDD based on how conductors consume them.
+**Resolved: format is uniform; content structure follows usage.**
+
+**OQ11 — Leaf agent naming.** Today's `inbox-analyst` does per-item
+content analysis and suggestion generation. In the new architecture,
+inbox-level triage moves to `inbox-triage.py`, so the leaf agent's
+role is purely content analysis — not inbox analysis. Rename to
+reflect its actual responsibility (e.g. `content-analyst`,
+`suggestion-writer`)? **Lean: resolve in SDD** — functional
+description takes precedence over name in PRD.
 
 ## 9. Risks
 
@@ -454,7 +472,7 @@ instructions-coverage = Reference.
 | Conductor split misses a code path from today's monolith | Medium | High | Pilot-comparison: run both old and new on same vault state, diff outputs |
 | Skill loading mechanism doesn't reduce token cost in practice | Medium | Medium | Measurement bound in AC-12; revisit skill granularity in SDD if not met |
 | Big-bang migration leaves a broken state if AC-12 fails | Low | High | OQ8 lean (a)(b)(c)(d) keeps safety net |
-| routing-plan.json schema drift bug recurs | Low | High | OQ3 lean = strict schema with `additionalProperties: false` |
+| routing-plan.json schema drift bug recurs | Low | High | OQ3 = strict schema with `additionalProperties: false` |
 | Body-read of all workflow docs at triage time is itself a token-cost regression on big inboxes | Low | Medium | Triage runs in Bash, not LLM — cost is wall-clock and Kado bytes, not LLM context. Measure |
 
 ## 10. Dependencies
@@ -463,6 +481,6 @@ instructions-coverage = Reference.
   exist. ✅
 - Kado 0.7.0+ — byFrontmatter, listDir filtering. ✅
 - jsonschema in container — fixed per F-54 side-finding. ✅
-- 013 (moc-creation-skill) code shipped — moc-architect.md, moc-
+- 013 (moc-creation-skill) code shipped — moc-architect.md, moc-exit
   discovery.py, /moc-propose command. ✅
 - No new Kado releases required.

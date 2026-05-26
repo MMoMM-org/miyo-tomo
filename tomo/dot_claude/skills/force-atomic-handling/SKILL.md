@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.2.0
+# version: 0.3.0
 
 ## When to Activate
 
@@ -52,8 +52,12 @@ Capture stdout as `PROFILE`.
 ### 3. Fan-out dispatch
 
 # STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.
+# STRICT — path MUST be `<inbox_path>/<stem>.md` (the ORIGINAL inbox note).
+# `source_path` in the routing plan is the suggestions doc — NEVER use it as path.
+# Why: analyst reads the note at `path` via Kado. Wrong path = classifies suggestions doc content.
 
-For each item in `force_atomic_items[]`, dispatch inbox-analyst:
+For each item in `force_atomic_items[]`, dispatch inbox-analyst.
+Construct `path` as `<inbox_path>/<stem>.md` (from Step 1's `inbox_path`).
 
 ```
 Agent(
@@ -63,7 +67,7 @@ Agent(
 
     Inputs:
       stem            = "<stem>"
-      path            = "<path>"
+      path            = "<inbox_path>/<stem>.md"
       shared_ctx_path = "tomo-tmp/shared-ctx.json"
       state_path      = "tomo-tmp/inbox-state.jsonl"
       items_dir       = "tomo-tmp/items"

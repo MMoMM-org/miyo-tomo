@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tomo Inbox Routing Plan",
+  "type": "object",
+  "required": ["action", "timestamp", "inbox_path"],
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["suggest", "fan-resolve", "synthesize", "transcribe", "idle"],
+      "description": "Which conductor to impersonate, or idle/transcribe"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "inbox_path": {
+      "type": "string",
+      "description": "Vault-relative inbox folder path"
+    },
+    "fresh_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "modified": {"type": "string"}
+        }
+      },
+      "description": "New .md files not yet classified"
+    },
+    "has_audio": {
+      "type": "boolean",
+      "description": "True if uncached audio files exist in inbox"
+    },
+    "approved_suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "modified": {"type": "string"},
+          "cache_path": {"type": "string"}
+        }
+      },
+      "description": "Suggestions docs with [x] Approved ticked"
+    },
+    "approved_fan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "modified": {"type": "string"},
+          "cache_path": {"type": "string"}
+        }
+      },
+      "description": "Suggestions-fan docs with [x] Approved ticked"
+    },
+    "approved_moc_proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "modified": {"type": "string"},
+          "cache_path": {"type": "string"}
+        }
+      },
+      "description": "MOC-proposal docs with [x] Accept ticked"
+    },
+    "force_atomic_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stem", "source_path"],
+        "additionalProperties": false,
+        "properties": {
+          "stem": {"type": "string"},
+          "source_path": {"type": "string"},
+          "section_id": {"type": "string"}
+        }
+      },
+      "description": "Items with [x] Force Atomic Note ticked"
+    },
+    "pending_approval": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "doc_type"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "doc_type": {"type": "string"},
+          "message": {"type": "string"}
+        }
+      },
+      "description": "Docs awaiting user approval (not yet ticked)"
+    },
+    "idle_reasons": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Human-readable reasons for idle action"
+    },
+    "drift_indicators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "type": {"type": "string", "enum": ["checksum_mismatch", "orphaned_state", "missing_source"]},
+          "detail": {"type": "string"}
+        }
+      },
+      "description": "Drift warnings (non-blocking in v1)"
+    },
+    "skip_stems": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "F-9: stems to exclude from suggestion-conductor"
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "listDir_ms": {"type": "number"},
+        "byFrontmatter_ms": {"type": "number"},
+        "body_reads_ms": {"type": "number"},
+        "total_ms": {"type": "number"},
+        "kado_calls": {"type": "integer"},
+        "docs_cached": {"type": "integer"}
+      }
+    }
+  }
+}

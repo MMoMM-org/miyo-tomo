@@ -636,11 +636,12 @@ OUTPUT: tomo-tmp/routing-plan.json + tomo-tmp/inbox-cache/*.md
  2. DISCOVER all files:
     a. kado-search listDir(inbox_path, depth=1) → all_files
     b. Partition: audio_files, md_files
- 3. QUERY frontmatter (4 Kado calls, one per known state):
-    a. byFrontmatter(tomo.state=pending-approval) → pending_approval_hits
-    b. byFrontmatter(tomo.state=pending-accept)   → pending_accept_hits
-    c. byFrontmatter(tomo.state=pending-apply)     → pending_apply_hits
-    d. byFrontmatter(tomo.state=captured)           → captured_hits
+ 3. QUERY frontmatter (4 Kado calls):
+    a. byFrontmatter(tomo.state=pending-approval, path_prefix=inbox) → pending_approval_hits
+    b. byFrontmatter(tomo.state=pending-accept, path_prefix=inbox)   → pending_accept_hits
+    c. byFrontmatter(tomo.state=captured, path_prefix=inbox)          → captured_hits
+    d. byFrontmatter(tomo.doc_type=instructions, path_prefix=inbox)   → instructions_hits
+       (queries by doc_type to get BOTH pending-apply AND applied — needed for coverage)
  4. COMPUTE new sources:
     known_paths = union(all hits from step 3)
     new_sources = [f for f in md_files if f.path not in known_paths]
@@ -660,13 +661,13 @@ OUTPUT: tomo-tmp/routing-plan.json + tomo-tmp/inbox-cache/*.md
       ELSE: add to pending_approval[]
  7. COMPUTE coverage (from existing instructions):
     covered_paths = set()
-    FOR each instr_doc in pending_apply_hits:
+    FOR each instr_doc in instructions_hits:
       fm = instr_doc.frontmatter.tomo
       FOR each source in fm.get("sources", []):
         covered_paths.add(source["path"])
     to_process = {d.path for d in approved_*} - covered_paths
  8. DETECT drift:
-    FOR each instr_doc in pending_apply_hits:
+    FOR each instr_doc in instructions_hits:
       FOR each source in fm.get("sources", []):
         IF source["path"] in approved_paths AND source.get("checksum"):
           current = sha256(cached_body[source["path"]])
@@ -776,9 +777,13 @@ sequenceDiagram
     end
     SC->>Scripts: suggestions-reducer.py --fan-resolve
     SC->>Scripts: suggestions-render.py (fan companion doc)
-    SC->>Kado: kado-write suggestions-fan doc
+    SC->>Kado: kado-write suggestions-fan doc to vault
     SC-->>User: FAN resolve complete — review suggestions-fan doc, then re-run /inbox
 ```
+
+Note: Both Pass 1 and Pass 1b write only the suggestions/fan
+DOCUMENT to vault (for user review). Actual note files and
+instructions are produced in Pass 2 by instruction-render.py.
 
 ### Primary Flow: Synthesize (Pass 2)
 
@@ -821,10 +826,9 @@ sequenceDiagram
 ### Primary Flow: Transcribe (stop-gate)
 
 ```
-1. Triage detects untranscribed audio (audio files without a sibling .md)
-   voice-precheck.py determines this: for each audio file, check if a
-   sibling .md with the sanitized stem exists. If all have transcripts,
-   has_audio=false and this flow is skipped entirely.
+1. inbox-triage.py calls voice-precheck.py as part of step 5
+   (audio files without a sibling .md are "untranscribed").
+   If all audio has transcripts → has_audio=false, this flow is skipped.
 2. routing-plan.json: action=transcribe, has_audio=true
 3. /inbox dispatches voice-transcriber directly (no conductor impersonation)
 4. voice-transcriber transcribes audio → writes sibling .md files
@@ -1015,6 +1019,8 @@ external boundary, accessed via established kado_client patterns.
 | MOC-proposal pickup | 100% | AC-1 / AC-2 manual run on Privat-Test |
 | Triage wall-clock | < 10s for typical inbox | routing-plan metrics.total_ms |
 | Conductor content | Orchestration-only | Manual inspection per AC-9 |
+| Skill quality | Pass /skill-author audit | `/skill-author` per skill |
+| Agent quality | Pass /agent-author audit | `/agent-author` per conductor |
 
 ## Acceptance Criteria
 
@@ -1041,6 +1047,11 @@ external boundary, accessed via established kado_client patterns.
 - [ ] **AC-9/PRD:** THE conductor files SHALL contain only orchestration logic (routing, dispatch, branching) with domain knowledge in skills
 - [ ] **AC-13/PRD:** THE runtime files SHALL contain no script descriptions, spec refs, dates, or historical wording
 - [ ] **AC-14/PRD:** BEFORE any rationale-shaped content is stripped from a runtime file, THE corresponding `docs/tomo/` entry SHALL capture the WHY
+
+### Authoring Quality Criteria
+
+- [ ] **SKILL-QA:** WHEN a new skill is created in `tomo/dot_claude/skills/`, THE SYSTEM SHALL pass `/skill-author` audit (format, frontmatter, content structure, no anti-patterns)
+- [ ] **AGENT-QA:** WHEN a new conductor agent is created, THE SYSTEM SHALL pass `/agent-author` audit (frontmatter, dispatch patterns, skill references, no token waste)
 
 ### Migration Criteria
 
@@ -1073,14 +1084,16 @@ external boundary, accessed via established kado_client patterns.
 
 ### Implementation Gotchas
 
-- **Kado byFrontmatter strict equality:** Cannot query
-  `tomo.state=pending-*`. Must fan out to N calls (one per state
-  value). Alternative: query by `tomo.doc_type` instead (5 calls,
-  one per type) and filter state locally — gets both pending and
-  terminal docs in one call per type, which helps coverage computation.
-  Or: single listDir + per-file frontmatter reads (proportional to
-  inbox size, not vault size). Exact strategy decided at
-  implementation time based on typical inbox sizes.
+- **Kado query strategy (5 calls):** byFrontmatter is strict equality
+  — no wildcards. inbox-triage.py uses this call pattern:
+  1. `listDir(inbox, depth=1)` — all files (for new-source detection + audio)
+  2. `byFrontmatter(tomo.state=pending-approval, path_prefix=inbox)` — pending suggestions/fan
+  3. `byFrontmatter(tomo.state=pending-accept, path_prefix=inbox)` — pending moc-proposals
+  4. `byFrontmatter(tomo.state=captured, path_prefix=inbox)` — captured sources
+  5. `byFrontmatter(tomo.doc_type=instructions, path_prefix=inbox)` — ALL instructions (both pending-apply and applied) for coverage computation
+  Total: 1 listDir + 4 byFrontmatter = 5 Kado calls. Matches proven
+  inbox-discovery.py pattern with one change: call 5 queries by
+  doc_type (not state) to catch applied instructions for coverage.
 - **Checkbox scanning requires full body:** Kado has no partial-body
   read. Triage must `kado-read` each pending doc's full body just to
   check one checkbox. This is the reason for the cache — read once,

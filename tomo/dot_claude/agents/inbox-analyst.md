@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.11.0
+# version: 0.12.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -66,12 +66,7 @@ The output is the JSON object you reference in later steps as
 
 ### Step 2 — Read the item via Kado
 
-**IF `path` does NOT end with `.md`** → skip Steps 2 and 2b entirely.
-Jump directly to Step 3, which classifies non-markdown paths as
-`attachment` deterministically by extension alone. No frontmatter or
-body is available for non-md, so there is nothing for Step 2b to gate on.
-
-**Otherwise**, use `mcp__kado__kado-read` (operation: `note`, path: `<path>`).
+Use `mcp__kado__kado-read` (operation: `note`, path: `<path>`).
 
 Extract:
 - Frontmatter (if present)
@@ -114,7 +109,6 @@ Apply heuristics (confidence scoring). First match above 0.7 wins.
 | `question` | ends with `?`, opens with How/Why/What/Is | +0.4 |
 | `task` | `- [ ]` checkboxes, imperative verbs, deadline words | +0.2 per |
 | `fleeting_note` | short, no structure, no URLs | +0.2 |
-| `attachment` | non-.md extension | 1.0 (deterministic) |
 
 ### Step 4 — Match MOCs
 
@@ -501,16 +495,10 @@ is invalid.
   `atomic_note_worthiness` from Step 7.
 
 
-**Attachments** (type == "attachment"): one `create_atomic_note` with
-`template: <vault's asset template or "asset">`,
-`location: <resolved asset folder path from vault-config concepts.asset>`,
-title = stem, candidate_mocs empty.
-No daily-note actions for attachments.
-
 ### Step 10 — Fill the result template and write it
 
-**Do NOT compose the JSON from scratch.** A skeleton template matching
-`schemas/item-result.schema.json` is at `templates/item-result.template.json`.
+**Do NOT compose the JSON from scratch.**
+
 Follow the following steps:
 
 Step 10.1 — read the template with the `Read` tool:

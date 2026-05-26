@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 # strip-tomo-frontmatter.py — surgical removal of the `tomo:` block from note(s).
-# version: 0.2.0
+# version: 0.3.0
 """Strip the `tomo:` frontmatter block from one or more vault notes via Kado.
 
-Use when:
-  - Resetting an instance and you want the source notes clean of lifecycle state.
-  - A test/dev run left tomo blocks on user notes that shouldn't carry them.
-  - Manual cleanup after a botched /inbox run.
+Dev-only tool for resetting inbox state between test runs.
 
 Usage:
+  # Zero-config: strips inbox folder (from vault-config.yaml), non-recursive
+  python3 scripts/strip-tomo-frontmatter.py
+
+  # Preview first
+  python3 scripts/strip-tomo-frontmatter.py --dry-run
+
   # Explicit paths
-  python3 scripts/strip-tomo-frontmatter.py "100 Inbox/Catan Strategien.md" "100 Inbox/Sport.md"
+  python3 scripts/strip-tomo-frontmatter.py "100 Inbox/Catan Strategien.md"
 
-  # All .md notes in one folder (recursive)
-  python3 scripts/strip-tomo-frontmatter.py --folder "100 Inbox"
-
-  # Preview (no writes)
-  python3 scripts/strip-tomo-frontmatter.py --folder "100 Inbox" --dry-run
+  # Custom folder (recursive)
+  python3 scripts/strip-tomo-frontmatter.py --folder "200 Archive" --recursive
 
 Behavior per path:
   1. Read frontmatter via Kado.
@@ -51,6 +51,25 @@ from kado_client import (  # noqa: E402
     KadoNotFoundError,
     _extract_from_mcp_json,
 )
+
+
+def _resolve_inbox_path() -> str | None:
+    """Read concepts.inbox from tomo-instance vault-config.yaml."""
+    try:
+        import yaml
+    except ImportError:
+        return None
+    cfg_path = REPO_ROOT / "tomo-instance" / "config" / "vault-config.yaml"
+    if not cfg_path.is_file():
+        return None
+    try:
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        inbox = cfg.get("concepts", {}).get("inbox")
+        if inbox:
+            return str(inbox).rstrip("/") + "/"
+    except (OSError, yaml.YAMLError):
+        pass
+    return None
 
 
 def _running_in_container() -> bool:
@@ -196,7 +215,18 @@ def main() -> int:
     args = p.parse_args()
 
     if not args.paths and not args.folder:
-        p.error("supply at least one positional path or --folder")
+        inbox = _resolve_inbox_path()
+        if not inbox:
+            p.error(
+                "no paths or --folder given and could not resolve inbox path "
+                "from vault-config.yaml"
+            )
+        args.folder = inbox
+        args.recursive = False
+        print(
+            f"[strip-tomo-frontmatter] no args — defaulting to --folder {inbox!r} --no-recursive",
+            file=sys.stderr,
+        )
 
     client = build_kado_client()
     paths = collect_paths(args, client)

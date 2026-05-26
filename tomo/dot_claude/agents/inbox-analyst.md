@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.12.0
+# version: 0.12.1
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -561,7 +561,7 @@ Do NOT use Bash heredoc — quoting mangles nested JSON structures.
 After writing the result, validate it against the schema:
 
 ```bash
-python3 scripts/validate-result.py --result tomo-tmp/items/<stem>.result.json
+python3 scripts/validate-result.py --result "tomo-tmp/items/<stem>.result.json"
 ```
 
 If validation fails (non-zero exit), DO NOT mark the item done. Instead:

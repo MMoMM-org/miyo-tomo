@@ -17,7 +17,7 @@ tools:
 ---
 
 # Suggestion Conductor
-# version: 0.4.0
+# version: 0.5.0
 
 **Active agent: suggestion-conductor**
 
@@ -94,8 +94,10 @@ Capture stdout as `PROFILE` (string).
 
 | action | Go to |
 |--------|-------|
-| suggest | Step 4 (Mode A) |
-| fan-resolve | Step 8 (Mode B) |
+| suggest | Step 4 below |
+| fan-resolve | Follow the `force-atomic-handling` skill (already loaded) |
+
+If action is `fan-resolve`, stop here — the skill has the complete pipeline.
 
 ---
 
@@ -165,63 +167,6 @@ If mark-captured fails, report the error but still proceed to the report.
 > "Pass 1 complete: {N} items analysed, suggestions written to
 > [[<date>_suggestions]]. Review in Obsidian, check the **Approved** box,
 > then re-run `/inbox`."
-
----
-
-## Mode B: fan-resolve
-
-### Step 8 — Prepare fan-resolve inputs
-
-Extract `force_atomic_items[]` and `approved_suggestions[0].cache_path`
-from the routing plan.
-
-Read the cached suggestions doc from `approved_suggestions[0].cache_path`.
-
-### Step 9 — Fan-out dispatch
-
-# STRICT — use this EXACT prompt structure. Do NOT improvise.
-
-For each item in `force_atomic_items[]`, dispatch inbox-analyst:
-
-```
-Agent(
-  name: "inbox-analyst"
-  prompt: |
-    You are processing ONE inbox item under the fan-out pipeline.
-
-    Inputs:
-      stem            = "<stem>"
-      path            = "<path>"
-      shared_ctx_path = "tomo-tmp/shared-ctx.json"
-      state_path      = "tomo-tmp/inbox-state.jsonl"
-      items_dir       = "tomo-tmp/items"
-      run_id          = "<RUN_ID>"
-      force_atomic    = true
-
-    Follow the IO Contract in your agent definition strictly. Write
-    tomo-tmp/items/<stem>.result.json and update the state-file.
-    Return one confirmation line, no prose.
-)
-```
-
-### Step 10 — Reduce (fan-resolve mode)
-
-```bash
-python3 scripts/suggestions-reducer.py --state tomo-tmp/inbox-state.jsonl --items-dir tomo-tmp/items --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-fan-doc.json --fan-resolve
-```
-
-### Step 11 — Render + write to vault
-
-```bash
-python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-fan-doc.json --output tomo-tmp/suggestions-fan-rendered.md
-```
-
-1. Read `tomo-tmp/suggestions-fan-rendered.md` via the `Read` tool.
-2. Write via `mcp__kado__kado-write` with `operation: "note"` at
-   `<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.md`.
-
-> "FAN resolve complete — {N} items expanded into suggestions-fan doc.
-> Review in Obsidian, check the **Approved** box, then re-run `/inbox`."
 
 ---
 

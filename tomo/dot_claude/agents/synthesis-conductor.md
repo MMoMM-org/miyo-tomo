@@ -14,7 +14,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.1.0
+# version: 0.2.0
 
 **Active agent: synthesis-conductor**
 
@@ -118,6 +118,7 @@ python3 scripts/upload-rendered.py \
 
 Exit 0 = all uploads landed. Exit 1 = partial failure (surface to user,
 do not retry batch). Exit 2 = bad input, stop.
+
 
 #### 3d — Flip source doc state
 

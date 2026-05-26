@@ -135,3 +135,44 @@ input/output/cache_create/cache_read). Actual billed cost may differ
 - v0.3.0 fix: analysts now get `<inbox_path>/<stem>.md` instead of `source_path` (suggestions doc). Previous run classified suggestions doc content as "Knowledge Management".
 - All 3 dispatched in parallel (single batch). Pipeline compliance: 6/6 scripts, 0 errors.
 - Per-item cost slightly higher than suggest ($0.80 vs $0.67) due to fixed overhead amortized over fewer items.
+
+---
+
+### 2026-05-26 — Pass 2 (synthesize), 2 source docs
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-05-26 |
+| **Phase** | Pass 2 (synthesize) |
+| **Items** | 2 source docs (suggestions + suggestions-fan) → 57 actions |
+| **Vault** | Privat-Test |
+| **Model** | Sonnet 4.6 |
+| **Versions** | synthesis-conductor v0.2.0, inbox-triage v0.6.0, /inbox v0.10.0 |
+
+| Metric | Main | Subagents | Total |
+|--------|------|-----------|-------|
+| Turns | 41 | 0 | 41 |
+| Input tokens | 48 | — | 48 |
+| Cache read | 1,392,248 | — | 1,392,248 |
+| Cache create | 62,656 | — | 62,656 |
+| Output tokens | 19,286 | — | 19,286 |
+| Total context | 1,392,296 | — | 1,392,296 |
+| Peak turn ctx | 44,394 | — | — |
+| **Est. cost** | **$0.94** | **—** | **$0.94** |
+
+**Notes**:
+- Pure script pipeline: parse → render → upload → state-flip → coverage diff. No subagents needed.
+- Coverage audit: 57/57 actions reconciled — full parity.
+- Pipeline compliance: 7/7 scripts called, 0 errors.
+- Required inbox-triage v0.6.0 fix (filename-based doc_type inference) — v0.5.0 misclassified fan docs as suggestions, causing infinite fan-resolve loops.
+
+---
+
+### Full /inbox cycle summary — 2026-05-26
+
+| Phase | Items | Cost | Notes |
+|-------|-------|------|-------|
+| Pass 1 suggest | 18 | $12.01 | suggest-handling v0.1.0 |
+| Fan-resolve | 3 | $2.40 | force-atomic-handling v0.3.0 |
+| Pass 2 synthesize | 2 docs / 57 actions | $0.94 | No subagents |
+| **Total** | **18 sources → 57 actions** | **$15.35** | **3 /inbox invocations** |

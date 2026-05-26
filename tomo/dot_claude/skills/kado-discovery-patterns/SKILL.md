@@ -86,7 +86,7 @@ python3 tomo-tmp/read_note.py
 
 ```python
 import sys
-sys.path.insert(0, 'tomo/scripts')
+sys.path.insert(0, 'scripts')
 from lib.kado_client import KadoClient, KadoError, KadoConnectionError
 
 try:
@@ -108,7 +108,7 @@ When reading multiple docs, cache bodies locally to avoid repeat Kado calls:
 ```python
 import hashlib, json, sys
 from pathlib import Path
-sys.path.insert(0, 'tomo/scripts')
+sys.path.insert(0, 'scripts')
 from lib.kado_client import KadoClient
 
 client = KadoClient()

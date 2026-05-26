@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -272,11 +272,16 @@ def read_approval_state(
     cache_dir = Path(output_dir) / "inbox-cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    all_pending = list(pending_approval_hits) + list(pending_accept_hits)
+    tagged_pending: list[tuple[dict, str]] = []
+    for doc in pending_approval_hits:
+        doc_type = _get_doc_type(doc) or "suggestions"
+        tagged_pending.append((doc, doc_type))
+    for doc in pending_accept_hits:
+        doc_type = _get_doc_type(doc) or "moc-proposal"
+        tagged_pending.append((doc, doc_type))
 
-    for doc in all_pending:
+    for doc, doc_type in tagged_pending:
         vault_path = doc["path"]
-        doc_type = _get_doc_type(doc)
         filename = _filename_from_path(vault_path)
 
         try:

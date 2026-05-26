@@ -4,8 +4,9 @@ description: Pass 1 orchestrator — classifies fresh inbox sources into suggest
 model: sonnet
 skills:
   - routing-plan-consumer
-  - suggestions-doc-format
+  - suggest-handling
   - force-atomic-handling
+  - suggestions-doc-format
   - kado-discovery-patterns
   - tomo-lifecycle-states
 tools:
@@ -17,7 +18,7 @@ tools:
 ---
 
 # Suggestion Conductor
-# version: 0.5.0
+# version: 0.6.0
 
 **Active agent: suggestion-conductor**
 
@@ -94,79 +95,10 @@ Capture stdout as `PROFILE` (string).
 
 | action | Go to |
 |--------|-------|
-| suggest | Step 4 below |
+| suggest | Follow the `suggest-handling` skill (already loaded) |
 | fan-resolve | Follow the `force-atomic-handling` skill (already loaded) |
 
-If action is `fan-resolve`, stop here — the skill has the complete pipeline.
-
----
-
-## Mode A: suggest
-
-### Step 4 — Fan-out dispatch
-
-Extract `fresh_sources[]` from the routing plan.
-
-# STRICT — BATCH dispatch. Send BATCH_SIZE Agent() calls in a SINGLE message.
-# ONE Agent call per message = sequential execution = 5x slower.
-# Claude Code runs all Agent calls in the same message concurrently.
-
-Split `fresh_sources[]` into batches of `BATCH_SIZE` items.
-For each batch, emit ALL Agent() calls in ONE response with
-`force_atomic = false`. Wait for the batch to complete before the next.
-
-# STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.
-
-```
-Agent(
-  name: "inbox-analyst"
-  prompt: |
-    You are processing ONE inbox item under the fan-out pipeline.
-
-    Inputs:
-      stem            = "<stem>"
-      path            = "<path>"
-      shared_ctx_path = "tomo-tmp/shared-ctx.json"
-      state_path      = "tomo-tmp/inbox-state.jsonl"
-      items_dir       = "tomo-tmp/items"
-      run_id          = "<RUN_ID>"
-      force_atomic    = false
-
-    Follow the IO Contract in your agent definition strictly. Write
-    tomo-tmp/items/<stem>.result.json and update the state-file.
-    Return one confirmation line, no prose.
-)
-```
-
-### Step 5 — Reduce
-
-```bash
-python3 scripts/suggestions-reducer.py --state tomo-tmp/inbox-state.jsonl --items-dir tomo-tmp/items --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-doc.json
-```
-
-### Step 6 — Render
-
-```bash
-python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md
-```
-
-### Step 7 — Write to vault + tag sources
-
-1. Read `tomo-tmp/suggestions-rendered.md` via the `Read` tool.
-2. Write via `mcp__kado__kado-write` with `operation: "note"` at
-   `<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions.md`.
-
-# STRICT — mark-captured runs immediately after vault write succeeds. Do NOT skip or defer.
-
-```bash
-python3 scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id <RUN_ID>
-```
-
-If mark-captured fails, report the error but still proceed to the report.
-
-> "Pass 1 complete: {N} items analysed, suggestions written to
-> [[<date>_suggestions]]. Review in Obsidian, check the **Approved** box,
-> then re-run `/inbox`."
+The skill has the complete pipeline. Follow it now.
 
 ---
 

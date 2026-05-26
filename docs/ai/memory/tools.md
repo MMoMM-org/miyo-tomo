@@ -30,12 +30,14 @@ When a slash command invokes an orchestrator agent, the parent has two valid int
 
 ## Resetting `tomo-tmp/` between test runs
 
-Use **`scripts/reset-tomo-tmp.sh`** instead of manual `rm -rf` of subsets. Three modes plus dry-run:
+Use **`scripts/reset-tomo-tmp.sh`** instead of manual `rm -rf`. Five modes matching the routing-plan action vocabulary:
 
 | Mode | Use when | Removes |
 |------|----------|---------|
-| `--pass2` (default) | Iterating on `suggestions.md` edits + Pass 2 testing | `parsed-suggestions.json`, `rendered/` |
-| `--pass1` | Changing analyst behavior, skill edits, Pass-1 affecting config | All Pass-1 + Pass-2 outputs (keeps `archive/` + `voice/`) |
+| `--pass2` (default) | Iterating on `suggestions.md` edits + Pass 2 | `parsed-suggestions.json`, `rendered/` |
+| `--fan-resolve` | Re-running fan-resolve only | `suggestions-fan*` files |
+| `--pass1` | Changing analyst behavior, skill edits | All Pass-1 + Pass-2 outputs (keeps `voice/`) |
+| `--transcribe` | Re-running voice transcription | `voice/summary.json` |
 | `--all` | True zero state needed | Everything in `tomo-tmp/` |
 
 Quick reference:
@@ -43,12 +45,28 @@ Quick reference:
 bash scripts/reset-tomo-tmp.sh                  # default --pass2
 bash scripts/reset-tomo-tmp.sh --pass1
 bash scripts/reset-tomo-tmp.sh --all
-bash scripts/reset-tomo-tmp.sh --dry-run --pass1   # preview
-bash scripts/reset-tomo-tmp.sh --instance ./other-instance/tomo-tmp
+bash scripts/reset-tomo-tmp.sh --dry-run --pass1
 ```
 
-Auto-resolves the instance path from `tomo-install.json`'s `install_path` field; falls back to `./tomo-instance/tomo-tmp`. Refuses to operate if the resolved directory does not exist (exit 1).
+## Accessing Kado from the host (outside tomo-instance)
 
-**Not the same as `cleanup-tomo.sh`:** that script tears down the whole instance for re-install testing. `reset-tomo-tmp.sh` only touches the working-state directory.
+Kado runs inside Obsidian on port **23027** (from the host side). The Docker container uses `host.docker.internal:23027`, but from the host use `127.0.0.1:23027`. A bearer token is required.
 
-Full doc with the per-mode comparison table: `docs/troubleshooting.md` § "Resetting Working State Between Test Runs".
+```bash
+KADO_URL=http://127.0.0.1:23027 \
+KADO_TOKEN=$(python3 -c "import json; cfg=json.load(open('tomo-instance/.mcp.json')); print(cfg['mcpServers']['kado']['headers']['Authorization'].replace('Bearer ',''))") \
+python3 <script.py>
+```
+
+Or in Python:
+```python
+import json, sys
+sys.path.insert(0, "tomo/scripts")
+from lib.kado_client import _extract_from_mcp_json, KadoClient
+
+url, token = _extract_from_mcp_json(json.load(open("tomo-instance/.mcp.json")))
+url = url.replace("host.docker.internal", "127.0.0.1")  # Docker→host rewrite
+client = KadoClient(base_url=url, token=token)
+```
+
+Key differences from inside Docker: port is 23027 (not 23026), hostname is 127.0.0.1 (not host.docker.internal), and `.mcp.json` is at `tomo-instance/.mcp.json` (not `.mcp.json` in cwd).

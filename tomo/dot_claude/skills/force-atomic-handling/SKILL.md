@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.1.0
+# version: 0.2.0
 
 ## When to Activate
 
@@ -14,44 +14,87 @@ Load this skill when:
 
 ## Fan-Resolve Flow
 
-### 1. Read force_atomic_items from routing plan
+### 1. Read routing plan
 
 ```bash
-cat tomo-tmp/routing-plan.json | jq '.force_atomic_items'
+cat tomo-tmp/routing-plan.json
 ```
 
-### 2. Dispatch per-item inbox-analyst subagents
+Extract `force_atomic_items[]`, `approved_suggestions[0].cache_path`,
+and `inbox_path`.
 
-For each force-atomic item, dispatch an inbox-analyst subagent with:
-- The source suggestion item's content (from cache)
-- `force_atomic=true` flag
-- The item's stem and source_path
+### 2. Common setup
 
-### 3. Write fan companion document
-
-Collect analyst outputs into a fan companion document:
-- Filename: `<date>_suggestions-fan.md`
-- Format: mirrors parent suggestions doc structure
-- Each item gets expanded atomic-note-level analysis
-
-Write the fan companion to the vault:
-```bash
-python3 scripts/kado-write-file.py "<inbox_path>/<fan_filename>" "<local_path>"
-```
-
-### 4. Tag the fan doc with tomo frontmatter
+# STRICT — run ALL commands below before dispatching ANY subagent.
 
 ```bash
-python3 scripts/state-promoter.py flip "<vault_path>" suggestions-fan captured pending-approval "<run_id>"
+mkdir -p tomo-tmp/items
 ```
 
-## Force Atomic Items Schema
-
-Each item in `force_atomic_items`:
-```json
-{"stem": "item-title", "source_path": "100 Inbox/suggestions.md", "section_id": "S03"}
+```bash
+python3 scripts/run-id.py --out tomo-tmp/.run_id
 ```
 
-- `stem`: the suggestion item title/stem
-- `source_path`: vault path of the suggestions doc
-- `section_id`: optional section identifier within the doc
+Capture stdout as `RUN_ID`.
+
+```bash
+python3 scripts/shared-ctx-builder.py --cache config/discovery-cache.yaml --vault-config config/vault-config.yaml --profiles-dir profiles --run-id <RUN_ID> --output tomo-tmp/shared-ctx.json
+```
+
+If this fails, abort and surface the error.
+
+```bash
+python3 scripts/read-config-field.py --field profile --default miyo
+```
+
+Capture stdout as `PROFILE`.
+
+### 3. Fan-out dispatch
+
+# STRICT — use this EXACT prompt structure for every dispatch. Do NOT improvise.
+
+For each item in `force_atomic_items[]`, dispatch inbox-analyst:
+
+```
+Agent(
+  name: "inbox-analyst"
+  prompt: |
+    You are processing ONE inbox item under the fan-out pipeline.
+
+    Inputs:
+      stem            = "<stem>"
+      path            = "<path>"
+      shared_ctx_path = "tomo-tmp/shared-ctx.json"
+      state_path      = "tomo-tmp/inbox-state.jsonl"
+      items_dir       = "tomo-tmp/items"
+      run_id          = "<RUN_ID>"
+      force_atomic    = true
+
+    Follow the IO Contract in your agent definition strictly. Write
+    tomo-tmp/items/<stem>.result.json and update the state-file.
+    Return one confirmation line, no prose.
+)
+```
+
+### 4. Reduce
+
+```bash
+python3 scripts/suggestions-reducer.py --state tomo-tmp/inbox-state.jsonl --items-dir tomo-tmp/items --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-fan-doc.json --fan-resolve
+```
+
+### 5. Render
+
+```bash
+python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-fan-doc.json --output tomo-tmp/suggestions-fan-rendered.md
+```
+
+### 6. Write to vault
+
+1. Read `tomo-tmp/suggestions-fan-rendered.md` via the `Read` tool.
+2. Write via `mcp__kado__kado-write` with `operation: "note"` at
+   `<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.md`.
+
+### 7. Report
+
+> "FAN resolve complete — {N} items expanded into suggestions-fan doc.
+> Review in Obsidian, check the **Approved** box, then re-run `/inbox`."

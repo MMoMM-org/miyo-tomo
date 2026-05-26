@@ -95,12 +95,12 @@ ABORT_MESSAGES: dict[str, str] = {
         "MOC proposal requires vault cache. Please run /explore-vault first to "
         "populate discovery-cache.yaml."
     ),
-    "zero-candidates": "Keine Notes zum Topic gefunden",
+    "zero-candidates": "No notes found for this topic.",
     "candidate-cap-exceeded": (
-        "Mehr als die erlaubte Anzahl Kandidaten gefunden — Suchbereich einschränken"
+        "Too many candidates found — narrow the search scope."
     ),
     "cache-miss-cap-exceeded": (
-        "Notes ohne Cache-Eintrag — bitte zuerst /explore-vault laufen lassen"
+        "Too many notes without cache entry — please run /explore-vault first."
     ),
 }
 

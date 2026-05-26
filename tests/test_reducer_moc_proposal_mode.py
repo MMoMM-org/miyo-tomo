@@ -221,7 +221,7 @@ def test_multi_cluster_render() -> None:
 
 
 def test_overflow_footer() -> None:
-    """max_results=5 with 7 clusters → 5 sections + 'Weitere 2 Cluster gefunden' footer."""
+    """max_results=5 with 7 clusters → 5 sections + '2 additional cluster(s) found' footer."""
     report = _empty_report()
     report["candidates"] = [_candidate(f"note-{i}") for i in range(7)]
     report["topic_clusters"] = [
@@ -244,7 +244,7 @@ def test_overflow_footer() -> None:
     assert section_count == 5, f"Expected 5 sections, got {section_count}"
 
     # Footer present for the 2 overflow clusters
-    assert "Weitere 2 Cluster gefunden" in body
+    assert "2 additional cluster(s) found" in body
 
 
 def test_filename_top_confidence_slug() -> None:

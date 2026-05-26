@@ -318,7 +318,7 @@ def test_no_args_e2e(privat_test_clone, seeded_discovery_cache, isolated_tomo_st
     assert len(sections) == 5, f"Expected 5 sections, got {len(sections)}: {sections}"
 
     # Overflow footer (AC-3.4)
-    assert "Weitere 2 Cluster gefunden" in body
+    assert "2 additional cluster(s) found" in body
 
     # Trigger field reflects scan mode
     assert "trigger: scan" in body

@@ -14,7 +14,7 @@ permissionMode: acceptEdits
 
 **Active agent: moc-architect**
 
-# version: 0.3.5
+# version: 0.4.0
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault
@@ -73,16 +73,11 @@ Remember stdout as `INBOX_PATH` (needed for Step 7.5).
 **STRICT:** If either call exits non-zero (vault-config.yaml missing or
 field absent), abort immediately with:
 `"vault-config.yaml not found or incomplete — is Tomo configured? Run /explore-vault first."`
-Do not proceed to Step 4. The `tomo.moc_proposal` defaults block is read
-by `moc-discovery.py` and `suggestions-reducer.py` directly — the agent
-does not need to load it.
+
+Do not proceed to Step 4. 
 
 ### Step 4 — Run discovery (2-pass: Phase 1 → topic extraction → Phase 2-6.5)
 
-`moc-discovery.py` is split into two passes so cache misses can be resolved by you
-(the agent) rather than an in-script LLM call. Pass 1 emits Phase-1 candidates with
-note body excerpts for misses; you extract topics from the excerpts; Pass 2 runs
-Phases 2-6.5 with topics pre-populated.
 
 **STRICT:** Use the exact forms below — no variations, no stderr redirect into stdout.
 
@@ -191,17 +186,7 @@ Parse the captured stdout as JSON. Check the `abort_reason` field.
 verbatim (do NOT paraphrase), do NOT proceed to Step 6 or Step 7, and do NOT write a
 proposal-doc. Emit the final report in the output format with `Proposal-doc: no doc written (abort)`.
 
-The four abort reasons and their verbatim user-facing messages:
-
-| abort_reason | User-facing message (verbatim from DiscoveryReport) |
-|---|---|
-| `cache-empty` | `"MOC proposal requires vault cache. Please run /explore-vault first to populate discovery-cache.yaml."` |
-| `zero-candidates` | `"Keine Notes zum Topic gefunden"` |
-| `candidate-cap-exceeded` | `"Mehr als <cap> Kandidaten gefunden — Suchbereich einschränken"` |
-| `cache-miss-cap-exceeded` | `"<N> Notes ohne Cache-Eintrag — bitte zuerst /explore-vault laufen lassen"` |
-
-**MUST** copy the message from `abort_message` in the actual JSON output — the table above
-is a reference; the script fills in `<cap>` and `<N>` with real values.
+**MUST** copy `abort_message` from the JSON output verbatim — the script fills in concrete values. Do NOT paraphrase or translate the message.
 
 ### Step 6 — Write DiscoveryReport JSON to temp path
 
@@ -220,8 +205,7 @@ Report progress: `"DiscoveryReport written to tomo-tmp/moc-discovery-<run_id>.js
 
 ### Step 7 — Render the proposal-doc to tomo-tmp/
 
-Invoke the reducer with `--output-dir tomo-tmp/` (NOT the vault inbox path
-— transport to the vault happens in Step 7.5 via `kado-write`). Capture
+Invoke the reducer with `--output-dir tomo-tmp/`. Capture
 stdout into `LOCAL_PROPOSAL`:
 
 ```bash
@@ -229,8 +213,7 @@ LOCAL_PROPOSAL=$(python3 scripts/suggestions-reducer.py --moc-proposal-mode --in
 ```
 
 **STRICT:**
-- `--output-dir` MUST be `tomo-tmp/`. Writing direct to the vault skips
-  the transport step.
+- `--output-dir` MUST be `tomo-tmp/`.
 - Do NOT redirect stderr into stdout — the reducer prints progress to
   stderr by design; merging corrupts the captured path.
 - A non-zero exit code means rendering failed; surface stderr and stop.
@@ -282,10 +265,9 @@ You MUST:
 
 After a successful `kado-write`, print to the user:
 
-`"MOC-Vorschlag geschrieben: <inbox_path>/<YYYY-MM-DD>_<HHMM>_moc-proposal-<slug>.md"`
+`"MOC proposal written: <inbox_path>/<YYYY-MM-DD>_<HHMM>_moc-proposal-<slug>.md"`
 
-If the reducer emitted a multi-cluster overflow footer (`"Weitere N Cluster gefunden"`),
-relay it verbatim so the user knows to re-run with a narrower query.
+If the reducer emitted a multi-cluster overflow footer, relay it verbatim so the user knows to re-run with a narrower query.
 
 ### Step 9 — Emit final report
 
@@ -331,5 +313,5 @@ Profile: miyo
 Discovery: zero-candidates
 Proposal-doc: no doc written (abort)
 Aborts/notes:
-  - abort_message: "Keine Notes zum Topic gefunden"
+  - abort_message: "No notes found for this topic."
 ```

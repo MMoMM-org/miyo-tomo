@@ -589,7 +589,7 @@ def render_moc_proposal_doc(
     # Body
     body_lines: list[str] = [
         "",
-        "# MOC-Vorschlag",
+        "# MOC Proposal",
         "",
     ]
 
@@ -606,7 +606,7 @@ def render_moc_proposal_doc(
 
     if overflow > 0:
         body_lines.append("---")
-        body_lines.append(f"*Weitere {overflow} Cluster gefunden*")
+        body_lines.append(f"*{overflow} additional cluster(s) found*")
         body_lines.append("")
 
     full_body = "\n".join(frontmatter_lines) + "\n" + "\n".join(body_lines)

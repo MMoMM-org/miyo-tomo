@@ -555,7 +555,7 @@ created: 2026-01-01 00:00
 status: pending
 ---
 
-# MOC-Vorschlag
+# MOC Proposal
 
 ### MOC01 — Legacy Topic (MOC)
 

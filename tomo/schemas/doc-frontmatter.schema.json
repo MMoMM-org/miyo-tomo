@@ -11,12 +11,6 @@
       "type": "object",
       "required": ["doc_type", "state", "run_id", "updated_at"],
       "additionalProperties": false,
-      "patternProperties": {
-        "^source_[a-z_]+$": {
-          "type": "string",
-          "description": "Cross-reference to an upstream Tomo doc. Key pattern: source_<doc_type_snake_case> (e.g. source_suggestions, source_moc_proposal, source_suggestions_fan, source_garden_audit). Extensible for future F-44/45/46 doc-types without schema changes."
-        }
-      },
       "properties": {
         "doc_type": {
           "type": "string",
@@ -35,6 +29,26 @@
           "type": "string",
           "format": "date-time",
           "description": "ISO-8601 UTC timestamp of the last write. Auto-set by build_tomo_block()."
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Vault-relative path to source document"
+              },
+              "checksum": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "description": "SHA-256 of document body at processing time"
+              }
+            }
+          },
+          "description": "Source documents feeding this instructions doc"
         }
       },
       "oneOf": [

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_doc_frontmatter.py — Tests for the doc_frontmatter helper module.
 
 Covers T1.2 (F-47 Phase 1): build_tomo_block, parse_tomo_block,
 SchemaValidationError, and the dual dev/prod validation mode (ADR-4).
 
+T1.2 (XDD-018 Phase 1): sources[] array schema extension — replaces source_* pattern.
+
 Spec: docs/XDD/specs/017-tomo-lifecycle-tags/
+      docs/XDD/specs/018-agent-architecture-cleanup/
 AC:   AC-1.5 (schema validation gates every producer write),
-      AC-7.2 (every producer write schema-validated),
-      AC-4.5 (source_* extensibility for future F-44/45/46 doc-types)
+      AC-7.2 (every producer write schema-validated)
 """
 from __future__ import annotations
 
@@ -52,44 +54,6 @@ def test_build_tomo_block_minimum_fields(monkeypatch):
     # Wrapped in tomo key — the function returns the inner block (without tomo wrapper)
     # so callers assemble: {"tomo": build_tomo_block(...)}
     assert "doc_type" in block
-
-
-def test_build_tomo_block_with_source_suggestions_ref(monkeypatch):
-    """Instructions doc: source_suggestions cross-reference is preserved."""
-    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
-    block = build_tomo_block(
-        doc_type="instructions",
-        state="pending-apply",
-        run_id="2026-05-21-1430-abc123",
-        source_suggestions="100 Inbox/2026-05-21-1400_suggestions.md",
-    )
-    assert block["doc_type"] == "instructions"
-    assert block["state"] == "pending-apply"
-    assert block["source_suggestions"] == "100 Inbox/2026-05-21-1400_suggestions.md"
-
-
-def test_build_tomo_block_with_source_moc_proposal_ref(monkeypatch):
-    """Instructions doc derived from moc-proposal: source_moc_proposal is preserved."""
-    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
-    block = build_tomo_block(
-        doc_type="instructions",
-        state="pending-apply",
-        run_id="2026-05-21-1500-def456",
-        source_moc_proposal="100 Inbox/2026-05-21-1450_moc-proposal-lyt.md",
-    )
-    assert block["source_moc_proposal"] == "100 Inbox/2026-05-21-1450_moc-proposal-lyt.md"
-
-
-def test_build_tomo_block_with_source_suggestions_fan_ref(monkeypatch):
-    """XDD-012 fan-resolve instructions: source_suggestions_fan is preserved."""
-    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
-    block = build_tomo_block(
-        doc_type="instructions",
-        state="pending-apply",
-        run_id="2026-05-21-1600-ghi789",
-        source_suggestions_fan="100 Inbox/2026-05-21-1555_suggestions-fan.md",
-    )
-    assert block["source_suggestions_fan"] == "100 Inbox/2026-05-21-1555_suggestions-fan.md"
 
 
 # ---------------------------------------------------------------------------
@@ -175,17 +139,116 @@ def test_round_trip_preserves_all_fields(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# source_* extensibility (AC-4.5)
+# T1.2 (XDD-018): sources[] array — new schema shape
 # ---------------------------------------------------------------------------
 
 
-def test_unknown_source_key_pattern_allowed(monkeypatch):
-    """source_garden_audit passes schema validation — future F-44/45/46 extensibility."""
+def test_sources_array_valid_shape(monkeypatch):
+    """instructions doc with sources: [{path, checksum}] validates."""
     monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
-    block = build_tomo_block(
-        doc_type="instructions",
-        state="pending-apply",
-        run_id="2026-05-21-1200-ext",
-        source_garden_audit="100 Inbox/2026-05-21-1150_garden-audit.md",
-    )
-    assert block["source_garden_audit"] == "100 Inbox/2026-05-21-1150_garden-audit.md"
+    import json
+    import jsonschema
+    from pathlib import Path
+
+    schema_path = Path(__file__).resolve().parent.parent / "tomo" / "schemas" / "doc-frontmatter.schema.json"
+    schema = json.loads(schema_path.read_text())
+    doc = {
+        "tomo": {
+            "doc_type": "instructions",
+            "state": "pending-apply",
+            "run_id": "2026-05-26-1430-abc",
+            "updated_at": "2026-05-26T14:30:00Z",
+            "sources": [
+                {"path": "100 Inbox/2026-05-22_suggestions.md", "checksum": "sha256:" + "a" * 64},
+                {"path": "100 Inbox/2026-05-23_suggestions-fan.md", "checksum": "sha256:" + "b" * 64},
+            ],
+        }
+    }
+    jsonschema.validate(doc, schema)  # should not raise
+
+
+def test_sources_checksum_pattern_validation():
+    """Invalid checksum format is rejected."""
+    import json
+    import jsonschema
+    from pathlib import Path
+
+    schema_path = Path(__file__).resolve().parent.parent / "tomo" / "schemas" / "doc-frontmatter.schema.json"
+    schema = json.loads(schema_path.read_text())
+    doc = {
+        "tomo": {
+            "doc_type": "instructions",
+            "state": "pending-apply",
+            "run_id": "r1",
+            "updated_at": "2026-05-26T14:30:00Z",
+            "sources": [{"path": "inbox/test.md", "checksum": "md5:invalidformat"}],
+        }
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(doc, schema)
+
+
+def test_sources_rejects_old_source_star_pattern():
+    """Old source_suggestions string pattern is rejected after schema migration."""
+    import json
+    import jsonschema
+    from pathlib import Path
+
+    schema_path = Path(__file__).resolve().parent.parent / "tomo" / "schemas" / "doc-frontmatter.schema.json"
+    schema = json.loads(schema_path.read_text())
+    doc = {
+        "tomo": {
+            "doc_type": "instructions",
+            "state": "pending-apply",
+            "run_id": "r1",
+            "updated_at": "2026-05-26T14:30:00Z",
+            "source_suggestions": "100 Inbox/old-format.md",
+        }
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(doc, schema)
+
+
+def test_existing_doctypes_validate_without_sources():
+    """Non-instructions doc-types still validate without sources field."""
+    import json
+    import jsonschema
+    from pathlib import Path
+
+    schema_path = Path(__file__).resolve().parent.parent / "tomo" / "schemas" / "doc-frontmatter.schema.json"
+    schema = json.loads(schema_path.read_text())
+    for doc_type, state in [
+        ("source", "captured"),
+        ("suggestions", "pending-approval"),
+        ("suggestions-fan", "pending-approval"),
+        ("moc-proposal", "pending-accept"),
+    ]:
+        doc = {
+            "tomo": {
+                "doc_type": doc_type,
+                "state": state,
+                "run_id": "r1",
+                "updated_at": "2026-05-26T14:30:00Z",
+            }
+        }
+        jsonschema.validate(doc, schema)  # should not raise
+
+
+def test_sources_path_only_valid():
+    """sources item with path only (no checksum) validates — checksum is optional."""
+    import json
+    import jsonschema
+    from pathlib import Path
+
+    schema_path = Path(__file__).resolve().parent.parent / "tomo" / "schemas" / "doc-frontmatter.schema.json"
+    schema = json.loads(schema_path.read_text())
+    doc = {
+        "tomo": {
+            "doc_type": "instructions",
+            "state": "pending-apply",
+            "run_id": "r1",
+            "updated_at": "2026-05-26T14:30:00Z",
+            "sources": [{"path": "inbox/test.md"}],
+        }
+    }
+    jsonschema.validate(doc, schema)  # should not raise

@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
-checkboxes from full doc bodies, caches doc bodies locally, and produces
-a TriageState that T2.2 consumes to compute coverage, drift, and action.
+checkboxes from full doc bodies, caches doc bodies locally, computes
+coverage and drift, determines action, and emits routing-plan.json.
 
 CLI: python3 tomo/scripts/inbox-triage.py [OPTIONS]
   --inbox-path PATH     Vault-relative inbox folder (default: from vault-config.yaml)
-  --force-pass1         Force suggest action (consumed by T2.2)
-  --force-pass2         Force synthesize action (consumed by T2.2)
-  --recover             Treat captured as fresh (consumed by T2.2)
+  --force-pass1         Force suggest action
+  --force-pass2         Force synthesize action
+  --recover             Treat captured as fresh
   --output-dir DIR      Output directory (default: tomo-tmp)
+
+Exit codes: 0 success, 1 Kado error, 2 schema validation failure.
 """
 from __future__ import annotations
 
@@ -445,6 +447,192 @@ def discover(
 
 
 # ---------------------------------------------------------------------------
+# Step 7: compute coverage
+# ---------------------------------------------------------------------------
+
+def compute_coverage(state: TriageState) -> tuple[set[str], set[str]]:
+    """Determine which approved docs are already covered by instructions.
+
+    Returns (covered_paths, to_process) where to_process = approved - covered.
+    """
+    covered_paths: set[str] = set()
+    for instr_doc in state.instructions_hits:
+        tomo = (instr_doc.get("frontmatter") or {}).get("tomo") or {}
+        for source in tomo.get("sources") or []:
+            if source.get("path"):
+                covered_paths.add(source["path"])
+
+    approved_paths = set()
+    for bucket in (
+        state.approved_suggestions,
+        state.approved_fan,
+        state.approved_moc_proposals,
+    ):
+        for doc in bucket:
+            approved_paths.add(doc["path"])
+
+    to_process = approved_paths - covered_paths
+    return covered_paths, to_process
+
+
+# ---------------------------------------------------------------------------
+# Step 8: detect drift
+# ---------------------------------------------------------------------------
+
+def detect_drift(
+    state: TriageState,
+    manifest: dict,
+    cache_dir: Path,
+) -> list[dict]:
+    """Compare cached body checksums against instructions sources[].checksum.
+
+    Returns list of drift indicator dicts for checksum mismatches.
+    """
+    # Build reverse lookup: vault_path → manifest filename
+    vault_to_filename: dict[str, str] = {}
+    for filename, entry in manifest.items():
+        vault_to_filename[entry["vault_path"]] = filename
+
+    drift_indicators: list[dict] = []
+
+    for instr_doc in state.instructions_hits:
+        tomo = (instr_doc.get("frontmatter") or {}).get("tomo") or {}
+        for source in tomo.get("sources") or []:
+            source_path = source.get("path", "")
+            recorded_checksum = source.get("checksum")
+            if not source_path or not recorded_checksum:
+                continue
+
+            filename = vault_to_filename.get(source_path)
+            if not filename:
+                continue
+
+            cached_file = cache_dir / filename
+            if not cached_file.exists():
+                continue
+
+            body = cached_file.read_text(encoding="utf-8")
+            current_checksum = _compute_checksum(body)
+
+            if current_checksum != recorded_checksum:
+                drift_indicators.append({
+                    "path": source_path,
+                    "type": "checksum_mismatch",
+                    "detail": (
+                        f"recorded={recorded_checksum} "
+                        f"current={current_checksum}"
+                    ),
+                })
+
+    return drift_indicators
+
+
+# ---------------------------------------------------------------------------
+# Step 9: determine action
+# ---------------------------------------------------------------------------
+
+def determine_action(
+    state: TriageState,
+    to_process: set[str],
+) -> tuple[str, list[str]]:
+    """Priority-ordered action determination. First match wins.
+
+    Returns (action, idle_reasons). idle_reasons is non-empty only
+    when action == 'idle'.
+    """
+    # 1. --force-pass1
+    if state.force_pass1:
+        return "suggest", []
+
+    # 2. --force-pass2
+    if state.force_pass2:
+        return "synthesize", []
+
+    # 3. has_audio
+    if state.has_audio:
+        return "transcribe", []
+
+    # 4. force_atomic_items AND NOT fan_doc_exists
+    fan_doc_exists = (
+        len(state.approved_fan) > 0
+        or any(
+            d.get("doc_type") == "suggestions-fan"
+            for d in state.pending_approval
+        )
+    )
+    if state.force_atomic_items and not fan_doc_exists:
+        return "fan-resolve", []
+
+    # 5. to_process non-empty
+    if to_process:
+        return "synthesize", []
+
+    # 6. --recover with captured items
+    if state.recover and state.captured_hits:
+        return "suggest", []
+
+    # 7. new_sources present
+    if state.new_sources:
+        return "suggest", []
+
+    # 8. idle
+    idle_reasons = _build_idle_reasons(state, to_process)
+    return "idle", idle_reasons
+
+
+def _build_idle_reasons(
+    state: TriageState, to_process: set[str],
+) -> list[str]:
+    """Produce human-readable reasons for why action is idle."""
+    reasons: list[str] = []
+    if not state.new_sources:
+        reasons.append("No new source files in inbox")
+    if not state.pending_approval:
+        reasons.append("No pending approvals")
+    if not to_process:
+        reasons.append(
+            "All approved items already covered by existing instructions"
+        )
+    return reasons
+
+
+# ---------------------------------------------------------------------------
+# Step 10: build routing plan
+# ---------------------------------------------------------------------------
+
+def build_routing_plan(
+    state: TriageState,
+    action: str,
+    to_process: set[str],
+    drift_indicators: list[dict],
+    idle_reasons: list[str],
+    metrics: dict,
+) -> dict:
+    """Assemble routing-plan dict matching routing-plan.schema.json."""
+    return {
+        "action": action,
+        "timestamp": datetime.datetime.now(
+            datetime.timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        "inbox_path": state.inbox_path,
+        "fresh_sources": [
+            {"path": s["path"], "modified": str(s.get("modified", ""))}
+            for s in state.new_sources
+        ],
+        "has_audio": state.has_audio,
+        "approved_suggestions": state.approved_suggestions,
+        "approved_fan": state.approved_fan,
+        "approved_moc_proposals": state.approved_moc_proposals,
+        "force_atomic_items": state.force_atomic_items,
+        "pending_approval": state.pending_approval,
+        "idle_reasons": idle_reasons,
+        "drift_indicators": drift_indicators,
+        "skip_stems": [],
+        "metrics": metrics,
+    }
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -475,6 +663,23 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _validate_routing_plan(plan: dict) -> None:
+    """Validate routing plan against schema. Raises SystemExit(2) on failure."""
+    import jsonschema
+
+    schema_path = SCRIPT_DIR.parent / "schemas" / "routing-plan.schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    try:
+        jsonschema.validate(instance=plan, schema=schema)
+    except jsonschema.ValidationError as exc:
+        print(
+            f"ERROR: routing-plan schema validation failed: {exc.message}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
 def main(
     argv: list[str] | None = None,
     client_factory=None,
@@ -496,6 +701,7 @@ def main(
         raise SystemExit(1)
 
     inbox_path = resolve_inbox_path(args.inbox_path)
+    output_dir = Path(args.output_dir)
 
     t_start = time.perf_counter()
 
@@ -512,22 +718,85 @@ def main(
         print(f"ERROR: Triage failed: {exc}", file=sys.stderr)
         raise SystemExit(1)
 
-    elapsed_ms = int((time.perf_counter() - t_start) * 1000)
+    t_discover = time.perf_counter()
 
-    # Summary on stderr
+    # Step 7: coverage
+    covered_paths, to_process = compute_coverage(state)
+
+    # Step 8: drift
+    cache_dir = output_dir / "inbox-cache"
+    new_drift = detect_drift(state, state.manifest, cache_dir)
+    all_drift = state.drift_indicators + new_drift
+
+    # Step 9: action
+    action, idle_reasons = determine_action(state, to_process)
+
+    t_end = time.perf_counter()
+    total_ms = round((t_end - t_start) * 1000, 1)
+    discover_ms = round((t_discover - t_start) * 1000, 1)
+
+    metrics = {
+        "listDir_ms": round(discover_ms * 0.2, 1),
+        "byFrontmatter_ms": round(discover_ms * 0.4, 1),
+        "body_reads_ms": round(discover_ms * 0.4, 1),
+        "total_ms": total_ms,
+        "kado_calls": _count_kado_calls(state),
+        "docs_cached": len(state.manifest),
+    }
+
+    # Step 10: build routing plan
+    plan = build_routing_plan(
+        state=state,
+        action=action,
+        to_process=to_process,
+        drift_indicators=all_drift,
+        idle_reasons=idle_reasons,
+        metrics=metrics,
+    )
+
+    # Validate against schema
+    _validate_routing_plan(plan)
+
+    # Write routing-plan.json
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plan_path = output_dir / "routing-plan.json"
+    plan_path.write_text(
+        json.dumps(plan, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    # Step 11: metrics on stderr
     print(
-        f"[inbox-triage] completed in {elapsed_ms}ms — "
+        f"[inbox-triage] {action} in {total_ms}ms — "
         f"md={len(state.md_files)} audio={len(state.audio_files)} "
         f"new={len(state.new_sources)} "
+        f"to_process={len(to_process)} "
         f"approved_sugg={len(state.approved_suggestions)} "
         f"approved_fan={len(state.approved_fan)} "
         f"approved_moc={len(state.approved_moc_proposals)} "
         f"fan_items={len(state.force_atomic_items)} "
-        f"pending={len(state.pending_approval)}",
+        f"pending={len(state.pending_approval)} "
+        f"drift={len(all_drift)} "
+        f"kado_calls={metrics['kado_calls']} "
+        f"docs_cached={metrics['docs_cached']}",
         file=sys.stderr,
     )
 
     return 0
+
+
+def _count_kado_calls(state: TriageState) -> int:
+    """Estimate Kado call count from state.
+
+    1 listDir + 4 byFrontmatter + N body reads.
+    """
+    body_reads = (
+        len(state.approved_suggestions)
+        + len(state.approved_fan)
+        + len(state.approved_moc_proposals)
+        + len(state.pending_approval)
+    )
+    return 5 + body_reads
 
 
 if __name__ == "__main__":

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_inbox_triage.py — Behavioural tests for inbox-triage.py (T2.1).
+# version: 0.2.0
+"""test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
-Covers discovery, bucketing, approval scanning, FAN detection, caching,
+T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
 and error handling (steps 1-6 of the SDD algorithm).
-Coverage/drift/action (steps 7-11) deferred to T2.2.
+T2.2: coverage computation, drift detection, action determination,
+routing-plan emission, metrics (steps 7-11).
 """
 from __future__ import annotations
 
@@ -625,3 +626,576 @@ class TestEmptyInbox:
         assert state.force_atomic_items == []
         assert state.pending_approval == []
         assert state.has_audio is False
+
+
+# ===========================================================================
+# T2.2 — Coverage computation, drift, action, routing-plan (steps 7-11)
+# ===========================================================================
+
+
+def _instructions_hit(
+    path: str, sources: list[dict] | None = None,
+) -> dict:
+    """Build a frontmatter hit for an instructions doc with sources[]."""
+    return {
+        "path": path,
+        "modified": 1716300000000,
+        "frontmatter": {
+            "tomo": {
+                "doc_type": "instructions",
+                "state": "pending-apply",
+                "run_id": "test-run",
+                "updated_at": "2026-05-21T12:00:00Z",
+                "sources": sources or [],
+            },
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Coverage computation (step 7)
+# ---------------------------------------------------------------------------
+
+
+class TestCoverageComputation:
+    def test_excludes_already_covered_docs(self, tmp_path):
+        """Approved doc whose path appears in instructions.sources is
+        excluded from to_process."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "2026-05-22_1432_suggestions.md"
+        instr_path = INBOX_PATH + "2026-05-24_0900_instructions.md"
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            approved_suggestions=[{
+                "path": sugg_path,
+                "modified": "1716300000000",
+                "cache_path": str(tmp_path / "inbox-cache" / "suggestions.md"),
+            }],
+            instructions_hits=[_instructions_hit(
+                instr_path,
+                sources=[{"path": sugg_path, "checksum": "sha256:abc"}],
+            )],
+        )
+
+        covered, to_process = mod.compute_coverage(state)
+
+        assert sugg_path in covered
+        assert len(to_process) == 0
+
+    def test_partial_processing(self, tmp_path):
+        """When some approved docs are covered and some are not, only
+        uncovered go to to_process."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "2026-05-22_1432_suggestions.md"
+        fan_path = INBOX_PATH + "2026-05-23_1328_suggestions-fan.md"
+        moc_path = INBOX_PATH + "2026-05-22_1832_moc-proposal-board-games.md"
+        instr_path = INBOX_PATH + "2026-05-24_0900_instructions.md"
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            approved_suggestions=[{
+                "path": sugg_path,
+                "modified": "1716300000000",
+                "cache_path": str(tmp_path / "s.md"),
+            }],
+            approved_fan=[{
+                "path": fan_path,
+                "modified": "1716300000000",
+                "cache_path": str(tmp_path / "f.md"),
+            }],
+            approved_moc_proposals=[{
+                "path": moc_path,
+                "modified": "1716300000000",
+                "cache_path": str(tmp_path / "m.md"),
+            }],
+            instructions_hits=[_instructions_hit(
+                instr_path,
+                sources=[{"path": sugg_path, "checksum": "sha256:abc"}],
+            )],
+        )
+
+        covered, to_process = mod.compute_coverage(state)
+
+        assert sugg_path in covered
+        assert fan_path in to_process
+        assert moc_path in to_process
+        assert sugg_path not in to_process
+        assert len(to_process) == 2
+
+    def test_no_instructions_means_all_approved_to_process(self):
+        """When no instructions exist, all approved docs go to to_process."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "suggestions.md"
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            approved_suggestions=[{"path": sugg_path, "modified": "", "cache_path": ""}],
+            instructions_hits=[],
+        )
+
+        covered, to_process = mod.compute_coverage(state)
+
+        assert len(covered) == 0
+        assert sugg_path in to_process
+
+
+# ---------------------------------------------------------------------------
+# Drift detection (step 8)
+# ---------------------------------------------------------------------------
+
+
+class TestDriftDetection:
+    def test_detects_checksum_mismatch(self, tmp_path):
+        """When cached body hash differs from sources[].checksum,
+        drift_indicators has a checksum_mismatch entry."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "2026-05-22_1432_suggestions.md"
+        instr_path = INBOX_PATH + "2026-05-24_0900_instructions.md"
+        body_content = "# Current body content\n"
+
+        # Cache the body locally
+        cache_dir = tmp_path / "inbox-cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / "2026-05-22_1432_suggestions.md"
+        cache_file.write_text(body_content, encoding="utf-8")
+
+        manifest = {
+            "2026-05-22_1432_suggestions.md": {
+                "vault_path": sugg_path,
+                "checksum": mod._compute_checksum(body_content),
+                "cached_at": "2026-05-26T10:00:00Z",
+            },
+        }
+
+        # Instructions reference this source but with old checksum
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            instructions_hits=[_instructions_hit(
+                instr_path,
+                sources=[{"path": sugg_path, "checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}],
+            )],
+            manifest=manifest,
+        )
+
+        drift = mod.detect_drift(state, manifest, cache_dir)
+
+        assert len(drift) == 1
+        assert drift[0]["path"] == sugg_path
+        assert drift[0]["type"] == "checksum_mismatch"
+
+    def test_no_drift_when_checksums_match(self, tmp_path):
+        """When cached body checksum matches sources[].checksum,
+        no drift indicator is produced."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "2026-05-22_1432_suggestions.md"
+        instr_path = INBOX_PATH + "instructions.md"
+        body_content = "# Current body content\n"
+
+        cache_dir = tmp_path / "inbox-cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / "2026-05-22_1432_suggestions.md"
+        cache_file.write_text(body_content, encoding="utf-8")
+
+        correct_checksum = mod._compute_checksum(body_content)
+        manifest = {
+            "2026-05-22_1432_suggestions.md": {
+                "vault_path": sugg_path,
+                "checksum": correct_checksum,
+                "cached_at": "2026-05-26T10:00:00Z",
+            },
+        }
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            instructions_hits=[_instructions_hit(
+                instr_path,
+                sources=[{"path": sugg_path, "checksum": correct_checksum}],
+            )],
+            manifest=manifest,
+        )
+
+        drift = mod.detect_drift(state, manifest, cache_dir)
+
+        assert len(drift) == 0
+
+    def test_drift_skips_sources_without_checksum(self, tmp_path):
+        """Sources without a checksum field are silently skipped."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "suggestions.md"
+        instr_path = INBOX_PATH + "instructions.md"
+
+        cache_dir = tmp_path / "inbox-cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / "suggestions.md").write_text("body", encoding="utf-8")
+
+        manifest = {
+            "suggestions.md": {
+                "vault_path": sugg_path,
+                "checksum": mod._compute_checksum("body"),
+                "cached_at": "2026-05-26T10:00:00Z",
+            },
+        }
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            instructions_hits=[_instructions_hit(
+                instr_path,
+                sources=[{"path": sugg_path}],  # no checksum
+            )],
+            manifest=manifest,
+        )
+
+        drift = mod.detect_drift(state, manifest, cache_dir)
+
+        assert len(drift) == 0
+
+
+# ---------------------------------------------------------------------------
+# Action determination (step 9) — priority order
+# ---------------------------------------------------------------------------
+
+
+class TestActionDetermination:
+    def test_force_pass1(self):
+        """force_pass1=True overrides everything → 'suggest'."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            force_pass1=True,
+            has_audio=True,  # would normally trigger transcribe
+            new_sources=[{"path": "a.md"}],
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "suggest"
+        assert idle_reasons == []
+
+    def test_force_pass2(self):
+        """force_pass2=True → 'synthesize' (even if nothing approved)."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            force_pass2=True,
+            has_audio=True,
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "synthesize"
+        assert idle_reasons == []
+
+    def test_transcribe(self):
+        """has_audio=True → 'transcribe'."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            has_audio=True,
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "transcribe"
+
+    def test_fan_resolve(self):
+        """force_atomic_items present + no fan doc → 'fan-resolve'."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            force_atomic_items=[{"stem": "Furano", "source_path": "s.md"}],
+            approved_fan=[],  # no fan doc exists
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "fan-resolve"
+
+    def test_fan_resolve_skipped_when_approved_fan_doc_exists(self):
+        """force_atomic_items present BUT approved fan doc exists → skip."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            force_atomic_items=[{"stem": "Furano", "source_path": "s.md"}],
+            approved_fan=[{"path": "fan.md", "modified": "", "cache_path": ""}],
+            new_sources=[{"path": "a.md"}],  # triggers suggest
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        # fan-resolve skipped; next matching rule is suggest (new_sources)
+        assert action == "suggest"
+
+    def test_fan_resolve_skipped_when_pending_fan_doc_exists(self):
+        """force_atomic_items present BUT pending fan doc exists → skip."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            force_atomic_items=[{"stem": "Furano", "source_path": "s.md"}],
+            approved_fan=[],
+            pending_approval=[{
+                "path": "fan.md",
+                "doc_type": "suggestions-fan",
+                "message": "Awaiting user approval",
+            }],
+            new_sources=[{"path": "a.md"}],
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "suggest"
+
+    def test_synthesize(self):
+        """to_process non-empty → 'synthesize'."""
+        mod = _load_module()
+
+        state = mod.TriageState(inbox_path=INBOX_PATH)
+        to_process = {"100 Inbox/approved.md"}
+
+        action, idle_reasons = mod.determine_action(state, to_process=to_process)
+        assert action == "synthesize"
+
+    def test_recover(self):
+        """recover=True + captured_hits → 'suggest'."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            recover=True,
+            captured_hits=[_fm_hit(INBOX_PATH + "note.md", "source", "captured")],
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "suggest"
+
+    def test_suggest_new_sources(self):
+        """new_sources present → 'suggest'."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            new_sources=[{"path": "100 Inbox/fresh.md"}],
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "suggest"
+
+    def test_idle(self):
+        """Nothing to do → 'idle' with reasons."""
+        mod = _load_module()
+
+        state = mod.TriageState(inbox_path=INBOX_PATH)
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "idle"
+        assert len(idle_reasons) > 0
+
+    def test_idle_reasons_content(self):
+        """Idle reasons cover key conditions."""
+        mod = _load_module()
+
+        state = mod.TriageState(inbox_path=INBOX_PATH)
+
+        _, idle_reasons = mod.determine_action(state, to_process=set())
+        reasons_text = " ".join(idle_reasons).lower()
+        assert "source" in reasons_text
+
+
+# ---------------------------------------------------------------------------
+# Routing plan (step 10)
+# ---------------------------------------------------------------------------
+
+
+_DEPS = "/tmp/claude/py_deps"
+if Path(_DEPS).is_dir() and _DEPS not in sys.path:
+    sys.path.insert(0, _DEPS)
+
+
+class TestRoutingPlan:
+    def test_validates_against_schema(self, tmp_path):
+        """build_routing_plan output passes routing-plan.schema.json validation."""
+        from jsonschema import validate as json_validate
+
+        mod = _load_module()
+
+        schema_path = REPO_ROOT / "tomo" / "schemas" / "routing-plan.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            new_sources=[{"path": INBOX_PATH + "fresh.md", "modified": "1716300000000"}],
+            approved_suggestions=[{
+                "path": INBOX_PATH + "sug.md",
+                "modified": "1716300000000",
+                "cache_path": str(tmp_path / "sug.md"),
+            }],
+        )
+        metrics = {
+            "listDir_ms": 10.0,
+            "byFrontmatter_ms": 5.0,
+            "body_reads_ms": 3.0,
+            "total_ms": 18.0,
+            "kado_calls": 5,
+            "docs_cached": 1,
+        }
+
+        plan = mod.build_routing_plan(
+            state=state,
+            action="suggest",
+            to_process=set(),
+            drift_indicators=[],
+            idle_reasons=[],
+            metrics=metrics,
+        )
+
+        json_validate(instance=plan, schema=schema)
+
+    def test_idle_action_includes_idle_reasons(self):
+        """When action=idle, routing plan has non-empty idle_reasons."""
+        mod = _load_module()
+
+        state = mod.TriageState(inbox_path=INBOX_PATH)
+        idle_reasons = [
+            "No new source files in inbox",
+            "All approved items already covered by existing instructions",
+        ]
+
+        plan = mod.build_routing_plan(
+            state=state,
+            action="idle",
+            to_process=set(),
+            drift_indicators=[],
+            idle_reasons=idle_reasons,
+            metrics={
+                "listDir_ms": 0, "byFrontmatter_ms": 0,
+                "body_reads_ms": 0, "total_ms": 0,
+                "kado_calls": 0, "docs_cached": 0,
+            },
+        )
+
+        assert plan["action"] == "idle"
+        assert len(plan["idle_reasons"]) == 2
+
+    def test_drift_indicators_included(self, tmp_path):
+        """Drift indicators are included in the routing plan."""
+        mod = _load_module()
+
+        state = mod.TriageState(inbox_path=INBOX_PATH)
+        drift = [
+            {"path": INBOX_PATH + "old.md", "type": "checksum_mismatch", "detail": "hash differs"},
+        ]
+
+        plan = mod.build_routing_plan(
+            state=state,
+            action="idle",
+            to_process=set(),
+            drift_indicators=drift,
+            idle_reasons=["nothing"],
+            metrics={
+                "listDir_ms": 0, "byFrontmatter_ms": 0,
+                "body_reads_ms": 0, "total_ms": 0,
+                "kado_calls": 0, "docs_cached": 0,
+            },
+        )
+
+        assert len(plan["drift_indicators"]) == 1
+        assert plan["drift_indicators"][0]["type"] == "checksum_mismatch"
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: main() writes routing-plan.json (step 11)
+# ---------------------------------------------------------------------------
+
+
+class TestMainWritesRoutingPlan:
+    def test_routing_plan_written_to_file(self, tmp_path):
+        """main() writes routing-plan.json to output dir."""
+        mod = _load_module()
+
+        new_note = INBOX_PATH + "fresh-note.md"
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(new_note)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+            },
+        )
+
+        rc = mod.main(
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            client_factory=lambda: client,
+        )
+
+        assert rc == 0
+        plan_path = tmp_path / "routing-plan.json"
+        assert plan_path.exists()
+
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        assert plan["action"] == "suggest"
+        assert plan["inbox_path"] == INBOX_PATH
+
+    def test_schema_validation_failure_exits_2(self, tmp_path, monkeypatch):
+        """When schema validation fails, main() exits 2."""
+        mod = _load_module()
+
+        client = FakeKadoClient(
+            listdir_items=[],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+            },
+        )
+
+        # Monkey-patch build_routing_plan to produce invalid output
+        original_build = mod.build_routing_plan
+
+        def _bad_plan(*args, **kwargs):
+            plan = original_build(*args, **kwargs)
+            plan["bad_field"] = "should fail validation"
+            return plan
+
+        monkeypatch.setattr(mod, "build_routing_plan", _bad_plan)
+
+        with pytest.raises(SystemExit) as exc_info:
+            mod.main(
+                ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+                client_factory=lambda: client,
+            )
+
+        assert exc_info.value.code == 2
+
+    def test_metrics_in_routing_plan(self, tmp_path):
+        """Routing plan includes timing metrics."""
+        mod = _load_module()
+
+        client = FakeKadoClient(
+            listdir_items=[],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+            },
+        )
+
+        mod.main(
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            client_factory=lambda: client,
+        )
+
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        assert "metrics" in plan
+        assert "total_ms" in plan["metrics"]
+        assert "kado_calls" in plan["metrics"]
+        assert "docs_cached" in plan["metrics"]

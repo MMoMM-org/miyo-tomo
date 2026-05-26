@@ -279,7 +279,7 @@ for f in "$TOMO_SOURCE/scripts/lib/"*.py; do
 done
 
 # Retired files (delete from instance if present)
-RETIRED_AGENTS=(suggestion-builder.md vault-executor.md)
+RETIRED_AGENTS=(suggestion-builder.md vault-executor.md inbox-orchestrator.md instruction-builder.md)
 for name in "${RETIRED_AGENTS[@]}"; do
     dst="$INSTANCE_PATH/.claude/agents/$name"
     if [ -f "$dst" ]; then
@@ -309,6 +309,7 @@ RETIRED_SCRIPT_TESTS=(
 RETIRED_SCRIPTS=(
     tag-captured.py
     state-init.py
+    inbox-discovery.py
 )
 for name in "${RETIRED_SCRIPT_TESTS[@]}" "${RETIRED_SCRIPTS[@]}"; do
     dst="$INSTANCE_PATH/scripts/$name"

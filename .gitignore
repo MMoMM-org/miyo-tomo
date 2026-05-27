@@ -23,6 +23,7 @@ begin-tomo.sh
 .credentials.json
 .claude/settings.local.json
 .claude/plans/
+.claude/.session-checkpoint*
 
 # Handoff buffers — local-only working state.
 # Senders write to _outbox/for-<receiver>/; receivers read via _inbox/from-<sender>/

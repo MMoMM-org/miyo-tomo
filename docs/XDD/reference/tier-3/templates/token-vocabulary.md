@@ -74,6 +74,7 @@ A user without `Vault` in their frontmatter schema simply has no `{{vault}}` tok
 | `{{body}}` | Main note content | Multi-line markdown |
 | `{{up}}` | Parent link(s) as wikilink(s) | `[[Shell & Terminal (MOC)]]` |
 | `{{related}}` | Peer link(s) as wikilink(s) | `[[zsh Aliases]], [[iTerm Config]]` |
+| `{{children}}` | Child note bullets for MOC content callout (callout-prefixed). Currently only populated for MOC proposal flow; empty for suggest flow (children don't exist yet at render time — added via `link_to_moc` actions instead). | `> - [[Thought Collisions]]\n> - [[Map of Content]]` |
 
 ### Metadata Tokens
 

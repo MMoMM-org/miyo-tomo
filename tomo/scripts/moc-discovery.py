@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.0 (T6.5: --emit-phase1/--phase1-input for agent-side topic extraction)
+# version: 0.10.1
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -95,12 +95,12 @@ ABORT_MESSAGES: dict[str, str] = {
         "MOC proposal requires vault cache. Please run /explore-vault first to "
         "populate discovery-cache.yaml."
     ),
-    "zero-candidates": "Keine Notes zum Topic gefunden",
+    "zero-candidates": "No notes found for this topic.",
     "candidate-cap-exceeded": (
-        "Mehr als die erlaubte Anzahl Kandidaten gefunden — Suchbereich einschränken"
+        "Too many candidates found — narrow the search scope."
     ),
     "cache-miss-cap-exceeded": (
-        "Notes ohne Cache-Eintrag — bitte zuerst /explore-vault laufen lassen"
+        "Too many notes without cache entry — please run /explore-vault first."
     ),
 }
 
@@ -824,7 +824,7 @@ def phase3_cluster(
 # stored on the profile, but per the spec the canonical TopicTitle for the
 # proposed-MOC pipeline is the plain "<Topic> MOC" / "<Topic>" pair.
 _PROFILE_TITLE_SUFFIX: dict[str, str] = {
-    "miyo": " MOC",
+    "miyo": " (MOC)",
     "lyt": "",
 }
 
@@ -878,11 +878,12 @@ def phase4_title(
 
     topic_title = _topic_title(cluster)
     profile_name = (profile.get("name") or "").strip()
-    # Resolve to lowercase short-name key. miyo.yaml → "MiYo"; lyt.yaml →
-    # "LYT (Linking Your Thinking)". The first whitespace-token, lowered,
-    # collapses both to a stable lookup key.
     short = profile_name.split()[0].lower() if profile_name else "miyo"
     suffix = _PROFILE_TITLE_SUFFIX.get(short, "")
+    if suffix and topic_title.endswith(" MOC"):
+        topic_title = topic_title[:-4]
+    if topic_title.strip().upper() == "MOC":
+        return topic_title
     return f"{topic_title}{suffix}"
 
 
@@ -1264,11 +1265,10 @@ def phase6_dedupe(
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Match a single ``up::`` relationship line whose target is a wikilink. The
-# anchor is a line-start (`(?m)^`) optionally preceded by whitespace; the
-# target captured group strips the surrounding `[[` / `]]`. Multi-line bodies
-# are scanned with `re.MULTILINE` so each `up::` line is a candidate match —
-# Phase 6.5 then picks the first hit and warns on multi-hits.
-_UP_MARKER_RE = re.compile(r"^\s*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
+# anchor is a line-start (`(?m)^`) optionally preceded by whitespace or
+# callout-quote prefix (``> ``); the target captured group strips the
+# surrounding ``[[`` / ``]]``.
+_UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
 
 
 def _extract_first_up_marker(content: str) -> str | None:

@@ -1,179 +1,90 @@
-# /inbox — Process inbox with 2-pass workflow
-# version: 0.7.0 (instruction-builder is now Agent-dispatched, not impersonated — runs as subagent on sonnet per its frontmatter)
+---
+name: inbox
+description: Run the inbox workflow — triage, then route to the appropriate conductor.
+argument-hint: "optional: --pass1 | --pass2 | --recover"
+---
+# /inbox
+# version: 0.11.0
 
-Process inbox items using the 2-pass suggestion/instruction workflow.
-Auto-detects what to do next based on workflow document checkboxes.
+## Arguments
 
-## STRICT — How to Run This Command
+- `--pass1` — force Pass 1 (suggest) regardless of inbox state
+- `--pass2` — force Pass 2 (synthesize) regardless of inbox state
+- `--recover` — treat captured items as fresh (re-process)
 
-**You (the Claude session reading this command) run the orchestration
-logic DIRECTLY in your own context.** The inbox-orchestrator agent
-definition at `.claude/agents/inbox-orchestrator.md` is the SPEC you
-follow — treat its "Workflow" section as your instructions.
+## Steps
 
-**NEVER** dispatch `inbox-orchestrator` via the `Agent` / `Task` tool.
-Nested Agent-dispatches don't work in Claude Code (subagents cannot
-spawn further subagents), and the `inbox-orchestrator`'s job requires
-fanning out `inbox-analyst` subagents — so if you spawn the
-orchestrator as a subagent, Phase B fails with "Agent tool not
-available" and the pipeline stalls with no output written.
-
-Concrete mapping:
-- `inbox-orchestrator.md` Workflow Phase 0a / 0b / A / B / C → YOUR steps
-- Phase B's `inbox-analyst` fan-out → dispatched by YOU via the `Agent`
-  tool (3-5 in parallel, per `inbox-orchestrator.md` spec)
-- Phase 0a's `voice-transcriber` dispatch (if voice enabled) →
-  also by YOU via the `Agent` tool
-
-In other words: the inbox-orchestrator is the ONLY agent on your
-workflow that you IMPERSONATE rather than DISPATCH. Every other
-subagent mentioned in its spec (`inbox-analyst`, `voice-transcriber`)
-is dispatched normally.
-
-`vault-executor` (cleanup) follows the same impersonation rule —
-its spec is what you execute in this context.
-
-**EXCEPTION — `instruction-builder` (Pass 2) IS dispatched** via the
-`Agent` tool with `subagent_type: "instruction-builder"`. The agent's
-happy path does NOT fan out further subagents, so nested-dispatch is
-not an issue. Dispatching gives:
-- A measurable subagent run on sonnet (per the agent's frontmatter)
-  instead of the parent's session model — significantly cheaper for
-  pure orchestration work.
-- A separate transcript under
-  `tomo-home/.claude/projects/<project>/<sid>/subagents/` for clean
-  cost attribution.
-- Stronger context isolation — the subagent gets only the dispatch
-  prompt, not the parent's accumulated /inbox state.
-
-Fan-resolve fallback: instruction-builder's Step 2.5 dispatches
-`inbox-analyst` ONLY when `parsed-suggestions.json` has non-empty
-`pending_fan_resolutions` (XDD 012 — force-atomic items without an
-atomic proposal). That nested dispatch may fail; if you hit this rare
-path, fall back to impersonating instruction-builder for that one run.
-The reconciliation-pair case (when both `_suggestions.md` and
-`_suggestions-fan.md` are already approved) does NOT trigger
-fan-resolve — Step 2.5 is skipped because there are no pending
-resolutions.
-
-## Usage
-
-`/inbox` — Auto-detect next action (cleanup → Pass 2 → Pass 1)
-`/inbox --pass1` — Force Pass 1 (generate suggestions from captured items)
-`/inbox --pass2` — Force Pass 2 (generate instructions from approved suggestions)
-`/inbox --cleanup` — Force cleanup (process applied instruction sets)
-
-## How It Works
-
-### Step 0 — Resolve the inbox path (ALWAYS FIRST)
-
-Before any `listDir` or scan, resolve the vault-relative inbox path from
-`config/vault-config.yaml`. Do NOT hardcode `"Inbox"` or `"100 Inbox/"` —
-the path varies per vault. Run:
+### 1. Run triage
 
 ```bash
-python3 scripts/read-config-field.py --field concepts.inbox --default "100 Inbox/"
+python3 scripts/inbox-triage.py [--force-pass1] [--force-pass2] [--recover] --output-dir tomo-tmp
 ```
 
-The stdout is the inbox path (e.g. `100 Inbox/`). Use that literal in every
-subsequent `kado-search listDir` call and when dispatching to the orchestrator.
-**STRICT:** do not invent a shorter or prettier path like `"Inbox"`.
+Pass through any flags the user provided: `--pass1` → `--force-pass1`, `--pass2` → `--force-pass2`, `--recover` → `--recover`.
 
-### Auto-Discovery (default)
+### 2. Read routing plan
 
-After Step 0 resolves the inbox path, the command checks in priority order:
-
-1. **Instruction sets with Applied actions?** → Run cleanup (vault-executor)
-   - Scan the resolved inbox path for `*_instructions.md` via Kado `listDir`
-     (pass the resolved path, not a literal like `"Inbox"`)
-   - Read each, count `- [x] Applied` vs total actions
-   - Any with at least one Applied → cleanup
-2. **Suggestions with `[x] Approved`?** → Run Pass 2 by **dispatching
-   `instruction-builder` via the `Agent` tool** (see EXCEPTION in the
-   STRICT section above). Do NOT impersonate it.
-   - Scan the resolved inbox path for `*_suggestions.md` via Kado `listDir`
-     (this glob matches both primary `*_suggestions.md` and companion
-     `*_suggestions-fan.md` — XDD 012)
-   - Read each, check for `- [x] Approved` at top
-   - When BOTH a primary doc and an approved companion `*_suggestions-fan.md`
-     exist, they are a reconciliation pair — `instruction-builder` Step 2
-     handles the pairing internally by reading both files into `tomo-tmp/`
-     and passing `--fan-resolve-file` to the parser.
-   - **Dispatch shape:**
-     ```
-     Agent({
-       subagent_type: "instruction-builder",
-       description: "Pass 2 — build instruction set",
-       prompt: "Run Pass 2 on the approved suggestions doc(s) in <resolved-inbox>. Follow your agent definition. Report back with the action count + coverage audit result."
-     })
-     ```
-   - The subagent runs on sonnet per its frontmatter; you wait for the
-     final result message and surface it to the user.
-3. **Captured source items?** → Run Pass 1 directly in your context,
-   following `inbox-orchestrator.md` as your spec (do NOT Agent-dispatch it):
-     - Phase 0a: if voice enabled, dispatch `voice-transcriber` via Agent
-     - Phase 0b: resume detection via AskUserQuestion (Resume / Fresh / Inspect)
-     - Phase A: build shared-ctx + state-file directly (Bash calls)
-     - Phase B: dispatch `inbox-analyst` subagents via Agent (3-5 parallel)
-     - Phase C: reduce + render + kado-write final Suggestions doc
-4. **Nothing pending?** → Report "Inbox clear. Nothing to process."
-
-### Pass 1 — Suggestions (fan-out)
-
-1. `/inbox` → you impersonate the `inbox-orchestrator` spec (NEVER
-   Agent-dispatch it — see STRICT section above)
-2. Phase A: build `tomo-tmp/shared-ctx.json` and
-   `tomo-tmp/inbox-state.jsonl` via Bash calls
-3. Phase B: dispatch `inbox-analyst` subagents via the `Agent` tool in
-   batches of 3-5. Each subagent reads one item, classifies it, writes
-   `tomo-tmp/items/<stem>.result.json`, updates the state-file
-4. Phase C: run `suggestions-reducer.py`, render markdown, write the
-   final `YYYY-MM-DD_HHMM_suggestions.md` via `kado-write`
-5. Document contains visible `- [ ] Approved` checkbox + per-action tri-state
-   decision checkboxes (Approve / Skip / Delete source)
-6. **You review in Obsidian**, edit, check decisions
-7. Check `[x] Approved` when satisfied
-
-### Pass 2 — Instructions
-
-1. **instruction-builder** parses approved suggestions (pure orchestrator — no markdown assembly)
-2. `instruction-render.py` deterministically produces rendered notes,
-   `instructions.json` (canonical machine-readable — see
-   `tomo/schemas/instructions.schema.json`), and `instructions.md`
-   (human-readable view, rendered from the JSON)
-3. Instruction set + rendered files written to inbox via Kado
-4. Per-action `- [ ] Applied` checkboxes (no lifecycle tags)
-5. **You apply each action** in Obsidian and check `[x] Applied` per action
-   (future: Tomo Hashi plugin reads `instructions.json` directly and executes)
-6. Run `/inbox` when done — Tomo cleans up
-
-### Cleanup
-
-1. **vault-executor** finds instruction sets with Applied actions
-2. Transitions fully-applied source items from `captured` → `active`
-3. Asks user about partially-applied items
-4. Asks user whether to keep or delete completed workflow docs
-
-## State Model
-
-**Source items** (inbox notes): tag-based, Tomo-managed
-```
-captured  →  active
+```bash
+cat tomo-tmp/routing-plan.json
 ```
 
-**Workflow documents** (suggestions, instructions): checkbox-based, user-facing
+Extract the `action` field from the JSON output.
+
+### 3. Route on action
+
+| action | Route |
+|--------|-------|
+| suggest | IMPERSONATE suggestion-conductor |
+| fan-resolve | IMPERSONATE suggestion-conductor |
+| synthesize | DISPATCH synthesis-conductor (see Step 3b) |
+| transcribe | Dispatch voice-transcriber directly (see Step 4) |
+| idle | Surface status to user (see Step 5) |
+
+### 3b. Synthesize (dispatch)
+
+When action is `synthesize`, dispatch the synthesis-conductor as a subagent:
+
 ```
-Suggestions: [ ] Approved  →  [x] Approved  (user checks)
-Instructions: per action [ ] Applied → [x] Applied  (user checks)
+Agent(
+  name: "synthesis-conductor"
+  prompt: "Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly."
+)
 ```
 
-## Agents
+Report the synthesis-conductor's output to the user. Exit.
 
-This command dispatches:
-- `inbox-orchestrator` — Pass 1 coordinator (fan-out: Phase A + B + C)
-  - spawns `inbox-analyst` subagents per item (3-5 in parallel)
-- `instruction-builder` — Pass 2 action generation
-- `vault-executor` — cleanup and state transitions
+### 4. Transcribe (stop-gate)
 
-Note: `suggestion-builder` is retired — its format rules live in
-`inbox-orchestrator` now.
+When action is `transcribe`:
+
+```
+Agent(
+  name: "voice-transcriber"
+  prompt: "Transcribe audio files in the inbox. inbox_path: <inbox_path from routing-plan.json>"
+)
+```
+
+After transcription, report: "N transcript(s) created. Review, then re-run /inbox."
+
+Exit. Do NOT continue to any conductor.
+
+### 5. Idle
+
+When action is `idle`:
+
+Read `idle_reasons` and `pending_approval` from `tomo-tmp/routing-plan.json`.
+
+Report to user:
+- "Inbox is idle."
+- List each idle reason
+- If `pending_approval` is non-empty: "Waiting for approval on: [list paths]"
+
+If `drift_indicators` is non-empty, surface those as warnings.
+
+Exit.
+
+# STRICT — IMPERSONATE suggestion-conductor (needs Agent tool for leaf dispatch).
+# STRICT — DISPATCH synthesis-conductor (pure script runner, no Agent tool needed).
+# Why: dispatched subagents cannot use Agent tool. suggestion-conductor dispatches
+# inbox-analyst leaf agents so it must be impersonated. synthesis-conductor only
+# calls Bash scripts so dispatch is safe and keeps its context isolated.

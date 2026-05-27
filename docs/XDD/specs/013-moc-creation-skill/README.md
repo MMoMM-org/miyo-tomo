@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-05-07 |
-| **Current Phase** | Implemented (T6.2 paused — blocked-by F-47) |
-| **Last Updated** | 2026-05-20 |
+| **Current Phase** | Complete-pending-operator (T6.2/T6.4 DONE-pending-operator; blocked-by F-47 P2/P4) |
+| **Last Updated** | 2026-05-21 |
 
 ## Documents
 
@@ -41,6 +41,7 @@
 | 2026-05-20 | T6.5.5 fix: agent kado-write transports proposal-doc to vault | Live-validation 2026-05-20: reducer wrote proposal-doc to container local fs, user couldn't find it in vault. Fixed via moc-architect.md v0.3.0 + `mcp__kado__kado-write` tool. Mirrors inbox-orchestrator Step C4. Commit: `42e4d99` |
 | 2026-05-20 | T6.2 PAUSED — blocks on F-47 Tomo lifecycle tags | Live-validation surfaced architectural debt: `/inbox` Auto-Discovery uses listDir + 3 body-reads to detect file state; `tomo-moc-proposal-*` not in SKIP_SUFFIXES; suggestions/instructions use markdown-checkbox state not frontmatter tags. F-43 acceptance-flow can't be live-validated without first unifying file-discovery via byTag. New spec **017-tomo-lifecycle-tags** (F-47) takes the discovery + state refactor; F-43 T6.2 + T6.4 resume after F-47 ships |
 | 2026-05-21 | Resume mapping refined against F-47 v1.2 phase structure | T6.2 (remaining 5 modes + Override + collision-guard) resumes after **F-47.P2** ships (unified byFrontmatter discovery — proposal-doc with `tomo.state=pending-accept` becomes discoverable); T6.4 (launch gate, accept-flow end-to-end) resumes after **F-47.P4** ships (bundled MOC-consumption — `create_moc` + N× child-relationship updates in one instructions doc). Earlier note said "after F-47 ships" without phase granularity. See `docs/XDD/specs/017-tomo-lifecycle-tags/solution.md` §Cross-Spec Coordination for the full coordination map across 012 / 013 / 015 / 016. |
+| 2026-05-21 | T6.2 + T6.4 marked DONE-pending-operator; parser dispatch + bundled actions complete in F-47 Phase 5 | F-47.P4 unblocks T6.2/T6.4. Structural work (parser dispatch in inbox-orchestrator, bundled MOC-consumption in instruction-render) shipped in F-47 Phase 5 (T5.1+T5.2+T5.3). Final E2E live-vault validation (accept-flow end-to-end against Marcus's real vault) is the operator-deferred gate. Procedure documented in `tomo/docs/evolution/2026-05/2026-05-21_F-47-P4-moc-consumption-launch-gate.md`. |
 
 ## Context
 

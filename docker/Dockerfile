@@ -1,6 +1,6 @@
 # MiYo Tomo Docker image
 # Based on Kouzou secure variant — ClamAV + security hooks for vault data safety.
-# version: 0.3.0
+# version: 0.3.1
 #
 # Build: docker build -t miyo-tomo:latest ./docker/
 #        Optional: --build-arg VOICE_ENABLED=1 for XDD 009 Whisper support.
@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # jq + fzf are required by .claude/scripts/file-suggestion.sh (XDD 010)
     python3 \
     python3-yaml \
+    python3-jsonschema \
     ca-certificates \
     locales \
     && rm -rf /var/lib/apt/lists/*
@@ -68,7 +69,8 @@ ENV LANG=C.UTF-8 \
 # skip auto-update checks, and disable the autoupdater entirely.
 # npm is the only install method in Docker — native installer doesn't apply.
 ENV DISABLE_INSTALLATION_CHECKS=1 \
-    DISABLE_AUTOUPDATER=1
+    DISABLE_AUTOUPDATER=1 \
+    TOMO_SCHEMA_STRICT=1
 
 # Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code

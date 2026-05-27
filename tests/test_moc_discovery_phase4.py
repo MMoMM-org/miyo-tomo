@@ -76,8 +76,8 @@ def test_miyo_title_appends_moc_suffix():
 
     title = moc_discovery.phase4_title(cluster, profile, mode="scan", trigger_arg="")
 
-    assert title == "Shell MOC", (
-        f"miyo profile must append ' MOC' suffix; got {title!r}"
+    assert title == "Shell (MOC)", (
+        f"miyo profile must append ' (MOC)' suffix; got {title!r}"
     )
 
 
@@ -128,7 +128,7 @@ def test_scan_multi_cluster_one_title_per_cluster():
         for c in clusters
     ]
 
-    assert titles == ["Shell MOC", "Editor MOC", "Vcs MOC"], (
+    assert titles == ["Shell (MOC)", "Editor (MOC)", "Vcs (MOC)"], (
         f"Each cluster must get its own derived title; got {titles!r}"
     )
     assert len(titles) == len(set(titles)), (

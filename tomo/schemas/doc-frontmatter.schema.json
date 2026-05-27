@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://miyo.tomo/schemas/doc-frontmatter.schema.json",
+  "title": "Tomo Doc Frontmatter",
+  "description": "Schema for the 'tomo:' frontmatter block written by every Tomo producer. Validated at write-time in dev mode (TOMO_SCHEMA_STRICT=1). The root object is the full frontmatter dict; the 'tomo' property holds the lifecycle block.",
+  "type": "object",
+  "required": ["tomo"],
+  "additionalProperties": true,
+  "properties": {
+    "tomo": {
+      "type": "object",
+      "required": ["doc_type", "state", "run_id", "updated_at"],
+      "additionalProperties": false,
+      "properties": {
+        "doc_type": {
+          "type": "string",
+          "enum": ["source", "suggestions", "suggestions-fan", "moc-proposal", "instructions"],
+          "description": "Type of Tomo-produced doc. Determines which state values are valid."
+        },
+        "state": {
+          "type": "string",
+          "description": "Current lifecycle state. Valid values are constrained per doc_type via oneOf branches."
+        },
+        "run_id": {
+          "type": "string",
+          "description": "Run-id that produced or last updated this doc. Format: YYYY-MM-DD-HHMMSS-<hash>."
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO-8601 UTC timestamp of the last write. Auto-set by build_tomo_block()."
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Vault-relative path to source document"
+              },
+              "checksum": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "description": "SHA-256 of document body at processing time"
+              }
+            }
+          },
+          "description": "Source documents feeding this instructions doc"
+        }
+      },
+      "oneOf": [
+        {
+          "description": "source — inbox items captured at Pass-1 dispatch",
+          "properties": {
+            "doc_type": {"const": "source"},
+            "state": {"enum": ["captured"]}
+          }
+        },
+        {
+          "description": "suggestions — Pass-1 analysis output",
+          "properties": {
+            "doc_type": {"const": "suggestions"},
+            "state": {"enum": ["pending-approval", "approved"]}
+          }
+        },
+        {
+          "description": "suggestions-fan — XDD-012 Force-Atomic-Resolve companion; same lifecycle as suggestions",
+          "properties": {
+            "doc_type": {"const": "suggestions-fan"},
+            "state": {"enum": ["pending-approval", "approved"]}
+          }
+        },
+        {
+          "description": "moc-proposal — /moc-propose output; accepted after MOC-consumption",
+          "properties": {
+            "doc_type": {"const": "moc-proposal"},
+            "state": {"enum": ["pending-accept", "accepted"]}
+          }
+        },
+        {
+          "description": "instructions — Pass-2 / MOC-consumption output; applied when Hashi is done",
+          "properties": {
+            "doc_type": {"const": "instructions"},
+            "state": {"enum": ["pending-apply", "applied"]}
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-> Last reviewed: 2026-04-29 (Format conventions per syntax / position mode added; `update_log_link.at_time` shape aligned with `update_log_entry` to `- HH:MM: <payload>` for the miyo profile).
+> Last reviewed: 2026-05-27 (018: supporting_items accepts string|array|null; related:: aggregation confirmed Tomo-side per §882-886; add_relationship mode field NOT added — Hashi always replaces; up:: regex handles callout/list prefixes).
 
 **Audience:** Authors and integrators of [Tomo Hashi (友橋)](https://github.com/MMoMM-org)
 — the Obsidian community plugin that reads Tomo's Pass-2 instruction set
@@ -12,7 +12,7 @@ consumer specification for both companion artefacts.
 word on required fields and enum values).
 
 **Producer:** [`scripts/instruction-render.py`](../scripts/instruction-render.py)
-inside this repo. Produced by the `instruction-builder` agent at the end
+inside this repo. Invoked by the `synthesis-conductor` agent at the end
 of Pass 2, written to the vault inbox via `kado-write operation="file"`
 (because `operation="note"` only accepts `.md`).
 
@@ -181,7 +181,7 @@ the JSON is sufficient to replay.
 
 ### Cleanup contract
 
-When `/inbox` runs the cleanup phase (`vault-executor`), it needs only
+When `/inbox` runs the cleanup phase (`state-promoter.py` + `mark-captured.py`), it needs only
 the `.md`'s frontmatter tag (`#MiYo-Tomo/applied`) and per-action
 `- [x] Applied` checkboxes to decide which source inbox items to
 transition from `captured` → `active`. The `.json` is not consulted
@@ -677,7 +677,7 @@ section per kind with fields, execution semantics, and idempotency.
 | `parent_moc` | string \| null | Up-link parent MOC. Emitted separately as a `link_to_moc` action; this field is metadata only. |
 | `template` | string \| null | Template filename used at render time — traceability. |
 | `tags` | string[] | Tags already applied to the rendered MOC body. |
-| `supporting_items` | string \| null | Comma-separated suggestion IDs that justify the new MOC. The down-links from each supporting atomic note into this MOC are already emitted as `link_to_moc` actions elsewhere in the set — `supporting_items` is human context, not an executable pointer. |
+| `supporting_items` | string \| array \| null | Supporting items that justify the new MOC. String (comma-separated SNN IDs from suggestion-parser, e.g. `"S02, S06, S12"`) or array (note stems from moc-proposal-parser, e.g. `["Thought Collisions", "Map of Content"]`). Human context — `link_to_moc` actions are the executable signal. |
 
 **Execution algorithm:**
 

@@ -66,9 +66,11 @@ class _FakeKadoClient:
         else:
             self._existing = set(existing_paths)
 
-    def resolve_stem_to_path(self, stem: str) -> str:
+    def resolve_stem_to_path(self, stem: str) -> str | None:
         if stem not in self._notes:
-            raise ir.KadoError(f"NOT_FOUND: {stem!r}")
+            if stem in self._existing:
+                return f"{stem}.md"
+            return None
         return self._notes[stem][0]
 
     def read_note(self, path: str) -> dict:
@@ -166,11 +168,10 @@ def test_rule_43_broken_up_default() -> None:
 
 
 def test_rule_44_no_up_override() -> None:
-    """Override checked, no existing up:: → 1 action: up:: <newMOC> (Override no-op).
+    """Override checked, no existing up:: → 1 action: related:: <newMOC>.
 
-    PRD AC-4.5 (override + no existing = same as no-override): WHEN Override
-    is checked AND child has no existing up::, THE SYSTEM SHALL emit one
-    add_relationship action with marker=up:: (Override has nothing to preserve).
+    User chose "keep existing up::, new MOC as related::" — even when
+    there's no existing up::, the intent is related:: for the new MOC.
     """
     kado = _FakeKadoClient(
         notes={"bash-vs-zsh": ("Atlas/202 Notes/bash-vs-zsh.md", "# Bash vs Zsh\n\nContent.\n")},
@@ -179,8 +180,8 @@ def test_rule_44_no_up_override() -> None:
     actions = ir.emit_up_preservation_actions(
         "bash-vs-zsh", "Shell & Terminal (MOC)", override_flag=True, kado_client=kado, counter=_counter()
     )
-    assert len(actions) == 1, f"Expected 1 action (no-op override), got {actions!r}"
-    assert actions[0]["marker"] == "up::"
+    assert len(actions) == 1, f"Expected 1 action (related:: override), got {actions!r}"
+    assert actions[0]["marker"] == "related::"
     assert "Shell & Terminal (MOC)" in actions[0]["line"]
 
 
@@ -247,7 +248,7 @@ def test_rule_46_per_child_individual_target() -> None:
     assert len(actions_b) == 2, f"child-b: expected 2 actions; got {actions_b!r}"
     assert actions_b[0]["marker"] == "up::"
     assert "MOC-B" in actions_b[1]["line"], f"child-b: expected MOC-B in related::; got {actions_b[1]['line']!r}"
-    assert "MOC-A" not in actions_b[1]["line"], f"child-b: must not reference MOC-A from child-a"
+    assert "MOC-A" not in actions_b[1]["line"], "child-b: must not reference MOC-A from child-a"
 
     # child-c: 1 action (up:: new only)
     assert len(actions_c) == 1, f"child-c: expected 1 action; got {actions_c!r}"

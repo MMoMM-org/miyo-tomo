@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.5.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -50,6 +50,10 @@ class KadoNotFoundError(KadoError):
 
 class KadoToolError(KadoError):
     """Raised when the MCP tool returns isError: true."""
+
+
+class KadoConcurrencyError(KadoToolError):
+    """Raised when a kado-write operation=frontmatter fails optimistic-concurrency check (expectedModified mismatch)."""
 
 
 # ── Client ─────────────────────────────────────────────────────────────────────
@@ -187,6 +191,35 @@ class KadoClient:
         """
         return self._search_all("byName", query=query, limit=limit)
 
+    def resolve_stem_to_path(self, stem: str) -> "str | None":
+        """Resolve a note stem to its vault path, or None if not found.
+
+        Priority: exact .md stem match > any .md > first result.
+        Kado byName does substring matching, so "Map" can return
+        "Mapping Method vs Mapmaking.md". Exact match avoids this.
+        """
+        results = self.search_by_name(stem, limit=20)
+        if not results:
+            return None
+        from pathlib import PurePosixPath
+        exact_md = [r for r in results
+                    if r["path"].endswith(".md")
+                    and PurePosixPath(r["path"]).stem == stem]
+        if exact_md:
+            return exact_md[0]["path"]
+        any_md = [r for r in results if r["path"].endswith(".md")]
+        if any_md:
+            return any_md[0]["path"]
+        return results[0]["path"]
+
+    def path_exists(self, path: str) -> bool:
+        """Check whether a vault path exists."""
+        try:
+            self.read_frontmatter(path)
+            return True
+        except KadoNotFoundError:
+            return False
+
     def search_by_content(self, query: str, limit: int = 500) -> list:
         """Find notes whose body contains the query string.
 
@@ -258,6 +291,121 @@ class KadoClient:
         if expected_modified is not None:
             args["expectedModified"] = expected_modified
         return self._call_tool("kado-write", args)
+
+    def write_frontmatter(
+        self,
+        path: str,
+        frontmatter: dict,
+        mode: str = "merge",
+        expected_modified: int | None = None,
+    ) -> dict:
+        """Write frontmatter via kado-write operation=frontmatter.
+
+        Parameters
+        ----------
+        path:
+            Vault-relative path of the note to update.
+        frontmatter:
+            Dict of frontmatter keys to write. mode='merge' deep-merges with
+            existing frontmatter (arrays replace, scalars replace, untouched
+            keys preserved). mode='replace' clears the block and writes verbatim.
+        mode:
+            'merge' (default) or 'replace'.
+        expected_modified:
+            Optimistic-concurrency guard. Pass the ``modified`` timestamp from
+            a previous read to prevent overwriting concurrent edits.
+
+        Returns
+        -------
+        dict with keys: path (str), modified (int).
+
+        Raises
+        ------
+        KadoConcurrencyError  — expectedModified mismatch.
+        KadoToolError         — other tool-level errors.
+        """
+        args: dict = {
+            "operation": "frontmatter",
+            "path": path,
+            # Kado uses "content" as the universal payload slot across
+            # operations (note → markdown, file → base64, frontmatter →
+            # dict). Our 2026-05-20 handoff proposed "frontmatter" as the
+            # field name, but Kado implemented consistent with their
+            # existing convention. Field name discovered via F-47 live
+            # test 2026-05-22 — VALIDATION_ERROR "missing required field
+            # 'content'" was the symptom.
+            "content": frontmatter,
+            "mode": mode,
+        }
+        if expected_modified is not None:
+            args["expectedModified"] = expected_modified
+        try:
+            return self._call_tool("kado-write", args)
+        except KadoToolError as exc:
+            msg = str(exc)
+            if "expectedModified" in msg and "mismatch" in msg:
+                raise KadoConcurrencyError(msg) from exc
+            raise
+
+    def search_by_frontmatter(
+        self,
+        query: str,
+        *,
+        path_prefix: str | None = None,
+        modified_after: int | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """Search via kado-search operation=byFrontmatter.
+
+        Parameters
+        ----------
+        query:
+            Frontmatter query string, e.g. ``"tomo.state=pending-approval"``.
+        path_prefix:
+            Optional vault path prefix to restrict results (passed as
+            ``filter.path``).
+        modified_after:
+            Optional Unix-ms lower bound on ``modified`` (passed as
+            ``filter.modifiedAfter``). Requires Kado 0.11.0+.
+        limit:
+            Maximum number of results to return. Defaults to 500.
+
+        Returns
+        -------
+        list of dicts, each with: path (str), modified (int), frontmatter (dict).
+        """
+        base_args: dict = {
+            "operation": "byFrontmatter",
+            "query": query,
+            "limit": limit,
+        }
+
+        filter_block: dict = {}
+        if path_prefix is not None:
+            filter_block["path"] = path_prefix
+        if modified_after is not None:
+            filter_block["modifiedAfter"] = modified_after
+        if filter_block:
+            base_args["filter"] = filter_block
+
+        all_items: list = []
+        cursor: str | None = None
+
+        while True:
+            args = dict(base_args)
+            if cursor is not None:
+                args["cursor"] = cursor
+
+            result = self._call_tool("kado-search", args)
+            page_items = result.get("items", [])
+            all_items.extend(page_items)
+
+            next_cursor = result.get("nextCursor") or result.get("cursor")
+            if not next_cursor or not page_items:
+                break
+            cursor = next_cursor
+
+        return all_items
 
     def test_connection(self) -> bool:
         """Verify connectivity by listing the vault root.
@@ -363,8 +511,8 @@ class KadoClient:
                 ) from exc
             if exc.code == 404:
                 raise KadoNotFoundError(
-                    f"Kado endpoint not found (HTTP 404). "
-                    f"Check that KADO_URL points to the right server and port."
+                    "Kado endpoint not found (HTTP 404). "
+                    "Check that KADO_URL points to the right server and port."
                 ) from exc
             raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}") from exc
         except urllib.error.URLError as exc:
@@ -488,7 +636,7 @@ def _parse_rpc_response(raw: str, tool_name: str) -> dict:
     try:
         rpc = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise KadoError(f"Non-JSON response from Kado: {raw[:200]}") from exc
+        raise KadoError(f"Non-JSON response from Kado: {raw[:60]}") from exc
 
     # JSON-RPC level error (e.g. method not found, invalid params)
     if "error" in rpc:
@@ -499,7 +647,7 @@ def _parse_rpc_response(raw: str, tool_name: str) -> dict:
 
     result = rpc.get("result")
     if result is None:
-        raise KadoError(f"Unexpected Kado response (no result field): {raw[:200]}")
+        raise KadoError(f"Unexpected Kado response (no result field): {raw[:60]}")
 
     # MCP tool-level error
     if result.get("isError"):

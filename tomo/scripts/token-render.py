@@ -7,7 +7,7 @@ multiple sources in precedence order, and outputs rendered content to stdout.
 Token resolution order:
   1. Generated   — uuid, datestamp, updated, date_iso (computed at render time)
   2. Config      — derived from vault-config.yaml frontmatter.optional defaults
-  3. Content     — title, tags, aliases, summary, body, up, related
+  3. Content     — title, tags, aliases, summary, body, up, related, children
   4. Metadata    — source_path, source_link, classification, profile, etc.
   5. Custom      — templates.custom_tokens[].source == "static" (others skipped in MVP)
   6. Validate    — required tokens must be resolved; optional tokens → empty string
@@ -275,7 +275,6 @@ def _split_segments(text):
     Returns list of (content, is_protected) tuples.
     """
     segments = []
-    pos = 0
     length = len(text)
 
     # Patterns for protected regions

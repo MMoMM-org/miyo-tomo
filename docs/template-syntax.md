@@ -33,6 +33,7 @@ These always resolve. No configuration needed.
 | `{{summary}}` | Extracted summary | No |
 | `{{aliases}}` | Aliases, comma-separated | No |
 | `{{related}}` | Related notes as wikilinks | No |
+| `{{children}}` | Child note bullets for MOC content callout, callout-prefixed (e.g. `> - [[Note]]`). Currently only populated for MOC proposal flow; empty for suggest flow. | No |
 
 ### Config-sourced (from vault-config.yaml)
 

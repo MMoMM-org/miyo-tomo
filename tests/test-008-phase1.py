@@ -249,8 +249,8 @@ def test_action_building():
     # pulls A2 (Catan) into MOC01 (Sport (MOC)).
     links = [a for a in actions if a["action"] == "link_to_moc"]
     supporting_link = next(
-        (l for l in links if l["target_moc"] == "Sport (MOC)"
-         and l["source_note_title"] == "Catan Strategy"),
+        (lk for lk in links if lk["target_moc"] == "Sport (MOC)"
+         and lk["source_note_title"] == "Catan Strategy"),
         None,
     )
     _must(supporting_link is not None,
@@ -260,16 +260,16 @@ def test_action_building():
     # Dedup: after backfill, parent_mocs and supporting_items paths both produce
     # the same (target, source) key — must emit exactly once.
     sport_catan_count = sum(
-        1 for l in links
-        if l["target_moc"] == "Sport (MOC)" and l["source_note_title"] == "Catan Strategy"
+        1 for lk in links
+        if lk["target_moc"] == "Sport (MOC)" and lk["source_note_title"] == "Catan Strategy"
     )
     _must(sport_catan_count == 1,
           f"Sport (MOC) ← Catan must appear exactly once, got {sport_catan_count}")
 
     # MOC up-link (Sport (MOC) → 2100) must still exist
     up_link = next(
-        (l for l in links if l["target_moc"] == "2100 - Health"
-         and l["source_note_title"] == "Sport (MOC)"),
+        (lk for lk in links if lk["target_moc"] == "2100 - Health"
+         and lk["source_note_title"] == "Sport (MOC)"),
         None,
     )
     _must(up_link is not None, f"Sport (MOC) → 2100 up-link missing, got {links}")
@@ -413,11 +413,11 @@ def test_md_rendering(actions):
 def test_config_loading(tmp_config_yaml: Path):
     cfg = ir.load_config(str(tmp_config_yaml))
     _must(cfg["profile"] == "miyo", f"profile mismatch: {cfg['profile']}")
-    _must(cfg["concepts.inbox"] == "100 Inbox/", f"inbox mismatch")
+    _must(cfg["concepts.inbox"] == "100 Inbox/", "inbox mismatch")
     # Daily path should be trimmed of trailing space
     _must(cfg["concepts.calendar.granularities.daily.path"] == "Calendar/301 Daily/",
           f"daily path not trimmed: {cfg['concepts.calendar.granularities.daily.path']!r}")
-    _must(cfg["daily_log.heading_level"] == 2, f"heading_level not int")
+    _must(cfg["daily_log.heading_level"] == 2, "heading_level not int")
     print("[PASS] config_loading — all fields resolved")
 
 
@@ -512,8 +512,8 @@ def test_backfill_plus_build_actions_no_duplicate_links():
     # Deduped: exactly 2 link_to_moc actions.
     _must(len(links) == 2,
           f"expected 2 link_to_moc actions after dedup, got {len(links)}: "
-          f"{[(l['target_moc'], l['source_note_title']) for l in links]}")
-    keys = {(l["target_moc"], l["source_note_title"]) for l in links}
+          f"{[(lk['target_moc'], lk['source_note_title']) for lk in links]}")
+    keys = {(lk["target_moc"], lk["source_note_title"]) for lk in links}
     _must(("Brettspiele (MOC)", "Catan Strategy") in keys,
           f"down-link Brettspiele ← Catan missing: {keys}")
     _must(("2700", "Brettspiele (MOC)") in keys,
@@ -651,7 +651,7 @@ tags: [type/others/moc]
                   "line_to_add": "- [[N]]"}]
     ir.resolve_section_names(actions_c, PriorityClient(), ["connect"])
     _must(actions_c[0]["anchor"]["value"] == "[!connect] Your way around",
-          f"connect is the only editable → should be used as last resort")
+          "connect is the only editable → should be used as last resort")
     print("[PASS] resolve_section_names — editable match, caching, graceful degrade, connect-deprioritized")
 
 

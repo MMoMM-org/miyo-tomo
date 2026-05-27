@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.2
+# version: 0.20.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -39,6 +39,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+from lib.doc_frontmatter import build_tomo_block  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 
 
@@ -272,7 +273,88 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 # Matches the first ``up:: [[Target]]`` line in a note body (Rule 4.x).
 # MULTILINE so ``^`` anchors to each line start.  Non-greedy ``(.+?)`` stops
 # at the first ``]]`` to avoid over-matching when the target contains brackets.
-_UP_MARKER_RE = re.compile(r"^\s*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
+_UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
+_RELATED_MARKER_RE = re.compile(r"^[\s>\-]*related::\s*(.*)", re.MULTILINE)
+_WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+
+
+def _extract_existing_related(content: str) -> list[str]:
+    """Extract existing related:: wikilink targets from note content."""
+    m = _RELATED_MARKER_RE.search(content)
+    if not m:
+        return []
+    return [wl.group(1).strip() for wl in _WIKILINK_RE.finditer(m.group(1))]
+
+
+def _aggregate_related_actions(
+    actions: list[dict], kado_client,
+) -> list[dict]:
+    """Merge related:: actions per target note with existing vault values.
+
+    Per contract (docs/instructions-json.md §882-886), Tomo reads the
+    existing related:: line and emits one combined action per target.
+    """
+    if kado_client is None:
+        return actions
+
+    # Collect related:: actions grouped by target_moc_path
+    related_by_target: dict[str, list[dict]] = {}
+    non_related: list[dict] = []
+    for a in actions:
+        if a.get("action") == "add_relationship" and a.get("marker") == "related::":
+            path = a["target_moc_path"]
+            related_by_target.setdefault(path, []).append(a)
+        else:
+            non_related.append(a)
+
+    if not related_by_target:
+        return actions
+
+    merged: list[dict] = []
+    for path, rel_actions in related_by_target.items():
+        # Read existing related:: from vault
+        try:
+            note = kado_client.read_note(path)
+            content = note.get("content", "") if isinstance(note, dict) else ""
+            existing = _extract_existing_related(content)
+        except Exception:
+            existing = []
+
+        # Collect new stems from actions
+        new_stems = []
+        for a in rel_actions:
+            for wl in _WIKILINK_RE.finditer(a.get("line", "")):
+                stem = wl.group(1).strip()
+                if stem and stem not in existing and stem not in new_stems:
+                    new_stems.append(stem)
+
+        all_stems = existing + new_stems
+        if not all_stems:
+            continue
+
+        combined_line = "related:: " + ", ".join(f"[[{s}]]" for s in all_stems)
+        # Keep the first action as template, update line
+        merged_action = dict(rel_actions[0])
+        merged_action["line"] = combined_line
+        merged.append(merged_action)
+
+    # Reassemble: non-related actions + merged related actions (in original order)
+    result = []
+    seen_targets: set[str] = set()
+    for a in actions:
+        if a.get("action") == "add_relationship" and a.get("marker") == "related::":
+            path = a["target_moc_path"]
+            if path not in seen_targets:
+                seen_targets.add(path)
+                # Find the merged action for this target
+                for m in merged:
+                    if m["target_moc_path"] == path:
+                        result.append(m)
+                        break
+        else:
+            result.append(a)
+    return result
+
 
 # Optional path fields per action kind. Required path fields are derived from
 # the JSON Schema (see tomo/schemas/instructions.schema.json) — this map only
@@ -387,18 +469,32 @@ def emit_up_preservation_actions(
     try:
         child_path = kado_client.resolve_stem_to_path(child_stem)
     except KadoError:
-        # Child deleted between proposal write and apply (SDD edge case).
-        # Option A: emit a schema-valid add_relationship action with string
-        # placeholders so Hashi can filter on applied=False + error=child-missing
-        # without the action violating additionalProperties:false on the schema.
+        child_path = None
+
+    if child_path is None:
         return [{
             "id": _next_id(counter),
             "action": "add_relationship",
-            "target_moc_path": child_stem,  # best-effort stem as placeholder path
-            "marker": "up::",               # intent was up::
+            "target_moc_path": child_stem,
+            "marker": "up::",
             "line": f"up:: [[{new_moc_stem}]]",
             "applied": False,
             "error": "child-missing",
+        }]
+
+    if not child_path.endswith(".md"):
+        print(
+            f"  [warn] {child_stem!r} resolved to non-markdown: {child_path} — skipping",
+            file=sys.stderr,
+        )
+        return [{
+            "id": _next_id(counter),
+            "action": "add_relationship",
+            "target_moc_path": child_path,
+            "marker": "up::",
+            "line": f"up:: [[{new_moc_stem}]]",
+            "applied": False,
+            "error": "non-markdown-asset",
         }]
 
     note = kado_client.read_note(child_path)
@@ -408,22 +504,29 @@ def emit_up_preservation_actions(
     actions: list[dict] = []
 
     if existing_up_target is None:
-        # Rule 4.1 / 4.4 — no existing up::; new MOC becomes up:: regardless of Override
-        actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+        if override_flag:
+            # Override checked + no existing up:: → related:: (user chose related for this MOC)
+            actions.append(_make_add_rel(counter, child_path, "related::", new_moc_stem))
+        else:
+            # No existing up:: + no override → up:: (new MOC becomes primary parent)
+            actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
     elif existing_up_target == new_moc_stem:
         # Self-link guard: existing up:: already points to the new MOC → no-op
         pass
-    elif kado_client.path_exists(existing_up_target):
-        if override_flag:
-            # Rule 4.5 — keep existing up::, new MOC becomes related::
-            actions.append(_make_add_rel(counter, child_path, "related::", new_moc_stem))
-        else:
-            # Rule 4.2 — new MOC becomes up::, existing target moves to related::
-            actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
-            actions.append(_make_add_rel(counter, child_path, "related::", existing_up_target))
     else:
-        # Rule 4.3 — broken existing up::; just set new up:: (no related preservation)
-        actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+        # existing_up_target is a stem — resolve to verify it exists
+        old_target_path = kado_client.resolve_stem_to_path(existing_up_target)
+        if old_target_path:
+            if override_flag:
+                # Rule 4.5 — keep existing up::, new MOC becomes related::
+                actions.append(_make_add_rel(counter, child_path, "related::", new_moc_stem))
+            else:
+                # Rule 4.2 — new MOC becomes up::, existing target moves to related::
+                actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+                actions.append(_make_add_rel(counter, child_path, "related::", existing_up_target))
+        else:
+            # Rule 4.3 — broken existing up:: (target not found); just set new up::
+            actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
 
     return actions
 
@@ -568,13 +671,20 @@ def _build_move_note_actions(
     return out
 
 
-def _parse_supporting_items(raw: str | None) -> list[str]:
-    """Parse 'S02, S06, S12' (or 'S02 S06 S12', or with brackets) → ['S02','S06','S12']."""
+def _parse_supporting_items(raw: str | list | None) -> list[str]:
+    """Parse supporting_items into a list of stems.
+
+    Accepts two formats:
+      - list: ["Thought Collisions", "Map of Content"] (moc-proposal-parser)
+      - str:  "S02, S06, S12" (suggestion-parser, SNN IDs only)
+    """
     if not raw:
         return []
-    s = raw.strip().strip("[](){}").replace(",", " ")
+    if isinstance(raw, list):
+        return [s.strip() for s in raw if isinstance(s, str) and s.strip()]
+    s = raw.strip().strip("[](){}")
     out: list[str] = []
-    for tok in s.split():
+    for tok in s.split(","):
         tok = tok.strip().strip("[]()").lstrip("#")
         if tok:
             out.append(tok)
@@ -647,16 +757,23 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
     # Pass 2 — supporting_items down-links: each new MOC pulls its approved
     # supporting atomic notes as children. Required because the suggestions
     # doc cannot offer a not-yet-created MOC as a parent option at review time.
+    #
+    # Two flows: suggestion flow (supporting_items are SNN IDs → id_index lookup)
+    # vs MOC proposal flow (children baked into rendered MOC via {{children}} token,
+    # no link_to_moc actions needed).
+    # Gate: MOC proposal items carry override_preserve_existing_up field.
     for item in confirmed:
         if item.get("action") != "create_moc":
             continue
+        if "override_preserve_existing_up" in item:
+            continue  # MOC proposal: children baked into rendered body
         new_moc_title = item.get("title", "")
         if not new_moc_title:
             continue
         for sid in _parse_supporting_items(item.get("supporting_items")):
             sup = id_index.get(sid)
             if not sup or sup.get("action") == "create_moc":
-                continue  # supporting ID not confirmed, or references another MOC
+                continue
             sup_title = sup.get("title") or _stem(sup.get("source_path"))
             if not sup_title:
                 continue
@@ -930,6 +1047,12 @@ def build_actions(
         confirmed, move_notes, daily_updates, skipped, inbox_path, counter,
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
+    # Aggregate related:: actions per target note: read existing related::,
+    # merge with all new related:: links, emit one action per target with
+    # the combined line. Per contract (docs/instructions-json.md §882-886),
+    # multi-link aggregation is done Tomo-side before emission.
+    out = _aggregate_related_actions(out, kado_client)
+
     # Stamp the per-action applied flag. Tomo Hashi (the consumer) flips this
     # to true on successful execution; Tomo only ever emits false. See
     # docs/instructions-json.md.
@@ -1110,12 +1233,83 @@ def _render_action_md(action: dict, cfg: dict) -> str:
     return f"{heading_prefix}(unknown action: {kind})\n- [ ] Applied"
 
 
+# Known upstream doc types for the --upstream-type CLI flag.
+# T1.3 (XDD-018): source_* kwargs replaced by sources list in build_tomo_block.
+_UPSTREAM_TYPES: list[str] = ["suggestions", "moc-proposal", "suggestions-fan"]
+
+
+def _compute_sha256(file_path: str) -> str | None:
+    """Compute SHA-256 checksum of a file's text contents.
+
+    Returns 'sha256:<hex>' or None on read error. Reads as UTF-8 to match
+    how vault docs are stored and transmitted.
+    """
+    import hashlib
+
+    try:
+        content = Path(file_path).read_text(encoding="utf-8")
+        return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
+    """Build the tomo: block for an instructions doc from renderer metadata.
+
+    Returns the inner block dict (without the 'tomo' wrapper key) or None
+    if the metadata lacks the fields required to build a valid block.
+
+    T1.3 (XDD-018): upstream cross-ref now stored as sources=[{path}] list.
+    T1.4 (XDD-018): when upstream_body_path is present, sources[0] also
+    carries a sha256 checksum computed from the cached body file.
+    SDD §Implementation Gotchas: uses metadata['run_id'] (Pass-2 run),
+    NOT any upstream run_id.
+    """
+    upstream_type = metadata.get("upstream_type")
+    upstream_path = metadata.get("upstream_path")
+    upstream_body_path = metadata.get("upstream_body_path")
+    run_id = metadata.get("run_id")
+    if not run_id:
+        return None
+    if upstream_type and upstream_type not in _UPSTREAM_TYPES:
+        print(
+            f"  [warn] Unknown upstream_type {upstream_type!r} — "
+            "omitting source from tomo: block",
+            file=sys.stderr,
+        )
+    sources_list = []
+    if upstream_path and upstream_type in _UPSTREAM_TYPES:
+        source: dict[str, str] = {"path": upstream_path}
+        if upstream_body_path:
+            checksum = _compute_sha256(upstream_body_path)
+            if checksum:
+                source["checksum"] = checksum
+        sources_list.append(source)
+    return build_tomo_block(
+        doc_type="instructions",
+        state="pending-apply",
+        run_id=run_id,
+        sources=sources_list if sources_list else None,
+    )
+
+
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:
     """Produce the full human-readable instruction set markdown."""
+    import yaml
+
     fm_lines = ["---"]
     fm_lines.append("type: tomo-instructions")
-    if metadata.get("source_suggestions"):
-        fm_lines.append(f"source_suggestions: {metadata['source_suggestions']}")
+    # Emit the tomo: block (F-47 AC-1.3) when run_id is present in metadata.
+    tomo_block = _build_tomo_block_for_instructions(metadata)
+    if tomo_block is not None:
+        # Serialize the nested block as indented YAML (strip trailing newline).
+        tomo_yaml = yaml.dump(
+            {"tomo": tomo_block},
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+        ).rstrip()
+        fm_lines.append(tomo_yaml)
     fm_lines.append(f"generated: {metadata['generated']}")
     if metadata.get("profile"):
         fm_lines.append(f"profile: {metadata['profile']}")
@@ -1386,6 +1580,28 @@ def main() -> int:
     p.add_argument("--suggestions", required=True, help="Path to parsed suggestions JSON")
     p.add_argument("--output-dir", required=True, help="Directory for rendered files")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
+    # F-47 T2.3: upstream doc identity for the tomo: block + source_* cross-ref.
+    p.add_argument(
+        "--upstream-type",
+        choices=_UPSTREAM_TYPES,
+        default=None,
+        help="Upstream doc type: suggestions | moc-proposal | suggestions-fan",
+    )
+    p.add_argument(
+        "--upstream-path",
+        default=None,
+        help="Vault-relative path to the upstream doc (populates tomo.source_* field)",
+    )
+    p.add_argument(
+        "--run-id",
+        default=None,
+        help="Pass-2 run ID (NOT the upstream doc's run_id — SDD §Implementation Gotchas)",
+    )
+    p.add_argument(
+        "--upstream-body",
+        default=None,
+        help="Local path to cached upstream doc body (for SHA-256 checksum computation)",
+    )
     args = p.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -1400,9 +1616,6 @@ def main() -> int:
 
     cfg = load_config(args.config)
     inbox_path = cfg["concepts.inbox"]
-    daily_path = cfg["concepts.calendar.granularities.daily.path"]
-    daily_heading = cfg["daily_log.heading"]
-    daily_level = cfg["daily_log.heading_level"]
     profile_name = cfg["profile"]
 
     # No confirmed items AND no daily updates AND no skipped items → nothing to do.
@@ -1484,6 +1697,15 @@ def main() -> int:
         # syntax which breaks inline arrays in templates.
         tags_str = ", ".join(tags) if isinstance(tags, list) else (tags or "")
 
+        # Build children token for MOC proposal items: callout-prefixed bullets.
+        children_value = ""
+        if "override_preserve_existing_up" in item:
+            children_stems = _parse_supporting_items(item.get("supporting_items"))
+            if children_stems:
+                children_value = "\n".join(
+                    f"> - [[{stem}]]" for stem in children_stems
+                )
+
         tokens = {
             "title": title,
             "tags": tags_str,
@@ -1491,6 +1713,7 @@ def main() -> int:
             "related": "",  # placeholder — populated by MOC creator post-MVP
             "body": body,
             "summary": summary or "",
+            "children": children_value,
         }
 
         # Write template and tokens to temp files
@@ -1615,7 +1838,11 @@ def main() -> int:
     md = render_instructions_md(
         actions,
         {
-            "source_suggestions": source_suggestions,
+            # F-47 T2.3: new fields drive the tomo: block + source_* cross-ref.
+            "upstream_type": args.upstream_type,
+            "upstream_path": args.upstream_path,
+            "upstream_body_path": args.upstream_body,
+            "run_id": args.run_id,
             "generated": generated_iso,
             "profile": profile_name,
             "tomo_version": tomo_version,

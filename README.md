@@ -147,10 +147,10 @@ miyo-tomo/
 |-------|------|
 | `vault-explorer` | Scans vault structure, builds MOC tree, generates discovery cache |
 | `voice-transcriber` | Phase 0a of `/inbox` — transcribes audio files to sibling `.md` via local faster-whisper (opt-in) |
-| `inbox-orchestrator` | Pass 1 coordinator — fan-out pipeline over the inbox |
+| `suggestion-conductor` | Pass 1 orchestrator — fans out over inbox sources, collects analyst results, writes suggestions doc |
 | `inbox-analyst` | Pass 1 subagent — classifies ONE item per invocation |
-| `instruction-builder` | Pass 2 orchestrator — runs `instruction-render.py`, writes rendered notes + `instructions.{json,md}` to the vault |
-| `vault-executor` | Cleanup — archives processed documents, transitions lifecycle states |
+| `synthesis-conductor` | Pass 2 orchestrator — renders instructions from approved suggestions, writes rendered notes + `instructions.{json,md}` |
+| `moc-architect` | MOC proposal — discovers topic clusters, proposes new MOCs, emits proposal doc to inbox |
 
 ## Commands
 
@@ -158,7 +158,6 @@ miyo-tomo/
 |---------|-------------|
 | `/inbox` | Process inbox (auto-detects: cleanup → Pass 2 → Pass 1) |
 | `/explore-vault` | Scan vault and build discovery cache |
-| `/execute` | Helper that shows the two paths for applying an instruction set: manual in Obsidian, or via the upcoming Tomo Hashi instruction-set executor. Read-only — never applies actions itself. |
 | `/tomo-setup` | Post-install wizard (vault discovery, user rules, templates, trackers, daily log). Sub-sections: `rules`, `templates`, `trackers`, `daily-log`. |
 | `/moc-propose` | Propose a new MOC for a topic, folder, classification, or whole-vault scan. |
 | `/tomo-help` | Context-aware help inside the session. Pass a topic keyword (e.g. `inbox`, `kado`, `docker`, `login`) or run with no argument for a topic menu. |

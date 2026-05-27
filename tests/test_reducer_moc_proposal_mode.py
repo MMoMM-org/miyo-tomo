@@ -17,7 +17,6 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -221,7 +220,7 @@ def test_multi_cluster_render() -> None:
 
 
 def test_overflow_footer() -> None:
-    """max_results=5 with 7 clusters → 5 sections + 'Weitere 2 Cluster gefunden' footer."""
+    """max_results=5 with 7 clusters → 5 sections + '2 additional cluster(s) found' footer."""
     report = _empty_report()
     report["candidates"] = [_candidate(f"note-{i}") for i in range(7)]
     report["topic_clusters"] = [
@@ -244,11 +243,15 @@ def test_overflow_footer() -> None:
     assert section_count == 5, f"Expected 5 sections, got {section_count}"
 
     # Footer present for the 2 overflow clusters
-    assert "Weitere 2 Cluster gefunden" in body
+    assert "2 additional cluster(s) found" in body
 
 
 def test_filename_top_confidence_slug() -> None:
-    """Filename = tomo-moc-proposal-<YYYYMMDD>-<HHmm>-<top-confidence-slug>.md (ADR-2)."""
+    """Filename = <YYYY-MM-DD>_<HHMM>_moc-proposal-<top-confidence-slug>.md.
+
+    Matches the canonical Tomo artifact pattern shared with suggestions,
+    instructions, and suggestions-fan.
+    """
     report = _empty_report()
     report["candidates"] = [_candidate("note-a"), _candidate("note-b")]
     report["topic_clusters"] = [
@@ -262,9 +265,6 @@ def test_filename_top_confidence_slug() -> None:
     # Two-arg form returns (filename_str, body); file-write is caller's responsibility.
     filename, body = render_moc_proposal_doc(report, _Cfg())
 
-    # Must start with tomo-moc-proposal-
-    assert filename.startswith("tomo-moc-proposal-"), f"Bad prefix: {filename!r}"
-
     # Must end with .md
     assert filename.endswith(".md"), f"Bad suffix: {filename!r}"
 
@@ -273,11 +273,11 @@ def test_filename_top_confidence_slug() -> None:
         f"Top-confidence slug 'shell-terminal-moc' not in filename {filename!r}"
     )
 
-    # Date portion: YYYYMMDD (8 digits)
+    # Pattern: YYYY-MM-DD_HHMM_moc-proposal-<slug>.md
     import re
-    date_pattern = r"tomo-moc-proposal-\d{8}-\d{4}-"
-    assert re.search(date_pattern, filename), (
-        f"Filename does not match tomo-moc-proposal-YYYYMMDD-HHmm- pattern: {filename!r}"
+    pattern = r"^\d{4}-\d{2}-\d{2}_\d{4}_moc-proposal-"
+    assert re.match(pattern, filename), (
+        f"Filename does not match YYYY-MM-DD_HHMM_moc-proposal- pattern: {filename!r}"
     )
 
 
@@ -307,13 +307,13 @@ def test_per_child_existing_up_annotation() -> None:
 
     path, body = render_moc_proposal_doc(report, _Cfg())
 
-    # Valid: "existing up:: [[...]] → wird `related::`"
-    assert "wird `related::`" in body, (
+    # Valid: "existing up:: [[...]] → becomes `related::`"
+    assert "becomes `related::`" in body, (
         f"Valid annotation not found in:\n{body}"
     )
 
-    # Absent: "kein up:: bisher"
-    assert "kein up:: bisher" in body, f"Absent annotation not found in:\n{body}"
+    # Absent: "no up:: yet"
+    assert "no up:: yet" in body, f"Absent annotation not found in:\n{body}"
 
     # Broken: full annotation string
     assert "(existing up:: broken — ignored)" in body, f"Broken annotation not found in:\n{body}"
@@ -350,10 +350,10 @@ def test_template_why_narrative() -> None:
     path1, body1 = render_moc_proposal_doc(report_with_parent, _Cfg())
 
     # Middle sentence present when parent exists
-    assert "haben up:: zur Klassifikation" in body1, (
+    assert "have up:: to classification" in body1, (
         f"Middle sentence missing from Why section:\n{body1}"
     )
-    assert "Diese MOC würde die Lücke füllen" in body1
+    assert "This MOC would fill the gap" in body1
 
     # ── Branch 2: no parent ───────────────────────────────────────────────────
     report_no_parent = _empty_report()
@@ -379,19 +379,19 @@ def test_template_why_narrative() -> None:
     path2, body2 = render_moc_proposal_doc(report_no_parent, _Cfg())
 
     # Middle sentence MUST NOT appear when no parent
-    assert "haben up:: zur Klassifikation" not in body2, (
+    assert "have up:: to classification" not in body2, (
         f"Middle sentence should NOT appear when parent is null:\n{body2}"
     )
     # First + last sentences still present
-    assert "Notes mit Topic-Overlap" in body2
-    assert "Diese MOC würde die Lücke füllen" in body2
+    assert "notes with topic overlap" in body2
+    assert "This MOC would fill the gap" in body2
 
     # Deterministic: calling render_moc_proposal_doc twice with same input
     # produces same body (modulo datetime in frontmatter)
     path3, body3 = render_moc_proposal_doc(report_no_parent, _Cfg())
     # Strip first-line (frontmatter created timestamp may differ by seconds)
-    body2_lines = [l for l in body2.splitlines() if "created:" not in l]
-    body3_lines = [l for l in body3.splitlines() if "created:" not in l]
+    body2_lines = [line for line in body2.splitlines() if "created:" not in line]
+    body3_lines = [line for line in body3.splitlines() if "created:" not in line]
     assert body2_lines == body3_lines, "render_moc_proposal_doc is not deterministic"
 
 

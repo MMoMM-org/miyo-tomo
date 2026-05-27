@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.0.0
+# version: 1.4.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -34,11 +34,14 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
+
 # F-43 T1.5: clustering algorithm extracted into `lib/topic_clusters.py` so
 # `moc-discovery.py` (Phase 2) can reuse it without copy-paste. Re-export
 # `normalise_topic` here so external callers that import it from this module
 # (e.g. `tests/test-004-phase3.sh`) keep working.
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # noqa: E402
+from lib.doc_frontmatter import build_tomo_block  # noqa: E402 — F-47 T2.4
 from lib.topic_clusters import (  # noqa: E402, F401
     ClusterCandidate,
     build_topic_clusters,
@@ -112,6 +115,58 @@ def _location_link(location: str) -> str:
     target so Obsidian opens the folder on click (where supported)."""
     loc = (location or "").strip().rstrip("/")
     return f"[[{loc}/]]" if loc else ""
+
+
+def _enforce_coexistence(actions: list[dict]) -> list[dict]:
+    """Deterministic coexistence enforcement (analyst Step 9 table).
+
+    If an item has both create_atomic_note AND update_daily with log_entry,
+    resolve based on worthiness:
+      >= 0.5: keep create_atomic_note, convert log_entry to log_link
+      <  0.5: drop create_atomic_note, keep log_entry
+    """
+    has_atomic = any(a.get("kind") == "create_atomic_note" for a in actions)
+    if not has_atomic:
+        return actions
+
+    has_log_entry = False
+    for a in actions:
+        if a.get("kind") != "update_daily":
+            continue
+        for u in a.get("updates") or []:
+            if u.get("kind") == "log_entry":
+                has_log_entry = True
+                break
+
+    if not has_log_entry:
+        return actions
+
+    atomic_action = next(a for a in actions if a.get("kind") == "create_atomic_note")
+    worthiness = atomic_action.get("atomic_note_worthiness", 0)
+
+    if worthiness >= 0.5:
+        for a in actions:
+            if a.get("kind") != "update_daily":
+                continue
+            new_updates = []
+            for u in a.get("updates") or []:
+                if u.get("kind") == "log_entry":
+                    stem = atomic_action.get("suggested_title") or atomic_action.get("stem", "")
+                    new_updates.append({
+                        "kind": "log_link",
+                        "target_stem": stem,
+                        "time": u.get("time"),
+                        "time_source": u.get("time_source"),
+                        "position": u.get("position"),
+                        "reason": u.get("reason", ""),
+                    })
+                else:
+                    new_updates.append(u)
+            a["updates"] = new_updates
+    else:
+        actions = [a for a in actions if a.get("kind") != "create_atomic_note"]
+
+    return actions
 
 
 def render_create_atomic_note(action: dict, stem: str) -> str:
@@ -256,8 +311,22 @@ def render_link_to_moc(action: dict, stem: str) -> str:
     )
 
 
+_MOC_SUFFIX = " (MOC)"
+
+
+def _ensure_moc_suffix(title: str) -> str:
+    """Ensure title ends with ' (MOC)', converting trailing ' MOC' if present."""
+    if not title or title.strip() == "MOC":
+        return title
+    if title.endswith(_MOC_SUFFIX):
+        return title
+    if title.endswith(" MOC"):
+        return title[:-4] + _MOC_SUFFIX
+    return title + _MOC_SUFFIX
+
+
 def render_create_moc(action: dict, stem: str) -> str:
-    moc_title = action.get("moc_title", "")
+    moc_title = _ensure_moc_suffix(action.get("moc_title", ""))
     parent = action.get("parent_moc", "")
     return (
         f"**Source:** [[{stem}]]\n"
@@ -391,8 +460,8 @@ def _child_annotation(stem: str, existing_up_rows: list[dict]) -> str:
     """Return the parenthetical annotation for a child stem.
 
     Three branches (per SDD UI Guide §1015-1019 + ADR-1):
-      - state="absent"  → `(kein up:: bisher)`
-      - state="valid"   → `(existing up:: [[<target>]] → wird related::)`
+      - state="absent"  → `(no up:: yet)`
+      - state="valid"   → `(existing up:: [[<target>]] → becomes related::)`
       - state="broken"  → `(existing up:: broken — ignored)`
 
     Falls back to absent if the stem has no row in existing_up_rows.
@@ -402,12 +471,12 @@ def _child_annotation(stem: str, existing_up_rows: list[dict]) -> str:
             state = row.get("state", "absent")
             target = row.get("target")
             if state == "valid" and target:
-                return f"(existing up:: `[[{target}]]` → wird `related::`)"
+                return f"(existing up:: [[{target}]] → becomes `related::`)"
             elif state == "broken":
                 return "(existing up:: broken — ignored)"
             else:
-                return "(kein up:: bisher)"
-    return "(kein up:: bisher)"
+                return "(no up:: yet)"
+    return "(no up:: yet)"
 
 
 def _render_cluster_section(
@@ -459,24 +528,24 @@ def _render_cluster_section(
             moc_stem = opt.get("moc_stem", "")
             opt_conf = opt.get("confidence", 0.0)
             marker = "[x]" if i == 0 else "[ ]"
-            lines.append(f"- {marker} up:: `[[{moc_stem}]]` (confidence {opt_conf:.2f})")
-        lines.append("- [ ] kein parent (top-level MOC)")
+            lines.append(f"- {marker} up:: [[{moc_stem}]] (confidence {opt_conf:.2f})")
+        lines.append("- [ ] no parent (top-level MOC)")
     else:
-        lines.append("- [x] kein parent (top-level MOC)")
+        lines.append("- [x] no parent (top-level MOC)")
     lines.append("")
 
     lines.append(f"#### Children ({n_children})")
     lines.append("")
     for stem in candidate_stems:
         annotation = _child_annotation(stem, existing_up_rows)
-        lines.append(f"- [x] `[[{stem}]]` {annotation}")
+        lines.append(f"- [x] [[{stem}]] {annotation}")
     lines.append("")
 
     lines.append("#### up::-Handling Override")
     lines.append("")
     lines.append(
-        f"- [ ] **Bestehende up:: behalten, neue MOC als `related::`**"
-        f" (gilt für alle {n_children} Children)"
+        f"- [ ] **Keep existing up::, add new MOC as `related::`**"
+        f" (applies to all {n_children} children)"
     )
     lines.append("")
 
@@ -494,10 +563,10 @@ def _render_cluster_section(
         label = (top_opt.get("label") or "").strip()
         parent_label = label if label else None
 
-    first = f"{n_children} Notes mit Topic-Overlap {topics_csv} haben keine dedizierte MOC."
-    last = "Diese MOC würde die Lücke füllen."
+    first = f"{n_children} notes with topic overlap {topics_csv} have no dedicated MOC."
+    last = "This MOC would fill the gap."
     if parent_label and k_classified > 0:
-        middle = f"{k_classified} davon haben up:: zur Klassifikation {parent_label}."
+        middle = f"{k_classified} of them have up:: to classification {parent_label}."
         why = f"{first}\n{middle} {last}"
     else:
         why = f"{first}\n{last}"
@@ -522,7 +591,7 @@ def render_moc_proposal_doc(
 
     Returns:
         (filename, body) — `filename` is the deterministic filename string
-        (e.g. ``tomo-moc-proposal-20260507-1430-shell-and-terminal.md``);
+        (e.g. ``2026-05-07_1430_moc-proposal-shell-and-terminal.md``);
         `body` is the full markdown text.
 
     Behaviour:
@@ -551,14 +620,28 @@ def render_moc_proposal_doc(
         or "moc"
     )
 
-    # Timestamp
+    # Timestamp — matches the canonical Tomo artifact pattern used by
+    # suggestions, instructions, suggestions-fan: <YYYY-MM-DD>_<HHMM>_<role>.md
     now_str = time.strftime("%Y-%m-%d %H:%M", time.localtime())
-    date_str = time.strftime("%Y%m%d", time.localtime())
+    date_str = time.strftime("%Y-%m-%d", time.localtime())
     hhmm_str = time.strftime("%H%M", time.localtime())
-    filename = f"tomo-moc-proposal-{date_str}-{hhmm_str}-{top_slug}.md"
+    filename = f"{date_str}_{hhmm_str}_moc-proposal-{top_slug}.md"
 
     # Frontmatter
     trigger_field = f"{mode}:{trigger_arg}" if trigger_arg else mode
+    # F-47 T2.4: build tomo: block (doc_type=moc-proposal, state=pending-accept)
+    run_id: str = report.get("run_id") or ""
+    tomo_block = build_tomo_block(
+        doc_type="moc-proposal",
+        state="pending-accept",
+        run_id=run_id,
+    )
+    tomo_yaml = yaml.dump(
+        {"tomo": tomo_block},
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+    ).rstrip("\n")
     frontmatter_lines = [
         "---",
         "type: tomo-proposal",
@@ -567,13 +650,12 @@ def render_moc_proposal_doc(
         f"trigger: {trigger_field}",
         "status: pending",
         "tomo_skip_inbox_analysis: true",
-        "---",
-    ]
+    ] + tomo_yaml.splitlines() + ["---"]
 
     # Body
     body_lines: list[str] = [
         "",
-        "# MOC-Vorschlag",
+        "# MOC Proposal",
         "",
     ]
 
@@ -590,7 +672,7 @@ def render_moc_proposal_doc(
 
     if overflow > 0:
         body_lines.append("---")
-        body_lines.append(f"*Weitere {overflow} Cluster gefunden*")
+        body_lines.append(f"*{overflow} additional cluster(s) found*")
         body_lines.append("")
 
     full_body = "\n".join(frontmatter_lines) + "\n" + "\n".join(body_lines)
@@ -715,7 +797,7 @@ def main() -> int:
     state_path = Path(args.state)
     items_dir = Path(args.items_dir)
     out_path = Path(args.output)
-    field_sections = load_field_sections(Path(args.shared_ctx))
+    load_field_sections(Path(args.shared_ctx))
 
     state = last_state_per_stem(state_path)
     done_stems = sorted(s for s, e in state.items() if e.get("status") == "done")
@@ -765,7 +847,8 @@ def main() -> int:
         section_id = f"S{idx:02d}"
         rendered_actions: list[dict] = []
         had_update_daily = False
-        for action in result.get("actions", []):
+        actions = _enforce_coexistence(result.get("actions", []))
+        for action in actions:
             kind = action.get("kind")
             renderer = RENDERERS.get(kind)
             if not renderer:

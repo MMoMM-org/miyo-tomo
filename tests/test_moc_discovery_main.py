@@ -30,7 +30,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -294,7 +293,7 @@ def test_main_tag_mode_produces_discovery_report(tmp_path: Path, monkeypatch) ->
     assert report["abort_reason"] is None
     # Must have produced at least one cluster from the 3 shell notes
     assert len(report["topic_clusters"]) >= 1, (
-        f"Expected ≥1 cluster; got empty topic_clusters"
+        "Expected ≥1 cluster; got empty topic_clusters"
     )
     # Cluster shape
     cluster = report["topic_clusters"][0]

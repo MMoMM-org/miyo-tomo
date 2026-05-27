@@ -1,7 +1,7 @@
 ---
 title: "Tomo Lifecycle State — Unified Frontmatter Block + byFrontmatter Discovery"
 status: in_review
-version: "1.2"
+version: "1.3"
 ---
 
 # Product Requirements Document
@@ -184,7 +184,7 @@ Plus one `listDir <inbox_path>` for untagged fresh-source enumeration. Set-diff:
 
 **Acceptance Criteria:**
 
-- [ ] **AC-2.1** Given the inbox holds N Tomo-managed docs and M untagged fresh source items, When `/inbox` runs Phase A discovery, Then it executes EXACTLY ONE `kado-search byFrontmatter` call (filtered by `tomo.state` + `filter.path`) AND ONE `listDir` call (for fresh-item enumeration). No per-doc `read_frontmatter` and no body-reads on non-pending docs.
+- [ ] **AC-2.1** Given the inbox holds N Tomo-managed docs and M untagged fresh source items, When `/inbox` runs Phase A discovery, Then it executes AT MOST FOUR `kado-search byFrontmatter` calls (three for `tomo.state=pending-approval|pending-accept|pending-apply`, one for `tomo.state=captured`, all server-side `filter.path`-narrowed) AND ONE `listDir` call (for fresh-item enumeration). No per-doc `read_frontmatter` and no body-reads on non-pending docs. *(v1.3 clarification 2026-05-21: original v1.2 wording was "EXACTLY ONE byFrontmatter call" — Kado 0.11.0 byFrontmatter is strict-equality only (`MiYo/Kado/src/obsidian/search-adapter.ts::frontmatterValueMatches`), so the single `pending-*` wildcard isn't supported. The SPIRIT — no full-scan, no per-doc body-read — is preserved by the 4-call shape.)*
 - [ ] **AC-2.2** Given the inbox holds workflow docs in non-pending states (e.g. `applied` instructions that Hashi has not yet trashed because the user opened Hashi mid-cleanup), When `/inbox` runs Phase A discovery, Then those docs are NOT returned by the byFrontmatter query (because the query targets `pending-*` states only). No body-read, no further filtering needed.
 - [ ] **AC-2.3** Given the inbox is empty of `tomo.state=pending-*` docs (fresh first run, or after Hashi cleanup), When `/inbox` runs Phase A, Then byFrontmatter returns zero results AND listDir is used to find untagged source items (hybrid path; both calls execute every run).
 - [ ] **AC-2.4** Given `filter.path` server-side narrowing is active, When users manually apply `tomo.state=...` to a doc outside `<inbox_path>` (vault-wide pollution), Then `/inbox` byFrontmatter does NOT return that hit — server-side filter excludes it. No client-side path-filter required.

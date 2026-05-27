@@ -1,6 +1,29 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.3.0
 """upload-rendered.py — Upload Pass-2 rendered outputs to the vault via Kado.
+
+Why the inter-write delay (--upload-delay, default 5s):
+  Rendered atomic notes carry raw Templater syntax (`<% await tp.file.include(...) %>`,
+  `<% tp.date.now(...) %>`, `<% await tp.user.j_translateString(...) %>`)
+  that must be expanded by Obsidian's Templater plugin AFTER the file appears
+  in the vault. Templater triggers on Obsidian's `vault.on("create")` event.
+
+  Writing 10+ notes back-to-back races Templater in three observable ways
+  (2026-05-23 live test, 17 rendered notes):
+    1. Some `create` events get dropped under load → file stays raw.
+       Example: `Japanische Städte (MOC).md` had 0% Templater expansion.
+    2. Templater starts but doesn't finish frontmatter includes before the
+       next file event arrives → body OK, YAML helpers still raw.
+       Example: `Wingspan.md` had raw `<% await tp.file.include("[[x_yaml_language]]") %>`.
+    3. `tp.file.title` resolves to the WRONG file because Templater is
+       mid-flight on file A when file B arrives and shifts the "current file"
+       pointer → cross-contamination.
+       Example: `Japanische Gerichte.md` got `aliases: Wingspan-Ornithological-Facts-...`.
+
+  Fix is rate-limiting on the producer side (here), not on Templater. 5s
+  between writes lets Templater finish each file's full template expansion
+  before the next `create` event. Tunable via --upload-delay; --upload-delay 0
+  reverts to the racing behavior for vaults without Templater.
 
 Reads `<rendered-dir>/manifest.json` and uploads each rendered note + the two
 instruction-set artefacts (`instructions.md`, `instructions.json`) to the
@@ -42,6 +65,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -49,6 +73,27 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
+
+MAX_RETRIES = 3
+RETRY_BACKOFF = [2.0, 5.0, 10.0]
+
+
+def _write_with_retry(fn, *args, label: str = "") -> None:
+    """Call fn(*args), retrying on HTTP 429 with exponential backoff."""
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            fn(*args)
+            return
+        except KadoError as exc:
+            if "429" not in str(exc) or attempt >= MAX_RETRIES:
+                raise
+            delay = RETRY_BACKOFF[attempt]
+            print(
+                f"  [retry] {label}: 429 rate limit, waiting {delay}s "
+                f"(attempt {attempt + 1}/{MAX_RETRIES})",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
 
 
 def _derive_timestamp(generated: str) -> str:
@@ -89,6 +134,12 @@ def main() -> int:
         help="YYYY-MM-DD_HHMM prefix for the instruction-set filenames. "
              "Derived from instructions.json `generated` if omitted.",
     )
+    p.add_argument(
+        "--upload-delay", type=float, default=5.0,
+        help="Seconds to wait between sequential kado-write calls (default 5.0). "
+             "Mitigates the Templater race documented in the script header. "
+             "Pass 0 to disable for vaults without Templater.",
+    )
     args = p.parse_args()
 
     rendered_dir = Path(args.rendered_dir)
@@ -126,6 +177,14 @@ def main() -> int:
 
     failures: list[str] = []
     notes_written = 0
+    first_write = True
+
+    def _maybe_throttle() -> None:
+        """Sleep between writes to let Templater drain — see header comment."""
+        nonlocal first_write
+        if not first_write and args.upload_delay > 0:
+            time.sleep(args.upload_delay)
+        first_write = False
 
     # ── Rendered notes (one per manifest entry) ──────────────────────
     for entry in manifest:
@@ -139,8 +198,9 @@ def main() -> int:
             continue
         body = local.read_text(encoding="utf-8")
         target = _join(args.inbox, rendered_file)
+        _maybe_throttle()
         try:
-            client.write_note(target, body)
+            _write_with_retry(client.write_note, target, body, label=target)
         except KadoError as exc:
             failures.append(f"kado-write note {target}: {exc}")
             continue
@@ -150,8 +210,9 @@ def main() -> int:
     # ── instructions.md ──────────────────────────────────────────────
     md_target = _join(args.inbox, f"{timestamp}_instructions.md")
     md_body = instructions_md_path.read_text(encoding="utf-8")
+    _maybe_throttle()
     try:
-        client.write_note(md_target, md_body)
+        _write_with_retry(client.write_note, md_target, md_body, label=md_target)
         print(f"  [note] {md_target} ({len(md_body)} chars)", file=sys.stderr)
     except KadoError as exc:
         failures.append(f"kado-write note {md_target}: {exc}")
@@ -160,7 +221,7 @@ def main() -> int:
     json_target = _join(args.inbox, f"{timestamp}_instructions.json")
     json_bytes = instructions_json_path.read_bytes()
     try:
-        client.write_file(json_target, json_bytes)
+        _write_with_retry(client.write_file, json_target, json_bytes, label=json_target)
         print(f"  [file] {json_target} ({len(json_bytes)} bytes)", file=sys.stderr)
     except KadoError as exc:
         failures.append(f"kado-write file {json_target}: {exc}")

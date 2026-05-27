@@ -28,6 +28,10 @@
     },
     "issues": {"type": "array", "items": {"type": "string"}},
     "duration_ms": {"type": "integer", "minimum": 0},
+    "force_atomic": {
+      "type": "boolean",
+      "description": "Set by the analyst when dispatched with force_atomic=true (XDD-012 FAN resolve subflow). Consumed by suggestions-reducer.py --fan-resolve to filter the resolve doc to fan-triggered items only. Optional; absent or false means a normal Pass-1 result."
+    },
     "actions": {
       "type": "array",
       "minItems": 1,

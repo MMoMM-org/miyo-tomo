@@ -45,7 +45,7 @@ try:
         KadoConnectionError,
         KadoError,
         KadoNotFoundError,
-        KadoToolError,
+        KadoToolError,  # noqa: F401
     )
 except ImportError as e:
     print(f"Error importing kado_client: {e}", file=sys.stderr)

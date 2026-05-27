@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.3
+# version: 0.2.5
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -31,7 +31,7 @@ The user just wants the menu. Show this (keep formatting tight):
     5. /moc-propose — propose a new MOC for a topic, folder, classification, or whole-vault scan
 
   Concepts
-    6. Lifecycle tags & state machine
+    6. Lifecycle state machine (`tomo.state` frontmatter)
     7. 2-pass suggestion/instruction model
     8. Knowledge Stack (profile → config → cache)
     9. Framework profiles (miyo, lyt, custom)
@@ -96,25 +96,31 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - You confirm each discovery step; vault itself is never modified
   - Point at: `.claude/commands/explore-vault.md`, `.claude/agents/vault-explorer.md`
 
-- **inbox / pass1 / pass2 / cleanup / captured / proposed / confirmed / applied** →
-  - `/inbox` auto-detects state: applied→cleanup, confirmed→Pass 2, captured→Pass 1
-  - Manual override: `/inbox --pass1`, `--pass2`, `--cleanup`
-  - State flow: `captured → proposed → confirmed → instructions → applied → active/archived`
-  - Point at: `.claude/commands/inbox.md`
+- **inbox / pass1 / pass2 / recover / captured / approved / applied** →
+  - `/inbox` auto-detects next action: approved suggestions → Pass 2; otherwise dispatches the orchestrator for Pass 1 (which exits early if nothing to do)
+  - Manual override: `/inbox --pass1`, `--pass2`, `--recover`
+  - State lives in `tomo.state` frontmatter (no lifecycle tags). Per-doc-type:
+    - source: `captured` (terminal — Pass-1 marks it, then it stays)
+    - suggestions / suggestions-fan: `pending-approval → approved`
+    - moc-proposal: `pending-accept → accepted`
+    - instructions: `pending-apply → applied` (Hashi flips after `[x] Applied`)
+  - Point at: `.claude/commands/inbox.md`, `tomo/scripts/lib/tomo_lifecycle.py`
 
 ### Concepts
 
-- **lifecycle / tags / state machine / status / workflow states** →
-  - Tomo lifecycle tag prefix is configured in `config/vault-config.yaml` under `lifecycle.tag_prefix`
-  - Tomo sets: captured, proposed, instructions, active, archived
-  - You set: confirmed, applied (the two human-in-the-loop transitions)
-  - Point at: `config/vault-config.yaml`, `.claude/commands/inbox.md`
+- **lifecycle / state machine / status / workflow states / tomo.state** →
+  - Authoritative definition: `tomo/scripts/lib/tomo_lifecycle.py` (`STATE_MACHINE` dict)
+  - State lives in `tomo.state` frontmatter on each doc — no separate lifecycle tags
+  - Tomo (scripts) sets: `captured` (mark-captured.py after Pass-1), `pending-approval` / `pending-accept` / `pending-apply` (renderers on write), `approved` / `accepted` (state-promoter after user ticks the checkbox + Pass-2 succeeds)
+  - You (the user) tick: `[x] Approved` on suggestions, `[x] Accept` on moc-proposals, `[x] Applied` on instructions
+  - Hashi sets: `applied` on instructions after the last `[x] Applied` (pre-Hashi: doc stays `pending-apply` until you delete it manually)
+  - Point at: `tomo/scripts/lib/tomo_lifecycle.py`, `.claude/commands/inbox.md`
 
 - **2-pass / pass model / suggestions vs instructions / why two passes** →
   - Pass 1 is cheap and reversible (a suggestions document you can edit)
   - Pass 2 is detailed and ready to apply (templates rendered, tokens resolved)
   - Separation lets you reshape scope before expensive work happens
-  - Point at: `.claude/commands/inbox.md`, `.claude/skills/pkm-workflows/SKILL.md`
+  - Point at: `.claude/commands/inbox.md`, `.claude/agents/inbox-analyst.md` (classification)
 
 - **knowledge stack / 4-layer / precedence / profile vs config / config vs cache** →
   - 4 layers (highest precedence first): User Config > Profile > Universal PKM Concepts; Cache is advisory only

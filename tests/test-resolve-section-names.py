@@ -40,7 +40,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(SCRIPTS_DIR / "lib"))
 
-from kado_client import KadoError, KadoNotFoundError  # noqa: E402
+from kado_client import KadoNotFoundError  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location(
     "instruction_render", SCRIPTS_DIR / "instruction-render.py"

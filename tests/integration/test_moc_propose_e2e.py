@@ -21,6 +21,7 @@ Run with:
 """
 from __future__ import annotations
 
+import importlib
 import json
 import subprocess
 import sys
@@ -41,7 +42,8 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 import moc_discovery as _moc_disc  # noqa: E402 — loaded by conftest
 import suggestions_reducer as _reducer  # noqa: E402
-import suggestion_parser as _parser  # noqa: E402
+_moc_parser_mod = importlib.import_module("moc-proposal-parser")
+parse_moc_proposal = _moc_parser_mod.parse_moc_proposal
 
 from .conftest import (  # noqa: E402
     make_candidate,
@@ -533,7 +535,8 @@ def test_override_flow_e2e(tmp_path):
         "- [x] **Keep existing up::, add new MOC as `related::`**",
     )
 
-    proposals = _parser.parse_moc_proposal_doc(accepted_body, filename=filename)
+    result = parse_moc_proposal(accepted_body)
+    proposals = result["confirmed_items"]
     assert len(proposals) == 1
     proposal = proposals[0]
     assert proposal["override_preserve_existing_up"] is True, (
@@ -542,9 +545,8 @@ def test_override_flow_e2e(tmp_path):
 
     # Without Override (default):
     accepted_no_override = body.replace("- [ ] Accept", "- [x] Accept")
-    proposals_no_override = _parser.parse_moc_proposal_doc(
-        accepted_no_override, filename=filename
-    )
+    result_no_override = parse_moc_proposal(accepted_no_override)
+    proposals_no_override = result_no_override["confirmed_items"]
     assert len(proposals_no_override) == 1
     assert proposals_no_override[0]["override_preserve_existing_up"] is False, (
         "Override unchecked → override_preserve_existing_up must be False"
@@ -597,7 +599,8 @@ def test_collision_guard_e2e(privat_test_clone, isolated_tomo_state):
 
     accepted_body = tick_children(accepted_body)
 
-    proposals = _parser.parse_moc_proposal_doc(accepted_body, filename=filename)
+    result = parse_moc_proposal(accepted_body)
+    proposals = result["confirmed_items"]
     assert len(proposals) == 1
     proposal = proposals[0]
 
@@ -606,8 +609,8 @@ def test_collision_guard_e2e(privat_test_clone, isolated_tomo_state):
     assert proposal["title"] == collision_title, (
         f"Proposal title must match cluster title; got {proposal['title']!r}"
     )
-    assert proposal["location"] == "Atlas/200 Maps/", (
-        f"Destination dir must be Atlas/200 Maps/; got {proposal['location']!r}"
+    assert proposal["destination"] == "Atlas/200 Maps/", (
+        f"Destination dir must be Atlas/200 Maps/; got {proposal['destination']!r}"
     )
 
     # Build instruction-render manifest and emit create_moc action (M1 fix).
@@ -617,11 +620,11 @@ def test_collision_guard_e2e(privat_test_clone, isolated_tomo_state):
     manifest_item = {
         "action": "create_moc",
         "title": proposal["title"],
-        "destination": proposal["location"],
-        "parent_moc": proposal.get("parent"),
+        "destination": proposal["destination"],
+        "parent_moc": proposal.get("parent_moc"),
         "template": proposal.get("template", "t_moc_tomo"),
         "tags": [],
-        "supporting_items": ", ".join(proposal.get("children", [])),
+        "supporting_items": ", ".join(proposal.get("supporting_items", [])),
         "override_preserve_existing_up": proposal.get("override_preserve_existing_up", False),
         "rendered_file": "",
     }
@@ -761,23 +764,24 @@ def test_accept_flow_emits_create_moc_action(tmp_path):
         accepted_body,
     )
 
-    proposals = _parser.parse_moc_proposal_doc(accepted_body, filename=filename)
+    result = parse_moc_proposal(accepted_body)
+    proposals = result["confirmed_items"]
     assert len(proposals) == 1, f"Expected 1 accepted proposal; got {len(proposals)}"
 
     proposal = proposals[0]
     assert proposal["title"] == "Dataview (MOC)"
-    assert proposal["location"] == "Atlas/200 Maps/"
+    assert proposal["destination"] == "Atlas/200 Maps/"
 
-    # Convert to manifest item (as suggestion-parser produces for instruction-render)
+    # Convert to manifest item (as moc-proposal-parser produces for instruction-render)
     # The manifest shape that instruction-render expects for a create_moc action:
     manifest_item = {
         "action": "create_moc",
         "title": proposal["title"],
-        "destination": proposal["location"],
-        "parent_moc": proposal.get("parent"),
+        "destination": proposal["destination"],
+        "parent_moc": proposal.get("parent_moc"),
         "template": proposal.get("template", "t_moc_tomo"),
         "tags": [],
-        "supporting_items": ", ".join(proposal.get("children", [])),
+        "supporting_items": ", ".join(proposal.get("supporting_items", [])),
         "override_preserve_existing_up": proposal.get("override_preserve_existing_up", False),
         "rendered_file": "",
     }
@@ -827,9 +831,9 @@ def test_no_accept_emits_no_actions(tmp_path):
     _filename, body = _reducer.render_moc_proposal_doc(report, _Cfg())
 
     # No Accept ticked — body as-is
-    proposals = _parser.parse_moc_proposal_doc(body, filename=_filename)
-    assert proposals == [], (
-        f"No Accept ticked → parse must return []; got {proposals!r}"
+    result = parse_moc_proposal(body)
+    assert result["confirmed_items"] == [], (
+        f"No Accept ticked → confirmed_items must be []; got {result['confirmed_items']!r}"
     )
 
 
@@ -867,11 +871,12 @@ def test_multi_cluster_partial_accept(tmp_path):
         + body[first_accept + len("- [ ] Accept"):]
     )
 
-    proposals = _parser.parse_moc_proposal_doc(accepted_body, filename=_filename)
+    result = parse_moc_proposal(accepted_body)
+    proposals = result["confirmed_items"]
     assert len(proposals) == 1, (
         f"Only 1 cluster accepted → 1 proposal; got {len(proposals)}"
     )
-    assert proposals[0]["moc_id"] == "MOC01"
+    assert proposals[0]["id"] == "MOC01"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -973,18 +978,19 @@ def test_perf_pass2_apply_under_25s(tmp_path):
     accepted_body = re.sub(r"- \[ \] (`\[\[)", r"- [x] \1", accepted_body)
 
     # Parse
-    proposals = _parser.parse_moc_proposal_doc(accepted_body, filename=filename)
+    result = parse_moc_proposal(accepted_body)
+    proposals = result["confirmed_items"]
 
     # Build actions
     if proposals:
         manifest_item = {
             "action": "create_moc",
             "title": proposals[0]["title"],
-            "destination": proposals[0]["location"],
-            "parent_moc": proposals[0].get("parent"),
+            "destination": proposals[0]["destination"],
+            "parent_moc": proposals[0].get("parent_moc"),
             "template": "t_moc_tomo",
             "tags": [],
-            "supporting_items": ", ".join(proposals[0].get("children", [])),
+            "supporting_items": ", ".join(proposals[0].get("supporting_items", [])),
             "override_preserve_existing_up": False,
             "rendered_file": "",
         }

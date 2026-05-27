@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.17.0
+# version: 0.18.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -274,6 +274,87 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 # MULTILINE so ``^`` anchors to each line start.  Non-greedy ``(.+?)`` stops
 # at the first ``]]`` to avoid over-matching when the target contains brackets.
 _UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
+_RELATED_MARKER_RE = re.compile(r"^[\s>\-]*related::\s*(.*)", re.MULTILINE)
+_WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+
+
+def _extract_existing_related(content: str) -> list[str]:
+    """Extract existing related:: wikilink targets from note content."""
+    m = _RELATED_MARKER_RE.search(content)
+    if not m:
+        return []
+    return [wl.group(1).strip() for wl in _WIKILINK_RE.finditer(m.group(1))]
+
+
+def _aggregate_related_actions(
+    actions: list[dict], kado_client,
+) -> list[dict]:
+    """Merge related:: actions per target note with existing vault values.
+
+    Per contract (docs/instructions-json.md §882-886), Tomo reads the
+    existing related:: line and emits one combined action per target.
+    """
+    if kado_client is None:
+        return actions
+
+    # Collect related:: actions grouped by target_moc_path
+    related_by_target: dict[str, list[dict]] = {}
+    non_related: list[dict] = []
+    for a in actions:
+        if a.get("action") == "add_relationship" and a.get("marker") == "related::":
+            path = a["target_moc_path"]
+            related_by_target.setdefault(path, []).append(a)
+        else:
+            non_related.append(a)
+
+    if not related_by_target:
+        return actions
+
+    merged: list[dict] = []
+    for path, rel_actions in related_by_target.items():
+        # Read existing related:: from vault
+        try:
+            note = kado_client.read_note(path)
+            content = note.get("content", "") if isinstance(note, dict) else ""
+            existing = _extract_existing_related(content)
+        except Exception:
+            existing = []
+
+        # Collect new stems from actions
+        new_stems = []
+        for a in rel_actions:
+            for wl in _WIKILINK_RE.finditer(a.get("line", "")):
+                stem = wl.group(1).strip()
+                if stem and stem not in existing and stem not in new_stems:
+                    new_stems.append(stem)
+
+        all_stems = existing + new_stems
+        if not all_stems:
+            continue
+
+        combined_line = "related:: " + ", ".join(f"[[{s}]]" for s in all_stems)
+        # Keep the first action as template, update line
+        merged_action = dict(rel_actions[0])
+        merged_action["line"] = combined_line
+        merged.append(merged_action)
+
+    # Reassemble: non-related actions + merged related actions (in original order)
+    result = []
+    seen_targets: set[str] = set()
+    for a in actions:
+        if a.get("action") == "add_relationship" and a.get("marker") == "related::":
+            path = a["target_moc_path"]
+            if path not in seen_targets:
+                seen_targets.add(path)
+                # Find the merged action for this target
+                for m in merged:
+                    if m["target_moc_path"] == path:
+                        result.append(m)
+                        break
+        else:
+            result.append(a)
+    return result
+
 
 # Optional path fields per action kind. Required path fields are derived from
 # the JSON Schema (see tomo/schemas/instructions.schema.json) — this map only
@@ -344,17 +425,13 @@ def _make_add_rel(
     ``target_moc_path`` holds the child note's vault path (the note being
     modified).  ``marker`` is the dataview field (``up::`` or ``related::``).
     ``line`` is the pre-formatted replacement line that Hashi will write.
-    ``mode`` is ``replace`` for up:: (overwrite existing) or ``append``
-    for related:: (add to existing values).
     """
-    mode = "append" if marker == "related::" else "replace"
     return {
         "id": _next_id(counter),
         "action": "add_relationship",
         "target_moc_path": target_note_path,
         "marker": marker,
         "line": f"{marker} [[{target_stem}]]",
-        "mode": mode,
         "source_note_title": None,
         "applied": None,
     }
@@ -963,6 +1040,12 @@ def build_actions(
         confirmed, move_notes, daily_updates, skipped, inbox_path, counter,
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
+    # Aggregate related:: actions per target note: read existing related::,
+    # merge with all new related:: links, emit one action per target with
+    # the combined line. Per contract (docs/instructions-json.md §882-886),
+    # multi-link aggregation is done Tomo-side before emission.
+    out = _aggregate_related_actions(out, kado_client)
+
     # Stamp the per-action applied flag. Tomo Hashi (the consumer) flips this
     # to true on successful execution; Tomo only ever emits false. See
     # docs/instructions-json.md.
@@ -1063,16 +1146,11 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         moc = action.get("target_moc") or _stem(action.get("target_moc_path", ""))
         marker = action.get("marker", "")
         line = action.get("line", "")
-        mode = action.get("mode", "replace")
-        verb = "Add" if mode == "append" else "Replace"
-        lines = [f"{heading_prefix}{verb} {marker} on [[{moc}]]", "- [ ] Applied"]
+        lines = [f"{heading_prefix}Update {marker} on [[{moc}]]", "- [ ] Applied"]
         if action.get("target_moc_path"):
             lines.append(f"- **Path:** `{action['target_moc_path']}`")
         lines.append(f"- **Marker:** `{marker}`")
-        if mode == "append":
-            lines.append(f"- **Add to existing values:** `{line}`")
-        else:
-            lines.append(f"- **Replace marker line with:** `{line}`")
+        lines.append(f"- **Replace marker line with:** `{line}`")
         return "\n".join(lines)
 
     if kind == "update_tracker":

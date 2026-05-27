@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.7.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -133,11 +133,11 @@ def discover_files(client, inbox_path: str) -> tuple[list[dict], list[dict], lis
 
 def query_frontmatter(
     client, inbox_path: str,
-) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
-    """Four byFrontmatter calls for pending-approval, pending-accept,
-    captured, and instructions.
+) -> tuple[list[dict], list[dict], list[dict], list[dict], list[dict], list[dict]]:
+    """Six byFrontmatter calls for all known tomo states.
 
-    Returns (pending_approval, pending_accept, captured, instructions).
+    Returns (pending_approval, pending_accept, captured, instructions,
+             approved, accepted).
     """
     pending_approval = client.search_by_frontmatter(
         "tomo.state=pending-approval", path_prefix=inbox_path,
@@ -151,7 +151,13 @@ def query_frontmatter(
     instructions = client.search_by_frontmatter(
         "tomo.doc_type=instructions", path_prefix=inbox_path,
     )
-    return pending_approval, pending_accept, captured, instructions
+    approved = client.search_by_frontmatter(
+        "tomo.state=approved", path_prefix=inbox_path,
+    )
+    accepted = client.search_by_frontmatter(
+        "tomo.state=accepted", path_prefix=inbox_path,
+    )
+    return pending_approval, pending_accept, captured, instructions, approved, accepted
 
 
 # ---------------------------------------------------------------------------
@@ -164,10 +170,13 @@ def compute_new_sources(
     pending_accept: list[dict],
     captured: list[dict],
     instructions: list[dict],
+    approved: list[dict] | None = None,
+    accepted: list[dict] | None = None,
 ) -> list[dict]:
     """Files not in any frontmatter bucket are new sources."""
     known_paths = set()
-    for bucket in (pending_approval, pending_accept, captured, instructions):
+    for bucket in (pending_approval, pending_accept, captured, instructions,
+                   approved or [], accepted or []):
         for hit in bucket:
             known_paths.add(hit["path"])
 
@@ -423,14 +432,15 @@ def discover(
     all_files, audio_files, md_files = discover_files(client, inbox_path)
 
     # Step 3: query frontmatter
-    pending_approval_hits, pending_accept_hits, captured_hits, instructions_hits = (
+    (pending_approval_hits, pending_accept_hits, captured_hits,
+     instructions_hits, approved_hits, accepted_hits) = (
         query_frontmatter(client, inbox_path)
     )
 
     # Step 4: compute new sources
     new_sources = compute_new_sources(
         md_files, pending_approval_hits, pending_accept_hits,
-        captured_hits, instructions_hits,
+        captured_hits, instructions_hits, approved_hits, accepted_hits,
     )
 
     # Step 5: check audio

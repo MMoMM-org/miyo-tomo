@@ -134,8 +134,10 @@ do not retry batch). Exit 2 = bad input, stop.
 #### 3d — Flip source doc state
 
 ```bash
-python3 scripts/state-promoter.py flip "<VAULT_PATH>" <DOC_TYPE> <FROM_STATE> <TO_STATE> "<RUN_ID>"
+python3 scripts/state-promoter.py flip "<VAULT_PATH>" <DOC_TYPE> <FROM_STATE> <TO_STATE> "<RUN_ID>" "<MODIFIED>"
 ```
+
+`MODIFIED` is the `modified` field from the routing plan entry (e.g. `"1779823222743"`).
 
 Exit 0 = success. Exit 1 = transition rejected (report and continue).
 Exit 2 = concurrency conflict (report and continue).

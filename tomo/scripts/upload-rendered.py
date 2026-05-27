@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """upload-rendered.py — Upload Pass-2 rendered outputs to the vault via Kado.
 
 Why the inter-write delay (--upload-delay, default 5s):
@@ -73,6 +73,27 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
+
+MAX_RETRIES = 3
+RETRY_BACKOFF = [2.0, 5.0, 10.0]
+
+
+def _write_with_retry(fn, *args, label: str = "") -> None:
+    """Call fn(*args), retrying on HTTP 429 with exponential backoff."""
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            fn(*args)
+            return
+        except KadoError as exc:
+            if "429" not in str(exc) or attempt >= MAX_RETRIES:
+                raise
+            delay = RETRY_BACKOFF[attempt]
+            print(
+                f"  [retry] {label}: 429 rate limit, waiting {delay}s "
+                f"(attempt {attempt + 1}/{MAX_RETRIES})",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
 
 
 def _derive_timestamp(generated: str) -> str:
@@ -179,7 +200,7 @@ def main() -> int:
         target = _join(args.inbox, rendered_file)
         _maybe_throttle()
         try:
-            client.write_note(target, body)
+            _write_with_retry(client.write_note, target, body, label=target)
         except KadoError as exc:
             failures.append(f"kado-write note {target}: {exc}")
             continue
@@ -191,7 +212,7 @@ def main() -> int:
     md_body = instructions_md_path.read_text(encoding="utf-8")
     _maybe_throttle()
     try:
-        client.write_note(md_target, md_body)
+        _write_with_retry(client.write_note, md_target, md_body, label=md_target)
         print(f"  [note] {md_target} ({len(md_body)} chars)", file=sys.stderr)
     except KadoError as exc:
         failures.append(f"kado-write note {md_target}: {exc}")
@@ -200,7 +221,7 @@ def main() -> int:
     json_target = _join(args.inbox, f"{timestamp}_instructions.json")
     json_bytes = instructions_json_path.read_bytes()
     try:
-        client.write_file(json_target, json_bytes)
+        _write_with_retry(client.write_file, json_target, json_bytes, label=json_target)
         print(f"  [file] {json_target} ({len(json_bytes)} bytes)", file=sys.stderr)
     except KadoError as exc:
         failures.append(f"kado-write file {json_target}: {exc}")

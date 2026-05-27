@@ -677,7 +677,7 @@ section per kind with fields, execution semantics, and idempotency.
 | `parent_moc` | string \| null | Up-link parent MOC. Emitted separately as a `link_to_moc` action; this field is metadata only. |
 | `template` | string \| null | Template filename used at render time — traceability. |
 | `tags` | string[] | Tags already applied to the rendered MOC body. |
-| `supporting_items` | string \| null | Comma-separated suggestion IDs that justify the new MOC. The down-links from each supporting atomic note into this MOC are already emitted as `link_to_moc` actions elsewhere in the set — `supporting_items` is human context, not an executable pointer. |
+| `supporting_items` | string \| array \| null | Supporting items that justify the new MOC. String (comma-separated SNN IDs from suggestion-parser, e.g. `"S02, S06, S12"`) or array (note stems from moc-proposal-parser, e.g. `["Thought Collisions", "Map of Content"]`). Human context — `link_to_moc` actions are the executable signal. |
 
 **Execution algorithm:**
 

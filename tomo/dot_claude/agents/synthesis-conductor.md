@@ -14,7 +14,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.2.0
+# version: 0.3.0
 
 **Active agent: synthesis-conductor**
 
@@ -88,7 +88,7 @@ python3 scripts/suggestion-parser.py --file "<suggestions_cache_path>" --fan-res
 
 For moc-proposals:
 ```bash
-python3 scripts/suggestion-parser.py --file "<cache_path>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/moc-proposal-parser.py --file "<cache_path>" > tomo-tmp/parsed-suggestions.json
 ```
 
 #### 3b — Render instructions

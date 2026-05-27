@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """moc-proposal-parser.py — Parse an approved MOC proposal into instruction-render input.
 
 Reads a MOC proposal markdown doc (produced by suggestions-reducer --moc-proposal-mode)
@@ -174,7 +174,7 @@ def _parse_moc_block(
         "template": template,
         "summary": None,
         "classification": None,
-        "supporting_items": ", ".join(children),
+        "supporting_items": children,
         "override_preserve_existing_up": override_preserve,
     }
 

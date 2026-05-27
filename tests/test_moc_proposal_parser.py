@@ -138,7 +138,8 @@ def test_accepted_moc_parent():
 
 def test_accepted_children_only_checked():
     item = parse_moc_proposal(MINIMAL_PROPOSAL)["confirmed_items"][0]
-    stems = item["supporting_items"].split(", ")
+    stems = item["supporting_items"]
+    assert isinstance(stems, list)
     assert "Note A" in stems
     assert "Note B" in stems
     assert "Note C" not in stems

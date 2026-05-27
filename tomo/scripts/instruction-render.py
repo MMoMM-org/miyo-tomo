@@ -569,14 +569,17 @@ def _build_move_note_actions(
     return out
 
 
-def _parse_supporting_items(raw: str | None) -> list[str]:
-    """Parse 'S02, S06, S12' or 'Thought Collisions, Map of Content' → list of stems.
+def _parse_supporting_items(raw: str | list | None) -> list[str]:
+    """Parse supporting_items into a list of stems.
 
-    Splits on commas (not spaces) so multi-word stems like
-    'The 7 C's of Notemaking' stay intact.
+    Accepts two formats:
+      - list: ["Thought Collisions", "Map of Content"] (moc-proposal-parser)
+      - str:  "S02, S06, S12" (suggestion-parser, SNN IDs only)
     """
     if not raw:
         return []
+    if isinstance(raw, list):
+        return [s.strip() for s in raw if isinstance(s, str) and s.strip()]
     s = raw.strip().strip("[](){}")
     out: list[str] = []
     for tok in s.split(","):

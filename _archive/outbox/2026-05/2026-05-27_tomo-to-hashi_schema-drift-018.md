@@ -4,7 +4,8 @@ to: hashi
 date: 2026-05-27
 topic: Schema drift from 018 — add_relationship.mode + supporting_items type
 requires_action: true
-status: pending
+status: done
+status_note: supporting_items type widened in cf855d8 on fix/schema-supporting-items-type
 ---
 
 # Schema Drift: instructions.schema.json vs instruction-render.py output

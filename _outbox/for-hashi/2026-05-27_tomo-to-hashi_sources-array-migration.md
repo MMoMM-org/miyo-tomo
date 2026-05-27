@@ -4,7 +4,8 @@ to: hashi
 date: 2026-05-27
 topic: "BREAKING: doc-frontmatter source_* keys replaced by sources[] array"
 requires_action: true
-status: pending
+status: in-progress
+status_note: Received. Supersedes F-47 source_* pattern. Will iterate tomo.sources[] array in cleanup implementation.
 supersedes: 2026-05-21_tomo-to-hashi_state-driven-cleanup-schema-lock.md (Step 2 iteration contract)
 ---
 

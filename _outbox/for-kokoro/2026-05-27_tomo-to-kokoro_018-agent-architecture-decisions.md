@@ -3,7 +3,8 @@ from: tomo
 to: kokoro
 date: 2026-05-27
 topic: "XDD 018 Agent Architecture Cleanup — key decisions for Kokoro architecture docs"
-status: pending
+status: done
+status_note: ADR-018 amended: source_* → sources[] array, 6-state triage documented. decisions.md memory updated.
 priority: normal
 requires_action: true
 ---

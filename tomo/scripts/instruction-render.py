@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.0
+# version: 0.20.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -757,16 +757,23 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
     # Pass 2 — supporting_items down-links: each new MOC pulls its approved
     # supporting atomic notes as children. Required because the suggestions
     # doc cannot offer a not-yet-created MOC as a parent option at review time.
+    #
+    # Two flows: suggestion flow (supporting_items are SNN IDs → id_index lookup)
+    # vs MOC proposal flow (children baked into rendered MOC via {{children}} token,
+    # no link_to_moc actions needed).
+    # Gate: MOC proposal items carry override_preserve_existing_up field.
     for item in confirmed:
         if item.get("action") != "create_moc":
             continue
+        if "override_preserve_existing_up" in item:
+            continue  # MOC proposal: children baked into rendered body
         new_moc_title = item.get("title", "")
         if not new_moc_title:
             continue
         for sid in _parse_supporting_items(item.get("supporting_items")):
             sup = id_index.get(sid)
             if not sup or sup.get("action") == "create_moc":
-                continue  # supporting ID not confirmed, or references another MOC
+                continue
             sup_title = sup.get("title") or _stem(sup.get("source_path"))
             if not sup_title:
                 continue
@@ -1690,6 +1697,15 @@ def main() -> int:
         # syntax which breaks inline arrays in templates.
         tags_str = ", ".join(tags) if isinstance(tags, list) else (tags or "")
 
+        # Build children token for MOC proposal items: callout-prefixed bullets.
+        children_value = ""
+        if "override_preserve_existing_up" in item:
+            children_stems = _parse_supporting_items(item.get("supporting_items"))
+            if children_stems:
+                children_value = "\n".join(
+                    f"> - [[{stem}]]" for stem in children_stems
+                )
+
         tokens = {
             "title": title,
             "tags": tags_str,
@@ -1697,6 +1713,7 @@ def main() -> int:
             "related": "",  # placeholder — populated by MOC creator post-MVP
             "body": body,
             "summary": summary or "",
+            "children": children_value,
         }
 
         # Write template and tokens to temp files

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.3.0
+# version: 1.4.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -311,8 +311,13 @@ def render_link_to_moc(action: dict, stem: str) -> str:
     )
 
 
+_MOC_SUFFIX = " (MOC)"
+
+
 def render_create_moc(action: dict, stem: str) -> str:
     moc_title = action.get("moc_title", "")
+    if moc_title and not moc_title.endswith(_MOC_SUFFIX):
+        moc_title = moc_title + _MOC_SUFFIX
     parent = action.get("parent_moc", "")
     return (
         f"**Source:** [[{stem}]]\n"

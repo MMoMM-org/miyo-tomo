@@ -824,7 +824,7 @@ def phase3_cluster(
 # stored on the profile, but per the spec the canonical TopicTitle for the
 # proposed-MOC pipeline is the plain "<Topic> MOC" / "<Topic>" pair.
 _PROFILE_TITLE_SUFFIX: dict[str, str] = {
-    "miyo": " MOC",
+    "miyo": " (MOC)",
     "lyt": "",
 }
 

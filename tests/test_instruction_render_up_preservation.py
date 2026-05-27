@@ -66,9 +66,11 @@ class _FakeKadoClient:
         else:
             self._existing = set(existing_paths)
 
-    def resolve_stem_to_path(self, stem: str) -> str:
+    def resolve_stem_to_path(self, stem: str) -> str | None:
         if stem not in self._notes:
-            raise ir.KadoError(f"NOT_FOUND: {stem!r}")
+            if stem in self._existing:
+                return f"{stem}.md"
+            return None
         return self._notes[stem][0]
 
     def read_note(self, path: str) -> dict:

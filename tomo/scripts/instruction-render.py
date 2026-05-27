@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.15.0
+# version: 0.16.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -344,13 +344,17 @@ def _make_add_rel(
     ``target_moc_path`` holds the child note's vault path (the note being
     modified).  ``marker`` is the dataview field (``up::`` or ``related::``).
     ``line`` is the pre-formatted replacement line that Hashi will write.
+    ``mode`` is ``replace`` for up:: (overwrite existing) or ``append``
+    for related:: (add to existing values).
     """
+    mode = "append" if marker == "related::" else "replace"
     return {
         "id": _next_id(counter),
         "action": "add_relationship",
         "target_moc_path": target_note_path,
         "marker": marker,
         "line": f"{marker} [[{target_stem}]]",
+        "mode": mode,
         "source_note_title": None,
         "applied": None,
     }
@@ -388,6 +392,9 @@ def emit_up_preservation_actions(
     try:
         child_path = kado_client.resolve_stem_to_path(child_stem)
     except KadoError:
+        child_path = None
+
+    if child_path is None:
         return [{
             "id": _next_id(counter),
             "action": "add_relationship",
@@ -429,17 +436,20 @@ def emit_up_preservation_actions(
     elif existing_up_target == new_moc_stem:
         # Self-link guard: existing up:: already points to the new MOC → no-op
         pass
-    elif kado_client.path_exists(existing_up_target):
-        if override_flag:
-            # Rule 4.5 — keep existing up::, new MOC becomes related::
-            actions.append(_make_add_rel(counter, child_path, "related::", new_moc_stem))
-        else:
-            # Rule 4.2 — new MOC becomes up::, existing target moves to related::
-            actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
-            actions.append(_make_add_rel(counter, child_path, "related::", existing_up_target))
     else:
-        # Rule 4.3 — broken existing up::; just set new up:: (no related preservation)
-        actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+        # existing_up_target is a stem — resolve to verify it exists
+        old_target_path = kado_client.resolve_stem_to_path(existing_up_target)
+        if old_target_path:
+            if override_flag:
+                # Rule 4.5 — keep existing up::, new MOC becomes related::
+                actions.append(_make_add_rel(counter, child_path, "related::", new_moc_stem))
+            else:
+                # Rule 4.2 — new MOC becomes up::, existing target moves to related::
+                actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+                actions.append(_make_add_rel(counter, child_path, "related::", existing_up_target))
+        else:
+            # Rule 4.3 — broken existing up:: (target not found); just set new up::
+            actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
 
     return actions
 
@@ -1053,11 +1063,16 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         moc = action.get("target_moc") or _stem(action.get("target_moc_path", ""))
         marker = action.get("marker", "")
         line = action.get("line", "")
-        lines = [f"{heading_prefix}Update {marker} on [[{moc}]]", "- [ ] Applied"]
+        mode = action.get("mode", "replace")
+        verb = "Add" if mode == "append" else "Replace"
+        lines = [f"{heading_prefix}{verb} {marker} on [[{moc}]]", "- [ ] Applied"]
         if action.get("target_moc_path"):
             lines.append(f"- **Path:** `{action['target_moc_path']}`")
         lines.append(f"- **Marker:** `{marker}`")
-        lines.append(f"- **Replace marker line with:** `{line}`")
+        if mode == "append":
+            lines.append(f"- **Add to existing values:** `{line}`")
+        else:
+            lines.append(f"- **Replace marker line with:** `{line}`")
         return "\n".join(lines)
 
     if kind == "update_tracker":

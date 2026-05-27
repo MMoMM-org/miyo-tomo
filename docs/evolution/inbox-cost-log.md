@@ -237,3 +237,32 @@ input/output/cache_create/cache_read). Actual billed cost may differ
   - upload-rendered.py: Kado 429 rate limit — 4 MOC notes failed to upload. Instructions + manifest landed.
   - state-promoter.py: exit 1 — missing expectedModified argument. Need to pass from routing plan.
 - Kado 429 likely appears because haiku is faster than Sonnet, so upload-rendered fires rapid kado-write calls. Will also affect normal Pass 2 at scale.
+
+---
+
+### 2026-05-27 — Pass 2 (synthesize), MOC proposal, all fixes validated
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-05-27 |
+| **Phase** | Pass 2 (synthesize) — MOC proposal |
+| **Items** | 1 MOC proposal (4 accepted MOCs, 1 rejected) → 38 actions |
+| **Vault** | Privat-Test |
+| **Model** | Sonnet 4.6 (main) + Haiku 4.5 (synthesis-conductor) |
+| **Versions** | synthesis-conductor v0.7.0, moc-proposal-parser v0.2.0, instruction-render v0.17.0, kado_client v0.5.0, inbox-triage v0.7.0, upload-rendered v0.3.0 |
+
+| Metric | Main | Subagents (1) | Total |
+|--------|------|---------------|-------|
+| Turns | 8 | 15 | 23 |
+| Input tokens | 11 | 67 | 78 |
+| Cache read | 187,513 | 129,608 | 317,121 |
+| Cache create | 2,044 | 23,444 | 25,488 |
+| Output tokens | 1,238 | 1,730 | 2,968 |
+| Total context | 187,524 | 129,675 | 317,199 |
+| Peak turn ctx | 23,945 | 11,433 | — |
+| **Est. cost** | **$0.08** | **$0.15** | **$0.24** |
+
+**Notes**:
+- All fixes validated in one clean run: exact stem match (no duplicates), callout up:: regex, Rule 4.2 (old up:: → related::), append mode for related::, state-promoter MODIFIED, 429 retry, triage approved/accepted exclusion.
+- 5 children had existing up:: in callout blocks — all correctly detected and preserved as related:: (I30/I32/I34/I36/I38).
+- Cost down to $0.24 from initial $0.94 (Sonnet impersonated) — 74% reduction.

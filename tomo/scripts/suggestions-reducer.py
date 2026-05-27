@@ -314,10 +314,19 @@ def render_link_to_moc(action: dict, stem: str) -> str:
 _MOC_SUFFIX = " (MOC)"
 
 
+def _ensure_moc_suffix(title: str) -> str:
+    """Ensure title ends with ' (MOC)', converting trailing ' MOC' if present."""
+    if not title or title.strip() == "MOC":
+        return title
+    if title.endswith(_MOC_SUFFIX):
+        return title
+    if title.endswith(" MOC"):
+        return title[:-4] + _MOC_SUFFIX
+    return title + _MOC_SUFFIX
+
+
 def render_create_moc(action: dict, stem: str) -> str:
-    moc_title = action.get("moc_title", "")
-    if moc_title and not moc_title.endswith(_MOC_SUFFIX):
-        moc_title = moc_title + _MOC_SUFFIX
+    moc_title = _ensure_moc_suffix(action.get("moc_title", ""))
     parent = action.get("parent_moc", "")
     return (
         f"**Source:** [[{stem}]]\n"

@@ -878,11 +878,12 @@ def phase4_title(
 
     topic_title = _topic_title(cluster)
     profile_name = (profile.get("name") or "").strip()
-    # Resolve to lowercase short-name key. miyo.yaml → "MiYo"; lyt.yaml →
-    # "LYT (Linking Your Thinking)". The first whitespace-token, lowered,
-    # collapses both to a stable lookup key.
     short = profile_name.split()[0].lower() if profile_name else "miyo"
     suffix = _PROFILE_TITLE_SUFFIX.get(short, "")
+    if suffix and topic_title.endswith(" MOC"):
+        topic_title = topic_title[:-4]
+    if topic_title.strip().upper() == "MOC":
+        return topic_title
     return f"{topic_title}{suffix}"
 
 

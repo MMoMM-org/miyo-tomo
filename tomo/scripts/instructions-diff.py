@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -57,12 +57,14 @@ def _moc_stem(name: str | None) -> str:
     return _stem(name)
 
 
-def _parse_supporting_items(raw: str | None) -> list[str]:
-    """Parse 'S02, S06, S12' → ['S02','S06','S12']. Mirrors instruction-render."""
+def _parse_supporting_items(raw: str | list | None) -> list[str]:
+    """Parse supporting_items — list (moc-proposal-parser) or str (SNN IDs)."""
     if not raw:
         return []
-    s = raw.strip().strip("[](){}").replace(",", " ")
-    return [tok.strip().strip("[]()").lstrip("#") for tok in s.split() if tok.strip()]
+    if isinstance(raw, list):
+        return [s.strip() for s in raw if isinstance(s, str) and s.strip()]
+    s = raw.strip().strip("[](){}")
+    return [tok.strip().strip("[]()").lstrip("#") for tok in s.split(",") if tok.strip()]
 
 
 def load_json(path: Path) -> dict:

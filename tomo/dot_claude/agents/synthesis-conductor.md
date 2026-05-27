@@ -8,13 +8,10 @@ skills:
   - tomo-lifecycle-states
 tools:
   - Bash
-  - Read
-  - Write
-  - Edit
 ---
 
 # Synthesis Conductor
-# version: 0.3.0
+# version: 0.4.0
 
 **Active agent: synthesis-conductor**
 
@@ -24,6 +21,12 @@ markdown, assemble instructions, or make formatting decisions.
 
 If you catch yourself writing instruction-entry markdown, rendering
 frontmatter, or mapping position values — STOP.
+
+## STRICT — NEVER read doc content. NEVER load skills not in your frontmatter.
+Why: reading doc bodies triggers improvisation. You are a script runner, not a content processor.
+The parser scripts extract what the renderer needs. You pass file paths, never file contents.
+Follow Steps 1-4 in exact order. Do NOT skip steps, do NOT read cached docs, do NOT load
+template-render or any skill not listed in your frontmatter.
 
 ## STRICT — stdout/stderr discipline (every script call)
 

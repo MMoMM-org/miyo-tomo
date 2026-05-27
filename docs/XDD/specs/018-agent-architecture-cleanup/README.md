@@ -1,8 +1,8 @@
 # XDD 018 — Inbox Routing Redesign & Agent Decomposition
 
-**Status:** PLAN complete — 2026-05-26
-**Current phase:** plan/README.md (PLAN)
-**Branch when implementation starts:** `feat/018-inbox-routing-redesign`
+**Status:** Implemented — 2026-05-27
+**Current phase:** Implemented
+**Branch:** `feat/018-inbox-routing-redesign` (PR #2, merged)
 **Supersedes scope:** F-53, F-56, F-57, F-59, F-50 (iii), F-51, F-32 (partial)
 **Unblocks:** F-43 operator-live-validation (013-moc-creation-skill)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.14.0
+# version: 0.15.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -420,8 +420,12 @@ def emit_up_preservation_actions(
     actions: list[dict] = []
 
     if existing_up_target is None:
-        # Rule 4.1 / 4.4 — no existing up::; new MOC becomes up:: regardless of Override
-        actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+        if override_flag:
+            # Override checked + no existing up:: → related:: (user chose related for this MOC)
+            actions.append(_make_add_rel(counter, child_path, "related::", new_moc_stem))
+        else:
+            # No existing up:: + no override → up:: (new MOC becomes primary parent)
+            actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
     elif existing_up_target == new_moc_stem:
         # Self-link guard: existing up:: already points to the new MOC → no-op
         pass

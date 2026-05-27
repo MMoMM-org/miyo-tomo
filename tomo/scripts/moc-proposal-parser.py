@@ -133,7 +133,7 @@ def _parse_moc_block(
                 wl = _extract_wikilink(cb_text)
                 if wl:
                     parent = wl
-            # "kein parent" is handled by leaving parent empty
+            # "no parent" / "kein parent" is handled by leaving parent empty
 
         # Children section
         if section == "children":
@@ -145,7 +145,7 @@ def _parse_moc_block(
         # Override section
         if section == "override" and RE_CHECKED.match(stripped):
             cb_text = RE_CHECKED.match(stripped).group(1).lower()
-            if "behalten" in cb_text or "preserve" in cb_text or "related" in cb_text:
+            if "behalten" in cb_text or "keep" in cb_text or "preserve" in cb_text or "related" in cb_text:
                 override_preserve = True
 
     use_title = parsed_title or title

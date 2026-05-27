@@ -527,12 +527,10 @@ def test_override_flow_e2e(tmp_path):
     assert "- [ ] Accept" in body
 
     # Now simulate user ticking Accept + Override (preserve existing up::):
-    # The rendered checkbox text (from suggestions-reducer.py line 478) is German:
-    #   "- [ ] **Bestehende up:: behalten, neue MOC als `related::`**"
     accepted_body = body.replace("- [ ] Accept", "- [x] Accept")
     accepted_body = accepted_body.replace(
-        "- [ ] **Bestehende up:: behalten, neue MOC als `related::`**",
-        "- [x] **Bestehende up:: behalten, neue MOC als `related::`**",
+        "- [ ] **Keep existing up::, add new MOC as `related::`**",
+        "- [x] **Keep existing up::, add new MOC as `related::`**",
     )
 
     proposals = _parser.parse_moc_proposal_doc(accepted_body, filename=filename)

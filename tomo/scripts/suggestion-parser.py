@@ -553,7 +553,7 @@ RE_CLUSTER_LINE = re.compile(
 )
 
 # RE for children wikilinks: - [x] `[[stem]]` or - [ ] `[[stem]]`
-RE_CHILD_WIKILINK = re.compile(r"`\[\[([^\]]+)\]\]`")
+RE_CHILD_WIKILINK = re.compile(r"`?\[\[([^\]]+)\]\]`?")
 
 
 def _split_moc_blocks(lines: list[str]) -> list[tuple[str, str, list[str]]]:
@@ -864,7 +864,8 @@ def parse_moc_proposal_doc(content: str, filename: str = "") -> list[dict]:
                 cb = RE_CHECKED.match(stripped)
                 if cb:
                     cb_text = cb.group(1).lower()
-                    if "bestehende up::" in cb_text and "behalten" in cb_text:
+                    if ("behalten" in cb_text or "keep" in cb_text
+                            or "preserve" in cb_text or "related" in cb_text):
                         override_preserve = True
                         break
 

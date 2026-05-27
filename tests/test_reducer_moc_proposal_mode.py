@@ -307,13 +307,13 @@ def test_per_child_existing_up_annotation() -> None:
 
     path, body = render_moc_proposal_doc(report, _Cfg())
 
-    # Valid: "existing up:: [[...]] → wird `related::`"
-    assert "wird `related::`" in body, (
+    # Valid: "existing up:: [[...]] → becomes `related::`"
+    assert "becomes `related::`" in body, (
         f"Valid annotation not found in:\n{body}"
     )
 
-    # Absent: "kein up:: bisher"
-    assert "kein up:: bisher" in body, f"Absent annotation not found in:\n{body}"
+    # Absent: "no up:: yet"
+    assert "no up:: yet" in body, f"Absent annotation not found in:\n{body}"
 
     # Broken: full annotation string
     assert "(existing up:: broken — ignored)" in body, f"Broken annotation not found in:\n{body}"
@@ -350,10 +350,10 @@ def test_template_why_narrative() -> None:
     path1, body1 = render_moc_proposal_doc(report_with_parent, _Cfg())
 
     # Middle sentence present when parent exists
-    assert "haben up:: zur Klassifikation" in body1, (
+    assert "have up:: to classification" in body1, (
         f"Middle sentence missing from Why section:\n{body1}"
     )
-    assert "Diese MOC würde die Lücke füllen" in body1
+    assert "This MOC would fill the gap" in body1
 
     # ── Branch 2: no parent ───────────────────────────────────────────────────
     report_no_parent = _empty_report()
@@ -379,12 +379,12 @@ def test_template_why_narrative() -> None:
     path2, body2 = render_moc_proposal_doc(report_no_parent, _Cfg())
 
     # Middle sentence MUST NOT appear when no parent
-    assert "haben up:: zur Klassifikation" not in body2, (
+    assert "have up:: to classification" not in body2, (
         f"Middle sentence should NOT appear when parent is null:\n{body2}"
     )
     # First + last sentences still present
-    assert "Notes mit Topic-Overlap" in body2
-    assert "Diese MOC würde die Lücke füllen" in body2
+    assert "notes with topic overlap" in body2
+    assert "This MOC would fill the gap" in body2
 
     # Deterministic: calling render_moc_proposal_doc twice with same input
     # produces same body (modulo datetime in frontmatter)

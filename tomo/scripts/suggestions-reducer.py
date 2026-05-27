@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.2.0
+# version: 1.3.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -446,8 +446,8 @@ def _child_annotation(stem: str, existing_up_rows: list[dict]) -> str:
     """Return the parenthetical annotation for a child stem.
 
     Three branches (per SDD UI Guide §1015-1019 + ADR-1):
-      - state="absent"  → `(kein up:: bisher)`
-      - state="valid"   → `(existing up:: [[<target>]] → wird related::)`
+      - state="absent"  → `(no up:: yet)`
+      - state="valid"   → `(existing up:: [[<target>]] → becomes related::)`
       - state="broken"  → `(existing up:: broken — ignored)`
 
     Falls back to absent if the stem has no row in existing_up_rows.
@@ -457,12 +457,12 @@ def _child_annotation(stem: str, existing_up_rows: list[dict]) -> str:
             state = row.get("state", "absent")
             target = row.get("target")
             if state == "valid" and target:
-                return f"(existing up:: `[[{target}]]` → wird `related::`)"
+                return f"(existing up:: [[{target}]] → becomes `related::`)"
             elif state == "broken":
                 return "(existing up:: broken — ignored)"
             else:
-                return "(kein up:: bisher)"
-    return "(kein up:: bisher)"
+                return "(no up:: yet)"
+    return "(no up:: yet)"
 
 
 def _render_cluster_section(
@@ -514,24 +514,24 @@ def _render_cluster_section(
             moc_stem = opt.get("moc_stem", "")
             opt_conf = opt.get("confidence", 0.0)
             marker = "[x]" if i == 0 else "[ ]"
-            lines.append(f"- {marker} up:: `[[{moc_stem}]]` (confidence {opt_conf:.2f})")
-        lines.append("- [ ] kein parent (top-level MOC)")
+            lines.append(f"- {marker} up:: [[{moc_stem}]] (confidence {opt_conf:.2f})")
+        lines.append("- [ ] no parent (top-level MOC)")
     else:
-        lines.append("- [x] kein parent (top-level MOC)")
+        lines.append("- [x] no parent (top-level MOC)")
     lines.append("")
 
     lines.append(f"#### Children ({n_children})")
     lines.append("")
     for stem in candidate_stems:
         annotation = _child_annotation(stem, existing_up_rows)
-        lines.append(f"- [x] `[[{stem}]]` {annotation}")
+        lines.append(f"- [x] [[{stem}]] {annotation}")
     lines.append("")
 
     lines.append("#### up::-Handling Override")
     lines.append("")
     lines.append(
-        f"- [ ] **Bestehende up:: behalten, neue MOC als `related::`**"
-        f" (gilt für alle {n_children} Children)"
+        f"- [ ] **Keep existing up::, add new MOC as `related::`**"
+        f" (applies to all {n_children} children)"
     )
     lines.append("")
 
@@ -549,10 +549,10 @@ def _render_cluster_section(
         label = (top_opt.get("label") or "").strip()
         parent_label = label if label else None
 
-    first = f"{n_children} Notes mit Topic-Overlap {topics_csv} haben keine dedizierte MOC."
-    last = "Diese MOC würde die Lücke füllen."
+    first = f"{n_children} notes with topic overlap {topics_csv} have no dedicated MOC."
+    last = "This MOC would fill the gap."
     if parent_label and k_classified > 0:
-        middle = f"{k_classified} davon haben up:: zur Klassifikation {parent_label}."
+        middle = f"{k_classified} of them have up:: to classification {parent_label}."
         why = f"{first}\n{middle} {last}"
     else:
         why = f"{first}\n{last}"

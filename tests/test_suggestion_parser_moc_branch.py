@@ -270,9 +270,9 @@ def test_parse_children_list_extracts_ticked_only() -> None:
     # Tick Accept for the one cluster
     body_accepted = body.replace("- [ ] Accept", "- [x] Accept", 1)
 
-    # Untick note-no-1 in Children: body has `- [x] \`[[note-no-1]]\``
+    # Untick note-no-1 in Children
     body_modified = body_accepted.replace(
-        "- [x] `[[note-no-1]]`", "- [ ] `[[note-no-1]]`"
+        "- [x] [[note-no-1]]", "- [ ] [[note-no-1]]"
     )
 
     results = parse_moc_proposal_doc(body_modified, filename=_filename)
@@ -320,7 +320,7 @@ def test_parse_parent_single_select_first_check_wins() -> None:
 
 
 def test_parse_override_toggle_extracts_bool() -> None:
-    """Ticking 'Bestehende up:: behalten' → override_preserve_existing_up == True."""
+    """Ticking 'Keep existing up::' → override_preserve_existing_up == True."""
     report = _single_cluster_report()
     _filename, body = render_moc_proposal_doc(report, _Cfg())
 
@@ -329,7 +329,7 @@ def test_parse_override_toggle_extracts_bool() -> None:
 
     # Tick the override checkbox
     body_override = body_accepted.replace(
-        "- [ ] **Bestehende up:: behalten", "- [x] **Bestehende up:: behalten"
+        "- [ ] **Keep existing up::", "- [x] **Keep existing up::"
     )
 
     results = parse_moc_proposal_doc(body_override, filename=_filename)

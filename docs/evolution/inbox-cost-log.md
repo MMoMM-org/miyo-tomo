@@ -176,3 +176,32 @@ input/output/cache_create/cache_read). Actual billed cost may differ
 | Fan-resolve | 3 | $2.40 | force-atomic-handling v0.3.0 |
 | Pass 2 synthesize | 2 docs / 57 actions | $0.94 | No subagents |
 | **Total** | **18 sources → 57 actions** | **$15.35** | **3 /inbox invocations** |
+
+---
+
+### 2026-05-27 — MOC Propose, tag `topic/knowledge/lyt`, 30 candidates
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-05-27 |
+| **Phase** | MOC Propose (moc-architect) |
+| **Items** | 30 candidates → 11 clusters (6 overflow) |
+| **Vault** | Privat-Test |
+| **Model** | Sonnet 4.6 |
+| **Versions** | moc-architect v0.4.0, moc-discovery.py, suggestions-reducer moc-proposal mode |
+
+| Metric | Main | Subagents | Total |
+|--------|------|-----------|-------|
+| Turns | 33 | 0 | 33 |
+| Input tokens | 45 | — | 45 |
+| Cache read | 1,270,106 | — | 1,270,106 |
+| Cache create | 194,068 | — | 194,068 |
+| Output tokens | 49,083 | — | 49,083 |
+| Total context | 1,270,151 | — | 1,270,151 |
+| Peak turn ctx | 66,504 | — | — |
+| **Est. cost** | **$1.85** | **—** | **$1.85** |
+
+**Notes**:
+- No subagents — moc-architect runs as impersonated agent with deterministic scripts.
+- Topic extraction for 30 cache-miss candidates drove most of the output tokens (49K).
+- 6 overflow clusters beyond max_results reported — re-run with narrower query if needed.

@@ -1,4 +1,4 @@
-# version: 0.4.3
+# version: 0.4.4
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -192,9 +192,18 @@ class KadoClient:
         return self._search_all("byName", query=query, limit=limit)
 
     def resolve_stem_to_path(self, stem: str) -> "str | None":
-        """Resolve a note stem to its vault path, or None if not found."""
-        results = self.search_by_name(stem, limit=1)
-        return results[0]["path"] if results else None
+        """Resolve a note stem to its vault path, or None if not found.
+
+        Prefers .md files when multiple matches exist (e.g. a note and
+        an image share the same stem).
+        """
+        results = self.search_by_name(stem, limit=10)
+        if not results:
+            return None
+        for r in results:
+            if r["path"].endswith(".md"):
+                return r["path"]
+        return results[0]["path"]
 
     def path_exists(self, path: str) -> bool:
         """Check whether a vault path exists."""

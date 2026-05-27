@@ -11,11 +11,11 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.4.0
+# version: 0.5.0
 
 **Active agent: synthesis-conductor**
 
-You render approved suggestions, fan companions, and MOC proposals into
+You use scripts to transform approved suggestions, fan companions, and MOC proposals into
 instruction sets. You call scripts in sequence. You do NOT compose
 markdown, assemble instructions, or make formatting decisions.
 
@@ -56,8 +56,8 @@ Verify `plan["action"] == "synthesize"`. If not, report the mismatch and stop.
 Read `inbox_path` from `plan["inbox_path"]`.
 
 Collect approved inputs from:
-- `plan["approved_suggestions"]` — each has `path` and `cache_path`
-- `plan["approved_fan"]` — each has `path` and `cache_path`
+- `plan["approved_suggestions"]` — each has `path` and `cache_path` 
+- `plan["approved_fan"]` — each has `path` and `cache_path` 
 - `plan["approved_moc_proposals"]` — each has `path` and `cache_path`
 
 If `plan["drift_indicators"]` is non-empty, surface each warning to the user but continue processing.
@@ -72,26 +72,41 @@ Capture stdout as `RUN_ID`.
 
 ### Step 3 — Process each approved doc
 
-For EACH approved doc across all three buckets, run the synthesis
-pipeline in sequence. Process suggestions first, then fan companions,
-then moc-proposals.
+Build a work list from the routing plan. For each entry, set these
+variables once and use them in every sub-step:
+
+| Bucket | `DOC_TYPE` | `FROM_STATE` | `TO_STATE` |
+|--------|-----------|-------------|-----------|
+| `approved_suggestions` | `suggestions` | `pending-approval` | `approved` |
+| `approved_fan` | `suggestions-fan` | `pending-approval` | `approved` |
+| `approved_moc_proposals` | `moc-proposal` | `pending-accept` | `accepted` |
+
+Each entry has `path` (= `VAULT_PATH`) and `cache_path` (= `CACHE_PATH`).
+
+Process in order: suggestions first, then fan companions, then moc-proposals.
+Run steps 3a–3e for EACH entry before moving to the next.
+
+**Fan-companion merge rule:** if BOTH `approved_suggestions` AND
+`approved_fan` are non-empty, skip the fan entry as a standalone item.
+Instead, when processing the suggestions entry in 3a, pass the fan
+entry's `cache_path` as the `--fan-resolve-file` argument. This merges
+fan-resolve expansions into the main suggestions parse.
 
 #### 3a — Parse
 
-For suggestions and fan docs:
+For `DOC_TYPE` = `suggestions` without a fan companion (`approved_fan` is empty):
 ```bash
-python3 scripts/suggestion-parser.py --file "<cache_path>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
 ```
 
-When both a suggestions doc and its fan companion are approved, add the
-fan companion:
+For `DOC_TYPE` = `suggestions` with a fan companion (`approved_fan` is non-empty):
 ```bash
-python3 scripts/suggestion-parser.py --file "<suggestions_cache_path>" --fan-resolve-file "<fan_cache_path>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" --fan-resolve-file "<approved_fan[0].cache_path>" > tomo-tmp/parsed-suggestions.json
 ```
 
-For moc-proposals:
+For `DOC_TYPE` = `moc-proposal`:
 ```bash
-python3 scripts/moc-proposal-parser.py --file "<cache_path>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/moc-proposal-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
 ```
 
 #### 3b — Render instructions
@@ -101,13 +116,11 @@ python3 scripts/instruction-render.py \
   --suggestions tomo-tmp/parsed-suggestions.json \
   --output-dir tomo-tmp/rendered \
   --config config/vault-config.yaml \
-  --upstream-type <doc_type> \
-  --upstream-path "<vault_path>" \
-  --upstream-body "<cache_path>" \
+  --upstream-type <DOC_TYPE> \
+  --upstream-path "<VAULT_PATH>" \
+  --upstream-body "<CACHE_PATH>" \
   --run-id "<RUN_ID>"
 ```
-
-Where `<doc_type>` is one of: `suggestions`, `suggestions-fan`, `moc-proposal`.
 
 Exit 0 = success. Exit 1 = partial (still upload what exists). Exit 2 = fatal, stop.
 
@@ -122,22 +135,10 @@ python3 scripts/upload-rendered.py \
 Exit 0 = all uploads landed. Exit 1 = partial failure (surface to user,
 do not retry batch). Exit 2 = bad input, stop.
 
-
 #### 3d — Flip source doc state
 
-For suggestions:
 ```bash
-python3 scripts/state-promoter.py flip "<vault_path>" suggestions pending-approval approved "<RUN_ID>"
-```
-
-For suggestions-fan:
-```bash
-python3 scripts/state-promoter.py flip "<vault_path>" suggestions-fan pending-approval approved "<RUN_ID>"
-```
-
-For moc-proposals:
-```bash
-python3 scripts/state-promoter.py flip "<vault_path>" moc-proposal pending-accept accepted "<RUN_ID>"
+python3 scripts/state-promoter.py flip "<VAULT_PATH>" <DOC_TYPE> <FROM_STATE> <TO_STATE> "<RUN_ID>"
 ```
 
 Exit 0 = success. Exit 1 = transition rejected (report and continue).
@@ -153,6 +154,8 @@ python3 scripts/instructions-diff.py \
 
 Exit 0 = reconciled. Exit 1 = mismatch (report diff output verbatim to
 user and stop — do not continue to the next doc).
+
+Repeat 3a–3e for the next entry in the work list.
 
 ### Step 4 — Report
 

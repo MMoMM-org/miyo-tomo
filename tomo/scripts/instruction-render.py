@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.16.0
+# version: 0.17.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -273,7 +273,7 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 # Matches the first ``up:: [[Target]]`` line in a note body (Rule 4.x).
 # MULTILINE so ``^`` anchors to each line start.  Non-greedy ``(.+?)`` stops
 # at the first ``]]`` to avoid over-matching when the target contains brackets.
-_UP_MARKER_RE = re.compile(r"^\s*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
+_UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
 
 # Optional path fields per action kind. Required path fields are derived from
 # the JSON Schema (see tomo/schemas/instructions.schema.json) — this map only

@@ -1264,11 +1264,10 @@ def phase6_dedupe(
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Match a single ``up::`` relationship line whose target is a wikilink. The
-# anchor is a line-start (`(?m)^`) optionally preceded by whitespace; the
-# target captured group strips the surrounding `[[` / `]]`. Multi-line bodies
-# are scanned with `re.MULTILINE` so each `up::` line is a candidate match —
-# Phase 6.5 then picks the first hit and warns on multi-hits.
-_UP_MARKER_RE = re.compile(r"^\s*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
+# anchor is a line-start (`(?m)^`) optionally preceded by whitespace or
+# callout-quote prefix (``> ``); the target captured group strips the
+# surrounding ``[[`` / ``]]``.
+_UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
 
 
 def _extract_first_up_marker(content: str) -> str | None:

@@ -1,6 +1,6 @@
 # instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-> Last reviewed: 2026-04-29 (Format conventions per syntax / position mode added; `update_log_link.at_time` shape aligned with `update_log_entry` to `- HH:MM: <payload>` for the miyo profile).
+> Last reviewed: 2026-05-27 (018: supporting_items accepts string|array|null; related:: aggregation confirmed Tomo-side per §882-886; add_relationship mode field NOT added — Hashi always replaces; up:: regex handles callout/list prefixes).
 
 **Audience:** Authors and integrators of [Tomo Hashi (友橋)](https://github.com/MMoMM-org)
 — the Obsidian community plugin that reads Tomo's Pass-2 instruction set

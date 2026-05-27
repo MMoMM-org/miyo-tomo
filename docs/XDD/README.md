@@ -21,6 +21,7 @@
 | 013 | [MOC Creation Skill](specs/013-moc-creation-skill/) | Implemented | 6 phases, 29 tasks; implemented 2026-05-09 (feat/013-phase-4); live-vault validation pending (T6.2) |
 | 015 | [MSP Condition B — Accumulation](specs/015-msp-condition-b-accumulation/) | PRD-only | PRD drafted 2026-05-07; SDD + plan deferred pending stakeholder input (OQ1–OQ7) |
 | 016 | [Multi-Topic Atomic Notes](specs/016-multi-topic-atomic-notes/) | PRD-only | PRD drafted 2026-05-07; SDD + plan deferred pending stakeholder input (OQ1–OQ8) |
+| 018 | [Agent Architecture Cleanup](specs/018-agent-architecture-cleanup/) | Live-validated | Review + live testing complete 2026-05-27. Conductors refactored to pure routers, skills own pipelines, synthesis-conductor dispatched on haiku, moc-proposal-parser added, related:: aggregation Tomo-side, inbox-triage state coverage extended. |
 
 ## Architecture Reference
 

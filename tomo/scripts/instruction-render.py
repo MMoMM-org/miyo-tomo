@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.0
+# version: 0.14.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -570,12 +570,16 @@ def _build_move_note_actions(
 
 
 def _parse_supporting_items(raw: str | None) -> list[str]:
-    """Parse 'S02, S06, S12' (or 'S02 S06 S12', or with brackets) → ['S02','S06','S12']."""
+    """Parse 'S02, S06, S12' or 'Thought Collisions, Map of Content' → list of stems.
+
+    Splits on commas (not spaces) so multi-word stems like
+    'The 7 C's of Notemaking' stay intact.
+    """
     if not raw:
         return []
-    s = raw.strip().strip("[](){}").replace(",", " ")
+    s = raw.strip().strip("[](){}")
     out: list[str] = []
-    for tok in s.split():
+    for tok in s.split(","):
         tok = tok.strip().strip("[]()").lstrip("#")
         if tok:
             out.append(tok)

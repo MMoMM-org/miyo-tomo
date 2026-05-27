@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.6.0
+# version: 0.7.0
 
 **Active agent: synthesis-conductor**
 
@@ -77,7 +77,7 @@ variables once and use them in every sub-step:
 | `approved_fan` | `suggestions-fan` | `pending-approval` | `approved` |
 | `approved_moc_proposals` | `moc-proposal` | `pending-accept` | `accepted` |
 
-Each entry has `path` (= `VAULT_PATH`) and `cache_path` (= `CACHE_PATH`).
+Each entry has `path` (= `VAULT_PATH`), `cache_path` (= `CACHE_PATH`), and `modified` (= `MODIFIED`).
 
 Process in order: suggestions first, then fan companions, then moc-proposals.
 Run steps 3a–3e for EACH entry before moving to the next.

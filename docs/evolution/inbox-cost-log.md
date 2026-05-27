@@ -205,3 +205,35 @@ input/output/cache_create/cache_read). Actual billed cost may differ
 - No subagents — moc-architect runs as impersonated agent with deterministic scripts.
 - Topic extraction for 30 cache-miss candidates drove most of the output tokens (49K).
 - 6 overflow clusters beyond max_results reported — re-run with narrower query if needed.
+
+---
+
+### 2026-05-27 — Pass 2 (synthesize), MOC proposal, dispatched haiku
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-05-27 |
+| **Phase** | Pass 2 (synthesize) — MOC proposal |
+| **Items** | 1 MOC proposal (4 accepted MOCs, 1 rejected) |
+| **Vault** | Privat-Test |
+| **Model** | Sonnet 4.6 (main) + Haiku 4.5 (synthesis-conductor) |
+| **Versions** | synthesis-conductor v0.6.0 (haiku, dispatched), moc-proposal-parser v0.1.0, /inbox v0.11.0 |
+
+| Metric | Main | Subagents (1) | Total |
+|--------|------|---------------|-------|
+| Turns | 9 | 15 | 24 |
+| Input tokens | 12 | 74 | 86 |
+| Cache read | 179,886 | 139,462 | 319,348 |
+| Cache create | 37,731 | 26,148 | 63,879 |
+| Output tokens | 1,400 | 1,997 | 3,397 |
+| Total context | 179,898 | 139,536 | 319,434 |
+| Peak turn ctx | 25,045 | 12,778 | — |
+| **Est. cost** | **$0.22** | **$0.17** | **$0.39** |
+
+**Notes**:
+- First run with haiku-dispatched synthesis-conductor. Pipeline compliance: 5/5 scripts called in exact order. Zero improvisation.
+- 59% cheaper than Sonnet-impersonated run ($0.39 vs $0.94). Haiku follows literal scripts perfectly.
+- Partial failures (not conductor bugs):
+  - upload-rendered.py: Kado 429 rate limit — 4 MOC notes failed to upload. Instructions + manifest landed.
+  - state-promoter.py: exit 1 — missing expectedModified argument. Need to pass from routing plan.
+- Kado 429 likely appears because haiku is faster than Sonnet, so upload-rendered fires rapid kado-write calls. Will also affect normal Pass 2 at scale.

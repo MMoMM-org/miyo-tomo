@@ -388,18 +388,29 @@ def emit_up_preservation_actions(
     try:
         child_path = kado_client.resolve_stem_to_path(child_stem)
     except KadoError:
-        # Child deleted between proposal write and apply (SDD edge case).
-        # Option A: emit a schema-valid add_relationship action with string
-        # placeholders so Hashi can filter on applied=False + error=child-missing
-        # without the action violating additionalProperties:false on the schema.
         return [{
             "id": _next_id(counter),
             "action": "add_relationship",
-            "target_moc_path": child_stem,  # best-effort stem as placeholder path
-            "marker": "up::",               # intent was up::
+            "target_moc_path": child_stem,
+            "marker": "up::",
             "line": f"up:: [[{new_moc_stem}]]",
             "applied": False,
             "error": "child-missing",
+        }]
+
+    if not child_path.endswith(".md"):
+        print(
+            f"  [warn] {child_stem!r} resolved to non-markdown: {child_path} — skipping",
+            file=sys.stderr,
+        )
+        return [{
+            "id": _next_id(counter),
+            "action": "add_relationship",
+            "target_moc_path": child_path,
+            "marker": "up::",
+            "line": f"up:: [[{new_moc_stem}]]",
+            "applied": False,
+            "error": "non-markdown-asset",
         }]
 
     note = kado_client.read_note(child_path)

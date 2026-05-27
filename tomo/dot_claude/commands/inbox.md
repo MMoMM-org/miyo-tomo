@@ -4,7 +4,7 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --recover"
 ---
 # /inbox
-# version: 0.10.0
+# version: 0.11.0
 
 ## Arguments
 
@@ -36,9 +36,22 @@ Extract the `action` field from the JSON output.
 |--------|-------|
 | suggest | IMPERSONATE suggestion-conductor |
 | fan-resolve | IMPERSONATE suggestion-conductor |
-| synthesize | IMPERSONATE synthesis-conductor |
+| synthesize | DISPATCH synthesis-conductor (see Step 3b) |
 | transcribe | Dispatch voice-transcriber directly (see Step 4) |
 | idle | Surface status to user (see Step 5) |
+
+### 3b. Synthesize (dispatch)
+
+When action is `synthesize`, dispatch the synthesis-conductor as a subagent:
+
+```
+Agent(
+  name: "synthesis-conductor"
+  prompt: "Run Pass 2 synthesis. The routing plan is at tomo-tmp/routing-plan.json. Follow your workflow Steps 1-4 exactly."
+)
+```
+
+Report the synthesis-conductor's output to the user. Exit.
 
 ### 4. Transcribe (stop-gate)
 
@@ -70,5 +83,8 @@ If `drift_indicators` is non-empty, surface those as warnings.
 
 Exit.
 
-# STRICT — IMPERSONATE conductors, NEVER dispatch them via Agent/Task tool.
-# Why: Conductors need the Agent tool for leaf dispatch; dispatched subagents cannot use Agent.
+# STRICT — IMPERSONATE suggestion-conductor (needs Agent tool for leaf dispatch).
+# STRICT — DISPATCH synthesis-conductor (pure script runner, no Agent tool needed).
+# Why: dispatched subagents cannot use Agent tool. suggestion-conductor dispatches
+# inbox-analyst leaf agents so it must be impersonated. synthesis-conductor only
+# calls Bash scripts so dispatch is safe and keeps its context isolated.

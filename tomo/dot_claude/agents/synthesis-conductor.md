@@ -1,17 +1,13 @@
 ---
 name: synthesis-conductor
 description: Pass 2 orchestrator — renders instructions from approved suggestions, fan docs, and MOC proposals. Reads from inbox-cache (not Kado) for cached doc bodies.
-model: sonnet
-skills:
-  - routing-plan-consumer
-  - instructions-coverage
-  - tomo-lifecycle-states
+model: haiku
 tools:
   - Bash
 ---
 
 # Synthesis Conductor
-# version: 0.5.0
+# version: 0.6.0
 
 **Active agent: synthesis-conductor**
 

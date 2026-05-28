@@ -129,11 +129,11 @@ Zero-friction editor context for containerized Claude Code. After a one-time set
 #### Feature 5: Vault Path Resolution for Bridge Context
 
 - **User Story:** As a Tomo user, when the IDE Bridge tells Claude which file I'm viewing, I want Claude to read that file's full content (and related notes) through Kado, so it can reason about more than just the pushed selection.
+- **Decided mechanism (Kokoro ADR-019 §5, 2026-05-28):** a namespace-based routing rule in the Tomo container `CLAUDE.md` (rendered from `tomo/CLAUDE.md.template`). Vault-note paths — the editor-context active file, `[[wikilinks]]`, `@`-mentions, and `kado-search` results — are read via `kado-read` first; local `Read` is reserved for container-local working files; an ambiguous bare relative path tries `kado-read` first and falls back to local `Read` only on a Kado not-found/denied result. No protocol prefix; Hashi emits plain vault-relative paths. Mechanism (b) (`kado:` prefix) is retained as a documented reserve.
 - **Acceptance Criteria:**
-  - [ ] Given the selected text is pushed over the IDE Bridge, When Claude uses the selection, Then no Kado read is required for the selection content itself
-  - [ ] Given the IDE Bridge reports an active file with a vault-relative path, When Claude needs content beyond the selection, Then it reads the file via `kado-read` using that vault-relative path — never the container's local filesystem (the vault is not mounted in the container)
-  - [ ] Given a file reference Claude cannot resolve via Kado (denied by ACL or capability gate), When Claude attempts the read, Then the denial surfaces clearly rather than silently falling back to a non-existent local path
-- **Open mechanism (resolve before implementation — see Open Questions):** how Claude is steered to route bridge / vault-relative paths to `kado-read`. The vault FS is not mounted, so a bare path is unresolvable locally; a convention is needed. Being coordinated with Hashi and Kokoro.
+  - [x] Given the selected text is pushed over the IDE Bridge, When Claude uses the selection, Then no Kado read is required for the selection content itself
+  - [x] Given the IDE Bridge reports an active file with a vault-relative path, When Claude needs content beyond the selection, Then it reads the file via `kado-read` using that vault-relative path — never the container's local filesystem (the vault is not mounted)
+  - [x] Given an ambiguous bare relative path, When `kado-read` returns not-found/denied, Then Claude falls back to local `Read` (container-local files only); a true vault path that is not local errors (fails closed)
 
 ### Should Have Features
 
@@ -249,11 +249,7 @@ _None for this phase — the statusline redesign and the launch-time reachabilit
 - [x] Port allocation: default 23027 for IDE Bridge (per ADR-019), user-configurable → **Decided 2026-05-28**
 - [x] Kado port showing 23027 vs canonical 23026 → **Resolved: not a 019 bug** — the user runs several Kado instances, so this is a local configuration artifact; Kado's default remains 23026
 - [x] Lock file `workspaceFolders` value → **Empty** (IDE-only field, not used in this topology) (2026-05-28)
-- [ ] **How does the Tomo Claude session resolve IDE-Bridge / vault-relative file paths to Kado reads?** The vault filesystem is not mounted in the container, so a bare path (`Notes/Foo.md`) is unresolvable locally — only Kado can read it. Candidate mechanisms (need research / Hashi + Kokoro answer):
-  - (a) CLAUDE.md rule — any path not starting with `/` → attempt a `kado-read` first (mirrors the existing `@`-redirection convention, which works today)
-  - (b) Transport-prefixed references from Hashi — e.g. `kado:Notes/Foo.md` — so the routing is explicit in the reference itself
-  - (c) Other (TBD)
-  - **Cross-repo:** the same question is being raised in Hashi; the resolution must be reflected in Kokoro per the cross-component-contract rule. Feature 5 depends on this.
+- [x] **How does the Tomo Claude session resolve IDE-Bridge / vault-relative file paths to Kado reads?** → **Resolved 2026-05-28 (Kokoro ADR-019 §5): mechanism (a)** — a namespace-based routing rule in `tomo/CLAUDE.md.template` (kado-read-first for vault-note paths incl. the bridge active file, wikilinks, @-mentions, and search results; local `Read` for container-local files; not-found/denied fallback). No protocol prefix. Mechanism (b) (`kado:` prefix) retained as a documented reserve. `workspaceFolders`-empty confirmed by Kokoro.
 
 ---
 

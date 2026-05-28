@@ -5,15 +5,15 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-05-27 |
-| **Current Phase** | PRD |
+| **Current Phase** | SDD |
 | **Last Updated** | 2026-05-28 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | 5 Must-Have, 2 Should (banner+statusline), 0 Could (v1.2); 1 open cross-repo question (vault-path resolution) |
-| solution.md | pending | |
+| requirements.md | completed | 5 Must-Have, 2 Should (banner+statusline), 0 Could (v1.2); vault-path resolution resolved (Kokoro ADR-019 §5) |
+| solution.md | completed | Feature-mirror architecture; ADR-1/2/3 confirmed; ADR-5 vault-path routing (Kokoro ADR-019 §5) |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -27,6 +27,8 @@
 | 2026-05-27 | PRD completed | 4 Must-Have features (lock file, proxy, image, wizard), 1 Should (banner), 1 Could (health check). 14 acceptance criteria. |
 | 2026-05-28 | PRD reconciled with review notes (v1.1) | Port user-configurable (default 23027); dropped 0600 lock-file permission (host-only/cleartext/bind-mount); folded health check into launch banner; added statusline connection indicators (kanji+port) for Kado + Hashi; multiple lock files → fail fast. |
 | 2026-05-28 | Vault-path resolution added (v1.2) | New Must-Have Feature 5: Claude resolves IDE-Bridge vault-relative paths via kado-read (vault not mounted in container). `workspaceFolders` assumed empty. Mechanism (CLAUDE.md non-`/` rule vs `kado:` transport prefix vs other) is an OPEN cross-repo question — being raised in Hashi, to be settled in Kokoro. |
+| 2026-05-28 | SDD completed | Feature-mirror architecture (reuse the voice-feature pattern across install/Dockerfile/entrypoint/begin-tomo/statusline). ADR-1 socat in base image; ADR-2 entrypoint spawns socat unsupervised; ADR-3 TCP-connect reachability probe — all confirmed. ADR-4 token-cleartext confirmed by PRD. Feature 5 design parked pending Kokoro decision. |
+| 2026-05-28 | Feature 5 unblocked (Kokoro ADR-019 §5) | Mechanism (a) chosen: namespace-based routing rule in tomo/CLAUDE.md.template (kado-read-first for vault paths; local Read for container-local; not-found/denied fallback). Recorded as SDD ADR-5. Feature 5 design + ACs filled in; implementation (CLAUDE.md.template edit) sequenced for the plan. workspaceFolders-empty confirmed. |
 
 ## Context
 

@@ -363,7 +363,7 @@ def test_disable_removes_lock_preserves_config(tmp_path):
     assert r3.returncode == 0, f"remove lock stderr: {r3.stderr}"
     assert not lock_file.exists(), "lock file should have been removed"
 
-    # 4. write_ide_bridge_config with disabled=false still preserves token+port
+    # 4. write_ide_bridge_config with ENABLED=false still preserves token+port
     script_write = textwrap.dedent(f"""\
         print_step() {{ :; }}
         print_ok()   {{ :; }}
@@ -392,6 +392,32 @@ def test_fresh_install_decline_stays_disabled(tmp_path):
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
     assert result["ENABLED"] == "false"
+
+
+# ── Edge: write_ide_bridge_config rejects non-existent target ────────────────
+
+def test_write_ide_bridge_config_missing_target_returns_error(tmp_path):
+    """write_ide_bridge_config returns 2 and prints to stderr when target absent.
+
+    This guards the install/update callers against a data-loss class where a
+    missing tomo-install.json would silently produce no output file.
+    """
+    missing = tmp_path / "does-not-exist.json"
+
+    script = textwrap.dedent(f"""\
+        print_step() {{ :; }}
+        print_ok()   {{ :; }}
+        print_warn() {{ :; }}
+        print_err()  {{ :; }}
+        . "{CONFIGURE_SH}"
+        IDE_BRIDGE_ENABLED=false
+        IDE_BRIDGE_TOKEN="{VALID_UUID}"
+        IDE_BRIDGE_PORT=23027
+        write_ide_bridge_config "{missing}"
+    """)
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10)
+    assert r.returncode == 2
+    assert "target does not exist" in r.stderr
 
 
 if __name__ == "__main__":

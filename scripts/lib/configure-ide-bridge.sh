@@ -46,8 +46,7 @@ write_ide_lock() {
     mkdir -p "$ide_dir"
     chmod 700 "$ide_dir"
     jq -n \
-       --argjson port 0 \
-       --arg     tok  "$token" \
+       --arg tok "$token" \
        '{ pid: 0, workspaceFolders: [], ideName: "Obsidian", transport: "ws", authToken: $tok }' \
        > "${ide_dir}/${port}.lock"
 }
@@ -67,8 +66,8 @@ remove_ide_lock() {
 _is_uuid() {
     local s
     # Trim leading/trailing whitespace (bash 3.2 compatible)
-    s="${1#"${1%%[! ]*}"}"
-    s="${s%"${s##*[! ]}"}"
+    s="${1#"${1%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
     case "$s" in
         [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])
             return 0
@@ -115,8 +114,8 @@ _prompt_token() {
         read -rp "  Auth token (UUID)${prompt_hint}: " raw
         # Trim whitespace
         local trimmed
-        trimmed="${raw#"${raw%%[! ]*}"}"
-        trimmed="${trimmed%"${trimmed##*[! ]}"}"
+        trimmed="${raw#"${raw%%[![:space:]]*}"}"
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
         if [ -z "$trimmed" ] && [ -n "$prior" ]; then
             IDE_BRIDGE_TOKEN="$prior"
             return 0

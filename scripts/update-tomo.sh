@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.4.3
+# version: 0.4.4
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -121,7 +121,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 INSTANCE_PATH=$(jq -r '.instancePath' "$CONFIG_FILE")
-HOME_DIR=$(jq -r '.homePath' "$CONFIG_FILE")
+HOME_DIR=$(jq -r '.homePath // empty' "$CONFIG_FILE")
 
 if [ ! -d "$INSTANCE_PATH" ]; then
     print_err "Instance directory not found: $INSTANCE_PATH"
@@ -537,6 +537,7 @@ if [ "$YES" != "true" ]; then
     NEEDS_WRITE=$(( $(plan_count_status update) + $(plan_count_status create) + $(plan_count_status retire) ))
     if [ "$voice_host_changed" = "true" ];   then NEEDS_WRITE=$((NEEDS_WRITE + 1)); fi
     if [ "$voice_mirror_changed" = "true" ]; then NEEDS_WRITE=$((NEEDS_WRITE + 1)); fi
+    if [ "$ide_bridge_changed" = "true" ];   then NEEDS_WRITE=$((NEEDS_WRITE + 1)); fi
     if [ "$NEEDS_WRITE" -eq 0 ]; then
         print_info "Nothing to do (every file is current). Proceeding to refresh install-config only."
     else
@@ -707,19 +708,19 @@ if [ "$ide_bridge_changed" = "true" ] && [ "$DRY_RUN" = "false" ]; then
         mark_did "failed" "tomo-install.json (.ide_bridge)" "write_ide_bridge_config failed"
         DID_FAILED=$((DID_FAILED + 1))
     fi
+    lock_path="${HOME_DIR}/.claude/ide/${IDE_BRIDGE_PORT}.lock"
     if [ "$IDE_BRIDGE_ENABLED" = "true" ]; then
-        lock_path="${HOME_DIR}/.claude/ide/${IDE_BRIDGE_PORT}.lock"
-        if [ -f "$lock_path" ]; then
-            write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN"
+        lock_existed=false
+        [ -f "$lock_path" ] && lock_existed=true
+        write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN"
+        if [ "$lock_existed" = "true" ]; then
             mark_did "updated" "ide lock: $lock_path" ""
             DID_UPDATED=$((DID_UPDATED + 1))
         else
-            write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN"
             mark_did "created" "ide lock: $lock_path" ""
             DID_CREATED=$((DID_CREATED + 1))
         fi
     else
-        lock_path="${HOME_DIR}/.claude/ide/${IDE_BRIDGE_PORT}.lock"
         if [ -f "$lock_path" ]; then
             remove_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT"
             mark_did "deleted" "ide lock: $lock_path" ""

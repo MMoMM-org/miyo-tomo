@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_configure_ide_bridge.py — Pytest-driven tests for the IDE Bridge wizard lib.
 
 Drives `scripts/lib/configure-ide-bridge.sh` via subprocess with controlled
@@ -449,7 +449,7 @@ def test_install_smoke_ide_bridge_block_exists(tmp_path):
             "--vault", str(vault_dir),
             "--non-interactive",
             "--instance-location", str(tmp_path),
-            "--instance-name", "iso",
+            "--instance-name", "tomo-instance",
             "--home-dir", str(home_dir),
             "--config-file", str(cfg_file),
         ],
@@ -529,6 +529,7 @@ def test_write_ide_bridge_config_in_install_context(tmp_path):
     ib = data["ide_bridge"]
     assert ib["enabled"] is False
     assert ib["port"] == 23027
+    assert "auth_token" in ib
     # Existing voice block must survive
     assert "voice" in data
 

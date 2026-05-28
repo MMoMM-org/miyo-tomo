@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Wizard Lib & Lock File"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -60,7 +60,7 @@ Establishes the configuration foundation: a bash wizard lib that collects IDE Br
      - Lock file matches the exact schema; bad token/port rejected; disable preserves config `[ref: PRD/F1-AC1, F1-AC4, F4-AC4, F4-AC5; Business Rule 4]`
      - Wizard is non-destructive in `--non-interactive` `[ref: PRD/F4-AC2]`
 
-- [ ] **T1.2 Wire the wizard into `install-tomo.sh` and `update-tomo.sh`** `[activity: backend-shell]`
+- [x] **T1.2 Wire the wizard into `install-tomo.sh` and `update-tomo.sh`** `[activity: backend-shell]`
 
   1. **Prime**: Re-read the voice call-sites you mirror — `install-tomo.sh` Step 6c (`configure_voice`, lines ~910-930) and the save-config block (lines ~1257-1298, including the `"voice": {}` seed and the `write_voice_config`/instance-mirror calls); `update-tomo.sh` voice wizard (lines ~424-469) and persist block (lines ~631-659). Note the **deviation**: IDE Bridge writes **no instance mirror** (the lock file in bind-mounted `tomo-home` is the runtime source).
   2. **Test**:
@@ -75,6 +75,6 @@ Establishes the configuration foundation: a bash wizard lib that collects IDE Br
      - `update-tomo.sh` creates the lock without a reinstall, and the keep/update/disable path works `[ref: PRD/F1-AC2, F1-AC3, F4-AC3]`
      - Voice wizard + existing install/update flows unchanged `[ref: CON-6]`
 
-- [ ] **T1.3 Phase Validation** `[activity: validate]`
+- [x] **T1.3 Phase Validation** `[activity: validate]`
 
   Run `pytest tests/ide_bridge/ tests/voice/ -v` and the full `pytest tests/`. `/bin/bash -n` on `configure-ide-bridge.sh`, `install-tomo.sh`, `update-tomo.sh`. Confirm no test touched the real `$REPO_ROOT/tomo-instance` (all used `tmp_path` + isolation flags). Verify against PRD Feature 1 + Feature 4 ACs and SDD interface spec.

@@ -12,7 +12,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | 4 Must-Have, 2 Should (banner+statusline), 0 Could; port configurable, 0600 dropped (v1.1) |
+| requirements.md | completed | 5 Must-Have, 2 Should (banner+statusline), 0 Could (v1.2); 1 open cross-repo question (vault-path resolution) |
 | solution.md | pending | |
 | plan/ | pending | |
 
@@ -26,6 +26,7 @@
 | 2026-05-27 | Lock file in tomo-home, not host mount | User decision: IDE lock file lives in tomo-home/.claude/ide/, managed by install/update scripts, not mounted from host ~/.claude/ide/. |
 | 2026-05-27 | PRD completed | 4 Must-Have features (lock file, proxy, image, wizard), 1 Should (banner), 1 Could (health check). 14 acceptance criteria. |
 | 2026-05-28 | PRD reconciled with review notes (v1.1) | Port user-configurable (default 23027); dropped 0600 lock-file permission (host-only/cleartext/bind-mount); folded health check into launch banner; added statusline connection indicators (kanji+port) for Kado + Hashi; multiple lock files → fail fast. |
+| 2026-05-28 | Vault-path resolution added (v1.2) | New Must-Have Feature 5: Claude resolves IDE-Bridge vault-relative paths via kado-read (vault not mounted in container). `workspaceFolders` assumed empty. Mechanism (CLAUDE.md non-`/` rule vs `kado:` transport prefix vs other) is an OPEN cross-repo question — being raised in Hashi, to be settled in Kokoro. |
 
 ## Context
 

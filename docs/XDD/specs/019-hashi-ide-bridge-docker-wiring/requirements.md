@@ -1,7 +1,7 @@
 ---
 title: "Hashi IDE Bridge Docker Wiring"
 status: draft
-version: "1.1"
+version: "1.2"
 ---
 
 # Product Requirements Document
@@ -126,9 +126,18 @@ Zero-friction editor context for containerized Claude Code. After a one-time set
   - [x] Given the user enters an invalid auth token (not a UUID), When the wizard validates input, Then it rejects the token with a clear error message
   - [x] Given the user does not specify a port, When the wizard runs, Then it defaults to 23027 (Kado uses 23026); a non-numeric or out-of-range port is rejected with a clear error message
 
+#### Feature 5: Vault Path Resolution for Bridge Context
+
+- **User Story:** As a Tomo user, when the IDE Bridge tells Claude which file I'm viewing, I want Claude to read that file's full content (and related notes) through Kado, so it can reason about more than just the pushed selection.
+- **Acceptance Criteria:**
+  - [ ] Given the selected text is pushed over the IDE Bridge, When Claude uses the selection, Then no Kado read is required for the selection content itself
+  - [ ] Given the IDE Bridge reports an active file with a vault-relative path, When Claude needs content beyond the selection, Then it reads the file via `kado-read` using that vault-relative path — never the container's local filesystem (the vault is not mounted in the container)
+  - [ ] Given a file reference Claude cannot resolve via Kado (denied by ACL or capability gate), When Claude attempts the read, Then the denial surfaces clearly rather than silently falling back to a non-existent local path
+- **Open mechanism (resolve before implementation — see Open Questions):** how Claude is steered to route bridge / vault-relative paths to `kado-read`. The vault FS is not mounted, so a bare path is unresolvable locally; a convention is needed. Being coordinated with Hashi and Kokoro.
+
 ### Should Have Features
 
-#### Feature 5: Launch Banner Status
+#### Feature 6: Launch Banner Status
 
 - **User Story:** As a Tomo user, I want the launch banner to show IDE Bridge status — including whether Hashi is actually reachable — so that I know whether editor context will be available in this session.
 - **Acceptance Criteria:**
@@ -136,7 +145,7 @@ Zero-friction editor context for containerized Claude Code. After a one-time set
   - [x] Given IDE Bridge is not configured, When begin-tomo.sh launches, Then the banner shows "IDE: not configured" (or similar, dimmed)
   - [x] Given IDE Bridge is configured but Hashi is not reachable, When begin-tomo.sh launches, Then a non-blocking warning is shown and the launch continues (reachability check, mirroring how Kado's status is probed at launch)
 
-#### Feature 6: Statusline Connection Indicators
+#### Feature 7: Statusline Connection Indicators
 
 - **User Story:** As a Tomo user, I want the Tomo statusline to show the Hashi IDE Bridge connection state alongside Kado, in a consistent kanji + port format, so I can see both connections at a glance.
 - **Acceptance Criteria:**
@@ -146,7 +155,7 @@ Zero-friction editor context for containerized Claude Code. After a one-time set
 
 ### Could Have Features
 
-_None for this phase — the statusline redesign and the launch-time reachability check raised during review were promoted to Should-Have (Features 5 and 6)._
+_None for this phase — the statusline redesign and the launch-time reachability check raised during review were promoted to Should-Have (Features 6 and 7)._
 
 ### Won't Have (This Phase)
 
@@ -221,6 +230,7 @@ _None for this phase — the statusline redesign and the launch-time reachabilit
 - The auth token is a UUID that doesn't change unless the user resets Hashi
 - `host.docker.internal` resolves correctly in the Tomo container (works on macOS with OrbStack/Docker Desktop)
 - Claude Code discovers the lock file at `~/.claude/ide/<port>.lock` automatically — no env vars needed
+- The lock file's `workspaceFolders` field is empty — it is an IDE-only field (VS Code / JetBrains workspace scoping) with no meaning in this host/container topology
 - The proxy tool (socat) is available in Debian Bookworm's apt repositories
 
 ## Risks and Mitigations
@@ -238,6 +248,12 @@ _None for this phase — the statusline redesign and the launch-time reachabilit
 - [x] Lock file location: host mount vs tomo-home → **Decided: tomo-home** (user decision 2026-05-27)
 - [x] Port allocation: default 23027 for IDE Bridge (per ADR-019), user-configurable → **Decided 2026-05-28**
 - [x] Kado port showing 23027 vs canonical 23026 → **Resolved: not a 019 bug** — the user runs several Kado instances, so this is a local configuration artifact; Kado's default remains 23026
+- [x] Lock file `workspaceFolders` value → **Empty** (IDE-only field, not used in this topology) (2026-05-28)
+- [ ] **How does the Tomo Claude session resolve IDE-Bridge / vault-relative file paths to Kado reads?** The vault filesystem is not mounted in the container, so a bare path (`Notes/Foo.md`) is unresolvable locally — only Kado can read it. Candidate mechanisms (need research / Hashi + Kokoro answer):
+  - (a) CLAUDE.md rule — any path not starting with `/` → attempt a `kado-read` first (mirrors the existing `@`-redirection convention, which works today)
+  - (b) Transport-prefixed references from Hashi — e.g. `kado:Notes/Foo.md` — so the routing is explicit in the reference itself
+  - (c) Other (TBD)
+  - **Cross-repo:** the same question is being raised in Hashi; the resolution must be reflected in Kokoro per the cross-component-contract rule. Feature 5 depends on this.
 
 ---
 

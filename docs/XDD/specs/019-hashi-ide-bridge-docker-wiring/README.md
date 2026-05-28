@@ -1,0 +1,46 @@
+# Specification: 019-hashi-ide-bridge-docker-wiring
+
+## Status
+
+| Field | Value |
+|-------|-------|
+| **Created** | 2026-05-27 |
+| **Current Phase** | PRD |
+| **Last Updated** | 2026-05-28 |
+
+## Documents
+
+| Document | Status | Notes |
+|----------|--------|-------|
+| requirements.md | completed | 4 Must-Have, 2 Should (banner+statusline), 0 Could; port configurable, 0600 dropped (v1.1) |
+| solution.md | pending | |
+| plan/ | pending | |
+
+**Status values**: `pending` | `in_progress` | `completed` | `skipped`
+
+## Decisions Log
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-27 | Spec created | Kokoro ADR-019 approved Hashi IDE Bridge. Two handoffs received (from-kokoro, from-hashi) requesting Tomo Docker wiring. |
+| 2026-05-27 | Lock file in tomo-home, not host mount | User decision: IDE lock file lives in tomo-home/.claude/ide/, managed by install/update scripts, not mounted from host ~/.claude/ide/. |
+| 2026-05-27 | PRD completed | 4 Must-Have features (lock file, proxy, image, wizard), 1 Should (banner), 1 Could (health check). 14 acceptance criteria. |
+| 2026-05-28 | PRD reconciled with review notes (v1.1) | Port user-configurable (default 23027); dropped 0600 lock-file permission (host-only/cleartext/bind-mount); folded health check into launch banner; added statusline connection indicators (kanji+port) for Kado + Hashi; multiple lock files → fail fast. |
+
+## Context
+
+Add Docker-side support for Hashi's IDE Bridge (Kokoro ADR-019). The IDE Bridge gives Claude Code inside the Tomo Docker container real-time editor context from Obsidian (current file, selection, cursor position).
+
+Three integration points:
+1. **Dockerfile** — add socat package for TCP proxying
+2. **Install/Update scripts** — wizard step to configure IDE Bridge (auth token, lock file generation in tomo-home/.claude/ide/)
+3. **Entrypoint** — conditional socat proxy forwarding container localhost:23027 → host.docker.internal:23027
+
+Source handoffs:
+- `_inbox/from-kokoro/2026-05-27_kokoro-to-tomo_ide-bridge-docker-wiring.md` (authoritative)
+- `_inbox/from-hashi/2026-05-27_hashi-to-tomo_ide-bridge-docker-wiring.md`
+
+Bonus: fix stale Kado port reference (23027→23026) in docs/ai/memory/tools.md.
+
+---
+*This file is managed by the xdd-meta skill.*

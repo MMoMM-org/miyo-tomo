@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # lifecycle prefix, voice transcription, and vault-config.yaml generation.
-# version: 0.3.1
+# version: 0.3.2
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -179,6 +179,11 @@ prompt_yn() {
 # VOICE_LANGUAGE globals. Uses print_step/print_ok/print_warn/print_err.
 # shellcheck source=lib/configure-voice.sh
 . "$SCRIPT_DIR/lib/configure-voice.sh"
+
+# Hashi IDE Bridge wizard (XDD 019) — sets IDE_BRIDGE_ENABLED / IDE_BRIDGE_TOKEN /
+# IDE_BRIDGE_PORT globals. Uses print_step/print_ok/print_warn/print_err.
+# shellcheck source=lib/configure-ide-bridge.sh
+. "$SCRIPT_DIR/lib/configure-ide-bridge.sh"
 
 # ── Step 1: Welcome ──────────────────────────────────────
 
@@ -929,6 +934,27 @@ configure_voice \
     "$VOICE_MODELS_DIR" \
     "$NON_INTERACTIVE"
 
+# ── Step 6d: Hashi IDE Bridge (XDD 019) ─────────────────
+# Load prior IDE Bridge settings from tomo-install.json when re-running install,
+# then run the stateful wizard. Lock file generation is deferred until HOME_DIR
+# is resolved in Step 9 below.
+
+PRIOR_IDE_ENABLED="false"
+PRIOR_IDE_TOKEN=""
+PRIOR_IDE_PORT="23027"
+if [ -f "$CONFIG_FILE" ]; then
+    PRIOR_IDE_ENABLED=$(jq -r '.ide_bridge.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
+    PRIOR_IDE_TOKEN=$(jq -r '.ide_bridge.auth_token // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+    PRIOR_IDE_PORT=$(jq -r '.ide_bridge.port // 23027' "$CONFIG_FILE" 2>/dev/null || echo "23027")
+fi
+
+configure_ide_bridge \
+    "$PRIOR_IDE_ENABLED" \
+    "$PRIOR_IDE_TOKEN" \
+    "$PRIOR_IDE_PORT" \
+    "" \
+    "$NON_INTERACTIVE"
+
 # ── Step 7: Re-run detection & config generation ─────────
 
 print_step "Generating vault-config.yaml"
@@ -1276,6 +1302,7 @@ cat > "$CONFIG_FILE" << CFGEOF
     "protocol": "${KADO_PROTOCOL}"
   },
   "voice": {},
+  "ide_bridge": {},
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "tomoVersion": "${TOMO_VERSION}"
 }
@@ -1296,6 +1323,17 @@ mkdir -p "$INSTANCE_PATH/voice"
 jq '.voice // {"enabled": false, "model": "", "language": ""}' "$CONFIG_FILE" \
     > "$INSTANCE_PATH/voice/config.json"
 print_ok "voice/config.json (mirrored into instance)"
+
+# Persist the IDE Bridge block. No instance mirror — the lock file written
+# into the bind-mounted tomo-home IS the runtime source for the entrypoint
+# and statusline; begin-tomo reads tomo-install.json host-side (XDD 019).
+write_ide_bridge_config "$CONFIG_FILE"
+if [ "$IDE_BRIDGE_ENABLED" = "true" ]; then
+    write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN"
+    print_ok "ide lock: $HOME_DIR/.claude/ide/${IDE_BRIDGE_PORT}.lock"
+else
+    remove_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT"
+fi
 
 # ── Update .gitignore (parent repo) ──────────────────────
 

@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.4.2
+# version: 0.4.3
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -109,6 +109,10 @@ get_version() {
 # shellcheck source=lib/configure-voice.sh
 . "$SCRIPT_DIR/lib/configure-voice.sh"
 
+# Hashi IDE Bridge wizard (XDD 019). Requires print_* helpers above.
+# shellcheck source=lib/configure-ide-bridge.sh
+. "$SCRIPT_DIR/lib/configure-ide-bridge.sh"
+
 # ── Load config ───────────────────────────────────────────
 
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -117,6 +121,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 INSTANCE_PATH=$(jq -r '.instancePath' "$CONFIG_FILE")
+HOME_DIR=$(jq -r '.homePath' "$CONFIG_FILE")
 
 if [ ! -d "$INSTANCE_PATH" ]; then
     print_err "Instance directory not found: $INSTANCE_PATH"
@@ -486,6 +491,39 @@ if [ "$FORCE" = "true" ]; then
     voice_mirror_changed=true
 fi
 
+# ── IDE Bridge wizard (XDD 019) ──────────────────────────
+# Read prior values from CONFIG_FILE; keep unchanged in automated runs.
+
+PRIOR_IDE_ENABLED=$(jq -r '.ide_bridge.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
+PRIOR_IDE_TOKEN=$(jq -r '.ide_bridge.auth_token // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+PRIOR_IDE_PORT=$(jq -r '.ide_bridge.port // 23027' "$CONFIG_FILE" 2>/dev/null || echo "23027")
+
+if [ "$YES" = "true" ]; then
+    print_step "Hashi IDE Bridge (kept current — automated run)"
+    IDE_BRIDGE_ENABLED="$PRIOR_IDE_ENABLED"
+    IDE_BRIDGE_TOKEN="$PRIOR_IDE_TOKEN"
+    IDE_BRIDGE_PORT="$PRIOR_IDE_PORT"
+    print_info "enabled=$IDE_BRIDGE_ENABLED port=$IDE_BRIDGE_PORT"
+else
+    configure_ide_bridge \
+        "$PRIOR_IDE_ENABLED" \
+        "$PRIOR_IDE_TOKEN" \
+        "$PRIOR_IDE_PORT" \
+        "" \
+        "false"
+fi
+
+# Decide whether IDE Bridge config needs a write.
+ide_bridge_changed=false
+if [ "$IDE_BRIDGE_ENABLED" != "$PRIOR_IDE_ENABLED" ] \
+   || [ "$IDE_BRIDGE_TOKEN" != "$PRIOR_IDE_TOKEN" ] \
+   || [ "$IDE_BRIDGE_PORT" != "$PRIOR_IDE_PORT" ]; then
+    ide_bridge_changed=true
+fi
+if [ "$FORCE" = "true" ]; then
+    ide_bridge_changed=true
+fi
+
 # ── Confirmation ─────────────────────────────────────────
 
 if [ "$DRY_RUN" = "true" ]; then
@@ -654,6 +692,38 @@ if [ "$voice_host_changed" = "true" ] || [ "$voice_mirror_changed" = "true" ]; t
         else
             mark_did "failed" "voice/config.json (instance mirror)" "jq write failed"
             DID_FAILED=$((DID_FAILED + 1))
+        fi
+    fi
+fi
+
+# ── Persist IDE Bridge settings ─────────────────────────────────────────────
+
+if [ "$ide_bridge_changed" = "true" ] && [ "$DRY_RUN" = "false" ]; then
+    print_step "IDE Bridge configuration"
+    if write_ide_bridge_config "$CONFIG_FILE" 2>/dev/null; then
+        mark_did "updated" "tomo-install.json (.ide_bridge)" ""
+        DID_UPDATED=$((DID_UPDATED + 1))
+    else
+        mark_did "failed" "tomo-install.json (.ide_bridge)" "write_ide_bridge_config failed"
+        DID_FAILED=$((DID_FAILED + 1))
+    fi
+    if [ "$IDE_BRIDGE_ENABLED" = "true" ]; then
+        lock_path="${HOME_DIR}/.claude/ide/${IDE_BRIDGE_PORT}.lock"
+        if [ -f "$lock_path" ]; then
+            write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN"
+            mark_did "updated" "ide lock: $lock_path" ""
+            DID_UPDATED=$((DID_UPDATED + 1))
+        else
+            write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN"
+            mark_did "created" "ide lock: $lock_path" ""
+            DID_CREATED=$((DID_CREATED + 1))
+        fi
+    else
+        lock_path="${HOME_DIR}/.claude/ide/${IDE_BRIDGE_PORT}.lock"
+        if [ -f "$lock_path" ]; then
+            remove_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT"
+            mark_did "deleted" "ide lock: $lock_path" ""
+            DID_DELETED=$((DID_DELETED + 1))
         fi
     fi
 fi

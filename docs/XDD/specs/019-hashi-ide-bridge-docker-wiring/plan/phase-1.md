@@ -33,7 +33,7 @@ Establishes the configuration foundation: a bash wizard lib that collects IDE Br
 
 ## Tasks
 
-- [ ] **T1.1 `configure-ide-bridge.sh` wizard lib (prompts + config writer + lock-file gen/remove)** `[activity: backend-shell]`
+- [x] **T1.1 `configure-ide-bridge.sh` wizard lib (prompts + config writer + lock-file gen/remove)** `[activity: backend-shell]`
 
   1. **Prime**: Read `scripts/lib/configure-voice.sh` end-to-end (the structural template) and `tests/voice/test_configure_voice.py` (the subprocess test harness). Read `[ref: SDD/Interface Specifications; lines: 174-198]` for the exact `ide_bridge` block and lock-file JSON.
   2. **Test** (`tests/ide_bridge/test_configure_ide_bridge.py`, driving the lib via `bash -c` subprocess with controlled stdin, mirroring `_run_wizard`/`_parse`):

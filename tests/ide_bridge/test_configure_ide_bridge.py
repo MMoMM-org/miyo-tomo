@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_configure_ide_bridge.py — Pytest-driven tests for the IDE Bridge wizard lib.
 
 Drives `scripts/lib/configure-ide-bridge.sh` via subprocess with controlled
@@ -418,6 +418,119 @@ def test_write_ide_bridge_config_missing_target_returns_error(tmp_path):
     r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10)
     assert r.returncode == 2
     assert "target does not exist" in r.stderr
+
+
+# ── T1.2 tests: install smoke + lock-gen focused test ────────────────────────
+
+INSTALL_SH = REPO_ROOT / "scripts/install-tomo.sh"
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("docker") is None,
+    reason="docker not available in this environment",
+)
+def test_install_smoke_ide_bridge_block_exists(tmp_path):
+    """Isolated install smoke: assert tomo-install.json contains .ide_bridge block.
+
+    RED before T1.2 wiring (key absent); GREEN after (key present).
+    Uses all four isolation flags so the test never touches the real instance.
+    """
+    import shutil
+
+    vault_dir = tmp_path / "vault"
+    vault_dir.mkdir()
+    home_dir = tmp_path / "home"
+    cfg_file = tmp_path / "cfg.json"
+
+    r = subprocess.run(
+        [
+            "bash",
+            str(INSTALL_SH),
+            "--vault", str(vault_dir),
+            "--non-interactive",
+            "--instance-location", str(tmp_path),
+            "--instance-name", "iso",
+            "--home-dir", str(home_dir),
+            "--config-file", str(cfg_file),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert r.returncode == 0, f"install-tomo.sh failed:\nstdout:\n{r.stdout}\nstderr:\n{r.stderr}"
+    assert cfg_file.exists(), "cfg.json was not created"
+
+    # Assert the .ide_bridge block exists via jq -e
+    r2 = subprocess.run(
+        ["jq", "-e", ".ide_bridge", str(cfg_file)],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert r2.returncode == 0, (
+        f"jq -e '.ide_bridge' failed — block absent in {cfg_file.read_text()}"
+    )
+
+
+def test_write_ide_lock_path_and_content(tmp_path):
+    """write_ide_lock produces <home>/.claude/ide/<port>.lock with correct content.
+
+    Drives the lib functions directly via bash subprocess — install-free.
+    """
+    home = tmp_path / "home"
+
+    script = textwrap.dedent(f"""\
+        print_step() {{ :; }}
+        print_ok()   {{ :; }}
+        print_warn() {{ :; }}
+        print_err()  {{ :; }}
+        . "{CONFIGURE_SH}"
+        write_ide_lock "{home}" "23027" "{VALID_UUID}"
+    """)
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10)
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+
+    lock_file = home / ".claude" / "ide" / "23027.lock"
+    assert lock_file.exists(), f"Expected lock at {lock_file}"
+
+    data = json.loads(lock_file.read_text())
+    assert data["authToken"] == VALID_UUID
+    assert data["ideName"] == "Obsidian"
+    assert data["transport"] == "ws"
+    assert data["pid"] == 0
+    assert data["workspaceFolders"] == []
+
+
+def test_write_ide_bridge_config_in_install_context(tmp_path):
+    """write_ide_bridge_config persists .ide_bridge into an existing JSON file.
+
+    Simulates the post-install config write: a skeleton tomo-install.json
+    (with a voice block) gains an ide_bridge block after calling the helper.
+    """
+    cfg = tmp_path / "tomo-install.json"
+    cfg.write_text('{"voice": {"enabled": false, "model": "", "language": ""}}')
+
+    script = textwrap.dedent(f"""\
+        print_step() {{ :; }}
+        print_ok()   {{ :; }}
+        print_warn() {{ :; }}
+        print_err()  {{ :; }}
+        . "{CONFIGURE_SH}"
+        IDE_BRIDGE_ENABLED=false
+        IDE_BRIDGE_TOKEN=""
+        IDE_BRIDGE_PORT=23027
+        write_ide_bridge_config "{cfg}"
+    """)
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10)
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+
+    data = json.loads(cfg.read_text())
+    assert "ide_bridge" in data, f"ide_bridge key missing from {data}"
+    ib = data["ide_bridge"]
+    assert ib["enabled"] is False
+    assert ib["port"] == 23027
+    # Existing voice block must survive
+    assert "voice" in data
 
 
 if __name__ == "__main__":

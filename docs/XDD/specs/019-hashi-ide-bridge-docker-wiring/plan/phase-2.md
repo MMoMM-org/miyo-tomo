@@ -31,7 +31,7 @@ Makes the bridge reachable from inside the container: `socat` is baked into the 
 
 ## Tasks
 
-- [ ] **T2.1 Add `socat` to the base Docker image** `[activity: devops]` `[parallel: true]`
+- [x] **T2.1 Add `socat` to the base Docker image** `[activity: devops]` `[parallel: true]`
 
   1. **Prime**: Read `docker/Dockerfile` — the base `apt-get install` layer (lines ~12-26) and the existing voice `ARG`/label drift pattern (lines ~40-54) you are **not** copying (ADR-1 says base, not ARG).
   2. **Test**: build assertion — after `docker build`, `docker run --rm <image> sh -c 'command -v socat'` exits 0 `[ref: PRD/F3-AC1]`. (Build-dependent; if a full build is too heavy for the loop, assert the Dockerfile contains `socat` in the unconditional base layer via a grep test and defer the live build to Phase 4 T4.1.)
@@ -39,7 +39,7 @@ Makes the bridge reachable from inside the container: `socat` is baked into the 
   4. **Validate**: `docker build -t miyo-tomo:test ./docker/` succeeds; `socat` resolves in the built image; voice build path still toggles correctly.
   5. **Success**: every freshly built image contains `socat` `[ref: PRD/F3-AC1]`. (Drift rebuild for pre-socat images is delivered in T3.1.)
 
-- [ ] **T2.2 Conditional `socat` proxy spawn in the entrypoint** `[activity: devops]` `[parallel: true]`
+- [x] **T2.2 Conditional `socat` proxy spawn in the entrypoint** `[activity: devops]` `[parallel: true]`
 
   1. **Prime**: Read `docker/entrypoint.sh` (the `exec "$@"` tail at line ~29 and the `on-start.sh` hook block as the placement reference). The lock file is at `~/.claude/ide/<port>.lock` = `/home/coder/.claude/ide/<port>.lock` (tomo-home is bind-mounted to `/home/coder`). Read `[ref: SDD/Error Handling; lines: 246-252]`.
   2. **Test** (`tests/ide_bridge/test_entrypoint_proxy.py`, exercising the proxy-decision logic via `bash -c` against a fake `~/.claude/ide` dir; stub `socat` with a shell function/`PATH` shim that records its argv to a file instead of execing the real binary, and stub the final `exec`):

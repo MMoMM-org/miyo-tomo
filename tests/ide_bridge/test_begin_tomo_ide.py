@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_begin_tomo_ide.py — Pytest-driven tests for the IDE Bridge banner and
 socat drift rebuild in scripts/lib/begin-tomo.sh.template (T3.1).
 
@@ -344,6 +344,14 @@ def test_banner_not_configured(tmp_path):
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
     combined = result.stdout + result.stderr
+    # Positive guard: the IDE banner line itself must have rendered.
+    # Without this, a missing IDE block would produce "not configured" vacuously
+    # (unset IDE_BRIDGE_ENABLED → false branch → dim output) and the test would
+    # pass having never exercised the config read path.
+    assert "IDE:" in combined, (
+        f"IDE banner line absent — IDE config block may not have run.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
     assert "not configured" in combined, (
         f"Expected 'not configured'. stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
@@ -435,6 +443,13 @@ def test_socat_label_present_skips_rebuild(tmp_path):
     assert "docker-build-ok" not in combined, (
         f"Expected no rebuild when socat label=1. stdout:\n{result.stdout}"
     )
+    # Positive assertion: the no-rebuild branch must have executed and printed
+    # "Image exists: ...". Without this, a failed extraction (empty image block)
+    # would pass vacuously — docker never called, build never triggered, test green.
+    assert "Image exists" in combined, (
+        f"Expected 'Image exists' from no-rebuild branch.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
     assert result.returncode == 0, (
         f"Expected clean exit. stderr:\n{result.stderr}"
     )
@@ -442,21 +457,48 @@ def test_socat_label_present_skips_rebuild(tmp_path):
 
 # ── ADR-3: probe must not hang / must respect ≤3s bound ──────────────────────
 
+def _find_free_port() -> int:
+    """Bind to port 0, capture the assigned port, then close the socket.
+
+    The returned port is guaranteed free at the instant of return — no process
+    is listening, so a /dev/tcp connect attempt will get connection-refused
+    immediately rather than hanging or succeeding.
+    """
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 def test_probe_timeout_does_not_block(tmp_path):
-    """ADR-3: real probe on almost-certainly-closed port finishes within 5s."""
+    """ADR-3: real probe on a guaranteed-closed port returns unreachable within 5s.
+
+    Uses a port that was free at test start (connection-refused on connect) so
+    the fail path of _probe_ide_bridge() is exercised — not a trivial success
+    case that would leave the timeout/kill code paths uncovered.
+
+    Asserts:
+    - elapsed time < 5s (probe respects ADR-3 ≤3s bound)
+    - exit code 0 (probe failure is non-blocking — launch continues)
+    - banner shows the configured-but-unreachable warning (probe actually ran
+      and returned false, not a stub)
+    """
     import time
+
+    free_port = _find_free_port()
 
     rendered, phs = _render_template(tmp_path)
     shim_dir = tmp_path / "shims"
 
-    _make_jq_shim(shim_dir, ide_enabled="true", ide_port="23027",
+    _make_jq_shim(shim_dir, ide_enabled="true", ide_port=str(free_port),
                   voice_triple="0\t\tauto")
     _make_docker_shim(shim_dir,
                       inspect_voice_label="0",
                       inspect_socat_label="1",
                       inspect_rc=0)
 
-    # No probe stub — use the real probe implementation with port 23027
+    # No probe stub — drive the real _probe_ide_bridge() implementation
+    # against the closed port to exercise the failure + kill/wait path.
     snippet = _extract_banner_blocks(rendered)
 
     start = time.monotonic()
@@ -467,9 +509,16 @@ def test_probe_timeout_does_not_block(tmp_path):
         f"Probe took {elapsed:.1f}s — exceeded 5s safety margin (ADR-3: ≤3s).\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
+    # Launch must continue — probe failure is non-blocking
     assert result.returncode == 0, (
         f"Snippet exited {result.returncode} — probe blocked/killed launch.\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    combined = result.stdout + result.stderr
+    # Probe must have returned unreachable → warning banner (not "bridge active" clean)
+    assert "unreachable" in combined.lower() or "⚠" in combined, (
+        f"Expected unreachable warning (probe ran and returned false on closed port).\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
 
 

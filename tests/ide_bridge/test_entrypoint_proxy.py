@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_entrypoint_proxy.py — Pytest-driven tests for the IDE Bridge proxy spawn
 in docker/entrypoint.sh.
 
@@ -87,6 +87,7 @@ def _run_ide_bridge_block(
 
         {ide_block}
 
+        wait          # let the backgrounded socat shim finish writing its log
         # Simulate exec "$@" without replacing process
         echo "exec_reached" >> "{exec_log}"
         {cmd}
@@ -269,7 +270,6 @@ def test_multiple_locks_error_names_directory(tmp_path):
     pointing at the directory.'
     """
     home = tmp_path / "home"
-    ide_dir = home / ".claire" / "ide"  # note: using real path below
     ide_dir = home / ".claude" / "ide"
     ide_dir.mkdir(parents=True)
     for port in ("23027", "23028"):

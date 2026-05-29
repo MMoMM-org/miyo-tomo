@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Launch & Status Surfaces"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---
@@ -36,7 +36,7 @@ The user-visible layer: the launch banner reports bridge status + a host-side re
 
 ## Tasks
 
-- [ ] **T3.1 Launch banner + reachability probe + socat drift rebuild (`begin-tomo.sh.template`)** `[activity: devops]` `[parallel: true]`
+- [x] **T3.1 Launch banner + reachability probe + socat drift rebuild (`begin-tomo.sh.template`)** `[activity: devops]` `[parallel: true]`
 
   1. **Prime**: Read `scripts/lib/begin-tomo.sh.template` — the voice drift-label read + `build_image`/rebuild branch (lines ~236-314), the banner Voice line (lines ~371-384), and the `set +e` guard pattern around `docker image inspect` (lines ~289-292, the bash 3.2 errexit trap — memory `feedback_bash32_set_e_cmdsubst_silent_exit`). Read `[ref: SDD/ADR-3; lines: 286-290]`.
   2. **Test** (`tests/ide_bridge/test_begin_tomo_ide.py` — render the template with `sed` substitutions into a tmp script, stub `docker`/`jq` on `PATH`, drive the relevant snippets):
@@ -53,7 +53,7 @@ The user-visible layer: the launch banner reports bridge status + a host-side re
   4. **Validate**: `pytest tests/ide_bridge/test_begin_tomo_ide.py -v`; `/bin/bash -n` on the rendered template (and `scripts/install-tomo.sh` still renders it without error); voice banner + drift rebuild unchanged (CON-6).
   5. **Success**: banner reflects configured/unreachable/not-configured states; pre-socat images rebuild; unreachable Hashi never blocks launch `[ref: PRD/F6-AC1, F6-AC2, F6-AC3, F3-AC2]`.
 
-- [ ] **T3.2 Statusline `門:<port>` Kado reformat + `橋:<port>` Hashi indicator (`tomo-statusline.sh`)** `[activity: backend-shell]` `[parallel: true]`
+- [x] **T3.2 Statusline `門:<port>` Kado reformat + `橋:<port>` Hashi indicator (`tomo-statusline.sh`)** `[activity: backend-shell]` `[parallel: true]`
 
   1. **Prime**: Read `tomo/scripts/tomo-statusline.sh` — the cache mechanism (lines ~47-64), `kado_check` and the Kado URL/port parse (lines ~66-170), and the render `case` block (lines ~181-196). Read `[ref: SDD/Statusline indicator format; lines: 199-208]`. The script runs **inside the container** (cwd = instance, `$HOME=/home/coder`); the lock file is at `$HOME/.claude/ide/*.lock`.
   2. **Test** (`tests/ide_bridge/test_statusline_render.py` — feed JSON on stdin, stub the probes, assert the rendered line; mirror how the existing statusline is exercised):

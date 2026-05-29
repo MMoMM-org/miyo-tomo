@@ -44,6 +44,7 @@ node_modules/
 
 # Misc
 *.backup-*
+*-backup-*.zip
 __pycache__/
 
 # Python virtualenv (host dev; container has its own)

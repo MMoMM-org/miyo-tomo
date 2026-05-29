@@ -1,6 +1,6 @@
 # MiYo Tomo Docker image
 # Based on Kouzou secure variant — ClamAV + security hooks for vault data safety.
-# version: 0.3.1
+# version: 0.4.0
 #
 # Build: docker build -t miyo-tomo:latest ./docker/
 #        Optional: --build-arg VOICE_ENABLED=1 for XDD 009 Whisper support.
@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-jsonschema \
     ca-certificates \
     locales \
+    socat \
+    # socat: IDE Bridge TCP proxy (XDD 019, ADR-1 — base layer, always present)
     && rm -rf /var/lib/apt/lists/*
 
 # ── Voice transcription (XDD 009, opt-in) ───────────────────

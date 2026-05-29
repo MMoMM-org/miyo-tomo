@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_entrypoint_proxy.py — Pytest-driven tests for the IDE Bridge proxy spawn
 in docker/entrypoint.sh.
 
@@ -74,6 +74,10 @@ def _run_ide_bridge_block(
     socat_shim.chmod(0o755)
 
     ide_block = _extract_ide_bridge_block()
+    assert ide_block, (
+        "IDE Bridge block not found in entrypoint.sh — regex extraction failed "
+        "(delimiters renamed or block removed?)"
+    )
     exec_log = home_dir / "exec_calls.txt"
 
     harness = textwrap.dedent(f"""\

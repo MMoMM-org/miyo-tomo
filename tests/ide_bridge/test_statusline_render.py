@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """test_statusline_render.py — Pytest-driven tests for tomo-statusline.sh (T3.2).
 
 Feeds JSON on stdin, stubs the probes (PATH shims or injected env vars),
@@ -22,7 +22,6 @@ import json
 import os
 import re
 import subprocess
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -122,11 +121,6 @@ def _run_statusline(
 def _strip_ansi(text: str) -> str:
     """Remove ANSI escape sequences from text."""
     return re.sub(r"\033\[[0-9;]*m", "", text)
-
-
-def _has_ansi(text: str) -> bool:
-    """Return True if text contains at least one ANSI escape sequence."""
-    return bool(re.search(r"\033\[[0-9;]*m", text))
 
 
 # ── Kado: 門:<port> with all 4 states (F7-AC1) ────────────────────────────────
@@ -374,11 +368,18 @@ def test_all_kado_states_have_ansi_color(tmp_path):
         ("tags_denied", ANSI_YELLOW),
         ("no_config", ANSI_YELLOW),
     ]
-    for state, expected_color in states_and_colors:
+    for idx, (state, expected_color) in enumerate(states_and_colors):
+        # Each iteration gets its own sub-dir to avoid Hashi cache bleed.
+        # hashi_cache_content="ok:23027" (green) ensures any yellow in the
+        # output for tags_denied/no_config can only come from Kado — a Kado
+        # color regression to red/green would not be masked by Hashi yellow.
+        sub = tmp_path / f"kado_{idx}"
+        sub.mkdir()
         r = _run_statusline(
             mcp_json_content=_make_mcp_json(23026),
             kado_cache_content=state,
-            tmp_path=tmp_path,
+            hashi_cache_content="ok:23027",
+            tmp_path=sub,
         )
         assert expected_color in r.stdout, (
             f"Kado state '{state}' missing expected ANSI color.\n"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.5.1
+# version: 0.5.2
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -185,6 +185,9 @@ read_kado_port() {
   if [[ -n "$url" ]]; then
     # Extract port: match :<digits> before optional /
     KADO_PORT=$(echo "$url" | sed 's|.*:\([0-9][0-9]*\).*|\1|' 2>/dev/null) || true
+    # Validate: sed returns the full string unchanged when there is no match —
+    # reject any non-numeric result so we never render e.g. 門:http://...
+    [[ "$KADO_PORT" =~ ^[0-9]+$ ]] || KADO_PORT="?"
   fi
   [[ -z "$KADO_PORT" ]] && KADO_PORT="?"
 }

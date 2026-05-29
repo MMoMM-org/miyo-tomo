@@ -33,12 +33,11 @@ _SED_SUBS = {
 }
 
 
-def _render_template(tmp_path: Path) -> str:
+def _render_template() -> str:
     """Render CLAUDE.md.template via the same sed pipeline install-tomo.sh uses.
 
     Returns the rendered text.
     """
-    out = tmp_path / "CLAUDE.md"
     sed_args = ["sed"]
     for placeholder, value in _SED_SUBS.items():
         sed_args += ["-e", f"s|{placeholder}|{value}|g"]
@@ -51,15 +50,14 @@ def _render_template(tmp_path: Path) -> str:
         timeout=10,
     )
     assert result.returncode == 0, f"sed failed: {result.stderr}"
-    out.write_text(result.stdout)
     return result.stdout
 
 
 # ── CON-6: placeholder substitution still works ──────────────────────────────
 
-def test_kado_placeholders_resolve(tmp_path):
+def test_kado_placeholders_resolve():
     """CON-6: all {{KADO_*}} and {{INSTANCE_NAME}} placeholders render cleanly."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     # No raw placeholders should remain
     for placeholder in _SED_SUBS:
@@ -75,8 +73,8 @@ def test_kado_placeholders_resolve(tmp_path):
     assert "23026" in rendered, (
         "KADO_PORT substitution missing from rendered CLAUDE.md"
     )
-    assert "http" in rendered, (
-        "KADO_PROTOCOL substitution missing from rendered CLAUDE.md"
+    assert "http://" in rendered, (
+        "KADO_PROTOCOL substitution missing from rendered CLAUDE.md (expected 'http://')"
     )
     assert "test-instance" in rendered, (
         "INSTANCE_NAME substitution missing from rendered CLAUDE.md"
@@ -85,9 +83,9 @@ def test_kado_placeholders_resolve(tmp_path):
 
 # ── F5-AC2: vault-note paths → kado-read ─────────────────────────────────────
 
-def test_routing_rule_vault_paths_use_kado_read(tmp_path):
+def test_routing_rule_vault_paths_use_kado_read():
     """F5-AC2: rendered CLAUDE.md contains explicit routing of vault paths to kado-read."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     # The rule must instruct kado-read for vault-note path sources
     assert "kado-read" in rendered, (
@@ -96,15 +94,14 @@ def test_routing_rule_vault_paths_use_kado_read(tmp_path):
     )
 
 
-def test_routing_rule_covers_active_file(tmp_path):
+def test_routing_rule_covers_active_file():
     """F5-AC2: routing rule explicitly covers the IDE Bridge active file path."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
-    # Must mention the active file / bridge active file as a kado-read case
+    # Must mention the active file in the vault-path bullet (not just the selection line)
     has_active_file = (
         "active file" in rendered.lower()
         or "active-file" in rendered.lower()
-        or "bridge" in rendered.lower()
     )
     assert has_active_file, (
         "Routing rule does not mention the active file (bridge active file).\n"
@@ -112,9 +109,9 @@ def test_routing_rule_covers_active_file(tmp_path):
     )
 
 
-def test_routing_rule_covers_wikilinks(tmp_path):
+def test_routing_rule_covers_wikilinks():
     """F5-AC2: routing rule explicitly covers [[wikilinks]] as vault paths."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     assert "[[" in rendered or "wikilink" in rendered.lower(), (
         "Routing rule does not cover [[wikilinks]].\n"
@@ -122,9 +119,9 @@ def test_routing_rule_covers_wikilinks(tmp_path):
     )
 
 
-def test_routing_rule_covers_mentions(tmp_path):
+def test_routing_rule_covers_mentions():
     """F5-AC2: routing rule covers @-mentions as vault paths."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     # Accept both plain "@-mentions" and backtick-formatted "`@`-mentions"
     has_mentions = (
@@ -139,9 +136,9 @@ def test_routing_rule_covers_mentions(tmp_path):
     )
 
 
-def test_routing_rule_covers_kado_search_results(tmp_path):
+def test_routing_rule_covers_kado_search_results():
     """F5-AC2: routing rule covers kado-search results as vault paths."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     has_search = (
         "kado-search" in rendered
@@ -155,9 +152,9 @@ def test_routing_rule_covers_kado_search_results(tmp_path):
 
 # ── F5-AC1: selection text needs no Kado read ────────────────────────────────
 
-def test_routing_rule_selection_no_read_needed(tmp_path):
+def test_routing_rule_selection_no_read_needed():
     """F5-AC1: routing rule indicates selection text arrives in-context (no read)."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     # Must mention selection text and "no read" / "in-context" in the routing section.
     # We look for the presence of "Selection" (capital, sentence-starting) as the routing
@@ -176,9 +173,9 @@ def test_routing_rule_selection_no_read_needed(tmp_path):
 
 # ── Container-local → local Read ─────────────────────────────────────────────
 
-def test_routing_rule_local_read_for_container_files(tmp_path):
+def test_routing_rule_local_read_for_container_files():
     """Routing rule reserves local Read for container-local working files."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     # Local Read must be explicitly named as the tool for container-local files
     has_local_read = (
@@ -194,9 +191,9 @@ def test_routing_rule_local_read_for_container_files(tmp_path):
 
 # ── F5-AC3: ambiguous bare path → kado-read first, fallback ──────────────────
 
-def test_routing_rule_ambiguous_path_kado_first(tmp_path):
+def test_routing_rule_ambiguous_path_kado_first():
     """F5-AC3: ambiguous bare relative path → kado-read first."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     has_ambiguous = (
         "ambiguous" in rendered.lower()
@@ -209,9 +206,9 @@ def test_routing_rule_ambiguous_path_kado_first(tmp_path):
     )
 
 
-def test_routing_rule_fallback_on_not_found(tmp_path):
+def test_routing_rule_fallback_on_not_found():
     """F5-AC3: fall back to local Read only on Kado not-found or denied result."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     has_fallback = (
         "not-found" in rendered.lower()
@@ -228,9 +225,9 @@ def test_routing_rule_fallback_on_not_found(tmp_path):
 
 # ── F5-AC3: vault path not found locally → error (fail closed) ───────────────
 
-def test_routing_rule_fail_closed_for_vault_path(tmp_path):
+def test_routing_rule_fail_closed_for_vault_path():
     """F5-AC3: a true vault path not readable via Kado is an error — fail closed."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     # The fail-closed rule must use "error" AND either "do not" or "silently" to be specific.
     # This ensures the test is not satisfied by an unrelated "NEVER" mention.
@@ -245,9 +242,9 @@ def test_routing_rule_fail_closed_for_vault_path(tmp_path):
     )
 
 
-def test_vault_not_mounted_stated(tmp_path):
+def test_vault_not_mounted_stated():
     """Routing rule must state that the vault is not mounted in the container."""
-    rendered = _render_template(tmp_path)
+    rendered = _render_template()
 
     has_not_mounted = (
         "not mounted" in rendered.lower()

@@ -3,6 +3,12 @@
 <!-- What goes here: commands that are non-obvious, tool quirks, CI gotchas, env var names -->
 <!-- What does NOT go here: domain rules (→ domain.md), code style (→ general.md) -->
 
+<!-- 2026-05-29 -->
+
+## Regex-extraction harnesses need a non-empty guard — silent false greens otherwise
+
+When a test harness extracts a code block via regex (e.g., section between comment delimiters in a shell script) and inlines it into a subprocess, tests that assert "nothing happened" pass trivially when the extraction returns `""`. The block is absent → harness runs an empty string → no socat call, no error → test passes. Regression is invisible. Fix: assert the extracted block is non-empty in the **shared helper** (one assert covers all callers). Discovered during 019 T2.2 entrypoint proxy tests 2026-05-29.
+
 <!-- 2026-05-08 -->
 
 ## Code-quality reviewer diff range — file-scoped filtering for parallel implementers

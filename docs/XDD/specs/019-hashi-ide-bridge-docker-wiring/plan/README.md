@@ -154,7 +154,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 - [x] [Phase 1: Wizard Lib & Lock File](phase-1.md)
 - [x] [Phase 2: Container Runtime Wiring](phase-2.md)
-- [ ] [Phase 3: Launch & Status Surfaces](phase-3.md)
+- [x] [Phase 3: Launch & Status Surfaces](phase-3.md)
 - [ ] [Phase 4: Integration & Validation](phase-4.md)
 
 ---

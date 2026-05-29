@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Launch & Status Surfaces"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -69,7 +69,7 @@ The user-visible layer: the launch banner reports bridge status + a host-side re
   4. **Validate**: `pytest tests/ide_bridge/test_statusline_render.py -v`; `/bin/bash -n tomo/scripts/tomo-statusline.sh`; manual stdin smoke renders both indicators. Confirm probe timeout can't stall rendering.
   5. **Success**: Kado shows `門:<port>` with its existing 4 states; Hashi shows `橋:<port>` with 3 states, no Tags; color retained `[ref: PRD/F7-AC1, F7-AC2, F7-AC3]`.
 
-- [ ] **T3.3 Vault-path routing rule in `CLAUDE.md.template` (Feature 5 / ADR-5)** `[activity: docs-prompt]` `[parallel: true]`
+- [x] **T3.3 Vault-path routing rule in `CLAUDE.md.template` (Feature 5 / ADR-5)** `[activity: docs-prompt]` `[parallel: true]`
 
   1. **Prime**: Read `tomo/CLAUDE.md.template` (the `## Rules` and `## MCP` sections). Read `[ref: SDD/ADR-5; lines: 295-298]` and `[ref: SDD/Feature 5; lines: 132-134]` and PRD Feature 5 ACs. Note the runtime-file discipline (CLAUDE.md root rule): this is an LLM-loaded runtime file — write imperatives + the routing rule, **not** rationale; rationale belongs in `docs/tomo/CLAUDE.md.template.md` (the WHY layer).
   2. **Test**: a content/contract assertion (no runtime behavior to unit-test — prompt-level steering). Add a small check (in `tests/ide_bridge/`, or a doc-lint assertion) that the rendered `CLAUDE.md` (post-`sed`) contains the routing rule with all four namespace cases: bridge active file, `[[wikilinks]]`, `@`-mentions, `kado-search` results → `kado-read` first; container-local → local `Read`; ambiguous bare path → `kado-read` first then `Read` fallback on not-found/denied; true vault path that isn't local → fails closed. Verify `{{KADO_*}}` placeholders still render.
@@ -77,6 +77,6 @@ The user-visible layer: the launch banner reports bridge status + a host-side re
   4. **Validate**: render via the install `sed` pipeline into a tmp file; confirm placeholders resolve and the rule reads cleanly; `pytest` content assertion green.
   5. **Success**: the routing rule covers selection-needs-no-read, active-file→`kado-read`, wikilink/@-mention/search-result→`kado-read`-first, and the fail-closed fallback `[ref: PRD/F5-AC1, F5-AC2, F5-AC3]`.
 
-- [ ] **T3.4 Phase Validation** `[activity: validate]`
+- [x] **T3.4 Phase Validation** `[activity: validate]`
 
   `pytest tests/ide_bridge/ -v` and full `pytest tests/` (CON-6). `/bin/bash -n` on `begin-tomo.sh.template` (rendered) and `tomo-statusline.sh`. Confirm version bumps on `begin-tomo.sh.template` and `tomo-statusline.sh`. Render `CLAUDE.md.template` and eyeball the routing rule. Verify against PRD Features 5/6/7 and SDD ADR-3/ADR-5 + the statusline format block.

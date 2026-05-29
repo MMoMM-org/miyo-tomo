@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.5.0
+# version: 0.5.1
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -173,7 +173,9 @@ kado_check() {
 }
 
 # Parse Kado port from .mcp.json URL — sets global KADO_PORT.
-# Called after kado_check so .mcp.json is known to exist when status != no_config.
+# Re-reads .mcp.json rather than threading the URL out of kado_check because
+# kado_check returns early on a cache hit (no URL was parsed in that path).
+# Re-reading the tiny local file cleanly covers both the cache-hit and live paths.
 read_kado_port() {
   local url
   url=$(jq -r '
@@ -221,6 +223,13 @@ hashi_check() {
   done
 
   if [[ "$lock_count" -eq 0 ]]; then
+    write_hashi_status "no_config"
+    return
+  fi
+
+  # Multiple locks = ambiguous — show yellow no_config, never pick one arbitrarily.
+  # Mirrors the entrypoint's fail-fast-on-multiple-locks posture.
+  if [[ "$lock_count" -gt 1 ]]; then
     write_hashi_status "no_config"
     return
   fi

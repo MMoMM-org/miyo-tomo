@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_statusline_render.py — Pytest-driven tests for tomo-statusline.sh (T3.2).
 
 Feeds JSON on stdin, stubs the probes (PATH shims or injected env vars),
@@ -490,6 +490,48 @@ def test_kado_gate_format_present_in_output(tmp_path):
     assert "門" in r.stdout, (
         f"門 (Kado reformatted) MISSING from output — implementation not wired.\n"
         f"stdout: {r.stdout!r}"
+    )
+
+
+# ── M2: multiple lock files → no_config (F7-AC2 "exactly one") ───────────────
+
+def test_hashi_multiple_locks_not_configured(tmp_path):
+    """F7-AC2: two lock files present → ambiguous → 橋:? ? (yellow, no_config).
+
+    Drives the live hashi_check path (no hashi_cache_content override) so the
+    guard added by M1 is actually exercised. Without the lock_count > 1 guard
+    in hashi_check, the function would pick an arbitrary lock and probe it —
+    either ok or unreachable — so the ✓ or ✗ assertion below would fail RED.
+    """
+    r = _run_statusline(
+        mcp_json_content=_make_mcp_json(23026),
+        kado_cache_content="ok",
+        lock_files={
+            "23027.lock": _LOCK_JSON,
+            "23028.lock": _LOCK_JSON,
+        },
+        # No hashi_cache_content — live hashi_check runs
+        tmp_path=tmp_path,
+    )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+
+    stripped = _strip_ansi(r.stdout)
+    bridge_idx = stripped.find("橋:")
+    assert bridge_idx >= 0, f"橋: not found in output.\nstdout: {r.stdout!r}"
+
+    bridge_segment = stripped[bridge_idx:]
+    assert "?" in bridge_segment, (
+        f"Expected '?' for multiple-locks no_config.\nbridge: {bridge_segment!r}"
+    )
+    assert "✓" not in bridge_segment, (
+        f"Must not show ✓ when multiple locks present.\nbridge: {bridge_segment!r}"
+    )
+    assert "✗" not in bridge_segment, (
+        f"Must not show ✗ when multiple locks present.\nbridge: {bridge_segment!r}"
+    )
+    # Color retained: ANSI yellow for no_config
+    assert ANSI_YELLOW in r.stdout, (
+        f"Expected ANSI yellow for multiple-locks no_config.\nstdout: {r.stdout!r}"
     )
 
 

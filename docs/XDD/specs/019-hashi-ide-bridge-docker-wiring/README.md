@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-05-27 |
-| **Current Phase** | SDD |
-| **Last Updated** | 2026-05-28 |
+| **Current Phase** | Implemented (Phases 1–3 shipped + reviewed; Phase 4 live e2e pending) |
+| **Last Updated** | 2026-05-29 |
 
 ## Documents
 
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 5 Must-Have, 2 Should (banner+statusline), 0 Could (v1.2); vault-path resolution resolved (Kokoro ADR-019 §5) |
 | solution.md | completed | Feature-mirror architecture; ADR-1/2/3 confirmed; ADR-5 vault-path routing (Kokoro ADR-019 §5) |
-| plan/ | in_progress | 4 phases, 11 tasks; mirrors the voice-feature delivery pattern; all 23 PRD ACs traced to tasks |
+| plan/ | completed | 4 phases, 11 tasks; Phases 1–3 implemented + two-stage reviewed (spec + quality); Phase 4 = T4.2 regression/version audit ✓, T4.3 doc close-out ✓, T4.1 live e2e pending (manual, needs real Obsidian+Hashi) |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -30,6 +30,9 @@
 | 2026-05-28 | SDD completed | Feature-mirror architecture (reuse the voice-feature pattern across install/Dockerfile/entrypoint/begin-tomo/statusline). ADR-1 socat in base image; ADR-2 entrypoint spawns socat unsupervised; ADR-3 TCP-connect reachability probe — all confirmed. ADR-4 token-cleartext confirmed by PRD. Feature 5 design parked pending Kokoro decision. |
 | 2026-05-28 | Feature 5 unblocked (Kokoro ADR-019 §5) | Mechanism (a) chosen: namespace-based routing rule in tomo/CLAUDE.md.template (kado-read-first for vault paths; local Read for container-local; not-found/denied fallback). Recorded as SDD ADR-5. Feature 5 design + ACs filled in; implementation (CLAUDE.md.template edit) sequenced for the plan. workspaceFolders-empty confirmed. |
 | 2026-05-28 | PLAN drafted (4 phases, 11 tasks) | Phase 1 wizard-lib + lock file; Phase 2 socat image + entrypoint proxy; Phase 3 banner + statusline + CLAUDE.md routing (3 parallel files); Phase 4 live integration + regression/version-bump audit + doc close-out. All 23 PRD ACs traced to tasks. Recorded deviation from the voice pattern: no instance mirror — the lock file (in bind-mounted tomo-home) is the runtime source for the entrypoint + statusline; begin-tomo reads tomo-install.json host-side. |
+| 2026-05-29 | Phase 2 implemented + reviewed | socat in base Dockerfile (0.4.0) + conditional entrypoint proxy (0.3.0). Two-stage review per task (spec compliance → code quality). 14 tests added. |
+| 2026-05-29 | Phase 3 implemented + reviewed | Launch banner + /dev/tcp probe + socat drift rebuild (begin-tomo.sh.template 0.12.0); statusline 門:<port>/橋:<port> (tomo-statusline.sh 0.5.2); CLAUDE.md vault-path routing rule + docs/tomo WHY-mirror. 37 tests added. Accepted deviation (MU1): read_kado_port re-reads .mcp.json rather than threading the port out of kado_check — kado_check returns early on cache-hit, so a uniform re-read cleanly covers both paths; cost negligible (tiny local file). |
+| 2026-05-29 | Phase 4 partial (T4.2 + T4.3 done) | Full suite 482 passed / 1 skipped (docker-gated install smoke); bash 3.2 clean on all 5 edited shell files; all 7 versioned files bumped. Doc close-out: tools.md Kado-port section made port-agnostic (read from .mcp.json; corrected the false "port differs host vs Docker" claim — hostname differs, port identical). T4.1 live end-to-end (real Obsidian+Hashi) remains pending — manual, owner-driven. Spec flips to Implemented on live confirmation. |
 
 ## Context
 

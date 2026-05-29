@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Integration & Validation"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -32,6 +32,8 @@ Proves the six touch points work together end-to-end, runs the live transport ch
 
 - [ ] **T4.1 End-to-end install → launch → connect (live, personal vault)** `[activity: integration-test]`
 
+  > **Status (2026-05-29):** Automated portion done — the isolated install smoke (`test_install_smoke_ide_bridge_block_exists`, all four isolation flags) is in the suite (docker-gated; skips when no daemon) and the lock-file JSON is asserted install-free by `test_write_ide_lock_path_and_content`. **The live end-to-end (real Obsidian + Hashi, launch `begin-tomo.sh`, confirm editor context flows + `socat` running in the container) remains pending — manual, owner-driven.** Spec flips to Implemented once this passes.
+
   1. **Prime**: Re-read SDD Runtime View "Launch + connect" sequence (lines 220-244) so you know the expected chain: install writes lock → begin-tomo probes + builds (drift) → entrypoint spawns socat → Claude Code reads lock + connects `ws://127.0.0.1:<port>` → socat forwards to host Hashi.
   2. **Test**:
      - **Isolated install smoke** (automated, safe): run `install-tomo.sh --non-interactive` with all four isolation flags into a `tmp` location; assert `tomo-install.json` has the `.ide_bridge` block and (when enabled via a scripted config) the lock file exists at `<home>/.claude/ide/<port>.lock` with the correct JSON `[ref: SDD/EARS lock-file; PRD/F1-AC1]`. NEVER run against the default path (memory `feedback_test_scripts_must_never_touch_real_install`).
@@ -41,7 +43,7 @@ Proves the six touch points work together end-to-end, runs the live transport ch
   4. **Validate**: full `pytest tests/` green; isolated install smoke green; live checklist passes against the real vault.
   5. **Success**: editor context flows host→container end-to-end; disabled state is silent `[ref: PRD/F2-AC1, F2-AC2, F2-AC3; SDD/EARS]`.
 
-- [ ] **T4.2 Full-suite regression, bash 3.2 gate, and version-bump audit** `[activity: validate]`
+- [x] **T4.2 Full-suite regression, bash 3.2 gate, and version-bump audit** `[activity: validate]`
 
   1. **Prime**: list every file this spec touched (configure-ide-bridge.sh, install-tomo.sh, update-tomo.sh, Dockerfile, entrypoint.sh, begin-tomo.sh.template, tomo-statusline.sh, CLAUDE.md.template).
   2. **Test / Validate**:
@@ -51,7 +53,7 @@ Proves the six touch points work together end-to-end, runs the live transport ch
      - **skill-author/agent-author audit**: N/A — this spec edits no agent/skill files. Confirm none were touched.
   3. **Success**: suite green, syntax clean, all versions bumped `[ref: SDD/Quality Requirements; SDD/EARS]`.
 
-- [ ] **T4.3 Doc cleanup + spec close-out** `[activity: docs]`
+- [x] **T4.3 Doc cleanup + spec close-out** `[activity: docs]`
 
   1. **Prime**: read the spec README "Context" bonus note and `docs/ai/memory/tools.md`.
   2. **Implement**:

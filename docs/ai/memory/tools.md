@@ -56,10 +56,10 @@ bash scripts/reset-tomo-tmp.sh --dry-run --pass1
 
 ## Accessing Kado from the host (outside tomo-instance)
 
-Kado runs inside Obsidian on port **23027** (from the host side). The Docker container uses `host.docker.internal:23027`, but from the host use `127.0.0.1:23027`. A bearer token is required.
+Kado runs inside Obsidian, listening on `127.0.0.1:<port>`. The port is whatever the Kado plugin is configured to use (the documented default is `23026`, but instances may run on other ports) — **read it from `tomo-instance/.mcp.json`, don't hardcode it**. The same server is reached as `127.0.0.1:<port>` from the host and `host.docker.internal:<port>` from inside the Docker container — only the hostname differs, the port is identical. A bearer token is required.
 
 ```bash
-KADO_URL=http://127.0.0.1:23027 \
+KADO_URL=$(python3 -c "import json; cfg=json.load(open('tomo-instance/.mcp.json')); print(cfg['mcpServers']['kado']['url'].replace('host.docker.internal','127.0.0.1'))") \
 KADO_TOKEN=$(python3 -c "import json; cfg=json.load(open('tomo-instance/.mcp.json')); print(cfg['mcpServers']['kado']['headers']['Authorization'].replace('Bearer ',''))") \
 python3 <script.py>
 ```
@@ -75,4 +75,4 @@ url = url.replace("host.docker.internal", "127.0.0.1")  # Docker→host rewrite
 client = KadoClient(base_url=url, token=token)
 ```
 
-Key differences from inside Docker: port is 23027 (not 23026), hostname is 127.0.0.1 (not host.docker.internal), and `.mcp.json` is at `tomo-instance/.mcp.json` (not `.mcp.json` in cwd).
+Key differences from inside Docker: hostname is `127.0.0.1` (not `host.docker.internal`) — the port is the same on both sides, read from `.mcp.json`; and `.mcp.json` is at `tomo-instance/.mcp.json` (not `.mcp.json` in cwd).

@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Container Runtime Wiring"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -58,6 +58,6 @@ Makes the bridge reachable from inside the container: `socat` is baked into the 
      - no lock → no proxy, no error `[ref: PRD/F2-AC2]`
      - multiple locks → fail fast pointing at the directory `[ref: SDD/Error Handling]`
 
-- [ ] **T2.3 Phase Validation** `[activity: validate]`
+- [x] **T2.3 Phase Validation** `[activity: validate]`
 
   `pytest tests/ide_bridge/ -v` and full `pytest tests/` (CON-6). `/bin/bash -n docker/entrypoint.sh`. `docker build ./docker/` succeeds and `socat` is present. Confirm version bumps on both `Dockerfile` and `entrypoint.sh` (else `update-tomo.sh`/rebuild ship nothing — memory `feedback_bump_version_on_managed_file_edit`). Verify against PRD Feature 2 + Feature 3 ACs and SDD Runtime/Error-Handling sections.

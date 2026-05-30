@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # lifecycle prefix, voice transcription, and vault-config.yaml generation.
-# version: 0.3.2
+# version: 0.3.3
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1331,7 +1331,7 @@ print_ok "voice/config.json (mirrored into instance)"
 # and statusline; begin-tomo reads tomo-install.json host-side (XDD 019).
 write_ide_bridge_config "$CONFIG_FILE"
 if [ "$IDE_BRIDGE_ENABLED" = "true" ]; then
-    write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN"
+    write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN" "$INSTANCE_PATH"
     print_ok "ide lock: $HOME_DIR/.claude/ide/${IDE_BRIDGE_PORT}.lock"
 else
     remove_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT"

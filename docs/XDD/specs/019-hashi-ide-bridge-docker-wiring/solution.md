@@ -186,14 +186,14 @@ ide_bridge:
 ```json
 {
   "pid": 0,
-  "workspaceFolders": [],
+  "workspaceFolders": ["<instance path>"],
   "ideName": "Obsidian",
   "transport": "ws",
   "authToken": "<hashi_<uuid> from ide_bridge.auth_token>"
 }
 ```
 - `pid: 0` — not meaningful across the host/container boundary.
-- `workspaceFolders: []` — empty; IDE-only field, no meaning in this topology (PRD assumption).
+- `workspaceFolders: ["<instance path>"]` — the container-side instance path (begin-tomo mounts the instance at the same path with `-v $INSTANCE_PATH:$INSTANCE_PATH` + `-w $INSTANCE_PATH`), so the IDE workspace matches Claude Code's cwd inside the container. Supersedes the earlier "assumed empty" design (live testing 2026-05-30).
 - Exactly one `.lock` file is supported; the entrypoint fails fast on more than one.
 
 #### Statusline indicator format (`tomo-statusline.sh`)
@@ -307,7 +307,7 @@ sequenceDiagram
 ## Acceptance Criteria (EARS)
 
 **Lock file (PRD Feature 1)**
-- [ ] WHEN the wizard completes with IDE Bridge enabled, THE SYSTEM SHALL write `tomo-home/.claude/ide/<port>.lock` with valid JSON (`pid:0`, `workspaceFolders:[]`, `ideName:"Obsidian"`, `transport:"ws"`, `authToken`).
+- [ ] WHEN the wizard completes with IDE Bridge enabled, THE SYSTEM SHALL write `tomo-home/.claude/ide/<port>.lock` with valid JSON (`pid:0`, `workspaceFolders:["<instance path>"]`, `ideName:"Obsidian"`, `transport:"ws"`, `authToken`).
 - [ ] IF more than one `.lock` file exists, THEN THE SYSTEM SHALL fail fast and point the user at the directory.
 
 **Proxy (PRD Feature 2)**

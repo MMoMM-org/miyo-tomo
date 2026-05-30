@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.5.2
+# version: 0.5.3
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -788,7 +788,7 @@ if [ "$ide_bridge_changed" = "true" ] && [ "$DRY_RUN" = "false" ]; then
     if [ "$IDE_BRIDGE_ENABLED" = "true" ]; then
         lock_existed=false
         [ -f "$lock_path" ] && lock_existed=true
-        write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN"
+        write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN" "$INSTANCE_PATH"
         if [ "$lock_existed" = "true" ]; then
             mark_did "updated" "ide lock: $lock_path" ""
             DID_UPDATED=$((DID_UPDATED + 1))

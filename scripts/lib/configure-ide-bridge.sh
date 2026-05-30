@@ -7,7 +7,7 @@
 #   IDE_BRIDGE_ENABLED — "true" or "false"
 #   IDE_BRIDGE_TOKEN   — hashi_<uuid> string (auth token for the bridge)
 #   IDE_BRIDGE_PORT    — port number as string (default 23027)
-# version: 0.2.0
+# version: 0.3.0
 
 _IDE_BRIDGE_SCHEMA_VERSION=1
 _IDE_BRIDGE_DEFAULT_PORT=23027
@@ -36,18 +36,24 @@ write_ide_bridge_config() {
 
 # Write the IDE lock file at <home>/.claude/ide/<port>.lock.
 # Directory is created at 0700; the file is NOT chmod 600 (ADR-4).
+# workspace_path (4th arg): the container-side instance path; populates
+# workspaceFolders so Claude Code's active workspace matches the container cwd
+# (begin-tomo mounts the instance at the same path via -v $IP:$IP + -w $IP).
+# Omitting the 4th arg or passing empty yields workspaceFolders: [] (backward-safe).
 #
-# Usage: write_ide_lock <home_dir> <port> <token>
+# Usage: write_ide_lock <home_dir> <port> <token> [workspace_path]
 write_ide_lock() {
     local home_dir="$1"
     local port="$2"
     local token="$3"
+    local workspace="${4:-}"
     local ide_dir="${home_dir}/.claude/ide"
     mkdir -p "$ide_dir"
     chmod 700 "$ide_dir"
     jq -n \
        --arg tok "$token" \
-       '{ pid: 0, workspaceFolders: [], ideName: "Obsidian", transport: "ws", authToken: $tok }' \
+       --arg ws  "$workspace" \
+       '{ pid: 0, workspaceFolders: ($ws | if . == "" then [] else [.] end), ideName: "Obsidian", transport: "ws", authToken: $tok }' \
        > "${ide_dir}/${port}.lock"
 }
 

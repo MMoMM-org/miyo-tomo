@@ -6,7 +6,7 @@
 |-------|-------|
 | **Created** | 2026-05-27 |
 | **Current Phase** | Implemented (Phases 1–3 shipped + reviewed; Phase 4 live e2e pending) |
-| **Last Updated** | 2026-05-29 |
+| **Last Updated** | 2026-05-30 |
 
 ## Documents
 
@@ -35,6 +35,7 @@
 | 2026-05-29 | Phase 4 partial (T4.2 + T4.3 done) | Full suite 482 passed / 1 skipped (docker-gated install smoke); bash 3.2 clean on all 5 edited shell files; all 7 versioned files bumped. Doc close-out: tools.md Kado-port section made port-agnostic (read from .mcp.json; corrected the false "port differs host vs Docker" claim — hostname differs, port identical). T4.1 live end-to-end (real Obsidian+Hashi) remains pending — manual, owner-driven. Spec flips to Implemented on live confirmation. |
 | 2026-05-30 | T4.1 live-test fix — token format | Live testing surfaced that the wizard validated a BARE UUID, but real Hashi tokens are `hashi_<uuid>` (e.g. `hashi_b3f97399-…`) — so every valid token was rejected and the bridge could not be enabled. Fix (user decision: require the `hashi_` prefix): `_is_uuid` → `_is_hashi_token` in configure-ide-bridge.sh (0.2.0), accepts ONLY `hashi_<uuid>`, stores verbatim with prefix; prompt/error text updated; PRD F4-AC4 + SDD interface specs corrected from `<uuid>` to `hashi_<uuid>`. Both review stages PASS. This was the kind of wiring gap T4.1 exists to catch. |
 | 2026-05-30 | T4.1 delivery-gap fix — update-tomo ships entrypoint + launcher | Found that `update-tomo.sh` synced instance runtime files but did NOT regenerate `begin-tomo.sh` (0.12.0) nor copy `docker/entrypoint.sh` → `tomo-home/entrypoint.sh` (0.3.0) — so an existing user enabling the bridge via `update-tomo` got a lock file but a stale launcher + entrypoint → no working proxy. Fix (update-tomo.sh 0.5.2): both now flow through the plan/execute model, version-gated, honoring `--dry-run`/`--force`; launcher rendered atomically (tmp→mv) with the same 5 substitutions as install; added a `--config-file` flag (enables isolated testing, mirrors install). 5 new tests. Both review stages PASS. Drift follow-up logged as backlog D-09 (extract a shared render-launcher helper; interim cross-reference comments added to both sed blocks). |
+| 2026-05-30 | workspaceFolders carries the container instance path | Live testing: the IDE workspace must match Claude Code's container cwd. The earlier assumption (empty; IDE-only field) was wrong — Claude Code uses workspaceFolders to anchor workspace context. The container instance path equals the host instance path because begin-tomo mounts the instance at the same location via `-v $INSTANCE_PATH:$INSTANCE_PATH` and sets cwd with `-w $INSTANCE_PATH`. configure-ide-bridge.sh 0.3.0 accepts a 4th arg `workspace_path`; install-tomo.sh 0.3.3 and update-tomo.sh 0.5.3 pass `$INSTANCE_PATH`. Supersedes the 2026-05-28 "assumed empty" decision. |
 
 ## Context
 

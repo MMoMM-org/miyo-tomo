@@ -99,7 +99,7 @@ Zero-friction editor context for containerized Claude Code. After a one-time set
   - [x] Given the user enables IDE Bridge and provides a valid auth token and port during install, When install-tomo.sh completes, Then a lock file exists at `tomo-home/.claude/ide/<port>.lock` (default `23027.lock`) with the correct JSON format
   - [x] Given the user has an existing Tomo installation without IDE Bridge, When they run update-tomo.sh and enable IDE Bridge, Then the lock file is created without requiring a full reinstall
   - [x] Given the user has IDE Bridge enabled and runs update-tomo.sh, When they choose to update the auth token, Then the lock file is regenerated with the new token
-  - [x] Given the lock file exists, When it is read by Claude Code, Then it contains valid JSON with fields: pid, workspaceFolders, ideName, transport, authToken
+  - [x] Given the lock file exists, When it is read by Claude Code, Then it contains valid JSON with fields: pid, workspaceFolders (container instance path), ideName, transport, authToken
 
 #### Feature 2: Network Proxy for WebSocket
 
@@ -230,7 +230,7 @@ _None for this phase — the statusline redesign and the launch-time reachabilit
 - The auth token is a `hashi_<uuid>` string (prefix `hashi_` + canonical 8-4-4-4-12 hex UUID) that doesn't change unless the user resets Hashi
 - `host.docker.internal` resolves correctly in the Tomo container (works on macOS with OrbStack/Docker Desktop)
 - Claude Code discovers the lock file at `~/.claude/ide/<port>.lock` automatically — no env vars needed
-- The lock file's `workspaceFolders` field is empty — it is an IDE-only field (VS Code / JetBrains workspace scoping) with no meaning in this host/container topology
+- The lock file's `workspaceFolders` field carries the container-side instance path — begin-tomo mounts the instance at the same path via `-v $INSTANCE_PATH:$INSTANCE_PATH` + `-w $INSTANCE_PATH`, so the value is identical on host and container. This supersedes the earlier assumption that the field would be empty (decided during live testing 2026-05-30).
 - The proxy tool (socat) is available in Debian Bookworm's apt repositories
 
 ## Risks and Mitigations
@@ -248,7 +248,7 @@ _None for this phase — the statusline redesign and the launch-time reachabilit
 - [x] Lock file location: host mount vs tomo-home → **Decided: tomo-home** (user decision 2026-05-27)
 - [x] Port allocation: default 23027 for IDE Bridge (per ADR-019), user-configurable → **Decided 2026-05-28**
 - [x] Kado port showing 23027 vs canonical 23026 → **Resolved: not a 019 bug** — the user runs several Kado instances, so this is a local configuration artifact; Kado's default remains 23026
-- [x] Lock file `workspaceFolders` value → **Empty** (IDE-only field, not used in this topology) (2026-05-28)
+- [x] Lock file `workspaceFolders` value → **Container instance path** (begin-tomo mounts instance at same path via `-v`/`-w`; supersedes the 2026-05-28 "empty" assumption — updated 2026-05-30 during live testing)
 - [x] **How does the Tomo Claude session resolve IDE-Bridge / vault-relative file paths to Kado reads?** → **Resolved 2026-05-28 (Kokoro ADR-019 §5): mechanism (a)** — a namespace-based routing rule in `tomo/CLAUDE.md.template` (kado-read-first for vault-note paths incl. the bridge active file, wikilinks, @-mentions, and search results; local `Read` for container-local files; not-found/denied fallback). No protocol prefix. Mechanism (b) (`kado:` prefix) retained as a documented reserve. `workspaceFolders`-empty confirmed by Kokoro.
 
 ---

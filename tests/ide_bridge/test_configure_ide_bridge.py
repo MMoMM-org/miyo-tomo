@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """test_configure_ide_bridge.py — Pytest-driven tests for the IDE Bridge wizard lib.
 
 Drives `scripts/lib/configure-ide-bridge.sh` via subprocess with controlled
@@ -498,12 +498,47 @@ def test_install_smoke_ide_bridge_block_exists(tmp_path):
 
 
 def test_write_ide_lock_path_and_content(tmp_path):
-    """write_ide_lock produces <home>/.claude/ide/<port>.lock with correct content.
+    """write_ide_lock produces <home>/.claude/ide/<port>.lock with workspaceFolders
+    populated from the 4th arg (container instance path).
 
+    RED before the 4th-arg change (old signature emits []); GREEN after.
     Drives the lib functions directly via bash subprocess — install-free.
     """
     home = tmp_path / "home"
+    workspace = str(tmp_path / "tomo-instance")
 
+    script = textwrap.dedent(f"""\
+        print_step() {{ :; }}
+        print_ok()   {{ :; }}
+        print_warn() {{ :; }}
+        print_err()  {{ :; }}
+        . "{CONFIGURE_SH}"
+        write_ide_lock "{home}" "23027" "{VALID_UUID}" "{workspace}"
+    """)
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10)
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+
+    lock_file = home / ".claude" / "ide" / "23027.lock"
+    assert lock_file.exists(), f"Expected lock at {lock_file}"
+
+    data = json.loads(lock_file.read_text())
+    assert data["authToken"] == VALID_UUID
+    assert data["ideName"] == "Obsidian"
+    assert data["transport"] == "ws"
+    assert data["pid"] == 0
+    assert data["workspaceFolders"] == [workspace], (
+        f"Expected workspaceFolders=[{workspace!r}], got {data['workspaceFolders']!r}"
+    )
+
+
+def test_write_ide_lock_empty_workspace_backward_safe(tmp_path):
+    """Omitting the workspace arg (or passing empty) yields workspaceFolders: [].
+
+    Backward-safe: callers that don't pass a 4th arg get the original behavior.
+    """
+    home = tmp_path / "home"
+
+    # No 4th arg — backward-compatible invocation
     script = textwrap.dedent(f"""\
         print_step() {{ :; }}
         print_ok()   {{ :; }}
@@ -519,11 +554,14 @@ def test_write_ide_lock_path_and_content(tmp_path):
     assert lock_file.exists(), f"Expected lock at {lock_file}"
 
     data = json.loads(lock_file.read_text())
+    assert data["workspaceFolders"] == [], (
+        f"Expected workspaceFolders=[], got {data['workspaceFolders']!r}"
+    )
+    # Other fields intact
     assert data["authToken"] == VALID_UUID
+    assert data["pid"] == 0
     assert data["ideName"] == "Obsidian"
     assert data["transport"] == "ws"
-    assert data["pid"] == 0
-    assert data["workspaceFolders"] == []
 
 
 def test_write_ide_bridge_config_in_install_context(tmp_path):

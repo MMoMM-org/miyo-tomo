@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.5.0
+# version: 0.5.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -670,13 +670,17 @@ execute_one() {
             # Render the template into the launcher path with the same five
             # substitutions install-tomo.sh uses. DEV_NOTIFY_PORT is the
             # constant 9999 (matches install).
+            # NOTE: launcher placeholder set is duplicated in install-tomo.sh and update-tomo.sh.
+            # Keep both sed blocks in sync. Tracked for extraction into a shared scripts/lib helper (backlog).
+            # Render to a temp then move so a mid-write interruption never leaves a corrupt launcher.
             if sed -e "s|{{INSTANCE_PATH}}|${INSTANCE_PATH}|g" \
                    -e "s|{{INSTANCE_NAME}}|${INSTANCE_NAME}|g" \
                    -e "s|{{HOME_DIR}}|${HOME_DIR}|g" \
                    -e "s|{{TOMO_REPO_ROOT}}|${REPO_ROOT}|g" \
                    -e "s|{{DEV_NOTIFY_PORT}}|9999|g" \
-                   "$src" > "$dst" 2>/dev/null; then
-                chmod +x "$dst" 2>/dev/null || true
+                   "$src" > "$dst.tmp" 2>/dev/null; then
+                chmod +x "$dst.tmp" 2>/dev/null || true
+                mv "$dst.tmp" "$dst"
                 if [ "$status" = "create" ]; then
                     mark_did "created" "$label" "$detail"
                     DID_CREATED=$((DID_CREATED + 1))
@@ -685,6 +689,7 @@ execute_one() {
                     DID_UPDATED=$((DID_UPDATED + 1))
                 fi
             else
+                rm -f "$dst.tmp"
                 mark_did "failed" "$label" "render failed"
                 DID_FAILED=$((DID_FAILED + 1))
             fi

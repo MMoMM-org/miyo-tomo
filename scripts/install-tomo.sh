@@ -1271,6 +1271,8 @@ if [ ! -f "$LAUNCHER_TEMPLATE" ]; then
     exit 1
 fi
 
+# NOTE: launcher placeholder set is duplicated in install-tomo.sh and update-tomo.sh.
+# Keep both sed blocks in sync. Tracked for extraction into a shared scripts/lib helper (backlog).
 sed -e "s|{{INSTANCE_PATH}}|${INSTANCE_PATH}|g" \
     -e "s|{{INSTANCE_NAME}}|${INSTANCE_NAME}|g" \
     -e "s|{{HOME_DIR}}|${HOME_DIR}|g" \

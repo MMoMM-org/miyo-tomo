@@ -130,9 +130,17 @@ def test_update_regenerates_launcher(tmp_path):
         "launcher version not updated to template"
 
     body = launcher.read_text()
-    assert "{{INSTANCE_PATH}}" not in body, "launcher still has unsubstituted placeholder"
-    assert "{{HOME_DIR}}" not in body, "launcher still has unsubstituted placeholder"
+    # No placeholder must remain — catches any single-placeholder typo in the sed pipeline.
+    assert "{{INSTANCE_PATH}}" not in body, "launcher still has unsubstituted {{INSTANCE_PATH}}"
+    assert "{{INSTANCE_NAME}}" not in body, "launcher still has unsubstituted {{INSTANCE_NAME}}"
+    assert "{{HOME_DIR}}" not in body, "launcher still has unsubstituted {{HOME_DIR}}"
+    assert "{{TOMO_REPO_ROOT}}" not in body, "launcher still has unsubstituted {{TOMO_REPO_ROOT}}"
+    assert "{{DEV_NOTIFY_PORT}}" not in body, "launcher still has unsubstituted {{DEV_NOTIFY_PORT}}"
+    # Concrete substituted values must appear — catches missing/swapped values.
+    config = json.loads(config_file.read_text())
     assert str(instance_path) in body, "launcher missing substituted INSTANCE_PATH"
+    assert config["instanceName"] in body, "launcher missing substituted INSTANCE_NAME"
+    assert str(config_file.parent / "home") in body, "launcher missing substituted HOME_DIR"
     assert os.access(launcher, os.X_OK), "launcher not executable after update"
 
 

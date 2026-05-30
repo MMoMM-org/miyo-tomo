@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_configure_ide_bridge.py — Pytest-driven tests for the IDE Bridge wizard lib.
 
 Drives `scripts/lib/configure-ide-bridge.sh` via subprocess with controlled
@@ -132,7 +132,7 @@ def test_bare_uuid_rejected(tmp_path):
     # Bare UUID must not be accepted; only the hashi_ token should persist
     assert result["TOKEN"] == VALID_TOKEN
     assert result["ENABLED"] == "true"
-    assert VALID_UUID not in result["TOKEN"] or result["TOKEN"].startswith("hashi_")
+    assert result["TOKEN"] != VALID_UUID  # strict: bare UUID must NOT be accepted
     # Error must be reported for the bare UUID
     assert "Invalid" in r.stderr or "invalid" in r.stderr
 

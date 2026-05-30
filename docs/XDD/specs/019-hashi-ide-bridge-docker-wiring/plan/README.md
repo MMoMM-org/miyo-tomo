@@ -189,7 +189,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 | F4-AC1 | install asks enable / token / port | T1.1, T1.2 |
 | F4-AC2 | `--non-interactive` skips, preserves state | T1.1, T1.2 |
 | F4-AC3 | update shows status, keep / update / disable | T1.1, T1.2 |
-| F4-AC4 | non-UUID token rejected with clear error | T1.1 |
+| F4-AC4 | non-`hashi_<uuid>` token rejected with clear error | T1.1 |
 | F4-AC5 | port default 23027, non-numeric/out-of-range rejected | T1.1 |
 | F5-AC1 | selection used without a Kado read | T3.3 |
 | F5-AC2 | active-file vault path read via `kado-read`, not local FS | T3.3 |

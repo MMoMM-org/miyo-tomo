@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_configure_ide_bridge.py — Pytest-driven tests for the IDE Bridge wizard lib.
 
 Drives `scripts/lib/configure-ide-bridge.sh` via subprocess with controlled
@@ -21,6 +21,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIGURE_SH = REPO_ROOT / "scripts/lib/configure-ide-bridge.sh"
 
+# Real Hashi token format: hashi_<8-4-4-4-12 hex UUID>
+VALID_TOKEN = "hashi_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+VALID_TOKEN_2 = "hashi_deadbeef-dead-beef-dead-beefdeadbeef"
+
+# Keep bare-UUID constants for tests that exercise the lock-file write path
+# (write_ide_lock is opaque to token format — it stores whatever string it receives)
 VALID_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 VALID_UUID_2 = "deadbeef-dead-beef-dead-beefdeadbeef"
 
@@ -89,63 +95,82 @@ def test_non_interactive_fresh_install_defaults_disabled(tmp_path):
 
 def test_non_interactive_preserves_enabled_state(tmp_path):
     r = _run_wizard(
-        "true", VALID_UUID, "23027",
+        "true", VALID_TOKEN, "23027",
         tmp_path / "home", "",
         non_interactive="true",
     )
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
     assert result["ENABLED"] == "true"
-    assert result["TOKEN"] == VALID_UUID
+    assert result["TOKEN"] == VALID_TOKEN
     assert result["PORT"] == "23027"
 
 
-# ── Test 3: fresh enable with valid UUID and default port ─────────────────────
+# ── Test 3: fresh enable with valid hashi_ token and default port ─────────────
 
-def test_fresh_enable_valid_uuid_default_port(tmp_path):
-    # y → enable, then UUID, then empty (accept default port 23027)
-    stdin = f"y\n{VALID_UUID}\n\n"
+def test_fresh_enable_valid_token_default_port(tmp_path):
+    """hashi_<uuid> accepted verbatim (including prefix) — RED before fix."""
+    # y → enable, then hashi_ token, then empty (accept default port 23027)
+    stdin = f"y\n{VALID_TOKEN}\n\n"
     r = _run_wizard("false", "", "", tmp_path / "home", stdin)
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
     assert result["ENABLED"] == "true"
-    assert result["TOKEN"] == VALID_UUID
+    assert result["TOKEN"] == VALID_TOKEN   # prefix must be preserved
     assert result["PORT"] == "23027"
 
 
-# ── Test 4: invalid token rejected, does not persist garbage ──────────────────
+# ── Test 3b: bare UUID (no prefix) REJECTED ───────────────────────────────────
 
-def test_invalid_token_rejected(tmp_path):
-    # y → enable, then invalid token, then valid token, then empty port
-    stdin = f"y\nnot-a-uuid\n{VALID_UUID}\n\n"
+def test_bare_uuid_rejected(tmp_path):
+    """Bare UUID without hashi_ prefix is REJECTED — RED before fix."""
+    # y → enable, bare UUID (should be rejected), then valid hashi_ token, then empty port
+    stdin = f"y\n{VALID_UUID}\n{VALID_TOKEN}\n\n"
     r = _run_wizard("false", "", "", tmp_path / "home", stdin)
     assert r.returncode == 0, f"stdout: {r.stdout}\nstderr: {r.stderr}"
     result = _parse(r)
-    # Must not accept garbage
-    assert result["TOKEN"] == VALID_UUID
+    # Bare UUID must not be accepted; only the hashi_ token should persist
+    assert result["TOKEN"] == VALID_TOKEN
     assert result["ENABLED"] == "true"
-    assert "not-a-uuid" not in result["TOKEN"]
-    # Error must be reported
+    assert VALID_UUID not in result["TOKEN"] or result["TOKEN"].startswith("hashi_")
+    # Error must be reported for the bare UUID
+    assert "Invalid" in r.stderr or "invalid" in r.stderr
+
+
+# ── Test 4: other invalid tokens rejected, does not persist garbage ───────────
+
+def test_invalid_token_rejected(tmp_path):
+    """not-a-hashi / wrong-prefix / hashi_not-a-uuid all rejected."""
+    # y → enable, three bad tokens, then valid hashi_ token, then empty port
+    stdin = f"y\nnot-a-hashi\nwrong_{VALID_UUID}\nhashi_not-a-uuid\n{VALID_TOKEN}\n\n"
+    r = _run_wizard("false", "", "", tmp_path / "home", stdin)
+    assert r.returncode == 0, f"stdout: {r.stdout}\nstderr: {r.stderr}"
+    result = _parse(r)
+    # Must not accept any of the garbage tokens
+    assert result["TOKEN"] == VALID_TOKEN
+    assert result["ENABLED"] == "true"
+    # Error must be reported (at least once)
     assert "Invalid" in r.stderr or "invalid" in r.stderr
 
 
 # ── Test 5: token with leading/trailing whitespace → trimmed then accepted ────
 
 def test_token_whitespace_trimmed_and_accepted(tmp_path):
-    # y → enable, then UUID with surrounding spaces, then empty port
-    stdin = f"y\n  {VALID_UUID}  \n\n"
+    """Whitespace around hashi_<uuid> is trimmed then accepted — RED before fix."""
+    # y → enable, then hashi_ token with surrounding spaces, then empty port
+    stdin = f"y\n  {VALID_TOKEN}  \n\n"
     r = _run_wizard("false", "", "", tmp_path / "home", stdin)
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
-    assert result["TOKEN"] == VALID_UUID
+    assert result["TOKEN"] == VALID_TOKEN   # trimmed; prefix preserved
     assert result["ENABLED"] == "true"
 
 
 # ── Test 6: invalid port rejected ─────────────────────────────────────────────
 
 def test_port_non_numeric_rejected(tmp_path):
-    # y → enable, valid UUID, non-numeric port, then valid port
-    stdin = f"y\n{VALID_UUID}\nabc\n23027\n"
+    # y → enable, valid hashi_ token, non-numeric port, then valid port
+    stdin = f"y\n{VALID_TOKEN}\nabc\n23027\n"
     r = _run_wizard("false", "", "", tmp_path / "home", stdin)
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
@@ -154,8 +179,8 @@ def test_port_non_numeric_rejected(tmp_path):
 
 
 def test_port_out_of_range_high_rejected(tmp_path):
-    # y → enable, valid UUID, port too high (70000), then valid port
-    stdin = f"y\n{VALID_UUID}\n70000\n23027\n"
+    # y → enable, valid hashi_ token, port too high (70000), then valid port
+    stdin = f"y\n{VALID_TOKEN}\n70000\n23027\n"
     r = _run_wizard("false", "", "", tmp_path / "home", stdin)
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
@@ -164,8 +189,8 @@ def test_port_out_of_range_high_rejected(tmp_path):
 
 
 def test_port_zero_rejected(tmp_path):
-    # y → enable, valid UUID, port 0 (out of range), then valid port
-    stdin = f"y\n{VALID_UUID}\n0\n23027\n"
+    # y → enable, valid hashi_ token, port 0 (out of range), then valid port
+    stdin = f"y\n{VALID_TOKEN}\n0\n23027\n"
     r = _run_wizard("false", "", "", tmp_path / "home", stdin)
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
@@ -176,32 +201,32 @@ def test_port_zero_rejected(tmp_path):
 # ── Test 7: already-enabled state dispatch ────────────────────────────────────
 
 def test_already_enabled_K_keeps(tmp_path):
-    r = _run_wizard("true", VALID_UUID, "23027", tmp_path / "home", "K\n")
+    r = _run_wizard("true", VALID_TOKEN, "23027", tmp_path / "home", "K\n")
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
     assert result["ENABLED"] == "true"
-    assert result["TOKEN"] == VALID_UUID
+    assert result["TOKEN"] == VALID_TOKEN
     assert result["PORT"] == "23027"
 
 
 def test_already_enabled_d_disables(tmp_path):
-    r = _run_wizard("true", VALID_UUID, "23027", tmp_path / "home", "d\n")
+    r = _run_wizard("true", VALID_TOKEN, "23027", tmp_path / "home", "d\n")
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
     assert result["ENABLED"] == "false"
     # Token and port are preserved in globals (caller writes config)
-    assert result["TOKEN"] == VALID_UUID
+    assert result["TOKEN"] == VALID_TOKEN
     assert result["PORT"] == "23027"
 
 
 def test_already_enabled_c_updates_token_and_port(tmp_path):
-    # c → change, new UUID, new port
-    stdin = f"c\n{VALID_UUID_2}\n23028\n"
-    r = _run_wizard("true", VALID_UUID, "23027", tmp_path / "home", stdin)
+    # c → change, new hashi_ token, new port
+    stdin = f"c\n{VALID_TOKEN_2}\n23028\n"
+    r = _run_wizard("true", VALID_TOKEN, "23027", tmp_path / "home", stdin)
     assert r.returncode == 0, f"stderr: {r.stderr}"
     result = _parse(r)
     assert result["ENABLED"] == "true"
-    assert result["TOKEN"] == VALID_UUID_2
+    assert result["TOKEN"] == VALID_TOKEN_2
     assert result["PORT"] == "23028"
 
 
@@ -327,14 +352,14 @@ def test_disable_removes_lock_preserves_config(tmp_path):
     target = tmp_path / "tomo-install.json"
     target.write_text("{}")
 
-    # 1. First create a lock file
+    # 1. First create a lock file (write_ide_lock is token-format-agnostic)
     script_create = textwrap.dedent(f"""\
         print_step() {{ :; }}
         print_ok()   {{ :; }}
         print_warn() {{ :; }}
         print_err()  {{ :; }}
         . "{CONFIGURE_SH}"
-        write_ide_lock "{home}" "23027" "{VALID_UUID}"
+        write_ide_lock "{home}" "23027" "{VALID_TOKEN}"
     """)
     r = subprocess.run(["bash", "-c", script_create], capture_output=True, text=True, timeout=10)
     assert r.returncode == 0, f"create lock stderr: {r.stderr}"
@@ -343,11 +368,11 @@ def test_disable_removes_lock_preserves_config(tmp_path):
 
     # 2. Disable flow: wizard sets ENABLED=false, caller calls remove_ide_lock
     stdin = "d\n"
-    r2 = _run_wizard("true", VALID_UUID, "23027", home, stdin)
+    r2 = _run_wizard("true", VALID_TOKEN, "23027", home, stdin)
     assert r2.returncode == 0, f"wizard stderr: {r2.stderr}"
     result = _parse(r2)
     assert result["ENABLED"] == "false"
-    assert result["TOKEN"] == VALID_UUID
+    assert result["TOKEN"] == VALID_TOKEN
     assert result["PORT"] == "23027"
 
     # 3. Call remove_ide_lock (what the caller would do)
@@ -371,7 +396,7 @@ def test_disable_removes_lock_preserves_config(tmp_path):
         print_err()  {{ :; }}
         . "{CONFIGURE_SH}"
         IDE_BRIDGE_ENABLED=false
-        IDE_BRIDGE_TOKEN="{VALID_UUID}"
+        IDE_BRIDGE_TOKEN="{VALID_TOKEN}"
         IDE_BRIDGE_PORT=23027
         write_ide_bridge_config "{target}"
     """)
@@ -381,7 +406,7 @@ def test_disable_removes_lock_preserves_config(tmp_path):
     data = json.loads(target.read_text())
     ib = data["ide_bridge"]
     assert ib["enabled"] is False
-    assert ib["auth_token"] == VALID_UUID
+    assert ib["auth_token"] == VALID_TOKEN
     assert ib["port"] == 23027
 
 

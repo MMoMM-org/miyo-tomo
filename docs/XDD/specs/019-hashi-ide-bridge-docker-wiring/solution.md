@@ -176,9 +176,9 @@ graph LR
 ```yaml
 ide_bridge:
   schema_version: 1
-  enabled: true            # bool
-  auth_token: "<uuid>"     # cleartext; host-only connection (see ADR-4 / Cross-Cutting)
-  port: 23027              # number, default 23027 (Kado uses 23026)
+  enabled: true                  # bool
+  auth_token: "hashi_<uuid>"     # hashi_ prefix + 8-4-4-4-12 hex UUID; cleartext; host-only connection (see ADR-4 / Cross-Cutting)
+  port: 23027                    # number, default 23027 (Kado uses 23026)
 ```
 
 #### Data: IDE lock file — `tomo-home/.claude/ide/<port>.lock`
@@ -189,7 +189,7 @@ ide_bridge:
   "workspaceFolders": [],
   "ideName": "Obsidian",
   "transport": "ws",
-  "authToken": "<uuid from ide_bridge.auth_token>"
+  "authToken": "<hashi_<uuid> from ide_bridge.auth_token>"
 }
 ```
 - `pid: 0` — not meaningful across the host/container boundary.
@@ -212,7 +212,7 @@ Hashi:  橋:23027 ✓   (GREEN)   橋:23027 ✗   (RED)   橋:23027 ? (YELLOW, n
 ### Primary Flow: First-time setup (install/update wizard)
 
 1. User runs `install-tomo.sh` (or `update-tomo.sh`).
-2. After the voice wizard, the IDE Bridge wizard asks: enable? → auth token (validated UUID) → port (default 23027, validated numeric/in-range).
+2. After the voice wizard, the IDE Bridge wizard asks: enable? → auth token (validated `hashi_<uuid>`) → port (default 23027, validated numeric/in-range).
 3. `configure-ide-bridge.sh` jq-merges the `ide_bridge` block into `tomo-install.json`.
 4. The lock file is generated at `tomo-home/.claude/ide/<port>.lock`.
 5. `--non-interactive` skips the wizard, preserving any existing config.
@@ -248,7 +248,7 @@ sequenceDiagram
 - **No lock file / IDE Bridge disabled** → entrypoint starts no proxy, no error (silent, per Feature 2 AC2).
 - **Multiple `.lock` files** → entrypoint fails fast with a clear message pointing at the directory (Feature 1 edge case).
 - **Hashi unreachable at launch** → non-blocking banner warning; launch continues (Feature 6).
-- **Invalid auth token (non-UUID) / invalid port (non-numeric / out of range)** → wizard rejects with a clear message (Feature 4).
+- **Invalid auth token (not `hashi_<uuid>`) / invalid port (non-numeric / out of range)** → wizard rejects with a clear message (Feature 4).
 - **socat dies mid-session** → no auto-restart; Claude Code's IDE protocol handles disconnection; user restarts the container (accepted risk).
 
 ## Deployment View
@@ -320,7 +320,7 @@ sequenceDiagram
 
 **Wizard (PRD Feature 4)**
 - [ ] WHEN install/update runs interactively, THE SYSTEM SHALL prompt enable / auth token / port and persist `ide_bridge` to `tomo-install.json`.
-- [ ] IF the token is not a UUID or the port is non-numeric/out-of-range, THEN THE SYSTEM SHALL reject with a clear message.
+- [ ] IF the token is not a `hashi_<uuid>` or the port is non-numeric/out-of-range, THEN THE SYSTEM SHALL reject with a clear message.
 - [ ] WHERE `--non-interactive`, THE SYSTEM SHALL skip configuration and preserve current state.
 
 **Banner (PRD Feature 6)**

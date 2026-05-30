@@ -5,9 +5,9 @@
 #
 # Sets globals on successful run:
 #   IDE_BRIDGE_ENABLED — "true" or "false"
-#   IDE_BRIDGE_TOKEN   — UUID string (auth token for the bridge)
+#   IDE_BRIDGE_TOKEN   — hashi_<uuid> string (auth token for the bridge)
 #   IDE_BRIDGE_PORT    — port number as string (default 23027)
-# version: 0.1.0
+# version: 0.2.0
 
 _IDE_BRIDGE_SCHEMA_VERSION=1
 _IDE_BRIDGE_DEFAULT_PORT=23027
@@ -60,14 +60,25 @@ remove_ide_lock() {
     rm -f "${home_dir}/.claude/ide/${port}.lock"
 }
 
-# Validate that the argument looks like a UUID (8-4-4-4-12 hex groups).
+# Validate that the argument is a Hashi auth token: the literal prefix "hashi_"
+# followed by a canonical 8-4-4-4-12 hex UUID.
 # Trims surrounding whitespace before checking.
 # Returns 0 if valid, 1 if not.
-_is_uuid() {
+_is_hashi_token() {
     local s
     # Trim leading/trailing whitespace (bash 3.2 compatible)
     s="${1#"${1%%[![:space:]]*}"}"
     s="${s%"${s##*[![:space:]]}"}"
+    # Strip required "hashi_" prefix; reject anything that doesn't start with it
+    case "$s" in
+        hashi_*)
+            s="${s#hashi_}"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    # Validate the UUID portion (8-4-4-4-12 hex groups)
     case "$s" in
         [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])
             return 0
@@ -98,7 +109,7 @@ _is_valid_port() {
     return 1
 }
 
-# Prompt for a valid auth token (UUID). Re-prompts on invalid input.
+# Prompt for a valid Hashi auth token (hashi_<uuid>). Re-prompts on invalid input.
 # If prior_token is non-empty, user can press Enter to keep it.
 #
 # Usage: _prompt_token <prior_token>
@@ -111,7 +122,7 @@ _prompt_token() {
     fi
     while true; do
         local raw
-        read -rp "  Auth token (UUID)${prompt_hint}: " raw
+        read -rp "  Auth token (hashi_<uuid>)${prompt_hint}: " raw
         # Trim whitespace
         local trimmed
         trimmed="${raw#"${raw%%[![:space:]]*}"}"
@@ -120,11 +131,11 @@ _prompt_token() {
             IDE_BRIDGE_TOKEN="$prior"
             return 0
         fi
-        if _is_uuid "$trimmed"; then
+        if _is_hashi_token "$trimmed"; then
             IDE_BRIDGE_TOKEN="$trimmed"
             return 0
         fi
-        print_err "Invalid auth token '$trimmed' — expected 8-4-4-4-12 UUID format"
+        print_err "Invalid auth token '$trimmed' — expected Hashi format hashi_<uuid> (e.g. hashi_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)"
     done
 }
 

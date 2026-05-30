@@ -123,7 +123,7 @@ Zero-friction editor context for containerized Claude Code. After a one-time set
   - [x] Given a fresh install, When install-tomo.sh runs the wizard, Then it asks whether to enable IDE Bridge and accepts the auth token and port
   - [x] Given a non-interactive install (`--non-interactive`), When install-tomo.sh runs, Then IDE Bridge configuration is skipped (preserving current state if updating)
   - [x] Given IDE Bridge is already configured, When update-tomo.sh runs, Then it shows current status and offers: keep / update token or port / disable
-  - [x] Given the user enters an invalid auth token (not a UUID), When the wizard validates input, Then it rejects the token with a clear error message
+  - [x] Given the user enters an invalid auth token (not a `hashi_<uuid>` token), When the wizard validates input, Then it rejects the token with a clear error message
   - [x] Given the user does not specify a port, When the wizard runs, Then it defaults to 23027 (Kado uses 23026); a non-numeric or out-of-range port is rejected with a clear error message
 
 #### Feature 5: Vault Path Resolution for Bridge Context
@@ -174,7 +174,7 @@ _None for this phase — the statusline redesign and the launch-time reachabilit
 1. User runs `install-tomo.sh` or `update-tomo.sh`
 2. Wizard asks: "Enable Hashi IDE Bridge? (requires Hashi plugin in Obsidian) [y/N]"
 3. If yes, wizard asks: "Enter the auth token from Hashi settings:"
-4. Wizard validates the token (UUID format)
+4. Wizard validates the token (`hashi_<uuid>` format — the literal prefix `hashi_` followed by a canonical 8-4-4-4-12 hex UUID)
 5. Wizard asks: "Enter the IDE Bridge port [default 23027]:" and validates it is numeric and in range
 6. Script creates `tomo-home/.claude/ide/<port>.lock` with the correct JSON
 7. Script persists the IDE Bridge config (enabled flag, auth token, port) to `tomo-install.json`
@@ -227,7 +227,7 @@ _None for this phase — the statusline redesign and the launch-time reachabilit
 ### Assumptions
 
 - Hashi is installed and running in Obsidian when the user launches Tomo (otherwise IDE Bridge silently fails, which is acceptable)
-- The auth token is a UUID that doesn't change unless the user resets Hashi
+- The auth token is a `hashi_<uuid>` string (prefix `hashi_` + canonical 8-4-4-4-12 hex UUID) that doesn't change unless the user resets Hashi
 - `host.docker.internal` resolves correctly in the Tomo container (works on macOS with OrbStack/Docker Desktop)
 - Claude Code discovers the lock file at `~/.claude/ide/<port>.lock` automatically — no env vars needed
 - The lock file's `workspaceFolders` field is empty — it is an IDE-only field (VS Code / JetBrains workspace scoping) with no meaning in this host/container topology
@@ -238,7 +238,7 @@ _None for this phase — the statusline redesign and the launch-time reachabilit
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
 | `host.docker.internal` not available on Linux | High | Low | Document as macOS-only for now; Linux users can use `--add-host` workaround |
-| Auth token mismatch (user copies wrong token) | Medium | Medium | Wizard validates UUID format; connection failure surfaces as warning in Claude Code |
+| Auth token mismatch (user copies wrong token) | Medium | Medium | Wizard validates `hashi_<uuid>` format; connection failure surfaces as warning in Claude Code |
 | Socat process dies during session | Medium | Low | Claude Code IDE protocol handles disconnection gracefully; user can restart container |
 | Port 23027 conflict with existing service | Medium | Low | ADR-019 reserves this port for MiYo; check for conflict at startup |
 | Lock file format changes in future Claude Code versions | High | Low | Lock file format is documented in Claude Code docs; monitor for breaking changes |

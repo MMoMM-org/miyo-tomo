@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.3.3
 """test_configure_ide_bridge.py — Pytest-driven tests for the IDE Bridge wizard lib.
 
 Drives `scripts/lib/configure-ide-bridge.sh` via subprocess with controlled
@@ -532,36 +532,43 @@ def test_write_ide_lock_path_and_content(tmp_path):
 
 
 def test_write_ide_lock_empty_workspace_backward_safe(tmp_path):
-    """Omitting the workspace arg (or passing empty) yields workspaceFolders: [].
+    """Omitting the 4th arg OR passing explicit empty string yields workspaceFolders: [].
 
-    Backward-safe: callers that don't pass a 4th arg get the original behavior.
+    Covers both backward-compatible cases:
+    - No 4th arg: callers that haven't been updated yet
+    - Explicit empty string: callers that pass "" when IDE Bridge is disabled
     """
     home = tmp_path / "home"
 
-    # No 4th arg — backward-compatible invocation
-    script = textwrap.dedent(f"""\
-        print_step() {{ :; }}
-        print_ok()   {{ :; }}
-        print_warn() {{ :; }}
-        print_err()  {{ :; }}
-        . "{CONFIGURE_SH}"
-        write_ide_lock "{home}" "23027" "{VALID_UUID}"
-    """)
-    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10)
-    assert r.returncode == 0, f"stderr: {r.stderr}"
+    for label, script_body in [
+        ("no-4th-arg", f'write_ide_lock "{home}" "23027" "{VALID_UUID}"'),
+        ("explicit-empty", f'write_ide_lock "{home}" "23027" "{VALID_UUID}" ""'),
+    ]:
+        # Remove any lock from a prior iteration
+        lock_file = home / ".claude" / "ide" / "23027.lock"
+        if lock_file.exists():
+            lock_file.unlink()
 
-    lock_file = home / ".claude" / "ide" / "23027.lock"
-    assert lock_file.exists(), f"Expected lock at {lock_file}"
+        script = textwrap.dedent(f"""\
+            print_step() {{ :; }}
+            print_ok()   {{ :; }}
+            print_warn() {{ :; }}
+            print_err()  {{ :; }}
+            . "{CONFIGURE_SH}"
+            {script_body}
+        """)
+        r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10)
+        assert r.returncode == 0, f"[{label}] stderr: {r.stderr}"
+        assert lock_file.exists(), f"[{label}] Expected lock at {lock_file}"
 
-    data = json.loads(lock_file.read_text())
-    assert data["workspaceFolders"] == [], (
-        f"Expected workspaceFolders=[], got {data['workspaceFolders']!r}"
-    )
-    # Other fields intact
-    assert data["authToken"] == VALID_UUID
-    assert data["pid"] == 0
-    assert data["ideName"] == "Obsidian"
-    assert data["transport"] == "ws"
+        data = json.loads(lock_file.read_text())
+        assert data["workspaceFolders"] == [], (
+            f"[{label}] Expected workspaceFolders=[], got {data['workspaceFolders']!r}"
+        )
+        assert data["authToken"] == VALID_UUID
+        assert data["pid"] == 0
+        assert data["ideName"] == "Obsidian"
+        assert data["transport"] == "ws"
 
 
 def test_write_ide_bridge_config_in_install_context(tmp_path):

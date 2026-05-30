@@ -350,5 +350,5 @@ sequenceDiagram
 | Lock file | `~/.claude/ide/<port>.lock` JSON that Claude Code reads to discover and authenticate to an IDE server. |
 | socat | Lightweight TCP relay; here forwards container localhost to the host's bridge port. |
 | `host.docker.internal` | DNS name resolving to the host from inside the container (macOS/OrbStack/Docker Desktop). |
-| `workspaceFolders` | IDE-protocol lock-file field for editor workspace roots; empty here (no IDE workspace concept across the boundary). |
+| `workspaceFolders` | IDE-protocol lock-file field for editor workspace roots; carries the container-side instance path — begin-tomo mounts the instance at the same path on host and container (`-v $INSTANCE_PATH:$INSTANCE_PATH`, `-w $INSTANCE_PATH`), so Claude Code's IDE workspace matches the container cwd. |
 | Tags (statusline) | Kado-only capability probe — connected but tag-read denied → `Kado ✓ Tags ✗`. No Hashi equivalent. |

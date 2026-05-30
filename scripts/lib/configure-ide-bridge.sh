@@ -46,13 +46,13 @@ write_ide_lock() {
     local home_dir="$1"
     local port="$2"
     local token="$3"
-    local workspace="${4:-}"
+    local workspace_path="${4:-}"
     local ide_dir="${home_dir}/.claude/ide"
     mkdir -p "$ide_dir"
     chmod 700 "$ide_dir"
     jq -n \
        --arg tok "$token" \
-       --arg ws  "$workspace" \
+       --arg ws  "$workspace_path" \
        '{ pid: 0, workspaceFolders: ($ws | if . == "" then [] else [.] end), ideName: "Obsidian", transport: "ws", authToken: $tok }' \
        > "${ide_dir}/${port}.lock"
 }

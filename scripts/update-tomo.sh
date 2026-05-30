@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.5.1
+# version: 0.5.2
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -136,7 +136,10 @@ INSTANCE_NAME=$(jq -r '.instanceName // empty' "$CONFIG_FILE")
 INSTANCE_LOCATION=$(jq -r '.instanceLocation // empty' "$CONFIG_FILE")
 
 # launcherPath fallback for older configs that predate the field.
-if [ -z "$LAUNCHER_PATH" ]; then
+# Guard on instanceLocation being present: without it the fallback yields
+# "/begin-tomo.sh" (root path), which is worse than the clear "no launcherPath
+# in config" problem reported by the launcher scan below.
+if [ -z "$LAUNCHER_PATH" ] && [ -n "$INSTANCE_LOCATION" ]; then
     LAUNCHER_PATH="$INSTANCE_LOCATION/begin-tomo.sh"
 fi
 

@@ -178,3 +178,54 @@ def test_idempotent_second_run_is_current(tmp_path):
     assert "+ create   entrypoint" not in combined, "entrypoint spuriously re-created"
     assert "↑ update   begin-tomo.sh" not in combined, "launcher spuriously re-updated"
     assert "+ create   begin-tomo.sh" not in combined, "launcher spuriously re-created"
+
+
+def test_missing_launcher_path_and_instance_location_reports_problem(tmp_path):
+    """Config with neither launcherPath nor instanceLocation → clear 'problem' diagnostic.
+
+    Guards the fallback gate fix: without the guard, the fallback yields
+    LAUNCHER_PATH="/begin-tomo.sh" and the run produces a confusing
+    "render failed" at root instead of the intended problem message.
+    """
+    instance_path = tmp_path / "tomo-instance"
+    home_dir = tmp_path / "home"
+    config_file = tmp_path / "tomo-install.json"
+
+    instance_path.mkdir(parents=True, exist_ok=True)
+    (instance_path / ".claude").mkdir(parents=True, exist_ok=True)
+    home_dir.mkdir(parents=True, exist_ok=True)
+
+    # Config deliberately omits both launcherPath and instanceLocation.
+    config = {
+        "version": "0.0.0",
+        "instanceName": "testinst",
+        "instancePath": str(instance_path),
+        "homePath": str(home_dir),
+        "vaultPath": str(tmp_path / "vault"),
+        "profile": "miyo",
+        "profileVersion": "0.0.0",
+        "lifecyclePrefix": "tomo",
+        "kado": {"host": "127.0.0.1", "port": 23026, "protocol": "http"},
+        "voice": {"enabled": False, "model": "", "language": ""},
+        "ide_bridge": {"enabled": True, "auth_token": "tok-123", "port": 23027},
+        "installedAt": "2026-01-01T00:00:00Z",
+        "tomoVersion": "0.0.0",
+    }
+    config_file.write_text(json.dumps(config, indent=2))
+
+    result = _run_update(config_file)
+
+    # The run must complete (not crash with a Python/shell error), but exits 1
+    # because the problem entry is counted as a failed write in the summary.
+    # Exit codes 0 and 1 are both acceptable here; a missing config causes 2.
+    assert result.returncode in (0, 1), f"update crashed unexpectedly:\n{result.stdout}\n{result.stderr}"
+
+    # The plan must report a clear "problem" for begin-tomo.sh — not a render error.
+    combined = result.stdout + result.stderr
+    assert "problem" in combined.lower(), "expected a problem diagnostic for missing launcher config"
+    assert "no launcherPath in config" in combined, \
+        "expected 'no launcherPath in config' problem message, got:\n" + combined
+
+    # Nothing must have been written to the filesystem root.
+    assert not Path("/begin-tomo.sh").exists(), \
+        "launcher was incorrectly rendered to /begin-tomo.sh"

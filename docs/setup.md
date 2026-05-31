@@ -4,7 +4,7 @@ This guide walks through Tomo's interactive setup, the launcher, post-install co
 
 ## Install Script Walkthrough
 
-The install script guides you through setup in 8 steps:
+The install script guides you through setup step by step:
 
 ### 1. Vault Path
 
@@ -48,6 +48,21 @@ Tomo sets up a git identity so commits made inside the Docker container (and in 
 - **Skip** — no git config; you can set it manually later
 
 The values are written to `tomo-home/.gitconfig` (global for the container) and also set as local config in the instance repo.
+
+### Tomo Context — live editor context (optional)
+
+*Tomo Context* connects Claude Code inside the container to your live Obsidian editor through the [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) plugin's IDE Bridge. When enabled, Claude can see your **active note, selection, and cursor position** in real time — so a request like "summarise the note I'm looking at" works without pasting a path.
+
+The wizard step is labelled **Hashi IDE Bridge**. To enable it, grab two things from the Hashi plugin in Obsidian:
+
+- **Auth token** — Hashi generates a `hashi_<uuid>` token; copy it from Hashi's settings. The wizard rejects anything not in `hashi_<uuid>` form.
+- **Port** — must match the port Hashi listens on (Hashi's default is `23027`). If you change it on one side, change it on the other; a mismatch is the most common failure.
+
+The wizard writes an IDE lock file to `tomo-home/.claude/ide/<port>.lock` and records the choice in `tomo-install.json`. On the next launch the container spawns a `socat` proxy (container `localhost:<port>` → `host.docker.internal:<port>`) and auto-connects Claude Code to the bridge — no manual `/ide` needed.
+
+> **The green Hashi icon means *connected*, not *working*.** It confirms the socket handshake only — it does **not** verify that editor context is actually flowing or that the rest of Hashi is healthy. If the icon is green but context isn't reaching Claude, see [Troubleshooting → Tomo Context](troubleshooting.md#tomo-context-ide-bridge) and Hashi's own [context guide](https://github.com/MMoMM-org/miyo-tomo-hashi/blob/main/docs/context.md).
+
+Change or disable Tomo Context anytime by re-running `install-tomo.sh` or `update-tomo.sh`.
 
 ### 7. Instance Creation
 

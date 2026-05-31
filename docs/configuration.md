@@ -105,6 +105,7 @@ Lives at `<repo-root>/tomo-install.json`, **outside** the container.
 | `lifecyclePrefix` | `"MiYo-Tomo"` | Lifecycle tag prefix; mirrors into `vault-config.yaml`. |
 | `kado.host`, `kado.port`, `kado.protocol` | from installer | Kado connection metadata; the bearer token lives only in `.mcp.json`. |
 | `voice` | `{}` | Voice block (schema_version, enabled, model, language); mirrored into `voice/config.json`. |
+| `ide_bridge` | `{}` | Tomo Context block (schema_version, enabled, auth_token, port) for the Hashi IDE Bridge; drives the IDE lock file (`tomo-home/.claude/ide/<port>.lock`) and the container `socat` proxy. |
 | `installedAt` | ISO 8601 UTC timestamp | When the instance was last (re-)installed. |
 
 ### profiles/<name>.yaml — framework profiles (read-only)
@@ -134,6 +135,7 @@ The edit workflow depends on which file holds the setting:
 - **Behavioural rules that don't fit YAML** (tagging precedence, destination overrides, template selection) — add or edit a markdown file under `tomo-instance/config/user-rules/`, then reference it descriptively from `tomo-instance/CLAUDE.md` so agents know it exists.
 - **Kado connection** (host, port, protocol, bearer token) — re-run `install-tomo.sh`. Hand-editing `kado-config.md` does **not** update `.mcp.json`, and `.mcp.json` is what Claude Code actually reads.
 - **Voice transcription** (enabled, model, language) — re-run `install-tomo.sh` or `update-tomo.sh`; both re-run the voice wizard and re-mirror the voice block from `tomo-install.json` into `voice/config.json`.
+- **Tomo Context** (Hashi IDE Bridge — enabled, auth token, port) — re-run `install-tomo.sh` or `update-tomo.sh`; both re-run the Tomo Context wizard, rewrite the IDE lock file, and re-deliver the launcher + entrypoint that spawn the proxy. The configured port must match the port Hashi listens on.
 - **Profile choice** — change the `profile` field in vault-config.yaml. The installer's profile prompt only sets the initial value; subsequent changes are file edits.
 - **Managed runtime files** (agents, commands, skills, the instance `CLAUDE.md`) — don't hand-edit the instance copies; they are overwritten by `update-tomo.sh`. Edit the source under `tomo/`, bump the file's `# version:` comment, then run `update-tomo.sh`.
 
@@ -171,6 +173,7 @@ Tomo's defaults are tuned for the MiYo profile but most are safe across vault la
 ### Off by default — opt in deliberately
 
 - **`voice.enabled: false`** — leave off unless you transcribe voice memos. Enabling needs `model` + `language` plus a downloaded faster-whisper model.
+- **`ide_bridge.enabled: false`** — Tomo Context (live Obsidian editor context via the Hashi IDE Bridge) stays off until you enable it in the install/update wizard. Enabling needs a `hashi_<uuid>` token from Hashi and a port matching Hashi's (default `23027`). See [Setup → Tomo Context](setup.md#tomo-context--live-editor-context-optional).
 - **`trackers.daily_note_trackers`** — empty unless you author tracker definitions.
 - **`daily_log.auto_create_if_missing.*`** — all `false` in MVP. Leave alone unless you specifically want Tomo creating daily notes for you.
 

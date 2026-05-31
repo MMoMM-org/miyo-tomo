@@ -125,7 +125,7 @@ miyo-tomo/
 │   ├── suggestion-parser.py   # Parse approved suggestions
 │   ├── instruction-render.py  # Pass-2 deterministic rendering (notes + instructions.{json,md})
 │   ├── instructions-dryrun.py # Validate instructions.json is machine-consumable
-│   ├── state-scanner.py / state-init.py / state-update.py  # Lifecycle state
+│   ├── state-init.py / state-update.py  # Lifecycle state
 │   ├── read-config-field.py   # Batch read vault-config values
 │   ├── vault-reset.sh         # Reset the test vault inbox between pipeline stages
 │   └── yaml-fixer.py          # YAML error recovery

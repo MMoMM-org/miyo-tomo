@@ -673,8 +673,8 @@ execute_one() {
             # Render the template into the launcher path with the same five
             # substitutions install-tomo.sh uses. DEV_NOTIFY_PORT is the
             # constant 9999 (matches install).
-            # NOTE: launcher placeholder set is duplicated in install-tomo.sh and update-tomo.sh.
-            # Keep both sed blocks in sync. Tracked for extraction into a shared scripts/lib helper (backlog).
+            # NOTE: install-tomo.sh now uses the shared render_launcher lib (ADR-7 / T2.3).
+            # update-tomo.sh still inlines this sed block; migration to render_launcher is Phase 3.
             # Render to a temp then move so a mid-write interruption never leaves a corrupt launcher.
             if sed -e "s|{{INSTANCE_PATH}}|${INSTANCE_PATH}|g" \
                    -e "s|{{INSTANCE_NAME}}|${INSTANCE_NAME}|g" \

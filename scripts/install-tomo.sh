@@ -1408,6 +1408,8 @@ if [ ! -f "$LAUNCHER_TEMPLATE" ]; then
     exit 1
 fi
 
+# Failure here aborts under set -e before config + registry are written,
+# leaving the instance dir without a launcher — acceptable; no orphan risk.
 render_launcher "$LAUNCHER_TEMPLATE" "$LAUNCHER_PATH" "$INSTANCE_NAME" "$INSTANCE_PATH" "$HOME_DIR" "$REPO_ROOT" "9999"
 print_ok "begin-tomo.sh → $LAUNCHER_PATH"
 
@@ -1443,8 +1445,13 @@ print_ok "tomo-install.json"
 
 # Register the instance so future installs can route to it (ADR-2 / D-09).
 # INSTANCE_PATH = <root>/instance — the convention update routing depends on.
-registry_upsert "$INSTANCE_NAME" "$INSTANCE_PATH" "$REPO_ROOT" "$TOMO_VERSION"
-print_ok "instance registered: $INSTANCE_NAME → $INSTANCE_PATH"
+# Soft-fail: the registry is a rebuildable index; a write failure (unwritable
+# ~/.tomo, jq error, mv perm) must NOT orphan a fully-provisioned instance.
+if registry_upsert "$INSTANCE_NAME" "$INSTANCE_PATH" "$REPO_ROOT" "$TOMO_VERSION"; then
+    print_ok "instance registered: $INSTANCE_NAME → $INSTANCE_PATH"
+else
+    print_warn "Registry update failed — the instance is installed but will not appear in the install/update selection menu. Re-run install, or register it manually."
+fi
 
 # Persist the voice block via the shared write_voice_config helper —
 # single authoritative writer for schema_version + enabled/model/language.

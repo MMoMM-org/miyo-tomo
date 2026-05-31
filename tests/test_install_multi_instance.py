@@ -502,3 +502,57 @@ def test_registry_contains_instance_at_instance_subdir(tmp_path: Path) -> None:
     assert instances["reg-test"]["path"] == expected_path, (
         f"registry path mismatch: {instances['reg-test']['path']!r} != {expected_path!r}"
     )
+
+
+def test_registry_upsert_failure_is_soft(tmp_path: Path) -> None:
+    """registry_upsert failure must NOT abort the install (ADR-2: registry is
+    a rebuildable index). Point TOMO_REGISTRY_FILE at a path whose PARENT dir
+    is unwritable — registry_upsert cannot create the file → non-zero exit
+    inside the installer — but install must still exit 0 and the instance dir
+    + config must be present. A warning must surface (print_warn → stdout).
+    """
+    import stat
+
+    # Create a dir we then make unwritable so registry_upsert cannot write
+    # the JSON file there.
+    locked_dir = tmp_path / "no-write"
+    locked_dir.mkdir()
+    locked_dir.chmod(stat.S_IRUSR | stat.S_IXUSR)  # r-x — no write bit
+
+    registry = locked_dir / "instances.json"
+    parent = tmp_path / "parent"
+
+    try:
+        result = _run_install(
+            tmp_path,
+            instance_name="soft-fail",
+            registry_file=registry,
+            pin_home_config=False,
+            parent=parent,
+        )
+
+        # Install must succeed despite the registry failure.
+        assert result.returncode == 0, (
+            "install aborted on registry failure — must soft-fail:\n"
+            + result.stdout
+            + result.stderr
+        )
+
+        # The instance workspace must still be present.
+        assert (parent / "soft-fail" / "instance").is_dir(), (
+            "instance dir missing after registry soft-fail"
+        )
+
+        # The per-instance config must still be written.
+        assert (parent / "soft-fail" / "tomo-install.json").is_file(), (
+            "tomo-install.json missing after registry soft-fail"
+        )
+
+        # A warning must appear in output (print_warn writes to stdout).
+        assert "warn" in result.stdout.lower() or "registry" in result.stdout.lower(), (
+            "no registry-failure warning in stdout:\n" + result.stdout
+        )
+
+    finally:
+        # Restore write bit so pytest can clean up tmp_path.
+        locked_dir.chmod(stat.S_IRWXU)

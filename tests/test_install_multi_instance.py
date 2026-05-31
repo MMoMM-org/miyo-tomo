@@ -415,8 +415,8 @@ def test_config_includes_repo_path_and_tomo_version(tmp_path: Path) -> None:
     assert cfg.get("tomoVersion"), "tomoVersion missing from config"
 
 
-def test_config_still_includes_lifecycle_prefix(tmp_path: Path) -> None:
-    """lifecyclePrefix remains in tomo-install.json (Phase 4 removes it — not now)."""
+def test_config_has_no_lifecycle_prefix(tmp_path: Path) -> None:
+    """lifecyclePrefix must NOT be in tomo-install.json after T4.1 removal (ADR-6)."""
     registry = tmp_path / "instances.json"
     parent = tmp_path / "parent"
 
@@ -435,12 +435,14 @@ def test_config_still_includes_lifecycle_prefix(tmp_path: Path) -> None:
     import json
 
     cfg = json.loads(config_path.read_text())
-    # lifecyclePrefix must still be present (Phase 4 removes it).
-    assert "lifecyclePrefix" in cfg, "lifecyclePrefix was prematurely removed"
-    # And it is the ONLY tag-prefix key — no new ones added.
-    tag_prefix_keys = [k for k in cfg if "prefix" in k.lower() or "tagprefix" in k.lower()]
-    assert tag_prefix_keys == ["lifecyclePrefix"], (
-        f"unexpected tag-prefix keys: {tag_prefix_keys}"
+    # T4.1 (ADR-6): lifecyclePrefix is removed — must not appear.
+    assert "lifecyclePrefix" not in cfg, (
+        "lifecyclePrefix still in tomo-install.json after T4.1 removal"
+    )
+    # No other prefix-shaped key should be present either.
+    prefix_keys = [k for k in cfg if "prefix" in k.lower()]
+    assert not prefix_keys, (
+        f"Unexpected prefix-related keys remain in tomo-install.json: {prefix_keys}"
     )
 
 

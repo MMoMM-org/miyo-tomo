@@ -3,8 +3,8 @@
 # Copies agents, skills, commands, and configs into the instance directory.
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
-# lifecycle prefix, voice transcription, and vault-config.yaml generation.
-# version: 0.4.0
+# voice transcription, and vault-config.yaml generation.
+# version: 0.5.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -25,7 +25,6 @@ FLAG_PROFILE=""
 FLAG_KADO_HOST=""
 FLAG_KADO_PORT=""
 FLAG_KADO_TOKEN=""
-FLAG_PREFIX=""
 SHOW_HELP=false
 
 FLAG_INSTANCE_LOCATION=""
@@ -41,7 +40,6 @@ while [ $# -gt 0 ]; do
         --kado-host)   FLAG_KADO_HOST="$2"; shift 2 ;;
         --kado-port)   FLAG_KADO_PORT="$2"; shift 2 ;;
         --kado-token)  FLAG_KADO_TOKEN="$2"; shift 2 ;;
-        --prefix)      FLAG_PREFIX="$2";    shift 2 ;;
         --instance-location) FLAG_INSTANCE_LOCATION="$2"; shift 2 ;;
         --instance-name)     FLAG_INSTANCE_NAME="$2";     shift 2 ;;
         --home-dir)          FLAG_HOME_DIR="$2";          shift 2 ;;
@@ -71,7 +69,6 @@ Options:
   --kado-host HOST      Kado server host (default: host.docker.internal)
   --kado-port PORT      Kado server port (default: 37022)
   --kado-token TOKEN    Kado bearer token (must start with kado_)
-  --prefix PREFIX       Lifecycle tag prefix (default: MiYo-Tomo)
   --instance-name NAME  Instance directory name (default: tomo-instance)
   --instance-location P Parent directory for the instance (default: ~/MiYo/Tomo).
                         The self-contained instance is created at
@@ -87,8 +84,8 @@ Options:
   --help, -h            Show this help message
 
 Interactive mode (default):
-  Walks through vault path, profile selection, concept mapping, lifecycle
-  prefix, and Kado connection. Generates vault-config.yaml in instance.
+  Walks through vault path, profile selection, concept mapping, and Kado
+  connection. Generates vault-config.yaml in instance.
   When other instances are registered, offers a create-new vs update-<name>
   choice up front.
 
@@ -759,18 +756,6 @@ if [ -n "$C_CALENDAR" ] && [ "$NON_INTERACTIVE" != "true" ]; then
     print_ok "Daily: $CALENDAR_DAILY_PATH"
 fi
 
-# ── Step 5: Lifecycle Prefix ─────────────────────────────
-
-print_step "Lifecycle tag prefix"
-
-TAG_PREFIX=""
-if [ -n "$FLAG_PREFIX" ]; then
-    TAG_PREFIX="$FLAG_PREFIX"
-else
-    TAG_PREFIX=$(prompt_default "Tag prefix for Tomo lifecycle states" "MiYo-Tomo")
-fi
-print_ok "Prefix: $TAG_PREFIX"
-
 # ── Instance directory ────────────────────────────────────
 #
 # Registry-driven selection (XDD 020 Phase 2, T2.1). Reads the instance
@@ -1168,9 +1153,6 @@ YAMLEOF
   template: "${C_TEMPLATE}"
   asset: "${C_ASSET}"
 
-lifecycle:
-  tag_prefix: "${TAG_PREFIX}"
-
 # Everything else (naming, templates, frontmatter, relationships,
 # callouts, tags) comes from the profile defaults.
 # Run /tomo-setup in Tomo to detect and configure these (delegates to /explore-vault).
@@ -1429,7 +1411,6 @@ cat > "$CONFIG_FILE" << CFGEOF
   "vaultPath": "${VAULT_PATH}",
   "profile": "${PROFILE}",
   "profileVersion": "${PROFILE_VERSION}",
-  "lifecyclePrefix": "${TAG_PREFIX}",
   "kado": {
     "host": "${KADO_HOST}",
     "port": ${KADO_PORT},

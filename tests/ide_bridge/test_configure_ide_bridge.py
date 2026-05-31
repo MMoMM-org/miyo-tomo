@@ -460,8 +460,6 @@ def test_install_smoke_ide_bridge_block_exists(tmp_path):
     RED before T1.2 wiring (key absent); GREEN after (key present).
     Uses all four isolation flags so the test never touches the real instance.
     """
-    import shutil
-
     vault_dir = tmp_path / "vault"
     vault_dir.mkdir()
     home_dir = tmp_path / "home"

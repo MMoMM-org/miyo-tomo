@@ -214,7 +214,7 @@ def test_single_lock_listen_includes_port(tmp_path):
         '{"pid":0,"workspaceFolders":[],"ideName":"Obsidian","transport":"ws","authToken":"abc"}'
     )
 
-    r = _run_ide_bridge_block(home)
+    _run_ide_bridge_block(home)
     calls = _socat_calls(home)
     assert len(calls) == 1
     # Listen-side argument must contain the port (TCP-LISTEN:23027,... or TCP4-LISTEN:23027,...)
@@ -323,7 +323,7 @@ def test_multiple_locks_socat_not_invoked(tmp_path):
     for port in ("23027", "23028"):
         (ide_dir / f"{port}.lock").write_text("{}")
 
-    r = _run_ide_bridge_block(home)
+    _run_ide_bridge_block(home)
 
     calls = _socat_calls(home)
     assert calls == [], f"socat must not be invoked for multiple locks; calls: {calls}"

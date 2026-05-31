@@ -44,39 +44,37 @@ render_launcher "$@"
 
 
 def _sanitize_via_bash(raw: str) -> str:
-    """Exercise _sanitize_hostname from the template by sourcing it in bash.
+    """Exercise _sanitize_hostname by extracting the REAL function from the template.
 
-    We define just the function body extracted inline so we don't have to
-    source the whole template (which has top-level docker logic that would
-    fail outside a docker context).  The function is short enough to embed.
+    Uses sed to pull the function body directly from begin-tomo.sh.template so
+    these tests track the actual implementation through future edits — not a copy.
+
+    The raw value is passed via the _RAW env var (not as a positional arg) to avoid
+    bash treating dash-prefixed values like '---hello' as flag arguments.
     """
-    # Extract the _sanitize_hostname function from the template so it stays DRY.
-    # The function is defined between "_sanitize_hostname()" and the closing "}"
-    # We embed it directly here matching what the template will define.
-    script = r"""
-_sanitize_hostname() {
-    local raw="$1"
-    local s
-    s=$(printf '%s' "$raw" | tr -c 'a-zA-Z0-9-' '-')
-    # strip trailing newline that tr may add
-    s="${s%%-}"
-    # but we need to keep valid trailing chars — redo: collapse then strip ends
-    s=$(printf '%s' "$s" | sed 's/-\{1,\}/-/g; s/^-//; s/-$//')
-    if [ -z "$s" ]; then
-        s="tomo"
-    fi
-    printf '%s' "$s"
-}
-_sanitize_hostname "$1"
-"""
+    # Extract _sanitize_hostname from the template (lines from the function header
+    # to the first column-0 closing brace).
+    extract = subprocess.run(
+        ["sed", "-n", "/^_sanitize_hostname()/,/^}/p", str(TEMPLATE)],
+        capture_output=True, text=True, check=True,
+    )
+    func = extract.stdout
+    assert func.strip(), f"Failed to extract _sanitize_hostname from {TEMPLATE}"
+    # Pass the raw value via env var to avoid bash interpreting dash-prefixed
+    # strings (e.g. '---') as options when they appear in the arg list.
+    script = func + '\n_sanitize_hostname "$_RAW"\n'
+    import os
+    env = {**os.environ, "_RAW": raw}
     result = subprocess.run(
-        ["/bin/bash", "-c", script, "--", raw],
+        ["bash", "-s"],
+        input=script,
         capture_output=True, text=True, timeout=10,
+        env=env,
     )
     assert result.returncode == 0, (
         f"_sanitize_hostname failed\nstdout={result.stdout}\nstderr={result.stderr}"
     )
-    return result.stdout
+    return result.stdout.strip()
 
 
 # ── A. Sanitize unit tests ───────────────────────────────────────────────────

@@ -238,14 +238,15 @@ sequenceDiagram
     Docker->>Entry: start
     Entry->>Entry: lock file present? (exactly one)
     Entry->>Socat: spawn 127.0.0.1:port → host.docker.internal:port (background)
-    Entry->>CC: exec
-    CC->>Socat: read lock, connect ws://127.0.0.1:port
+    Entry->>Entry: export CLAUDE_CODE_AUTO_CONNECT_IDE=true (single-lock branch only)
+    Entry->>CC: exec (inherits CLAUDE_CODE_AUTO_CONNECT_IDE)
+    CC->>Socat: auto-connect ws://127.0.0.1:port (env var; highest precedence)
     Socat->>Bridge: forward to host
 ```
 
 ### Error Handling
 
-- **No lock file / IDE Bridge disabled** → entrypoint starts no proxy, no error (silent, per Feature 2 AC2).
+- **No lock file / IDE Bridge disabled** → entrypoint starts no proxy, does not set `CLAUDE_CODE_AUTO_CONNECT_IDE`, no error (silent, per Feature 2 AC2).
 - **Multiple `.lock` files** → entrypoint fails fast with a clear message pointing at the directory (Feature 1 edge case).
 - **Hashi unreachable at launch** → non-blocking banner warning; launch continues (Feature 6).
 - **Invalid auth token (not `hashi_<uuid>`) / invalid port (non-numeric / out of range)** → wizard rejects with a clear message (Feature 4).

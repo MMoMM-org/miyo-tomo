@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.2.0
 """test_entrypoint_proxy.py — Pytest-driven tests for the IDE Bridge proxy spawn
 in docker/entrypoint.sh.
 
@@ -13,6 +13,10 @@ All four branches covered per T2.2 spec:
   - exactly one <port>.lock → socat invoked once, backgrounded, correct addresses
   - two .lock files → fail fast, non-zero exit, message names the dir; no socat
   - proxy spawn does not block exec "$@"
+
+Additional assertions per Phase 4 live-test (T4.1) — CLAUDE_CODE_AUTO_CONNECT_IDE:
+  - exactly one lock → var exported as "true" at exec point
+  - zero locks (no dir / empty dir) → var NOT set at exec point
 """
 from __future__ import annotations
 
@@ -90,6 +94,8 @@ def _run_ide_bridge_block(
         wait          # let the backgrounded socat shim finish writing its log
         # Simulate exec "$@" without replacing process
         echo "exec_reached" >> "{exec_log}"
+        # Record the CLAUDE_CODE_AUTO_CONNECT_IDE value at exec point (empty string if unset)
+        echo "auto_connect=${{CLAUDE_CODE_AUTO_CONNECT_IDE:-}}" >> "{exec_log}"
         {cmd}
     """)
 
@@ -111,6 +117,20 @@ def _socat_calls(home_dir: Path) -> list[str]:
 def _exec_reached(home_dir: Path) -> bool:
     log = home_dir / "exec_calls.txt"
     return log.exists() and "exec_reached" in log.read_text()
+
+
+def _auto_connect_at_exec(home_dir: Path) -> str:
+    """Return the value of CLAUDE_CODE_AUTO_CONNECT_IDE recorded at exec point.
+
+    Returns "" if the exec log does not exist or the line is absent (var unset).
+    """
+    log = home_dir / "exec_calls.txt"
+    if not log.exists():
+        return ""
+    for line in log.read_text().splitlines():
+        if line.startswith("auto_connect="):
+            return line[len("auto_connect="):]
+    return ""
 
 
 # ── Branch 1: no .claude/ide dir → no socat, exit 0 ─────────────────────────
@@ -301,17 +321,81 @@ def test_multiple_locks_socat_not_invoked(tmp_path):
     assert calls == [], f"socat must not be invoked for multiple locks; calls: {calls}"
 
 
+# ── CLAUDE_CODE_AUTO_CONNECT_IDE: set only in the single-lock branch ──────────
+
+def test_single_lock_sets_auto_connect_true(tmp_path):
+    """Exactly one lock file present → CLAUDE_CODE_AUTO_CONNECT_IDE exported as 'true'.
+
+    Phase 4 live-test finding: the IDE Bridge does not auto-connect from a lock
+    file alone — CLAUDE_CODE_AUTO_CONNECT_IDE=true is the documented deterministic
+    mechanism for headless/obscured-parent-terminal cases.
+    """
+    home = tmp_path / "home"
+    ide_dir = home / ".claude" / "ide"
+    ide_dir.mkdir(parents=True)
+    (ide_dir / "23027.lock").write_text(
+        '{"pid":0,"workspaceFolders":[],"ideName":"Obsidian","transport":"ws","authToken":"hashi_abc"}'
+    )
+
+    r = _run_ide_bridge_block(home)
+
+    assert r.returncode == 0, f"Expected exit 0\nstderr: {r.stderr}"
+    val = _auto_connect_at_exec(home)
+    assert val == "true", (
+        f"Expected CLAUDE_CODE_AUTO_CONNECT_IDE=true at exec point, got: {val!r}\n"
+        "entrypoint.sh must export CLAUDE_CODE_AUTO_CONNECT_IDE=true in the single-lock branch."
+    )
+
+
+def test_no_ide_dir_does_not_set_auto_connect(tmp_path):
+    """No .claude/ide dir → CLAUDE_CODE_AUTO_CONNECT_IDE must NOT be set at exec.
+
+    Must never force auto-connect when the IDE Bridge is not configured.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    # Deliberately NOT creating home/.claude/ide
+
+    r = _run_ide_bridge_block(home)
+
+    assert r.returncode == 0, f"Expected exit 0\nstderr: {r.stderr}"
+    val = _auto_connect_at_exec(home)
+    assert val == "", (
+        f"Expected CLAUDE_CODE_AUTO_CONNECT_IDE to be unset (empty), got: {val!r}\n"
+        "entrypoint.sh must NOT export CLAUDE_CODE_AUTO_CONNECT_IDE when no lock dir exists."
+    )
+
+
+def test_empty_ide_dir_does_not_set_auto_connect(tmp_path):
+    """Empty .claude/ide dir (zero locks) → CLAUDE_CODE_AUTO_CONNECT_IDE must NOT be set.
+
+    Must never force auto-connect when the IDE Bridge is not configured.
+    """
+    home = tmp_path / "home"
+    ide_dir = home / ".claude" / "ide"
+    ide_dir.mkdir(parents=True)
+
+    r = _run_ide_bridge_block(home)
+
+    assert r.returncode == 0, f"Expected exit 0\nstderr: {r.stderr}"
+    val = _auto_connect_at_exec(home)
+    assert val == "", (
+        f"Expected CLAUDE_CODE_AUTO_CONNECT_IDE to be unset (empty), got: {val!r}\n"
+        "entrypoint.sh must NOT export CLAUDE_CODE_AUTO_CONNECT_IDE when no lock file exists."
+    )
+
+
 # ── Version check ─────────────────────────────────────────────────────────────
 
-def test_entrypoint_version_is_030():
-    """entrypoint.sh version must be 0.3.0 after T2.2 bump."""
+def test_entrypoint_version_is_040():
+    """entrypoint.sh version must be 0.4.0 after T4.1 auto-connect bump."""
     content = ENTRYPOINT_SH.read_text()
     match = re.search(r"# version: (\d+\.\d+\.\d+)", content)
     assert match, "Could not find '# version: X.Y.Z' in entrypoint.sh header"
     version = tuple(int(x) for x in match.group(1).split("."))
-    assert version >= (0, 3, 0), (
-        f"entrypoint.sh version {match.group(1)} is below 0.3.0. "
-        "Must be bumped to 0.3.0 for T2.2."
+    assert version >= (0, 4, 0), (
+        f"entrypoint.sh version {match.group(1)} is below 0.4.0. "
+        "Must be bumped to 0.4.0 for the CLAUDE_CODE_AUTO_CONNECT_IDE change."
     )
 
 

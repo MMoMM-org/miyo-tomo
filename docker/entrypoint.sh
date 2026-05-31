@@ -1,9 +1,9 @@
 #!/bin/bash
 # Tomo container entry point.
 # Sets up git config (fallback only), runs on-start hook if present,
-# spawns socat IDE Bridge proxy if a lock file is present,
-# then launches Claude Code.
-# version: 0.3.0
+# spawns socat IDE Bridge proxy and enables IDE auto-connect when exactly one
+# lock file is present, then launches Claude Code.
+# version: 0.4.0
 set -e
 
 # ── Git config (fallback only) ───────────────────────────
@@ -50,6 +50,7 @@ if [ -d "$IDE_DIR" ]; then
         _lock_file="$_lock_list"
         _port=$(basename "$_lock_file" .lock)
         socat TCP-LISTEN:"$_port",fork,reuseaddr,bind=127.0.0.1 TCP:host.docker.internal:"$_port" &
+        export CLAUDE_CODE_AUTO_CONNECT_IDE=true
     fi
     unset _lock_list _lock_count _lock_file _port
 fi

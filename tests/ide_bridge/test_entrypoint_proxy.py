@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_entrypoint_proxy.py — Pytest-driven tests for the IDE Bridge proxy spawn
 in docker/entrypoint.sh.
 
@@ -17,9 +17,11 @@ All four branches covered per T2.2 spec:
 Additional assertions per Phase 4 live-test (T4.1) — CLAUDE_CODE_AUTO_CONNECT_IDE:
   - exactly one lock → var exported as "true" at exec point
   - zero locks (no dir / empty dir) → var NOT set at exec point
+  - two .lock files (multi-lock exit-1 path) → var NOT set at exec point
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import textwrap
@@ -99,11 +101,16 @@ def _run_ide_bridge_block(
         {cmd}
     """)
 
+    # Strip CLAUDE_CODE_AUTO_CONNECT_IDE from the host environment so the test
+    # reflects only what the IDE-bridge block sets — not a pre-existing value
+    # from the caller's shell (e.g. after manual bridge testing or in CI).
+    clean_env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_AUTO_CONNECT_IDE"}
     return subprocess.run(
         ["bash", "-c", harness],
         capture_output=True,
         text=True,
         timeout=10,
+        env=clean_env,
     )
 
 
@@ -305,7 +312,8 @@ def test_multiple_locks_error_names_directory(tmp_path):
 
 
 def test_multiple_locks_socat_not_invoked(tmp_path):
-    """When multiple lock files are found, socat must NOT be invoked.
+    """When multiple lock files are found, socat must NOT be invoked and
+    CLAUDE_CODE_AUTO_CONNECT_IDE must NOT be set (exit-1 before the export).
 
     SDD Error Handling: fail fast before spawning anything.
     """
@@ -319,6 +327,11 @@ def test_multiple_locks_socat_not_invoked(tmp_path):
 
     calls = _socat_calls(home)
     assert calls == [], f"socat must not be invoked for multiple locks; calls: {calls}"
+    # exit-1 before the recording point — var must not appear in exec log
+    val = _auto_connect_at_exec(home)
+    assert val == "", (
+        f"CLAUDE_CODE_AUTO_CONNECT_IDE must not be set on multi-lock fail-fast, got: {val!r}"
+    )
 
 
 # ── CLAUDE_CODE_AUTO_CONNECT_IDE: set only in the single-lock branch ──────────

@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Foundation libraries (registry + render-launcher)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---

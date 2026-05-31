@@ -26,7 +26,7 @@ phase: 1
 
 Delivers two sourced bash libraries with full unit coverage, ready for the installer/updater to consume.
 
-- [ ] **T1.1 Instance registry library** `[activity: backend-api]`
+- [x] **T1.1 Instance registry library** `[activity: backend-api]`
   1. Prime: Read the registry schema + ADR-2 `[ref: solution.md/ADR-2]` and the jq write-tmp-then-mv pattern in `scripts/lib/configure-ide-bridge.sh`.
   2. Test (RED): `tests/test_instance_registry.py` (or `tests/test-instance-registry.sh`) driving the lib in an isolated `HOME`/tmpdir:
      - `registry_upsert` creates `~/.tomo/instances.json` with `schema_version` + one entry (happy).
@@ -39,19 +39,20 @@ Delivers two sourced bash libraries with full unit coverage, ready for the insta
   3. Implement (GREEN): `scripts/lib/instance-registry.sh` — `registry_path`, `registry_list`, `registry_upsert <name> <path> <repo> <version>`, `registry_resolve <name>`, `registry_remove <name>`, stale-check; atomic tmp→mv via jq; bash 3.2 safe (no assoc arrays).
   4. Validate: `bash -n`; targeted tests pass; ruff clean (if py test).
   5. Success:
-     - [ ] New instance recorded with name/path/repo/version/updatedAt `[ref: PRD/F2-AC1]`
-     - [ ] Stale entry handled gracefully, no crash `[ref: PRD/F2-AC3]`
-     - [ ] Missing registry → empty + recreatable `[ref: PRD/F2-AC4]`
-     - [ ] Unwritable `~/.tomo/` fails clearly `[ref: solution.md/Error Handling]`
+     - [x] New instance recorded with name/path/repo/version/updatedAt `[ref: PRD/F2-AC1]`
+     - [x] Stale entry handled gracefully, no crash `[ref: PRD/F2-AC3]`
+     - [x] Missing registry → empty + recreatable `[ref: PRD/F2-AC4]`
+     - [x] Unwritable `~/.tomo/` fails clearly `[ref: solution.md/Error Handling]`
 
-- [ ] **T1.2 Shared launcher renderer** `[activity: backend-api]` `[parallel: true]`
+- [x] **T1.2 Shared launcher renderer** `[activity: backend-api]` `[parallel: true]`
   1. Prime: Read ADR-7 + the existing duplicated sed blocks `[ref: solution.md/ADR-7]`; backlog D-09.
   2. Test (RED): `tests/test_render_launcher.py` — render `begin-tomo.sh.template` to a tmp dst with sample values; assert all 5 placeholders (`{{INSTANCE_NAME}}`, `{{INSTANCE_PATH}}`, `{{HOME_DIR}}`, `{{TOMO_REPO_ROOT}}`, `{{DEV_NOTIFY_PORT}}`) are substituted and NO `{{` remains; output is executable; atomic (no partial file on failure).
   3. Implement (GREEN): `scripts/lib/render-launcher.sh` — `render_launcher <template> <dst> <instance_name> <instance_path> <home_dir> <repo_root> <dev_notify_port>`; atomic tmp→mv; `chmod +x`.
   4. Validate: `bash -n`; tests pass.
   5. Success:
-     - [ ] All 5 substitutions applied; no unrendered `{{...}}` `[ref: solution.md/ADR-7]`
-     - [ ] One renderer reused by install + update (no duplicated sed) `[ref: backlog/D-09]`
+     - [x] All 5 substitutions applied; no unrendered `{{...}}` `[ref: solution.md/ADR-7]`
+     - [x] One renderer reused by install + update (no duplicated sed) `[ref: backlog/D-09]` — shared helper created; install/update call-sites swap in P2/P3
+     - [x] Docker `{{ index ... }}` format strings survive substitution (regression-locked)
 
-- [ ] **T1.3 Phase Validation** `[activity: validate]`
+- [x] **T1.3 Phase Validation** `[activity: validate]`
   - Run all Phase 1 tests; `bash -n` on both libs; ruff clean. Confirm libs are sourceable with no side effects on import.

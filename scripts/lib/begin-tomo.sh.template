@@ -33,6 +33,13 @@ print_ok()   { printf "  ${C_GREEN}✓${C_RESET} %s\n" "$1"; }
 print_warn() { printf "  ${C_YELLOW}⚠${C_RESET} %s\n" "$1"; }
 print_err()  { printf "  ${C_RED}✗${C_RESET} %s\n" "$1" >&2; }
 
+# ── Instance config path ─────────────────────────────────
+# Resolved once here; reused by defaultMode, version-check, and IDE-bridge
+# blocks below.  INSTANCE_PATH is baked at install time — $(dirname) gives
+# the install root that holds tomo-install.json for this specific instance.
+
+CONFIG_FILE="$(dirname "$INSTANCE_PATH")/tomo-install.json"
+
 # ── CLI Flags ─────────────────────────────────────────────
 
 FORCE_REBUILD=false
@@ -62,7 +69,6 @@ done
 # User sets "defaultMode" in tomo-install.json: "default", "auto", "yolo", or "bash".
 
 if [ "$HAS_MODE_FLAG" = "false" ] && [ "$SHOW_HELP" = "false" ] && command -v jq > /dev/null 2>&1; then
-    CONFIG_FILE="$TOMO_REPO_ROOT/tomo-install.json"
     if [ -f "$CONFIG_FILE" ]; then
         DEFAULT_MODE="$(jq -r '.defaultMode // "default"' "$CONFIG_FILE")"
         case "$DEFAULT_MODE" in
@@ -217,11 +223,10 @@ EOF_B
 
 # ── Version check (optional, non-fatal — always proceeds to launch) ──
 # ADR-4: warn only when instance is BEHIND source; ahead/equal → silent.
-# CONFIG_FILE derives from INSTANCE_PATH (baked at install time) so it
-# points to the instance-specific tomo-install.json, not the repo root copy.
+# CONFIG_FILE was hoisted above CLI flags — already points to the
+# instance-specific tomo-install.json.
 
 SOURCE_VERSION_FILE="$TOMO_REPO_ROOT/tomo/dot_claude/rules/project-context.md"
-CONFIG_FILE="$(dirname "$INSTANCE_PATH")/tomo-install.json"
 
 # Resolve INSTANCE_VERSION unconditionally so we can export it into the
 # container. Falls back to "unknown" when jq or tomo-install.json is missing.

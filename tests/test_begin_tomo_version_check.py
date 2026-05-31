@@ -81,108 +81,6 @@ render_launcher "$@"
     return dst.read_text(encoding="utf-8")
 
 
-def _run_version_check_block(
-    tmp_path: Path,
-    instance_version: str = "1.0.0",
-    source_version: str = "1.0.0",
-    missing_source: bool = False,
-    answer: str = "n",
-) -> subprocess.CompletedProcess:
-    """Drive the version-check block from the rendered launcher in isolation.
-
-    Renders the template, extracts the _version_compare function and the
-    version-check block (~179–210), then runs it in a controlled environment.
-
-    The check block uses:
-      - SOURCE_VERSION_FILE (written by us to a tmpfile or absent)
-      - INSTANCE_PATH (used to locate $(dirname)/tomo-install.json)
-      - TOMO_REPO_ROOT / INSTANCE_NAME  (for the update offer text)
-
-    To avoid the real docker-run, we wrap only the check block, not the
-    full launcher. The stdin answer controls the read -rp prompt.
-    """
-    # Build a fake SOURCE_VERSION_FILE
-    source_file = tmp_path / "project-context.md"
-    if not missing_source:
-        source_file.write_text(f"# version: {source_version}\n", encoding="utf-8")
-
-    # Build a fake tomo-install.json one level up from INSTANCE_PATH
-    install_root = tmp_path / "install-root"
-    install_root.mkdir()
-    instance_path = install_root / "instance"
-    instance_path.mkdir()
-    config_file = install_root / "tomo-install.json"
-    config_file.write_text(
-        f'{{"tomoVersion": "{instance_version}", "instanceName": "test-inst"}}\n',
-        encoding="utf-8",
-    )
-
-    # Extract _version_compare from template
-    func = _extract_version_compare()
-
-    # Build a minimal check block that mirrors the template logic but
-    # substitutes the real paths with our tmp paths and adds a sentinel
-    # at the end so we can confirm it proceeded past the check.
-    check_script = f"""
-#!/bin/bash
-set -e
-
-INSTANCE_PATH="{instance_path}"
-INSTANCE_NAME="test-inst"
-TOMO_REPO_ROOT="/nonexistent/Tomo"
-
-# Color helpers (non-tty — empty)
-C_RESET="" C_BOLD="" C_DIM="" C_CYAN="" C_GREEN="" C_YELLOW="" C_RED=""
-print_warn() {{ printf "  WARN: %s\\n" "$1"; }}
-print_step() {{ printf "\\n STEP: %s\\n" "$1"; }}
-
-{func}
-
-SOURCE_VERSION_FILE="{source_file}"
-CONFIG_FILE="$(dirname "$INSTANCE_PATH")/tomo-install.json"
-
-INSTANCE_VERSION="unknown"
-if [ -f "$CONFIG_FILE" ] && command -v jq > /dev/null 2>&1; then
-    INSTANCE_VERSION="$(jq -r '.tomoVersion // "unknown"' "$CONFIG_FILE")"
-fi
-
-if [ -f "$SOURCE_VERSION_FILE" ]; then
-    SOURCE_VERSION="$(grep -m1 '^# version:' "$SOURCE_VERSION_FILE" 2>/dev/null | sed 's/^# version: *//' || echo 'unknown')"
-    _vc_result="$(_version_compare "$INSTANCE_VERSION" "$SOURCE_VERSION")"
-    if [ "$_vc_result" = "behind" ]; then
-        echo ""
-        print_warn "Instance ($INSTANCE_VERSION) is behind source ($SOURCE_VERSION)"
-        printf "  Run: bash %s/scripts/update-tomo.sh --instance %s\\n" "$TOMO_REPO_ROOT" "$INSTANCE_NAME"
-        echo ""
-        read -rp "  Update now? [y/N] " ans
-        case "$ans" in
-          [yY]*) bash "$TOMO_REPO_ROOT/scripts/update-tomo.sh" --instance "$INSTANCE_NAME" && exec "$0" "$@" ;;
-          *) : ;;
-        esac
-    fi
-fi
-
-echo "LAUNCH_PROCEEDS"
-"""
-    env = {**os.environ}
-    result = subprocess.run(
-        ["bash", "-s"],
-        input=check_script,
-        capture_output=True, text=True, timeout=15,
-        env=env,
-        stdin=subprocess.PIPE,
-    )
-    # Feed the answer to the read prompt via stdin
-    result2 = subprocess.run(
-        ["bash", "-s"],
-        input=check_script,
-        capture_output=True, text=True, timeout=15,
-        env=env,
-    )
-    _ = result  # discard first (stdin pipe race)
-    return result2
-
-
 def _run_check_with_stdin(
     tmp_path: Path,
     instance_version: str,
@@ -190,7 +88,13 @@ def _run_check_with_stdin(
     missing_source: bool = False,
     answer: str = "n",
 ) -> tuple[int, str]:
-    """Return (returncode, stdout) for the check block, feeding `answer` to stdin."""
+    """Return (returncode, stdout) for the check block, feeding `answer` to stdin.
+
+    The check script is written to a tmp file so bash reads it via argv[0] and
+    only the prompt answer travels through stdin.  The yes-branch is stubbed:
+    instead of calling the real update-tomo.sh + exec, it echoes "WOULD_UPDATE"
+    so tests can assert on it without needing the real script to exist.
+    """
     source_file = tmp_path / "project-context.md"
     if not missing_source:
         source_file.write_text(f"# version: {source_version}\n", encoding="utf-8")
@@ -206,8 +110,7 @@ def _run_check_with_stdin(
 
     func = _extract_version_compare()
 
-    check_script = f"""
-#!/bin/bash
+    check_script = f"""#!/bin/bash
 set -e
 
 INSTANCE_PATH="{instance_path}"
@@ -245,17 +148,15 @@ fi
 
 echo "LAUNCH_PROCEEDS"
 """
+    # Write script to a file so bash reads it as argv[0]; stdin carries only the
+    # prompt answer.  This is the correct way to test `read -rp` prompts.
+    script_file = tmp_path / "check_block.sh"
+    script_file.write_text(check_script, encoding="utf-8")
+    script_file.chmod(0o755)
+
     result = subprocess.run(
-        ["bash", "-s"],
-        input=check_script,
-        capture_output=True, text=True, timeout=15,
-        env=os.environ.copy(),
-        # Feed answer via stdin (for the read -rp prompt)
-    )
-    # Run again with piped stdin for the interactive prompt
-    result = subprocess.run(
-        ["/bin/bash"],
-        input=check_script,
+        ["bash", str(script_file)],
+        input=answer + "\n",
         capture_output=True, text=True, timeout=15,
         env=os.environ.copy(),
     )
@@ -358,6 +259,29 @@ class TestVersionCheckBlock:
         assert rc == 0, f"Check block crashed on missing source file: {stdout}"
         assert "LAUNCH_PROCEEDS" in stdout, "Launch must proceed when source file is missing"
 
+    def test_check_behind_answer_yes_fires_update(self, tmp_path):
+        """Answer y when behind: WOULD_UPDATE is echoed (update path fires), not LAUNCH_PROCEEDS."""
+        rc, stdout = _run_check_with_stdin(
+            tmp_path, instance_version="1.0.0", source_version="1.1.0", answer="y"
+        )
+        assert rc == 0, f"Check block crashed on yes-answer: {stdout}"
+        assert "WOULD_UPDATE" in stdout, (
+            f"Yes-branch (update path) did not fire for answer='y': {stdout}"
+        )
+        assert "LAUNCH_PROCEEDS" not in stdout, (
+            "LAUNCH_PROCEEDS must not appear when update path fires (exit 0 after WOULD_UPDATE)"
+        )
+
+    def test_check_behind_answer_empty_proceeds(self, tmp_path):
+        """Empty answer (EOF / just Enter) when behind: falls through, launch proceeds."""
+        rc, stdout = _run_check_with_stdin(
+            tmp_path, instance_version="1.0.0", source_version="1.1.0", answer=""
+        )
+        assert rc == 0, f"Check block crashed on empty answer: {stdout}"
+        assert "LAUNCH_PROCEEDS" in stdout, (
+            "Launch must proceed when answer is empty (EOF)"
+        )
+
 
 # ── C. Template structure tests ──────────────────────────────────────────────
 
@@ -391,4 +315,25 @@ class TestTemplateStructure:
         # (the latter would fail with set -e if function returned non-zero)
         assert 'result=$(_version_compare' in content or '_vc_result=$(_version_compare' in content, (
             "_version_compare result must be captured, not used directly in if condition"
+        )
+
+    def test_defaultmode_uses_instance_config_not_repo_root(self):
+        """defaultMode block must NOT set CONFIG_FILE to TOMO_REPO_ROOT path.
+
+        The repo root has no tomo-install.json in the new multi-instance layout.
+        CONFIG_FILE must be hoisted from instance path before the defaultMode block.
+        """
+        content = TEMPLATE.read_text(encoding="utf-8")
+        # The stale repo-root assignment must be gone
+        assert 'CONFIG_FILE="$TOMO_REPO_ROOT/tomo-install.json"' not in content, (
+            "Stale CONFIG_FILE=$TOMO_REPO_ROOT/tomo-install.json found — defaultMode silently fails"
+        )
+        # CONFIG_FILE must derive from INSTANCE_PATH (set once, hoisted)
+        assert 'CONFIG_FILE="$(dirname "$INSTANCE_PATH")/tomo-install.json"' in content, (
+            "CONFIG_FILE must be set from $(dirname $INSTANCE_PATH)/tomo-install.json"
+        )
+        # Exactly one CONFIG_FILE assignment in the file
+        assignment_count = content.count('CONFIG_FILE=')
+        assert assignment_count == 1, (
+            f"Expected exactly 1 CONFIG_FILE= assignment, found {assignment_count}"
         )

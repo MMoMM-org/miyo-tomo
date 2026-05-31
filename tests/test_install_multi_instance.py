@@ -20,6 +20,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 INSTALLER = REPO_ROOT / "scripts" / "install-tomo.sh"
@@ -504,6 +506,7 @@ def test_registry_contains_instance_at_instance_subdir(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.skipif(os.getuid() == 0, reason="chmod 0500 does not deny root writes — registry failure cannot be simulated as root")
 def test_registry_upsert_failure_is_soft(tmp_path: Path) -> None:
     """registry_upsert failure must NOT abort the install (ADR-2: registry is
     a rebuildable index). Point TOMO_REGISTRY_FILE at a path whose PARENT dir

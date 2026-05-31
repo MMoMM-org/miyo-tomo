@@ -76,3 +76,13 @@ client = KadoClient(base_url=url, token=token)
 ```
 
 Key differences from inside Docker: hostname is `127.0.0.1` (not `host.docker.internal`) — the port is the same on both sides, read from `.mcp.json`; and `.mcp.json` is at `tomo-instance/.mcp.json` (not `.mcp.json` in cwd).
+
+<!-- 2026-05-31 -->
+
+## Hashi IDE Bridge — connection diagnosis + auto-connect (XDD 019 live-test)
+
+**Diagnose failures via the IDE log, not process checks.** The authoritative log is `tomo-home/.cache/claude-cli-nodejs/<encoded-project>/mcp-logs-ide/*.jsonl` inside the instance. A failed connect appears there as a structured error — e.g. Zod `invalid_type: serverInfo.version expected string, received undefined` means the connection reached the server and the **Hashi-side handshake** is non-conformant (missing `serverInfo.version`), NOT a transport/lock/token problem. Do **not** diagnose with container process checks: the minimal container shell has no `pgrep` and no `/dev/tcp`, so `pgrep -af socat` and `: </dev/tcp/...` return misleading "not found" errors. Read the `mcp-logs-ide` jsonl.
+
+**Auto-connect needs a signal — a lock file alone is the target, not the trigger.** Claude Code does NOT auto-connect on startup just because `~/.claude/ide/<port>.lock` exists. Mechanisms (documented): env var **`CLAUDE_CODE_AUTO_CONNECT_IDE=true`** (highest precedence), the `claude --ide` flag, or launching from an IDE integrated terminal. Running `/ide` once writes `autoConnectIde: true` into `~/.claude.json` (app state) — that is **NOT** a `settings.json` field; never put `autoConnectIde` in settings.json. Tomo's `docker/entrypoint.sh` (0.4.0+) exports `CLAUDE_CODE_AUTO_CONNECT_IDE=true` in the single-lock branch (kept out of the `unset` list so it survives into `exec "$@"`), so the container auto-connects without manual `/ide`.
+
+**IDE lock fields:** `authToken` is `hashi_<uuid>` (the `hashi_` prefix is part of the token — store verbatim). `workspaceFolders` carries the **container instance path** (`begin-tomo` mounts the instance at the same path host+container via `-v $INSTANCE_PATH:$INSTANCE_PATH` and `-w $INSTANCE_PATH`), not empty — Claude Code uses it to anchor the workspace. `IDE_BRIDGE_ENABLED` is host-side only (not passed into the container); the lock file is the sole in-container signal that the bridge is active.

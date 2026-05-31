@@ -170,15 +170,24 @@ def test_duplicate_name_non_interactive_rejected(tmp_path: Path) -> None:
 
 def test_update_known_name_builds_at_registered_path(tmp_path: Path) -> None:
     """--update --instance-name <known> resolves the REGISTERED path, not the
-    one --instance-location would produce.
+    one --instance-location would produce, and derives home/launcher at the
+    correct instance ROOT level.
 
-    The registry entry lives under registered-location/, structurally distinct
-    from the --instance-location (loc/) that _run_install passes. The update
-    route must target the registered path; if the create route ran instead it
-    would build under loc/kept and this test would fail.
+    The registry stores the INSTANCE dir path including the `/instance` suffix
+    (the ADR-2 convention that T2.3's registry_upsert writes), structurally
+    distinct from the --instance-location (loc/) that _run_install passes. The
+    update route must (a) build the instance at the registered path and (b)
+    reconcile the instance ROOT = dirname(registered_path) so home/ and
+    begin-tomo.sh land one level up — NOT two (off-by-one dirname bug).
+
+    Runs with pin_home_config=False so HOME_DIR/CONFIG_FILE DERIVE from the
+    reconciled root; passing --home-dir/--config-file would pin them and hide
+    the derivation bug this test guards.
     """
     registry = tmp_path / "instances.json"
-    registered_path = tmp_path / "registered-location" / "kept"
+    # Registry stores <root>/instance — the real convention.
+    instance_root = tmp_path / "registered-location" / "kept"
+    registered_path = instance_root / "instance"
     _seed_registry(registry, "kept", str(registered_path))
 
     result = _run_install(
@@ -186,12 +195,23 @@ def test_update_known_name_builds_at_registered_path(tmp_path: Path) -> None:
         instance_name="kept",
         registry_file=registry,
         extra_args=["--update"],
+        pin_home_config=False,
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
     # The instance was provisioned at the REGISTERED path (update route)…
     assert (registered_path / "config" / "vault-config.yaml").is_file(), (
         "update did not build at the registered path:\n" + result.stdout
+    )
+    # …home/ and begin-tomo.sh derive at the reconciled ROOT (…/kept), proving
+    # INSTANCE_ROOT = dirname(registered_path) and not one level too shallow.
+    assert (instance_root / "home").is_dir(), (
+        "home/ not at instance root — off-by-one dirname in update route:\n"
+        + result.stdout
+    )
+    assert (instance_root / "begin-tomo.sh").is_file(), (
+        "begin-tomo.sh not at instance root — off-by-one dirname in update "
+        "route:\n" + result.stdout
     )
     # …and NOT at the --instance-location path (which the create route uses).
     assert not (tmp_path / "loc" / "kept").exists(), (

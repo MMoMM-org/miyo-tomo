@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.6.0
+# version: 0.7.0
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -139,32 +139,27 @@ kado_check() {
     return
   fi
 
-  # Test 2: tag access — read tag_prefix from vault-config, search by tag
-  local tag_prefix=""
-  if [[ -f "config/vault-config.yaml" ]]; then
-    tag_prefix=$(grep -m1 'tag_prefix:' config/vault-config.yaml 2>/dev/null \
-      | sed 's/.*tag_prefix:[[:space:]]*//' | tr -d '"' | tr -d "'") || true
-  fi
+  # Test 2: frontmatter read access — byFrontmatter tomo.state=captured probe
+  # ADR-6/F6-AC3: probe verifies READ access via a known tomo.state value;
+  # empty result on a fresh vault is fine — the call succeeding is the signal.
+  # Does NOT read lifecycle.tag_prefix from vault-config (ADR-6).
+  local fm_payload
+  fm_payload=$(jq -n '{
+    jsonrpc: "2.0", id: 2,
+    method: "tools/call",
+    params: {name: "kado-search", arguments: {operation: "byFrontmatter", query: "tomo.state=captured", limit: 1}}
+  }' 2>/dev/null) || true
 
-  if [[ -n "$tag_prefix" ]]; then
-    local tag_payload
-    tag_payload=$(jq -n --arg q "#${tag_prefix}" '{
-      jsonrpc: "2.0", id: 2,
-      method: "tools/call",
-      params: {name: "kado-search", arguments: {operation: "byTag", query: $q, limit: 1}}
-    }' 2>/dev/null) || true
+  if [[ -n "$fm_payload" ]]; then
+    local fm_response
+    fm_response=$(kado_post "$fm_payload") || true
 
-    if [[ -n "$tag_payload" ]]; then
-      local tag_response
-      tag_response=$(kado_post "$tag_payload") || true
-
-      if [[ -n "$tag_response" ]]; then
-        local tag_text
-        tag_text=$(echo "$tag_response" | jq -r '.result.content[0].text // ""' 2>/dev/null) || true
-        if echo "$tag_text" | grep -qi "forbidden\|denied\|not.allowed" 2>/dev/null; then
-          write_status "tags_denied"
-          return
-        fi
+    if [[ -n "$fm_response" ]]; then
+      local fm_text
+      fm_text=$(echo "$fm_response" | jq -r '.result.content[0].text // ""' 2>/dev/null) || true
+      if echo "$fm_text" | grep -qi "forbidden\|denied\|not.allowed" 2>/dev/null; then
+        write_status "tags_denied"
+        return
       fi
     fi
   fi

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.1.2
-"""test_statusline_render.py — Pytest-driven tests for tomo-statusline.sh (T3.2).
+# version: 0.2.0
+"""test_statusline_render.py — Pytest-driven tests for tomo-statusline.sh (T3.2, T4.3).
 
 Feeds JSON on stdin, stubs the probes (PATH shims or injected env vars),
 and asserts the rendered statusline line.
@@ -10,6 +10,7 @@ Coverage:
   - PRD F7-AC2: Hashi renders as 橋:<port> with 3 states (no Tags)
   - PRD F7-AC3: ANSI color codes present for all states
   - CON-6: instance label 友 <name> rendering unchanged
+  - ADR-6/F6-AC3: read-access probe uses byFrontmatter tomo.state, not byTag
 
 Strategy mirrors test_configure_ide_bridge.py (subprocess + bash).
 The statusline script is driven via subprocess with controlled filesystem
@@ -533,6 +534,123 @@ def test_hashi_multiple_locks_not_configured(tmp_path):
     # Color retained: ANSI yellow for no_config
     assert ANSI_YELLOW in r.stdout, (
         f"Expected ANSI yellow for multiple-locks no_config.\nstdout: {r.stdout!r}"
+    )
+
+
+# ── ADR-6 / F6-AC3: byFrontmatter probe (T4.3) ───────────────────────────────
+
+def test_kado_read_probe_uses_byfrontmatter_not_bytag(tmp_path):
+    """ADR-6/F6-AC3: the Test-2 read-access probe sends byFrontmatter tomo.state,
+    NOT byTag, and does NOT read tag_prefix from vault-config.yaml.
+
+    Strategy: inject a curl shim on PATH that:
+      - call 1 (listDir connectivity): returns a valid ok JSON response
+      - call 2 (the probe): captures the full -d payload to a file + returns ok JSON
+
+    After the run we read the captured payload and assert on its content.
+    A vault-config.yaml with a tag_prefix entry is placed in tmp_path/config/
+    to prove the probe is NOT driven by tag_prefix even when the file exists.
+    """
+    # Minimal valid Kado JSON-RPC ok responses
+    _listdir_ok = json.dumps({
+        "jsonrpc": "2.0", "id": 1,
+        "result": {
+            "isError": False,
+            "content": [{"type": "text", "text": '{"items":[]}'}],
+        },
+    })
+    _probe_ok = json.dumps({
+        "jsonrpc": "2.0", "id": 2,
+        "result": {
+            "isError": False,
+            "content": [{"type": "text", "text": '{"items":[]}'}],
+        },
+    })
+
+    # Shim dir and payload capture file
+    shim_dir = tmp_path / "shims"
+    shim_dir.mkdir()
+    captured_payload_file = tmp_path / "curl_payload.json"
+
+    # curl shim: increments a counter; call 1 → listDir response, call 2 → captures payload + probe ok
+    curl_shim = shim_dir / "curl"
+    curl_shim.write_text(
+        "#!/usr/bin/env bash\n"
+        "# Count calls via a simple counter file\n"
+        f"COUNTER_FILE={str(tmp_path)!r}/curl_call_count\n"
+        "COUNT=0\n"
+        '[[ -f "$COUNTER_FILE" ]] && COUNT=$(cat "$COUNTER_FILE")\n'
+        "COUNT=$(( COUNT + 1 ))\n"
+        'echo "$COUNT" > "$COUNTER_FILE"\n'
+        "# Extract -d argument (the JSON payload)\n"
+        "PAYLOAD=''\n"
+        "while [[ $# -gt 0 ]]; do\n"
+        "  if [[ \"$1\" == \"-d\" ]]; then PAYLOAD=\"$2\"; shift 2; else shift; fi\n"
+        "done\n"
+        f"if [[ \"$COUNT\" -eq 1 ]]; then\n"
+        f"  echo 'data: {_listdir_ok}'\n"
+        f"elif [[ \"$COUNT\" -eq 2 ]]; then\n"
+        f"  echo \"$PAYLOAD\" > {str(captured_payload_file)!r}\n"
+        f"  echo 'data: {_probe_ok}'\n"
+        f"else\n"
+        f"  echo 'data: {_probe_ok}'\n"
+        f"fi\n"
+    )
+    curl_shim.chmod(0o755)
+
+    # Place .mcp.json so kado_check proceeds past the no_config gate
+    (tmp_path / ".mcp.json").write_text(_make_mcp_json(23026))
+
+    # Place vault-config.yaml with tag_prefix to confirm it is NOT consulted
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "vault-config.yaml").write_text("tag_prefix: MiYo-Tomo\n")
+
+    env = dict(os.environ)
+    env["HOME"] = str(tmp_path / "home")
+    env["TMPDIR"] = str(tmp_path / "tmp")
+    env["PATH"] = str(shim_dir) + ":" + env.get("PATH", "")
+    (tmp_path / "home").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "tmp").mkdir(parents=True, exist_ok=True)
+
+    r = subprocess.run(
+        ["bash", str(STATUSLINE_SH)],
+        input=_BASE_JSON,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        cwd=str(tmp_path),
+        env=env,
+    )
+
+    assert r.returncode == 0, f"statusline crashed: {r.stderr}"
+
+    # The captured payload file must exist (curl was called at least twice)
+    assert captured_payload_file.exists(), (
+        "curl shim was not called a second time — "
+        "Test-2 read probe may not have run.\n"
+        f"stdout: {r.stdout!r}\nstderr: {r.stderr!r}"
+    )
+
+    payload_raw = captured_payload_file.read_text()
+    assert payload_raw.strip(), f"Captured payload is empty. stderr: {r.stderr!r}"
+
+    # F6-AC3 assertion A: probe uses byFrontmatter, not byTag
+    assert '"byFrontmatter"' in payload_raw or "'byFrontmatter'" in payload_raw, (
+        "F6-AC3: probe payload must contain operation=byFrontmatter.\n"
+        f"Captured payload: {payload_raw!r}"
+    )
+
+    # F6-AC3 assertion B: probe references tomo.state
+    assert "tomo.state" in payload_raw, (
+        "F6-AC3: probe payload must reference tomo.state.\n"
+        f"Captured payload: {payload_raw!r}"
+    )
+
+    # F6-AC3 assertion C: no byTag in payload
+    assert "byTag" not in payload_raw, (
+        "F6-AC3: probe payload must NOT contain byTag.\n"
+        f"Captured payload: {payload_raw!r}"
     )
 
 

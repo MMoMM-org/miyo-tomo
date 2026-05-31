@@ -16,6 +16,7 @@ Tomo runs inside an isolated Docker container. All vault access goes through Kad
 - **`/inbox`** — 2-pass inbox processing: analyses files, proposes actions, generates detailed instructions
 - **`/explore-vault`** — Discovers vault structure, MOC hierarchy, frontmatter patterns, tag taxonomy
 - **Voice memo transcription (optional, local)** — drop audio files (`.m4a`, `.mp3`, `.wav`, …) into the inbox and `/inbox` transcribes them locally via [faster-whisper](https://github.com/SYSTRAN/faster-whisper) before Pass 1. Opt-in via the install wizard; models stay on your machine, no cloud round-trips
+- **IDE Bridge (optional, local)** — gives Claude Code inside the container live editor context from Obsidian (active file, selection, cursor) via the [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) plugin. Opt-in via the install/update wizard; a `socat` proxy forwards a container-localhost port to the host — no exposed ports, host-only (`127.0.0.1`), and vault content still flows solely through Kado
 - Framework-agnostic — supports LYT, PARA, and custom PKM frameworks via profiles
 
 ## How It Works

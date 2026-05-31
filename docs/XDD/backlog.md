@@ -206,6 +206,7 @@ the architecture decision before committing to F-34.
 | D-06 | XDD reference docs stale post-018 | 2026-05-26 code review R13 | Should | tier-2/workflows/inbox-processing.md, tier-3/inbox/instruction-set-cleanup.md, tier-3/inbox/state-tag-lifecycle.md still describe vault-executor, tag-captured.py, old tag-based lifecycle |
 | D-07 | instruction-render.py 1742 LOC — Constitution L2 | 2026-05-26 code review H4 | Should | Split into actions.py, md_render.py, resolve.py + CLI orchestrator. Deferred to dedicated refactoring PR. |
 | D-08 | suggestion-parser.py 1433 LOC — approaching L2 | 2026-05-26 code review M4 | Could | Extract moc_proposal_parser.py when file grows further. |
+| D-09 | Shared `render-launcher` helper — kill install/update sed duplication | XDD 019 Phase 4 code review (2026-05-30) | Could | The 5-substitution `begin-tomo.sh.template` sed pipeline is duplicated in `install-tomo.sh` and `update-tomo.sh`; adding a placeholder to the template requires editing both or one silently ships an unrendered `{{...}}`. Interim guard: cross-reference `# NOTE:` comments mark both sed blocks (XDD 019). Fix: one sourced helper (`render_launcher <template> <dst> <instance_path> <instance_name> <home_dir> <repo_root> <dev_notify_port>`, atomic tmp→mv) called by both scripts, plus a direct helper test so install's (docker-gated) render path gains coverage. |
 
 ## Deliberate Design Decisions (YAGNI — not gaps)
 

@@ -24,6 +24,7 @@ begin-tomo.sh
 .claude/settings.local.json
 .claude/plans/
 .claude/.session-checkpoint*
+.claude/scheduled_tasks.lock
 
 # Handoff buffers — local-only working state.
 # Senders write to _outbox/for-<receiver>/; receivers read via _inbox/from-<sender>/
@@ -44,6 +45,7 @@ node_modules/
 
 # Misc
 *.backup-*
+*-backup-*.zip
 __pycache__/
 
 # Python virtualenv (host dev; container has its own)

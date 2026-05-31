@@ -43,6 +43,34 @@
 
 **Solution:** Check Kado's API key configuration — ensure the key's whitelist includes the folders Tomo needs (inbox, notes, maps, calendar, templates).
 
+## Tomo Context (IDE Bridge)
+
+*Tomo Context* is the live editor-context bridge between Obsidian (via the [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) plugin) and Claude Code in the container. The Tomo side is only a `socat` TCP proxy plus an IDE lock file — the bridge itself lives in Hashi.
+
+### The Green Hashi Icon Only Means "Connected"
+
+A green Tomo Context icon in Obsidian confirms the **socket connection** is up — it does **not** confirm that editor context is flowing or that Hashi is otherwise functioning. Read it as "the pipe is open," not "everything works." If the icon is green but Claude doesn't see your active note, selection, or cursor, the problem is downstream of the connection — start with Hashi's [context guide](https://github.com/MMoMM-org/miyo-tomo-hashi/blob/main/docs/context.md).
+
+### socat "Connection refused" / Port Mismatch
+
+**Symptom:** The container log (visible in `tomo-instance` at launch, or via `docker logs`) shows a line like:
+
+```
+2026/05/31 10:02:50 socat[1769] E connect(5, AF=2 0.250.250.254:23027, 16): Connection refused
+```
+
+**Cause:** The container proxy tried to reach Hashi at `host.docker.internal:<port>` (here port `23027`) but nothing was listening there. Almost always this is a **port mismatch** — Tomo Context and Hashi are set to different ports — or Hashi isn't running / isn't listening yet.
+
+**Fix:**
+1. Check the port Hashi is actually listening on in its plugin settings (Hashi's default is `23027`).
+2. Re-run `install-tomo.sh` or `update-tomo.sh` and set the Tomo Context port to **the same value** — the two must match.
+3. Make sure Obsidian + Hashi are running *before* you launch the container, so the proxy has something to connect to.
+4. Relaunch `begin-tomo.sh`.
+
+### Full Troubleshooting Lives on the Hashi Side
+
+Tomo only owns the proxy and the lock file. For anything past the connection — context not updating, handshake/version mismatches, the bridge dropping — see Hashi's authoritative guide: **<https://github.com/MMoMM-org/miyo-tomo-hashi/blob/main/docs/context.md>**.
+
 ## Vault Explorer
 
 ### /explore-vault Finds No Notes

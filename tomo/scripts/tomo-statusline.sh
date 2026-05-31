@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# version: 0.4.0
+# version: 0.5.2
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
-# Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access
-# Kado check is cached for 60 seconds.
+# Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
+# Kado and Hashi checks are cached for 60 seconds.
 #
 # Input:  JSON from Claude Code via stdin
 # Output: Single formatted line with ANSI colors
@@ -48,6 +48,9 @@ block_bar() {
 
 CACHE_FILE="${TMPDIR:-/tmp}/tomo-statusline-kado"
 CACHE_TTL=60
+
+# KADO_PORT is set as a side-effect of kado_check — threaded to the render.
+KADO_PORT=""
 
 cache_is_stale() {
   [[ ! -f "$1" ]] && return 0
@@ -169,6 +172,91 @@ kado_check() {
   write_status "ok"
 }
 
+# Parse Kado port from .mcp.json URL — sets global KADO_PORT.
+# Re-reads .mcp.json rather than threading the URL out of kado_check because
+# kado_check returns early on a cache hit (no URL was parsed in that path).
+# Re-reading the tiny local file cleanly covers both the cache-hit and live paths.
+read_kado_port() {
+  local url
+  url=$(jq -r '
+    .mcpServers.kado.url //
+    .mcpServers["miyo-kado"].url //
+    empty' .mcp.json 2>/dev/null) || true
+  if [[ -n "$url" ]]; then
+    # Extract port: match :<digits> before optional /
+    KADO_PORT=$(echo "$url" | sed 's|.*:\([0-9][0-9]*\).*|\1|' 2>/dev/null) || true
+    # Validate: sed returns the full string unchanged when there is no match —
+    # reject any non-numeric result so we never render e.g. 門:http://...
+    [[ "$KADO_PORT" =~ ^[0-9]+$ ]] || KADO_PORT="?"
+  fi
+  [[ -z "$KADO_PORT" ]] && KADO_PORT="?"
+}
+
+# ── Hashi check (cached) ─────────────────────────────────
+
+HASHI_CACHE_FILE="${TMPDIR:-/tmp}/tomo-statusline-hashi"
+
+# Result written as "<status>:<port>", e.g. "ok:23027" or "no_config"
+write_hashi_status() {
+  echo "$1" > "$HASHI_CACHE_FILE" 2>/dev/null
+  echo "$1"
+}
+
+hashi_check() {
+  # Return cached result if fresh
+  if ! cache_is_stale "$HASHI_CACHE_FILE"; then
+    cat "$HASHI_CACHE_FILE" 2>/dev/null || echo "no_config"
+    return
+  fi
+
+  # "Configured" iff exactly one lock file exists at $HOME/.claude/ide/*.lock
+  local ide_dir="${HOME}/.claude/ide"
+  if [[ ! -d "$ide_dir" ]]; then
+    write_hashi_status "no_config"
+    return
+  fi
+
+  # Count lock files
+  local lock_count=0
+  local lock_file=""
+  for f in "${ide_dir}"/*.lock; do
+    [[ -f "$f" ]] || continue
+    lock_count=$(( lock_count + 1 ))
+    lock_file="$f"
+  done
+
+  if [[ "$lock_count" -eq 0 ]]; then
+    write_hashi_status "no_config"
+    return
+  fi
+
+  # Multiple locks = ambiguous — show yellow no_config, never pick one arbitrarily.
+  # Mirrors the entrypoint's fail-fast-on-multiple-locks posture.
+  if [[ "$lock_count" -gt 1 ]]; then
+    write_hashi_status "no_config"
+    return
+  fi
+
+  # Port comes from the lock filename: <port>.lock
+  local port
+  port=$(basename "$lock_file" .lock 2>/dev/null) || true
+  if [[ -z "$port" ]]; then
+    write_hashi_status "no_config"
+    return
+  fi
+
+  # TCP-probe 127.0.0.1:<port> — ≤3s timeout, crash-proof
+  local probe_rc=1
+  ( timeout 3 bash -c ": </dev/tcp/127.0.0.1/${port}" ) 2>/dev/null
+  probe_rc=$?
+
+  if [[ "$probe_rc" -eq 0 ]]; then
+    write_hashi_status "ok:${port}"
+  else
+    write_hashi_status "unreachable:${port}"
+  fi
+}
+
 # ── Instance identity ────────────────────────────────────
 
 INSTANCE_LABEL=""
@@ -180,6 +268,20 @@ fi
 
 KADO_STATUS=$(kado_check)
 
+# Parse Kado port from .mcp.json (after status is known)
+if [[ -f ".mcp.json" ]]; then
+  read_kado_port
+fi
+[[ -z "$KADO_PORT" ]] && KADO_PORT="?"
+
+HASHI_STATUS=$(hashi_check)
+
+# Split hashi status and port: format is "<status>:<port>" or "no_config"
+HASHI_STATE="${HASHI_STATUS%%:*}"
+HASHI_PORT="${HASHI_STATUS#*:}"
+# When no colon, HASHI_PORT equals HASHI_STATUS — normalize to "?"
+[[ "$HASHI_PORT" == "$HASHI_STATUS" ]] && HASHI_PORT="?"
+
 LINE="${CYAN}[${MODEL}]${RESET}"
 if [[ -n "$INSTANCE_LABEL" ]]; then
   LINE+=" | ${MAGENTA_BOLD}友${RESET} ${INSTANCE_LABEL}"
@@ -187,12 +289,18 @@ fi
 LINE+=" | 🧠 $(block_bar "$CTX_PCT") ${CTX_PCT}%"
 
 case "$KADO_STATUS" in
-  ok)          LINE+=" | ${GREEN}Kado ✓${RESET}" ;;
-  tags_denied) LINE+=" | ${YELLOW}Kado ✓ Tags ✗${RESET}" ;;
-  unreachable) LINE+=" | ${RED}Kado ✗${RESET}" ;;
-  error)       LINE+=" | ${RED}Kado ✗${RESET}" ;;
-  no_config)   LINE+=" | ${YELLOW}Kado ?${RESET}" ;;
-  *)           LINE+=" | ${YELLOW}Kado ?${RESET}" ;;
+  ok)          LINE+=" | ${GREEN}門:${KADO_PORT} ✓${RESET}" ;;
+  tags_denied) LINE+=" | ${YELLOW}門:${KADO_PORT} ✓ Tags ✗${RESET}" ;;
+  unreachable) LINE+=" | ${RED}門:${KADO_PORT} ✗${RESET}" ;;
+  error)       LINE+=" | ${RED}門:${KADO_PORT} ✗${RESET}" ;;
+  no_config)   LINE+=" | ${YELLOW}門:${KADO_PORT} ?${RESET}" ;;
+  *)           LINE+=" | ${YELLOW}門:${KADO_PORT} ?${RESET}" ;;
+esac
+
+case "$HASHI_STATE" in
+  ok)          LINE+=" | ${GREEN}橋:${HASHI_PORT} ✓${RESET}" ;;
+  unreachable) LINE+=" | ${RED}橋:${HASHI_PORT} ✗${RESET}" ;;
+  *)           LINE+=" | ${YELLOW}橋:${HASHI_PORT} ?${RESET}" ;;
 esac
 
 echo -e "$LINE"

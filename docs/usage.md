@@ -17,6 +17,8 @@ Inside the session you steer Tomo two ways:
 - **Slash commands** for structured workflows (`/inbox`, `/explore-vault`, `/tomo-setup`, `/tomo-help`).
 - **Conversational chat** for ad-hoc requests; agents and the Kado MCP tools are available the whole time.
 
+If you enabled **Tomo Context** at install (the Hashi IDE Bridge), Claude also receives live editor context from Obsidian — your active note, selection, and cursor — as long as Obsidian and the [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) plugin are running. The container auto-connects on launch. Note: the green icon in Obsidian shows the connection is up, **not** that context is flowing — see [Troubleshooting → Tomo Context](troubleshooting.md#tomo-context-ide-bridge) if Claude doesn't see your editor.
+
 For the launcher's other modes (`--rebuild-image`, `--bash`, `--auto`, `--yolo`, `-h`), see [Launcher flags and slash commands](#launcher-flags-and-slash-commands) below, or [Setup Guide → Launcher](setup.md#launcher-begin-tomosh) for the long-form description.
 
 If this is your first session after install, run `/tomo-setup` — it walks the post-install wizards (vault discovery, user rules, templates, trackers, daily log) end to end. After that, day-to-day work centres on `/inbox`.

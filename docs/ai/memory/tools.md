@@ -3,6 +3,12 @@
 <!-- What goes here: commands that are non-obvious, tool quirks, CI gotchas, env var names -->
 <!-- What does NOT go here: domain rules (→ domain.md), code style (→ general.md) -->
 
+<!-- 2026-05-29 -->
+
+## Regex-extraction harnesses need a non-empty guard — silent false greens otherwise
+
+When a test harness extracts a code block via regex (e.g., section between comment delimiters in a shell script) and inlines it into a subprocess, tests that assert "nothing happened" pass trivially when the extraction returns `""`. The block is absent → harness runs an empty string → no socat call, no error → test passes. Regression is invisible. Fix: assert the extracted block is non-empty in the **shared helper** (one assert covers all callers). Discovered during 019 T2.2 entrypoint proxy tests 2026-05-29.
+
 <!-- 2026-05-08 -->
 
 ## Code-quality reviewer diff range — file-scoped filtering for parallel implementers
@@ -50,10 +56,10 @@ bash scripts/reset-tomo-tmp.sh --dry-run --pass1
 
 ## Accessing Kado from the host (outside tomo-instance)
 
-Kado runs inside Obsidian on port **23027** (from the host side). The Docker container uses `host.docker.internal:23027`, but from the host use `127.0.0.1:23027`. A bearer token is required.
+Kado runs inside Obsidian, listening on `127.0.0.1:<port>`. The port is whatever the Kado plugin is configured to use (the documented default is `23026`, but instances may run on other ports) — **read it from `tomo-instance/.mcp.json`, don't hardcode it**. The same server is reached as `127.0.0.1:<port>` from the host and `host.docker.internal:<port>` from inside the Docker container — only the hostname differs, the port is identical. A bearer token is required.
 
 ```bash
-KADO_URL=http://127.0.0.1:23027 \
+KADO_URL=$(python3 -c "import json; cfg=json.load(open('tomo-instance/.mcp.json')); print(cfg['mcpServers']['kado']['url'].replace('host.docker.internal','127.0.0.1'))") \
 KADO_TOKEN=$(python3 -c "import json; cfg=json.load(open('tomo-instance/.mcp.json')); print(cfg['mcpServers']['kado']['headers']['Authorization'].replace('Bearer ',''))") \
 python3 <script.py>
 ```
@@ -69,4 +75,14 @@ url = url.replace("host.docker.internal", "127.0.0.1")  # Docker→host rewrite
 client = KadoClient(base_url=url, token=token)
 ```
 
-Key differences from inside Docker: port is 23027 (not 23026), hostname is 127.0.0.1 (not host.docker.internal), and `.mcp.json` is at `tomo-instance/.mcp.json` (not `.mcp.json` in cwd).
+Key differences from inside Docker: hostname is `127.0.0.1` (not `host.docker.internal`) — the port is the same on both sides, read from `.mcp.json`; and `.mcp.json` is at `tomo-instance/.mcp.json` (not `.mcp.json` in cwd).
+
+<!-- 2026-05-31 -->
+
+## Hashi IDE Bridge — connection diagnosis + auto-connect (XDD 019 live-test)
+
+**Diagnose failures via the IDE log, not process checks.** The authoritative log is `tomo-home/.cache/claude-cli-nodejs/<encoded-project>/mcp-logs-ide/*.jsonl` inside the instance. A failed connect appears there as a structured error — e.g. Zod `invalid_type: serverInfo.version expected string, received undefined` means the connection reached the server and the **Hashi-side handshake** is non-conformant (missing `serverInfo.version`), NOT a transport/lock/token problem. Do **not** diagnose with container process checks: the minimal container shell has no `pgrep` and no `/dev/tcp`, so `pgrep -af socat` and `: </dev/tcp/...` return misleading "not found" errors. Read the `mcp-logs-ide` jsonl.
+
+**Auto-connect needs a signal — a lock file alone is the target, not the trigger.** Claude Code does NOT auto-connect on startup just because `~/.claude/ide/<port>.lock` exists. Mechanisms (documented): env var **`CLAUDE_CODE_AUTO_CONNECT_IDE=true`** (highest precedence), the `claude --ide` flag, or launching from an IDE integrated terminal. Running `/ide` once writes `autoConnectIde: true` into `~/.claude.json` (app state) — that is **NOT** a `settings.json` field; never put `autoConnectIde` in settings.json. Tomo's `docker/entrypoint.sh` (0.4.0+) exports `CLAUDE_CODE_AUTO_CONNECT_IDE=true` in the single-lock branch (kept out of the `unset` list so it survives into `exec "$@"`), so the container auto-connects without manual `/ide`.
+
+**IDE lock fields:** `authToken` is `hashi_<uuid>` (the `hashi_` prefix is part of the token — store verbatim). `workspaceFolders` carries the **container instance path** (`begin-tomo` mounts the instance at the same path host+container via `-v $INSTANCE_PATH:$INSTANCE_PATH` and `-w $INSTANCE_PATH`), not empty — Claude Code uses it to anchor the workspace. `IDE_BRIDGE_ENABLED` is host-side only (not passed into the container); the lock file is the sole in-container signal that the bridge is active.

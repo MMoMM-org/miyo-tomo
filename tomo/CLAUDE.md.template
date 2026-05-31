@@ -27,6 +27,17 @@ For Kado connection details, see `config/kado-config.md` (human-readable) and `.
 - Update config/vault-config.md (and vault-config.yaml) when you discover new vault structure
 - Commit after every completed task
 
+### Vault-Path Routing
+
+The vault is not mounted in this container — Kado is the only vault surface.
+
+- Vault-note paths (the IDE Bridge active file, `[[wikilinks]]`, `@`-mentions, kado-search results) — read via kado-read. Never use local Read or the filesystem for a vault path.
+- Container-local working files — read via local Read.
+- Ambiguous bare relative path — try kado-read first; fall back to local Read only if Kado returns not-found or denied.
+- A vault path that cannot be read via Kado is an error — do not silently substitute a local file.
+
+Selection text delivered by the IDE Bridge arrives in-context; no read is needed.
+
 ## Vault Conventions (user-specific)
 
 Consult these only when the active task matches their topic. These are vault-specific

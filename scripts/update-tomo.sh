@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.4.2
+# version: 0.5.4
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -18,6 +18,7 @@ FORCE=false
 KEEP_VOICE=false
 YES=false
 DRY_RUN=false
+FLAG_CONFIG_FILE=""
 
 print_help() {
     cat <<'EOF'
@@ -41,6 +42,7 @@ Options:
   -y, --yes          Skip the GO/Abort confirmation prompt.
       --yolo         Equivalent to --keep-voice --yes.
   -n, --dry-run      Show the plan and exit; never write.
+      --config-file  Use an alternate tomo-install.json (test isolation).
   -h, --help         Show this help and exit.
 EOF
 }
@@ -52,6 +54,7 @@ while [ $# -gt 0 ]; do
         -y|--yes)        YES=true ;;
         --yolo)          KEEP_VOICE=true; YES=true ;;
         -n|--dry-run)    DRY_RUN=true ;;
+        --config-file)   FLAG_CONFIG_FILE="$2"; shift ;;
         -h|--help)       print_help; exit 0 ;;
         *)
             echo "Unknown option: $1" >&2
@@ -109,7 +112,17 @@ get_version() {
 # shellcheck source=lib/configure-voice.sh
 . "$SCRIPT_DIR/lib/configure-voice.sh"
 
+# Hashi IDE Bridge wizard (XDD 019). Requires print_* helpers above.
+# shellcheck source=lib/configure-ide-bridge.sh
+. "$SCRIPT_DIR/lib/configure-ide-bridge.sh"
+
 # ── Load config ───────────────────────────────────────────
+
+# Resolve the effective config-file path. Tests pass --config-file to isolate
+# from the real instance; otherwise the repo-root default is used.
+if [ -n "$FLAG_CONFIG_FILE" ]; then
+    CONFIG_FILE="$FLAG_CONFIG_FILE"
+fi
 
 if [ ! -f "$CONFIG_FILE" ]; then
     print_err "No tomo-install.json found. Run install-tomo.sh first."
@@ -117,6 +130,18 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 INSTANCE_PATH=$(jq -r '.instancePath' "$CONFIG_FILE")
+HOME_DIR=$(jq -r '.homePath // empty' "$CONFIG_FILE")
+LAUNCHER_PATH=$(jq -r '.launcherPath // empty' "$CONFIG_FILE")
+INSTANCE_NAME=$(jq -r '.instanceName // empty' "$CONFIG_FILE")
+INSTANCE_LOCATION=$(jq -r '.instanceLocation // empty' "$CONFIG_FILE")
+
+# launcherPath fallback for older configs that predate the field.
+# Guard on instanceLocation being present: without it the fallback yields
+# "/begin-tomo.sh" (root path), which is worse than the clear "no launcherPath
+# in config" problem reported by the launcher scan below.
+if [ -z "$LAUNCHER_PATH" ] && [ -n "$INSTANCE_LOCATION" ]; then
+    LAUNCHER_PATH="$INSTANCE_LOCATION/begin-tomo.sh"
+fi
 
 if [ ! -d "$INSTANCE_PATH" ]; then
     print_err "Instance directory not found: $INSTANCE_PATH"
@@ -129,7 +154,7 @@ print_step "Updating instance at $INSTANCE_PATH"
 
 # ── Plan tables (parallel arrays — bash 3.2 compatible) ──
 
-PLAN_KIND=()    # versioned | bytewise | retire | settings | voice-mirror | install-config
+PLAN_KIND=()    # versioned | bytewise | retire | settings | template | launcher
 PLAN_SRC=()
 PLAN_DST=()
 PLAN_LABEL=()
@@ -375,6 +400,30 @@ else
     fi
 fi
 
+# Container-home entrypoint.sh (versioned). Source repo → bind-mounted home.
+# Delivered here so an existing user enabling the IDE Bridge via update-tomo.sh
+# gets the socat-proxy entrypoint, not the stale pre-bridge one (T4.1 gap).
+ENTRYPOINT_SRC="$REPO_ROOT/docker/entrypoint.sh"
+if [ -n "$HOME_DIR" ] && [ -f "$ENTRYPOINT_SRC" ]; then
+    add_versioned "$ENTRYPOINT_SRC" "$HOME_DIR/entrypoint.sh" "entrypoint.sh" "container-home"
+fi
+
+# begin-tomo.sh launcher (rendered from template, version-gated). The installed
+# launcher retains the template's `# version:` comment, so we version-compare
+# the template against the installed launcher (cannot byte-compare — rendered).
+# Delivered here so an existing user gets the socat drift-rebuild / banner /
+# probe launcher, not the stale pre-bridge one (T4.1 gap).
+LAUNCHER_TEMPLATE="$REPO_ROOT/scripts/lib/begin-tomo.sh.template"
+if [ ! -f "$LAUNCHER_TEMPLATE" ]; then
+    add_plan "launcher" "$LAUNCHER_TEMPLATE" "$LAUNCHER_PATH" "begin-tomo.sh" "problem" "template missing: $LAUNCHER_TEMPLATE" "launcher"
+elif [ -z "$LAUNCHER_PATH" ]; then
+    add_plan "launcher" "$LAUNCHER_TEMPLATE" "$LAUNCHER_PATH" "begin-tomo.sh" "problem" "no launcherPath in config" "launcher"
+else
+    launcher_result=$(scan_versioned "$LAUNCHER_TEMPLATE" "$LAUNCHER_PATH")
+    add_plan "launcher" "$LAUNCHER_TEMPLATE" "$LAUNCHER_PATH" "begin-tomo.sh" \
+        "${launcher_result%%|*}" "${launcher_result#*|}" "launcher"
+fi
+
 # ── Print plan grouped by section ─────────────────────────
 
 print_section_plan() {
@@ -403,6 +452,8 @@ print_section_plan "profiles"        "Profiles"
 print_section_plan "schemas"         "Schemas"
 print_section_plan "templates"       "Templates (regenerated from schemas)"
 print_section_plan "settings"        "Settings.json"
+print_section_plan "container-home"  "Container home (entrypoint)"
+print_section_plan "launcher"        "Launcher (begin-tomo.sh)"
 
 # Plan summary tally
 plan_count_status() {
@@ -486,6 +537,39 @@ if [ "$FORCE" = "true" ]; then
     voice_mirror_changed=true
 fi
 
+# ── IDE Bridge wizard (XDD 019) ──────────────────────────
+# Read prior values from CONFIG_FILE; keep unchanged in automated runs.
+
+PRIOR_IDE_ENABLED=$(jq -r '.ide_bridge.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
+PRIOR_IDE_TOKEN=$(jq -r '.ide_bridge.auth_token // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+PRIOR_IDE_PORT=$(jq -r '.ide_bridge.port // 23027' "$CONFIG_FILE" 2>/dev/null || echo "23027")
+
+if [ "$YES" = "true" ]; then
+    print_step "Tomo Context (kept current — automated run)"
+    IDE_BRIDGE_ENABLED="$PRIOR_IDE_ENABLED"
+    IDE_BRIDGE_TOKEN="$PRIOR_IDE_TOKEN"
+    IDE_BRIDGE_PORT="$PRIOR_IDE_PORT"
+    print_info "enabled=$IDE_BRIDGE_ENABLED port=$IDE_BRIDGE_PORT"
+else
+    configure_ide_bridge \
+        "$PRIOR_IDE_ENABLED" \
+        "$PRIOR_IDE_TOKEN" \
+        "$PRIOR_IDE_PORT" \
+        "" \
+        "false"
+fi
+
+# Decide whether IDE Bridge config needs a write.
+ide_bridge_changed=false
+if [ "$IDE_BRIDGE_ENABLED" != "$PRIOR_IDE_ENABLED" ] \
+   || [ "$IDE_BRIDGE_TOKEN" != "$PRIOR_IDE_TOKEN" ] \
+   || [ "$IDE_BRIDGE_PORT" != "$PRIOR_IDE_PORT" ]; then
+    ide_bridge_changed=true
+fi
+if [ "$FORCE" = "true" ]; then
+    ide_bridge_changed=true
+fi
+
 # ── Confirmation ─────────────────────────────────────────
 
 if [ "$DRY_RUN" = "true" ]; then
@@ -499,6 +583,7 @@ if [ "$YES" != "true" ]; then
     NEEDS_WRITE=$(( $(plan_count_status update) + $(plan_count_status create) + $(plan_count_status retire) ))
     if [ "$voice_host_changed" = "true" ];   then NEEDS_WRITE=$((NEEDS_WRITE + 1)); fi
     if [ "$voice_mirror_changed" = "true" ]; then NEEDS_WRITE=$((NEEDS_WRITE + 1)); fi
+    if [ "$ide_bridge_changed" = "true" ];   then NEEDS_WRITE=$((NEEDS_WRITE + 1)); fi
     if [ "$NEEDS_WRITE" -eq 0 ]; then
         print_info "Nothing to do (every file is current). Proceeding to refresh install-config only."
     else
@@ -568,9 +653,9 @@ execute_one() {
     case "$kind" in
         versioned|bytewise|template|settings)
             if cp "$src" "$dst" 2>/dev/null; then
-                # Hooks and statusline need executable bit
+                # Hooks, statusline and the container entrypoint need exec bit
                 case "$label" in
-                    hooks/*|scripts/tomo-statusline.sh|.claude/scripts/*) chmod +x "$dst" 2>/dev/null || true ;;
+                    hooks/*|scripts/tomo-statusline.sh|.claude/scripts/*|entrypoint.sh) chmod +x "$dst" 2>/dev/null || true ;;
                 esac
                 if [ "$status" = "create" ]; then
                     mark_did "created" "$label" "$detail"
@@ -581,6 +666,34 @@ execute_one() {
                 fi
             else
                 mark_did "failed" "$label" "cp failed"
+                DID_FAILED=$((DID_FAILED + 1))
+            fi
+            ;;
+        launcher)
+            # Render the template into the launcher path with the same five
+            # substitutions install-tomo.sh uses. DEV_NOTIFY_PORT is the
+            # constant 9999 (matches install).
+            # NOTE: launcher placeholder set is duplicated in install-tomo.sh and update-tomo.sh.
+            # Keep both sed blocks in sync. Tracked for extraction into a shared scripts/lib helper (backlog).
+            # Render to a temp then move so a mid-write interruption never leaves a corrupt launcher.
+            if sed -e "s|{{INSTANCE_PATH}}|${INSTANCE_PATH}|g" \
+                   -e "s|{{INSTANCE_NAME}}|${INSTANCE_NAME}|g" \
+                   -e "s|{{HOME_DIR}}|${HOME_DIR}|g" \
+                   -e "s|{{TOMO_REPO_ROOT}}|${REPO_ROOT}|g" \
+                   -e "s|{{DEV_NOTIFY_PORT}}|9999|g" \
+                   "$src" > "$dst.tmp" 2>/dev/null; then
+                chmod +x "$dst.tmp" 2>/dev/null || true
+                mv "$dst.tmp" "$dst"
+                if [ "$status" = "create" ]; then
+                    mark_did "created" "$label" "$detail"
+                    DID_CREATED=$((DID_CREATED + 1))
+                else
+                    mark_did "updated" "$label" "$detail"
+                    DID_UPDATED=$((DID_UPDATED + 1))
+                fi
+            else
+                rm -f "$dst.tmp"
+                mark_did "failed" "$label" "render failed"
                 DID_FAILED=$((DID_FAILED + 1))
             fi
             ;;
@@ -623,6 +736,8 @@ execute_section "profiles"        "Profiles"
 execute_section "schemas"         "Schemas"
 execute_section "templates"       "Templates"
 execute_section "settings"        "Settings.json"
+execute_section "container-home"  "Container home (entrypoint)"
+execute_section "launcher"        "Launcher (begin-tomo.sh)"
 
 # tomo-tmp scratch dirs (idempotent, no plan entry)
 ensure_dir "$INSTANCE_PATH/tomo-tmp/items"
@@ -654,6 +769,38 @@ if [ "$voice_host_changed" = "true" ] || [ "$voice_mirror_changed" = "true" ]; t
         else
             mark_did "failed" "voice/config.json (instance mirror)" "jq write failed"
             DID_FAILED=$((DID_FAILED + 1))
+        fi
+    fi
+fi
+
+# ── Persist IDE Bridge settings ─────────────────────────────────────────────
+
+if [ "$ide_bridge_changed" = "true" ] && [ "$DRY_RUN" = "false" ]; then
+    print_step "Tomo Context configuration"
+    if write_ide_bridge_config "$CONFIG_FILE" 2>/dev/null; then
+        mark_did "updated" "tomo-install.json (.ide_bridge)" ""
+        DID_UPDATED=$((DID_UPDATED + 1))
+    else
+        mark_did "failed" "tomo-install.json (.ide_bridge)" "write_ide_bridge_config failed"
+        DID_FAILED=$((DID_FAILED + 1))
+    fi
+    lock_path="${HOME_DIR}/.claude/ide/${IDE_BRIDGE_PORT}.lock"
+    if [ "$IDE_BRIDGE_ENABLED" = "true" ]; then
+        lock_existed=false
+        [ -f "$lock_path" ] && lock_existed=true
+        write_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT" "$IDE_BRIDGE_TOKEN" "$INSTANCE_PATH"
+        if [ "$lock_existed" = "true" ]; then
+            mark_did "updated" "ide lock: $lock_path" ""
+            DID_UPDATED=$((DID_UPDATED + 1))
+        else
+            mark_did "created" "ide lock: $lock_path" ""
+            DID_CREATED=$((DID_CREATED + 1))
+        fi
+    else
+        if [ -f "$lock_path" ]; then
+            remove_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT"
+            mark_did "deleted" "ide lock: $lock_path" ""
+            DID_DELETED=$((DID_DELETED + 1))
         fi
     fi
 fi

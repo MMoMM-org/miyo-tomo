@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Install multi-instance flow"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -26,7 +26,7 @@ phase: 2
 
 Rewires `install-tomo.sh` from single-config to a registry-backed, per-instance layout. (Tag-prefix removal happens in Phase 4 to keep Part A and Part B reviewable separately — Phase 2 leaves the prefix step untouched.)
 
-- [ ] **T2.1 Instance-selection front-end (list / create-new / update-existing)** `[activity: backend-api]`
+- [x] **T2.1 Instance-selection front-end (list / create-new / update-existing)** `[activity: backend-api]`
   1. Prime: Read the install flow + ADR-2 `[ref: solution.md/Key Flows]`.
   2. Test (RED): isolated `HOME`/tmpdir + isolation flags:
      - No registry → install proceeds as first-instance create (happy) `[ref: PRD/F2-AC4]`.
@@ -36,7 +36,7 @@ Rewires `install-tomo.sh` from single-config to a registry-backed, per-instance 
   4. Validate: `bash -n`; tests pass.
   5. Success: re-run discovers existing instances and routes correctly `[ref: PRD/F2-AC2]`.
 
-- [ ] **T2.2 Per-instance path layout + parent prompt** `[activity: backend-api]`
+- [x] **T2.2 Per-instance path layout + parent prompt** `[activity: backend-api]`
   1. Prime: ADR-1 layout `[ref: solution.md/ADR-1]`.
   2. Test (RED):
      - Create-new produces `<parent>/<name>/{instance/, home/, tomo-install.json, begin-tomo.sh}` with default parent `~/MiYo/Tomo/` (overridable) `[ref: PRD/F1-AC1]`.
@@ -46,7 +46,7 @@ Rewires `install-tomo.sh` from single-config to a registry-backed, per-instance 
   4. Validate: `bash -n`; tests pass; manual: no writes outside the instance dir.
   5. Success: self-contained layout; no cross-instance clobbering `[ref: PRD/F1-AC1, F1-AC2, F1-AC3]`.
 
-- [ ] **T2.3 Per-instance config write + registry upsert + launcher render** `[activity: backend-api]`
+- [x] **T2.3 Per-instance config write + registry upsert + launcher render** `[activity: backend-api]`
   1. Prime: config delta + render-launcher `[ref: solution.md/tomo-install.json delta; ADR-7]`.
   2. Test (RED):
      - `tomo-install.json` written into the instance dir includes `repoPath` and `tomoVersion`; (still includes `lifecyclePrefix` until Phase 4 — assert it's the ONLY remaining tag-prefix reference) `[ref: PRD/F1-AC1]`.
@@ -56,5 +56,5 @@ Rewires `install-tomo.sh` from single-config to a registry-backed, per-instance 
   4. Validate: `bash -n`; tests pass; bump `install-tomo.sh` `# version:`.
   5. Success: a created instance is self-describing (config + launcher) and registered `[ref: PRD/F1, F2-AC1]`.
 
-- [ ] **T2.4 Phase Validation** `[activity: validate]`
+- [x] **T2.4 Phase Validation** `[activity: validate]`
   - Full install-flow tests via isolated tmpdirs (never `$REPO_ROOT/tomo-instance`); `bash -n`; ruff. Two-instance isolation test green.

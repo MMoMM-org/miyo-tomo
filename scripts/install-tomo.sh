@@ -199,6 +199,11 @@ prompt_yn() {
 # shellcheck source=lib/instance-registry.sh
 . "$SCRIPT_DIR/lib/instance-registry.sh"
 
+# registry_has_name NAME — exit 0 if NAME is registered, non-zero otherwise.
+registry_has_name() {
+    registry_resolve "$1" >/dev/null 2>&1
+}
+
 # ── Step 1: Welcome ──────────────────────────────────────
 
 # ── ANSI Logo ────────────────────────────────────────────
@@ -772,13 +777,8 @@ print_step "Instance configuration"
 REUSE=""
 SELECT_MODE="create"
 
-# Snapshot the registered instances (one compact-JSON line per entry).
-REGISTRY_ENTRIES=$(registry_list 2>/dev/null || true)
-
-# registry_has_name NAME — exit 0 if NAME is registered, non-zero otherwise.
-registry_has_name() {
-    registry_resolve "$1" >/dev/null 2>&1
-}
+# Emptiness sentinel: non-empty when at least one instance is registered.
+REGISTRY_LIST=$(registry_list 2>/dev/null || true)
 
 if [ "$NON_INTERACTIVE" = "true" ]; then
     # Non-interactive contract: --instance-name names the target. A name that
@@ -803,13 +803,16 @@ if [ "$NON_INTERACTIVE" = "true" ]; then
         SELECT_MODE="create"
     fi
 else
-    if [ -z "$REGISTRY_ENTRIES" ]; then
+    if [ -z "$REGISTRY_LIST" ]; then
         # No instances registered yet — straight to first-instance create.
         SELECT_MODE="create"
     else
         # Existing instances registered — offer create-new vs update-<name>.
+        # Show name (and path) per live entry so the user can type a name;
+        # surface stale (dir-missing) entries on a second pass.
         echo "  Registered instances:"
-        registry_list_check
+        registry_list | jq -r '"    " + .name + "  (" + .path + ")"'
+        registry_list_check | grep '^\[stale\]' | sed 's/^/    /' || true
         echo ""
         echo "    n. Create a new instance"
         echo "    Or type the name of an instance to update."

@@ -158,12 +158,18 @@ def test_duplicate_name_non_interactive_rejected(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_update_known_name_resolves_existing(tmp_path: Path) -> None:
-    """--update --instance-name <known> resolves the registered path and
-    proceeds as an update (exit 0)."""
+def test_update_known_name_builds_at_registered_path(tmp_path: Path) -> None:
+    """--update --instance-name <known> resolves the REGISTERED path, not the
+    one --instance-location would produce.
+
+    The registry entry lives under registered-location/, structurally distinct
+    from the --instance-location (loc/) that _run_install passes. The update
+    route must target the registered path; if the create route ran instead it
+    would build under loc/kept and this test would fail.
+    """
     registry = tmp_path / "instances.json"
-    existing_dir = tmp_path / "loc" / "kept"
-    _seed_registry(registry, "kept", str(existing_dir))
+    registered_path = tmp_path / "registered-location" / "kept"
+    _seed_registry(registry, "kept", str(registered_path))
 
     result = _run_install(
         tmp_path,
@@ -173,6 +179,15 @@ def test_update_known_name_resolves_existing(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+    # The instance was provisioned at the REGISTERED path (update route)…
+    assert (registered_path / "config" / "vault-config.yaml").is_file(), (
+        "update did not build at the registered path:\n" + result.stdout
+    )
+    # …and NOT at the --instance-location path (which the create route uses).
+    assert not (tmp_path / "loc" / "kept").exists(), (
+        "create route ran instead of update — instance built under "
+        "--instance-location"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -133,6 +133,13 @@ get_version() {
 # shellcheck source=lib/render-launcher.sh
 . "$SCRIPT_DIR/lib/render-launcher.sh"
 
+# ── Mutual-exclusion guard ────────────────────────────────
+
+if [ -n "$FLAG_CONFIG_FILE" ] && [ -n "$FLAG_INSTANCE" ]; then
+    print_err "--instance and --config-file are mutually exclusive"
+    exit 2
+fi
+
 # ── Load config ───────────────────────────────────────────
 
 # Resolve the effective config-file path. Precedence (first match wins):

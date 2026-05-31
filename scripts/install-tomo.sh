@@ -32,6 +32,7 @@ FLAG_INSTANCE_LOCATION=""
 FLAG_INSTANCE_NAME=""
 FLAG_HOME_DIR=""
 FLAG_CONFIG_FILE=""
+FLAG_UPDATE=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -45,6 +46,7 @@ while [ $# -gt 0 ]; do
         --instance-name)     FLAG_INSTANCE_NAME="$2";     shift 2 ;;
         --home-dir)          FLAG_HOME_DIR="$2";          shift 2 ;;
         --config-file)       FLAG_CONFIG_FILE="$2";       shift 2 ;;
+        --update)            FLAG_UPDATE=true;            shift ;;
         --non-interactive) NON_INTERACTIVE=true; shift ;;
         --help|-h)     SHOW_HELP=true;      shift ;;
         *)
@@ -70,16 +72,22 @@ Options:
   --kado-port PORT      Kado server port (default: 37022)
   --kado-token TOKEN    Kado bearer token (must start with kado_)
   --prefix PREFIX       Lifecycle tag prefix (default: MiYo-Tomo)
+  --update              Update the existing instance named by --instance-name
+                        instead of creating a new one (non-interactive only)
   --non-interactive     Use defaults for all prompts (requires --vault)
   --help, -h            Show this help message
 
 Interactive mode (default):
   Walks through vault path, profile selection, concept mapping, lifecycle
   prefix, and Kado connection. Generates vault-config.yaml in instance.
+  When other instances are registered, offers a create-new vs update-<name>
+  choice up front.
 
 Non-interactive mode:
   Requires at least --vault. Uses profile defaults for concept paths.
-  Suitable for CI/automation.
+  --instance-name names the target. By default a name already present in the
+  instance registry is rejected as a duplicate; pass --update to target that
+  existing instance instead. Suitable for CI/automation.
 
 Examples:
   # Interactive setup
@@ -184,6 +192,12 @@ prompt_yn() {
 # IDE_BRIDGE_PORT globals. Uses print_step/print_ok/print_warn/print_err.
 # shellcheck source=lib/configure-ide-bridge.sh
 . "$SCRIPT_DIR/lib/configure-ide-bridge.sh"
+
+# Instance registry (XDD 020 Phase 1) — provides registry_list /
+# registry_list_check / registry_resolve for the multi-instance selection
+# front-end. Honors TOMO_REGISTRY_FILE for test isolation.
+# shellcheck source=lib/instance-registry.sh
+. "$SCRIPT_DIR/lib/instance-registry.sh"
 
 # ── Step 1: Welcome ──────────────────────────────────────
 
@@ -745,37 +759,118 @@ if [ -n "$FLAG_CONFIG_FILE" ]; then
 fi
 
 # ── Instance directory ────────────────────────────────────
+#
+# Registry-driven selection (XDD 020 Phase 2, T2.1). Reads the instance
+# registry and routes to one of two modes:
+#   SELECT_MODE=create  — provision a new instance (name must not already exist)
+#   SELECT_MODE=update   — re-run against an existing registered instance
+# The actual path layout (create branch) and per-instance config / registry
+# upsert are owned by T2.2 / T2.3 — this step only resolves name + mode.
 
 print_step "Instance configuration"
 
 REUSE=""
-if [ -f "$CONFIG_FILE" ]; then
-    echo "  Found existing config: $CONFIG_FILE"
-    INSTANCE_NAME=$(jq -r '.instanceName' "$CONFIG_FILE")
-    INSTANCE_PATH=$(jq -r '.instancePath' "$CONFIG_FILE")
-    # instanceLocation was added in a later version; derive from instancePath as fallback
-    INSTANCE_LOCATION=$(jq -r '.instanceLocation // empty' "$CONFIG_FILE")
-    if [ -z "$INSTANCE_LOCATION" ]; then
-        INSTANCE_LOCATION="$(dirname "$INSTANCE_PATH")"
+SELECT_MODE="create"
+
+# Snapshot the registered instances (one compact-JSON line per entry).
+REGISTRY_ENTRIES=$(registry_list 2>/dev/null || true)
+
+# registry_has_name NAME — exit 0 if NAME is registered, non-zero otherwise.
+registry_has_name() {
+    registry_resolve "$1" >/dev/null 2>&1
+}
+
+if [ "$NON_INTERACTIVE" = "true" ]; then
+    # Non-interactive contract: --instance-name names the target. A name that
+    # already exists in the registry is rejected as a duplicate unless --update
+    # is passed, in which case it must exist.
+    if [ "$FLAG_UPDATE" = "true" ]; then
+        if [ -z "$FLAG_INSTANCE_NAME" ]; then
+            print_err "--update requires --instance-name."
+            exit 1
+        fi
+        if ! registry_has_name "$FLAG_INSTANCE_NAME"; then
+            print_err "Cannot update '$FLAG_INSTANCE_NAME': no such registered instance."
+            exit 1
+        fi
+        SELECT_MODE="update"
+        INSTANCE_NAME="$FLAG_INSTANCE_NAME"
+    else
+        if [ -n "$FLAG_INSTANCE_NAME" ] && registry_has_name "$FLAG_INSTANCE_NAME"; then
+            print_err "Instance '$FLAG_INSTANCE_NAME' already exists. Pass --update to update it, or choose a different --instance-name."
+            exit 1
+        fi
+        SELECT_MODE="create"
     fi
-    echo "  Instance: $INSTANCE_NAME at $INSTANCE_PATH"
-    USE_EXISTING=$(prompt_yn "Use existing config? [Y/n]" "Y")
-    case "$USE_EXISTING" in
-        [nN]*) ;;
-        *) echo "  Using existing config."; REUSE=true ;;
-    esac
+else
+    if [ -z "$REGISTRY_ENTRIES" ]; then
+        # No instances registered yet — straight to first-instance create.
+        SELECT_MODE="create"
+    else
+        # Existing instances registered — offer create-new vs update-<name>.
+        echo "  Registered instances:"
+        registry_list_check
+        echo ""
+        echo "    n. Create a new instance"
+        echo "    Or type the name of an instance to update."
+        SELECT_CHOICE=$(prompt_default "Choice (n / <name>)" "n")
+        case "$SELECT_CHOICE" in
+            n|N|"")
+                SELECT_MODE="create"
+                ;;
+            *)
+                if registry_has_name "$SELECT_CHOICE"; then
+                    SELECT_MODE="update"
+                    INSTANCE_NAME="$SELECT_CHOICE"
+                else
+                    print_warn "No registered instance named '$SELECT_CHOICE' — creating a new one."
+                    SELECT_MODE="create"
+                fi
+                ;;
+        esac
+    fi
+
+    if [ "$SELECT_MODE" = "create" ]; then
+        # Obtain (and validate) the new instance name. Reject collisions with
+        # an existing registry entry by re-prompting.
+        while true; do
+            if [ -n "$FLAG_INSTANCE_NAME" ]; then
+                INSTANCE_NAME="$FLAG_INSTANCE_NAME"
+            else
+                INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
+            fi
+            if registry_has_name "$INSTANCE_NAME"; then
+                print_warn "Instance '$INSTANCE_NAME' already exists — choose a different name."
+                FLAG_INSTANCE_NAME=""
+                continue
+            fi
+            break
+        done
+    fi
 fi
 
-if [ "$REUSE" != "true" ]; then
+if [ "$SELECT_MODE" = "update" ]; then
+    # Re-run against an existing instance: resolve its path from the registry
+    # so downstream steps target the right directory. CONFIG_FILE is read for
+    # prior settings only if it exists (per-instance config is T2.3's lane).
+    INSTANCE_PATH=$(registry_resolve "$INSTANCE_NAME")
+    INSTANCE_LOCATION="$(dirname "$INSTANCE_PATH")"
+    echo "  Updating instance: $INSTANCE_NAME at $INSTANCE_PATH"
+    if [ -f "$CONFIG_FILE" ]; then
+        REUSE=true
+    fi
+else
     # CLI-flag override takes priority over prompt_default — this lets the
     # integration test scripts target an isolated tmpdir instead of
     # overwriting the user's real `$REPO_ROOT/tomo-instance`. The default
     # path behaviour (and the interactive prompt) are unchanged when the
     # flags are not passed.
-    if [ -n "$FLAG_INSTANCE_NAME" ]; then
-        INSTANCE_NAME="$FLAG_INSTANCE_NAME"
-    else
-        INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
+    if [ -z "$INSTANCE_NAME" ]; then
+        if [ -n "$FLAG_INSTANCE_NAME" ]; then
+            INSTANCE_NAME="$FLAG_INSTANCE_NAME"
+        else
+            INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
+        fi
     fi
     if [ -n "$FLAG_INSTANCE_LOCATION" ]; then
         INSTANCE_LOCATION="$FLAG_INSTANCE_LOCATION"

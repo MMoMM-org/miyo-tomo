@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.5.2
+# version: 0.6.0
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -260,7 +260,9 @@ hashi_check() {
 # ── Instance identity ────────────────────────────────────
 
 INSTANCE_LABEL=""
-if [[ -n "${TOMO_INSTANCE_DIR:-}" ]]; then
+if [[ -n "${TOMO_INSTANCE_NAME:-}" ]]; then
+  INSTANCE_LABEL="$TOMO_INSTANCE_NAME"
+elif [[ -n "${TOMO_INSTANCE_DIR:-}" ]]; then
   INSTANCE_LABEL=$(basename "$TOMO_INSTANCE_DIR")
 fi
 

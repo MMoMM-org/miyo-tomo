@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Integration & Validation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -30,9 +30,9 @@ Proves the six touch points work together end-to-end, runs the live transport ch
 
 ## Tasks
 
-- [ ] **T4.1 End-to-end install → launch → connect (live, personal vault)** `[activity: integration-test]`
+- [x] **T4.1 End-to-end install → launch → connect (live, personal vault)** `[activity: integration-test]`
 
-  > **Status (2026-05-29):** Automated portion done — the isolated install smoke (`test_install_smoke_ide_bridge_block_exists`, all four isolation flags) is in the suite (docker-gated; skips when no daemon) and the lock-file JSON is asserted install-free by `test_write_ide_lock_path_and_content`. **The live end-to-end (real Obsidian + Hashi, launch `begin-tomo.sh`, confirm editor context flows + `socat` running in the container) remains pending — manual, owner-driven.** Spec flips to Implemented once this passes.
+  > **Status (2026-05-31): PASSED.** Live end-to-end confirmed against the real instance + Obsidian/Hashi — the IDE Bridge connects and editor context flows host→container. Getting there surfaced four wiring gaps that unit tests could not (each fixed at the source, TDD + two-stage review, recorded in the spec Decisions Log): (1) **token format** — real Hashi tokens are `hashi_<uuid>`, the wizard had validated a bare UUID and rejected every real token; (2) **update-tomo delivery gap** — `update-tomo.sh` did not regenerate `begin-tomo.sh` nor copy `entrypoint.sh`, so enabling the bridge via update alone produced config but no working runtime; (3) **workspaceFolders** — the lock file now carries the container instance path (was empty); (4) **auto-connect** — a lock file alone does not trigger connection; the entrypoint now exports `CLAUDE_CODE_AUTO_CONNECT_IDE=true` in the single-lock branch so no manual `/ide` is needed. The authoritative diagnostic was the instance IDE log (`tomo-home/.cache/claude-cli-nodejs/<project>/mcp-logs-ide/*.jsonl`), not container process checks (the minimal container shell lacks `pgrep`/`/dev/tcp`). Automated isolated install smoke (`test_install_smoke_ide_bridge_block_exists`, all four isolation flags) remains in the suite (docker-gated). Carry-forward note: a Hashi-side handshake conformance point (`serverInfo.version`) was observed in an early log; not a Tomo-side issue — flagged for Hashi if it recurs.
 
   1. **Prime**: Re-read SDD Runtime View "Launch + connect" sequence (lines 220-244) so you know the expected chain: install writes lock → begin-tomo probes + builds (drift) → entrypoint spawns socat → Claude Code reads lock + connects `ws://127.0.0.1:<port>` → socat forwards to host Hashi.
   2. **Test**:

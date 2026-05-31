@@ -135,7 +135,9 @@ section "Test 3: Install script non-interactive mode"
 TEST_VAULT="$TMPDIR/tomo-phase1-vault-$$"
 TEST_LOC="$TMPDIR/tomo-phase1-loc-$$"
 TEST_NAME="tomo-instance"
-TEST_INSTANCE="$TEST_LOC/$TEST_NAME"
+# Self-contained per-instance layout (XDD 020 ADR-1): --instance-location is the
+# PARENT dir, the Claude workspace lives at <parent>/<name>/instance.
+TEST_INSTANCE="$TEST_LOC/$TEST_NAME/instance"
 TEST_HOME="$TMPDIR/tomo-phase1-home-$$"
 TEST_CONFIG="$TMPDIR/tomo-phase1-config-$$.json"
 INSTALL_OUT="$TMPDIR/tomo-phase1-install-$$.txt"

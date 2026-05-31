@@ -72,6 +72,15 @@ Options:
   --kado-port PORT      Kado server port (default: 37022)
   --kado-token TOKEN    Kado bearer token (must start with kado_)
   --prefix PREFIX       Lifecycle tag prefix (default: MiYo-Tomo)
+  --instance-name NAME  Instance directory name (default: tomo-instance)
+  --instance-location P Parent directory for the instance (default: ~/MiYo/Tomo).
+                        The self-contained instance is created at
+                        <location>/<name>/ holding instance/, home/,
+                        tomo-install.json and begin-tomo.sh.
+  --home-dir PATH       Pin the Docker home dir exactly (default derived:
+                        <location>/<name>/home). For test isolation.
+  --config-file PATH    Pin tomo-install.json exactly (default derived:
+                        <location>/<name>/tomo-install.json). For test isolation.
   --update              Update the existing instance named by --instance-name
                         instead of creating a new one (non-interactive only)
   --non-interactive     Use defaults for all prompts (requires --vault)
@@ -757,12 +766,6 @@ else
 fi
 print_ok "Prefix: $TAG_PREFIX"
 
-# Resolve the effective config-file path. Tests pass --config-file to
-# isolate their metadata from the user's real $REPO_ROOT/tomo-install.json.
-if [ -n "$FLAG_CONFIG_FILE" ]; then
-    CONFIG_FILE="$FLAG_CONFIG_FILE"
-fi
-
 # ── Instance directory ────────────────────────────────────
 #
 # Registry-driven selection (XDD 020 Phase 2, T2.1). Reads the instance
@@ -852,22 +855,23 @@ else
     fi
 fi
 
+# Self-contained per-instance layout (ADR-1): <parent>/<name>/ holds
+# instance/ (Claude workspace), home/ (Docker /home/coder), tomo-install.json
+# and begin-tomo.sh. INSTANCE_LOCATION is the PARENT dir; INSTANCE_ROOT is
+# <parent>/<name>; INSTANCE_PATH is <root>/instance.
 if [ "$SELECT_MODE" = "update" ]; then
-    # Re-run against an existing instance: resolve its path from the registry
-    # so downstream steps target the right directory. CONFIG_FILE is read for
-    # prior settings only if it exists (per-instance config is T2.3's lane).
+    # Re-run against an existing instance: the registry stores the instance dir
+    # path (<root>/instance); the instance ROOT is its parent. CONFIG_FILE is
+    # read for prior settings only if it exists.
     INSTANCE_PATH=$(registry_resolve "$INSTANCE_NAME")
-    INSTANCE_LOCATION="$(dirname "$INSTANCE_PATH")"
+    INSTANCE_ROOT="$(dirname "$INSTANCE_PATH")"
+    INSTANCE_LOCATION="$(dirname "$INSTANCE_ROOT")"
     echo "  Updating instance: $INSTANCE_NAME at $INSTANCE_PATH"
-    if [ -f "$CONFIG_FILE" ]; then
-        REUSE=true
-    fi
 else
     # CLI-flag override takes priority over prompt_default — this lets the
     # integration test scripts target an isolated tmpdir instead of
-    # overwriting the user's real `$REPO_ROOT/tomo-instance`. The default
-    # path behaviour (and the interactive prompt) are unchanged when the
-    # flags are not passed.
+    # overwriting the user's real instance. The default path behaviour (and the
+    # interactive prompt) are unchanged when the flags are not passed.
     if [ -z "$INSTANCE_NAME" ]; then
         if [ -n "$FLAG_INSTANCE_NAME" ]; then
             INSTANCE_NAME="$FLAG_INSTANCE_NAME"
@@ -875,12 +879,40 @@ else
             INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
         fi
     fi
+    # --instance-location is the PARENT dir (default ~/MiYo/Tomo). Expand a
+    # leading ~ to $HOME.
     if [ -n "$FLAG_INSTANCE_LOCATION" ]; then
         INSTANCE_LOCATION="$FLAG_INSTANCE_LOCATION"
     else
-        INSTANCE_LOCATION=$(prompt_default "Instance location" "$REPO_ROOT")
+        INSTANCE_LOCATION=$(prompt_default "Instance parent directory" "$HOME/MiYo/Tomo")
     fi
-    INSTANCE_PATH="$INSTANCE_LOCATION/$INSTANCE_NAME"
+    case "$INSTANCE_LOCATION" in
+        "~") INSTANCE_LOCATION="$HOME" ;;
+        "~/"*) INSTANCE_LOCATION="$HOME/${INSTANCE_LOCATION#~/}" ;;
+    esac
+    INSTANCE_ROOT="$INSTANCE_LOCATION/$INSTANCE_NAME"
+    INSTANCE_PATH="$INSTANCE_ROOT/instance"
+fi
+
+# Create the parent dir if absent and note it (OQ8).
+if [ ! -d "$INSTANCE_LOCATION" ]; then
+    mkdir -p "$INSTANCE_LOCATION"
+    print_ok "Created parent directory: $INSTANCE_LOCATION"
+fi
+
+# Derive the remaining self-contained paths from INSTANCE_ROOT. Explicit
+# --home-dir/--config-file pin those two exactly (test isolation); absent, they
+# fall under <root>/home and <root>/tomo-install.json.
+if [ -n "$FLAG_CONFIG_FILE" ]; then
+    CONFIG_FILE="$FLAG_CONFIG_FILE"
+else
+    CONFIG_FILE="$INSTANCE_ROOT/tomo-install.json"
+fi
+
+# Reuse prior settings only when the resolved per-instance config already
+# exists (update re-run against a previously provisioned instance).
+if [ "$SELECT_MODE" = "update" ] && [ -f "$CONFIG_FILE" ]; then
+    REUSE=true
 fi
 
 # ── Step 6: Kado connection ──────────────────────────────
@@ -1314,7 +1346,7 @@ print_step "Setting up tomo-home/"
 if [ -n "$FLAG_HOME_DIR" ]; then
     HOME_DIR="$FLAG_HOME_DIR"
 else
-    HOME_DIR="$REPO_ROOT/tomo-home"
+    HOME_DIR="$INSTANCE_ROOT/home"
 fi
 mkdir -p "$HOME_DIR/.claude"
 
@@ -1362,7 +1394,7 @@ fi
 print_step "Generating begin-tomo.sh launcher"
 
 LAUNCHER_TEMPLATE="$REPO_ROOT/scripts/lib/begin-tomo.sh.template"
-LAUNCHER_PATH="$INSTANCE_LOCATION/begin-tomo.sh"
+LAUNCHER_PATH="$INSTANCE_ROOT/begin-tomo.sh"
 
 if [ ! -f "$LAUNCHER_TEMPLATE" ]; then
     print_err "Launcher template not found: $LAUNCHER_TEMPLATE"
@@ -1435,15 +1467,9 @@ else
     remove_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT"
 fi
 
-# ── Update .gitignore (parent repo) ──────────────────────
-
-if ! grep -q "^${INSTANCE_NAME}/" "$REPO_ROOT/.gitignore" 2>/dev/null; then
-    # Add instance dir if not the default (already in .gitignore)
-    if [ "$INSTANCE_NAME" != "tomo-instance" ]; then
-        echo "${INSTANCE_NAME}/" >> "$REPO_ROOT/.gitignore"
-        print_ok "Added $INSTANCE_NAME/ to .gitignore"
-    fi
-fi
+# Instances live OUTSIDE the repo now (ADR-1), so no repo-.gitignore entry is
+# needed; the obsolete append block was removed. The instance-root .gitignore
+# below is still written for users who choose to `git init` their instance.
 
 # ── Instance scratch dir + .gitignore (optional) ─────────
 #

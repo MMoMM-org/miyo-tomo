@@ -15,7 +15,7 @@
 # On any failure the .tmp file is cleaned up and non-zero is returned;
 # the dst is never left in a partially-written state.
 #
-# sed-special characters (& | /) in replacement values are escaped so they
+# sed-special characters (\ & | /) in replacement values are escaped so they
 # render literally.  Uses \x01 as the sed delimiter to avoid collisions with
 # paths that contain the more common delimiters (| / ,).
 

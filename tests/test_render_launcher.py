@@ -188,7 +188,6 @@ class TestRenderLauncherSedSpecialChars:
 
     def test_pipe_in_value_renders_literally(self, tmp_path):
         """A value containing | (sed default delimiter) must render literally."""
-        # Use a non-standard name that includes pipe-like chars in path components.
         # We embed | in instance_name since instance_path with | is unusual but valid.
         dst = tmp_path / "begin-tomo.sh"
         result = _run(
@@ -209,6 +208,29 @@ class TestRenderLauncherSedSpecialChars:
         content = dst.read_text(encoding="utf-8")
         assert 'INSTANCE_NAME="inst|v2"' in content, (
             f"| was not rendered literally.\n{content}"
+        )
+
+    def test_backslash_in_value_renders_literally(self, tmp_path):
+        """A value containing \\ must not be consumed by sed's escape mechanism."""
+        dst = tmp_path / "begin-tomo.sh"
+        result = _run(
+            [
+                str(TEMPLATE),
+                str(dst),
+                "inst",
+                "/data/tomo\\legacy",   # literal backslash in path
+                "/home/user",
+                "/src/Tomo",
+                "9999",
+            ],
+            tmp_path,
+        )
+        assert result.returncode == 0, (
+            f"render_launcher failed\nstderr={result.stderr}"
+        )
+        content = dst.read_text(encoding="utf-8")
+        assert 'INSTANCE_PATH="/data/tomo\\legacy"' in content, (
+            f"backslash was not rendered literally.\n{content}"
         )
 
 

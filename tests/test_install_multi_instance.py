@@ -120,8 +120,8 @@ def test_no_registry_first_install_proceeds(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    # The created instance directory exists at the isolated path.
-    assert (tmp_path / "loc" / "tomo-instance").is_dir()
+    # The created workspace (instance/) exists at the isolated path.
+    assert (tmp_path / "loc" / "tomo-instance" / "instance").is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ def test_create_new_name_with_existing_registry_proceeds(tmp_path: Path) -> None
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert (tmp_path / "loc" / "brand-new").is_dir()
+    assert (tmp_path / "loc" / "brand-new" / "instance").is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -378,3 +378,127 @@ def test_explicit_home_config_override_pins_paths(tmp_path: Path) -> None:
     assert not (parent / "delta" / "home").exists()
     # The instance dir still lands at the derived <parent>/<name>/instance.
     assert (parent / "delta" / "instance").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# T2.3 — config repoPath + registry_upsert + render_launcher
+# ---------------------------------------------------------------------------
+
+
+def test_config_includes_repo_path_and_tomo_version(tmp_path: Path) -> None:
+    """tomo-install.json written by the installer includes repoPath and tomoVersion."""
+    registry = tmp_path / "instances.json"
+    parent = tmp_path / "parent"
+
+    result = _run_install(
+        tmp_path,
+        instance_name="cfg-test",
+        registry_file=registry,
+        pin_home_config=False,
+        parent=parent,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    config_path = parent / "cfg-test" / "tomo-install.json"
+    assert config_path.is_file()
+
+    import json
+
+    cfg = json.loads(config_path.read_text())
+    # repoPath must equal REPO_ROOT (the source repo).
+    assert cfg.get("repoPath") == str(REPO_ROOT), (
+        f"repoPath missing or wrong: {cfg.get('repoPath')!r}"
+    )
+    # tomoVersion must be present (can be any non-empty string).
+    assert cfg.get("tomoVersion"), "tomoVersion missing from config"
+
+
+def test_config_still_includes_lifecycle_prefix(tmp_path: Path) -> None:
+    """lifecyclePrefix remains in tomo-install.json (Phase 4 removes it — not now)."""
+    registry = tmp_path / "instances.json"
+    parent = tmp_path / "parent"
+
+    result = _run_install(
+        tmp_path,
+        instance_name="lc-test",
+        registry_file=registry,
+        pin_home_config=False,
+        parent=parent,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    config_path = parent / "lc-test" / "tomo-install.json"
+    assert config_path.is_file()
+
+    import json
+
+    cfg = json.loads(config_path.read_text())
+    # lifecyclePrefix must still be present (Phase 4 removes it).
+    assert "lifecyclePrefix" in cfg, "lifecyclePrefix was prematurely removed"
+    # And it is the ONLY tag-prefix key — no new ones added.
+    tag_prefix_keys = [k for k in cfg if "prefix" in k.lower() or "tagprefix" in k.lower()]
+    assert tag_prefix_keys == ["lifecyclePrefix"], (
+        f"unexpected tag-prefix keys: {tag_prefix_keys}"
+    )
+
+
+def test_launcher_has_no_unrendered_placeholders(tmp_path: Path) -> None:
+    """begin-tomo.sh produced by render_launcher contains no {{INSTANCE_*}},
+    {{HOME_DIR}}, {{TOMO_REPO_ROOT}}, or {{DEV_NOTIFY_PORT}} placeholders.
+    Docker {{ index ... }} Go-template strings are expected and must NOT be checked.
+    """
+    registry = tmp_path / "instances.json"
+    parent = tmp_path / "parent"
+
+    result = _run_install(
+        tmp_path,
+        instance_name="launcher-test",
+        registry_file=registry,
+        pin_home_config=False,
+        parent=parent,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    launcher = parent / "launcher-test" / "begin-tomo.sh"
+    assert launcher.is_file()
+
+    content = launcher.read_text()
+    import re
+
+    # These Tomo-specific placeholders must all be gone after render.
+    tomo_placeholders = re.findall(
+        r"\{\{(INSTANCE_NAME|INSTANCE_PATH|HOME_DIR|TOMO_REPO_ROOT|DEV_NOTIFY_PORT)\}\}",
+        content,
+    )
+    assert not tomo_placeholders, (
+        f"Unrendered Tomo placeholders remain in begin-tomo.sh: {tomo_placeholders}"
+    )
+
+
+def test_registry_contains_instance_at_instance_subdir(tmp_path: Path) -> None:
+    """After install, the registry file contains the new instance with path ==
+    <root>/instance (the ADR-2 convention)."""
+    import json
+
+    registry = tmp_path / "instances.json"
+    parent = tmp_path / "parent"
+
+    result = _run_install(
+        tmp_path,
+        instance_name="reg-test",
+        registry_file=registry,
+        pin_home_config=False,
+        parent=parent,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert registry.is_file(), "registry file not created by installer"
+
+    data = json.loads(registry.read_text())
+    instances = {e["name"]: e for e in data.get("instances", [])}
+    assert "reg-test" in instances, f"reg-test not in registry: {list(instances)}"
+
+    expected_path = str(parent / "reg-test" / "instance")
+    assert instances["reg-test"]["path"] == expected_path, (
+        f"registry path mismatch: {instances['reg-test']['path']!r} != {expected_path!r}"
+    )

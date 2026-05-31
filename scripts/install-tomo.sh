@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # lifecycle prefix, voice transcription, and vault-config.yaml generation.
-# version: 0.3.3
+# version: 0.4.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -203,10 +203,15 @@ prompt_yn() {
 . "$SCRIPT_DIR/lib/configure-ide-bridge.sh"
 
 # Instance registry (XDD 020 Phase 1) — provides registry_list /
-# registry_list_check / registry_resolve for the multi-instance selection
-# front-end. Honors TOMO_REGISTRY_FILE for test isolation.
+# registry_list_check / registry_resolve / registry_upsert for the
+# multi-instance front-end. Honors TOMO_REGISTRY_FILE for test isolation.
 # shellcheck source=lib/instance-registry.sh
 . "$SCRIPT_DIR/lib/instance-registry.sh"
+
+# Shared launcher renderer (XDD 020 Phase 2 / ADR-7) — provides render_launcher
+# which handles placeholder substitution + atomic write + chmod +x.
+# shellcheck source=lib/render-launcher.sh
+. "$SCRIPT_DIR/lib/render-launcher.sh"
 
 # registry_has_name NAME — exit 0 if NAME is registered, non-zero otherwise.
 registry_has_name() {
@@ -894,8 +899,10 @@ else
     INSTANCE_PATH="$INSTANCE_ROOT/instance"
 fi
 
-# Create the parent dir if absent and note it (OQ8).
-if [ ! -d "$INSTANCE_LOCATION" ]; then
+# Create the parent dir if absent and note it (OQ8) — only on the create
+# route; the update route uses the registered path, so INSTANCE_LOCATION
+# is a synthetic dirname and may differ from the user's intended parent.
+if [ "$SELECT_MODE" = "create" ] && [ ! -d "$INSTANCE_LOCATION" ]; then
     mkdir -p "$INSTANCE_LOCATION"
     print_ok "Created parent directory: $INSTANCE_LOCATION"
 fi
@@ -1401,15 +1408,7 @@ if [ ! -f "$LAUNCHER_TEMPLATE" ]; then
     exit 1
 fi
 
-# NOTE: launcher placeholder set is duplicated in install-tomo.sh and update-tomo.sh.
-# Keep both sed blocks in sync. Tracked for extraction into a shared scripts/lib helper (backlog).
-sed -e "s|{{INSTANCE_PATH}}|${INSTANCE_PATH}|g" \
-    -e "s|{{INSTANCE_NAME}}|${INSTANCE_NAME}|g" \
-    -e "s|{{HOME_DIR}}|${HOME_DIR}|g" \
-    -e "s|{{TOMO_REPO_ROOT}}|${REPO_ROOT}|g" \
-    -e "s|{{DEV_NOTIFY_PORT}}|9999|g" \
-    "$LAUNCHER_TEMPLATE" > "$LAUNCHER_PATH"
-chmod +x "$LAUNCHER_PATH"
+render_launcher "$LAUNCHER_TEMPLATE" "$LAUNCHER_PATH" "$INSTANCE_NAME" "$INSTANCE_PATH" "$HOME_DIR" "$REPO_ROOT" "9999"
 print_ok "begin-tomo.sh → $LAUNCHER_PATH"
 
 # ── Save config ───────────────────────────────────────────
@@ -1422,6 +1421,7 @@ cat > "$CONFIG_FILE" << CFGEOF
   "instanceName": "${INSTANCE_NAME}",
   "instanceLocation": "${INSTANCE_LOCATION}",
   "instancePath": "${INSTANCE_PATH}",
+  "repoPath": "${REPO_ROOT}",
   "launcherPath": "${LAUNCHER_PATH}",
   "homePath": "${HOME_DIR}",
   "vaultPath": "${VAULT_PATH}",
@@ -1440,6 +1440,11 @@ cat > "$CONFIG_FILE" << CFGEOF
 }
 CFGEOF
 print_ok "tomo-install.json"
+
+# Register the instance so future installs can route to it (ADR-2 / D-09).
+# INSTANCE_PATH = <root>/instance — the convention update routing depends on.
+registry_upsert "$INSTANCE_NAME" "$INSTANCE_PATH" "$REPO_ROOT" "$TOMO_VERSION"
+print_ok "instance registered: $INSTANCE_NAME → $INSTANCE_PATH"
 
 # Persist the voice block via the shared write_voice_config helper —
 # single authoritative writer for schema_version + enabled/model/language.

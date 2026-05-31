@@ -73,6 +73,10 @@ class TestRenderLauncherBasic:
             assert placeholder not in content, (
                 f"Placeholder {placeholder!r} still present in output"
             )
+        # Docker --format expressions must survive unchanged — they are NOT Tomo placeholders.
+        assert '{{ index .Config.Labels' in content, (
+            "docker --format expression was corrupted by substitution"
+        )
 
     def test_instance_name_substituted(self, tmp_path):
         dst = tmp_path / "begin-tomo.sh"

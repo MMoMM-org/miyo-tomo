@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-05-27 |
-| **Current Phase** | Implemented (Phases 1–3 shipped + reviewed; Phase 4 live e2e pending) |
-| **Last Updated** | 2026-05-30 |
+| **Current Phase** | Implemented (all 4 phases complete; T4.1 live e2e PASSED 2026-05-31) |
+| **Last Updated** | 2026-05-31 |
 
 ## Documents
 
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 5 Must-Have, 2 Should (banner+statusline), 0 Could (v1.2); vault-path resolution resolved (Kokoro ADR-019 §5) |
 | solution.md | completed | Feature-mirror architecture; ADR-1/2/3 confirmed; ADR-5 vault-path routing (Kokoro ADR-019 §5) |
-| plan/ | completed | 4 phases, 11 tasks; Phases 1–3 implemented + two-stage reviewed (spec + quality); Phase 4 = T4.2 regression/version audit ✓, T4.3 doc close-out ✓, T4.1 live e2e pending (manual, needs real Obsidian+Hashi) |
+| plan/ | completed | 4 phases, 11 tasks, all complete + two-stage reviewed (spec + quality). T4.1 live e2e PASSED 2026-05-31 (bridge connects, editor context flows host→container); four live-surfaced wiring gaps fixed (token format, update-tomo delivery, workspaceFolders, auto-connect). |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -37,6 +37,7 @@
 | 2026-05-30 | T4.1 delivery-gap fix — update-tomo ships entrypoint + launcher | Found that `update-tomo.sh` synced instance runtime files but did NOT regenerate `begin-tomo.sh` (0.12.0) nor copy `docker/entrypoint.sh` → `tomo-home/entrypoint.sh` (0.3.0) — so an existing user enabling the bridge via `update-tomo` got a lock file but a stale launcher + entrypoint → no working proxy. Fix (update-tomo.sh 0.5.2): both now flow through the plan/execute model, version-gated, honoring `--dry-run`/`--force`; launcher rendered atomically (tmp→mv) with the same 5 substitutions as install; added a `--config-file` flag (enables isolated testing, mirrors install). 5 new tests. Both review stages PASS. Drift follow-up logged as backlog D-09 (extract a shared render-launcher helper; interim cross-reference comments added to both sed blocks). |
 | 2026-05-30 | workspaceFolders carries the container instance path | Live testing: the IDE workspace must match Claude Code's container cwd. The earlier assumption (empty; IDE-only field) was wrong — Claude Code uses workspaceFolders to anchor workspace context. The container instance path equals the host instance path because begin-tomo mounts the instance at the same location via `-v $INSTANCE_PATH:$INSTANCE_PATH` and sets cwd with `-w $INSTANCE_PATH`. configure-ide-bridge.sh 0.3.0 accepts a 4th arg `workspace_path`; install-tomo.sh 0.3.3 and update-tomo.sh 0.5.3 pass `$INSTANCE_PATH`. Supersedes the 2026-05-28 "assumed empty" decision. |
 | 2026-05-31 | entrypoint exports CLAUDE_CODE_AUTO_CONNECT_IDE=true in single-lock branch | Live testing showed the IDE Bridge does not auto-connect from a lock file alone — the user had to run `/ide` manually. `CLAUDE_CODE_AUTO_CONNECT_IDE=true` is the documented deterministic mechanism for headless/obscured-parent-terminal cases (highest precedence; `autoConnectIde` is NOT a settings.json field, only `.claude.json` state). Set inside the entrypoint's lock-gated `elif` branch so it is exported only when exactly one lock file is present and the proxy is spawned; never set when 0 locks (bridge not configured). entrypoint.sh bumped to 0.4.0. |
+| 2026-05-31 | T4.1 live e2e PASSED — spec Implemented | Bridge connects end-to-end against the real instance + Obsidian/Hashi; editor context flows host→container. All four phases complete. Four wiring gaps that only live testing could surface were fixed at the source (token format `hashi_<uuid>`, update-tomo entrypoint+launcher delivery, workspaceFolders=container instance path, IDE auto-connect) — each TDD + two-stage reviewed. Diagnosis was driven by the instance IDE log (`tomo-home/.cache/.../mcp-logs-ide/*.jsonl`), not container process checks. Carry-forward: a Hashi-side `serverInfo.version` handshake conformance point was noted in an early log — not a Tomo issue; raise with Hashi if it recurs. Open follow-up: backlog D-09 (extract shared render-launcher helper). Note: host pytest needs `jsonschema` installed (env-only; the container ships python3-jsonschema). |
 
 ## Context
 

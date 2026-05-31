@@ -1,9 +1,9 @@
 #!/bin/bash
 # Tomo container entry point.
 # Sets up git config (fallback only), runs on-start hook if present,
-# spawns socat IDE Bridge proxy and enables IDE auto-connect when exactly one
-# lock file is present, then launches Claude Code.
-# version: 0.4.0
+# spawns the Tomo Context (socat IDE Bridge) proxy and enables IDE auto-connect
+# when exactly one lock file is present, then launches Claude Code.
+# version: 0.4.1
 set -e
 
 # ── Git config (fallback only) ───────────────────────────
@@ -44,7 +44,7 @@ if [ -d "$IDE_DIR" ]; then
     set -e
 
     if [ "$_lock_count" -gt 1 ]; then
-        echo "IDE Bridge: multiple .lock files found in $IDE_DIR — cannot determine port; not starting proxy" >&2
+        echo "Tomo Context: multiple .lock files found in $IDE_DIR — cannot determine port; not starting proxy" >&2
         exit 1
     elif [ "$_lock_count" -eq 1 ]; then
         _lock_file="$_lock_list"

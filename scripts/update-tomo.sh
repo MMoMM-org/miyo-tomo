@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.5.3
+# version: 0.5.4
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -545,7 +545,7 @@ PRIOR_IDE_TOKEN=$(jq -r '.ide_bridge.auth_token // ""' "$CONFIG_FILE" 2>/dev/nul
 PRIOR_IDE_PORT=$(jq -r '.ide_bridge.port // 23027' "$CONFIG_FILE" 2>/dev/null || echo "23027")
 
 if [ "$YES" = "true" ]; then
-    print_step "Hashi IDE Bridge (kept current — automated run)"
+    print_step "Tomo Context (kept current — automated run)"
     IDE_BRIDGE_ENABLED="$PRIOR_IDE_ENABLED"
     IDE_BRIDGE_TOKEN="$PRIOR_IDE_TOKEN"
     IDE_BRIDGE_PORT="$PRIOR_IDE_PORT"
@@ -776,7 +776,7 @@ fi
 # ── Persist IDE Bridge settings ─────────────────────────────────────────────
 
 if [ "$ide_bridge_changed" = "true" ] && [ "$DRY_RUN" = "false" ]; then
-    print_step "IDE Bridge configuration"
+    print_step "Tomo Context configuration"
     if write_ide_bridge_config "$CONFIG_FILE" 2>/dev/null; then
         mark_did "updated" "tomo-install.json (.ide_bridge)" ""
         DID_UPDATED=$((DID_UPDATED + 1))

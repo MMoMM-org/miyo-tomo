@@ -13,8 +13,8 @@ Strategy:
   4. Drive each scenario independently.
 
 Coverage targets:
-  - F6-AC1: configured + reachable  → banner "IDE: bridge active" (green)
-  - F6-AC2: not configured / disabled → banner "IDE: not configured" (dim)
+  - F6-AC1: configured + reachable  → banner "Context: connected" (green)
+  - F6-AC2: not configured / disabled → banner "Context: not configured" (dim)
   - F6-AC3: configured + unreachable → non-blocking warning, launch continues
   - F3-AC2: image label tomo.has_socat missing/empty → rebuild branch taken
   - ADR-3:  probe respects ≤3s bound, never blocks launch
@@ -298,10 +298,10 @@ def _inject_probe_stub(snippet: str, reachable: bool) -> str:
     return snippet + "\n" + stub
 
 
-# ── F6-AC1: configured + reachable → "bridge active" ─────────────────────────
+# ── F6-AC1: configured + reachable → "connected" ─────────────────────────────
 
 def test_banner_configured_reachable(tmp_path):
-    """F6-AC1: .ide_bridge.enabled=true + probe succeeds → 'bridge active' in banner."""
+    """F6-AC1: .ide_bridge.enabled=true + probe succeeds → 'connected' in banner."""
     rendered, phs = _render_template(tmp_path)
     shim_dir = tmp_path / "shims"
 
@@ -318,8 +318,8 @@ def test_banner_configured_reachable(tmp_path):
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
     combined = result.stdout + result.stderr
-    assert "bridge active" in combined, (
-        f"Expected 'bridge active'. stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert "connected" in combined, (
+        f"Expected 'connected'. stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
     assert "not configured" not in combined
     assert "unreachable" not in combined.lower()
@@ -348,14 +348,14 @@ def test_banner_not_configured(tmp_path):
     # Without this, a missing IDE block would produce "not configured" vacuously
     # (unset IDE_BRIDGE_ENABLED → false branch → dim output) and the test would
     # pass having never exercised the config read path.
-    assert "IDE:" in combined, (
-        f"IDE banner line absent — IDE config block may not have run.\n"
+    assert "Context:" in combined, (
+        f"Context banner line absent — IDE config block may not have run.\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
     assert "not configured" in combined, (
         f"Expected 'not configured'. stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
-    assert "bridge active" not in combined
+    assert "connected" not in combined
 
 
 # ── F6-AC3: configured + unreachable → warning, launch continues ──────────────
@@ -388,9 +388,9 @@ def test_banner_configured_unreachable_non_blocking(tmp_path):
     assert has_warning, (
         f"Expected unreachable warning. stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
-    # Banner line "bridge active" must still appear (with warning annotation)
-    assert "bridge active" in combined, (
-        f"Expected 'bridge active' (with warning). stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    # Banner line "configured (Hashi unreachable)" must still appear (with warning annotation)
+    assert "configured (Hashi unreachable)" in combined, (
+        f"Expected 'configured (Hashi unreachable)' (with warning). stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
 
 
@@ -515,7 +515,7 @@ def test_probe_timeout_does_not_block(tmp_path):
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
     combined = result.stdout + result.stderr
-    # Probe must have returned unreachable → warning banner (not "bridge active" clean)
+    # Probe must have returned unreachable → warning banner (not "connected" clean)
     assert "unreachable" in combined.lower() or "⚠" in combined, (
         f"Expected unreachable warning (probe ran and returned false on closed port).\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"

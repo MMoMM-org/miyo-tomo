@@ -1,5 +1,5 @@
 #!/bin/bash
-# configure-ide-bridge.sh — Stateful Hashi IDE Bridge wizard for install/update.
+# configure-ide-bridge.sh — Stateful Tomo Context (Hashi IDE Bridge) wizard for install/update.
 # Sourced from install-tomo.sh and update-tomo.sh. Relies on the sourcing
 # script providing print_step / print_ok / print_warn / print_err helpers.
 #
@@ -7,7 +7,7 @@
 #   IDE_BRIDGE_ENABLED — "true" or "false"
 #   IDE_BRIDGE_TOKEN   — hashi_<uuid> string (auth token for the bridge)
 #   IDE_BRIDGE_PORT    — port number as string (default 23027)
-# version: 0.3.0
+# version: 0.3.1
 
 _IDE_BRIDGE_SCHEMA_VERSION=1
 _IDE_BRIDGE_DEFAULT_PORT=23027
@@ -182,19 +182,19 @@ configure_ide_bridge() {
     IDE_BRIDGE_TOKEN="$current_token"
     IDE_BRIDGE_PORT="${current_port:-$_IDE_BRIDGE_DEFAULT_PORT}"
 
-    print_step "Hashi IDE Bridge"
+    print_step "Tomo Context"
 
     if [ "$non_interactive" = "true" ]; then
         if [ "$IDE_BRIDGE_ENABLED" = "true" ]; then
-            print_ok "IDE Bridge: kept ENABLED (port=$IDE_BRIDGE_PORT)"
+            print_ok "Tomo Context: kept ENABLED (port=$IDE_BRIDGE_PORT)"
         else
             IDE_BRIDGE_ENABLED="false"
-            print_ok "IDE Bridge: disabled (non-interactive default)"
+            print_ok "Tomo Context: disabled (non-interactive default)"
         fi
         return 0
     fi
 
-    echo "  Connect Hashi (Obsidian plugin) to Claude Code inside the container."
+    echo "  Tomo Context — connect Hashi (Obsidian plugin) to Claude Code inside the container."
     echo ""
 
     # ── State dispatch ───────────────────────────────────
@@ -203,18 +203,18 @@ configure_ide_bridge() {
         echo ""
         echo "    [K] keep current settings"
         echo "    [c] change token or port"
-        echo "    [d] disable IDE Bridge"
+        echo "    [d] disable Tomo Context"
         local choice
         read -rp "  > " choice
         choice="${choice:-K}"
         case "$choice" in
             k|K|keep)
-                print_ok "IDE Bridge: kept ENABLED"
+                print_ok "Tomo Context: kept ENABLED"
                 return 0
                 ;;
             d|D|disable)
                 IDE_BRIDGE_ENABLED="false"
-                print_ok "IDE Bridge: disabled"
+                print_ok "Tomo Context: disabled"
                 return 0
                 ;;
             c|C|change)
@@ -228,14 +228,14 @@ configure_ide_bridge() {
         echo "  Currently: DISABLED"
         echo ""
         local enable
-        read -rp "  Enable Hashi IDE Bridge? [y/N]: " enable
+        read -rp "  Enable Tomo Context? [y/N]: " enable
         case "$enable" in
             y|Y|yes)
                 IDE_BRIDGE_ENABLED="true"
                 ;;
             *)
                 IDE_BRIDGE_ENABLED="false"
-                print_ok "IDE Bridge: remains disabled"
+                print_ok "Tomo Context: remains disabled"
                 return 0
                 ;;
         esac
@@ -246,6 +246,6 @@ configure_ide_bridge() {
     _prompt_token "$IDE_BRIDGE_TOKEN"
     _prompt_port  "$IDE_BRIDGE_PORT"
 
-    print_ok "IDE Bridge: ENABLED (port=$IDE_BRIDGE_PORT)"
+    print_ok "Tomo Context: ENABLED (port=$IDE_BRIDGE_PORT)"
     return 0
 }

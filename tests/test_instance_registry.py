@@ -211,7 +211,34 @@ def test_list_check_flags_stale_entry_no_crash(tmp_path: Path) -> None:
     result = _run("registry_list_check", registry_file=reg)
 
     assert result.returncode == 0  # must not crash
-    assert "stale" in result.stdout.lower() or "ghost" in result.stdout
+    assert "[stale]" in result.stdout
+
+
+def test_list_check_mixed_fresh_and_stale(tmp_path: Path) -> None:
+    """Mixed entries: fresh path present → JSON line; missing path → [stale] prefix; exit 0."""
+    reg = tmp_path / "instances.json"
+    fresh_dir = tmp_path / "fresh"
+    stale_dir = tmp_path / "gone"
+    fresh_dir.mkdir()
+    stale_dir.mkdir()
+
+    _upsert(reg, "fresh", str(fresh_dir), str(REPO_ROOT), "0.13.0")
+    _upsert(reg, "gone", str(stale_dir), str(REPO_ROOT), "0.13.0")
+    # Make one entry stale
+    stale_dir.rmdir()
+
+    result = _run("registry_list_check", registry_file=reg)
+
+    assert result.returncode == 0
+    lines = result.stdout.splitlines()
+    # Fresh entry appears as JSON (name field matches exactly, no [stale] prefix)
+    fresh_lines = [ln for ln in lines if '"name":"fresh"' in ln]
+    assert len(fresh_lines) == 1, f"expected exactly one fresh line, got: {lines}"
+    assert not fresh_lines[0].startswith("[stale]")
+    # Stale entry is [stale]-prefixed
+    stale_lines = [ln for ln in lines if "[stale]" in ln and "gone" in ln]
+    assert len(stale_lines) == 1, f"expected exactly one stale line, got: {lines}"
+    assert stale_lines[0].startswith("[stale]")
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +307,7 @@ def test_list_corrupt_json_exits_zero_empty_output(tmp_path: Path) -> None:
     result = _run("registry_list", registry_file=reg)
 
     assert result.returncode == 0
-    # Should produce warning on stderr but not crash
-    # stdout is either empty or contains stale/warning info — must not crash
+    assert result.stdout.strip() == ""
 
 
 # ---------------------------------------------------------------------------

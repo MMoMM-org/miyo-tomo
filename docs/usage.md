@@ -41,7 +41,7 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
 4. **Apply the actions.** Tomo doesn't write outside the inbox; this step is yours. Two paths:
     - **Manually**: open the instruction set in Obsidian, perform each action yourself (write note, add link, set tag), tick `[x] Applied` per action.
     - **Via Tomo Hashi**: run the instruction-set executor in [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) on the file. Choose preview mode — `Preview on` (approve each action), `Preview off` (visible apply), or `No confirmation` (background).
-5. **Cleanup.** Re-run `/inbox`. When it sees an instruction set with all actions applied (whether by hand or by Hashi), `state-promoter.py` transitions source items from `<prefix>/captured` to `<prefix>/active` and `mark-captured.py` archives completed workflow docs per your vault-config rules.
+5. **Cleanup.** Re-run `/inbox`. When it sees an instruction set with all actions applied (whether by hand or by Hashi), `state-promoter.py` transitions source items from `tomo.state: captured` to `tomo.state: active` and `mark-captured.py` archives completed workflow docs per your vault-config rules.
 
 `/inbox` is auto-resumable: it inspects checkbox state in existing suggestions and instruction docs to decide whether to run Pass 1, run Pass 2, run cleanup, or do nothing. Force a specific phase with `/inbox --pass1`, `/inbox --pass2`, or `/inbox --cleanup`.
 
@@ -96,7 +96,7 @@ Tomo's contract is **proposal-first and write-bounded**: Tomo only writes to the
 - **Inside your vault, but only in the inbox folder**:
   - `<inbox>/<YYYY-MM-DD_HHMM>_suggestions.md` — Pass 1 output.
   - `<inbox>/<YYYY-MM-DD_HHMM>_instructions.md` — Pass 2 output.
-  - The lifecycle tag on **inbox source items** flips from `<prefix>/captured` to `<prefix>/active` once you've applied their actions and `/inbox` cleanup runs.
+  - The `tomo.state` frontmatter field on **inbox source items** flips from `captured` to `active` once you've applied their actions and `/inbox` cleanup runs.
 
 ### What Tomo never writes
 
@@ -116,19 +116,19 @@ When you approve a suggestions doc and Tomo runs Pass 2, the result is an **inst
 | `/inbox` Pass 1 | A `_suggestions.md` file appears in your inbox folder. Per-item analyst counts and any failures are reported. |
 | `/inbox` Pass 2 | A `_instructions.md` file appears in your inbox folder. The orchestrator reports an action count and a coverage audit. |
 | You apply the instruction set | Each action is applied — manually in Obsidian (tick `[x] Applied` per action) or via Tomo Hashi's instruction-set executor. |
-| `/inbox` cleanup | The next `/inbox` run runs cleanup: `state-promoter.py` transitions source items `<prefix>/captured` → `<prefix>/active`; `mark-captured.py` archives fully-applied workflow docs per your vault-config rules. |
+| `/inbox` cleanup | The next `/inbox` run runs cleanup: `state-promoter.py` transitions source items from `tomo.state: captured` to `tomo.state: active`; `mark-captured.py` archives fully-applied workflow docs per your vault-config rules. |
 | `/tomo-setup <section>` | The relevant `config/` files are updated. The wizard prints a per-phase summary so you can see what was written. |
 
-### Lifecycle tag namespace
+### Lifecycle state
 
-Tomo tracks every inbox source item's state via tags under your `lifecycle.tag_prefix` (default `MiYo-Tomo`):
+Tomo tracks every inbox source item's state in a hidden `tomo.state` frontmatter field — not a tag. You never add or edit it by hand; Tomo writes and advances it automatically. The two states a source item moves through are:
 
-| Tag | Meaning |
+| `tomo.state` | Meaning |
 |---|---|
-| `<prefix>/captured` | Item is in the inbox, waiting to be processed. |
-| `<prefix>/active` | Item has been processed: its actions were applied and `/inbox` cleanup transitioned it. |
+| `captured` | Item is in the inbox, waiting to be processed. |
+| `active` | Item has been processed: its actions were applied and `/inbox` cleanup transitioned it. |
 
-Source items carry exactly one of these tags at any time. Workflow documents (suggestions, instructions) **don't** carry lifecycle tags — their state is read from checkbox state (`[ ] Approved` on suggestions, `[ ] Applied` per action on instruction sets).
+A source item carries exactly one state at any time. Because the field is frontmatter rather than a tag, it stays out of your tag pane. The signals you *do* see are filename conventions, body checkboxes (`[ ] Approved` on suggestions, `[ ] Applied` per action on instruction sets), and the per-run `/inbox` summary. Workflow documents (suggestions, instructions) don't carry a `tomo.state` — their progress is read from those checkboxes.
 
 ## Launcher flags and slash commands
 

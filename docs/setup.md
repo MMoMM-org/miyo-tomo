@@ -55,17 +55,13 @@ For each concept (inbox, notes, maps, calendar, projects, areas, sources, templa
 
 The directory browser lets you navigate: number keys descend into a subfolder, `0` goes back up, `d` confirms the current path. After each concept, `[b]` takes you back to re-do the previous one, and a final summary lets you jump back to any concept before confirming all.
 
-### 4. Lifecycle Tag Prefix
-
-Choose the tag prefix for Tomo's lifecycle states (default: `MiYo-Tomo`). Tags like `#MiYo-Tomo/captured` and `#MiYo-Tomo/proposed` track document state.
-
-### 5. Kado Connection
+### 4. Kado Connection
 
 - **Host** — where Kado runs (default: `host.docker.internal` for Docker)
 - **Port** — Kado port (default: `23026`, matching Kado's desktop-only bind on `127.0.0.1:23026`)
 - **Bearer token** — your Kado API key (must start with `kado_`)
 
-### 6. Git User Configuration
+### 5. Git User Configuration
 
 Tomo sets up a git identity so commits made inside the Docker container are attributed correctly. The script reads your host's global git config and offers three options:
 
@@ -90,17 +86,17 @@ The wizard writes an IDE lock file to `tomo-home/.claude/ide/<port>.lock` and re
 
 Change or disable Tomo Context anytime by re-running `install-tomo.sh` or `update-tomo.sh`.
 
-### 7. Instance Creation
+### 6. Instance Creation
 
 The script creates your instance under `<parent>/<name>/instance/` with agents, commands, skills, and config files copied from `tomo/` source. It writes an instance-level `.gitignore` (excluding `.mcp.json` with your Kado token, and runtime state) for users who later choose to `git init` the instance themselves.
 
 The instance is **not** git-initialised by the installer — it is bind-mounted infrastructure, not a code project, and a nested `.git/` inside a gitignored directory has caused accidental wipes in the past. Versioning lives in the host source repo.
 
-### 8. Docker Home Setup + Launcher Generation
+### 7. Docker Home Setup + Launcher Generation
 
-Sets up `<parent>/<name>/home/` as the Docker `/home/coder` mount, including Claude Code auth from your host (if available) and the `.gitconfig` from step 6. Then renders `scripts/lib/begin-tomo.sh.template` into `<parent>/<name>/begin-tomo.sh` with all paths baked in — this is the launcher you run to start sessions for this instance.
+Sets up `<parent>/<name>/home/` as the Docker `/home/coder` mount, including Claude Code auth from your host (if available) and the `.gitconfig` from step 5. Then renders `scripts/lib/begin-tomo.sh.template` into `<parent>/<name>/begin-tomo.sh` with all paths baked in — this is the launcher you run to start sessions for this instance.
 
-### 9. Registry Update
+### 8. Registry Update
 
 Finally, the installer records the instance in `~/.tomo/instances.json` (name → path → source repo → version) so future install/update runs can find it. The registry is a rebuildable index: if it's lost, your instances still launch via their own `begin-tomo.sh`, and the next install re-creates the entry. A registry write failure does not abort an otherwise successful install.
 
@@ -178,7 +174,7 @@ Once exploration is complete:
 /inbox
 ```
 
-Tomo auto-detects what to do next based on lifecycle state tags.
+Tomo auto-detects what to do next based on each item's `tomo.state` frontmatter.
 
 ## Authentication
 

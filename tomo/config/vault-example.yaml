@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.1
+# version: 1.2
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -11,7 +11,7 @@
 #   - Fields set to null are intentionally disabled (no fallback to profile)
 #
 # Generation:
-#   Phase 1: Install script produces a minimal config (profile, concepts, lifecycle)
+#   Phase 1: Install script produces a minimal config (profile, concepts)
 #   Phase 2: /explore-vault enriches with frontmatter, tags, callouts, relationships
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -106,15 +106,6 @@ naming:
     monthly: "YYYY-MM"
     quarterly: "YYYY-[Q]Q"
     yearly: "YYYY"
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Lifecycle
-# ──────────────────────────────────────────────────────────────────────────────
-# Tomo tags notes it has processed with a lifecycle tag under this prefix.
-# Example: "MiYo-Tomo/processed/2026-04-10"
-
-lifecycle:
-  tag_prefix: "MiYo-Tomo"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Templates

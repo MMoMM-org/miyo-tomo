@@ -14,7 +14,7 @@ Files split into four groups by who manages them.
 
 These are the files you change to shape Tomo's behaviour:
 
-- **`tomo-instance/config/vault-config.yaml`** — vault structure, concept-to-folder mappings, lifecycle tag prefix, frontmatter schema, tag taxonomy, callout policy, relationship markers, daily-log rules, tracker definitions. The installer writes a minimal version (profile + concepts + lifecycle); `/explore-vault` enriches it on first run. The complete schema is documented in `tomo/config/vault-example.yaml`.
+- **`tomo-instance/config/vault-config.yaml`** — vault structure, concept-to-folder mappings, frontmatter schema, tag taxonomy, callout policy, relationship markers, daily-log rules, tracker definitions. The installer writes a minimal version (profile + concepts); `/explore-vault` enriches it on first run. The complete schema is documented in `tomo/config/vault-example.yaml`.
 - **`tomo-instance/config/user-rules/*.md`** — natural-language behavioural rules that don't fit YAML (tagging precedence, destination overrides, template selection). The installer creates only `README.md`; you author topic files like `tagging.md`, `destinations.md`, `templates.md` as your conventions emerge. Files are lazy-loaded by agents when relevant and referenced descriptively from the instance `CLAUDE.md`.
 - **`tomo-instance/config/kado-config.md`** — human-readable record of your Kado host, port, and protocol. The bearer token is **not** stored here.
 
@@ -50,7 +50,6 @@ This is the top-level surface — one row per top-level setting per file. For va
 | `profile_version` | matches the chosen profile | Trip-wire for profile-schema migrations. |
 | `concepts` | from profile | Concept-to-folder mappings: inbox, atomic_note, map_note, calendar, project, area, source, template, asset. Override only the entries that differ. |
 | `naming` | from profile | Display labels Tomo uses in proposals (`labels`) and Moment.js filename patterns per calendar granularity (`calendar_patterns`). |
-| `lifecycle.tag_prefix` | `"MiYo-Tomo"` | Tag namespace for state markers like `<prefix>/captured`, `<prefix>/proposed`. |
 | `templates` | from profile | Template file mappings per concept (`base_path` + `mapping`); optional `custom_tokens`. Tomo verifies each file exists at session start. |
 | `frontmatter` | from profile | `strict` flag plus `required` / `optional` field lists. Each entry binds a YAML key to a template token, type, and default. |
 | `relationships` | from profile | Parent/peer markers (e.g. `up::`, `related::`) with write rules: format, position, multi/separator. |
@@ -163,7 +162,7 @@ Tomo composes its effective configuration from four layers. Higher layers win.
 
 The edit workflow depends on which file holds the setting:
 
-- **Vault structure or behaviour** (concepts, lifecycle, frontmatter, tags, callouts, trackers, daily_log, etc.) — edit `tomo-instance/config/vault-config.yaml` directly. Changes take effect at the next session start; no installer re-run needed.
+- **Vault structure or behaviour** (concepts, frontmatter, tags, callouts, trackers, daily_log, etc.) — edit `tomo-instance/config/vault-config.yaml` directly. Changes take effect at the next session start; no installer re-run needed.
 - **Behavioural rules that don't fit YAML** (tagging precedence, destination overrides, template selection) — add or edit a markdown file under `tomo-instance/config/user-rules/`, then reference it descriptively from `tomo-instance/CLAUDE.md` so agents know it exists.
 - **Kado connection** (host, port, protocol, bearer token) — re-run `install-tomo.sh`. Hand-editing `kado-config.md` does **not** update `.mcp.json`, and `.mcp.json` is what Claude Code actually reads.
 - **Voice transcription** (enabled, model, language) — re-run `install-tomo.sh` or `update-tomo.sh`; both re-run the voice wizard and re-mirror the voice block from `tomo-install.json` into `voice/config.json`.
@@ -190,7 +189,6 @@ Tomo's defaults are tuned for the MiYo profile but most are safe across vault la
 ### You probably need to change
 
 - **`concepts.*` folder paths** — must match your vault's actual folder structure. Profiles ship with their author's paths; run `/explore-vault` to align with what's actually in your vault.
-- **`lifecycle.tag_prefix`** — change from `"MiYo-Tomo"` only if it would collide with an existing tag namespace.
 - **`frontmatter.required` / `frontmatter.optional`** — must match the fields your note templates produce. Mismatch causes strict-mode warnings on every note write.
 - **`templates.base_path` / `templates.mapping`** — must point at your real template filenames.
 - **`tags.prefixes`** — populated incrementally by `/explore-vault`. Edit to mark prefixes non-`proposable` (e.g. external tags like Raindrop, Readwise).

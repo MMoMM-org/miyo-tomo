@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.7.0
+# version: 0.7.1
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -294,10 +294,13 @@ case "$KADO_STATUS" in
   *)           LINE+=" | ${YELLOW}門:${KADO_PORT} ?${RESET}" ;;
 esac
 
+# Hashi segment is shown ONLY when the IDE bridge is in use — i.e. a lock file
+# exists (ok/unreachable). When not configured/active (no_config), omit it
+# entirely rather than rendering a yellow "橋:? ?".
 case "$HASHI_STATE" in
   ok)          LINE+=" | ${GREEN}橋:${HASHI_PORT} ✓${RESET}" ;;
   unreachable) LINE+=" | ${RED}橋:${HASHI_PORT} ✗${RESET}" ;;
-  *)           LINE+=" | ${YELLOW}橋:${HASHI_PORT} ?${RESET}" ;;
+  *)           : ;;
 esac
 
 echo -e "$LINE"

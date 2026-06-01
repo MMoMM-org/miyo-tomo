@@ -315,23 +315,23 @@ def test_hashi_configured_unreachable_renders_bridge_port_cross(tmp_path):
     )
 
 
-def test_hashi_not_configured_renders_bridge_question(tmp_path):
-    """F7-AC2: no lock file → 橋:<port> ? (yellow, not configured)."""
+def test_hashi_not_configured_omits_segment(tmp_path):
+    """No lock file → the Hashi segment is omitted entirely (no 橋 at all).
+
+    Deviation from spec 019 F7-AC2's original 3-state rendering: when the IDE
+    bridge is not in use (no lock file), the Hashi segment is hidden rather than
+    shown as a yellow '橋:? ?', so it appears only when actually connected.
+    Requested 2026-06-01.
+    """
     r = _run_statusline(
         mcp_json_content=_make_mcp_json(23026),
         kado_cache_content="ok",
-        # no lock_files → no_config
+        # no lock_files → no_config → segment hidden
         tmp_path=tmp_path,
     )
     assert r.returncode == 0, f"stderr: {r.stderr}"
-    assert "橋:" in r.stdout, (
-        f"Expected '橋:' prefix (Hashi indicator) in output.\nstdout: {r.stdout!r}"
-    )
-    assert "?" in r.stdout, (
-        f"Expected '?' for Hashi no_config.\nstdout: {r.stdout!r}"
-    )
-    assert ANSI_YELLOW in r.stdout, (
-        f"Expected ANSI yellow for Hashi no_config.\nstdout: {r.stdout!r}"
+    assert "橋" not in r.stdout, (
+        f"Hashi segment must be omitted when no lock file exists.\nstdout: {r.stdout!r}"
     )
 
 
@@ -409,7 +409,7 @@ def test_all_hashi_states_have_ansi_color(tmp_path):
             f"stdout: {r.stdout!r}"
         )
 
-    # no_config (no lock file) — fresh sub-directory, no prior state
+    # no_config (no lock file) → Hashi segment is omitted entirely (no 橋).
     no_cfg_sub = tmp_path / "no_cfg"
     no_cfg_sub.mkdir()
     r = _run_statusline(
@@ -417,8 +417,8 @@ def test_all_hashi_states_have_ansi_color(tmp_path):
         kado_cache_content="ok",
         tmp_path=no_cfg_sub,
     )
-    assert ANSI_YELLOW in r.stdout, (
-        f"Hashi no_config missing ANSI yellow.\nstdout: {r.stdout!r}"
+    assert "橋" not in r.stdout, (
+        f"Hashi no_config must omit the segment.\nstdout: {r.stdout!r}"
     )
 
 
@@ -498,12 +498,13 @@ def test_kado_gate_format_present_in_output(tmp_path):
 # ── M2: multiple lock files → no_config (F7-AC2 "exactly one") ───────────────
 
 def test_hashi_multiple_locks_not_configured(tmp_path):
-    """F7-AC2: two lock files present → ambiguous → 橋:? ? (yellow, no_config).
+    """Two lock files present → ambiguous → no_config → Hashi segment omitted.
 
     Drives the live hashi_check path (no hashi_cache_content override) so the
-    guard added by M1 is actually exercised. Without the lock_count > 1 guard
+    multiple-locks guard is actually exercised. Without the lock_count > 1 guard
     in hashi_check, the function would pick an arbitrary lock and probe it —
-    either ok or unreachable — so the ✓ or ✗ assertion below would fail RED.
+    either ok or unreachable — and the 橋 segment would render ✓/✗. Omission of
+    the segment proves the guard returned no_config instead of guessing.
     """
     r = _run_statusline(
         mcp_json_content=_make_mcp_json(23026),
@@ -517,23 +518,9 @@ def test_hashi_multiple_locks_not_configured(tmp_path):
     )
     assert r.returncode == 0, f"stderr: {r.stderr}"
 
-    stripped = _strip_ansi(r.stdout)
-    bridge_idx = stripped.find("橋:")
-    assert bridge_idx >= 0, f"橋: not found in output.\nstdout: {r.stdout!r}"
-
-    bridge_segment = stripped[bridge_idx:]
-    assert "?" in bridge_segment, (
-        f"Expected '?' for multiple-locks no_config.\nbridge: {bridge_segment!r}"
-    )
-    assert "✓" not in bridge_segment, (
-        f"Must not show ✓ when multiple locks present.\nbridge: {bridge_segment!r}"
-    )
-    assert "✗" not in bridge_segment, (
-        f"Must not show ✗ when multiple locks present.\nbridge: {bridge_segment!r}"
-    )
-    # Color retained: ANSI yellow for no_config
-    assert ANSI_YELLOW in r.stdout, (
-        f"Expected ANSI yellow for multiple-locks no_config.\nstdout: {r.stdout!r}"
+    # Ambiguous (multiple locks) → no_config → segment omitted: no 橋, no ✓/✗.
+    assert "橋" not in r.stdout, (
+        f"Multiple-locks no_config must omit the Hashi segment.\nstdout: {r.stdout!r}"
     )
 
 

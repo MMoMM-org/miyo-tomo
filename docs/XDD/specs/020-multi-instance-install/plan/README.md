@@ -87,7 +87,7 @@ Each phase is a separate file. Tasks follow red-green-refactor: **Prime → Test
 - [x] [Phase 2: Install multi-instance flow](phase-2.md)
 - [x] [Phase 3: Per-instance update + launcher identity & update-check](phase-3.md)
 - [x] [Phase 4: Lifecycle tag-prefix cleanup (Part B)](phase-4.md)
-- [ ] [Phase 5: Docs sweep + finalize](phase-5.md)
+- [x] [Phase 5: Docs sweep + finalize](phase-5.md)
 
 ---
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_lifecycle_no_prefix_regression.py — F6-AC4 regression guard (T4.4).
 
 Asserts that the /inbox lifecycle (capture → active → cleanup) is entirely
@@ -22,6 +22,7 @@ Spec: docs/XDD/specs/020-multi-instance-install/ — Phase 4 T4.4, F6-AC4
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
 import sys
@@ -66,19 +67,44 @@ def _inject_doc_frontmatter_fake() -> types.ModuleType:
     fake_mod.build_tomo_block = _build_tomo_block  # type: ignore[attr-defined]
     fake_mod.SchemaValidationError = _FakeSchemaValidationError  # type: ignore[attr-defined]
 
-    sys.modules.setdefault("lib.doc_frontmatter", fake_mod)
-    sys.modules.setdefault("doc_frontmatter", fake_mod)
     return fake_mod
 
 
 _FAKE_DOC_FM = _inject_doc_frontmatter_fake()
 
 
+@contextlib.contextmanager
+def _forced_fake_doc_fm():
+    """Force the fake doc_frontmatter into sys.modules for the duration of an
+    exec_module(), then restore the prior entries.
+
+    setdefault is order-dependent: if test_doc_frontmatter.py registered the
+    real (jsonschema-dependent) module first, a setdefault-based inject is a
+    no-op and the loaded script picks up the broken real module. Forcing +
+    restoring makes the harness hermetic regardless of import order — the
+    loaded module captures fake.build_tomo_block by reference at import time,
+    so restoring afterward is safe.
+    """
+    keys = ("lib.doc_frontmatter", "doc_frontmatter")
+    saved = {k: sys.modules.get(k) for k in keys}
+    for k in keys:
+        sys.modules[k] = _FAKE_DOC_FM
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+
 def _load_mark_captured():
     spec = importlib.util.spec_from_file_location("mark_captured", SCRIPTS_DIR / "mark-captured.py")
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    with _forced_fake_doc_fm():
+        spec.loader.exec_module(mod)
     return mod
 
 
@@ -87,7 +113,8 @@ def _load_inbox_triage():
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     sys.modules["inbox_triage"] = mod
-    spec.loader.exec_module(mod)
+    with _forced_fake_doc_fm():
+        spec.loader.exec_module(mod)
     return mod
 
 
@@ -95,7 +122,8 @@ def _load_state_promoter():
     spec = importlib.util.spec_from_file_location("state_promoter", SCRIPTS_DIR / "state-promoter.py")
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    with _forced_fake_doc_fm():
+        spec.loader.exec_module(mod)
     return mod
 
 

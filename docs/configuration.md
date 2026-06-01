@@ -4,7 +4,9 @@ Documents Tomo's configuration surface: where settings live, what each one contr
 
 ## Where settings live
 
-Tomo's configuration lives entirely inside your instance directory — the Docker bind-mount that holds agents, scripts, and config. For a default install this is `<repo-root>/tomo-instance/`. The one exception is `tomo-install.json`, which sits at the host repo root because the installer writes it before the container exists.
+Tomo's configuration lives almost entirely inside your instance directory — the Docker bind-mount that holds agents, scripts, and config. Each instance is self-contained under a parent you chose at install (default `~/MiYo/Tomo/`), laid out as `<parent>/<name>/{begin-tomo.sh, tomo-install.json, instance/, home/}`. The config files described below live under that instance's `instance/` directory (shown as `tomo-instance/` in the paths below).
+
+Two pieces sit at the instance root, one level above `instance/`: `tomo-install.json` (install state, written before the container exists) and `begin-tomo.sh` (the launcher). One more lives in your home directory: the instance registry `~/.tomo/instances.json` (see [tomo-install.json and the instance registry](#tomo-installjson--host-side-install-state)).
 
 Files split into four groups by who manages them.
 
@@ -33,7 +35,7 @@ These are written by `install-tomo.sh` / `update-tomo.sh`. Edit the source under
 These live alongside config but aren't user-edited:
 
 - **`tomo-instance/config/discovery-cache.yaml`** — output of `/explore-vault`. Acts as the L4 advisory layer; agents may consult it for hints but never use it as ground truth.
-- **`<repo-root>/tomo-install.json`** — install state, host-side. Holds instance/launcher paths, vault path, profile name, lifecycle prefix, Kado connection (host/port/protocol; no token), and the voice block. The installer writes it; `cleanup-tomo.sh` removes it.
+- **`<parent>/<name>/tomo-install.json`** — install state, host-side, at the instance root (next to `begin-tomo.sh`). Holds instance/launcher paths, the source repo path, vault path, profile name, Kado connection (host/port/protocol; no token), and the voice block.
 
 ## Settings reference
 
@@ -94,19 +96,49 @@ Edit the values in `tomo-install.json` (host side) and re-run `install-tomo.sh` 
 
 ### tomo-install.json — host-side install state
 
-Lives at `<repo-root>/tomo-install.json`, **outside** the container.
+Lives at the instance root, `<parent>/<name>/tomo-install.json` (next to `begin-tomo.sh`), **outside** the container. Each instance has its own.
 
 | Field | Default | What it controls |
 |---|---|---|
-| `version`, `tomoVersion` | current Tomo version | Trip-wire for installer-script changes. |
-| `instanceName`, `instanceLocation`, `instancePath`, `launcherPath`, `homePath` | from installer | Where the instance, launcher, and Docker home dir live on disk. |
+| `version`, `tomoVersion` | current Tomo version | Trip-wire for installer-script changes. `tomoVersion` is what the launcher compares against the source repo to decide whether to offer an update. |
+| `instanceName`, `instanceLocation`, `instancePath`, `launcherPath`, `homePath` | from installer | Where the instance, launcher, and Docker home dir live on disk. `instanceLocation` is the parent dir; `instancePath` is `<parent>/<name>/instance`. |
+| `repoPath` | from installer | Absolute path of the Tomo source repo this instance was installed from. Makes the instance self-describing for updates — the launcher and `update-tomo.sh --instance` resolve the source from here. |
 | `vaultPath` | from installer | Absolute host path of your Obsidian vault. |
 | `profile`, `profileVersion` | from installer | Profile selected at install; mirrors into `vault-config.yaml`. |
-| `lifecyclePrefix` | `"MiYo-Tomo"` | Lifecycle tag prefix; mirrors into `vault-config.yaml`. |
 | `kado.host`, `kado.port`, `kado.protocol` | from installer | Kado connection metadata; the bearer token lives only in `.mcp.json`. |
 | `voice` | `{}` | Voice block (schema_version, enabled, model, language); mirrored into `voice/config.json`. |
 | `ide_bridge` | `{}` | Tomo Context block (schema_version, enabled, auth_token, port) for the Hashi IDE Bridge; drives the IDE lock file (`tomo-home/.claude/ide/<port>.lock`) and the container `socat` proxy. |
 | `installedAt` | ISO 8601 UTC timestamp | When the instance was last (re-)installed. |
+
+### instances.json — the instance registry
+
+Lives at `~/.tomo/instances.json` (override with `TOMO_REGISTRY_FILE` for tests). It is a single index of every instance the installer has created, so install/update runs can list and resolve instances by name. It is **rebuildable**: if it's deleted, your instances still launch via their own `begin-tomo.sh`, and the next install or update re-creates the entry. A registry write failure never aborts an install or update.
+
+```json
+{
+  "schema_version": 1,
+  "instances": [
+    {
+      "name": "privat",
+      "path": "/Users/you/MiYo/Tomo/privat/instance",
+      "repo": "/path/to/miyo-tomo",
+      "version": "0.13.0",
+      "updatedAt": "2026-05-31T14:00:00Z"
+    }
+  ]
+}
+```
+
+| Field | What it holds |
+|---|---|
+| `schema_version` | Registry schema version (`1`). |
+| `instances[].name` | Unique instance name (the key install/update resolve against). |
+| `instances[].path` | The instance's `instance/` directory; its parent is the instance root holding `tomo-install.json`. |
+| `instances[].repo` | Source repo the instance was installed from. |
+| `instances[].version` | Installed Tomo version, refreshed on every install/update. |
+| `instances[].updatedAt` | ISO 8601 UTC timestamp of the last install/update. |
+
+You don't edit this file by hand — install and update maintain it. Entries whose `path` directory has gone missing are flagged `[stale]` in the installer's selection menu.
 
 ### profiles/<name>.yaml — framework profiles (read-only)
 

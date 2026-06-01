@@ -4,13 +4,15 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.5.4
+# version: 0.7.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOMO_SOURCE="$REPO_ROOT/tomo"
-CONFIG_FILE="$REPO_ROOT/tomo-install.json"
+# No hardcoded default: the target instance is resolved below from an explicit
+# flag, the current directory, or an interactive pick — never a fixed path.
+CONFIG_FILE=""
 
 # ── CLI parsing ──────────────────────────────────────────
 
@@ -19,6 +21,7 @@ KEEP_VOICE=false
 YES=false
 DRY_RUN=false
 FLAG_CONFIG_FILE=""
+FLAG_INSTANCE=""
 
 print_help() {
     cat <<'EOF'
@@ -42,8 +45,18 @@ Options:
   -y, --yes          Skip the GO/Abort confirmation prompt.
       --yolo         Equivalent to --keep-voice --yes.
   -n, --dry-run      Show the plan and exit; never write.
+      --instance     Select the instance to update by registered name.
+                     Resolves the instance path from ~/.tomo/instances.json
+                     (or TOMO_REGISTRY_FILE). Cannot be combined with
+                     --config-file.
       --config-file  Use an alternate tomo-install.json (test isolation).
   -h, --help         Show this help and exit.
+
+Target selection (when neither --instance nor --config-file is given):
+  - If the current directory is an instance (holds begin-tomo.sh +
+    tomo-install.json), that instance is updated.
+  - Otherwise the registered instances are listed and you are prompted to pick.
+  There is no implicit default: update-tomo never updates an unselected instance.
 EOF
 }
 
@@ -54,6 +67,7 @@ while [ $# -gt 0 ]; do
         -y|--yes)        YES=true ;;
         --yolo)          KEEP_VOICE=true; YES=true ;;
         -n|--dry-run)    DRY_RUN=true ;;
+        --instance)      FLAG_INSTANCE="$2"; shift ;;
         --config-file)   FLAG_CONFIG_FILE="$2"; shift ;;
         -h|--help)       print_help; exit 0 ;;
         *)
@@ -116,16 +130,115 @@ get_version() {
 # shellcheck source=lib/configure-ide-bridge.sh
 . "$SCRIPT_DIR/lib/configure-ide-bridge.sh"
 
-# ── Load config ───────────────────────────────────────────
+# Instance registry (XDD 020 Phase 1) — registry_resolve / registry_upsert.
+# Honors TOMO_REGISTRY_FILE for test isolation.
+# shellcheck source=lib/instance-registry.sh
+. "$SCRIPT_DIR/lib/instance-registry.sh"
 
-# Resolve the effective config-file path. Tests pass --config-file to isolate
-# from the real instance; otherwise the repo-root default is used.
-if [ -n "$FLAG_CONFIG_FILE" ]; then
-    CONFIG_FILE="$FLAG_CONFIG_FILE"
+# Shared launcher renderer (XDD 020 Phase 2 / ADR-7) — render_launcher with
+# placeholder substitution + atomic tmp→mv + chmod +x.
+# shellcheck source=lib/render-launcher.sh
+. "$SCRIPT_DIR/lib/render-launcher.sh"
+
+# ── Interactive instance picker ───────────────────────────
+# Used when no instance is selected and the CWD is not an instance directory.
+# Lists registered instances and sets the global CONFIG_FILE from the choice.
+# Returns non-zero (with an explanation) when it cannot resolve — it never
+# falls back to a default path. bash 3.2: indexed arrays only.
+pick_instance_interactive() {
+    if [ ! -t 0 ]; then
+        print_err "No instance selected and not running interactively."
+        print_err "Pass --instance <name> or --config-file <path>, or run from an instance directory."
+        return 1
+    fi
+
+    local _names _paths _line
+    _names=(); _paths=()
+    while IFS= read -r _line; do
+        [ -z "$_line" ] && continue
+        _names+=("$(printf '%s' "$_line" | jq -r '.name')")
+        _paths+=("$(printf '%s' "$_line" | jq -r '.path')")
+    done < <(registry_list)
+
+    local _count=${#_names[@]}
+    if [ "$_count" -eq 0 ]; then
+        print_err "No registered instances in $(registry_path)."
+        print_err "Run install-tomo.sh to create one, or pass --config-file <path>."
+        return 1
+    fi
+
+    print_step "Select an instance to update"
+    local _i=0 _p _mark
+    while [ "$_i" -lt "$_count" ]; do
+        _p="${_paths[$_i]}"; _mark=""
+        [ -d "$_p" ] || _mark="   [stale — directory missing]"
+        printf "    %d) %s  (%s)%s\n" "$((_i + 1))" "${_names[$_i]}" "$_p" "$_mark"
+        _i=$((_i + 1))
+    done
+
+    local _choice
+    while true; do
+        printf "  Enter number (1-%d): " "$_count"
+        read -r _choice || return 1
+        case "$_choice" in
+            ''|*[!0-9]*) printf "  Please enter a number.\n"; continue ;;
+        esac
+        if [ "$_choice" -ge 1 ] && [ "$_choice" -le "$_count" ]; then
+            break
+        fi
+        printf "  Out of range — pick 1-%d.\n" "$_count"
+    done
+
+    local _root
+    _root="$(dirname "${_paths[$((_choice - 1))]}")"
+    CONFIG_FILE="$_root/tomo-install.json"
+    return 0
+}
+
+# ── Mutual-exclusion guard ────────────────────────────────
+
+if [ -n "$FLAG_CONFIG_FILE" ] && [ -n "$FLAG_INSTANCE" ]; then
+    print_err "--instance and --config-file are mutually exclusive"
+    exit 2
 fi
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    print_err "No tomo-install.json found. Run install-tomo.sh first."
+# ── Load config ───────────────────────────────────────────
+
+# Resolve the effective config-file path. Precedence (first match wins):
+#   1. --config-file <path>  — explicit, test-friendly; use it verbatim.
+#   2. --instance <name>     — registry-driven; resolve path from instances.json,
+#                              then derive CONFIG_FILE as <instance-root>/tomo-install.json.
+#   3. CWD is an instance    — the current directory holds begin-tomo.sh +
+#                              tomo-install.json → update that instance.
+#   4. interactive pick      — list registered instances and prompt the user.
+# There is NO silent default: the script never updates a hardcoded instance.
+if [ -n "$FLAG_CONFIG_FILE" ]; then
+    CONFIG_FILE="$FLAG_CONFIG_FILE"
+elif [ -n "$FLAG_INSTANCE" ]; then
+    _resolved_instance_path="$(registry_resolve "$FLAG_INSTANCE" 2>/dev/null)" || true
+    if [ -z "$_resolved_instance_path" ]; then
+        print_err "Unknown instance: '$FLAG_INSTANCE'. Check $(registry_path) for registered names."
+        exit 1
+    fi
+    # Registry stores <root>/instance; the config lives one level up at <root>/tomo-install.json.
+    _instance_root="$(dirname "$_resolved_instance_path")"
+    CONFIG_FILE="$_instance_root/tomo-install.json"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        print_err "Instance '$FLAG_INSTANCE' found in registry but config missing: $CONFIG_FILE"
+        exit 1
+    fi
+elif [ -f "$PWD/tomo-install.json" ] && [ -f "$PWD/begin-tomo.sh" ]; then
+    CONFIG_FILE="$PWD/tomo-install.json"
+    print_ok "Instance detected in current directory: $PWD"
+else
+    # No selector and not inside an instance dir → let the user pick.
+    if ! pick_instance_interactive; then
+        exit 1
+    fi
+fi
+
+if [ -z "$CONFIG_FILE" ] || [ ! -f "$CONFIG_FILE" ]; then
+    print_err "No instance config resolved. Pass --instance <name>, --config-file <path>, or run from an instance directory."
     exit 1
 fi
 
@@ -359,7 +472,7 @@ done
 
 # Templates — regenerated from schemas; check if regen would change anything.
 # We compute the expected content into a tmp file and cmp.
-TEMPLATE_TMP="$(mktemp)"
+TEMPLATE_TMP="$(mktemp -p "${TMPDIR:-/tmp}")"
 trap 'rm -f "$TEMPLATE_TMP" "${SETTINGS_TMP:-}"' EXIT
 TEMPLATE_DST="$INSTANCE_PATH/templates/item-result.template.json"
 if python3 "$TOMO_SOURCE/scripts/template-from-schema.py" \
@@ -385,7 +498,7 @@ if [ ! -f "$DST_SETTINGS" ]; then
     add_plan "settings" "$SRC_SETTINGS" "$DST_SETTINGS" "settings.json" "create" "new" "settings"
 else
     # Try the same merge logic; compare result to current to decide status.
-    SETTINGS_TMP="$(mktemp)"
+    SETTINGS_TMP="$(mktemp -p "${TMPDIR:-/tmp}")"
     if jq -s '.[0] * .[1]' "$DST_SETTINGS" "$SRC_SETTINGS" > "$SETTINGS_TMP" 2>/dev/null; then
         if [ "$FORCE" = "true" ]; then
             add_plan "settings" "$SETTINGS_TMP" "$DST_SETTINGS" "settings.json" "update" "forced" "settings"
@@ -670,20 +783,12 @@ execute_one() {
             fi
             ;;
         launcher)
-            # Render the template into the launcher path with the same five
-            # substitutions install-tomo.sh uses. DEV_NOTIFY_PORT is the
-            # constant 9999 (matches install).
-            # NOTE: launcher placeholder set is duplicated in install-tomo.sh and update-tomo.sh.
-            # Keep both sed blocks in sync. Tracked for extraction into a shared scripts/lib helper (backlog).
-            # Render to a temp then move so a mid-write interruption never leaves a corrupt launcher.
-            if sed -e "s|{{INSTANCE_PATH}}|${INSTANCE_PATH}|g" \
-                   -e "s|{{INSTANCE_NAME}}|${INSTANCE_NAME}|g" \
-                   -e "s|{{HOME_DIR}}|${HOME_DIR}|g" \
-                   -e "s|{{TOMO_REPO_ROOT}}|${REPO_ROOT}|g" \
-                   -e "s|{{DEV_NOTIFY_PORT}}|9999|g" \
-                   "$src" > "$dst.tmp" 2>/dev/null; then
-                chmod +x "$dst.tmp" 2>/dev/null || true
-                mv "$dst.tmp" "$dst"
+            # Render the template via the shared render_launcher lib (ADR-7 / D-09).
+            # DEV_NOTIFY_PORT is the constant 9999 (matches install-tomo.sh).
+            # render_launcher handles atomic tmp→mv + chmod +x internally.
+            if render_launcher "$src" "$dst" \
+                    "$INSTANCE_NAME" "$INSTANCE_PATH" "$HOME_DIR" \
+                    "$REPO_ROOT" "9999"; then
                 if [ "$status" = "create" ]; then
                     mark_did "created" "$label" "$detail"
                     DID_CREATED=$((DID_CREATED + 1))
@@ -692,7 +797,6 @@ execute_one() {
                     DID_UPDATED=$((DID_UPDATED + 1))
                 fi
             else
-                rm -f "$dst.tmp"
                 mark_did "failed" "$label" "render failed"
                 DID_FAILED=$((DID_FAILED + 1))
             fi
@@ -810,6 +914,17 @@ fi
 SOURCE_VERSION=$(get_version "$TOMO_SOURCE/dot_claude/rules/project-context.md")
 jq --arg v "$SOURCE_VERSION" '.tomoVersion = $v | .updatedAt = (now | strftime("%Y-%m-%dT%H:%M:%SZ"))' \
     "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+
+# ── Refresh registry entry (ADR-2: soft-fail — registry is rebuildable) ──────
+
+# Use repoPath from the config if present; fall back to REPO_ROOT (the source
+# repo that ran this script). INSTANCE_PATH is <root>/instance as per ADR-2.
+_reg_repo="$(jq -r '.repoPath // empty' "$CONFIG_FILE" 2>/dev/null || true)"
+[ -z "$_reg_repo" ] && _reg_repo="$REPO_ROOT"
+if ! registry_upsert "$INSTANCE_NAME" "$INSTANCE_PATH" "$_reg_repo" "$SOURCE_VERSION" 2>/dev/null; then
+    print_warn "registry_upsert failed — registry may be stale; safe to ignore (ADR-2)"
+fi
+unset _reg_repo
 
 # ── Final summary ────────────────────────────────────────
 

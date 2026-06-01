@@ -104,7 +104,7 @@ Tomo only owns the proxy and the lock file. For anything past the connection —
 **Symptom:** `/inbox` reports idle, but you have files in the inbox.
 
 **Check:**
-1. Files have the lifecycle tag `#MiYo-Tomo/captured` (or your configured prefix)
+1. Files carry `tomo.state: captured` in their frontmatter
 2. Files are in the configured inbox folder path
 3. Kado can list and read the inbox folder
 
@@ -202,8 +202,8 @@ Without `/clear`, peak parent context grows roughly +5-15k per `/inbox` re-trigg
 **Check:**
 1. **Pass 1 → Pass 2 transition** — the `*_suggestions.md` doc must contain `- [x] Approved` at the top (the whole-document approval). Without it, `/inbox` assumes Pass 1 is still pending and re-runs it.
 2. **Pass 2 → Cleanup transition** — per-action `- [x] Applied` checkboxes on the `*_instructions.md` doc signal applied actions. Missing checkboxes keep the instruction set "open."
-3. **Source items** still use lifecycle tags (e.g., `#MiYo-Tomo/captured` for inbox items). The tag prefix is set during install; check `tomo-install.json` `prefix` field if unsure.
-4. If Obsidian is syncing, give the checkbox/tag changes a moment to propagate before re-running `/inbox`.
+3. **Source items** carry their state in the `tomo.state` frontmatter field (e.g., `tomo.state: captured` for inbox items). Tomo writes and advances this automatically — you don't set it by hand.
+4. If Obsidian is syncing, give the checkbox/frontmatter changes a moment to propagate before re-running `/inbox`.
 
 ## Docker
 

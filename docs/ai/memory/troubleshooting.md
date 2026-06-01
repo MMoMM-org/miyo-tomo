@@ -20,3 +20,9 @@ Contract drift: the agreed default placement for `link_to_moc` actions was `afte
 ## `docs/instructions-json.md` tracker examples — multiple inconsistencies — Status: open
 
 (2026-04-29 review) (a) `update_tracker.syntax / inline_field` example shows duplicate `- Sport:: true` line. (b) `callout_body` syntax is missing the `> - Temperature:: 4.8` example variant. (c) Doc implies trackers are at the start of a line; trackers can also appear inline elsewhere in the line — never assume position. (d) Missing tracker syntax variant: `- For Me::` (label-style, no value following the `::`). Touch points: `docs/instructions-json.md` § Tracker Conventions; verify renderer + parser handle each variant before updating the doc.
+
+<!-- 2026-06-01 -->
+
+## Unquoted tilde in a bash `case` pattern → doubled `$HOME` path — Status: resolved (commit `b3243db`)
+
+A bare `~/` in a `case` *pattern* is tilde-expanded by bash: `case "$P" in ~/*)` becomes `case "$P" in /Users/<you>/*)`. It then wrongly matches absolute paths already under `$HOME`, and an arm like `P="$HOME/${P#\~/}"` prepends `$HOME` again → doubled path (e.g. `/Users/marcus//Users/marcus/Local/Obsidian/Privat`). Fix: **quote the tilde in the pattern** — `\~/*)` (or `"~/"*)`). Guard with an extraction-based regression test that asserts the arm stays quoted: `tests/test_install_vault_path.py` greps the live arm from `install-tomo.sh`, so it cannot drift. Surfaced 2026-06-01 in the `install-tomo.sh` vault-path prompt; the original fix had been written but stranded on an unmerged branch (see `tools.md` → "check unmerged branches for an orphaned fix").

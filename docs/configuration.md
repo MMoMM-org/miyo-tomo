@@ -4,7 +4,9 @@ Documents Tomo's configuration surface: where settings live, what each one contr
 
 ## Where settings live
 
-Tomo's configuration lives entirely inside your instance directory — the Docker bind-mount that holds agents, scripts, and config. For a default install this is `<repo-root>/tomo-instance/`. The one exception is `tomo-install.json`, which sits at the host repo root because the installer writes it before the container exists.
+Tomo's configuration lives almost entirely inside your instance directory — the Docker bind-mount that holds agents, scripts, and config. Each instance is self-contained under a parent you chose at install (default `~/MiYo/Tomo/`), laid out as `<parent>/<name>/{begin-tomo.sh, tomo-install.json, instance/, home/}`. The config files described below live under that instance's `instance/` directory (shown as `tomo-instance/` in the paths below).
+
+Two pieces sit at the instance root, one level above `instance/`: `tomo-install.json` (install state, written before the container exists) and `begin-tomo.sh` (the launcher). One more lives in your home directory: the instance registry `~/.tomo/instances.json` (see [tomo-install.json and the instance registry](#tomo-installjson--host-side-install-state)).
 
 Files split into four groups by who manages them.
 
@@ -12,7 +14,7 @@ Files split into four groups by who manages them.
 
 These are the files you change to shape Tomo's behaviour:
 
-- **`tomo-instance/config/vault-config.yaml`** — vault structure, concept-to-folder mappings, lifecycle tag prefix, frontmatter schema, tag taxonomy, callout policy, relationship markers, daily-log rules, tracker definitions. The installer writes a minimal version (profile + concepts + lifecycle); `/explore-vault` enriches it on first run. The complete schema is documented in `tomo/config/vault-example.yaml`.
+- **`tomo-instance/config/vault-config.yaml`** — vault structure, concept-to-folder mappings, frontmatter schema, tag taxonomy, callout policy, relationship markers, daily-log rules, tracker definitions. The installer writes a minimal version (profile + concepts); `/explore-vault` enriches it on first run. The complete schema is documented in `tomo/config/vault-example.yaml`.
 - **`tomo-instance/config/user-rules/*.md`** — natural-language behavioural rules that don't fit YAML (tagging precedence, destination overrides, template selection). The installer creates only `README.md`; you author topic files like `tagging.md`, `destinations.md`, `templates.md` as your conventions emerge. Files are lazy-loaded by agents when relevant and referenced descriptively from the instance `CLAUDE.md`.
 - **`tomo-instance/config/kado-config.md`** — human-readable record of your Kado host, port, and protocol. The bearer token is **not** stored here.
 
@@ -33,7 +35,7 @@ These are written by `install-tomo.sh` / `update-tomo.sh`. Edit the source under
 These live alongside config but aren't user-edited:
 
 - **`tomo-instance/config/discovery-cache.yaml`** — output of `/explore-vault`. Acts as the L4 advisory layer; agents may consult it for hints but never use it as ground truth.
-- **`<repo-root>/tomo-install.json`** — install state, host-side. Holds instance/launcher paths, vault path, profile name, lifecycle prefix, Kado connection (host/port/protocol; no token), and the voice block. The installer writes it; `cleanup-tomo.sh` removes it.
+- **`<parent>/<name>/tomo-install.json`** — install state, host-side, at the instance root (next to `begin-tomo.sh`). Holds instance/launcher paths, the source repo path, vault path, profile name, Kado connection (host/port/protocol; no token), and the voice block.
 
 ## Settings reference
 
@@ -48,7 +50,6 @@ This is the top-level surface — one row per top-level setting per file. For va
 | `profile_version` | matches the chosen profile | Trip-wire for profile-schema migrations. |
 | `concepts` | from profile | Concept-to-folder mappings: inbox, atomic_note, map_note, calendar, project, area, source, template, asset. Override only the entries that differ. |
 | `naming` | from profile | Display labels Tomo uses in proposals (`labels`) and Moment.js filename patterns per calendar granularity (`calendar_patterns`). |
-| `lifecycle.tag_prefix` | `"MiYo-Tomo"` | Tag namespace for state markers like `<prefix>/captured`, `<prefix>/proposed`. |
 | `templates` | from profile | Template file mappings per concept (`base_path` + `mapping`); optional `custom_tokens`. Tomo verifies each file exists at session start. |
 | `frontmatter` | from profile | `strict` flag plus `required` / `optional` field lists. Each entry binds a YAML key to a template token, type, and default. |
 | `relationships` | from profile | Parent/peer markers (e.g. `up::`, `related::`) with write rules: format, position, multi/separator. |
@@ -94,19 +95,49 @@ Edit the values in `tomo-install.json` (host side) and re-run `install-tomo.sh` 
 
 ### tomo-install.json — host-side install state
 
-Lives at `<repo-root>/tomo-install.json`, **outside** the container.
+Lives at the instance root, `<parent>/<name>/tomo-install.json` (next to `begin-tomo.sh`), **outside** the container. Each instance has its own.
 
 | Field | Default | What it controls |
 |---|---|---|
-| `version`, `tomoVersion` | current Tomo version | Trip-wire for installer-script changes. |
-| `instanceName`, `instanceLocation`, `instancePath`, `launcherPath`, `homePath` | from installer | Where the instance, launcher, and Docker home dir live on disk. |
+| `version`, `tomoVersion` | current Tomo version | Trip-wire for installer-script changes. `tomoVersion` is what the launcher compares against the source repo to decide whether to offer an update. |
+| `instanceName`, `instanceLocation`, `instancePath`, `launcherPath`, `homePath` | from installer | Where the instance, launcher, and Docker home dir live on disk. `instanceLocation` is the parent dir; `instancePath` is `<parent>/<name>/instance`. |
+| `repoPath` | from installer | Absolute path of the Tomo source repo this instance was installed from. Makes the instance self-describing for updates — the launcher and `update-tomo.sh --instance` resolve the source from here. |
 | `vaultPath` | from installer | Absolute host path of your Obsidian vault. |
 | `profile`, `profileVersion` | from installer | Profile selected at install; mirrors into `vault-config.yaml`. |
-| `lifecyclePrefix` | `"MiYo-Tomo"` | Lifecycle tag prefix; mirrors into `vault-config.yaml`. |
 | `kado.host`, `kado.port`, `kado.protocol` | from installer | Kado connection metadata; the bearer token lives only in `.mcp.json`. |
 | `voice` | `{}` | Voice block (schema_version, enabled, model, language); mirrored into `voice/config.json`. |
 | `ide_bridge` | `{}` | Tomo Context block (schema_version, enabled, auth_token, port) for the Hashi IDE Bridge; drives the IDE lock file (`tomo-home/.claude/ide/<port>.lock`) and the container `socat` proxy. |
 | `installedAt` | ISO 8601 UTC timestamp | When the instance was last (re-)installed. |
+
+### instances.json — the instance registry
+
+Lives at `~/.tomo/instances.json` (override with `TOMO_REGISTRY_FILE` for tests). It is a single index of every instance the installer has created, so install/update runs can list and resolve instances by name. It is **rebuildable**: if it's deleted, your instances still launch via their own `begin-tomo.sh`, and the next install or update re-creates the entry. A registry write failure never aborts an install or update.
+
+```json
+{
+  "schema_version": 1,
+  "instances": [
+    {
+      "name": "privat",
+      "path": "/Users/you/MiYo/Tomo/privat/instance",
+      "repo": "/path/to/miyo-tomo",
+      "version": "0.13.0",
+      "updatedAt": "2026-05-31T14:00:00Z"
+    }
+  ]
+}
+```
+
+| Field | What it holds |
+|---|---|
+| `schema_version` | Registry schema version (`1`). |
+| `instances[].name` | Unique instance name (the key install/update resolve against). |
+| `instances[].path` | The instance's `instance/` directory; its parent is the instance root holding `tomo-install.json`. |
+| `instances[].repo` | Source repo the instance was installed from. |
+| `instances[].version` | Installed Tomo version, refreshed on every install/update. |
+| `instances[].updatedAt` | ISO 8601 UTC timestamp of the last install/update. |
+
+You don't edit this file by hand — install and update maintain it. Entries whose `path` directory has gone missing are flagged `[stale]` in the installer's selection menu.
 
 ### profiles/<name>.yaml — framework profiles (read-only)
 
@@ -131,7 +162,7 @@ Tomo composes its effective configuration from four layers. Higher layers win.
 
 The edit workflow depends on which file holds the setting:
 
-- **Vault structure or behaviour** (concepts, lifecycle, frontmatter, tags, callouts, trackers, daily_log, etc.) — edit `tomo-instance/config/vault-config.yaml` directly. Changes take effect at the next session start; no installer re-run needed.
+- **Vault structure or behaviour** (concepts, frontmatter, tags, callouts, trackers, daily_log, etc.) — edit `tomo-instance/config/vault-config.yaml` directly. Changes take effect at the next session start; no installer re-run needed.
 - **Behavioural rules that don't fit YAML** (tagging precedence, destination overrides, template selection) — add or edit a markdown file under `tomo-instance/config/user-rules/`, then reference it descriptively from `tomo-instance/CLAUDE.md` so agents know it exists.
 - **Kado connection** (host, port, protocol, bearer token) — re-run `install-tomo.sh`. Hand-editing `kado-config.md` does **not** update `.mcp.json`, and `.mcp.json` is what Claude Code actually reads.
 - **Voice transcription** (enabled, model, language) — re-run `install-tomo.sh` or `update-tomo.sh`; both re-run the voice wizard and re-mirror the voice block from `tomo-install.json` into `voice/config.json`.
@@ -158,7 +189,6 @@ Tomo's defaults are tuned for the MiYo profile but most are safe across vault la
 ### You probably need to change
 
 - **`concepts.*` folder paths** — must match your vault's actual folder structure. Profiles ship with their author's paths; run `/explore-vault` to align with what's actually in your vault.
-- **`lifecycle.tag_prefix`** — change from `"MiYo-Tomo"` only if it would collide with an existing tag namespace.
 - **`frontmatter.required` / `frontmatter.optional`** — must match the fields your note templates produce. Mismatch causes strict-mode warnings on every note write.
 - **`templates.base_path` / `templates.mapping`** — must point at your real template filenames.
 - **`tags.prefixes`** — populated incrementally by `/explore-vault`. Edit to mark prefixes non-`proposable` (e.g. external tags like Raindrop, Readwise).

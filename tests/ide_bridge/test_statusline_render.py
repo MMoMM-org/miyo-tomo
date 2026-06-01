@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.1.2
-"""test_statusline_render.py — Pytest-driven tests for tomo-statusline.sh (T3.2).
+# version: 0.2.0
+"""test_statusline_render.py — Pytest-driven tests for tomo-statusline.sh (T3.2, T4.3).
 
 Feeds JSON on stdin, stubs the probes (PATH shims or injected env vars),
 and asserts the rendered statusline line.
@@ -10,6 +10,7 @@ Coverage:
   - PRD F7-AC2: Hashi renders as 橋:<port> with 3 states (no Tags)
   - PRD F7-AC3: ANSI color codes present for all states
   - CON-6: instance label 友 <name> rendering unchanged
+  - ADR-6/F6-AC3: read-access probe uses byFrontmatter tomo.state, not byTag
 
 Strategy mirrors test_configure_ide_bridge.py (subprocess + bash).
 The statusline script is driven via subprocess with controlled filesystem
@@ -314,23 +315,23 @@ def test_hashi_configured_unreachable_renders_bridge_port_cross(tmp_path):
     )
 
 
-def test_hashi_not_configured_renders_bridge_question(tmp_path):
-    """F7-AC2: no lock file → 橋:<port> ? (yellow, not configured)."""
+def test_hashi_not_configured_omits_segment(tmp_path):
+    """No lock file → the Hashi segment is omitted entirely (no 橋 at all).
+
+    Deviation from spec 019 F7-AC2's original 3-state rendering: when the IDE
+    bridge is not in use (no lock file), the Hashi segment is hidden rather than
+    shown as a yellow '橋:? ?', so it appears only when actually connected.
+    Requested 2026-06-01.
+    """
     r = _run_statusline(
         mcp_json_content=_make_mcp_json(23026),
         kado_cache_content="ok",
-        # no lock_files → no_config
+        # no lock_files → no_config → segment hidden
         tmp_path=tmp_path,
     )
     assert r.returncode == 0, f"stderr: {r.stderr}"
-    assert "橋:" in r.stdout, (
-        f"Expected '橋:' prefix (Hashi indicator) in output.\nstdout: {r.stdout!r}"
-    )
-    assert "?" in r.stdout, (
-        f"Expected '?' for Hashi no_config.\nstdout: {r.stdout!r}"
-    )
-    assert ANSI_YELLOW in r.stdout, (
-        f"Expected ANSI yellow for Hashi no_config.\nstdout: {r.stdout!r}"
+    assert "橋" not in r.stdout, (
+        f"Hashi segment must be omitted when no lock file exists.\nstdout: {r.stdout!r}"
     )
 
 
@@ -408,7 +409,7 @@ def test_all_hashi_states_have_ansi_color(tmp_path):
             f"stdout: {r.stdout!r}"
         )
 
-    # no_config (no lock file) — fresh sub-directory, no prior state
+    # no_config (no lock file) → Hashi segment is omitted entirely (no 橋).
     no_cfg_sub = tmp_path / "no_cfg"
     no_cfg_sub.mkdir()
     r = _run_statusline(
@@ -416,8 +417,8 @@ def test_all_hashi_states_have_ansi_color(tmp_path):
         kado_cache_content="ok",
         tmp_path=no_cfg_sub,
     )
-    assert ANSI_YELLOW in r.stdout, (
-        f"Hashi no_config missing ANSI yellow.\nstdout: {r.stdout!r}"
+    assert "橋" not in r.stdout, (
+        f"Hashi no_config must omit the segment.\nstdout: {r.stdout!r}"
     )
 
 
@@ -497,12 +498,13 @@ def test_kado_gate_format_present_in_output(tmp_path):
 # ── M2: multiple lock files → no_config (F7-AC2 "exactly one") ───────────────
 
 def test_hashi_multiple_locks_not_configured(tmp_path):
-    """F7-AC2: two lock files present → ambiguous → 橋:? ? (yellow, no_config).
+    """Two lock files present → ambiguous → no_config → Hashi segment omitted.
 
     Drives the live hashi_check path (no hashi_cache_content override) so the
-    guard added by M1 is actually exercised. Without the lock_count > 1 guard
+    multiple-locks guard is actually exercised. Without the lock_count > 1 guard
     in hashi_check, the function would pick an arbitrary lock and probe it —
-    either ok or unreachable — so the ✓ or ✗ assertion below would fail RED.
+    either ok or unreachable — and the 橋 segment would render ✓/✗. Omission of
+    the segment proves the guard returned no_config instead of guessing.
     """
     r = _run_statusline(
         mcp_json_content=_make_mcp_json(23026),
@@ -516,23 +518,126 @@ def test_hashi_multiple_locks_not_configured(tmp_path):
     )
     assert r.returncode == 0, f"stderr: {r.stderr}"
 
-    stripped = _strip_ansi(r.stdout)
-    bridge_idx = stripped.find("橋:")
-    assert bridge_idx >= 0, f"橋: not found in output.\nstdout: {r.stdout!r}"
+    # Ambiguous (multiple locks) → no_config → segment omitted: no 橋, no ✓/✗.
+    assert "橋" not in r.stdout, (
+        f"Multiple-locks no_config must omit the Hashi segment.\nstdout: {r.stdout!r}"
+    )
 
-    bridge_segment = stripped[bridge_idx:]
-    assert "?" in bridge_segment, (
-        f"Expected '?' for multiple-locks no_config.\nbridge: {bridge_segment!r}"
+
+# ── ADR-6 / F6-AC3: byFrontmatter probe (T4.3) ───────────────────────────────
+
+def test_kado_read_probe_uses_byfrontmatter_not_bytag(tmp_path):
+    """ADR-6/F6-AC3: the Test-2 read-access probe sends byFrontmatter tomo.state,
+    NOT byTag, and does NOT read tag_prefix from vault-config.yaml.
+
+    Strategy: inject a curl shim on PATH that:
+      - call 1 (listDir connectivity): returns a valid ok JSON response
+      - call 2 (the probe): captures the full -d payload to a file + returns ok JSON
+
+    After the run we read the captured payload and assert on its content.
+    A vault-config.yaml with a tag_prefix entry is placed in tmp_path/config/
+    to prove the probe is NOT driven by tag_prefix even when the file exists.
+    """
+    # Minimal valid Kado JSON-RPC ok responses
+    _listdir_ok = json.dumps({
+        "jsonrpc": "2.0", "id": 1,
+        "result": {
+            "isError": False,
+            "content": [{"type": "text", "text": '{"items":[]}'}],
+        },
+    })
+    _probe_ok = json.dumps({
+        "jsonrpc": "2.0", "id": 2,
+        "result": {
+            "isError": False,
+            "content": [{"type": "text", "text": '{"items":[]}'}],
+        },
+    })
+
+    # Shim dir and payload capture file
+    shim_dir = tmp_path / "shims"
+    shim_dir.mkdir()
+    captured_payload_file = tmp_path / "curl_payload.json"
+
+    # curl shim: increments a counter; call 1 → listDir response, call 2 → captures payload + probe ok
+    curl_shim = shim_dir / "curl"
+    curl_shim.write_text(
+        "#!/usr/bin/env bash\n"
+        "# Count calls via a simple counter file\n"
+        f"COUNTER_FILE={str(tmp_path)!r}/curl_call_count\n"
+        "COUNT=0\n"
+        '[[ -f "$COUNTER_FILE" ]] && COUNT=$(cat "$COUNTER_FILE")\n'
+        "COUNT=$(( COUNT + 1 ))\n"
+        'echo "$COUNT" > "$COUNTER_FILE"\n'
+        "# Extract -d argument (the JSON payload)\n"
+        "PAYLOAD=''\n"
+        "while [[ $# -gt 0 ]]; do\n"
+        "  if [[ \"$1\" == \"-d\" ]]; then PAYLOAD=\"$2\"; shift 2; else shift; fi\n"
+        "done\n"
+        f"if [[ \"$COUNT\" -eq 1 ]]; then\n"
+        f"  echo 'data: {_listdir_ok}'\n"
+        f"elif [[ \"$COUNT\" -eq 2 ]]; then\n"
+        f"  echo \"$PAYLOAD\" > {str(captured_payload_file)!r}\n"
+        f"  echo 'data: {_probe_ok}'\n"
+        f"else\n"
+        f"  echo 'data: {_probe_ok}'\n"
+        f"fi\n"
     )
-    assert "✓" not in bridge_segment, (
-        f"Must not show ✓ when multiple locks present.\nbridge: {bridge_segment!r}"
+    curl_shim.chmod(0o755)
+
+    # Place .mcp.json so kado_check proceeds past the no_config gate
+    (tmp_path / ".mcp.json").write_text(_make_mcp_json(23026))
+
+    # Place vault-config.yaml with tag_prefix to confirm it is NOT consulted
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "vault-config.yaml").write_text("tag_prefix: MiYo-Tomo\n")
+
+    env = dict(os.environ)
+    env["HOME"] = str(tmp_path / "home")
+    env["TMPDIR"] = str(tmp_path / "tmp")
+    env["PATH"] = str(shim_dir) + ":" + env.get("PATH", "")
+    (tmp_path / "home").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "tmp").mkdir(parents=True, exist_ok=True)
+
+    r = subprocess.run(
+        ["bash", str(STATUSLINE_SH)],
+        input=_BASE_JSON,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        cwd=str(tmp_path),
+        env=env,
     )
-    assert "✗" not in bridge_segment, (
-        f"Must not show ✗ when multiple locks present.\nbridge: {bridge_segment!r}"
+
+    assert r.returncode == 0, f"statusline crashed: {r.stderr}"
+
+    # The captured payload file must exist (curl was called at least twice)
+    assert captured_payload_file.exists(), (
+        "curl shim was not called a second time — "
+        "Test-2 read probe may not have run.\n"
+        f"stdout: {r.stdout!r}\nstderr: {r.stderr!r}"
     )
-    # Color retained: ANSI yellow for no_config
-    assert ANSI_YELLOW in r.stdout, (
-        f"Expected ANSI yellow for multiple-locks no_config.\nstdout: {r.stdout!r}"
+
+    payload_raw = captured_payload_file.read_text()
+    assert payload_raw.strip(), f"Captured payload is empty. stderr: {r.stderr!r}"
+
+    # F6-AC3 assertion A: probe uses byFrontmatter, not byTag
+    assert '"byFrontmatter"' in payload_raw or "'byFrontmatter'" in payload_raw, (
+        "F6-AC3: probe payload must contain operation=byFrontmatter.\n"
+        f"Captured payload: {payload_raw!r}"
+    )
+
+    # F6-AC3 assertion B: probe references tomo.state
+    assert "tomo.state" in payload_raw, (
+        "F6-AC3: probe payload must reference tomo.state.\n"
+        f"Captured payload: {payload_raw!r}"
+    )
+
+    # F6-AC3 assertion C: no byTag in payload
+    assert "byTag" not in payload_raw, (
+        "F6-AC3: probe payload must NOT contain byTag.\n"
+        f"Captured payload: {payload_raw!r}"
     )
 
 

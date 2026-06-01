@@ -3,8 +3,8 @@
 # Copies agents, skills, commands, and configs into the instance directory.
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
-# lifecycle prefix, voice transcription, and vault-config.yaml generation.
-# version: 0.3.4
+# voice transcription, and vault-config.yaml generation.
+# version: 0.5.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -25,13 +25,13 @@ FLAG_PROFILE=""
 FLAG_KADO_HOST=""
 FLAG_KADO_PORT=""
 FLAG_KADO_TOKEN=""
-FLAG_PREFIX=""
 SHOW_HELP=false
 
 FLAG_INSTANCE_LOCATION=""
 FLAG_INSTANCE_NAME=""
 FLAG_HOME_DIR=""
 FLAG_CONFIG_FILE=""
+FLAG_UPDATE=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -40,11 +40,11 @@ while [ $# -gt 0 ]; do
         --kado-host)   FLAG_KADO_HOST="$2"; shift 2 ;;
         --kado-port)   FLAG_KADO_PORT="$2"; shift 2 ;;
         --kado-token)  FLAG_KADO_TOKEN="$2"; shift 2 ;;
-        --prefix)      FLAG_PREFIX="$2";    shift 2 ;;
         --instance-location) FLAG_INSTANCE_LOCATION="$2"; shift 2 ;;
         --instance-name)     FLAG_INSTANCE_NAME="$2";     shift 2 ;;
         --home-dir)          FLAG_HOME_DIR="$2";          shift 2 ;;
         --config-file)       FLAG_CONFIG_FILE="$2";       shift 2 ;;
+        --update)            FLAG_UPDATE=true;            shift ;;
         --non-interactive) NON_INTERACTIVE=true; shift ;;
         --help|-h)     SHOW_HELP=true;      shift ;;
         *)
@@ -69,17 +69,31 @@ Options:
   --kado-host HOST      Kado server host (default: host.docker.internal)
   --kado-port PORT      Kado server port (default: 37022)
   --kado-token TOKEN    Kado bearer token (must start with kado_)
-  --prefix PREFIX       Lifecycle tag prefix (default: MiYo-Tomo)
+  --instance-name NAME  Instance directory name (default: tomo-instance)
+  --instance-location P Parent directory for the instance (default: ~/MiYo/Tomo).
+                        The self-contained instance is created at
+                        <location>/<name>/ holding instance/, home/,
+                        tomo-install.json and begin-tomo.sh.
+  --home-dir PATH       Pin the Docker home dir exactly (default derived:
+                        <location>/<name>/home). For test isolation.
+  --config-file PATH    Pin tomo-install.json exactly (default derived:
+                        <location>/<name>/tomo-install.json). For test isolation.
+  --update              Update the existing instance named by --instance-name
+                        instead of creating a new one (non-interactive only)
   --non-interactive     Use defaults for all prompts (requires --vault)
   --help, -h            Show this help message
 
 Interactive mode (default):
-  Walks through vault path, profile selection, concept mapping, lifecycle
-  prefix, and Kado connection. Generates vault-config.yaml in instance.
+  Walks through vault path, profile selection, concept mapping, and Kado
+  connection. Generates vault-config.yaml in instance.
+  When other instances are registered, offers a create-new vs update-<name>
+  choice up front.
 
 Non-interactive mode:
   Requires at least --vault. Uses profile defaults for concept paths.
-  Suitable for CI/automation.
+  --instance-name names the target. By default a name already present in the
+  instance registry is rejected as a duplicate; pass --update to target that
+  existing instance instead. Suitable for CI/automation.
 
 Examples:
   # Interactive setup
@@ -184,6 +198,22 @@ prompt_yn() {
 # IDE_BRIDGE_PORT globals. Uses print_step/print_ok/print_warn/print_err.
 # shellcheck source=lib/configure-ide-bridge.sh
 . "$SCRIPT_DIR/lib/configure-ide-bridge.sh"
+
+# Instance registry (XDD 020 Phase 1) — provides registry_list /
+# registry_list_check / registry_resolve / registry_upsert for the
+# multi-instance front-end. Honors TOMO_REGISTRY_FILE for test isolation.
+# shellcheck source=lib/instance-registry.sh
+. "$SCRIPT_DIR/lib/instance-registry.sh"
+
+# Shared launcher renderer (XDD 020 Phase 2 / ADR-7) — provides render_launcher
+# which handles placeholder substitution + atomic write + chmod +x.
+# shellcheck source=lib/render-launcher.sh
+. "$SCRIPT_DIR/lib/render-launcher.sh"
+
+# registry_has_name NAME — exit 0 if NAME is registered, non-zero otherwise.
+registry_has_name() {
+    registry_resolve "$1" >/dev/null 2>&1
+}
 
 # ── Step 1: Welcome ──────────────────────────────────────
 
@@ -729,63 +759,155 @@ if [ -n "$C_CALENDAR" ] && [ "$NON_INTERACTIVE" != "true" ]; then
     print_ok "Daily: $CALENDAR_DAILY_PATH"
 fi
 
-# ── Step 5: Lifecycle Prefix ─────────────────────────────
-
-print_step "Lifecycle tag prefix"
-
-TAG_PREFIX=""
-if [ -n "$FLAG_PREFIX" ]; then
-    TAG_PREFIX="$FLAG_PREFIX"
-else
-    TAG_PREFIX=$(prompt_default "Tag prefix for Tomo lifecycle states" "MiYo-Tomo")
-fi
-print_ok "Prefix: $TAG_PREFIX"
-
-# Resolve the effective config-file path. Tests pass --config-file to
-# isolate their metadata from the user's real $REPO_ROOT/tomo-install.json.
-if [ -n "$FLAG_CONFIG_FILE" ]; then
-    CONFIG_FILE="$FLAG_CONFIG_FILE"
-fi
-
 # ── Instance directory ────────────────────────────────────
+#
+# Registry-driven selection (XDD 020 Phase 2, T2.1). Reads the instance
+# registry and routes to one of two modes:
+#   SELECT_MODE=create  — provision a new instance (name must not already exist)
+#   SELECT_MODE=update   — re-run against an existing registered instance
+# The actual path layout (create branch) and per-instance config / registry
+# upsert are owned by T2.2 / T2.3 — this step only resolves name + mode.
 
 print_step "Instance configuration"
 
 REUSE=""
-if [ -f "$CONFIG_FILE" ]; then
-    echo "  Found existing config: $CONFIG_FILE"
-    INSTANCE_NAME=$(jq -r '.instanceName' "$CONFIG_FILE")
-    INSTANCE_PATH=$(jq -r '.instancePath' "$CONFIG_FILE")
-    # instanceLocation was added in a later version; derive from instancePath as fallback
-    INSTANCE_LOCATION=$(jq -r '.instanceLocation // empty' "$CONFIG_FILE")
-    if [ -z "$INSTANCE_LOCATION" ]; then
-        INSTANCE_LOCATION="$(dirname "$INSTANCE_PATH")"
-    fi
-    echo "  Instance: $INSTANCE_NAME at $INSTANCE_PATH"
-    USE_EXISTING=$(prompt_yn "Use existing config? [Y/n]" "Y")
-    case "$USE_EXISTING" in
-        [nN]*) ;;
-        *) echo "  Using existing config."; REUSE=true ;;
-    esac
-fi
+SELECT_MODE="create"
 
-if [ "$REUSE" != "true" ]; then
-    # CLI-flag override takes priority over prompt_default — this lets the
-    # integration test scripts target an isolated tmpdir instead of
-    # overwriting the user's real `$REPO_ROOT/tomo-instance`. The default
-    # path behaviour (and the interactive prompt) are unchanged when the
-    # flags are not passed.
-    if [ -n "$FLAG_INSTANCE_NAME" ]; then
+# Emptiness sentinel: non-empty when at least one instance is registered.
+REGISTRY_LIST=$(registry_list 2>/dev/null || true)
+
+if [ "$NON_INTERACTIVE" = "true" ]; then
+    # Non-interactive contract: --instance-name names the target. A name that
+    # already exists in the registry is rejected as a duplicate unless --update
+    # is passed, in which case it must exist.
+    if [ "$FLAG_UPDATE" = "true" ]; then
+        if [ -z "$FLAG_INSTANCE_NAME" ]; then
+            print_err "--update requires --instance-name."
+            exit 1
+        fi
+        if ! registry_has_name "$FLAG_INSTANCE_NAME"; then
+            print_err "Cannot update '$FLAG_INSTANCE_NAME': no such registered instance."
+            exit 1
+        fi
+        SELECT_MODE="update"
         INSTANCE_NAME="$FLAG_INSTANCE_NAME"
     else
-        INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
+        if [ -n "$FLAG_INSTANCE_NAME" ] && registry_has_name "$FLAG_INSTANCE_NAME"; then
+            print_err "Instance '$FLAG_INSTANCE_NAME' already exists. Pass --update to update it, or choose a different --instance-name."
+            exit 1
+        fi
+        SELECT_MODE="create"
     fi
+else
+    if [ -z "$REGISTRY_LIST" ]; then
+        # No instances registered yet — straight to first-instance create.
+        SELECT_MODE="create"
+    else
+        # Existing instances registered — offer create-new vs update-<name>.
+        # Show name (and path) per live entry so the user can type a name;
+        # surface stale (dir-missing) entries on a second pass.
+        echo "  Registered instances:"
+        registry_list | jq -r '"    " + .name + "  (" + .path + ")"'
+        registry_list_check | grep '^\[stale\]' | sed 's/^/    /' || true
+        echo ""
+        echo "    n. Create a new instance"
+        echo "    Or type the name of an instance to update."
+        SELECT_CHOICE=$(prompt_default "Choice (n / <name>)" "n")
+        case "$SELECT_CHOICE" in
+            n|N|"")
+                SELECT_MODE="create"
+                ;;
+            *)
+                if registry_has_name "$SELECT_CHOICE"; then
+                    SELECT_MODE="update"
+                    INSTANCE_NAME="$SELECT_CHOICE"
+                else
+                    print_warn "No registered instance named '$SELECT_CHOICE' — creating a new one."
+                    SELECT_MODE="create"
+                fi
+                ;;
+        esac
+    fi
+
+    if [ "$SELECT_MODE" = "create" ]; then
+        # Obtain (and validate) the new instance name. Reject collisions with
+        # an existing registry entry by re-prompting.
+        while true; do
+            if [ -n "$FLAG_INSTANCE_NAME" ]; then
+                INSTANCE_NAME="$FLAG_INSTANCE_NAME"
+            else
+                INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
+            fi
+            if registry_has_name "$INSTANCE_NAME"; then
+                print_warn "Instance '$INSTANCE_NAME' already exists — choose a different name."
+                FLAG_INSTANCE_NAME=""
+                continue
+            fi
+            break
+        done
+    fi
+fi
+
+# Self-contained per-instance layout (ADR-1): <parent>/<name>/ holds
+# instance/ (Claude workspace), home/ (Docker /home/coder), tomo-install.json
+# and begin-tomo.sh. INSTANCE_LOCATION is the PARENT dir; INSTANCE_ROOT is
+# <parent>/<name>; INSTANCE_PATH is <root>/instance.
+if [ "$SELECT_MODE" = "update" ]; then
+    # Re-run against an existing instance: the registry stores the instance dir
+    # path (<root>/instance); the instance ROOT is its parent. CONFIG_FILE is
+    # read for prior settings only if it exists.
+    INSTANCE_PATH=$(registry_resolve "$INSTANCE_NAME")
+    INSTANCE_ROOT="$(dirname "$INSTANCE_PATH")"
+    INSTANCE_LOCATION="$(dirname "$INSTANCE_ROOT")"
+    echo "  Updating instance: $INSTANCE_NAME at $INSTANCE_PATH"
+else
+    # CLI-flag override takes priority over prompt_default — this lets the
+    # integration test scripts target an isolated tmpdir instead of
+    # overwriting the user's real instance. The default path behaviour (and the
+    # interactive prompt) are unchanged when the flags are not passed.
+    if [ -z "$INSTANCE_NAME" ]; then
+        if [ -n "$FLAG_INSTANCE_NAME" ]; then
+            INSTANCE_NAME="$FLAG_INSTANCE_NAME"
+        else
+            INSTANCE_NAME=$(prompt_default "Instance directory name" "tomo-instance")
+        fi
+    fi
+    # --instance-location is the PARENT dir (default ~/MiYo/Tomo). Expand a
+    # leading ~ to $HOME.
     if [ -n "$FLAG_INSTANCE_LOCATION" ]; then
         INSTANCE_LOCATION="$FLAG_INSTANCE_LOCATION"
     else
-        INSTANCE_LOCATION=$(prompt_default "Instance location" "$REPO_ROOT")
+        INSTANCE_LOCATION=$(prompt_default "Instance parent directory" "$HOME/MiYo/Tomo")
     fi
-    INSTANCE_PATH="$INSTANCE_LOCATION/$INSTANCE_NAME"
+    case "$INSTANCE_LOCATION" in
+        "~") INSTANCE_LOCATION="$HOME" ;;
+        "~/"*) INSTANCE_LOCATION="$HOME/${INSTANCE_LOCATION#~/}" ;;
+    esac
+    INSTANCE_ROOT="$INSTANCE_LOCATION/$INSTANCE_NAME"
+    INSTANCE_PATH="$INSTANCE_ROOT/instance"
+fi
+
+# Create the parent dir if absent and note it (OQ8) — only on the create
+# route; the update route uses the registered path, so INSTANCE_LOCATION
+# is a synthetic dirname and may differ from the user's intended parent.
+if [ "$SELECT_MODE" = "create" ] && [ ! -d "$INSTANCE_LOCATION" ]; then
+    mkdir -p "$INSTANCE_LOCATION"
+    print_ok "Created parent directory: $INSTANCE_LOCATION"
+fi
+
+# Derive the remaining self-contained paths from INSTANCE_ROOT. Explicit
+# --home-dir/--config-file pin those two exactly (test isolation); absent, they
+# fall under <root>/home and <root>/tomo-install.json.
+if [ -n "$FLAG_CONFIG_FILE" ]; then
+    CONFIG_FILE="$FLAG_CONFIG_FILE"
+else
+    CONFIG_FILE="$INSTANCE_ROOT/tomo-install.json"
+fi
+
+# Reuse prior settings only when the resolved per-instance config already
+# exists (update re-run against a previously provisioned instance).
+if [ "$SELECT_MODE" = "update" ] && [ -f "$CONFIG_FILE" ]; then
+    REUSE=true
 fi
 
 # ── Step 6: Kado connection ──────────────────────────────
@@ -1034,9 +1156,6 @@ YAMLEOF
   template: "${C_TEMPLATE}"
   asset: "${C_ASSET}"
 
-lifecycle:
-  tag_prefix: "${TAG_PREFIX}"
-
 # Everything else (naming, templates, frontmatter, relationships,
 # callouts, tags) comes from the profile defaults.
 # Run /tomo-setup in Tomo to detect and configure these (delegates to /explore-vault).
@@ -1219,7 +1338,7 @@ print_step "Setting up tomo-home/"
 if [ -n "$FLAG_HOME_DIR" ]; then
     HOME_DIR="$FLAG_HOME_DIR"
 else
-    HOME_DIR="$REPO_ROOT/tomo-home"
+    HOME_DIR="$INSTANCE_ROOT/home"
 fi
 mkdir -p "$HOME_DIR/.claude"
 
@@ -1267,22 +1386,16 @@ fi
 print_step "Generating begin-tomo.sh launcher"
 
 LAUNCHER_TEMPLATE="$REPO_ROOT/scripts/lib/begin-tomo.sh.template"
-LAUNCHER_PATH="$INSTANCE_LOCATION/begin-tomo.sh"
+LAUNCHER_PATH="$INSTANCE_ROOT/begin-tomo.sh"
 
 if [ ! -f "$LAUNCHER_TEMPLATE" ]; then
     print_err "Launcher template not found: $LAUNCHER_TEMPLATE"
     exit 1
 fi
 
-# NOTE: launcher placeholder set is duplicated in install-tomo.sh and update-tomo.sh.
-# Keep both sed blocks in sync. Tracked for extraction into a shared scripts/lib helper (backlog).
-sed -e "s|{{INSTANCE_PATH}}|${INSTANCE_PATH}|g" \
-    -e "s|{{INSTANCE_NAME}}|${INSTANCE_NAME}|g" \
-    -e "s|{{HOME_DIR}}|${HOME_DIR}|g" \
-    -e "s|{{TOMO_REPO_ROOT}}|${REPO_ROOT}|g" \
-    -e "s|{{DEV_NOTIFY_PORT}}|9999|g" \
-    "$LAUNCHER_TEMPLATE" > "$LAUNCHER_PATH"
-chmod +x "$LAUNCHER_PATH"
+# Failure here aborts under set -e before config + registry are written,
+# leaving the instance dir without a launcher — acceptable; no orphan risk.
+render_launcher "$LAUNCHER_TEMPLATE" "$LAUNCHER_PATH" "$INSTANCE_NAME" "$INSTANCE_PATH" "$HOME_DIR" "$REPO_ROOT" "9999"
 print_ok "begin-tomo.sh → $LAUNCHER_PATH"
 
 # ── Save config ───────────────────────────────────────────
@@ -1295,12 +1408,12 @@ cat > "$CONFIG_FILE" << CFGEOF
   "instanceName": "${INSTANCE_NAME}",
   "instanceLocation": "${INSTANCE_LOCATION}",
   "instancePath": "${INSTANCE_PATH}",
+  "repoPath": "${REPO_ROOT}",
   "launcherPath": "${LAUNCHER_PATH}",
   "homePath": "${HOME_DIR}",
   "vaultPath": "${VAULT_PATH}",
   "profile": "${PROFILE}",
   "profileVersion": "${PROFILE_VERSION}",
-  "lifecyclePrefix": "${TAG_PREFIX}",
   "kado": {
     "host": "${KADO_HOST}",
     "port": ${KADO_PORT},
@@ -1313,6 +1426,16 @@ cat > "$CONFIG_FILE" << CFGEOF
 }
 CFGEOF
 print_ok "tomo-install.json"
+
+# Register the instance so future installs can route to it (ADR-2 / D-09).
+# INSTANCE_PATH = <root>/instance — the convention update routing depends on.
+# Soft-fail: the registry is a rebuildable index; a write failure (unwritable
+# ~/.tomo, jq error, mv perm) must NOT orphan a fully-provisioned instance.
+if registry_upsert "$INSTANCE_NAME" "$INSTANCE_PATH" "$REPO_ROOT" "$TOMO_VERSION"; then
+    print_ok "instance registered: $INSTANCE_NAME → $INSTANCE_PATH"
+else
+    print_warn "Registry update failed — the instance is installed but will not appear in the install/update selection menu. Re-run install, or register it manually."
+fi
 
 # Persist the voice block via the shared write_voice_config helper —
 # single authoritative writer for schema_version + enabled/model/language.
@@ -1340,15 +1463,9 @@ else
     remove_ide_lock "$HOME_DIR" "$IDE_BRIDGE_PORT"
 fi
 
-# ── Update .gitignore (parent repo) ──────────────────────
-
-if ! grep -q "^${INSTANCE_NAME}/" "$REPO_ROOT/.gitignore" 2>/dev/null; then
-    # Add instance dir if not the default (already in .gitignore)
-    if [ "$INSTANCE_NAME" != "tomo-instance" ]; then
-        echo "${INSTANCE_NAME}/" >> "$REPO_ROOT/.gitignore"
-        print_ok "Added $INSTANCE_NAME/ to .gitignore"
-    fi
-fi
+# Instances live OUTSIDE the repo now (ADR-1), so no repo-.gitignore entry is
+# needed; the obsolete append block was removed. The instance-root .gitignore
+# below is still written for users who choose to `git init` their instance.
 
 # ── Instance scratch dir + .gitignore (optional) ─────────
 #

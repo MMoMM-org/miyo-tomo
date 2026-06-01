@@ -313,32 +313,57 @@ def test_two_instances_registered_both_selectable(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Default fallback: no --instance, no --config-file → REPO_ROOT default
+# No silent default: CWD-detection + never update a hardcoded instance
 # ---------------------------------------------------------------------------
 
 
-def test_no_instance_flag_falls_back_to_default_config(tmp_path: Path) -> None:
-    """Without --instance or --config-file, the script falls back to the default
-    $REPO_ROOT/tomo-install.json. When that file is absent the script exits 1
-    with "No tomo-install.json found" — guarding single-instance back-compat.
+def test_no_selector_non_interactive_errors_without_silent_default(tmp_path: Path) -> None:
+    """No --instance/--config-file, CWD is not an instance dir, non-interactive
+    stdin → exit non-zero with a selection message. The script must NEVER
+    silently fall back to a hardcoded repo-root instance.
     """
     registry = tmp_path / "instances.json"
-    # Ensure no tomo-install.json exists at REPO_ROOT for this test.
-    default_config = REPO_ROOT / "tomo-install.json"
-    if default_config.exists():
-        # Real install present — skip rather than assert exit 1 on a live system.
-        import pytest  # noqa: PLC0415
-        pytest.skip("REPO_ROOT/tomo-install.json exists — single-instance live system")
-
+    workdir = tmp_path / "elsewhere"  # empty — not an instance directory
+    workdir.mkdir()
     result = subprocess.run(
         ["bash", str(UPDATER), "--keep-voice", "--yes", "--dry-run"],
         capture_output=True,
         text=True,
-        env={**os.environ, "TOMO_REGISTRY_FILE": str(registry), "TMPDIR": os.environ.get("TMPDIR", "/tmp")},
+        env=_build_env(registry),
+        cwd=str(workdir),
+        stdin=subprocess.DEVNULL,
     )
-    assert result.returncode == 1, (
-        f"Expected exit 1 (no config), got {result.returncode}:\n{result.stdout}{result.stderr}"
+    assert result.returncode != 0, (
+        f"Expected non-zero when no instance is selectable.\n{result.stdout}{result.stderr}"
     )
-    assert "tomo-install.json" in (result.stdout + result.stderr), (
-        f"Expected 'tomo-install.json' in output:\n{result.stdout}{result.stderr}"
+    combined = (result.stdout + result.stderr).lower()
+    assert "instance" in combined, f"Expected an instance-selection message.\n{combined}"
+    # It must not claim to have resolved/updated any instance.
+    assert "detected in current directory" not in combined, (
+        f"Must not resolve any instance.\n{result.stdout}{result.stderr}"
+    )
+
+
+def test_cwd_detection_updates_current_directory_instance(tmp_path: Path) -> None:
+    """When the CWD holds begin-tomo.sh + tomo-install.json, that instance is the
+    update target with no flag — and no silent repo-root default.
+    """
+    registry = tmp_path / "instances.json"
+    _instance_path, config_path = _make_minimal_instance(tmp_path, "cwd-inst")
+    inst_root = config_path.parent
+    # CWD-detection requires the begin-tomo.sh marker (the helper omits it).
+    (inst_root / "begin-tomo.sh").write_text("#!/bin/bash\n# launcher stub\n")
+    result = subprocess.run(
+        ["bash", str(UPDATER), "--keep-voice", "--yes", "--dry-run"],
+        capture_output=True,
+        text=True,
+        env=_build_env(registry),
+        cwd=str(inst_root),
+        stdin=subprocess.DEVNULL,
+    )
+    assert result.returncode == 0, (
+        f"Expected exit 0 resolving the CWD instance.\n{result.stdout}{result.stderr}"
+    )
+    assert str(inst_root) in (result.stdout + result.stderr), (
+        f"Expected the CWD instance path in output.\n{result.stdout}{result.stderr}"
     )

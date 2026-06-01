@@ -4,13 +4,15 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.6.0
+# version: 0.7.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TOMO_SOURCE="$REPO_ROOT/tomo"
-CONFIG_FILE="$REPO_ROOT/tomo-install.json"
+# No hardcoded default: the target instance is resolved below from an explicit
+# flag, the current directory, or an interactive pick — never a fixed path.
+CONFIG_FILE=""
 
 # ── CLI parsing ──────────────────────────────────────────
 
@@ -45,11 +47,16 @@ Options:
   -n, --dry-run      Show the plan and exit; never write.
       --instance     Select the instance to update by registered name.
                      Resolves the instance path from ~/.tomo/instances.json
-                     (or TOMO_REGISTRY_FILE). Takes precedence over the default
-                     $REPO_ROOT/tomo-install.json. Cannot be combined with
+                     (or TOMO_REGISTRY_FILE). Cannot be combined with
                      --config-file.
       --config-file  Use an alternate tomo-install.json (test isolation).
   -h, --help         Show this help and exit.
+
+Target selection (when neither --instance nor --config-file is given):
+  - If the current directory is an instance (holds begin-tomo.sh +
+    tomo-install.json), that instance is updated.
+  - Otherwise the registered instances are listed and you are prompted to pick.
+  There is no implicit default: update-tomo never updates an unselected instance.
 EOF
 }
 
@@ -133,6 +140,61 @@ get_version() {
 # shellcheck source=lib/render-launcher.sh
 . "$SCRIPT_DIR/lib/render-launcher.sh"
 
+# ── Interactive instance picker ───────────────────────────
+# Used when no instance is selected and the CWD is not an instance directory.
+# Lists registered instances and sets the global CONFIG_FILE from the choice.
+# Returns non-zero (with an explanation) when it cannot resolve — it never
+# falls back to a default path. bash 3.2: indexed arrays only.
+pick_instance_interactive() {
+    if [ ! -t 0 ]; then
+        print_err "No instance selected and not running interactively."
+        print_err "Pass --instance <name> or --config-file <path>, or run from an instance directory."
+        return 1
+    fi
+
+    local _names _paths _line
+    _names=(); _paths=()
+    while IFS= read -r _line; do
+        [ -z "$_line" ] && continue
+        _names+=("$(printf '%s' "$_line" | jq -r '.name')")
+        _paths+=("$(printf '%s' "$_line" | jq -r '.path')")
+    done < <(registry_list)
+
+    local _count=${#_names[@]}
+    if [ "$_count" -eq 0 ]; then
+        print_err "No registered instances in $(registry_path)."
+        print_err "Run install-tomo.sh to create one, or pass --config-file <path>."
+        return 1
+    fi
+
+    print_step "Select an instance to update"
+    local _i=0 _p _mark
+    while [ "$_i" -lt "$_count" ]; do
+        _p="${_paths[$_i]}"; _mark=""
+        [ -d "$_p" ] || _mark="   [stale — directory missing]"
+        printf "    %d) %s  (%s)%s\n" "$((_i + 1))" "${_names[$_i]}" "$_p" "$_mark"
+        _i=$((_i + 1))
+    done
+
+    local _choice
+    while true; do
+        printf "  Enter number (1-%d): " "$_count"
+        read -r _choice || return 1
+        case "$_choice" in
+            ''|*[!0-9]*) printf "  Please enter a number.\n"; continue ;;
+        esac
+        if [ "$_choice" -ge 1 ] && [ "$_choice" -le "$_count" ]; then
+            break
+        fi
+        printf "  Out of range — pick 1-%d.\n" "$_count"
+    done
+
+    local _root
+    _root="$(dirname "${_paths[$((_choice - 1))]}")"
+    CONFIG_FILE="$_root/tomo-install.json"
+    return 0
+}
+
 # ── Mutual-exclusion guard ────────────────────────────────
 
 if [ -n "$FLAG_CONFIG_FILE" ] && [ -n "$FLAG_INSTANCE" ]; then
@@ -146,13 +208,16 @@ fi
 #   1. --config-file <path>  — explicit, test-friendly; use it verbatim.
 #   2. --instance <name>     — registry-driven; resolve path from instances.json,
 #                              then derive CONFIG_FILE as <instance-root>/tomo-install.json.
-#   3. default               — $REPO_ROOT/tomo-install.json (single-instance back-compat).
+#   3. CWD is an instance    — the current directory holds begin-tomo.sh +
+#                              tomo-install.json → update that instance.
+#   4. interactive pick      — list registered instances and prompt the user.
+# There is NO silent default: the script never updates a hardcoded instance.
 if [ -n "$FLAG_CONFIG_FILE" ]; then
     CONFIG_FILE="$FLAG_CONFIG_FILE"
 elif [ -n "$FLAG_INSTANCE" ]; then
     _resolved_instance_path="$(registry_resolve "$FLAG_INSTANCE" 2>/dev/null)" || true
     if [ -z "$_resolved_instance_path" ]; then
-        print_err "Unknown instance: '$FLAG_INSTANCE'. Run 'update-tomo.sh --list' or check ~/.tomo/instances.json."
+        print_err "Unknown instance: '$FLAG_INSTANCE'. Check $(registry_path) for registered names."
         exit 1
     fi
     # Registry stores <root>/instance; the config lives one level up at <root>/tomo-install.json.
@@ -162,10 +227,18 @@ elif [ -n "$FLAG_INSTANCE" ]; then
         print_err "Instance '$FLAG_INSTANCE' found in registry but config missing: $CONFIG_FILE"
         exit 1
     fi
+elif [ -f "$PWD/tomo-install.json" ] && [ -f "$PWD/begin-tomo.sh" ]; then
+    CONFIG_FILE="$PWD/tomo-install.json"
+    print_ok "Instance detected in current directory: $PWD"
+else
+    # No selector and not inside an instance dir → let the user pick.
+    if ! pick_instance_interactive; then
+        exit 1
+    fi
 fi
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    print_err "No tomo-install.json found. Run install-tomo.sh first."
+if [ -z "$CONFIG_FILE" ] || [ ! -f "$CONFIG_FILE" ]; then
+    print_err "No instance config resolved. Pass --instance <name>, --config-file <path>, or run from an instance directory."
     exit 1
 fi
 

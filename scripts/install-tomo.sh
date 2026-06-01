@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.5.0
+# version: 0.5.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -260,9 +260,12 @@ else
             print_err "Vault path cannot be empty."
             continue
         fi
-        # Expand ~ if present
+        # Expand ~ if present. The tilde in the pattern MUST be quoted (\~) —
+        # bash performs tilde expansion on unquoted case patterns, so a bare
+        # ~/* expands to $HOME/* and wrongly matches any absolute path already
+        # under $HOME, then prepends $HOME again (double-path bug).
         case "$VAULT_PATH" in
-            ~/*) VAULT_PATH="$HOME/${VAULT_PATH#\~/}" ;;
+            \~/*) VAULT_PATH="$HOME/${VAULT_PATH#\~/}" ;;
         esac
         if [ -d "$VAULT_PATH" ]; then
             break

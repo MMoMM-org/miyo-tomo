@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-05-31 |
-| **Current Phase** | Ready |
-| **Last Updated** | 2026-05-31 |
+| **Current Phase** | Implemented |
+| **Last Updated** | 2026-06-01 |
 
 ## Documents
 
@@ -36,6 +36,7 @@
 | 2026-06-01 | Phase 5 implemented — docs sweep + finalize | **T5.1** (`96a3b4b`, `82b29e7`) documented per-instance layout, registry, update-check in installation/setup/configuration/README; **T5.2** (`4c4afe3`, `6d1dfcf`) scrubbed lifecycle tag-prefix from user docs + `vault-example.yaml` (v1.1→1.2) and reframed on `tomo.state` frontmatter; **T5.3** (`4ec8672`) final validation: all 5 changed managed files version-bumped, `bash -n` clean on bash 3.2.57, `ruff` clean, made the lifecycle regression guard hermetic. Spec-020 owns 105 passing tests; full suite 469 pass / 87 fail / 2 collection-error — **all 87+2 failures pre-existing** (`jsonschema` incompatible with Python 3.14, + `ide_bridge` bash-snippet tests), **0 spec-020 failures**. |
 | 2026-06-01 | Findings logged to backlog | **D-09 closed** by ADR-7 (`render-launcher.sh`). **D-10 raised** — `cleanup-tomo.sh` (v0.1.0) is not multi-instance-aware (operates on `$REPO_ROOT/tomo-instance/`, refuses external paths); its docs left unchanged. **D-06 reinforced** — tier-2/tier-3 architecture-reference docs still describe the old `#MiYo-Tomo/<state>` tag model; deliberately left out of this spec's *user-facing* sweep. |
 | 2026-06-01 | T5.4 two-instance live smoke — OPERATOR-PENDING | Operator-gated (Docker, real two-instance creation), consistent with prior MiYo live-validation handling. Implementation + automated tests complete; final real-world two-instance smoke is the one remaining manual step before the work is exercised end-to-end. |
+| 2026-06-01 | Implementation complete | Phases 1-5 shipped on feat/020-multi-instance-install. Multi-instance first-class install (self-contained `<parent>/<name>/{begin-tomo.sh,tomo-install.json,instance/,home/}`, `~/.tomo/instances.json` registry, `TOMO_INSTANCE_NAME` identity, non-fatal launcher update-check) + Part B lifecycle tag-prefix removal (frontmatter `tomo.state`). Version bumps: install-tomo.sh 0.3.1→0.5.0, update-tomo.sh 0.4.2→0.6.0, begin-tomo.sh.template 0.11→0.14, tomo-statusline.sh 0.4→0.7, vault-example.yaml 1.1→1.2. 105 spec-020 tests pass; full suite 469 pass / 87 fail (all pre-existing jsonschema-on-Python-3.14 + ide_bridge bash-snippet; 0 spec-020). D-09 closed (render-launcher.sh), D-10 raised (cleanup-tomo.sh not multi-instance-aware). T5.4 two-instance live smoke operator-pending. Not yet merged/pushed. |
 
 ## Context
 

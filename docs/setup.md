@@ -141,7 +141,6 @@ bash scripts/install-tomo.sh \
   --kado-token kado_your_token \
   --instance-name work \
   --instance-location ~/MiYo/Tomo \
-  --prefix MiYo-Tomo \
   --non-interactive
 ```
 

@@ -27,7 +27,7 @@ If this is your first session after install, run `/tomo-setup` — it walks the 
 
 ### Process inbox items
 
-This is the day-to-day loop. When new items have landed in your inbox folder (voice memos tagged `<lifecycle-prefix>/captured`, web clips, quick captures, anything ready for triage), run:
+This is the day-to-day loop. When new items have landed in your inbox folder (voice memos with `tomo.state: captured` in their frontmatter, web clips, quick captures, anything ready for triage), run:
 
 ```
 /inbox

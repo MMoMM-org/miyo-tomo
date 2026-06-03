@@ -1,76 +1,136 @@
 # Open Items Backlog
 
-> Consolidated from tier specs, XDD specs, and implementation observations.
-> Created: 2026-04-18 (XDD-006 spec consolidation).
-> Updated: 2026-05-31 (D-10 documentation refresh added from the spec 019 user-docs pass).
-> Maintained as a living document — update when new items are identified or items are completed.
+> **Open work now lives in GitHub Issues** — [MMoMM-org/miyo-tomo/issues](https://github.com/MMoMM-org/miyo-tomo/issues).
+> Migrated 2026-06-03 after a full code-vs-backlog verification sweep.
+> This file is now a slim **index + archive**: the GH mapping, the backburner (not migrated),
+> the Done-record, deliberate design decisions, and design-note appendices.
+> Maintained as a living document — when new post-MVP items appear, prefer opening a GitHub issue
+> and recording the mapping here only if it needs backlog-level context.
 
 ## Active roadmap tracks
 
-For the **Obsidian-power track** (next-layer features beyond MVP — MOC-creation, garden-audit, weekly-review, tag-audit, suggestions UX), see [`roadmap-obsidian-power.md`](roadmap-obsidian-power.md). That doc owns sequencing; per-item detail lives in F-42–F-46 below.
+For the **Obsidian-power track** sequencing (MOC-creation, garden-audit, weekly-review, tag-audit, suggestions UX), see [`roadmap-obsidian-power.md`](roadmap-obsidian-power.md). The work items themselves are GitHub epics **#16** (Obsidian-Power Skills) and **#19** (Suggestions Doc UX).
 
-## Features (Post-MVP)
+## Milestones (GitHub)
 
-| ID | Item | Source | Priority | Notes |
-|----|------|--------|----------|-------|
-| F-01 | Tomo Hashi executor — Obsidian plugin reading `instructions.json` via the Obsidian Plugin API | reference/tier-1/pkm-intelligence-architecture.md §7, XDD 008, Kokoro ADR-009 (2026-04-23) | Must | Replaces user-applied workflow with deterministic execution; user approval happens on the companion `instructions.md` before Hashi runs. **Prereq shipped 2026-04-21 (XDD 008):** `instructions.json` is the canonical machine-readable contract — see `tomo/schemas/instructions.schema.json`. Earlier backlog drafts referred to this item as "Seigyo"; Seigyo is now on the backburner per Kokoro ADR-009 and may never be built. |
-| F-02 | Periodic notes beyond daily (weekly, monthly, quarterly, yearly) | reference/tier-2/workflows/daily-note.md §7 | Should | Requires synthesis (LLM judgment), periodic-note config surface, learning from MVP usage first |
-| F-03 | Templater rendering by Tomo | reference/tier-2/components/template-system.md §3 | Should | Eliminate user's manual Templater step; currently parked |
-| F-04 | Profile switching post-install | reference/tier-2/components/framework-profiles.md | Could | Migration path between profiles (e.g., LYT → MiYo); out of scope for MVP |
-| F-05 | Topic weighting in MOC matching | reference/tier-3/vault-exploration/topic-extraction.md | Could | Title/heading topics should score higher than content keywords; MVP treats equally |
-| F-06 | Configurable confidence thresholds | reference/tier-3/lyt-moc/moc-matching.md | Could | `confidence_threshold` and `max_results` currently hardcoded; future vault-config fields |
-| F-07 | Configurable classification threshold | reference/tier-3/discovery/classification-matching.md | Could | `classification.confidence_threshold` in vault-config |
-| F-08 | Configurable MOC proposal minimum | reference/tier-3/lyt-moc/new-moc-proposal.md | Could | `moc_proposal.min_notes` in vault-config (default: 3) |
-| F-09 | Incremental cache refresh | reference/tier-3/discovery/moc-indexing.md §8 | Could | Currently full rebuild on every `/explore-vault`; delta refresh for performance |
-| F-10 | Automated applied-action detection | reference/tier-3/inbox/instruction-set-cleanup.md §5 | Could | Auto-detect whether user applied actions without manual tag change |
-| F-11 | Callout-based tracker syntax | reference/tier-2/workflows/daily-note.md §5 | Could | Custom plugin tracker syntaxes beyond inline_field, task_checkbox, frontmatter |
-| F-12 | Atomic note sub-types (LYT) | reference/tier-3/profiles/lyt-profile.md | Could | Classify atomic notes into sub-types during inbox processing; MVP treats as flat |
-| F-13 | Standalone MOC density scan | reference/tier-2/workflows/lyt-moc-linking.md §8 | Should | `/scan-mocs` command for vault-wide clustering (not just inbox batch) |
-| F-14 | Additional PKM concepts | reference/tier-2/components/universal-pkm-concepts.md | Could | resource, reference, log, dashboard — deferred until workflows require them |
-| F-15 | Batch read / chunked search in Kado | reference/tier-2/workflows/vault-exploration.md | Could | If Kado adds these, vault-explorer benefits automatically |
-| F-16 | Relationship marker from config (not hardcoded) | reference/tier-3/config/relationship-config.md, moc-tree-builder.py | Should | `moc-tree-builder.py` hardcodes `up::` and `related::` regexes. Should read markers from profile/config. Also support finding markers in frontmatter (`up: [[Parent]]` as YAML key) and inside callouts (`> up:: [[Parent]]`). Important for reading; writing already uses templates. |
-| F-17 | Callout full-line matching end-to-end | reference/tier-3/config/callout-mapping.md, vault-example.yaml | Should | See details below |
-| F-18 | Frontmatter sampling script | reference/tier-3/config/cache-generation.md §3.5 | Could | Phase 4 deferred. `cache-builder.py` accepts `--frontmatter` input but no script generates it. Cache works without |
-| F-19 | Tag analysis script | reference/tier-3/config/cache-generation.md §3.6 | Could | Phase 4 deferred. `cache-builder.py` accepts `--tags` input but no script generates it. Cache works without |
-| F-20 | Orphan detection script | reference/tier-3/config/cache-generation.md §3.7 | Could | Phase 4 deferred. `cache-builder.py` accepts `--orphans` input but no script generates it. Cache works without |
-| F-21 | Cache staleness warning | reference/tier-3/discovery/staleness-policy.md | Should | No code checks `last_scan` timestamp at session/run start. User doesn't know when cache is outdated (>7 days) |
-| F-22 | Document splitting for large batches | reference/tier-3/inbox/suggestions-document.md §9 | Could | Soft limit 30 items. No splitting logic in reducer/renderer. Batches are typically <10 |
-| F-23 | Archive subdirectory for processed items | reference/tier-3/inbox/instruction-set-cleanup.md §9 | Could | Optional move to `+/archive/YYYY-MM/`. Tags-only suffices for MVP |
-| F-24 | Delete auxiliary files after cleanup | reference/tier-3/inbox/instruction-set-cleanup.md §10 | Could | Rendered notes and diffs stay in inbox after cleanup. Safer to leave for now |
-| F-25 | Inbox-note template definition | XDD 009 spec discussion 2026-04-20 | Should | Tomo has atomic-note templates only; inbox-note structure is undefined (user's inbox is zettelkasten-lean). Define explicit template — frontmatter? Lifecycle tags? — so future features (incl. voice transcripts per XDD 009) can inherit it |
-| F-26 | Voice memo transcription | XDD 009 spec | ✅ Done 2026-04-21 | Local faster-whisper transcription of audio files in inbox → markdown with timestamped callouts. Phases 1-4 code-complete (commits `c7c9688`, `5ea2bc8`, `08c6fca`, `8f4f80e`, `5d6aed7`); host-side E2E (T5.1/T5.2) and final spec-done flip (T5.6) pending live Tomo session. See `docs/XDD/specs/009-voice-memo-transcription/` |
-| F-27 | Custom @-file picker (open notes / inbox / vault) | XDD 010 spec | Should | Replace built-in `@` picker with vault-aware variant: default = open Obsidian notes via `kado-open-notes`; `/inbox` and `/vault` as scope prefixes. Cache-backed for typing-rate latency. See `docs/XDD/specs/010-custom-file-picker/` |
-| F-28 | Profile→vault-config copy at install time | vault-explorer cleanup 2026-04-20 | Could | When install-tomo.sh writes vault-config.yaml, copy the selected profile's `frontmatter_defaults:` into the vault-config as `frontmatter:` so `token-render.py` finds defaults without an /explore-vault step. Today users must populate it manually since vault-explorer Step 3 was retired |
-| F-29 | Instance backup + restore + install-time warning | XDD 011 spec | Should | **MVP shipped 2026-04-21** — `backup-tomo.sh` + `restore-tomo.sh` v0.1.0 (commits `371730c`, `3d09c9c`). Spec docs complete. **Still open (reduced scope):** install-time warning about nested-git trap + `git clean -fdX` (explicitly de-scoped 2026-04-20); archive-verification round-trip (F8). See XDD 011 Completion Summary. |
-| F-30 | LLM-driven insertion-point resolution for link_to_moc | XDD 008 follow-up 2026-04-21 | Should | Current `scripts/instruction-render.py:resolve_section_names` deterministically picks the right callout (`[!blocks]` preferred, `[!connect]` deprioritized as nav). Works for flat MOCs. For MOCs with H2/H3 sub-structure inside the callout (e.g. Concepts MOC, Habits MOC — topic-grouped children), deterministic can only pick the outer callout, not the sub-section. Proper fix: inbox-analyst (Pass 1) reads the winning target MOC and proposes an insertion point between specific existing bullets, OR a Pass-2 LLM step batches link_to_moc actions per target MOC and reasons about topical fit against the MOC's current structure. Today the human resolves sub-section choice manually from the `Section: [!blocks] Key Concepts` pointer. |
-| F-31 | Blank line after `- [ ] Accept` in suggestions doc | inbox polish 2026-04-23 | Could | Under the "possible log links" per-item block, the `- [ ] Accept` line is rendered immediately followed by the list of link bullets. A single blank line between `- [ ] Accept` and the following bullets would improve scanability when reviewing suggestions. Touch point: the log_entry section renderer in `tomo/scripts/suggestions-reducer.py` (or the template that emits the possible-log-link block — confirm exact location when picking this up). |
-| F-32 | Opus cost reduction in /inbox Pass 1 | token-usage analysis 2026-04-23 | Should | Last /inbox Pass 1 cost ~$26 on the Opus main-thread vs. ~$7 across 20 Sonnet/Haiku subagents. Main-thread Opus drives 79% of Pass-1 cost on only 30% of messages. Candidate levers (explore when prioritised): (a) downgrade Phase A/A5/C to Sonnet — they are prompt-only orchestration without heavy reasoning; (b) reduce main-thread cache-read volume (7.5M tokens re-read per Pass 1) by shortening phase hops and batching tool calls; (c) move remaining LLM-assembled rendering into Python (`suggestions-reducer.py` already does most of it). Not a quick win — needs a benchmark plan and per-phase A/B. |
-| F-33 | Force Atomic Note synthesis via follow-up suggestions doc | Pass-2 live run 2026-04-23 (Furano case) | ✅ Done 2026-04-23 | Shipped as XDD 012 (commit `08a1f22 feat(force-atomic): synthesize atomics via resolve doc`). Pass 2 detects FAN-without-section log entries, runs a per-item FAN resolve subflow (`instruction-builder.md` Step 2.5 — mini-Pass-1 LLM hop), emits a companion FAN-resolve suggestions doc, halts pre-render, and reconciles on the next /inbox run via `suggestion-parser.py:794` companion-doc parser. Implementation: `inbox-analyst.md` v0.8.0 `force_atomic` input bypasses Step-7 worthiness gate; `suggestions-reducer.py:493` emits FAN-only atomic proposals into the resolve doc. |
-| F-34 | Mental Squeeze Point — Condition B: Accumulation Detection | AUDIT_REPORT_2026-04-18 patch 2026-04-23 (M2, HIGH) | **Must — PRD draft 2026-05-07** | **Status: XDD 015 PRD drafted** at `docs/XDD/specs/015-msp-condition-b-accumulation/` 2026-05-07. Architecture decisions locked: (b) pre-compute accumulation index in shared-ctx pipeline; index shape = `topic → list of stems`. SDD + plan deferred — see PRD §8 for OQ1–OQ7 still requiring stakeholder input. Spec (Tier-3 New MOC Proposal §2 Condition B): when a current item's topics match 2+ existing notes with no MOC link (`up::` absent), propose creating a new MOC. Today this trigger does not fire end-to-end and **no existing script walks atomic notes for topics** — full implementation needs new scanner + cache field + shared-ctx surface + inbox-analyst Step 4 + size budgeting + tests. **MVP risk:** introducing kado-search calls per item (rejected option (a)) would regress Pass-1 latency/cost; option (b) keeps Phase-B's cost profile unchanged but adds /explore-vault cost (~14s for ~281 atomic-note reads). |
-| F-35 | Mental Squeeze Point — Condition C: Placeholder MOC trigger | AUDIT_REPORT_2026-04-18 patch 2026-04-23 (M3, MEDIUM) | **Code-complete 2026-05-07 — live-validation pending** | **Shipped (commit `5b3a031 feat(F-35): MSP Condition C — placeholder MOC trigger`).** `shared-ctx-builder.py` v0.7.0 surfaces `cache.placeholder_mocs[]` (when non-empty) into the shared-ctx envelope; `inbox-analyst.md` v0.10.0 Step 4 fires Condition C when an item's topics match a placeholder `target`, setting `needs_new_moc=true` with `proposed_moc_topic=<target>`. Schema (`shared-ctx.schema.json`) extended with optional `placeholder_mocs[]`. 6 unit tests (`tests/test-shared-ctx-placeholders.py`) cover happy path + drift guards. Suggestions-reducer needs no change (reads same `needs_new_moc`/`proposed_moc_topic` fields). **Live-validation pending:** next /inbox run against a vault with a known placeholder in the cache; confirm a matching item produces a Proposed MOC suggestion that resolves the dead link. Original spec source: Tier-3 New MOC Proposal §2 Condition C. |
-| F-36 | New section proposal logic when no existing section fits | AUDIT_REPORT_2026-04-18 patch 2026-04-23 (Gap 2.6) | Should | Spec (Tier-3 Section Placement §7): when no candidate section in the target MOC scores ≥0.5, propose creating a new H2 section before the footer with a 2-4 word topic name. Today `tomo/scripts/instruction-render.py:resolve_section_names()` (commit `4f2ee9d`) resolves to existing sections; the "else propose new section" path is unverified end-to-end. Important for the new-MOC pathway (F-34/F-35) — when a freshly-proposed MOC has no sections yet, Hashi needs an instruction to create the first one. Touch points: `instruction-render.py`, `inbox-analyst.md` link_to_moc emission, possibly Hashi's apply step. |
-| F-37 | Daily-log date-source flow — focused re-audit | AUDIT_REPORT_2026-04-18 patch 2026-04-23 (D-series re-pass) | Could | Commit `08e3023 feat(daily-log): config-driven date-source priority + expanded date_formats` materially changed daily-log behaviour after the original 2026-04-18 audit was written. The audit's D1-D16 findings (mostly WORKING) need a focused re-pass against the new flow before declaring D-series fully MVP-compliant. Scope: `tomo/dot_claude/agents/inbox-analyst.md` Steps 8b.2-8b.4 + `tomo/scripts/instruction-render.py` daily-renderer + vault-config `daily_notes` schema. Not blocking for MVP if /inbox live runs continue producing correct daily-log entries — defer until the first real divergence. |
-| F-38 | "Create daily note first" checkbox emission | AUDIT_REPORT_2026-04-18 patch 2026-04-23 (Gap 4.13) | Could | Spec (Tier-2 Daily Note §5): "Tomo never creates daily notes — surfaces `- [ ] Create daily note first` checkbox when missing." Today the checkbox emission is unverified — the audit flagged it as deferred to Phase-2 (instruction-builder), but no end-to-end test confirms it actually surfaces when a target daily note is missing. Verification first; implementation only if missing. Low MVP risk because the worst case (missing checkbox) just means the user creates the note manually anyway. |
-| F-39 | Profile-driven `daily_log.entry_time_format` discovery | 2026-04-29 format-spec handoff response (Hashi v0.1 manual test) | Should | The `at_time` line shape (`- HH:MM: <payload>` for both `update_log_entry` and `update_log_link`) is currently **hardcoded** as the canonical default for the miyo profile in `docs/instructions-json.md` and Hashi's executor. Other vault profiles may use different time-prefix shapes (`HH:MM - <payload>`, `[HH:MM] <payload>`, `> HH:MM <payload>` inside a callout, etc.). Add `daily_log.entry_time_format` (template string with `<time>` and `<content>` placeholders) to vault-config + shared-ctx so `/explore-vault` can detect the user's actual daily-log convention and Hashi reads the per-profile shape from shared context. Until this ships, Hashi hardcodes the miyo default and refuses at_time entries for non-miyo profiles unless explicitly opted in. Touch points: `tomo/scripts/shared-ctx-builder.py` (build_daily_log), `tomo/config/vault-example.yaml`, `/explore-vault` daily-log discovery step, `docs/instructions-json.md` § Format conventions / Profile-driven format. |
-| F-40 | `update_tracker.syntax = checkbox` end-to-end support | 2026-04-29 format-spec handoff response (Hashi v0.1 manual test) | Could | Spec already defines `checkbox` syntax (`- [ ] <field>` / `- [x] <field>` markdown task lines) in `docs/instructions-json.md` § Format conventions. Renderer accepts `syntax: checkbox` action emission. **Gap:** no current vault-config defines a tracker with `syntax: checkbox`, so the analyst never proposes one. To exercise this end-to-end: (a) extend vault-config schema docs to make `checkbox` an explicit, supported tracker option (already enum-valid in shared-ctx but unused); (b) verify the analyst proposes `syntax: checkbox` when an inbox item maps to a checkbox-typed tracker; (c) add a test fixture with a checkbox tracker (e.g. `DailyReview`) and a fleeting note that should toggle it. Low MVP risk — purely additive once a real user defines a checkbox tracker. Until then, the checkbox path is dead code in renderer + Hashi (Hashi has `handleCheckbox` but no instruction sets to feed it). |
-| F-41 | Multi-topic detection for atomic-note-worthy items | 2026-05-01 voice-transcript review (Apothekerpfädchen 11 case) | **Should — PRD draft 2026-05-07** | **Status: XDD 016 PRD drafted** at `docs/XDD/specs/016-multi-topic-atomic-notes/` 2026-05-07. SDD + plan deferred — see PRD §8 for OQ1–OQ8 still requiring stakeholder input (notably OQ4 daily-log emission semantics + OQ7 length-precheck token budget). Spec gap (Tier-3 atomic-note classification): when an inbox item carries multiple distinct concepts that each pass the worthiness gate, the analyst today emits at most ONE `create_atomic_note` action. Concrete failure (2026-05-01 /inbox run): 183-sec voice memo combined a medical-appointment thread (daily-log relevant) with a Tomo/PKM-architecture thread (atomic-note worthy); analyst emitted only `update_daily` — PKM thread lost. Desired: detect topical splits, emit one `create_atomic_note` per substantive concept. Architecture impact: new Step 7.5 topical-segmentation in inbox-analyst; cardinality widens N=1→N≥1 in suggestions-reducer / suggestion-parser / instruction-render; FAN resolve subflow handles multi-thread. Cost-budget constraint: ≤ 10% increase on Pass-1 main-thread cost. **Workaround until shipped:** user ticks Force Atomic Note (XDD 012) — but FAN currently produces only one atomic per item, so multi-topic items still lose threads. |
-| F-42 | Suggestions document UX pass — checkboxes, hierarchy, layout | 2026-05-06 brainstorm | Should | The suggestions doc emitted by `tomo/scripts/suggestions-reducer.py` is the user's primary review surface during /inbox Pass 1. Today it is functional but hard to scan: checkbox hierarchy is unclear (Accept vs per-action vs Force Atomic Note vs MOC-creation toggles), per-item blocks lack visual breaks, related items don't visually cluster, and the Proposed-MOC blocks compete with per-item Accept blocks for attention. Concrete pain points already captured in F-31 (blank line after `- [ ] Accept`). Trigger for picking this up: **after MOC-creation skill (F-34/F-35) plus 2-3 of the new Obsidian-power skills (see brainstorm 2026-05-06) are live and we have real-volume experience with the doc.** Premature polish risks reworking the layout against the wrong feature set. Touch points: `tomo/scripts/suggestions-reducer.py` rendering, `tomo/dot_claude/agents/inbox-analyst.md` action emission shape (if structural changes are needed), `tomo/scripts/suggestion-parser.py` to keep parsing in lockstep. Should be its own XDD spec when picked up — design pass first (mockups in plain markdown), then implement. **Branch name when picked up:** `feat/suggestions-ux-pass`. Roadmap position: track #5 in `roadmap-obsidian-power.md`. |
-| F-43 | MOC-creation skill — proactive MOC propose / create outside inbox | 2026-05-06 Obsidian-power brainstorm | **🔶 Implemented, launch blocked-by F-47** | **Status: Implemented** at `docs/XDD/specs/013-moc-creation-skill/` (feat/013-phase-4). Six input modes, squelch lifecycle, Hashi 0.2.0 destination-collision guard. Evolution log: `docs/evolution/2026-05/2026-05-09_F-43-moc-creation-skill.md`. Live-vault validation **paused 2026-05-20** after T6.5/T6.5.5 fixes (agent-side topic extraction + kado-write transport — see spec README decision log). Acceptance-flow can't proceed without unified file-discovery model → see F-47 / spec 014. Resume T6.2 + T6.4 after F-47 P1+P2 ship. Will supersede F-13 (`/scan-mocs`). |
-| F-44 | Knowledge-garden audit skill — orphans, dead links, broken `up:`, stale MOCs | 2026-05-06 Obsidian-power brainstorm | Should | Periodic vault-health scan, output as a review document via the existing 2-pass model. Detects: (a) orphaned notes (no incoming/outgoing wikilinks), (b) dead wikilinks (target file doesn't exist — overlaps with `placeholder_mocs[]` from F-35 but extends beyond MOCs), (c) broken hierarchy (`up::` points to non-existent or non-MOC), (d) duplicate stems / near-duplicate titles, (e) stale MOCs (no children added in >N months — N from config). Builds on F-13 (`/scan-mocs`) and F-20 (orphan detection script — currently a phase-4 stub at `cache-builder.py`). Output: a curated review document the user steps through, applying fixes via Hashi. Reference-skill optional: `json-canvas` if visual orphan-cluster maps are useful. Touch points: new `garden-audit.py`, new agent `garden-auditor.md`, extension of `cache-builder.py` to populate orphan/dead-link indices. Roadmap position: track #2 in `roadmap-obsidian-power.md`. Depends on F-43 (MOC concept must be solid first). **Unblocked by F-43 completion (2026-05-09).** |
-| F-45 | Weekly / monthly review skill — periodic synthesis from daily notes | 2026-05-06 Obsidian-power brainstorm | Should | Roll-up across the past N daily notes (week / month), surfacing: completed work, open threads, MOCs that gained content, stale tasks, recurring themes. Output: a periodic note (`YYYY-Wnn.md` weekly, `YYYY-MM.md` monthly) following the existing daily-note pipeline. Hard prereq: F-02 (periodic notes infrastructure beyond daily). Soft prereq: F-43 (MOC-creation, so the reviewer can reference well-structured MOCs) and F-44 (garden-audit, so link integrity is reliable). LLM does synthesis (not deterministic), but vault-config defines period boundaries, sections, and tracker roll-up rules. Touch points: new agent `periodic-reviewer.md`, extension of `instruction-render.py` for periodic-note templates, vault-config schema `periodic_notes.{weekly,monthly}` mirroring the existing `daily_notes` shape. Roadmap position: track #3 in `roadmap-obsidian-power.md`. **Unblocked by F-43 completion (2026-05-09).** |
-| F-46 | Tag-audit skill — taxonomy normalisation against `vault-config.tags.prefixes` | 2026-05-06 Obsidian-power brainstorm | Could | Vault-wide tag-hygiene scan: detect inconsistencies (`langchain` vs `LangChain`), hierarchy violations (depth beyond declared), unused declared tags, heavily-used undeclared tags. Inspired by `obsidian-ops-team::tag-agent` but adapted to `vault-config.yaml::tags.prefixes` (which is already the SSoT — see `backlog.md::Deliberate Design Decisions`). Output: review document via 2-pass model with proposed renames + frontmatter updates. **Important:** the inbox-analyst already respects `tags.prefixes` end-to-end, so this is purely retroactive cleanup of pre-Tomo content — lower urgency than F-43/F-44/F-45. Touch points: new `tag-audit.py`, new agent `tag-auditor.md`, possibly an extension to `vault-config.yaml` for canonical-name overrides (`canonical: { langchain: LangChain, ... }`). Roadmap position: track #4 in `roadmap-obsidian-power.md`. **Unblocked by F-43 completion (2026-05-09).** |
-| F-47 | Tomo lifecycle state — unified frontmatter block + byFrontmatter discovery for all Tomo-produced docs | 2026-05-20 F-43 T6.2 live-validation findings | **✅ Shipped 2026-05-21 (all 6 phases; operator-deferred live validation pending)** | **Status: XDD 017 COMPLETE.** All 6 phases shipped on `feat/017-tomo-lifecycle-tags` (2026-05-21). 300 unit + integration tests passing. Phase 1 foundation (state-machine, schema, KadoClient frontmatter API), Phase 2 producers (5 renderers + mark-captured rewrite eliminating regex-YAML edits), Phase 3 consumer cut-over (byFrontmatter discovery with 3+1 strict-equality calls per Kado capability, sequential state-promoter, legacy state-init.py removed), Phase 4 UX paths (--recover, drift hint, transcription stop-gate, parallel-instructions warning), Phase 5 MOC-consumption (parser MOC-branch dispatch + bundled actions + squelch persistence), Phase 6 cross-repo (Hashi schema handoff filed in `_outbox/for-hashi/`, Kokoro ADR draft in `_outbox/for-kokoro/`, memory + sibling-spec READMEs updated). Operator-deferred: Privat-Test reset (T3.5), F-43 launch gate (T5.4), token-cost measurement (T6.3 — **instrumentation + tooling shipped as permanent observability, commit `4849545`; first empirical Scenario A/B run still deferred**), full PRD AC E2E (T6.4) — procedures documented in `docs/evolution/2026-05/2026-05-21_F-47-*.md`. **Unblocks**: F-43 T6.2/T6.4 (parser side done), F-44/F-45/F-46 (now have schema to emit). PRD AC-2.1 amended to v1.3 reflecting Kado's strict-equality byFrontmatter (no wildcard) — 4 byFrontmatter calls instead of 1, spirit preserved. **Ongoing observability**: `scripts/measure-f47-token-cost.py --session-latest` re-runnable to detect cost regressions on vault scale, doc-type additions, renderer payload changes. PRD §7 budgets are the regression boundary, not a one-shot acceptance gate. |
-| F-48 | Incremental-discovery cache — `filter.modifiedAfter` per command/query | 2026-05-21 F-47 PRD v1.1 discussion (deferred from OQ6) | Should | After F-47 ships, large-vault scan commands (`/moc-propose`, F-44 garden-audit, F-45 weekly-review, F-46 tag-audit) repeat-runs can narrow to "only notes modified since last invocation" via Kado 0.11.0's `filter.modifiedAfter`. Sketch: `tomo-instance/state/discovery-cache.json` keyed by command + scope-affecting args (e.g. `moc-propose:tag:topic/knowledge/lyt → { last_run_ms, run_id }`). Default mode = incremental with banner "Looking at notes modified since YYYY-MM-DD"; `--full-vault` flag forces full scan and refreshes cache. SoT principle preserved (cache is a hint, worst case = unnecessary full scan). **Hard prereq for F-45** (weekly-review is inherently time-windowed). **Soft prereq for F-44/F-46** (they get cheaper repeat-runs). Touch points: new `tomo/scripts/lib/discovery_cache.py`, integration with each scan command, `--full-vault` flag in command parsers, cache-key derivation rules. **Design questions for spec time**: (a) cache invalidation on vault reorgs (renames/moves — does mtime catch them?), (b) auto-prompt for full scan when `last_run_ms` is very old, (c) interaction with F-43 squelch (already persists user rejections separately). |
-| F-49 | ~~`instruction-render.py` `resolve_stem_to_path`/`path_exists` latent bug~~ | 2026-05-21 F-47 Phase 2 T2.3 implementation | ~~Could~~ **✅ Fixed** | **Fixed 2026-05-26** (commit `f1600e5`, code review C1). Both methods added to `KadoClient`: `resolve_stem_to_path` wraps `search_by_name(exact=True, limit=1)`; `path_exists` wraps `read_frontmatter` with `KadoNotFoundError` catch. |
-| F-50 | A2.5a stop-gate violates AC-5b.4 — exits unconditionally when MEDIA_COUNT > 0 | 2026-05-21 F-47 first live-run on Privat-Test | **🟡 Branch (i) shipped 2026-05-21 (orchestrator v0.10.2); branch (iii) still Should** | **Status: partial.** Branch (i) — when `transcribed == 0` (all media already have sibling .md from prior run), orchestrator now continues to A2.5b instead of stop-gate exit. Unblocks the common "same .m4a sits in inbox alongside transcripts" workflow (assets/ workaround no longer needed; .m4a can stay top-level for Hashi visibility). Branch (iii) still deferred — when `transcribed > 0` AND untagged manual .md also exist, manual .md are still deferred to next run (suboptimal but not blocking). **Original problem**: `inbox-orchestrator.md` v0.10.1 A2.5a step exited 0 whenever any media file was in the inbox, even if (a) voice-transcriber reported `transcribed=0`, or (b) untagged manual `.md` notes also existed. PRD AC-5b.4 explicitly says: "Given media files AND untagged manual `.md` notes both exist in inbox on the same run, When `/inbox` runs, Then transcription completes for media AND Pass-1 runs for the existing manual `.md` notes. Only the **newly produced transcripts** are deferred to the next run; existing notes are not gated by transcription." **Proper fix** (branches): (i) `==0` → continue to A2.5b silently (**shipped 0.10.2**); (ii) `>0` AND no other untagged manual .md exist → emit stop-gate message + exit (current behaviour for transcribed>0); (iii) `>0` AND manual .md exist → continue to A2.5b but build a per-run skip-list of newly-transcribed stems (need to flow into A2.5c/A2.5e/Phase B's newSources filter). Touch points for (iii): `inbox-orchestrator.md` A2.5a (skip-list emission), `inbox-discovery.py` (accept `--exclude-stems` flag OR orchestrator filters newSources post-discovery), tests for the three branches. SDD §Implementation Examples §Two-run gate (Feature 5b) needs a concrete walkthrough of the AC-5b.4 path. **First surfaced when**: 2026-05-21 manual /inbox run on Privat-Test got stuck in stop-gate loop with .m4a + their transcripts both in inbox. |
-| F-51 | Phase 0b stale-state detection — vault-consistency check instead of trust-the-jsonl | 2026-05-21 F-47 first live-run on Privat-Test | Should | `inbox-orchestrator.md` Phase 0b currently checks ONLY `tomo-tmp/inbox-state.jsonl` existence + status counts. It does NOT validate that the state file is consistent with the actual vault. Concrete failure mode (2026-05-21): May-1 state.jsonl said "20 items done", but the matching suggestions doc was deleted from the vault months ago — orchestrator improvised an off-spec "Resume vs Fresh" question that maps to no documented flow. Per [[feedback_vault_sot_design_for_corruption]] memory: vault is SoT, design for it to go wrong. **Proper detection**: before offering Resume, the orchestrator should run a vault-consistency check — (a) extract the `run_id` from state.jsonl, (b) byFrontmatter-search the vault for `tomo.source_suggestions=tomo-tmp/<run_id>/*` OR for suggestions docs with that run_id, (c) if vault has no matching artefacts AND state.jsonl says "all done" → the state is ORPHANED, not Resumable. **New options** (replacing today's Resume/Fresh/Inspect): (1) `Archive + Fresh` — recommended when state is orphaned; moves `tomo-tmp/` to `tomo-tmp/archive/<old_run_id>/` and continues to Phase A normally. (2) `Resume` — only offered when vault artefacts match state.jsonl. (3) `Inspect` — print the consistency report (state vs vault). (4) `Force-Resume` — escape hatch when operator knows better. **Bonus**: optionally surface "state age" (days since last update) — abandoned runs over N days get auto-archived with a single confirmation. Touch points: `inbox-orchestrator.md` Phase 0b (the bulk), new helper `scripts/state-consistency-check.py` that produces a structured report. Tests for orphan-detection + resume-still-valid cases. Relates to a broader [[feedback_vault_sot_design_for_corruption]] design principle — every discovery/sync path should have an explicit failback. |
-| F-52 | Voice-transcriber dispatch optimization — skip when prior summary indicates all media already transcribed | 2026-05-21 F-47 first live-run on Privat-Test | **✅ Shipped 2026-05-21 via `voice-precheck.py` (commit `602e5f4`)** | Shipped as `tomo/scripts/voice-precheck.py` v0.1.0 + orchestrator Phase 0a integration (orchestrator v0.10.3). Simpler than the original `last_seen` mtime-map proposal: a sibling-existence check via one Kado listDir. For each audio in inbox, compute `sanitize_stem(basename) + ".md"` and check membership against listDir's `.md` set. If `audio_count > 0 AND missing_count == 0`, skip dispatch and write inline summary `{"transcribed": 0, "skipped": N, "reason": "all-cached"}`. No mtime tracking, no cache-invalidation logic. The `:` → `-` filename sanitisation edge case is handled by the same `obsidian_filename.sanitize_stem` helper that `voice-transcribe.py` uses. Live validation pending operator's next `/inbox` run on Privat-Test. |
-| F-53 | Simplify `suggestion-parser.py` invocation — default paths in script, not in caller | 2026-05-21 instruction-builder declutter pass | Could | `instruction-builder.md` Step 2 currently does (i) save the discovered suggestions doc to a hardcoded path `tomo-tmp/suggestions.md`, (ii) save the companion to `tomo-tmp/suggestions-fan.md` if present, then (iii) explicitly pass these hardcoded paths back to `suggestion-parser.py` via `--file` and `--fan-resolve-file`. Marcus noted: if the paths are hardcoded, the script should default to them and auto-detect the fan companion. Two possible refactors: **(a) Script defaults** — make `--file` default to `tomo-tmp/suggestions.md`, auto-check for `tomo-tmp/suggestions-fan.md` existence and apply `--fan-resolve-file` if found. Orchestrator step 3 becomes a no-arg call. **(b) Fully in-script** — push the kado-search/kado-read + Write tmpfile into the script itself, so instruction-builder Step 2 collapses to a single `python3 scripts/suggestion-parser.py > tomo-tmp/parsed-suggestions.json` invocation. (b) is the bigger refactor — requires the script to grow a Kado dependency. Touch points: `suggestion-parser.py` (defaults + optional Kado integration), `instruction-builder.md` Step 2 (collapse), `inbox-orchestrator.md` if it has analogous logic. Recommend (a) first; (b) only if reuse opportunities surface elsewhere. |
-| F-55 | Make pipeline scripts profile-agnostic — pull markers (up::, related::), MOC name suffix, and conventions from profile config | 2026-05-27 018 MOC-synthesize live testing | Should | instruction-render.py, moc-discovery.py, suggestion-parser.py, and emit_up_preservation_actions all hardcode LYT dataview markers (`up::`, `related::`) and Obsidian conventions. These should come from the profile YAML (e.g. `profile.markers.parent: "up::"`, `profile.markers.related: "related::"`) via shared-ctx so non-LYT profiles can use different field names. **Also includes MOC naming convention:** user convention is `"Topic (MOC)"` but no `map_note.name_suffix` exists in the profile. Both moc-discovery (cluster title) and inbox-analyst (proposed MOC name) need to apply the suffix. Quick-fix hardcoded `" (MOC)"` suffix shipped in 018 as interim; F-55 makes it profile-driven. Touch points: shared-ctx-builder (expose markers + name_suffix), instruction-render (parameterise `_make_add_rel`), moc-discovery (cluster title + suffix), suggestion-parser (marker detection), suggestions-reducer (MOC proposal title rendering). Not urgent — only the miyo profile exists today. |
-| F-54 | Re-evaluate inbox-orchestrator dispatch-vs-impersonation given observed nested-dispatch behaviour | 2026-05-21 instruction-builder declutter pass | **🟡 Staged 2026-05-22 — awaiting live test (deferred until file-by-file review sweep complete)** | **Status: staged, not tested.** Commits `2d92ff8` (orchestrator model opus→sonnet, effort xhigh→medium) and `d927b41` (/inbox.md flip from impersonation to dispatch for Pass-1) are on `feat/017-tomo-lifecycle-tags`. Live test deferred per Marcus's request — we want a clean file baseline (all review TODOs processed) before running `/inbox` to avoid conflating "live-test result" with "stale file state". On test success: F-54 marked shipped; XDD 018 Phase 2 (orchestrator → /inbox merge) becomes obsolete (no merge needed; orchestrator file IS the dispatched subagent's spec). On test failure: `git revert d927b41` (B commit stays — sonnet is correct even when impersonated); update this entry with the concrete failure mode. **Original analysis**: The locked rule (`inbox.md` line 14: "**NEVER** dispatch `inbox-orchestrator` via the `Agent` / `Task` tool") rests on the assumption that subagents cannot reliably dispatch further subagents. But `instruction-builder` IS dispatched as a subagent, AND its Step 2.5 dispatches further `inbox-analyst` subagents — and this has been observed to work in practice. The Claude Code agent research (2026-05-21) reaffirmed "nested dispatch still forbidden" at the platform level, yet our own production code uses it. Either (a) the platform constraint is softer than documented (2-level nesting works, 3-level may not), or (b) we are riding on undocumented behaviour that may regress. **Test location**: `docs/XDD/specs/018-agent-architecture-cleanup/audit.md` §"Live test (deferred)". |
-| F-56 | Tracker wizard / detection should let the user deselect/ignore detected trackers | 2026-06-01 vault setup (`tomo-trackers-wizard`) | Should | During vault setup the auto-detected daily-note trackers land in `vault-config.yaml` under `trackers:` and the `tomo-trackers-wizard` walks each one for syntax/description/keywords — but there is **no way to deselect or ignore a tracker**. Both wizards exclude removal by design: `tomo-daily-log-wizard` punts tracker config to the trackers wizard, and `tomo-trackers-wizard` lists "Removing fields" as out of scope (its per-field **Skip** only leaves metadata blank — the tracker stays active and keeps getting proposed). The only current workaround is hand-deleting a field's `- name:` block from `trackers.daily_note_trackers.{today,yesterday,start_of_day}_fields[]` or `trackers.end_of_day_fields.fields[]`. Fix: add a per-field **Ignore** option to the trackers wizard (and/or a detection-time multi-select of which detected trackers to keep) that removes the field from config — i.e. relax the wizard's "no removal" scope to allow explicit, user-driven deselection. Reported by Marcus mid-setup 2026-06-01. |
+| Milestone | Theme | Epics |
+|-----------|-------|-------|
+| **MVP-Polish** | Harden the core `/inbox` flow | #17 MOC Intelligence · #18 Inbox Analysis Quality · #19 Suggestions UX · #22 Orchestration Robustness · #24 Performance & Cost |
+| **Obsidian-Power** | Next-layer vault skills | #16 Obsidian-Power Skills · #20 Profile-Agnostic Pipeline · #21 Discovery/Cache Infra |
+| **Post-Launch** | Lifecycle & cross-repo | #23 Install & Lifecycle Tooling · #26 Hashi Executor |
+| **Tech-Debt** | Docs + refactors | #25 Documentation & Tech-Debt |
 
-### F-17 Detail: Callout Full-Line Matching (End-to-End)
+## Migrated items → GitHub (2026-06-03)
+
+Must/Should items are standalone issues; **☐ #N** means the item is a Could-checkbox inside epic #N.
+
+| backlog ID | GitHub | Disposition |
+|-----------|--------|-------------|
+| F-01 | **#26** | Must — Hashi executor epic (cross-repo, primary work in `miyo-tomo-hashi`) |
+| F-02 | ☐ #16 | Periodic-notes infra (config present, rendering open) |
+| F-04 | ☐ #23 | Profile switching post-install |
+| F-05 | ☐ #17 | Topic weighting in MOC matching |
+| F-07 | ☐ #20 | Configurable classification threshold |
+| F-09 | ☐ #21 | Incremental cache refresh |
+| F-10 | ☐ #22 | Automated applied-action detection |
+| F-12 | ☐ #18 | Atomic note sub-types (LYT) |
+| F-15 | ☐ #21 | Batch read / chunked search in Kado (external dep) |
+| F-16 | **#34** | Relationship markers from config |
+| F-17 | ☐ #17 | Callout full-line matching — *detail in Appendix A* |
+| F-18 | ☐ #21 | Frontmatter sampling script |
+| F-19 | ☐ #21 | Tag analysis script |
+| F-20 | ☐ #21 | Orphan detection script |
+| F-21 | **#36** | Cache staleness warning |
+| F-28 | ☐ #23 | Profile→vault-config frontmatter copy at install |
+| F-29 | ☐ #23 | Backup remainder (MVP shipped; nested-git warning + verification open) |
+| F-30 | **#29** | LLM-driven insertion-point resolution for link_to_moc |
+| F-32 | **#40** | Opus cost reduction (lever a shipped; measurement + b/c open) |
+| F-34 | **#27** | **Must** — MSP Condition B (Accumulation) — *detail in Appendix B* |
+| F-36 | **#28** | New-section proposal logic |
+| F-37 | ☐ #22 | Daily-log date-source re-audit |
+| F-39 | ☐ #20 | Profile-driven `daily_log.entry_time_format` |
+| F-41 | **#32** | Multi-topic detection (resolves the open half of context #19) |
+| F-42 | **#33** | Suggestions document UX pass |
+| F-44 | **#30** | Knowledge-garden audit skill |
+| F-45 | **#31** | Weekly/monthly review skill |
+| F-46 | ☐ #16 | Tag-audit skill |
+| F-48 | ☐ #16 | Incremental-discovery cache |
+| F-50 | ☐ #22 | Stop-gate branch (iii) (branches i shipped) |
+| F-51 | **#37** | Phase 0b stale-state detection |
+| F-55 | **#35** | Profile-agnostic pipeline scripts |
+| F-56 | **#38** | Tracker wizard deselect/ignore |
+| D-01 | ☐ #25 | Tier-1 agent table outdated |
+| D-02 | ☐ #25 | Broken cross-reference in template-system docs |
+| D-03 | ☐ #25 | Broken cross-reference in workflow specs |
+| D-04 | ☐ #25 | Daily-note detection config examples outdated |
+| D-05 | ☐ #25 | WHY docs missing for 6 skills |
+| D-06 | ☐ #25 | XDD reference docs stale post-018 |
+| D-07 | **#42** | `instruction-render.py` 1870 LOC refactor |
+| D-08 | ☐ #25 | `suggestion-parser.py` 1397 LOC refactor |
+| D-10 | **#41** | Documentation refresh (docs/ tree, coverage, screenshots) |
+| D-11 | **#39** | `cleanup-tomo.sh` multi-instance-aware |
+| D-12 | ☐ #23 | `move-tomo.sh` / instance-relocate helper |
+
+**Operational follow-ups (from `docs/ai/memory/context.md`), also migrated:**
+
+| context item | GitHub | Disposition |
+|--------------|--------|-------------|
+| #9 Audio classification post-transcription | → #33 | Resolved 2026-06-03: misclassification obsolete (audios partitioned out before dispatch); audio-as-deletable-source folded into the #33 source-model |
+| #16 Suggestions checkbox layout (audio pairs) | → #33 | Folded into #33 2026-06-03: root cause is the origin/source terminology split + 3-file (m4a/transcript/note) ambiguity |
+| Pass-2 happy-path `run-pass2.sh` | ☐ #24 | perf |
+| Pass-1 token audit | ☐ #24 | perf |
+
+## Backburner — Templates & Concepts (not migrated, stays here)
+
+Deferred-by-nature Could items kept in the backlog as an idea store; promote to a GitHub issue when one becomes relevant.
+
+| ID | Item | Priority | Notes |
+|----|------|----------|-------|
+| F-03 | Templater rendering by Tomo | Could | Eliminate user's manual Templater step; currently parked. Tomo resolves `{{tokens}}`; Templater syntax passes through unchanged. |
+| F-14 | Additional PKM concepts (resource, reference, log, dashboard) | Could | Deferred until workflows require them. MVP concept set: inbox, atomic_note, map_note, calendar, project, area, source, template, asset. |
+| F-22 | Document splitting for large batches | Could | Soft limit 30 items; no splitting logic. Batches are typically <10. |
+| F-23 | Archive subdirectory for processed items | Could | Optional move to `+/archive/YYYY-MM/`. Tags-only suffices for MVP. |
+| F-24 | Delete auxiliary files after cleanup | Could | Rendered notes/diffs stay in inbox after cleanup. Safer to leave for now. |
+| F-25 | Inbox-note template definition | Should* | Tomo has atomic-note templates only; inbox-note structure undefined (user's inbox is zettelkasten-lean). *Nominally Should but deferred by nature — promote to an issue if a feature needs it. |
+
+## Done (historical record)
+
+| ID | Item | Closed | Evidence |
+|----|------|--------|----------|
+| F-08 | Configurable MOC proposal minimum | 2026-06-03 | `MocProposalConfig.min_notes` config-driven (shared-ctx-builder.py:79-95) |
+| F-11 | Callout-based tracker syntax | 2026-06-03 | `callout_body` in `TRACKER_SYNTAXES` (vault-config-writer.py:401); title-matching → F-17 |
+| F-13 | Standalone MOC density scan | 2026-06-03 | Superseded by F-43 `/moc-propose` (no `/scan-mocs` needed) |
+| F-26 | Voice memo transcription | 2026-04-21 | faster-whisper, XDD 009 (commits c7c9688…5d6aed7) |
+| F-27 | Custom @-file picker | 2026-04-21 | `file-suggestion.sh` v0.5.0, spec 010 DONE |
+| F-33 | Force Atomic Note via follow-up doc | 2026-04-23 | XDD 012 (commit 08a1f22) |
+| F-35 | MSP Condition C — Placeholder MOC trigger | 2026-05-07 | Code-complete (commit 5b3a031); live-validation pending |
+| F-38 | "Create daily note first" checkbox | 2026-06-03 | Emitted at suggestions-reducer.py:369 |
+| F-43 | MOC-creation skill | 2026-05-21 | `/moc-propose` + `moc-architect` shipped; F-47 blocker cleared; live-validation pending |
+| F-47 | Tomo lifecycle state (frontmatter + byFrontmatter discovery) | 2026-05-21 | XDD 017 all 6 phases; 300 tests |
+| F-49 | `resolve_stem_to_path`/`path_exists` latent bug | 2026-05-26 | Both added to KadoClient (commit f1600e5) |
+| F-52 | Voice-transcriber dispatch optimization | 2026-05-21 | `voice-precheck.py` v0.1.0 (commit 602e5f4) |
+| F-54 | Re-evaluate orchestrator dispatch-vs-impersonation | 2026-05-22 | Dispatch flip tested + reverted (commit 4f2b810); impersonation retained |
+| D-09 | Shared `render-launcher` helper | 2026-05-30 | spec 020 Phase 1, `scripts/lib/render-launcher.sh` |
+| B-01 | suggestion-parser.py dropped log entries for re-seen dates | 2026-04-18 | commit a963d73 |
+| B-02 | instruction-render.py 404 on bare template stems | 2026-04-18 | commit a963d73 |
+
+## Deliberate Design Decisions (YAGNI — not gaps)
+
+Documented here so future sessions don't re-investigate these as "missing features".
+
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| No frontmatter baseline in profiles | Templates ARE the frontmatter definition. A separate profile baseline would duplicate the same info and risk drift. Users should define a template, not a schema. | 2026-04-19 |
+| No tag taxonomy baseline in profiles | Tag taxonomy is already fully defined in `vault-config.yaml` under `tags.prefixes` with `known_values`, `wildcard`, `required_for`. `tomo.suggestions.proposable_tag_prefixes` and `excluded_tag_prefixes` provide additional control. Profile baseline would only be seed data for first-session wizard — not needed since wizard scans vault. | 2026-04-19 |
+| Workflow documents use checkboxes, not tags | Frontmatter tags are not easily accessible in Obsidian. Suggestions use `[x] Approved` (global), instructions use `[x] Applied` (per action). Discovery by filename pattern. Source items still use tags (Tomo-managed). | 2026-04-19 |
+| Section placement via LLM, not deterministic scoring | Spec describes a scoring algorithm (H2 matching, depth bonus, callout avoidance). Implementation uses LLM judgment. Works correctly; deterministic scoring is future optimization if drift becomes a problem. | 2026-04-19 |
+| Classification matching via LLM, not weighted scoring | Spec describes weighted keyword scoring (exact=2, cache=1, substring=0.5). Implementation uses LLM keyword-overlap heuristic. Same reasoning as section placement. | 2026-04-19 |
+
+---
+
+## Appendix A — F-17 Detail: Callout Full-Line Matching (End-to-End)
+
+> Reference design notes for GitHub **#17** (Could checkbox F-17). Kept here because the 4-layer plan predates the migration.
 
 **Problem:** Same callout type can have different titles with different semantics:
 - `>[!EXAMPLE]- New Notes Today` → editable (user content)
@@ -99,10 +159,9 @@ include the title: `"blocks- Key Concepts": "Key Concepts section"` or a structu
 at Pass 2 to find the right callout — the information flows through the pipeline from
 cache → shared-ctx → subagent → reducer → instruction-builder.
 
-### F-34/F-35 Detail: Mental Squeeze Point Completion Plan
+## Appendix B — F-34/F-35 Detail: Mental Squeeze Point Completion Plan
 
-> Stashed 2026-04-23 for a later discussion. User priority for next Tomo
-> session — captured before switching focus to Hashi development.
+> Reference design notes for GitHub **#27** (F-34) and the shipped **F-35**. F-35 is code-complete; F-34 still needs the architecture decision below.
 
 **Context.** Spec defines four MOC-creation triggers (Tier-3 New MOC
 Proposal §2):
@@ -111,14 +170,10 @@ Proposal §2):
   (`topic_clusters` dict line 507, loop lines 594-606, render line 632+).
   Default threshold = 1 (every `needs_new_moc` surfaces).
 - **B — Accumulation** (current item topics match 2+ existing notes
-  with no MOC link / `up::` absent). **Missing** — F-34.
+  with no MOC link / `up::` absent). **Missing** — F-34 (GH #27).
 - **C — Placeholder Match** (item topics match a `placeholder_mocs[]`
-  entry — a wikilink with no backing file). **Wired upstream, not
-  shipped to Phase-B** — F-35.
-- **D — `/scan-mocs` manual command.** YAGNI per spec; not in MVP.
-
-So today only A fires end-to-end. Completing the MSP feature for MVP
-means landing **B and C**.
+  entry — a wikilink with no backing file). **Shipped** — F-35 (commit 5b3a031).
+- **D — `/scan-mocs` manual command.** YAGNI per spec; superseded by F-43 `/moc-propose`.
 
 **Constraint.** Tomo is in stabilization mode (memory:
 `feedback_near_mvp_no_breakage.md`). All work below must be additive on
@@ -126,67 +181,31 @@ hot paths (`inbox-analyst`, `instruction-render`, `suggestions-reducer`,
 `shared-ctx-builder`). Every step gets a live-run validation against
 `Privat-Test/` before merge.
 
-**Recommended sequencing.**
+**F-34 architecture decision before any code.** Two viable options
+with very different cost/complexity:
 
-1. **F-35 first (cheap, lowest risk).** Two surgical changes:
-   - `tomo/scripts/shared-ctx-builder.py` — add `placeholder_mocs[]`
-     to the output envelope. Source already loaded from cache.
-   - `tomo/dot_claude/agents/inbox-analyst.md` Step 8 — add Condition C
-     trigger note: *if item topics match a `placeholder_mocs[]` entry,
-     set `needs_new_moc=true` with `proposed_moc_topic` = the
-     placeholder name*.
-   - Validation: live /inbox run with a known placeholder in the cache;
-     confirm a matching item produces a Proposed MOC suggestion that
-     resolves the dead link.
-   - Risk: subagent ignores fields it doesn't reference, so any
-     existing run that doesn't hit Condition C is byte-identical to
-     today.
+| Option | Where Condition B logic lives | Pass-1 cost impact | Implementation effort |
+|--------|-------------------------------|--------------------|-----------------------|
+| **(a)** Add `kado-search` to `inbox-analyst` tool list | Per-item, in subagent (Step 8) | Adds N searches per Pass-1 batch | LOW (tool list + Step 8 logic) |
+| **(b)** Pre-compute accumulation index in `shared-ctx-builder.py` | Once per run, in shared-ctx envelope | Single batch search at orchestration time | MEDIUM (new builder logic + index format) |
 
-2. **F-34 architecture decision before any code.** Two viable options
-   with very different cost/complexity:
+Tentative lean: **(b)** — keeps Phase-B subagent cost profile
+unchanged. Pass-1 main-thread cost is already high (#40 / F-32);
+per-item kado-search would amplify that. (b) also keeps the "no
+kado-search in subagent" invariant that XDD-009 / XDD-012 designs
+already rely on. Decide via AskUserQuestion at the start of the F-34
+session, not inferred.
 
-   | Option | Where Condition B logic lives | Pass-1 cost impact | Implementation effort |
-   |--------|-------------------------------|--------------------|-----------------------|
-   | **(a)** Add `kado-search` to `inbox-analyst` tool list | Per-item, in subagent (Step 8) | Adds N searches per Pass-1 batch | LOW (tool list + Step 8 logic) |
-   | **(b)** Pre-compute accumulation index in `shared-ctx-builder.py` | Once per run, in shared-ctx envelope | Single batch search at orchestration time | MEDIUM (new builder logic + index format) |
+**F-34 implementation behind the chosen architecture.** TDD: spec a
+fixture vault with a known accumulation cluster (e.g. 3 unclassified
+`boardgames`-related notes already in vault, plus a 4th in the
+inbox), write the trigger test, then implement. Validate the
+trigger fires AND the existing A trigger still works on its own
+path.
 
-   Tentative lean: **(b)** — keeps Phase-B subagent cost profile
-   unchanged. Pass-1 main-thread cost is already $26 per run (F-32);
-   per-item kado-search would amplify that. (b) also keeps the "no
-   kado-search in subagent" invariant that XDD-009 / XDD-012 designs
-   already rely on.
-
-   Decide via AskUserQuestion at the start of the F-34 session, not
-   inferred.
-
-3. **F-34 implementation behind the chosen architecture.** TDD: spec a
-   fixture vault with a known accumulation cluster (e.g. 3 unclassified
-   `boardgames`-related notes already in vault, plus a 4th in the
-   inbox), write the trigger test, then implement. Validate the
-   trigger fires AND the existing A trigger still works on its own
-   path.
-
-4. **F-36 only if F-34/F-35 surface a real need.** The "new section
-   when no existing fits" gap matters most when proposing a brand-new
-   MOC (no sections yet). Wait until F-34/F-35 land and live-runs hit
-   the case before specifying.
-
-**Deliberately deferred** (do not pull forward without evidence):
-- **F-37 daily-log re-audit** — only if a /inbox run produces a wrong
-  daily-log entry. Speculative cleanup risks regression.
-- **F-38 missing-DN checkbox** — verify-only first. If it works,
-  close. If broken, scope is small.
-- **D — `/scan-mocs`** — stays YAGNI per spec.
-
-**Ordering rationale.** F-35 first because it's effectively free risk
-and proves the shared-ctx-as-trigger-channel pattern that F-34 option
-(b) will reuse. If F-35 ships and works, F-34 (b) becomes the obvious
-shape. If F-35 surfaces unexpected friction, that's signal to revisit
-the architecture decision before committing to F-34.
-
-**Open questions for the discussion:**
-- For F-34 option (b), what's the index shape? Topic → list of stems?
-  Topic → count? Need to define what "match" means at lookup time
+**Open questions for the F-34 session:**
+- For option (b), what's the index shape? Topic → list of stems?
+  Topic → count? Define what "match" means at lookup time
   (string equality on normalised topic? substring? semantic?).
 - Should Condition B/C share the `needs_new_moc` field on
   `create_atomic_note` actions (current path), or get their own action
@@ -194,39 +213,3 @@ the architecture decision before committing to F-34.
 - Does the user want the suggestions doc to label *which* condition
   fired ("Proposed MOC — accumulation cluster" vs "— placeholder
   resolution"), or just emit the proposal uniformly?
-
-## Documentation Debt
-
-| ID | Item | Source | Priority | Notes |
-|----|------|--------|----------|-------|
-| D-01 | Tier 1 agent table outdated | reference/tier-1/pkm-intelligence-architecture.md §6 | Should | Still lists `suggestion-builder`; should reference orchestrator + subagent model (deviation noted but table not updated) |
-| D-02 | Broken cross-reference in template-system | reference/tier-2/components/template-system.md | Should | Links to `../../references/tomo-lyt-knowledge-model-spec.md#8-parking-lot` — file doesn't exist at that path |
-| D-03 | Broken cross-reference in workflow specs | reference/tier-2/workflows/inbox-processing.md, daily-note.md | Should | `> Related: [existing workflow doc](../../workflows/inbox-process.md)` — directory doesn't exist after migration |
-| D-04 | Daily-note detection config examples outdated | reference/tier-3/daily-note/daily-note-detection.md | Could | Config YAML examples marked `(future)` but some are now implemented via XDD-005 |
-| D-05 | WHY docs missing for 6 new skills | 2026-05-26 code review R11 | Should | force-atomic-handling, instructions-coverage, kado-discovery-patterns, routing-plan-consumer, suggestions-doc-format, tomo-lifecycle-states — no `docs/tomo/dot_claude/skills/` WHY docs |
-| D-06 | XDD reference docs stale post-018 | 2026-05-26 code review R13 | Should | tier-2/workflows/inbox-processing.md, tier-3/inbox/instruction-set-cleanup.md, tier-3/inbox/state-tag-lifecycle.md still describe vault-executor, tag-captured.py, old tag-based lifecycle. **Reinforced by spec 020 (2026-06-01):** its doc sweep aligned the *user-facing* docs to the `tomo.state` frontmatter model but deliberately left the tier-2/tier-3 architecture-reference `#MiYo-Tomo/<state>` residue in scope of this D-06 item (incl. `reference/tier-3/inbox/*`, `tier-2/components/universal-pkm-concepts.md`, `docs/instructions-json.md`). |
-| D-07 | instruction-render.py 1742 LOC — Constitution L2 | 2026-05-26 code review H4 | Should | Split into actions.py, md_render.py, resolve.py + CLI orchestrator. Deferred to dedicated refactoring PR. |
-| D-08 | suggestion-parser.py 1433 LOC — approaching L2 | 2026-05-26 code review M4 | Could | Extract moc_proposal_parser.py when file grows further. |
-| D-09 | ✅ DONE (spec 020, ADR-7) — Shared `render-launcher` helper | XDD 019 Phase 4 code review (2026-05-30) | Could | **Closed by spec 020 Phase 1:** `scripts/lib/render-launcher.sh` (atomic tmp→mv) now owns the launcher render and is sourced by both `install-tomo.sh` and `update-tomo.sh`; covered by `tests/test_render_launcher.py`. Original: the 5-substitution `begin-tomo.sh.template` sed pipeline was duplicated across install/update, risking an unrendered `{{...}}` if a placeholder was added to only one. |
-| D-10 | Documentation refresh — restructure `docs/` tree, expand coverage, add screenshots | 2026-05-31 spec 019 user-docs pass | Should | The user-facing `docs/` set (README, installation, setup, configuration, usage, troubleshooting) grew organically and needs a holistic pass: **(a) restructure** — revisit the page split + nav map; consider dedicated feature pages (Tomo Context, Voice transcription, the `@`-file picker) instead of threading each feature across setup/usage/configuration/troubleshooting. **(b) more docs** — fill gaps: per-workflow walkthroughs, a user-facing concepts/architecture primer, an FAQ, and a "what each component does" overview (Kado vs Tomo vs Hashi). **(c) screenshots/images** — add visual aids for the install flow, the Obsidian-side Hashi/Tomo Context setup, the `/ide` connect screen (already captured at `assets/ide-connect-screen.png`), and the suggestions-doc review surface; pin down an images convention (`docs/assets/` or `docs/images/`). Approach: design the information architecture first (the `tcs-helper:doc-product` skill can plan the tree + run a reader test), then migrate page-by-page to avoid breaking cross-links. Its own effort — should be scoped as a dedicated docs branch, not folded into a feature PR. Touch points: all of `docs/*.md`, `docs/README.md` nav map, new image directory. |
-| D-11 | `cleanup-tomo.sh` not multi-instance-aware | spec 020 Phase 5 validation (2026-06-01) | Should | `scripts/cleanup-tomo.sh` (still `# version: 0.1.0`) operates on `$REPO_ROOT/tomo-install.json` + `tomo-instance/`/`tomo-home/` and refuses paths outside the repo root. Post-spec-020 instances live at `<parent>/<name>/` outside the repo (default `~/MiYo/Tomo/<name>/`), so cleanup cannot target them; the docs' "Cleanup / Re-install" section was left unchanged because it would describe behaviour the script lacks. Fix: teach `cleanup-tomo.sh` the registry (`~/.tomo/instances.json`) + per-instance layout (resolve `<name>` → dir, deregister on remove), or pin it explicitly to the repo dev-instance only. (D-10 is the separate documentation-refresh item — kept distinct here to avoid an ID clash.) |
-| D-12 | No `move-tomo.sh` / instance-relocate helper | spec 020 Phase 5 live use (2026-06-01) | Could | ADR-1 calls an instance a "movable folder", but moving one requires hand-rewriting every baked absolute path: `tomo-install.json` (`instanceLocation`, `instancePath`, `launcherPath`, `homePath`), `begin-tomo.sh` (`INSTANCE_PATH` + `HOME_DIR` mounts), the `instance/.gitignore` NOTE, AND the registry entry's `path` — nothing automates it (demonstrated manually 2026-06-01 relocating `tomo-privat`). Fix: a `move-tomo.sh --instance <name> --to <new-parent>` (or `install-tomo.sh --relocate`) that `mv`s the folder, rewrites the four config path fields, re-renders the launcher via `render-launcher.sh` (ADR-7), and `registry_upsert`s the new path; refuse if a container for the instance is running. Pairs with D-11 (`cleanup-tomo.sh`) as the other multi-instance lifecycle-tooling gap left by spec 020. |
-
-## Deliberate Design Decisions (YAGNI — not gaps)
-
-Documented here so future sessions don't re-investigate these as "missing features".
-
-| Decision | Rationale | Date |
-|----------|-----------|------|
-| No frontmatter baseline in profiles | Templates ARE the frontmatter definition. A separate profile baseline would duplicate the same info and risk drift. Users should define a template, not a schema. | 2026-04-19 |
-| No tag taxonomy baseline in profiles | Tag taxonomy is already fully defined in `vault-config.yaml` under `tags.prefixes` with `known_values`, `wildcard`, `required_for`. `tomo.suggestions.proposable_tag_prefixes` and `excluded_tag_prefixes` provide additional control. Profile baseline would only be seed data for first-session wizard — not needed since wizard scans vault. | 2026-04-19 |
-| Workflow documents use checkboxes, not tags | Frontmatter tags are not easily accessible in Obsidian. Suggestions use `[x] Approved` (global), instructions use `[x] Applied` (per action). Discovery by filename pattern. Source items still use tags (Tomo-managed). | 2026-04-19 |
-| Section placement via LLM, not deterministic scoring | Spec describes a scoring algorithm (H2 matching, depth bonus, callout avoidance). Implementation uses LLM judgment. Works correctly; deterministic scoring is future optimization if drift becomes a problem. | 2026-04-19 |
-| Classification matching via LLM, not weighted scoring | Spec describes weighted keyword scoring (exact=2, cache=1, substring=0.5). Implementation uses LLM keyword-overlap heuristic. Same reasoning as section placement. | 2026-04-19 |
-
-## Known Issues
-
-| ID | Item | Source | Priority | Notes |
-|----|------|--------|----------|-------|
-| B-01 | suggestion-parser.py dropped log entries for re-seen dates | scripts/suggestion-parser.py | Fixed | Fixed 2026-04-18 (commit a963d73) |
-| B-02 | instruction-render.py 404 on bare template stems | scripts/instruction-render.py | Fixed | Fixed 2026-04-18 (commit a963d73) — resolves via kado search_by_name |

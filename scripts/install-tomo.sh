@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.5.1
+# version: 0.5.2
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -746,7 +746,7 @@ CALENDAR_DAILY_PATH=""
 if [ "$PROFILE" != "custom" ] && [ -f "$PROFILE_FILE" ]; then
     MAP_NOTE_TAG=$(yaml_list "$PROFILE_FILE" "map_note" "tags" | head -1)
     CALENDAR_DAILY_PATH=$(sed -n '/^  calendar:/,/^  [a-z]/p' "$PROFILE_FILE" 2>/dev/null \
-        | sed -n '/daily:/,/^ /p' | grep 'path:' | head -1 | sed 's/.*: *//' | tr -d '"'"'" | tr -d '{}' | sed 's/^ *//')
+        | sed -n '/daily:/,/^ /p' | grep 'path:' | head -1 | sed 's/.*: *//' | tr -d '"'"'" | tr -d '{}' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
 fi
 
 # ── Daily notes subfolder prompt ────────────────────────

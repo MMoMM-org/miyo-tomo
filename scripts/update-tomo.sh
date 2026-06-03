@@ -399,6 +399,13 @@ add_versioned \
     "rules/project-context.md" \
     "rules"
 
+# Output styles (system-prompt personas, e.g. tomo-companion)
+for f in "$TOMO_SOURCE/dot_claude/output-styles/"*.md; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    add_versioned "$f" "$INSTANCE_PATH/.claude/output-styles/$name" "output-styles/$name" "output-styles"
+done
+
 # Runtime scripts (Python + shell)
 for f in "$TOMO_SOURCE/scripts/"*.py; do
     [ -f "$f" ] || continue
@@ -559,6 +566,7 @@ print_section_plan "commands"        "Commands"
 print_section_plan "hooks"           "Hooks"
 print_section_plan "claude-scripts"  ".claude/scripts"
 print_section_plan "rules"           "Rules"
+print_section_plan "output-styles"   "Output styles"
 print_section_plan "runtime-scripts" "Runtime scripts"
 print_section_plan "retired"         "Retiring removed files"
 print_section_plan "profiles"        "Profiles"
@@ -834,6 +842,7 @@ execute_section "commands"        "Commands"
 execute_section "hooks"           "Hooks"
 execute_section "claude-scripts"  ".claude/scripts"
 execute_section "rules"           "Rules"
+execute_section "output-styles"   "Output styles"
 execute_section "runtime-scripts" "Runtime scripts"
 execute_section "retired"         "Retiring removed files"
 execute_section "profiles"        "Profiles"

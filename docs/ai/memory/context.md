@@ -4,6 +4,8 @@
 
 ## Open tasks from session 2026-05-01
 
+> **Migrated to GitHub 2026-06-03:** the operational/perf items below now live as GitHub issues — #9 → epic #18, #16 → epic #19, Pass-2/Pass-1 token work → epic #24, F-32 → #40. The verified mapping is in `docs/XDD/backlog.md`. Entries kept here for session-reset continuity; GitHub is the source of truth for status.
+
 Persisted here so they survive session resets. Move to backlog.md when long-term, mark resolved when done.
 
 ### Operational follow-ups (do soon)

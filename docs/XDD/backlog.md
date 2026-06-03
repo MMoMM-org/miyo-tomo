@@ -75,8 +75,8 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 
 | context item | GitHub | Disposition |
 |--------------|--------|-------------|
-| #9 Audio classification post-transcription | ☐ #18 | ⚠️ needs-decision (likely obsolete architecture) |
-| #16 Suggestions checkbox layout (audio pairs) | ☐ #19 | ⚠️ needs-decision (visual review) |
+| #9 Audio classification post-transcription | → #33 | Resolved 2026-06-03: misclassification obsolete (audios partitioned out before dispatch); audio-as-deletable-source folded into the #33 source-model |
+| #16 Suggestions checkbox layout (audio pairs) | → #33 | Folded into #33 2026-06-03: root cause is the origin/source terminology split + 3-file (m4a/transcript/note) ambiguity |
 | Pass-2 happy-path `run-pass2.sh` | ☐ #24 | perf |
 | Pass-1 token audit | ☐ #24 | perf |
 

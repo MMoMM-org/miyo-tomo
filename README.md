@@ -15,6 +15,7 @@ Tomo runs inside an isolated Docker container. All vault access goes through Kad
 
 - **`/inbox`** — 2-pass inbox processing: analyses files, proposes actions, generates detailed instructions
 - **`/explore-vault`** — Discovers vault structure, MOC hierarchy, frontmatter patterns, tag taxonomy
+- **`/hashi-hook`** — Guided authoring of a [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) `before`/`after` hook: drafts the `.cjs`, risk-classifies it, and delivers it plus a handoff doc to your inbox for you to review and place in `.tomo-hashi/hooks/`
 - **Voice memo transcription (optional, local)** — drop audio files (`.m4a`, `.mp3`, `.wav`, …) into the inbox and `/inbox` transcribes them locally via [faster-whisper](https://github.com/SYSTRAN/faster-whisper) before Pass 1. Opt-in via the install wizard; models stay on your machine, no cloud round-trips
 - **IDE Bridge (optional, local)** — gives Claude Code inside the container live editor context from Obsidian (active file, selection, cursor) via the [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) plugin. Opt-in via the install/update wizard; a `socat` proxy forwards a container-localhost port to the host — no exposed ports, host-only (`127.0.0.1`), and vault content still flows solely through Kado
 - Framework-agnostic — supports LYT, PARA, and custom PKM frameworks via profiles
@@ -161,6 +162,7 @@ miyo-tomo/
 | `/explore-vault` | Scan vault and build discovery cache |
 | `/tomo-setup` | Post-install wizard (vault discovery, user rules, templates, trackers, daily log). Sub-sections: `rules`, `templates`, `trackers`, `daily-log`. |
 | `/moc-propose` | Propose a new MOC for a topic, folder, classification, or whole-vault scan. |
+| `/hashi-hook` | Author a [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) `before`/`after` hook; risk-classifies the generated code and delivers it plus a handoff doc to the inbox. |
 | `/tomo-help` | Context-aware help inside the session. Pass a topic keyword (e.g. `inbox`, `kado`, `docker`, `login`) or run with no argument for a topic menu. |
 
 ## `@` File Picker
@@ -198,7 +200,7 @@ extra tool call per pick.
 - **Kouzou** (構造) — Claude Code infrastructure (private)
 - **[Kado](https://github.com/MMoMM-org/miyo-kado)** (門) — MCP server for Obsidian vault access
 - **Tomo** (友) — AI workflows (this repo)
-- **Tomo Hashi** (友橋) — Obsidian plugin that reads `instructions.json` and executes actions in the vault (post-MVP; replaces the "Seigyo" placeholder in earlier specs). Consumer contract: [`docs/instructions-json.md`](docs/instructions-json.md).
+- **Tomo Hashi** (友橋) — Obsidian plugin that reads `instructions.json` and executes actions in the vault (post-MVP; replaces the "Seigyo" placeholder in earlier specs). Consumer contract: [`docs/instructions-json.md`](docs/instructions-json.md). Tomo can scaffold Hashi's `before`/`after` hooks for you via `/hashi-hook`.
 
 ## License
 

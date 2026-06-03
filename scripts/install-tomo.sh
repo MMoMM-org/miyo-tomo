@@ -1187,6 +1187,7 @@ mkdir -p "$INSTANCE_PATH/.claude/skills"
 mkdir -p "$INSTANCE_PATH/.claude/commands"
 mkdir -p "$INSTANCE_PATH/.claude/rules"
 mkdir -p "$INSTANCE_PATH/.claude/hooks"
+mkdir -p "$INSTANCE_PATH/.claude/output-styles"
 mkdir -p "$INSTANCE_PATH/config"
 mkdir -p "$INSTANCE_PATH/config/user-rules"
 mkdir -p "$INSTANCE_PATH/scripts"
@@ -1214,6 +1215,12 @@ print_ok "commands"
 # Rules (project-context only — templates are rendered separately)
 cp "$TOMO_SOURCE/dot_claude/rules/project-context.md" "$INSTANCE_PATH/.claude/rules/"
 print_ok "rules/project-context.md"
+
+# Output styles (system-prompt personas, e.g. tomo-companion — selected via settings.json outputStyle)
+if [ -d "$TOMO_SOURCE/dot_claude/output-styles" ]; then
+    cp "$TOMO_SOURCE/dot_claude/output-styles/"*.md "$INSTANCE_PATH/.claude/output-styles/"
+    print_ok "output-styles"
+fi
 
 # Hooks
 cp "$TOMO_SOURCE/dot_claude/hooks/"*.sh "$INSTANCE_PATH/.claude/hooks/"

@@ -20,6 +20,17 @@ When N implementers run in parallel on the same branch and each touches differen
 
 Confirmed during F-43 Phase 4 parallel implementation 2026-05-08 (T4.1 + T4.2 + T4.3 in flight simultaneously).
 
+<!-- 2026-06-03 -->
+
+## A new `dot_claude/` subdir must be wired in BOTH install-tomo.sh AND update-tomo.sh
+
+Both installers sync an **explicit directory allowlist** — there is no generic "copy everything under `dot_claude/`" step. Adding a new runtime subdir (e.g. `output-styles/`) requires wiring it in *both* scripts or it silently never reaches the container:
+
+- `install-tomo.sh`: a `mkdir -p "$INSTANCE_PATH/.claude/<dir>"` in the mkdir block **plus** a guarded `cp "$TOMO_SOURCE/dot_claude/<dir>/"*.<ext>` in the copy block.
+- `update-tomo.sh`: an `add_versioned` loop in the pre-flight scan, **plus** a matching `print_section_plan "<section>"` **and** `execute_section "<section>"` entry. The synced file needs a `# version:` comment so the version comparator can track it.
+
+`update-tomo`'s `execute_one` already runs `ensure_dir "$(dirname "$dst")"`, so existing instances get the new directory created automatically on update — no separate mkdir needed there. Discovered adding the `tomo-companion` output style 2026-06-03 (PR #11).
+
 <!-- 2026-05-01 -->
 
 ## Subagent: impersonation vs Agent-tool dispatch (~60% token diff)

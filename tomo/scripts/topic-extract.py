@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """
 topic-extract.py — Extract topic keywords from note content.
 
@@ -296,6 +296,128 @@ def extract_topics(content: str, title: str | None = None) -> dict:
 
     return {
         "topics": topics,
+        "source_methods": source_methods,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Structured entry point (ADR-3) — consumes Kado listNotes fields directly
+# ---------------------------------------------------------------------------
+
+def _strip_link_target(target: str) -> str:
+    """Normalise a raw link target string to a plain note name.
+
+    Strips alias (|), path prefix (/), and anchors (# and ^) in that order —
+    mirrors extract_from_links() for the alias/path pass, then adds anchor
+    stripping required for structured targets (SDD Risks/Gotcha).
+    """
+    # Alias: "Note|Alias" → "Note"
+    target = target.split("|")[0].strip()
+    # Path prefix: "Folder/Sub/Note" → "Note"
+    target = target.split("/")[-1].strip()
+    # Heading anchor: "Note#heading" → "Note"
+    target = target.split("#")[0].strip()
+    # Block anchor: "Note^block" → "Note"
+    target = target.split("^")[0].strip()
+    return target
+
+
+def extract_topics_from_fields(
+    *,
+    title: str | None,
+    headings: list[dict],   # [{heading, level}]
+    links: list[dict],      # [{target, kind}] — filter kind=="link"
+    tags: list[str],
+) -> dict:
+    """Structured sibling of extract_topics(content). Maps:
+       title/H1 → method 1; level==2 headings → method 2;
+       link.target (kind=='link' only) → method 3 (alias/path/anchor-stripped);
+       '#'-stripped tags → method 4. Returns the same {topics, source_methods} shape.
+    """
+    # Method 1: H1 heading (level==1) takes priority over explicit title param.
+    method1: list[str] = []
+    h1_text: str | None = None
+    for h in headings:
+        if h.get("level") == 1:
+            h1_text = str(h.get("heading", "")).strip()
+            break
+    title_source = h1_text if h1_text else title
+    if title_source:
+        cleaned = clean_title(title_source)
+        segments = split_on_delimiters(cleaned)
+        seen_m1: set[str] = set()
+        for seg in segments:
+            normed = normalize(seg)
+            if normed and not is_stop_word(normed) and normed not in seen_m1:
+                method1.append(normed)
+                seen_m1.add(normed)
+            words = normed.split()
+            if len(words) > 1:
+                for word in words:
+                    if word and not is_stop_word(word) and word not in seen_m1:
+                        method1.append(word)
+                        seen_m1.add(word)
+
+    # Method 2: level==2 headings, skipping boilerplate.
+    method2: list[str] = []
+    for h in headings:
+        if h.get("level") != 2:
+            continue
+        heading_text = str(h.get("heading", "")).strip()
+        # Strip markdown formatting (mirrors extract_from_headings)
+        heading_text = re.sub(r"\*+|__?|`+|\[\[|\]\]", "", heading_text).strip()
+        if not heading_text:
+            continue
+        normed = normalize(heading_text)
+        if normed in BOILERPLATE_HEADINGS:
+            continue
+        if normed and normed not in method2:
+            method2.append(normed)
+
+    # Method 3: links filtered to kind=='link'; alias/path/anchor-stripped; capped MAX_LINKS.
+    method3: list[str] = []
+    seen_m3: set[str] = set()
+    for link in links:
+        if link.get("kind") != "link":
+            continue  # ADR-4: embeds excluded
+        raw_target = str(link.get("target", "")).strip()
+        if not raw_target:
+            continue
+        cleaned_target = _strip_link_target(raw_target)
+        if not cleaned_target:
+            continue
+        normed = normalize(cleaned_target)
+        if normed and normed not in seen_m3:
+            seen_m3.add(normed)
+            method3.append(normed)
+        if len(method3) >= MAX_LINKS:
+            break
+
+    # Method 4: tags — strip leading '#', drop structural prefixes, split on '/'.
+    method4: list[str] = []
+    for tag in tags:
+        bare = tag.lstrip("#")
+        if any(bare.startswith(prefix) for prefix in STRUCTURAL_TAG_PREFIXES):
+            continue
+        segments = bare.split("/")
+        if len(segments) >= 1:
+            leaf = normalize(segments[-1])
+            if leaf and leaf not in method4:
+                method4.append(leaf)
+        if len(segments) >= 2:
+            second_last = normalize(segments[-2])
+            if second_last and second_last not in method4:
+                method4.append(second_last)
+
+    source_methods = {
+        "title":    method1,
+        "headings": method2,
+        "links":    method3,
+        "tags":     method4,
+    }
+
+    return {
+        "topics": deduplicate_and_rank(source_methods),
         "source_methods": source_methods,
     }
 

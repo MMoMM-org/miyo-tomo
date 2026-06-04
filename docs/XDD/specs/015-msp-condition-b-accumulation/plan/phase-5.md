@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "Integration & live validation"
-status: pending
+status: completed
 ---
 
 # Phase 5: Integration & live validation
@@ -43,3 +43,19 @@ block plan completion on it.
 > **Plan completion note:** Phases 1–4 + T5.1 are fully implementable and verifiable now.
 > T5.2 is the only Kado-release-gated item — track it as the final live gate, not a blocker
 > for merging the implementation behind the additive guards (CON-1: no-index ⇒ today's behaviour).
+
+---
+
+## T5.2 status — DEFERRED (user-driven live validation)
+
+- **Kado gate: OPEN.** Per `_inbox/from-kado/2026-06-04_kado-to-tomo_listnotes-inline-fields-decision.md`,
+  `listNotes` and `kado-read operation="dataview-inline-field"` both already ship in the
+  current Kado; no Kado change is pending. The scanner's per-candidate `dataview-inline-field`
+  classification path (ADR-5 / A5) is confirmed correct and "locked" by that decision.
+- **Why deferred:** T5.2 is a live run of `/explore-vault` + `/inbox` against the real ~281-note
+  vault inside the Tomo Docker instance + cost comparison via `tomo-session-stats.py`. It must be
+  executed by the user in the runtime instance (host dev session cannot reach the vault/container).
+  Consistent with the "test scope = personal vault" pre-launch rule.
+- **Open question to watch during the live run:** SDD Risk §2 — whether `dataview-inline-field`
+  returns **callout-embedded** `up::`. If it does NOT, A5 needs a fallback and the SDD must record it.
+- **Status:** F-34 is **code-complete; live-validation pending** (mirrored in `docs/XDD/backlog.md`).

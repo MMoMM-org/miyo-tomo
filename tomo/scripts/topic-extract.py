@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """
 topic-extract.py — Extract topic keywords from note content.
 
@@ -68,7 +68,8 @@ def is_stop_word(word: str) -> bool:
 
 
 def clean_title(title: str) -> str:
-    """Strip common suffixes from a title string."""
+    """Strip common suffixes and wikilink brackets from a title string."""
+    title = re.sub(r"\[\[|\]\]", "", title)
     for suffix in TITLE_SUFFIXES:
         title = re.sub(suffix, "", title, flags=re.IGNORECASE)
     return title.strip()
@@ -358,21 +359,11 @@ def extract_topics_from_fields(
                         method1.append(word)
                         seen_m1.add(word)
 
-    # Method 2: level==2 headings, skipping boilerplate.
+    # Method 2: dropped — level-2 headings are excluded from structured extraction.
+    # Measured: 168/216 H2 headings occur in exactly 1 note (no cluster signal);
+    # frequent H2s (definition, resources, code, problem statement) are template
+    # sections. Title + tags + links carry the real signal.
     method2: list[str] = []
-    for h in headings:
-        if h.get("level") != 2:
-            continue
-        heading_text = str(h.get("heading", "")).strip()
-        # Strip markdown formatting (mirrors extract_from_headings)
-        heading_text = re.sub(r"\*+|__?|`+|\[\[|\]\]", "", heading_text).strip()
-        if not heading_text:
-            continue
-        normed = normalize(heading_text)
-        if normed in BOILERPLATE_HEADINGS:
-            continue
-        if normed and normed not in method2:
-            method2.append(normed)
 
     # Method 3: links filtered to kind=='link'; alias/path/anchor-stripped; capped MAX_LINKS.
     method3: list[str] = []

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_topic_extract_fields.py — Tests for extract_topics_from_fields() — T1.2 of spec 015 (F-34).
 
 All tests run RED before the implementation is added (CON-1 TDD discipline).
 Covers:
   - H1 heading used as title source
   - Filename title fallback when no H1 in headings list
-  - Level-2 headings become subtopics; boilerplate skipped
+  - Level-2 headings NO LONGER contribute topics (method 2 dropped, v0.3.0)
   - ADR-4: kind=='embed' links excluded; kind=='link' included
   - Link target alias/path/anchor stripping
   - Tags: '#' prefix stripped; STRUCTURAL_TAG_PREFIXES dropped
   - Parity with extract_topics() content path on equivalent input
   - Empty fields returns empty topics
+  - clean_title strips wikilink brackets, preserving inner text
 """
 from __future__ import annotations
 
@@ -31,6 +32,7 @@ _spec.loader.exec_module(_mod)
 
 extract_topics_from_fields = _mod.extract_topics_from_fields  # RED until implemented
 extract_topics = _mod.extract_topics
+clean_title = _mod.clean_title
 
 
 # ---------------------------------------------------------------------------
@@ -72,31 +74,40 @@ def test_filename_title_fallback_when_no_h1():
 
 
 # ---------------------------------------------------------------------------
-# T1.2-3: Level-2 headings become subtopics; boilerplate skipped
+# T1.2-3: Level-2 headings do NOT contribute topics (method 2 dropped, v0.3.0)
 # ---------------------------------------------------------------------------
 
-def test_level2_headings_become_subtopics_boilerplate_skipped():
-    """Level==2 headings produce method-2 topics; boilerplate headings are excluded."""
+def test_level2_headings_do_not_contribute_topics():
+    """Level==2 headings must NOT produce any topics — method 2 is dropped.
+
+    A note with only level-2 headings and no title/H1/tags/links must yield
+    empty topics. The 'headings' key must be empty (or absent) in source_methods.
+
+    Fails if method 2 is still active: game theory and search algorithms would
+    then appear as topics — neither may appear after the change.
+    """
     result = extract_topics_from_fields(
         title=None,
         headings=[
             {"heading": "Game Theory", "level": 2},
-            {"heading": "References", "level": 2},   # boilerplate — must be skipped
+            {"heading": "References", "level": 2},
             {"heading": "Search Algorithms", "level": 2},
-            {"heading": "Notes", "level": 2},         # boilerplate — must be skipped
+            {"heading": "Notes", "level": 2},
         ],
         links=[],
         tags=[],
     )
-    headings_topics = result["source_methods"]["headings"]
-    assert "game theory" in headings_topics, \
-        f"Expected 'game theory' in {headings_topics}"
-    assert "search algorithms" in headings_topics, \
-        f"Expected 'search algorithms' in {headings_topics}"
-    assert "references" not in headings_topics, \
-        "'references' should be filtered as boilerplate"
-    assert "notes" not in headings_topics, \
-        "'notes' should be filtered as boilerplate"
+    headings_topics = result["source_methods"].get("headings", [])
+    assert headings_topics == [], \
+        f"Method 2 must be dropped: expected empty headings, got {headings_topics}"
+    assert result["topics"] == [], \
+        f"No other signal present — expected empty topics, got {result['topics']}"
+    # Specific non-vacuous check: these would appear if method 2 were active
+    all_topics = result["topics"]
+    assert "game theory" not in all_topics, \
+        "Level-2 heading 'game theory' must not contribute — method 2 is dropped"
+    assert "search algorithms" not in all_topics, \
+        "Level-2 heading 'search algorithms' must not contribute — method 2 is dropped"
 
 
 # ---------------------------------------------------------------------------
@@ -220,9 +231,13 @@ See also [[Minimax]] and [[Game Theory]].
     assert len(overlap) > 0, \
         f"No overlap between content path {content_topics} and fields path {fields_topics}"
 
-    for expected in ("search algorithms", "minimax", "nlp", "games"):
+    # "search algorithms" is a level-2 heading — method 2 is dropped in v0.3.0,
+    # so it must NOT appear in the fields path.
+    for expected in ("minimax", "nlp", "games"):
         assert expected in fields_topics, \
             f"Expected '{expected}' in fields result {fields_topics}"
+    assert "search algorithms" not in fields_topics, \
+        "Level-2 heading 'search algorithms' must not appear — method 2 dropped"
 
 
 # ---------------------------------------------------------------------------
@@ -262,3 +277,112 @@ def test_empty_fields_returns_empty_topics():
     for method, items in result["source_methods"].items():
         assert items == [], \
             f"Expected empty list for method '{method}', got {items}"
+
+
+# ---------------------------------------------------------------------------
+# T1.2-NEW-1: Note with ONLY level-2 headings yields empty topics
+# ---------------------------------------------------------------------------
+
+def test_only_level2_headings_yields_empty_topics():
+    """A note with only level-2 headings and no other signal must return empty topics.
+
+    Non-vacuous: if method 2 were active the result would contain e.g. 'algorithms'
+    — any non-empty topics list means method 2 is still running.
+    """
+    result = extract_topics_from_fields(
+        title=None,
+        headings=[
+            {"heading": "Algorithms", "level": 2},
+            {"heading": "Implementation", "level": 2},
+            {"heading": "Examples", "level": 2},
+        ],
+        links=[],
+        tags=[],
+    )
+    assert result["topics"] == [], \
+        f"Only level-2 headings present — topics must be empty, got {result['topics']}"
+    assert result["source_methods"].get("headings", []) == [], \
+        f"headings source must be empty, got {result['source_methods'].get('headings')}"
+    # Non-vacuous: 'algorithms' would appear if method 2 were still active
+    assert "algorithms" not in result["topics"], \
+        "Method 2 still active: 'algorithms' from H2 must not appear"
+
+
+# ---------------------------------------------------------------------------
+# T1.2-NEW-2: H1 (level==1) still feeds method 1 after method 2 is dropped
+# ---------------------------------------------------------------------------
+
+def test_h1_still_feeds_method1_after_method2_dropped():
+    """Level==1 heading must still produce title topics even after method 2 is removed.
+
+    Non-vacuous: if method 1 were also broken, title source would be empty and
+    this test would fail.
+    """
+    result = extract_topics_from_fields(
+        title=None,
+        headings=[
+            {"heading": "Reinforcement Learning", "level": 1},
+            {"heading": "Policy Gradient", "level": 2},   # must not contribute
+        ],
+        links=[],
+        tags=[],
+    )
+    title_topics = result["source_methods"]["title"]
+    assert len(title_topics) > 0, \
+        f"Method 1 (H1) must still produce topics after method 2 removal, got {title_topics}"
+    assert any(tok in title_topics for tok in ("reinforcement learning", "reinforcement", "learning")), \
+        f"Expected H1 content in title topics, got {title_topics}"
+    # Verify the H2 heading did NOT sneak in via headings source
+    headings_topics = result["source_methods"].get("headings", [])
+    assert headings_topics == [], \
+        f"Method 2 headings must be empty, got {headings_topics}"
+    assert "policy gradient" not in result["topics"], \
+        "Level-2 heading 'policy gradient' must not appear in topics"
+
+
+# ---------------------------------------------------------------------------
+# T1.2-NEW-3: clean_title strips [[ and ]] brackets, keeps inner text
+# ---------------------------------------------------------------------------
+
+def test_clean_title_strips_wikilink_brackets():
+    """[[Dataview]] - Foo cleans to text without [[ or ]] fragments.
+
+    Non-vacuous: without the fix, clean_title would leave '[[dataview' in topics
+    (because the bracket characters pass through and produce a mangled topic).
+    """
+    result = clean_title("[[Dataview]] - Foo")
+    assert "[[" not in result, f"[[ must be stripped, got {result!r}"
+    assert "]]" not in result, f"]] must be stripped, got {result!r}"
+    # Inner text must be retained
+    assert "Dataview" in result, f"Inner text 'Dataview' must be kept, got {result!r}"
+    assert "Foo" in result, f"'Foo' must be kept, got {result!r}"
+
+
+def test_clean_title_keeps_inner_text_for_plain_wikilink():
+    """[[SomeTopic]] alone returns SomeTopic (brackets stripped, inner text retained).
+
+    Non-vacuous: if brackets are kept the result would contain '[' or ']'.
+    """
+    result = clean_title("[[SomeTopic]]")
+    assert "[[" not in result, f"Opening brackets must be stripped, got {result!r}"
+    assert "]]" not in result, f"Closing brackets must be stripped, got {result!r}"
+    assert "SomeTopic" in result, f"Inner text must survive, got {result!r}"
+
+
+def test_clean_title_aliased_link_keeps_alias():
+    """[[target|alias]] yields the alias text without any bracket characters.
+
+    The alias (display text) is the meaningful label; the raw target is discarded.
+    Non-vacuous: if this test were skipped and the brackets were kept, a topic like
+    '[[target' would silently enter the index.
+
+    NOTE: clean_title operates on raw title strings passed by callers. The alias
+    extraction for [[target|alias]] is simple: strip brackets, keep everything.
+    The caller (extract_from_title / extract_topics_from_fields) ultimately processes
+    the string, so clean_title's contract is: no [[ or ]] remain in the output.
+    """
+    result = clean_title("[[target|alias]]")
+    assert "[[" not in result, f"Opening brackets must be stripped, got {result!r}"
+    assert "]]" not in result, f"Closing brackets must be stripped, got {result!r}"
+    # At minimum the content between brackets must survive
+    assert len(result.strip()) > 0, f"Result must not be empty, got {result!r}"

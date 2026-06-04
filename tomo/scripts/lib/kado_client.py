@@ -1,4 +1,4 @@
-# version: 0.5.0
+# version: 0.6.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -151,6 +151,54 @@ class KadoClient:
             except json.JSONDecodeError:
                 pass  # leave as-is if not valid JSON
         return result
+
+    def read_inline_fields(self, path: str) -> dict:
+        """Read Dataview inline fields (``key:: value``) as a parsed dict.
+
+        Calls kado-read with operation=dataview-inline-field.
+
+        Parameters
+        ----------
+        path:
+            Vault-relative path of the note, e.g. ``"200 Notes/some-note.md"``.
+
+        Returns
+        -------
+        dict mapping inline field names to their values, e.g.
+        ``{"up": ["[[MOC Root]]"], "status": ["active"]}``.
+        An empty dict is returned when the note carries no inline fields.
+        """
+        return self._call_read("dataview-inline-field", path)
+
+    def list_notes(
+        self,
+        path: str,
+        *,
+        fields: list[str] | None = None,
+        depth: int | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """List notes under a vault path via kado-search operation=listNotes.
+
+        Returns richer per-note metadata than list_dir: links, headings, tags, etc.
+
+        Parameters
+        ----------
+        path:
+            Vault-relative folder path, e.g. ``"200 Notes/"``.
+        fields:
+            Optional subset of enrichment fields to request, e.g.
+            ``["links", "headings", "tags"]``.  When ``None`` (default) the
+            ``fields`` key is omitted from the request and Kado returns its
+            default field set.
+        depth:
+            Maximum recursion depth.  ``None`` (default) recurses without limit.
+        limit:
+            Page size for cursor-based pagination.  Defaults to 500.
+        """
+        return self._search_all(
+            "listNotes", path=path, depth=depth, limit=limit, fields=fields
+        )
 
     def list_dir(self, path: str = "/", *, depth: int = None, limit: int = 500) -> list:
         """List items under a vault path.
@@ -442,6 +490,7 @@ class KadoClient:
         path: str = None,
         depth: int = None,
         limit: int = 500,
+        fields: list[str] | None = None,
     ) -> list:
         """Call kado-search, following cursors until all pages are collected."""
         all_items: list = []
@@ -455,6 +504,8 @@ class KadoClient:
                 args["path"] = path
             if depth is not None:
                 args["depth"] = depth
+            if fields is not None:
+                args["fields"] = fields
             if cursor is not None:
                 args["cursor"] = cursor
 

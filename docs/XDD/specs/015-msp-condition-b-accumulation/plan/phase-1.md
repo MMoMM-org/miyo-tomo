@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Foundation — Kado client + structured topic extraction"
-status: pending
+status: completed
 ---
 
 # Phase 1: Foundation — Kado client + structured topic extraction

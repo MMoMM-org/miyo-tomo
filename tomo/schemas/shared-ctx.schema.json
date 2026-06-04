@@ -56,6 +56,14 @@
         "items": {"type": "string"}
       }
     },
+    "accumulation_index": {
+      "type": "object",
+      "description": "Accumulation clusters surfaced from the vault scan (F-34 MSP Condition B). Keys are normalised topic strings; values are sorted arrays of atomic-note stems that share that topic and have no up:: parent marker. Emitted only when non-empty.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1}
+      }
+    },
     "daily_notes": {
       "type": "object",
       "required": ["enabled", "path_pattern", "date_formats", "tracker_fields"],

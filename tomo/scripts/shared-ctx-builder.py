@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 0.9.0
+# version: 1.0.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -253,6 +253,25 @@ def build_placeholder_mocs(cache: dict) -> list[dict]:
             continue
         out.append({"target": target, "referenced_by": referenced_by})
     return out
+
+
+def build_accumulation_index(cache: dict) -> dict:
+    """Pass through cache.unclassified_topic_clusters unchanged.
+
+    Source: `atomic-note-indexer.py` writes `{topic: [stems]}` and
+    `cache-builder.py` lifts it onto the cache as
+    `cache.unclassified_topic_clusters`. Phase-B subagents (`inbox-analyst`)
+    use this dict as a Condition B trigger: when an item's topics match a
+    cluster key, propose creating a thematic MOC (MSP §2.B).
+
+    Drift guard: non-dict or absent → return {} silently. Older caches
+    written before F-34 lack the field — absence is fine downstream.
+    The schema treats `accumulation_index` as optional.
+    """
+    raw = cache.get("unclassified_topic_clusters")
+    if not isinstance(raw, dict):
+        return {}
+    return raw
 
 
 def build_tag_prefixes(cache: dict, vault_cfg: dict) -> list[dict]:
@@ -537,7 +556,7 @@ def _tracker_fields_iter(ctx: dict):
         yield tf, i
 
 
-def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
+def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int, int, int]:
     """Trim ctx to fit within max_bytes.
 
     Budget pass order:
@@ -546,12 +565,18 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
     3. Drop positive_keywords from each tracker.
     4. Drop auto-seeded keywords from each tracker (keeps name/type/section/syntax/description).
     5. Shorten mocs[].topics (existing behaviour).
+    6. Drop accumulation_index clusters tail-first: smallest member-count first,
+       alphabetical tiebreak (A4). Logs total/kept counts to stderr.
 
-    Never drops description itself. Returns (ctx, moc_topics_dropped).
+    Never drops description itself.
+    Returns (ctx, moc_topics_dropped, acc_clusters_total, acc_clusters_kept).
     """
     data = serialize(ctx)
+    acc_total = len(ctx.get("accumulation_index") or {})
+    acc_kept = acc_total
+
     if len(data) <= max_bytes:
-        return ctx, 0
+        return ctx, 0, acc_total, acc_kept
 
     # Pass 1: trim tracker descriptions to 200 chars
     for tf, i in _tracker_fields_iter(ctx):
@@ -560,7 +585,7 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
             tf[i]["description"] = desc[:200] + "\u2026"
     data = serialize(ctx)
     if len(data) <= max_bytes:
-        return ctx, 0
+        return ctx, 0, acc_total, acc_kept
 
     # Passes 2-4: drop keyword lists in order of importance
     for field_name in ("negative_keywords", "positive_keywords", "keywords"):
@@ -568,7 +593,7 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
             tf[i][field_name] = []
         data = serialize(ctx)
         if len(data) <= max_bytes:
-            return ctx, 0
+            return ctx, 0, acc_total, acc_kept
 
     # Pass 5: shorten mocs[].topics (original behaviour)
     dropped = 0
@@ -585,7 +610,33 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
         ctx["mocs"][victim]["topics"].pop()
         dropped += 1
         data = serialize(ctx)
-    return ctx, dropped
+
+    if len(data) <= max_bytes:
+        return ctx, dropped, acc_total, acc_kept
+
+    # Pass 6: drop accumulation_index clusters tail-first (A4).
+    # Among all clusters, drop the one with the fewest members; break ties
+    # by dropping the alphabetically LAST key (so alpha-earlier names survive).
+    acc = ctx.get("accumulation_index")
+    if acc:
+        while len(data) > max_bytes and acc:
+            # Find victim: smallest member-count, alphabetically last as tiebreak.
+            min_count = min(len(v) for v in acc.values())
+            smallest_keys = sorted(k for k in acc if len(acc[k]) == min_count)
+            victim_key = smallest_keys[-1]  # alpha-last within smallest group
+            del acc[victim_key]
+            acc_kept -= 1
+            data = serialize(ctx)
+        if not acc:
+            del ctx["accumulation_index"]
+        print(
+            f"[shared-ctx] accumulation trim: "
+            f"accumulation_clusters_total={acc_total} "
+            f"accumulation_clusters_kept={acc_kept}",
+            file=sys.stderr,
+        )
+
+    return ctx, dropped, acc_total, acc_kept
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -676,6 +727,7 @@ def main() -> int:
     classification_keywords = build_classification_keywords(profile)
     daily_notes = build_daily_notes(vault_cfg)
     placeholder_mocs = build_placeholder_mocs(cache)
+    accumulation_index = build_accumulation_index(cache)
 
     ctx: dict = {
         "schema_version": "1",
@@ -688,8 +740,10 @@ def main() -> int:
         ctx["placeholder_mocs"] = placeholder_mocs
     if daily_notes is not None:
         ctx["daily_notes"] = daily_notes
+    if accumulation_index:
+        ctx["accumulation_index"] = accumulation_index
 
-    ctx, dropped = enforce_budget(ctx, args.max_bytes)
+    ctx, dropped, acc_total, acc_kept = enforce_budget(ctx, args.max_bytes)
     data = serialize(ctx)
 
     ensure_parent(out_path)
@@ -704,6 +758,8 @@ def main() -> int:
         f"tag_prefixes_included={len(ctx['tag_prefixes'])} "
         f"classification_categories={len(ctx['classification_keywords'])} "
         f"placeholder_mocs={len(placeholder_mocs)} "
+        f"accumulation_clusters_total={acc_total} "
+        f"accumulation_clusters_kept={acc_kept} "
         f"daily_notes_enabled={bool(daily_notes)} "
         f"bytes={len(data)} "
         f"run_id={run_id}",

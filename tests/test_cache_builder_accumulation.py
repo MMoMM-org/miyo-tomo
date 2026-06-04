@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_cache_builder_accumulation.py — Unit tests for cache-builder.py
 --accumulation arg (F-34 Phase 3, T3.1).
 
@@ -29,6 +29,7 @@ _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 
 assemble_cache = _mod.assemble_cache
+load_json = _mod.load_json
 CACHE_VERSION = _mod.CACHE_VERSION
 
 
@@ -105,11 +106,11 @@ def test_cache_version_unchanged():
 
 
 # ---------------------------------------------------------------------------
-# Drift guard — malformed accumulation degrades to empty dict
+# Drift guard — non-dict accumulation degrades to empty dict
 # ---------------------------------------------------------------------------
 
 
-def test_malformed_accumulation_json_degrades_to_empty():
+def test_non_dict_accumulation_degrades_to_empty():
     """Non-dict accumulation_data (e.g. a list) degrades to {} without crashing."""
     # A list is syntactically valid JSON but not the expected dict shape
     cache = _assemble_with_accumulation(["not", "a", "dict"])
@@ -133,3 +134,38 @@ def test_existing_cache_fields_present_alongside_accumulation():
                   "scan_stats", "vault_structure", "classifications",
                   "tag_patterns", "frontmatter_usage", "orphans"):
         assert field in cache, f"expected field {field!r} missing from cache"
+
+
+# ---------------------------------------------------------------------------
+# CLI file-load path — load_json → assemble_cache (mirrors main())
+# ---------------------------------------------------------------------------
+
+
+def test_accumulation_loaded_from_file_reaches_cache():
+    """End-to-end: load_json reads the temp file, assemble_cache lifts it onto cache.
+
+    Exercises the --accumulation → load_json → assemble_cache path that
+    main() follows, without invoking the subprocess CLI.
+    """
+    clusters = {
+        "games": ["alpha-beta-pruning", "minimax"],
+        "search": ["alpha-beta-pruning", "minimax", "monte-carlo-tree-search"],
+    }
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        accum_path = _write_json(clusters, tmp_dir)
+
+        # Mirror exactly what main() does: load_json then pass to assemble_cache
+        accumulation_data = load_json(accum_path, "--accumulation")
+        cache = assemble_cache(
+            structure_data=None,
+            mocs_data=None,
+            frontmatter_data=None,
+            tags_data=None,
+            orphans_data=None,
+            accumulation_data=accumulation_data,
+            start_time=None,
+        )
+
+    assert cache["unclassified_topic_clusters"] == clusters
+    assert cache["cache_version"] == 1

@@ -21,7 +21,6 @@ Expected result:
 from __future__ import annotations
 
 import importlib.util
-import io
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch

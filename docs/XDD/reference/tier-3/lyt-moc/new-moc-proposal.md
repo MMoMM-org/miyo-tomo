@@ -28,7 +28,7 @@ For each cluster_topic set:
 
 > **Implemented: XDD 015** (feat/f-34-msp-condition-b-accumulation)
 
-During inbox analysis, Tomo finds that the **note being analyzed** matches topics shared by existing **unclassified notes** in the vault. The cluster threshold is `min_cluster_size` (default 3, configurable via `vault-config.tomo.accumulation.min_cluster_size`).
+During inbox analysis, Tomo finds that the **note being analyzed** matches topics shared by existing **unclassified notes** in the vault. The cluster threshold is `min_cluster_size` (default 3, configurable via `tomo.accumulation.min_cluster_size` in `vault-config.yaml`).
 
 Implemented as a four-stage cold-path pipeline (produce → persist → surface → consume):
 

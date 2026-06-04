@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """
 atomic-note-indexer.py — Build the accumulation-cluster index for F-34 MSP Condition B.
 
@@ -67,16 +67,19 @@ def build_accumulation_clusters(
     min_cluster_size: int = 3,
     max_notes: int | None = None,
     parent_marker: str = "up",
+    topic_tag_prefixes: list[str] | None = None,
 ) -> dict:
     """Build the accumulation-cluster index.
 
     Args:
-        client:           KadoClient instance (or compatible fake for testing).
-        base_path:        Vault-relative path of the atomic-note folder.
-        min_cluster_size: Minimum unclassified-member count to emit a cluster (default 3).
-        max_notes:        Optional cap on notes fetched (for test bounds / performance).
-        parent_marker:    Inline-field key used as the parent/classification marker
-                          (vault-config relationships.parent.marker, default "up").
+        client:             KadoClient instance (or compatible fake for testing).
+        base_path:          Vault-relative path of the atomic-note folder.
+        min_cluster_size:   Minimum unclassified-member count to emit a cluster (default 3).
+        max_notes:          Optional cap on notes fetched (for test bounds / performance).
+        parent_marker:      Inline-field key used as the parent/classification marker
+                            (vault-config relationships.parent.marker, default "up").
+        topic_tag_prefixes: Tag prefixes for thematic topics (passed to extract_topics_from_fields).
+                            Default None → extract_topics_from_fields uses ["topic/"].
 
     Returns:
         {topic: sorted([unclassified_stem, ...])} for clusters >= min_cluster_size,
@@ -116,6 +119,7 @@ def build_accumulation_clusters(
                 headings=note.get("headings", []),
                 links=note.get("links", []),
                 tags=note.get("tags", []),
+                topic_tag_prefixes=topic_tag_prefixes,
             )
             topics = result.get("topics", [])
         except Exception as exc:
@@ -195,6 +199,34 @@ def _read_config_field(config_path: str, field: str, default: str | None = None)
         return default
 
 
+def _read_config_array(
+    config_path: str,
+    field: str,
+    default: list[str],
+) -> list[str]:
+    """Read an array field from vault-config.yaml; fall back to default on error or empty.
+
+    Uses read-config-field.py with --format json to get {path: value} output;
+    parses the JSON and extracts the list at the dotted field path.
+    """
+    script = os.path.join(_SCRIPT_DIR, "read-config-field.py")
+    cmd = ["python3", script, "--config", config_path, "--fields", field, "--format", "json"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            return default
+        raw = r.stdout.strip()
+        if not raw:
+            return default
+        parsed = json.loads(raw)
+        value = parsed.get(field)
+        if isinstance(value, list) and value:
+            return [str(v) for v in value]
+        return default
+    except Exception:
+        return default
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -237,10 +269,14 @@ def main() -> int:
     parent_marker = _read_config_field(
         args.config, "relationships.parent.marker", default="up"
     ) or "up"
+    topic_tag_prefixes = _read_config_array(
+        args.config, "tomo.accumulation.topic_tag_prefixes", default=["topic/"]
+    )
 
     print(f"[atomic-note-indexer] base_path={base_path!r} "
           f"min_cluster_size={min_cluster_size} "
-          f"parent_marker={parent_marker!r}", file=sys.stderr)
+          f"parent_marker={parent_marker!r} "
+          f"topic_tag_prefixes={topic_tag_prefixes!r}", file=sys.stderr)
 
     try:
         client = KadoClient()
@@ -256,6 +292,7 @@ def main() -> int:
             min_cluster_size=min_cluster_size,
             max_notes=args.max_notes,
             parent_marker=parent_marker,
+            topic_tag_prefixes=topic_tag_prefixes,
         )
     except Exception as exc:
         # Kado/listNotes failure: emit {} (so cache-builder degrades gracefully)

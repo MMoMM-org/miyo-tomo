@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_atomic_note_indexer.py — Tests for atomic-note-indexer.py — T2.1 of spec 015 (F-34).
 
 RED before GREEN discipline (CON-1/TDD).
@@ -48,13 +48,15 @@ def _note(path: str, topics_for_fields: list[str]) -> dict:
 
     The real indexer calls extract_topics_from_fields(headings, links, tags) per note.
     To keep tests deterministic without re-testing topic extraction, we embed each
-    topic as a plain tag (no '#' prefix, no structural prefix) — extract_topics_from_fields
-    will surface them via method 4.
+    topic as a topic/<x> tag — under v0.4.0 method 4 only yields topics for tags
+    whose lowercased path starts with a configured prefix (default: ["topic/"]).
+    Bare tags are ignored by method 4, so using topic/<x> is required for the
+    fixture notes to round-trip correctly through the indexer.
     """
     return {
         "path": path,
         "name": Path(path).name,
-        "tags": topics_for_fields,   # surfaces via extract_topics_from_fields method 4
+        "tags": [f"topic/{t}" for t in topics_for_fields],  # topic/<x> → method 4 yields leaf x
         "headings": [],
         "links": [],
     }

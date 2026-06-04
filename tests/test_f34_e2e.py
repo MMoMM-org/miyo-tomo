@@ -78,13 +78,15 @@ BASE_PATH = "Atlas/Atoms"
 def _note(path: str, topics: list[str]) -> dict:
     """Build a minimal listNotes item.
 
-    Topics embedded as plain tags — extract_topics_from_fields surfaces them
-    via method 4 (plain tags).
+    Topics embedded as topic/<x> tags — under v0.4.0 extract_topics_from_fields
+    method 4 only yields topics for tags whose lowercased path starts with a
+    configured prefix (default ["topic/"]). Bare tags are ignored, so topic/<x>
+    is required for the fixture notes to round-trip correctly through the indexer.
     """
     return {
         "path": path,
         "name": Path(path).name,
-        "tags": topics,
+        "tags": [f"topic/{t}" for t in topics],  # topic/<x> → method 4 yields leaf x
         "headings": [],
         "links": [],
     }

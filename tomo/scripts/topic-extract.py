@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """
 topic-extract.py — Extract topic keywords from note content.
 
@@ -329,13 +329,23 @@ def extract_topics_from_fields(
     headings: list[dict],   # [{heading, level}]
     links: list[dict],      # [{target, kind}] — filter kind=="link"
     tags: list[str],
+    topic_tag_prefixes: list[str] | None = None,
 ) -> dict:
     """Structured sibling of extract_topics(content). Maps:
        title/H1 → method 1; level==2 headings → excluded (method 2 dropped, v0.3.0);
        link.target (kind=='link' only) → method 3 (alias/path/anchor-stripped);
-       '#'-stripped tags → method 4. Returns the same {topics, source_methods} shape.
+       topic-prefix tags → method 4 (v0.4.0: only tags under configured prefixes).
+       Returns the same {topics, source_methods} shape.
+
+    Args:
+        topic_tag_prefixes: Tag prefixes that identify thematic topics (default ["topic/"]).
+            Only tags whose lowercased path starts with one of these prefixes yield topics.
+            The leaf segment after the matched prefix is extracted as the topic.
     """
+    _prefixes = topic_tag_prefixes if topic_tag_prefixes is not None else ["topic/"]
+
     # Method 1: H1 heading (level==1) takes priority over explicit title param.
+    # v0.4.0: multi-word segments stay as single topics — no single-word explosion.
     method1: list[str] = []
     h1_text: str | None = None
     for h in headings:
@@ -352,12 +362,6 @@ def extract_topics_from_fields(
             if normed and not is_stop_word(normed) and normed not in seen_m1:
                 method1.append(normed)
                 seen_m1.add(normed)
-            words = normed.split()
-            if len(words) > 1:
-                for word in words:
-                    if word and not is_stop_word(word) and word not in seen_m1:
-                        method1.append(word)
-                        seen_m1.add(word)
 
     # Method 2: dropped — level-2 headings are excluded from structured extraction.
     # Measured: 168/216 H2 headings occur in exactly 1 note (no cluster signal);
@@ -366,6 +370,8 @@ def extract_topics_from_fields(
     method2: list[str] = []
 
     # Method 3: links filtered to kind=='link'; alias/path/anchor-stripped; capped MAX_LINKS.
+    # v0.4.0: date-shaped targets (YYYY-MM-DD) are dropped (daily-note links, not topics).
+    _date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
     method3: list[str] = []
     seen_m3: set[str] = set()
     for link in links:
@@ -378,27 +384,34 @@ def extract_topics_from_fields(
         if not cleaned_target:
             continue
         normed = normalize(cleaned_target)
-        if normed and normed not in seen_m3:
+        if not normed:
+            continue
+        if _date_re.match(normed):
+            continue  # drop daily-note date links
+        if normed not in seen_m3:
             seen_m3.add(normed)
             method3.append(normed)
         if len(method3) >= MAX_LINKS:
             break
 
-    # Method 4: tags — strip leading '#', drop structural prefixes, split on '/'.
+    # Method 4: v0.4.0 — only tags under configured topic prefixes yield topics.
+    # For each tag: strip leading '#', check if lowercased path starts with a prefix;
+    # if it matches, extract the leaf segment after the prefix as the topic.
     method4: list[str] = []
     for tag in tags:
         bare = tag.lstrip("#")
-        if any(bare.startswith(prefix) for prefix in STRUCTURAL_TAG_PREFIXES):
+        bare_lower = bare.lower()
+        matched_prefix: str | None = None
+        for prefix in _prefixes:
+            if bare_lower.startswith(prefix):
+                matched_prefix = prefix
+                break
+        if matched_prefix is None:
             continue
-        segments = bare.split("/")
-        if len(segments) >= 1:
-            leaf = normalize(segments[-1])
-            if leaf and leaf not in method4:
-                method4.append(leaf)
-        if len(segments) >= 2:
-            second_last = normalize(segments[-2])
-            if second_last and second_last not in method4:
-                method4.append(second_last)
+        remainder = bare[len(matched_prefix):]
+        leaf = normalize(remainder.split("/")[-1]) if remainder else ""
+        if leaf and leaf not in method4:
+            method4.append(leaf)
 
     source_methods = {
         "title":    method1,

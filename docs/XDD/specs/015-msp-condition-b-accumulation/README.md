@@ -1,26 +1,25 @@
 # XDD 015 — MSP Condition B: Accumulation Detection
 
-**Status:** PRD complete · OQs resolved · **topic half contract-locked · `up::` half pending Kado round 2**
-**Current phase:** SDD held until Kado defines the inline-fields projection (classification path)
+**Status:** PRD complete · OQs resolved · **fully SDD-ready — both Kado contracts settled**
+**Current phase:** SDD (solution.md) ready to write — topic + classification paths both locked
 **Backlog origin:** F-34 (Must)
 
-> **✅ Topic extraction unblocked (2026-06-04):** Kado shipped
+> **✅ Topic extraction (2026-06-04):** Kado shipped
 > `kado-search operation="listNotes"` with `fields=["links","headings","tags"]` —
 > one paginated, metadata-cache-sourced call returns path + mtime + tags +
 > outlinks + headings per note, **no body read**. Contract:
 > `Kado/docs/api-reference.md` §listNotes + `Kado/_outbox/for-kokoro/2026-06-04_kado-to-kokoro_listnotes-contract.md`.
 > Kado branch `feat/listnotes-search-op` (not yet merged — version TBD at release).
 >
-> **⏳ Classification (`up::`) pending Kado round 2 (2026-06-04):** `listNotes`'s
-> three projections don't surface the `up::` marker (an **inline dataview field**
-> in the body — not a tag/heading; its `[[MOC]]` target is indistinguishable from
-> a prose link in `links[]`). Acceptance criterion **A5** ("unclassified = no
-> `up::`") therefore can't be answered from the shipped contract. Second ask sent:
-> `_outbox/for-kado/2026-06-04_tomo-to-kado_listnotes-inline-fields-projection.md`
-> — requests an optional inline-field projection on `listNotes`, **Kado to decide
-> shape and feasibility**. Fallback if declined: per-cluster-candidate
-> `kado-read operation="dataview-inline-field"`. The SDD locks the topic path now
-> and the classification path once Kado replies.
+> **✅ Classification `up::` (2026-06-04, Kado decided):** `listNotes` will **not**
+> project inline dataview fields — Kado keeps its body-free invariant.
+> Rationale: `links`/`headings`/`tags` come from Obsidian's **core**
+> `CachedMetadata`, but `key:: value` inline fields are a **Dataview** construct
+> *not* in that cache — surfacing them would force per-note body reads or a hard
+> Dataview dependency. So **A5 uses the existing
+> `kado-read operation="dataview-inline-field"`**, called **only on cluster
+> candidates** (notes already sharing a topic — a bounded subset, not the vault).
+> Decision: `_inbox/from-kado/2026-06-04_kado-to-tomo_listnotes-inline-fields-decision.md`.
 >
 > **Kado defines these contracts; F-34 adjusts to them.**
 
@@ -53,8 +52,7 @@ per-item Kado searches at /inbox time, so Pass-1 cost stays unchanged.
 ## Files
 
 - [requirements.md](requirements.md) — product requirements (PRD)
-- solution.md — technical design (SDD), **pending Kado round 2** (topic path is
-  contract-ready; classification path locks once Kado decides the inline-field projection)
+- solution.md — technical design (SDD), **ready to write** (both Kado contracts settled)
 - plan/phase-N.md — implementation plan, pending
 
 ## Tracking
@@ -96,13 +94,14 @@ All seven OQs from requirements.md §8 are locked. Stakeholder: Marcus.
   Drop `kind=='embed'` (images/excalidraw/PDF assets) before topic extraction —
   embeds inject non-topical filename noise. Matches topic-extract's original
   `[[wikilink]]`-only intent.
-- **SDD-D3 — `up::` classification source: PENDING Kado round 2.**
-  A5's "unclassified" test needs `up::` presence, which the shipped `listNotes`
-  projection doesn't carry. Asked Kado for an optional inline-dataview-field
-  projection (Kado to decide shape/feasibility). Locks to: (a) that projection if
-  Kado ships it, else (b) fallback per-cluster-candidate
-  `kado-read operation="dataview-inline-field"`. The scanner's classification step
-  is the only part of the SDD waiting on this.
+- **SDD-D3 — `up::` classification via per-candidate `dataview-inline-field` read.**
+  A5's "unclassified" test needs `up::` presence. Kado declined to project inline
+  fields into `listNotes` (they're a Dataview construct outside Obsidian's core
+  cache; bulk projection would mean per-note body reads or a Dataview dependency).
+  So the scanner classifies in two steps: (1) bulk `listNotes` → topics → cluster
+  on shared topic ≥ `min_cluster_size`; (2) for **cluster candidates only**,
+  `kado-read operation="dataview-inline-field"` to test `up::` presence. The
+  expensive read is bounded to the small candidate set, not the ~281-note vault.
 
 **Design reshape:** The PRD assumed Tomo reads note *bodies* to extract topics
 (OQ6 was "full body vs head-only"). The brainstorm reframed this to *structured*

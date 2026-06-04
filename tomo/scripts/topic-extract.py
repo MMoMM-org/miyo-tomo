@@ -8,7 +8,7 @@ using 4 deterministic methods. The 5th LLM method is agent-side, not in this scr
 
 Methods:
   1. Title analysis    — from H1 heading or filename
-  2. H2 headings       — structural sub-topics
+  2. (dropped)         — H2 headings excluded; no cluster signal measured
   3. Linked note titles — from [[wikilinks]]
   4. Tag-based topics  — from YAML frontmatter tags
 
@@ -331,7 +331,7 @@ def extract_topics_from_fields(
     tags: list[str],
 ) -> dict:
     """Structured sibling of extract_topics(content). Maps:
-       title/H1 → method 1; level==2 headings → method 2;
+       title/H1 → method 1; level==2 headings → excluded (method 2 dropped, v0.3.0);
        link.target (kind=='link' only) → method 3 (alias/path/anchor-stripped);
        '#'-stripped tags → method 4. Returns the same {topics, source_methods} shape.
     """

@@ -370,16 +370,13 @@ def test_clean_title_keeps_inner_text_for_plain_wikilink():
 
 
 def test_clean_title_aliased_link_keeps_alias():
-    """[[target|alias]] yields the alias text without any bracket characters.
+    """clean_title strips [[ and ]] from [[target|alias]]; content between brackets survives.
 
-    The alias (display text) is the meaningful label; the raw target is discarded.
-    Non-vacuous: if this test were skipped and the brackets were kept, a topic like
-    '[[target' would silently enter the index.
-
-    NOTE: clean_title operates on raw title strings passed by callers. The alias
-    extraction for [[target|alias]] is simple: strip brackets, keep everything.
-    The caller (extract_from_title / extract_topics_from_fields) ultimately processes
-    the string, so clean_title's contract is: no [[ or ]] remain in the output.
+    clean_title's contract: no [[ or ]] remain in the output. It does NOT
+    extract the alias — "target|alias" (minus brackets) is passed on as-is
+    for the caller (extract_from_title / split_on_delimiters) to process.
+    Non-vacuous: without the bracket-strip fix, '[[target' would silently
+    enter the topic index.
     """
     result = clean_title("[[target|alias]]")
     assert "[[" not in result, f"Opening brackets must be stripped, got {result!r}"

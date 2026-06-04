@@ -1,8 +1,16 @@
 # XDD 015 — MSP Condition B: Accumulation Detection
 
-**Status:** PRD draft — 2026-05-07
-**Current phase:** requirements.md (PRD)
+**Status:** PRD complete · open questions resolved (2026-06-04) · **SDD blocked on Kado capability**
+**Current phase:** SDD pending — gated on Kado outlinks/headings response
 **Backlog origin:** F-34 (Must)
+
+> **⛔ Blocker (2026-06-04):** The scanner needs two per-note signals Kado does
+> not serve today — **outlinks** (`[[wikilinks]]`) and **headings** (H1/H2).
+> Both live in Obsidian's `metadataCache` (no body read). Capability ask sent:
+> `_outbox/for-kado/2026-06-04_tomo-to-kado_metadatacache-outlinks-headings.md`.
+> Tomo can build the indexer skeleton against `listDir` (tags + path) now, but
+> topic quality stays degraded until the two signals land. SDD locks once Kado
+> replies with a surface.
 
 ## Problem in one paragraph
 
@@ -46,10 +54,28 @@ per-item Kado searches at /inbox time, so Pass-1 cost stays unchanged.
 - Constraint memory: `feedback_near_mvp_no_breakage.md` —
   additive only on hot paths.
 
-## Open questions before SDD
+## Open questions — RESOLVED (brainstorm 2026-06-04)
 
-See requirements.md §8 (OQ1–OQ7). Tentative leans noted; stakeholder
-input required before SDD locks the surface.
+All seven OQs from requirements.md §8 are locked. Stakeholder: Marcus.
+
+| OQ | Resolution |
+| --- | --- |
+| OQ1 scanner home | New `atomic-note-indexer.py` (separate script — `moc-tree-builder.py` is already 722 LOC, near the Constitution L2 cap). |
+| OQ2 note discovery | `kado-search listDir` on `atomic_note.base_path` (returns tags + path + mtime, no body read). |
+| OQ3 run mode | **Always run** on `/explore-vault` (cold path; single code path; benchmark-then-reconsider). |
+| OQ4 normalisation | Lowercase + whitespace-collapsed string equality (matches F-35). |
+| OQ5 min cluster size | **Configurable** `vault-config.tomo.accumulation.min_cluster_size`, **default 3** (quieter than the spec literal of 2). |
+| OQ6 read depth | **Dissolved** — no body reads. Scanner consumes structured signals: tags + path via `listDir` today; outlinks + headings via the pending Kado capability. |
+| OQ7 cache schema | Additive at `cache_version: 1`, missing field = empty dict (F-35 precedent). |
+
+**Design reshape:** The PRD assumed Tomo reads note *bodies* to extract topics
+(OQ6 was "full body vs head-only"). The brainstorm reframed this — Tomo needs
+four *structured* signals (title, headings, outlinks, tags), all present in
+Obsidian's `metadataCache`. This is faster and more accurate than body-parsing,
+at the cost of the Kado dependency above.
+
+**Parking lot (SDD detail):** whether `topic-extract.py` gains a structured-input
+mode vs the indexer synthesising pseudo-content from Kado's structured fields.
 
 ## Notes
 

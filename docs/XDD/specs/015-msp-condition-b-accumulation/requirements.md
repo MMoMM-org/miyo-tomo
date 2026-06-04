@@ -181,7 +181,15 @@ v0.10.0 bump).
 
 ## 8. Open questions
 
-> Answer before SDD locks the surface.
+> **RESOLVED 2026-06-04** (brainstorm; stakeholder Marcus). Authoritative
+> resolutions are tabulated in `README.md` → "Open questions — RESOLVED".
+> Summary: OQ1 → separate `atomic-note-indexer.py`; OQ2 → `listDir`; OQ3 →
+> always-run; OQ4 → string equality; OQ5 → configurable `min_cluster_size`
+> **default 3**; OQ6 → **dissolved** (no body reads — structured signals from
+> Kado); OQ7 → additive at `cache_version: 1`. The leans below are retained as
+> the original reasoning; where a resolution differs from the lean (OQ5: 3 not
+> 2; OQ6: dissolved), the README table wins. **SDD is blocked on the Kado
+> outlinks/headings capability** — see README blocker.
 
 - **OQ1 — Where does the scanner live?** Two viable homes:
   (i) extend `moc-tree-builder.py` (already uses `topic-extract.py`,

@@ -238,17 +238,15 @@ def test_agent_spec_a6_silent_skip_guarded():
     # Extract the accumulation block region
     accum_pos = text.find("Accumulation cluster trigger")
     assert accum_pos != -1, "Accumulation cluster trigger block not found"
-    # Look for a guard within 500 chars after the heading
-    block_region = text[accum_pos:accum_pos + 500]
-    # Must mention presence/absent guard
+    # Window must cover the full block including the closing A6 skip line
+    # (~730 chars in). 800 chars is sufficient and stays within this block.
+    block_region = text[accum_pos:accum_pos + 800]
+    # Must mention explicit skip language for the absent/empty case (A6).
+    # "present" alone is vacuous — the block's own guard line satisfies it.
+    # Require "absent" OR "skip" so removing the A6 skip line fails this test.
     has_guard = (
         "accumulation_index" in block_region
-        and (
-            "present" in block_region
-            or "absent" in block_region
-            or "skip" in block_region
-            or "if" in block_region.lower()
-        )
+        and ("absent" in block_region or "skip" in block_region)
     )
     assert has_guard, (
         "The Accumulation cluster trigger block must guard on accumulation_index being present "
@@ -264,15 +262,14 @@ def test_agent_spec_a7_no_overwrite_strict():
     assert accum_pos != -1, "Accumulation cluster trigger block not found"
     # Look for a STRICT or conditional within 800 chars after the heading
     block_region = text[accum_pos:accum_pos + 800]
-    # Must reference the A7 non-overwrite constraint in some form
+    # Must have STRICT marker + proposed_moc_topic non-overwrite rule.
+    # The loose "not" / "NOT" match fired on the unrelated "does not erase"
+    # bullet in candidate_mocs, leaving the test green even without the STRICT
+    # block. Require "STRICT" explicitly so removing the STRICT annotation
+    # fails this test.
     has_a7_guard = (
-        "proposed_moc_topic" in block_region
-        and (
-            "NOT" in block_region
-            or "not" in block_region
-            or "already" in block_region
-            or "STRICT" in block_region
-        )
+        "STRICT" in block_region
+        and "proposed_moc_topic" in block_region
     )
     assert has_a7_guard, (
         "The Accumulation cluster trigger block must include A7 non-overwrite guard: "

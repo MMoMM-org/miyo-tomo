@@ -16,6 +16,12 @@
         "title": "Software MOC",
         "topics": ["python", "software", "programming"],
         "is_classification": false
+      },
+      {
+        "path": "Atlas/200 MOCs/Games MOC.md",
+        "title": "Games MOC",
+        "topics": ["boardgames", "games", "strategy"],
+        "is_classification": false
       }
     ],
     "tag_prefixes": [],

@@ -1,8 +1,9 @@
 # XDD 015 — MSP Condition B: Accumulation Detection
 
-**Status:** PRD ✓ · SDD ✓ · **PLAN complete (2026-06-04)** — ready for `/implement`
-**Current phase:** [plan/](plan/) written — 5 phases, 9 tasks, TDD; T5.2 gated on Kado release
+**Status:** PRD ✓ · SDD ✓ · PLAN ✓ · **Implemented (2026-06-04)** — code-complete; live-validation (T5.2) pending
+**Current phase:** Implemented — all 5 phases shipped on `feat/f-34-msp-condition-b-accumulation`; T5.2 deferred (user-driven live run, Kado gate open)
 **Backlog origin:** F-34 (Must)
+**Last Updated:** 2026-06-04
 
 > **✅ Topic extraction (2026-06-04):** Kado shipped
 > `kado-search operation="listNotes"` with `fields=["links","headings","tags"]` —
@@ -108,6 +109,12 @@ All seven OQs from requirements.md §8 are locked. Stakeholder: Marcus.
 signals; Kado then shipped `listNotes` to serve exactly those signals from the
 metadata cache. Faster and more accurate than body-parsing, with the dependency
 satisfied.
+
+## Decisions Log
+
+| Date | Decision | Notes |
+| --- | --- | --- |
+| 2026-06-04 | Implementation complete | Shipped F-34 MSP Condition B (accumulation detection) on `feat/f-34-msp-condition-b-accumulation`. Cold-path pipeline: `atomic-note-indexer.py` scanner → `cache-builder --accumulation` → `shared-ctx-builder build_accumulation_index` (budget-trimmed) → `inbox-analyst` Step 4 Condition-B trigger (A7: C-over-B precedence). Version bumps: inbox-analyst 0.12.1→0.13.0, vault-explorer 0.11.4→0.11.5. Tests: contract tests (inbox-analyst Step 4, vault-explorer Step 9) + E2E `test_f34_e2e.py` (4 scenarios); 48 spec-015 tests green. Docs: `docs/tomo/scripts/atomic-note-indexer.md`, Tier-3 new-moc-proposal reconciled, backlog F-34 code-complete. **T5.2 live validation DEFERRED** (user-driven; Kado gate open). Commits `6e51254..3046ca2`. |
 
 ## Notes
 

@@ -11,7 +11,7 @@ skills:
 ---
 
 # Vault Explorer Agent
-# version: 0.11.5
+# version: 0.11.6
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -563,8 +563,7 @@ python3 scripts/cache-builder.py \
   --structure "tomo-tmp/scan-output.json" \
   --mocs "tomo-tmp/moc-output.json" \
   --accumulation "tomo-tmp/accumulation-output.json" \
-  --output config/discovery-cache.yaml \
-  --start-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  --output config/discovery-cache.yaml
 ```
 
 **IMPORTANT:** The `tomo-tmp/scan-output.json` file was created in Step 2. If it is missing,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """
 atomic-note-indexer.py — Build the accumulation-cluster index for F-34 MSP Condition B.
 
@@ -25,7 +25,8 @@ Usage:
     python3 atomic-note-indexer.py --config <vault-config.yaml> --max-notes 50
 
 Output: JSON to stdout
-Exit: 0 on success, 1 on Kado error
+Exit: 0 on success or legitimately-empty vault (A6)
+       1 on Kado/listNotes error (stdout still emits {} for cache-builder degradation)
 """
 
 import argparse
@@ -59,14 +60,6 @@ def _stem(path: str) -> str:
     return name[:-3] if name.endswith(".md") else name
 
 
-def _path_for_stem(stem: str, base_path: str, notes: list[dict]) -> str | None:
-    """Resolve a stem back to its full path from the notes list."""
-    for note in notes:
-        if _stem(note["path"]) == stem:
-            return note["path"]
-    return None
-
-
 def build_accumulation_clusters(
     client,
     base_path: str,
@@ -86,20 +79,22 @@ def build_accumulation_clusters(
                           (vault-config relationships.parent.marker, default "up").
 
     Returns:
-        {topic: sorted([unclassified_stem, ...])} for clusters >= min_cluster_size.
-        {} on Kado error or empty vault (A6).
+        {topic: sorted([unclassified_stem, ...])} for clusters >= min_cluster_size,
+        or {} for a legitimately empty vault (A6).
+
+    Raises:
+        Exception: re-raised when list_notes fails, so main() can distinguish
+                   a Kado error (exit 1) from an empty vault (exit 0).
     """
-    # Step 1: fetch all atomic notes with topic signals
-    try:
-        notes = client.list_notes(
-            base_path,
-            fields=["links", "headings", "tags"],
-            limit=500,
-        )
-    except Exception as exc:
-        print(f"[atomic-note-indexer] ERROR fetching notes from {base_path!r}: {exc}",
-              file=sys.stderr)
-        return {}
+    # Step 1: fetch all atomic notes with topic signals.
+    # Let list_notes exceptions propagate — callers that care about the exit
+    # contract (main) catch them; unit tests that test the algorithm pass
+    # a well-behaved fake client.
+    notes = client.list_notes(
+        base_path,
+        fields=["links", "headings", "tags"],
+        limit=500,
+    )
 
     if max_notes is not None:
         notes = notes[:max_notes]
@@ -251,15 +246,23 @@ def main() -> int:
         client = KadoClient()
     except Exception as exc:
         print(f"[atomic-note-indexer] ERROR creating KadoClient: {exc}", file=sys.stderr)
+        print("{}")
         return 1
 
-    result = build_accumulation_clusters(
-        client,
-        base_path,
-        min_cluster_size=min_cluster_size,
-        max_notes=args.max_notes,
-        parent_marker=parent_marker,
-    )
+    try:
+        result = build_accumulation_clusters(
+            client,
+            base_path,
+            min_cluster_size=min_cluster_size,
+            max_notes=args.max_notes,
+            parent_marker=parent_marker,
+        )
+    except Exception as exc:
+        # Kado/listNotes failure: emit {} (so cache-builder degrades gracefully)
+        # and exit nonzero (so /explore-vault logs the failure).
+        print(f"[atomic-note-indexer] ERROR scanning notes: {exc}", file=sys.stderr)
+        print("{}")
+        return 1
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

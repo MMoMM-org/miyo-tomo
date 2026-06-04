@@ -21,9 +21,10 @@ Expected result:
 from __future__ import annotations
 
 import importlib.util
+import io
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, patch
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -36,6 +37,7 @@ _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 
 build_accumulation_clusters = _mod.build_accumulation_clusters  # noqa: E402
+main = _mod.main
 
 
 # ---------------------------------------------------------------------------
@@ -279,11 +281,11 @@ def test_custom_marker_honoured():
 
 
 # ---------------------------------------------------------------------------
-# T2.1-8: Empty vault emits empty dict (A6)
+# T2.1-8: Empty vault → {} + exit 0  (A6: legitimate empty, not an error)
 # ---------------------------------------------------------------------------
 
 def test_empty_vault_emits_empty_dict():
-    """Zero notes → empty cluster dict; no reads attempted."""
+    """Zero notes → empty cluster dict from build_; no up:: reads attempted."""
     client = MagicMock()
     client.list_notes.return_value = []
 
@@ -293,20 +295,40 @@ def test_empty_vault_emits_empty_dict():
     client.read_inline_fields.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# T2.1-9: Kado unreachable emits empty dict and logs to stderr
-# ---------------------------------------------------------------------------
+def test_empty_vault_main_exits_zero(capsys):
+    """main() on an empty vault emits '{}' to stdout and exits 0 (not an error)."""
+    mock_client = MagicMock()
+    mock_client.list_notes.return_value = []
 
-def test_kado_unreachable_emits_empty_dict_and_nonzero_log(capsys):
-    """list_notes raising Exception → emit {}, log error to stderr."""
-    client = MagicMock()
-    client.list_notes.side_effect = Exception("connection refused")
-
-    result = build_accumulation_clusters(client, BASE_PATH, min_cluster_size=3)
-
-    assert result == {}, f"Expected {{}}, got {result}"
+    with patch.object(_mod, "KadoClient", return_value=mock_client), \
+         patch.object(_mod, "_read_config_field", return_value="Atoms"), \
+         patch("sys.argv", ["atomic-note-indexer.py", "--config", "fake.yaml"]):
+        exit_code = main()
 
     captured = capsys.readouterr()
-    assert captured.out == "", "stdout must be empty (JSON-only stdout rule)"
-    assert "connection refused" in captured.err or len(captured.err) > 0, \
-        "Expected error message on stderr"
+    assert exit_code == 0, f"Expected exit 0 for empty vault, got {exit_code}"
+    assert captured.out.strip() == "{}", \
+        f"Expected '{{}}' on stdout, got {captured.out!r}"
+
+
+# ---------------------------------------------------------------------------
+# T2.1-9: Kado unreachable → {} stdout + exit 1 + stderr (L1 failure path)
+# ---------------------------------------------------------------------------
+
+def test_kado_unreachable_main_exits_nonzero_logs_to_stderr(capsys):
+    """main(): list_notes raises → stdout is '{}', exit code is 1, stderr is non-empty."""
+    mock_client = MagicMock()
+    mock_client.list_notes.side_effect = Exception("connection refused")
+
+    with patch.object(_mod, "KadoClient", return_value=mock_client), \
+         patch.object(_mod, "_read_config_field", return_value="Atoms"), \
+         patch("sys.argv", ["atomic-note-indexer.py", "--config", "fake.yaml"]):
+        exit_code = main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 1, f"Expected exit 1 on Kado error, got {exit_code}"
+    assert captured.out.strip() == "{}", \
+        f"Expected '{{}}' on stdout (cache-builder degradation), got {captured.out!r}"
+    assert len(captured.err) > 0, "Expected error message on stderr"
+    assert "connection refused" in captured.err, \
+        f"Expected error text on stderr, got {captured.err!r}"

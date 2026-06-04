@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """
 cache-builder.py — Assemble scan results into discovery-cache.yaml.
 
@@ -309,6 +309,7 @@ def assemble_cache(
     tags_data: dict | None,
     orphans_data: dict | None,
     start_time: str | None,
+    accumulation_data: dict | None = None,
 ) -> dict:
     """Assemble all inputs into the final cache dict."""
     map_notes = build_map_notes(mocs_data)
@@ -339,6 +340,14 @@ def assemble_cache(
     cache["tag_patterns"] = tag_patterns
     cache["frontmatter_usage"] = frontmatter_usage
     cache["orphans"] = orphans
+
+    # Lift accumulation index produced by atomic-note-indexer.py.
+    # Degrades to {} when absent or when the JSON payload is not a dict
+    # (drift guard — mirrors placeholder_mocs lift pattern above).
+    unclassified: dict = (
+        accumulation_data if isinstance(accumulation_data, dict) else {}
+    )
+    cache["unclassified_topic_clusters"] = unclassified
 
     return cache
 
@@ -417,6 +426,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="(optional) Orphan detection results JSON",
     )
     parser.add_argument(
+        "--accumulation",
+        metavar="FILE",
+        help="(optional) Accumulation index JSON from atomic-note-indexer.py "
+             "(unclassified_topic_clusters section)",
+    )
+    parser.add_argument(
         "--output",
         metavar="PATH",
         default="config/discovery-cache.yaml",
@@ -441,6 +456,7 @@ def main() -> int:
     frontmatter_data = load_json(args.frontmatter, "--frontmatter") if args.frontmatter else None
     tags_data = load_json(args.tags, "--tags") if args.tags else None
     orphans_data = load_json(args.orphans, "--orphans") if args.orphans else None
+    accumulation_data = load_json(args.accumulation, "--accumulation") if args.accumulation else None
 
     # Assemble
     print("[cache-builder] Assembling discovery cache...", file=sys.stderr)
@@ -451,6 +467,7 @@ def main() -> int:
         tags_data=tags_data,
         orphans_data=orphans_data,
         start_time=args.start_time,
+        accumulation_data=accumulation_data,
     )
 
     # Validate before writing

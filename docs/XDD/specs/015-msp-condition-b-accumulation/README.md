@@ -1,7 +1,7 @@
 # XDD 015 — MSP Condition B: Accumulation Detection
 
-**Status:** PRD complete · OQs resolved · **fully SDD-ready — both Kado contracts settled**
-**Current phase:** SDD (solution.md) ready to write — topic + classification paths both locked
+**Status:** PRD complete · OQs resolved · **SDD complete (2026-06-04)** · plan pending
+**Current phase:** [solution.md](solution.md) written (ADR-1…7 confirmed) — ready for `/xdd-plan`
 **Backlog origin:** F-34 (Must)
 
 > **✅ Topic extraction (2026-06-04):** Kado shipped
@@ -52,7 +52,7 @@ per-item Kado searches at /inbox time, so Pass-1 cost stays unchanged.
 ## Files
 
 - [requirements.md](requirements.md) — product requirements (PRD)
-- solution.md — technical design (SDD), **ready to write** (both Kado contracts settled)
+- [solution.md](solution.md) — technical design (SDD), **complete** — ADR-1…7, against the Kado contracts
 - plan/phase-N.md — implementation plan, pending
 
 ## Tracking

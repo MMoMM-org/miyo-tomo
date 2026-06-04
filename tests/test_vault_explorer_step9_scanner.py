@@ -117,7 +117,7 @@ def test_step9_cache_builder_receives_accumulation_flag():
 # (d) Graceful-degrade: scanner failure → cache-builder runs WITHOUT --accumulation
 # ---------------------------------------------------------------------------
 
-def test_step9_graceful_degrade_on_scanner_failure():
+def test_step9_graceful_degrade_scanner_failure_runs_without_accumulation():
     """Step 9 must document graceful degradation: scanner failure → cache-builder runs
     WITHOUT --accumulation (empty index, not an abort)."""
     text = _agent_text()
@@ -132,9 +132,6 @@ def test_step9_graceful_degrade_on_scanner_failure():
     has_failure_language = (
         "scanner fails" in region.lower()
         or "indexer fails" in region.lower()
-        or "atomic-note-indexer fails" in region.lower()
-        or "if the scanner" in region.lower()
-        or "scanner error" in region.lower()
     )
     # Normalise for matching: strip backticks and collapse newlines to spaces so that
     # line-wrapped prose like "WITHOUT\n`--accumulation`" matches "without --accumulation".

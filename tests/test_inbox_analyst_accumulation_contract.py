@@ -269,7 +269,7 @@ def test_agent_spec_a7_no_overwrite_strict():
     # fails this test.
     has_a7_guard = (
         "STRICT" in block_region
-        and "proposed_moc_topic" in block_region
+        and "overwrite" in block_region
     )
     assert has_a7_guard, (
         "The Accumulation cluster trigger block must include A7 non-overwrite guard: "

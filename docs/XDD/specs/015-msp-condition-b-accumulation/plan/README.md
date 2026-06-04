@@ -77,7 +77,7 @@ Phase 5 (integration E2E + live validation)        ← needs P1–P4; T5.2 GATED
 
 - [x] [Phase 1: Foundation — Kado client + structured topic extraction](phase-1.md)
 - [x] [Phase 2: Scanner — atomic-note-indexer.py](phase-2.md)
-- [ ] [Phase 3: Persistence + shared-ctx surface](phase-3.md)
+- [x] [Phase 3: Persistence + shared-ctx surface](phase-3.md)
 - [ ] [Phase 4: Consumer + orchestration + docs](phase-4.md)
 - [ ] [Phase 5: Integration & live validation](phase-5.md)
 

@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Persistence + shared-ctx surface"
-status: pending
+status: completed
 ---
 
 # Phase 3: Persistence + shared-ctx surface

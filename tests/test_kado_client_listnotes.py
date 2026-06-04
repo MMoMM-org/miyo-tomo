@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_kado_client_listnotes.py — Unit tests for KadoClient.list_notes
 and KadoClient.read_inline_fields.
 
@@ -22,7 +22,7 @@ LIB_DIR = REPO_ROOT / "tomo" / "scripts" / "lib"
 
 sys.path.insert(0, str(LIB_DIR.parent))  # so `import lib.kado_client` works
 
-from lib.kado_client import KadoClient  # noqa: E402
+from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -280,3 +280,52 @@ def test_list_dir_still_works_after_search_all_change():
     assert captured["args"]["operation"] == "listDir"
     assert "fields" not in captured["args"]
     assert len(results) == 1
+
+
+# ---------------------------------------------------------------------------
+# read_inline_fields — failure path
+# ---------------------------------------------------------------------------
+
+
+def test_read_inline_fields_propagates_KadoNotFoundError():
+    """read_inline_fields lets KadoNotFoundError from _call_tool propagate unchanged."""
+    client = _make_client()
+
+    def fake_call_tool(tool_name: str, arguments: dict) -> dict:
+        raise KadoNotFoundError("kado-read: path not found: 200 Notes/missing.md")
+
+    client._call_tool = fake_call_tool  # type: ignore[method-assign]
+
+    with pytest.raises(KadoNotFoundError) as exc_info:
+        client.read_inline_fields("200 Notes/missing.md")
+
+    assert "missing.md" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# list_notes — fields persist across all pages during pagination
+# ---------------------------------------------------------------------------
+
+
+def test_list_notes_fields_present_on_every_page():
+    """fields= is included in both the first and subsequent page requests."""
+    client = _make_client()
+
+    page1_items = [{"path": "200 Notes/a.md", "name": "a"}]
+    page2_items = [{"path": "200 Notes/b.md", "name": "b"}]
+    captured_pages: list[dict] = []
+
+    def fake_call_tool(tool_name: str, arguments: dict) -> dict:
+        captured_pages.append(dict(arguments))
+        if len(captured_pages) == 1:
+            return _make_search_page(page1_items, next_cursor="cursor-xyz")
+        return _make_search_page(page2_items, next_cursor=None)
+
+    client._call_tool = fake_call_tool  # type: ignore[method-assign]
+
+    results = client.list_notes("200 Notes/", fields=["links"])
+
+    assert len(captured_pages) == 2, "expected two page requests"
+    assert captured_pages[0].get("fields") == ["links"], "fields missing on page 1"
+    assert captured_pages[1].get("fields") == ["links"], "fields missing on page 2"
+    assert len(results) == 2

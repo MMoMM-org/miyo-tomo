@@ -16,7 +16,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
@@ -201,22 +201,10 @@ def test_enforce_budget_drops_smallest_clusters_first():
         "rare":   ["only-one"],                                # 1 member — drop first
     }
     ctx = _minimal_ctx(include_accumulation=accumulation)
-    full_size = len(scb.serialize(ctx))
-
-    # Make budget just tight enough that the accumulation trim pass is reached
-    # but only one cluster needs dropping. Remove all moc topics headroom first
-    # by using a budget that forces the accumulation pass.
-    # We set budget = full_size - (bytes of "rare" entry) - 1
-    # Simplest: set budget to 1 byte to force all cluster drops, then verify order.
-    # Better: use full_size - 1 and verify "rare" drops before "medium".
-
-    # Drop mocs topics to make space evaluation cleaner (avoid pass 5 interference)
-    ctx["mocs"] = []  # no moc topics to drop in pass 5
+    # Remove moc topics to avoid pass-5 interference; set budget 1 byte below ctx size
+    # so only the accumulation pass is triggered.
+    ctx["mocs"] = []
     ctx_size = len(scb.serialize(ctx))
-
-    # Force exactly one drop from accumulation
-    import json as _json
-    rare_entry_size = len(_json.dumps({"rare": ["only-one"]}, separators=(",", ":"))) - 2  # approx
     tight_budget = ctx_size - 1
 
     trimmed, dropped, acc_total, acc_kept = enforce_budget(ctx, tight_budget)
@@ -250,12 +238,11 @@ def test_enforce_budget_alphabetical_tiebreak():
     trimmed, _, acc_total, acc_kept = enforce_budget(ctx, tight_budget)
 
     ai = trimmed.get("accumulation_index", {})
-    # At least one was dropped; if only one, it must be "zebra" (alpha-later)
-    if acc_kept == 1:
-        assert "zebra" not in ai, \
-            "zebra (alpha-later, same count) should drop before alpaca"
-        assert "alpaca" in ai, \
-            "alpaca (alpha-earlier) should survive"
+    assert acc_kept >= 1, f"Expected at least one cluster to survive, got acc_kept={acc_kept}"
+    assert "zebra" not in ai, \
+        "zebra (alpha-later, same count) should drop before alpaca"
+    assert "alpaca" in ai, \
+        "alpaca (alpha-earlier) should survive"
 
 
 # ---------------------------------------------------------------------------

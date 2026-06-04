@@ -271,7 +271,7 @@ def build_accumulation_index(cache: dict) -> dict:
     raw = cache.get("unclassified_topic_clusters")
     if not isinstance(raw, dict):
         return {}
-    return raw
+    return dict(raw)  # shallow copy — Pass 6 del on top-level keys must not mutate cache
 
 
 def build_tag_prefixes(cache: dict, vault_cfg: dict) -> list[dict]:

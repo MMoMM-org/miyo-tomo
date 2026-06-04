@@ -26,13 +26,27 @@ For each cluster_topic set:
 
 ### Condition B: Accumulation Detection (Historical)
 
-During inbox analysis, Tomo finds that the **note being analyzed** matches topics shared by 2+ **existing unclassified notes** in the vault.
+> **Implemented: XDD 015** (feat/f-34-msp-condition-b-accumulation)
+
+During inbox analysis, Tomo finds that the **note being analyzed** matches topics shared by existing **unclassified notes** in the vault. The cluster threshold is `min_cluster_size` (default 3, configurable via `vault-config.tomo.accumulation.min_cluster_size`).
+
+Implemented as a four-stage cold-path pipeline (produce → persist → surface → consume):
 
 ```
-For current item's topics:
-  kado-search by content or tag for similar existing notes
-  If found 2+ notes with no MOC link (no up:: to a MOC) → propose
-  Combined with current item = 3+ notes → threshold met
+/explore-vault (cold path):
+  atomic-note-indexer.py builds accumulation_index:
+    kado-search listNotes → all atomic notes with structured metadata
+    extract_topics_from_fields() → topic → [stems] groups
+    Per-candidate kado-read dataview-inline-field → filter notes with up:: (classified)
+    Emit {topic: [unclassified stems]} for clusters ≥ min_cluster_size
+  cache-builder.py persists index → discovery-cache.yaml.unclassified_topic_clusters
+  shared-ctx-builder.py surfaces index → shared-ctx.json.accumulation_index (budget-trimmed)
+
+/inbox Pass-1 (inbox-analyst Step 4):
+  For each item topic:
+    Compare (case-insensitive, whitespace-normalised) against accumulation_index keys
+    On match → needs_new_moc: true, proposed_moc_topic = <key>
+  Condition C (placeholder) wins over Condition B when both fire on the same item
 ```
 
 ### Condition C: Placeholder Match

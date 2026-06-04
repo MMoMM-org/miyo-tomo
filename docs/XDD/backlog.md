@@ -45,7 +45,7 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 | F-29 | ☐ #23 | Backup remainder (MVP shipped; nested-git warning + verification open) |
 | F-30 | **#29** | LLM-driven insertion-point resolution for link_to_moc |
 | F-32 | **#40** | Opus cost reduction (lever a shipped; measurement + b/c open) |
-| F-34 | **#27** | **Must** — MSP Condition B (Accumulation) — *detail in Appendix B* |
+| F-34 | **#27** | Code-complete (spec 015 / feat/f-34-msp-condition-b-accumulation); live-validation pending — *detail in Appendix B* |
 | F-36 | **#28** | New-section proposal logic |
 | F-37 | ☐ #22 | Daily-log date-source re-audit |
 | F-39 | ☐ #20 | Profile-driven `daily_log.entry_time_format` |
@@ -161,7 +161,8 @@ cache → shared-ctx → subagent → reducer → instruction-builder.
 
 ## Appendix B — F-34/F-35 Detail: Mental Squeeze Point Completion Plan
 
-> Reference design notes for GitHub **#27** (F-34) and the shipped **F-35**. F-35 is code-complete; F-34 still needs the architecture decision below.
+> Reference design notes for GitHub **#27** (F-34) and the shipped **F-35**.
+> **F-34 is code-complete (XDD 015).** Live-validation pending (Phase 5, T5.2 gated on Kado `listNotes` release).
 
 **Context.** Spec defines four MOC-creation triggers (Tier-3 New MOC
 Proposal §2):
@@ -169,47 +170,33 @@ Proposal §2):
   with no MOC). **Implemented** in `tomo/scripts/suggestions-reducer.py`
   (`topic_clusters` dict line 507, loop lines 594-606, render line 632+).
   Default threshold = 1 (every `needs_new_moc` surfaces).
-- **B — Accumulation** (current item topics match 2+ existing notes
-  with no MOC link / `up::` absent). **Missing** — F-34 (GH #27).
+- **B — Accumulation** (current item topics match existing notes
+  with no MOC link / `up::` absent). **Shipped** — F-34 (XDD 015 / GH #27).
 - **C — Placeholder Match** (item topics match a `placeholder_mocs[]`
   entry — a wikilink with no backing file). **Shipped** — F-35 (commit 5b3a031).
 - **D — `/scan-mocs` manual command.** YAGNI per spec; superseded by F-43 `/moc-propose`.
 
-**Constraint.** Tomo is in stabilization mode (memory:
-`feedback_near_mvp_no_breakage.md`). All work below must be additive on
-hot paths (`inbox-analyst`, `instruction-render`, `suggestions-reducer`,
-`shared-ctx-builder`). Every step gets a live-run validation against
-`Privat-Test/` before merge.
+**Constraint.** All F-34 changes are additive on hot paths (`inbox-analyst`,
+`instruction-render`, `suggestions-reducer`, `shared-ctx-builder`). A run
+with no accumulation index is byte-identical to pre-F-34 behaviour.
 
-**F-34 architecture decision before any code.** Two viable options
-with very different cost/complexity:
+**F-34 architecture decision — RESOLVED.** Two options were evaluated:
 
 | Option | Where Condition B logic lives | Pass-1 cost impact | Implementation effort |
 |--------|-------------------------------|--------------------|-----------------------|
 | **(a)** Add `kado-search` to `inbox-analyst` tool list | Per-item, in subagent (Step 8) | Adds N searches per Pass-1 batch | LOW (tool list + Step 8 logic) |
-| **(b)** Pre-compute accumulation index in `shared-ctx-builder.py` | Once per run, in shared-ctx envelope | Single batch search at orchestration time | MEDIUM (new builder logic + index format) |
+| **(b)** Pre-compute accumulation index in `shared-ctx-builder.py` | Once per run, in shared-ctx envelope | Zero Pass-1 subagent cost added | MEDIUM (new builder logic + index format) |
 
-Tentative lean: **(b)** — keeps Phase-B subagent cost profile
-unchanged. Pass-1 main-thread cost is already high (#40 / F-32);
-per-item kado-search would amplify that. (b) also keeps the "no
-kado-search in subagent" invariant that XDD-009 / XDD-012 designs
-already rely on. Decide via AskUserQuestion at the start of the F-34
-session, not inferred.
+**Option (b) was chosen and implemented.** Cold-path pre-compute keeps Pass-1/subagent
+cost profile unchanged and preserves the "no kado-search in subagent" invariant that
+XDD-009 / XDD-012 designs rely on.
 
-**F-34 implementation behind the chosen architecture.** TDD: spec a
-fixture vault with a known accumulation cluster (e.g. 3 unclassified
-`boardgames`-related notes already in vault, plus a 4th in the
-inbox), write the trigger test, then implement. Validate the
-trigger fires AND the existing A trigger still works on its own
-path.
+**F-34 shipped pipeline (XDD 015):**
+- `tomo/scripts/atomic-note-indexer.py` (NEW) — scanner: `listNotes` bulk read + per-candidate `dataview-inline-field` for `up::` classification; emits `{topic: [unclassified stems]}` for clusters ≥ `min_cluster_size` (default 3)
+- `tomo/scripts/cache-builder.py` (`--accumulation` arg) — persists to `discovery-cache.yaml.unclassified_topic_clusters`
+- `tomo/scripts/shared-ctx-builder.py` (`build_accumulation_index()`) — surfaces to `shared-ctx.json.accumulation_index`, budget-trimmed (A4)
+- `tomo/dot_claude/agents/inbox-analyst.md` Step 4 — Condition-B trigger: case-insensitive/whitespace-normalised topic match; Condition C wins on conflict (A7)
 
-**Open questions for the F-34 session:**
-- For option (b), what's the index shape? Topic → list of stems?
-  Topic → count? Define what "match" means at lookup time
-  (string equality on normalised topic? substring? semantic?).
-- Should Condition B/C share the `needs_new_moc` field on
-  `create_atomic_note` actions (current path), or get their own action
-  kind to differentiate triggers in the suggestions doc heading?
-- Does the user want the suggestions doc to label *which* condition
-  fired ("Proposed MOC — accumulation cluster" vs "— placeholder
-  resolution"), or just emit the proposal uniformly?
+**Live-validation status:** Phase 5 task T5.2 is gated on the Kado release shipping
+`listNotes` (`feat/listnotes-search-op`) to the Tomo instance. Unit tests (tests/test_atomic_note_indexer.py,
+test_topic_extract_fields.py, test_shared_ctx_accumulation.py) run against fixtures and pass.

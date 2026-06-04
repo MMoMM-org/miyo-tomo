@@ -73,6 +73,7 @@ def build_accumulation_clusters(
     *,
     min_cluster_size: int = 3,
     max_notes: int | None = None,
+    parent_marker: str = "up",
 ) -> dict:
     """Build the accumulation-cluster index.
 
@@ -81,6 +82,8 @@ def build_accumulation_clusters(
         base_path:        Vault-relative path of the atomic-note folder.
         min_cluster_size: Minimum unclassified-member count to emit a cluster (default 3).
         max_notes:        Optional cap on notes fetched (for test bounds / performance).
+        parent_marker:    Inline-field key used as the parent/classification marker
+                          (vault-config relationships.parent.marker, default "up").
 
     Returns:
         {topic: sorted([unclassified_stem, ...])} for clusters >= min_cluster_size.
@@ -158,7 +161,7 @@ def build_accumulation_clusters(
             continue
         try:
             fields = client.read_inline_fields(path)
-            unclassified[stem] = "up" not in fields
+            unclassified[stem] = parent_marker not in fields
         except Exception as exc:
             # Error on read → treat as classified (ADR-5 conservative)
             print(f"[atomic-note-indexer] WARN up:: read failed for {path!r}: {exc} "
@@ -236,9 +239,13 @@ def main() -> int:
         min_cluster_size = int(min_cluster_str or "3")
     except ValueError:
         min_cluster_size = 3
+    parent_marker = _read_config_field(
+        args.config, "relationships.parent.marker", default="up"
+    ) or "up"
 
     print(f"[atomic-note-indexer] base_path={base_path!r} "
-          f"min_cluster_size={min_cluster_size}", file=sys.stderr)
+          f"min_cluster_size={min_cluster_size} "
+          f"parent_marker={parent_marker!r}", file=sys.stderr)
 
     try:
         client = KadoClient()
@@ -251,6 +258,7 @@ def main() -> int:
         base_path,
         min_cluster_size=min_cluster_size,
         max_notes=args.max_notes,
+        parent_marker=parent_marker,
     )
 
     print(json.dumps(result, ensure_ascii=False, indent=2))

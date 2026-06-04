@@ -59,13 +59,17 @@ def _note(path: str, topics_for_fields: list[str]) -> dict:
     }
 
 
-def _make_client(notes: list[dict], classified_stems: set[str]) -> MagicMock:
+def _make_client(
+    notes: list[dict],
+    classified_stems: set[str],
+    *,
+    marker: str = "up",
+) -> MagicMock:
     """Return a fake KadoClient.
 
     list_notes() → notes list (single page).
-    read_inline_fields(path) → {"up": ["[[MOC]]"]} for classified stems,
-                                {}                  for unclassified stems,
-                                raises Exception    if stem in error_stems.
+    read_inline_fields(path) → {marker: ["[[MOC]]"]} for classified stems,
+                                {}                     for unclassified stems.
     """
     client = MagicMock()
     client.list_notes.return_value = notes
@@ -73,7 +77,7 @@ def _make_client(notes: list[dict], classified_stems: set[str]) -> MagicMock:
     def _read_inline(path: str) -> dict:
         stem = Path(path).stem
         if stem in classified_stems:
-            return {"up": ["[[Hobbies MOC]]"]}
+            return {marker: ["[[Hobbies MOC]]"]}
         return {}
 
     client.read_inline_fields.side_effect = _read_inline
@@ -136,24 +140,24 @@ def test_classified_note_excluded_via_up_marker():
 # ---------------------------------------------------------------------------
 
 def test_group_below_min_never_read_for_up():
-    """mcts and social groups have raw size 1 — read_inline_fields must NOT be called for them."""
-    client = _make_client(WALKTHROUGH_NOTES, WALKTHROUGH_CLASSIFIED)
+    """A note belonging ONLY to a sub-threshold group must never trigger an up:: read."""
+    # Add a 5th note whose sole topic is "social" — keeping "social" at raw size 2
+    # (board-game-night + social-gathering), still below M=3.
+    # social-gathering ONLY participates in the sub-threshold "social" group, so
+    # read_inline_fields must never be called for it.
+    notes_with_sub_threshold = WALKTHROUGH_NOTES + [
+        _note(f"{BASE_PATH}/social-gathering.md", ["social"]),
+    ]
+    client = _make_client(notes_with_sub_threshold, WALKTHROUGH_CLASSIFIED)
     build_accumulation_clusters(client, BASE_PATH, min_cluster_size=3)
 
-    # Paths that were called
+    social_gathering_path = f"{BASE_PATH}/social-gathering.md"
     called_paths = {c.args[0] for c in client.read_inline_fields.call_args_list}
 
-    # mcts-only stem and social-only stem are not in any candidate group
-    mcts_path = f"{BASE_PATH}/monte-carlo-tree-search.md"
-    # monte-carlo-tree-search IS in games+search candidate groups, so it WILL be read
-    # The sub-threshold groups are 'mcts' (size 1) and 'social' (size 1)
-    # board-game-night is the only member of 'social' (raw size 1) and also appears
-    # in 'games' (raw size 4) — it IS read because games is a candidate.
-    # What must NOT trigger reads: any path that ONLY participates in sub-threshold groups.
-    # In the walkthrough, no such path exists (board-game-night participates in games).
-    # Instead, verify total call count = unique stems in candidate groups = 4
-    assert len(called_paths) == 4, \
-        f"Expected 4 up:: reads (all 4 unique stems in candidate groups), got {called_paths}"
+    assert social_gathering_path not in called_paths, (
+        f"social-gathering.md is only in sub-threshold 'social' group "
+        f"but was read for up:: — cost bound violated. Called: {called_paths}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +231,51 @@ def test_inline_field_read_error_treats_note_classified():
     # minimax + board-game-night both gone → groups have only 2 unclassified → no clusters
     assert result == {}, \
         f"Expected empty (minimax errors → classified), got {result}"
+
+
+# ---------------------------------------------------------------------------
+# T2.1-7b: Custom parent marker honoured (relationships.parent.marker config)
+# ---------------------------------------------------------------------------
+
+def test_custom_marker_honoured():
+    """When parent_marker='parent', notes with parent:: are classified; up:: is ignored."""
+    # board-game-night has "parent" key → classified
+    # alpha-beta-pruning has only "up" key → unclassified (marker is "parent", not "up")
+    custom_classified = {"board-game-night"}
+    client = _make_client(WALKTHROUGH_NOTES, custom_classified, marker="parent")
+
+    result = build_accumulation_clusters(
+        client, BASE_PATH, min_cluster_size=3, parent_marker="parent"
+    )
+
+    # With marker="parent":
+    # board-game-night classified (has "parent" key); others unclassified.
+    # 'games' keeps 3 unclassified stems; 'search' keeps 3.
+    assert "games" in result, f"Expected 'games' cluster, got {result}"
+    assert "board-game-night" not in result.get("games", []), \
+        "Classified note (parent:: set) must be excluded"
+
+    # Now verify up:: alone does NOT classify when marker is "parent".
+    # Make a fresh set where alpha-beta-pruning has "up" (wrong marker) but NOT "parent".
+    # That note should remain unclassified under marker="parent".
+    client2 = MagicMock()
+    client2.list_notes.return_value = WALKTHROUGH_NOTES
+
+    def _read_with_up_only(path: str) -> dict:
+        if Path(path).stem == "alpha-beta-pruning":
+            return {"up": ["[[Some MOC]]"]}  # up:: present but marker is "parent"
+        if Path(path).stem == "board-game-night":
+            return {"parent": ["[[Hobbies MOC]]"]}  # correct marker → classified
+        return {}
+
+    client2.read_inline_fields.side_effect = _read_with_up_only
+    result2 = build_accumulation_clusters(
+        client2, BASE_PATH, min_cluster_size=3, parent_marker="parent"
+    )
+
+    # alpha-beta-pruning has "up" but not "parent" → unclassified → still in clusters
+    assert "alpha-beta-pruning" in result2.get("search", []), \
+        "Note with up:: (wrong marker) must NOT be classified when marker='parent'"
 
 
 # ---------------------------------------------------------------------------

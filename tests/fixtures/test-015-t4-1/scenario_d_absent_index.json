@@ -1,0 +1,36 @@
+{
+  "_comment": "Scenario D — accumulation_index absent from shared_ctx. A6: silent skip, no behaviour change.",
+  "_contract": {
+    "when": "shared_ctx has no accumulation_index field",
+    "then_accumulation_trigger": false,
+    "then_needs_new_moc": false,
+    "then_proposed_moc_topic": null,
+    "then_behaviour": "byte-identical to pre-F-34 behaviour — accumulation block is a no-op"
+  },
+  "shared_ctx": {
+    "schema_version": "1",
+    "run_id": "test-run-d",
+    "mocs": [
+      {
+        "path": "Atlas/200 MOCs/Software MOC.md",
+        "title": "Software MOC",
+        "topics": ["python", "software", "programming"],
+        "is_classification": false
+      }
+    ],
+    "tag_prefixes": [],
+    "classification_keywords": {}
+  },
+  "item": {
+    "stem": "20260201-boardgames-strategy",
+    "path": "100 Inbox/20260201-boardgames-strategy.md",
+    "dominant_topic_tokens": ["boardgames", "strategy", "games"],
+    "body_content": "Collected strategies for various boardgames: Catan, Wingspan, Gloomhaven."
+  },
+  "expected_result": {
+    "accumulation_trigger_fired": false,
+    "needs_new_moc": false,
+    "proposed_moc_topic": null,
+    "note": "No accumulation_index in shared_ctx — block skipped silently."
+  }
+}

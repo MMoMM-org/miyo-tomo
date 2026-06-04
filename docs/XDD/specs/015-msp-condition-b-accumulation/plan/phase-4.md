@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Consumer + orchestration + docs"
-status: pending
+status: in_progress
 ---
 
 # Phase 4: Consumer + orchestration + docs

@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.12.1
+# version: 0.13.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -147,6 +147,25 @@ signal of intent than a freshly-inferred label.
 
 If `placeholder_mocs` is absent or empty, skip this trigger silently —
 the field is optional in the schema.
+
+**Accumulation cluster trigger.**
+
+When `shared_ctx.accumulation_index` is present and non-empty, compare the
+item's dominant topic tokens (case-insensitive, whitespace-normalised) against
+each key in `accumulation_index`. If any key matches:
+
+- Set `needs_new_moc: true`.
+- Set `proposed_moc_topic = <matching_key>` (use the index key as-is).
+- Keep the top-scoring thematic candidate MOCs (if any) in `candidate_mocs[]`;
+  accumulation match does not erase scored matches.
+
+# STRICT — A7 (Condition C wins over Condition B)
+# Why: placeholder wins — it is a deliberate dead link the user already wrote.
+If `proposed_moc_topic` was already set by the placeholder block above, do NOT
+overwrite it with the accumulation key.
+# END STRICT
+
+If `accumulation_index` is absent or empty, skip this trigger silently.
 
 ### Step 5 — Match classification category
 

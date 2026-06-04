@@ -1,0 +1,50 @@
+{
+  "_comment": "Scenario C — BOTH placeholder (Condition C) and accumulation (Condition B) match same item. A7: placeholder wins.",
+  "_contract": {
+    "when": "placeholder_mocs has target 'Boardgames' AND accumulation_index has key 'boardgames', both match item topic",
+    "then_proposed_moc_topic": "Boardgames",
+    "then_source": "placeholder_mocs (Condition C wins per A7)",
+    "then_needs_new_moc": true,
+    "then_accumulation_must_not_overwrite": true
+  },
+  "shared_ctx": {
+    "schema_version": "1",
+    "run_id": "test-run-c",
+    "mocs": [
+      {
+        "path": "Atlas/200 MOCs/Hobbies MOC.md",
+        "title": "Hobbies MOC",
+        "topics": ["hobbies", "games"],
+        "is_classification": false
+      }
+    ],
+    "tag_prefixes": [],
+    "classification_keywords": {},
+    "placeholder_mocs": [
+      {
+        "target": "Boardgames",
+        "referenced_by": "Atlas/200 MOCs/Hobbies MOC.md"
+      }
+    ],
+    "accumulation_index": {
+      "boardgames": [
+        "20260101-boardgame-review",
+        "20260102-catan-notes",
+        "20260103-wingspan-tips",
+        "20260104-gloomhaven-session"
+      ]
+    }
+  },
+  "item": {
+    "stem": "20260201-boardgames-strategy",
+    "path": "100 Inbox/20260201-boardgames-strategy.md",
+    "dominant_topic_tokens": ["boardgames", "strategy", "games"],
+    "body_content": "Collected strategies for various boardgames: Catan, Wingspan, Gloomhaven."
+  },
+  "expected_result": {
+    "needs_new_moc": true,
+    "proposed_moc_topic": "Boardgames",
+    "proposed_moc_topic_source": "placeholder_mocs",
+    "note": "Placeholder casing 'Boardgames' is preserved verbatim; accumulation key 'boardgames' must NOT overwrite it."
+  }
+}

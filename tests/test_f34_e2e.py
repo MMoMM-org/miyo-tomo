@@ -22,6 +22,7 @@ AC:   A3, A4, A6, A7
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -146,7 +147,7 @@ def _minimal_ctx(*, accumulation_index: dict | None = None) -> dict:
 def _step4_evaluate(shared_ctx: dict, item: dict) -> dict:
     """Faithful transcription of inbox-analyst Step 4 Accumulation cluster trigger.
 
-    Rules (from spec 015 SDD §Secondary Flow / inbox-analyst.md):
+    Rules (from tomo/dot_claude/agents/inbox-analyst.md — "Accumulation cluster trigger" block under Step 4):
       A6: if accumulation_index absent from shared_ctx → no-op (return trigger=False).
       A3: for each key K in accumulation_index:
             if any token in item['dominant_topic_tokens'] matches K
@@ -278,6 +279,9 @@ def test_f34_traced_walkthrough_clusters():
     assert verdict["source"] == "accumulation", (
         f"Stage 4: expected source='accumulation', got {verdict['source']!r}"
     )
+    assert verdict["trigger_fired"] is True, (
+        f"Stage 4: expected trigger_fired=True for item matching 'games' cluster, got {verdict}"
+    )
 
 
 # ===========================================================================
@@ -316,15 +320,18 @@ def test_f34_empty_vault():
         f"{cache.get('unclassified_topic_clusters')!r}"
     )
 
-    # Stage 3: build_accumulation_index returns {} → field must be omitted
+    # Stage 3: build_accumulation_index returns falsy {} for an empty cache.
+    # A6 field-omission (empty → absent from ctx) is unit-tested in
+    # tests/test_shared_ctx_accumulation.py::test_main_omits_field_when_empty.
+    # This E2E asserts the real producer output rather than re-deriving the guard.
     accumulation_index = build_accumulation_index(cache)
 
-    assert accumulation_index == {}, (
-        f"Stage 3: expected empty accumulation_index, got {accumulation_index!r}"
+    assert not accumulation_index, (
+        f"Stage 3: build_accumulation_index must return falsy (empty) for empty vault, "
+        f"got {accumulation_index!r}"
     )
 
-    # Confirm the conditional-add rule: empty → field absent from ctx
-    # (mirrors the `if accumulation_index:` guard in shared-ctx-builder main())
+    # Build a ctx WITHOUT accumulation_index — the A6 state that reaches Step 4.
     ctx: dict = {
         "schema_version": "1",
         "run_id": "test-e2e-empty",
@@ -332,11 +339,8 @@ def test_f34_empty_vault():
         "tag_prefixes": [],
         "classification_keywords": {},
     }
-    if accumulation_index:  # the guard from shared-ctx-builder.py main()
-        ctx["accumulation_index"] = accumulation_index
-
     assert "accumulation_index" not in ctx, (
-        "Stage 3 A6: accumulation_index must be absent from ctx when empty"
+        "Stage 3 A6: ctx for empty vault must not carry accumulation_index"
     )
 
     # Stage 4: no accumulation_index → Step-4 contract is a no-op
@@ -414,7 +418,6 @@ def test_f34_budget_stress_trimming(capsys):
     )
 
     # Verify the logged counts are self-consistent with the return values
-    import re
     total_match = re.search(r"accumulation_clusters_total=(\d+)", captured.err)
     kept_match = re.search(r"accumulation_clusters_kept=(\d+)", captured.err)
     assert total_match and kept_match, (

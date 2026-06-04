@@ -226,6 +226,27 @@ See also [[Minimax]] and [[Game Theory]].
 
 
 # ---------------------------------------------------------------------------
+# T1.2-8b: H1 heading takes priority over explicit title when both present
+# ---------------------------------------------------------------------------
+
+def test_h1_takes_priority_over_explicit_title():
+    """When both a level==1 heading and an explicit title are provided, H1 wins."""
+    result = extract_topics_from_fields(
+        title="Should Not Win",
+        headings=[{"heading": "H1 Wins", "level": 1}],
+        links=[],
+        tags=[],
+    )
+    title_topics = result["source_methods"]["title"]
+    # At least one token from "H1 Wins" must appear
+    assert any(tok in title_topics for tok in ("h1 wins", "h1", "wins")), \
+        f"Expected H1-derived token in {title_topics}"
+    # No token from "Should Not Win" may appear
+    assert not any(tok in title_topics for tok in ("should not win", "should", "win")), \
+        f"title= value leaked into title_topics: {title_topics}"
+
+
+# ---------------------------------------------------------------------------
 # T1.2-8: Empty fields returns empty topics
 # ---------------------------------------------------------------------------
 

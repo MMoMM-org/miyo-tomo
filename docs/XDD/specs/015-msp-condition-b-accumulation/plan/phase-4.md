@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Consumer + orchestration + docs"
-status: in_progress
+status: completed
 ---
 
 # Phase 4: Consumer + orchestration + docs

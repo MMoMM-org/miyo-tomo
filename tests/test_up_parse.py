@@ -18,6 +18,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import yaml
+
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 LIB_DIR = REPO_ROOT / "tomo" / "scripts" / "lib"
@@ -32,8 +34,6 @@ from lib import up_parse  # noqa: E402
 
 def _fm(up_value: object) -> str:
     """Build a raw note with only frontmatter `up:` set to `up_value`."""
-    import yaml
-
     fm = yaml.dump({"up": up_value}, default_flow_style=False, allow_unicode=True)
     return f"---\n{fm}---\nSome body text.\n"
 
@@ -45,8 +45,6 @@ def _inline(target: str) -> str:
 
 def _both(fm_target: str, inline_target: str) -> str:
     """Raw note with frontmatter `up:` AND inline `up::`, differing targets."""
-    import yaml
-
     fm = yaml.dump({"up": f"[[{fm_target}]]"}, default_flow_style=False)
     return f"---\n{fm}---\nup:: [[{inline_target}]]\n\nBody.\n"
 
@@ -231,3 +229,19 @@ def test_result_has_target_and_source_attrs():
     result = up_parse.parse_up_from_content("")
     assert hasattr(result, "target")
     assert hasattr(result, "source")
+
+
+# ── frontmatter split offset regression (FIX 1) ──────────────────────────────
+
+
+def test_leading_newline_does_not_corrupt_body_slice():
+    """Raw content with a leading newline must still parse correctly.
+
+    Guards the _split_frontmatter fix: match.end() must be an offset into the
+    lstrip()-normalized string, not the original — otherwise the body slice
+    starts mid-delimiter and the inline regex silently fails.
+    """
+    content = "\n---\ntitle: X\n---\nup:: [[LeadingNewlineParent]]\n"
+    result = up_parse.parse_up_from_content(content)
+    assert result.target == "LeadingNewlineParent"
+    assert result.source == "inline"

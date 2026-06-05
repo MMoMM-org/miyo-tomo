@@ -72,8 +72,14 @@ def _split_frontmatter(raw_content: str) -> tuple[dict, str]:
 
     Returns ({}, raw_content) when no YAML frontmatter block is found.
     Malformed YAML yields ({}, raw_content) with no exception raised.
+
+    lstrip() defends against notes that arrive with a leading newline
+    (e.g. from Kado read_note on some vault paths).  The match and the
+    body slice must both operate on the same normalized string so that
+    match.end() is a valid offset into the string being sliced.
     """
-    match = _FRONTMATTER_RE.match(raw_content.lstrip())
+    normalized = raw_content.lstrip()
+    match = _FRONTMATTER_RE.match(normalized)
     if not match:
         return {}, raw_content
     try:
@@ -81,7 +87,7 @@ def _split_frontmatter(raw_content: str) -> tuple[dict, str]:
         fm_dict = fm if isinstance(fm, dict) else {}
     except yaml.YAMLError:
         fm_dict = {}
-    body = raw_content[match.end():]
+    body = normalized[match.end():]
     return fm_dict, body
 
 

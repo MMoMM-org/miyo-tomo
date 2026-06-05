@@ -197,6 +197,24 @@ XDD-009 / XDD-012 designs rely on.
 - `tomo/scripts/shared-ctx-builder.py` (`build_accumulation_index()`) — surfaces to `shared-ctx.json.accumulation_index`, budget-trimmed (A4)
 - `tomo/dot_claude/agents/inbox-analyst.md` Step 4 — Condition-B trigger: case-insensitive/whitespace-normalised topic match; Condition C wins on conflict (A7)
 
-**Live-validation status:** Phase 5 task T5.2 is gated on the Kado release shipping
-`listNotes` (`feat/listnotes-search-op`) to the Tomo instance. Unit tests (tests/test_atomic_note_indexer.py,
-test_topic_extract_fields.py, test_shared_ctx_accumulation.py) run against fixtures and pass.
+**Live-validation status (2026-06-05):** Run end-to-end against the real ~281-note vault
+(`listNotes` available on Kado `feat/listnotes-search-op`). The cold-path pipeline produces
+the cache + `unclassified_topic_clusters` field correctly. Two real-world defects surfaced by
+the live run (fixtures could not) were fixed on `feat/f-34-msp-condition-b-accumulation`:
+
+- **Topic-extraction quality** — first run gave 166 noise-dominated clusters. Fixed via
+  `topic-extract.py` v0.4.0: drop level-2 headings (measured: genuine headings are freq-1 and
+  never cluster, frequent ones are template sections); tags restricted to a configurable
+  `topic/` prefix array (`tomo.accumulation.topic_tag_prefixes`, default `["topic/"]`); no
+  title single-word split; date-shaped link targets filtered. Result: **166 → ~118 reliable,
+  thematic clusters**, zero heading/bracket/date noise.
+- **Kado rate-limiting** — per-candidate `up::` reads tripped HTTP 429; each was treated as
+  "classified", silently dropping notes (44 in one run). Fixed via `kado_client.py` v0.7.0
+  retry-with-backoff (429/503, `Retry-After`-aware). Result: **44 → 0** dropped reads;
+  reliable cluster membership.
+
+**Remaining for full T5.2 sign-off (in-container, user-run):** `/inbox` against an item
+matching a known cluster to confirm a Proposed-MOC suggestion surfaces, and a Pass-1 token-cost
+check vs the F-32 baseline (no regression — additive cold-path design). Open quality polish
+(optional): tiny residue keys (`@` fragments, structural `i_*` tokens). Open SDD risk to confirm:
+whether `dataview-inline-field` returns callout-embedded `up::` (SDD §Risks / A5).

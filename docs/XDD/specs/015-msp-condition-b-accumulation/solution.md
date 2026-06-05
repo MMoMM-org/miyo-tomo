@@ -439,6 +439,49 @@ All confirmed during the 2026-06-04 brainstorm + Kado rounds (see README decisio
   may carry `path/prefix`, `|alias`, `#heading`, `^block`. `extract_topics_from_fields`
   must strip these exactly as `extract_from_links` does today.
 
+## Post-Live-Validation Refinements (2026-06-05)
+
+Live validation against the real ~281-note vault (Kado `listNotes` available) surfaced
+two defect classes that fixture-based testing could not. Both fixed on
+`feat/f-34-msp-condition-b-accumulation`; the original design intent is preserved, the
+topic-source policy is corrected.
+
+**R1 — Topic-extraction quality (revises SDD-D1, the level-2-headings decision).**
+First live scan: 166 "clusters" / 281 notes, dominated by structural noise. Measured
+attribution drove four changes in `topic-extract.py` (v0.4.0):
+- **Drop Method 2 (level-2 headings).** Measurement: 168/216 distinct level-2 headings
+  occur in exactly one note (genuine but can never reach `min_cluster_size`); every heading
+  frequent enough to cluster is a template section (`Definition`, `Resources`, `Code`, …).
+  Headings only ever inject template noise into accumulation clusters. SDD-D1 said level-2
+  headings → subtopics; live data refutes that for clustering — **superseded.** H1/title
+  (Method 1) is retained.
+- **Tags restricted to a configurable `topic/` prefix array.** The vault taxonomy is
+  `type/` (note types) · `stage/` · `topic/` (themes). All-tags extraction made the
+  `note/*` type leaves (`code`, `content`, `plugin`, `knowledge`) into giant false clusters.
+  Method 4 now keeps only tags under a configured prefix and emits the leaf. Config:
+  `vault-config.tomo.accumulation.topic_tag_prefixes`, default `["topic/"]` (array — other
+  vaults differ).
+- **No title single-word split.** Multi-word title segments stay whole ("Personal Need" no
+  longer explodes into `personal`/`need`).
+- **Date-shaped link targets filtered.** Daily-note links (`[[2022-09-06]]`) produced ~90
+  date "topics" via Method 3; targets matching `^\d{4}-\d{2}-\d{2}$` are dropped.
+
+Result: **166 → ~118 reliable, thematic clusters** (LYT/PKM concepts, value/need
+categories, Japan), zero heading/bracket/date noise.
+
+**R2 — Kado rate-limiting on per-candidate `up::` reads.** The ADR-5 per-candidate
+`dataview-inline-field` burst tripped Kado's HTTP 429 limiter; each 429 was raised
+immediately and the conservative treat-as-classified path dropped those notes (44 in one
+run) — silently unreliable membership. Fixed in the shared HTTP layer
+(`kado_client.py` v0.7.0): `_call_tool` retries 429/503 with exponential backoff,
+honoring `Retry-After`, capped, surfacing `KadoError` only after exhaustion. Result:
+**44 → 0** dropped reads. The treat-as-classified fallback remains correct once retries
+are exhausted.
+
+**Still open for T5.2 sign-off:** in-container `/inbox` Proposed-MOC surfacing check +
+Pass-1 cost-vs-F-32 baseline; confirm the §Risks callout-embedded `up::` question against a
+real fixture; optional residue polish (`@` fragments, structural `i_*` tokens).
+
 ## Glossary
 
 | Term | Definition |

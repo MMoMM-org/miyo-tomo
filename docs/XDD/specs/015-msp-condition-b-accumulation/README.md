@@ -91,6 +91,11 @@ All seven OQs from requirements.md §8 are locked. Stakeholder: Marcus.
   `link.target`→linked titles, `#`-stripped tags). The existing raw-`content`
   path is retained for other callers. (Resolves the old parking-lot question;
   rejected the pseudo-markdown round-trip.)
+  **⚠️ Partially superseded by live validation (2026-06-05, see `solution.md`
+  §Post-Live-Validation Refinements R1):** level-2 headings are NOT used (template
+  noise on real vaults), tags are restricted to a configurable `topic/` prefix array,
+  title segments are not word-split, and date-shaped link targets are filtered.
+  `topic-extract.py` is now v0.4.0.
 - **SDD-D2 — links projection: `kind=='link'` only.**
   Drop `kind=='embed'` (images/excalidraw/PDF assets) before topic extraction —
   embeds inject non-topical filename noise. Matches topic-extract's original

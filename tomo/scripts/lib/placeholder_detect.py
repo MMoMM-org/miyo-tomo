@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.1.1
 """placeholder_detect.py — Wikilink placeholder detection for MOC bodies.
 
 Extracted from moc-tree-builder.py's detect_placeholders for use by the
@@ -65,13 +65,8 @@ def _build_stem_index(paths: set[str]) -> dict[str, str]:
 
 def _resolves_to_moc(note_target: str, moc_stem_index: dict[str, str]) -> bool:
     """Return True if note_target resolves to a known MOC by path or filename."""
-    # Strip trailing .md for comparison
     bare = note_target[:-3] if note_target.endswith(".md") else note_target
-
-    # 1. Exact path match (bare vs basename-no-ext of any MOC)
-    #    moc_stem_index keys are stems, not full paths — fall through to name match.
-
-    # 2. Filename (case-insensitive) match
+    # Filename (case-insensitive) match — handles both plain and path-qualified links
     link_name_lower = bare.split("/")[-1].lower()
     return link_name_lower in moc_stem_index
 
@@ -84,7 +79,7 @@ def detect_placeholders(
     mocs: dict[str, dict],
     known_moc_paths: set[str],
     in_scope_vault_paths: set[str],
-) -> list[dict]:
+) -> list[dict[str, str]]:
     """Find wikilink targets in MOC bodies that don't resolve to any known note.
 
     A placeholder is a wikilink target that, once anchor-stripped:
@@ -116,7 +111,7 @@ def detect_placeholders(
     moc_stem_index = _build_stem_index(known_moc_paths)
     vault_stem_index = _build_stem_index(in_scope_vault_paths)
 
-    placeholders: list[dict] = []
+    placeholders: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
 
     for moc_path, moc in mocs.items():

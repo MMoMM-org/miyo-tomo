@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_placeholder_detect.py — Behavioural tests for lib.placeholder_detect.
 
 Covers T1.3 of spec 021 (MOC-propose consolidation, Phase 1 Cache Foundation).
@@ -179,3 +179,27 @@ def test_known_moc_by_name_not_path_is_not_placeholder():
     known_mocs = {"Atlas/Atlas Maps.md"}
     result = detect_placeholders(mocs, known_mocs, in_scope)
     assert result == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Path-qualified wikilinks — basename extraction guard
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_path_qualified_link_to_existing_vault_note_is_not_placeholder():
+    """Folder/Note link target resolves by basename against in_scope_vault_paths."""
+    mocs = _mocs(("Atlas/Home.md", ["Folder/Note"]))
+    # The basename "Note" matches "SomeFolder/Note.md" in vault
+    in_scope = {"Atlas/Home.md", "SomeFolder/Note.md"}
+    known_mocs: set[str] = set()
+    result = detect_placeholders(mocs, known_mocs, in_scope)
+    assert result == []
+
+
+def test_path_qualified_link_to_missing_note_is_placeholder():
+    """Folder/Note where basename is absent from vault + not a MOC → IS a placeholder."""
+    mocs = _mocs(("Atlas/Home.md", ["Folder/Phantom"]))
+    # "Phantom" is absent from vault and not a known MOC
+    in_scope = {"Atlas/Home.md", "SomeFolder/Note.md"}
+    known_mocs: set[str] = set()
+    result = detect_placeholders(mocs, known_mocs, in_scope)
+    assert result == [{"target": "Folder/Phantom", "referenced_by": "Atlas/Home.md"}]

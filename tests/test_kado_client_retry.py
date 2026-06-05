@@ -123,6 +123,18 @@ def test_retry_delay_ignores_non_numeric_retry_after():
     assert delay == min(_RETRY_BACKOFF_CAP, _RETRY_BACKOFF_BASE * (2 ** 0))
 
 
+def test_retry_delay_clamps_negative_retry_after():
+    """Retry-After: -1 is clamped to 0 — a negative sleep would raise ValueError."""
+    exc = _make_http_error(429, retry_after="-1")
+    assert _retry_delay(exc, 0) == 0
+
+
+def test_retry_delay_clamps_zero_retry_after():
+    """Retry-After: 0 is accepted as-is (0 seconds — retry immediately)."""
+    exc = _make_http_error(429, retry_after="0")
+    assert _retry_delay(exc, 0) == 0
+
+
 # ---------------------------------------------------------------------------
 # _call_tool — retry behavior
 # ---------------------------------------------------------------------------

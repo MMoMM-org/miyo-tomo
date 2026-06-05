@@ -653,22 +653,25 @@ def _extract_from_mcp_json(cfg: dict) -> tuple[str | None, str | None]:
     return bare.get("url"), bare.get("token")
 
 
-# ── Response parsing ───────────────────────────────────────────────────────────
+# ── Retry helpers ─────────────────────────────────────────────────────────────
 
 def _retry_delay(exc: urllib.error.HTTPError, attempt: int) -> float:
     """Compute sleep duration before next retry.
 
     Honors the Retry-After response header (integer seconds) when present
-    and numeric.  Falls back to exponential backoff capped at _RETRY_BACKOFF_CAP.
+    and numeric; clamps to 0 to guard against negative server values.
+    Falls back to exponential backoff capped at _RETRY_BACKOFF_CAP.
     """
     header_val = exc.headers.get("Retry-After") if exc.headers else None
     if header_val is not None:
         try:
-            return int(header_val)
+            return max(0, int(header_val))
         except (ValueError, TypeError):
             pass
     return min(_RETRY_BACKOFF_CAP, _RETRY_BACKOFF_BASE * (2 ** attempt))
 
+
+# ── Response parsing ───────────────────────────────────────────────────────────
 
 def _unwrap_sse(raw: str) -> str:
     """Extract the JSON payload from an SSE-framed response.

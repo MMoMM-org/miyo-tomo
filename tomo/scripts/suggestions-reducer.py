@@ -328,7 +328,6 @@ def _ensure_moc_suffix(title: str) -> str:
 def _enrich_proposed_mocs(
     proposed_mocs: list[dict],
     section_titles: dict[str, str],
-    section_stems_map: dict[str, str],
 ) -> None:
     """Mutate each proposed_moc in-place: add name, note_titles, reason fields."""
     for pm in proposed_mocs:
@@ -343,121 +342,6 @@ def _enrich_proposed_mocs(
             f"{n} note{'s' if n != 1 else ''} share topic {topic} "
             f"and have no dedicated MOC."
         )
-
-
-# Mirror moc-discovery.py's JACCARD_DUP_THRESHOLD value (0.80) — copied, not imported,
-# to keep the /moc-propose path independent of any future threshold tuning here.
-_INBOX_JACCARD_MERGE_THRESHOLD = 0.80
-
-
-def _jaccard_on_stems(a_ids: list[str], b_ids: list[str], stem_map: dict[str, str]) -> float:
-    """Compute Jaccard similarity on the note STEMS behind two section-id lists."""
-    a_stems = {stem_map[sid] for sid in a_ids if sid in stem_map}
-    b_stems = {stem_map[sid] for sid in b_ids if sid in stem_map}
-    union = a_stems | b_stems
-    if not union:
-        return 0.0
-    return len(a_stems & b_stems) / len(union)
-
-
-def _merge_overlapping_mocs(
-    proposed_mocs: list[dict],
-    section_stems_map: dict[str, str],
-    threshold: float = _INBOX_JACCARD_MERGE_THRESHOLD,
-) -> list[dict]:
-    """Merge proposed_moc entries whose note-set Jaccard ≥ threshold (greedy union-find).
-
-    Primary topic = from the largest cluster (most items); others become alias_topics.
-    Merged proposal: union items + tags + note_titles; parent by majority vote;
-    recomputed name + reason.
-
-    Pure — input list is not mutated; returns a new list.
-    """
-    if len(proposed_mocs) <= 1:
-        return list(proposed_mocs)
-
-    n = len(proposed_mocs)
-    # Union-find parent array
-    parent = list(range(n))
-
-    def _find(x: int) -> int:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def _union(x: int, y: int) -> None:
-        px, py = _find(x), _find(y)
-        if px != py:
-            parent[py] = px
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            j_score = _jaccard_on_stems(
-                proposed_mocs[i].get("items") or [],
-                proposed_mocs[j].get("items") or [],
-                section_stems_map,
-            )
-            if j_score >= threshold:
-                _union(i, j)
-
-    # Group by root
-    groups: dict[int, list[int]] = {}
-    for i in range(n):
-        root = _find(i)
-        groups.setdefault(root, []).append(i)
-
-    result: list[dict] = []
-    for root, indices in groups.items():
-        if len(indices) == 1:
-            entry = dict(proposed_mocs[indices[0]])
-            entry.setdefault("alias_topics", [])
-            result.append(entry)
-            continue
-
-        # Merge: primary = largest cluster (most items); tie-break by first occurrence
-        primary_idx = max(indices, key=lambda i: len(proposed_mocs[i].get("items") or []))
-        primary = proposed_mocs[primary_idx]
-        others = [proposed_mocs[i] for i in indices if i != primary_idx]
-
-        union_items: list[str] = list(dict.fromkeys(
-            item
-            for pm in [primary] + others
-            for item in (pm.get("items") or [])
-        ))
-        union_tags: list[str] = list(dict.fromkeys(
-            tag
-            for pm in [primary] + others
-            for tag in (pm.get("tags") or [])
-        ))
-        union_titles: list[str] = list(dict.fromkeys(
-            title
-            for pm in [primary] + others
-            for title in (pm.get("note_titles") or [])
-        ))
-        all_parents = [pm.get("parent", "") for pm in [primary] + others if pm.get("parent")]
-        merged_parent = max(set(all_parents), key=all_parents.count) if all_parents else ""
-
-        alias_topics = [pm["topic"] for pm in others]
-        merged_name = _ensure_moc_suffix(primary["topic"])
-        n_items = len(union_items)
-        merged_reason = (
-            f"{n_items} note{'s' if n_items != 1 else ''} share topic {primary['topic']} "
-            f"and have no dedicated MOC."
-        )
-
-        result.append({
-            "topic": primary["topic"],
-            "items": union_items,
-            "parent": merged_parent,
-            "tags": union_tags,
-            "name": merged_name,
-            "note_titles": union_titles,
-            "reason": merged_reason,
-            "alias_topics": alias_topics,
-        })
-
-    return result
 
 
 def render_create_moc(action: dict, stem: str) -> str:
@@ -964,8 +848,6 @@ def main() -> int:
     cluster_candidates: list[ClusterCandidate] = []
     # section_id -> suggested_title (for note_titles in proposed_mocs)
     section_titles: dict[str, str] = {}
-    # section_id -> stem (for note-set Jaccard in _merge_overlapping_mocs)
-    section_stems_map: dict[str, str] = {}
     # daily_note_stem -> {trackers, log_entries, log_links}
     daily_groups: dict[str, dict] = {}
     # stem -> [(daily_note_stem, time, reason)] for Material für mirror
@@ -1072,11 +954,10 @@ def main() -> int:
                             tags=item_tags,
                         )
                     )
-            # Record section_id → title and section_id → stem for post-processing.
+            # Record section_id → title for note_titles post-processing.
             if kind == "create_atomic_note":
                 title = (action.get("suggested_title") or "").strip() or stem
                 section_titles[section_id] = title
-                section_stems_map[section_id] = stem
 
         # The per-item `Material für [[daily]]` mirror block is gone as of
         # 2026-04-22 — the top Daily Notes Updates block owns the log_link
@@ -1108,9 +989,8 @@ def main() -> int:
         build_topic_clusters(cluster_candidates, args.threshold)
     )
 
-    # Post-process: add name, note_titles, reason fields; merge overlapping clusters.
-    _enrich_proposed_mocs(proposed_mocs, section_titles, section_stems_map)
-    proposed_mocs = _merge_overlapping_mocs(proposed_mocs, section_stems_map)
+    # Post-process: add name, note_titles, reason fields.
+    _enrich_proposed_mocs(proposed_mocs, section_titles)
 
     needs_attention: list[dict] = []
     for stem, entry in failed_entries:

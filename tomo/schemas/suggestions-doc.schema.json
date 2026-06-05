@@ -50,8 +50,7 @@
           "tags": {"type": "array", "items": {"type": "string"}},
           "name": {"type": "string"},
           "note_titles": {"type": "array", "items": {"type": "string"}},
-          "reason": {"type": "string"},
-          "alias_topics": {"type": "array", "items": {"type": "string"}}
+          "reason": {"type": "string"}
         }
       }
     },

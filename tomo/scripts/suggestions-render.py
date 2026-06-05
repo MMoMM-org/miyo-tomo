@@ -135,7 +135,6 @@ def render_proposed_mocs(d: dict) -> list[str]:
         tags = ", ".join(pm.get("tags", []))
         tag_line = f"- **Suggested tags:** {tags}" if tags else ""
         reason = pm.get("reason", "")
-        alias_topics = pm.get("alias_topics") or []
 
         entry = [
             f"### Proposed MOC: {topic}",
@@ -145,8 +144,6 @@ def render_proposed_mocs(d: dict) -> list[str]:
         ]
         if reason:
             entry.append(f"- **Why:** {reason}")
-        if alias_topics:
-            entry.append(f"- **Also covers:** {', '.join(alias_topics)}")
         if tag_line:
             entry.append(tag_line)
         entry.extend([

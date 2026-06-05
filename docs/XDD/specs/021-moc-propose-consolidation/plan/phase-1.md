@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Cache Foundation (builder + lib + schema + config)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---

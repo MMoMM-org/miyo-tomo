@@ -247,10 +247,13 @@ ENTITY: CacheEntry (NEW)
     up_source: str | null             # "inline" | "frontmatter" | null (provenance)
     tags: list[str]
     # C2 — the kind==moc projection IS discovery-cache's map_notes; it MUST carry the
-    # fields cache-builder.build_classifications / build_scan_stats read, or those
-    # silently collapse to {}. So the moc entries also carry:
-    classification: str | null        # required by cache-builder.build_classifications (:90)
-    linked_notes: list[str]           # required by cache-builder.build_classifications (:110)
+    # fields cache-builder.build_classifications / build_scan_stats read so those keep
+    # working without crash or count-collapse. (classifications is {} today because
+    # classification has always been None — the guard is: total_map_notes stays correct
+    # and the numeric linked_notes summation does not TypeError, NOT a non-empty
+    # classifications dict.) So the moc entries also carry:
+    classification: str | null        # required by cache-builder.build_classifications (:91); None today (legacy never derived it) — build keeps it None (no Dewey derivation in 021; that is scope creep)
+    linked_notes: int                 # int COUNT of non-MOC wikilinks — cache-builder.build_classifications (:110) sums it numerically (note_count += linked_notes). NOT list[str] (a list TypeErrors that += ). The wikilink LIST lives in the separate internal field linked_notes_raw (consumed by lib/placeholder_detect). Corrected from an earlier list[str] doc bug — 021 T1.4.
     # (level/parent_moc/child_mocs/sibling_mocs/state/sections are NOT read by any
     #  surviving consumer — verified — so they are intentionally dropped.)
 

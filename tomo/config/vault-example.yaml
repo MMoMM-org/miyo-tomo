@@ -37,8 +37,12 @@ concepts:
   # Where new, unprocessed items land
   inbox: "+/"
 
-  # Evergreen / atomic notes — single-idea permanent notes
-  atomic_note: "Atlas/202 Notes/"
+  # Evergreen / atomic notes — single-idea permanent notes.
+  # Dict shape (M8): `path` (single) or `paths` (list). Aligns with the instance
+  # config and with how moc_scan.read_scope_paths / the MOC-structure-cache
+  # builder read the atomic-note scope.
+  atomic_note:
+    path: "Atlas/202 Notes/"
 
   # Map of Content — MOC notes. Discovery uses BOTH folder paths AND tags.
   # Notes tagged with any of the listed tags are treated as MOCs regardless of
@@ -374,6 +378,32 @@ tomo:
     # Add additional prefixes if your vault uses multiple thematic prefix schemes.
     topic_tag_prefixes:
       - "topic/"
+
+  # MOC-structure cache (config/moc-structure-cache.yaml). Scopes and TTL for the
+  # tag-primary MOC scan that feeds /moc-propose and discovery-cache. Metadata
+  # only — paths/titles/topics/stems/tags/up-state/timestamps, never note bodies.
+  moc_structure_cache:
+    # Vault folders scanned for in-scope notes (the placeholder denominator and
+    # up_state universe). Defaults to concepts.map_note.paths + concepts.atomic_note
+    # when omitted.
+    scope_paths:
+      - "Atlas/200 Maps/"
+      - "Atlas/202 Notes/"
+
+    # Prefixes excluded from the scan. Exclude wins over tag (a note tagged
+    # #type/others/moc under an excluded prefix is NOT treated as a MOC). Trailing
+    # spaces are matched exactly — e.g. "Calendar/301 Daily/ " with a trailing
+    # space is a real vault gotcha.
+    exclude_paths:
+      - "Calendar/"
+      - "X/900 Support/Templates/"
+
+    # Rebuild the cache when it is older than this many days (TTL). /moc-propose
+    # rebuilds inline when stale/missing; /explore-vault force-rebuilds.
+    ttl_days: 1
+
+    # The structural tag that identifies MOCs (no leading '#').
+    moc_tag: "type/others/moc"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Trackers

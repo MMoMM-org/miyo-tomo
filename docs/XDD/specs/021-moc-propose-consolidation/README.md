@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-05 |
-| **Current Phase** | SDD |
+| **Current Phase** | Ready |
 | **Last Updated** | 2026-06-05 |
 
 ## Documents
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 26 ACs (5 Must-Have features), 7 OQs resolved 2026-06-05 |
 | solution.md | completed | ADR-1…10; schema Option A; lib/ extraction; per-item shaping → issue #45 (epic #24) |
-| plan/ | pending | |
+| plan/ | completed | 4 phases, 19 tasks; schema-first → lib → consumers → inbox-retire → integration/live |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 

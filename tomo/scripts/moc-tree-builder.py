@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -10,24 +10,34 @@ three lib modules instead of the legacy in-file tree logic:
     lib/up_parse.parse_up_from_content  — dual-`up` SSoT ({target, source}; caller sets up_state)
     lib/placeholder_detect.detect_placeholders — real-vault-denominator placeholder set
 
-Output: config/moc-structure-cache.yaml (MocStructureCache shape, SDD Application
-Data Models). Single list of CacheEntry with a `kind` discriminator ("moc"|"note").
-The kind=="moc" projection IS cache-builder's `map_notes` source (loader shim,
-later task), so those entries also carry `classification` + `linked_notes` (C2).
+TWO outputs (the legacy cache-builder contract is preserved — SDD line 183):
+    1. stdout JSON  — {"map_notes": [<kind==moc entries>], "placeholder_mocs": [...]}
+       This is the cache-builder feed: `moc-tree-builder.py > moc-output.json`
+       then `cache-builder.py --mocs moc-output.json` (vault-explorer Step 9).
+       map_notes entries carry classification + linked_notes(int) so
+       cache-builder.build_classifications / build_scan_stats keep working (C2).
+    2. config/moc-structure-cache.yaml  — the MocStructureCache (SDD Application
+       Data Models): a single CacheEntry list with a `kind` discriminator
+       ("moc"|"note"), plus a top-level placeholder_mocs field.
+
+STRICT: stdout carries the JSON feed ONLY. All progress/warnings go to stderr —
+mixing them into stdout corrupts the downstream json.load
+(feedback_never_redirect_stderr_into_json).
 
 Usage:
     python moc-tree-builder.py [--config PATH] [--output PATH]
 
-Output: YAML cache file written atomically; progress + warnings to stderr.
 Exit: 0 on success, 1 on error.
 """
 
 import argparse
 import importlib.util
+import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 
 import yaml
 
@@ -155,7 +165,6 @@ def extract_topics(content: str, title: str, script_dir: str) -> list[str]:
                 file=sys.stderr,
             )
             return []
-        import json
         return json.loads(result.stdout).get("topics", [])
     except subprocess.TimeoutExpired:
         print(f"[warn] topic-extract.py timed out for {title!r}", file=sys.stderr)
@@ -207,14 +216,42 @@ def _resolve_up_state(target: "str | None", moc_stem_set: set[str]) -> str:
     return "valid" if target in moc_stem_set else "broken"
 
 
-def build_entries(client, scan_result, script_dir: str) -> list[dict]:
-    """Assemble CacheEntry dicts from a ScanResult.
+def _count_linked_notes(body: str, moc_stem_set: set[str]) -> int:
+    """Count wikilinks in a MOC body that point to non-MOC notes.
+
+    The int the sole consumer (cache-builder:110) sums numerically. Same-note
+    anchors (`[[#^id]]`, `[[#Heading]]`) reduce to an empty stem after anchor
+    strip and are NOT links to another note — they are skipped so they do not
+    inflate the count (W2). Mirrors lib/placeholder_detect's `if not
+    note_target: continue` guard.
+    """
+    count = 0
+    for link in extract_wikilinks(body):
+        note_stem = link.split("#", 1)[0].strip().split("/")[-1]
+        if not note_stem:
+            continue  # same-note anchor — not a link to another note
+        if note_stem not in moc_stem_set:
+            count += 1
+    return count
+
+
+def build_entries(client, scan_result, script_dir: str) -> tuple[list[dict], list[dict]]:
+    """Assemble CacheEntry dicts + the placeholder list from a ScanResult.
 
     Reads each MOC and in-scope note once, parses title/tags/wikilinks/up, and
     resolves up_state against the MOC stem set (M1). kind=="moc" entries also
     carry classification (None — legacy/live faithful) and linked_notes (the int
     count of non-MOC wikilinks) so cache-builder's build_classifications /
     build_scan_stats consume the projection without collapse (C2).
+
+    Returns
+    -------
+    (entries, placeholder_mocs):
+        entries           — list[CacheEntry] (moc + note, kind-discriminated)
+        placeholder_mocs  — list[{target, referenced_by}] from the real-vault-
+                            denominator detector (the 224 fix). Surfaced (W1) so
+                            cache-builder's placeholder_mocs lift + Condition C
+                            keep working, and persisted into both outputs.
     """
     moc_paths = set(scan_result.moc_paths)
     note_paths = set(scan_result.in_scope_note_paths) - moc_paths
@@ -233,15 +270,13 @@ def build_entries(client, scan_result, script_dir: str) -> list[dict]:
         raw_by_path[path] = content
 
     # Placeholder detection runs over MOC bodies only, using the real in-scope
-    # vault set as the denominator (the 224 fix). Exercised here over the single
-    # read pass so the lib API contract is enforced at build time; the resulting
-    # placeholder list is consumed downstream by shared-ctx, not stored in the
-    # per-entry cache file.
+    # vault set as the denominator (the 224 fix). The result is RETURNED (W1) so
+    # it feeds cache-builder (--mocs JSON) and is persisted into the YAML cache.
     mocs_for_placeholder = {
         path: {"linked_notes_raw": extract_wikilinks(get_body(raw_by_path[path]))}
         for path in moc_paths
     }
-    placeholder_detect.detect_placeholders(
+    placeholder_mocs = placeholder_detect.detect_placeholders(
         mocs_for_placeholder,
         known_moc_paths=moc_paths,
         in_scope_vault_paths=set(scan_result.in_scope_note_paths),
@@ -276,19 +311,13 @@ def build_entries(client, scan_result, script_dir: str) -> list[dict]:
             # carry classification + linked_notes or build_classifications /
             # build_scan_stats silently collapse. classification stays None
             # (faithful to legacy + live cache; no Dewey derivation in T1.4).
-            # linked_notes is the INT count of wikilinks that are NOT other MOCs
-            # — the sole consumer (cache-builder:110) does numeric `+=`.
-            wikilinks = extract_wikilinks(body)
-            linked_notes_count = sum(
-                1 for link in wikilinks
-                if link.split("#", 1)[0].strip().split("/")[-1] not in moc_stem_set
-            )
+            # linked_notes is the INT count of wikilinks that are NOT other MOCs.
             entry["classification"] = None
-            entry["linked_notes"] = linked_notes_count
+            entry["linked_notes"] = _count_linked_notes(body, moc_stem_set)
 
         entries.append(entry)
 
-    return entries
+    return entries, placeholder_mocs
 
 
 def _discovered_via(scan_result, path: str) -> str:
@@ -311,7 +340,9 @@ def _discovered_via(scan_result, path: str) -> str:
 # Cache assembly + atomic write
 # ──────────────────────────────────────────────────────────────────────────────
 
-def assemble_cache(config: dict, entries: list[dict]) -> dict:
+def assemble_cache(
+    config: dict, entries: list[dict], placeholder_mocs: list[dict]
+) -> dict:
     """Build the MocStructureCache dict (SDD Application Data Models shape)."""
     msc_cfg = config.get("tomo", {}).get("moc_structure_cache", {})
 
@@ -329,6 +360,27 @@ def assemble_cache(config: dict, entries: list[dict]) -> dict:
         "exclude_paths": list(msc_cfg.get("exclude_paths", [])),
         "moc_tag": msc_cfg.get("moc_tag", DEFAULT_MOC_TAG),
         "entries": entries,
+        # Persisted into the cache file too — solution.md integration points
+        # (304/307) list moc-structure-cache.yaml as a placeholder destination
+        # for the future shared-ctx wiring.
+        "placeholder_mocs": list(placeholder_mocs),
+    }
+
+
+def build_cache_builder_feed(entries: list[dict], placeholder_mocs: list[dict]) -> dict:
+    """Build the legacy cache-builder JSON feed (stdout).
+
+    cache-builder.build_map_notes reads `map_notes` and build_placeholder_mocs
+    reads `placeholder_mocs`. The kind==moc projection IS map_notes; each entry
+    already carries classification + linked_notes(int) + path/stem/title/topics/
+    tags (C2), so cache-builder's build_classifications / build_scan_stats keep
+    working unchanged. This preserves the vault-explorer Step 9 contract:
+        moc-tree-builder.py > moc-output.json ; cache-builder.py --mocs moc-output.json
+    (SDD line 183 — "still emits the cache-builder-shaped map_notes superset").
+    """
+    return {
+        "map_notes": [e for e in entries if e["kind"] == "moc"],
+        "placeholder_mocs": list(placeholder_mocs),
     }
 
 
@@ -339,8 +391,6 @@ def write_cache_atomic(cache: dict, output_path: str) -> None:
     only difference is the file header, so this is a thin local writer rather than
     a call into cache-builder's discovery-cache-specific writer.
     """
-    import tempfile
-
     output_dir = os.path.dirname(os.path.abspath(output_path))
     os.makedirs(output_dir, exist_ok=True)
 
@@ -367,20 +417,31 @@ def write_cache_atomic(cache: dict, output_path: str) -> None:
 # Build orchestration
 # ──────────────────────────────────────────────────────────────────────────────
 
-def run_with_client(client, config: dict) -> dict:
-    """Build the MOC-structure cache dict from a (real or fake) Kado client.
+def run_with_client(client, config: dict) -> tuple[dict, dict]:
+    """Build both outputs from a (real or fake) Kado client.
 
     The testable seam: callers inject a client and a parsed config; this returns
-    the cache dict without touching disk. `run()` wires the real client + config
-    file + output path around it.
+    `(cache, feed)` without touching disk —
+        cache — the MocStructureCache dict (written to moc-structure-cache.yaml)
+        feed  — the cache-builder JSON feed (map_notes + placeholder_mocs, stdout)
+    `run()` wires the real client + config file + output path around it.
     """
     scan_result = moc_scan.scan(client, config)
-    entries = build_entries(client, scan_result, _SCRIPT_DIR)
-    return assemble_cache(config, entries)
+    entries, placeholder_mocs = build_entries(client, scan_result, _SCRIPT_DIR)
+    cache = assemble_cache(config, entries, placeholder_mocs)
+    feed = build_cache_builder_feed(entries, placeholder_mocs)
+    return cache, feed
 
 
 def run(config_path: str, output_path: str) -> dict:
-    """Load config, connect to Kado, build the cache, write it atomically."""
+    """Load config, connect to Kado, build both outputs.
+
+    Writes the MOC-structure-cache YAML to `output_path` (atomic) and prints the
+    cache-builder JSON feed to stdout so `moc-tree-builder.py > moc-output.json`
+    keeps working (vault-explorer Step 9). ALL progress/warnings go to stderr —
+    stdout carries the JSON feed only, or it would corrupt the downstream
+    json.load (feedback_never_redirect_stderr_into_json).
+    """
     print(f"[moc-tree] Loading config: {config_path!r}", file=sys.stderr)
     try:
         with open(config_path, encoding="utf-8") as fh:
@@ -399,8 +460,13 @@ def run(config_path: str, output_path: str) -> dict:
         print(f"[error] Failed to initialise KadoClient: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    cache = run_with_client(client, config)
-    print(f"[moc-tree] Assembled {len(cache['entries'])} entr(y/ies)", file=sys.stderr)
+    cache, feed = run_with_client(client, config)
+    print(
+        f"[moc-tree] Assembled {len(cache['entries'])} entr(y/ies), "
+        f"{len(feed['map_notes'])} map_note(s), "
+        f"{len(feed['placeholder_mocs'])} placeholder(s)",
+        file=sys.stderr,
+    )
 
     write_cache_atomic(cache, output_path)
     print(
@@ -408,6 +474,10 @@ def run(config_path: str, output_path: str) -> dict:
         f"({os.path.getsize(output_path)} bytes)",
         file=sys.stderr,
     )
+
+    # cache-builder feed → stdout (JSON only).
+    json.dump(feed, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
     return cache
 
 

@@ -233,6 +233,10 @@ ENTITY: MocStructureCache (NEW)  — file: config/moc-structure-cache.yaml
     exclude_paths: list[str]          # excluded prefixes (config; exclude wins — ADR/OQ-5)
     moc_tag: str                      # "type/others/moc"
     entries: list[CacheEntry]         # ADR-1 Option A — single list, kind discriminator
+    placeholder_mocs: list[dict]      # corrected (real-vault-denominator) placeholder list; {target, referenced_by}.
+                                      # Integration Points (below) require the cache to carry it; the builder ALSO
+                                      # emits it on the cache-builder-shaped JSON stdout (with map_notes) so the
+                                      # existing cache-builder→discovery-cache→shared-ctx path keeps feeding Condition C.
 
 ENTITY: CacheEntry (NEW)
   FIELDS:

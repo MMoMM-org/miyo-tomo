@@ -23,6 +23,7 @@ Tests use a FakeKadoClient (no live Kado). They lock:
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -97,6 +98,12 @@ def _config(scope_paths=None, exclude_paths=None, ttl_days=1):
 # Tests
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _cache(client, config) -> dict:
+    """run_with_client returns (cache, feed); helper for tests that need only the cache."""
+    cache, _feed = _builder.run_with_client(client, config)
+    return cache
+
+
 def test_builder_assembles_entries_with_correct_kind_and_fields():
     """Each entry carries kind moc|note plus the per-entry metadata fields."""
     moc_path = "Atlas/200 Maps/Home.md"
@@ -112,7 +119,7 @@ def test_builder_assembles_entries_with_correct_kind_and_fields():
             note_path: "---\ntitle: Idea\nup: \"[[Home]]\"\n---\n# Idea\n",
         },
     )
-    cache = _builder.run_with_client(client, _config())
+    cache = _cache(client, _config())
 
     by_path = {e["path"]: e for e in cache["entries"]}
     assert moc_path in by_path and note_path in by_path
@@ -141,18 +148,28 @@ def test_moc_entries_carry_classification_and_linked_notes():
     (cache-builder:110) does numeric `+=`, so a list would TypeError. (Decision
     A, confirmed by team-lead; SDD line 253 `list[str]` is a doc bug being
     corrected in solution.md.)
+
+    W2: same-note anchors (`[[#^id]]`, `[[#Heading]]`) reduce to an empty stem
+    and must NOT be counted — they are not links to another note.
     """
     moc_path = "Atlas/200 Maps/Home.md"
     client = FakeKadoClient(
         tagged=[{"path": moc_path}],
         listings={"Atlas/200 Maps/": [{"path": moc_path}]},
-        notes={moc_path: "---\ntitle: Home\n---\n# Home\n\n[[Ghost A]]\n[[Ghost B]]\n"},
+        notes={
+            moc_path: (
+                "---\ntitle: Home\n---\n# Home\n\n"
+                "[[Ghost A]]\n[[Ghost B]]\n"   # two real non-MOC links → count 2
+                "[[#^blockref]]\n[[#Heading]]\n"  # same-note anchors → must NOT count (W2)
+            )
+        },
     )
-    cache = _builder.run_with_client(client, _config(scope_paths=["Atlas/200 Maps/"]))
+    cache = _cache(client, _config(scope_paths=["Atlas/200 Maps/"]))
     moc_entry = next(e for e in cache["entries"] if e["kind"] == "moc")
     assert moc_entry["classification"] is None
     assert isinstance(moc_entry["linked_notes"], int)
-    assert moc_entry["linked_notes"] == 2  # both [[Ghost A]], [[Ghost B]] are non-MOC
+    # 2 non-MOC links; the two same-note anchors are excluded (W2).
+    assert moc_entry["linked_notes"] == 2
 
 
 def test_caller_resolves_up_state_absent_valid_broken():
@@ -172,7 +189,7 @@ def test_caller_resolves_up_state_absent_valid_broken():
             stray: "---\ntitle: Stray\n---\n# Stray\n\nup:: [[Nonexistent]]\n",
         },
     )
-    cache = _builder.run_with_client(client, _config())
+    cache = _cache(client, _config())
     by_path = {e["path"]: e for e in cache["entries"]}
     assert by_path[home]["up_state"] == "absent"
     assert by_path[home]["up_target"] is None
@@ -191,7 +208,7 @@ def test_writes_moc_structure_cache_yaml_with_versioned_schema(tmp_path):
         notes={moc_path: "---\ntitle: Home\n---\n# Home\n"},
     )
     out = tmp_path / "moc-structure-cache.yaml"
-    cache = _builder.run_with_client(
+    cache = _cache(
         client, _config(scope_paths=["Atlas/200 Maps/"], exclude_paths=["X/"], ttl_days=2)
     )
     _builder.write_cache_atomic(cache, str(out))
@@ -206,6 +223,8 @@ def test_writes_moc_structure_cache_yaml_with_versioned_schema(tmp_path):
     assert on_disk["exclude_paths"] == ["X/"]
     assert on_disk["moc_tag"] == "type/others/moc"
     assert isinstance(on_disk["entries"], list)
+    # placeholder_mocs persisted into the cache file too (solution.md 304/307).
+    assert isinstance(on_disk["placeholder_mocs"], list)
 
 
 def test_atomic_tmp_rename_write(tmp_path):
@@ -229,13 +248,110 @@ def test_atomic_tmp_rename_write(tmp_path):
 
 def test_empty_scope_produces_empty_entries_no_crash():
     client = FakeKadoClient(tagged=[], listings={}, notes={})
-    cache = _builder.run_with_client(client, _config(scope_paths=[], exclude_paths=[]))
+    cache, feed = _builder.run_with_client(client, _config(scope_paths=[], exclude_paths=[]))
     assert cache["entries"] == []
+    assert cache["placeholder_mocs"] == []
     assert isinstance(cache["last_scan"], str)
     assert cache["moc_cache_version"] >= 1
+    # The JSON feed degrades to empty lists, not a crash — cache-builder reads them.
+    assert feed["map_notes"] == []
+    assert feed["placeholder_mocs"] == []
 
 
-def test_c2_kind_moc_projection_feeds_cache_builder_without_collapse(tmp_path):
+def test_discovered_via_tag_for_moc_outside_scope():
+    """W3: a MOC discovered via tag but NOT under any scope path → discovered_via='tag'.
+
+    The other branches ('both' for an in-scope tagged MOC, 'path' for an in-scope
+    non-MOC note) are exercised by the assembly test; this locks the tag-only one.
+    """
+    scattered = "Elsewhere/Scattered.md"      # tagged MOC, NOT under scope
+    in_scope_moc = "Atlas/200 Maps/Home.md"   # tagged MOC, under scope
+    plain = "Atlas/200 Maps/Plain.md"         # in-scope non-MOC note
+    client = FakeKadoClient(
+        tagged=[{"path": scattered}, {"path": in_scope_moc}],
+        listings={"Atlas/200 Maps/": [{"path": in_scope_moc}, {"path": plain}]},
+        notes={
+            scattered: "# Scattered\n",
+            in_scope_moc: "# Home\n",
+            plain: "# Plain\n",
+        },
+    )
+    cache = _cache(client, _config(scope_paths=["Atlas/200 Maps/"]))
+    by_path = {e["path"]: e for e in cache["entries"]}
+    assert by_path[scattered]["discovered_via"] == "tag"
+    assert by_path[scattered]["kind"] == "moc"
+    assert by_path[in_scope_moc]["discovered_via"] == "both"
+    assert by_path[plain]["discovered_via"] == "path"
+
+
+def test_json_feed_shape_map_notes_and_placeholders():
+    """W1/FIX4: run_with_client returns a cache-builder JSON feed with map_notes
+    (kind==moc projection, carrying classification + linked_notes(int)) and a
+    placeholder_mocs list equal to detect_placeholders' output.
+
+    This is the feed that vault-explorer Step 9 pipes into cache-builder
+    (`moc-tree-builder.py > moc-output.json`).
+    """
+    moc_path = "Atlas/200 Maps/Home.md"
+    note_path = "Atlas/202 Notes/Real.md"
+    client = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": note_path}],
+        },
+        notes={
+            # [[Real]] resolves to an in-scope note (not a placeholder);
+            # [[Phantom]] is a genuine dead link → one placeholder.
+            moc_path: "---\ntitle: Home\n---\n# Home\n\n[[Real]]\n[[Phantom]]\n",
+            note_path: "---\ntitle: Real\n---\n# Real\n",
+        },
+    )
+    cache, feed = _builder.run_with_client(client, _config())
+
+    # map_notes is exactly the kind==moc projection.
+    assert {m["path"] for m in feed["map_notes"]} == {moc_path}
+    mn = feed["map_notes"][0]
+    assert mn["classification"] is None
+    assert isinstance(mn["linked_notes"], int)
+    assert {"path", "stem", "title", "topics", "tags"} <= set(mn)
+    assert all(m["kind"] == "moc" for m in feed["map_notes"])
+
+    # placeholder_mocs present, equals the detector output, and is the SAME
+    # list persisted into the YAML cache.
+    assert feed["placeholder_mocs"] == [
+        {"target": "Phantom", "referenced_by": moc_path}
+    ]
+    assert cache["placeholder_mocs"] == feed["placeholder_mocs"]
+
+
+def test_json_feed_is_valid_json_via_run(tmp_path, monkeypatch, capsys):
+    """End-to-end: run() prints ONLY valid JSON to stdout (warnings → stderr), so
+    `moc-tree-builder.py > moc-output.json` then json.load works."""
+    moc_path = "Atlas/200 Maps/Home.md"
+    fake = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={"Atlas/200 Maps/": [{"path": moc_path}]},
+        notes={moc_path: "---\ntitle: Home\n---\n# Home\n\n[[Phantom]]\n"},
+    )
+    cfg = _config(scope_paths=["Atlas/200 Maps/"])
+
+    cfg_file = tmp_path / "vault-config.yaml"
+    cfg_file.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    out_yaml = tmp_path / "moc-structure-cache.yaml"
+
+    # Patch KadoClient so run() uses the fake; config + output go to tmp.
+    monkeypatch.setattr(_builder, "KadoClient", lambda *a, **k: fake)
+    _builder.run(str(cfg_file), str(out_yaml))
+
+    captured = capsys.readouterr()
+    feed = json.loads(captured.out)  # must parse — stdout is JSON only
+    assert {m["path"] for m in feed["map_notes"]} == {moc_path}
+    assert feed["placeholder_mocs"] == [{"target": "Phantom", "referenced_by": moc_path}]
+    assert out_yaml.exists()
+
+
+def test_c2_kind_moc_projection_feeds_cache_builder_without_collapse():
     """End-to-end C2 guard: rebuild the MOC-structure cache → take the kind==moc
     projection as cache-builder's map_notes → feed it through
     build_classifications / build_scan_stats and prove the projection does NOT
@@ -267,7 +383,7 @@ def test_c2_kind_moc_projection_feeds_cache_builder_without_collapse(tmp_path):
             moc_b: "---\ntitle: Projects\ntags:\n  - topic/applied\n---\n# Projects\n\n[[Ghost3]]\n",
         },
     )
-    cache = _builder.run_with_client(client, _config(scope_paths=["Atlas/200 Maps/"]))
+    cache = _cache(client, _config(scope_paths=["Atlas/200 Maps/"]))
 
     # Loader shim: cache-builder's map_notes = kind==moc projection
     map_notes = [e for e in cache["entries"] if e["kind"] == "moc"]

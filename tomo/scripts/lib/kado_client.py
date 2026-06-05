@@ -1,4 +1,4 @@
-# version: 0.6.0
+# version: 0.7.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -22,12 +22,17 @@ Usage:
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 _DEFAULT_TIMEOUT = 30  # seconds
+_RETRY_STATUSES = {429, 503}
+_MAX_RETRIES = 4
+_RETRY_BACKOFF_BASE = 0.5  # seconds
+_RETRY_BACKOFF_CAP = 10.0  # seconds
 
 
 # ── Exceptions ─────────────────────────────────────────────────────────────────
@@ -551,31 +556,38 @@ class KadoClient:
             },
         )
 
-        try:
-            with urllib.request.urlopen(req, timeout=_DEFAULT_TIMEOUT) as resp:
-                raw = resp.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            if exc.code in (401, 403):
-                raise KadoAuthError(
-                    f"Kado rejected the request (HTTP {exc.code}). "
-                    "Check that KADO_TOKEN matches the configured API key."
-                ) from exc
-            if exc.code == 404:
-                raise KadoNotFoundError(
-                    "Kado endpoint not found (HTTP 404). "
-                    "Check that KADO_URL points to the right server and port."
-                ) from exc
-            raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}") from exc
-        except urllib.error.URLError as exc:
-            reason = str(exc.reason)
-            if "refused" in reason.lower() or "timed out" in reason.lower():
+        raw = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                with urllib.request.urlopen(req, timeout=_DEFAULT_TIMEOUT) as resp:
+                    raw = resp.read().decode("utf-8")
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code in (401, 403):
+                    raise KadoAuthError(
+                        f"Kado rejected the request (HTTP {exc.code}). "
+                        "Check that KADO_TOKEN matches the configured API key."
+                    ) from exc
+                if exc.code == 404:
+                    raise KadoNotFoundError(
+                        "Kado endpoint not found (HTTP 404). "
+                        "Check that KADO_URL points to the right server and port."
+                    ) from exc
+                if exc.code in _RETRY_STATUSES and attempt < _MAX_RETRIES:
+                    time.sleep(_retry_delay(exc, attempt))
+                    continue
+                suffix = f" (after {_MAX_RETRIES} retries)" if exc.code in _RETRY_STATUSES else ""
+                raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}{suffix}") from exc
+            except urllib.error.URLError as exc:
+                reason = str(exc.reason)
+                if "refused" in reason.lower() or "timed out" in reason.lower():
+                    raise KadoConnectionError(
+                        f"Cannot reach Kado at {self._endpoint}. "
+                        f"Is the server running? ({reason})"
+                    ) from exc
                 raise KadoConnectionError(
-                    f"Cannot reach Kado at {self._endpoint}. "
-                    f"Is the server running? ({reason})"
+                    f"Network error reaching {self._endpoint}: {reason}"
                 ) from exc
-            raise KadoConnectionError(
-                f"Network error reaching {self._endpoint}: {reason}"
-            ) from exc
 
         # Handle SSE-framed responses (StreamableHTTP may return
         # "event: message\ndata: {…}\n\n" instead of bare JSON).
@@ -642,6 +654,21 @@ def _extract_from_mcp_json(cfg: dict) -> tuple[str | None, str | None]:
 
 
 # ── Response parsing ───────────────────────────────────────────────────────────
+
+def _retry_delay(exc: urllib.error.HTTPError, attempt: int) -> float:
+    """Compute sleep duration before next retry.
+
+    Honors the Retry-After response header (integer seconds) when present
+    and numeric.  Falls back to exponential backoff capped at _RETRY_BACKOFF_CAP.
+    """
+    header_val = exc.headers.get("Retry-After") if exc.headers else None
+    if header_val is not None:
+        try:
+            return int(header_val)
+        except (ValueError, TypeError):
+            pass
+    return min(_RETRY_BACKOFF_CAP, _RETRY_BACKOFF_BASE * (2 ** attempt))
+
 
 def _unwrap_sse(raw: str) -> str:
     """Extract the JSON payload from an SSE-framed response.

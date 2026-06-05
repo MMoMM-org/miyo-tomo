@@ -99,7 +99,7 @@ version: "1.0"
 ### Implementation Boundaries
 - **Must Preserve:** moc-discovery Phases 1–6 behaviour (via the loader shim → `map_notes`); inbox Conditions A & C output; the 2-pass proposal boundary; `kado_client` public surface.
 - **Can Modify:** moc-tree-builder internals (rebuild), moc-discovery Phase 6.5 + cache-source + a new case-(a) emitter, shared-ctx-builder (remove accumulation, raise budget), vault-config (add scope block), cache-builder wiring.
-- **Must Not Touch:** Kado plugin code (capability gaps are noted, not implemented here); `/execute`/Hashi; the per-item context-shaping path (deferred to GH #24).
+- **Must Not Touch:** Kado plugin code (capability gaps are noted, not implemented here); `/execute`/Hashi; the per-item context-shaping path (deferred to issue #45 (epic #24)).
 
 ### External Interfaces
 
@@ -143,7 +143,7 @@ Host-vs-live diagnostics: KADO_URL=http://127.0.0.1:<port>/mcp + token, sandbox 
 - **Architecture Pattern:** Layered deterministic Python pipeline behind LLM orchestration. Logic lives in scripts (Constitution); agents route + render only. A timed cache decouples expensive vault scans from per-run reads.
 - **Integration Approach:** Reuse the existing producer→cache→consumer chain. The rebuilt `moc-tree-builder` becomes the single MOC-structure cache builder; `moc-discovery` and `shared-ctx-builder` consume the cache. A loader shim projects `entries[kind==moc]` → `map_notes` so downstream phases stay unchanged.
 - **Justification:** Minimises blast radius on a 1929-LOC consumer; fixes correctness (tag-primary discovery, real-vault placeholder denominator, dual-up) at the source; removes the inbox-hot-path coupling (accumulation) that never worked.
-- **Key Decisions:** ADR-1 (schema Option A + shim), ADR-2 (inline-`up::` wins), ADR-3 (explore force-rebuild / propose rebuild-if-stale), ADR-4 (raise budget; shaping → GH #24), plus ADR-5…10 below.
+- **Key Decisions:** ADR-1 (schema Option A + shim), ADR-2 (inline-`up::` wins), ADR-3 (explore force-rebuild / propose rebuild-if-stale), ADR-4 (raise budget; shaping → issue #45 (epic #24)), plus ADR-5…10 below.
 
 ## Building Block View
 
@@ -378,7 +378,7 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
 - **Up-parsing SSoT:** `lib/up_parse` is the single parser for both `up` forms; `moc_scan`, Phase 6.5, and (retrofit) `atomic-note-indexer` consume it — kills the current three-way regex drift (`feedback_spec_schema_consumer_three_way_drift`).
 - **Schema-first ordering:** land the cache schema + writer + loader shim BEFORE consumer reads (drift guard).
 - **Cleanup discipline:** retire accumulation scaffolding by deletion, not patching (`feedback_post_refactor_drop_scaffolding_not_patch`): `build_accumulation_index`, shared-ctx Pass-6 trim, `cache-builder` `unclassified_topic_clusters` lift, `atomic-note-indexer.py`, inbox-analyst Condition B block.
-- **Performance:** TTL cache removes the per-run live scan (M1); corrected placeholder shrinks the per-subagent envelope ×N (toward GH #40); raised 40KB budget keeps essential placeholder un-trimmed; per-item context shaping deferred to GH #24.
+- **Performance:** TTL cache removes the per-run live scan (M1); corrected placeholder shrinks the per-subagent envelope ×N (toward GH #40); raised 40KB budget keeps essential placeholder un-trimmed; per-item context shaping deferred to issue #45 (epic #24).
 - **Privacy/Audit:** cache is metadata-only; out-of-scope (daily/template) content never enters it (CON-5, AC-P3/P4).
 
 ### Pattern Documentation
@@ -408,7 +408,7 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
   - Trade-offs: explore pays a full rebuild each run (acceptable — it already does a full scan).
   - User confirmed: **Yes (2026-06-05)**
 
-- [x] **ADR-4 Shared-ctx budget:** raise `--max-bytes` default 15360 → 40960; `placeholder_mocs` never trimmed; remove accumulation + Pass-6 trim. Per-item context shaping deferred to a follow-up spec (GH #24).
+- [x] **ADR-4 Shared-ctx budget:** raise `--max-bytes` default 15360 → 40960; `placeholder_mocs` never trimmed; remove accumulation + Pass-6 trim. Per-item context shaping deferred to a follow-up spec (issue #45 (epic #24)).
   - Rationale: placeholder is essential Condition-C data; prompt-caching softens the larger byte cost; shaping is a correctness-sensitive optimization that deserves its own spec.
   - Trade-offs: budget stops being a hard guard for the big fields until shaping lands; net Pass-1 cost still drops (corrected 34–36KB < 54.5KB).
   - User confirmed: **Yes (2026-06-05)**
@@ -462,7 +462,7 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
 - Three inline-only `up` regexes today (moc-tree, moc-discovery, atomic-note-indexer) — converge to `lib/up_parse`.
 
 ### Technical Debt
-- Per-item context shaping (the real per-subagent cost lever) deferred to GH #24 — the 40KB budget is an interim, not the final answer.
+- Per-item context shaping (the real per-subagent cost lever) deferred to issue #45 (epic #24) — the 40KB budget is an interim, not the final answer.
 - `atomic-note-indexer.py` removal must confirm no other consumer before deletion.
 
 ### Implementation Gotchas

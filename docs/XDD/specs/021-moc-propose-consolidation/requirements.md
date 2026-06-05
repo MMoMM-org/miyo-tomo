@@ -138,11 +138,11 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 - **`up`-parsing SSoT:** Centralise frontmatter-`up:` + inline-`up::` parsing into a single shared library helper consumed by the cache-builder and `moc-discovery` Phase 6.5 (and retrofit `atomic-note-indexer`), killing the current three-way regex drift.
 
 ### Could Have Features
-- **Per-item context shaping (deferred to GH #24):** Pass each inbox subagent only the placeholder/MOC slices relevant to that item's topics, rather than the full envelope — the only lever that *reduces* per-subagent load instead of enlarging it. Named here so the budget raise isn't mistaken for the final answer.
+- **Per-item context shaping (deferred to issue #45 (epic #24)):** Pass each inbox subagent only the placeholder/MOC slices relevant to that item's topics, rather than the full envelope — the only lever that *reduces* per-subagent load instead of enlarging it. Named here so the budget raise isn't mistaken for the final answer.
 - **Incremental cache rebuild** using `byFrontmatter` `filter.modifiedAfter` once the full-rebuild cost becomes a constraint.
 
 ### Won't Have (This Phase)
-- Per-item context shaping implementation (Could-Have / GH #24).
+- Per-item context shaping implementation (Could-Have / issue #45 (epic #24)).
 - New Kado capabilities (`childCount` on `listDir`, server-side `filter.path` on `byTag`, bulk inline-field projection) — every read needed by 021 already exists in `kado_client` v0.7.0; gaps are noted for the Kado team but not blocking.
 - Any direct note mutation by `/moc-propose` — writes remain in the 2-pass `/execute` boundary.
 - Multi-user / shared-vault behaviour.
@@ -223,7 +223,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 | Removing accumulation leaves vestigial scaffolding (atomic-note-indexer, budget Pass 6, cache lifts) | Medium | High | Treat retirement as explicit cleanup scope (`feedback_post_refactor_drop_scaffolding_not_patch`); default to delete, not patch |
 | Growing `moc-discovery.py` past its already-4×-over size | Medium | High | Mandate `lib/` extraction in the SDD; reviewer gate on file size |
 | Dual-`up` precedence ambiguity when both forms present | Low | Low | Define a single precedence rule in SDD (e.g. frontmatter `up:` wins) and test it |
-| Budget raise re-admits bytes ×N subagents | Low | Medium | Placeholder is essential and was being silently dropped; prompt-caching softens cost; per-item shaping named as the real follow-up lever (GH #24) |
+| Budget raise re-admits bytes ×N subagents | Low | Medium | Placeholder is essential and was being silently dropped; prompt-caching softens cost; per-item shaping named as the real follow-up lever (issue #45 (epic #24)) |
 
 ## Open Questions
 All blocking questions resolved with the user on 2026-06-05:

@@ -130,6 +130,8 @@ When linking a note to an MOC, Tomo must decide WHERE in the MOC to place the li
 - Count notes that would match a hypothetical MOC
 - If threshold met (default: 3): propose new MOC
 
+**Freshness (important):** the inbox-time accumulation check (Condition B — see the detail spec) reads the **precomputed accumulation index from the discovery cache**, i.e. the snapshot from the last `/explore-vault`. It runs at no extra cost during `/inbox` (no live vault scan), but it only sees clusters that existed at the last explore. Re-run `/explore-vault` after adding/reorganising notes to refresh it, or use the live `/moc-propose` scan (§8) for an up-to-the-minute answer. (A cache-staleness warning is tracked as backlog F-21.)
+
 **Proposal includes:**
 - Suggested MOC title and file path
 - Initial links (the notes that triggered the proposal)
@@ -144,12 +146,13 @@ When linking a note to an MOC, Tomo must decide WHERE in the MOC to place the li
 
 Beyond inbox processing, Tomo can run a **standalone MOC density scan** to densify the existing network:
 
-- **Trigger:** dedicated command (e.g., `/scan-mocs`) — independent of `/inbox`
+- **Trigger:** the `/moc-propose` command — independent of `/inbox` (supersedes the originally-planned `/scan-mocs`; F-43)
+- **Live scan:** unlike the inbox-time Condition-B check (§7), `/moc-propose` scans the vault **at call time**, so it is not bound to the discovery-cache snapshot — it sees clusters created since the last `/explore-vault`
+- **Scope:** whole-vault (no args) or scoped with `tag:` / `folder:` / `class:` / `title:` / free text
 - **Goal:** find clustering opportunities, placeholder replacements, and orphan notes that could join an existing MOC
-- **Output:** Pass 1 Suggestions document (same format as inbox processing) with MOC-density actions only
-- **Same 2-pass approval:** user confirms direction, then Tomo generates instruction set, then user applies
+- **Output:** a reviewable MOC proposal-doc in the inbox (same 2-pass approval: user confirms direction → Tomo generates instruction set → user applies)
 
-This lets the user maintain MOC coverage continuously, not only when new inbox items arrive.
+This lets the user maintain MOC coverage continuously and on demand, not only when new inbox items arrive.
 
 ## 9. Instruction Set Action Examples
 

@@ -56,6 +56,20 @@ When you've reorganised folders, added new MOCs, or changed tag conventions, ref
 
 Discovery writes `tomo-instance/config/discovery-cache.yaml` and may update `vault-config.yaml` for the sections it owns (tags, callouts, relationships, trackers). Each section asks for confirmation before writing. Your vault is never modified — only Tomo's config files. See [Configuration → Override mechanism](configuration.md#override-mechanism) for how the cache fits into the layer precedence.
 
+### How Tomo proposes new MOCs (and why cache freshness matters)
+
+Tomo suggests creating a new Map of Content (MOC) when a topic has accumulated enough notes without one (LYT's "Mental Squeeze Point"). There are **two paths**, and they differ in *when* they run and *how fresh* their data is:
+
+- **Passive — automatically during `/inbox`.** While analysing each inbox item, Tomo checks whether the item's topic matches a cluster of existing **unclassified** notes (atomic notes with no `up::` MOC link). On a match it proposes a new MOC. This match runs against the **accumulation index baked into the discovery cache** — i.e. the snapshot from your **last `/explore-vault`**. It adds no cost at inbox time (no live vault scan), but it only knows about clusters that existed at the last explore.
+- **Active — on demand with `/moc-propose`.** This command **scans the vault live** (whole-vault, or scoped with `tag:` / `folder:` / `class:` / `title:` / free text) and writes a reviewable MOC proposal-doc to your inbox. Use it when you want an up-to-the-minute answer independent of cache age.
+
+**Practical consequence — the passive `/inbox` detection is only as current as your last `/explore-vault`:**
+
+- A cluster that just crossed the threshold (e.g. you added the 3rd note on a topic) **won't be proposed during `/inbox` until you re-run `/explore-vault`**.
+- Conversely, notes you've *filed* under a MOC since the last explore may still look "unclassified" in a stale cache, so a proposal can mention notes you've already organised.
+
+So: **re-run `/explore-vault` after you've added or reorganised notes** to refresh what `/inbox` can detect — or reach for **`/moc-propose`** when you want a live scan right now. (A cache-staleness warning in `/inbox` is planned — backlog F-21.)
+
 ### Re-run a setup wizard
 
 Conventions evolve. Refresh just one part of the setup without re-running the full installer:

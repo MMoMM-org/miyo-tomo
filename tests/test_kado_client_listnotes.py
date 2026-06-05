@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_kado_client_listnotes.py — Unit tests for KadoClient.list_notes
 and KadoClient.read_inline_fields.
 
@@ -11,8 +11,11 @@ Spec: docs/XDD/specs/015-msp-condition-b-accumulation/
 """
 from __future__ import annotations
 
+import io
+import json
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -38,6 +41,43 @@ def _make_client() -> KadoClient:
 def _make_search_page(items: list[dict], next_cursor: str | None = None) -> dict:
     """Build a Kado-shape search result page as returned by _call_tool."""
     return {"items": items, "nextCursor": next_cursor}
+
+
+def _make_rpc_response_ctx(payload: dict) -> MagicMock:
+    """Return a urlopen context-manager mock yielding a JSON-RPC-wrapped payload.
+
+    Exercises the real _call_tool → _search_all → SSE/RPC unwrap path, unlike
+    the _call_tool-stub tests which never touch the transport.
+    """
+    rpc = json.dumps({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"content": [{"type": "text", "text": json.dumps(payload)}]},
+    }).encode("utf-8")
+    resp = MagicMock()
+    resp.read.return_value = rpc
+    ctx = MagicMock()
+    ctx.__enter__ = MagicMock(return_value=resp)
+    ctx.__exit__ = MagicMock(return_value=False)
+    return ctx
+
+
+def test_list_notes_end_to_end_through_transport():
+    """list_notes reaches the real transport and parses a listNotes page.
+
+    Patches urlopen (not _call_tool) so a wrong tool-name or broken RPC unwrap
+    in the public method would actually fail — covers the wiring the
+    _call_tool-stub tests cannot see.
+    """
+    client = _make_client()
+    page = _make_search_page(
+        [{"path": "200 Notes/A.md", "tags": ["topic/x"]}], next_cursor=None
+    )
+
+    with patch("urllib.request.urlopen", return_value=_make_rpc_response_ctx(page)):
+        result = client.list_notes("200 Notes/", fields=["tags"])
+
+    assert result == [{"path": "200 Notes/A.md", "tags": ["topic/x"]}]
 
 
 # ---------------------------------------------------------------------------

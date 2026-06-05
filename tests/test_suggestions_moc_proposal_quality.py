@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_suggestions_moc_proposal_quality.py — F-34 MOC quality fixes (b/a/c).
 
 Tests (ordered b→a→c, fix-first):
@@ -250,13 +250,20 @@ class TestDedupItemVsProposal:
         doc = _run_reducer(tmp_path, stems, make_results, threshold=1)
         # Render and examine the item-section portion (before ## Proposed MOCs)
         md = _run_render(tmp_path, doc)
-        suggestions_part = md.split("## Proposed MOCs")[0] if "## Proposed MOCs" in md else md
+        assert "## Proposed MOCs" in md, "render must produce a Proposed MOCs section"
+        suggestions_part, proposed_part = md.split("## Proposed MOCs", 1)
 
-        # The per-item section must NOT have create-MOC decision UI
+        # Positive anchor: the create-MOC UI MUST render in the Proposed MOCs
+        # section — otherwise the absence checks below are vacuous (they would
+        # pass even if dedup were removed but the create UI simply never rendered).
+        assert "Approve (create this MOC" in proposed_part, (
+            "create-MOC UI must appear in the Proposed MOCs section"
+        )
+        # The per-item section must NOT duplicate the create-MOC decision UI.
         assert "Approve (create this MOC" not in suggestions_part, (
             "Item section contains create-MOC approve UI — redundant with Proposed MOCs"
         )
-        assert "Skip — don't create" not in suggestions_part.replace("## Proposed MOCs", ""), (
+        assert "Skip — don't create" not in suggestions_part, (
             "Item section contains skip-MOC UI — redundant with Proposed MOCs"
         )
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_vault_summary.py — Behavioural tests for vault-summary.py.
 
 Verifies that the aggregator reads pre-computed stats from pipeline artifacts
@@ -746,6 +746,30 @@ class TestMocTitleCap:
         )
 
         assert len(result["key_moc_titles"]) == 10
+
+    def test_untitled_map_notes_dropped_before_cap(self, tmp_path):
+        """map_notes with empty/missing title are filtered out; the cap still holds."""
+        data = {
+            "map_notes": (
+                [{"path": f"Maps/t-{i}.md", "title": f"MOC {i}"} for i in range(12)]
+                + [{"path": "Maps/empty.md", "title": ""}]      # falsy → dropped
+                + [{"path": "Maps/none.md", "title": None}]      # None → dropped
+                + [{"path": "Maps/missing.md"}]                  # no key → dropped
+            ),
+            "placeholder_mocs": [],
+            "tree_stats": {"total_mocs": 15, "root_mocs": 1, "max_depth": 1, "cycles_broken": 0},
+        }
+        moc_path = _write_json(data, tmp_path, "moc-output.json")
+        result = aggregate_summary(
+            scan_path=str(_make_scan_output(tmp_path)),
+            mocs_path=str(moc_path),
+            cache_path=str(_make_discovery_cache(tmp_path)),
+            config_path=str(_make_vault_config(tmp_path)),
+        )
+        titles = result["key_moc_titles"]
+        assert len(titles) == 10                       # cap holds
+        assert "" not in titles and None not in titles  # no falsy titles leaked
+        assert all(t.startswith("MOC ") for t in titles)
 
 
 class TestCachePath:

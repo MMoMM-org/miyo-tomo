@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """
 vault-summary.py — Aggregate pipeline stats into a single JSON summary.
 
@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from itertools import islice
 from typing import Any
 
 
@@ -69,7 +70,9 @@ def _extract_moc_stats(mocs: dict | None) -> tuple[int | None, int | None, list[
     count = tree.get("total_mocs")
     depth = tree.get("max_depth")
     map_notes = mocs.get("map_notes") or []
-    titles = [n.get("title", "") for n in map_notes if n.get("title")][:10]
+    # Cap at 10 without materializing every title first: skip falsy/missing
+    # titles, stop after 10 via islice.
+    titles = list(islice((n["title"] for n in map_notes if n.get("title")), 10))
     return count, depth, titles
 
 
@@ -108,7 +111,7 @@ def _extract_tag_stats(
         return None, None, {}, None, None
     prefixes = (config.get("tags") or {}).get("prefixes") or {}
     namespace_count = len(prefixes)
-    unique_count = 0
+    unique_values: set[str] = set()  # deduped across prefixes, so the count is honest
     prefix_table: dict[str, Any] = {}
     required_count = 0
     optional_count = 0
@@ -118,13 +121,13 @@ def _extract_tag_stats(
             prefix_table[prefix] = None
             continue
         known = info.get("known_values") or []
-        unique_count += len(known)
+        unique_values.update(str(v) for v in known)
         prefix_table[prefix] = known[0] if known else None
         if info.get("required_for"):
             required_count += 1
         else:
             optional_count += 1
-    return namespace_count, unique_count, prefix_table, required_count, optional_count
+    return namespace_count, len(unique_values), prefix_table, required_count, optional_count
 
 
 def _extract_relationship_markers(config: dict | None) -> list[dict]:

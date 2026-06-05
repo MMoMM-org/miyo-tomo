@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """
 topic-extract.py — Extract topic keywords from note content.
 
@@ -316,9 +316,10 @@ def _strip_link_target(target: str) -> str:
     target = target.split("|")[0].strip()
     # Path prefix: "Folder/Sub/Note" → "Note"
     target = target.split("/")[-1].strip()
-    # Heading anchor: "Note#heading" → "Note"
+    # Heading/block anchor: "Note#heading" / "Note#^block" → "Note"
+    # (a well-formed block ref is "Note#^id", so the # split already removes it).
     target = target.split("#")[0].strip()
-    # Block anchor: "Note^block" → "Note"
+    # Defensive fallback only for a malformed bare "Note^block" with no leading #.
     target = target.split("^")[0].strip()
     return target
 

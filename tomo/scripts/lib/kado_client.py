@@ -1,4 +1,4 @@
-# version: 0.7.0
+# version: 0.8.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -21,6 +21,7 @@ Usage:
 
 import json
 import os
+import random
 import sys
 import time
 import urllib.error
@@ -33,6 +34,7 @@ _RETRY_STATUSES = {429, 503}
 _MAX_RETRIES = 4
 _RETRY_BACKOFF_BASE = 0.5  # seconds
 _RETRY_BACKOFF_CAP = 10.0  # seconds
+_RETRY_AFTER_CAP = 60.0  # seconds — upper bound on an honored Retry-After header
 
 
 # ── Exceptions ─────────────────────────────────────────────────────────────────
@@ -199,7 +201,9 @@ class KadoClient:
         depth:
             Maximum recursion depth.  ``None`` (default) recurses without limit.
         limit:
-            Page size for cursor-based pagination.  Defaults to 500.
+            Per-request page size for cursor-based pagination.  Defaults to 500.
+            This is NOT a total-result cap — all pages are followed and merged,
+            so the returned list may exceed ``limit``.
         """
         return self._search_all(
             "listNotes", path=path, depth=depth, limit=limit, fields=fields
@@ -574,7 +578,13 @@ class KadoClient:
                         "Check that KADO_URL points to the right server and port."
                     ) from exc
                 if exc.code in _RETRY_STATUSES and attempt < _MAX_RETRIES:
-                    time.sleep(_retry_delay(exc, attempt))
+                    delay = _retry_delay(exc, attempt)
+                    print(
+                        f"[kado-retry] HTTP {exc.code} on {tool_name}, "
+                        f"attempt {attempt + 1}/{_MAX_RETRIES}, sleeping {delay:.1f}s",
+                        file=sys.stderr,
+                    )
+                    time.sleep(delay)
                     continue
                 suffix = f" (after {_MAX_RETRIES} retries)" if exc.code in _RETRY_STATUSES else ""
                 raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}{suffix}") from exc
@@ -658,17 +668,22 @@ def _extract_from_mcp_json(cfg: dict) -> tuple[str | None, str | None]:
 def _retry_delay(exc: urllib.error.HTTPError, attempt: int) -> float:
     """Compute sleep duration before next retry.
 
-    Honors the Retry-After response header (integer seconds) when present
-    and numeric; clamps to 0 to guard against negative server values.
-    Falls back to exponential backoff capped at _RETRY_BACKOFF_CAP.
+    Honors the Retry-After response header (delta-seconds form) when present
+    and numeric, clamped to [0, _RETRY_AFTER_CAP] — the upper clamp guards
+    against a misbehaving server stalling the pipeline for an arbitrary time.
+    The HTTP-date form of Retry-After (RFC 7231) is NOT parsed; it falls back
+    to exponential backoff. Backoff is capped at _RETRY_BACKOFF_CAP and given
+    bounded jitter (×[0.5, 1.0]) so concurrent clients hitting a rate-limited
+    Kado do not re-collide on identical retry offsets.
     """
     header_val = exc.headers.get("Retry-After") if exc.headers else None
     if header_val is not None:
         try:
-            return max(0, int(header_val))
+            return float(min(_RETRY_AFTER_CAP, max(0, int(header_val))))
         except (ValueError, TypeError):
-            pass
-    return min(_RETRY_BACKOFF_CAP, _RETRY_BACKOFF_BASE * (2 ** attempt))
+            pass  # HTTP-date form unsupported — fall through to backoff
+    base = min(_RETRY_BACKOFF_CAP, _RETRY_BACKOFF_BASE * (2 ** attempt))
+    return base * random.uniform(0.5, 1.0)
 
 
 # ── Response parsing ───────────────────────────────────────────────────────────

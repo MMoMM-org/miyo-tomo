@@ -48,7 +48,7 @@ This phase delivers the rebuilt MOC-structure cache builder and its supporting `
 - [ ] **T1.3 `lib/placeholder_detect.py` — real-vault denominator** `[parallel: true]` `[activity: backend-api]` `[ref: SDD/Complex Logic placeholder correction; ADR-5]`
   1. Prime: current `detect_placeholders` (`moc-tree-builder.py:464+`, v0.3.0 anchor logic) + `tests/test_moc_tree_placeholders.py` (10 green).
   2. Test (RED): move the 10 existing cases; ADD: anchored/plain link to an EXISTING in-scope note → NOT a placeholder; link to genuinely-missing note → placeholder; denominator is the real in-scope vault set, not the discovered-MOC set.
-  3. Implement: extract anchor-strip + per-note dedup here; accept a real `in_scope_vault_paths` set as the denominator.
+  3. Implement: extract anchor-strip + per-note dedup here; accept a real `in_scope_vault_paths` set as the denominator. Use O(1) set/dict lookups for the MOC-name resolution (precompute a `{stem.lower(): path}` index once) — addresses review finding L1 (the old `resolve_link_to_path` did two O(M) scans per link) so this is fixed fresh here rather than patched in the about-to-be-replaced `moc-tree-builder`.
   4. Validate: `pytest tests/test_moc_tree_placeholders.py` (extended); lint.
   5. Success: 397→~171 on real data `[ref: PRD/M2]`; block-ref/heading anchors to existing notes excluded `[ref: PRD/AC F4#3]`.
 

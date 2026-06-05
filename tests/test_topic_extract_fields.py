@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_topic_extract_fields.py — Tests for extract_topics_from_fields() — T1.2 of spec 015 (F-34).
 
 All tests run RED before the implementation is added (CON-1 TDD discipline).
@@ -656,3 +656,33 @@ def test_method3_non_date_numeric_targets_not_filtered():
     assert "2026" in link_topics, "Year-only target must not be filtered"
     assert "2026-05" in link_topics, "Year-month target must not be filtered"
     assert "note 42" in link_topics, "Numeric note name must not be filtered"
+
+
+# ---------------------------------------------------------------------------
+# Malformed-shape contract (defends the .get() handling of Kado field dicts)
+# ---------------------------------------------------------------------------
+
+def test_malformed_field_dicts_do_not_crash():
+    """Heading/link dicts missing level/kind/target are tolerated, not KeyError.
+
+    extract_topics_from_fields consumes Kado listNotes output (an external
+    producer contract). This pins the defensive .get() behaviour so a future
+    refactor to [] indexing would fail here rather than in production.
+    """
+    result = extract_topics_from_fields(
+        title=None,
+        headings=[
+            {"heading": "No Level Here"},   # missing 'level' → not treated as H1
+            {"level": 1},                    # missing 'heading' → empty H1 text
+        ],
+        links=[
+            {"target": "Some Note"},         # missing 'kind' → not kind=='link'
+            {"kind": "link"},                # missing 'target' → no topic
+        ],
+        tags=["topic/"],                     # empty leaf after prefix
+    )
+    # Contract: returns the normal shape, no exception, no spurious topics.
+    assert set(result.keys()) >= {"topics", "source_methods"}
+    assert isinstance(result["topics"], list)
+    assert "no level here" not in result["topics"]   # non-H1 heading ignored
+    assert "some note" not in result["source_methods"].get("links", [])  # missing kind

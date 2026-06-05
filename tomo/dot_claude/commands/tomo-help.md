@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.6
+# version: 0.2.7
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -104,6 +104,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
     - suggestions / suggestions-fan: `pending-approval → approved`
     - moc-proposal: `pending-accept → accepted`
     - instructions: `pending-apply → applied` (Hashi flips after `[x] Applied`)
+  - MOC detection freshness: `/inbox` proposes new MOCs from the accumulation index in the cache built by your **last `/explore-vault`** — re-run `/explore-vault` after adding notes, or use `/moc-propose` for a live scan.
   - Point at: `.claude/commands/inbox.md`, `tomo/scripts/lib/tomo_lifecycle.py`
 
 ### Concepts
@@ -149,6 +150,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
     then run `/inbox` to materialise the MOC via the normal `create_moc` + `add_relationship` actions
   - Profile-aware: miyo profile uses Dewey classification; LYT profile uses thematic grouping
   - Requires Hashi 0.2.0+ for the destination-collision guard
+  - Live vs `/inbox`: `/moc-propose` scans the vault **at call time** (cache-independent), whereas `/inbox`'s automatic MOC detection only sees clusters from your last `/explore-vault`.
   - Point at: `.claude/agents/moc-architect.md`, `scripts/moc-discovery.py`
 
 - **templates / tokens / t_note_tomo / rendering** →

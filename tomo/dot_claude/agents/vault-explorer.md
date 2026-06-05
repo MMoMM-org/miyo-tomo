@@ -11,7 +11,7 @@ skills:
 ---
 
 # Vault Explorer Agent
-# version: 0.11.6
+# version: 0.12.0
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -588,37 +588,50 @@ The discovery cache is always rebuilt fresh.
 
 ### Step 10 — Summary Report
 
-Present a completion summary showing:
-- Framework: display name from the profile loaded in Step 0 (never infer from structure)
-- Structure: note counts across concept folders, MOC count and tree depth
-- Frontmatter: required/optional field counts
-- Tags: prefix count, unique tag count
-- Relationships: detected markers and positions
-- Callouts: editable/protected counts
-- Trackers: field count (if applicable)
-- Templates: found/missing counts
-- Cache: output path confirmation
+Run `python3 scripts/vault-summary.py` (no extra flags; defaults read from
+`tomo-tmp/scan-output.json`, `tomo-tmp/moc-output.json`,
+`config/discovery-cache.yaml`, `config/vault-config.yaml`).
+
+Render the completion summary from the returned JSON. Field-to-section mapping:
+
+- **Framework:** display name from the profile loaded in Step 0 — never from the JSON.
+- **Structure:** `total_notes`, `notes_per_concept` (concept → count table), `unmapped_folders`, `moc_count`, `moc_max_depth`
+- **Frontmatter:** `frontmatter_required_count`, `frontmatter_optional_count`
+- **Tags:** `tag_namespace_count`, `unique_tag_count`
+- **Relationships:** `relationship_markers` (marker + position for each entry)
+- **Callouts:** `callout_editable_count`, `callout_protected_count`
+- **Trackers:** `tracker_field_count`
+- **Templates:** `templates_found_count`, `templates_missing_count`
+- **Accumulation:** `accumulation_cluster_count` unclassified topic clusters
+- **Cache:** `cache_path`
 
 Close with: "Run /inbox to start processing notes."
 
+# STRICT — Compute summary numbers ONLY via `scripts/vault-summary.py`; NEVER
+# inline `python3 -c`.
+# Why: inline python trips the Bash validator (newlines + `#`) → permission
+# prompt on every run and non-deterministic output.
+
 ### Step 10b — Write Human-Readable Summary
 
-Also write a concise Markdown summary to `config/vault-config.md` so the user can
-read and edit it outside the YAML file. Sections (in order):
-- Vault Info (name, inbox path, framework name, total notes/files)
-- Folder Layout (concept → path → note count table, unmapped folders)
-- MOCs (count, key MOC titles, relationship marker pattern)
-- Tag Taxonomy (namespace count, prefix table with examples)
-- Frontmatter Patterns (required/optional/project/daily field lists)
-- Relationships (markers and positions)
-- Callouts (protected/editable/ignore lists)
-- Trackers (if daily notes enabled)
+Using the same JSON from Step 10, write a concise Markdown summary to
+`config/vault-config.md` via the Write tool. Sections (in order):
+
+- Vault Info (vault name, inbox path, framework display name, `total_notes`)
+- Folder Layout (`notes_per_concept` as a concept → count table; `unmapped_folders`)
+- MOCs (`moc_count`, `moc_max_depth`, `key_moc_titles`, relationship marker pattern)
+- Tag Taxonomy (`tag_namespace_count`, `tag_prefix_table` as a prefix → example table)
+- Frontmatter Patterns (`frontmatter_required_count` / `frontmatter_optional_count`)
+- Relationships (`relationship_markers`: marker + position for each)
+- Callouts (`callout_protected_count` protected, `callout_editable_count` editable)
+- Trackers (`tracker_field_count` fields, if applicable)
 
 Keep the summary readable and short — the YAML is the source of truth; this file is
 for human scanning. Header frontmatter: `version: 0.2.0` and `Updated by vault-explorer
 on YYYY-MM-DD` as a comment below.
 
-**STRICT:** Write to `config/vault-config.md` only.
+**STRICT:** Write to `config/vault-config.md` only. Do NOT run python to compute
+values — all numbers come from the JSON produced in Step 10.
 
 ## Re-Run Behavior
 

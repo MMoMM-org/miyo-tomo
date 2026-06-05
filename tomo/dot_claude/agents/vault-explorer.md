@@ -607,10 +607,8 @@ Render the completion summary from the returned JSON. Field-to-section mapping:
 
 Close with: "Run /inbox to start processing notes."
 
-# STRICT — Compute summary numbers ONLY via `scripts/vault-summary.py`; NEVER
-# inline `python3 -c`.
-# Why: inline python trips the Bash validator (newlines + `#`) → permission
-# prompt on every run and non-deterministic output.
+# STRICT — Compute summary numbers ONLY via `scripts/vault-summary.py`; NEVER inline `python3 -c`.
+# Why: inline python triggers Bash-validator permission prompts and is non-deterministic.
 
 ### Step 10b — Write Human-Readable Summary
 

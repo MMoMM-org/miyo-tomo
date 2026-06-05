@@ -583,9 +583,18 @@ class TestGracefulDegradation:
             config_path=str(tmp_path / "nonexistent-config.yaml"),
         )
 
+        # Tag fields — None when config is absent (W2: distinguishes "0 configured" vs "missing")
         assert result["tag_namespace_count"] is None
         assert result["unique_tag_count"] is None
         assert result["relationship_markers"] == []
+        # Scalar config fields must also be None, not 0 (W2 consistency)
+        assert result["frontmatter_required_count"] is None
+        assert result["frontmatter_optional_count"] is None
+        assert result["callout_protected_count"] is None
+        assert result["callout_editable_count"] is None
+        assert result["tracker_field_count"] is None
+        assert result["templates_found_count"] is None
+        assert result["templates_missing_count"] is None
 
     def test_all_files_missing_still_returns_valid_dict(self, tmp_path):
         result = aggregate_summary(
@@ -619,6 +628,124 @@ class TestGracefulDegradation:
         assert result.returncode == 0, f"Expected exit 0, got {result.returncode}; stderr: {result.stderr}"
         parsed = json.loads(result.stdout)
         assert isinstance(parsed, dict)
+
+
+class TestMalformedInputs:
+    """Corrupt files yield None for affected fields without raising — W1 coverage."""
+
+    def test_corrupt_json_moc_file_yields_null_moc_fields(self, tmp_path):
+        corrupt_json = tmp_path / "bad-moc.json"
+        corrupt_json.write_text("{broken", encoding="utf-8")
+        scan_path = _make_scan_output(tmp_path)
+        cache_path = _make_discovery_cache(tmp_path, cluster_count=2)
+        config_path = _make_vault_config(tmp_path)
+
+        result = aggregate_summary(
+            scan_path=str(scan_path),
+            mocs_path=str(corrupt_json),
+            cache_path=str(cache_path),
+            config_path=str(config_path),
+        )
+
+        assert result["moc_count"] is None
+        assert result["moc_max_depth"] is None
+        # Other sources unaffected
+        assert result["accumulation_cluster_count"] == 2
+        assert result["total_notes"] == 120
+
+    def test_corrupt_json_scan_file_yields_null_scan_fields(self, tmp_path):
+        corrupt_json = tmp_path / "bad-scan.json"
+        corrupt_json.write_text("{broken", encoding="utf-8")
+        moc_path = _make_moc_output(tmp_path, total_mocs=3)
+        cache_path = _make_discovery_cache(tmp_path)
+        config_path = _make_vault_config(tmp_path)
+
+        result = aggregate_summary(
+            scan_path=str(corrupt_json),
+            mocs_path=str(moc_path),
+            cache_path=str(cache_path),
+            config_path=str(config_path),
+        )
+
+        assert result["total_notes"] is None
+        assert result["notes_per_concept"] == {}
+        # MOC data still populated from valid file
+        assert result["moc_count"] == 3
+
+    def test_corrupt_yaml_cache_file_yields_null_accumulation(self, tmp_path):
+        corrupt_yaml = tmp_path / "bad-cache.yaml"
+        corrupt_yaml.write_text("key: [unclosed", encoding="utf-8")
+        moc_path = _make_moc_output(tmp_path)
+        scan_path = _make_scan_output(tmp_path)
+        config_path = _make_vault_config(tmp_path)
+
+        result = aggregate_summary(
+            scan_path=str(scan_path),
+            mocs_path=str(moc_path),
+            cache_path=str(corrupt_yaml),
+            config_path=str(config_path),
+        )
+
+        assert result["accumulation_cluster_count"] is None
+        # Config fields still populated from valid vault-config
+        assert result["tag_namespace_count"] == 3
+
+    def test_corrupt_yaml_config_file_yields_null_config_fields(self, tmp_path):
+        corrupt_yaml = tmp_path / "bad-config.yaml"
+        corrupt_yaml.write_text("key: [unclosed", encoding="utf-8")
+        moc_path = _make_moc_output(tmp_path)
+        scan_path = _make_scan_output(tmp_path)
+        cache_path = _make_discovery_cache(tmp_path, cluster_count=4)
+
+        result = aggregate_summary(
+            scan_path=str(scan_path),
+            mocs_path=str(moc_path),
+            cache_path=str(cache_path),
+            config_path=str(corrupt_yaml),
+        )
+
+        assert result["tag_namespace_count"] is None
+        assert result["frontmatter_required_count"] is None
+        assert result["callout_protected_count"] is None
+        assert result["tracker_field_count"] is None
+        assert result["templates_found_count"] is None
+        # Unaffected sources still populated
+        assert result["accumulation_cluster_count"] == 4
+
+    def test_load_json_safe_returns_none_on_corrupt_input(self, tmp_path):
+        corrupt = tmp_path / "corrupt.json"
+        corrupt.write_text("{broken", encoding="utf-8")
+
+        result = load_json_safe(str(corrupt), "test-label")
+
+        assert result is None
+
+    def test_load_yaml_safe_returns_none_on_corrupt_input(self, tmp_path):
+        corrupt = tmp_path / "corrupt.yaml"
+        corrupt.write_text("key: [unclosed", encoding="utf-8")
+
+        result = load_yaml_safe(str(corrupt), "test-label")
+
+        assert result is None
+
+
+class TestMocTitleCap:
+    """key_moc_titles is capped at 10 entries — S3 boundary."""
+
+    def test_key_moc_titles_capped_at_ten_when_more_mocs_present(self, tmp_path):
+        moc_path = _make_moc_output(tmp_path, total_mocs=15, max_depth=1)
+        scan_path = _make_scan_output(tmp_path)
+        cache_path = _make_discovery_cache(tmp_path)
+        config_path = _make_vault_config(tmp_path)
+
+        result = aggregate_summary(
+            scan_path=str(scan_path),
+            mocs_path=str(moc_path),
+            cache_path=str(cache_path),
+            config_path=str(config_path),
+        )
+
+        assert len(result["key_moc_titles"]) == 10
 
 
 class TestCachePath:

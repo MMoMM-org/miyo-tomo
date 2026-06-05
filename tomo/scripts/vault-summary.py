@@ -52,7 +52,7 @@ def load_yaml_safe(path: str, label: str) -> dict | None:
     except FileNotFoundError:
         print(f"[warn] {label} not found: {path}", file=sys.stderr)
         return None
-    except (OSError, Exception) as exc:  # yaml.YAMLError extends Exception
+    except Exception as exc:  # yaml.YAMLError and OSError both extend Exception
         print(f"[warn] {label} unreadable: {exc}", file=sys.stderr)
         return None
 
@@ -102,10 +102,10 @@ def _extract_accumulation_count(cache: dict | None) -> int | None:
 
 def _extract_tag_stats(
     config: dict | None,
-) -> tuple[int | None, int | None, dict, int, int]:
+) -> tuple[int | None, int | None, dict, int | None, int | None]:
     """Return (namespace_count, unique_tag_count, prefix_table, required, optional)."""
     if config is None:
-        return None, None, {}, 0, 0
+        return None, None, {}, None, None
     prefixes = (config.get("tags") or {}).get("prefixes") or {}
     namespace_count = len(prefixes)
     unique_count = 0
@@ -134,30 +134,30 @@ def _extract_relationship_markers(config: dict | None) -> list[dict]:
     return (config.get("relationships") or {}).get("markers") or []
 
 
-def _extract_callout_counts(config: dict | None) -> tuple[int, int]:
+def _extract_callout_counts(config: dict | None) -> tuple[int | None, int | None]:
     """Return (protected_count, editable_count) from vault-config.yaml callouts."""
     if config is None:
-        return 0, 0
+        return None, None
     callouts = config.get("callouts") or {}
     protected = len(callouts.get("protected") or [])
     editable = len(callouts.get("editable") or [])
     return protected, editable
 
 
-def _extract_tracker_field_count(config: dict | None) -> int:
+def _extract_tracker_field_count(config: dict | None) -> int | None:
     """Return total tracker field count from vault-config.yaml trackers."""
     if config is None:
-        return 0
+        return None
     trackers = config.get("trackers") or {}
     daily = len(trackers.get("daily_note_trackers") or [])
     eod = len(trackers.get("end_of_day_fields") or [])
     return daily + eod
 
 
-def _extract_template_counts(config: dict | None) -> tuple[int, int]:
+def _extract_template_counts(config: dict | None) -> tuple[int | None, int | None]:
     """Return (found_count, missing_count) from vault-config.yaml templates.mapping."""
     if config is None:
-        return 0, 0
+        return None, None
     mapping = (config.get("templates") or {}).get("mapping") or {}
     found = 0
     missing = 0

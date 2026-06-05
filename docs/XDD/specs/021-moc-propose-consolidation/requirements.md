@@ -39,7 +39,7 @@ version: "1.0"
 | title | MOC-Propose Consolidation |
 | status | IN_REVIEW |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 26 |
+| acceptanceCriteria | 22 (Gherkin, Features 1–5) + 2 Privacy EARS in SDD |
 
 ---
 
@@ -106,6 +106,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 - **Acceptance Criteria (Gherkin Format):**
   - [ ] Given a note with frontmatter `up:` holding a valid MOC link and no inline `up::`, When orphan detection runs, Then the note is classified as having a parent (not orphan).
   - [ ] Given a note with inline `up:: [[X]]` only, When orphan detection runs, Then it is classified as having a parent (current behaviour preserved).
+  - [ ] Given a note with BOTH frontmatter `up:` → MOC-A and inline `up:: [[MOC-B]]` (different targets), When detection runs, Then the resolved `up_target` is MOC-B (inline wins, ADR-2).
   - [ ] Given a note whose `up`/`up::` target is not a known MOC, When detection runs, Then the state is `broken` (distinct from `absent`/`valid`).
   - [ ] Given a note with `up:` present-but-empty (`up:`, `up: []`, null) or inline `up::` with no `[[…]]`, When detection runs, Then it is treated as `absent` (orphan), not `valid`.
 
@@ -135,7 +136,8 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 
 ### Should Have Features
 - **Budget accommodation:** Raise the shared-ctx byte budget so the corrected, essential `placeholder_mocs` is never trimmed (Performance research: ~34–36 KB envelope after correction; placeholder is non-advisory Condition-C data). Keep `placeholder_mocs` out of the trim path entirely.
-- **`up`-parsing SSoT:** Centralise frontmatter-`up:` + inline-`up::` parsing into a single shared library helper consumed by the cache-builder and `moc-discovery` Phase 6.5 (and retrofit `atomic-note-indexer`), killing the current three-way regex drift.
+- **`up`-parsing SSoT:** Centralise frontmatter-`up:` + inline-`up::` parsing into a single shared library helper consumed by the cache builder and `moc-discovery` Phase 6.5, superseding the two inline-only `up::` regexes. (`atomic-note-indexer`, the third site, is **deleted** in the accumulation retirement — not retrofitted.)
+- **Capture an A/C golden baseline first:** Before removing Condition B, capture the pre-021 Condition A + C output on the named inbox fixture set as a golden file, so AC F4#1 / M3 "identical output" is asserted against a real baseline (not shape-only).
 
 ### Could Have Features
 - **Per-item context shaping (deferred to issue #45 (epic #24)):** Pass each inbox subagent only the placeholder/MOC slices relevant to that item's topics, rather than the full envelope — the only lever that *reduces* per-subagent load instead of enlarging it. Named here so the budget raise isn't mistaken for the final answer.
@@ -143,7 +145,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 
 ### Won't Have (This Phase)
 - Per-item context shaping implementation (Could-Have / issue #45 (epic #24)).
-- New Kado capabilities (`childCount` on `listDir`, server-side `filter.path` on `byTag`, bulk inline-field projection) — every read needed by 021 already exists in `kado_client` v0.7.0; gaps are noted for the Kado team but not blocking.
+- New Kado capabilities (`childCount` on `listDir`, server-side `filter.path` on `byTag`, bulk inline-field projection) — every read needed by 021 already exists in `kado_client` v0.8.0; gaps are noted for the Kado team but not blocking.
 - Any direct note mutation by `/moc-propose` — writes remain in the 2-pass `/execute` boundary.
 - Multi-user / shared-vault behaviour.
 
@@ -167,33 +169,38 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 - Rule 5: Orphan matching multiple MOCs → present the top-3 by score for the user to choose.
 - Rule 6: `placeholder_mocs` is never trimmed by the shared-ctx budget enforcer.
 - Rule 7: `/moc-propose` never writes to vault notes; it emits proposals only.
+- Rule 8: `exclude_paths` take precedence over `scope_paths` — a path matching both is excluded (so a daily folder nested inside an in-scope root is still skipped).
+- Rule 9: A placeholder target that resolves to an existing in-scope note is removed from the placeholder list; the same note's *orphan* status (no `up`) is orthogonal and handled by Feature 3 on the `/moc-propose` path — the two never both propose the same MOC because a placeholder target that exists is not a placeholder.
 
 **Edge Cases:**
 - Empty scope / zero `#type/others/moc` notes → cache builds with empty MOC set; `/moc-propose` surfaces the existing `cache-empty` message; no crash.
 - Cache corrupt (invalid YAML / wrong shape) → treated as missing → inline rebuild.
-- Tag present but note outside scope → not a MOC (Rule 2); exclusion matches on precise configured paths, not loose substring (guard the known trailing-space `Calendar/301 Daily/ ` config value).
+- Cache rebuild concurrency / partial write → atomic tmp-rename prevents a torn read; two simultaneous rebuilds cost a redundant scan only (single-user assumption, no lock). A rebuild that yields an unwritable/empty cache aborts with an actionable message rather than re-scanning every run.
+- A note that is BOTH a placeholder target AND an in-scope orphan → if the target exists it is not a placeholder (Rule 9); its orphan handling is independent (Feature 3). No double-propose.
+- Tag present but note outside scope → not a MOC (Rule 2); a `#type/others/moc` note inside an excluded path is excluded (Rule 8). Exclusion matches on precise configured paths, not loose substring (guard the known trailing-space `Calendar/301 Daily/ ` config value).
+- `concepts.atomic_note` config may be a scalar path (vault-example) or a dict with `base_path`/`subdirectories` (instance) → the scope reader normalises both (M8).
 - `up` points to a non-MOC note → state `broken`.
 - Wikilink uses alias/title (`[[Stem|Alias]]`) → resolution honours both stem and title.
-- Placeholder target that resolves to an existing in-scope note → excluded from the placeholder list (this is the 397→171 correction).
+- Placeholder target that resolves to an existing in-scope note → excluded from the placeholder list (the 397→~171 correction: 224 such false positives removed).
 - `last_scan` in the future (clock skew) → treated as fresh.
 
 ## Success Metrics
 
 ### Key Performance Indicators
 - **M1 — No live pull when fresh:** `/moc-propose` performs 0 whole-vault MOC tree-builds when the cache is within TTL (was 1 per run).
-- **M2 — Placeholder false-positive drop:** placeholder count on the real vault drops **397 → ~171** (37 anchors + 224 false-positives removed).
-- **M3 — Condition B removed, A/C zero-regression:** `accumulation_index` no longer read by `inbox-analyst`; A and C produce identical output to pre-021 on a fixed fixture set.
+- **M2 — Placeholder false-positive drop:** placeholder count on the real vault drops **397 → ~171** — the 224 targets that resolve to an existing in-scope note are removed (the disjoint split measured 2026-06-05 is 224 false-positive / 173 genuine; ~171 after per-note dedup). Target: `placeholder.build.kept_count` ≤ 180 AND `false_positive_dropped` ≈ 224.
+- **M3 — Condition B removed, A/C zero-regression:** `accumulation_index` no longer read by `inbox-analyst`; A and C produce output **identical to the captured pre-021 golden baseline** on the named fixture set (byte-equal, not shape-only).
 - **M4 — Tag-primary recovers notes-area MOCs:** the previously-missed `#type/others/moc` notes are recognised as MOCs and removed from the placeholder set.
 - **M5 — Orphan coverage:** link-or-create emitted for orphan notes AND orphan MOCs; `up` detection covers frontmatter + inline.
-- **M6 — Envelope reduction:** shared-ctx shrinks from 54.5 KB toward ~34–36 KB; net Pass-1 cost is a reduction.
-- **M7 — Scope excludes daily/templates:** 0 daily/template files appear as candidates/orphans/placeholders.
+- **M6 — Envelope reduction:** shared-ctx (with corrected placeholder, no accumulation) is **≤ 36 KB** raw (was 54.5 KB); measured Pass-1 token cost on a fixed inbox fixture is **lower than the pre-021 baseline** (measured via `measure-inbox-phase-b-token-cost.py` — the reduction is net even after the 40 KB budget raise, because corrected-envelope < 54.5 KB and 2nd–Nth analyst reads bill at cache-read rate).
+- **M7 — Scope excludes daily/templates:** 0 daily/template files appear as candidates/orphans/placeholders (`moc-cache.build.excluded_leak_count == 0`).
 - **M8 — Inbox sees the complete MOC set:** `shared_ctx.mocs` contains the notes-area MOCs previously invisible to Condition A; on a fixture where an item matches a notes-area MOC, the inbox links to it instead of proposing a new MOC. Template-vault (`X/…`) MOCs are absent.
 
 ### Tracking Requirements
 
 | Event | Properties | Purpose |
 |-------|------------|---------|
-| `moc-cache.build` | `built_at`, `mocs_count`, `notes_count`, `scope_paths`, `duration_ms`, `kado_calls` | Validate M1 (cache hits vs rebuilds), TTL behaviour, build cost |
+| `moc-cache.build` | `built_at`, `mocs_count`, `notes_count`, `scope_paths`, `excluded_leak_count`, `duration_ms`, `kado_calls` | Validate M1 (cache hits vs rebuilds), M7 (excluded-path leakage), TTL behaviour, build cost |
 | `moc-cache.read` | `last_scan`, `age_seconds`, `stale` (bool) | Confirm cache-hit vs inline-rebuild path taken |
 | `placeholder.build` | `raw_count`, `kept_count`, `false_positive_dropped`, `anchor_dropped` | Validate M2/M4 (397→171) |
 | `moc-propose.orphans` | `orphan_notes`, `orphan_mocs`, `link_suggestions`, `create_suggestions` | Validate M5 (link-or-create coverage) |
@@ -211,7 +218,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 ### Assumptions
 - `#type/others/moc` is the reliable MOC signal in this vault (verified 5/5 real MOCs).
 - The MOC structure changes slowly enough that a 1-day TTL is acceptable, with `/explore-vault` able to force a refresh.
-- Every Kado read needed already exists in `kado_client` v0.7.0 (`search_by_tag`, `read_frontmatter`, `read_inline_fields`, `list_dir/list_notes`).
+- Every Kado read needed already exists in `kado_client` v0.8.0 (`search_by_tag`, `read_note`, `list_dir/list_notes`; `up` is parsed from `read_note` content locally — C1).
 - Prompt caching bills 2nd–Nth identical analyst reads at cache-read rates, softening the cost of a larger byte budget.
 
 ## Risks and Mitigations

@@ -5,14 +5,14 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-05 |
-| **Current Phase** | Ready |
+| **Current Phase** | Ready (post-review revision) |
 | **Last Updated** | 2026-06-05 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | 26 ACs (5 Must-Have features), 7 OQs resolved 2026-06-05 |
+| requirements.md | completed | 22 Gherkin ACs (5 Must-Have features) + 2 Privacy EARS; 7 OQs resolved; post-review revision 2026-06-05 |
 | solution.md | completed | ADR-1…10; schema Option A; lib/ extraction; per-item shaping → issue #45 (epic #24) |
 | plan/ | completed | 4 phases, 19 tasks; schema-first → lib → consumers → inbox-retire → integration/live |
 
@@ -29,6 +29,7 @@
 | 2026-06-05 | Add standalone Must-Have Feature 5: inbox Condition A scores against the complete tag-discovered MOC set | User caught that the path-primary discovery (older than F-34) also starved `/inbox`: Condition A only ever matched new items against the ~89 MOC-folder maps, never notes-area MOCs, since `shared_ctx.mocs` derives from the same `map_notes`. Tag-primary discovery (Feature 1) fixes it automatically, but it gets its own ACs + metric M8 so the inbox gain is verified, not incidental. |
 | 2026-06-05 | ADR-1 cache schema = Option A (entries[]+kind+loader shim); ADR-2 inline `up::` wins; ADR-3 explore force-rebuild / propose rebuild-if-stale; ADR-4 raise budget to 40KB | SDD-phase user confirmations. Schema A minimises blast radius on the 1929-LOC moc-discovery; inline-wins is the user's precedence call; explore pre-warms while propose stays fast; budget raise unblocks essential placeholder. |
 | 2026-06-05 | Per-item context shaping deferred to follow-up spec (issue #45 (epic #24)); 021 = budget-raise only | Shaping is the real per-subagent cost lever but is correctness-sensitive (inclusive pre-filter must not drop true matches); folding it into a 5-feature consolidation spec risks scope-bloat. 021 raises the budget (prompt-cache-softened) as the interim. |
+| 2026-06-05 | Spec revised after a 5-agent spec-review (REQUEST CHANGES → all findings fixed) | Caught 2 Critical + 7 High design holes at the seams: (C1) dual-up parser changed to `parse_up_from_content(raw)` — splits frontmatter locally from the single read_note (no extra Kado call); (C2) CacheEntry carries classification/linked_notes so cache-builder's classifications don't silently empty; (H1) accumulation retirement scope expanded to vault-summary/vault-explorer/shared-ctx.schema.json/tomo.accumulation config/help+skill prose/test_shared_ctx_accumulation; (H2/H3) case-(a) reframed as a separate orphan pass over cache entries[up_state==absent], NOT a Phase-6 edit and NOT relaxing restrict_to_atomic_note_paths; (H4) added Kado-denial RED test task; (H5) fixed lib component names; (H6) added F4#2 Condition-C-casing test. Plus MEDIUM/LOW: up_state vocab (parse returns target/source only, caller sets state), cache-source wiring, placeholder math reconciled (224 false-positive / 173 genuine → ~171), edge cases (concurrency, placeholder+orphan, exclude-vs-scope), frontmatter-up premise noted, atomic_note scalar/dict, golden-baseline task T3.0, AC count 26→22, kado_client v0.8.0. |
 
 ## Context
 

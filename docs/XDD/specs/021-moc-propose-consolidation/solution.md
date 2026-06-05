@@ -45,7 +45,7 @@ version: "1.0"
 
 ## Constraints
 
-- **CON-1 (Language/runtime):** Python 3 scripts running inside the Tomo Docker instance; all vault access via `KadoClient` (`tomo/scripts/lib/kado_client.py` v0.7.0). No direct filesystem vault access (Constitution L1 — route through Kado).
+- **CON-1 (Language/runtime):** Python 3 scripts running inside the Tomo Docker instance; all vault access via `KadoClient` (`tomo/scripts/lib/kado_client.py` v0.8.0). No direct filesystem vault access (Constitution L1 — route through Kado).
 - **CON-2 (File size, Constitution L2):** `moc-discovery.py` is already ~1929 LOC (≈4× the 300–500 LOC guidance). New logic MUST be extracted into `lib/` modules, not appended. The `moc-tree-builder` rebuild must split discovery/read/placeholder rather than reproduce one large file.
 - **CON-3 (2-pass model):** `/moc-propose` proposes only — it writes a proposal-doc to the inbox and never mutates vault notes. Any `up:` write happens later via `/execute` (Hashi) through `kado_client.write_frontmatter(mode='merge')`.
 - **CON-4 (Runtime-file discipline):** runtime agent/command files (`moc-architect.md`, `inbox-analyst.md`) carry imperatives only; all WHY/rationale lives in `docs/tomo/<mirrored-path>.md`. Script-header docstrings are part of the code (carve-out).
@@ -77,7 +77,7 @@ version: "1.0"
 
 - file: tomo/scripts/lib/kado_client.py
   relevance: HIGH
-  why: "search_by_tag, read_frontmatter:144, read_inline_fields:160, list_notes(fields=)/list_dir with _search_all pagination. All reads needed by 021 already exist (v0.7.0)."
+  why: "search_by_tag, read_frontmatter:146, read_inline_fields:162, list_notes(fields=)/list_dir with _search_all pagination. All reads needed by 021 already exist (v0.8.0). NB: 021 reads up via read_note + local frontmatter split (C1), not read_frontmatter."
 
 - file: tomo/scripts/atomic-note-indexer.py
   relevance: MEDIUM
@@ -124,7 +124,7 @@ graph TB
 ```
 
 #### Interface Specifications
-All vault I/O is via Kado MCP (`http://host.docker.internal:<port>/mcp`, bearer token from instance `.mcp.json`). No HTTP/REST surface is added by 021. Reads used: `search_by_tag`, `list_notes`/`list_dir`, `read_frontmatter`, `read_inline_fields` (all existing in `kado_client` v0.7.0).
+All vault I/O is via Kado MCP (`http://host.docker.internal:<port>/mcp`, bearer token from instance `.mcp.json`). No HTTP/REST surface is added by 021. Reads used: `search_by_tag`, `list_notes`/`list_dir`, `read_note` (up parsed from its content locally — C1) (all existing in `kado_client` v0.8.0).
 
 #### Data Storage Changes
 New cache file (YAML, inside instance `config/`): `moc-structure-cache.yaml` — see Application Data Models. No relational DB. `discovery-cache.yaml` loses the `unclassified_topic_clusters` lift (accumulation retirement).
@@ -151,8 +151,7 @@ Host-vs-live diagnostics: KADO_URL=http://127.0.0.1:<port>/mcp + token, sandbox 
 ```mermaid
 graph LR
     subgraph Builder[moc-structure-cache builder]
-      Disc1[lib/moc_discovery_scan<br/>tag-primary + scope]
-      Read1[lib/moc_read<br/>read MOC/note + up-state]
+      Scan[lib/moc_scan<br/>tag-primary + scope/exclude]
       Place[lib/placeholder_detect<br/>real-vault denominator]
       Up[lib/up_parse<br/>frontmatter up: + inline up::]
     end
@@ -181,33 +180,43 @@ graph LR
 **Component**: tomo/scripts (runtime pipeline)
 ```
 tomo/scripts/
-├── moc-tree-builder.py            # MODIFY → rebuilt as MOC-structure-cache builder (tag-primary, scope, dual-up, real-vault placeholder, last_scan). Split internals into lib/.
-├── moc-discovery.py               # MODIFY → cache-source via loader; Phase 6.5 dual-up; case-(a) emitter. Extract new logic to lib/ (CON-2).
+├── moc-tree-builder.py            # MODIFY → rebuilt as MOC-structure-cache builder (tag-primary, scope, dual-up, real-vault placeholder, last_scan). Split internals into lib/. Still emits the cache-builder-shaped map_notes superset (incl. classification/linked_notes) — see C2.
+├── moc-discovery.py               # MODIFY → cache-source via loader; Phase 6.5 dual-up; case-(a) orphan-enumeration pass. Extract new logic to lib/ (CON-2).
 ├── shared-ctx-builder.py          # MODIFY → remove accumulation_index + Pass-6 trim; raise --max-bytes default to 40960; keep placeholder un-trimmed.
-├── cache-builder.py               # MODIFY → stop lifting unclassified_topic_clusters; (map_notes lift stays, now sourced from new cache).
-├── atomic-note-indexer.py         # REMOVE (or retire) → accumulation feed gone. Confirm no other consumer.
+├── cache-builder.py               # MODIFY → stop lifting unclassified_topic_clusters (accumulation retirement). map_notes lift stays, sourced from the new cache's kind==moc projection (which MUST carry classification/linked_notes — C2).
+├── vault-summary.py               # MODIFY (retirement) → drop _extract_accumulation_count + the accumulation_cluster_count output field (H1).
+├── atomic-note-indexer.py         # REMOVE → accumulation feed gone; no surviving consumer once the lifts above are removed (confirm in T3.3). NOT retrofitted to up_parse — it is deleted (ADR-10).
 └── lib/
-    ├── up_parse.py                # NEW → single SSoT: parse frontmatter up: (YAML list) + inline up::; inline wins on conflict (ADR-2); returns (state, target).
+    ├── up_parse.py                # NEW → single SSoT. parse_up_from_content(raw) splits the frontmatter block locally (no extra Kado call) + checks inline up::; inline wins on conflict (ADR-2). Returns {target, source}; the CALLER sets up_state (see UpParseResult).
     ├── moc_cache_loader.py        # NEW → load moc-structure-cache; TTL staleness; rebuild-if-stale; shim entries[kind==moc]→map_notes.
-    ├── moc_scan.py                # NEW → tag-primary discovery (#type/others/moc) + scope/exclude filter.
-    ├── placeholder_detect.py      # NEW → detect_placeholders against real in-scope vault set (moves v0.3.0 anchor logic here).
-    └── orphan_link.py             # NEW → case-(a): orphan (note OR MOC) → top-3 existing-MOC link suggestions, else new-MOC + reason.
+    ├── moc_scan.py                # NEW → tag-primary discovery (#type/others/moc) + scope/exclude filter; normalizes scalar-or-dict atomic_note config (M8).
+    ├── placeholder_detect.py      # NEW → detect_placeholders against real in-scope vault set, O(1) name lookups (moves v0.3.0 anchor logic here; review L1).
+    └── orphan_link.py             # NEW → case-(a) orphan pass: consumes cache entries[up_state==absent] (notes AND mocs), scores vs entries[kind==moc] → top-3 link suggestions, else new-MOC + reason. NOT a Phase-6 duplicates_skipped edit (H2).
 
 tomo/dot_claude/agents/
 ├── inbox-analyst.md               # MODIFY → delete Condition B (accumulation) sub-block + A7-vs-B STRICT; keep A + C. Bump version.
-└── moc-architect.md               # MODIFY → render case-(a) link-or-create in proposal-doc. Bump version.
+├── moc-architect.md               # MODIFY → render case-(a) link-or-create in proposal-doc. Bump version.
+└── vault-explorer.md              # MODIFY (retirement, H1) → Step 9: drop the atomic-note-indexer call + cache-builder --accumulation, wire the rebuilt builder with force-rebuild (ADR-3); Step 10: drop accumulation_cluster_count from the summary. Bump version.
+
+tomo/commands + skills (retirement prose, H1)
+├── dot_claude/commands/tomo-help.md          # MODIFY → drop accumulation/Condition-B references.
+└── dot_claude/skills/lyt-patterns/SKILL.md   # MODIFY → drop the accumulation trigger-type reference (keep placeholder/Condition C).
+
+tomo/schemas/
+└── shared-ctx.schema.json         # MODIFY (retirement, H3) → remove the accumulation_index property (additionalProperties:false strips it otherwise / dead contract).
 
 tomo/config/templates/ (+ instance config/vault-config.yaml)
-└── vault-example.yaml             # MODIFY → add tomo.moc_structure_cache.{scope_paths,exclude_paths,ttl_days,moc_tag}.
+└── vault-example.yaml             # MODIFY → add tomo.moc_structure_cache.{scope_paths,exclude_paths,ttl_days,moc_tag}; REMOVE the tomo.accumulation block (retirement, H1). Align concepts.atomic_note shape with the instance (dict, not scalar — M8).
 
 docs/tomo/scripts/                 # NEW → WHY docs for moc-tree-builder rebuild, up_parse, moc_cache_loader, orphan_link, placeholder_detect.
 
 tests/
 ├── test_moc_tree_placeholders.py  # EXISTS (10 green) → extend for real-vault denominator.
-├── test_up_parse.py               # NEW → frontmatter/inline/both/empty/broken (ADR-2 precedence).
+├── test_up_parse.py               # NEW → frontmatter/inline/both-conflict(F2#4)/empty/broken (ADR-2 precedence).
 ├── test_moc_cache_loader.py       # NEW → TTL fresh/stale/missing/corrupt; shim projection.
 ├── test_orphan_link.py            # NEW → link-existing (top-3) vs create-new; notes AND MOCs.
-└── test_shared_ctx_no_accumulation.py # NEW → accumulation absent; A/C unaffected; placeholder un-trimmed; 40KB budget.
+├── test_shared_ctx_no_accumulation.py # NEW → accumulation absent; A/C unaffected; placeholder un-trimmed; 40KB budget.
+└── test_shared_ctx_accumulation.py    # RETIRE/REPLACE → exercises the deleted accumulation path (H1).
 ```
 
 ### Interface Specifications
@@ -233,23 +242,38 @@ ENTITY: CacheEntry (NEW)
     title: str
     discovered_via: str               # "tag" | "path" | "both"
     topics: list[str]
-    up_state: str                     # "absent" | "valid" | "broken"
+    up_state: str                     # "absent" | "valid" | "broken"  (caller-resolved — see UpParseResult)
     up_target: str | null             # resolved parent stem (inline wins — ADR-2)
     up_source: str | null             # "inline" | "frontmatter" | null (provenance)
     tags: list[str]
+    # C2 — the kind==moc projection IS discovery-cache's map_notes; it MUST carry the
+    # fields cache-builder.build_classifications / build_scan_stats read, or those
+    # silently collapse to {}. So the moc entries also carry:
+    classification: str | null        # required by cache-builder.build_classifications (:90)
+    linked_notes: list[str]           # required by cache-builder.build_classifications (:110)
+    # (level/parent_moc/child_mocs/sibling_mocs/state/sections are NOT read by any
+    #  surviving consumer — verified — so they are intentionally dropped.)
 
 # Loader shim (moc_cache_loader): cache["map_notes"] = [e for e in entries if e.kind=="moc"]
-# → moc-discovery Phases 1-6 read map_notes byte-for-byte unchanged.
+# → moc-discovery Phases 1-6 read only path/title/topics from map_notes (verified) → unchanged.
+# → cache-builder reads classification/linked_notes from the same projection (C2) → preserved.
 
-ENTITY: UpParseResult (NEW)  — lib/up_parse.parse_up(frontmatter: dict, body: str)
+ENTITY: UpParseResult (NEW)  — lib/up_parse.parse_up_from_content(raw_content: str)
+  # C1: takes the RAW note content from a single read_note() call and splits the
+  #     frontmatter block locally (no extra read_frontmatter Kado round-trip).
   FIELDS:
-    state: str                        # absent | valid(=has target) | (broken decided by caller vs MOC set)
-    target: str | null                # inline up:: wins over frontmatter up: when both present (ADR-2)
-    source: str | null                # "inline" | "frontmatter"
+    target: str | null                # parent stem, anchor-stripped; inline up:: wins over frontmatter up: (ADR-2)
+    source: str | null                # "inline" | "frontmatter" | null
   RULES:
-    - inline `up:: [[X]]` present (non-empty wikilink)        → target=X, source=inline   (WINS)
-    - else frontmatter `up:` non-empty YAML list/scalar link  → target=first, source=frontmatter
-    - else (missing / [] / null / `up::` w/o wikilink)        → target=null, state=absent
+    - split frontmatter YAML block from body (reuse moc-tree-builder parse_frontmatter/get_body pattern)
+    - inline `up:: [[X]]` present in body (non-empty wikilink)  → target=X, source=inline   (WINS)
+    - else frontmatter `up:` non-empty YAML list/scalar link    → target=first, source=frontmatter
+    - else (missing / [] / null / `up::` w/o wikilink)          → target=null, source=null
+  # M1: parse_up_from_content does NOT emit up_state. The CALLER derives up_state:
+  #     target is None            → "absent"
+  #     target in moc_stem_set    → "valid"
+  #     target not in moc_stem_set→ "broken"
+  #     where moc_stem_set = {e.stem for e in entries if e.kind=="moc"}.
 
 ENTITY: OrphanLinkSuggestion (NEW)  — emitted into DiscoveryReport
   FIELDS:
@@ -259,6 +283,13 @@ ENTITY: OrphanLinkSuggestion (NEW)  — emitted into DiscoveryReport
     mode: str                         # "link_existing" | "create_new"
     candidates: list[{target_moc, score}]   # top-3 when mode=link_existing (ADR/OQ-4)
     reason: str                       # rendered into proposal-doc (+ /execute instruction) when create_new
+  # H2 — orphan SOURCE is the cache, not a Phase-6 edit:
+  #   orphan set = [e for e in cache.entries if e.up_state == "absent"]   (both kinds)
+  #   for each orphan: score its topics vs entries[kind==moc] (reuse Phase-5 keyword overlap);
+  #   strong matches → link_existing (top-3); no match → create_new + reason.
+  #   This is a NEW pass in lib/orphan_link, run after the loader provides entries —
+  #   it does NOT modify Phase 6 duplicates_skipped (which is cluster→MOC dedup, a
+  #   different unit) and does NOT touch restrict_to_atomic_note_paths (H3).
 
 # REMOVED from shared-ctx: accumulation_index. KEEP: placeholder_mocs (corrected, un-trimmed).
 ```
@@ -272,45 +303,53 @@ ENTITY: OrphanLinkSuggestion (NEW)  — emitted into DiscoveryReport
   to: moc-discovery.py (via moc_cache_loader, shim→map_notes) and shared-ctx-builder.py (build_mocs + placeholder)
   data_flow: "MOC/note entries, up-state, topics; lean placeholder list"
 - external: Kado MCP
-  integration: "search_by_tag(#type/others/moc), list_notes/list_dir (scope + placeholder universe), read_frontmatter + read_inline_fields (dual up)"
+  integration: "search_by_tag(#type/others/moc), list_notes/list_dir (scope + placeholder universe), read_note (cache builder + Phase 6.5 — frontmatter split locally, no extra round-trip — C1)"
   critical_data: "MOC paths, tags, frontmatter up:, inline up::, in-scope note paths"
 ```
 
 ### Implementation Examples
 
-#### Example: dual-`up` parse (ADR-2 — inline wins)
-**Why:** the single most error-prone change; today three call sites only see inline `up::`.
+#### Example: dual-`up` parse (ADR-2 — inline wins; C1 — single read_note, split locally)
+**Why:** the single most error-prone change; today two regex sites + one inline-fields site only see inline `up`. The parser takes RAW note content and splits the frontmatter block itself, so neither the builder nor Phase 6.5 needs an extra `read_frontmatter` Kado call.
 ```python
 # lib/up_parse.py — SSoT for "does this note declare a parent?"
 _INLINE_UP = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
 
-def parse_up(frontmatter: dict, body: str) -> UpParseResult:
+def parse_up_from_content(raw_content: str) -> UpParseResult:
+    frontmatter, body = split_frontmatter(raw_content)   # reuse moc-tree-builder parse_frontmatter/get_body
     # Inline wins on conflict (ADR-2)
     m = _INLINE_UP.search(body or "")
     if m and m.group(1).strip():
-        return UpParseResult(state="present", target=_strip_anchor(m.group(1)), source="inline")
-    fm_up = frontmatter.get("up")
-    target = _first_wikilink(fm_up)        # handles list | scalar | "[[X]]"; None for [] / null / ""
+        return UpParseResult(target=_strip_anchor(m.group(1)), source="inline")
+    target = _first_wikilink(frontmatter.get("up"))   # list | scalar | "[[X]]"; None for [] / null / ""
     if target:
-        return UpParseResult(state="present", target=target, source="frontmatter")
-    return UpParseResult(state="absent", target=None, source=None)
-# Caller resolves "present" → "valid" vs "broken" by checking target stem against the MOC set.
+        return UpParseResult(target=target, source="frontmatter")
+    return UpParseResult(target=None, source=None)
+# M1: the CALLER sets up_state — None→absent; target in moc_stem_set→valid; else→broken.
 ```
 
-#### Example: case-(a) seam (orphan → link-or-create)
-**Why:** clarifies where new code attaches without disturbing Phase 1–6.
+#### Example: case-(a) orphan pass (H2 — cache-sourced, not a Phase-6 edit)
+**Why:** clarifies the orphan enumeration is its own pass over the cache, NOT a modification of Phase 6 `duplicates_skipped` (which dedupes *clusters* against MOCs — a different unit) and does NOT loosen `restrict_to_atomic_note_paths` (H3 — that shared pre-filter stays intact for the clustering path).
 ```python
-# In Phase 6, when a single orphan note/MOC matches an existing MOC by exact-title or Jaccard≥0.80:
-# instead of routing to duplicates_skipped, emit an OrphanLinkSuggestion.
-def resolve_orphan(orphan, existing_mocs):  # lib/orphan_link.py
-    matches = score_against_mocs(orphan.topics, existing_mocs)   # reuse Phase-5 keyword overlap
-    strong = [m for m in matches if m.score >= LINK_THRESHOLD]
-    if strong:
-        return OrphanLinkSuggestion(mode="link_existing",
-                                    candidates=top_n(strong, 3))   # ADR/OQ-4
-    return OrphanLinkSuggestion(mode="create_new",
-                                reason=build_reason(orphan, matches))
-# Eligibility: relax restrict_to_atomic_note_paths so orphan MOCs are also candidates.
+# lib/orphan_link.py — runs after moc_cache_loader provides cache.entries.
+def emit_orphan_suggestions(entries) -> list[OrphanLinkSuggestion]:
+    moc_entries = [e for e in entries if e["kind"] == "moc"]
+    orphans     = [e for e in entries if e["up_state"] == "absent"]   # notes AND mocs
+    out = []
+    for orphan in orphans:
+        matches = score_against_mocs(orphan["topics"], moc_entries)   # reuse Phase-5 keyword overlap
+        strong = [m for m in matches if m.score >= LINK_THRESHOLD]
+        if strong:
+            out.append(OrphanLinkSuggestion(stem=orphan["stem"], path=orphan["path"],
+                                            kind=orphan["kind"], mode="link_existing",
+                                            candidates=top_n(strong, 3)))   # ADR/OQ-4
+        else:
+            out.append(OrphanLinkSuggestion(stem=orphan["stem"], path=orphan["path"],
+                                            kind=orphan["kind"], mode="create_new",
+                                            reason=build_reason(orphan, matches)))
+    return out
+# Orphan MOCs are eligible because they are cache entries with up_state=="absent" —
+# no change to the Phase-1 atomic-note pre-filter is needed (H3).
 ```
 
 ## Runtime View
@@ -319,8 +358,8 @@ def resolve_orphan(orphan, existing_mocs):  # lib/orphan_link.py
 1. User runs `/moc-propose [scope]`.
 2. `moc-discovery` calls `moc_cache_loader`: reads `last_scan`; if `now − last_scan > ttl_days` OR missing/corrupt → invokes the builder inline (rebuild-if-stale, ADR-3).
 3. Loader projects `entries[kind==moc]` → `map_notes`; Phases 1–6 run unchanged.
-4. Phase 6.5 validates each candidate's `up` via `lib/up_parse` (frontmatter + inline).
-5. For each orphan (note or MOC), `lib/orphan_link` emits top-3 link suggestions OR a create-new proposal with a reason.
+4. Phase 6.5 validates each candidate's `up` via `lib/up_parse.parse_up_from_content` on the note's existing `read_note` content (frontmatter split locally — no extra Kado call, C1); caller resolves valid/broken vs the MOC stem set.
+5. `lib/orphan_link.emit_orphan_suggestions` runs a separate pass over `cache.entries[up_state=="absent"]` (notes AND MOCs), scoring each against `entries[kind==moc]` → top-3 link suggestions OR a create-new proposal with a reason (H2 — not a Phase-6 edit).
 6. `suggestions-reducer` + `moc-architect` render the proposal-doc (link-or-create). User ticks; `/execute` applies.
 
 ```mermaid
@@ -353,7 +392,9 @@ sequenceDiagram
 
 ### Error Handling
 - **Cache missing/corrupt:** treat as stale → inline rebuild (propose) / force rebuild (explore).
-- **Kado read denial on an in-scope path:** skip with stderr warning, continue (mirror existing `discover_via_paths` try/except) — never fabricate presence/absence (AC-P2).
+- **Persistently unwritable/empty after rebuild:** do NOT silently re-scan every run — abort with an actionable message (`cache-rebuild-failed`) so a broken target surfaces instead of looping a full Kado scan per invocation.
+- **Kado read denial on an in-scope path:** skip with stderr warning, continue (mirror existing `discover_via_paths` try/except) — never fabricate presence/absence (AC-P2). **Must have a RED denial-path test (H4 / Constitution L1 Testing).**
+- **Concurrent rebuild (M-concurrency):** single-user assumption — the atomic tmp-rename (cache-builder pattern) prevents a *corrupt/torn* read, so two simultaneous rebuilds (`/explore-vault` + `/moc-propose`, or two proposes) cost a redundant scan and one clobbers the other's `last_scan`, but never corrupt state. No lock is added; this cost-only race is documented and accepted.
 - **Empty scope / zero MOCs:** cache builds empty; `/moc-propose` surfaces existing `cache-empty` message; no crash.
 - **Cache-write unwritable:** surface failure; do not proceed on a half-written cache (atomic tmp-rename guards partial writes).
 - **`last_scan` in the future (clock skew):** treat as fresh.
@@ -366,7 +407,11 @@ For each wikilink L in each MOC body:
   if resolves_to_known_MOC(note): continue
   if note in real_in_scope_vault_set: continue   # ← the 224 fix: was "only 89 MOCs"
   emit placeholder {target: note, referenced_by: MOC}, deduped per (note, MOC)
-RESULT (live vault): 397 → ~171 (37 anchors + 224 existing-notes removed)
+RESULT (live vault, measured 2026-06-05): of 397 raw placeholders, 224 resolve to an
+existing in-scope note (the false positives this fix removes) → ~173 genuine dead-links
+remain, collapsing to ~171 after anchor-strip + per-note dedup. (The 397→~171 figure
+supersedes the earlier "37 anchors + 224" subtraction, which double-counted the anchored
+subset; the disjoint split is 224 false-positive / 173 genuine.)
 ```
 
 ## Deployment View
@@ -375,9 +420,9 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
 ## Cross-Cutting Concepts
 
 ### System-Wide Patterns
-- **Up-parsing SSoT:** `lib/up_parse` is the single parser for both `up` forms; `moc_scan`, Phase 6.5, and (retrofit) `atomic-note-indexer` consume it — kills the current three-way regex drift (`feedback_spec_schema_consumer_three_way_drift`).
-- **Schema-first ordering:** land the cache schema + writer + loader shim BEFORE consumer reads (drift guard).
-- **Cleanup discipline:** retire accumulation scaffolding by deletion, not patching (`feedback_post_refactor_drop_scaffolding_not_patch`): `build_accumulation_index`, shared-ctx Pass-6 trim, `cache-builder` `unclassified_topic_clusters` lift, `atomic-note-indexer.py`, inbox-analyst Condition B block.
+- **Up-parsing SSoT:** `lib/up_parse` is the single parser for both `up` forms; the builder (`moc_scan`'s read step) and Phase 6.5 consume it. It supersedes the two inline-only `up::` regexes today (`moc-tree-builder.UP_RE`, `moc-discovery._UP_MARKER_RE`); the third site, `atomic-note-indexer` (which used an inline-fields *dict* lookup, not a regex), is **deleted** (ADR-10), not retrofitted (M3 / `feedback_post_refactor_drop_scaffolding_not_patch`).
+- **Schema-first ordering:** land the cache schema + writer + loader shim BEFORE consumer reads (`feedback_spec_schema_consumer_three_way_drift`). The shim's kind==moc projection MUST carry `classification`/`linked_notes` or cache-builder's `classifications` silently empties (C2).
+- **Cleanup discipline (full retirement scope, H1):** retire accumulation by deletion, not patching (`feedback_post_refactor_drop_scaffolding_not_patch`): `build_accumulation_index`, shared-ctx Pass-6 trim, `cache-builder` `unclassified_topic_clusters` lift, `atomic-note-indexer.py`, inbox-analyst Condition B + A7-vs-B STRICT, **`vault-summary` `_extract_accumulation_count` + `accumulation_cluster_count`**, **`vault-explorer.md` Step 9 indexer call + Step 10 summary field**, **`shared-ctx.schema.json` `accumulation_index` property** (H3), **`tomo.accumulation` config block**, **`tomo-help.md` + `lyt-patterns` SKILL prose**, and **retire `test_shared_ctx_accumulation.py`**.
 - **Performance:** TTL cache removes the per-run live scan (M1); corrected placeholder shrinks the per-subagent envelope ×N (toward GH #40); raised 40KB budget keeps essential placeholder un-trimmed; per-item context shaping deferred to issue #45 (epic #24).
 - **Privacy/Audit:** cache is metadata-only; out-of-scope (daily/template) content never enters it (CON-5, AC-P3/P4).
 
@@ -414,11 +459,11 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
   - User confirmed: **Yes (2026-06-05)**
 
 - [x] **ADR-5 Tag-primary discovery + real-vault placeholder denominator** — `#type/others/moc` is the primary MOC signal; `detect_placeholders` checks against the real in-scope vault set, not the 89 discovered MOCs. (Derived from PRD F1/F4; fixes the 224.)
-- [x] **ADR-6 Dual-`up` via single `lib/up_parse`** reusing `read_frontmatter` + `read_inline_fields`. (PRD F2; kills 3-way drift.)
-- [x] **ADR-7 Case-(a) seat at Phase 6 match point**, relax `restrict_to_atomic_note_paths` so orphan MOCs are eligible. (PRD F3.)
+- [x] **ADR-6 Dual-`up` via single `lib/up_parse.parse_up_from_content(raw)`** — takes raw `read_note` content and splits the frontmatter block locally (C1: NO extra `read_frontmatter` Kado round-trip). Emits `{target, source}` only; the caller resolves `up_state` (absent/valid/broken) against the MOC stem set (M1). (PRD F2.)
+- [x] **ADR-7 Case-(a) as a separate orphan pass** (`lib/orphan_link`) over `cache.entries[up_state=="absent"]` (notes AND MOCs), scored vs `entries[kind==moc]`. It is **NOT** a Phase-6 `duplicates_skipped` edit (cluster dedup is a different unit, H2) and does **NOT** relax `restrict_to_atomic_note_paths` — orphan MOCs are eligible simply because they are cache entries (H3). (PRD F3.)
 - [x] **ADR-8 TTL = rolling 24 h from `last_scan`; script-driven inline rebuild.** (OQ-2/OQ-3.)
-- [x] **ADR-9 `lib/` extraction mandated** for all new moc-discovery logic; moc-tree-builder rebuild splits discovery/read/placeholder/up into lib modules. (Constitution L2 / CON-2.)
-- [x] **ADR-10 Retire accumulation (Condition B) by deletion**, including scaffolding (atomic-note-indexer, Pass-6 trim, cache lift, inbox block). (PRD F4.)
+- [x] **ADR-9 `lib/` extraction mandated** for all new moc-discovery logic; moc-tree-builder rebuild splits scan/placeholder/up into lib modules. (Constitution L2 / CON-2.)
+- [x] **ADR-10 Retire accumulation (Condition B) by deletion**, full scope (H1): `build_accumulation_index`, Pass-6 trim, cache-builder `unclassified_topic_clusters` lift, `atomic-note-indexer.py`, inbox-analyst Condition B + A7-vs-B STRICT, `vault-summary` accumulation field, `vault-explorer` Step 9/10, `shared-ctx.schema.json` `accumulation_index`, `tomo.accumulation` config, help/skill prose, `test_shared_ctx_accumulation.py`. (PRD F4.)
 
 ## Quality Requirements
 - **Performance:** `/moc-propose` does 0 full whole-vault tree-builds when cache is fresh (M1); shared-ctx envelope 54.5KB → ~34–36KB (M6).
@@ -436,9 +481,13 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
 - [ ] WHERE a `#type/others/moc` note lies in an excluded path, THE SYSTEM SHALL NOT treat it as a MOC (exclude wins).
 
 **Dual-`up` (PRD F2)**
-- [ ] WHEN a note has frontmatter `up:` with a valid link and no inline `up::`, THE SYSTEM SHALL classify it as having a parent.
-- [ ] WHEN a note has both forms with differing targets, THE SYSTEM SHALL use the inline `up::` target (ADR-2).
+- [ ] WHEN a note has frontmatter `up:` with a valid link and no inline `up::`, THE SYSTEM SHALL classify it as having a parent (valid).
+- [ ] WHEN a note has both forms with differing targets, THE SYSTEM SHALL use the inline `up::` target (ADR-2 / PRD AC F2#2).
+- [ ] IF the `up` target resolves to a stem NOT in the MOC set, THEN THE SYSTEM SHALL set `up_state = broken` (distinct from absent/valid) (PRD AC F2#4).
 - [ ] IF `up`/`up::` is empty (`[]`, null, `up::` without wikilink), THEN THE SYSTEM SHALL classify the note as `absent` (orphan).
+
+**Privacy / permission (Constitution L1, H4)**
+- [ ] WHEN Kado denies read on an in-scope path during a build, THE SYSTEM SHALL skip that path with a stderr warning and continue, fabricating no entry — and this denial path SHALL have a RED test.
 
 **Orphan link-or-create (PRD F3)**
 - [ ] WHEN an orphan note/MOC matches existing MOCs at/above threshold, THE SYSTEM SHALL offer the top-3 link candidates (ADR/OQ-4), not a new-MOC proposal.
@@ -459,7 +508,8 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
 ### Known Technical Issues
 - `moc-discovery.py` is 1929 LOC (4× L2 cap) — 021 must extract, not append (ADR-9).
 - `detect_placeholders` real-vault denominator requires a vault listing; bound to scope roots to avoid a 5393-note whole-vault pull on every build.
-- Three inline-only `up` regexes today (moc-tree, moc-discovery, atomic-note-indexer) — converge to `lib/up_parse`.
+- Two inline-only `up::` regexes today (moc-tree `UP_RE`, moc-discovery `_UP_MARKER_RE`) converge to `lib/up_parse`; the third site (`atomic-note-indexer`, an inline-fields *dict* lookup) is deleted, not retrofitted (M3).
+- **Frontmatter-`up:` is a vault-data premise, not a configured contract (M6):** `vault-config relationships.parent` declares only inline `up::` (`location_type: inline`). F2's frontmatter form is verified to exist in the real vault (5/5 sampled MOCs) but is read as a frontmatter key without a config declaration. Acceptable for this single-user vault; if generalised, add a `location_type` config option.
 
 ### Technical Debt
 - Per-item context shaping (the real per-subagent cost lever) deferred to issue #45 (epic #24) — the 40KB budget is an interim, not the final answer.

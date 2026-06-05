@@ -38,7 +38,7 @@ version: "1.0"
 | title | MOC-Propose Consolidation |
 | status | IN_REVIEW |
 | phases | 4 |
-| totalTasks | 19 |
+| totalTasks | 20 |
 | parallelTasks | 5 |
 | clarificationsRemaining | 0 |
 
@@ -61,7 +61,7 @@ Document deviations with rationale in the phase file; obtain approval; update SD
 *GATE: Read before any implementation.*
 
 **Specification**:
-- `docs/XDD/specs/021-moc-propose-consolidation/requirements.md` — PRD (5 features, 26 ACs)
+- `docs/XDD/specs/021-moc-propose-consolidation/requirements.md` — PRD (5 features, 22 ACs)
 - `docs/XDD/specs/021-moc-propose-consolidation/solution.md` — SDD (10 ADRs, lib/ structure, data models)
 
 **Key Design Decisions**:

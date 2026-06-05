@@ -16,17 +16,12 @@ All tests use a fake KadoClient — no live Kado connection required.
 """
 from __future__ import annotations
 
-import importlib.util
-import io
 import sys
 from pathlib import Path
-
-import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
-LIB_DIR = SCRIPTS_DIR / "lib"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
@@ -307,13 +302,17 @@ class TestDenialPath:
         captured = capsys.readouterr()
         assert "warn" in captured.err.lower() or "skip" in captured.err.lower() or "Atlas/200 Maps/" in captured.err
 
-    def test_permission_error_does_not_fabricate_moc_entry(self, capsys):
-        """A denied tag query must not produce a fabricated MOC entry."""
+    def test_scope_list_denial_does_not_leak_into_in_scope_paths(self, capsys):
+        """list_notes denial on a scope path → no notes from that path in in_scope_note_paths.
+
+        byTag and list_notes are independent: byTag succeeding still produces a
+        valid moc_paths entry (the tag is the MOC signal, not list_notes success).
+        What must NOT happen is the denied scope path leaking notes into
+        in_scope_note_paths — that would fabricate phantom scope membership.
+        """
         fake = FakeKadoClient()
-        # Simulate a tag-search error (e.g. the entire byTag call fails)
-        # by raising on the list_notes call for the only scope path
         fake.set_tag_response(MOC_TAG, [{"path": "Atlas/200 Maps/Denied MOC.md"}])
-        # The denied scope path means the note is excluded from in_scope
+        # list_notes on the map_note scope path is denied
         fake.set_path_error("Atlas/200 Maps/", KadoAuthError("permission denied"))
         fake.set_listnotes_response("Atlas/202 Notes/", [])
 
@@ -323,13 +322,12 @@ class TestDenialPath:
         )
         result = moc_scan.scan(fake, config)
 
-        # Even though byTag returned "Denied MOC.md", it's in the denied scope path.
-        # The test verifies the module doesn't silently smuggle it in via the tag path
-        # while the scope-list path fails. (Implementation chooses its own approach;
-        # what matters is: the result must be consistent — no split-brain entries.)
-        # We assert the denied scope path produced no in-scope notes.
-        denied_notes = [p for p in result.in_scope_note_paths if "200 Maps" in p]
-        assert not denied_notes
+        # byTag succeeded → MOC is legitimately in moc_paths
+        assert "Atlas/200 Maps/Denied MOC.md" in result.moc_paths
+
+        # list_notes was denied → no notes from that path in the scope universe
+        denied_scope_notes = [p for p in result.in_scope_note_paths if "200 Maps" in p]
+        assert not denied_scope_notes
 
     def test_other_paths_still_scanned_after_one_denial(self, capsys):
         """Three scope paths; first one denied → other two still scanned."""

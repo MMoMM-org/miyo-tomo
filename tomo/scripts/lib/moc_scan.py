@@ -194,12 +194,8 @@ def _collect_in_scope_notes(
 
         for item in items:
             path = item.get("path", "")
-            if not path or not path.endswith(".md"):
-                # Skip non-markdown items and folder entries
-                if item.get("type") == "folder":
-                    continue
-                if not path.endswith(".md"):
-                    continue
+            if not path.endswith(".md"):
+                continue
             if _is_excluded(path, exclude_prefixes):
                 continue
             in_scope.add(path)

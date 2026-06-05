@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """
 moc-tree-builder.py — Discover all MOCs in the vault, read their content,
 build a parent/child/sibling tree, and output JSON.
@@ -109,6 +109,15 @@ def basename_no_ext(path: str) -> str:
     if name.endswith(".md"):
         name = name[:-3]
     return name
+
+
+def strip_link_anchor(target: str) -> str:
+    """Strip an Obsidian anchor (#heading or #^blockid) from a wikilink target.
+
+    Returns the note portion of the link. A same-note anchor such as
+    "#^9c2026" or "#Some Heading" has no note portion and yields "".
+    """
+    return target.split("#", 1)[0].strip()
 
 
 def resolve_link_to_path(link_target: str, moc_paths: list[str]) -> str | None:
@@ -468,9 +477,17 @@ def detect_placeholders(
     """
     Find wikilink targets in MOC bodies that don't resolve to any known note.
 
-    A placeholder is a link target that:
+    A placeholder is a link target that, once reduced to its note (anchor
+    stripped):
+    - Is non-empty (a bare "#^block"/"#heading" same-note anchor is not a link
+      to a missing note)
     - Does not resolve to a discovered MOC path
     - Does not match any vault note (checked by filename)
+
+    Block-reference and heading anchors (`[[Note#^id]]`, `[[Note#Heading]]`)
+    are reduced to their target note before the dead-link test, and results are
+    deduped per (note, referencing MOC) — so many anchored references into one
+    existing note collapse to nothing instead of inflating the placeholder set.
 
     Returns:
         list of {"target": str, "referenced_by": str}
@@ -486,20 +503,25 @@ def detect_placeholders(
 
     for path, moc in mocs.items():
         for link in moc.get("linked_notes_raw", []):
+            note_target = strip_link_anchor(link)
+            # Same-note anchor (#heading / #^block) — not a missing-note link.
+            if not note_target:
+                continue
             # Does it resolve to a known MOC?
-            if resolve_link_to_path(link, moc_paths):
+            if resolve_link_to_path(note_target, moc_paths):
                 continue
             # Does it resolve to any known vault note by name?
-            link_name = link.split("/")[-1].lower()
+            link_name = note_target.split("/")[-1].lower()
             if link_name.endswith(".md"):
                 link_name = link_name[:-3]
             if link_name in known_names:
                 continue
-            # It's a placeholder
-            key = (link, path)
+            # It's a placeholder — dedupe by the resolved note, not the raw link,
+            # so different anchors into the same missing note count once.
+            key = (note_target, path)
             if key not in seen_placeholders:
                 seen_placeholders.add(key)
-                placeholders.append({"target": link, "referenced_by": path})
+                placeholders.append({"target": note_target, "referenced_by": path})
 
     return placeholders
 

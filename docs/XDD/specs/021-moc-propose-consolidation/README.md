@@ -5,16 +5,16 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-05 |
-| **Current Phase** | Ready (post-review revision) |
-| **Last Updated** | 2026-06-05 |
+| **Current Phase** | Phase 6 in progress (scan output-quality cleanup) |
+| **Last Updated** | 2026-06-06 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | 22 Gherkin ACs (5 Must-Have features) + 2 Privacy EARS; 7 OQs resolved; post-review revision 2026-06-05 |
-| solution.md | completed | ADR-1…10; schema Option A; lib/ extraction; per-item shaping → issue #45 (epic #24) |
-| plan/ | completed | 4 phases, 19 tasks; schema-first → lib → consumers → inbox-retire → integration/live |
+| requirements.md | completed | Gherkin ACs across 7 Must-Have features + 2 Privacy EARS; F6 (usable scan) + F7 (output-quality cleanup) added post-live-validation 2026-06-06 |
+| solution.md | completed | ADR-1…12; schema Option A; lib/ extraction; per-item shaping → issue #45 (epic #24) |
+| plan/ | in_progress | 6 phases; schema-first → lib → consumers → inbox-retire → integration/live → scan + output-quality cleanup |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -30,6 +30,7 @@
 | 2026-06-05 | ADR-1 cache schema = Option A (entries[]+kind+loader shim); ADR-2 inline `up::` wins; ADR-3 explore force-rebuild / propose rebuild-if-stale; ADR-4 raise budget to 40KB | SDD-phase user confirmations. Schema A minimises blast radius on the 1929-LOC moc-discovery; inline-wins is the user's precedence call; explore pre-warms while propose stays fast; budget raise unblocks essential placeholder. |
 | 2026-06-05 | Per-item context shaping deferred to follow-up spec (issue #45 (epic #24)); 021 = budget-raise only | Shaping is the real per-subagent cost lever but is correctness-sensitive (inclusive pre-filter must not drop true matches); folding it into a 5-feature consolidation spec risks scope-bloat. 021 raises the budget (prompt-cache-softened) as the interim. |
 | 2026-06-06 | Add Feature 6 + ADR-11 after live validation: whole-vault `scan` = cache-sourced **orphans** (`up_state==absent`), scoped runs see ALL notes, `candidate_cap` 200→500, Phase-2 topic-index over note entries | Live `/moc-propose` aborted `candidate-cap-exceeded` (209 atomic notes > 200) because Phase 1 counted every note incl. the 70 already MOC-linked — the cap measured vault size, not "notes needing a MOC", so any mature vault tripped it. Cache already carries `kind==note` entries with `up_state`+`topics` (verified: 206 orphans on the real vault), so the fix is cache-sourced + free of live pull / LLM topic extraction. Folded into 021 rather than shipping a restricted feature. User-confirmed: scan=orphans default, all-notes for scoped, cap raised (Option 2). |
+| 2026-06-06 | Add Feature 7 + ADR-12 after live validation: scan output-quality cleanup — default orphan pass = `kind=="note"` only, bounded link-first output (`orphan_display_cap` default 50 + overflow footer), `/moc-propose check:moc-uplinks` for on-demand MOC-parentage audit, `X/` template-vault excluded via config | Live scan emitted 251 orphan suggestions (206 notes + 45 MOCs). Investigation (Kado 50-note sample) proved the 206 notes are REAL orphans (empty `up::` placeholders + notes with no `up`); `lib/up_parse` is correct → NOT changed. The noise was the 45 MOCs (17 `X/` template-vault, 17 Efforts, 6 root maps that correctly have no parent), all from the uncapped notes-AND-MOCs orphan pass. Fix = output shaping: kind-filter default + cap + on-demand `check:` mode; `X/` exclusion via `exclude_paths` (exclude-wins-over-tag mechanism already exists — config not script). User-confirmed: hard cap link-first, `check:` prefix, X/ in config, keep tag-discovery broad (root/Dewey MOCs stay as link targets). |
 | 2026-06-05 | Spec revised after a 5-agent spec-review (REQUEST CHANGES → all findings fixed) | Caught 2 Critical + 7 High design holes at the seams: (C1) dual-up parser changed to `parse_up_from_content(raw)` — splits frontmatter locally from the single read_note (no extra Kado call); (C2) CacheEntry carries classification/linked_notes so cache-builder's classifications don't silently empty; (H1) accumulation retirement scope expanded to vault-summary/vault-explorer/shared-ctx.schema.json/tomo.accumulation config/help+skill prose/test_shared_ctx_accumulation; (H2/H3) case-(a) reframed as a separate orphan pass over cache entries[up_state==absent], NOT a Phase-6 edit and NOT relaxing restrict_to_atomic_note_paths; (H4) added Kado-denial RED test task; (H5) fixed lib component names; (H6) added F4#2 Condition-C-casing test. Plus MEDIUM/LOW: up_state vocab (parse returns target/source only, caller sets state), cache-source wiring, placeholder math reconciled (224 false-positive / 173 genuine → ~171), edge cases (concurrency, placeholder+orphan, exclude-vs-scope), frontmatter-up premise noted, atomic_note scalar/dict, golden-baseline task T3.0, AC count 26→22, kado_client v0.8.0. |
 
 ## Context

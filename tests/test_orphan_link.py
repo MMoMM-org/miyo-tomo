@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_orphan_link.py — Behavioural tests for lib.orphan_link (spec 021 T2.3).
 
 The case-(a) orphan pass runs AFTER moc_cache_loader provides cache.entries. It
@@ -23,7 +23,7 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
+from lib.orphan_link import LINK_THRESHOLD, emit_orphan_suggestions  # noqa: E402
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -161,6 +161,38 @@ def test_below_threshold_match_is_create_new():
     assert s["mode"] == "create_new", (
         f"weak overlap must not produce link_existing; got {s}"
     )
+    # The orphan DID share a topic with "Weak" (just below threshold), so the
+    # reason must come from the had_any_overlap=True branch of _build_reason —
+    # distinguishing it from the no-overlap-at-all branch.
+    assert "link threshold" in s["reason"], (
+        f"below-threshold reason must reflect partial overlap; got {s['reason']!r}"
+    )
+
+
+def test_overlap_exactly_at_threshold_is_link_existing():
+    """Boundary: overlap ratio == LINK_THRESHOLD exactly → link_existing (>= gate).
+
+    Orphan has 2 topics, the MOC shares exactly 1 → ratio 1/2 == LINK_THRESHOLD
+    (0.5). Proves the gate is inclusive (>=), per OQ-4.
+    """
+    # Construct an orphan whose ratio against the MOC equals LINK_THRESHOLD.
+    # With 2 orphan topics and 1 shared, ratio = 0.5; assert the constant rather
+    # than a hardcoded number so the test tracks the threshold if it ever moves.
+    assert LINK_THRESHOLD == 0.5, (
+        "this boundary fixture assumes a 2-topic / 1-shared = 0.5 ratio; "
+        f"adjust the fixture if LINK_THRESHOLD changes (now {LINK_THRESHOLD})"
+    )
+    entries = [
+        _moc("Edge", ["pkm", "unrelated"]),  # shares exactly 1 of the orphan's 2
+        _entry("Orphan", up_state="absent", topics=["pkm", "notes"]),
+    ]
+    out = emit_orphan_suggestions(entries)
+    s = next(x for x in out if x["stem"] == "Orphan")
+    assert s["mode"] == "link_existing", (
+        f"ratio == LINK_THRESHOLD must link (inclusive >=); got {s}"
+    )
+    assert s["candidates"][0]["target_moc"] == "Edge"
+    assert s["candidates"][0]["score"] == LINK_THRESHOLD
 
 
 # ──────────────────────────────────────────────────────────────────────────────

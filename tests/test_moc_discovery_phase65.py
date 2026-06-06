@@ -1,33 +1,35 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_moc_discovery_phase65.py — Phase 6.5 existing-`up::` validation.
 
-F-43 Phase 2 T2.7: per-candidate decoration with `existing_up_state` ∈
-{"absent", "valid", "broken"} and `existing_up_target`. Phase 6.5 reads each
-candidate-child's note body via Kado, extracts the first ``up::`` marker, and
-classifies it against the discovery cache (cache.map_notes is the
-authoritative MOC index — a target present in cache is "valid", absent is
-"broken", and no marker at all is "absent").
+Per-candidate decoration with `state` ∈ {"absent", "valid", "broken"} and
+`target`. Phase 6.5 reads each candidate-child's note body via Kado ONCE, then
+resolves the `up` relationship via lib/up_parse.parse_up_from_content (spec 021
+T2.2) — which recognises BOTH the inline `up:: [[X]]` form AND the frontmatter
+`up:` form, with inline winning on conflict (C1/ADR-2/ADR-6: the frontmatter
+block is split locally from the same content, no extra Kado call). The caller
+classifies the resolved target against the cache MOC stem set (cache.map_notes
+is the authoritative MOC index — present → "valid", absent → "broken", no
+target → "absent").
 
-Algorithm (per SDD §Implementation Examples / Example 1 + brainstorm §6.5,
-lines 147-153 of `docs/XDD/ideas/2026-05-06-moc-creation-skill.md`):
+Algorithm (spec 021 T2.2):
 
     for cluster in clusters:
         for child_stem in cluster.items:
             note      = kado_client.read_note(stem_to_path[child_stem])
-            target    = extract_first_up_marker(note["content"])
+            target    = parse_up_from_content(note["content"]).target  # inline OR frontmatter
             if target is None:
                 state = "absent"
-            elif target_in_cache(target, cache.map_notes):
+            elif target in moc_stems(cache.map_notes):
                 state = "valid"
             else:
                 state = "broken"
             cluster.existing_up.append({stem, state, target})
 
-Multi-`up::` lines on the same child → use the first match and emit a stderr
-warning so the operator can fix the source note. The renderer downstream
-(Rule 4.2 / 4.5) keys off `existing_up_state` only — we do not surface the
-warning into the report payload.
+Multi-INLINE-`up::` lines on the same child → use the first and emit a stderr
+warning so the operator can fix the source note (a single frontmatter up: + one
+inline up:: is the normal conflict case, resolved by inline-wins, not a
+malformed note). The renderer downstream (Rule 4.2 / 4.5) keys off `state` only.
 
 Stdlib only — Kado client is faked locally; no live calls.
 """

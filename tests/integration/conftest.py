@@ -148,19 +148,19 @@ def _seed_discovery_cache(tmp_path: Path) -> Path:
         for stem in ["Map of Content", "Map vs MOC", "Mapmaking", "Higher Order Notes", "Concepts"]
     ]
 
-    # spec 021 T2.1: moc-discovery reads the MOC-structure cache via the loader,
-    # which projects entries[kind=="moc"] → map_notes (shim). To preserve the
-    # exact pre-wiring map_notes content these e2e tests were written against
-    # (title/free-text read map_notes[].topics; Phase 6 dedups against it), the
-    # whole pre-existing combined set (map_notes + atomic_notes) is written as
-    # kind:moc entries so the shim surfaces it unchanged. A recent last_scan keeps
-    # the cache FRESH so the loader loads it without a (Kado-needing) rebuild.
+    # spec 021 T2.1/T2.3: moc-discovery reads the MOC-structure cache via the
+    # loader, which projects entries[kind=="moc"] → map_notes (shim). The MOCs
+    # are kind:"moc" (surfaced into map_notes for title/free-text matching +
+    # Phase 6 dedup); the atomic notes are kind:"note" so the case-(a) orphan
+    # pass (lib/orphan_link) sees realistic entry shapes. The atomic notes carry
+    # up_state:"absent" so they are eligible orphans. A recent last_scan keeps the
+    # cache FRESH so the loader loads it without a (Kado-needing) rebuild.
     from datetime import datetime, timezone
 
     fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     entries = (
         [{**m, "kind": "moc"} for m in map_notes]
-        + [{**a, "kind": "moc"} for a in atomic_notes]
+        + [{**a, "kind": "note", "up_state": "absent"} for a in atomic_notes]
     )
     cache = {
         "moc_cache_version": 1,

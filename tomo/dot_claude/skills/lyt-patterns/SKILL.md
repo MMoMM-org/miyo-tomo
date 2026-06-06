@@ -4,7 +4,7 @@ description: MOC matching algorithm, section placement rules, mental squeeze poi
 user-invocable: false
 ---
 # LYT Patterns
-# version: 0.2.2
+# version: 0.2.3
 
 Knowledge patterns for MOC matching, section placement, and new MOC proposals.
 
@@ -149,9 +149,6 @@ A new MOC proposal is triggered when ANY of these conditions are met:
 
 **Condition A — Cluster (Batch):**
 3+ items in the current batch share topics not covered by any existing MOC.
-
-**Condition B — Accumulation (Historical):**
-The note being analysed matches topics shared by 2+ existing unclassified notes (no `up::` to a MOC). Combined with the current item = 3+ notes → threshold met.
 
 **Condition C — Placeholder Match:**
 Note topics match a placeholder MOC (dead link in an existing MOC). Propose creating the MOC to resolve the dead link.

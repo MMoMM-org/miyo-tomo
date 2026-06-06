@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """
 vault-summary.py — Aggregate pipeline stats into a single JSON summary.
 
@@ -177,6 +177,7 @@ def aggregate_summary(
     config_path: str,
 ) -> dict:
     """Aggregate pipeline artifacts into a flat summary dict."""
+    # cache_path: echoed as metadata only — not loaded since T3.3 (accumulation retired)
     mocs = load_json_safe(mocs_path, "--mocs")
     scan = load_json_safe(scan_path, "--scan")
     config = load_yaml_safe(config_path, "--config")
@@ -238,7 +239,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--cache",
         default="config/discovery-cache.yaml",
-        help="Path to discovery-cache.yaml (default: config/discovery-cache.yaml)",
+        help="Path to discovery-cache.yaml (reported in summary; not read)",
     )
     p.add_argument(
         "--config",

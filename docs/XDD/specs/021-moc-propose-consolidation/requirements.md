@@ -39,7 +39,7 @@ version: "1.0"
 | title | MOC-Propose Consolidation |
 | status | IN_REVIEW |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 22 (Gherkin, Features 1–5) + 2 Privacy EARS in SDD |
+| acceptanceCriteria | 27 (Gherkin, Features 1–6) + 2 Privacy EARS in SDD |
 
 ---
 
@@ -134,6 +134,15 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
   - [ ] Given Feature 1's tag-primary cache, When `shared_ctx.mocs` is built, Then it derives from the single corrected `map_notes` source (no separate or path-only inbox MOC list).
   - [ ] Given an inbox item that genuinely has a matching notes-area MOC, When `/inbox` runs post-021, Then Condition A links to that existing MOC rather than firing `needs_new_moc` (no spurious new-MOC proposals for already-mapped topics).
 
+#### Feature 6: Usable whole-vault scan — orphan-only candidates, scoped runs see all
+- **User Story:** As the vault owner, when I run a plain `/moc-propose` (whole-vault scan) I want it to find the notes that actually *lack* a MOC home — without me hand-crafting filters — and not abort just because my vault is large. And when I deliberately scope (`folder:`/`tag:`/`class:`/`title:`) I want it to consider *all* notes in that scope so the proposed MOC indexes the whole theme. (Live validation 2026-06-06: a plain scan aborted with `candidate-cap-exceeded` because it counted every atomic note — 209 > 200 — including the 70 already MOC-linked; the cap measured vault size, not "notes needing a MOC".)
+- **Acceptance Criteria (Gherkin Format):**
+  - [ ] Given the MOC-structure cache, When `/moc-propose` runs in whole-vault `scan` mode, Then candidates are the in-scope notes with `up_state == "absent"` (orphans) sourced from `cache.entries` And no live `list_dir` over the atomic-note paths is performed (M1 holds for scan).
+  - [ ] Given atomic notes that already have a resolved `up::`/`up:` parent (`up_state` valid or broken), When `scan` selects candidates, Then those notes are NOT candidates (they don't need a new MOC) And do not count toward the candidate cap.
+  - [ ] Given a scoped run (`folder:`/`tag:`/`class:`/`title:`), When candidates are selected, Then ALL in-scope notes are considered (orphan-filter is scan-mode-only), preserving targeted "make a MOC for this theme" behaviour.
+  - [ ] Given the default `candidate_cap` is 500 (was 200) and is overridable in `vault-config` (`tomo.moc_proposal.candidate_cap`) and via `--candidate-cap`, When the orphan/candidate set exceeds the cap, Then `/moc-propose` aborts with the "narrow the search scope" message (the cap now bounds notes-needing-a-MOC, not vault size).
+  - [ ] Given scan candidates sourced from `cache.entries[kind=="note"]` carry `topics` from the builder, When Phase 2 resolves topics, Then it indexes `cache.entries` (notes included, not only `map_notes`) And scan candidates require no per-candidate LLM topic extraction.
+
 ### Should Have Features
 - **Budget accommodation:** Raise the shared-ctx byte budget so the corrected, essential `placeholder_mocs` is never trimmed (Performance research: ~34–36 KB envelope after correction; placeholder is non-advisory Condition-C data). Keep `placeholder_mocs` out of the trim path entirely.
 - **`up`-parsing SSoT:** Centralise frontmatter-`up:` + inline-`up::` parsing into a single shared library helper consumed by the cache builder and `moc-discovery` Phase 6.5, superseding the two inline-only `up::` regexes. (`atomic-note-indexer`, the third site, is **deleted** in the accumulation retirement — not retrofitted.)
@@ -187,7 +196,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 ## Success Metrics
 
 ### Key Performance Indicators
-- **M1 — No live pull when fresh:** `/moc-propose` performs 0 whole-vault MOC tree-builds when the cache is within TTL (was 1 per run).
+- **M1 — No live pull when fresh:** `/moc-propose` performs 0 whole-vault MOC tree-builds when the cache is within TTL (was 1 per run). Scan mode additionally sources its orphan candidates from `cache.entries` — 0 live `list_dir` over the atomic-note paths (F6).
 - **M2 — Placeholder false-positive drop:** placeholder count on the real vault drops **397 → ~171** — the 224 targets that resolve to an existing in-scope note are removed (the disjoint split measured 2026-06-05 is 224 false-positive / 173 genuine; ~171 after per-note dedup). Target: `placeholder.build.kept_count` ≤ 180 AND `false_positive_dropped` ≈ 224.
 - **M3 — Condition B removed, A/C zero-regression:** `accumulation_index` no longer read by `inbox-analyst`; A and C produce output **identical to the captured pre-021 golden baseline** on the named fixture set (byte-equal, not shape-only).
 - **M4 — Tag-primary recovers notes-area MOCs:** the previously-missed `#type/others/moc` notes are recognised as MOCs and removed from the placeholder set.
@@ -195,6 +204,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 - **M6 — Envelope reduction:** shared-ctx (with corrected placeholder, no accumulation) is **≤ 36 KB** raw (was 54.5 KB); measured Pass-1 token cost on a fixed inbox fixture is **lower than the pre-021 baseline** (measured via `measure-inbox-phase-b-token-cost.py` — the reduction is net even after the 40 KB budget raise, because corrected-envelope < 54.5 KB and 2nd–Nth analyst reads bill at cache-read rate).
 - **M7 — Scope excludes daily/templates:** 0 daily/template files appear as candidates/orphans/placeholders (`moc-cache.build.excluded_leak_count == 0`).
 - **M8 — Inbox sees the complete MOC set:** `shared_ctx.mocs` contains the notes-area MOCs previously invisible to Condition A; on a fixture where an item matches a notes-area MOC, the inbox links to it instead of proposing a new MOC. Template-vault (`X/…`) MOCs are absent.
+- **M9 — Usable whole-vault scan (F6):** in `scan` mode, candidates = in-scope notes with `up_state=="absent"` (already-parented notes excluded); on the real vault this is the orphan count (~206), not all atomic notes (~209/281). `scan` performs 0 live `list_dir` and 0 per-candidate LLM topic extraction (topics from cache). Scoped modes still consider all in-scope notes. `candidate_cap` default 500. Target: a plain `/moc-propose` on the real vault no longer aborts with `candidate-cap-exceeded` unless orphans > 500.
 
 ### Tracking Requirements
 

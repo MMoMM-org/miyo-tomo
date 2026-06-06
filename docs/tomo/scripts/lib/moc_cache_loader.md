@@ -49,6 +49,39 @@ rebuild on every invocation until the clock catches up. The guard
 a rebuild is not triggered, and the system degrades gracefully. This follows
 the SDD Error Handling clause on clock skew.
 
+## Cache-Empty Abort — Fresh Cache, Zero MOC Entries (ABORT_CACHE_EMPTY)
+
+WHY: After a successful freshness check (cache is NOT stale), the loader shims
+the entries and checks `_has_usable_map_notes`. If the shimmed cache carries
+zero `kind=="moc"` entries, the loader returns `(None, "cache-empty")` instead
+of proceeding (lines 214–220).
+
+Two decisions here:
+
+**Why not trigger a rebuild?** The cache is fresh — the builder ran recently
+and produced this result deliberately. Rebuilding would contact Kado again and
+produce the same empty result: a vault with no MOCs has no MOCs regardless of
+how many times the builder runs. Triggering a rebuild on a fresh empty cache
+would loop pointlessly on every `/moc-propose` invocation in an empty-MOC
+vault. The correct user action is to create MOCs first (via `/explore-vault` or
+manually) and let the cache age out or be force-rebuilt by `/explore-vault`.
+
+**Why `"cache-empty"` rather than `"cache-rebuild-failed"`?** These are
+distinct root causes with distinct user-facing remedies. `"cache-rebuild-failed"`
+means the build mechanism itself is broken (exception raised, unwritable path,
+torn YAML) — the action is "investigate your setup." `"cache-empty"` means the
+mechanism worked correctly but the vault genuinely has no MOCs yet — the action
+is "run `/explore-vault` to scan the vault, then create your first MOC." Merging
+them into a single abort reason would force the agent to surface an ambiguous
+error that misdirects users with empty vaults toward diagnosing a non-existent
+infrastructure problem.
+
+Note: a cache that was stale, got rebuilt, and is STILL empty after the rebuild
+returns `"cache-rebuild-failed"` (line 254), not `"cache-empty"` — the rebuild
+path cannot distinguish "empty because vault is genuinely empty" from "empty
+because the builder produced broken output." Only the pre-rebuild fresh path has
+enough certainty to use the more precise `"cache-empty"` signal.
+
 ## Scan-Mode Stays on Live `list_dir` (M2, Documented Deferral)
 
 WHY: moc-discovery's `_handle_scan` enumerates atomic-note candidates via a

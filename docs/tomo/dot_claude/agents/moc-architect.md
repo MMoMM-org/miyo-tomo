@@ -43,8 +43,27 @@ token budget. This is the established "large/many writes → script with embedde
 Kado client" pattern (`decisions.md`). Consequence: the `mcp__kado__kado-write`
 tool was dropped from the agent's `tools` list (no longer used).
 
-## Version 0.6.0
+## check-moc-uplinks Mode Skips the Two-Pass Topic Extraction (ADR-12, T6.5)
 
-WHY: Bumped from 0.5.0 for the Step 7.5 transport change above (inline kado-write
-→ `kado-write-file.py` script) + the `tools` minimisation. `update-tomo.sh` skips
-unchanged versions, so the change only ships if the version header advances.
+WHY: The `check:moc-uplinks` mode runs `moc-discovery.py --check-moc-uplinks` in
+a SINGLE pass — no `--emit-phase1` / topic-extract / `--phase1-input` round-trip.
+The two-pass dance exists only to let the agent LLM-extract topics for cache-miss
+note candidates before clustering. check-mode does no clustering and operates on
+cache MOC entries that already carry topics, so the agent invokes discovery once,
+captures the DiscoveryReport from stdout, and proceeds straight to render +
+transport. Forcing it through the two-pass path would burn an emit-phase1 file and
+a topic-extract step for zero benefit.
+
+## Contiguous Step Numbering (T6.5)
+
+WHY: The Workflow steps were renumbered to be contiguous (1, 2, 3, …). An earlier
+refactor left a Step 2→4 gap (no Step 3), which reads as a missing/forgotten step
+and invites the model to hunt for it. Every step number now maps to a real step.
+
+## Version 0.7.0
+
+WHY: Bumped from 0.6.0 for the `check:moc-uplinks` mode (single-pass audit route),
+the contiguous step renumbering, and the agent-author lean-pass. 0.6.0 added the
+Step transport change (inline kado-write → `kado-write-file.py`) + `tools`
+minimisation. `update-tomo.sh` skips unchanged versions, so the change only ships
+if the version header advances.

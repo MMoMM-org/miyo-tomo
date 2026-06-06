@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""kado-write-file.py — Write a local file to the vault via Kado operation="file".
+# version: 0.2.0
+"""kado-write-file.py — Upload a local file to the vault via Kado.
 
-Kado's `kado-write` operation="note" only accepts markdown. For any other
-content type (JSON instruction sets, YAML configs, binary assets, PDFs, images)
-operation="file" takes the content as a base64 string. This script is the
-deterministic helper so agents don't have to orchestrate the base64 dance in
-Bash/prompt text.
+Auto-selects the Kado write operation by target extension:
+  - `.md`  → operation="note" (the proper markdown-note path)
+  - other  → operation="file" (base64: JSON instruction sets, YAML, images, PDFs)
+
+Why a script, not an inline `kado-write` tool call from an agent: the content is
+read from disk and pushed via this script's own Kado client, so it NEVER passes
+through the agent's output-token budget. A large artefact (e.g. a 136 KB MOC
+proposal-doc) cannot be transported by an inline `kado-write` — the body would
+have to be emitted as tool-call args and blows the token limit. Run this script
+instead. (docs/ai/memory/decisions.md — "large/many writes → script with
+embedded Kado client".)
 
 Usage:
   python3 scripts/kado-write-file.py \\
@@ -68,15 +74,27 @@ def main() -> int:
         print(f"error: cannot connect to Kado: {exc}", file=sys.stderr)
         return 1
 
+    # Markdown → operation="note"; anything else → operation="file" (base64).
+    is_markdown = args.vault.lower().endswith(".md")
+    op = "note" if is_markdown else "file"
     try:
-        result = client.write_file(args.vault, data)
+        if is_markdown:
+            result = client.write_note(args.vault, data.decode("utf-8"))
+        else:
+            result = client.write_file(args.vault, data)
+    except UnicodeDecodeError as exc:
+        print(
+            f"error: --vault ends in .md but content is not UTF-8 text: {exc}",
+            file=sys.stderr,
+        )
+        return 2
     except KadoError as exc:
-        print(f"error: kado-write operation=file failed: {exc}", file=sys.stderr)
+        print(f"error: kado-write operation={op} failed: {exc}", file=sys.stderr)
         return 1
 
     modified = result.get("modified") if isinstance(result, dict) else None
     print(
-        f"kado-write-file: {source} ({len(data)} bytes) → {args.vault}"
+        f"kado-write-file: {source} ({len(data)} bytes, op={op}) → {args.vault}"
         + (f" (modified={modified})" if modified is not None else ""),
         file=sys.stderr,
     )

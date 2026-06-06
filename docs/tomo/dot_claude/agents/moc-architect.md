@@ -29,8 +29,22 @@ CON-3). The actual `up:`/note write happens later via `/execute` (Hashi) through
 deferred-write instruction in the doc (rather than writing immediately) is what
 keeps `/moc-propose` proposal-only.
 
-## Version 0.5.0
+## Transport via kado-write-file.py, Not Inline kado-write (spec 021, 2026-06-06)
 
-WHY: Bumped from 0.4.0 for the T2.4 change above. `update-tomo.sh` skips
-unchanged versions, so the one-line Step 7.5 addition only ships if the version
-header advances.
+WHY: Step 7.5 transports the proposal-doc to the vault inbox by running
+`scripts/kado-write-file.py` (Bash), NOT by reading the doc and inlining its body
+into an `mcp__kado__kado-write` tool call. Observed live (2026-06-06): a
+whole-vault `scan` produced a 136 KB proposal-doc (~250 orphan entries); the
+inline-kado-write path tried to emit the full body as tool-call args and blew the
+output-token budget — the doc was correct on disk but never reached the vault.
+The script reads the file from disk and pushes it through its own Kado client
+(`operation=note` for `.md`), so the content never routes through the agent's
+token budget. This is the established "large/many writes → script with embedded
+Kado client" pattern (`decisions.md`). Consequence: the `mcp__kado__kado-write`
+tool was dropped from the agent's `tools` list (no longer used).
+
+## Version 0.6.0
+
+WHY: Bumped from 0.5.0 for the Step 7.5 transport change above (inline kado-write
+→ `kado-write-file.py` script) + the `tools` minimisation. `update-tomo.sh` skips
+unchanged versions, so the change only ships if the version header advances.

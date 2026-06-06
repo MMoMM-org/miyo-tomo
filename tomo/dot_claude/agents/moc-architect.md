@@ -4,7 +4,7 @@ description: "Use PROACTIVELY when the user types /moc-propose, when topic-densi
 model: sonnet
 effort: medium
 color: green
-tools: Bash, Read, Write, mcp__kado__kado-write
+tools: Bash, Read, Write
 skills:
   - obsidian-markdown
   - lyt-patterns
@@ -14,7 +14,7 @@ permissionMode: acceptEdits
 
 **Active agent: moc-architect**
 
-# version: 0.5.0
+# version: 0.6.0
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault
@@ -221,51 +221,36 @@ LOCAL_PROPOSAL=$(python3 scripts/suggestions-reducer.py --moc-proposal-mode --in
 The local path resolves to `tomo-tmp/<YYYY-MM-DD>_<HHMM>_moc-proposal-<top-confidence-slug>.md`.
 Extract the filename (last path segment) — that becomes the vault filename in Step 7.5.
 
-### Step 7.5 — Transport proposal-doc to vault via kado-write
+### Step 7.5 — Transport proposal-doc to vault via kado-write-file.py
 
 Read the inbox path from `concepts.inbox` in `vault-config.yaml` (resolved in Step 2).
-Read the local proposal-doc and write it to the vault via `mcp__kado__kado-write`:
+Transport the local proposal-doc to the vault inbox with the deterministic helper:
 
-1. **Read the local file**:
-   ```
-   Read tool → $LOCAL_PROPOSAL
-   ```
-   The result is the full markdown body (frontmatter + clusters + checkboxes).
+```
+python3 scripts/kado-write-file.py \
+  --local "$LOCAL_PROPOSAL" \
+  --vault "<inbox_path>$(basename "$LOCAL_PROPOSAL")"
+```
 
-2. **Compute the vault path** by joining `<inbox_path>` with the filename portion of
-   `$LOCAL_PROPOSAL`:
+The script reads the file from disk and writes it via its own Kado client
+(`operation=note` for `.md`). On success it prints
+`kado-write-file: … (op=note) → <vault path>` to stderr and exits 0.
 
-   ```
-   VAULT_PATH = <inbox_path> + basename($LOCAL_PROPOSAL)
-   # e.g. "100 Inbox/" + "2026-05-20_1359_moc-proposal-notemaking-moc.md"
-   ```
+# STRICT — transport via the SCRIPT, never inline. Why: a 100 KB+ proposal-doc inlined into a kado-write tool call exceeds the output-token budget and fails (observed 2026-06-06). Rationale: docs/tomo/dot_claude/agents/moc-architect.md.
 
-3. **Invoke `mcp__kado__kado-write`** with `operation=note`, the computed vault path, and
-   the markdown body read in step 1. The tool returns `{ok: true, ...}` on success.
-
-**STRICT — DO NOT MODIFY FRONTMATTER**:
-
-The proposal-doc body produced by `suggestions-reducer.py --moc-proposal-mode` already
-contains everything needed. The renderer is authoritative. The body may include a
-`## Orphan Notes & MOCs` link-or-create section after the MOC cluster sections — pass
-it through unchanged like any other section.
-
-You MUST:
-- Read the rendered file byte-identical from `tomo-tmp/`.
-- kado-write the body byte-identical to the vault inbox path.
-
-
-**STRICT — transport only:**
-- Use `operation=note` (not `file` — the path is `.md`.
-- Use the literal `<inbox_path>` from config; do NOT hard-code `"100 Inbox/"`.
-- Do NOT modify the markdown body between Read and kado-write — pass through verbatim.
-- If `kado-write` returns an error or `ok: false`, surface the error and report
-  `Proposal-doc: kado-write failed (local copy: $LOCAL_PROPOSAL)` so the user can
-  retry manually with the local file as evidence.
+**STRICT:**
+- Transport ONLY via `scripts/kado-write-file.py` (Bash). NEVER read the proposal-doc
+  and inline its body into a `kado-write` tool call.
+- Join `<inbox_path>` (it already ends in `/`) with the basename of `$LOCAL_PROPOSAL`;
+  do NOT hard-code `"100 Inbox/"`.
+- Do NOT modify the proposal-doc — the renderer (`suggestions-reducer.py
+  --moc-proposal-mode`) is authoritative, including any `## Orphan Notes & MOCs` section.
+- If the script exits non-zero, surface its stderr and report
+  `Proposal-doc: transport failed (local copy: $LOCAL_PROPOSAL)` so the user can retry.
 
 ### Step 8 — Surface the proposal-doc filename
 
-After a successful `kado-write`, print to the user:
+After a successful transport (script exit 0), print to the user:
 
 `"MOC proposal written: <inbox_path>/<YYYY-MM-DD>_<HHMM>_moc-proposal-<slug>.md"`
 

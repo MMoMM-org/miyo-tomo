@@ -130,7 +130,7 @@ When linking a note to an MOC, Tomo must decide WHERE in the MOC to place the li
 - Count notes that would match a hypothetical MOC
 - If threshold met (default: 3): propose new MOC
 
-**Freshness (important):** the inbox-time accumulation check (Condition B — see the detail spec) reads the **precomputed accumulation index from the discovery cache**, i.e. the snapshot from the last `/explore-vault`. It runs at no extra cost during `/inbox` (no live vault scan), but it only sees clusters that existed at the last explore. Re-run `/explore-vault` after adding/reorganising notes to refresh it, or use the live `/moc-propose` scan (§8) for an up-to-the-minute answer. (A cache-staleness warning is tracked as backlog F-21.)
+**Note (spec 021 ADR-10):** Condition B (accumulation cluster trigger) was retired. It previously read `accumulation_index` from the discovery cache; that index is no longer produced. Inbox-time MOC proposals now rely only on Condition A (in-batch cluster detection) and Condition C (placeholder MOC match). For vault-wide MOC density analysis, use `/moc-propose` (§8) — it scans the vault live and is not bound to the discovery-cache snapshot.
 
 **Proposal includes:**
 - Suggested MOC title and file path

@@ -8,9 +8,18 @@
 
 ## 1. Purpose
 
-Define how vault-explorer discovers, reads, and indexes all MOCs (map_notes) into the discovery cache — including building the parent/child tree across all levels.
+Define how vault-explorer discovers, reads, and indexes all MOCs (map_notes) into the discovery cache and the MOC-structure cache — including building the parent/child tree across all levels.
 
 ## 2. Discovery Strategy
+
+**Two pipelines, two strategies:**
+
+| Pipeline | File | Strategy |
+|----------|------|----------|
+| `/explore-vault` → `discovery-cache.yaml` | `cache-builder.py` | Path-AND-tag (dual, deduped) |
+| `/moc-propose` → `moc-structure-cache.yaml` | `moc-tree-builder.py` + `lib/moc_scan` | Tag-primary (`#type/others/moc`, ADR-5) |
+
+**`discovery-cache.yaml` pipeline (path-AND-tag):**
 
 MOCs are found via **two parallel strategies** (configured in `vault-config.yaml`):
 
@@ -20,6 +29,13 @@ MOCs are found via **two parallel strategies** (configured in `vault-config.yaml
 | **Tag-based** | `concepts.map_note.tags[]` | All notes tagged with configured MOC tags, regardless of folder |
 
 Results are **deduplicated by path** — if a note is found by both path and tag, it appears once with `discovered_via: "both"`.
+
+**`moc-structure-cache.yaml` pipeline (tag-primary):**
+
+MOCs are found via `#type/others/moc` tag (ADR-5); path-based discovery is not
+used for this cache. Exclude prefixes from `tomo.moc_structure_cache.exclude_paths`
+are applied client-side (exclude wins over tag, OQ-5). Results are deduplicated
+by path; `discovered_via` is "tag", "path" (in-scope note folder), or "both".
 
 ### Path-Based Discovery
 

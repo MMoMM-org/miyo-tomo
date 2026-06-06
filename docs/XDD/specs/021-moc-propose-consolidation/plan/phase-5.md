@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Usable whole-vault scan (orphan-only, cache-sourced) + cap reframe"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -30,7 +30,7 @@ phase: 5
 
 ## Tasks
 
-- [ ] **T5.1 `scan` = cache-sourced orphans + Phase-2 topic-index over note entries + cap default** `[activity: backend-api]` `[ref: SDD/ADR-11; PRD/F6; moc-discovery.py:495 _handle_scan, :547 phase1_select_candidates, :644 _build_topics_index, :583 cap]`
+- [x] **T5.1 `scan` = cache-sourced orphans + Phase-2 topic-index over note entries + cap default** `[activity: backend-api]` `[ref: SDD/ADR-11; PRD/F6; moc-discovery.py:495 _handle_scan, :547 phase1_select_candidates, :644 _build_topics_index, :583 cap]`
   1. Prime: `_handle_scan` (`:495`, live `list_dir`), `phase1_select_candidates` (`:547`, receives `cache`), `restrict_to_atomic_note_paths` (`:515`), `_build_topics_index` (`:644`, indexes `map_notes` only), the `candidate_cap` default (`:583`), `Candidate` dataclass (`:353`, has `topics`), `_candidate_from_path` (`:382`). Confirm cache entry shape (`kind`, `up_state`, `topics`, `path`, `stem`, `title`).
   2. Test (RED) — extend the moc-discovery Phase-1/Phase-2 test suite:
      - scan mode: candidates == `entries[kind=="note" and up_state=="absent"]` (orphans); a `valid` and a `broken` note are EXCLUDED; assert NO `kado_client.list_dir` call in scan (spy/fake client records calls → 0 for the atomic-note scan path).
@@ -44,5 +44,5 @@ phase: 5
   6. WHY → update `docs/tomo/scripts/moc-discovery.md` (or create) + `docs/tomo/scripts/lib/moc_cache_loader.md` scan-mode note (supersede the "kept live list_dir" rationale). CON-4: imperatives only in runtime.
   7. Success: scan = orphans cache-sourced, no live pull `[ref: PRD/AC F6#1-2, M1, M9]`; scoped = all `[ref: F6#3]`; cap 500 `[ref: F6#4]`; topics from cache `[ref: F6#5]`.
 
-- [ ] **T5.2 Phase 5 validation + live runbook refresh** `[activity: validate]`
+- [x] **T5.2 Phase 5 validation + live runbook refresh** `[activity: validate]`
   - Full `pytest` + lint under the venv. Confirm: scan selects orphans only with 0 live `list_dir`; scoped selects all; cap default 500; Phase-2 resolves note topics from cache. Update `LIVE-VALIDATION-RUNBOOK.md` (and M9): a plain `/moc-propose` on the real vault now proposes from the ~206 orphans (no `candidate-cap-exceeded`), and document the scoped-run behaviour. Re-confirm no A/C regression (golden baseline) and Phases 1–4 suites stay green.

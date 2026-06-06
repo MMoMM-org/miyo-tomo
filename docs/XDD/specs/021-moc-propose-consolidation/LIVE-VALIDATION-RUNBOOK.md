@@ -21,8 +21,13 @@ un-bumped `# version:` makes `update-tomo` skip it silently.
 ## 2. Run the three flows (inside the instance / Tomo session)
 1. `/explore-vault` — force-rebuilds the MOC-structure cache (ADR-3). First run pre-warms
    `config/moc-structure-cache.yaml`.
-2. `/moc-propose` — should read the fresh cache (no full whole-vault MOC tree-build) and emit
-   the link-or-create proposal-doc (case-(a) orphans: top-3 link options OR create-new + reason).
+2. `/moc-propose` (plain, whole-vault scan) — **post-Feature-6 (ADR-11):** candidates are now the
+   **orphan notes** (`up_state==absent`) sourced from the cache (no live `list_dir`, no LLM topic
+   extraction). On the real vault that is ~206 orphans < the new cap (500) → it should **no longer
+   abort** with `candidate-cap-exceeded`; it emits the proposal-doc (clusters → proposed MOCs, plus
+   case-(a) link-or-create). Requires a re-sync first (instance must be `moc-discovery` ≥ 0.13.0 —
+   run `update-tomo --yolo`). A **scoped** run (`folder:`/`tag:`/`class:`/`title:`) still considers
+   ALL in-scope notes (not orphan-filtered) — use it to make a MOC for a specific theme.
 3. `/inbox` — Conditions A + C only (Condition B / accumulation is gone). Placeholder nudge (C)
    should fire from the corrected lean placeholder list.
 
@@ -38,6 +43,7 @@ Use `KADO_URL=http://127.0.0.1:<port>/mcp` + token from `tomo-instance/.mcp.json
 | **M6** | inbox shared-ctx envelope **54.5KB → ~34–36KB** | size of the shared-ctx payload for an `/inbox` run |
 | **M7** | **0** daily/template notes in `/moc-propose` candidates | scan the proposal-doc — no `Calendar/301 Daily/…` or template-vault entries |
 | **M8** | inbox `shared_ctx.mocs` **includes** notes-area `#type/others/moc` MOCs, **excludes** template-vault (`X/…`) MOCs | inspect `shared_ctx.mocs` for an `/inbox` run |
+| **M9** | plain `/moc-propose` (scan) proposes from the ~206 **orphans** — no `candidate-cap-exceeded` abort; 0 live `list_dir`; scoped runs still see all notes | run plain `/moc-propose`; confirm a proposal-doc is written (not the abort message) |
 
 Also confirm **no regression** in Condition A/C output vs the captured golden baseline
 (`tests/fixtures/021-ac-baseline/ac-baseline.json`).

@@ -93,7 +93,7 @@ Each phase is a separate file. Tasks follow red-green-refactor: **Prime** → **
 - [x] [Phase 2: /moc-propose consumes cache + dual-up + case-a](phase-2.md)
 - [x] [Phase 3: Inbox retire B / keep A+C / Feature 5 / budget](phase-3.md)
 - [ ] [Phase 4: Integration, E2E & live validation](phase-4.md)
-- [ ] [Phase 5: Usable whole-vault scan (orphan-only, cache-sourced) + cap reframe](phase-5.md)
+- [x] [Phase 5: Usable whole-vault scan (orphan-only, cache-sourced) + cap reframe](phase-5.md)
 
 ---
 

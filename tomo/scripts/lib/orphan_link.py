@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.2.1
 """orphan_link.py — Case-(a) orphan pass over the MOC-structure cache (ADR-7).
 
 Runs AFTER moc_cache_loader provides cache.entries. Enumerates orphans —
@@ -11,9 +11,9 @@ OrphanLinkSuggestion:
                                       [{target_moc, score}] sorted by score DESC
                                       (OQ-4).
     no MOC clears the threshold      → mode="create_new" + a human-readable reason
-                                      (rendered into the proposal-doc + /execute
-                                      instruction by T2.4; no vault note is written
-                                      here).
+                                      (rendered into the proposal-doc; on accept,
+                                      `/inbox` renders the apply instruction — no
+                                      vault note is written here).
 
 Design boundaries (SDD ADR-7):
   - H2: this is a NEW pass over the cache. It does NOT modify Phase 6

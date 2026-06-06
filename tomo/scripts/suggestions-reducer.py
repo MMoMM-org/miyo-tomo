@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.7.0
+# version: 1.7.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -724,15 +724,16 @@ def _render_orphan_section(
 
     Per orphan (a cache entry with no parent — note OR moc), emit either:
       - link_existing → up to top-N selectable `up:: [[MOC]] (score …)` options;
-      - create_new    → the reason line + an `/execute` instruction to stamp the
-        reason into the note(s) on accept.
+      - create_new    → the reason line + a note that `/inbox` turns the accepted
+        proposal into an instruction that stamps the reason into the note(s).
 
     `overflow` (ADR-12): when > 0, the orphan list was capped at
     orphan_display_cap; a footer states how many more were omitted and to re-run
     scoped. `check_mode` (ADR-12) relabels the heading as a MOC-uplink audit.
 
     `/moc-propose` writes NO vault note (CON-3) — this is proposal-doc markup
-    only; the `up:`/note write happens later via `/execute`.
+    only; the `up:`/note write happens later via the instruction set `/inbox`
+    renders from the accepted proposal (then applied via Hashi/manually).
     """
     if check_mode:
         heading = "## MOC Uplink Check"
@@ -771,8 +772,9 @@ def _render_orphan_section(
             lines.append(f"**Reason:** {reason}")
             lines.append("")
             lines.append(
-                "*On accept, `/execute` stamps this reason into the "
-                f"{kind} and creates the new MOC. `/moc-propose` writes nothing.*"
+                "*On accept, running `/inbox` turns this into an instruction that "
+                f"stamps the reason into the {kind} and creates the new MOC. "
+                "`/moc-propose` writes nothing.*"
             )
         lines.append("")
 

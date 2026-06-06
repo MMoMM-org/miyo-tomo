@@ -122,7 +122,11 @@ def test_orphan_render_candidate_with_none_score_does_not_crash():
 
 
 def test_orphan_render_create_new_with_reason_and_instruction():
-    """A create_new renders the reason line + an /execute stamp instruction."""
+    """A create_new renders the reason line + the deferred-apply note (OQ-6).
+
+    The apply path is /inbox → instruction set (NOT the retired /execute command,
+    F-47). The write happens later, not at /moc-propose time.
+    """
     reason = "No existing MOC shares this note's topics (quantum, physics). Proposing a new MOC."
     report = _report([
         _orphan("quantum-notes", mode="create_new", reason=reason)
@@ -131,8 +135,9 @@ def test_orphan_render_create_new_with_reason_and_instruction():
 
     assert "### O01 — [[quantum-notes]] (note)" in body
     assert f"**Reason:** {reason}" in body
-    # /execute deferred-write instruction (OQ-6); the write happens later, not now.
-    assert "/execute" in body
+    # Deferred apply via /inbox → instructions; the retired /execute must NOT appear.
+    assert "/inbox" in body
+    assert "/execute" not in body
     assert "`/moc-propose` writes nothing" in body
 
 

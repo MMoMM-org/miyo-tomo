@@ -14,7 +14,7 @@ permissionMode: acceptEdits
 
 **Active agent: moc-architect**
 
-# version: 0.4.0
+# version: 0.5.0
 # MOC Architect Agent
 
 You are the **MOC architect**. Your job is to discover topic clusters in the user's vault
@@ -246,7 +246,9 @@ Read the local proposal-doc and write it to the vault via `mcp__kado__kado-write
 **STRICT — DO NOT MODIFY FRONTMATTER**:
 
 The proposal-doc body produced by `suggestions-reducer.py --moc-proposal-mode` already
-contains everything needed. The renderer is authoritative.
+contains everything needed. The renderer is authoritative. The body may include a
+`## Orphan Notes & MOCs` link-or-create section after the MOC cluster sections — pass
+it through unchanged like any other section.
 
 You MUST:
 - Read the rendered file byte-identical from `tomo-tmp/`.

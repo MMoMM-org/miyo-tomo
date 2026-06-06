@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.5.0
+# version: 1.6.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -694,9 +694,68 @@ def render_moc_proposal_doc(
         body_lines.append(f"*{overflow} additional cluster(s) found*")
         body_lines.append("")
 
+    # Case-(a) orphan link-or-create section (spec 021 T2.4). Rendered AFTER the
+    # cluster sections; absent entirely when there are no orphan suggestions.
+    orphan_suggestions: list[dict] = report.get("orphan_suggestions") or []
+    if orphan_suggestions:
+        body_lines.append(_render_orphan_section(orphan_suggestions))
+        body_lines.append("")
+
     full_body = "\n".join(frontmatter_lines) + "\n" + "\n".join(body_lines)
 
     return filename, full_body
+
+
+def _render_orphan_section(orphan_suggestions: list[dict]) -> str:
+    """Render the case-(a) orphan link-or-create section (spec 021 T2.4, OQ-6).
+
+    Per orphan (a cache entry with no parent — note OR moc), emit either:
+      - link_existing → up to top-N selectable `up:: [[MOC]] (score …)` options;
+      - create_new    → the reason line + an `/execute` instruction to stamp the
+        reason into the note(s) on accept.
+
+    `/moc-propose` writes NO vault note (CON-3) — this is proposal-doc markup
+    only; the `up:`/note write happens later via `/execute`.
+    """
+    lines: list[str] = [
+        "## Orphan Notes & MOCs",
+        "",
+        "*Notes and MOCs with no parent. Pick a link target or accept a new MOC.*",
+        "",
+    ]
+
+    for i, orphan in enumerate(orphan_suggestions, start=1):
+        orphan_id = f"O{i:02d}"
+        stem = (orphan.get("stem") or "").strip()
+        kind = (orphan.get("kind") or "note").strip()
+        mode = orphan.get("mode") or "create_new"
+
+        lines.append(f"### {orphan_id} — [[{stem}]] ({kind})")
+        lines.append("")
+
+        if mode == "link_existing":
+            lines.append("- [ ] Link to an existing MOC")
+            lines.append("")
+            candidates = orphan.get("candidates") or []
+            for j, cand in enumerate(candidates):
+                target = (cand.get("target_moc") or "").strip()
+                score = cand.get("score", 0.0)
+                marker = "[x]" if j == 0 else "[ ]"
+                lines.append(f"- {marker} up:: [[{target}]] (score {score:.2f})")
+            lines.append("- [ ] no parent (leave as-is)")
+        else:  # create_new
+            lines.append("- [ ] Create a new MOC for this orphan")
+            lines.append("")
+            reason = (orphan.get("reason") or "").strip()
+            lines.append(f"**Reason:** {reason}")
+            lines.append("")
+            lines.append(
+                "*On accept, `/execute` stamps this reason into the "
+                f"{kind} and creates the new MOC. `/moc-propose` writes nothing.*"
+            )
+        lines.append("")
+
+    return "\n".join(lines).rstrip("\n")
 
 
 def load_field_sections(shared_ctx_path: Path) -> dict[str, str]:

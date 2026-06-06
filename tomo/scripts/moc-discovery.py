@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.0
+# version: 0.13.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -202,7 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         metavar="N",
         default=None,
-        help="Override candidate_cap (default: vault-config tomo.moc_proposal).",
+        help="Override candidate_cap (default 500: vault-config tomo.moc_proposal).",
     )
     parser.add_argument(
         "--squelch-state",
@@ -492,23 +492,29 @@ def _handle_title_or_freetext(trigger_arg: str, cache: dict) -> list[Candidate]:
     return out
 
 
-def _handle_scan(profile: dict, kado_client) -> list[Candidate]:
-    """Scan mode: listDir on each atomic-note subdirectory (whole-vault density)."""
-    cd = (profile.get("concept_defaults") or {}).get("atomic_note") or {}
-    paths = [sd["path"] for sd in (cd.get("subdirectories") or []) if sd.get("path")]
-    if not paths and cd.get("base_path"):
-        paths = [cd["base_path"]]
-    _log(f"phase1: scan over {len(paths)} atomic-note path(s)")
+def _handle_scan(cache: dict) -> list[Candidate]:
+    """Scan mode: source candidates from cache orphans (kind==note, up_state==absent).
+
+    ADR-11: The old live list_dir enumeration counted EVERY atomic note (including
+    already-MOC-linked notes) toward the candidate cap, causing candidate-cap-exceeded
+    on whole-vault /moc-propose runs. The fix: source only orphans from the cache
+    (up_state==absent means no existing up:: link). No live Kado call is made.
+    """
     seen: set[str] = set()
     out: list[Candidate] = []
-    for p in paths:
-        items = kado_client.list_dir(p, depth=10)
-        for item in items:
-            if _is_md_file(item):
-                ipath = item.get("path", "") or ""
-                if ipath and ipath not in seen:
-                    seen.add(ipath)
-                    out.append(_candidate_from_path(ipath))
+    for entry in cache.get("entries") or []:
+        if entry.get("kind") != "note":
+            continue
+        if entry.get("up_state") != "absent":
+            continue
+        path = (entry.get("path") or "").strip()
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        stem = (entry.get("stem") or _stem_from_path(path))
+        topics = [str(t) for t in (entry.get("topics") or []) if t]
+        out.append(Candidate(stem=stem, path=path, topics=topics))
+    _log(f"phase1: scan sourced {len(out)} orphan candidate(s) from cache (up_state==absent)")
     return out
 
 
@@ -569,7 +575,7 @@ def phase1_select_candidates(
     elif mode in ("title", "free-text"):
         raw = _handle_title_or_freetext(trigger_arg, cache)
     elif mode == "scan":
-        raw = _handle_scan(profile, kado_client)
+        raw = _handle_scan(cache)
     else:  # pragma: no cover — route_input only emits the six modes above.
         raise ValueError(f"phase1: unknown mode {mode!r}")
 
@@ -580,7 +586,7 @@ def phase1_select_candidates(
     if len(filtered) == 0:
         return ([], "zero-candidates")
 
-    cap = getattr(config, "candidate_cap", 200)
+    cap = getattr(config, "candidate_cap", 500)
     if len(filtered) > cap:
         _log(f"phase1: candidate-cap-exceeded ({len(filtered)} > {cap})")
         return ([], "candidate-cap-exceeded")
@@ -642,8 +648,34 @@ class LLMClient(Protocol):
 
 
 def _build_topics_index(cache: dict) -> dict[str, list[str]]:
-    """Index `cache.map_notes` by path → topics for O(1) hit lookup."""
+    """Index cache entries by path → topics for O(1) hit lookup in Phase 2.
+
+    Indexes two sources (last-writer-wins on duplicate paths — the cache-builder
+    dedupes, this is a defensive belt-and-braces):
+
+    1. `cache["entries"]` (kind==moc AND kind==note) — covers scan-mode candidates
+       whose topics come from the cache entry rather than from an LLM call.
+       Before T5.1 this was a miss for kind==note paths, forcing spurious LLM
+       batching for every scan candidate.
+
+    2. `cache["map_notes"]` (kind==moc shim, populated by apply_shim in the
+       loader) — kept for backward compat with title/free-text mode, which
+       constructs candidates from map_notes and needs its hits to resolve here.
+    """
     out: dict[str, list[str]] = {}
+
+    # Pass 1: all entries (moc + note) from the unified entries list.
+    for entry in cache.get("entries") or []:
+        if not isinstance(entry, dict):
+            continue
+        path = (entry.get("path") or "").strip()
+        if not path:
+            continue
+        topics = [str(t) for t in (entry.get("topics") or []) if t]
+        out[path] = topics
+
+    # Pass 2: map_notes shim — applies on top so MOC hits from the shim layer
+    # are never shadowed by a stale entries pass.
     for entry in cache.get("map_notes") or []:
         if not isinstance(entry, dict):
             continue
@@ -651,9 +683,8 @@ def _build_topics_index(cache: dict) -> dict[str, list[str]]:
         if not path:
             continue
         topics = [str(t) for t in (entry.get("topics") or []) if t]
-        # Last-writer-wins on duplicate paths — cache-builder dedupes these
-        # already, this is a defensive belt-and-braces.
         out[path] = topics
+
     return out
 
 

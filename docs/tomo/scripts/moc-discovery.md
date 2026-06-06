@@ -1,0 +1,77 @@
+# WHY: tomo/scripts/moc-discovery.py
+
+> Rationale for decisions in `tomo/scripts/moc-discovery.py`.
+> The script drives the `/moc-propose` skill (F-43, spec 013/021).
+> This file documents the WHY behind every significant design choice;
+> the HOW lives in the script itself and its inline docstrings.
+
+## Scan Mode: Cache-Sourced Orphans (T5.1, ADR-11)
+
+WHY: The original `_handle_scan` enumerated atomic-note candidates via a live
+`list_dir` Kado call over each atomic-note subdirectory. This had two problems:
+
+1. **Candidate cap abuse** — every atomic note (including already-MOC-linked
+   notes with a valid `up::` link) was counted toward the 200-candidate cap.
+   A vault with 276 notes and 206 orphans would always abort with
+   `candidate-cap-exceeded`, making whole-vault `/moc-propose` unusable.
+
+2. **Redundant live call** — the MOC-structure cache (`entries[kind=="note"]`)
+   already contains the full in-scope note set with `up_state` annotations,
+   populated by `moc_scan.in_scope_note_paths`. Scanning live re-does work
+   the cache already captured.
+
+Fix (spec 021 T5.1): `_handle_scan` now reads `cache["entries"]` filtered to
+`kind=="note" AND up_state=="absent"`. These are the true orphans — atomic notes
+with no `up::` parent link. No Kado call is made. Candidates carry `topics`
+directly from the cache entry, eliminating the Phase 2 LLM-miss path for
+scan-mode candidates.
+
+## Scoped Modes: All Notes, No Orphan Filter
+
+WHY: Scoped modes (`folder`, `tag`, `class`, `title`, `free-text`) operate on a
+user-specified target and must return every matching note regardless of `up_state`.
+A user asking "find MOC candidates in folder X" expects to see ALL notes in X —
+including already-parented ones — so they can decide whether to add them to an
+existing MOC or propose a new one. The orphan-filter is **scan-ONLY** because
+scan's purpose is to find unparented notes across the whole vault, while scoped
+modes are user-directed exploration.
+
+## Candidate Cap: 500 (was 200) (T5.1, ADR-11)
+
+WHY: With scan sourcing only orphans, the realistic candidate set is smaller
+(orphans only, not all notes), but 200 was still too low even for that. A vault
+with 200+ orphans (e.g. 206 out of 276 notes in Marcus's vault) would abort.
+The cap was raised to 500 in `MocProposalConfig.candidate_cap` (shared-ctx-builder)
+and the `getattr(config, "candidate_cap", 500)` fallback in Phase 1.
+
+The cap exists to prevent accidentally dispatching thousands of LLM calls when
+the cache is complete and `cache_miss_max_batches` would catch that — the cap is
+a fast-fail gate, not the primary quality control. 500 is a reasonable ceiling
+for a dense personal vault.
+
+## `_build_topics_index`: Indexing Both MOC and Note Entries (T5.1)
+
+WHY: Before T5.1, `_build_topics_index` only indexed `cache["map_notes"]` (the
+shim layer, kind==moc entries). Scan-mode candidates have paths that are
+`kind=="note"` entries — they never appeared in `map_notes`. This meant every
+scan candidate was a Phase 2 cache miss, requiring an LLM batch call even though
+the cache already had their topics.
+
+Fix: `_build_topics_index` now indexes `cache["entries"]` (all kinds) in a first
+pass, then overlays `cache["map_notes"]` in a second pass so MOC shim entries
+are never shadowed. This makes scan candidates Phase 2 cache hits — no LLM call
+needed.
+
+The `map_notes` overlay is kept because `title`/`free-text` mode constructs
+candidates from `map_notes` entries directly, and those must still resolve as
+hits in the index. The two passes are additive and commutative for any path that
+appears in both (last-writer-wins, which the cache-builder prevents by deduping).
+
+## Phase 2 LLM Path Still Active for Non-Cached Candidates
+
+WHY: Scoped modes (folder/tag/class) source candidates from live Kado calls.
+These paths may not be in the cache (e.g. a folder query on a rarely-scanned
+subfolder). For those candidates, Phase 2's LLM batch-extract path is still
+needed. `_build_topics_index` returns an empty slot for them, they land in
+`misses`, and `_batch_llm_extract` handles them. This path was not changed by
+T5.1.

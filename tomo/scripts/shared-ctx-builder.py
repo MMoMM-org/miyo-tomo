@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.1.0
+# version: 1.2.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -81,7 +81,7 @@ class MocProposalConfig:
     min_notes: int = 3
     confidence_threshold: float = 0.15
     max_results: int = 5
-    candidate_cap: int = 200
+    candidate_cap: int = 500
     cache_miss_max_batches: int = 5
     squelch_runs: int = 3
 

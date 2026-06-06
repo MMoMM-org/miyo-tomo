@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.2
+# version: 1.3
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -391,6 +391,31 @@ tomo:
 
     # The structural tag that identifies MOCs (no leading '#').
     moc_tag: "type/others/moc"
+
+  # MOC proposal tunables — controls /moc-propose (spec 013 / F-43).
+  # All keys are optional; omitting the block entirely uses the spec defaults.
+  moc_proposal:
+    # Maximum candidates considered for MOC grouping. scan mode sources only
+    # orphans (up_state==absent), so this cap is rarely hit; scoped modes
+    # (folder/tag/class) may exceed it on dense folders. Raised 200→500 in
+    # T5.1 (ADR-11: whole-vault scan was counting already-MOC-linked notes).
+    candidate_cap: 500
+
+    # Minimum notes per cluster to emit a MOC proposal.
+    min_notes: 3
+
+    # Maximum MOC proposals returned per run.
+    max_results: 5
+
+    # Minimum topic-overlap score for a cluster to count as a proposal.
+    confidence_threshold: 0.15
+
+    # Maximum LLM batches allowed for cache-miss topic extraction.
+    # Each batch = 10 candidates. Exceeding this aborts with cache-miss-cap-exceeded.
+    cache_miss_max_batches: 5
+
+    # Number of past run results kept in moc-squelch.json for duplicate suppression.
+    squelch_runs: 3
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Trackers

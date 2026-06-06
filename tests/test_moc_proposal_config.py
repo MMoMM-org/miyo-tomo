@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_moc_proposal_config.py — Loader tests for vault-config tomo.moc_proposal block.
 
 F-43 Phase 1 T1.2: schema additions + loader for the MOC-creation skill's
@@ -56,7 +56,7 @@ SPEC_DEFAULTS = {
     "min_notes": 3,
     "confidence_threshold": 0.15,
     "max_results": 5,
-    "candidate_cap": 200,
+    "candidate_cap": 500,
     "cache_miss_max_batches": 5,
     "squelch_runs": 3,
 }

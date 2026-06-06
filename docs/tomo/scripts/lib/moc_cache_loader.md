@@ -82,13 +82,21 @@ path cannot distinguish "empty because vault is genuinely empty" from "empty
 because the builder produced broken output." Only the pre-rebuild fresh path has
 enough certainty to use the more precise `"cache-empty"` signal.
 
-## Scan-Mode Stays on Live `list_dir` (M2, Documented Deferral)
+## Scan-Mode Now Cache-Sourced Orphans (T5.1, ADR-11)
 
-WHY: moc-discovery's `_handle_scan` enumerates atomic-note candidates via a
-live `list_dir` Kado call. The cache's `entries[kind=="note"]` already contains
-the same in-scope note set (populated by `moc_scan.in_scope_note_paths`), so
-scan-mode COULD be sourced from the cache to eliminate the live call. This
-rewire is a moc-discovery change, not a loader change. The loader exposes the
-full `entries` list specifically to make this future one-line projection
-possible. Until it lands, M1 ("no full live tree-build when cache is fresh")
-holds for the MOC tree-build specifically, and scan-mode remains live.
+WHY: moc-discovery's `_handle_scan` was previously enumerating atomic-note
+candidates via a live `list_dir` Kado call. This counted EVERY atomic note
+(including already-MOC-linked notes) toward the 200-candidate cap, causing
+`candidate-cap-exceeded` aborts on whole-vault `/moc-propose` runs with a
+populated vault (ADR-11).
+
+The fix (spec 021 T5.1): `_handle_scan` now reads `cache["entries"]` filtered
+to `kind=="note" AND up_state=="absent"` (orphans — notes with no `up::` link).
+No live Kado call is made. The loader's full `entries` list was already the
+designed feed point for this rewire (M2 deferral comment in the previous version
+of this doc); T5.1 completes the rewire. The cap was also raised 200→500 in
+`MocProposalConfig.candidate_cap` and the `getattr` fallback in Phase 1.
+
+Scoped modes (folder/tag/class/title/free-text) are unaffected — they operate
+on user-specified targets and should return all in-scope notes regardless of
+up_state. The orphan filter is scan-ONLY.

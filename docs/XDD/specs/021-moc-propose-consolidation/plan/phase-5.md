@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Usable whole-vault scan (orphan-only, cache-sourced) + cap reframe"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---

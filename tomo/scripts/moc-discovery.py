@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.11.0
+# version: 0.11.1
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -58,6 +58,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 # only, so this is wired ahead of use.
 from lib.moc_cache_loader import load_moc_cache  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
+from lib.up_parse import parse_up_from_content  # noqa: E402
 from lib.squelch import (  # noqa: E402
     decrement_all as _squelch_decrement_all,
     load_registry as _squelch_load_registry,
@@ -1279,33 +1280,13 @@ def phase6_dedupe(
 # Phase 6.5 — Existing-`up::` validation per candidate
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Match a single ``up::`` relationship line whose target is a wikilink. The
-# anchor is a line-start (`(?m)^`) optionally preceded by whitespace or
-# callout-quote prefix (``> ``); the target captured group strips the
-# surrounding ``[[`` / ``]]``.
+# Match a single inline ``up::`` relationship line whose target is a wikilink.
+# T2.2: target RESOLUTION now goes through lib/up_parse.parse_up_from_content
+# (dual-up: inline + frontmatter). This regex is retained ONLY to count inline
+# markers for the multi-`up::` malformed-note warning — it no longer resolves
+# the target. (Mirrors up_parse._INLINE_UP so the warning matches what up_parse
+# would have picked as the inline candidate.)
 _UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
-
-
-def _extract_first_up_marker(content: str) -> str | None:
-    """Return the first ``up:: [[Target]]`` target, or None when absent.
-
-    Matches multi-line bodies — leading whitespace is allowed, the marker
-    must start its own line, and the wikilink target is returned without
-    the surrounding `[[` / `]]`. Multiple `up::` lines on the same note
-    are the caller's concern: this helper deliberately surfaces only the
-    first match so callers can decide whether to warn.
-
-    A note body without any `up::` line, or with `up::` followed by a
-    non-wikilink target, returns None — Rule 4.1 / 4.4 then applies and
-    the new MOC becomes the child's `up::` regardless of override.
-    """
-    if not content:
-        return None
-    match = _UP_MARKER_RE.search(content)
-    if not match:
-        return None
-    target = match.group(1).strip()
-    return target or None
 
 
 def _moc_stems_from_cache(cache: dict) -> set[str]:
@@ -1427,17 +1408,24 @@ def phase65_validate_existing_up(
 
             content = note.get("content", "") if isinstance(note, dict) else ""
 
-            # Multi-`up::` detection: count regex hits before extracting
-            # so the warning fires per-note, not per-cluster.
-            all_targets = _UP_MARKER_RE.findall(content)
-            if len(all_targets) > 1:
+            # Multi-inline-`up::` detection: count inline marker hits before
+            # resolving so the warning fires per-note, not per-cluster. (The
+            # warning is inline-specific — a single frontmatter `up:` plus one
+            # inline `up::` is the normal conflict case, resolved by inline-wins,
+            # not a malformed multi-marker note.)
+            inline_targets = _UP_MARKER_RE.findall(content)
+            if len(inline_targets) > 1:
                 multi_up_count += 1
                 _log(
                     f"WARN: multiple up:: markers in {path}; using first "
-                    f"({all_targets[0]!r}, dropped {len(all_targets) - 1} more)"
+                    f"({inline_targets[0]!r}, dropped {len(inline_targets) - 1} more)"
                 )
 
-            target = _extract_first_up_marker(content)
+            # T2.2 (C1/ADR-6): resolve the `up` relationship from the SAME
+            # read_note content via the up_parse SSoT — recognises both inline
+            # `up:: [[X]]` and frontmatter `up:` (inline wins on conflict),
+            # splitting the frontmatter block locally with no extra Kado call.
+            target = parse_up_from_content(content).target
             if target is None:
                 state: str = "absent"
             elif target in moc_stems:

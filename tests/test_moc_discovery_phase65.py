@@ -96,22 +96,16 @@ def _cache(moc_paths: list[tuple[str, str]]) -> dict:
     }
 
 
-# ── Helper tests ────────────────────────────────────────────────────────────
-
-
-def test_extract_first_up_marker_returns_none_when_absent():
-    """A body with no ``up::`` line → helper returns None."""
-    body = "# Some Note\n\nJust prose, no relationship markers.\n"
-    assert moc_discovery._extract_first_up_marker(body) is None
-
-
-def test_extract_first_up_marker_returns_first_target():
-    """A single ``up:: [[Target]]`` line → helper returns ``"Target"``."""
-    body = "# Note\n\nup:: [[Existing MOC]]\n\nbody text\n"
-    assert moc_discovery._extract_first_up_marker(body) == "Existing MOC"
-
-
 # ── Phase 6.5 tests ─────────────────────────────────────────────────────────
+#
+# T2.2 (spec 021): Phase 6.5 now resolves the `up` relationship via
+# lib/up_parse.parse_up_from_content on the SAME read_note content (C1 — split
+# frontmatter locally, no extra Kado call). This recognises BOTH the inline
+# `up:: [[X]]` form AND the frontmatter `up:` form, with inline winning on
+# conflict (ADR-2/ADR-6). The old inline-only `_extract_first_up_marker` helper
+# and its two direct unit tests were retired — that behaviour (no-marker→None,
+# inline→target) is covered by tests/test_up_parse.py, and the
+# frontmatter/inline-wins additions below cover the new surface.
 
 
 def test_no_up_marker_state_absent():
@@ -284,3 +278,116 @@ def test_kado_read_failure_does_not_crash(capsys):
     assert "Atlas/202 Notes/zsh-aliases.md" in captured.err, (
         f"Stderr warning must name the failing path; got {captured.err!r}"
     )
+
+
+# ── T2.2: dual-`up` (frontmatter + inline) via lib/up_parse ──────────────────
+
+
+def test_frontmatter_up_only_resolves_valid():
+    """Frontmatter `up:` only (no inline `up::`) AND target in cache → valid.
+
+    The whole point of T2.2: a note that declares its parent in frontmatter is
+    no longer falsely treated as an orphan (PRD AC F2#1).
+    """
+    candidates = [_candidate("fish-config", "Atlas/202 Notes/fish-config.md")]
+    clusters = [_cluster("shell", ["fish-config"])]
+    kado = _FakeKado({
+        "Atlas/202 Notes/fish-config.md": (
+            "---\ntitle: fish config\nup: \"[[2600 - Applied Sciences]]\"\n---\n"
+            "# fish config\n\nNo inline marker here.\n"
+        ),
+    })
+    cache = _cache([("2600 - Applied Sciences", "Atlas/200 Maps/2600 - Applied Sciences.md")])
+
+    decorated = moc_discovery.phase65_validate_existing_up(
+        clusters, candidates, kado, cache
+    )
+
+    rows = decorated[0]["existing_up"]
+    assert rows == [
+        {"stem": "fish-config", "state": "valid", "target": "2600 - Applied Sciences"}
+    ], f"Frontmatter up: must resolve valid; got {rows!r}"
+
+
+def test_frontmatter_up_list_form_resolves_valid():
+    """Frontmatter `up:` as a YAML list → first entry used, resolves valid."""
+    candidates = [_candidate("nu-shell", "Atlas/202 Notes/nu-shell.md")]
+    clusters = [_cluster("shell", ["nu-shell"])]
+    kado = _FakeKado({
+        "Atlas/202 Notes/nu-shell.md": (
+            "---\nup:\n  - \"[[2600 - Applied Sciences]]\"\n---\n# nu shell\n"
+        ),
+    })
+    cache = _cache([("2600 - Applied Sciences", "Atlas/200 Maps/2600 - Applied Sciences.md")])
+
+    decorated = moc_discovery.phase65_validate_existing_up(
+        clusters, candidates, kado, cache
+    )
+    rows = decorated[0]["existing_up"]
+    assert rows == [
+        {"stem": "nu-shell", "state": "valid", "target": "2600 - Applied Sciences"}
+    ], f"Frontmatter list up: must resolve valid; got {rows!r}"
+
+
+def test_inline_up_wins_over_frontmatter_on_conflict():
+    """Both inline `up::` AND frontmatter `up:` present, differing targets →
+    inline target wins (ADR-2/ADR-6, PRD AC F2#3)."""
+    candidates = [_candidate("conflict", "Atlas/202 Notes/conflict.md")]
+    clusters = [_cluster("shell", ["conflict"])]
+    kado = _FakeKado({
+        "Atlas/202 Notes/conflict.md": (
+            "---\nup: \"[[Frontmatter MOC]]\"\n---\n"
+            "# conflict\n\nup:: [[Inline MOC]]\n"
+        ),
+    })
+    # BOTH targets exist in cache, so the resolved one is unambiguous by target.
+    cache = _cache([
+        ("Inline MOC", "Atlas/200 Maps/Inline MOC.md"),
+        ("Frontmatter MOC", "Atlas/200 Maps/Frontmatter MOC.md"),
+    ])
+
+    decorated = moc_discovery.phase65_validate_existing_up(
+        clusters, candidates, kado, cache
+    )
+    rows = decorated[0]["existing_up"]
+    assert rows == [
+        {"stem": "conflict", "state": "valid", "target": "Inline MOC"}
+    ], f"Inline up:: must win over frontmatter up:; got {rows!r}"
+
+
+def test_frontmatter_up_broken_when_target_not_in_cache():
+    """Frontmatter `up:` whose target is not a known MOC → broken (not absent)."""
+    candidates = [_candidate("orphan-fm", "Atlas/202 Notes/orphan-fm.md")]
+    clusters = [_cluster("shell", ["orphan-fm"])]
+    kado = _FakeKado({
+        "Atlas/202 Notes/orphan-fm.md": (
+            "---\nup: \"[[Ghost MOC]]\"\n---\n# orphan fm\n"
+        ),
+    })
+    cache = _cache([("2600 - Applied Sciences", "Atlas/200 Maps/2600 - Applied Sciences.md")])
+
+    decorated = moc_discovery.phase65_validate_existing_up(
+        clusters, candidates, kado, cache
+    )
+    rows = decorated[0]["existing_up"]
+    assert rows == [
+        {"stem": "orphan-fm", "state": "broken", "target": "Ghost MOC"}
+    ], f"Frontmatter up: to unknown MOC must be broken; got {rows!r}"
+
+
+def test_empty_frontmatter_up_is_absent():
+    """Empty frontmatter `up:` (and no inline) → absent, target None."""
+    candidates = [_candidate("no-up", "Atlas/202 Notes/no-up.md")]
+    clusters = [_cluster("shell", ["no-up"])]
+    kado = _FakeKado({
+        "Atlas/202 Notes/no-up.md": "---\nup: []\ntitle: no up\n---\n# no up\n",
+    })
+    cache = _cache([])
+
+    decorated = moc_discovery.phase65_validate_existing_up(
+        clusters, candidates, kado, cache
+    )
+    rows = decorated[0]["existing_up"]
+    assert rows == [
+        {"stem": "no-up", "state": "absent", "target": None}
+    ], f"Empty frontmatter up: must be absent; got {rows!r}"

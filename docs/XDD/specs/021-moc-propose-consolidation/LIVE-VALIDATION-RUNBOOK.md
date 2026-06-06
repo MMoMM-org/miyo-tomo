@@ -48,6 +48,23 @@ Use `KADO_URL=http://127.0.0.1:<port>/mcp` + token from `tomo-instance/.mcp.json
 Also confirm **no regression** in Condition A/C output vs the captured golden baseline
 (`tests/fixtures/021-ac-baseline/ac-baseline.json`).
 
+### Feature 7 (Phase 6) — scan output-quality cleanup
+
+Verified 2026-06-06 against the live vault (host→Kado rebuild of the MOC-structure cache):
+
+| Metric | Target | Result |
+|--------|--------|--------|
+| **F7-1** | `X/` template-vault excluded from the cache (config-driven) | ✅ rebuilt cache 339 entries / 63 MOCs (was 357/81); **0** `X/…` entries |
+| **F7-2** | default scan orphan pass = notes only (no MOC noise) | ✅ `emit_orphan_suggestions(entries)` → 206 emitted, **all `note`** (0 MOCs) |
+| **F7-3** | output ordered link_existing-first | ✅ 3 link_existing precede 203 create_new |
+| **F7-4** | `orphan_display_cap` truncates with overflow | ✅ unit-tested (60→50 shown, overflow 10); arithmetic over the real 206 → 50 shown / 156 overflow |
+| **F7-5** | `/moc-propose check:moc-uplinks` MOC-only, no clustering | ✅ E2E through `main()` on real cache: mode `check-moc-uplinks`, 28 MOC orphans, `topic_clusters` empty |
+
+**Gap (env, not code):** the full default-scan E2E through `main()` (Phase 6.5 reads notes)
+hit Kado **HTTP 429** rate-limiting and could not complete in one pass. The cap/notes-only/
+ordering are covered by the unit suite + the real-cache orphan-pass dump above; re-run the
+plain `/moc-propose` scan E2E inside the container (where Kado is local) to close it.
+
 ## 4. Record the run
 Add an entry to `docs/evolution/inbox-cost-log.md` via `tomo-session-stats.py`
 (see memory `reference_inbox_cost_log` — baseline was 18 items = \$10.71). Note token cost +

@@ -82,7 +82,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 1. **Awareness:** The user notices (or suspects) notes that aren't reachable from any MOC, or topics that have grown enough to deserve their own map.
 2. **Consideration:** Rather than manually scanning folders, they run `/moc-propose` (whole-vault scan) or a scoped variant (`tag:`, `folder:`, `title:`).
 3. **Adoption:** `/moc-propose` reads a fresh-enough MOC-structure cache (rebuilding inline if stale), then returns a proposal-doc.
-4. **Usage:** For each orphan note/MOC the proposal-doc offers EITHER "link to existing MOC X" (top-3 candidates) OR "create new MOC Y" with a written reason. The user ticks choices; `/execute` (via Hashi) applies them.
+4. **Usage:** For each orphan note/MOC the proposal-doc offers EITHER "link to existing MOC X" (top-3 candidates) OR "create new MOC Y" with a written reason. The user ticks choices; on accept, `/inbox` renders an instruction set that applies them (by hand in Obsidian or via Hashi).
 5. **Retention:** Same-day re-runs are fast (cache hit); the inbox keeps nudging about not-yet-created MOCs the user has already linked to, so structure compounds.
 
 ### Secondary User Journeys
@@ -114,7 +114,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 - **User Story:** As the vault owner, when `/moc-propose` finds a note or MOC with no parent, I want to be offered either a link to an existing MOC (top-3 candidates) or a new-MOC proposal with a written reason, so I don't create redundant MOCs and I understand each suggestion.
 - **Acceptance Criteria (Gherkin Format):**
   - [ ] Given an orphan note whose topics match one or more existing MOCs at/above the score threshold, When `/moc-propose` runs, Then the proposal-doc offers "link to existing MOC" with the top-3 candidates for the user to choose (not a new-MOC proposal).
-  - [ ] Given an orphan note matching no existing MOC, When `/moc-propose` runs, Then it offers "create new MOC Y" And a human-readable reason is rendered into the proposal-doc (and emitted as an instruction to stamp into the note(s) at `/execute` time — `/moc-propose` does not write to notes itself).
+  - [ ] Given an orphan note matching no existing MOC, When `/moc-propose` runs, Then it offers "create new MOC Y" And a human-readable reason is rendered into the proposal-doc (and emitted as an instruction that `/inbox` renders on accept, applied later by hand or via Hashi — `/moc-propose` does not write to notes itself).
   - [ ] Given a MOC that itself has no parent `up`, When `/moc-propose` runs, Then it receives the same link-to-existing-parent / create-new-parent treatment (case (a) applies to MOCs, not only atomic notes).
 
 #### Feature 4: Retire Condition B from inbox; keep Conditions A + C with a corrected placeholder list
@@ -166,7 +166,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 ### Won't Have (This Phase)
 - Per-item context shaping implementation (Could-Have / issue #45 (epic #24)).
 - New Kado capabilities (`childCount` on `listDir`, server-side `filter.path` on `byTag`, bulk inline-field projection) — every read needed by 021 already exists in `kado_client` v0.8.0; gaps are noted for the Kado team but not blocking.
-- Any direct note mutation by `/moc-propose` — writes remain in the 2-pass `/execute` boundary.
+- Any direct note mutation by `/moc-propose` — writes remain behind the 2-pass apply boundary (`/inbox` → instruction set → Hashi/manual).
 - Multi-user / shared-vault behaviour.
 
 ## Detailed Feature Specifications
@@ -179,7 +179,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 2. System (script) checks the cache `last_scan`; if stale/missing → rebuilds inline from Kado.
 3. System computes clusters/candidates, validates each candidate's `up` (both forms), and for each orphan finds matching existing MOCs.
 4. System writes a proposal-doc: per orphan, either top-3 "link to MOC" options or a "create new MOC" entry with a reason.
-5. User ticks choices; `/execute` applies them (adds `up`, creates MOCs, stamps reasons).
+5. User ticks choices; on accept `/inbox` renders the instruction set that applies them (adds `up`, creates MOCs, stamps reasons; by hand or via Hashi).
 
 **Business Rules:**
 - Rule 1: A note/MOC is an orphan iff neither frontmatter `up:` nor inline `up::` yields a non-empty wikilink target.
@@ -231,7 +231,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 
 ### Constraints
 - **Constitution L2 file size:** `moc-discovery.py` is already ~1 929 LOC (≈4× the 300–500 LOC guidance). New logic (cache loader, dual-`up`, case-(a)) MUST be extracted into `lib/` modules, not appended; the `moc-tree-builder` rebuild must split discovery/read/placeholder rather than reproduce one large file.
-- **2-pass model:** `/moc-propose` proposes only; all note mutation happens at `/execute` (Hashi).
+- **2-pass model:** `/moc-propose` proposes only; all note mutation happens at apply time (`/inbox` → instruction set → Hashi/manual).
 - **Container visibility:** runtime scripts see only the instance dir; cache + config live inside the instance.
 - **Constitution L1 Testing:** every filesystem/permission path needs happy + denial coverage; orphan/permission logic must be testable without an LLM.
 - **No regex YAML edits:** any eventual `up:` write routes through `kado_client.write_frontmatter(mode='merge')` — but 021 only reads frontmatter.
@@ -260,7 +260,7 @@ All blocking questions resolved with the user on 2026-06-05:
 - [x] TTL = rolling 24 h from `last_scan` (OQ-3)
 - [x] Multi-MOC match → top-3 to choose (OQ-4)
 - [x] Tag-vs-scope collision → exclude wins (OQ-5)
-- [x] Reason text → proposal-doc + emitted `/execute` instruction; not written by `/moc-propose` (OQ-6)
+- [x] Reason text → proposal-doc; on accept `/inbox` renders the apply instruction; not written by `/moc-propose` (OQ-6)
 - [x] `placeholder_mocs` never trimmed; raise budget (OQ-7)
 
 Deferred (non-blocking, for SDD/PLAN):

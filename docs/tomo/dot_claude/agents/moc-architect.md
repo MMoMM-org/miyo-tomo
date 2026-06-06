@@ -18,13 +18,14 @@ the orphan rendering between a script and the LLM would create two parallel
 format definitions that drift; keeping it 100% in the renderer keeps a single
 source of truth.
 
-## /moc-propose Writes No Vault Note — Orphan Reasons Are Stamped by /execute (CON-3, OQ-6)
+## /moc-propose Writes No Vault Note — Orphan Reasons Are Stamped at Apply Time (CON-3, OQ-6)
 
 WHY: For a `create_new` orphan, the proposal-doc renders the orphan's `reason`
-plus an instruction that, on accept, `/execute` stamps the reason into the
-note(s) and creates the new MOC. `/moc-propose` itself writes ONLY the
-proposal-doc to the inbox — it never mutates vault notes (the 2-pass model,
-CON-3). The actual `up:`/note write happens later via `/execute` (Hashi) through
+plus an instruction that, on accept, `/inbox` renders into the instruction set —
+applied later (by hand or via Hashi) to stamp the reason into the note(s) and
+create the new MOC. `/moc-propose` itself writes ONLY the proposal-doc to the
+inbox — it never mutates vault notes (the 2-pass model, CON-3). The actual
+`up:`/note write happens later at apply time through
 `kado_client.write_frontmatter(mode='merge')`. Rendering the reason + the
 deferred-write instruction in the doc (rather than writing immediately) is what
 keeps `/moc-propose` proposal-only.

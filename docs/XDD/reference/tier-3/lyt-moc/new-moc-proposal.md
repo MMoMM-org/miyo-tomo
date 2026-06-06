@@ -196,7 +196,7 @@ as spec 021 (was originally `/scan-mocs`, superseded by `/moc-propose`, F-43):
    → link_existing (≥1 MOC above LINK_THRESHOLD) or create_new + reason
 5. suggestions-reducer.py --moc-proposal-mode: render proposal-doc (incl. Orphan section)
 6. Proposal-doc written to inbox — user reviews + confirms
-7. /inbox Pass 2 generates instruction set; /execute (Hashi) applies changes
+7. /inbox Pass 2 generates instruction set; applied by hand or via Hashi
 ```
 
 This is a heavier operation (reads MOCs and notes via Kado) but only runs on

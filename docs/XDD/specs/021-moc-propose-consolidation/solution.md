@@ -47,7 +47,7 @@ version: "1.0"
 
 - **CON-1 (Language/runtime):** Python 3 scripts running inside the Tomo Docker instance; all vault access via `KadoClient` (`tomo/scripts/lib/kado_client.py` v0.8.0). No direct filesystem vault access (Constitution L1 — route through Kado).
 - **CON-2 (File size, Constitution L2):** `moc-discovery.py` is already ~1929 LOC (≈4× the 300–500 LOC guidance). New logic MUST be extracted into `lib/` modules, not appended. The `moc-tree-builder` rebuild must split discovery/read/placeholder rather than reproduce one large file.
-- **CON-3 (2-pass model):** `/moc-propose` proposes only — it writes a proposal-doc to the inbox and never mutates vault notes. Any `up:` write happens later via `/execute` (Hashi) through `kado_client.write_frontmatter(mode='merge')`.
+- **CON-3 (2-pass model):** `/moc-propose` proposes only — it writes a proposal-doc to the inbox and never mutates vault notes. Any `up:` write happens later at apply time (`/inbox` renders the instruction set; applied by hand or via Hashi) through `kado_client.write_frontmatter(mode='merge')`.
 - **CON-4 (Runtime-file discipline):** runtime agent/command files (`moc-architect.md`, `inbox-analyst.md`) carry imperatives only; all WHY/rationale lives in `docs/tomo/<mirrored-path>.md`. Script-header docstrings are part of the code (carve-out).
 - **CON-5 (Privacy, Constitution L1/L2):** the cache stores metadata only — paths, titles, topics, stems, tags, up-state, timestamps — never note body bytes or frontmatter values beyond discovery needs. Out-of-scope paths (daily/templates) are never pulled into the cache.
 - **CON-6 (No regex YAML edits):** `up` is only ever READ in 021 (`read_frontmatter`/`read_inline_fields`); no string-built YAML.
@@ -99,7 +99,7 @@ version: "1.0"
 ### Implementation Boundaries
 - **Must Preserve:** moc-discovery Phases 1–6 behaviour (via the loader shim → `map_notes`); inbox Conditions A & C output; the 2-pass proposal boundary; `kado_client` public surface.
 - **Can Modify:** moc-tree-builder internals (rebuild), moc-discovery Phase 6.5 + cache-source + a new case-(a) emitter, shared-ctx-builder (remove accumulation, raise budget), vault-config (add scope block), cache-builder wiring.
-- **Must Not Touch:** Kado plugin code (capability gaps are noted, not implemented here); `/execute`/Hashi; the per-item context-shaping path (deferred to issue #45 (epic #24)).
+- **Must Not Touch:** Kado plugin code (capability gaps are noted, not implemented here); the apply layer (instruction-set executor / Hashi); the per-item context-shaping path (deferred to issue #45 (epic #24)).
 
 ### External Interfaces
 
@@ -289,7 +289,7 @@ ENTITY: OrphanLinkSuggestion (NEW)  — emitted into DiscoveryReport
     kind: str                         # note | moc
     mode: str                         # "link_existing" | "create_new"
     candidates: list[{target_moc, score}]   # top-3 when mode=link_existing (ADR/OQ-4)
-    reason: str                       # rendered into proposal-doc (+ /execute instruction) when create_new
+    reason: str                       # rendered into proposal-doc (+ apply instruction via /inbox) when create_new
   # H2 — orphan SOURCE is the cache, not a Phase-6 edit:
   #   orphan set = [e for e in cache.entries if e.up_state == "absent"]   (both kinds)
   #   for each orphan: score its topics vs entries[kind==moc] (reuse Phase-5 keyword overlap);
@@ -367,7 +367,7 @@ def emit_orphan_suggestions(entries) -> list[OrphanLinkSuggestion]:
 3. Loader projects `entries[kind==moc]` → `map_notes`; Phases 1–6 run unchanged.
 4. Phase 6.5 validates each candidate's `up` via `lib/up_parse.parse_up_from_content` on the note's existing `read_note` content (frontmatter split locally — no extra Kado call, C1); caller resolves valid/broken vs the MOC stem set.
 5. `lib/orphan_link.emit_orphan_suggestions` runs a separate pass over `cache.entries[up_state=="absent"]` (notes AND MOCs), scoring each against `entries[kind==moc]` → top-3 link suggestions OR a create-new proposal with a reason (H2 — not a Phase-6 edit).
-6. `suggestions-reducer` + `moc-architect` render the proposal-doc (link-or-create). User ticks; `/execute` applies.
+6. `suggestions-reducer` + `moc-architect` render the proposal-doc (link-or-create). User ticks; on accept `/inbox` renders the instruction set that applies (by hand or via Hashi).
 
 ```mermaid
 sequenceDiagram
@@ -440,7 +440,7 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
   why: "Reused wholesale for moc-structure-cache TTL"
 - pattern: F-47 doc-frontmatter / write_frontmatter(mode=merge)
   relevance: MEDIUM
-  why: "Any future up: write (at /execute) routes through it — not in 021 scope"
+  why: "Any future up: write (at apply time) routes through it — not in 021 scope"
 ```
 
 ## Architecture Decisions
@@ -521,7 +521,7 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
 
 **Orphan link-or-create (PRD F3)**
 - [ ] WHEN an orphan note/MOC matches existing MOCs at/above threshold, THE SYSTEM SHALL offer the top-3 link candidates (ADR/OQ-4), not a new-MOC proposal.
-- [ ] IF an orphan matches no existing MOC, THEN THE SYSTEM SHALL propose a new MOC with a reason rendered in the proposal-doc (and an `/execute` instruction to stamp it into the note(s)).
+- [ ] IF an orphan matches no existing MOC, THEN THE SYSTEM SHALL propose a new MOC with a reason rendered in the proposal-doc (and an apply instruction, rendered by `/inbox` on accept, to stamp it into the note(s)).
 - [ ] WHERE the orphan is itself a MOC, THE SYSTEM SHALL apply the same link-or-create treatment.
 
 **Inbox retire B / keep A+C / Feature 5 (PRD F4, F5)**

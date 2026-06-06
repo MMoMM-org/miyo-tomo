@@ -21,7 +21,7 @@ phase: 2
 - Loader shim projects `entries[kind==moc]` → `map_notes` so Phases 1–6 stay unchanged (ADR-1).
 - `/moc-propose` rebuilds-if-stale inline; `/explore-vault` force-rebuilds (ADR-3).
 - Case (a) seats at the Phase 6 match point; orphan MOCs become eligible (relax `restrict_to_atomic_note_paths`).
-- Top-3 link candidates (OQ-4); reason in proposal-doc + `/execute` instruction (OQ-6), no note write.
+- Top-3 link candidates (OQ-4); reason in proposal-doc + apply instruction rendered by `/inbox` on accept (OQ-6), no note write.
 
 **Dependencies**: Phase 1 (cache file + `lib/up_parse` + schema) must be complete.
 
@@ -54,7 +54,7 @@ This phase makes `/moc-propose` read the cache (no live full pull), detect both 
 
 - [x] **T2.4 moc-architect renders link-or-create in the proposal-doc** `[activity: backend-api]` `[ref: SDD/Runtime View; OQ-6; PRD/Feature 3]`
   1. Prime: `moc-architect.md` workflow + `suggestions-reducer` rendering.
-  2. Test (RED): proposal-doc shows, per orphan, either top-3 link options OR a create-new entry with a reason line + an `/execute` instruction to stamp the reason into the note(s); `/moc-propose` writes no vault note.
+  2. Test (RED): proposal-doc shows, per orphan, either top-3 link options OR a create-new entry with a reason line + a note that `/inbox` renders the apply instruction on accept; `/moc-propose` writes no vault note.
   3. Implement: render path for `OrphanLinkSuggestion`; bump `# version:` on the agent. Rationale to `docs/tomo/...`, imperatives only in the agent (CON-4).
   4. Validate: render unit/snapshot test against a real artefact (`feedback_fixture_from_live_render`); lint.
   5. Success: link-or-create rendered, no note write `[ref: PRD/AC F3#2; CON-3]`.

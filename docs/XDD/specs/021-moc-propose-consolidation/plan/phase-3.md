@@ -30,21 +30,21 @@ phase: 3
 
 This phase removes the inbox hot-path coupling and verifies the inbox now matches against the complete, corrected MOC set.
 
-- [ ] **T3.0 Capture A/C golden baseline (do FIRST, before removing B)** `[activity: testing]` `[ref: PRD/Should-Have golden baseline; M3; M9]`
+- [x] **T3.0 Capture A/C golden baseline (do FIRST, before removing B)** `[activity: testing]` `[ref: PRD/Should-Have golden baseline; M3; M9]`
   1. Prime: the named inbox fixture set; current Condition A + C output path.
   2. Test (RED): run pre-021 `/inbox` Conditions A + C on the fixtures, capture output as a golden file under `tests/fixtures/021-ac-baseline/`.
   3. Implement: commit the golden file; later tasks assert byte-equality against it.
   4. Validate: golden file exists and is non-empty.
   5. Success: baseline captured before B-removal `[ref: PRD/M3]`.
 
-- [ ] **T3.1 Remove accumulation + raise budget in shared-ctx-builder** `[activity: backend-api]` `[ref: SDD/ADR-4,10 (H3); shared-ctx-builder.py:229,258,559-639,657; shared-ctx.schema.json:59]`
+- [x] **T3.1 Remove accumulation + raise budget in shared-ctx-builder** `[activity: backend-api]` `[ref: SDD/ADR-4,10 (H3); shared-ctx-builder.py:229,258,559-639,657; shared-ctx.schema.json:59]`
   1. Prime: `build_accumulation_index:258`, `enforce_budget:559-639` (Pass-6 trim), `--max-bytes:657`, `build_mocs:209`, `build_placeholder_mocs:229`; the `accumulation_index` property in `shared-ctx.schema.json` (H3).
   2. Test (RED): no `accumulation_index` in output; `enforce_budget` no longer references accumulation; `--max-bytes` default 40960; `placeholder_mocs` never trimmed even when over a smaller budget; envelope with corrected placeholder fits; **schema no longer declares `accumulation_index` and still validates a no-accumulation ctx (H3).**
   3. Implement: delete `build_accumulation_index` + Pass-6 block + the acc counters/return-tuple shape; update callers; raise default; keep placeholder un-trimmed; **remove the `accumulation_index` property from `shared-ctx.schema.json` (H3).**
   4. Validate: `pytest tests/test_shared_ctx_no_accumulation.py` + existing shared-ctx + schema tests; lint.
   5. Success: accumulation gone (incl. schema), A/C unaffected `[ref: PRD/AC F4#1]`; placeholder un-trimmed @40KB `[ref: PRD/AC F4#5, M6]`.
 
-- [ ] **T3.2 inbox-analyst: delete Condition B, keep A + C** `[activity: backend-api]` `[ref: inbox-analyst.md Step 4; PRD/Feature 4]`
+- [x] **T3.2 inbox-analyst: delete Condition B, keep A + C** `[activity: backend-api]` `[ref: inbox-analyst.md Step 4; PRD/Feature 4]`
   1. Prime: Step 4 Condition A (Classification Guard), B (Accumulation trigger), C (Placeholder), the A7-vs-B STRICT block (`:162-166`); the T3.0 golden baseline.
   2. Test (RED): with no `accumulation_index`, Conditions A and C produce output **byte-equal to the T3.0 golden baseline** on the fixture set (not shape-only); **Condition C still emits `needs_new_moc: true` + `proposed_moc_topic = <target>` with verbatim casing on a placeholder-match fixture (F4#2)**; placeholder still wins over inferred label (A7 intent preserved without the B block, F4#4).
   3. Implement: remove the Accumulation sub-block + A7-vs-B STRICT; keep A + C; bump `# version:`. WHY → `docs/tomo/...`.

@@ -4,14 +4,13 @@
     "task": "T3.0",
     "purpose": "Golden baseline: Conditions A+C shared_ctx inputs BEFORE Condition B (accumulation) removal in T3.2",
     "deterministic_artifact": "mocs + placeholder_mocs arrays from each test-015-t4-1 fixture, as produced by build_mocs() + build_placeholder_mocs()",
-    "agent_version_at_capture": "0.13.0",
+    "agent_version_at_capture": "0.14.0",
     "regeneration_command": "./venv/bin/python tests/fixtures/021-ac-baseline/generate.py",
     "fixture_set": "tests/fixtures/test-015-t4-1/",
     "conditions_captured": [
       "A (Classification Guard)",
       "C (Placeholder MOC trigger)"
-    ],
-    "condition_b_text": "**Accumulation cluster trigger.**\n\nWhen `shared_ctx.accumulation_index` is present and non-empty, compare the\nitem's dominant topic tokens (case-insensitive, whitespace-normalised) against\neach key in `accumulation_index`. If any key matches:\n\n- Set `needs_new_moc: true`.\n- Set `proposed_moc_topic = <matching_key>` (use the index key as-is).\n- Keep the top-scoring thematic candidate MOCs (if any) in `candidate_mocs[]`;\n  accumulation match does not erase scored matches.\n\n# STRICT — A7 (Condition C wins over Condition B)\n# Why: placeholder wins — it is a deliberate dead link the user already wrote.\nIf `proposed_moc_topic` was already set by the placeholder block above, do NOT\noverwrite it with the accumulation key.\n# END STRICT"
+    ]
   },
   "agent_step4_ac_contract": {
     "condition_a": "**Classification Guard:** \n\nNever pre-check a MOC with `is_classification: true`.\nIf all top matches are classification-layer, flag `needs_new_moc: true` and set\n`proposed_moc_topic` to the best inferred thematic label from the item's\ndominant topic tokens.",

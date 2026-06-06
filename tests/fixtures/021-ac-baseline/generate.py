@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 1.0.0
+# version: 1.1.0
 """generate.py — Regenerate ac-baseline.json from the test-015-t4-1 fixture set.
 
 Deterministic: no timestamps, no randomness, no live Kado calls.
@@ -42,32 +42,35 @@ SCENARIOS = [
 ]
 
 
-def _extract_step4_blocks(agent_text: str) -> tuple[str, str, str]:
-    """Return (condition_a_text, condition_c_text, condition_b_text) from Step 4."""
+def _extract_step4_blocks(agent_text: str) -> tuple[str, str]:
+    """Return (condition_a_text, condition_c_text) from Step 4.
+
+    Condition B (Accumulation cluster trigger) was retired in T3.2 (spec 021
+    ADR-10). This function no longer requires or captures the B block.
+    """
     step4_start = agent_text.find("### Step 4")
     step5_start = agent_text.find("### Step 5")
     step4 = agent_text[step4_start:step5_start].strip()
 
     a_start = step4.find("**Classification Guard:**")
     c_start = step4.find("**Placeholder MOC trigger.**")
-    b_start = step4.find("**Accumulation cluster trigger.**")
-    strict_end = step4.find("# END STRICT") + len("# END STRICT")
 
-    if -1 in (a_start, c_start, b_start, strict_end - len("# END STRICT")):
+    if -1 in (a_start, c_start):
         raise RuntimeError(
-            "inbox-analyst.md Step 4: expected A/B/C blocks not found — "
+            "inbox-analyst.md Step 4: expected Condition A and C blocks not found — "
             "has the spec been modified? Check Step 4 block headings."
         )
 
+    # Condition A runs from its heading to the start of Condition C
     a_text = step4[a_start:c_start].strip()
-    c_text = step4[c_start:b_start].strip()
-    b_text = step4[b_start:strict_end].strip()
-    return a_text, c_text, b_text
+    # Condition C runs from its heading to the end of Step 4
+    c_text = step4[c_start:].strip()
+    return a_text, c_text
 
 
 def generate() -> int:
     agent_text = AGENT_PATH.read_text(encoding="utf-8")
-    condition_a, condition_c, condition_b = _extract_step4_blocks(agent_text)
+    condition_a, condition_c = _extract_step4_blocks(agent_text)
 
     version_match = re.search(r"#\s*version:\s*(\S+)", agent_text)
     agent_version = version_match.group(1) if version_match else "unknown"
@@ -126,7 +129,7 @@ def generate() -> int:
                 "A (Classification Guard)",
                 "C (Placeholder MOC trigger)",
             ],
-            "condition_b_text": condition_b,
+            # condition_b_text removed in T3.2 — Condition B retired per spec 021 ADR-10
         },
         "agent_step4_ac_contract": {
             "condition_a": condition_a,

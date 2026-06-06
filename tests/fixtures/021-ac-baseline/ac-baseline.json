@@ -1,0 +1,144 @@
+{
+  "_meta": {
+    "spec": "021-moc-propose-consolidation",
+    "task": "T3.0",
+    "purpose": "Golden baseline: Conditions A+C shared_ctx inputs BEFORE Condition B (accumulation) removal in T3.2",
+    "deterministic_artifact": "mocs + placeholder_mocs arrays from each test-015-t4-1 fixture, as produced by build_mocs() + build_placeholder_mocs()",
+    "agent_version_at_capture": "0.13.0",
+    "regeneration_command": "./venv/bin/python tests/fixtures/021-ac-baseline/generate.py",
+    "fixture_set": "tests/fixtures/test-015-t4-1/",
+    "conditions_captured": [
+      "A (Classification Guard)",
+      "C (Placeholder MOC trigger)"
+    ],
+    "condition_b_text": "**Accumulation cluster trigger.**\n\nWhen `shared_ctx.accumulation_index` is present and non-empty, compare the\nitem's dominant topic tokens (case-insensitive, whitespace-normalised) against\neach key in `accumulation_index`. If any key matches:\n\n- Set `needs_new_moc: true`.\n- Set `proposed_moc_topic = <matching_key>` (use the index key as-is).\n- Keep the top-scoring thematic candidate MOCs (if any) in `candidate_mocs[]`;\n  accumulation match does not erase scored matches.\n\n# STRICT — A7 (Condition C wins over Condition B)\n# Why: placeholder wins — it is a deliberate dead link the user already wrote.\nIf `proposed_moc_topic` was already set by the placeholder block above, do NOT\noverwrite it with the accumulation key.\n# END STRICT"
+  },
+  "agent_step4_ac_contract": {
+    "condition_a": "**Classification Guard:** \n\nNever pre-check a MOC with `is_classification: true`.\nIf all top matches are classification-layer, flag `needs_new_moc: true` and set\n`proposed_moc_topic` to the best inferred thematic label from the item's\ndominant topic tokens.",
+    "condition_c": "**Placeholder MOC trigger.**\n\nWhen `shared_ctx.placeholder_mocs` is present, scan it AFTER scoring MOCs\nand BEFORE finalising `needs_new_moc`. For each placeholder entry\n`{target, referenced_by}`, treat `target` as a candidate thematic label\nand compare it (case-insensitive, normalised) against the item's dominant\ntopic tokens. If any placeholder `target` matches:\n\n- Set `needs_new_moc: true`.\n- Set `proposed_moc_topic = <target>` (use the placeholder name verbatim,\n  preserving casing — it's already a wikilink target someone wrote).\n- Keep the top-scoring thematic candidate MOCs (if any) in\n  `candidate_mocs[]`; placeholder match does not erase scored matches.\n\nA placeholder match takes precedence over the Classification-Guard\nfallback above: if both fire on the same item, prefer the placeholder\nname over the inferred topic label, because the placeholder is a\ndeliberate dead link the user already wrote and it is a higher-confidence\nsignal of intent than a freshly-inferred label.\n\nIf `placeholder_mocs` is absent or empty, skip this trigger silently —\nthe field is optional in the schema."
+  },
+  "fixtures": [
+    {
+      "fixture": "scenario_a_accumulation_match.json",
+      "source": "tests/fixtures/test-015-t4-1/scenario_a_accumulation_match.json",
+      "mocs": [
+        {
+          "path": "Atlas/200 MOCs/Software MOC.md",
+          "title": "Software MOC",
+          "topics": [
+            "python",
+            "software",
+            "programming"
+          ],
+          "is_classification": false
+        },
+        {
+          "path": "Atlas/200 MOCs/Games MOC.md",
+          "title": "Games MOC",
+          "topics": [
+            "boardgames",
+            "games",
+            "strategy"
+          ],
+          "is_classification": false
+        }
+      ],
+      "placeholder_mocs": [],
+      "item": {
+        "stem": "20260201-boardgames-strategy",
+        "path": "100 Inbox/20260201-boardgames-strategy.md",
+        "dominant_topic_tokens": [
+          "boardgames",
+          "strategy",
+          "games"
+        ],
+        "body_content": "Collected strategies for various boardgames: Catan, Wingspan, Gloomhaven."
+      }
+    },
+    {
+      "fixture": "scenario_b_no_match.json",
+      "source": "tests/fixtures/test-015-t4-1/scenario_b_no_match.json",
+      "mocs": [
+        {
+          "path": "Atlas/200 MOCs/Hobbies MOC.md",
+          "title": "Hobbies MOC",
+          "topics": [
+            "cooking",
+            "hobbies",
+            "food"
+          ],
+          "is_classification": false
+        }
+      ],
+      "placeholder_mocs": [],
+      "item": {
+        "stem": "20260201-cooking-pasta",
+        "path": "100 Inbox/20260201-cooking-pasta.md",
+        "dominant_topic_tokens": [
+          "cooking",
+          "pasta",
+          "recipe"
+        ],
+        "body_content": "Great pasta recipe I tried today. Simple carbonara with guanciale."
+      }
+    },
+    {
+      "fixture": "scenario_c_placeholder_wins.json",
+      "source": "tests/fixtures/test-015-t4-1/scenario_c_placeholder_wins.json",
+      "mocs": [
+        {
+          "path": "Atlas/200 MOCs/Hobbies MOC.md",
+          "title": "Hobbies MOC",
+          "topics": [
+            "hobbies",
+            "games"
+          ],
+          "is_classification": false
+        }
+      ],
+      "placeholder_mocs": [
+        {
+          "target": "Boardgames",
+          "referenced_by": "Atlas/200 MOCs/Hobbies MOC.md"
+        }
+      ],
+      "item": {
+        "stem": "20260201-boardgames-strategy",
+        "path": "100 Inbox/20260201-boardgames-strategy.md",
+        "dominant_topic_tokens": [
+          "boardgames",
+          "strategy",
+          "games"
+        ],
+        "body_content": "Collected strategies for various boardgames: Catan, Wingspan, Gloomhaven."
+      }
+    },
+    {
+      "fixture": "scenario_d_absent_index.json",
+      "source": "tests/fixtures/test-015-t4-1/scenario_d_absent_index.json",
+      "mocs": [
+        {
+          "path": "Atlas/200 MOCs/Software MOC.md",
+          "title": "Software MOC",
+          "topics": [
+            "python",
+            "software",
+            "programming"
+          ],
+          "is_classification": false
+        }
+      ],
+      "placeholder_mocs": [],
+      "item": {
+        "stem": "20260201-boardgames-strategy",
+        "path": "100 Inbox/20260201-boardgames-strategy.md",
+        "dominant_topic_tokens": [
+          "boardgames",
+          "strategy",
+          "games"
+        ],
+        "body_content": "Collected strategies for various boardgames: Catan, Wingspan, Gloomhaven."
+      }
+    }
+  ]
+}

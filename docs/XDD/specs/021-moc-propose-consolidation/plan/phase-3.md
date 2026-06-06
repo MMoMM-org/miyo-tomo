@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Inbox retire B / keep A+C / Feature 5 / budget"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---

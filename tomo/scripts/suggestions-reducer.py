@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.6.0
+# version: 1.6.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -739,7 +739,10 @@ def _render_orphan_section(orphan_suggestions: list[dict]) -> str:
             candidates = orphan.get("candidates") or []
             for j, cand in enumerate(candidates):
                 target = (cand.get("target_moc") or "").strip()
-                score = cand.get("score", 0.0)
+                # `or 0.0` (not get's default) so an explicitly-None score — the
+                # key present but null — collapses to 0.0 before f-string format,
+                # which would otherwise raise TypeError on None.{:.2f}.
+                score = cand.get("score") or 0.0
                 marker = "[x]" if j == 0 else "[ ]"
                 lines.append(f"- {marker} up:: [[{target}]] (score {score:.2f})")
             lines.append("- [ ] no parent (leave as-is)")

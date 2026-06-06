@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_reducer_moc_proposal_mode.py — T3.1: suggestions-reducer --moc-proposal-mode
 
-Six tests cover the new `--moc-proposal-mode` branch and `render_moc_proposal_doc`
-function added to `suggestions-reducer.py`:
+Nine tests cover the `--moc-proposal-mode` branch and `render_moc_proposal_doc`
+function in `suggestions-reducer.py`:
 
   test_single_cluster_render       — 1 cluster → 1 ### MOC01 section with exact shape
   test_multi_cluster_render        — 3 clusters → 3 sections sorted by confidence DESC
@@ -11,6 +11,12 @@ function added to `suggestions-reducer.py`:
   test_filename_top_confidence_slug — filename follows ADR-2 pattern
   test_per_child_existing_up_annotation — all three annotation branches (valid/absent/broken)
   test_template_why_narrative      — Why-section template, parent-present + parent-null branches
+  test_cli_missing_input_flag      — --moc-proposal-mode without --input → exit 1
+  test_cli_nonexistent_input_file  — --input points at a missing file → exit 1
+  test_cli_malformed_json_input    — --input file with invalid JSON → exit 1
+
+The case-(a) orphan link-or-create render tests (spec 021 T2.4) live in
+tests/test_suggestions_reducer_orphan_render.py (gate-named), not here.
 """
 from __future__ import annotations
 

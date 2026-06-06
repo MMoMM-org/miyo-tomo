@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_suggestions_reducer_orphan_render.py — T2.4: orphan link-or-create render.
 
 Gate-named tests for rendering DiscoveryReport.orphan_suggestions (the T2.3
@@ -99,6 +99,26 @@ def test_orphan_render_link_existing_top3_options():
     assert "- [ ] up:: [[CLI Tools]] (score 0.55)" in body
     # All three candidates surfaced.
     assert body.count("up:: [[") == 3
+
+
+def test_orphan_render_candidate_with_none_score_does_not_crash():
+    """A candidate with an explicitly-None score renders as 0.00, not a crash.
+
+    Guards the defensive fix: `cand.get("score") or 0.0` collapses a present-but-
+    null score before the f-string format. `cand.get("score", 0.0)` would return
+    None (default only fires on a MISSING key) and `None.{:.2f}` raises TypeError.
+    The live T2.3 producer always emits a float, but the render contract is
+    list[dict] with no per-field guarantee.
+    """
+    report = _report([
+        _orphan(
+            "edge",
+            mode="link_existing",
+            candidates=[{"target_moc": "X", "score": None}],
+        )
+    ])
+    _filename, body = render_moc_proposal_doc(report, _Cfg())
+    assert "- [x] up:: [[X]] (score 0.00)" in body
 
 
 def test_orphan_render_create_new_with_reason_and_instruction():

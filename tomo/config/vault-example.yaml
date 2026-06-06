@@ -366,19 +366,6 @@ tomo:
     # Maximum concurrent Phase-B subagents during /inbox fan-out. Range 1-5.
     parallel: 5
 
-  accumulation:
-    # Minimum number of unclassified atomic notes sharing a topic before a
-    # cluster is emitted by atomic-note-indexer.py.
-    min_cluster_size: 3
-
-    # Tag prefixes that identify thematic topics in your vault.
-    # Only tags whose lowercased path starts with one of these prefixes are
-    # used for cluster detection — structural and lifecycle tags are ignored.
-    # Example: "topic/japan" → topic leaf "japan"; "topic/applied/shell" → "shell".
-    # Add additional prefixes if your vault uses multiple thematic prefix schemes.
-    topic_tag_prefixes:
-      - "topic/"
-
   # MOC-structure cache (config/moc-structure-cache.yaml). Scopes and TTL for the
   # tag-primary MOC scan that feeds /moc-propose and discovery-cache. Metadata
   # only — paths/titles/topics/stems/tags/up-state/timestamps, never note bodies.

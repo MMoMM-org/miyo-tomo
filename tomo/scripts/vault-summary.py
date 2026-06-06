@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """
 vault-summary.py — Aggregate pipeline stats into a single JSON summary.
 
@@ -93,16 +93,6 @@ def _extract_scan_stats(scan: dict | None) -> tuple[int | None, dict, list[str]]
     return total, notes_per_concept, unmapped
 
 
-def _extract_accumulation_count(cache: dict | None) -> int | None:
-    """Return len(unclassified_topic_clusters) from discovery-cache.yaml."""
-    if cache is None:
-        return None
-    clusters = cache.get("unclassified_topic_clusters")
-    if clusters is None:
-        return None
-    return len(clusters) if isinstance(clusters, (dict, list)) else 0
-
-
 def _extract_tag_stats(
     config: dict | None,
 ) -> tuple[int | None, int | None, dict, int | None, int | None]:
@@ -189,12 +179,10 @@ def aggregate_summary(
     """Aggregate pipeline artifacts into a flat summary dict."""
     mocs = load_json_safe(mocs_path, "--mocs")
     scan = load_json_safe(scan_path, "--scan")
-    cache = load_yaml_safe(cache_path, "--cache")
     config = load_yaml_safe(config_path, "--config")
 
     moc_count, moc_max_depth, key_moc_titles = _extract_moc_stats(mocs)
     total_notes, notes_per_concept, unmapped_folders = _extract_scan_stats(scan)
-    accumulation_cluster_count = _extract_accumulation_count(cache)
     (
         tag_namespace_count,
         unique_tag_count,
@@ -225,7 +213,6 @@ def aggregate_summary(
         "tracker_field_count": tracker_field_count,
         "templates_found_count": templates_found_count,
         "templates_missing_count": templates_missing_count,
-        "accumulation_cluster_count": accumulation_cluster_count,
         "cache_path": cache_path,
     }
 

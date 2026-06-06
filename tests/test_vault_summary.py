@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_vault_summary.py — Behavioural tests for vault-summary.py.
 
 Verifies that the aggregator reads pre-computed stats from pipeline artifacts
@@ -8,7 +8,7 @@ wrong aggregation logic produces a real failure.
 
 Covers:
   - moc_count + moc_max_depth from moc-output.json tree_stats
-  - accumulation_cluster_count from discovery-cache.yaml unclassified_topic_clusters
+  - accumulation_cluster_count retired (spec 021 ADR-10) — asserted absent
   - notes_per_concept from scan-output.json vault_structure.concepts_mapped
   - tag_namespace_count + unique_tag_count from vault-config.yaml tags.prefixes
   - frontmatter required/optional counts from tags.prefixes[].required_for
@@ -98,11 +98,7 @@ def _make_scan_output(tmp_path: Path) -> Path:
     return _write_json(data, tmp_path, "scan-output.json")
 
 
-def _make_discovery_cache(
-    tmp_path: Path,
-    cluster_count: int = 5,
-) -> Path:
-    clusters = {f"cluster-{i}": [f"note-{j}" for j in range(i + 1)] for i in range(cluster_count)}
+def _make_discovery_cache(tmp_path: Path) -> Path:
     data = {
         "cache_version": 1,
         "last_scan": "2026-06-05T07:00:00Z",
@@ -119,7 +115,6 @@ def _make_discovery_cache(
         "tag_patterns": {},
         "frontmatter_usage": {},
         "orphans": [],
-        "unclassified_topic_clusters": clusters,
     }
     return _write_yaml(data, tmp_path, "discovery-cache.yaml")
 
@@ -241,13 +236,14 @@ class TestMocStats:
         assert "MOC 0" in titles
 
 
-class TestAccumulationClusterCount:
-    """accumulation_cluster_count = len(unclassified_topic_clusters) from cache."""
+class TestAccumulationClusterCountRetired:
+    """accumulation_cluster_count was retired with Condition B (spec 021 ADR-10).
+    vault-summary.py must no longer emit the field."""
 
-    def test_cluster_count_matches_cache_length(self, tmp_path):
+    def test_accumulation_cluster_count_absent_from_summary(self, tmp_path):
         moc_path = _make_moc_output(tmp_path)
         scan_path = _make_scan_output(tmp_path)
-        cache_path = _make_discovery_cache(tmp_path, cluster_count=5)
+        cache_path = _make_discovery_cache(tmp_path)
         config_path = _make_vault_config(tmp_path)
 
         result = aggregate_summary(
@@ -257,22 +253,9 @@ class TestAccumulationClusterCount:
             config_path=str(config_path),
         )
 
-        assert result["accumulation_cluster_count"] == 5
-
-    def test_cluster_count_zero_when_empty(self, tmp_path):
-        moc_path = _make_moc_output(tmp_path)
-        scan_path = _make_scan_output(tmp_path)
-        cache_path = _make_discovery_cache(tmp_path, cluster_count=0)
-        config_path = _make_vault_config(tmp_path)
-
-        result = aggregate_summary(
-            scan_path=str(scan_path),
-            mocs_path=str(moc_path),
-            cache_path=str(cache_path),
-            config_path=str(config_path),
+        assert "accumulation_cluster_count" not in result, (
+            "accumulation_cluster_count must be absent from vault-summary output (T3.3)"
         )
-
-        assert result["accumulation_cluster_count"] == 0
 
 
 class TestNotesPerConcept:
@@ -524,7 +507,7 @@ class TestGracefulDegradation:
 
     def test_missing_moc_file_yields_null_moc_fields(self, tmp_path):
         scan_path = _make_scan_output(tmp_path)
-        cache_path = _make_discovery_cache(tmp_path, cluster_count=3)
+        cache_path = _make_discovery_cache(tmp_path)
         config_path = _make_vault_config(tmp_path)
 
         result = aggregate_summary(
@@ -537,7 +520,6 @@ class TestGracefulDegradation:
         assert result["moc_count"] is None
         assert result["moc_max_depth"] is None
         # Other fields still populated from the files that exist
-        assert result["accumulation_cluster_count"] == 3
         assert result["total_notes"] == 120
 
     def test_missing_scan_file_yields_null_scan_fields(self, tmp_path):
@@ -557,7 +539,7 @@ class TestGracefulDegradation:
         # MOC data still populated
         assert result["moc_count"] == 4
 
-    def test_missing_cache_file_yields_null_accumulation_count(self, tmp_path):
+    def test_missing_cache_file_still_returns_valid_summary(self, tmp_path):
         moc_path = _make_moc_output(tmp_path, total_mocs=4)
         scan_path = _make_scan_output(tmp_path)
         config_path = _make_vault_config(tmp_path)
@@ -569,7 +551,9 @@ class TestGracefulDegradation:
             config_path=str(config_path),
         )
 
-        assert result["accumulation_cluster_count"] is None
+        # accumulation_cluster_count retired (T3.3); a missing cache must not crash.
+        assert "accumulation_cluster_count" not in result
+        assert result["moc_count"] == 4
 
     def test_missing_config_file_yields_null_tag_fields(self, tmp_path):
         moc_path = _make_moc_output(tmp_path)
@@ -606,7 +590,7 @@ class TestGracefulDegradation:
 
         assert isinstance(result, dict)
         assert "moc_count" in result
-        assert "accumulation_cluster_count" in result
+        assert "accumulation_cluster_count" not in result
         assert "total_notes" in result
         assert "tag_namespace_count" in result
 
@@ -637,7 +621,7 @@ class TestMalformedInputs:
         corrupt_json = tmp_path / "bad-moc.json"
         corrupt_json.write_text("{broken", encoding="utf-8")
         scan_path = _make_scan_output(tmp_path)
-        cache_path = _make_discovery_cache(tmp_path, cluster_count=2)
+        cache_path = _make_discovery_cache(tmp_path)
         config_path = _make_vault_config(tmp_path)
 
         result = aggregate_summary(
@@ -650,7 +634,6 @@ class TestMalformedInputs:
         assert result["moc_count"] is None
         assert result["moc_max_depth"] is None
         # Other sources unaffected
-        assert result["accumulation_cluster_count"] == 2
         assert result["total_notes"] == 120
 
     def test_corrupt_json_scan_file_yields_null_scan_fields(self, tmp_path):
@@ -672,7 +655,7 @@ class TestMalformedInputs:
         # MOC data still populated from valid file
         assert result["moc_count"] == 3
 
-    def test_corrupt_yaml_cache_file_yields_null_accumulation(self, tmp_path):
+    def test_corrupt_yaml_cache_file_does_not_crash(self, tmp_path):
         corrupt_yaml = tmp_path / "bad-cache.yaml"
         corrupt_yaml.write_text("key: [unclosed", encoding="utf-8")
         moc_path = _make_moc_output(tmp_path)
@@ -686,7 +669,8 @@ class TestMalformedInputs:
             config_path=str(config_path),
         )
 
-        assert result["accumulation_cluster_count"] is None
+        # accumulation_cluster_count retired (T3.3); a corrupt cache must not crash.
+        assert "accumulation_cluster_count" not in result
         # Config fields still populated from valid vault-config
         assert result["tag_namespace_count"] == 3
 
@@ -695,7 +679,7 @@ class TestMalformedInputs:
         corrupt_yaml.write_text("key: [unclosed", encoding="utf-8")
         moc_path = _make_moc_output(tmp_path)
         scan_path = _make_scan_output(tmp_path)
-        cache_path = _make_discovery_cache(tmp_path, cluster_count=4)
+        cache_path = _make_discovery_cache(tmp_path)
 
         result = aggregate_summary(
             scan_path=str(scan_path),
@@ -710,7 +694,7 @@ class TestMalformedInputs:
         assert result["tracker_field_count"] is None
         assert result["templates_found_count"] is None
         # Unaffected sources still populated
-        assert result["accumulation_cluster_count"] == 4
+        assert result["moc_count"] is not None
 
     def test_load_json_safe_returns_none_on_corrupt_input(self, tmp_path):
         corrupt = tmp_path / "corrupt.json"

@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.7
+# version: 0.2.8
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -104,7 +104,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
     - suggestions / suggestions-fan: `pending-approval → approved`
     - moc-proposal: `pending-accept → accepted`
     - instructions: `pending-apply → applied` (Hashi flips after `[x] Applied`)
-  - MOC detection freshness: `/inbox` proposes new MOCs from the accumulation index in the cache built by your **last `/explore-vault`** — re-run `/explore-vault` after adding notes, or use `/moc-propose` for a live scan.
+  - MOC detection freshness: new-MOC discovery lives in `/moc-propose` (a live vault-wide scan), not `/inbox`. Run `/moc-propose` when you want to surface clusters of notes that lack a dedicated MOC.
   - Point at: `.claude/commands/inbox.md`, `tomo/scripts/lib/tomo_lifecycle.py`
 
 ### Concepts

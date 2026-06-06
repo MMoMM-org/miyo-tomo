@@ -1,4 +1,4 @@
-# version: 0.1.1
+# version: 0.1.2
 """placeholder_detect.py — Wikilink placeholder detection for MOC bodies.
 
 Extracted from moc-tree-builder.py's detect_placeholders for use by the
@@ -6,8 +6,7 @@ MOC-structure cache builder (spec 021, T1.3).
 
 Key change vs the original: the denominator is `in_scope_vault_paths`, the
 FULL set of in-scope vault notes — not just the 89-MOC set. This eliminates
-the 224 false-positive placeholders that inflated the shared-ctx budget and
-prevented Condition B (accumulation) from firing.
+the 224 false-positive placeholders that inflated the shared-ctx budget.
 
 Algorithm (verbatim from SDD §placeholder-correction):
     For each wikilink L in each MOC body:

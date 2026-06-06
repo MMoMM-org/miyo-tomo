@@ -4,7 +4,7 @@ description: MOC matching algorithm, section placement rules, mental squeeze poi
 user-invocable: false
 ---
 # LYT Patterns
-# version: 0.2.1
+# version: 0.2.2
 
 Knowledge patterns for MOC matching, section placement, and new MOC proposals.
 
@@ -169,7 +169,7 @@ A proposal includes:
 - Template reference (`t_moc_tomo` or profile default)
 - Parent MOC and target section
 - Initial links — the notes that triggered the proposal
-- Trigger type: `cluster`, `accumulation`, `placeholder`, or `manual`
+- Trigger type: `cluster`, `placeholder`, or `manual`
 - Placeholder resolution note if applicable
 
 **Duplicate prevention:** Before proposing, check:

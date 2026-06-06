@@ -90,7 +90,7 @@ KADO_URL=http://127.0.0.1:<port>/mcp + token from tomo-instance/.mcp.json, sandb
 Each phase is a separate file. Tasks follow red-green-refactor: **Prime** → **Test** (red) → **Implement** (green) → **Validate** (refactor).
 
 - [x] [Phase 1: Cache Foundation (builder + lib + schema + config)](phase-1.md)
-- [ ] [Phase 2: /moc-propose consumes cache + dual-up + case-a](phase-2.md)
+- [x] [Phase 2: /moc-propose consumes cache + dual-up + case-a](phase-2.md)
 - [ ] [Phase 3: Inbox retire B / keep A+C / Feature 5 / budget](phase-3.md)
 - [ ] [Phase 4: Integration, E2E & live validation](phase-4.md)
 

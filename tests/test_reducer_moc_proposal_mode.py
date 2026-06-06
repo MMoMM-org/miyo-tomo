@@ -120,24 +120,10 @@ def _empty_report() -> dict:
     }
 
 
-def _orphan(
-    stem: str,
-    *,
-    mode: str,
-    kind: str = "note",
-    candidates: list[dict] | None = None,
-    reason: str | None = None,
-    path: str | None = None,
-) -> dict:
-    """Build one OrphanLinkSuggestion dict as lib/orphan_link emits it (T2.3)."""
-    return {
-        "stem": stem,
-        "path": path or f"Atlas/202 Notes/{stem}.md",
-        "kind": kind,
-        "mode": mode,
-        "candidates": candidates or [],
-        "reason": reason,
-    }
+# NOTE: orphan link-or-create render tests live in
+# tests/test_suggestions_reducer_orphan_render.py (T2.4 gate-named file). The
+# `orphan_suggestions: []` field stays in _empty_report() above so this skeleton
+# matches the current DiscoveryReport schema.
 
 
 # ── Tests ────────────────────────────────────────────────────────────────────
@@ -468,107 +454,3 @@ def test_cli_malformed_json_input(tmp_path: Path) -> None:
         f"Expected exit 1 for malformed JSON, got {result.returncode};\n"
         f"stderr: {result.stderr.decode()}"
     )
-
-
-# ── T2.4: orphan link-or-create rendering ────────────────────────────────────
-
-
-def test_orphan_link_existing_renders_top_candidates() -> None:
-    """A link_existing orphan renders a section with its top-N up:: link options."""
-    report = _empty_report()
-    report["orphan_suggestions"] = [
-        _orphan(
-            "zsh-tips",
-            mode="link_existing",
-            kind="note",
-            candidates=[
-                {"target_moc": "Shell & Terminal", "score": 0.83},
-                {"target_moc": "Dotfiles", "score": 0.67},
-                {"target_moc": "CLI Tools", "score": 0.55},
-            ],
-        )
-    ]
-
-    _path, body = render_moc_proposal_doc(report, _Cfg())
-
-    # An orphan section exists, names the orphan + its kind.
-    assert "[[zsh-tips]]" in body
-    assert "note" in body
-    # Each candidate rendered as a selectable up:: option with its score.
-    assert "up:: [[Shell & Terminal]]" in body
-    assert "up:: [[Dotfiles]]" in body
-    assert "up:: [[CLI Tools]]" in body
-    assert "0.83" in body
-    # No vault note is written — this is a proposal-doc only (CON-3); the render
-    # function returns (filename, body) and never touches Kado.
-
-
-def test_orphan_create_new_renders_reason_and_execute_instruction() -> None:
-    """A create_new orphan renders its reason + an /execute stamp instruction."""
-    report = _empty_report()
-    report["orphan_suggestions"] = [
-        _orphan(
-            "quantum-notes",
-            mode="create_new",
-            kind="note",
-            reason="No existing MOC shares this note's topics (quantum, physics). Proposing a new MOC.",
-        )
-    ]
-
-    _path, body = render_moc_proposal_doc(report, _Cfg())
-
-    assert "[[quantum-notes]]" in body
-    # The reason text is surfaced verbatim.
-    assert "No existing MOC shares this note's topics" in body
-    # An /execute instruction to stamp the reason into the note(s) is present
-    # (OQ-6) — the actual write happens later via /execute, not here (CON-3).
-    assert "/execute" in body
-
-
-def test_orphan_moc_kind_is_labelled() -> None:
-    """An orphan MOC (kind=='moc') is rendered and labelled as a MOC."""
-    report = _empty_report()
-    report["orphan_suggestions"] = [
-        _orphan(
-            "Floating MOC",
-            mode="create_new",
-            kind="moc",
-            reason="No parent MOC matched. Proposing a new top-level placement.",
-            path="Atlas/200 Maps/Floating MOC.md",
-        )
-    ]
-    _path, body = render_moc_proposal_doc(report, _Cfg())
-    assert "[[Floating MOC]]" in body
-    assert "moc" in body
-
-
-def test_no_orphans_renders_no_orphan_section() -> None:
-    """Empty orphan_suggestions → no orphan section header in the body."""
-    report = _empty_report()
-    report["topic_clusters"] = [
-        _cluster(
-            "MOC01",
-            title="Shell (MOC)",
-            confidence=0.7,
-            candidate_stems=["a", "b"],
-        )
-    ]
-    report["orphan_suggestions"] = []
-    _path, body = render_moc_proposal_doc(report, _Cfg())
-    assert "Orphan" not in body, "no orphan section when there are no orphans"
-
-
-def test_orphan_section_with_no_clusters_still_renders() -> None:
-    """Orphans present but zero clusters → the doc still renders the orphan section."""
-    report = _empty_report()
-    report["topic_clusters"] = []
-    report["orphan_suggestions"] = [
-        _orphan(
-            "lonely-note",
-            mode="link_existing",
-            candidates=[{"target_moc": "Knowledge", "score": 0.9}],
-        )
-    ]
-    _path, body = render_moc_proposal_doc(report, _Cfg())
-    assert "[[lonely-note]]" in body
-    assert "up:: [[Knowledge]]" in body

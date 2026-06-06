@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.2.0
-"""test_orphan_link.py — Behavioural tests for lib.orphan_link (spec 021 T2.3).
+# version: 0.3.0
+"""test_orphan_link.py — Behavioural tests for lib.orphan_link (spec 021 T2.3, T6.2).
 
 The case-(a) orphan pass runs AFTER moc_cache_loader provides cache.entries. It
-scans entries[up_state=="absent"] (notes AND MOCs), scores each against
-entries[kind=="moc"] by topic-keyword overlap (the Phase-5/6 approach), and emits
-one OrphanLinkSuggestion per orphan:
+scans entries[up_state=="absent"] filtered by `kinds` (default notes-only, ADR-12),
+scores each against entries[kind=="moc"] by topic-keyword overlap (the Phase-5/6
+approach), and emits one OrphanLinkSuggestion per orphan, ordered link_existing
+first (ADR-12):
 
   - ≥1 MOC at/above LINK_THRESHOLD → mode="link_existing", candidates=top-3
     [{target_moc, score}] sorted by score DESC (OQ-4).
@@ -75,13 +76,13 @@ def test_only_absent_entries_are_orphans():
     assert stems == {"Orphan"}, f"only absent entries are orphans; got {stems}"
 
 
-def test_orphan_moc_is_eligible():
-    """An orphan MOC (kind==moc, up_state==absent) is treated like any orphan (H3)."""
+def test_orphan_moc_is_eligible_when_kinds_includes_moc():
+    """An orphan MOC (kind==moc, up_state==absent) is eligible when kinds asks (H3)."""
     entries = [
         _moc("Parent", ["pkm", "notes", "linking"]),
         _moc("OrphanMOC", ["pkm", "notes"], up_state="absent"),
     ]
-    out = emit_orphan_suggestions(entries)
+    out = emit_orphan_suggestions(entries, kinds=("note", "moc"))
     by_stem = {s["stem"]: s for s in out}
     assert "OrphanMOC" in by_stem
     assert by_stem["OrphanMOC"]["kind"] == "moc"
@@ -229,7 +230,83 @@ def test_orphan_does_not_match_itself_when_it_is_a_moc():
     entries = [
         _moc("OrphanMOC", ["pkm", "notes"], up_state="absent"),
     ]
-    out = emit_orphan_suggestions(entries)
+    out = emit_orphan_suggestions(entries, kinds=("moc",))
     s = next(x for x in out if x["stem"] == "OrphanMOC")
     # No other MOC to link to → create_new; self must be excluded from candidates.
     assert s["mode"] == "create_new"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# kinds filter (ADR-12 / T6.2) — default notes-only; opt-in MOCs
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_default_excludes_moc_orphans():
+    """Default kinds=("note",) → orphan MOCs are NOT emitted (whole-vault scan)."""
+    entries = [
+        _moc("Parent", ["pkm", "notes", "linking"]),
+        _moc("OrphanMOC", ["pkm", "notes"], up_state="absent"),
+        _entry("OrphanNote", up_state="absent", topics=["pkm", "notes"]),
+    ]
+    out = emit_orphan_suggestions(entries)  # default
+    stems = {s["stem"] for s in out}
+    assert stems == {"OrphanNote"}, f"default must exclude MOC orphans; got {stems}"
+
+
+def test_kinds_moc_only_returns_only_mocs():
+    """kinds=("moc",) → the focused MOC-uplink audit: only orphan MOCs."""
+    entries = [
+        _moc("Parent", ["pkm", "notes", "linking"]),
+        _moc("OrphanMOC", ["pkm", "notes"], up_state="absent"),
+        _entry("OrphanNote", up_state="absent", topics=["pkm", "notes"]),
+    ]
+    out = emit_orphan_suggestions(entries, kinds=("moc",))
+    stems = {s["stem"] for s in out}
+    assert stems == {"OrphanMOC"}, f"moc-only must exclude note orphans; got {stems}"
+
+
+def test_kinds_both_returns_notes_and_mocs():
+    entries = [
+        _moc("Parent", ["pkm", "notes", "linking"]),
+        _moc("OrphanMOC", ["pkm", "notes"], up_state="absent"),
+        _entry("OrphanNote", up_state="absent", topics=["pkm", "notes"]),
+    ]
+    out = emit_orphan_suggestions(entries, kinds=("note", "moc"))
+    stems = {s["stem"] for s in out}
+    assert stems == {"OrphanMOC", "OrphanNote"}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Display ordering (ADR-12 / T6.2) — link_existing first, by top score DESC
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_link_existing_sorted_before_create_new():
+    """Most-actionable first: every link_existing precedes every create_new."""
+    entries = [
+        _moc("Knowledge", ["pkm", "notes", "linking"]),
+        # A: no overlap → create_new
+        _entry("AlphaOrphan", up_state="absent", topics=["quantum", "physics"]),
+        # B: full overlap → link_existing
+        _entry("BetaOrphan", up_state="absent", topics=["pkm", "notes", "linking"]),
+    ]
+    out = emit_orphan_suggestions(entries)
+    modes = [s["mode"] for s in out]
+    assert modes == ["link_existing", "create_new"], (
+        f"link_existing must sort ahead of create_new regardless of input order; got {modes}"
+    )
+
+
+def test_link_existing_sorted_by_top_candidate_score_desc():
+    """Within link_existing, higher top-candidate score comes first."""
+    entries = [
+        _moc("Strong", ["a", "b", "c", "d"]),
+        _moc("Weakish", ["a", "b"]),
+        # Low first in input order: shares 2/4 → 0.5
+        _entry("LowScore", up_state="absent", topics=["a", "b", "x", "y"], path="Atlas/202 Notes/LowScore.md"),
+        # High second in input order: shares 4/4 → 1.0
+        _entry("HighScore", up_state="absent", topics=["a", "b", "c", "d"], path="Atlas/202 Notes/HighScore.md"),
+    ]
+    out = emit_orphan_suggestions(entries)
+    link = [s["stem"] for s in out if s["mode"] == "link_existing"]
+    assert link[:2] == ["HighScore", "LowScore"], (
+        f"link_existing must be ordered by top-candidate score DESC; got {link}"
+    )

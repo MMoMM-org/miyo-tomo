@@ -380,10 +380,12 @@ tomo:
     # Prefixes excluded from the scan. Exclude wins over tag (a note tagged
     # #type/others/moc under an excluded prefix is NOT treated as a MOC). Trailing
     # spaces are matched exactly — e.g. "Calendar/301 Daily/ " with a trailing
-    # space is a real vault gotcha.
+    # space is a real vault gotcha. To suppress a whole template/archive vault
+    # (its MOCs would otherwise leak into proposals), exclude the folder root —
+    # e.g. a top-level "X/" drops every X/… note and MOC at build time.
     exclude_paths:
       - "Calendar/"
-      - "X/900 Support/Templates/"
+      - "X/"
 
     # Rebuild the cache when it is older than this many days (TTL). /moc-propose
     # rebuilds inline when stale/missing; /explore-vault force-rebuilds.
@@ -400,6 +402,11 @@ tomo:
     # (folder/tag/class) may exceed it on dense folders. Raised 200→500 in
     # T5.1 (ADR-11: whole-vault scan was counting already-MOC-linked notes).
     candidate_cap: 500
+
+    # Maximum orphan link-or-create suggestions rendered into a scan proposal-doc.
+    # The (link-first ordered) orphan set is truncated to this many; the rest are
+    # summarised in an overflow footer prompting a scoped re-run. Default 50.
+    orphan_display_cap: 50
 
     # Minimum notes per cluster to emit a MOC proposal.
     min_notes: 3

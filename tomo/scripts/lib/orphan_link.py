@@ -1,10 +1,11 @@
-# version: 0.1.0
+# version: 0.2.0
 """orphan_link.py — Case-(a) orphan pass over the MOC-structure cache (ADR-7).
 
 Runs AFTER moc_cache_loader provides cache.entries. Enumerates orphans —
-entries whose `up_state == "absent"`, NOTES AND MOCs alike — and for each one
-scores its topic keywords against the existing MOC set (entries[kind=="moc"]),
-emitting one OrphanLinkSuggestion:
+entries whose `up_state == "absent"` and whose `kind` is in the requested
+`kinds` set (default notes-only, ADR-12) — and for each one scores its topic
+keywords against the existing MOC set (entries[kind=="moc"]), emitting one
+OrphanLinkSuggestion:
 
     ≥1 MOC at/above LINK_THRESHOLD  → mode="link_existing", candidates=top-3
                                       [{target_moc, score}] sorted by score DESC
@@ -151,7 +152,9 @@ def _build_reason(orphan: dict, had_any_overlap: bool) -> str:
 # Public API
 # ──────────────────────────────────────────────────────────────────────────────
 
-def emit_orphan_suggestions(entries: list[dict]) -> list[dict]:
+def emit_orphan_suggestions(
+    entries: list[dict], *, kinds: tuple[str, ...] = ("note",)
+) -> list[dict]:
     """Emit one link-or-create suggestion per orphan cache entry.
 
     Parameters
@@ -160,11 +163,19 @@ def emit_orphan_suggestions(entries: list[dict]) -> list[dict]:
         The cache `entries` list (CacheEntry dicts) as provided by
         moc_cache_loader — both notes and MOCs, each carrying `up_state`,
         `topics`, `stem`, `path`, `kind`.
+    kinds:
+        Which orphan kinds to emit suggestions for (ADR-12). Defaults to
+        notes-only (`("note",)`) — the whole-vault scan path. Pass
+        `("moc",)` for the on-demand MOC-uplink audit, or `("note", "moc")`
+        for both. MOCs are ALWAYS the link-candidate pool regardless of
+        `kinds` (an orphan note still links to an existing MOC).
 
     Returns
     -------
     list[dict] — OrphanLinkSuggestion dicts (see OrphanLinkSuggestion.to_dict),
-    one per orphan (`up_state == "absent"`), in input order. Orphans that match
+    one per in-scope orphan (`up_state == "absent"` and `kind in kinds`),
+    ordered `link_existing` first (by top-candidate score DESC) then
+    `create_new` (input order preserved within each group). Orphans that match
     ≥1 MOC at/above LINK_THRESHOLD get mode="link_existing" with up to TOP_N
     candidates; the rest get mode="create_new" with a reason.
     """
@@ -174,7 +185,9 @@ def emit_orphan_suggestions(entries: list[dict]) -> list[dict]:
     ]
     orphans = [
         e for e in entries
-        if isinstance(e, dict) and e.get("up_state") == "absent"
+        if isinstance(e, dict)
+        and e.get("up_state") == "absent"
+        and e.get("kind") in kinds
     ]
 
     out: list[dict] = []
@@ -206,4 +219,14 @@ def emit_orphan_suggestions(entries: list[dict]) -> list[dict]:
             )
         out.append(suggestion.to_dict())
 
+    # Order for display (ADR-12): most-actionable first — link_existing before
+    # create_new; within link_existing, highest top-candidate score first.
+    # Stable sort preserves input order within each group (and on score ties).
+    def _order_key(s: dict) -> tuple[int, float]:
+        if s["mode"] == "link_existing":
+            top = s["candidates"][0]["score"] if s["candidates"] else 0.0
+            return (0, -top)
+        return (1, 0.0)
+
+    out.sort(key=_order_key)
     return out

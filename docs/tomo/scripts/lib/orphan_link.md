@@ -45,6 +45,28 @@ candidates is noise. The self-exclude guard (`moc.get("path") == orphan_path`)
 prevents an orphan MOC from being offered as its own link target, which would
 be a trivial circular reference.
 
+## `kinds` Filter Defaults to Notes-Only; MOCs Stay the Candidate Pool (ADR-12, T6.2)
+
+WHY: Live validation (2026-06-06) showed a whole-vault scan emitting orphan
+suggestions for MOCs as well as notes — 17 from a template-vault, plus root maps
+that legitimately have no parent. Surfacing those on the default notes-discovery
+path was noise. `emit_orphan_suggestions(entries, *, kinds=("note",))` now filters
+which orphan KINDS produce suggestions; the default is notes-only (the scan path),
+and `/moc-propose check:moc-uplinks` passes `kinds=("moc",)` for an on-demand MOC-
+parentage audit. The MOC set used as the *link-candidate pool* is independent of
+`kinds` — an orphan note still links to existing MOCs. Filtering by kind here (not
+upstream in the cache) keeps the cache complete: MOCs must remain present as link
+targets even when they are not themselves emitted as orphans.
+
+## Link-First Display Ordering — Cap Belongs to the Caller (ADR-12, T6.2)
+
+WHY: The pass orders its output `link_existing` before `create_new` (link_existing
+sub-sorted by top-candidate score DESC) so the most-actionable suggestions render
+first and survive truncation. The truncation itself (`orphan_display_cap`) lives in
+the moc-discovery pipeline, NOT here — the cap is config-driven (`tomo.moc_proposal`)
+and this module stays pure/config-free for testability. Ordering here + capping in
+the caller means the cap always keeps the best suggestions.
+
 ## `create_new` Reason String — Distinguishes No-Overlap from Below-Threshold
 
 WHY: When no MOC clears the link threshold, the reason string distinguishes two

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.11.1
+# version: 0.12.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -57,6 +57,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 # the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
 # only, so this is wired ahead of use.
 from lib.moc_cache_loader import load_moc_cache  # noqa: E402
+from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
 from lib.up_parse import parse_up_from_content  # noqa: E402
 from lib.squelch import (  # noqa: E402
@@ -336,6 +337,7 @@ def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
         "parent_options_per_cluster": {},
         "duplicates_skipped": [],
         "squelched": [],
+        "orphan_suggestions": [],
         "abort_reason": None,
         "abort_message": None,
         "extracted_via_llm_count": 0,
@@ -1641,6 +1643,14 @@ def _run_pipeline(
 
     kept_clusters.sort(key=lambda c: c.get("confidence", 0.0), reverse=True)
 
+    # Case (a) — orphan link-or-create pass (ADR-7). A NEW pass over the cache
+    # entries (notes AND MOCs with up_state=="absent"), scored vs the MOC set →
+    # top-3 link suggestions or a create-new proposal. Independent of Phase 6
+    # duplicates_skipped (H2) and the atomic-note pre-filter (H3). Sourced from
+    # the full cache.entries the loader leaves on the cache dict.
+    orphan_suggestions = emit_orphan_suggestions(cache.get("entries") or [])
+    _log(f"case-a: {len(orphan_suggestions)} orphan suggestion(s)")
+
     report = empty_report(mode, trigger_arg, profile_name)
     report.update({
         "candidates_total": candidates_total,
@@ -1661,6 +1671,7 @@ def _run_pipeline(
         "parent_options_per_cluster": parent_options_per_cluster,
         "duplicates_skipped": duplicates_skipped,
         "squelched": squelched,
+        "orphan_suggestions": orphan_suggestions,
     })
 
     _log(f"emitting DiscoveryReport: clusters={len(kept_clusters)} mode={mode!r}")

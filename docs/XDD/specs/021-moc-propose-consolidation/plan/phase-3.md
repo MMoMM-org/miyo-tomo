@@ -51,14 +51,14 @@ This phase removes the inbox hot-path coupling and verifies the inbox now matche
   4. Validate: golden-baseline + Condition-C-casing tests; confirm no dangling `accumulation_index` reference.
   5. Success: B removed, A/C byte-equal to baseline `[ref: PRD/AC F4#1; M3]`; Condition C casing preserved `[ref: PRD/AC F4#2]`; placeholder precedence kept `[ref: PRD/AC F4#4]`.
 
-- [ ] **T3.3 Retire accumulation scaffolding (full scope, H1)** `[activity: refactor]` `[ref: SDD/Cross-Cutting cleanup (H1); ADR-10; cache-builder.py:312,344-350,428-433]`
+- [x] **T3.3 Retire accumulation scaffolding (full scope, H1)** `[activity: refactor]` `[ref: SDD/Cross-Cutting cleanup (H1); ADR-10; cache-builder.py:312,344-350,428-433]`
   1. Prime: ALL accumulation consumers (H1): `atomic-note-indexer.py`; `cache-builder` `unclassified_topic_clusters` lift; `vault-explorer.md` Step 9 indexer call + Step 10 `accumulation_cluster_count`; `vault-summary.py` `_extract_accumulation_count`; `tomo.accumulation` config block; `tomo-help.md` + `lyt-patterns/SKILL.md` prose; `test_shared_ctx_accumulation.py`.
   2. Test (RED): repo-wide `rg` proves zero remaining consumer of `atomic-note-indexer` output, `unclassified_topic_clusters`, or `accumulation_cluster_count`; pipeline green without them.
   3. Implement (delete, don't patch — `feedback_post_refactor_drop_scaffolding_not_patch`): remove `atomic-note-indexer.py`, the cache-builder lift, the `vault-explorer.md` Step 9 indexer call + `--accumulation` (wire force-rebuild of the new builder) + Step 10 field, `vault-summary.py` `_extract_accumulation_count` + output field, the `tomo.accumulation` config block, the help/skill prose; retire/replace `test_shared_ctx_accumulation.py`. Bump versions on every edited runtime file.
   4. Validate: full `pytest`; lint; run `vault-summary`/`vault-explorer` paths; skill/agent author audit on edited agents (`feedback_audit_skills_agents_after_edits`).
   5. Success: scaffolding gone across ALL listed sites, suite green `[ref: SDD/ADR-10 (H1)]`.
 
-- [ ] **T3.4 Feature 5 — inbox sees the complete MOC set** `[activity: backend-api]` `[ref: PRD/Feature 5; M8]`
+- [x] **T3.4 Feature 5 — inbox sees the complete MOC set** `[activity: backend-api]` `[ref: PRD/Feature 5; M8]`
   1. Prime: `build_mocs:209` reads `cache.map_notes` (now the corrected tag-discovered set from Phase 1).
   2. Test (RED) — one per F5 AC:
      - (F5#1) a notes-area `#type/others/moc` MOC appears in `shared_ctx.mocs` AND is offered in `candidate_mocs[]` for a matching item;

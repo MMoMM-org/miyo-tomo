@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Inbox retire B / keep A+C / Feature 5 / budget"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -69,5 +69,5 @@ This phase removes the inbox hot-path coupling and verifies the inbox now matche
   4. Validate: `pytest` Feature-5 tests; lint.
   5. Success: all four F5 ACs asserted `[ref: PRD/AC F5#1-4; M8]`.
 
-- [ ] **T3.5 Phase 3 Validation** `[activity: validate]`
+- [x] **T3.5 Phase 3 Validation** `[activity: validate]`
   - Full `pytest`; lint. Verify `shared-ctx.build` emits `accumulation_present=false` and `mocs_count` reflecting the complete set. Confirm Conditions A/C unchanged on fixtures.

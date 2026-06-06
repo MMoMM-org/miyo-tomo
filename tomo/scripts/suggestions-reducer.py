@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.6.1
+# version: 1.7.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -671,10 +671,14 @@ def render_moc_proposal_doc(
         "tomo_skip_inbox_analysis: true",
     ] + tomo_yaml.splitlines() + ["---"]
 
+    # ADR-12: check-moc-uplinks reports carry no clusters — just the MOC orphan
+    # audit. Title + orphan-section heading adapt so the doc reads as an audit.
+    check_mode: bool = mode == "check-moc-uplinks"
+
     # Body
     body_lines: list[str] = [
         "",
-        "# MOC Proposal",
+        "# MOC Uplink Check" if check_mode else "# MOC Proposal",
         "",
     ]
 
@@ -696,9 +700,16 @@ def render_moc_proposal_doc(
 
     # Case-(a) orphan link-or-create section (spec 021 T2.4). Rendered AFTER the
     # cluster sections; absent entirely when there are no orphan suggestions.
+    # ADR-12: orphan_overflow drives a footer when the list was capped; check_mode
+    # relabels the section as a MOC-uplink audit.
     orphan_suggestions: list[dict] = report.get("orphan_suggestions") or []
+    orphan_overflow: int = report.get("orphan_overflow") or 0
     if orphan_suggestions:
-        body_lines.append(_render_orphan_section(orphan_suggestions))
+        body_lines.append(
+            _render_orphan_section(
+                orphan_suggestions, overflow=orphan_overflow, check_mode=check_mode
+            )
+        )
         body_lines.append("")
 
     full_body = "\n".join(frontmatter_lines) + "\n" + "\n".join(body_lines)
@@ -706,7 +717,9 @@ def render_moc_proposal_doc(
     return filename, full_body
 
 
-def _render_orphan_section(orphan_suggestions: list[dict]) -> str:
+def _render_orphan_section(
+    orphan_suggestions: list[dict], *, overflow: int = 0, check_mode: bool = False
+) -> str:
     """Render the case-(a) orphan link-or-create section (spec 021 T2.4, OQ-6).
 
     Per orphan (a cache entry with no parent — note OR moc), emit either:
@@ -714,15 +727,20 @@ def _render_orphan_section(orphan_suggestions: list[dict]) -> str:
       - create_new    → the reason line + an `/execute` instruction to stamp the
         reason into the note(s) on accept.
 
+    `overflow` (ADR-12): when > 0, the orphan list was capped at
+    orphan_display_cap; a footer states how many more were omitted and to re-run
+    scoped. `check_mode` (ADR-12) relabels the heading as a MOC-uplink audit.
+
     `/moc-propose` writes NO vault note (CON-3) — this is proposal-doc markup
     only; the `up:`/note write happens later via `/execute`.
     """
-    lines: list[str] = [
-        "## Orphan Notes & MOCs",
-        "",
-        "*Notes and MOCs with no parent. Pick a link target or accept a new MOC.*",
-        "",
-    ]
+    if check_mode:
+        heading = "## MOC Uplink Check"
+        intro = "*MOCs with no parent `up::`. Pick a link target or accept a new MOC.*"
+    else:
+        heading = "## Orphan Notes & MOCs"
+        intro = "*Notes and MOCs with no parent. Pick a link target or accept a new MOC.*"
+    lines: list[str] = [heading, "", intro, ""]
 
     for i, orphan in enumerate(orphan_suggestions, start=1):
         orphan_id = f"O{i:02d}"
@@ -756,6 +774,14 @@ def _render_orphan_section(orphan_suggestions: list[dict]) -> str:
                 "*On accept, `/execute` stamps this reason into the "
                 f"{kind} and creates the new MOC. `/moc-propose` writes nothing.*"
             )
+        lines.append("")
+
+    if overflow > 0:
+        lines.append("---")
+        lines.append(
+            f"*{overflow} more orphan(s) not shown — re-run with a scoped query "
+            "(`folder:`/`tag:`/`class:`) to narrow the set.*"
+        )
         lines.append("")
 
     return "\n".join(lines).rstrip("\n")

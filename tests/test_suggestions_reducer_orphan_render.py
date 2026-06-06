@@ -168,3 +168,37 @@ def test_orphan_render_produces_proposal_doc_only_no_vault_write():
     filename, body = result
     assert isinstance(filename, str) and filename.endswith(".md")
     assert isinstance(body, str) and "## Orphan Notes & MOCs" in body
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# T6.4 (ADR-12) — overflow footer + check-moc-uplinks heading
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_overflow_footer_present_when_capped():
+    """orphan_overflow > 0 → a footer states the omitted count + scoped re-run."""
+    report = _report([_orphan("a", mode="create_new", reason="x")])
+    report["orphan_total"] = 60
+    report["orphan_overflow"] = 10
+    _filename, body = render_moc_proposal_doc(report, _Cfg())
+    assert "10 more orphan(s) not shown" in body
+    assert "scoped query" in body
+
+
+def test_overflow_footer_absent_when_not_capped():
+    """orphan_overflow == 0 → no footer."""
+    report = _report([_orphan("a", mode="create_new", reason="x")])
+    report["orphan_overflow"] = 0
+    _filename, body = render_moc_proposal_doc(report, _Cfg())
+    assert "more orphan(s) not shown" not in body
+
+
+def test_check_mode_relabels_orphan_section():
+    """A check-moc-uplinks report renders the MOC Uplink Check heading + H1."""
+    report = _report([
+        _orphan("OrphanMap", mode="create_new", kind="moc", reason="No parent MOC.")
+    ])
+    report["mode"] = "check-moc-uplinks"
+    _filename, body = render_moc_proposal_doc(report, _Cfg())
+    assert "# MOC Uplink Check" in body
+    assert "## MOC Uplink Check" in body
+    assert "## Orphan Notes & MOCs" not in body

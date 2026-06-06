@@ -217,19 +217,29 @@ def test_validate_cache_loaded_returns_none_for_populated_cache():
 
 
 def test_cache_empty_aborts_at_startup(tmp_path):
-    """Missing/empty cache file → exit 0 with abort_reason=cache-empty BEFORE Phase 1.
+    """FRESH cache with zero MOC entries → exit 0 with abort_reason=cache-empty
+    BEFORE Phase 1.
 
-    The pre-check fires at the top of `main()`, before mode routing reaches
-    `phase1_select_candidates`. We assert against a JSON DiscoveryReport on
-    stdout (per spec — abort paths emit a report and exit 0, not a fatal exit).
+    spec 021 T2.1: moc-discovery reads the MOC-structure cache via the loader.
+    A FRESH cache (recent last_scan) carrying no kind==moc entries is an empty
+    vault — the loader returns cache-empty WITHOUT a rebuild (rebuilding would
+    not add MOCs and would need Kado). The pre-check fires at the top of main(),
+    before mode routing. We assert a JSON DiscoveryReport on stdout (abort paths
+    emit a report and exit 0, not a fatal exit).
     """
+    from datetime import datetime, timezone
+
     config_path = tmp_path / "vault-config.yaml"
     config_path.write_text("profile: miyo\n", encoding="utf-8")
 
-    # Empty cache (file exists, `map_notes: []` — the most common "ran
-    # explore-vault on an empty vault" failure mode).
-    cache_path = tmp_path / "discovery-cache.yaml"
-    cache_path.write_text("map_notes: []\n", encoding="utf-8")
+    # Fresh MOC-structure cache with no MOC entries — the "ran /explore-vault on
+    # an empty vault" failure mode under the new cache shape.
+    fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cache_path = tmp_path / "moc-structure-cache.yaml"
+    cache_path.write_text(
+        f"moc_cache_version: 1\nlast_scan: '{fresh}'\nttl_days: 1\nentries: []\n",
+        encoding="utf-8",
+    )
 
     result = subprocess.run(
         [

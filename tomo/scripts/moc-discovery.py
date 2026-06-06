@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.1
+# version: 0.11.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -56,6 +56,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 # detection and T3.x render). Imported here per F-43 plan T2.5 to centralize
 # the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
 # only, so this is wired ahead of use.
+from lib.moc_cache_loader import load_moc_cache  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
 from lib.squelch import (  # noqa: E402
     decrement_all as _squelch_decrement_all,
@@ -76,7 +77,11 @@ from lib.topic_signature import (  # noqa: E402
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 DEFAULT_CONFIG_PATH = "config/vault-config.yaml"
-DEFAULT_CACHE_PATH = "config/discovery-cache.yaml"
+# spec 021 T2.1: moc-discovery now reads the MOC-structure cache via
+# lib/moc_cache_loader (TTL + rebuild-if-stale + entries[kind==moc]→map_notes
+# shim), not discovery-cache.yaml directly. The loader rebuilds inline when the
+# cache is stale/missing/corrupt (ADR-3).
+DEFAULT_CACHE_PATH = "config/moc-structure-cache.yaml"
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 # ADR-8: squelch sidecar at tomo-instance/state/moc-squelch.json. Default
 # resolves relative to TOMO_INSTANCE env var (Docker runtime) or cwd (tests /
@@ -101,6 +106,10 @@ ABORT_MESSAGES: dict[str, str] = {
     ),
     "cache-miss-cap-exceeded": (
         "Too many notes without cache entry — please run /explore-vault first."
+    ),
+    "cache-rebuild-failed": (
+        "MOC structure cache could not be rebuilt (target unwritable or no MOCs "
+        "found). Please run /explore-vault and check the vault configuration."
     ),
 }
 
@@ -178,7 +187,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--cache",
         metavar="PATH",
         default=DEFAULT_CACHE_PATH,
-        help=f"Path to discovery-cache.yaml (default: {DEFAULT_CACHE_PATH}).",
+        help=f"Path to the MOC-structure cache (default: {DEFAULT_CACHE_PATH}). "
+             "Loaded via moc_cache_loader (rebuild-if-stale + map_notes shim).",
     )
     parser.add_argument(
         "--dry-run",
@@ -582,6 +592,11 @@ def phase1_select_candidates(
 
 def validate_cache_loaded(cache: dict | None) -> str | None:
     """Return `"cache-empty"` when the discovery cache is unusable, else None.
+
+    NOTE (spec 021 T2.1): main() no longer calls this — cache loading + the
+    cache-empty determination now live in lib/moc_cache_loader.load_moc_cache
+    (which mirrors this contract: a fresh cache with no kind==moc map_notes →
+    "cache-empty"). Retained as the documented, separately-tested predicate.
 
     A cache is "loaded" when it carries a non-empty `map_notes` list. Any of
     the three failure modes — file missing (cache=None from a guarded loader),
@@ -1817,10 +1832,11 @@ def main(argv: list[str] | None = None) -> int:
         _log(f"phase1-input: mode={mode} trigger_arg={trigger_arg!r} candidates={len(pre_loaded)}")
 
         cache_path = Path(args.cache)
-        cache = _load_yaml(cache_path) if cache_path.exists() else None
-        cache_abort = validate_cache_loaded(cache)
+        # spec 021 T2.1: read the MOC-structure cache via the loader — rebuild
+        # inline if stale/missing/corrupt (ADR-3), then shim entries→map_notes.
+        cache, cache_abort = load_moc_cache(str(cache_path), str(config_path))
         if cache_abort is not None:
-            _log(f"cache-empty: cache_path={cache_path} → abort {cache_abort!r}")
+            _log(f"{cache_abort}: cache_path={cache_path} → abort {cache_abort!r}")
             return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
 
         squelch_path = Path(args.squelch_state)
@@ -1863,15 +1879,16 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("\n")
         return 0
 
-    # Cache-empty pre-check (SDD §Pseudocode line 851 — fires BEFORE Phase 1).
-    # Missing file → load_yaml returns {}; populated `map_notes: []` cache → also
-    # empty. Both collapse to `cache-empty` so the agent can surface the same
-    # "run /explore-vault" hint regardless of which failure mode fired.
+    # Cache load (SDD §Pseudocode line 851 — fires BEFORE Phase 1).
+    # spec 021 T2.1: the MOC-structure cache is read via moc_cache_loader, which
+    # rebuilds inline when stale/missing/corrupt (ADR-3) and projects
+    # entries[kind==moc] → map_notes (shim). A fresh cache loads with no rebuild;
+    # a rebuild that still yields no usable map_notes aborts cache-rebuild-failed
+    # (not a re-scan every run) so the agent surfaces the "run /explore-vault" hint.
     cache_path = Path(args.cache)
-    cache = _load_yaml(cache_path) if cache_path.exists() else None
-    cache_abort = validate_cache_loaded(cache)
+    cache, cache_abort = load_moc_cache(str(cache_path), str(config_path))
     if cache_abort is not None:
-        _log(f"cache-empty: cache_path={cache_path} → abort {cache_abort!r}")
+        _log(f"{cache_abort}: cache_path={cache_path} → abort {cache_abort!r}")
         return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
 
     # ── --emit-phase1 branch: run Phase 1 only, write JSON, exit ─────────────

@@ -444,14 +444,24 @@ def test_cache_empty_aborts_no_file_written(tmp_path):
     inbox_dir = tmp_path / "inbox"
     inbox_dir.mkdir()
 
-    # Missing cache file (non-existent path) → moc-discovery.py aborts early with cache-empty
-    missing_cache = tmp_path / "nonexistent-cache.yaml"
+    # spec 021 T2.1: moc-discovery reads the MOC-structure cache via the loader.
+    # A FRESH cache with zero MOC entries is an empty vault → cache-empty WITHOUT
+    # a rebuild (a missing cache would instead trigger a Kado-needing rebuild →
+    # cache-rebuild-failed; this test isolates the empty-vault path, no Kado).
+    from datetime import datetime, timezone
+
+    fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    empty_cache = tmp_path / "moc-structure-cache.yaml"
+    empty_cache.write_text(
+        f"moc_cache_version: 1\nlast_scan: '{fresh}'\nttl_days: 1\nentries: []\n",
+        encoding="utf-8",
+    )
     result = subprocess.run(
         [
             sys.executable,
             str(SCRIPTS_DIR / "moc-discovery.py"),
             "--title", "any-text",
-            "--cache", str(missing_cache),
+            "--cache", str(empty_cache),
             "--config", str(config_path),
             "--squelch-state", str(squelch_path),
         ],

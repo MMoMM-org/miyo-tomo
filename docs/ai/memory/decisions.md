@@ -3,6 +3,9 @@
 <!-- What goes here: why we chose X over Y, ADR links, significant tradeoff choices -->
 <!-- Format: YYYY-MM-DD — Decision: [what] — Rationale: [why] -->
 
+<!-- 2026-06-06 -->
+- 2026-06-06 — Decision: `/moc-propose` whole-vault `scan` selects candidates by **orphan state** (`up_state==absent`) sourced from the moc-structure-cache (no live `list_dir`); scoped runs (`folder:`/`tag:`/`class:`/`title:`) still consider ALL in-scope notes; `candidate_cap` default 200→500. — Rationale: the old cap counted every atomic note incl. already-MOC-linked ones, so it measured vault size, not "notes needing a MOC" — any mature vault tripped `candidate-cap-exceeded` (live: 209>200), defeating 021's whole-vault-discovery goal. The cache already carries `kind==note` entries with `up_state`+`topics`, so orphan-sourcing avoids both the live pull AND LLM topic extraction (Phase-2 topic-index extended over note entries). Folded into 021 as Feature 6 / ADR-11. Design smell to watch: a cap on input size instead of on "items that need action" — filter by the state that defines the work.
+
 <!-- 2026-05-26 -->
 - 2026-05-26 — Decision: Voice transcription routing lives in `/inbox` command, NOT in conductors. When `inbox-triage.py` determines `action=transcribe`, `/inbox` dispatches `voice-transcriber` directly and exits — conductors never run. The suggestion-conductor v0.1.0 had a full voice section (Steps 2, precheck, dispatch, stop-gate) that was dead code since the /inbox command already handled it. Removed in v0.2.0. — Rationale: Transcription is a stop-gate (creates files, then user must review before re-running). Handling it at the /inbox level means the conductor never instantiates, saving all common-setup overhead. Surfaced during 018 code review 2026-05-26.
 

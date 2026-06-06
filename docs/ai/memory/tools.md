@@ -103,3 +103,9 @@ Key differences from inside Docker: hostname is `127.0.0.1` (not `host.docker.in
 ## Before assuming a bug is new, check unmerged branches for an orphaned fix
 
 `git branch -a --no-merged HEAD` then `git log -1 --format='%s' <branch>` lists work that never landed. In spec-020 a real fix (`87262c1` "quote tilde in vault-path case pattern") plus its regression test sat on `fix/install-vault-path-tilde-case` — pushed to origin but **never merged** into `feat/020` — so a long-fixed bug resurfaced ("we fixed it but lost it somewhere"). Recovery: `git checkout <branch> -- <test-file>` for clean file adds; re-apply the code hunk manually when surrounding context has diverged. The same `--no-merged` scan also catches **reserved-ID collisions**: an unmerged branch (`docs/backlog-d10-documentation-refresh`) already owned backlog `D-10`, so a newly-added `D-10` had to be renumbered to `D-11`. Lesson: orphaned branches strand both fixes AND reserved IDs — scan before declaring a bug new or claiming the next free backlog/spec ID.
+
+<!-- 2026-06-06 -->
+
+## `update-tomo.sh` retires source-deleted scripts only via a hardcoded list
+
+Deleting a runtime `tomo/scripts/*.py` from source does NOT remove it from existing instances on `update-tomo --yolo`: the sync copies/versions present files but only retires (deletes) instance scripts named in the hardcoded `RETIRED_SCRIPTS` array (`scripts/update-tomo.sh` ~:454). Miss the entry → the orphan persists in every instance after every update. When you delete a runtime script, add its basename to `RETIRED_SCRIPTS` in the same change (021 T3.3 deleted `atomic-note-indexer.py` but missed the array; caught during instance cleanup, fixed in `99d8412`). Same mechanism + `RETIRED_SCRIPT_TESTS` for tests.

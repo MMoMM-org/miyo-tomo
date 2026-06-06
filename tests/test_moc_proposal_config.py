@@ -57,6 +57,7 @@ SPEC_DEFAULTS = {
     "confidence_threshold": 0.15,
     "max_results": 5,
     "candidate_cap": 500,
+    "orphan_display_cap": 50,
     "cache_miss_max_batches": 5,
     "squelch_runs": 3,
 }
@@ -78,8 +79,26 @@ def test_defaults_when_block_missing(tmp_path: Path) -> None:
     assert out.confidence_threshold == SPEC_DEFAULTS["confidence_threshold"]
     assert out.max_results == SPEC_DEFAULTS["max_results"]
     assert out.candidate_cap == SPEC_DEFAULTS["candidate_cap"]
+    assert out.orphan_display_cap == SPEC_DEFAULTS["orphan_display_cap"]
     assert out.cache_miss_max_batches == SPEC_DEFAULTS["cache_miss_max_batches"]
     assert out.squelch_runs == SPEC_DEFAULTS["squelch_runs"]
+
+
+def test_orphan_display_cap_override(tmp_path: Path) -> None:
+    """orphan_display_cap is user-overridable (ADR-12, T6.3)."""
+    cfg = _write_yaml(
+        tmp_path / "vault-config.yaml",
+        (
+            "schema_version: 1\n"
+            "tomo:\n"
+            "  moc_proposal:\n"
+            "    orphan_display_cap: 25\n"
+        ),
+    )
+    out = scb.load_moc_proposal_config(cfg)
+    assert out.orphan_display_cap == 25
+    # Unset keys keep defaults
+    assert out.candidate_cap == SPEC_DEFAULTS["candidate_cap"]
 
 
 def test_user_overrides_take_precedence(tmp_path: Path) -> None:

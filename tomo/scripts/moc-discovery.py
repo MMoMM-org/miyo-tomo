@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.0
+# version: 0.14.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -205,6 +205,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override candidate_cap (default 500: vault-config tomo.moc_proposal).",
     )
     parser.add_argument(
+        "--check-moc-uplinks",
+        action="store_true",
+        help="Audit MOC parentage only: run the orphan link-or-create pass over "
+             "kind==moc entries (skip the clustering pipeline). Emits a "
+             "check-moc-uplinks DiscoveryReport.",
+    )
+    parser.add_argument(
         "--squelch-state",
         metavar="PATH",
         default=DEFAULT_SQUELCH_STATE_PATH,
@@ -338,6 +345,8 @@ def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
         "duplicates_skipped": [],
         "squelched": [],
         "orphan_suggestions": [],
+        "orphan_total": 0,
+        "orphan_overflow": 0,
         "abort_reason": None,
         "abort_message": None,
         "extracted_via_llm_count": 0,
@@ -1577,6 +1586,41 @@ def _enrich_cluster(
     return enriched, serialised_parents
 
 
+def _cap_orphans(
+    suggestions: list[dict], cap: int
+) -> tuple[list[dict], int, int]:
+    """Truncate a (pre-ordered) orphan-suggestion list to `cap` (ADR-12).
+
+    `suggestions` arrives link-first ordered from emit_orphan_suggestions, so the
+    head is the most-actionable. Returns (kept, total, overflow). A cap < 0 (or
+    a total at/under the cap) keeps everything with overflow 0.
+    """
+    total = len(suggestions)
+    if cap is not None and cap >= 0 and total > cap:
+        return suggestions[:cap], total, total - cap
+    return suggestions, total, 0
+
+
+def _run_moc_uplink_check(
+    cache: dict, config_path: Path, profile_name: str
+) -> dict:
+    """Focused MOC-parentage audit (ADR-12 / `--check-moc-uplinks`).
+
+    Runs ONLY the orphan link-or-create pass over `kind=="moc"` entries — no
+    clustering pipeline — and returns a `check-moc-uplinks` DiscoveryReport with
+    the (capped) MOC orphan suggestions.
+    """
+    moc_config = _load_moc_config(config_path)
+    orphan_all = emit_orphan_suggestions(cache.get("entries") or [], kinds=("moc",))
+    kept, total, overflow = _cap_orphans(orphan_all, moc_config.orphan_display_cap)
+    _log(f"check-moc-uplinks: {total} orphan MOC(s) → {len(kept)} shown (overflow {overflow})")
+    report = empty_report("check-moc-uplinks", "", profile_name)
+    report["orphan_suggestions"] = kept
+    report["orphan_total"] = total
+    report["orphan_overflow"] = overflow
+    return report
+
+
 def _run_pipeline(
     args,
     cache: dict,
@@ -1679,8 +1723,18 @@ def _run_pipeline(
     # top-3 link suggestions or a create-new proposal. Independent of Phase 6
     # duplicates_skipped (H2) and the atomic-note pre-filter (H3). Sourced from
     # the full cache.entries the loader leaves on the cache dict.
-    orphan_suggestions = emit_orphan_suggestions(cache.get("entries") or [])
-    _log(f"case-a: {len(orphan_suggestions)} orphan suggestion(s)")
+    # ADR-12: default scan emits NOTE orphans only (MOC orphans are noise on the
+    # notes-discovery path — surfaced on demand via --check-moc-uplinks). Ordered
+    # link-first by the pass, then truncated to orphan_display_cap so the cap
+    # keeps the most-actionable suggestions; the rest are summarised via overflow.
+    orphan_all = emit_orphan_suggestions(cache.get("entries") or [], kinds=("note",))
+    orphan_suggestions, orphan_total, orphan_overflow = _cap_orphans(
+        orphan_all, moc_config.orphan_display_cap
+    )
+    _log(
+        f"case-a: {orphan_total} note orphan(s) → {len(orphan_suggestions)} shown "
+        f"(overflow {orphan_overflow})"
+    )
 
     report = empty_report(mode, trigger_arg, profile_name)
     report.update({
@@ -1703,6 +1757,8 @@ def _run_pipeline(
         "duplicates_skipped": duplicates_skipped,
         "squelched": squelched,
         "orphan_suggestions": orphan_suggestions,
+        "orphan_total": orphan_total,
+        "orphan_overflow": orphan_overflow,
     })
 
     _log(f"emitting DiscoveryReport: clusters={len(kept_clusters)} mode={mode!r}")
@@ -1920,6 +1976,16 @@ def main(argv: list[str] | None = None) -> int:
     if cache_abort is not None:
         _log(f"{cache_abort}: cache_path={cache_path} → abort {cache_abort!r}")
         return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
+
+    # ── --check-moc-uplinks branch: MOC-parentage audit only, no clustering ──
+    # ADR-12: a focused pass over kind==moc orphans. No squelch decrement (no
+    # clustering run), no Phase 1–6. Checked before --emit-phase1 (the agent
+    # never combines them).
+    if args.check_moc_uplinks:
+        report = _run_moc_uplink_check(cache, config_path, profile_name)
+        json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
 
     # ── --emit-phase1 branch: run Phase 1 only, write JSON, exit ─────────────
     # T6.5: no squelch decrement here; squelch is a per-discovery-run counter

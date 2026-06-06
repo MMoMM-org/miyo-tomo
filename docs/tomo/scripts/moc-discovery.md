@@ -75,3 +75,31 @@ subfolder). For those candidates, Phase 2's LLM batch-extract path is still
 needed. `_build_topics_index` returns an empty slot for them, they land in
 `misses`, and `_batch_llm_extract` handles them. This path was not changed by
 T5.1.
+
+## Orphan Output Shaping: Notes-Only Default, Cap in the Pipeline (ADR-12, T6.3)
+
+WHY: The case-(a) orphan pass (`emit_orphan_suggestions`) was called with the
+full cache entries (notes AND MOCs) and no bound, so a whole-vault scan emitted
+251 suggestions — 45 of them noise MOCs (template-vault, root maps) and a
+206-note flood. The default scan now calls the pass with `kinds=("note",)` (MOC
+orphans are surfaced on demand via `--check-moc-uplinks`, not on the
+notes-discovery path) and truncates the link-first-ordered result to
+`orphan_display_cap` (default 50) via `_cap_orphans`, recording `orphan_total` +
+`orphan_overflow` in the report for the reducer's overflow footer.
+
+The cap lives HERE, not in `lib/orphan_link`: the cap is config-driven
+(`tomo.moc_proposal.orphan_display_cap`) and the lib stays pure/config-free for
+testability. Ordering in the lib + capping in the pipeline means truncation
+always keeps the most-actionable suggestions.
+
+## `--check-moc-uplinks`: Focused Audit, Clustering Skipped (ADR-12, T6.3)
+
+WHY: A user who wants to audit MOC parentage shouldn't have to wade through the
+clustering pipeline or note orphans. `_run_moc_uplink_check` runs ONLY the orphan
+pass over `kinds=("moc",)` and emits a `check-moc-uplinks` report. main()
+short-circuits to it right after the cache load — before squelch decrement (no
+clustering run to squelch) and before `--emit-phase1` (the agent never combines
+the two). No Kado is built in this branch: the pass reads cache entries only, so
+a fresh cache needs no rebuild. Keeping tag-discovery broad (root/Dewey MOCs stay
+in the cache as link targets) is what makes this audit useful — it can offer an
+existing parent MOC for an orphan MOC.

@@ -455,6 +455,7 @@ RETIRED_SCRIPTS=(
     tag-captured.py
     state-init.py
     inbox-discovery.py
+    atomic-note-indexer.py
 )
 for name in "${RETIRED_SCRIPT_TESTS[@]}" "${RETIRED_SCRIPTS[@]}"; do
     dst="$INSTANCE_PATH/scripts/$name"

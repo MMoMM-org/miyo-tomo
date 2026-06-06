@@ -1219,7 +1219,7 @@ def test_cache_backed_flow_fresh_cache_no_rebuild(tmp_path, monkeypatch):
 
     _moc_disc = _load_moc_disc()
 
-    # Real loader for reference
+    # Import the real loader so the spy wrapper can delegate to it.
     from lib import moc_cache_loader as _loader_mod
 
     config_path = _write_config(tmp_path)
@@ -1392,7 +1392,9 @@ def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
     scb = importlib.util.module_from_spec(_spec)
     # Register BEFORE exec_module so Python 3.14 dataclasses can resolve
     # `sys.modules[cls.__module__]` during class body execution.
-    sys.modules[_scb_name] = scb
+    # Use monkeypatch.setitem so pytest auto-restores sys.modules after the test
+    # (prevents stale/partial module from shadowing future loads on rerun or error).
+    monkeypatch.setitem(sys.modules, _scb_name, scb)
     _spec.loader.exec_module(scb)
 
     # Build a cache with MOC entries (A) + placeholder_mocs (C)

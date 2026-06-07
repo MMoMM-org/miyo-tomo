@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.16.1
+# version: 0.17.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -1802,23 +1802,13 @@ def _run_pipeline(
 
     kept_clusters.sort(key=lambda c: c.get("confidence", 0.0), reverse=True)
 
-    # Case (a) — orphan link-or-create pass (ADR-7). A NEW pass over the cache
-    # entries (notes AND MOCs with up_state=="absent"), scored vs the MOC set →
-    # top-3 link suggestions or a create-new proposal. Independent of Phase 6
-    # duplicates_skipped (H2) and the atomic-note pre-filter (H3). Sourced from
-    # the full cache.entries the loader leaves on the cache dict.
-    # ADR-12: default scan emits NOTE orphans only (MOC orphans are noise on the
-    # notes-discovery path — surfaced on demand via --check-moc-uplinks). Ordered
-    # link-first by the pass, then truncated to orphan_display_cap so the cap
-    # keeps the most-actionable suggestions; the rest are summarised via overflow.
-    orphan_all = emit_orphan_suggestions(cache.get("entries") or [], kinds=("note",))
-    orphan_suggestions, orphan_total, orphan_overflow = _cap_orphans(
-        orphan_all, moc_config.orphan_display_cap
-    )
-    _log(
-        f"case-a: {orphan_total} note orphan(s) → {len(orphan_suggestions)} shown "
-        f"(overflow {orphan_overflow})"
-    )
+    # ADR-13 D1: the note-orphan pass is REMOVED from the cluster pipeline.
+    # Orphan suggestions are produced ONLY by _run_moc_uplink_check
+    # (--check-moc-uplinks). The per-note orphan section (### Oxx) no longer
+    # appears in cluster-mode proposal-docs (scan or scoped). Interactive
+    # note-orphan handling is deferred to Garden-Audit (#30).
+    # emit_orphan_suggestions / _cap_orphans remain in scope — used by the
+    # check path above.
 
     report = empty_report(mode, trigger_arg, profile_name)
     report.update({
@@ -1840,9 +1830,9 @@ def _run_pipeline(
         "parent_options_per_cluster": parent_options_per_cluster,
         "duplicates_skipped": duplicates_skipped,
         "squelched": squelched,
-        "orphan_suggestions": orphan_suggestions,
-        "orphan_total": orphan_total,
-        "orphan_overflow": orphan_overflow,
+        "orphan_suggestions": [],
+        "orphan_total": 0,
+        "orphan_overflow": 0,
     })
 
     _log(f"emitting DiscoveryReport: clusters={len(kept_clusters)} mode={mode!r}")

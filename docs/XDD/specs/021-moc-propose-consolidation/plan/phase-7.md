@@ -60,7 +60,7 @@ phase: 7
   5. WHY → `docs/tomo/scripts/moc-discovery.md`: candidate_stems dedup.
   6. Success: no within-cluster duplicates `[ref: PRD/F8 AC3]`.
 
-- [ ] **T7.4 Inter-cluster member-overlap dedup ≥80% (D3)** `[activity: backend-api]` `[ref: SDD/ADR-13 D3; PRD/F8; moc-discovery.py phase6_dedupe + _run_pipeline kept_clusters]`
+- [x] **T7.4 Inter-cluster member-overlap dedup ≥80% (D3)** `[activity: backend-api]` `[ref: SDD/ADR-13 D3; PRD/F8; moc-discovery.py phase6_dedupe + _run_pipeline kept_clusters]`
   1. Prime: `phase6_dedupe` (`:~1196`, topics-vs-existing only), where `kept_clusters` is finalised in `_run_pipeline`, cluster member access (`_candidate_stems`). This is a NEW pass over the PROPOSED clusters — does not modify `phase6_dedupe`'s existing-MOC logic.
   2. Test (RED): two proposed clusters where the smaller's members are ≥80% inside the larger → smaller dropped, larger kept, drop recorded in `duplicates_skipped`; at 79% both survive (boundary); exact-subset (100%) dropped.
   3. Implement: after `phase6_dedupe`, add `_dedupe_overlapping_clusters(kept)` — for each pair (largest-first), if `|small ∩ large| / |small| >= 0.80`, drop the smaller, append to `duplicates_skipped`. Deterministic ordering (by size desc, then cluster_id). Bump version.
@@ -68,7 +68,7 @@ phase: 7
   5. WHY → `docs/tomo/scripts/moc-discovery.md`: inter-cluster member dedup (vs the topic/existing dedup).
   6. Success: overlapping proposals collapsed to the larger `[ref: PRD/F8 AC2]`.
 
-- [ ] **T7.5 Drop the per-note orphan section from /moc-propose (D1)** `[activity: backend-api]` `[ref: SDD/ADR-13 D1; PRD/F8 AC1; moc-discovery.py _run_pipeline orphan block, suggestions-reducer.py render_moc_proposal_doc]`
+- [x] **T7.5 Drop the per-note orphan section from /moc-propose (D1)** `[activity: backend-api]` `[ref: SDD/ADR-13 D1; PRD/F8 AC1; moc-discovery.py _run_pipeline orphan block, suggestions-reducer.py render_moc_proposal_doc]`
   1. Prime: the orphan block in `_run_pipeline` (the Phase-6 `emit_orphan_suggestions(kinds=("note",))` + `_cap_orphans` + report `orphan_*` fields), `_run_moc_uplink_check` (the check path — KEEP), the reducer's orphan-section gate (`render_moc_proposal_doc` → `_render_orphan_section`).
   2. Test (RED): a cluster-mode DiscoveryReport (scan or scoped) renders NO `## Orphan Notes & MOCs` / `### Oxx` section; a `check-moc-uplinks` report STILL renders the MOC-uplink section (regression guard).
   3. Implement: remove the note-orphan pass from `_run_pipeline` (cluster path no longer emits `orphan_suggestions`); orphan suggestions are produced ONLY by `_run_moc_uplink_check`. Reducer renders the orphan section only when present (check-mode report) — verify the gate. Bump versions.

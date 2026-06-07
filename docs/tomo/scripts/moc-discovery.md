@@ -183,3 +183,26 @@ This pass is ADDITIVE: it does not change `phase6_dedupe`'s topics-vs-existing-M
 logic, and it runs after `phase6_dedupe` so a cluster already dropped by an
 existing-MOC match is never re-evaluated here.
 
+## Note-Orphan Pass Removed from Cluster Path (ADR-13 D1, T7.5)
+
+WHY: The `_run_pipeline` (cluster path) formerly called
+`emit_orphan_suggestions(kinds=("note",))` after Phase 6.5 and populated
+`orphan_suggestions` / `orphan_total` / `orphan_overflow` in the DiscoveryReport.
+This produced a `## Orphan Notes & MOCs / ### Oxx` per-note section in the
+proposal-doc, which contradicts ADR-13 D1: `/moc-propose` is cluster→new-MOC
+only. The orphan section mixed two concerns (cluster proposal + vault health audit)
+into one document, making the proposal-doc harder to act on.
+
+The note-orphan pass is removed from `_run_pipeline`. The cluster path now emits
+`orphan_suggestions=[]` / `orphan_total=0` / `orphan_overflow=0` unconditionally.
+
+The emit helper (`emit_orphan_suggestions`), the cap helper (`_cap_orphans`), and
+the renderer (`_render_orphan_section`) are RETAINED — they are still used by
+`_run_moc_uplink_check` (the `--check-moc-uplinks` path), which produces MOC-orphan
+suggestions for the dedicated MOC-parentage audit doc. Removing them would break
+check mode.
+
+Interactive note-orphan handling (pick a parent, create a new MOC for an orphan
+note) is deferred to Garden-Audit (#30) where it belongs — a separate workflow,
+not a sidebar in a cluster proposal.
+

@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_moc_discovery_output_cap.py — orphan output shaping (spec 021 T6.3).
+# version: 0.2.0
+"""test_moc_discovery_output_cap.py — orphan output shaping (spec 021 T6.3 + T7.5).
 
-ADR-12: the default scan emits NOTE orphans only, link-first ordered and
-truncated to orphan_display_cap (report carries orphan_total/orphan_overflow);
-`--check-moc-uplinks` runs the orphan pass over kind==moc only, skipping the
-clustering pipeline.
+ADR-12 + ADR-13 D1:
+  - _cap_orphans and emit_orphan_suggestions remain in scope (used by check path).
+  - `--check-moc-uplinks` runs the orphan pass over kind==moc only, skipping the
+    clustering pipeline.
+  - Default scan (cluster mode) emits NO orphan suggestions (T7.5 D1).
+    The note-orphan pass was removed from _run_pipeline; orphan_suggestions is []
+    for all cluster runs. Interactive note-orphan handling deferred to #30.
 
 Covers:
   - _cap_orphans: truncation + total/overflow counts (unit)
   - _run_moc_uplink_check: MOC-only pass, capped (unit, no Kado)
-  - main() default scan: report excludes MOC orphans + caps note orphans
+  - main() default scan: report has orphan_suggestions=[] (T7.5 D1)
   - main() --check-moc-uplinks: MOC suggestions, no clustering
 """
 from __future__ import annotations
@@ -165,13 +168,19 @@ def test_run_moc_uplink_check_moc_only(tmp_path: Path):
     assert report["orphan_overflow"] == 0
 
 
-# ── main(): default scan caps note orphans + excludes MOC orphans ─────────────
+# ── main(): default scan (cluster mode) has no orphan suggestions (T7.5 D1) ───
 
 
-def test_default_scan_caps_and_excludes_mocs(tmp_path: Path, monkeypatch):
+def test_default_scan_has_no_orphan_suggestions(tmp_path: Path, monkeypatch):
+    """ADR-13 D1: the cluster path no longer produces orphan suggestions.
+
+    Note orphans in the cache are ignored by the scan pipeline (T7.5).
+    orphan_suggestions, orphan_total, orphan_overflow are all empty/zero.
+    Interactive note-orphan handling is deferred to Garden-Audit (#30).
+    """
     config_path = _write_config(tmp_path, orphan_display_cap=50)
     entries = [_note_orphan(i) for i in range(60)]
-    entries.append(_orphan_moc("OrphanMap", ["pkm"]))  # must NOT appear in scan
+    entries.append(_orphan_moc("OrphanMap", ["pkm"]))  # satisfies map_notes shim
     cache_path = _write_cache(tmp_path, entries)
     squelch_path = _write_squelch(tmp_path)
 
@@ -190,11 +199,16 @@ def test_default_scan_caps_and_excludes_mocs(tmp_path: Path, monkeypatch):
     report = json.loads(captured.getvalue())
 
     assert report["mode"] == "scan"
-    assert report["orphan_total"] == 60, "60 note orphans before cap"
-    assert report["orphan_overflow"] == 10
-    assert len(report["orphan_suggestions"]) == 50, "capped to orphan_display_cap"
-    kinds = {s["kind"] for s in report["orphan_suggestions"]}
-    assert kinds == {"note"}, f"default scan excludes MOC orphans; got {kinds}"
+    # T7.5 D1: cluster path no longer populates orphan fields.
+    assert report["orphan_suggestions"] == [], (
+        f"scan (cluster mode) must have no orphan_suggestions; got {report['orphan_suggestions']!r}"
+    )
+    assert report["orphan_total"] == 0, (
+        f"scan (cluster mode) must have orphan_total=0; got {report['orphan_total']!r}"
+    )
+    assert report["orphan_overflow"] == 0, (
+        f"scan (cluster mode) must have orphan_overflow=0; got {report['orphan_overflow']!r}"
+    )
 
 
 # ── main(): --check-moc-uplinks runs MOC pass only, no clustering ──────────────

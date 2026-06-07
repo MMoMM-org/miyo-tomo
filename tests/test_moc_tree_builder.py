@@ -351,6 +351,61 @@ def test_json_feed_is_valid_json_via_run(tmp_path, monkeypatch, capsys):
     assert out_yaml.exists()
 
 
+def test_cache_entries_carry_real_tags_per_ac7():
+    """PRD/F8 AC7: each built cache entry carries its note's real tags.
+
+    Locks:
+      - MOC entry: tags list matches frontmatter values (not an empty list).
+      - Note entry: tags list matches frontmatter values.
+      - Note with no tags → tags == [].
+
+    Tags arrive from the frontmatter already read during read_note_raw()
+    (one round-trip per note — no extra per-note tags query needed). This
+    is the cheapest path: the same content string that supplies title/up/
+    wikilinks also yields the frontmatter tags via parse_frontmatter.
+    (WHY: see docs/tomo/scripts/moc-tree-builder.md — tags are cached
+    because the exclude-tag filters (exclude/moc, exclude/note) depend on them.)
+    """
+    moc_path = "Atlas/200 Maps/Home.md"
+    note_path = "Atlas/202 Notes/Idea.md"
+    tagless_path = "Atlas/202 Notes/NoTags.md"
+
+    client = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": note_path}, {"path": tagless_path}],
+        },
+        notes={
+            moc_path: (
+                "---\ntitle: Home\ntags:\n"
+                "  - type/others/moc\n  - project/alpha\n---\n# Home\n"
+            ),
+            note_path: "---\ntitle: Idea\ntags:\n  - idea/seed\n---\n# Idea\n",
+            tagless_path: "---\ntitle: NoTags\n---\n# NoTags\n",
+        },
+    )
+    cache = _cache(client, _config())
+
+    by_path = {e["path"]: e for e in cache["entries"]}
+
+    # MOC entry: real tags from frontmatter, not an empty list.
+    assert by_path[moc_path]["tags"] == ["type/others/moc", "project/alpha"], (
+        "AC7 FAIL: MOC entry tags are empty or wrong — "
+        "cache builder must populate tags from frontmatter"
+    )
+
+    # Note entry: real tags from frontmatter.
+    assert by_path[note_path]["tags"] == ["idea/seed"], (
+        "AC7 FAIL: note entry tags are empty or wrong"
+    )
+
+    # Note with no frontmatter tags → empty list, never None.
+    assert by_path[tagless_path]["tags"] == [], (
+        "AC7 FAIL: note with no tags must produce [], not None or missing"
+    )
+
+
 def test_c2_kind_moc_projection_feeds_cache_builder_without_collapse():
     """End-to-end C2 guard: rebuild the MOC-structure cache → take the kind==moc
     projection as cache-builder's map_notes → feed it through

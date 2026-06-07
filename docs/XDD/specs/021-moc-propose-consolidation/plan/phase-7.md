@@ -1,6 +1,6 @@
 ---
 title: "Phase 7: Proposal coherence — drop per-note orphans, dedup clusters, exclusion tags"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 7
 ---

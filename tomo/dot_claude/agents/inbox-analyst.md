@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.14.0
+# version: 0.15.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -125,9 +125,9 @@ If all top matches are classification-layer, flag `needs_new_moc: true` and set
 `proposed_moc_topic` to the best inferred thematic label from the item's
 dominant topic tokens.
 
-**Placeholder MOC trigger.**
+**Placeholder link trigger.**
 
-When `shared_ctx.placeholder_mocs` is present, scan it AFTER scoring MOCs
+When `shared_ctx.placeholder_links` is present, scan it AFTER scoring MOCs
 and BEFORE finalising `needs_new_moc`. For each placeholder entry
 `{target, referenced_by}`, treat `target` as a candidate thematic label
 and compare it (case-insensitive, normalised) against the item's dominant
@@ -145,7 +145,7 @@ name over the inferred topic label, because the placeholder is a
 deliberate dead link the user already wrote and it is a higher-confidence
 signal of intent than a freshly-inferred label.
 
-If `placeholder_mocs` is absent or empty, skip this trigger silently —
+If `placeholder_links` is absent or empty, skip this trigger silently —
 the field is optional in the schema.
 
 ### Step 5 — Match classification category

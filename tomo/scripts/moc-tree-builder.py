@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.4.2
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -11,14 +11,14 @@ three lib modules instead of the legacy in-file tree logic:
     lib/placeholder_detect.detect_placeholders — real-vault-denominator placeholder set
 
 TWO outputs (the legacy cache-builder contract is preserved — SDD line 183):
-    1. stdout JSON  — {"map_notes": [<kind==moc entries>], "placeholder_mocs": [...]}
+    1. stdout JSON  — {"map_notes": [<kind==moc entries>], "placeholder_links": [...]}
        This is the cache-builder feed: `moc-tree-builder.py > moc-output.json`
        then `cache-builder.py --mocs moc-output.json` (vault-explorer Step 9).
        map_notes entries carry classification + linked_notes(int) so
        cache-builder.build_classifications / build_scan_stats keep working (C2).
     2. config/moc-structure-cache.yaml  — the MocStructureCache (SDD Application
        Data Models): a single CacheEntry list with a `kind` discriminator
-       ("moc"|"note"), plus a top-level placeholder_mocs field.
+       ("moc"|"note"), plus a top-level placeholder_links field.
 
 STRICT: stdout carries the JSON feed ONLY. All progress/warnings go to stderr —
 mixing them into stdout corrupts the downstream json.load
@@ -246,11 +246,11 @@ def build_entries(client, scan_result, script_dir: str) -> tuple[list[dict], lis
 
     Returns
     -------
-    (entries, placeholder_mocs):
+    (entries, placeholder_links):
         entries           — list[CacheEntry] (moc + note, kind-discriminated)
-        placeholder_mocs  — list[{target, referenced_by}] from the real-vault-
+        placeholder_links  — list[{target, referenced_by}] from the real-vault-
                             denominator detector (the 224 fix). Surfaced (W1) so
-                            cache-builder's placeholder_mocs lift + Condition C
+                            cache-builder's placeholder_links lift + Condition C
                             keep working, and persisted into both outputs.
     """
     moc_paths = set(scan_result.moc_paths)
@@ -276,7 +276,7 @@ def build_entries(client, scan_result, script_dir: str) -> tuple[list[dict], lis
         path: {"linked_notes_raw": extract_wikilinks(get_body(raw_by_path[path]))}
         for path in moc_paths
     }
-    placeholder_mocs = placeholder_detect.detect_placeholders(
+    placeholder_links = placeholder_detect.detect_placeholders(
         mocs_for_placeholder,
         known_moc_paths=moc_paths,
         in_scope_vault_paths=set(scan_result.in_scope_note_paths),
@@ -317,7 +317,7 @@ def build_entries(client, scan_result, script_dir: str) -> tuple[list[dict], lis
 
         entries.append(entry)
 
-    return entries, placeholder_mocs
+    return entries, placeholder_links
 
 
 def _discovered_via(scan_result, path: str) -> str:
@@ -341,7 +341,7 @@ def _discovered_via(scan_result, path: str) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def assemble_cache(
-    config: dict, entries: list[dict], placeholder_mocs: list[dict]
+    config: dict, entries: list[dict], placeholder_links: list[dict]
 ) -> dict:
     """Build the MocStructureCache dict (SDD Application Data Models shape)."""
     msc_cfg = config.get("tomo", {}).get("moc_structure_cache", {})
@@ -363,15 +363,15 @@ def assemble_cache(
         # Persisted into the cache file too — solution.md integration points
         # (304/307) list moc-structure-cache.yaml as a placeholder destination
         # for the future shared-ctx wiring.
-        "placeholder_mocs": list(placeholder_mocs),
+        "placeholder_links": list(placeholder_links),
     }
 
 
-def build_cache_builder_feed(entries: list[dict], placeholder_mocs: list[dict]) -> dict:
+def build_cache_builder_feed(entries: list[dict], placeholder_links: list[dict]) -> dict:
     """Build the legacy cache-builder JSON feed (stdout).
 
-    cache-builder.build_map_notes reads `map_notes` and build_placeholder_mocs
-    reads `placeholder_mocs`. The kind==moc projection IS map_notes; each entry
+    cache-builder.build_map_notes reads `map_notes` and build_placeholder_links
+    reads `placeholder_links`. The kind==moc projection IS map_notes; each entry
     already carries classification + linked_notes(int) + path/stem/title/topics/
     tags (C2), so cache-builder's build_classifications / build_scan_stats keep
     working unchanged. This preserves the vault-explorer Step 9 contract:
@@ -380,7 +380,7 @@ def build_cache_builder_feed(entries: list[dict], placeholder_mocs: list[dict]) 
     """
     return {
         "map_notes": [e for e in entries if e["kind"] == "moc"],
-        "placeholder_mocs": list(placeholder_mocs),
+        "placeholder_links": list(placeholder_links),
     }
 
 
@@ -423,13 +423,13 @@ def run_with_client(client, config: dict) -> tuple[dict, dict]:
     The testable seam: callers inject a client and a parsed config; this returns
     `(cache, feed)` without touching disk —
         cache — the MocStructureCache dict (written to moc-structure-cache.yaml)
-        feed  — the cache-builder JSON feed (map_notes + placeholder_mocs, stdout)
+        feed  — the cache-builder JSON feed (map_notes + placeholder_links, stdout)
     `run()` wires the real client + config file + output path around it.
     """
     scan_result = moc_scan.scan(client, config)
-    entries, placeholder_mocs = build_entries(client, scan_result, _SCRIPT_DIR)
-    cache = assemble_cache(config, entries, placeholder_mocs)
-    feed = build_cache_builder_feed(entries, placeholder_mocs)
+    entries, placeholder_links = build_entries(client, scan_result, _SCRIPT_DIR)
+    cache = assemble_cache(config, entries, placeholder_links)
+    feed = build_cache_builder_feed(entries, placeholder_links)
     return cache, feed
 
 
@@ -464,7 +464,7 @@ def run(config_path: str, output_path: str) -> dict:
     print(
         f"[moc-tree] Assembled {len(cache['entries'])} entr(y/ies), "
         f"{len(feed['map_notes'])} map_note(s), "
-        f"{len(feed['placeholder_mocs'])} placeholder(s)",
+        f"{len(feed['placeholder_links'])} placeholder(s)",
         file=sys.stderr,
     )
 

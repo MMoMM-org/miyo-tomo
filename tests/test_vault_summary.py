@@ -70,7 +70,7 @@ def _make_moc_output(tmp_path: Path, total_mocs: int = 7, max_depth: int = 3) ->
             }
             for i in range(total_mocs)
         ],
-        "placeholder_mocs": [],
+        "placeholder_links": [],
         "tree_stats": {
             "total_mocs": total_mocs,
             "root_mocs": 2,
@@ -110,7 +110,7 @@ def _make_discovery_cache(tmp_path: Path) -> Path:
         },
         "vault_structure": {},
         "map_notes": [],
-        "placeholder_mocs": [],
+        "placeholder_links": [],
         "classifications": {},
         "tag_patterns": {},
         "frontmatter_usage": {},
@@ -740,7 +740,7 @@ class TestMocTitleCap:
                 + [{"path": "Maps/none.md", "title": None}]      # None → dropped
                 + [{"path": "Maps/missing.md"}]                  # no key → dropped
             ),
-            "placeholder_mocs": [],
+            "placeholder_links": [],
             "tree_stats": {"total_mocs": 15, "root_mocs": 1, "max_depth": 1, "cycles_broken": 0},
         }
         moc_path = _write_json(data, tmp_path, "moc-output.json")

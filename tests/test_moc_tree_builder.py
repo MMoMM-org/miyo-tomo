@@ -223,8 +223,8 @@ def test_writes_moc_structure_cache_yaml_with_versioned_schema(tmp_path):
     assert on_disk["exclude_paths"] == ["X/"]
     assert on_disk["moc_tag"] == "type/others/moc"
     assert isinstance(on_disk["entries"], list)
-    # placeholder_mocs persisted into the cache file too (solution.md 304/307).
-    assert isinstance(on_disk["placeholder_mocs"], list)
+    # placeholder_links persisted into the cache file too (solution.md 304/307).
+    assert isinstance(on_disk["placeholder_links"], list)
 
 
 def test_atomic_tmp_rename_write(tmp_path):
@@ -250,12 +250,12 @@ def test_empty_scope_produces_empty_entries_no_crash():
     client = FakeKadoClient(tagged=[], listings={}, notes={})
     cache, feed = _builder.run_with_client(client, _config(scope_paths=[], exclude_paths=[]))
     assert cache["entries"] == []
-    assert cache["placeholder_mocs"] == []
+    assert cache["placeholder_links"] == []
     assert isinstance(cache["last_scan"], str)
     assert cache["moc_cache_version"] >= 1
     # The JSON feed degrades to empty lists, not a crash — cache-builder reads them.
     assert feed["map_notes"] == []
-    assert feed["placeholder_mocs"] == []
+    assert feed["placeholder_links"] == []
 
 
 def test_discovered_via_tag_for_moc_outside_scope():
@@ -287,7 +287,7 @@ def test_discovered_via_tag_for_moc_outside_scope():
 def test_json_feed_shape_map_notes_and_placeholders():
     """W1/FIX4: run_with_client returns a cache-builder JSON feed with map_notes
     (kind==moc projection, carrying classification + linked_notes(int)) and a
-    placeholder_mocs list equal to detect_placeholders' output.
+    placeholder_links list equal to detect_placeholders' output.
 
     This is the feed that vault-explorer Step 9 pipes into cache-builder
     (`moc-tree-builder.py > moc-output.json`).
@@ -317,12 +317,12 @@ def test_json_feed_shape_map_notes_and_placeholders():
     assert {"path", "stem", "title", "topics", "tags"} <= set(mn)
     assert all(m["kind"] == "moc" for m in feed["map_notes"])
 
-    # placeholder_mocs present, equals the detector output, and is the SAME
+    # placeholder_links present, equals the detector output, and is the SAME
     # list persisted into the YAML cache.
-    assert feed["placeholder_mocs"] == [
+    assert feed["placeholder_links"] == [
         {"target": "Phantom", "referenced_by": moc_path}
     ]
-    assert cache["placeholder_mocs"] == feed["placeholder_mocs"]
+    assert cache["placeholder_links"] == feed["placeholder_links"]
 
 
 def test_json_feed_is_valid_json_via_run(tmp_path, monkeypatch, capsys):
@@ -347,7 +347,7 @@ def test_json_feed_is_valid_json_via_run(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     feed = json.loads(captured.out)  # must parse — stdout is JSON only
     assert {m["path"] for m in feed["map_notes"]} == {moc_path}
-    assert feed["placeholder_mocs"] == [{"target": "Phantom", "referenced_by": moc_path}]
+    assert feed["placeholder_links"] == [{"target": "Phantom", "referenced_by": moc_path}]
     assert out_yaml.exists()
 
 

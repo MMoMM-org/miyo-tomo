@@ -1117,7 +1117,7 @@ def _write_fresh_moc_cache(tmp_path: Path, entries: list[dict]) -> Path:
         "exclude_paths": [],
         "moc_tag": "type/others/moc",
         "entries": entries,
-        "placeholder_mocs": [],
+        "placeholder_links": [],
     }
     p = tmp_path / "moc-structure-cache.yaml"
     p.write_text(yaml.dump(cache, allow_unicode=True), encoding="utf-8")
@@ -1137,7 +1137,7 @@ def _write_stale_moc_cache(tmp_path: Path, entries: list[dict]) -> Path:
         "exclude_paths": [],
         "moc_tag": "type/others/moc",
         "entries": entries,
-        "placeholder_mocs": [],
+        "placeholder_links": [],
     }
     p = tmp_path / "moc-structure-cache.yaml"
     p.write_text(yaml.dump(cache, allow_unicode=True), encoding="utf-8")
@@ -1316,7 +1316,7 @@ def test_cache_backed_flow_stale_cache_inline_rebuild(tmp_path, monkeypatch):
             "exclude_paths": [],
             "moc_tag": "type/others/moc",
             "entries": _ALL_ENTRIES,
-            "placeholder_mocs": [],
+            "placeholder_links": [],
         }
         Path(cache_path_arg).write_text(
             yaml.dump(rebuilt, allow_unicode=True), encoding="utf-8"
@@ -1365,18 +1365,18 @@ def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
 
     Drives shared-ctx-builder.main() with a cache containing:
       - kind==moc entries (complete MOC set → Condition A link targets)
-      - placeholder_mocs entries (Condition C triggers)
+      - placeholder_links entries (Condition C triggers)
       - NO accumulation_index (removed in T3.1)
 
     Mock at the orchestrator boundary: patch the Kado-touching helpers
     (build_tag_prefixes, build_classification_keywords, build_daily_notes)
     to isolate shared-ctx orchestration from live Kado while exercising the
-    full main() path including build_mocs + build_placeholder_mocs.
+    full main() path including build_mocs + build_placeholder_links.
 
     Assertions:
       - shared_ctx["mocs"] contains all kind==moc entries from the cache
       - "accumulation_index" is NOT in the output
-      - shared_ctx["placeholder_mocs"] carries the cache's placeholder_mocs
+      - shared_ctx["placeholder_links"] carries the cache's placeholder_links
         (Condition C preserved)
 
     Maps to spec 021 SDD §shared-ctx-builder removal, F-34 Condition A, C.
@@ -1397,7 +1397,7 @@ def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, _scb_name, scb)
     _spec.loader.exec_module(scb)
 
-    # Build a cache with MOC entries (A) + placeholder_mocs (C)
+    # Build a cache with MOC entries (A) + placeholder_links (C)
     moc_entries = [
         {"path": "Atlas/200 Maps/Dataview (MOC).md", "title": "Dataview (MOC)",
          "kind": "moc", "topics": ["dataview", "obsidian"],
@@ -1408,13 +1408,13 @@ def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
          "up_state": "absent", "up_target": None, "up_source": None,
          "tags": ["type/others/moc"], "classification": None, "linked_notes": 5},
     ]
-    placeholder_mocs = [
+    placeholder_links = [
         {"target": "Search MOC", "referenced_by": "Atlas/200 Maps/Dataview (MOC).md"},
     ]
 
     cache = {
         "map_notes": [e for e in moc_entries],  # shared-ctx reads map_notes directly
-        "placeholder_mocs": placeholder_mocs,
+        "placeholder_links": placeholder_links,
     }
 
     cache_file = tmp_path / "cache.yaml"
@@ -1459,13 +1459,13 @@ def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
         f"got keys: {list(ctx.keys())}"
     )
 
-    # Condition C: placeholder_mocs must be present and un-trimmed
-    assert "placeholder_mocs" in ctx, (
-        "placeholder_mocs must be present in shared_ctx (Condition C trigger)"
+    # Condition C: placeholder_links must be present and un-trimmed
+    assert "placeholder_links" in ctx, (
+        "placeholder_links must be present in shared_ctx (Condition C trigger)"
     )
-    assert ctx["placeholder_mocs"] == placeholder_mocs, (
-        f"placeholder_mocs must pass through unchanged (Condition C).\n"
-        f"Expected: {placeholder_mocs}\nGot: {ctx['placeholder_mocs']}"
+    assert ctx["placeholder_links"] == placeholder_links, (
+        f"placeholder_links must pass through unchanged (Condition C).\n"
+        f"Expected: {placeholder_links}\nGot: {ctx['placeholder_links']}"
     )
 
 

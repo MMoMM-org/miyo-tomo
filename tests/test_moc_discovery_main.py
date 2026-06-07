@@ -105,7 +105,7 @@ def _write_cache(
         "exclude_paths": [],
         "moc_tag": "type/others/moc",
         "entries": entries,
-        "placeholder_mocs": [],
+        "placeholder_links": [],
     }
     p = tmp_path / "moc-structure-cache.yaml"
     p.write_text(yaml.dump(cache, allow_unicode=True), encoding="utf-8")

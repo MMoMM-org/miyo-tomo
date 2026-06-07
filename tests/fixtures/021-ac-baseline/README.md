@@ -13,8 +13,8 @@ in `tests/fixtures/test-015-t4-1/`. It was generated **before** Condition B
 
 - `mocs` — the scored MOC list Condition A (Classification Guard) matches against.
   Derived by `shared-ctx-builder.py::build_mocs()`.
-- `placeholder_mocs` — the placeholder list Condition C (Placeholder MOC trigger)
-  scans. Derived by `shared-ctx-builder.py::build_placeholder_mocs()`.
+- `placeholder_links` — the placeholder list Condition C (Placeholder link trigger)
+  scans. Derived by `shared-ctx-builder.py::build_placeholder_links()`.
 
 These fields are **not affected by removing `accumulation_index`** (Condition B).
 After T3.1/T3.2, regenerating this file must produce byte-identical output.
@@ -30,7 +30,7 @@ After T3.1/T3.2, regenerating this file must produce byte-identical output.
 
 The inbox-analyst is an LLM agent — its per-item `result.json` output (Step 10) is
 NOT deterministic across runs. The golden baseline is therefore on the **deterministic
-INPUT contract** (the `mocs` and `placeholder_mocs` that A/C evaluate against), not
+INPUT contract** (the `mocs` and `placeholder_links` that A/C evaluate against), not
 on LLM-generated prose.
 
 ## How It Was Generated
@@ -60,12 +60,12 @@ tmp = Path(tempfile.mkdtemp())
 # Copy generate.py to a dir, run it, compare output
 # OR: call generate() directly and compare the dict
 
-# Structural assertion: for each fixture entry, mocs and placeholder_mocs
+# Structural assertion: for each fixture entry, mocs and placeholder_links
 # must be byte-identical to the baseline
 for entry in baseline["fixtures"]:
     fixture_name = entry["fixture"]
     assert entry["mocs"] == <regenerated_entry["mocs"]>
-    assert entry["placeholder_mocs"] == <regenerated_entry["placeholder_mocs"]>
+    assert entry["placeholder_links"] == <regenerated_entry["placeholder_links"]>
 ```
 
 Or more simply, byte-compare the entire JSON output:
@@ -80,14 +80,14 @@ sha256sum tests/fixtures/021-ac-baseline/ac-baseline.json
 The `agent_step4_ac_contract` section will differ after T3.2 (Condition B text
 removed from agent), so byte-comparison of the entire file only makes sense
 BEFORE T3.2 edits the agent. T3.2's assertion should compare the `fixtures[].mocs`
-and `fixtures[].placeholder_mocs` arrays only — not the `_meta.condition_b_text`
+and `fixtures[].placeholder_links` arrays only — not the `_meta.condition_b_text`
 or `agent_step4_ac_contract` fields, which will legitimately change.
 
 **Recommended T3.2 assertion:** write a pytest test that:
 1. Calls `generate.py` (or inlines the same logic)
 2. Loads `ac-baseline.json`
 3. For each of the 4 fixture entries, asserts `mocs == baseline_mocs` AND
-   `placeholder_mocs == baseline_placeholder_mocs` (dict equality, no string-compare)
+   `placeholder_links == baseline_placeholder_links` (dict equality, no string-compare)
 
 ## Reproducibility Confirmation
 

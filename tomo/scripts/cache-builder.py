@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """
 cache-builder.py — Assemble scan results into discovery-cache.yaml.
 
@@ -69,11 +69,11 @@ def build_map_notes(mocs_data: dict | None) -> list:
     return mocs_data.get("map_notes", [])
 
 
-def build_placeholder_mocs(mocs_data: dict | None) -> list:
-    """Extract placeholder_mocs array from moc-tree-builder.py output."""
+def build_placeholder_links(mocs_data: dict | None) -> list:
+    """Extract placeholder_links array from moc-tree-builder.py output."""
     if not mocs_data:
         return []
-    return mocs_data.get("placeholder_mocs", [])
+    return mocs_data.get("placeholder_links", [])
 
 
 def build_classifications(map_notes: list) -> dict:
@@ -312,7 +312,7 @@ def assemble_cache(
 ) -> dict:
     """Assemble all inputs into the final cache dict."""
     map_notes = build_map_notes(mocs_data)
-    placeholder_mocs = build_placeholder_mocs(mocs_data)
+    placeholder_links = build_placeholder_links(mocs_data)
     classifications = build_classifications(map_notes)
     scan_stats = build_scan_stats(structure_data, map_notes, classifications, tags_data)
     vault_structure = build_vault_structure(structure_data)
@@ -334,7 +334,7 @@ def assemble_cache(
     cache["scan_stats"] = scan_stats
     cache["vault_structure"] = vault_structure
     cache["map_notes"] = map_notes
-    cache["placeholder_mocs"] = placeholder_mocs
+    cache["placeholder_links"] = placeholder_links
     cache["classifications"] = classifications
     cache["tag_patterns"] = tag_patterns
     cache["frontmatter_usage"] = frontmatter_usage
@@ -399,7 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mocs",
         metavar="FILE",
-        help="moc-tree-builder.py JSON output (map_notes, placeholder_mocs, tree_stats)",
+        help="moc-tree-builder.py JSON output (map_notes, placeholder_links, tree_stats)",
     )
     parser.add_argument(
         "--frontmatter",

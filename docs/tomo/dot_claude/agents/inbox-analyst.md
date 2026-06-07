@@ -48,13 +48,14 @@ runs and sets `proposed_moc_topic`; nothing afterwards can overwrite it.
 
 WHY: T3.2 only removes Condition B and its associated STRICT block. Condition A
 (Classification Guard — prevents pre-checking `is_classification: true` MOCs)
-and Condition C (Placeholder MOC trigger — verbatim casing on `proposed_moc_topic`,
+and Condition C (Placeholder link trigger — verbatim casing on `proposed_moc_topic`,
 F4#2; placeholder-wins-over-inferred precedence, F4#4; silent skip when
-`placeholder_mocs` absent/empty) are unchanged. Test
+`placeholder_links` absent/empty) are unchanged. Test
 `tests/test_inbox_analyst_no_condition_b.py` asserts both are intact.
 
-## Version 0.14.0
+## Version 0.15.0
 
-WHY: Bumped from 0.13.0 for T3.2 (Condition B removal). `update-tomo.sh`
-skips unchanged versions silently — the bump is required for the edit to
-ship to the Docker instance.
+WHY: Bumped from 0.14.0 for terminology rename: `placeholder_mocs` →
+`placeholder_links` / "Placeholder MOC trigger" → "Placeholder link trigger"
+(behavior-identical rename). `update-tomo.sh` skips unchanged versions
+silently — the bump is required for the edit to ship to the Docker instance.

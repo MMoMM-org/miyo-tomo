@@ -170,7 +170,7 @@ def _seed_discovery_cache(tmp_path: Path) -> Path:
         "exclude_paths": [],
         "moc_tag": "type/others/moc",
         "entries": entries,
-        "placeholder_mocs": [],
+        "placeholder_links": [],
     }
 
     cache_path = tmp_path / "moc-structure-cache.yaml"

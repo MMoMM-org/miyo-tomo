@@ -2,7 +2,7 @@
 
 > Rationale for decisions in `tomo/scripts/lib/placeholder_detect.py`.
 > The module finds dead wikilinks in MOC bodies — links that don't resolve to
-> any known note — and returns them as the `placeholder_mocs` list.
+> any known note — and returns them as the `placeholder_links` list.
 
 ## Real-Vault Denominator Fixes 224 False-Positive Placeholders
 

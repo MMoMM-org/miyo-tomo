@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.3.0
+# version: 1.3.1
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -227,21 +227,21 @@ def build_mocs(cache: dict) -> list[dict]:
     return out
 
 
-def build_placeholder_mocs(cache: dict) -> list[dict]:
-    """Pass through cache.placeholder_mocs[] unchanged.
+def build_placeholder_links(cache: dict) -> list[dict]:
+    """Pass through cache.placeholder_links[] unchanged.
 
     Source: `moc-tree-builder.py::detect_placeholders` writes entries shaped
-    `{"target": str, "referenced_by": str}` and `cache-builder.py:337` lifts
-    them onto the cache as `cache.placeholder_mocs`. Phase-B subagents
+    `{"target": str, "referenced_by": str}` and `cache-builder.py` lifts
+    them onto the cache as `cache.placeholder_links`. Phase-B subagents
     (`inbox-analyst`) use this list as a Condition C trigger: when an item's
     topics match a placeholder `target`, propose creating a thematic MOC to
     resolve the dead link (Tier-3 New MOC Proposal §2.C).
 
     Drift guard: drop entries that don't have both fields. Older caches
     written before F-35 may lack the field — return [] silently. The schema
-    treats `placeholder_mocs` as optional, so absence is fine downstream.
+    treats `placeholder_links` as optional, so absence is fine downstream.
     """
-    raw = cache.get("placeholder_mocs") or []
+    raw = cache.get("placeholder_links") or []
     if not isinstance(raw, list):
         return []
     out: list[dict] = []
@@ -548,7 +548,7 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
     4. Drop auto-seeded keywords from each tracker (keeps name/type/section/syntax/description).
     5. Shorten mocs[].topics (existing behaviour).
 
-    Never drops description itself. Never trims placeholder_mocs.
+    Never drops description itself. Never trims placeholder_links.
     Returns (ctx, moc_topics_dropped).
     """
     data = serialize(ctx)
@@ -679,7 +679,7 @@ def main() -> int:
     tag_prefixes = build_tag_prefixes(cache, vault_cfg)
     classification_keywords = build_classification_keywords(profile)
     daily_notes = build_daily_notes(vault_cfg)
-    placeholder_mocs = build_placeholder_mocs(cache)
+    placeholder_links = build_placeholder_links(cache)
 
     ctx: dict = {
         "schema_version": "1",
@@ -688,8 +688,8 @@ def main() -> int:
         "tag_prefixes": tag_prefixes,
         "classification_keywords": classification_keywords,
     }
-    if placeholder_mocs:
-        ctx["placeholder_mocs"] = placeholder_mocs
+    if placeholder_links:
+        ctx["placeholder_links"] = placeholder_links
     if daily_notes is not None:
         ctx["daily_notes"] = daily_notes
 
@@ -707,7 +707,7 @@ def main() -> int:
         f"topics_dropped={dropped} "
         f"tag_prefixes_included={len(ctx['tag_prefixes'])} "
         f"classification_categories={len(ctx['classification_keywords'])} "
-        f"placeholder_mocs={len(placeholder_mocs)} "
+        f"placeholder_links={len(placeholder_links)} "
         f"daily_notes_enabled={bool(daily_notes)} "
         f"bytes={len(data)} "
         f"run_id={run_id}",

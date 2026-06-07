@@ -4,7 +4,7 @@
 
 Verifies that Condition B (Accumulation cluster trigger) has been removed from
 inbox-analyst.md Step 4, while Condition A (Classification Guard) and Condition C
-(Placeholder MOC trigger) remain intact with their required instructions.
+(Placeholder link trigger) remain intact with their required instructions.
 
 These tests are RED against the current agent (which still has Condition B),
 and GREEN after the T3.2 edit.
@@ -109,22 +109,22 @@ def test_condition_a_needs_new_moc_instruction_present():
 
 
 # ---------------------------------------------------------------------------
-# Condition C (Placeholder MOC trigger) regression — must remain intact
+# Condition C (Placeholder link trigger) regression — must remain intact
 # ---------------------------------------------------------------------------
 
 def test_condition_c_placeholder_trigger_present():
-    """Condition C (Placeholder MOC trigger) must remain intact after B removal."""
+    """Condition C (Placeholder link trigger) must remain intact after B removal."""
     step4 = _step4_text()
-    assert "Placeholder MOC trigger" in step4, (
-        "Step 4 is missing 'Placeholder MOC trigger' — Condition C must NOT be removed (T3.2 regression)"
+    assert "Placeholder link trigger" in step4, (
+        "Step 4 is missing 'Placeholder link trigger' — Condition C must NOT be removed (T3.2 regression)"
     )
 
 
-def test_condition_c_placeholder_mocs_reference_present():
-    """Condition C must still reference placeholder_mocs."""
+def test_condition_c_placeholder_links_reference_present():
+    """Condition C must still reference placeholder_links."""
     step4 = _step4_text()
-    assert "placeholder_mocs" in step4, (
-        "Step 4 missing 'placeholder_mocs' reference — Condition C text must remain"
+    assert "placeholder_links" in step4, (
+        "Step 4 missing 'placeholder_links' reference — Condition C text must remain"
     )
 
 
@@ -150,10 +150,10 @@ def test_condition_c_placeholder_wins_precedence_present():
 
 
 def test_condition_c_silent_skip_when_absent_present():
-    """Condition C must still instruct skipping silently when placeholder_mocs is absent/empty."""
+    """Condition C must still instruct skipping silently when placeholder_links is absent/empty."""
     step4 = _step4_text()
     assert "absent or empty" in step4, (
-        "Step 4 missing 'absent or empty' guard for placeholder_mocs — Condition C silent-skip must remain"
+        "Step 4 missing 'absent or empty' guard for placeholder_links — Condition C silent-skip must remain"
     )
 
 
@@ -184,12 +184,12 @@ def test_agent_version_no_parenthetical():
 
 
 # ---------------------------------------------------------------------------
-# Golden-baseline guard: build_mocs + build_placeholder_mocs byte-equal to T3.0
+# Golden-baseline guard: build_mocs + build_placeholder_links byte-equal to T3.0
 # ---------------------------------------------------------------------------
 
-def test_golden_baseline_mocs_and_placeholder_mocs_unchanged():
-    """build_mocs + build_placeholder_mocs must produce byte-identical output for
-    the 4 T3.0 baseline fixtures after Condition B removal (mocs/placeholder_mocs
+def test_golden_baseline_mocs_and_placeholder_links_unchanged():
+    """build_mocs + build_placeholder_links must produce byte-identical output for
+    the 4 T3.0 baseline fixtures after Condition B removal (mocs/placeholder_links
     arrays only — agent text sections will legitimately change)."""
     if not BASELINE_PATH.exists():
         import pytest
@@ -229,11 +229,11 @@ def test_golden_baseline_mocs_and_placeholder_mocs_unchanged():
                 for m in ctx.get("mocs", [])
             ],
         }
-        if "placeholder_mocs" in ctx:
-            cache["placeholder_mocs"] = ctx["placeholder_mocs"]
+        if "placeholder_links" in ctx:
+            cache["placeholder_links"] = ctx["placeholder_links"]
 
         built_mocs = scb.build_mocs(cache)
-        built_placeholders = scb.build_placeholder_mocs(cache)
+        built_placeholders = scb.build_placeholder_links(cache)
 
         expected = baseline_by_fixture[fname]
         assert built_mocs == expected["mocs"], (
@@ -241,8 +241,8 @@ def test_golden_baseline_mocs_and_placeholder_mocs_unchanged():
             f"  expected: {expected['mocs']}\n"
             f"  got:      {built_mocs}"
         )
-        assert built_placeholders == expected["placeholder_mocs"], (
-            f"Fixture {fname}: build_placeholder_mocs() output changed after T3.2\n"
-            f"  expected: {expected['placeholder_mocs']}\n"
+        assert built_placeholders == expected["placeholder_links"], (
+            f"Fixture {fname}: build_placeholder_links() output changed after T3.2\n"
+            f"  expected: {expected['placeholder_links']}\n"
             f"  got:      {built_placeholders}"
         )

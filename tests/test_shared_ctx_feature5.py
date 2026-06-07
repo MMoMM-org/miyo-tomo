@@ -126,7 +126,7 @@ def test_f5_1b_notes_area_moc_offered_as_candidate(tmp_path):
                 "kind": "moc",
             }
         ],
-        "placeholder_mocs": [],
+        "placeholder_links": [],
     }
 
     cache_file = tmp_path / "cache.yaml"
@@ -361,7 +361,7 @@ def test_f5_4_matching_item_gets_link_not_new_moc(tmp_path):
                 "kind": "moc",
             },
         ],
-        "placeholder_mocs": [],
+        "placeholder_links": [],
     }
 
     cache_file = tmp_path / "cache.yaml"

@@ -53,7 +53,7 @@ def _extract_step4_blocks(agent_text: str) -> tuple[str, str]:
     step4 = agent_text[step4_start:step5_start].strip()
 
     a_start = step4.find("**Classification Guard:**")
-    c_start = step4.find("**Placeholder MOC trigger.**")
+    c_start = step4.find("**Placeholder link trigger.**")
 
     if -1 in (a_start, c_start):
         raise RuntimeError(
@@ -85,7 +85,7 @@ def generate() -> int:
         data = json.loads(path.read_text(encoding="utf-8"))
         ctx = data["shared_ctx"]
 
-        # Rebuild cache from fixture's mocs + placeholder_mocs
+        # Rebuild cache from fixture's mocs + placeholder_links
         cache: dict = {
             "map_notes": [
                 {
@@ -96,17 +96,17 @@ def generate() -> int:
                 for m in ctx.get("mocs", [])
             ],
         }
-        if "placeholder_mocs" in ctx:
-            cache["placeholder_mocs"] = ctx["placeholder_mocs"]
+        if "placeholder_links" in ctx:
+            cache["placeholder_links"] = ctx["placeholder_links"]
 
         built_mocs = scb.build_mocs(cache)
-        built_placeholders = scb.build_placeholder_mocs(cache)
+        built_placeholders = scb.build_placeholder_links(cache)
 
         baseline_entries.append({
             "fixture": fname,
             "source": f"tests/fixtures/test-015-t4-1/{fname}",
             "mocs": built_mocs,
-            "placeholder_mocs": built_placeholders,
+            "placeholder_links": built_placeholders,
             "item": data["item"],
         })
 
@@ -119,15 +119,15 @@ def generate() -> int:
                 "Condition B (accumulation) removal in T3.2"
             ),
             "deterministic_artifact": (
-                "mocs + placeholder_mocs arrays from each test-015-t4-1 fixture, "
-                "as produced by build_mocs() + build_placeholder_mocs()"
+                "mocs + placeholder_links arrays from each test-015-t4-1 fixture, "
+                "as produced by build_mocs() + build_placeholder_links()"
             ),
             "agent_version_at_capture": agent_version,
             "regeneration_command": "./venv/bin/python tests/fixtures/021-ac-baseline/generate.py",
             "fixture_set": "tests/fixtures/test-015-t4-1/",
             "conditions_captured": [
                 "A (Classification Guard)",
-                "C (Placeholder MOC trigger)",
+                "C (Placeholder link trigger)",
             ],
             # condition_b_text removed in T3.2 — Condition B retired per spec 021 ADR-10
         },

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # version: 0.1.0
-"""test-shared-ctx-placeholders.py — Smoke tests for shared-ctx-builder.build_placeholder_mocs.
+"""test-shared-ctx-placeholders.py — Smoke tests for shared-ctx-builder.build_placeholder_links.
 
-Covers the F-35 pass-through of `cache.placeholder_mocs[]` (Mental Squeeze
+Covers the F-35 pass-through of `cache.placeholder_links[]` (Mental Squeeze
 Point §2.C trigger source).
 
 Happy path:
   - Well-formed entries pass through unchanged
   - Field whitespace is stripped
-Drift guards (silent skip — schema treats placeholder_mocs as optional):
+Drift guards (silent skip — schema treats placeholder_links as optional):
   - Missing field → returns []
   - Non-list value → returns []
   - Entries without both target+referenced_by → dropped
@@ -44,12 +44,12 @@ def _must(cond: bool, msg: str) -> None:
 
 def test_happy_path() -> None:
     cache = {
-        "placeholder_mocs": [
+        "placeholder_links": [
             {"target": "Boardgames", "referenced_by": "Atlas/200 MOCs/Hobbies MOC.md"},
             {"target": "Functional Programming", "referenced_by": "Atlas/200 MOCs/Software MOC.md"},
         ]
     }
-    out = scb.build_placeholder_mocs(cache)
+    out = scb.build_placeholder_links(cache)
     _must(len(out) == 2, f"expected 2 entries, got {len(out)}")
     _must(out[0]["target"] == "Boardgames", f"target preserved: {out[0]}")
     _must(out[1]["referenced_by"] == "Atlas/200 MOCs/Software MOC.md", f"ref preserved: {out[1]}")
@@ -57,27 +57,27 @@ def test_happy_path() -> None:
 
 def test_strips_whitespace() -> None:
     cache = {
-        "placeholder_mocs": [
+        "placeholder_links": [
             {"target": "  Boardgames  ", "referenced_by": "  Atlas/x.md  "},
         ]
     }
-    out = scb.build_placeholder_mocs(cache)
+    out = scb.build_placeholder_links(cache)
     _must(out == [{"target": "Boardgames", "referenced_by": "Atlas/x.md"}], f"strip failed: {out}")
 
 
 def test_missing_field_returns_empty() -> None:
-    out = scb.build_placeholder_mocs({})
+    out = scb.build_placeholder_links({})
     _must(out == [], f"missing field should yield []: {out}")
 
 
 def test_non_list_returns_empty() -> None:
-    out = scb.build_placeholder_mocs({"placeholder_mocs": "oops"})
+    out = scb.build_placeholder_links({"placeholder_links": "oops"})
     _must(out == [], f"non-list should yield []: {out}")
 
 
 def test_drops_malformed_entries() -> None:
     cache = {
-        "placeholder_mocs": [
+        "placeholder_links": [
             {"target": "Valid", "referenced_by": "x.md"},
             {"target": "", "referenced_by": "x.md"},          # empty target
             {"target": "Y", "referenced_by": ""},             # empty ref
@@ -87,13 +87,13 @@ def test_drops_malformed_entries() -> None:
             None,                                              # null
         ]
     }
-    out = scb.build_placeholder_mocs(cache)
+    out = scb.build_placeholder_links(cache)
     _must(len(out) == 1, f"expected 1 valid entry, got {len(out)}: {out}")
     _must(out[0]["target"] == "Valid", f"first should be Valid: {out[0]}")
 
 
 def test_null_value() -> None:
-    out = scb.build_placeholder_mocs({"placeholder_mocs": None})
+    out = scb.build_placeholder_links({"placeholder_links": None})
     _must(out == [], f"null should yield []: {out}")
 
 
@@ -104,7 +104,7 @@ def main() -> int:
     test_non_list_returns_empty()
     test_drops_malformed_entries()
     test_null_value()
-    print("PASS: build_placeholder_mocs (6 tests)")
+    print("PASS: build_placeholder_links (6 tests)")
     return 0
 
 

@@ -7,12 +7,12 @@ Verifies that accumulation (Condition B) has been removed from shared-ctx-builde
   - shared-ctx output has NO accumulation_index key
   - enforce_budget no longer trims accumulation (Pass-6 gone)
   - --max-bytes default is 40960
-  - placeholder_mocs is NEVER trimmed even under a tiny budget
+  - placeholder_links is NEVER trimmed even under a tiny budget
   - a corrected-placeholder envelope fits within 40960
   - schema no longer declares accumulation_index AND still validates a
     no-accumulation ctx (H3)
-  - golden-baseline guard: build_mocs + build_placeholder_mocs output is
-    byte-equal to the T3.0 baseline for all 4 fixtures (mocs + placeholder_mocs
+  - golden-baseline guard: build_mocs + build_placeholder_links output is
+    byte-equal to the T3.0 baseline for all 4 fixtures (mocs + placeholder_links
     arrays only)
 
 RED before GREEN discipline (CON-1/TDD).
@@ -49,7 +49,7 @@ enforce_budget = scb.enforce_budget
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _minimal_ctx(*, include_placeholder_mocs: list | None = None) -> dict:
+def _minimal_ctx(*, include_placeholder_links: list | None = None) -> dict:
     """Return the minimum valid ctx dict for enforce_budget tests."""
     ctx = {
         "schema_version": "1",
@@ -61,8 +61,8 @@ def _minimal_ctx(*, include_placeholder_mocs: list | None = None) -> dict:
         "tag_prefixes": [],
         "classification_keywords": {},
     }
-    if include_placeholder_mocs is not None:
-        ctx["placeholder_mocs"] = include_placeholder_mocs
+    if include_placeholder_links is not None:
+        ctx["placeholder_links"] = include_placeholder_links
     return ctx
 
 
@@ -121,7 +121,7 @@ def test_output_has_no_accumulation_index(tmp_path):
     """shared-ctx output must never contain accumulation_index regardless of cache content."""
     cache = {
         "map_notes": [],
-        "placeholder_mocs": [],
+        "placeholder_links": [],
         # Even if the producer still emits this, the consumer must ignore it:
         "unclassified_topic_clusters": {
             "search": ["alpha-beta-pruning", "minimax"],
@@ -168,23 +168,23 @@ def test_max_bytes_default_is_40960():
 
 
 # ---------------------------------------------------------------------------
-# T3.1-4: placeholder_mocs never trimmed even under tiny budget
+# T3.1-4: placeholder_links never trimmed even under tiny budget
 # ---------------------------------------------------------------------------
 
-def test_placeholder_mocs_never_trimmed():
-    """placeholder_mocs must survive enforce_budget even when ctx exceeds a tiny budget."""
+def test_placeholder_links_never_trimmed():
+    """placeholder_links must survive enforce_budget even when ctx exceeds a tiny budget."""
     placeholders = [
         {"target": "Search MOC", "referenced_by": "Atlas/Foo MOC.md"},
         {"target": "Games MOC", "referenced_by": "Atlas/Bar MOC.md"},
     ]
-    ctx = _minimal_ctx(include_placeholder_mocs=placeholders)
+    ctx = _minimal_ctx(include_placeholder_links=placeholders)
     # Give a budget of 1 byte — far too small; placeholder must still survive
     trimmed, _dropped = enforce_budget(ctx, max_bytes=1)
-    assert "placeholder_mocs" in trimmed, (
-        "placeholder_mocs must survive enforce_budget regardless of budget pressure"
+    assert "placeholder_links" in trimmed, (
+        "placeholder_links must survive enforce_budget regardless of budget pressure"
     )
-    assert trimmed["placeholder_mocs"] == placeholders, (
-        f"placeholder_mocs must be unmodified, got: {trimmed['placeholder_mocs']!r}"
+    assert trimmed["placeholder_links"] == placeholders, (
+        f"placeholder_links must be unmodified, got: {trimmed['placeholder_links']!r}"
     )
 
 
@@ -194,7 +194,7 @@ def test_placeholder_mocs_never_trimmed():
 
 def test_placeholder_envelope_fits_in_default_budget(tmp_path):
     """A typical corrected-placeholder shared-ctx fits within the 40960-byte budget."""
-    # Build a ctx with several placeholder_mocs and a handful of real MOCs
+    # Build a ctx with several placeholder_links and a handful of real MOCs
     placeholders = [
         {"target": "Search MOC", "referenced_by": "Atlas/Software MOC.md"},
         {"target": "Games MOC", "referenced_by": "Atlas/Entertainment MOC.md"},
@@ -211,7 +211,7 @@ def test_placeholder_envelope_fits_in_default_budget(tmp_path):
         "mocs": mocs,
         "tag_prefixes": [],
         "classification_keywords": {},
-        "placeholder_mocs": placeholders,
+        "placeholder_links": placeholders,
     }
     trimmed, _dropped = enforce_budget(ctx, max_bytes=40960)
     data = scb.serialize(trimmed)
@@ -283,12 +283,12 @@ def test_schema_rejects_accumulation_index_field():
 
 
 # ---------------------------------------------------------------------------
-# T3.1-9: golden-baseline guard — mocs + placeholder_mocs byte-equal to T3.0
+# T3.1-9: golden-baseline guard — mocs + placeholder_links byte-equal to T3.0
 # ---------------------------------------------------------------------------
 
-def test_golden_baseline_mocs_and_placeholder_mocs_unchanged():
-    """build_mocs + build_placeholder_mocs must produce byte-identical output for
-    the 4 T3.0 baseline fixtures after accumulation removal (mocs/placeholder_mocs
+def test_golden_baseline_mocs_and_placeholder_links_unchanged():
+    """build_mocs + build_placeholder_links must produce byte-identical output for
+    the 4 T3.0 baseline fixtures after accumulation removal (mocs/placeholder_links
     arrays only — agent_step4_ac_contract is allowed to change in T3.2)."""
     if not BASELINE_PATH.exists():
         import pytest
@@ -320,11 +320,11 @@ def test_golden_baseline_mocs_and_placeholder_mocs_unchanged():
                 for m in ctx.get("mocs", [])
             ],
         }
-        if "placeholder_mocs" in ctx:
-            cache["placeholder_mocs"] = ctx["placeholder_mocs"]
+        if "placeholder_links" in ctx:
+            cache["placeholder_links"] = ctx["placeholder_links"]
 
         built_mocs = scb.build_mocs(cache)
-        built_placeholders = scb.build_placeholder_mocs(cache)
+        built_placeholders = scb.build_placeholder_links(cache)
 
         expected = baseline_by_fixture[fname]
         assert built_mocs == expected["mocs"], (
@@ -332,8 +332,8 @@ def test_golden_baseline_mocs_and_placeholder_mocs_unchanged():
             f"  expected: {expected['mocs']}\n"
             f"  got:      {built_mocs}"
         )
-        assert built_placeholders == expected["placeholder_mocs"], (
-            f"Fixture {fname}: build_placeholder_mocs() output changed after T3.1\n"
-            f"  expected: {expected['placeholder_mocs']}\n"
+        assert built_placeholders == expected["placeholder_links"], (
+            f"Fixture {fname}: build_placeholder_links() output changed after T3.1\n"
+            f"  expected: {expected['placeholder_links']}\n"
             f"  got:      {built_placeholders}"
         )

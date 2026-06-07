@@ -572,7 +572,7 @@ No change to deployment. Scripts ship in the Tomo source repo, synced into the r
 |------|------------|---------|
 | MOC | Map of Content — an index note linking related notes | Tagged `#type/others/moc`; may live in the MOC folder or the notes area |
 | Orphan | A note or MOC with no `up`/`up::` parent link | Drives case-(a) link-or-create |
-| Placeholder MOC | A dead `[[wikilink]]` to a MOC name that doesn't exist | Feeds inbox Condition C |
+| Placeholder link | A dead `[[wikilink]]` found in a MOC body whose target note does not exist | Feeds inbox Condition C |
 | Condition A/B/C | Inbox MOC triggers: A=per-item classification guard, B=vault accumulation (retired), C=placeholder match (kept) | `inbox-analyst.md` Step 4 |
 
 ### Technical Terms

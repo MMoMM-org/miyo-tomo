@@ -32,13 +32,13 @@ stderr — stdout carries the JSON feed only. This is the
 progress lines into stdout would corrupt the `json.load` in the
 vault-explorer Step 9 pipeline.
 
-## `placeholder_mocs` Persisted in BOTH Outputs (W1)
+## `placeholder_links` Persisted in BOTH Outputs (W1)
 
 WHY: The placeholder list from `placeholder_detect.detect_placeholders` is
 returned from `build_entries` as a first-class value and placed in both the
-`moc-structure-cache.yaml` (top-level `placeholder_mocs` field) and the
-stdout JSON feed (as `feed["placeholder_mocs"]`). cache-builder.py's
-`build_placeholder_mocs` lift reads it from the feed; the moc-structure-cache's
+`moc-structure-cache.yaml` (top-level `placeholder_links` field) and the
+stdout JSON feed (as `feed["placeholder_links"]`). cache-builder.py's
+`build_placeholder_links` lift reads it from the feed; the moc-structure-cache's
 copy feeds Condition C in the inbox-analyst (via shared-ctx). Both consumers
 see the same list from the same run, eliminating the divergence that occurred
 when the two files had different data.

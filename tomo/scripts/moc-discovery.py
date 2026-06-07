@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.16.0
+# version: 0.16.1
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -1343,6 +1343,10 @@ def _dedupe_overlapping_clusters(
     the higher id is dropped — giving a deterministic outcome independent of
     input order.
 
+    A dropped cluster is never re-evaluated as a 'larger' reference because only
+    clusters in `live` are iterated as refs — a dropped cluster is never appended
+    to `live`.
+
     Returns (kept, drops) where drops entries share the duplicates_skipped
     shape: {cluster_id, reason, existing_moc}.
     """
@@ -1354,24 +1358,22 @@ def _dedupe_overlapping_clusters(
         key=lambda c: (-len(c.get("candidate_stems") or []), c.get("cluster_id", "")),
     )
 
-    live: list[dict] = []      # clusters that survived so far (largest-first)
+    # Each entry: (cluster_dict, frozenset_of_members) — member sets built once.
+    live: list[tuple[dict, frozenset[str]]] = []
     drops: list[dict] = []
-    dropped_ids: set[str] = set()
 
     for candidate in sorted_clusters:
         cid = candidate.get("cluster_id", "")
-        if cid in dropped_ids:
-            # Already dropped by an earlier (larger) cluster — skip entirely.
-            continue
-
-        cand_members = set(candidate.get("candidate_stems") or [])
+        cand_members = frozenset(candidate.get("candidate_stems") or [])
         cand_size = len(cand_members)
 
+        if cand_size == 0:
+            # Empty cluster cannot be absorbed — treat as surviving.
+            live.append((candidate, cand_members))
+            continue
+
         absorbed = False
-        for ref in live:
-            ref_members = set(ref.get("candidate_stems") or [])
-            if cand_size == 0:
-                break
+        for ref, ref_members in live:
             overlap = len(cand_members & ref_members) / cand_size
             if overlap >= _MEMBER_OVERLAP_THRESHOLD:
                 drops.append({
@@ -1379,7 +1381,6 @@ def _dedupe_overlapping_clusters(
                     "reason": "member-overlap",
                     "existing_moc": ref.get("cluster_id", ""),
                 })
-                dropped_ids.add(cid)
                 _log(
                     f"d3: cluster {cid!r} member-overlap={overlap:.2f} "
                     f"vs {ref.get('cluster_id')!r} — dropping"
@@ -1388,10 +1389,10 @@ def _dedupe_overlapping_clusters(
                 break
 
         if not absorbed:
-            live.append(candidate)
+            live.append((candidate, cand_members))
 
     # Restore original input order for the kept set to keep downstream stable.
-    kept_ids = {c.get("cluster_id", "") for c in live}
+    kept_ids = {c.get("cluster_id", "") for c, _ in live}
     kept = [c for c in clusters if c.get("cluster_id", "") in kept_ids]
     return kept, drops
 

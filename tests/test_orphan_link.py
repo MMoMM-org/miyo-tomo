@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_orphan_link.py — Behavioural tests for lib.orphan_link (spec 021 T2.3, T6.2).
 
 The case-(a) orphan pass runs AFTER moc_cache_loader provides cache.entries. It
@@ -25,6 +25,7 @@ SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.orphan_link import LINK_THRESHOLD, emit_orphan_suggestions  # noqa: E402
+from lib.moc_tags import EXCLUDE_MOC_TAG  # noqa: E402
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -309,4 +310,89 @@ def test_link_existing_sorted_by_top_candidate_score_desc():
     link = [s["stem"] for s in out if s["mode"] == "link_existing"]
     assert link[:2] == ["HighScore", "LowScore"], (
         f"link_existing must be ordered by top-candidate score DESC; got {link}"
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# exclude/moc tag (ADR-13 B-moc / PRD F8 AC4, AC5) — T7.2
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _moc_with_tags(stem: str, topics: list[str], tags: list[str], *, up_state: str = "valid") -> dict:
+    """Build a MOC entry carrying explicit tags (mirrors T7.1 cache shape)."""
+    return {
+        "path": f"Atlas/200 Maps/{stem}.md",
+        "stem": stem,
+        "kind": "moc",
+        "title": stem,
+        "topics": topics,
+        "up_state": up_state,
+        "up_target": None,
+        "up_source": None,
+        "tags": tags,
+    }
+
+
+def test_excluded_moc_not_emitted_by_orphan_audit():
+    """AC4/AC5: a MOC tagged exclude/moc is NOT emitted by emit_orphan_suggestions(kinds=("moc",)).
+
+    The MOC is orphaned (up_state==absent) but carries the exclude tag — it must be
+    silently skipped in the audit output.
+    """
+    entries = [
+        _moc_with_tags("RootIndex", ["index", "overview"], [EXCLUDE_MOC_TAG], up_state="absent"),
+        _moc("Parent", ["pkm", "notes"]),
+    ]
+    out = emit_orphan_suggestions(entries, kinds=("moc",))
+    stems = {s["stem"] for s in out}
+    assert "RootIndex" not in stems, (
+        f"MOC tagged {EXCLUDE_MOC_TAG!r} must NOT appear in orphan audit; got {stems}"
+    )
+
+
+def test_excluded_moc_remains_in_link_candidate_pool():
+    """AC4: excluded MOC stays in the link-candidate pool (pool-retention invariant).
+
+    An orphan note is scored against all MOC entries including the excluded one.
+    The excluded MOC must appear as a candidate in the orphan note's suggestion —
+    proving it was NOT removed from the scoring pool, only from the audit output.
+    """
+    excluded_moc = _moc_with_tags(
+        "RootIndex", ["pkm", "notes", "overview"], [EXCLUDE_MOC_TAG], up_state="absent"
+    )
+    orphan_note = _entry("MyNote", up_state="absent", topics=["pkm", "notes", "overview"])
+    entries = [excluded_moc, orphan_note]
+
+    out = emit_orphan_suggestions(entries, kinds=("note",))
+    note_suggestion = next((s for s in out if s["stem"] == "MyNote"), None)
+    assert note_suggestion is not None, "orphan note must get a suggestion"
+    candidate_targets = [c["target_moc"] for c in note_suggestion.get("candidates", [])]
+    assert "RootIndex" in candidate_targets, (
+        f"excluded MOC {EXCLUDE_MOC_TAG!r} must remain in the link-candidate pool; "
+        f"got candidates: {candidate_targets}"
+    )
+
+
+def test_root_moc_tagged_exclude_moc_not_flagged_as_orphan():
+    """AC5: root MOC (0-index, carrying exclude/moc) is not flagged — tag-driven, no path heuristic."""
+    entries = [
+        _moc_with_tags("000 Index", ["home", "index"], [EXCLUDE_MOC_TAG], up_state="absent"),
+        _moc("Parent", ["home"]),
+    ]
+    out = emit_orphan_suggestions(entries, kinds=("moc",))
+    stems = {s["stem"] for s in out}
+    assert "000 Index" not in stems, (
+        "root MOC carrying exclude/moc must not appear in orphan audit"
+    )
+
+
+def test_non_excluded_moc_still_emitted():
+    """Regression: MOC orphans WITHOUT the exclude tag are still emitted normally."""
+    entries = [
+        _moc_with_tags("NormalOrphan", ["pkm", "notes"], [], up_state="absent"),
+        _moc("Parent", ["pkm", "notes", "linking"]),
+    ]
+    out = emit_orphan_suggestions(entries, kinds=("moc",))
+    stems = {s["stem"] for s in out}
+    assert "NormalOrphan" in stems, (
+        "MOC orphan without exclude tag must still appear in audit output"
     )

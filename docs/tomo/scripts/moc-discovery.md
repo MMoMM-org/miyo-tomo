@@ -103,3 +103,31 @@ the two). No Kado is built in this branch: the pass reads cache entries only, so
 a fresh cache needs no rebuild. Keeping tag-discovery broad (root/Dewey MOCs stay
 in the cache as link targets) is what makes this audit useful — it can offer an
 existing parent MOC for an orphan MOC.
+
+## `exclude/note` Tag: Filter at Scan Candidate Source (ADR-13 B-note, T7.2)
+
+WHY: A note tagged `MiYo/Tomo/exclude/note` should never be proposed as a
+clustering candidate in `/moc-propose`'s whole-vault scan. The user has explicitly
+opted this note out of MOC-proposal discovery — e.g. a daily-log note or
+administrative note that doesn't belong in a thematic MOC.
+
+The filter lives at the scan candidate source (`_handle_scan`) rather than
+downstream (in `emit_orphan_suggestions` or `phase3_cluster`) for two reasons:
+
+1. **Early rejection is cheaper** — a note excluded at Phase 1 consumes no topic
+   lookup, no LLM batch slot, no cluster slot. Filtering downstream would still
+   touch Phase 1–2 resources for notes that should be invisible to the pipeline.
+
+2. **Consistent with scan's purpose** — `_handle_scan` is already the single
+   cache-based candidate source for scan mode (ADR-11, T5.1). Adding the tag
+   guard here keeps all scan-specific selection logic in one place.
+
+The filter checks `EXCLUDE_NOTE_TAG in (entry.get("tags") or [])` — exact string
+match on the full tag `"MiYo/Tomo/exclude/note"` (imported from `lib/moc_tags.py`,
+the single home for both exclude-tag constants). The `tags` field is populated by
+`moc-tree-builder.py:extract_tags` (T7.1), which reads frontmatter and inline
+tags from the cache entry.
+
+Scoped modes (`folder`, `tag`, `class`, `title`, `free-text`) are NOT affected —
+they are user-directed, path-specific queries where the user has already said "look
+here"; the exclude tag is respected only for the whole-vault passive scan.

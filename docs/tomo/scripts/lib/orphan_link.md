@@ -76,3 +76,29 @@ case suggests the topic is genuinely novel (a new MOC is likely warranted); the
 second suggests an existing MOC is close but not close enough (the user may
 want to check the candidates manually). Both cases still emit `mode="create_new"`,
 so the proposal-doc renderer treats them identically for instruction generation.
+
+## `exclude/moc` Tag: Audit-Only Suppression, Pool Retained (ADR-13 B-moc, T7.2)
+
+WHY: A MOC tagged `MiYo/Tomo/exclude/moc` (root maps like "000 Index", template
+vaults) should not be reported as an orphan in need of a parent — the user placed
+it there intentionally. The tag is applied by the user in the vault (frontmatter
+or inline tag) and surfaced as the `tags` field on the cache entry (populated by
+`moc-tree-builder.py:extract_tags` in T7.1).
+
+**Audit-only suppression** means the MOC is filtered from the `orphans` list
+inside `emit_orphan_suggestions` — it will not appear in the output — BUT it is
+NOT removed from `moc_entries` (the link-candidate pool used for scoring other
+orphans against). This distinction is the key invariant (PRD F8 AC4):
+
+- A user's root-index MOC tagged `exclude/moc` correctly disappears from the
+  "orphan MOCs" section of the proposal doc.
+- Other orphan notes that topically overlap the root-index MOC still receive it
+  as a link candidate — because it IS a valid link target in the vault.
+
+Removing it from `moc_entries` would be a different, stronger operation ("hide from
+the vault structure entirely") — not what the tag intends. The tag says "don't nag
+me about this MOC lacking a parent", not "this MOC doesn't exist as a parent".
+
+No path heuristic (e.g. "root paths skip the filter") is used — the tag is the
+single gate (AC5). The tag constants live in `lib/moc_tags.py` (single home,
+both consumers import from there).

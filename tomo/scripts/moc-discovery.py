@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.14.0
+# version: 0.15.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -57,6 +57,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 # the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
 # only, so this is wired ahead of use.
 from lib.moc_cache_loader import load_moc_cache  # noqa: E402
+from lib.moc_tags import EXCLUDE_NOTE_TAG  # noqa: E402
 from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
 from lib.up_parse import parse_up_from_content  # noqa: E402
@@ -515,6 +516,9 @@ def _handle_scan(cache: dict) -> list[Candidate]:
         if entry.get("kind") != "note":
             continue
         if entry.get("up_state") != "absent":
+            continue
+        # ADR-13 B-note: notes tagged exclude/note are never clustered.
+        if EXCLUDE_NOTE_TAG in (entry.get("tags") or []):
             continue
         path = (entry.get("path") or "").strip()
         if not path or path in seen:

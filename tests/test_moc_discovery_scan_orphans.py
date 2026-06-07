@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_moc_discovery_scan_orphans.py — T5.1 scan-mode orphan sourcing from cache.
 
 spec 021, Phase 5: scan mode must source candidates from cache entries with
@@ -28,6 +28,8 @@ PROFILES_DIR = REPO_ROOT / "tomo" / "profiles"
 SCRIPT_PATH = SCRIPTS_DIR / "moc-discovery.py"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+
+from lib.moc_tags import EXCLUDE_NOTE_TAG  # noqa: E402
 
 # Load moc-discovery.py as a module (hyphen in name → importlib).
 _spec = importlib.util.spec_from_file_location("moc_discovery", SCRIPT_PATH)
@@ -373,3 +375,83 @@ def test_candidate_cap_default_is_500(miyo_profile):
         config=_CfgNoOverride(),
     )
     assert abort_500 is None, "500 orphans must pass with default cap of 500"
+
+
+# ── T7.2: exclude/note tag — scan candidate filtering (ADR-13 B-note / PRD F8 AC6) ──
+
+
+def _excluded_note_entry(path: str, topics: list[str] | None = None) -> dict:
+    """An orphan note entry carrying the exclude/note tag."""
+    stem = path.rsplit("/", 1)[-1].removesuffix(".md")
+    return {
+        "kind": "note",
+        "path": path,
+        "stem": stem,
+        "title": stem,
+        "topics": topics or [],
+        "up_state": "absent",
+        "up_target": None,
+        "up_source": None,
+        "tags": [EXCLUDE_NOTE_TAG],
+    }
+
+
+def test_scan_excludes_note_tagged_exclude_note(miyo_profile):
+    """AC6: _handle_scan must skip a note entry whose tags include exclude/note.
+
+    The note is orphaned (up_state==absent) but carries the tag — it must NOT
+    appear in the scan candidates list (never clustered).
+    """
+    excluded_path = "Atlas/202 Notes/2611 Code Snippets/excluded-note.md"
+    included_path = "Atlas/202 Notes/2611 Code Snippets/normal-orphan.md"
+
+    cache = _make_cache([
+        _excluded_note_entry(excluded_path, topics=["python"]),
+        _orphan_entry(included_path, topics=["shell"]),
+        _moc_entry("Atlas/200 Maps/some-moc.md"),
+    ])
+
+    class _Cfg:
+        candidate_cap = 500
+
+    spy = SpyKadoClient()
+    candidates, abort = moc_discovery.phase1_select_candidates(
+        mode="scan",
+        trigger_arg="",
+        profile=miyo_profile,
+        cache=cache,
+        kado_client=spy,
+        config=_Cfg(),
+    )
+
+    assert abort is None
+    paths = {c.path for c in candidates}
+    assert excluded_path not in paths, (
+        f"note tagged {EXCLUDE_NOTE_TAG!r} must not be a scan candidate; got {paths}"
+    )
+    assert included_path in paths, "normal orphan note must still be a candidate"
+
+
+def test_scan_without_excluded_notes_unchanged(miyo_profile):
+    """Regression: scan mode with no excluded notes behaves identically to before T7.2."""
+    path = "Atlas/202 Notes/2611 Code Snippets/regular.md"
+    cache = _make_cache([
+        _orphan_entry(path, topics=["topic"]),
+    ])
+
+    class _Cfg:
+        candidate_cap = 500
+
+    spy = SpyKadoClient()
+    candidates, abort = moc_discovery.phase1_select_candidates(
+        mode="scan",
+        trigger_arg="",
+        profile=miyo_profile,
+        cache=cache,
+        kado_client=spy,
+        config=_Cfg(),
+    )
+
+    assert abort is None
+    paths = {c.path for c in candidates}
+    assert path in paths, "note without exclude tag must remain a candidate"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # version: 0.1.0
-"""test_t7_5_cluster_mode_no_orphan_section.py — T7.5: D1 orphan section removal.
+"""test_moc_propose_cluster_no_orphan_section.py — cluster proposal-doc has no note-orphan section.
 
 SDD ADR-13 D1 + PRD Feature 8 AC1:
   /moc-propose (scan and scoped cluster runs) must produce NO per-note orphan
@@ -33,19 +33,19 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 # ── Load moc-discovery ────────────────────────────────────────────────────────
 
 _disc_path = SCRIPTS_DIR / "moc-discovery.py"
-_disc_spec = importlib.util.spec_from_file_location("moc_discovery_t75", _disc_path)
+_disc_spec = importlib.util.spec_from_file_location("moc_discovery_cluster_orphan", _disc_path)
 _disc_mod = importlib.util.module_from_spec(_disc_spec)
 assert _disc_spec.loader is not None
-sys.modules["moc_discovery_t75"] = _disc_mod
+sys.modules["moc_discovery_cluster_orphan"] = _disc_mod
 _disc_spec.loader.exec_module(_disc_mod)
 
 # ── Load suggestions-reducer ──────────────────────────────────────────────────
 
 _red_path = SCRIPTS_DIR / "suggestions-reducer.py"
-_red_spec = importlib.util.spec_from_file_location("suggestions_reducer_t75", _red_path)
+_red_spec = importlib.util.spec_from_file_location("suggestions_reducer_cluster_orphan", _red_path)
 _red_mod = importlib.util.module_from_spec(_red_spec)
 assert _red_spec.loader is not None
-sys.modules["suggestions_reducer_t75"] = _red_mod
+sys.modules["suggestions_reducer_cluster_orphan"] = _red_mod
 _red_spec.loader.exec_module(_red_mod)
 
 render_moc_proposal_doc = _red_mod.render_moc_proposal_doc  # type: ignore[attr-defined]
@@ -133,7 +133,7 @@ def _cluster_report(*, mode: str = "scan", orphan_suggestions: list[dict] | None
     """Minimal DiscoveryReport with cluster fields and optional orphan_suggestions."""
     return {
         "schema_version": "1",
-        "run_id": "test-t75",
+        "run_id": "test-cluster-orphan",
         "mode": mode,
         "trigger_arg": "",
         "profile": "miyo",
@@ -153,31 +153,18 @@ def _cluster_report(*, mode: str = "scan", orphan_suggestions: list[dict] | None
     }
 
 
-def _orphan_suggestion(stem: str, mode: str = "link_existing") -> dict:
-    return {
-        "stem": stem,
-        "path": f"Atlas/202 Notes/{stem}.md",
-        "kind": "note",
-        "mode": mode,
-        "candidates": [{"target_moc": "Some MOC", "score": 0.75}],
-        "reason": "test orphan",
-    }
-
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # CLUSTER MODE TESTS — orphan section must be ABSENT
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-def test_cluster_scan_report_has_no_orphan_suggestions():
-    """PRD Feature 8 AC1: A scan-mode DiscoveryReport must produce empty orphan_suggestions.
+def test_scan_proposal_doc_has_no_orphan_section():
+    """PRD Feature 8 AC1: A scan-mode DiscoveryReport renders no ## Orphan Notes & MOCs.
 
     After D1 the cluster path no longer populates orphan_suggestions, so the
-    reducer gate (if orphan_suggestions:) is never triggered and the ## Orphan
-    Notes & MOCs section is absent from the proposal-doc.
+    reducer gate (if orphan_suggestions:) is never triggered and the orphan
+    section is absent from the proposal-doc.
     """
-    # Simulate what moc-discovery._run_pipeline emits after D1 change:
-    # orphan_suggestions is [] (cluster path stopped populating it).
     report = _cluster_report(mode="scan", orphan_suggestions=[])
     _filename, body = render_moc_proposal_doc(report, _Cfg())
 
@@ -191,9 +178,8 @@ def test_cluster_scan_report_has_no_orphan_suggestions():
     )
 
 
-def test_cluster_scoped_report_has_no_orphan_suggestions():
-    """PRD Feature 8 AC1: A scoped (tag-mode) cluster run also produces no orphan section."""
-    # tag-mode is a scoped cluster run — D1 applies to ALL cluster modes
+def test_scoped_proposal_doc_has_no_orphan_section():
+    """PRD Feature 8 AC1: A scoped (tag-mode) cluster run also renders no orphan section."""
     report = _cluster_report(mode="tag", orphan_suggestions=[])
     _filename, body = render_moc_proposal_doc(report, _Cfg())
 
@@ -206,13 +192,12 @@ def test_cluster_scoped_report_has_no_orphan_suggestions():
     )
 
 
-def test_moc_discovery_scan_report_has_no_orphan_suggestions(tmp_path: Path, monkeypatch):
+def test_scan_discovery_report_emits_empty_orphan_suggestions(tmp_path: Path, monkeypatch):
     """End-to-end: main() scan path produces orphan_suggestions=[] after D1 change.
 
-    After D1, the cluster path in _run_pipeline stops calling
-    emit_orphan_suggestions(kinds=("note",)) and stops populating
-    orphan_suggestions / orphan_total / orphan_overflow. The report fields
-    for orphan data are empty/zero for cluster runs.
+    After D1, the cluster path in _run_pipeline no longer calls
+    emit_orphan_suggestions(kinds=("note",)) and the report fields
+    orphan_suggestions / orphan_total / orphan_overflow are empty/zero.
 
     The cache requires at least one kind==moc entry so the shim populates
     map_notes and the pipeline proceeds past the cache-empty guard.
@@ -221,12 +206,11 @@ def test_moc_discovery_scan_report_has_no_orphan_suggestions(tmp_path: Path, mon
     # Include a real MOC entry (required for map_notes shim) and note orphans
     # (to prove the note-orphan pass no longer runs in cluster mode).
     entries = [
-        _orphan_moc("SomeParentMOC"),  # satisfies the map_notes shim — NOT an orphan in scan context
+        _orphan_moc("SomeParentMOC"),  # satisfies the map_notes shim
         _note_orphan(1),
         _note_orphan(2),
     ]
-    # Override the MOC entry so it has a valid up_state to avoid orphan detection
-    entries[0]["up_state"] = "valid"
+    entries[0]["up_state"] = "valid"  # not an orphan — avoids scan picking it up
     cache_path = _write_cache(tmp_path, entries)
     squelch_path = _write_squelch(tmp_path)
 
@@ -246,13 +230,13 @@ def test_moc_discovery_scan_report_has_no_orphan_suggestions(tmp_path: Path, mon
 
     assert report["mode"] == "scan"
     assert report["orphan_suggestions"] == [], (
-        f"After D1, scan report must have orphan_suggestions=[]; got {report['orphan_suggestions']!r}"
+        f"Scan report must have orphan_suggestions=[]; got {report['orphan_suggestions']!r}"
     )
     assert report["orphan_total"] == 0, (
-        f"After D1, scan report must have orphan_total=0; got {report['orphan_total']!r}"
+        f"Scan report must have orphan_total=0; got {report['orphan_total']!r}"
     )
     assert report["orphan_overflow"] == 0, (
-        f"After D1, scan report must have orphan_overflow=0; got {report['orphan_overflow']!r}"
+        f"Scan report must have orphan_overflow=0; got {report['orphan_overflow']!r}"
     )
 
 
@@ -261,7 +245,7 @@ def test_moc_discovery_scan_report_has_no_orphan_suggestions(tmp_path: Path, mon
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-def test_check_mode_still_renders_orphan_section():
+def test_check_mode_proposal_doc_renders_moc_orphan_section():
     """REGRESSION GUARD: check-moc-uplinks report renders its MOC orphan section.
 
     The orphan renderer (_render_orphan_section) must NOT be removed; it is
@@ -281,7 +265,6 @@ def test_check_mode_still_renders_orphan_section():
     report["orphan_total"] = 1
     _filename, body = render_moc_proposal_doc(report, _Cfg())
 
-    # check-moc-uplinks uses the relabelled heading
     assert "## MOC Uplink Check" in body, (
         "check-moc-uplinks report must render ## MOC Uplink Check section. "
         f"Not found in:\n{body}"
@@ -291,7 +274,7 @@ def test_check_mode_still_renders_orphan_section():
     )
 
 
-def test_check_moc_uplinks_main_still_renders_orphan_section(tmp_path: Path):
+def test_check_moc_uplinks_pipeline_populates_moc_orphan_suggestions(tmp_path: Path):
     """REGRESSION GUARD: --check-moc-uplinks main() path populates orphan_suggestions.
 
     The check path (_run_moc_uplink_check) must continue to call

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_moc_discovery_phase3.py — Phase 3 cluster detection for moc-discovery.py.
 
 F-43 Phase 2 T2.4: thin wrapper around `lib.topic_clusters.build_topic_clusters`.
@@ -144,6 +144,60 @@ def test_multi_cluster_shared_notes_highest_weight_wins():
     assert "shell" in by_topic and "terminal" in by_topic
     assert "fzf" in by_topic["shell"]["items"]
     assert "fzf" in by_topic["terminal"]["items"]
+
+
+def test_multi_topic_synonym_no_duplicate_in_cluster():
+    """ADR-13 D4 / PRD F8 AC3: a candidate with two topics that normalise to the
+    same cluster appears exactly ONCE in that cluster's items (not twice).
+
+    Root cause without the fix: `phase3_cluster` explodes `topics=["shell",
+    "shells"]` into two ClusterCandidate rows both landing in the normalised
+    `"shell"` bucket → `hits` has two entries for the same stem → `items` has
+    a duplicate.
+
+    The test also verifies that `candidate_stems` (the copy made in
+    `_enrich_cluster`) inherits the same uniqueness guarantee, and that the
+    `#### Children (N)` count a renderer would surface equals the unique count.
+    """
+    # "shell" and "shells" normalise to the same topic via the plural-fold rule.
+    candidates = [
+        _candidate("zsh",    ["shell"]),
+        _candidate("bash",   ["shell"]),
+        _candidate("fish",   ["shell"]),
+        _candidate("fzf",    ["shell", "shells"]),  # dual synonym → must appear once
+    ]
+
+    clusters = moc_discovery.phase3_cluster(candidates, _Cfg(min_notes=3))
+
+    assert len(clusters) == 1, (
+        f"Expected one shell cluster; got {[c['topic'] for c in clusters]}"
+    )
+    cluster = clusters[0]
+
+    # AC3 core assertion — no duplicate section_id in items
+    items = cluster["items"]
+    assert len(items) == len(set(items)), (
+        f"Duplicate section_ids in cluster items: {items}"
+    )
+
+    # fzf must appear exactly once
+    assert items.count("fzf") == 1, (
+        f"'fzf' appears {items.count('fzf')} times in items; expected 1"
+    )
+
+    # All four candidates must be present
+    assert set(items) == {"zsh", "bash", "fish", "fzf"}, (
+        f"Unexpected items set: {set(items)}"
+    )
+
+    # candidate_stems (built from items in _enrich_cluster) must match
+    candidate_stems = list(cluster.get("items") or [])
+    children_count = len(candidate_stems)
+    unique_count = len(set(candidate_stems))
+    assert children_count == unique_count, (
+        f"#### Children ({children_count}) count would be wrong — "
+        f"unique count is {unique_count}"
+    )
 
 
 def test_zero_clusters_returns_empty_report_not_abort():

@@ -131,3 +131,26 @@ tags from the cache entry.
 Scoped modes (`folder`, `tag`, `class`, `title`, `free-text`) are NOT affected —
 they are user-directed, path-specific queries where the user has already said "look
 here"; the exclude tag is respected only for the whole-vault passive scan.
+
+## `candidate_stems` / Cluster `items` Are Deduped (ADR-13 D4, T7.3)
+
+WHY: `phase3_cluster` explodes each `Candidate` into one `ClusterCandidate` per
+topic in `candidate.topics`. If a candidate carries two topic phrases that
+normalise to the same key (e.g. `["shell", "shells"]`), both rows land in the
+same cluster's `hits` list, causing the same `section_id` to appear twice in
+`"items"`. The downstream `_enrich_cluster` copies `items` directly to
+`candidate_stems` (`list(cluster.get("items") or [])`), so the duplicate
+propagates to the rendered `#### Children (N)` count — which then disagrees with
+the number of unique links in the section body.
+
+The fix is an order-preserving dedup of `items` at assembly time inside
+`lib/topic_clusters.build_topic_clusters` (first occurrence wins). This keeps
+the fix colocated with the only location that knows which section_ids are
+duplicates, while leaving the threshold check (`len(hits) < threshold`) on the
+raw hit count — so a cluster that only reaches threshold due to duplicate rows is
+still correctly dropped.
+
+Dedup is NOT applied to cross-cluster membership: a candidate whose topics span
+two distinct normalised keys correctly appears in both the `shell` cluster and the
+`system` cluster. The dedup only removes a note from the SAME cluster appearing
+twice.

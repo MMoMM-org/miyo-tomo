@@ -1,5 +1,5 @@
 # topic_clusters.py — Pure clustering helper for atomic-note → Proposed MOC.
-# version: 0.1.0
+# version: 0.2.0
 """Group atomic-note candidates into Proposed MOC clusters.
 
 Why this lives in a module of its own:
@@ -187,10 +187,19 @@ def build_topic_clusters(
         parent = max(set(parents), key=parents.count) if parents else ""
         # Tags: compute shared parent tags instead of dumping all leaf tags.
         tags = _compute_moc_tags([h[3] for h in hits])
+        # Dedup section_ids order-preservingly (ADR-13 D4): a candidate whose
+        # topics contain two phrases that normalise to the same key produces two
+        # ClusterCandidate rows for the same cluster — first occurrence wins.
+        seen_ids: set[str] = set()
+        unique_items: list[str] = []
+        for h in hits:
+            if h[0] not in seen_ids:
+                seen_ids.add(h[0])
+                unique_items.append(h[0])
         out.append(
             {
                 "topic": display_topic,
-                "items": [h[0] for h in hits],
+                "items": unique_items,
                 "parent": parent,
                 "tags": tags,
             }

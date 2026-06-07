@@ -33,7 +33,7 @@ phase: 7
 
 ## Tasks
 
-- [ ] **T7.1 Cache builder populates entry `tags`** `[activity: backend-api]` `[ref: SDD/ADR-13 dependency; PRD/F8; moc-tree-builder.py run(), lib/moc_scan.py]`
+- [x] **T7.1 Cache builder populates entry `tags`** `[activity: backend-api]` `[ref: SDD/ADR-13 dependency; PRD/F8; moc-tree-builder.py run(), lib/moc_scan.py]`
   1. Prime: how `moc-tree-builder.py` assembles each `CacheEntry` (currently `tags: []`); `lib/moc_scan.py` discovery; Kado `operation='tags'` (kado_client) or frontmatter tags already read during build. Confirm cheapest source (avoid an extra per-note round-trip if tags arrive with an existing read).
   2. Test (RED): a built cache entry carries the note's real `tags` list (MOC + note); a note with no tags → `[]`.
   3. Implement: populate `tags` per entry from the data already pulled during the build (or one batched tags read). Bump `# version:` on the builder/lib touched.
@@ -41,7 +41,7 @@ phase: 7
   5. WHY → `docs/tomo/scripts/moc-tree-builder.md` (or lib): why tags are cached (exclude-tag filters depend on them).
   6. Success: cache entries carry `tags` `[ref: PRD/F8 dependency AC]`.
 
-- [ ] **T7.2 Exclude tags: `exclude/moc` (audit) + `exclude/note` (scan source)** `[activity: backend-api]` `[ref: SDD/ADR-13 B-moc/B-note; PRD/F8; lib/orphan_link.py emit_orphan_suggestions, moc-discovery.py _handle_scan]`
+- [x] **T7.2 Exclude tags: `exclude/moc` (audit) + `exclude/note` (scan source)** `[activity: backend-api]` `[ref: SDD/ADR-13 B-moc/B-note; PRD/F8; lib/orphan_link.py emit_orphan_suggestions, moc-discovery.py _handle_scan]`
   1. Prime: `lib/orphan_link.emit_orphan_suggestions` (kind filter from T6.2), `moc-discovery._handle_scan` (scan candidate source), cache entry `tags` (from T7.1). Define hardwired constants `EXCLUDE_MOC_TAG = "MiYo/Tomo/exclude/moc"`, `EXCLUDE_NOTE_TAG = "MiYo/Tomo/exclude/note"` (single home, e.g. a small `lib/moc_tags.py` or top of each consumer).
   2. Test (RED):
      - `emit_orphan_suggestions(kinds=("moc",))` skips a MOC entry carrying `exclude/moc`; that MOC still appears in the `moc_entries` link-candidate pool (NOT removed).
@@ -52,7 +52,7 @@ phase: 7
   5. WHY → `docs/tomo/scripts/lib/orphan_link.md` + `moc-discovery.md`: audit-only semantics for `exclude/moc`; `exclude/note` at the candidate source.
   6. Success: B-moc audit-only + B-note never-clustered `[ref: PRD/F8 AC4-6]`.
 
-- [ ] **T7.3 Dedup `candidate_stems` within a cluster (D4)** `[activity: backend-api]` `[parallel: true]` `[ref: SDD/ADR-13 D4; PRD/F8; moc-discovery.py phase3_cluster / _candidate_stems, lib/topic_signature.candidate_stems]`
+- [x] **T7.3 Dedup `candidate_stems` within a cluster (D4)** `[activity: backend-api]` `[parallel: true]` `[ref: SDD/ADR-13 D4; PRD/F8; moc-discovery.py phase3_cluster / _candidate_stems, lib/topic_signature.candidate_stems]`
   1. Prime: where a cluster's member/`candidate_stems` list is assembled (`phase3_cluster`, `_candidate_stems` `:~1134`, `lib.topic_signature.candidate_stems`). Find why a note enters twice (likely multi-facet topic match appends without dedup).
   2. Test (RED): a candidate matching a cluster via two facets appears once in the cluster's children/`candidate_stems`; the `#### Children (N)` count equals the unique count.
   3. Implement: dedup by path/stem when building the cluster member list (order-preserving). Bump version.

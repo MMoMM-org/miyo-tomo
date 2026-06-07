@@ -7,7 +7,7 @@
 ## Condition B (Accumulation Cluster Trigger) Retired — T3.2 (spec 021 ADR-10)
 
 WHY: Step 4 originally had three conditions: A (Classification Guard), B
-(Accumulation cluster trigger), C (Placeholder MOC trigger). Condition B
+(Accumulation cluster trigger), C (Placeholder link trigger). Condition B
 matched item topics against `shared_ctx.accumulation_index` — a map of
 topic strings that had accumulated enough notes to warrant a new MOC — and
 set `needs_new_moc: true` + `proposed_moc_topic` on a hit.
@@ -28,7 +28,7 @@ B viability analysis:
    the `absent → skip silently` guard meant it never fired. T3.2 removes the
    dead prose to keep the agent spec lean and unambiguous.
 
-Condition C (Placeholder MOC trigger) is the retained value: it surfaces
+Condition C (Placeholder link trigger) is the retained value: it surfaces
 deliberate dead wikilinks the user already wrote as `needs_new_moc` signals,
 which is a higher-confidence source of intent than freshly-inferred topic
 clusters. The placeholder-wins precedence (F4#4) was expressed in the

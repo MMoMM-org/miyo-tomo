@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.3.1
 """orphan_link.py — Case-(a) orphan pass over the MOC-structure cache (ADR-7).
 
 Runs AFTER moc_cache_loader provides cache.entries. Enumerates orphans —
@@ -36,7 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from lib.moc_tags import EXCLUDE_MOC_TAG, EXCLUDE_NOTE_TAG  # noqa: F401
+from lib.moc_tags import EXCLUDE_MOC_TAG
 
 # Minimum overlap ratio for an existing MOC to be offered as a link candidate.
 # Below this, the orphan gets a create_new proposal instead. Mirrors the
@@ -188,18 +188,13 @@ def emit_orphan_suggestions(
         if isinstance(e, dict) and e.get("kind") == "moc"
     ]
 
-    # Per-kind exclude tag map: kind → tag that suppresses it from the audit.
-    _EXCLUDE_TAG_BY_KIND: dict[str, str] = {
-        "moc": EXCLUDE_MOC_TAG,
-        "note": EXCLUDE_NOTE_TAG,
-    }
-
+    # B-note (exclude/note) is enforced upstream in moc-discovery._handle_scan, not here.
     orphans = [
         e for e in entries
         if isinstance(e, dict)
         and e.get("up_state") == "absent"
         and e.get("kind") in kinds
-        and _EXCLUDE_TAG_BY_KIND.get(e.get("kind", ""), "") not in (e.get("tags") or [])
+        and not (e.get("kind") == "moc" and EXCLUDE_MOC_TAG in (e.get("tags") or []))
     ]
 
     out: list[dict] = []

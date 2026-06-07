@@ -154,6 +154,18 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
   - [ ] Given the `X/` template-vault is listed in `tomo.moc_structure_cache.exclude_paths`, When the cache is rebuilt, Then no `X/…` note or MOC appears in `cache.entries` (exclude wins over tag — Feature 1 AC reused) And no `X/…` entry can reach the scan or check output.
   - [ ] Given `lib/up_parse` was verified correct against the live vault (the 206 are real orphans), When Phase 6 is implemented, Then `lib/up_parse` and up_state resolution are NOT modified.
 
+#### Feature 8: Proposal coherence — single-placement clusters, no duplicates, exclusion controls
+- **User Story:** As the vault owner, I want `/moc-propose` to give me a *coherent* set of MOC proposals: no note listed twice inside a MOC, no two proposals that are really the same set of notes, and no per-note "create a MOC" noise — plus a way to permanently exclude specific MOCs from the parentage audit and specific notes from MOC proposals.
+- **Context (live, 2026-06-07):** Review of a real scan proposal-doc surfaced: (P1) MOC01 listed 9 notes **twice** (`candidate_stems` not deduped); (P2) **22 notes appeared in BOTH a proposed cluster AND the per-note orphan section** — the cluster path and the case-(a) orphan path both consumed the same orphan set with no dedup; (P3) the orphan cap made the two views asymmetric. Decision: a note without `up::` does NOT automatically warrant a MOC (worst case = one MOC per note) — so the per-note orphan link-or-create flow is removed from `/moc-propose` and deferred to the interactive **Garden-Audit (#30)**. Also two clusters were near-identical (MOC05 ⊆ MOC02 100%; MOC04 97% ⊆ MOC03) because dedup only compared topics vs *existing* MOCs, never proposals against each other.
+- **Acceptance Criteria (Gherkin Format):**
+  - [ ] Given a `/moc-propose` cluster run (scan or scoped), When the proposal-doc is rendered, Then it contains NO per-note orphan section (`### Oxx`) — cluster sections only (the orphan-section renderer is used ONLY by `check:moc-uplinks`). (D1; supersedes the Phase-6 note-orphan rendering in the cluster doc.)
+  - [ ] Given two proposed clusters where **≥80%** of the smaller cluster's members are also members of a larger proposed cluster, When clusters are finalised, Then the smaller cluster is dropped and the larger is kept, And the drop is recorded (e.g. in `duplicates_skipped`). (D3)
+  - [ ] Given a proposed cluster whose candidate set contains the same note more than once, When the cluster is built, Then each note appears at most once in the cluster's children / `candidate_stems`. (D4)
+  - [ ] Given a MOC tagged `MiYo/Tomo/exclude/moc`, When `check:moc-uplinks` runs, Then that MOC is NOT emitted as an orphan MOC, And it REMAINS in the cache as a valid link target (audit-only exclusion — not removed from discovery). (B-moc)
+  - [ ] Given root MOCs (`000 Index` etc.) carrying `MiYo/Tomo/exclude/moc`, When `check:moc-uplinks` runs, Then they are not flagged (tag-driven; no root-path heuristic). (B-moc)
+  - [ ] Given a note tagged `MiYo/Tomo/exclude/note`, When `/moc-propose` selects scan candidates, Then the note is NOT a candidate (it is never clustered into a proposed MOC). (B-note)
+  - [ ] Given the MOC-structure cache, When it is built, Then each entry carries its `tags`, And the `exclude/moc` + `exclude/note` filters read them. (dependency)
+
 ### Should Have Features
 - **Budget accommodation:** Raise the shared-ctx byte budget so the corrected, essential `placeholder_mocs` is never trimmed (Performance research: ~34–36 KB envelope after correction; placeholder is non-advisory Condition-C data). Keep `placeholder_mocs` out of the trim path entirely.
 - **`up`-parsing SSoT:** Centralise frontmatter-`up:` + inline-`up::` parsing into a single shared library helper consumed by the cache builder and `moc-discovery` Phase 6.5, superseding the two inline-only `up::` regexes. (`atomic-note-indexer`, the third site, is **deleted** in the accumulation retirement — not retrofitted.)
@@ -164,6 +176,7 @@ None for this phase — Tomo is single-owner; multi-user is out of scope.
 - **Incremental cache rebuild** using `byFrontmatter` `filter.modifiedAfter` once the full-rebuild cost becomes a constraint.
 
 ### Won't Have (This Phase)
+- **Interactive note-orphan handling → Garden-Audit (#30).** Detecting homeless notes and proposing review + filing / link-to-existing (and the apply-wiring for those choices) moves to the interactive Garden-Audit skill (#30 / F-44, roadmap-obsidian-power.md Track 2), which reuses 021's cache + `lib/up_parse` + `lib/orphan_link`. Per-note `create_new` (a MOC per orphan) is deprecated. `MiYo/Tomo/exclude/note` is shipped in F8 (filters scan candidates) but the orphan *review* UX lives in #30.
 - Per-item context shaping implementation (Could-Have / issue #45 (epic #24)).
 - New Kado capabilities (`childCount` on `listDir`, server-side `filter.path` on `byTag`, bulk inline-field projection) — every read needed by 021 already exists in `kado_client` v0.8.0; gaps are noted for the Kado team but not blocking.
 - Any direct note mutation by `/moc-propose` — writes remain behind the 2-pass apply boundary (`/inbox` → instruction set → Hashi/manual).

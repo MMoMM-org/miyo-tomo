@@ -95,6 +95,7 @@ Each phase is a separate file. Tasks follow red-green-refactor: **Prime** → **
 - [ ] [Phase 4: Integration, E2E & live validation](phase-4.md)
 - [x] [Phase 5: Usable whole-vault scan (orphan-only, cache-sourced) + cap reframe](phase-5.md)
 - [x] [Phase 6: Scan output-quality cleanup (notes-only default, bounded link-first, MOC-uplink check, X/ exclude)](phase-6.md)
+- [ ] [Phase 7: Proposal coherence (drop per-note orphans, dedup clusters, exclusion tags)](phase-7.md)
 
 ---
 

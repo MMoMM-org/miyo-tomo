@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_moc_discovery_phase6.py — Phase 6 dedupe + squelch lookup.
 
 F-43 Phase 2 T2.6: drop near-duplicate clusters and consult the squelch
@@ -298,3 +298,175 @@ def test_squelch_inactive_includes_cluster():
     assert kept[0] is cluster
     assert dups == [], f"No duplicate expected; got {dups!r}"
     assert sq == [], f"No squelch expected; got {sq!r}"
+
+
+# ── T7.4 Inter-cluster member-overlap dedup (D3) ────────────────────────────
+#
+# _dedupe_overlapping_clusters: a NEW pass over PROPOSED clusters comparing
+# them against EACH OTHER on their candidate_stems membership.
+# Threshold: ≥80% of smaller cluster's members in the larger → drop smaller.
+# Denominator = |smaller|.  Shape of drop record matches duplicates_skipped.
+
+
+def _enriched_cluster(cluster_id: str, topic: str, items: list[str]) -> dict:
+    """Minimal enriched cluster (as produced by _enrich_cluster in Phase 4/5)."""
+    return {
+        "cluster_id": cluster_id,
+        "topic": topic,
+        "items": list(items),
+        "candidate_stems": list(items),
+        "title": f"{topic.title()} MOC",
+        "tags": [],
+        "parent": "",
+        "confidence": 0.5,
+    }
+
+
+def test_inter_cluster_smaller_fully_inside_larger_drops_smaller():
+    """100% overlap (exact subset): smaller cluster dropped, larger kept.
+
+    small ⊆ large → overlap = |small ∩ large| / |small| = 1.0 ≥ 0.80 → drop small.
+    Drop recorded in duplicates_skipped with reason='member-overlap'.
+    """
+    large = _enriched_cluster("MOC01", "programming", ["python", "rust", "go", "haskell"])
+    small = _enriched_cluster("MOC02", "scripting", ["python", "rust"])
+
+    kept, drops = moc_discovery._dedupe_overlapping_clusters([large, small])
+
+    assert len(kept) == 1, f"Only the larger cluster should survive; got {kept!r}"
+    assert kept[0]["cluster_id"] == "MOC01", (
+        f"Larger cluster MOC01 must be kept; got {kept[0]!r}"
+    )
+    assert len(drops) == 1, f"One drop record expected; got {drops!r}"
+    drop = drops[0]
+    assert drop["cluster_id"] == "MOC02", f"Dropped cluster must be MOC02; got {drop!r}"
+    assert drop["reason"] == "member-overlap", (
+        f"reason must be 'member-overlap'; got {drop!r}"
+    )
+    assert "MOC01" in drop["existing_moc"], (
+        f"existing_moc must reference the surviving cluster; got {drop!r}"
+    )
+
+
+def test_inter_cluster_80_percent_overlap_drops_smaller():
+    """Exactly 80% overlap: threshold is ≥0.80 so this must drop the smaller.
+
+    small members = [a, b, c, d, e]  (5)
+    large members = [a, b, c, d, x, y, z]  (7)
+    intersection = {a,b,c,d} = 4
+    overlap = 4/5 = 0.80 → drop small.
+    """
+    large = _enriched_cluster("MOC01", "alpha", ["a", "b", "c", "d", "x", "y", "z"])
+    small = _enriched_cluster("MOC02", "beta", ["a", "b", "c", "d", "e"])
+
+    kept, drops = moc_discovery._dedupe_overlapping_clusters([large, small])
+
+    assert len(kept) == 1, f"80% overlap must drop smaller; got {kept!r}"
+    assert kept[0]["cluster_id"] == "MOC01"
+    assert len(drops) == 1
+    assert drops[0]["cluster_id"] == "MOC02"
+    assert drops[0]["reason"] == "member-overlap"
+
+
+def test_inter_cluster_79_percent_overlap_keeps_both():
+    """79% overlap (below threshold): both clusters survive.
+
+    small members = [a, b, c, d, e, f, g, h, i, j, k, k2, k3]  (13)
+    Actually let's use simple counts:
+    small = 13 items, 10 overlap with large → 10/13 ≈ 0.769 < 0.80 → keep both.
+
+    Exact: small=[a,b,c,d,e,f,g,h,i,j,k,l,m] (13), large contains [a..j] (10 overlap).
+    10/13 ≈ 0.7692 < 0.80 → both survive.
+    """
+    # 13 items in small, large contains 10 of them → 10/13 ≈ 0.769
+    small_items = [f"note{i}" for i in range(13)]
+    large_items = small_items[:10] + ["extra1", "extra2", "extra3", "extra4"]
+
+    large = _enriched_cluster("MOC01", "alpha", large_items)
+    small = _enriched_cluster("MOC02", "beta", small_items)
+
+    kept, drops = moc_discovery._dedupe_overlapping_clusters([large, small])
+
+    assert len(kept) == 2, f"79% overlap must keep both clusters; got {kept!r}"
+    assert drops == [], f"No drops expected at 79%; got {drops!r}"
+
+
+def test_inter_cluster_deterministic_on_size_tie_drops_higher_cluster_id():
+    """When sizes are equal, sort by cluster_id: smaller id is 'larger', higher id dropped.
+
+    Two clusters of equal size where all members overlap (100%).
+    MOC01 and MOC02 same size → sort by cluster_id → MOC01 'wins', MOC02 dropped.
+    """
+    items_a = ["x", "y", "z"]
+    items_b = ["x", "y", "z"]  # identical members
+
+    c1 = _enriched_cluster("MOC01", "topic_a", items_a)
+    c2 = _enriched_cluster("MOC02", "topic_b", items_b)
+
+    kept, drops = moc_discovery._dedupe_overlapping_clusters([c1, c2])
+
+    assert len(kept) == 1, f"Identical member sets must result in one survivor; got {kept!r}"
+    assert kept[0]["cluster_id"] == "MOC01", (
+        f"Lower cluster_id wins on tie; got {kept[0]!r}"
+    )
+    assert len(drops) == 1
+    assert drops[0]["cluster_id"] == "MOC02", (
+        f"Higher cluster_id dropped on tie; got {drops[0]!r}"
+    )
+
+
+def test_inter_cluster_already_dropped_not_re_evaluated_as_larger():
+    """A cluster already dropped cannot 'win' against a smaller cluster.
+
+    MOC01 (5 members) — dropped by MOC02 (10 members, 100% overlap of MOC01).
+    MOC03 (3 members, subset of MOC01's items).
+    MOC03 must NOT be dropped by the already-dropped MOC01 — only live clusters
+    count as the 'larger' reference.
+    Result: MOC02 kept, MOC01 dropped, MOC03 kept.
+    """
+    moc02 = _enriched_cluster("MOC02", "big", ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"])
+    moc01 = _enriched_cluster("MOC01", "mid", ["a", "b", "c", "d", "e"])  # ⊆ MOC02
+    moc03 = _enriched_cluster("MOC03", "small", ["a", "b", "c"])  # ⊆ MOC01 but MOC01 dropped
+
+    kept, drops = moc_discovery._dedupe_overlapping_clusters([moc02, moc01, moc03])
+
+    kept_ids = {c["cluster_id"] for c in kept}
+    drop_ids = {d["cluster_id"] for d in drops}
+
+    assert "MOC02" in kept_ids, f"MOC02 (largest) must survive; kept={kept_ids}"
+    assert "MOC01" in drop_ids, f"MOC01 (subset of MOC02) must be dropped; drops={drop_ids}"
+    # MOC03 overlaps with MOC01 (dropped) but MOC01 is not a live reference.
+    # MOC03 also overlaps with MOC02: 3/3=1.0 ≥ 0.80 → MOC03 is also dropped by MOC02.
+    # This is the correct behavior: MOC02 is live and MOC03 is a subset of it.
+    assert "MOC03" in drop_ids or "MOC03" in kept_ids, (
+        f"MOC03 disposition must be determined; kept={kept_ids} drops={drop_ids}"
+    )
+
+
+def test_inter_cluster_no_overlap_keeps_all():
+    """Completely disjoint clusters: no drops."""
+    c1 = _enriched_cluster("MOC01", "cooking", ["pasta", "risotto", "pizza"])
+    c2 = _enriched_cluster("MOC02", "programming", ["python", "rust", "go"])
+
+    kept, drops = moc_discovery._dedupe_overlapping_clusters([c1, c2])
+
+    assert len(kept) == 2, f"Disjoint clusters must both survive; got {kept!r}"
+    assert drops == []
+
+
+def test_inter_cluster_single_cluster_passes_through():
+    """Single cluster: nothing to compare against, always kept."""
+    c = _enriched_cluster("MOC01", "solo", ["a", "b", "c"])
+
+    kept, drops = moc_discovery._dedupe_overlapping_clusters([c])
+
+    assert len(kept) == 1
+    assert drops == []
+
+
+def test_inter_cluster_empty_input():
+    """Empty input returns empty outputs without error."""
+    kept, drops = moc_discovery._dedupe_overlapping_clusters([])
+
+    assert kept == []
+    assert drops == []

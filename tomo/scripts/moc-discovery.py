@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.15.0
+# version: 0.16.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -1323,6 +1323,80 @@ def phase6_dedupe(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# D3 — Inter-cluster member-overlap dedup (SDD ADR-13 D3, spec 021 T7.4)
+# ──────────────────────────────────────────────────────────────────────────────
+
+_MEMBER_OVERLAP_THRESHOLD: float = 0.80
+
+
+def _dedupe_overlapping_clusters(
+    clusters: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Drop proposed clusters whose members are ≥80% inside a larger proposed cluster.
+
+    This is a NEW pass over PROPOSED clusters only — it does NOT touch
+    phase6_dedupe's topics-vs-existing-MOC logic.  The denominator is always
+    the SMALLER cluster's member count.
+
+    Sort order (stable, deterministic): size DESC, then cluster_id ASC.
+    When sizes tie the lower cluster_id is treated as the 'larger' reference so
+    the higher id is dropped — giving a deterministic outcome independent of
+    input order.
+
+    Returns (kept, drops) where drops entries share the duplicates_skipped
+    shape: {cluster_id, reason, existing_moc}.
+    """
+    if len(clusters) <= 1:
+        return list(clusters), []
+
+    sorted_clusters = sorted(
+        clusters,
+        key=lambda c: (-len(c.get("candidate_stems") or []), c.get("cluster_id", "")),
+    )
+
+    live: list[dict] = []      # clusters that survived so far (largest-first)
+    drops: list[dict] = []
+    dropped_ids: set[str] = set()
+
+    for candidate in sorted_clusters:
+        cid = candidate.get("cluster_id", "")
+        if cid in dropped_ids:
+            # Already dropped by an earlier (larger) cluster — skip entirely.
+            continue
+
+        cand_members = set(candidate.get("candidate_stems") or [])
+        cand_size = len(cand_members)
+
+        absorbed = False
+        for ref in live:
+            ref_members = set(ref.get("candidate_stems") or [])
+            if cand_size == 0:
+                break
+            overlap = len(cand_members & ref_members) / cand_size
+            if overlap >= _MEMBER_OVERLAP_THRESHOLD:
+                drops.append({
+                    "cluster_id": cid,
+                    "reason": "member-overlap",
+                    "existing_moc": ref.get("cluster_id", ""),
+                })
+                dropped_ids.add(cid)
+                _log(
+                    f"d3: cluster {cid!r} member-overlap={overlap:.2f} "
+                    f"vs {ref.get('cluster_id')!r} — dropping"
+                )
+                absorbed = True
+                break
+
+        if not absorbed:
+            live.append(candidate)
+
+    # Restore original input order for the kept set to keep downstream stable.
+    kept_ids = {c.get("cluster_id", "") for c in live}
+    kept = [c for c in clusters if c.get("cluster_id", "") in kept_ids]
+    return kept, drops
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Phase 6.5 — Existing-`up::` validation per candidate
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1713,6 +1787,11 @@ def _run_pipeline(
         enriched_clusters, cache, squelch_registry, moc_config
     )
     _log(f"phase6: kept={len(kept_clusters)} dup={len(duplicates_skipped)} squelched={len(squelched)}")
+
+    # D3 — Inter-cluster member-overlap dedup (SDD ADR-13 D3, spec 021 T7.4)
+    kept_clusters, d3_drops = _dedupe_overlapping_clusters(kept_clusters)
+    duplicates_skipped.extend(d3_drops)
+    _log(f"d3: kept={len(kept_clusters)} inter-cluster-drops={len(d3_drops)}")
 
     # Phase 6.5 — Existing up:: validation
     kept_clusters = phase65_validate_existing_up(

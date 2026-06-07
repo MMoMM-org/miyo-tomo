@@ -154,3 +154,32 @@ Dedup is NOT applied to cross-cluster membership: a candidate whose topics span
 two distinct normalised keys correctly appears in both the `shell` cluster and the
 `system` cluster. The dedup only removes a note from the SAME cluster appearing
 twice.
+
+## Inter-Cluster Member-Overlap Dedup (ADR-13 D3, T7.4)
+
+WHY: `phase6_dedupe` only compares each proposed cluster's TOPIC set against
+existing MOCs (Jaccard ≥ 0.80 or exact-title match). It has no awareness of how
+proposed clusters relate to EACH OTHER. In practice, smaller clusters that are
+entirely or mostly subsets of larger ones (e.g. MOC05 ⊆ MOC02 at 100% overlap,
+MOC04 ⊆ MOC03 at 97%) survive `phase6_dedupe` because nothing in that pass
+compares proposals to proposals.
+
+The fix (`_dedupe_overlapping_clusters`) is a NEW post-`phase6_dedupe` pass that
+compares proposed clusters against each other on their `candidate_stems` membership:
+
+- Denominator is the SMALLER cluster's member count: `|small ∩ large| / |small|`.
+- Threshold: `>= 0.80` (exactly 0.80 drops; 0.79 and below keeps both).
+- Sort order: size DESC, then `cluster_id` ASC — so on a size tie the lower id
+  wins (MOC01 survives, MOC02 dropped), giving a deterministic outcome independent
+  of input order.
+- A cluster already dropped is not re-evaluated as the "larger" reference against
+  remaining clusters.
+- Drop records appended to `duplicates_skipped` use `reason="member-overlap"` and
+  `existing_moc` points to the surviving cluster's `cluster_id`. This matches the
+  existing `duplicates_skipped` shape so downstream consumers (report renderer,
+  agent surfacing) need no changes.
+
+This pass is ADDITIVE: it does not change `phase6_dedupe`'s topics-vs-existing-MOC
+logic, and it runs after `phase6_dedupe` so a cluster already dropped by an
+existing-MOC match is never re-evaluated here.
+

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_moc_discovery_phase6.py — Phase 6 dedupe + squelch lookup.
 
 F-43 Phase 2 T2.6: drop near-duplicate clusters and consult the squelch
@@ -416,30 +416,37 @@ def test_inter_cluster_deterministic_on_size_tie_drops_higher_cluster_id():
 
 
 def test_inter_cluster_already_dropped_not_re_evaluated_as_larger():
-    """A cluster already dropped cannot 'win' against a smaller cluster.
+    """An already-dropped cluster is not re-used as a 'larger' reference.
 
-    MOC01 (5 members) — dropped by MOC02 (10 members, 100% overlap of MOC01).
-    MOC03 (3 members, subset of MOC01's items).
-    MOC03 must NOT be dropped by the already-dropped MOC01 — only live clusters
-    count as the 'larger' reference.
-    Result: MOC02 kept, MOC01 dropped, MOC03 kept.
+    Geometry (sort order: size DESC, cluster_id ASC):
+      1. MOC02 (size 10) — largest, enters live=[MOC02].
+      2. MOC01 (size 5)  — {a..e} ⊆ MOC02 (5/5=1.0 ≥ 0.80) → dropped by MOC02.
+      3. MOC03 (size 3)  — {a,b,c} ⊆ MOC02 (3/3=1.0 ≥ 0.80) → dropped by live
+         MOC02. MOC01 is already dropped and is NOT consulted as a reference.
+
+    The key invariant: MOC03's drop record must point to MOC02 (the live cluster),
+    not MOC01 (the dropped one) — proving that dropped clusters are never used
+    as the 'larger' reference in subsequent comparisons.
     """
     moc02 = _enriched_cluster("MOC02", "big", ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"])
     moc01 = _enriched_cluster("MOC01", "mid", ["a", "b", "c", "d", "e"])  # ⊆ MOC02
-    moc03 = _enriched_cluster("MOC03", "small", ["a", "b", "c"])  # ⊆ MOC01 but MOC01 dropped
+    moc03 = _enriched_cluster("MOC03", "small", ["a", "b", "c"])  # ⊆ MOC02 (and MOC01, but MOC01 dropped)
 
     kept, drops = moc_discovery._dedupe_overlapping_clusters([moc02, moc01, moc03])
 
     kept_ids = {c["cluster_id"] for c in kept}
     drop_ids = {d["cluster_id"] for d in drops}
+    drop_by = {d["cluster_id"]: d["existing_moc"] for d in drops}
 
     assert "MOC02" in kept_ids, f"MOC02 (largest) must survive; kept={kept_ids}"
     assert "MOC01" in drop_ids, f"MOC01 (subset of MOC02) must be dropped; drops={drop_ids}"
-    # MOC03 overlaps with MOC01 (dropped) but MOC01 is not a live reference.
-    # MOC03 also overlaps with MOC02: 3/3=1.0 ≥ 0.80 → MOC03 is also dropped by MOC02.
-    # This is the correct behavior: MOC02 is live and MOC03 is a subset of it.
-    assert "MOC03" in drop_ids or "MOC03" in kept_ids, (
-        f"MOC03 disposition must be determined; kept={kept_ids} drops={drop_ids}"
+    assert "MOC03" in drop_ids, (
+        f"MOC03 must be dropped by live MOC02 (1.0 overlap); drops={drop_ids}"
+    )
+    # The drop record must reference MOC02 (the live reference), not the already-
+    # dropped MOC01 — this is the observable proof that dropped clusters are skipped.
+    assert drop_by["MOC03"] == "MOC02", (
+        f"MOC03 must be attributed to live MOC02, not dropped MOC01; drop_by={drop_by}"
     )
 
 

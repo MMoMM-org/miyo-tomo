@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_placeholder_detect.py — Behavioural tests for lib.placeholder_detect.
 
 Covers T1.3 of spec 021 (MOC-propose consolidation, Phase 1 Cache Foundation).
@@ -203,3 +203,52 @@ def test_path_qualified_link_to_missing_note_is_placeholder():
     known_mocs: set[str] = set()
     result = detect_placeholders(mocs, known_mocs, in_scope)
     assert result == [{"target": "Folder/Phantom", "referenced_by": "Atlas/Home.md"}]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Date-shaped targets are periodic notes (daily/weekly/monthly), never MOCs.
+# Daily notes live outside the MOC scope_paths, so links into them can't resolve
+# against in_scope_vault_paths and would otherwise leak as placeholder MOCs
+# (25 such false positives observed on the real vault, 2026-06-09).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_daily_note_date_target_is_not_placeholder():
+    """[[2022-06-10]] is a daily note, not a missing MOC — must not be a placeholder."""
+    mocs = _mocs(("Efforts/520 Goals.md", ["2022-06-10"]))
+    in_scope = {"Efforts/520 Goals.md"}
+    known_mocs: set[str] = set()
+    assert detect_placeholders(mocs, known_mocs, in_scope) == []
+
+
+def test_weekly_note_date_target_is_not_placeholder():
+    """[[2024-W12]] is a weekly note — must not be a placeholder."""
+    mocs = _mocs(("Atlas/Home.md", ["2024-W12"]))
+    in_scope = {"Atlas/Home.md"}
+    assert detect_placeholders(mocs, set(), in_scope) == []
+
+
+def test_monthly_note_date_target_is_not_placeholder():
+    """[[2024-06]] is a monthly note — must not be a placeholder."""
+    mocs = _mocs(("Atlas/Home.md", ["2024-06"]))
+    in_scope = {"Atlas/Home.md"}
+    assert detect_placeholders(mocs, set(), in_scope) == []
+
+
+def test_anchored_date_target_is_not_placeholder():
+    """[[2022-06-10#^block]] reduces to a date after anchor-strip — still not a placeholder."""
+    mocs = _mocs(("Atlas/Home.md", ["2022-06-10#^abc123"]))
+    in_scope = {"Atlas/Home.md"}
+    assert detect_placeholders(mocs, set(), in_scope) == []
+
+
+def test_year_prefixed_moc_with_suffix_is_still_placeholder():
+    """A real MOC named like '2024 Goals' or '2024-Q1 Review' is NOT date-shaped —
+    the date guard must not over-exclude genuine year-themed MOC placeholders."""
+    mocs = _mocs((
+        "Atlas/Home.md",
+        ["2024 Goals", "2024-Q1 Review", "2023 OKR"],
+    ))
+    in_scope = {"Atlas/Home.md"}
+    result = detect_placeholders(mocs, set(), in_scope)
+    targets = {r["target"] for r in result}
+    assert targets == {"2024 Goals", "2024-Q1 Review", "2023 OKR"}

@@ -1,4 +1,4 @@
-# version: 0.1.2
+# version: 0.2.0
 """placeholder_detect.py — Wikilink placeholder detection for MOC bodies.
 
 Extracted from moc-tree-builder.py's detect_placeholders for use by the
@@ -30,6 +30,20 @@ Public API:
 from __future__ import annotations
 
 import os
+import re
+
+# Periodic-note (daily/weekly/monthly) target shapes. A date is never a MOC, and
+# daily notes live outside the MOC scope_paths so links into them cannot resolve
+# against in_scope_vault_paths — without this guard they leak as placeholder MOCs.
+# Matches the exact target only (start/end anchored): daily YYYY-MM-DD, weekly
+# YYYY-Www, monthly YYYY-MM. Year-themed MOCs ("2024 Goals", "2024-Q1 Review")
+# carry a suffix and do NOT match, so they remain genuine placeholders.
+_PERIODIC_NOTE_RE = re.compile(r"^\d{4}-(?:\d{2}-\d{2}|W\d{2}|\d{2})$", re.IGNORECASE)
+
+
+def _is_periodic_note_target(note_target: str) -> bool:
+    """Return True if note_target is a date-shaped periodic note (daily/weekly/monthly)."""
+    return bool(_PERIODIC_NOTE_RE.match(note_target))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -106,27 +120,68 @@ def detect_placeholders(
         list of {"target": str, "referenced_by": str}, deduped per (note, moc).
         Shape is identical to the legacy detect_placeholders output.
     """
+    placeholders, _stats = detect_placeholders_with_stats(
+        mocs, known_moc_paths, in_scope_vault_paths
+    )
+    return placeholders
+
+
+def detect_placeholders_with_stats(
+    mocs: dict[str, dict],
+    known_moc_paths: set[str],
+    in_scope_vault_paths: set[str],
+) -> tuple[list[dict[str, str]], dict[str, int]]:
+    """Same detection as `detect_placeholders`, plus a build-stats breakdown.
+
+    The stats power the PRD `placeholder.build` observability event (M2/M4):
+
+        raw_count               — note-link references examined (non-empty after
+                                   anchor strip); the pre-correction candidate pool
+        anchor_dropped          — same-note anchors (#heading/#^block) skipped
+        date_dropped            — date-shaped periodic-note targets skipped
+        moc_resolved            — links that resolve to a known MOC (MOC↔MOC)
+        vault_resolved          — links resolving to a real in-scope note (the 224 fix)
+        false_positive_dropped  — vault_resolved + date_dropped (the correction)
+        kept_count              — genuine placeholders emitted (post per-(note,moc) dedup)
+    """
     # Precompute O(1) lookup indexes — one scan of each set, never per-link
     moc_stem_index = _build_stem_index(known_moc_paths)
     vault_stem_index = _build_stem_index(in_scope_vault_paths)
 
     placeholders: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
+    stats = {
+        "raw_count": 0,
+        "anchor_dropped": 0,
+        "date_dropped": 0,
+        "moc_resolved": 0,
+        "vault_resolved": 0,
+        "false_positive_dropped": 0,
+        "kept_count": 0,
+    }
 
     for moc_path, moc in mocs.items():
         for link in moc.get("linked_notes_raw", []):
             note_target = _strip_link_anchor(link)
             # Same-note anchor (#heading / #^block) — not a missing-note link.
             if not note_target:
+                stats["anchor_dropped"] += 1
+                continue
+            stats["raw_count"] += 1
+            # Date-shaped periodic note (daily/weekly/monthly) — never a MOC.
+            if _is_periodic_note_target(note_target):
+                stats["date_dropped"] += 1
                 continue
             # Resolves to a known MOC?
             if _resolves_to_moc(note_target, moc_stem_index):
+                stats["moc_resolved"] += 1
                 continue
             # Resolves to any in-scope vault note by filename?
             link_name = note_target.split("/")[-1].lower()
             if link_name.endswith(".md"):
                 link_name = link_name[:-3]
             if link_name in vault_stem_index:
+                stats["vault_resolved"] += 1
                 continue
             # Genuine placeholder — dedupe by (resolved-note, moc-path)
             key = (note_target, moc_path)
@@ -134,4 +189,6 @@ def detect_placeholders(
                 seen.add(key)
                 placeholders.append({"target": note_target, "referenced_by": moc_path})
 
-    return placeholders
+    stats["false_positive_dropped"] = stats["vault_resolved"] + stats["date_dropped"]
+    stats["kept_count"] = len(placeholders)
+    return placeholders, stats

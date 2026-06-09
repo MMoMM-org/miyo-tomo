@@ -47,3 +47,31 @@ placeholder list would have two entries for the same logical missing note,
 inflating the placeholder count and producing duplicate Condition C triggers in
 the inbox-analyst. The `seen: set[tuple[str, str]]` guard collapses them to
 one entry per (missing-note, referencing-MOC) pair.
+
+## Date-Shaped Targets Are Periodic Notes, Never MOC Placeholders
+
+WHY: The real-vault denominator (`in_scope_vault_paths`) is the MOC scope —
+`map_note` + `atomic_note` paths. Daily/weekly/monthly notes live OUTSIDE that
+scope, so a `[[2022-06-10]]` link can never resolve against the denominator and
+was wrongly emitted as a placeholder MOC. The T4.3 live validation (2026-06-09)
+measured 23 such date-shaped false positives leaking into the placeholder set —
+offering to "create a MOC named 2022-06-10" is nonsense. `_is_periodic_note_target`
+excludes the three Obsidian periodic-note shapes (`YYYY-MM-DD`, `YYYY-Www`,
+`YYYY-MM`) immediately after anchor strip. The regex is start/end anchored so
+year-THEMED MOCs that carry a suffix (`2024 Goals`, `2024-Q1 Review`, `2023 OKR`)
+do NOT match and remain genuine placeholders. This is exactly the false-positive
+class spec 021 set out to kill (extends the 224-fix to periodic notes), so it
+belongs in the detector, not in a downstream filter.
+
+## `detect_placeholders_with_stats` — Observability Without Breaking the Contract
+
+WHY: `detect_placeholders` has many call sites (the builder + 20+ tests) that
+depend on its `list[{target, referenced_by}]` return shape, so it must stay
+stable. The PRD `placeholder.build` event (M2/M4 validation) needs the
+raw/kept/dropped breakdown. Rather than change the public signature, the counting
+core is `detect_placeholders_with_stats` (returns `(list, stats)`) and
+`detect_placeholders` is a thin wrapper that discards the stats. The stats
+distinguish `date_dropped` (the new periodic-note guard), `vault_resolved` (the
+224-fix drops), and `moc_resolved` (MOC↔MOC links) so a future regression in any
+one correction path is independently visible — `false_positive_dropped` alone
+would hide which corrector did the work.

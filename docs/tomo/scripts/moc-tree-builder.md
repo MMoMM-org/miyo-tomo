@@ -83,3 +83,37 @@ WHY: `up_parse.parse_up_from_content` returns `{target, source}` only.
 built once in `build_entries` and reused for all notes. This keeps up_parse
 independent of vault state (testable in isolation) while keeping the resolution
 logic co-located with the data that makes it possible.
+
+## `placeholder.build` / `moc-cache.build` Telemetry Goes to stderr (M2/M4/M7)
+
+WHY: The PRD §Observability table promises these two events to validate the
+placeholder false-positive drop (M2/M4) and the no-excluded-leak guarantee (M7),
+but there is no event bus in Tomo — `lib/tomo_lifecycle` is a pure state machine,
+not a sink. The T4.3 live validation (2026-06-09) found the events were never
+actually emitted, so the metrics could only be eyeballed off the cache file.
+`_emit_build_telemetry` writes two greppable `[moc-tree] <event> {json}` lines to
+**stderr**, never stdout — stdout is the cache-builder JSON feed and any non-JSON
+byte there corrupts the downstream `json.load`
+(`feedback_never_redirect_stderr_into_json`). Parsers split on the event name.
+This is the minimal sink that makes the PRD metrics observable without inventing
+event-bus infrastructure the rest of the pipeline does not have.
+
+WHY emit from `run_with_client` (the testable seam) rather than `run()`: the seam
+is where `scan_result`, the placeholder stats, and the assembled cache all
+co-exist in memory. Emitting here lets the FakeKadoClient tests assert on the
+event payloads via `capsys` with no live Kado or disk write, and `run()` (the
+real-IO wrapper) inherits the emission for free. The `(cache, feed)` return tuple
+is deliberately UNCHANGED — stats ride out on stderr, not in the return value, so
+no consumer of the seam had to change (only the internal `build_entries` grew a
+third tuple element).
+
+## `excluded_leak_count` Is a Defense-in-Depth Guard, Expected 0 (M7)
+
+WHY: `moc_scan` already honours `exclude_paths` and drops excluded notes before
+assembly, so `_count_excluded_leaks` over the assembled entries is normally 0.
+It is not redundant: it is the M7 assertion that the scan's exclusion actually
+held — a non-zero value is the only signal that an excluded path (e.g. the `X/`
+template vault) leaked into the cache through a scan bug. Because the scan never
+lets a leak through end-to-end, the counter is unit-tested against hand-built
+entries rather than through the seam. Prefix matching normalises a trailing `/`
+so `X` and `X/` both mean "the X folder" while `Xenon/` is not a false match.

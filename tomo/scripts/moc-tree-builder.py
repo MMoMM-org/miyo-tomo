@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.2
+# version: 0.5.0
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -38,6 +38,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 
 import yaml
 
@@ -235,7 +236,9 @@ def _count_linked_notes(body: str, moc_stem_set: set[str]) -> int:
     return count
 
 
-def build_entries(client, scan_result, script_dir: str) -> tuple[list[dict], list[dict]]:
+def build_entries(
+    client, scan_result, script_dir: str
+) -> tuple[list[dict], list[dict], dict]:
     """Assemble CacheEntry dicts + the placeholder list from a ScanResult.
 
     Reads each MOC and in-scope note once, parses title/tags/wikilinks/up, and
@@ -246,12 +249,14 @@ def build_entries(client, scan_result, script_dir: str) -> tuple[list[dict], lis
 
     Returns
     -------
-    (entries, placeholder_links):
+    (entries, placeholder_links, placeholder_stats):
         entries           — list[CacheEntry] (moc + note, kind-discriminated)
         placeholder_links  — list[{target, referenced_by}] from the real-vault-
                             denominator detector (the 224 fix). Surfaced (W1) so
                             cache-builder's placeholder_links lift + Condition C
                             keep working, and persisted into both outputs.
+        placeholder_stats  — raw/kept/dropped breakdown for the placeholder.build
+                            observability event (M2/M4).
     """
     moc_paths = set(scan_result.moc_paths)
     note_paths = set(scan_result.in_scope_note_paths) - moc_paths
@@ -276,7 +281,7 @@ def build_entries(client, scan_result, script_dir: str) -> tuple[list[dict], lis
         path: {"linked_notes_raw": extract_wikilinks(get_body(raw_by_path[path]))}
         for path in moc_paths
     }
-    placeholder_links = placeholder_detect.detect_placeholders(
+    placeholder_links, placeholder_stats = placeholder_detect.detect_placeholders_with_stats(
         mocs_for_placeholder,
         known_moc_paths=moc_paths,
         in_scope_vault_paths=set(scan_result.in_scope_note_paths),
@@ -317,7 +322,7 @@ def build_entries(client, scan_result, script_dir: str) -> tuple[list[dict], lis
 
         entries.append(entry)
 
-    return entries, placeholder_links
+    return entries, placeholder_links, placeholder_stats
 
 
 def _discovered_via(scan_result, path: str) -> str:
@@ -417,6 +422,39 @@ def write_cache_atomic(cache: dict, output_path: str) -> None:
 # Build orchestration
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _count_excluded_leaks(entries: list[dict], exclude_paths: list[str]) -> int:
+    """Count entries whose path lives under an excluded prefix (M7 leak guard).
+
+    A non-zero count means the scan let an excluded path into the cache — the
+    exclusion is the security/scope boundary, so this is asserted to be 0.
+    """
+    prefixes = tuple(p.rstrip("/") + "/" for p in exclude_paths if p)
+    if not prefixes:
+        return 0
+    return sum(1 for e in entries if e["path"].startswith(prefixes))
+
+
+def _emit_build_telemetry(cache: dict, placeholder_stats: dict, duration_ms: int) -> None:
+    """Emit the PRD observability events to stderr (stdout is the JSON feed only).
+
+    Two greppable, JSON-tailed lines — `placeholder.build` validates M2/M4
+    (placeholder false-positive drop), `moc-cache.build` validates M7 (no
+    excluded-path leakage) + TTL/build-cost. Parsers split on the event name.
+    """
+    entries = cache["entries"]
+    moc_cache_stats = {
+        "built_at": cache["last_scan"],
+        "mocs_count": sum(1 for e in entries if e["kind"] == "moc"),
+        "notes_count": sum(1 for e in entries if e["kind"] == "note"),
+        "scope_paths": len(cache["scope_paths"]),
+        "excluded_leak_count": _count_excluded_leaks(entries, cache["exclude_paths"]),
+        "duration_ms": duration_ms,
+        "kado_reads": len(entries),
+    }
+    print(f"[moc-tree] placeholder.build {json.dumps(placeholder_stats)}", file=sys.stderr)
+    print(f"[moc-tree] moc-cache.build {json.dumps(moc_cache_stats)}", file=sys.stderr)
+
+
 def run_with_client(client, config: dict) -> tuple[dict, dict]:
     """Build both outputs from a (real or fake) Kado client.
 
@@ -425,11 +463,19 @@ def run_with_client(client, config: dict) -> tuple[dict, dict]:
         cache — the MocStructureCache dict (written to moc-structure-cache.yaml)
         feed  — the cache-builder JSON feed (map_notes + placeholder_links, stdout)
     `run()` wires the real client + config file + output path around it.
+
+    Emits the placeholder.build / moc-cache.build observability events to stderr
+    (M2/M4/M7); stdout stays JSON-feed-only.
     """
+    started = time.monotonic()
     scan_result = moc_scan.scan(client, config)
-    entries, placeholder_links = build_entries(client, scan_result, _SCRIPT_DIR)
+    entries, placeholder_links, placeholder_stats = build_entries(
+        client, scan_result, _SCRIPT_DIR
+    )
     cache = assemble_cache(config, entries, placeholder_links)
     feed = build_cache_builder_feed(entries, placeholder_links)
+    duration_ms = int((time.monotonic() - started) * 1000)
+    _emit_build_telemetry(cache, placeholder_stats, duration_ms)
     return cache, feed
 
 

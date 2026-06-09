@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_moc_tree_builder.py — Behavioural tests for the rebuilt MOC-structure
 cache builder (spec 021, Phase 1 T1.4).
 
@@ -459,3 +459,78 @@ def test_c2_kind_moc_projection_feeds_cache_builder_without_collapse():
     # consumer must surface it (proves the projection→classifications path works).
     if any(m.get("classification") is not None for m in map_notes):
         assert classifications, "C2 regression: classifications collapsed despite a classified MOC"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Observability events (M2/M4/M7) — placeholder.build + moc-cache.build to stderr
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _parse_events(stderr: str) -> dict[str, dict]:
+    """Extract `[moc-tree] <event> {json}` lines into {event_name: payload}."""
+    events: dict[str, dict] = {}
+    for line in stderr.splitlines():
+        for name in ("placeholder.build", "moc-cache.build"):
+            marker = f"[moc-tree] {name} "
+            if marker in line:
+                events[name] = json.loads(line.split(marker, 1)[1])
+    return events
+
+
+def test_run_with_client_emits_build_telemetry(capsys):
+    """placeholder.build + moc-cache.build land on stderr; counts reflect the
+    correction (date_dropped + vault_resolved) and stdout stays uncorrupted."""
+    moc_path = "Atlas/200 Maps/Home.md"
+    real_note = "Atlas/202 Notes/Real Idea.md"
+    client = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": real_note}],
+        },
+        notes={
+            moc_path: (
+                "---\ntitle: Home\n---\n# Home\n\n"
+                "[[Ghost MOC]]\n"        # genuine placeholder → kept
+                "[[2024-01-15]]\n"       # daily note → date_dropped
+                "[[Real Idea]]\n"        # resolves to in-scope note → vault_resolved
+                "[[#^selfref]]\n"        # same-note anchor → anchor_dropped
+            ),
+            real_note: "---\ntitle: Real Idea\n---\n# Real Idea\n",
+        },
+    )
+    _builder.run_with_client(client, _config())
+    captured = capsys.readouterr()
+
+    events = _parse_events(captured.err)
+    assert "placeholder.build" in events and "moc-cache.build" in events
+
+    pb = events["placeholder.build"]
+    assert pb["kept_count"] == 1               # only Ghost MOC survives
+    assert pb["date_dropped"] == 1             # 2024-01-15
+    assert pb["vault_resolved"] == 1           # Real Idea
+    assert pb["anchor_dropped"] == 1           # #^selfref
+    assert pb["false_positive_dropped"] == 2   # date_dropped + vault_resolved
+
+    mc = events["moc-cache.build"]
+    assert mc["mocs_count"] == 1
+    assert mc["notes_count"] == 1
+    assert mc["excluded_leak_count"] == 0
+    assert mc["duration_ms"] >= 0
+
+
+def test_excluded_leak_counter_flags_entries_under_excluded_prefix():
+    """_count_excluded_leaks is the M7 defense-in-depth guard: it counts any entry
+    that slipped past the scan's own exclusion. 0 in the normal case (scan excludes
+    correctly); non-zero only signals a scan bug, so the counter is unit-tested in
+    isolation rather than via the seam (the scan never lets a leak through end-to-end).
+    """
+    entries = [
+        {"path": "Atlas/200 Maps/Home.md"},
+        {"path": "X/TemplateVault/Readwise.md"},   # under excluded prefix → leak
+        {"path": "Atlas/202 Notes/Idea.md"},
+    ]
+    assert _builder._count_excluded_leaks(entries, ["X/"]) == 1
+    assert _builder._count_excluded_leaks(entries, []) == 0
+    assert _builder._count_excluded_leaks(entries, ["X"]) == 1  # prefix normalised w/ trailing /
+    # A path that merely shares a name prefix but not a folder boundary is NOT a leak.
+    assert _builder._count_excluded_leaks([{"path": "Xenon/Note.md"}], ["X/"]) == 0

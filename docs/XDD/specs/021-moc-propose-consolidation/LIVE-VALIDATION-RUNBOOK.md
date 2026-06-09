@@ -65,6 +65,29 @@ hit Kado **HTTP 429** rate-limiting and could not complete in one pass. The cap/
 ordering are covered by the unit suite + the real-cache orphan-pass dump above; re-run the
 plain `/moc-propose` scan E2E inside the container (where Kado is local) to close it.
 
+### Feature 8 (Phase 7) — tag-based exclude (T7.6)
+
+Exact tags (`lib/moc_tags.py`): `MiYo/Tomo/exclude/moc`, `MiYo/Tomo/exclude/note`.
+
+> **FRONTMATTER ONLY.** These tags are read from a note's YAML frontmatter `tags:`
+> list (via `moc-tree-builder.extract_tags`). An **inline** `#MiYo/Tomo/exclude/moc`
+> in the body is silently ignored. (Inconsistent with `#type/others/moc` MOC
+> discovery, which matches inline + frontmatter — known follow-up.)
+
+Procedure:
+1. Pick a MOC orphan (appears in `check:moc-uplinks`) and an orphan note (appears
+   in scan candidates). Add the exclude tag to each note's **frontmatter** `tags:`.
+2. `/explore-vault` to rebuild the cache (tags land in the entries).
+3. Verify host-side from the rebuilt cache (pure-function filters, no Kado):
+   - `exclude/moc`: the tagged MOC drops from the MOC-orphan set (`check:moc-uplinks`).
+   - `exclude/note`: the tagged note drops from the scan candidate set.
+
+| Metric | Target | Result |
+|--------|--------|--------|
+| **F8-1** | `exclude/moc` MOC drops from `check:moc-uplinks`; stays in cache + link-candidate pool | _(pending T7.6 run)_ |
+| **F8-2** | `exclude/note` note absent from scan candidates (never clustered) | _(pending T7.6 run)_ |
+| **F8-3** | near-duplicate clusters collapsed; no within-cluster dupes; no `### Oxx` section | _(pending T7.6 run)_ |
+
 ## 4. Record the run
 Add an entry to `docs/evolution/inbox-cost-log.md` via `tomo-session-stats.py`
 (see memory `reference_inbox_cost_log` — baseline was 18 items = \$10.71). Note token cost +

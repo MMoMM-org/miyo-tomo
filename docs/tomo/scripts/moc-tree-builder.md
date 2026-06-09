@@ -75,6 +75,17 @@ filters operate directly on the pre-loaded entry without any vault I/O.
 
 Spec: 021 Phase 7 T7.1, PRD Feature 8 AC7.
 
+WHY frontmatter-only (and the inconsistency): `extract_tags` reads
+`frontmatter.get("tags")` ONLY — it does not parse inline `#tags` from the note
+body. So the ADR-13 exclude tags (`MiYo/Tomo/exclude/moc` / `.../exclude/note`)
+take effect **only** when placed in YAML frontmatter `tags:`; an inline
+`#MiYo/Tomo/exclude/moc` is silently ignored. This is inconsistent with MOC
+*discovery*, which uses Kado `search_by_tag(#type/others/moc)` and matches inline
++ frontmatter both. The asymmetry is deliberate-for-now (the cache stores one
+tag source, read once per note from the same content round-trip) but surprising;
+tracked as a follow-up to optionally parse inline tags. Documented in
+`lib/moc_tags.py` and the F8 section of `LIVE-VALIDATION-RUNBOOK.md`.
+
 ## `up_state` Resolved by Caller, Not by `up_parse` (M1)
 
 WHY: `up_parse.parse_up_from_content` returns `{target, source}` only.

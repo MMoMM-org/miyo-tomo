@@ -1,8 +1,8 @@
 {
   "_comment": "Scenario C — BOTH placeholder (Condition C) and accumulation (Condition B) match same item. A7: placeholder wins.",
   "_contract": {
-    "when": "placeholder_links has target 'Boardgames' AND accumulation_index has key 'boardgames', both match item topic",
-    "then_proposed_moc_topic": "Boardgames",
+    "when": "placeholder_links has MOC-named target 'Boardgames MOC' matching the item topic",
+    "then_proposed_moc_topic": "Boardgames MOC",
     "then_source": "placeholder_links (Condition C wins per A7)",
     "then_needs_new_moc": true,
     "then_accumulation_must_not_overwrite": true
@@ -22,7 +22,7 @@
     "classification_keywords": {},
     "placeholder_links": [
       {
-        "target": "Boardgames",
+        "target": "Boardgames MOC",
         "referenced_by": "Atlas/200 MOCs/Hobbies MOC.md"
       }
     ],
@@ -43,8 +43,8 @@
   },
   "expected_result": {
     "needs_new_moc": true,
-    "proposed_moc_topic": "Boardgames",
+    "proposed_moc_topic": "Boardgames MOC",
     "proposed_moc_topic_source": "placeholder_links",
-    "note": "Placeholder casing 'Boardgames' is preserved verbatim; accumulation key 'boardgames' must NOT overwrite it."
+    "note": "MOC-named placeholder 'Boardgames MOC' is preserved verbatim (the user's ` MOC` convention marks it a missing MOC; a bare 'Boardgames' would be a missing regular note and filtered out)."
   }
 }

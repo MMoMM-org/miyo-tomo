@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.3.1
+# version: 1.4.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -227,15 +227,33 @@ def build_mocs(cache: dict) -> list[dict]:
     return out
 
 
-def build_placeholder_links(cache: dict) -> list[dict]:
-    """Pass through cache.placeholder_links[] unchanged.
+# A placeholder link is a missing MOC only when its target follows the vault's
+# MOC naming convention: a trailing `(MOC)` parenthetical OR a trailing ` MOC`
+# word. Condition C offers MOC *creation*, so a placeholder link to a missing
+# regular note (no MOC marker) must not reach it — that was the bulk of the
+# unfiltered list (158 of 196 on the real vault, 2026-06-09). `\bMOC` keeps the
+# match on a word boundary so mid-word "...MOC" never matches.
+_MOC_NAME_RE = re.compile(r"(\(MOC\)|\bMOC)\s*$", re.IGNORECASE)
 
-    Source: `moc-tree-builder.py::detect_placeholders` writes entries shaped
-    `{"target": str, "referenced_by": str}` and `cache-builder.py` lifts
-    them onto the cache as `cache.placeholder_links`. Phase-B subagents
-    (`inbox-analyst`) use this list as a Condition C trigger: when an item's
-    topics match a placeholder `target`, propose creating a thematic MOC to
-    resolve the dead link (Tier-3 New MOC Proposal §2.C).
+
+def _is_missing_moc_target(target: str) -> bool:
+    """True if a placeholder target names a MOC (the user's `(MOC)`/` MOC` convention)."""
+    return bool(_MOC_NAME_RE.search(target))
+
+
+def build_placeholder_links(cache: dict) -> list[dict]:
+    """Filter cache.placeholder_links[] to the ones that name a missing MOC.
+
+    Source: `moc-tree-builder.py` detects every dead wikilink in MOC bodies and
+    `cache-builder.py` lifts them onto `cache.placeholder_links` as
+    `{"target": str, "referenced_by": str}`. Those are *placeholder links* in
+    the general sense — a dead link may point to a missing MOC OR a missing
+    regular note. `inbox-analyst` Condition C uses this list to offer MOC
+    *creation* (Tier-3 New MOC Proposal §2.C), so only links whose target
+    follows the MOC naming convention (`(MOC)` / ` MOC`) belong here — a missing
+    regular note is not a missing MOC. Filtering at this feed (not in the cache)
+    keeps the cache a complete dead-link record while keeping the shared-ctx
+    envelope lean (M6) and stopping Condition C from proposing MOCs for non-MOCs.
 
     Drift guard: drop entries that don't have both fields. Older caches
     written before F-35 may lack the field — return [] silently. The schema
@@ -251,6 +269,8 @@ def build_placeholder_links(cache: dict) -> list[dict]:
         target = (entry.get("target") or "").strip()
         referenced_by = (entry.get("referenced_by") or "").strip()
         if not (target and referenced_by):
+            continue
+        if not _is_missing_moc_target(target):
             continue
         out.append({"target": target, "referenced_by": referenced_by})
     return out

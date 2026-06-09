@@ -1,6 +1,6 @@
 ---
 title: "MOC-Propose Consolidation — Implementation Plan"
-status: draft
+status: implemented
 version: "1.0"
 ---
 
@@ -36,7 +36,7 @@ version: "1.0"
 |-------|-------|
 | specId | 021-moc-propose-consolidation |
 | title | MOC-Propose Consolidation |
-| status | IN_REVIEW |
+| status | IMPLEMENTED |
 | phases | 5 |
 | totalTasks | 22 |
 | parallelTasks | 5 |

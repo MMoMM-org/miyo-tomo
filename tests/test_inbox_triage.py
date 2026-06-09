@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
 T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
@@ -1128,6 +1128,58 @@ class TestRoutingPlan:
 
         assert len(plan["drift_indicators"]) == 1
         assert plan["drift_indicators"][0]["type"] == "checksum_mismatch"
+
+    def test_recover_folds_captured_into_fresh_sources(self):
+        """--recover must surface captured items into fresh_sources so the
+        suggest-handling conductor actually re-dispatches them. Without this the
+        recover action fires but the dispatch list is empty (the bug)."""
+        mod = _load_module()
+
+        cap = _fm_hit(INBOX_PATH + "old-captured.md", "source", "captured")
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            recover=True,
+            new_sources=[],
+            captured_hits=[cap],
+        )
+
+        plan = mod.build_routing_plan(
+            state=state,
+            action="suggest",
+            to_process=set(),
+            drift_indicators=[],
+            idle_reasons=[],
+            metrics={"total_ms": 0, "discover_ms": 0, "kado_calls": 0, "docs_cached": 0},
+        )
+
+        paths = {s["path"] for s in plan["fresh_sources"]}
+        assert INBOX_PATH + "old-captured.md" in paths, (
+            "recover=True must fold captured_hits into fresh_sources"
+        )
+
+    def test_no_recover_excludes_captured_from_fresh_sources(self):
+        """Without --recover, captured items must NOT appear in fresh_sources."""
+        mod = _load_module()
+
+        cap = _fm_hit(INBOX_PATH + "old-captured.md", "source", "captured")
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            recover=False,
+            new_sources=[{"path": INBOX_PATH + "fresh.md", "modified": 1716300000000}],
+            captured_hits=[cap],
+        )
+
+        plan = mod.build_routing_plan(
+            state=state,
+            action="suggest",
+            to_process=set(),
+            drift_indicators=[],
+            idle_reasons=[],
+            metrics={"total_ms": 0, "discover_ms": 0, "kado_calls": 0, "docs_cached": 0},
+        )
+
+        paths = {s["path"] for s in plan["fresh_sources"]}
+        assert paths == {INBOX_PATH + "fresh.md"}, f"captured leaked without recover: {paths}"
 
 
 # ---------------------------------------------------------------------------

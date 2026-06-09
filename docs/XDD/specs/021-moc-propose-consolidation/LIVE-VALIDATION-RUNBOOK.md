@@ -84,9 +84,9 @@ Procedure:
 
 | Metric | Target | Result |
 |--------|--------|--------|
-| **F8-1** | `exclude/moc` MOC drops from `check:moc-uplinks`; stays in cache + link-candidate pool | _(pending T7.6 run)_ |
-| **F8-2** | `exclude/note` note absent from scan candidates (never clustered) | _(pending T7.6 run)_ |
-| **F8-3** | near-duplicate clusters collapsed; no within-cluster dupes; no `### Oxx` section | _(pending T7.6 run)_ |
+| **F8-1** | `exclude/moc` MOC drops from `check:moc-uplinks`; stays in cache + link-candidate pool | ✅ 2026-06-09 — tagged `000 Index.md` `MiYo/Tomo/exclude/moc`; rebuilt cache: MOC orphans **28→27**, `000 Index` dropped, entry still present in cache (link pool intact) |
+| **F8-2** | `exclude/note` note absent from scan candidates (never clustered) | ✅ 2026-06-09 — tagged `…/What is the purpose of my Vault (Thought).md` `MiYo/Tomo/exclude/note`; scan candidates **206→205**, note dropped |
+| **F8-3** | near-duplicate clusters collapsed; no within-cluster dupes; no `### Oxx` section | ✅ covered by F7 (2026-06-06) + unit suite (`_dedupe_overlapping_clusters` T7.4, note-orphan drop T7.5) |
 
 ## 4. Record the run
 Add an entry to `docs/evolution/inbox-cost-log.md` via `tomo-session-stats.py`

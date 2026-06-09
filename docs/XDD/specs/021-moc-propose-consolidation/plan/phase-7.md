@@ -76,7 +76,8 @@ phase: 7
   5. WHY → `docs/tomo/scripts/moc-discovery.md` + `suggestions-reducer.md`: orphan section is check-mode-only (note-orphan flow → #30).
   6. Success: cluster proposal-doc has no note-orphan section; check-mode unaffected `[ref: PRD/F8 AC1]`.
 
-- [ ] **T7.6 Phase 7 validation + sync + version bumps** `[activity: validate]`
+- [x] **T7.6 Phase 7 validation + sync + version bumps** `[activity: validate]`
   - Bump `# version:` on every edited managed file. `./scripts/update-tomo.sh --yolo` (agents/commands need sandbox-off — see memory `reference_update_tomo_sandbox_blocks_claude_dir`). Full `./venv/bin/python -m pytest -q` (only the 8 pre-existing ide_bridge failures allowed) + `ruff check`.
   - Live (host→Kado, mind the 429 — `reference_kado_429_blocks_host_full_pipeline`): rebuild cache (entries carry `tags`); render a scan proposal-doc → no `### Oxx` section, no within-cluster dupes, near-duplicate clusters collapsed; tag a root MOC `exclude/moc` → drops from `check:moc-uplinks`; tag a note `exclude/note` → absent from scan candidates.
   - Update `LIVE-VALIDATION-RUNBOOK.md` with the F8 checks. (021 finalize remains after the full in-container live pass — unchanged gate.)
+  - **DONE 2026-06-09** — F8 live-validated on the rebuilt cache (frontmatter tags): `exclude/moc` on `000 Index.md` → MOC orphans 28→27 (entry stays in cache); `exclude/note` on a Thought note → scan candidates 206→205. F8-3 (cluster dedup) covered by F7 + unit suite. Full suite 924 passed, ruff clean. Exclude tags are **frontmatter-only** — documented in `lib/moc_tags.py`, the WHY doc, runbook F8 section, and user-facing `docs/usage.md`; inline-tag support tracked as follow-up #50.

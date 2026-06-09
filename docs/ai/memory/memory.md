@@ -4,9 +4,9 @@
 > Budget: ≤ 200 lines. Archive entries when stale. Run /memory-sync to check.
 
 ## Files
-- [general.md](general.md) — conventions, style, naming [updated: 2026-06-06]
+- [general.md](general.md) — conventions, style, naming [updated: 2026-06-09]
 - [tools.md](tools.md) — CI, build, local dev [updated: 2026-06-06]
-- [domain.md](domain.md) — business rules, data models [updated: YYYY-MM-DD]
+- [domain.md](domain.md) — business rules, data models [updated: 2026-06-09]
 - [decisions.md](decisions.md) — architecture choices [updated: 2026-06-06]
 - [context.md](context.md) — current focus [updated: 2026-05-07]
 - [troubleshooting.md](troubleshooting.md) — known issues [updated: 2026-06-06]

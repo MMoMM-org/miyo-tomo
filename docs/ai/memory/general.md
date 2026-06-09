@@ -1,5 +1,5 @@
 # General — Tomo
-<!-- Conventions, naming rules, code style, git workflow. Updated: 2026-05-22 -->
+<!-- Conventions, naming rules, code style, git workflow. Updated: 2026-06-09 -->
 <!-- What goes here: how files are named, folder structure, style choices, branch conventions -->
 <!-- What does NOT go here: tool-specific quirks (→ tools.md), domain rules (→ domain.md) -->
 
@@ -28,3 +28,6 @@
 
 <!-- 2026-06-06 -->
 - Dev-only scripts (e.g. `scripts/strip-tomo-frontmatter.py`) should bake in sensible defaults so you don't re-figure-out the correct settings on every run — they're invoked ad-hoc during development, not by the pipeline, so optimise for zero-argument ergonomics over configurability. (Queued 2026-05-26.)
+
+<!-- 2026-06-09 -->
+- **A feature/flag that spans a DECISION branch AND a DATA-ASSEMBLY step must be tested at BOTH layers — testing only the decision lets a broken assembly pass CI.** `inbox-triage --recover` was half-wired: `determine_action` returned `"suggest"` on `recover and captured_hits`, but `build_routing_plan` built the `fresh_sources[]` dispatch list from `new_sources` only — so recover flipped the action yet handed the conductor an empty list (silent no-op). The only test (`test_recover`) asserted the action and passed while the feature was dead. Found in spec 021 T4.3 live validation 2026-06-09; fixed in `inbox-triage` 0.8.0. Rule: when a flag's effect crosses two functions (decide → assemble → dispatch), write a test that asserts the *downstream artifact* (the dispatch list / emitted payload), not just the branch taken. Sibling of `feedback_count_parity_not_correctness` (validate execution, not output shape).

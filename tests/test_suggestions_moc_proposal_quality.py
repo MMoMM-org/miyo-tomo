@@ -29,7 +29,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REDUCER = REPO_ROOT / "tomo" / "scripts" / "suggestions-reducer.py"
@@ -224,7 +223,7 @@ class TestNamingConsistency:
 
         doc = _run_reducer(tmp_path, stems, make_results, threshold=1)
         md = _run_render(tmp_path, doc)
-        assert "Notemaking (MOC)" in md, f"Expected 'Notemaking (MOC)' in render output"
+        assert "Notemaking (MOC)" in md, "Expected 'Notemaking (MOC)' in render output"
         assert "Notemaking MOC (MOC)" not in md, f"Double-suffix in rendered output:\n{md}"
 
 

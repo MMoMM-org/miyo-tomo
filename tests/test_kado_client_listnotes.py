@@ -11,7 +11,6 @@ Spec: docs/XDD/specs/015-msp-condition-b-accumulation/
 """
 from __future__ import annotations
 
-import io
 import json
 import sys
 from pathlib import Path

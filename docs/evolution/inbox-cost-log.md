@@ -41,7 +41,7 @@ input/output/cache_create/cache_read). Actual billed cost may differ
 - `--recover` was broken pre-021 (action flipped but empty dispatch list) — fixed in inbox-triage v0.8.0; this run is the first where all 18 captured items re-dispatched.
 - No cutoff on the heavy 18-item dispatch (the original concern): all `done`, no stuck/running, no missing `result.json`.
 - Token cost NOT captured this run — in-container validation run, not instrumented via `tomo-session-stats.py`. Metrics validation was the goal; cost-trajectory measurement deferred to a future instrumented run.
-- Follow-up filed: **#49** (Condition A inference + reducer don't apply the MOC naming convention → bare `Notemaking`/`Board Games` in proposed_mocs).
+- ~~Follow-up #49~~ **closed as not-a-bug 2026-06-10**: the created MOC name uses the normalized `proposed_mocs[].name` field, which DOES apply the convention (`Notemaking`→`Notemaking (MOC)`, `AI MOC`→`AI (MOC)`); test-locked. The initial finding misread the raw `topic` field instead of `name`.
 
 ### 2026-05-26 — Pass 1 (suggest), 18 items, batch dispatch
 

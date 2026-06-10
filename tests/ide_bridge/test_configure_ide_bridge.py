@@ -472,7 +472,11 @@ def test_install_smoke_ide_bridge_block_exists(tmp_path):
             "--vault", str(vault_dir),
             "--non-interactive",
             "--instance-location", str(tmp_path),
-            "--instance-name", "tomo-instance",
+            # Unique name: the duplicate check is registry-global by name and
+            # ignores --instance-location, so reusing "tomo-instance" collides
+            # with the developer's real registered instance (scripts/CLAUDE.md:
+            # tests MUST pass an isolated --instance-name).
+            "--instance-name", "test-ide-bridge-smoke",
             "--home-dir", str(home_dir),
             "--config-file", str(cfg_file),
         ],

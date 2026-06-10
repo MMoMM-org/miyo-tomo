@@ -49,3 +49,6 @@ __pycache__/
 
 # Python virtualenv (host dev; container has its own)
 venv/
+
+# tcs-git-helpers per-repo setup lock (runtime artifact, never committed)
+.githooks/.setup.lock

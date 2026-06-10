@@ -45,7 +45,7 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 | F-29 | ☐ #23 | Backup remainder (MVP shipped; nested-git warning + verification open) |
 | F-30 | **#29** | LLM-driven insertion-point resolution for link_to_moc |
 | F-32 | **#40** | Opus cost reduction (lever a shipped; measurement + b/c open) |
-| F-34 | **#27** | Code-complete (spec 015 / feat/f-34-msp-condition-b-accumulation); live-validation pending — *detail in Appendix B* |
+| F-34 | ~~#27~~ | **Superseded by spec 021** (2026-06-10) — Condition B retired from `/inbox`; capability moved to `/moc-propose`. GH #27 closed. *Historical detail in Appendix B.* |
 | F-36 | **#28** | New-section proposal logic |
 | F-37 | ☐ #22 | Daily-log date-source re-audit |
 | F-39 | ☐ #20 | Profile-driven `daily_log.entry_time_format` |
@@ -162,7 +162,7 @@ cache → shared-ctx → subagent → reducer → instruction-builder.
 ## Appendix B — F-34/F-35 Detail: Mental Squeeze Point Completion Plan
 
 > Reference design notes for GitHub **#27** (F-34) and the shipped **F-35**.
-> **F-34 is code-complete (XDD 015).** Live-validation pending (Phase 5, T5.2 gated on Kado `listNotes` release).
+> **⛔ F-34 Condition B is SUPERSEDED by spec 021 (2026-06-10).** Live validation proved it never fires; Condition B was retired from `/inbox` and the vault-wide accumulation → new-MOC capability now lives in `/moc-propose`. GH #27 closed. The notes below are historical context for the original F-34 design.
 
 **Context.** Spec defines four MOC-creation triggers (Tier-3 New MOC
 Proposal §2):

@@ -1,9 +1,18 @@
 # XDD 015 — MSP Condition B: Accumulation Detection
 
-**Status:** PRD ✓ · SDD ✓ · PLAN ✓ · **Implemented (2026-06-04)** — code-complete; live-validation (T5.2) pending
-**Current phase:** Implemented — all 5 phases shipped on `feat/f-34-msp-condition-b-accumulation`; T5.2 deferred (user-driven live run, Kado gate open)
-**Backlog origin:** F-34 (Must)
-**Last Updated:** 2026-06-04
+> **⛔ SUPERSEDED by [021-moc-propose-consolidation](../021-moc-propose-consolidation/README.md) (Implemented + merged 2026-06-10).**
+> Live validation (2026-06-05) proved inbox-path Condition B never fires — the
+> `accumulation_index` is trimmed to 0 by the shared-ctx budget on every real run.
+> Condition B was **retired from `/inbox`**; the vault-wide accumulation → new-MOC
+> capability lives in `/moc-propose` instead. Condition A + C stay in `/inbox`.
+> The one keeper from this branch is `moc-tree-builder.py`'s anchor-strip/dedup work.
+> Tracking issue [#27](https://github.com/MMoMM-org/miyo-tomo/issues/27) closed as superseded.
+> Everything below is retained for historical context only.
+
+**Status:** **Superseded (2026-06-10)** — code shipped 2026-06-04 (`feat/f-34-msp-condition-b-accumulation`), then retired by spec 021. Live validation (T5.2) never run; capability moved to `/moc-propose`.
+**Current phase:** Superseded by 021 — Condition B retired from the inbox path
+**Backlog origin:** F-34 (Must) — closed via spec 021
+**Last Updated:** 2026-06-10
 
 > **✅ Topic extraction (2026-06-04):** Kado shipped
 > `kado-search operation="listNotes"` with `fields=["links","headings","tags"]` —

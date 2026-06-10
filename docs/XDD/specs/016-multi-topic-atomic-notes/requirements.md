@@ -1,6 +1,7 @@
 # XDD 016 — Requirements (PRD)
 
-> **Status:** draft (2026-05-07)
+> **Status:** completed — OQ1–OQ8 resolved 2026-06-10, ready for SDD
+> **(was: draft 2026-05-07)**
 > **Spec ID:** 016
 > **Title:** Multi-topic detection — emit one `create_atomic_note` per substantive concept per inbox item
 > **Backlog ref:** F-41 (Should)
@@ -210,7 +211,17 @@ implementation.
 
 ## 8. Open questions
 
-> Answer before SDD locks the surface.
+> **RESOLVED 2026-06-10 — all eight adopt their Lean.** Locked before SDD:
+> - **OQ1 → (a)** LLM-driven `Step 7.5 — Topical segmentation` in `inbox-analyst.md` (agent-side, no new script).
+> - **OQ2 → LLM prompt** with 2-3 worked examples in the agent body (worthiness-prompt shape).
+> - **OQ3 → once per thread** — topics are a property of the thread, not the source.
+> - **OQ4 → daily-log thread ONLY** — atomic threads produce notes; user manually links into the daily if desired.
+> - **OQ5 → N independent per-item blocks** with `source_stem` visible in each (no nesting).
+> - **OQ6 → delete source after ALL atomics committed AND any daily-log entry committed** (preserve until every derived thread is captured).
+> - **OQ7 → yes, length pre-check `> 200 words`** before invoking segmentation; short items skip to Step 8 with `threads = [single_default_thread]`.
+> - **OQ8 → verify in SDD** — expect minor changes (parser action-list iteration, render per-action filename-collision check); schema already permits multiple actions per source.
+>
+> Originals retained below for rationale.
 
 - **OQ1 — Where does segmentation live?**
   (a) New `Step 7.5 — Topical segmentation` between worthiness and

@@ -1,7 +1,7 @@
 # XDD 016 — Multi-topic detection for atomic-note-worthy items
 
-**Status:** PRD draft — 2026-05-07
-**Current phase:** requirements.md (PRD)
+**Status:** PRD completed (OQ1–OQ8 resolved 2026-06-10) — SDD next
+**Current phase:** requirements.md locked → solution.md (SDD)
 **Backlog origin:** F-41 (Should)
 **Triggering incident:** 2026-05-01 /inbox run, voice memo
 `Apothekerpfädchen 11__2026-04-22 10-14-41.md` — 183-sec transcript with

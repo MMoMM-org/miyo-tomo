@@ -71,8 +71,12 @@ def _render_template(tmp_path: Path, *,
 
     # Create a minimal tomo-install.json so CONFIG_FILE existence check passes.
     # The jq shim intercepts all reads — this file just needs to exist.
+    # CONFIG_FILE is `$(dirname "$INSTANCE_PATH")/tomo-install.json` (host-side,
+    # sibling of the instance dir), so the fixture must live next to the
+    # instance dir — NOT under TOMO_REPO_ROOT — or the `[ -f "$CONFIG_FILE" ]`
+    # gate skips the IDE-bridge config read and the banner shows "not configured".
     enabled_str = "true" if ide_enabled else "false"
-    (Path(fake_repo) / "tomo-install.json").write_text(
+    (Path(instance_path).parent / "tomo-install.json").write_text(
         f'{{"ide_bridge": {{"enabled": {enabled_str}, "port": {ide_port}}}}}'
     )
 
@@ -238,10 +242,15 @@ def _extract_banner_blocks(rendered: Path) -> str:
         launch = launch_match2.group(0) if launch_match2 else ""
         launch = re.sub(r"\ndocker run.*", "\n# docker run suppressed", launch, flags=re.DOTALL)
 
-    # Also need the CONFIG_FILE variable (set in the "Version check" section)
+    # Also need the CONFIG_FILE variable (set in the "Version check" section).
+    # Match the WHOLE line, not a quote-delimited fragment: the value nests a
+    # double quote (`CONFIG_FILE="$(dirname "$INSTANCE_PATH")/..."`), so a
+    # `"[^"]+"` window stops at the inner quote and yields an unbalanced
+    # `CONFIG_FILE="$(dirname "` fragment that breaks the assembled snippet.
     config_var_match = re.search(
-        r"CONFIG_FILE=\"[^\"]+\"",
+        r"^CONFIG_FILE=.*$",
         content,
+        re.MULTILINE,
     )
     config_var = config_var_match.group(0) if config_var_match else ""
     # And FORCE_REBUILD default

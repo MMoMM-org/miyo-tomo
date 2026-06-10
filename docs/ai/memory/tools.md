@@ -1,5 +1,5 @@
 # Tools — Tomo
-<!-- CI, build pipeline, API clients, local dev setup. Updated: 2026-05-08 -->
+<!-- CI, build pipeline, API clients, local dev setup. Updated: 2026-06-10 -->
 <!-- What goes here: commands that are non-obvious, tool quirks, CI gotchas, env var names -->
 <!-- What does NOT go here: domain rules (→ domain.md), code style (→ general.md) -->
 
@@ -8,6 +8,8 @@
 ## Regex-extraction harnesses need a non-empty guard — silent false greens otherwise
 
 When a test harness extracts a code block via regex (e.g., section between comment delimiters in a shell script) and inlines it into a subprocess, tests that assert "nothing happened" pass trivially when the extraction returns `""`. The block is absent → harness runs an empty string → no socat call, no error → test passes. Regression is invisible. Fix: assert the extracted block is non-empty in the **shared helper** (one assert covers all callers). Discovered during 019 T2.2 entrypoint proxy tests 2026-05-29.
+
+**Sibling failure mode (#15, 2026-06-10): a NON-empty extraction can still be malformed when the regex slices through a nested quote.** A `CONFIG_FILE="[^"]+"` capture against the template line `CONFIG_FILE="$(dirname "$INSTANCE_PATH")/tomo-install.json"` stops at the *inner* `"`, yielding the truncated fragment `CONFIG_FILE="$(dirname "`. Inlined into the assembled snippet, bash dies with `unexpected EOF while looking for matching "` — and because the harness assembles ~8 sections, the reported line number points at the *last* line, not the broken capture. Two rules: (1) extract whole **lines** (`^KEY=.*$`, MULTILINE), never a quote-delimited sub-span, when the value may contain nested quotes / `$(...)`; (2) when one parse fix lands, re-run — it often unmasks a *second* latent bug the parse error was hiding (here: an IDE-config fixture written to the wrong path, only reachable once the snippet parsed). Diagnose such harnesses by `bash -n`-ing each extracted section in isolation **and** cumulatively to bisect the offender.
 
 <!-- 2026-05-08 -->
 

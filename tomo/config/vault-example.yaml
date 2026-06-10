@@ -1,5 +1,5 @@
 # vault-config.yaml — Example / Reference Configuration
-# version: 1.2
+# version: 1.3
 #
 # This file documents the COMPLETE vault-config.yaml schema with MiYo profile
 # defaults as example values.
@@ -37,8 +37,12 @@ concepts:
   # Where new, unprocessed items land
   inbox: "+/"
 
-  # Evergreen / atomic notes — single-idea permanent notes
-  atomic_note: "Atlas/202 Notes/"
+  # Evergreen / atomic notes — single-idea permanent notes.
+  # Dict shape (M8): `path` (single) or `paths` (list). Aligns with the instance
+  # config and with how moc_scan.read_scope_paths / the MOC-structure-cache
+  # builder read the atomic-note scope.
+  atomic_note:
+    path: "Atlas/202 Notes/"
 
   # Map of Content — MOC notes. Discovery uses BOTH folder paths AND tags.
   # Notes tagged with any of the listed tags are treated as MOCs regardless of
@@ -361,6 +365,64 @@ tomo:
 
     # Maximum concurrent Phase-B subagents during /inbox fan-out. Range 1-5.
     parallel: 5
+
+  # MOC-structure cache (config/moc-structure-cache.yaml). Scopes and TTL for the
+  # tag-primary MOC scan that feeds /moc-propose and discovery-cache. Metadata
+  # only — paths/titles/topics/stems/tags/up-state/timestamps, never note bodies.
+  moc_structure_cache:
+    # Vault folders scanned for in-scope notes (the placeholder denominator and
+    # up_state universe). Defaults to concepts.map_note.paths + concepts.atomic_note
+    # when omitted.
+    scope_paths:
+      - "Atlas/200 Maps/"
+      - "Atlas/202 Notes/"
+
+    # Prefixes excluded from the scan. Exclude wins over tag (a note tagged
+    # #type/others/moc under an excluded prefix is NOT treated as a MOC). Trailing
+    # spaces are matched exactly — e.g. "Calendar/301 Daily/ " with a trailing
+    # space is a real vault gotcha. To suppress a whole template/archive vault
+    # (its MOCs would otherwise leak into proposals), exclude the folder root —
+    # e.g. a top-level "X/" drops every X/… note and MOC at build time.
+    exclude_paths:
+      - "Calendar/"
+      - "X/"
+
+    # Rebuild the cache when it is older than this many days (TTL). /moc-propose
+    # rebuilds inline when stale/missing; /explore-vault force-rebuilds.
+    ttl_days: 1
+
+    # The structural tag that identifies MOCs (no leading '#').
+    moc_tag: "type/others/moc"
+
+  # MOC proposal tunables — controls /moc-propose (spec 013 / F-43).
+  # All keys are optional; omitting the block entirely uses the spec defaults.
+  moc_proposal:
+    # Maximum candidates considered for MOC grouping. scan mode sources only
+    # orphans (up_state==absent), so this cap is rarely hit; scoped modes
+    # (folder/tag/class) may exceed it on dense folders. Raised 200→500 in
+    # T5.1 (ADR-11: whole-vault scan was counting already-MOC-linked notes).
+    candidate_cap: 500
+
+    # Maximum orphan link-or-create suggestions rendered into a scan proposal-doc.
+    # The (link-first ordered) orphan set is truncated to this many; the rest are
+    # summarised in an overflow footer prompting a scoped re-run. Default 50.
+    orphan_display_cap: 50
+
+    # Minimum notes per cluster to emit a MOC proposal.
+    min_notes: 3
+
+    # Maximum MOC proposals returned per run.
+    max_results: 5
+
+    # Minimum topic-overlap score for a cluster to count as a proposal.
+    confidence_threshold: 0.15
+
+    # Maximum LLM batches allowed for cache-miss topic extraction.
+    # Each batch = 10 candidates. Exceeding this aborts with cache-miss-cap-exceeded.
+    cache_miss_max_batches: 5
+
+    # Number of past run results kept in moc-squelch.json for duplicate suppression.
+    squelch_runs: 3
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Trackers

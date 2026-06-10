@@ -4,7 +4,7 @@ description: MOC matching algorithm, section placement rules, mental squeeze poi
 user-invocable: false
 ---
 # LYT Patterns
-# version: 0.2.1
+# version: 0.2.4
 
 Knowledge patterns for MOC matching, section placement, and new MOC proposals.
 
@@ -85,9 +85,9 @@ When MOC matching returns no results above threshold (not even classification le
 When both a thematic MOC and its parent classification MOC match: show the thematic MOC as
 primary link. The classification MOC is implicit via the tree — do not add it as a second link.
 
-## Placeholder MOC Awareness
+## Placeholder link awareness
 
-From the cache's `placeholder_mocs` list: if item topics match a placeholder MOC's implied topics, include in suggestions as: "This note matches placeholder [[Name (MOC)]] (dead link in [[Parent MOC]]). Creating this MOC would resolve the placeholder."
+From the cache's `placeholder_links` list: if item topics match a placeholder link's implied topics, include in suggestions as: "This note matches placeholder link [[Name]] (dead link in [[Parent MOC]]). Creating this MOC would resolve the placeholder."
 
 ## Section Placement Rules
 
@@ -150,11 +150,8 @@ A new MOC proposal is triggered when ANY of these conditions are met:
 **Condition A — Cluster (Batch):**
 3+ items in the current batch share topics not covered by any existing MOC.
 
-**Condition B — Accumulation (Historical):**
-The note being analysed matches topics shared by 2+ existing unclassified notes (no `up::` to a MOC). Combined with the current item = 3+ notes → threshold met.
-
 **Condition C — Placeholder Match:**
-Note topics match a placeholder MOC (dead link in an existing MOC). Propose creating the MOC to resolve the dead link.
+Note topics match a placeholder link (dead link in an existing MOC). Propose creating the MOC to resolve the dead link.
 
 **Condition D — Manual Trigger (`/scan-mocs`):**
 User-initiated vault-wide density scan.
@@ -169,7 +166,7 @@ A proposal includes:
 - Template reference (`t_moc_tomo` or profile default)
 - Parent MOC and target section
 - Initial links — the notes that triggered the proposal
-- Trigger type: `cluster`, `accumulation`, `placeholder`, or `manual`
+- Trigger type: `cluster`, `placeholder`, or `manual`
 - Placeholder resolution note if applicable
 
 **Duplicate prevention:** Before proposing, check:

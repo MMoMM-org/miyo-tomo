@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -125,16 +125,25 @@ def render_proposed_mocs(d: dict) -> list[str]:
     lines = ["## Proposed MOCs", ""]
     for pm in mocs:
         topic = pm.get("topic", "")
-        items = ", ".join(pm.get("items", []))
+        name = pm.get("name") or f"{topic} (MOC)"
+        note_titles = pm.get("note_titles")
+        if note_titles:
+            supporting = ", ".join(note_titles)
+        else:
+            supporting = ", ".join(pm.get("items", []))
         parent = pm.get("parent", "")
         tags = ", ".join(pm.get("tags", []))
         tag_line = f"- **Suggested tags:** {tags}" if tags else ""
+        reason = pm.get("reason", "")
+
         entry = [
             f"### Proposed MOC: {topic}",
-            f"- **Name:** {topic} (MOC)    \u2190 edit this to rename the MOC before approving",
+            f"- **Name:** {name}    \u2190 edit this to rename the MOC before approving",
             f"- **Parent:** [[{parent}]]    \u2190 change parent MOC if needed",
-            f"- **Supporting items:** {items}",
+            f"- **Supporting notes:** {supporting}",
         ]
+        if reason:
+            entry.append(f"- **Why:** {reason}")
         if tag_line:
             entry.append(tag_line)
         entry.extend([

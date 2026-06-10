@@ -75,14 +75,29 @@ def _entry(signature: str, runs_remaining: int) -> dict:
 
 
 def _write_config(tmp_path: Path) -> tuple[Path, Path]:
-    """Create minimal vault-config.yaml and discovery-cache.yaml in tmp_path."""
+    """Create minimal vault-config.yaml + a FRESH moc-structure-cache in tmp_path.
+
+    spec 021 T2.1: moc-discovery reads the MOC-structure cache via the loader, so
+    the fixture writes the new shape (entries[kind==moc] + a recent last_scan) so
+    the loader loads it fresh (no rebuild) and the shim yields a non-empty
+    map_notes.
+    """
+    from datetime import datetime, timezone
+
     config_path = tmp_path / "vault-config.yaml"
     config_path.write_text("profile: miyo\n", encoding="utf-8")
 
-    cache_path = tmp_path / "discovery-cache.yaml"
-    # Non-empty map_notes so validate_cache_loaded() passes.
+    fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cache_path = tmp_path / "moc-structure-cache.yaml"
     cache_path.write_text(
-        "map_notes:\n  - path: Atlas/Maps/Existing MOC.md\n    title: Existing MOC\n    topics: []\n",
+        "moc_cache_version: 1\n"
+        f"last_scan: '{fresh}'\n"
+        "ttl_days: 1\n"
+        "entries:\n"
+        "  - path: Atlas/Maps/Existing MOC.md\n"
+        "    title: Existing MOC\n"
+        "    kind: moc\n"
+        "    topics: []\n",
         encoding="utf-8",
     )
     return config_path, cache_path

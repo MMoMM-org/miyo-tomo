@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.4.0
+# version: 1.7.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -323,6 +323,25 @@ def _ensure_moc_suffix(title: str) -> str:
     if title.endswith(" MOC"):
         return title[:-4] + _MOC_SUFFIX
     return title + _MOC_SUFFIX
+
+
+def _enrich_proposed_mocs(
+    proposed_mocs: list[dict],
+    section_titles: dict[str, str],
+) -> None:
+    """Mutate each proposed_moc in-place: add name, note_titles, reason fields."""
+    for pm in proposed_mocs:
+        pm["name"] = _ensure_moc_suffix(pm["topic"])
+        items: list[str] = pm.get("items") or []
+        pm["note_titles"] = [
+            section_titles.get(sid, sid) for sid in items
+        ]
+        n = len(items)
+        topic = pm["topic"]
+        pm["reason"] = (
+            f"{n} note{'s' if n != 1 else ''} share topic {topic} "
+            f"and have no dedicated MOC."
+        )
 
 
 def render_create_moc(action: dict, stem: str) -> str:
@@ -652,10 +671,14 @@ def render_moc_proposal_doc(
         "tomo_skip_inbox_analysis: true",
     ] + tomo_yaml.splitlines() + ["---"]
 
+    # ADR-12: check-moc-uplinks reports carry no clusters — just the MOC orphan
+    # audit. Title + orphan-section heading adapt so the doc reads as an audit.
+    check_mode: bool = mode == "check-moc-uplinks"
+
     # Body
     body_lines: list[str] = [
         "",
-        "# MOC Proposal",
+        "# MOC Uplink Check" if check_mode else "# MOC Proposal",
         "",
     ]
 
@@ -675,9 +698,95 @@ def render_moc_proposal_doc(
         body_lines.append(f"*{overflow} additional cluster(s) found*")
         body_lines.append("")
 
+    # Case-(a) orphan link-or-create section (spec 021 T2.4). Rendered AFTER the
+    # cluster sections; absent entirely when there are no orphan suggestions.
+    # ADR-12: orphan_overflow drives a footer when the list was capped; check_mode
+    # relabels the section as a MOC-uplink audit.
+    orphan_suggestions: list[dict] = report.get("orphan_suggestions") or []
+    orphan_overflow: int = report.get("orphan_overflow") or 0
+    if orphan_suggestions:
+        body_lines.append(
+            _render_orphan_section(
+                orphan_suggestions, overflow=orphan_overflow, check_mode=check_mode
+            )
+        )
+        body_lines.append("")
+
     full_body = "\n".join(frontmatter_lines) + "\n" + "\n".join(body_lines)
 
     return filename, full_body
+
+
+def _render_orphan_section(
+    orphan_suggestions: list[dict], *, overflow: int = 0, check_mode: bool = False
+) -> str:
+    """Render the case-(a) orphan link-or-create section (spec 021 T2.4, OQ-6).
+
+    Per orphan (a cache entry with no parent — note OR moc), emit either:
+      - link_existing → up to top-N selectable `up:: [[MOC]] (score …)` options;
+      - create_new    → the reason line + a note that `/inbox` turns the accepted
+        proposal into an instruction that stamps the reason into the note(s).
+
+    `overflow` (ADR-12): when > 0, the orphan list was capped at
+    orphan_display_cap; a footer states how many more were omitted and to re-run
+    scoped. `check_mode` (ADR-12) relabels the heading as a MOC-uplink audit.
+
+    `/moc-propose` writes NO vault note (CON-3) — this is proposal-doc markup
+    only; the `up:`/note write happens later via the instruction set `/inbox`
+    renders from the accepted proposal (then applied via Hashi/manually).
+    """
+    if check_mode:
+        heading = "## MOC Uplink Check"
+        intro = "*MOCs with no parent `up::`. Pick a link target or accept a new MOC.*"
+    else:
+        heading = "## Orphan Notes & MOCs"
+        intro = "*Notes and MOCs with no parent. Pick a link target or accept a new MOC.*"
+    lines: list[str] = [heading, "", intro, ""]
+
+    for i, orphan in enumerate(orphan_suggestions, start=1):
+        orphan_id = f"O{i:02d}"
+        stem = (orphan.get("stem") or "").strip()
+        kind = (orphan.get("kind") or "note").strip()
+        mode = orphan.get("mode") or "create_new"
+
+        lines.append(f"### {orphan_id} — [[{stem}]] ({kind})")
+        lines.append("")
+
+        if mode == "link_existing":
+            lines.append("- [ ] Link to an existing MOC")
+            lines.append("")
+            candidates = orphan.get("candidates") or []
+            for j, cand in enumerate(candidates):
+                target = (cand.get("target_moc") or "").strip()
+                # `or 0.0` (not get's default) so an explicitly-None score — the
+                # key present but null — collapses to 0.0 before f-string format,
+                # which would otherwise raise TypeError on None.{:.2f}.
+                score = cand.get("score") or 0.0
+                marker = "[x]" if j == 0 else "[ ]"
+                lines.append(f"- {marker} up:: [[{target}]] (score {score:.2f})")
+            lines.append("- [ ] no parent (leave as-is)")
+        else:  # create_new
+            lines.append("- [ ] Create a new MOC for this orphan")
+            lines.append("")
+            reason = (orphan.get("reason") or "").strip()
+            lines.append(f"**Reason:** {reason}")
+            lines.append("")
+            lines.append(
+                "*On accept, running `/inbox` turns this into an instruction that "
+                f"stamps the reason into the {kind} and creates the new MOC. "
+                "`/moc-propose` writes nothing.*"
+            )
+        lines.append("")
+
+    if overflow > 0:
+        lines.append("---")
+        lines.append(
+            f"*{overflow} more orphan(s) not shown — re-run with a scoped query "
+            "(`folder:`/`tag:`/`class:`) to narrow the set.*"
+        )
+        lines.append("")
+
+    return "\n".join(lines).rstrip("\n")
 
 
 def load_field_sections(shared_ctx_path: Path) -> dict[str, str]:
@@ -827,6 +936,8 @@ def main() -> int:
     # We now collect a flat list of candidates while looping over actions and
     # let the helper handle normalisation + threshold + parent-vote + tag-fold.
     cluster_candidates: list[ClusterCandidate] = []
+    # section_id -> suggested_title (for note_titles in proposed_mocs)
+    section_titles: dict[str, str] = {}
     # daily_note_stem -> {trackers, log_entries, log_links}
     daily_groups: dict[str, dict] = {}
     # stem -> [(daily_note_stem, time, reason)] for Material für mirror
@@ -933,6 +1044,10 @@ def main() -> int:
                             tags=item_tags,
                         )
                     )
+            # Record section_id → title for note_titles post-processing.
+            if kind == "create_atomic_note":
+                title = (action.get("suggested_title") or "").strip() or stem
+                section_titles[section_id] = title
 
         # The per-item `Material für [[daily]]` mirror block is gone as of
         # 2026-04-22 — the top Daily Notes Updates block owns the log_link
@@ -963,6 +1078,9 @@ def main() -> int:
     proposed_mocs: list[dict] = list(
         build_topic_clusters(cluster_candidates, args.threshold)
     )
+
+    # Post-process: add name, note_titles, reason fields.
+    _enrich_proposed_mocs(proposed_mocs, section_titles)
 
     needs_attention: list[dict] = []
     for stem, entry in failed_entries:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_moc_discovery_phase1.py — Phase 1 candidate selection for moc-discovery.py.
 
 F-43 Phase 2 T2.2: covers the five mode handlers (`tag`, `folder`, `class`,
@@ -256,39 +256,52 @@ def test_title_and_freetext_topic_match_against_cache(
     assert fake.calls == []
 
 
-def test_no_args_scans_atomic_note_paths_only(
-    miyo_profile, empty_cache, small_config
-):
-    """`scan` mode = listDir on each atomic-note subdirectory; nothing else."""
-    fake = FakeKadoClient()
-    # Stub a small non-empty response per atomic-note subdirectory.
-    subdirs = [
-        sd["path"] for sd in miyo_profile["concept_defaults"]["atomic_note"]["subdirectories"]
+def test_scan_mode_sources_orphans_from_cache(miyo_profile, small_config):
+    """scan mode: sources candidates from cache orphans, NOT from live list_dir.
+
+    T5.1 / ADR-11: _handle_scan now reads cache["entries"] filtered to
+    kind=="note" AND up_state=="absent". Kado list_dir is never called.
+    An empty cache yields zero-candidates (correct — no orphans to process).
+    A cache with two orphan entries yields exactly two candidates.
+    """
+    # Build a minimal cache with two orphan notes inside atomic-note scope.
+    orphan_paths = [
+        "Atlas/202 Notes/2611 Code Snippets/n0.md",
+        "Atlas/202 Notes/2021 Thoughts/n1.md",
     ]
-    for sd in subdirs:
-        fake.set_listdir_response(
-            sd,
-            [{"type": "file", "path": sd + "n.md", "name": "n.md"}],
-        )
+    entries = [
+        {
+            "kind": "note",
+            "path": p,
+            "stem": p.rsplit("/", 1)[-1][:-3],
+            "title": p.rsplit("/", 1)[-1][:-3],
+            "topics": ["t"],
+            "up_state": "absent",
+            "up_target": None,
+            "up_source": None,
+            "tags": [],
+        }
+        for p in orphan_paths
+    ]
+    cache_with_orphans = {"entries": entries, "map_notes": []}
+
+    fake = FakeKadoClient()
 
     candidates, abort = moc_discovery.phase1_select_candidates(
         mode="scan",
         trigger_arg="",
         profile=miyo_profile,
-        cache=empty_cache,
+        cache=cache_with_orphans,
         kado_client=fake,
         config=small_config,
     )
 
     assert abort is None
+    # No list_dir calls — scan is fully cache-sourced (ADR-11).
     listdir_paths = [c[1][0] for c in fake.calls if c[0] == "list_dir"]
-    # All scanned paths come from the atomic-note subdirectory list.
-    # `_handle_scan` only falls back to `base_path` when subdirs are empty,
-    # which they aren't here — so subdirs is the exact expected set.
-    for p in listdir_paths:
-        assert p in subdirs
-    # One candidate per stubbed subdir.
-    assert len(candidates) == len(subdirs)
+    assert listdir_paths == [], f"scan must not call list_dir; got: {listdir_paths}"
+    # Both orphan entries become candidates.
+    assert {c.path for c in candidates} == set(orphan_paths)
 
 
 def test_pre_filter_outside_atomic_note_warns_and_intersects(

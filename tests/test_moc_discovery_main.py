@@ -76,23 +76,38 @@ def _write_cache(
     atomic_notes: list[dict],
     extra_map_notes: list[dict] | None = None,
 ) -> Path:
-    """Write a minimal discovery-cache.yaml under tmp_path.
+    """Write a FRESH moc-structure-cache.yaml under tmp_path (spec 021 T2.1).
 
-    `atomic_notes` are included in `map_notes` (matching the real discovery-cache
-    structure where all notes, MOC and atomic alike, live under map_notes keyed
-    by path). This is what Phase 1 title-match and Phase 2 topic-lookup read.
+    moc-discovery now reads the MOC-structure cache through moc_cache_loader,
+    which projects `entries[kind=="moc"]` → `map_notes` (the shim). To keep these
+    tests exercising the same Phase 1 title-match / Phase 2 topic-lookup / Phase 6
+    paths (all of which read `map_notes`), the fixture entries are written as
+    `kind: moc` so the shim surfaces them exactly as the old `map_notes` did.
 
-    `extra_map_notes` allows adding additional entries (e.g. existing MOC entries
-    for Phase 6 duplicate-detection scenarios). If omitted, no extra entries are
-    added, so Phase 6 Jaccard comparison only runs against the atomic notes whose
-    multi-topic sets do not overlap the cluster topic at ≥ 0.80.
+    A recent `last_scan` keeps the cache FRESH so the loader loads it WITHOUT a
+    rebuild (a rebuild would need Kado). `ttl_days` defaults to 1.
+
+    `extra_map_notes` adds further MOC entries (Phase 6 duplicate-detection).
     """
+    from datetime import datetime, timezone
+
+    def _as_moc_entry(e: dict) -> dict:
+        # Tag fixture entries as MOC so the loader shim surfaces them; preserve
+        # whatever fields the test supplied (path/title/topics/...).
+        return {**e, "kind": e.get("kind", "moc")}
+
+    entries = [_as_moc_entry(e) for e in (list(extra_map_notes or []) + atomic_notes)]
     cache = {
-        "cache_version": 1,
-        "map_notes": list(extra_map_notes or []) + atomic_notes,
-        "atomic_notes": atomic_notes,
+        "moc_cache_version": 1,
+        "last_scan": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ttl_days": 1,
+        "scope_paths": [],
+        "exclude_paths": [],
+        "moc_tag": "type/others/moc",
+        "entries": entries,
+        "placeholder_links": [],
     }
-    p = tmp_path / "discovery-cache.yaml"
+    p = tmp_path / "moc-structure-cache.yaml"
     p.write_text(yaml.dump(cache, allow_unicode=True), encoding="utf-8")
     return p
 
@@ -558,24 +573,20 @@ def test_emit_phase1_marks_misses_as_null(tmp_path: Path, monkeypatch) -> None:
     Covers T6.5.1 miss-marking contract.
     """
     config_path = _write_config(tmp_path)
-    # Cache has NO entries for the shell-note paths → all misses.
-    cache_path = _write_cache(tmp_path, atomic_notes=[])
     squelch_path = _write_squelch(tmp_path)
     out_path = tmp_path / "phase1-out.json"
 
-    # Cache is empty → validate_cache_loaded would abort. Seed an unrelated MOC
-    # entry so cache is non-empty but contains no atomic-note paths.
-    cache_path.write_text(
-        yaml.dump(
-            {
-                "cache_version": 1,
-                "map_notes": [
-                    {"path": "Atlas/200 Maps/2600 Tools.md", "title": "Tools", "topics": ["tools"], "tags": []}
-                ],
-            },
-            allow_unicode=True,
-        ),
-        encoding="utf-8",
+    # Cache has NO entries for the shell-note paths → all misses. Seed an
+    # unrelated MOC entry so the cache is non-empty (loader loads it fresh, no
+    # rebuild) but contains no atomic-note paths. Written via _write_cache so it
+    # carries the fresh MOC-structure-cache shape (kind: moc + last_scan).
+    cache_path = _write_cache(
+        tmp_path,
+        atomic_notes=[],
+        extra_map_notes=[
+            {"path": "Atlas/200 Maps/2600 Tools.md", "title": "Tools",
+             "topics": ["tools"], "tags": []}
+        ],
     )
 
     monkeypatch.setattr(_moc_disc, "_build_kado_client", lambda: _FakeKadoForTag())
@@ -626,19 +637,15 @@ def test_phase1_input_skips_phase1_no_llm_needed(tmp_path: Path) -> None:
     """
     config_path = _write_config(tmp_path)
     # Cache has no atomic-note entries — proves phase 2 doesn't fall back to
-    # cache lookup when topics are pre-populated.
-    cache_path = tmp_path / "discovery-cache.yaml"
-    cache_path.write_text(
-        yaml.dump(
-            {
-                "cache_version": 1,
-                "map_notes": [
-                    {"path": "Atlas/200 Maps/2600 Tools.md", "title": "Tools", "topics": ["tools"], "tags": []}
-                ],
-            },
-            allow_unicode=True,
-        ),
-        encoding="utf-8",
+    # cache lookup when topics are pre-populated. Written via _write_cache so the
+    # loader sees a FRESH MOC-structure cache (no rebuild) with one MOC entry.
+    cache_path = _write_cache(
+        tmp_path,
+        atomic_notes=[],
+        extra_map_notes=[
+            {"path": "Atlas/200 Maps/2600 Tools.md", "title": "Tools",
+             "topics": ["tools"], "tags": []}
+        ],
     )
     squelch_path = _write_squelch(tmp_path)
 

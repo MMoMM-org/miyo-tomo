@@ -130,6 +130,8 @@ When linking a note to an MOC, Tomo must decide WHERE in the MOC to place the li
 - Count notes that would match a hypothetical MOC
 - If threshold met (default: 3): propose new MOC
 
+**Note (spec 021 ADR-10):** Condition B (accumulation cluster trigger) was retired. It previously read `accumulation_index` from the discovery cache; that index is no longer produced. Inbox-time MOC proposals now rely only on Condition A (in-batch cluster detection) and Condition C (placeholder MOC match). For vault-wide MOC density analysis, use `/moc-propose` (§8) — it scans the vault live and is not bound to the discovery-cache snapshot.
+
 **Proposal includes:**
 - Suggested MOC title and file path
 - Initial links (the notes that triggered the proposal)
@@ -144,12 +146,13 @@ When linking a note to an MOC, Tomo must decide WHERE in the MOC to place the li
 
 Beyond inbox processing, Tomo can run a **standalone MOC density scan** to densify the existing network:
 
-- **Trigger:** dedicated command (e.g., `/scan-mocs`) — independent of `/inbox`
+- **Trigger:** the `/moc-propose` command — independent of `/inbox` (supersedes the originally-planned `/scan-mocs`; F-43)
+- **Live scan:** unlike the inbox-time Condition-B check (§7), `/moc-propose` scans the vault **at call time**, so it is not bound to the discovery-cache snapshot — it sees clusters created since the last `/explore-vault`
+- **Scope:** whole-vault (no args) or scoped with `tag:` / `folder:` / `class:` / `title:` / free text
 - **Goal:** find clustering opportunities, placeholder replacements, and orphan notes that could join an existing MOC
-- **Output:** Pass 1 Suggestions document (same format as inbox processing) with MOC-density actions only
-- **Same 2-pass approval:** user confirms direction, then Tomo generates instruction set, then user applies
+- **Output:** a reviewable MOC proposal-doc in the inbox (same 2-pass approval: user confirms direction → Tomo generates instruction set → user applies)
 
-This lets the user maintain MOC coverage continuously, not only when new inbox items arrive.
+This lets the user maintain MOC coverage continuously and on demand, not only when new inbox items arrive.
 
 ## 9. Instruction Set Action Examples
 

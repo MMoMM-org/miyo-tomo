@@ -148,41 +148,32 @@ def _seed_discovery_cache(tmp_path: Path) -> Path:
         for stem in ["Map of Content", "Map vs MOC", "Mapmaking", "Higher Order Notes", "Concepts"]
     ]
 
+    # spec 021 T2.1/T2.3: moc-discovery reads the MOC-structure cache via the
+    # loader, which projects entries[kind=="moc"] → map_notes (shim). The MOCs
+    # are kind:"moc" (surfaced into map_notes for title/free-text matching +
+    # Phase 6 dedup); the atomic notes are kind:"note" so the case-(a) orphan
+    # pass (lib/orphan_link) sees realistic entry shapes. The atomic notes carry
+    # up_state:"absent" so they are eligible orphans. A recent last_scan keeps the
+    # cache FRESH so the loader loads it without a (Kado-needing) rebuild.
+    from datetime import datetime, timezone
+
+    fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    entries = (
+        [{**m, "kind": "moc"} for m in map_notes]
+        + [{**a, "kind": "note", "up_state": "absent"} for a in atomic_notes]
+    )
     cache = {
-        "cache_version": 1,
-        "last_scan": "2026-05-08T00:00:00Z",
-        "scan_duration_seconds": 5.0,
-        "scan_stats": {
-            "total_notes": 50,
-            "total_map_notes": 6,
-            "total_classification_maps": 1,
-            "total_tags_unique": 10,
-        },
-        "vault_structure": {
-            "total_notes": 50,
-            "total_files": 55,
-            "concepts_mapped": {
-                "inbox": {"path": "100 Inbox/", "note_count": 2, "file_count": 2, "subdirectories": []},
-                "atomic_note": {
-                    "path": "Atlas/202 Notes/",
-                    "note_count": 30,
-                    "file_count": 30,
-                    "subdirectories": [
-                        {"name": "2611 Code Snippets", "note_count": 15, "dewey": True},
-                    ],
-                },
-                "map_note": {
-                    "path": "Atlas/200 Maps/",
-                    "note_count": 6,
-                    "file_count": 6,
-                },
-            },
-        },
-        "map_notes": map_notes,
-        "atomic_notes": atomic_notes,
+        "moc_cache_version": 1,
+        "last_scan": fresh,
+        "ttl_days": 1,
+        "scope_paths": ["Atlas/200 Maps/", "Atlas/202 Notes/"],
+        "exclude_paths": [],
+        "moc_tag": "type/others/moc",
+        "entries": entries,
+        "placeholder_links": [],
     }
 
-    cache_path = tmp_path / "discovery-cache.yaml"
+    cache_path = tmp_path / "moc-structure-cache.yaml"
     cache_path.write_text(yaml.dump(cache, allow_unicode=True), encoding="utf-8")
     return cache_path
 

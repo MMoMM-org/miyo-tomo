@@ -1,4 +1,4 @@
-# version: 0.5.0
+# version: 0.8.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -21,13 +21,20 @@ Usage:
 
 import json
 import os
+import random
 import sys
+import time
 import urllib.error
 import urllib.request
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 _DEFAULT_TIMEOUT = 30  # seconds
+_RETRY_STATUSES = {429, 503}
+_MAX_RETRIES = 4
+_RETRY_BACKOFF_BASE = 0.5  # seconds
+_RETRY_BACKOFF_CAP = 10.0  # seconds
+_RETRY_AFTER_CAP = 60.0  # seconds — upper bound on an honored Retry-After header
 
 
 # ── Exceptions ─────────────────────────────────────────────────────────────────
@@ -151,6 +158,56 @@ class KadoClient:
             except json.JSONDecodeError:
                 pass  # leave as-is if not valid JSON
         return result
+
+    def read_inline_fields(self, path: str) -> dict:
+        """Read Dataview inline fields (``key:: value``) as a parsed dict.
+
+        Calls kado-read with operation=dataview-inline-field.
+
+        Parameters
+        ----------
+        path:
+            Vault-relative path of the note, e.g. ``"200 Notes/some-note.md"``.
+
+        Returns
+        -------
+        dict mapping inline field names to their values, e.g.
+        ``{"up": ["[[MOC Root]]"], "status": ["active"]}``.
+        An empty dict is returned when the note carries no inline fields.
+        """
+        return self._call_read("dataview-inline-field", path)
+
+    def list_notes(
+        self,
+        path: str,
+        *,
+        fields: list[str] | None = None,
+        depth: int | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """List notes under a vault path via kado-search operation=listNotes.
+
+        Returns richer per-note metadata than list_dir: links, headings, tags, etc.
+
+        Parameters
+        ----------
+        path:
+            Vault-relative folder path, e.g. ``"200 Notes/"``.
+        fields:
+            Optional subset of enrichment fields to request, e.g.
+            ``["links", "headings", "tags"]``.  When ``None`` (default) the
+            ``fields`` key is omitted from the request and Kado returns its
+            default field set.
+        depth:
+            Maximum recursion depth.  ``None`` (default) recurses without limit.
+        limit:
+            Per-request page size for cursor-based pagination.  Defaults to 500.
+            This is NOT a total-result cap — all pages are followed and merged,
+            so the returned list may exceed ``limit``.
+        """
+        return self._search_all(
+            "listNotes", path=path, depth=depth, limit=limit, fields=fields
+        )
 
     def list_dir(self, path: str = "/", *, depth: int = None, limit: int = 500) -> list:
         """List items under a vault path.
@@ -442,6 +499,7 @@ class KadoClient:
         path: str = None,
         depth: int = None,
         limit: int = 500,
+        fields: list[str] | None = None,
     ) -> list:
         """Call kado-search, following cursors until all pages are collected."""
         all_items: list = []
@@ -455,6 +513,8 @@ class KadoClient:
                 args["path"] = path
             if depth is not None:
                 args["depth"] = depth
+            if fields is not None:
+                args["fields"] = fields
             if cursor is not None:
                 args["cursor"] = cursor
 
@@ -500,31 +560,44 @@ class KadoClient:
             },
         )
 
-        try:
-            with urllib.request.urlopen(req, timeout=_DEFAULT_TIMEOUT) as resp:
-                raw = resp.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            if exc.code in (401, 403):
-                raise KadoAuthError(
-                    f"Kado rejected the request (HTTP {exc.code}). "
-                    "Check that KADO_TOKEN matches the configured API key."
-                ) from exc
-            if exc.code == 404:
-                raise KadoNotFoundError(
-                    "Kado endpoint not found (HTTP 404). "
-                    "Check that KADO_URL points to the right server and port."
-                ) from exc
-            raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}") from exc
-        except urllib.error.URLError as exc:
-            reason = str(exc.reason)
-            if "refused" in reason.lower() or "timed out" in reason.lower():
+        raw = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                with urllib.request.urlopen(req, timeout=_DEFAULT_TIMEOUT) as resp:
+                    raw = resp.read().decode("utf-8")
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code in (401, 403):
+                    raise KadoAuthError(
+                        f"Kado rejected the request (HTTP {exc.code}). "
+                        "Check that KADO_TOKEN matches the configured API key."
+                    ) from exc
+                if exc.code == 404:
+                    raise KadoNotFoundError(
+                        "Kado endpoint not found (HTTP 404). "
+                        "Check that KADO_URL points to the right server and port."
+                    ) from exc
+                if exc.code in _RETRY_STATUSES and attempt < _MAX_RETRIES:
+                    delay = _retry_delay(exc, attempt)
+                    print(
+                        f"[kado-retry] HTTP {exc.code} on {tool_name}, "
+                        f"attempt {attempt + 1}/{_MAX_RETRIES}, sleeping {delay:.1f}s",
+                        file=sys.stderr,
+                    )
+                    time.sleep(delay)
+                    continue
+                suffix = f" (after {_MAX_RETRIES} retries)" if exc.code in _RETRY_STATUSES else ""
+                raise KadoError(f"HTTP {exc.code} from Kado: {exc.reason}{suffix}") from exc
+            except urllib.error.URLError as exc:
+                reason = str(exc.reason)
+                if "refused" in reason.lower() or "timed out" in reason.lower():
+                    raise KadoConnectionError(
+                        f"Cannot reach Kado at {self._endpoint}. "
+                        f"Is the server running? ({reason})"
+                    ) from exc
                 raise KadoConnectionError(
-                    f"Cannot reach Kado at {self._endpoint}. "
-                    f"Is the server running? ({reason})"
+                    f"Network error reaching {self._endpoint}: {reason}"
                 ) from exc
-            raise KadoConnectionError(
-                f"Network error reaching {self._endpoint}: {reason}"
-            ) from exc
 
         # Handle SSE-framed responses (StreamableHTTP may return
         # "event: message\ndata: {…}\n\n" instead of bare JSON).
@@ -588,6 +661,29 @@ def _extract_from_mcp_json(cfg: dict) -> tuple[str | None, str | None]:
     # Format 3: bare {kado: {url, token}}
     bare = cfg.get("kado", {})
     return bare.get("url"), bare.get("token")
+
+
+# ── Retry helpers ─────────────────────────────────────────────────────────────
+
+def _retry_delay(exc: urllib.error.HTTPError, attempt: int) -> float:
+    """Compute sleep duration before next retry.
+
+    Honors the Retry-After response header (delta-seconds form) when present
+    and numeric, clamped to [0, _RETRY_AFTER_CAP] — the upper clamp guards
+    against a misbehaving server stalling the pipeline for an arbitrary time.
+    The HTTP-date form of Retry-After (RFC 7231) is NOT parsed; it falls back
+    to exponential backoff. Backoff is capped at _RETRY_BACKOFF_CAP and given
+    bounded jitter (×[0.5, 1.0]) so concurrent clients hitting a rate-limited
+    Kado do not re-collide on identical retry offsets.
+    """
+    header_val = exc.headers.get("Retry-After") if exc.headers else None
+    if header_val is not None:
+        try:
+            return float(min(_RETRY_AFTER_CAP, max(0, int(header_val))))
+        except (ValueError, TypeError):
+            pass  # HTTP-date form unsupported — fall through to backoff
+    base = min(_RETRY_BACKOFF_CAP, _RETRY_BACKOFF_BASE * (2 ** attempt))
+    return base * random.uniform(0.5, 1.0)
 
 
 # ── Response parsing ───────────────────────────────────────────────────────────

@@ -1,8 +1,28 @@
 # XDD 015 — MSP Condition B: Accumulation Detection
 
-**Status:** PRD draft — 2026-05-07
-**Current phase:** requirements.md (PRD)
+**Status:** PRD ✓ · SDD ✓ · PLAN ✓ · **Implemented (2026-06-04)** — code-complete; live-validation (T5.2) pending
+**Current phase:** Implemented — all 5 phases shipped on `feat/f-34-msp-condition-b-accumulation`; T5.2 deferred (user-driven live run, Kado gate open)
 **Backlog origin:** F-34 (Must)
+**Last Updated:** 2026-06-04
+
+> **✅ Topic extraction (2026-06-04):** Kado shipped
+> `kado-search operation="listNotes"` with `fields=["links","headings","tags"]` —
+> one paginated, metadata-cache-sourced call returns path + mtime + tags +
+> outlinks + headings per note, **no body read**. Contract:
+> `Kado/docs/api-reference.md` §listNotes + `Kado/_outbox/for-kokoro/2026-06-04_kado-to-kokoro_listnotes-contract.md`.
+> Kado branch `feat/listnotes-search-op` (not yet merged — version TBD at release).
+>
+> **✅ Classification `up::` (2026-06-04, Kado decided):** `listNotes` will **not**
+> project inline dataview fields — Kado keeps its body-free invariant.
+> Rationale: `links`/`headings`/`tags` come from Obsidian's **core**
+> `CachedMetadata`, but `key:: value` inline fields are a **Dataview** construct
+> *not* in that cache — surfacing them would force per-note body reads or a hard
+> Dataview dependency. So **A5 uses the existing
+> `kado-read operation="dataview-inline-field"`**, called **only on cluster
+> candidates** (notes already sharing a topic — a bounded subset, not the vault).
+> Decision: `_inbox/from-kado/2026-06-04_kado-to-tomo_listnotes-inline-fields-decision.md`.
+>
+> **Kado defines these contracts; F-34 adjusts to them.**
 
 ## Problem in one paragraph
 
@@ -19,9 +39,12 @@ the cluster would have been most useful.
 ## Solution in one paragraph
 
 Pre-compute an accumulation index once per `/explore-vault` run: a new
-scanner walks atomic notes via Kado, runs the existing
-`topic-extract.py`, checks for `up::` presence, groups notes by topic,
-and emits clusters of size ≥ 2. The cache stores it; `shared-ctx-builder`
+`atomic-note-indexer.py` issues one `kado-search operation="listNotes"`
+(paginated) over the atomic-note base path with
+`fields=["links","headings","tags"]`, feeds each note's structured signals
+to `topic-extract.py`'s new field-based entry point, checks for `up::`
+presence, groups notes by topic, and emits clusters of size ≥
+`min_cluster_size` (default 3). The cache stores it; `shared-ctx-builder`
 surfaces it (size-budgeted to fit the 15 KB envelope); `inbox-analyst`
 Step 4 fires Condition B when an item's topic matches a cluster key —
 setting `needs_new_moc=true` with `proposed_moc_topic = <topic>`. No
@@ -29,9 +52,9 @@ per-item Kado searches at /inbox time, so Pass-1 cost stays unchanged.
 
 ## Files
 
-- [requirements.md](requirements.md) — product requirements (PRD), draft
-- solution.md — technical design (SDD), pending
-- plan/phase-N.md — implementation plan, pending
+- [requirements.md](requirements.md) — product requirements (PRD)
+- [solution.md](solution.md) — technical design (SDD), **complete** — ADR-1…7, against the Kado contracts
+- [plan/README.md](plan/README.md) — implementation plan, **complete** — 5 phases, 9 TDD tasks
 
 ## Tracking
 
@@ -46,10 +69,57 @@ per-item Kado searches at /inbox time, so Pass-1 cost stays unchanged.
 - Constraint memory: `feedback_near_mvp_no_breakage.md` —
   additive only on hot paths.
 
-## Open questions before SDD
+## Open questions — RESOLVED (brainstorm 2026-06-04)
 
-See requirements.md §8 (OQ1–OQ7). Tentative leans noted; stakeholder
-input required before SDD locks the surface.
+All seven OQs from requirements.md §8 are locked. Stakeholder: Marcus.
+
+| OQ | Resolution |
+| --- | --- |
+| OQ1 scanner home | New `atomic-note-indexer.py` (separate script — `moc-tree-builder.py` is already 722 LOC, near the Constitution L2 cap). |
+| OQ2 note discovery | **`kado-search operation="listNotes"`** on `atomic_note.base_path`, `fields=["links","headings","tags"]` (returns path + mtime + structured signals in one paginated call, no body read). *(Was `listDir`; superseded by Kado's purpose-built `listNotes`.)* |
+| OQ3 run mode | **Always run** on `/explore-vault` (cold path; single code path; benchmark-then-reconsider). |
+| OQ4 normalisation | Lowercase + whitespace-collapsed string equality (matches F-35). |
+| OQ5 min cluster size | **Configurable** `vault-config.tomo.accumulation.min_cluster_size`, **default 3** (quieter than the spec literal of 2). |
+| OQ6 read depth | **Dissolved** — no body reads. Scanner consumes the `listNotes` projection: `tags[]` (`#`-prefixed), `links[]` (`{target,kind}`), `headings[]` (`{heading,level}`). |
+| OQ7 cache schema | Additive at `cache_version: 1`, missing field = empty dict (F-35 precedent). |
+
+**Two SDD decisions locked (2026-06-04, against the `listNotes` contract):**
+
+- **SDD-D1 — `topic-extract.py` gains a structured entry point.**
+  Add `extract_topics_from_fields(title, headings, links, tags)` that consumes
+  Kado's structured projection directly (H1→title, level==2→subtopics,
+  `link.target`→linked titles, `#`-stripped tags). The existing raw-`content`
+  path is retained for other callers. (Resolves the old parking-lot question;
+  rejected the pseudo-markdown round-trip.)
+  **⚠️ Partially superseded by live validation (2026-06-05, see `solution.md`
+  §Post-Live-Validation Refinements R1):** level-2 headings are NOT used (template
+  noise on real vaults), tags are restricted to a configurable `topic/` prefix array,
+  title segments are not word-split, and date-shaped link targets are filtered.
+  `topic-extract.py` is now v0.4.0.
+- **SDD-D2 — links projection: `kind=='link'` only.**
+  Drop `kind=='embed'` (images/excalidraw/PDF assets) before topic extraction —
+  embeds inject non-topical filename noise. Matches topic-extract's original
+  `[[wikilink]]`-only intent.
+- **SDD-D3 — `up::` classification via per-candidate `dataview-inline-field` read.**
+  A5's "unclassified" test needs `up::` presence. Kado declined to project inline
+  fields into `listNotes` (they're a Dataview construct outside Obsidian's core
+  cache; bulk projection would mean per-note body reads or a Dataview dependency).
+  So the scanner classifies in two steps: (1) bulk `listNotes` → topics → cluster
+  on shared topic ≥ `min_cluster_size`; (2) for **cluster candidates only**,
+  `kado-read operation="dataview-inline-field"` to test `up::` presence. The
+  expensive read is bounded to the small candidate set, not the ~281-note vault.
+
+**Design reshape:** The PRD assumed Tomo reads note *bodies* to extract topics
+(OQ6 was "full body vs head-only"). The brainstorm reframed this to *structured*
+signals; Kado then shipped `listNotes` to serve exactly those signals from the
+metadata cache. Faster and more accurate than body-parsing, with the dependency
+satisfied.
+
+## Decisions Log
+
+| Date | Decision | Notes |
+| --- | --- | --- |
+| 2026-06-04 | Implementation complete | Shipped F-34 MSP Condition B (accumulation detection) on `feat/f-34-msp-condition-b-accumulation`. Cold-path pipeline: `atomic-note-indexer.py` scanner → `cache-builder --accumulation` → `shared-ctx-builder build_accumulation_index` (budget-trimmed) → `inbox-analyst` Step 4 Condition-B trigger (A7: C-over-B precedence). Version bumps: inbox-analyst 0.12.1→0.13.0, vault-explorer 0.11.4→0.11.5. Tests: contract tests (inbox-analyst Step 4, vault-explorer Step 9) + E2E `test_f34_e2e.py` (4 scenarios); 48 spec-015 tests green. Docs: `docs/tomo/scripts/atomic-note-indexer.md`, Tier-3 new-moc-proposal reconciled, backlog F-34 code-complete. **T5.2 live validation DEFERRED** (user-driven; Kado gate open). Commits `6e51254..3046ca2`. |
 
 ## Notes
 

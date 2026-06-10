@@ -1,39 +1,76 @@
 #!/usr/bin/env python3
-# version: 0.2.0
-"""
-moc-tree-builder.py — Discover all MOCs in the vault, read their content,
-build a parent/child/sibling tree, and output JSON.
+# version: 0.5.0
+"""moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
-Discovery uses two parallel strategies (configured in vault-config.yaml):
-  1. Path-based: list_dir on concepts.map_note.paths[]
-  2. Tag-based: search_by_tag on concepts.map_note.tags[]
+Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
+three lib modules instead of the legacy in-file tree logic:
 
-Results are deduplicated by path. MOC relationships are extracted via up:: and
-related:: markers. Topics are extracted by delegating to topic-extract.py.
+    lib/moc_scan.scan()                 — tag-primary MOC discovery + scope/exclude
+    KadoClient.read_note()              — raw note content (one round-trip per note)
+    lib/up_parse.parse_up_from_content  — dual-`up` SSoT ({target, source}; caller sets up_state)
+    lib/placeholder_detect.detect_placeholders — real-vault-denominator placeholder set
+
+TWO outputs (the legacy cache-builder contract is preserved — SDD line 183):
+    1. stdout JSON  — {"map_notes": [<kind==moc entries>], "placeholder_links": [...]}
+       This is the cache-builder feed: `moc-tree-builder.py > moc-output.json`
+       then `cache-builder.py --mocs moc-output.json` (vault-explorer Step 9).
+       map_notes entries carry classification + linked_notes(int) so
+       cache-builder.build_classifications / build_scan_stats keep working (C2).
+    2. config/moc-structure-cache.yaml  — the MocStructureCache (SDD Application
+       Data Models): a single CacheEntry list with a `kind` discriminator
+       ("moc"|"note"), plus a top-level placeholder_links field.
+
+STRICT: stdout carries the JSON feed ONLY. All progress/warnings go to stderr —
+mixing them into stdout corrupts the downstream json.load
+(feedback_never_redirect_stderr_into_json).
 
 Usage:
-    python moc-tree-builder.py [--config PATH]
+    python moc-tree-builder.py [--config PATH] [--output PATH]
 
-Output: JSON to stdout, progress to stderr.
 Exit: 0 on success, 1 on error.
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
+import time
 
 import yaml
 
-# Allow importing from scripts/lib/
-sys.path.insert(0, os.path.dirname(__file__))
+# Allow importing from scripts/ (cache-builder primitives) and scripts/lib/.
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _SCRIPT_DIR)
+
+from lib import moc_scan, placeholder_detect, up_parse  # noqa: E402
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402
+
+# ── Reuse cache-builder TTL/timestamp + atomic-write primitives ─────────────────
+# cache-builder.py is hyphenated → load via importlib so we can import its
+# utc_now_iso (ISO-8601 UTC) without duplicating it. (T1.4: reuse, do not
+# reinvent.)
+_cb_spec = importlib.util.spec_from_file_location(
+    "cache_builder", os.path.join(_SCRIPT_DIR, "cache-builder.py")
+)
+_cache_builder = importlib.util.module_from_spec(_cb_spec)
+_cb_spec.loader.exec_module(_cache_builder)
+
+utc_now_iso = _cache_builder.utc_now_iso  # reused verbatim
+
+# Schema version for the MOC-structure cache (distinct from cache-builder's
+# CACHE_VERSION which versions discovery-cache.yaml).
+MOC_CACHE_VERSION = 1
+
+DEFAULT_TTL_DAYS = 1
+DEFAULT_MOC_TAG = "type/others/moc"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Regex patterns
+# Regex patterns (note parsing)
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Match [[wikilink]] or [[wikilink|alias]]
@@ -42,21 +79,12 @@ WIKILINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
 # Match H1 heading
 H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 
-# Match H2 headings
-H2_RE = re.compile(r"^##\s+(.+)$", re.MULTILINE)
-
-# Match up:: [[...]] lines (parent relationship)
-UP_RE = re.compile(r"(?:^|\n)\s*up::\s*(.+)")
-
-# Match related:: [[...]] lines (sibling relationship)
-RELATED_RE = re.compile(r"(?:^|\n)\s*related::\s*(.+)")
-
 # Frontmatter block
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Frontmatter parsing
+# Frontmatter / body helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
 def parse_frontmatter(content: str) -> dict:
@@ -79,30 +107,6 @@ def get_body(content: str) -> str:
     return content
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Wikilink extraction helpers
-# ──────────────────────────────────────────────────────────────────────────────
-
-def extract_wikilinks(text: str) -> list[str]:
-    """Return list of wikilink targets (without alias) from text."""
-    links = []
-    for m in WIKILINK_RE.finditer(text):
-        raw = m.group(1)
-        target = raw.split("|")[0].strip()
-        if target:
-            links.append(target)
-    return links
-
-
-def extract_relationship_links(line_content: str) -> list[str]:
-    """Extract wikilink targets from a relationship line (e.g. up:: [[A]], [[B]])."""
-    return extract_wikilinks(line_content)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Path normalisation / resolution
-# ──────────────────────────────────────────────────────────────────────────────
-
 def basename_no_ext(path: str) -> str:
     """Return filename without .md extension."""
     name = os.path.basename(path)
@@ -111,214 +115,43 @@ def basename_no_ext(path: str) -> str:
     return name
 
 
-def resolve_link_to_path(link_target: str, moc_paths: list[str]) -> str | None:
-    """
-    Attempt to resolve a wikilink target to a known MOC path.
-
-    Matching strategy (in order):
-    1. Exact full path match (e.g. "Atlas/200 Maps/Home.md")
-    2. Exact full path match after adding ".md"
-    3. Filename (without .md) case-insensitive match
-    """
-    # Normalise: strip trailing .md from link_target for comparison
-    link_bare = link_target
-    if link_bare.endswith(".md"):
-        link_bare = link_bare[:-3]
-
-    # 1 & 2: exact path
-    for moc_path in moc_paths:
-        moc_bare = moc_path[:-3] if moc_path.endswith(".md") else moc_path
-        if moc_bare == link_bare or moc_path == link_target:
-            return moc_path
-
-    # 3: filename match (case-insensitive)
-    link_name_lower = link_bare.split("/")[-1].lower()
-    for moc_path in moc_paths:
-        moc_name = basename_no_ext(moc_path).lower()
-        if moc_name == link_name_lower:
-            return moc_path
-
-    return None
+def extract_wikilinks(text: str) -> list[str]:
+    """Return list of wikilink targets (alias stripped) from text."""
+    links = []
+    for m in WIKILINK_RE.finditer(text):
+        target = m.group(1).split("|")[0].strip()
+        if target:
+            links.append(target)
+    return links
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# MOC discovery
-# ──────────────────────────────────────────────────────────────────────────────
-
-def discover_via_paths(client: KadoClient, paths: list[str]) -> dict[str, str]:
-    """
-    List each configured map_note path recursively and collect .md files.
-
-    Returns:
-        dict mapping vault-relative path → "path"
-    """
-    found: dict[str, str] = {}
-    for folder_path in paths:
-        print(f"[discover] path-based scan: {folder_path!r}", file=sys.stderr)
-        try:
-            items = client.list_dir(folder_path)
-        except Exception as exc:
-            print(f"[warn] Could not list {folder_path!r}: {exc}", file=sys.stderr)
-            continue
-
-        for item in items:
-            if item.get("type") == "folder":
-                continue
-            name = item.get("name", "")
-            item_path = item.get("path", "")
-            if name.endswith(".md") or item_path.endswith(".md"):
-                key = item_path or (folder_path.rstrip("/") + "/" + name)
-                found[key] = "path"
-
-    return found
+def extract_title(frontmatter: dict, body: str, path: str) -> str:
+    """Title: frontmatter `title` → first H1 → filename stem."""
+    fm_title = frontmatter.get("title")
+    if isinstance(fm_title, str) and fm_title.strip():
+        return fm_title.strip()
+    h1 = H1_RE.search(body)
+    if h1:
+        return h1.group(1).strip()
+    return basename_no_ext(path)
 
 
-def discover_via_tags(client: KadoClient, tags: list[str]) -> dict[str, str]:
-    """
-    Search for notes tagged with each configured map_note tag.
-
-    Returns:
-        dict mapping vault-relative path → "tag"
-    """
-    found: dict[str, str] = {}
-    for tag in tags:
-        # Normalise: search_by_tag may or may not require leading #
-        query = tag if tag.startswith("#") else f"#{tag}"
-        print(f"[discover] tag-based scan: {query!r}", file=sys.stderr)
-        try:
-            results = client.search_by_tag(query)
-        except Exception as exc:
-            print(f"[warn] Could not search by tag {query!r}: {exc}", file=sys.stderr)
-            continue
-
-        for item in results:
-            item_path = item.get("path", "")
-            if item_path and item_path.endswith(".md"):
-                found[item_path] = "tag"
-
-    return found
-
-
-def deduplicate_discoveries(
-    path_found: dict[str, str],
-    tag_found: dict[str, str],
-) -> dict[str, str]:
-    """
-    Merge path and tag discoveries. Notes found by both get discovered_via="both".
-
-    Returns:
-        dict mapping path → discovered_via ("path" | "tag" | "both")
-    """
-    merged: dict[str, str] = {}
-
-    for p, via in path_found.items():
-        merged[p] = via  # "path"
-
-    for p, via in tag_found.items():
-        if p in merged:
-            merged[p] = "both"
-        else:
-            merged[p] = via  # "tag"
-
-    return merged
+def extract_tags(frontmatter: dict) -> list[str]:
+    """Normalise the frontmatter `tags` value to a list of strings."""
+    raw = frontmatter.get("tags")
+    if isinstance(raw, list):
+        return [str(t).strip() for t in raw if t is not None and str(t).strip()]
+    if isinstance(raw, str) and raw.strip():
+        return [raw.strip()]
+    return []
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MOC reading
-# ──────────────────────────────────────────────────────────────────────────────
-
-def read_moc(client: KadoClient, path: str) -> dict:
-    """
-    Read a MOC note via Kado and extract structured fields.
-
-    Returns:
-        {
-            "content": full raw content,
-            "title": str,
-            "sections": list of H2 headings,
-            "linked_notes_raw": all wikilink targets in body,
-            "parent_links": wikilink targets from up:: lines,
-            "sibling_links": wikilink targets from related:: lines,
-            "map_state": str | None,
-        }
-    """
-    try:
-        result = client.read_note(path)
-    except KadoNotFoundError:
-        print(f"[warn] MOC not found: {path!r}", file=sys.stderr)
-        return {}
-    except Exception as exc:
-        print(f"[warn] Failed to read {path!r}: {exc}", file=sys.stderr)
-        return {}
-
-    # read_note may return {content: str} or a plain string
-    if isinstance(result, dict):
-        content = result.get("content", "")
-        if not isinstance(content, str):
-            content = str(content)
-    else:
-        content = str(result)
-
-    frontmatter = parse_frontmatter(content)
-    body = get_body(content)
-
-    # Title: frontmatter title field → first H1 → filename
-    title = None
-    if isinstance(frontmatter.get("title"), str):
-        title = frontmatter["title"].strip()
-    if not title:
-        h1_match = H1_RE.search(body)
-        if h1_match:
-            title = h1_match.group(1).strip()
-    if not title:
-        title = basename_no_ext(path)
-
-    # H2 section headings
-    sections = []
-    for m in H2_RE.finditer(body):
-        heading = re.sub(r"\*+|__?|`+|\[\[|\]\]", "", m.group(1)).strip()
-        if heading:
-            sections.append(heading)
-
-    # mapState from frontmatter
-    map_state = frontmatter.get("mapState", None)
-    if map_state is not None:
-        map_state = str(map_state).strip() or None
-
-    # All wikilinks in body (for linked_notes count and child detection)
-    linked_notes_raw = extract_wikilinks(body)
-
-    # Parent relationships: up:: lines
-    parent_links: list[str] = []
-    for m in UP_RE.finditer(body):
-        parent_links.extend(extract_relationship_links(m.group(1)))
-
-    # Sibling relationships: related:: lines
-    sibling_links: list[str] = []
-    for m in RELATED_RE.finditer(body):
-        sibling_links.extend(extract_relationship_links(m.group(1)))
-
-    return {
-        "content": content,
-        "title": title,
-        "sections": sections,
-        "linked_notes_raw": linked_notes_raw,
-        "parent_links": parent_links,
-        "sibling_links": sibling_links,
-        "map_state": map_state,
-    }
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Topic extraction (subprocess)
+# Topic extraction (subprocess delegate to topic-extract.py)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def extract_topics(content: str, title: str, script_dir: str) -> list[str]:
-    """
-    Delegate to topic-extract.py via subprocess and return the topics list.
-
-    Falls back to [] on any error.
-    """
+    """Delegate to topic-extract.py via subprocess; falls back to [] on any error."""
     topic_script = os.path.join(script_dir, "topic-extract.py")
     try:
         result = subprocess.run(
@@ -333,190 +166,332 @@ def extract_topics(content: str, title: str, script_dir: str) -> list[str]:
                 file=sys.stderr,
             )
             return []
-        parsed = json.loads(result.stdout)
-        return parsed.get("topics", [])
+        return json.loads(result.stdout).get("topics", [])
     except subprocess.TimeoutExpired:
         print(f"[warn] topic-extract.py timed out for {title!r}", file=sys.stderr)
         return []
-    except (json.JSONDecodeError, Exception) as exc:
+    except Exception as exc:  # noqa: BLE001 — best-effort enrichment
         print(f"[warn] topic-extract.py error for {title!r}: {exc}", file=sys.stderr)
         return []
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tree building
+# Note reading
 # ──────────────────────────────────────────────────────────────────────────────
 
-def build_tree(mocs: dict[str, dict]) -> tuple[dict[str, dict], int]:
+def read_note_raw(client, path: str) -> "str | None":
+    """Read a note's raw content via Kado. Returns None on not-found / error.
+
+    A single read_note() call supplies everything downstream needs: title, tags,
+    wikilinks, and the raw text that up_parse splits locally (C1 — no extra
+    read_frontmatter round-trip).
     """
-    Assign parent_moc, child_mocs, sibling_mocs, and level to each MOC.
+    try:
+        result = client.read_note(path)
+    except KadoNotFoundError:
+        print(f"[warn] note not found: {path!r}", file=sys.stderr)
+        return None
+    except Exception as exc:  # noqa: BLE001 — denial-skip, mirror moc_scan
+        print(f"[warn] failed to read {path!r}: {exc}", file=sys.stderr)
+        return None
 
-    Returns:
-        (enriched mocs dict, cycles_broken count)
+    if isinstance(result, dict):
+        content = result.get("content", "")
+        return content if isinstance(content, str) else str(content)
+    return str(result)
 
-    Algorithm:
-        - parent_moc: first resolved up:: link that points to another MOC
-        - multi-parent: level = min(parent_levels) + 1
-        - cycle detection: BFS/DFS up the parent chain; break if revisiting
-        - sibling_mocs: resolved related:: links that point to other MOCs
-        - child_mocs: derived (all MOCs whose parent_moc == this path)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Entry assembly (orchestration core)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _resolve_up_state(target: "str | None", moc_stem_set: set[str]) -> str:
+    """M1: caller resolves up_state from the parse target vs the MOC stem set.
+
+    target None             → "absent"
+    target in moc_stem_set  → "valid"
+    else                    → "broken"
     """
-    moc_paths = list(mocs.keys())
-    cycles_broken = 0
-
-    # --- Step 1: resolve parent and sibling links ---
-    for path, moc in mocs.items():
-        # Resolve parent links
-        parent_paths: list[str] = []
-        for link in moc.get("parent_links", []):
-            resolved = resolve_link_to_path(link, moc_paths)
-            if resolved and resolved != path:  # no self-reference
-                parent_paths.append(resolved)
-        # Deduplicate while preserving order
-        seen: set[str] = set()
-        unique_parents: list[str] = []
-        for p in parent_paths:
-            if p not in seen:
-                seen.add(p)
-                unique_parents.append(p)
-        moc["parent_moc_candidates"] = unique_parents
-
-        # Resolve sibling links
-        sibling_paths: list[str] = []
-        for link in moc.get("sibling_links", []):
-            resolved = resolve_link_to_path(link, moc_paths)
-            if resolved and resolved != path:
-                sibling_paths.append(resolved)
-        seen_sib: set[str] = set()
-        unique_siblings: list[str] = []
-        for p in sibling_paths:
-            if p not in seen_sib:
-                seen_sib.add(p)
-                unique_siblings.append(p)
-        moc["sibling_mocs"] = unique_siblings
-
-    # --- Step 2: assign levels with cycle detection ---
-    levels: dict[str, int] = {}  # path → computed level
-
-    def compute_level(path: str, visiting: set[str]) -> int:
-        """Recursively compute level; returns 0 on cycle."""
-        if path in levels:
-            return levels[path]
-        if path in visiting:
-            # Cycle detected — break here
-            return 0
-        visiting = visiting | {path}
-        moc = mocs.get(path, {})
-        parents = moc.get("parent_moc_candidates", [])
-        if not parents:
-            levels[path] = 0
-            return 0
-        parent_levels = []
-        for p in parents:
-            if p in visiting:
-                # Cycle — skip this parent
-                nonlocal cycles_broken
-                cycles_broken += 1
-                print(
-                    f"[warn] Cycle detected: {path!r} → {p!r} — breaking",
-                    file=sys.stderr,
-                )
-                continue
-            parent_levels.append(compute_level(p, visiting))
-        if not parent_levels:
-            # All parents were cycle-causing
-            levels[path] = 0
-        else:
-            levels[path] = min(parent_levels) + 1
-        return levels[path]
-
-    for path in moc_paths:
-        compute_level(path, set())
-
-    # --- Step 3: assign level, parent_moc (primary = lowest level parent) ---
-    for path, moc in mocs.items():
-        moc["level"] = levels.get(path, 0)
-        parents = moc.get("parent_moc_candidates", [])
-        if parents:
-            # Primary parent = candidate with the lowest level (most root-like)
-            primary = min(parents, key=lambda p: levels.get(p, 0))
-            moc["parent_moc"] = primary
-        else:
-            moc["parent_moc"] = None
-
-    # --- Step 4: derive child_mocs ---
-    children: dict[str, list[str]] = {p: [] for p in moc_paths}
-    for path, moc in mocs.items():
-        parent = moc.get("parent_moc")
-        if parent and parent in children:
-            children[parent].append(path)
-
-    for path, moc in mocs.items():
-        moc["child_mocs"] = children[path]
-
-    return mocs, cycles_broken
+    if target is None:
+        return "absent"
+    return "valid" if target in moc_stem_set else "broken"
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Placeholder detection
-# ──────────────────────────────────────────────────────────────────────────────
+def _count_linked_notes(body: str, moc_stem_set: set[str]) -> int:
+    """Count wikilinks in a MOC body that point to non-MOC notes.
 
-def detect_placeholders(
-    mocs: dict[str, dict],
-    all_vault_paths: set[str],
-) -> list[dict]:
+    The int the sole consumer (cache-builder:110) sums numerically. Same-note
+    anchors (`[[#^id]]`, `[[#Heading]]`) reduce to an empty stem after anchor
+    strip and are NOT links to another note — they are skipped so they do not
+    inflate the count (W2). Mirrors lib/placeholder_detect's `if not
+    note_target: continue` guard.
     """
-    Find wikilink targets in MOC bodies that don't resolve to any known note.
+    count = 0
+    for link in extract_wikilinks(body):
+        note_stem = link.split("#", 1)[0].strip().split("/")[-1]
+        if not note_stem:
+            continue  # same-note anchor — not a link to another note
+        if note_stem not in moc_stem_set:
+            count += 1
+    return count
 
-    A placeholder is a link target that:
-    - Does not resolve to a discovered MOC path
-    - Does not match any vault note (checked by filename)
 
-    Returns:
-        list of {"target": str, "referenced_by": str}
+def build_entries(
+    client, scan_result, script_dir: str
+) -> tuple[list[dict], list[dict], dict]:
+    """Assemble CacheEntry dicts + the placeholder list from a ScanResult.
+
+    Reads each MOC and in-scope note once, parses title/tags/wikilinks/up, and
+    resolves up_state against the MOC stem set (M1). kind=="moc" entries also
+    carry classification (None — legacy/live faithful) and linked_notes (the int
+    count of non-MOC wikilinks) so cache-builder's build_classifications /
+    build_scan_stats consume the projection without collapse (C2).
+
+    Returns
+    -------
+    (entries, placeholder_links, placeholder_stats):
+        entries           — list[CacheEntry] (moc + note, kind-discriminated)
+        placeholder_links  — list[{target, referenced_by}] from the real-vault-
+                            denominator detector (the 224 fix). Surfaced (W1) so
+                            cache-builder's placeholder_links lift + Condition C
+                            keep working, and persisted into both outputs.
+        placeholder_stats  — raw/kept/dropped breakdown for the placeholder.build
+                            observability event (M2/M4).
     """
-    moc_paths = list(mocs.keys())
-    # Build a lookup of all known vault names (lowercase, no .md)
-    known_names: set[str] = set()
-    for p in all_vault_paths:
-        known_names.add(basename_no_ext(p).lower())
+    moc_paths = set(scan_result.moc_paths)
+    note_paths = set(scan_result.in_scope_note_paths) - moc_paths
 
-    placeholders: list[dict] = []
-    seen_placeholders: set[tuple[str, str]] = set()
+    # MOC stem set drives both up_state resolution (M1) and the
+    # MOC-name resolution inside the linked_notes count below.
+    moc_stem_set = {basename_no_ext(p) for p in moc_paths}
 
-    for path, moc in mocs.items():
-        for link in moc.get("linked_notes_raw", []):
-            # Does it resolve to a known MOC?
-            if resolve_link_to_path(link, moc_paths):
-                continue
-            # Does it resolve to any known vault note by name?
-            link_name = link.split("/")[-1].lower()
-            if link_name.endswith(".md"):
-                link_name = link_name[:-3]
-            if link_name in known_names:
-                continue
-            # It's a placeholder
-            key = (link, path)
-            if key not in seen_placeholders:
-                seen_placeholders.add(key)
-                placeholders.append({"target": link, "referenced_by": path})
+    # Read every path once; cache the parsed shape for entry assembly +
+    # placeholder detection (which needs linked_notes_raw per MOC).
+    raw_by_path: dict[str, str] = {}
+    for path in sorted(moc_paths | note_paths):
+        content = read_note_raw(client, path)
+        if content is None:
+            content = ""  # honest empty — no fabricated parent/links
+        raw_by_path[path] = content
 
-    return placeholders
+    # Placeholder detection runs over MOC bodies only, using the real in-scope
+    # vault set as the denominator (the 224 fix). The result is RETURNED (W1) so
+    # it feeds cache-builder (--mocs JSON) and is persisted into the YAML cache.
+    mocs_for_placeholder = {
+        path: {"linked_notes_raw": extract_wikilinks(get_body(raw_by_path[path]))}
+        for path in moc_paths
+    }
+    placeholder_links, placeholder_stats = placeholder_detect.detect_placeholders_with_stats(
+        mocs_for_placeholder,
+        known_moc_paths=moc_paths,
+        in_scope_vault_paths=set(scan_result.in_scope_note_paths),
+    )
+
+    entries: list[dict] = []
+    for path in sorted(moc_paths | note_paths):
+        content = raw_by_path[path]
+        fm = parse_frontmatter(content)
+        body = get_body(content)
+        kind = "moc" if path in moc_paths else "note"
+
+        up = up_parse.parse_up_from_content(content)
+        up_state = _resolve_up_state(up.target, moc_stem_set)
+
+        title = extract_title(fm, body, path)
+        entry: dict = {
+            "path": path,
+            "stem": basename_no_ext(path),
+            "kind": kind,
+            "title": title,
+            "discovered_via": _discovered_via(scan_result, path),
+            "topics": extract_topics(content, title, script_dir),
+            "up_state": up_state,
+            "up_target": up.target,
+            "up_source": up.source,
+            "tags": extract_tags(fm),
+        }
+
+        if kind == "moc":
+            # C2 — the kind==moc projection is cache-builder's map_notes. It MUST
+            # carry classification + linked_notes or build_classifications /
+            # build_scan_stats silently collapse. classification stays None
+            # (faithful to legacy + live cache; no Dewey derivation in T1.4).
+            # linked_notes is the INT count of wikilinks that are NOT other MOCs.
+            entry["classification"] = None
+            entry["linked_notes"] = _count_linked_notes(body, moc_stem_set)
+
+        entries.append(entry)
+
+    return entries, placeholder_links, placeholder_stats
+
+
+def _discovered_via(scan_result, path: str) -> str:
+    """Per-entry discovered_via.
+
+    moc_scan discovers MOCs by tag and the in-scope universe by path. A MOC that
+    is also under a scope root is "both"; a tag-only MOC is "tag"; a non-MOC
+    in-scope note is "path".
+    """
+    is_moc = path in scan_result.moc_paths
+    in_scope = path in scan_result.in_scope_note_paths
+    if is_moc and in_scope:
+        return "both"
+    if is_moc:
+        return "tag"
+    return "path"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Main build logic
+# Cache assembly + atomic write
 # ──────────────────────────────────────────────────────────────────────────────
 
-def run(config_path: str) -> dict:
-    """Execute the full MOC discovery, reading, and tree-building pipeline."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+def assemble_cache(
+    config: dict, entries: list[dict], placeholder_links: list[dict]
+) -> dict:
+    """Build the MocStructureCache dict (SDD Application Data Models shape)."""
+    msc_cfg = config.get("tomo", {}).get("moc_structure_cache", {})
 
-    # Load config
+    scope_paths = msc_cfg.get("scope_paths")
+    if scope_paths is None:
+        # Fall back to the derived scope (map_note + atomic_note) so a config
+        # without an explicit scope_paths still records what was scanned.
+        scope_paths = moc_scan.read_scope_paths(config)
+
+    return {
+        "moc_cache_version": MOC_CACHE_VERSION,
+        "last_scan": utc_now_iso(),
+        "ttl_days": msc_cfg.get("ttl_days", DEFAULT_TTL_DAYS),
+        "scope_paths": list(scope_paths),
+        "exclude_paths": list(msc_cfg.get("exclude_paths", [])),
+        "moc_tag": msc_cfg.get("moc_tag", DEFAULT_MOC_TAG),
+        "entries": entries,
+        # Persisted into the cache file too — solution.md integration points
+        # (304/307) list moc-structure-cache.yaml as a placeholder destination
+        # for the future shared-ctx wiring.
+        "placeholder_links": list(placeholder_links),
+    }
+
+
+def build_cache_builder_feed(entries: list[dict], placeholder_links: list[dict]) -> dict:
+    """Build the legacy cache-builder JSON feed (stdout).
+
+    cache-builder.build_map_notes reads `map_notes` and build_placeholder_links
+    reads `placeholder_links`. The kind==moc projection IS map_notes; each entry
+    already carries classification + linked_notes(int) + path/stem/title/topics/
+    tags (C2), so cache-builder's build_classifications / build_scan_stats keep
+    working unchanged. This preserves the vault-explorer Step 9 contract:
+        moc-tree-builder.py > moc-output.json ; cache-builder.py --mocs moc-output.json
+    (SDD line 183 — "still emits the cache-builder-shaped map_notes superset").
+    """
+    return {
+        "map_notes": [e for e in entries if e["kind"] == "moc"],
+        "placeholder_links": list(placeholder_links),
+    }
+
+
+def write_cache_atomic(cache: dict, output_path: str) -> None:
+    """Write the MOC-structure cache atomically (tmp file + os.replace).
+
+    Reuses the same tmp-rename mechanism as cache-builder.write_cache_atomic; the
+    only difference is the file header, so this is a thin local writer rather than
+    a call into cache-builder's discovery-cache-specific writer.
+    """
+    output_dir = os.path.dirname(os.path.abspath(output_path))
+    os.makedirs(output_dir, exist_ok=True)
+
+    fd, tmp_path = tempfile.mkstemp(dir=output_dir, suffix=".yaml.tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write("# moc-structure-cache.yaml — auto-generated by moc-tree-builder.py\n")
+            fh.write("# Do not edit manually — re-run /explore-vault to refresh.\n")
+            yaml.dump(
+                cache,
+                fh,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+    except Exception:
+        os.unlink(tmp_path)
+        raise
+
+    os.replace(tmp_path, output_path)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Build orchestration
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _count_excluded_leaks(entries: list[dict], exclude_paths: list[str]) -> int:
+    """Count entries whose path lives under an excluded prefix (M7 leak guard).
+
+    A non-zero count means the scan let an excluded path into the cache — the
+    exclusion is the security/scope boundary, so this is asserted to be 0.
+    """
+    prefixes = tuple(p.rstrip("/") + "/" for p in exclude_paths if p)
+    if not prefixes:
+        return 0
+    return sum(1 for e in entries if e["path"].startswith(prefixes))
+
+
+def _emit_build_telemetry(cache: dict, placeholder_stats: dict, duration_ms: int) -> None:
+    """Emit the PRD observability events to stderr (stdout is the JSON feed only).
+
+    Two greppable, JSON-tailed lines — `placeholder.build` validates M2/M4
+    (placeholder false-positive drop), `moc-cache.build` validates M7 (no
+    excluded-path leakage) + TTL/build-cost. Parsers split on the event name.
+    """
+    entries = cache["entries"]
+    moc_cache_stats = {
+        "built_at": cache["last_scan"],
+        "mocs_count": sum(1 for e in entries if e["kind"] == "moc"),
+        "notes_count": sum(1 for e in entries if e["kind"] == "note"),
+        "scope_paths": len(cache["scope_paths"]),
+        "excluded_leak_count": _count_excluded_leaks(entries, cache["exclude_paths"]),
+        "duration_ms": duration_ms,
+        "kado_reads": len(entries),
+    }
+    print(f"[moc-tree] placeholder.build {json.dumps(placeholder_stats)}", file=sys.stderr)
+    print(f"[moc-tree] moc-cache.build {json.dumps(moc_cache_stats)}", file=sys.stderr)
+
+
+def run_with_client(client, config: dict) -> tuple[dict, dict]:
+    """Build both outputs from a (real or fake) Kado client.
+
+    The testable seam: callers inject a client and a parsed config; this returns
+    `(cache, feed)` without touching disk —
+        cache — the MocStructureCache dict (written to moc-structure-cache.yaml)
+        feed  — the cache-builder JSON feed (map_notes + placeholder_links, stdout)
+    `run()` wires the real client + config file + output path around it.
+
+    Emits the placeholder.build / moc-cache.build observability events to stderr
+    (M2/M4/M7); stdout stays JSON-feed-only.
+    """
+    started = time.monotonic()
+    scan_result = moc_scan.scan(client, config)
+    entries, placeholder_links, placeholder_stats = build_entries(
+        client, scan_result, _SCRIPT_DIR
+    )
+    cache = assemble_cache(config, entries, placeholder_links)
+    feed = build_cache_builder_feed(entries, placeholder_links)
+    duration_ms = int((time.monotonic() - started) * 1000)
+    _emit_build_telemetry(cache, placeholder_stats, duration_ms)
+    return cache, feed
+
+
+def run(config_path: str, output_path: str) -> dict:
+    """Load config, connect to Kado, build both outputs.
+
+    Writes the MOC-structure-cache YAML to `output_path` (atomic) and prints the
+    cache-builder JSON feed to stdout so `moc-tree-builder.py > moc-output.json`
+    keeps working (vault-explorer Step 9). ALL progress/warnings go to stderr —
+    stdout carries the JSON feed only, or it would corrupt the downstream
+    json.load (feedback_never_redirect_stderr_into_json).
+    """
     print(f"[moc-tree] Loading config: {config_path!r}", file=sys.stderr)
     try:
-        with open(config_path, encoding="utf-8") as f:
-            config = yaml.safe_load(f)
+        with open(config_path, encoding="utf-8") as fh:
+            config = yaml.safe_load(fh) or {}
     except FileNotFoundError:
         print(f"[error] Config file not found: {config_path}", file=sys.stderr)
         sys.exit(1)
@@ -524,163 +499,32 @@ def run(config_path: str) -> dict:
         print(f"[error] Failed to parse config: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    # Extract map_note config
-    concepts = config.get("concepts", {})
-    map_note_cfg = concepts.get("map_note", {})
-
-    if isinstance(map_note_cfg, str):
-        # Simple string path — treat as single path entry
-        moc_paths_cfg: list[str] = [map_note_cfg]
-        moc_tags_cfg: list[str] = []
-    elif isinstance(map_note_cfg, dict):
-        moc_paths_cfg = map_note_cfg.get("paths", []) or []
-        moc_tags_cfg = map_note_cfg.get("tags", []) or []
-    else:
-        moc_paths_cfg = []
-        moc_tags_cfg = []
-
-    # Initialise Kado client
     print("[moc-tree] Connecting to Kado...", file=sys.stderr)
     try:
         client = KadoClient()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"[error] Failed to initialise KadoClient: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    # ── Discovery ─────────────────────────────────────────────────────────────
+    cache, feed = run_with_client(client, config)
+    print(
+        f"[moc-tree] Assembled {len(cache['entries'])} entr(y/ies), "
+        f"{len(feed['map_notes'])} map_note(s), "
+        f"{len(feed['placeholder_links'])} placeholder(s)",
+        file=sys.stderr,
+    )
 
-    path_found: dict[str, str] = {}
-    tag_found: dict[str, str] = {}
+    write_cache_atomic(cache, output_path)
+    print(
+        f"[moc-tree] MOC-structure cache written: {output_path} "
+        f"({os.path.getsize(output_path)} bytes)",
+        file=sys.stderr,
+    )
 
-    if moc_paths_cfg:
-        path_found = discover_via_paths(client, moc_paths_cfg)
-        print(
-            f"[moc-tree] Path-based: {len(path_found)} MOC(s) found",
-            file=sys.stderr,
-        )
-    else:
-        print("[moc-tree] No map_note.paths configured — skipping path discovery",
-              file=sys.stderr)
-
-    if moc_tags_cfg:
-        tag_found = discover_via_tags(client, moc_tags_cfg)
-        print(
-            f"[moc-tree] Tag-based: {len(tag_found)} MOC(s) found",
-            file=sys.stderr,
-        )
-    else:
-        print("[moc-tree] No map_note.tags configured — skipping tag discovery",
-              file=sys.stderr)
-
-    discovered: dict[str, str] = deduplicate_discoveries(path_found, tag_found)
-    print(f"[moc-tree] Total after dedup: {len(discovered)} MOC(s)", file=sys.stderr)
-
-    if not discovered:
-        # Empty vault / no MOCs — return zeroed output
-        return {
-            "map_notes": [],
-            "placeholder_mocs": [],
-            "tree_stats": {
-                "total_mocs": 0,
-                "root_mocs": 0,
-                "max_depth": 0,
-                "cycles_broken": 0,
-            },
-        }
-
-    # ── Read each MOC ─────────────────────────────────────────────────────────
-
-    # Collect all vault paths for placeholder detection (best effort)
-    all_vault_paths: set[str] = set()
-
-    mocs: dict[str, dict] = {}
-    for path, via in discovered.items():
-        print(f"[moc-tree] Reading: {path!r}", file=sys.stderr)
-        moc_data = read_moc(client, path)
-        if not moc_data:
-            # Failed read — include with minimal data
-            moc_data = {
-                "content": "",
-                "title": basename_no_ext(path),
-                "sections": [],
-                "linked_notes_raw": [],
-                "parent_links": [],
-                "sibling_links": [],
-                "map_state": None,
-            }
-        moc_data["discovered_via"] = via
-        moc_data["path"] = path
-        mocs[path] = moc_data
-        # Track path in vault set
-        all_vault_paths.add(path)
-
-    # ── Topic extraction ──────────────────────────────────────────────────────
-
-    for path, moc in mocs.items():
-        title = moc["title"]
-        content = moc.get("content", "")
-        print(f"[moc-tree] Extracting topics: {title!r}", file=sys.stderr)
-        moc["topics"] = extract_topics(content, title, script_dir)
-
-    # ── Tree building ──────────────────────────────────────────────────────────
-
-    print("[moc-tree] Building tree...", file=sys.stderr)
-    mocs, cycles_broken = build_tree(mocs)
-
-    # ── Placeholder detection ──────────────────────────────────────────────────
-
-    print("[moc-tree] Detecting placeholders...", file=sys.stderr)
-    placeholder_mocs = detect_placeholders(mocs, all_vault_paths)
-
-    # ── Assemble output ────────────────────────────────────────────────────────
-
-    map_notes = []
-    for path, moc in mocs.items():
-        linked_moc_paths = set(moc.get("child_mocs", []))
-        parent = moc.get("parent_moc")
-        if parent:
-            linked_moc_paths.add(parent)
-        linked_moc_paths.update(moc.get("sibling_mocs", []))
-
-        # linked_notes: wikilinks that do NOT resolve to other MOCs
-        moc_paths_list = list(mocs.keys())
-        linked_notes_count = sum(
-            1 for link in moc.get("linked_notes_raw", [])
-            if not resolve_link_to_path(link, moc_paths_list)
-        )
-
-        map_notes.append({
-            "path": path,
-            "title": moc["title"],
-            "discovered_via": moc["discovered_via"],
-            "level": moc["level"],
-            "parent_moc": moc.get("parent_moc"),
-            "child_mocs": moc.get("child_mocs", []),
-            "sibling_mocs": moc.get("sibling_mocs", []),
-            "state": moc.get("map_state"),
-            "topics": moc.get("topics", []),
-            "sections": moc.get("sections", []),
-            "linked_notes": linked_notes_count,
-            "classification": None,
-        })
-
-    # Sort: roots first, then by level, then by path
-    map_notes.sort(key=lambda m: (m["level"], m["path"]))
-
-    # Tree stats
-    root_mocs = sum(1 for m in map_notes if m["level"] == 0)
-    max_depth = max((m["level"] for m in map_notes), default=0)
-
-    return {
-        "map_notes": map_notes,
-        "placeholder_mocs": placeholder_mocs,
-        "tree_stats": {
-            "total_mocs": len(map_notes),
-            "root_mocs": root_mocs,
-            "max_depth": max_depth,
-            "cycles_broken": cycles_broken,
-        },
-    }
+    # cache-builder feed → stdout (JSON only).
+    json.dump(feed, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+    return cache
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -691,9 +535,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="moc-tree-builder.py",
         description=(
-            "Discover all MOCs in the vault, read their content, build a "
-            "parent/child/sibling tree, and output JSON.\n\n"
-            "Output: JSON to stdout. Progress and warnings: stderr."
+            "Build the MOC-structure cache (config/moc-structure-cache.yaml) by "
+            "orchestrating tag-primary discovery, dual-up parsing, and real-vault "
+            "placeholder detection.\n\nProgress and warnings: stderr."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -703,18 +547,22 @@ def main() -> None:
         default="config/vault-config.yaml",
         help="Path to vault-config.yaml (default: config/vault-config.yaml)",
     )
+    parser.add_argument(
+        "--output",
+        metavar="PATH",
+        default="config/moc-structure-cache.yaml",
+        help="Output path (default: config/moc-structure-cache.yaml)",
+    )
     args = parser.parse_args()
 
     try:
-        result = run(args.config)
+        run(args.config, args.output)
     except SystemExit:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"[error] Unexpected error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    json.dump(result, sys.stdout, indent=2, ensure_ascii=False)
-    sys.stdout.write("\n")
     sys.exit(0)
 
 

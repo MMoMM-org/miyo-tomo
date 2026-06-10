@@ -26,3 +26,9 @@ Contract drift: the agreed default placement for `link_to_moc` actions was `afte
 ## Unquoted tilde in a bash `case` pattern → doubled `$HOME` path — Status: resolved (commit `b3243db`)
 
 A bare `~/` in a `case` *pattern* is tilde-expanded by bash: `case "$P" in ~/*)` becomes `case "$P" in /Users/<you>/*)`. It then wrongly matches absolute paths already under `$HOME`, and an arm like `P="$HOME/${P#\~/}"` prepends `$HOME` again → doubled path (e.g. `/Users/marcus//Users/marcus/Local/Obsidian/Privat`). Fix: **quote the tilde in the pattern** — `\~/*)` (or `"~/"*)`). Guard with an extraction-based regression test that asserts the arm stays quoted: `tests/test_install_vault_path.py` greps the live arm from `install-tomo.sh`, so it cannot drift. Surfaced 2026-06-01 in the `install-tomo.sh` vault-path prompt; the original fix had been written but stranded on an unmerged branch (see `tools.md` → "check unmerged branches for an orphaned fix").
+
+<!-- 2026-06-06 -->
+
+## Config-key drift between two consumers — `vault-scan` vs `moc_scan` read `atomic_note` differently — Status: resolved (commit `629047a`)
+
+021's M8 set the canonical `concepts.atomic_note` shape to a dict with a single `path` key, and updated `lib/moc_scan.read_scope_paths` to read it — but `vault-scan.py` `extract_primary_path`/`extract_all_paths`, the OTHER consumer of the same concept config, still read only `base_path`/`paths`. So `path` resolved to `None` → `/explore-vault` reported `atomic_note` as `0 (path not resolved)` (281 live notes invisible). Fix: make `vault-scan` accept `path` alongside `base_path`/`paths`. Lesson (recurring — see auto-memory `feedback_schema_audit_all_consumers`): when you change a config-key shape, grep EVERY consumer of that key, not just the one you're editing. Two readers of one config accepting different key names is the trap.

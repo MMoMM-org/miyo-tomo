@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.8.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -646,6 +646,17 @@ def build_routing_plan(
     metrics: dict,
 ) -> dict:
     """Assemble routing-plan dict matching routing-plan.schema.json."""
+    # --recover treats captured items as fresh (T2.2). The decision tree flips
+    # the action to "suggest" on `recover and captured_hits`, but the conductor
+    # dispatches `fresh_sources[]` only — so captured items must be folded in
+    # here too, or recover fires with an empty dispatch list (bug: 2026-06-09).
+    # new_sources and captured_hits are disjoint by construction
+    # (compute_new_sources excludes every frontmatter bucket), but dedupe by path
+    # defensively so a future overlap can't double-dispatch an item.
+    dispatch_sources = list(state.new_sources)
+    if state.recover:
+        seen = {s["path"] for s in dispatch_sources}
+        dispatch_sources += [h for h in state.captured_hits if h["path"] not in seen]
     return {
         "action": action,
         "timestamp": datetime.datetime.now(
@@ -654,7 +665,7 @@ def build_routing_plan(
         "inbox_path": state.inbox_path,
         "fresh_sources": [
             {"path": s["path"], "modified": str(s.get("modified", ""))}
-            for s in state.new_sources
+            for s in dispatch_sources
         ],
         "has_audio": state.has_audio,
         "approved_suggestions": state.approved_suggestions,

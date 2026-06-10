@@ -19,6 +19,30 @@ input/output/cache_create/cache_read). Actual billed cost may differ
 
 ## Log
 
+### 2026-06-09 — Pass 1 (suggest), 18 items, spec-021 T4.3 live validation
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-06-09 |
+| **Phase** | Pass 1 (suggest) — `/inbox --recover`, full re-process |
+| **Items** | 18 dispatched, 18 `done`, 0 errors → 14 sections, 6 daily updates, 5 proposed MOCs |
+| **Vault** | Privat-Test (clean, post-reset) |
+| **Versions** | moc-tree-builder v0.5.0, placeholder_detect v0.2.0, shared-ctx-builder v1.4.0, inbox-triage v0.8.0 |
+
+**Spec-021 success metrics (all green):**
+- **M1/M5/M9/F7** — confirmed (earlier runbook + 206-orphan scan).
+- **M2/M4** — placeholder links 397→196 unique (detection: 224-fix + 23 date-shaped periodic-note FPs removed); Condition C feed filtered to 38 MOC-named (`(MOC)`/` MOC`). `placeholder.build`/`moc-cache.build` telemetry now emitted to stderr.
+- **M3** — `accumulation_index` absent.
+- **M6** — shared-ctx envelope **35,664 bytes** (≤36KB; was 54.5KB).
+- **M7** — 0 `X/` template-vault leaks in cache/`shared_ctx.mocs`.
+- **M8** — 63 MOCs in `shared_ctx.mocs`, 0 `X/` leaks.
+
+**Notes:**
+- `--recover` was broken pre-021 (action flipped but empty dispatch list) — fixed in inbox-triage v0.8.0; this run is the first where all 18 captured items re-dispatched.
+- No cutoff on the heavy 18-item dispatch (the original concern): all `done`, no stuck/running, no missing `result.json`.
+- Token cost NOT captured this run — in-container validation run, not instrumented via `tomo-session-stats.py`. Metrics validation was the goal; cost-trajectory measurement deferred to a future instrumented run.
+- ~~Follow-up #49~~ **closed as not-a-bug 2026-06-10**: the created MOC name uses the normalized `proposed_mocs[].name` field, which DOES apply the convention (`Notemaking`→`Notemaking (MOC)`, `AI MOC`→`AI (MOC)`); test-locked. The initial finding misread the raw `topic` field instead of `name`.
+
 ### 2026-05-26 — Pass 1 (suggest), 18 items, batch dispatch
 
 | Key | Value |

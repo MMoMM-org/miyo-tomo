@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """
 vault-scan.py — Scan vault folder structure via Kado and output JSON.
 
@@ -49,9 +49,9 @@ def extract_primary_path(concept_key: str, concept_value) -> str | None:
 
     Handles all config formats:
       - Simple string:  inbox: "+/"
-      - base_path dict: atomic_note: { base_path: "Atlas/202 Notes/" }
+      - base_path dict: calendar: { base_path: "Calendar/", granularities: {...} }
+      - path dict:      atomic_note: { path: "Atlas/202 Notes/" }   (M8 canonical single-path shape)
       - paths list:     map_note: { paths: ["Atlas/200 Maps/"] }
-      - calendar:       calendar: { base_path: "Calendar/", granularities: {...} }
     """
     if concept_value is None:
         return None
@@ -63,6 +63,10 @@ def extract_primary_path(concept_key: str, concept_value) -> str | None:
         # calendar: prefer base_path
         if "base_path" in concept_value:
             return concept_value["base_path"]
+        # atomic_note style: single 'path' (M8 canonical) — must be read here too,
+        # not only by lib/moc_scan, or vault-scan reports the concept as unresolved.
+        if concept_value.get("path"):
+            return concept_value["path"]
         # map_note style: paths list
         if "paths" in concept_value and concept_value["paths"]:
             return concept_value["paths"][0]
@@ -80,6 +84,8 @@ def extract_all_paths(concept_value) -> list[str]:
         paths: list[str] = []
         if "base_path" in concept_value and concept_value["base_path"]:
             paths.append(concept_value["base_path"])
+        if concept_value.get("path"):
+            paths.append(concept_value["path"])
         if "paths" in concept_value:
             paths.extend(p for p in concept_value["paths"] if p)
         # calendar granularities

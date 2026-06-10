@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.1
+# version: 0.17.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -56,7 +56,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 # detection and T3.x render). Imported here per F-43 plan T2.5 to centralize
 # the slugify SSoT (lib/slugify.py) — DiscoveryReport in T2.5 emits cluster.title
 # only, so this is wired ahead of use.
+from lib.moc_cache_loader import load_moc_cache  # noqa: E402
+from lib.moc_tags import EXCLUDE_NOTE_TAG  # noqa: E402
+from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
+from lib.up_parse import parse_up_from_content  # noqa: E402
 from lib.squelch import (  # noqa: E402
     decrement_all as _squelch_decrement_all,
     load_registry as _squelch_load_registry,
@@ -76,7 +80,11 @@ from lib.topic_signature import (  # noqa: E402
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 DEFAULT_CONFIG_PATH = "config/vault-config.yaml"
-DEFAULT_CACHE_PATH = "config/discovery-cache.yaml"
+# spec 021 T2.1: moc-discovery now reads the MOC-structure cache via
+# lib/moc_cache_loader (TTL + rebuild-if-stale + entries[kind==moc]→map_notes
+# shim), not discovery-cache.yaml directly. The loader rebuilds inline when the
+# cache is stale/missing/corrupt (ADR-3).
+DEFAULT_CACHE_PATH = "config/moc-structure-cache.yaml"
 DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 # ADR-8: squelch sidecar at tomo-instance/state/moc-squelch.json. Default
 # resolves relative to TOMO_INSTANCE env var (Docker runtime) or cwd (tests /
@@ -101,6 +109,10 @@ ABORT_MESSAGES: dict[str, str] = {
     ),
     "cache-miss-cap-exceeded": (
         "Too many notes without cache entry — please run /explore-vault first."
+    ),
+    "cache-rebuild-failed": (
+        "MOC structure cache could not be rebuilt (target unwritable or no MOCs "
+        "found). Please run /explore-vault and check the vault configuration."
     ),
 }
 
@@ -178,7 +190,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--cache",
         metavar="PATH",
         default=DEFAULT_CACHE_PATH,
-        help=f"Path to discovery-cache.yaml (default: {DEFAULT_CACHE_PATH}).",
+        help=f"Path to the MOC-structure cache (default: {DEFAULT_CACHE_PATH}). "
+             "Loaded via moc_cache_loader (rebuild-if-stale + map_notes shim).",
     )
     parser.add_argument(
         "--dry-run",
@@ -190,7 +203,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         metavar="N",
         default=None,
-        help="Override candidate_cap (default: vault-config tomo.moc_proposal).",
+        help="Override candidate_cap (default 500: vault-config tomo.moc_proposal).",
+    )
+    parser.add_argument(
+        "--check-moc-uplinks",
+        action="store_true",
+        help="Audit MOC parentage only: run the orphan link-or-create pass over "
+             "kind==moc entries (skip the clustering pipeline). Emits a "
+             "check-moc-uplinks DiscoveryReport.",
     )
     parser.add_argument(
         "--squelch-state",
@@ -325,6 +345,9 @@ def empty_report(mode: str, trigger_arg: str, profile: str) -> dict[str, Any]:
         "parent_options_per_cluster": {},
         "duplicates_skipped": [],
         "squelched": [],
+        "orphan_suggestions": [],
+        "orphan_total": 0,
+        "orphan_overflow": 0,
         "abort_reason": None,
         "abort_message": None,
         "extracted_via_llm_count": 0,
@@ -479,23 +502,32 @@ def _handle_title_or_freetext(trigger_arg: str, cache: dict) -> list[Candidate]:
     return out
 
 
-def _handle_scan(profile: dict, kado_client) -> list[Candidate]:
-    """Scan mode: listDir on each atomic-note subdirectory (whole-vault density)."""
-    cd = (profile.get("concept_defaults") or {}).get("atomic_note") or {}
-    paths = [sd["path"] for sd in (cd.get("subdirectories") or []) if sd.get("path")]
-    if not paths and cd.get("base_path"):
-        paths = [cd["base_path"]]
-    _log(f"phase1: scan over {len(paths)} atomic-note path(s)")
+def _handle_scan(cache: dict) -> list[Candidate]:
+    """Scan mode: source candidates from cache orphans (kind==note, up_state==absent).
+
+    ADR-11: The old live list_dir enumeration counted EVERY atomic note (including
+    already-MOC-linked notes) toward the candidate cap, causing candidate-cap-exceeded
+    on whole-vault /moc-propose runs. The fix: source only orphans from the cache
+    (up_state==absent means no existing up:: link). No live Kado call is made.
+    """
     seen: set[str] = set()
     out: list[Candidate] = []
-    for p in paths:
-        items = kado_client.list_dir(p, depth=10)
-        for item in items:
-            if _is_md_file(item):
-                ipath = item.get("path", "") or ""
-                if ipath and ipath not in seen:
-                    seen.add(ipath)
-                    out.append(_candidate_from_path(ipath))
+    for entry in cache.get("entries") or []:
+        if entry.get("kind") != "note":
+            continue
+        if entry.get("up_state") != "absent":
+            continue
+        # ADR-13 B-note: notes tagged exclude/note are never clustered.
+        if EXCLUDE_NOTE_TAG in (entry.get("tags") or []):
+            continue
+        path = (entry.get("path") or "").strip()
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        stem = (entry.get("stem") or _stem_from_path(path))
+        topics = [str(t) for t in (entry.get("topics") or []) if t]
+        out.append(Candidate(stem=stem, path=path, topics=topics))
+    _log(f"phase1: scan sourced {len(out)} orphan candidate(s) from cache (up_state==absent)")
     return out
 
 
@@ -556,7 +588,7 @@ def phase1_select_candidates(
     elif mode in ("title", "free-text"):
         raw = _handle_title_or_freetext(trigger_arg, cache)
     elif mode == "scan":
-        raw = _handle_scan(profile, kado_client)
+        raw = _handle_scan(cache)
     else:  # pragma: no cover — route_input only emits the six modes above.
         raise ValueError(f"phase1: unknown mode {mode!r}")
 
@@ -567,7 +599,7 @@ def phase1_select_candidates(
     if len(filtered) == 0:
         return ([], "zero-candidates")
 
-    cap = getattr(config, "candidate_cap", 200)
+    cap = getattr(config, "candidate_cap", 500)
     if len(filtered) > cap:
         _log(f"phase1: candidate-cap-exceeded ({len(filtered)} > {cap})")
         return ([], "candidate-cap-exceeded")
@@ -582,6 +614,11 @@ def phase1_select_candidates(
 
 def validate_cache_loaded(cache: dict | None) -> str | None:
     """Return `"cache-empty"` when the discovery cache is unusable, else None.
+
+    NOTE (spec 021 T2.1): main() no longer calls this — cache loading + the
+    cache-empty determination now live in lib/moc_cache_loader.load_moc_cache
+    (which mirrors this contract: a fresh cache with no kind==moc map_notes →
+    "cache-empty"). Retained as the documented, separately-tested predicate.
 
     A cache is "loaded" when it carries a non-empty `map_notes` list. Any of
     the three failure modes — file missing (cache=None from a guarded loader),
@@ -624,8 +661,34 @@ class LLMClient(Protocol):
 
 
 def _build_topics_index(cache: dict) -> dict[str, list[str]]:
-    """Index `cache.map_notes` by path → topics for O(1) hit lookup."""
+    """Index cache entries by path → topics for O(1) hit lookup in Phase 2.
+
+    Indexes two sources (last-writer-wins on duplicate paths — the cache-builder
+    dedupes, this is a defensive belt-and-braces):
+
+    1. `cache["entries"]` (kind==moc AND kind==note) — covers scan-mode candidates
+       whose topics come from the cache entry rather than from an LLM call.
+       Before T5.1 this was a miss for kind==note paths, forcing spurious LLM
+       batching for every scan candidate.
+
+    2. `cache["map_notes"]` (kind==moc shim, populated by apply_shim in the
+       loader) — kept for backward compat with title/free-text mode, which
+       constructs candidates from map_notes and needs its hits to resolve here.
+    """
     out: dict[str, list[str]] = {}
+
+    # Pass 1: all entries (moc + note) from the unified entries list.
+    for entry in cache.get("entries") or []:
+        if not isinstance(entry, dict):
+            continue
+        path = (entry.get("path") or "").strip()
+        if not path:
+            continue
+        topics = [str(t) for t in (entry.get("topics") or []) if t]
+        out[path] = topics
+
+    # Pass 2: map_notes shim — applies on top so MOC hits from the shim layer
+    # are never shadowed by a stale entries pass.
     for entry in cache.get("map_notes") or []:
         if not isinstance(entry, dict):
             continue
@@ -633,9 +696,8 @@ def _build_topics_index(cache: dict) -> dict[str, list[str]]:
         if not path:
             continue
         topics = [str(t) for t in (entry.get("topics") or []) if t]
-        # Last-writer-wins on duplicate paths — cache-builder dedupes these
-        # already, this is a defensive belt-and-braces.
         out[path] = topics
+
     return out
 
 
@@ -1261,36 +1323,91 @@ def phase6_dedupe(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# D3 — Inter-cluster member-overlap dedup (SDD ADR-13 D3, spec 021 T7.4)
+# ──────────────────────────────────────────────────────────────────────────────
+
+_MEMBER_OVERLAP_THRESHOLD: float = 0.80
+
+
+def _dedupe_overlapping_clusters(
+    clusters: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Drop proposed clusters whose members are ≥80% inside a larger proposed cluster.
+
+    This is a NEW pass over PROPOSED clusters only — it does NOT touch
+    phase6_dedupe's topics-vs-existing-MOC logic.  The denominator is always
+    the SMALLER cluster's member count.
+
+    Sort order (stable, deterministic): size DESC, then cluster_id ASC.
+    When sizes tie the lower cluster_id is treated as the 'larger' reference so
+    the higher id is dropped — giving a deterministic outcome independent of
+    input order.
+
+    A dropped cluster is never re-evaluated as a 'larger' reference because only
+    clusters in `live` are iterated as refs — a dropped cluster is never appended
+    to `live`.
+
+    Returns (kept, drops) where drops entries share the duplicates_skipped
+    shape: {cluster_id, reason, existing_moc}.
+    """
+    if len(clusters) <= 1:
+        return list(clusters), []
+
+    sorted_clusters = sorted(
+        clusters,
+        key=lambda c: (-len(c.get("candidate_stems") or []), c.get("cluster_id", "")),
+    )
+
+    # Each entry: (cluster_dict, frozenset_of_members) — member sets built once.
+    live: list[tuple[dict, frozenset[str]]] = []
+    drops: list[dict] = []
+
+    for candidate in sorted_clusters:
+        cid = candidate.get("cluster_id", "")
+        cand_members = frozenset(candidate.get("candidate_stems") or [])
+        cand_size = len(cand_members)
+
+        if cand_size == 0:
+            # Empty cluster cannot be absorbed — treat as surviving.
+            live.append((candidate, cand_members))
+            continue
+
+        absorbed = False
+        for ref, ref_members in live:
+            overlap = len(cand_members & ref_members) / cand_size
+            if overlap >= _MEMBER_OVERLAP_THRESHOLD:
+                drops.append({
+                    "cluster_id": cid,
+                    "reason": "member-overlap",
+                    "existing_moc": ref.get("cluster_id", ""),
+                })
+                _log(
+                    f"d3: cluster {cid!r} member-overlap={overlap:.2f} "
+                    f"vs {ref.get('cluster_id')!r} — dropping"
+                )
+                absorbed = True
+                break
+
+        if not absorbed:
+            live.append((candidate, cand_members))
+
+    # Restore original input order for the kept set to keep downstream stable.
+    kept_ids = {c.get("cluster_id", "") for c, _ in live}
+    kept = [c for c in clusters if c.get("cluster_id", "") in kept_ids]
+    return kept, drops
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Phase 6.5 — Existing-`up::` validation per candidate
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Match a single ``up::`` relationship line whose target is a wikilink. The
-# anchor is a line-start (`(?m)^`) optionally preceded by whitespace or
-# callout-quote prefix (``> ``); the target captured group strips the
-# surrounding ``[[`` / ``]]``.
+# Match a single inline ``up::`` relationship line whose target is a wikilink.
+# T2.2: target RESOLUTION now goes through lib/up_parse.parse_up_from_content
+# (dual-up: inline + frontmatter). This regex is retained ONLY to count inline
+# markers for the multi-`up::` malformed-note warning — it no longer resolves
+# the target. (Mirrors up_parse._INLINE_UP so the warning matches what up_parse
+# would have picked as the inline candidate.)
 _UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
-
-
-def _extract_first_up_marker(content: str) -> str | None:
-    """Return the first ``up:: [[Target]]`` target, or None when absent.
-
-    Matches multi-line bodies — leading whitespace is allowed, the marker
-    must start its own line, and the wikilink target is returned without
-    the surrounding `[[` / `]]`. Multiple `up::` lines on the same note
-    are the caller's concern: this helper deliberately surfaces only the
-    first match so callers can decide whether to warn.
-
-    A note body without any `up::` line, or with `up::` followed by a
-    non-wikilink target, returns None — Rule 4.1 / 4.4 then applies and
-    the new MOC becomes the child's `up::` regardless of override.
-    """
-    if not content:
-        return None
-    match = _UP_MARKER_RE.search(content)
-    if not match:
-        return None
-    target = match.group(1).strip()
-    return target or None
 
 
 def _moc_stems_from_cache(cache: dict) -> set[str]:
@@ -1412,17 +1529,24 @@ def phase65_validate_existing_up(
 
             content = note.get("content", "") if isinstance(note, dict) else ""
 
-            # Multi-`up::` detection: count regex hits before extracting
-            # so the warning fires per-note, not per-cluster.
-            all_targets = _UP_MARKER_RE.findall(content)
-            if len(all_targets) > 1:
+            # Multi-inline-`up::` detection: count inline marker hits before
+            # resolving so the warning fires per-note, not per-cluster. (The
+            # warning is inline-specific — a single frontmatter `up:` plus one
+            # inline `up::` is the normal conflict case, resolved by inline-wins,
+            # not a malformed multi-marker note.)
+            inline_targets = _UP_MARKER_RE.findall(content)
+            if len(inline_targets) > 1:
                 multi_up_count += 1
                 _log(
                     f"WARN: multiple up:: markers in {path}; using first "
-                    f"({all_targets[0]!r}, dropped {len(all_targets) - 1} more)"
+                    f"({inline_targets[0]!r}, dropped {len(inline_targets) - 1} more)"
                 )
 
-            target = _extract_first_up_marker(content)
+            # T2.2 (C1/ADR-6): resolve the `up` relationship from the SAME
+            # read_note content via the up_parse SSoT — recognises both inline
+            # `up:: [[X]]` and frontmatter `up:` (inline wins on conflict),
+            # splitting the frontmatter block locally with no extra Kado call.
+            target = parse_up_from_content(content).target
             if target is None:
                 state: str = "absent"
             elif target in moc_stems:
@@ -1541,6 +1665,41 @@ def _enrich_cluster(
     return enriched, serialised_parents
 
 
+def _cap_orphans(
+    suggestions: list[dict], cap: int
+) -> tuple[list[dict], int, int]:
+    """Truncate a (pre-ordered) orphan-suggestion list to `cap` (ADR-12).
+
+    `suggestions` arrives link-first ordered from emit_orphan_suggestions, so the
+    head is the most-actionable. Returns (kept, total, overflow). A cap < 0 (or
+    a total at/under the cap) keeps everything with overflow 0.
+    """
+    total = len(suggestions)
+    if cap is not None and cap >= 0 and total > cap:
+        return suggestions[:cap], total, total - cap
+    return suggestions, total, 0
+
+
+def _run_moc_uplink_check(
+    cache: dict, config_path: Path, profile_name: str
+) -> dict:
+    """Focused MOC-parentage audit (ADR-12 / `--check-moc-uplinks`).
+
+    Runs ONLY the orphan link-or-create pass over `kind=="moc"` entries — no
+    clustering pipeline — and returns a `check-moc-uplinks` DiscoveryReport with
+    the (capped) MOC orphan suggestions.
+    """
+    moc_config = _load_moc_config(config_path)
+    orphan_all = emit_orphan_suggestions(cache.get("entries") or [], kinds=("moc",))
+    kept, total, overflow = _cap_orphans(orphan_all, moc_config.orphan_display_cap)
+    _log(f"check-moc-uplinks: {total} orphan MOC(s) → {len(kept)} shown (overflow {overflow})")
+    report = empty_report("check-moc-uplinks", "", profile_name)
+    report["orphan_suggestions"] = kept
+    report["orphan_total"] = total
+    report["orphan_overflow"] = overflow
+    return report
+
+
 def _run_pipeline(
     args,
     cache: dict,
@@ -1630,6 +1789,11 @@ def _run_pipeline(
     )
     _log(f"phase6: kept={len(kept_clusters)} dup={len(duplicates_skipped)} squelched={len(squelched)}")
 
+    # D3 — Inter-cluster member-overlap dedup (SDD ADR-13 D3, spec 021 T7.4)
+    kept_clusters, d3_drops = _dedupe_overlapping_clusters(kept_clusters)
+    duplicates_skipped.extend(d3_drops)
+    _log(f"d3: kept={len(kept_clusters)} inter-cluster-drops={len(d3_drops)}")
+
     # Phase 6.5 — Existing up:: validation
     kept_clusters = phase65_validate_existing_up(
         kept_clusters, candidates_with_topics, kado_client, cache
@@ -1637,6 +1801,14 @@ def _run_pipeline(
     _log(f"phase6.5: existing_up:: decorated {len(kept_clusters)} cluster(s)")
 
     kept_clusters.sort(key=lambda c: c.get("confidence", 0.0), reverse=True)
+
+    # ADR-13 D1: the note-orphan pass is REMOVED from the cluster pipeline.
+    # Orphan suggestions are produced ONLY by _run_moc_uplink_check
+    # (--check-moc-uplinks). The per-note orphan section (### Oxx) no longer
+    # appears in cluster-mode proposal-docs (scan or scoped). Interactive
+    # note-orphan handling is deferred to Garden-Audit (#30).
+    # emit_orphan_suggestions / _cap_orphans remain in scope — used by the
+    # check path above.
 
     report = empty_report(mode, trigger_arg, profile_name)
     report.update({
@@ -1658,6 +1830,9 @@ def _run_pipeline(
         "parent_options_per_cluster": parent_options_per_cluster,
         "duplicates_skipped": duplicates_skipped,
         "squelched": squelched,
+        "orphan_suggestions": [],
+        "orphan_total": 0,
+        "orphan_overflow": 0,
     })
 
     _log(f"emitting DiscoveryReport: clusters={len(kept_clusters)} mode={mode!r}")
@@ -1817,10 +1992,11 @@ def main(argv: list[str] | None = None) -> int:
         _log(f"phase1-input: mode={mode} trigger_arg={trigger_arg!r} candidates={len(pre_loaded)}")
 
         cache_path = Path(args.cache)
-        cache = _load_yaml(cache_path) if cache_path.exists() else None
-        cache_abort = validate_cache_loaded(cache)
+        # spec 021 T2.1: read the MOC-structure cache via the loader — rebuild
+        # inline if stale/missing/corrupt (ADR-3), then shim entries→map_notes.
+        cache, cache_abort = load_moc_cache(str(cache_path), str(config_path))
         if cache_abort is not None:
-            _log(f"cache-empty: cache_path={cache_path} → abort {cache_abort!r}")
+            _log(f"{cache_abort}: cache_path={cache_path} → abort {cache_abort!r}")
             return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
 
         squelch_path = Path(args.squelch_state)
@@ -1863,16 +2039,27 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("\n")
         return 0
 
-    # Cache-empty pre-check (SDD §Pseudocode line 851 — fires BEFORE Phase 1).
-    # Missing file → load_yaml returns {}; populated `map_notes: []` cache → also
-    # empty. Both collapse to `cache-empty` so the agent can surface the same
-    # "run /explore-vault" hint regardless of which failure mode fired.
+    # Cache load (SDD §Pseudocode line 851 — fires BEFORE Phase 1).
+    # spec 021 T2.1: the MOC-structure cache is read via moc_cache_loader, which
+    # rebuilds inline when stale/missing/corrupt (ADR-3) and projects
+    # entries[kind==moc] → map_notes (shim). A fresh cache loads with no rebuild;
+    # a rebuild that still yields no usable map_notes aborts cache-rebuild-failed
+    # (not a re-scan every run) so the agent surfaces the "run /explore-vault" hint.
     cache_path = Path(args.cache)
-    cache = _load_yaml(cache_path) if cache_path.exists() else None
-    cache_abort = validate_cache_loaded(cache)
+    cache, cache_abort = load_moc_cache(str(cache_path), str(config_path))
     if cache_abort is not None:
-        _log(f"cache-empty: cache_path={cache_path} → abort {cache_abort!r}")
+        _log(f"{cache_abort}: cache_path={cache_path} → abort {cache_abort!r}")
         return _emit_abort_report(mode, trigger_arg, profile_name, cache_abort)
+
+    # ── --check-moc-uplinks branch: MOC-parentage audit only, no clustering ──
+    # ADR-12: a focused pass over kind==moc orphans. No squelch decrement (no
+    # clustering run), no Phase 1–6. Checked before --emit-phase1 (the agent
+    # never combines them).
+    if args.check_moc_uplinks:
+        report = _run_moc_uplink_check(cache, config_path, profile_name)
+        json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
 
     # ── --emit-phase1 branch: run Phase 1 only, write JSON, exit ─────────────
     # T6.5: no squelch decrement here; squelch is a per-discovery-run counter

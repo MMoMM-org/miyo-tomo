@@ -1,0 +1,42 @@
+{
+  "_comment": "Scenario B — accumulation_index present but item topic does not match any key.",
+  "_contract": {
+    "when": "shared_ctx.accumulation_index has key 'boardgames' and item dominant topic is 'cooking'",
+    "then_needs_new_moc": false,
+    "then_proposed_moc_topic": null,
+    "then_accumulation_trigger": false
+  },
+  "shared_ctx": {
+    "schema_version": "1",
+    "run_id": "test-run-b",
+    "mocs": [
+      {
+        "path": "Atlas/200 MOCs/Hobbies MOC.md",
+        "title": "Hobbies MOC",
+        "topics": ["cooking", "hobbies", "food"],
+        "is_classification": false
+      }
+    ],
+    "tag_prefixes": [],
+    "classification_keywords": {},
+    "accumulation_index": {
+      "boardgames": [
+        "20260101-boardgame-review",
+        "20260102-catan-notes",
+        "20260103-wingspan-tips",
+        "20260104-gloomhaven-session"
+      ]
+    }
+  },
+  "item": {
+    "stem": "20260201-cooking-pasta",
+    "path": "100 Inbox/20260201-cooking-pasta.md",
+    "dominant_topic_tokens": ["cooking", "pasta", "recipe"],
+    "body_content": "Great pasta recipe I tried today. Simple carbonara with guanciale."
+  },
+  "expected_result": {
+    "needs_new_moc": false,
+    "proposed_moc_topic": null,
+    "accumulation_trigger_fired": false
+  }
+}

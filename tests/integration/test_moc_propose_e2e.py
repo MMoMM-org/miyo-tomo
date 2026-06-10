@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_moc_propose_e2e.py — F-43 T6.1: Producer-side end-to-end integration tests.
+# version: 0.2.0
+"""test_moc_propose_e2e.py — F-43 T6.1 + spec 021 T4.1: Producer-side end-to-end integration tests.
 
 Tests the full Tomo pipeline for /moc-propose:
   moc-discovery.py (discovery phases) →
@@ -444,14 +444,24 @@ def test_cache_empty_aborts_no_file_written(tmp_path):
     inbox_dir = tmp_path / "inbox"
     inbox_dir.mkdir()
 
-    # Missing cache file (non-existent path) → moc-discovery.py aborts early with cache-empty
-    missing_cache = tmp_path / "nonexistent-cache.yaml"
+    # spec 021 T2.1: moc-discovery reads the MOC-structure cache via the loader.
+    # A FRESH cache with zero MOC entries is an empty vault → cache-empty WITHOUT
+    # a rebuild (a missing cache would instead trigger a Kado-needing rebuild →
+    # cache-rebuild-failed; this test isolates the empty-vault path, no Kado).
+    from datetime import datetime, timezone
+
+    fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    empty_cache = tmp_path / "moc-structure-cache.yaml"
+    empty_cache.write_text(
+        f"moc_cache_version: 1\nlast_scan: '{fresh}'\nttl_days: 1\nentries: []\n",
+        encoding="utf-8",
+    )
     result = subprocess.run(
         [
             sys.executable,
             str(SCRIPTS_DIR / "moc-discovery.py"),
             "--title", "any-text",
-            "--cache", str(missing_cache),
+            "--cache", str(empty_cache),
             "--config", str(config_path),
             "--squelch-state", str(squelch_path),
         ],
@@ -1046,3 +1056,521 @@ def test_perf_multi_cluster_render_under_8s(tmp_path):
         f"5-cluster render (×3) took {elapsed:.2f}s — exceeds 8s CI tolerance "
         f"(SDD target: 5s per single render). Check render_moc_proposal_doc for regressions."
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# spec 021 T4.1 — E2E across the three flows
+#
+# Mock-at-orchestrator discipline (feedback_mock_at_orchestrator_not_helper):
+#   Tests 1 and 2 monkeypatch `moc_discovery.load_moc_cache` — the function
+#   directly called by moc-discovery main() — rather than patching sub-helpers
+#   inside moc_cache_loader. This mirrors production wiring: the orchestrator
+#   (main) receives the loader result and branches on it. The fake rebuilder
+#   passed to the real loader in test 2 is injected AT the loader's public API
+#   boundary, not inside its internals.
+#
+#   Test 3 monkeypatches scb.build_tag_prefixes / build_classification_keywords
+#   / build_daily_notes (the Kado-touching helpers) to isolate the shared-ctx
+#   orchestration from live Kado while still exercising the full main() path.
+#
+#   Test 4 uses FakeKadoClient (pattern from test_moc_tree_builder.py) injected
+#   at run_with_client() — the public seam moc-tree-builder exposes for testing.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _load_moc_disc():
+    """Return the already-loaded moc_discovery module (loaded by conftest)."""
+    import moc_discovery as _md
+    return _md
+
+
+def _write_config(tmp_path: Path, *, profile: str = "miyo") -> Path:
+    import yaml
+    cfg = {
+        "profile": profile,
+        "tomo": {
+            "moc_proposal": {
+                "min_notes": 2,
+                "confidence_threshold": 0.10,
+                "max_results": 5,
+                "candidate_cap": 200,
+                "cache_miss_max_batches": 5,
+                "squelch_runs": 3,
+            }
+        },
+    }
+    p = tmp_path / "vault-config.yaml"
+    p.write_text(yaml.dump(cfg, allow_unicode=True), encoding="utf-8")
+    return p
+
+
+def _write_fresh_moc_cache(tmp_path: Path, entries: list[dict]) -> Path:
+    """Write a FRESH moc-structure-cache.yaml (last_scan = now)."""
+    import yaml
+    from datetime import datetime, timezone
+    fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cache = {
+        "moc_cache_version": 1,
+        "last_scan": fresh,
+        "ttl_days": 1,
+        "scope_paths": ["Atlas/200 Maps/", "Atlas/202 Notes/"],
+        "exclude_paths": [],
+        "moc_tag": "type/others/moc",
+        "entries": entries,
+        "placeholder_links": [],
+    }
+    p = tmp_path / "moc-structure-cache.yaml"
+    p.write_text(yaml.dump(cache, allow_unicode=True), encoding="utf-8")
+    return p
+
+
+def _write_stale_moc_cache(tmp_path: Path, entries: list[dict]) -> Path:
+    """Write a STALE moc-structure-cache.yaml (last_scan = 3 days ago)."""
+    import yaml
+    from datetime import datetime, timezone, timedelta
+    stale_ts = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cache = {
+        "moc_cache_version": 1,
+        "last_scan": stale_ts,
+        "ttl_days": 1,
+        "scope_paths": ["Atlas/200 Maps/", "Atlas/202 Notes/"],
+        "exclude_paths": [],
+        "moc_tag": "type/others/moc",
+        "entries": entries,
+        "placeholder_links": [],
+    }
+    p = tmp_path / "moc-structure-cache.yaml"
+    p.write_text(yaml.dump(cache, allow_unicode=True), encoding="utf-8")
+    return p
+
+
+def _write_squelch(tmp_path: Path) -> Path:
+    squelch_path = tmp_path / "moc-squelch.json"
+    squelch_path.write_text(
+        '{"schema_version":"1","last_run_id":"","rejections":[]}',
+        encoding="utf-8",
+    )
+    return squelch_path
+
+
+# Three candidate entries that cluster around "dataview".
+#
+# Title-mode Phase 1 searches `cache["map_notes"][].topics` for the trigger
+# term. The loader shim projects `entries[kind=="moc"]` → `map_notes`, so
+# only kind=="moc" entries are visible to Phase 1. We tag all three as
+# kind=="moc" so the shim surfaces them (same approach used by
+# test_moc_discovery_main._write_cache for all its fixture entries).
+#
+# Paths are under the miyo profile's atomic_note.base_path ("Atlas/202 Notes/")
+# so they survive the restrict_to_atomic_note_paths pre-filter in Phase 1.
+# (Notes tagged kind=="moc" for shim visibility but located in the notes area —
+# a fixture convenience that keeps the cache-fresh/stale E2E exercisable without
+# a live Kado for tag/folder modes.)
+_DISC_NOTES = [
+    {"path": "Atlas/202 Notes/Dataview Alpha.md", "title": "Dataview Alpha",
+     "topics": ["dataview", "obsidian"], "kind": "moc", "up_state": "absent",
+     "up_target": None, "up_source": None, "tags": [],
+     "classification": None, "linked_notes": 0},
+    {"path": "Atlas/202 Notes/Dataview Beta.md", "title": "Dataview Beta",
+     "topics": ["dataview", "query"], "kind": "moc", "up_state": "absent",
+     "up_target": None, "up_source": None, "tags": [],
+     "classification": None, "linked_notes": 0},
+    {"path": "Atlas/202 Notes/Dataview Gamma.md", "title": "Dataview Gamma",
+     "topics": ["dataview", "plugin"], "kind": "moc", "up_state": "absent",
+     "up_target": None, "up_source": None, "tags": [],
+     "classification": None, "linked_notes": 0},
+]
+
+# A proper MOC entry in the map-note area — ensures map_notes is non-empty
+# and prevents cache-empty abort even if the topic filter changes.
+_MAP_NOTE_ENTRY = {
+    "path": "Atlas/200 Maps/Home (MOC).md",
+    "title": "Home (MOC)",
+    "topics": ["home", "index"],
+    "kind": "moc",
+    "up_state": "absent",
+    "up_target": None,
+    "up_source": None,
+    "tags": ["type/others/moc"],
+    "classification": None,
+    "linked_notes": 0,
+}
+
+_ALL_ENTRIES = [_MAP_NOTE_ENTRY] + _DISC_NOTES
+
+
+@pytest.mark.integration
+def test_cache_backed_flow_fresh_cache_no_rebuild(tmp_path, monkeypatch):
+    """Fresh cache → moc-discovery reads from cache, proposes, rebuilder NOT invoked.
+
+    Mock at the orchestrator boundary: monkeypatch moc_discovery.load_moc_cache
+    (the function main() calls) with a spy that wraps the real loader but injects
+    a fake rebuilder with 0 calls. The cache is FRESH so the real loader must
+    return the cache immediately without invoking any rebuilder.
+
+    Assertions:
+      - DiscoveryReport has ≥1 cluster (proposals emitted from cache)
+      - spy rebuilder call count is 0 (no rebuild triggered)
+
+    Maps to spec 021 SDD §Cache TTL + Rebuild, ADR-1, ADR-3.
+    """
+    import io
+    import contextlib
+
+    _moc_disc = _load_moc_disc()
+
+    # Import the real loader so the spy wrapper can delegate to it.
+    from lib import moc_cache_loader as _loader_mod
+
+    config_path = _write_config(tmp_path)
+    cache_path = _write_fresh_moc_cache(tmp_path, _ALL_ENTRIES)
+    squelch_path = _write_squelch(tmp_path)
+
+    # Spy rebuilder — should never be called for a fresh cache.
+    spy_rebuilder_calls = []
+
+    def _spy_rebuilder(cache_path_arg: str, config_path_arg: str) -> None:
+        spy_rebuilder_calls.append((cache_path_arg, config_path_arg))
+        raise AssertionError("Rebuilder must NOT be invoked for a fresh cache")
+
+    # Mock load_moc_cache at the moc_discovery module boundary (the orchestrator),
+    # injecting our spy rebuilder so if the real loader ever calls it, the test
+    # fails explicitly.
+    original_load = _loader_mod.load_moc_cache
+
+    def _spy_load_moc_cache(cp, cfgp, **kwargs):
+        kwargs["rebuilder"] = _spy_rebuilder
+        return original_load(cp, cfgp, **kwargs)
+
+    monkeypatch.setattr(_moc_disc, "load_moc_cache", _spy_load_moc_cache)
+
+    captured = io.StringIO()
+    with contextlib.redirect_stdout(captured):
+        rc = _moc_disc.main([
+            "--title", "dataview",
+            "--config", str(config_path),
+            "--cache", str(cache_path),
+            "--squelch-state", str(squelch_path),
+        ])
+
+    assert rc in (0, 1), (
+        f"main() exited {rc} — expected 0 or 1\nstdout={captured.getvalue()!r}"
+    )
+    assert captured.getvalue().strip(), "stdout was empty — no DiscoveryReport emitted"
+
+    report = json.loads(captured.getvalue())
+    assert report.get("abort_reason") is None, (
+        f"Fresh-cache flow must not abort; got abort_reason={report.get('abort_reason')!r}"
+    )
+    assert len(report["topic_clusters"]) >= 1, (
+        "Fresh-cache flow must emit ≥1 cluster from cached notes"
+    )
+
+    # Rebuilder must NOT have been called — fresh cache → no rebuild.
+    assert spy_rebuilder_calls == [], (
+        f"Rebuilder was invoked {len(spy_rebuilder_calls)} time(s) on a fresh cache — "
+        "ADR-3: fresh cache must load without rebuild"
+    )
+
+
+@pytest.mark.integration
+def test_cache_backed_flow_stale_cache_inline_rebuild(tmp_path, monkeypatch):
+    """Stale cache → loader triggers inline rebuild EXACTLY ONCE, then proposes.
+
+    Mock at the orchestrator boundary: monkeypatch moc_discovery.load_moc_cache
+    with a wrapper that injects a spy rebuilder into the real loader. The spy
+    writes a fresh (valid) cache when called and records the call. The initial
+    cache is STALE (last_scan = 3 days ago, ttl_days=1), so the loader must
+    call the rebuilder exactly once, reload, and return a usable cache.
+
+    Assertions:
+      - DiscoveryReport has ≥1 cluster (proposals emitted after rebuild)
+      - spy rebuilder was called exactly 1 time
+
+    Maps to spec 021 SDD §Cache TTL + Rebuild, ADR-3.
+    """
+    import io
+    import contextlib
+    import yaml
+
+    _moc_disc = _load_moc_disc()
+    from lib import moc_cache_loader as _loader_mod
+    from datetime import datetime, timezone
+
+    config_path = _write_config(tmp_path)
+    cache_path = _write_stale_moc_cache(tmp_path, _ALL_ENTRIES)
+    squelch_path = _write_squelch(tmp_path)
+
+    # Spy rebuilder — writes a fresh cache to simulate a successful rebuild.
+    spy_rebuilder_calls = []
+
+    def _spy_rebuilder(cache_path_arg: str, config_path_arg: str) -> None:
+        spy_rebuilder_calls.append((cache_path_arg, config_path_arg))
+        # Write a fresh version of the same cache so the loader can reload it.
+        fresh_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rebuilt = {
+            "moc_cache_version": 1,
+            "last_scan": fresh_ts,
+            "ttl_days": 1,
+            "scope_paths": ["Atlas/200 Maps/", "Atlas/202 Notes/"],
+            "exclude_paths": [],
+            "moc_tag": "type/others/moc",
+            "entries": _ALL_ENTRIES,
+            "placeholder_links": [],
+        }
+        Path(cache_path_arg).write_text(
+            yaml.dump(rebuilt, allow_unicode=True), encoding="utf-8"
+        )
+
+    original_load = _loader_mod.load_moc_cache
+
+    def _spy_load_moc_cache(cp, cfgp, **kwargs):
+        kwargs["rebuilder"] = _spy_rebuilder
+        return original_load(cp, cfgp, **kwargs)
+
+    monkeypatch.setattr(_moc_disc, "load_moc_cache", _spy_load_moc_cache)
+
+    captured = io.StringIO()
+    with contextlib.redirect_stdout(captured):
+        rc = _moc_disc.main([
+            "--title", "dataview",
+            "--config", str(config_path),
+            "--cache", str(cache_path),
+            "--squelch-state", str(squelch_path),
+        ])
+
+    assert rc in (0, 1), (
+        f"main() exited {rc} — expected 0 or 1\nstdout={captured.getvalue()!r}"
+    )
+    assert captured.getvalue().strip(), "stdout was empty — no DiscoveryReport emitted"
+
+    report = json.loads(captured.getvalue())
+    assert report.get("abort_reason") is None, (
+        f"Stale-cache rebuild flow must not abort; got abort_reason={report.get('abort_reason')!r}"
+    )
+    assert len(report["topic_clusters"]) >= 1, (
+        "Post-rebuild flow must emit ≥1 cluster from the freshly-rebuilt cache"
+    )
+
+    # Rebuilder must have been called exactly once (ADR-3: rebuild inline EXACTLY once).
+    assert len(spy_rebuilder_calls) == 1, (
+        f"Rebuilder must be called exactly 1 time on a stale cache; "
+        f"called {len(spy_rebuilder_calls)} time(s)"
+    )
+
+
+@pytest.mark.integration
+def test_inbox_no_accumulation_index_conditions_a_c(tmp_path, monkeypatch):
+    """shared-ctx for /inbox has NO accumulation_index; Conditions A + C intact.
+
+    Drives shared-ctx-builder.main() with a cache containing:
+      - kind==moc entries (complete MOC set → Condition A link targets)
+      - placeholder_links entries (Condition C triggers)
+      - NO accumulation_index (removed in T3.1)
+
+    Mock at the orchestrator boundary: patch the Kado-touching helpers
+    (build_tag_prefixes, build_classification_keywords, build_daily_notes)
+    to isolate shared-ctx orchestration from live Kado while exercising the
+    full main() path including build_mocs + build_placeholder_links.
+
+    Assertions:
+      - shared_ctx["mocs"] contains all kind==moc entries from the cache
+      - "accumulation_index" is NOT in the output
+      - shared_ctx["placeholder_links"] carries the cache's placeholder_links
+        (Condition C preserved)
+
+    Maps to spec 021 SDD §shared-ctx-builder removal, F-34 Condition A, C.
+    """
+    import yaml
+    import importlib.util
+    from unittest.mock import patch
+
+    _scb_name = "shared_ctx_builder_t41"
+    _spec = importlib.util.spec_from_file_location(
+        _scb_name, SCRIPTS_DIR / "shared-ctx-builder.py"
+    )
+    scb = importlib.util.module_from_spec(_spec)
+    # Register BEFORE exec_module so Python 3.14 dataclasses can resolve
+    # `sys.modules[cls.__module__]` during class body execution.
+    # Use monkeypatch.setitem so pytest auto-restores sys.modules after the test
+    # (prevents stale/partial module from shadowing future loads on rerun or error).
+    monkeypatch.setitem(sys.modules, _scb_name, scb)
+    _spec.loader.exec_module(scb)
+
+    # Build a cache with MOC entries (A) + placeholder_links (C)
+    moc_entries = [
+        {"path": "Atlas/200 Maps/Dataview (MOC).md", "title": "Dataview (MOC)",
+         "kind": "moc", "topics": ["dataview", "obsidian"],
+         "up_state": "absent", "up_target": None, "up_source": None,
+         "tags": ["type/others/moc"], "classification": None, "linked_notes": 3},
+        {"path": "Atlas/200 Maps/PKM (MOC).md", "title": "PKM (MOC)",
+         "kind": "moc", "topics": ["pkm", "linking"],
+         "up_state": "absent", "up_target": None, "up_source": None,
+         "tags": ["type/others/moc"], "classification": None, "linked_notes": 5},
+    ]
+    placeholder_links = [
+        {"target": "Search MOC", "referenced_by": "Atlas/200 Maps/Dataview (MOC).md"},
+    ]
+
+    cache = {
+        "map_notes": [e for e in moc_entries],  # shared-ctx reads map_notes directly
+        "placeholder_links": placeholder_links,
+    }
+
+    cache_file = tmp_path / "cache.yaml"
+    vault_cfg_file = tmp_path / "vault-config.yaml"
+    out_file = tmp_path / "shared-ctx.json"
+    profiles_dir = REPO_ROOT / "tomo" / "profiles"
+
+    vault_cfg = {"profile": "miyo"}
+    cache_file.write_text(yaml.dump(cache, allow_unicode=True), encoding="utf-8")
+    vault_cfg_file.write_text(yaml.dump(vault_cfg, allow_unicode=True), encoding="utf-8")
+
+    argv = [
+        "shared-ctx-builder.py",
+        "--cache", str(cache_file),
+        "--vault-config", str(vault_cfg_file),
+        "--profiles-dir", str(profiles_dir),
+        "--output", str(out_file),
+        "--run-id", "t4-1-inbox-test",
+        "--skip-reconcile",
+    ]
+
+    with patch("sys.argv", argv), \
+         patch.object(scb, "build_tag_prefixes", return_value=[]), \
+         patch.object(scb, "build_classification_keywords", return_value={}), \
+         patch.object(scb, "build_daily_notes", return_value=None):
+        rc = scb.main()
+
+    assert rc == 0, f"shared-ctx-builder.main() returned {rc}"
+    ctx = json.loads(out_file.read_text(encoding="utf-8"))
+
+    # Condition A: shared_ctx.mocs must be the complete MOC set (both entries)
+    moc_paths_in_ctx = {m["path"] for m in ctx["mocs"]}
+    expected_paths = {e["path"] for e in moc_entries}
+    assert expected_paths <= moc_paths_in_ctx, (
+        f"shared_ctx.mocs must include all MOC cache entries (Condition A link targets).\n"
+        f"Expected: {expected_paths}\nGot: {moc_paths_in_ctx}"
+    )
+
+    # No accumulation_index (T3.1 removal; Condition B retired)
+    assert "accumulation_index" not in ctx, (
+        f"accumulation_index must be absent from /inbox shared-ctx; "
+        f"got keys: {list(ctx.keys())}"
+    )
+
+    # Condition C: placeholder_links must be present and un-trimmed
+    assert "placeholder_links" in ctx, (
+        "placeholder_links must be present in shared_ctx (Condition C trigger)"
+    )
+    assert ctx["placeholder_links"] == placeholder_links, (
+        f"placeholder_links must pass through unchanged (Condition C).\n"
+        f"Expected: {placeholder_links}\nGot: {ctx['placeholder_links']}"
+    )
+
+
+@pytest.mark.integration
+def test_explore_vault_force_rebuilds_cache(tmp_path):
+    """run_with_client() + write_cache_atomic() writes the moc-structure cache.
+
+    This characterises the /explore-vault Step 9 pipeline path: the MOC tree
+    builder scans (via FakeKadoClient) and writes moc-structure-cache.yaml as a
+    side effect. Tests that:
+      - the cache file is written by write_cache_atomic (atomic tmp-rename)
+      - the written file is valid YAML with moc_cache_version and entries
+      - kind==moc entries for every tagged MOC appear in cache["entries"]
+
+    Uses a FakeKadoClient injected at run_with_client() — the public testable
+    seam moc-tree-builder exposes for this purpose (from test_moc_tree_builder.py
+    pattern). No Kado server, no network calls.
+
+    Maps to vault-explorer agent Step 9 (moc-tree-builder.py side effect),
+    moc_cache_loader ADR-3 (fresh cache written by builder).
+    """
+    import yaml
+
+    _builder = _load_moc_tree_builder()
+
+    moc_path = "Atlas/200 Maps/Dataview (MOC).md"
+    note_path = "Atlas/202 Notes/Dataview Alpha.md"
+
+    class _FakeKadoClient:
+        def search_by_tag(self, tag, limit=500):
+            return [{"path": moc_path}]
+
+        def list_notes(self, path, **kwargs):
+            entries = {
+                "Atlas/200 Maps/": [{"path": moc_path}],
+                "Atlas/202 Notes/": [{"path": note_path}],
+            }
+            return entries.get(path, [])
+
+        def read_note(self, path):
+            notes = {
+                moc_path: (
+                    "---\ntitle: Dataview (MOC)\n"
+                    "tags:\n  - type/others/moc\n---\n"
+                    "# Dataview (MOC)\n\n[[Dataview Alpha]]\n"
+                ),
+                note_path: "---\ntitle: Dataview Alpha\n---\n# Dataview Alpha\n",
+            }
+            if path not in notes:
+                from lib.kado_client import KadoNotFoundError
+                raise KadoNotFoundError(f"not found: {path}")
+            return {"content": notes[path]}
+
+    config = {
+        "concepts": {
+            "map_note": {"paths": ["Atlas/200 Maps/"], "tags": ["type/others/moc"]},
+            "atomic_note": {"path": "Atlas/202 Notes/"},
+        },
+        "tomo": {
+            "moc_structure_cache": {
+                "scope_paths": ["Atlas/200 Maps/", "Atlas/202 Notes/"],
+                "exclude_paths": [],
+                "ttl_days": 1,
+                "moc_tag": "type/others/moc",
+            }
+        },
+    }
+
+    # run_with_client: pure in-memory build (no disk write yet)
+    cache, feed = _builder.run_with_client(_FakeKadoClient(), config)
+
+    # write_cache_atomic: the side effect /explore-vault Step 9 relies on
+    output_path = str(tmp_path / "moc-structure-cache.yaml")
+    _builder.write_cache_atomic(cache, output_path)
+
+    # Cache file must exist (atomic write succeeded)
+    assert Path(output_path).exists(), (
+        "write_cache_atomic must create the moc-structure-cache.yaml file "
+        "(the /explore-vault Step 9 force-rebuild side effect)"
+    )
+
+    # File must be valid YAML with the versioned schema
+    written = yaml.safe_load(Path(output_path).read_text(encoding="utf-8"))
+    assert isinstance(written, dict), "Written cache must be a YAML mapping"
+    assert written.get("moc_cache_version") == 1, (
+        f"moc_cache_version must be 1; got {written.get('moc_cache_version')!r}"
+    )
+    assert "entries" in written, "Written cache must contain 'entries'"
+    assert "last_scan" in written, "Written cache must contain 'last_scan'"
+
+    # The tagged MOC must appear as a kind==moc entry
+    moc_entries = [e for e in written["entries"] if e.get("kind") == "moc"]
+    moc_paths = {e["path"] for e in moc_entries}
+    assert moc_path in moc_paths, (
+        f"Tagged MOC {moc_path!r} must appear as kind==moc in the rebuilt cache.\n"
+        f"Got MOC paths: {moc_paths}"
+    )
+
+
+def _load_moc_tree_builder():
+    """Return the moc-tree-builder module (lazy-loaded to avoid import at module level)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "moc_tree_builder_t41", SCRIPTS_DIR / "moc-tree-builder.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod

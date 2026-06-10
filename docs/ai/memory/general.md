@@ -1,5 +1,5 @@
 # General — Tomo
-<!-- Conventions, naming rules, code style, git workflow. Updated: 2026-05-22 -->
+<!-- Conventions, naming rules, code style, git workflow. Updated: 2026-06-09 -->
 <!-- What goes here: how files are named, folder structure, style choices, branch conventions -->
 <!-- What does NOT go here: tool-specific quirks (→ tools.md), domain rules (→ domain.md) -->
 
@@ -25,3 +25,9 @@
 <!-- 2026-05-07 -->
 - Orchestrator slash commands have two valid model interpretations: **impersonation** (parent reads the orchestrator's body and acts on it) vs **dispatch** (parent spawns the orchestrator as a Task subagent). Impersonation costs ~60% more tokens than dispatch on /inbox-shape workflows because the parent re-reads context that a fresh subagent would receive cleanly. Lock the reading explicitly with STRICT/NEVER wording in the orchestrator's frontmatter — and pick dispatch unless the orchestrator must fan out further subagents (nested Agent dispatches fail). Touch point: any new orchestrator agent in `tomo/dot_claude/agents/`. Confirmed 2026-05-01 /inbox token analysis.
 - Haiku is **not** strong enough for STRICT-orchestration agents — twice in /inbox runs a haiku-pinned orchestrator silently skipped Pass-2 dispatch and rendered the artefact itself instead of running the deterministic scripts (Step 2.5 fan-resolve and instruction-render were both bypassed). Pin sonnet or opus for orchestration roles; haiku is fine for terminal/leaf subagents that only follow a literal script. Touch point: `model:` field in orchestrator agent frontmatter. Confirmed 2026-05-01 (twice in same session).
+
+<!-- 2026-06-06 -->
+- Dev-only scripts (e.g. `scripts/strip-tomo-frontmatter.py`) should bake in sensible defaults so you don't re-figure-out the correct settings on every run — they're invoked ad-hoc during development, not by the pipeline, so optimise for zero-argument ergonomics over configurability. (Queued 2026-05-26.)
+
+<!-- 2026-06-09 -->
+- **A feature/flag that spans a DECISION branch AND a DATA-ASSEMBLY step must be tested at BOTH layers — testing only the decision lets a broken assembly pass CI.** `inbox-triage --recover` was half-wired: `determine_action` returned `"suggest"` on `recover and captured_hits`, but `build_routing_plan` built the `fresh_sources[]` dispatch list from `new_sources` only — so recover flipped the action yet handed the conductor an empty list (silent no-op). The only test (`test_recover`) asserted the action and passed while the feature was dead. Found in spec 021 T4.3 live validation 2026-06-09; fixed in `inbox-triage` 0.8.0. Rule: when a flag's effect crosses two functions (decide → assemble → dispatch), write a test that asserts the *downstream artifact* (the dispatch list / emitted payload), not just the branch taken. Sibling of `feedback_count_parity_not_correctness` (validate execution, not output shape).

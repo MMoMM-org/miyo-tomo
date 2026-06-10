@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.4.1
 """
 topic-extract.py — Extract topic keywords from note content.
 
@@ -8,7 +8,7 @@ using 4 deterministic methods. The 5th LLM method is agent-side, not in this scr
 
 Methods:
   1. Title analysis    — from H1 heading or filename
-  2. H2 headings       — structural sub-topics
+  2. (dropped)         — H2 headings excluded; no cluster signal measured
   3. Linked note titles — from [[wikilinks]]
   4. Tag-based topics  — from YAML frontmatter tags
 
@@ -68,7 +68,8 @@ def is_stop_word(word: str) -> bool:
 
 
 def clean_title(title: str) -> str:
-    """Strip common suffixes from a title string."""
+    """Strip common suffixes and wikilink brackets from a title string."""
+    title = re.sub(r"\[\[|\]\]", "", title)
     for suffix in TITLE_SUFFIXES:
         title = re.sub(suffix, "", title, flags=re.IGNORECASE)
     return title.strip()
@@ -296,6 +297,132 @@ def extract_topics(content: str, title: str | None = None) -> dict:
 
     return {
         "topics": topics,
+        "source_methods": source_methods,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Structured entry point (ADR-3) — consumes Kado listNotes fields directly
+# ---------------------------------------------------------------------------
+
+def _strip_link_target(target: str) -> str:
+    """Normalise a raw link target string to a plain note name.
+
+    Strips alias (|), path prefix (/), and anchors (# and ^) in that order —
+    mirrors extract_from_links() for the alias/path pass, then adds anchor
+    stripping required for structured targets (SDD Risks/Gotcha).
+    """
+    # Alias: "Note|Alias" → "Note"
+    target = target.split("|")[0].strip()
+    # Path prefix: "Folder/Sub/Note" → "Note"
+    target = target.split("/")[-1].strip()
+    # Heading/block anchor: "Note#heading" / "Note#^block" → "Note"
+    # (a well-formed block ref is "Note#^id", so the # split already removes it).
+    target = target.split("#")[0].strip()
+    # Defensive fallback only for a malformed bare "Note^block" with no leading #.
+    target = target.split("^")[0].strip()
+    return target
+
+
+def extract_topics_from_fields(
+    *,
+    title: str | None,
+    headings: list[dict],   # [{heading, level}]
+    links: list[dict],      # [{target, kind}] — filter kind=="link"
+    tags: list[str],
+    topic_tag_prefixes: list[str] | None = None,
+) -> dict:
+    """Structured sibling of extract_topics(content). Maps:
+       title/H1 → method 1; level==2 headings → excluded (method 2 dropped, v0.3.0);
+       link.target (kind=='link' only) → method 3 (alias/path/anchor-stripped);
+       topic-prefix tags → method 4 (v0.4.0: only tags under configured prefixes).
+       Returns the same {topics, source_methods} shape.
+
+    Args:
+        topic_tag_prefixes: Tag prefixes that identify thematic topics (default ["topic/"]).
+            Only tags whose lowercased path starts with one of these prefixes yield topics.
+            The leaf segment after the matched prefix is extracted as the topic.
+    """
+    _prefixes = topic_tag_prefixes if topic_tag_prefixes is not None else ["topic/"]
+
+    # Method 1: H1 heading (level==1) takes priority over explicit title param.
+    # v0.4.0: multi-word segments stay as single topics — no single-word explosion.
+    method1: list[str] = []
+    h1_text: str | None = None
+    for h in headings:
+        if h.get("level") == 1:
+            h1_text = str(h.get("heading", "")).strip()
+            break
+    title_source = h1_text if h1_text else title
+    if title_source:
+        cleaned = clean_title(title_source)
+        segments = split_on_delimiters(cleaned)
+        seen_m1: set[str] = set()
+        for seg in segments:
+            normed = normalize(seg)
+            if normed and not is_stop_word(normed) and normed not in seen_m1:
+                method1.append(normed)
+                seen_m1.add(normed)
+
+    # Method 2: dropped — level-2 headings are excluded from structured extraction.
+    # Measured: 168/216 H2 headings occur in exactly 1 note (no cluster signal);
+    # frequent H2s (definition, resources, code, problem statement) are template
+    # sections. Title + tags + links carry the real signal.
+    method2: list[str] = []
+
+    # Method 3: links filtered to kind=='link'; alias/path/anchor-stripped; capped MAX_LINKS.
+    # v0.4.0: date-shaped targets (YYYY-MM-DD) are dropped (daily-note links, not topics).
+    _date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    method3: list[str] = []
+    seen_m3: set[str] = set()
+    for link in links:
+        if link.get("kind") != "link":
+            continue  # ADR-4: embeds excluded
+        raw_target = str(link.get("target", "")).strip()
+        if not raw_target:
+            continue
+        cleaned_target = _strip_link_target(raw_target)
+        if not cleaned_target:
+            continue
+        normed = normalize(cleaned_target)
+        if not normed:
+            continue
+        if _date_re.match(normed):
+            continue  # drop daily-note date links
+        if normed not in seen_m3:
+            seen_m3.add(normed)
+            method3.append(normed)
+        if len(method3) >= MAX_LINKS:
+            break
+
+    # Method 4: v0.4.0 — only tags under configured topic prefixes yield topics.
+    # For each tag: strip leading '#', check if lowercased path starts with a prefix;
+    # if it matches, extract the leaf segment after the prefix as the topic.
+    method4: list[str] = []
+    for tag in tags:
+        bare = tag.lstrip("#")
+        bare_lower = bare.lower()
+        matched_prefix: str | None = None
+        for prefix in _prefixes:
+            if bare_lower.startswith(prefix):
+                matched_prefix = prefix
+                break
+        if matched_prefix is None:
+            continue
+        remainder = bare[len(matched_prefix):]
+        leaf = normalize(remainder.split("/")[-1]) if remainder else ""
+        if leaf and leaf not in method4:
+            method4.append(leaf)
+
+    source_methods = {
+        "title":    method1,
+        "headings": method2,
+        "links":    method3,
+        "tags":     method4,
+    }
+
+    return {
+        "topics": deduplicate_and_rank(source_methods),
         "source_methods": source_methods,
     }
 

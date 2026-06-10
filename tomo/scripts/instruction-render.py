@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.0
+# version: 0.20.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -393,8 +393,13 @@ def extract_first_up_marker(content: str) -> str | None:
     ``---`` on its own line, the body starts after that closing fence.
     Otherwise the full content is searched.
 
-    This mirrors the approach in moc-discovery.py's ``_extract_first_up_marker``,
-    but lives here so the renderer can call it without importing the sibling script.
+    This is a self-contained inline-only `up::` extractor for the renderer.
+    NOTE (spec 021 T2.2): moc-discovery and moc-tree-builder migrated their
+    `up` resolution to lib/up_parse.parse_up_from_content (dual-up: inline +
+    frontmatter). instruction-render was intentionally NOT retrofitted in spec
+    021 — it deliberately strips frontmatter and matches inline `up::` ONLY
+    (see test_extract_first_up_marker_ignores_frontmatter_up). Migrating it to
+    the dual-up SSoT is a separate change, out of T2.2 scope.
 
     Multiple ``up::`` lines on the same note → only the first is returned;
     callers are responsible for warning when that case is detected.

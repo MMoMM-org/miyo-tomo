@@ -49,10 +49,16 @@
   "$defs": {
     "create_atomic_note": {
       "type": "object",
-      "required": ["kind", "suggested_title", "template", "location", "candidate_mocs", "tags_to_add"],
+      "description": "One atomic note to create from the source inbox item. actions[] may carry N>=2 create_atomic_note entries from the same source — each represents one worthy thread (ADR-2, ADR-4, F-41).",
+      "required": ["kind", "source_stem", "suggested_title", "template", "location", "candidate_mocs", "tags_to_add"],
       "additionalProperties": false,
       "properties": {
         "kind": {"const": "create_atomic_note"},
+        "source_stem": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The inbox item's filename stem (without extension). Groups N atomics back to one source. Required for ALL items — not just multi-thread — for downstream uniformity (ADR-4)."
+        },
         "suggested_title": {"type": "string", "minLength": 1},
         "template": {"type": "string", "minLength": 1,
                      "description": "Obsidian template file name (e.g. 'Atomic Note.md') or concept key (e.g. 'atomic_note') — whichever the user's templates.mapping exposes."},

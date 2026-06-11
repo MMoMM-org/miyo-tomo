@@ -926,13 +926,18 @@ def _build_delete_source_actions(
     """
     out: list[dict] = []
     confirmed_stems: set[str] = set()
-    confirmed_by_stem: dict[str, dict] = {}
+    # expected_by_stem: count of approved atomics per origin stem (gate denominator).
+    expected_by_stem: dict[str, int] = {}
+    # keep_origin_stems: stems where ANY confirmed item opts out of deletion.
+    keep_origin_stems: set[str] = set()
     for item in confirmed:
         sp = item.get("source_path")
         if sp:
             stem = _stem(sp)
             confirmed_stems.add(stem)
-            confirmed_by_stem[stem] = item
+            expected_by_stem[stem] = expected_by_stem.get(stem, 0) + 1
+            if item.get("keep_origin"):
+                keep_origin_stems.add(stem)
 
     inbox = inbox_path.rstrip("/") + "/"
 
@@ -970,25 +975,46 @@ def _build_delete_source_actions(
                     "reason": "Content fully captured in daily note.",
                 })
 
-    # (3) move_note origins — paired delete by default unless keep_origin
-    paired_seen: set[str] = set()
+    # (3) move_note origins — completion gate: emit one delete per origin stem
+    # only after ALL expected atomics are represented in move_notes (OQ6).
+    # Collect accepted daily stems for the daily_pending check.
+    daily_stems: set[str] = set()
+    for day in daily_updates:
+        for bucket in ("trackers", "log_entries", "log_links"):
+            for entry in day.get(bucket, []) or []:
+                if entry.get("accepted"):
+                    s = _stem(entry.get("source_stem"))
+                    if s:
+                        daily_stems.add(s)
+
+    # Group move_notes by origin stem.
+    moves_by_origin: dict[str, list[dict]] = {}
     for mn in move_notes:
         if mn.get("action") != "move_note":
             continue
         origin = mn.get("origin_inbox_item")
-        if not origin or origin in paired_seen:
+        if not origin:
             continue
-        # Look up the confirmed item via origin stem to check keep_origin.
         origin_stem = _stem(origin)
-        cf = confirmed_by_stem.get(origin_stem)
-        if cf and cf.get("keep_origin"):
+        bucket_list = moves_by_origin.setdefault(origin_stem, [])
+        bucket_list.append(mn)
+
+    for origin_stem, moves in moves_by_origin.items():
+        if origin_stem in keep_origin_stems:
             continue
-        paired_seen.add(origin)
+        expected = expected_by_stem.get(origin_stem, 1)
+        if len(moves) < expected:
+            continue  # not all atomics rendered yet — defer (OQ6)
+        origin_path = moves[0].get("origin_inbox_item", "")
+        n = len(moves)
+        has_daily = origin_stem in daily_stems
+        daily_suffix = " + daily" if has_daily else ""
+        reason = f"Origin consumed by {n} atomic{'s' if n > 1 else ''}{daily_suffix}."
         out.append({
             "id": _next_id(counter),
             "action": "delete_source",
-            "source_path": origin,
-            "reason": f"Origin consumed by move_note {mn.get('id')}.",
+            "source_path": origin_path,
+            "reason": reason,
         })
 
     return out

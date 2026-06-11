@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
@@ -35,7 +37,6 @@ sys.modules["suggestions_reducer"] = _reducer_mod
 _reducer_spec.loader.exec_module(_reducer_mod)
 
 render_create_atomic_note = _reducer_mod.render_create_atomic_note  # type: ignore[attr-defined]
-RENDERERS = _reducer_mod.RENDERERS  # type: ignore[attr-defined]
 
 # Load suggestions-render.py (hyphen filename → importlib).
 _render_spec = importlib.util.spec_from_file_location(
@@ -112,69 +113,60 @@ def make_minimal_doc(sections: list[dict]) -> dict[str, Any]:
     }
 
 
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def two_atomics_output() -> str:
+    """Rendered suggestions output for a single source with two atomic actions."""
+    stem = "source-note"
+    doc = make_minimal_doc(make_sections_with_two_atomics(stem))
+    return "\n".join(render_suggestions(doc))
+
+
 # ── T3.2 tests ────────────────────────────────────────────────────────────────
 
 
-def test_two_atomics_produce_two_decision_blocks():
+def test_two_atomics_produce_two_decision_blocks(two_atomics_output: str):
     """Two create_atomic_note actions → two **Decision (atomic note):** blocks."""
-    stem = "source-note"
-    doc = make_minimal_doc(make_sections_with_two_atomics(stem))
-    lines = render_suggestions(doc)
-    output = "\n".join(lines)
-
-    decision_count = output.count("**Decision (atomic note):**")
+    decision_count = two_atomics_output.count("**Decision (atomic note):**")
     assert decision_count == 2, (
         f"Expected 2 '**Decision (atomic note):**' blocks, got {decision_count}.\n"
-        f"Output:\n{output}"
+        f"Output:\n{two_atomics_output}"
     )
 
 
-def test_two_atomics_produce_two_source_lines():
+def test_two_atomics_produce_two_source_lines(two_atomics_output: str):
     """Two create_atomic_note actions from one source → two **Source:** lines."""
     stem = "source-note"
-    doc = make_minimal_doc(make_sections_with_two_atomics(stem))
-    lines = render_suggestions(doc)
-    output = "\n".join(lines)
-
-    source_count = output.count(f"**Source:** [[{stem}]]")
+    source_count = two_atomics_output.count(f"**Source:** [[{stem}]]")
     assert source_count == 2, (
         f"Expected 2 '**Source:** [[{stem}]]' lines, got {source_count}.\n"
-        f"Output:\n{output}"
+        f"Output:\n{two_atomics_output}"
     )
 
 
-def test_two_atomics_have_distinct_titles():
+def test_two_atomics_have_distinct_titles(two_atomics_output: str):
     """Each atomic block contains its own distinct suggested title."""
-    stem = "source-note"
-    doc = make_minimal_doc(make_sections_with_two_atomics(stem))
-    lines = render_suggestions(doc)
-    output = "\n".join(lines)
-
-    assert "**Suggested name:** Stoicism Introduction" in output
-    assert "**Suggested name:** Epicureanism Overview" in output
+    assert "**Suggested name:** Stoicism Introduction" in two_atomics_output
+    assert "**Suggested name:** Epicureanism Overview" in two_atomics_output
 
 
-def test_two_atomics_each_independently_approvable():
+def test_two_atomics_each_independently_approvable(two_atomics_output: str):
     """Each atomic block carries its own Approve checkbox (two total)."""
-    stem = "source-note"
-    doc = make_minimal_doc(make_sections_with_two_atomics(stem))
-    lines = render_suggestions(doc)
-    output = "\n".join(lines)
-
-    # Each **Decision (atomic note):** block is followed by an Approve checkbox.
-    # Count occurrences of the approve line pattern.
-    approve_count = len(re.findall(r"- \[.\] Approve\b", output))
+    # Exactly 2: one per create_atomic_note block; [x] or [ ] both valid states.
+    approve_count = len(re.findall(r"- \[[ x]\] Approve\b", two_atomics_output))
     assert approve_count == 2, (
         f"Expected 2 Approve checkboxes (one per atomic), got {approve_count}.\n"
-        f"Output:\n{output}"
+        f"Output:\n{two_atomics_output}"
     )
 
 
-# ── CON-2: single-thread output stays byte-identical ─────────────────────────
+# ── Single-thread regression guard ───────────────────────────────────────────
 
 
-def test_single_atomic_output_unchanged():
-    """Single create_atomic_note → exactly one block (CON-2 regression guard)."""
+def test_single_atomic_produces_exactly_one_block():
+    """Single create_atomic_note → exactly one block (no duplication)."""
     stem = "solo-note"
     action = make_atomic_action(title="Solo Topic")
     rendered_md = render_create_atomic_note(action, stem)
@@ -185,8 +177,7 @@ def test_single_atomic_output_unchanged():
             "actions": [{"kind": "create_atomic_note", "rendered_md": rendered_md}],
         }
     ])
-    lines = render_suggestions(doc)
-    output = "\n".join(lines)
+    output = "\n".join(render_suggestions(doc))
 
     assert output.count("**Decision (atomic note):**") == 1
     assert output.count(f"**Source:** [[{stem}]]") == 1

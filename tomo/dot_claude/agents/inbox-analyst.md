@@ -216,17 +216,23 @@ items are one thread. Worked examples:
 
 **Score each thread on its OWN full text.** For EACH thread, run the Step 7 scoring
 against that thread's full original text only (never your summary, never the whole
-item) — mirroring the voice-transcript rule. Each thread independently gets its own
-`atomic_note_worthiness`, `suggested_title`, MOC matches (Steps 4–5), and tags
-(Step 6). `force_atomic=true` applies to every thread.
+item). Each thread independently gets its own `atomic_note_worthiness`,
+`suggested_title`, MOC matches (Steps 4–5), and tags (Step 6).
+`force_atomic=true` applies to every thread.
 
 **Classify each thread.**
 - Thread worthiness ≥ 0.5 (or `force_atomic`) → this thread becomes one
   `create_atomic_note` in Step 9.
 - Thread worthiness < 0.5 → this is a sub-worthy thread. Sub-worthy threads do NOT
-  each get an atomic note. Instead they contribute to a SINGLE `update_daily` that
-  summarises ONLY the daily-log-worthy material; emit at most one such daily summary
-  for the item, not one update per sub-thread.
+  each get an atomic note.
+  - If the Step 8b daily path is active (`date_relevance` is set AND
+    `shared_ctx.daily_notes` is configured) → sub-worthy threads contribute to a
+    SINGLE `update_daily` that summarises ONLY the daily-log-worthy material;
+    emit at most one such daily summary for the item, not one update per sub-thread.
+  - If the Step 8b daily path is NOT active (no `date_relevance` or no
+    `daily_notes` config) AND no thread is atomic-worthy → fall back to the Step 9
+    default rule: emit a single `create_atomic_note` (default thread) so the item
+    is never lost.
 
 **Fallback.** If segmentation is ambiguous, fails, or you are unsure → fall back to a
 single default thread covering the whole item. Never drop the item or lose content.
@@ -347,11 +353,13 @@ Determine if this item should appear in the daily note's log section.
 
 - If `shared_ctx.daily_notes.daily_log.enabled` is `false` → no log at all.
   Skip this evaluation.
-- If `atomic_note_worthiness ≥ 0.5` → this item will become an atomic note
-  → emit `log_link` (reference from daily log to the new note).
-  Set `target_stem` to the stem that `create_atomic_note` will use.
-  Set `reason` (≤80 chars) explaining: e.g. `"Substantive note (worthiness 0.7) → link from daily log"`
-- If `atomic_note_worthiness < 0.5` AND content is short (< 500 chars) AND
+- If ANY thread from Step 7.5 became (or will become) a `create_atomic_note`
+  (worthiness ≥ 0.5 or `force_atomic`) → emit `log_link` (reference from daily
+  log to the new note). Never emit `log_entry` when any thread is atomic-worthy —
+  the Step 9 coexistence table forbids `create_atomic_note` + `log_entry`.
+  Set `target_stem` to the stem that the first `create_atomic_note` will use.
+  Set `reason` (≤80 chars): e.g. `"Substantive thread (worthiness 0.7) → link from daily log"`
+- If NO thread is atomic-worthy AND content is short (< 500 chars) AND
   item has `date_relevance` → emit `log_entry` (embed content inline in
   daily log).
   Set `content` to a cleaned summary (≤300 chars, strip frontmatter noise).
@@ -497,7 +505,7 @@ Tracker matches stay on the primary `date_relevance.date` action only.
 Items can produce MULTIPLE actions simultaneously. Assemble them from
 Steps 7, 7.5, and 8b.
 
-**Action 1+ — Atomic notes** (from Step 7.5 threads, N ≥ 1):
+**Action(s) 1–N — Atomic notes** (from Step 7.5 threads):
 Iterate over the threads from Step 7.5. For EACH thread:
 - If the thread's `atomic_note_worthiness ≥ 0.5` (or `force_atomic`) → emit one
   `create_atomic_note` action for that thread.

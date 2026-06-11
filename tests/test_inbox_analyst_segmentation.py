@@ -42,6 +42,16 @@ def _step75_text() -> str:
     return text[start:end]
 
 
+def _step8b_eval2_text() -> str:
+    """Extract the Step 8b Evaluation 2 block (between 'Evaluation 2 —' and 'Log update entry shape')."""
+    text = _agent_text()
+    start = text.find("**Evaluation 2 — Log eligibility:**")
+    end = text.find("Log update entry shape:")
+    assert start != -1, "'**Evaluation 2 — Log eligibility:**' not found in agent file"
+    assert end != -1, "'Log update entry shape:' not found in agent file"
+    return text[start:end]
+
+
 def _step9_text() -> str:
     """Extract the Step 9 section (between '### Step 9' and '### Step 10')."""
     text = _agent_text()
@@ -97,9 +107,15 @@ def test_step_75_has_worked_examples():
 
 def test_step_75_default_single_thread_path_preserved():
     """≤200-word items must fall through to a single default thread (CON-2 / A1 regression)."""
-    step = _step75_text().lower()
-    assert "single" in step and "thread" in step, (
-        "Step 7.5 must preserve a single-default-thread path for short (≤200 word) items (CON-2/A1)"
+    step = _step75_text()
+    # The gate number must be present.
+    assert "200" in step, (
+        "Step 7.5 must contain the '200' word-count gate for the short-item pass-through (CON-2/A1)"
+    )
+    # The pass-through anchor reuses the Step 7 score directly — pin the exact text.
+    assert "The Step 7 score you already computed IS" in step, (
+        "Step 7.5 must preserve the pass-through text "
+        "'The Step 7 score you already computed IS' for ≤200-word items (CON-2/A1)"
     )
 
 
@@ -112,14 +128,55 @@ def test_step_75_segmentation_failure_fallback():
 
 
 def test_step_75_sub_worthy_threads_one_update_daily():
-    """OQ4: sub-worthy threads contribute to ONE update_daily summarising the daily-log thread only."""
-    step = _step75_text().lower()
+    """OQ4: sub-worthy threads contribute to ONE update_daily — 'emit at most one' enforcement."""
+    step = _step75_text()
     assert "update_daily" in step, (
         "Step 7.5 must route sub-worthy threads into update_daily (OQ4)"
     )
-    # Must scope the summary to the daily-log thread only — not one update per sub-thread.
-    assert "daily" in step and ("only" in step or "single" in step or "one " in step), (
-        "Step 7.5 must produce a SINGLE update_daily summarising the daily-log thread only (OQ4)"
+    # Pin the exact enforcement phrase — loose disjunction (only/single/one) is too weak.
+    assert "emit at most one" in step, (
+        "Step 7.5 must contain the exact phrase 'emit at most one' to enforce the single-update_daily "
+        "rule for sub-worthy threads (OQ4)"
+    )
+
+
+def test_step_75_sub_worthy_routing_gated_on_step8b_daily_path():
+    """C2: sub-worthy→update_daily route must be gated on Step 8b being active; when closed, fall
+    back to the Step 9 default atomic so the item is never lost."""
+    step = _step75_text()
+    # The spec must explicitly handle the "no daily path" branch.
+    assert "Step 8b daily path is NOT active" in step, (
+        "Step 7.5 must explicitly handle the case where the Step 8b daily path is NOT active "
+        "(no date_relevance / no daily_notes config) — C2 requires a named fallback branch"
+    )
+    # When the daily path is closed and no thread is atomic-worthy, fall back to default atomic.
+    assert "create_atomic_note" in step, (
+        "Step 7.5 must specify create_atomic_note as the fallback when Step 8b daily path is "
+        "inactive and no thread is atomic-worthy (C2 — never lose the item)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step 8b Evaluation 2 — log_link vs log_entry must key on thread set (C1)
+# ---------------------------------------------------------------------------
+
+def test_step8b_eval2_keys_on_any_thread_not_single_scalar():
+    """C1: Step 8b Evaluation 2 must gate log_link on ANY thread being atomic-worthy,
+    not on a single scalar atomic_note_worthiness."""
+    eval2 = _step8b_eval2_text()
+    # Must reference the thread set ("ANY thread"), not a bare scalar.
+    assert "ANY thread" in eval2, (
+        "Step 8b Evaluation 2 must key the log_link decision on 'ANY thread' being atomic-worthy "
+        "(not a single scalar atomic_note_worthiness) — C1"
+    )
+
+
+def test_step8b_eval2_forbids_log_entry_when_any_thread_atomic():
+    """C1: Step 8b Evaluation 2 must explicitly forbid log_entry when any thread is atomic-worthy."""
+    eval2 = _step8b_eval2_text()
+    assert "log_entry" in eval2 and "Never emit" in eval2, (
+        "Step 8b Evaluation 2 must say 'Never emit log_entry' when any thread is atomic-worthy — "
+        "consistent with Step 9 coexistence table (C1)"
     )
 
 

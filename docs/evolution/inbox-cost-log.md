@@ -19,6 +19,43 @@ input/output/cache_create/cache_read). Actual billed cost may differ
 
 ## Log
 
+### DEFERRED — F-41 multi-topic cost regression (spec 016, GH #32, CON-3)
+
+| Key | Value |
+|-----|-------|
+| **Date** | PENDING (deferred manual in-container run) |
+| **Phase** | Pass 1 (suggest) — F-41 cost regression vs F-32 baseline |
+| **Items** | ~20 mixed (single-thread + multi-thread), Privat-Test |
+| **Vault** | Privat-Test |
+| **Versions** | inbox-analyst (F-41 build, Step 7.5 segmentation), TBD |
+| **Baseline** | F-32 (`README.md` nominal ~$26/run on opus; recorded current-architecture anchor ~$10–12 / 18-item Pass-1, 2026-05-26 rows below) |
+
+**Acceptance criterion:** measured Pass-1 main-thread cost increase **≤ +10%**
+vs the same-architecture baseline (PRD CON-3 / C2, §7, §10).
+
+| Metric | Baseline (control) | F-41 (segmentation) | Delta |
+|--------|--------------------|---------------------|-------|
+| Pass-1 main cost | TBD | TBD | TBD (≤ +10%) |
+| Total cost | TBD | TBD | — |
+| Per-item avg | TBD | TBD | — |
+| Items > 200 words | TBD | TBD | — |
+| Multi-thread items | — | TBD | — |
+
+**Notes:**
+- DEFERRED per user decision: analytical bound documented now in
+  [`docs/XDD/specs/016-multi-topic-atomic-notes/cost-analysis.md`](../XDD/specs/016-multi-topic-atomic-notes/cost-analysis.md);
+  live measured run is a manual in-container step (host runs hit Kado 429 on
+  the heavy read storm — see auto-memory).
+- Procedure: run a control (pre-F-41 / single-thread-forced) ~20-item batch and
+  an F-41 (segmentation-on) ~20-item batch; capture both via
+  `python3 scripts/tomo-session-stats.py --session-latest`; compute the Pass-1
+  main-thread delta; confirm ≤ +10%.
+- Projected analytical bound (not a measurement): the >200-word gate
+  (`inbox-analyst.md:199-203`) means short items pay zero extra; only long
+  items pay the one-time ~500–1000-token segmentation prompt (`solution.md:239`)
+  → typical ~30%-long batch adds single-digit-% reasoning tokens, inside +10%.
+- No fabricated figures: measured columns left TBD until the run is logged.
+
 ### 2026-06-09 — Pass 1 (suggest), 18 items, spec-021 T4.3 live validation
 
 | Key | Value |

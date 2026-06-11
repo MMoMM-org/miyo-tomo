@@ -162,11 +162,11 @@ create_atomic_note:                  # one PER worthy thread (N≥1 in actions[]
 
 - C1 `_enforce_coexistence` (`:144`): replace `next(...)` single-fetch with iteration over all `create_atomic_note` actions; coexistence (atomic-vs-`log_entry`) evaluated per-atomic.
 - C2 section titles (`:1047-1050`): key by `(section_id, atomic_index)` (or store `list[str]`) so N titles survive into `_enrich_proposed_mocs`.
-- Render: N independent Accept blocks under one source section, each showing `**Source:** [[stem]]` and its own `**Decision (atomic note):**` checkboxes (OQ5 → per-item blocks, source visible in each).
+- Render: N independent Accept blocks, each with its own flat-numbered `### S0k — title` heading, each showing `**Source:** [[stem]]` and its own `**Decision (atomic note):**` checkboxes (OQ5 → per-item blocks; **OQ5 reversed 2026-06-11 — see below**).
 
 #### Parser contract change
 
-- **C3 intra-section split (prerequisite):** the renderer emits N atomic blocks under ONE `### SNN` heading (OQ5), but `split_into_sections` splits only on `### SNN` and `parse_section` returns ONE dict (last-block-wins). So the parser must first split a single section into N items — one per atomic block, detected by repeated `**Source:**` / `**Suggested name:**` markers — each carrying the shared `source_path`. Single-block sections (the common case) yield exactly one item, byte-identical to today (CON-2).
+- **C3 intra-section split (prerequisite):** ~~the renderer emits N atomic blocks under ONE `### SNN` heading (OQ5)~~ **[OQ5 reversed 2026-06-11 — each atomic now has its own `### SNN` heading]**. `split_into_sections` splits on `### SNN`; with per-atomic headers the split alone yields N sections (one per atomic), so `parse_section` returns one dict per section. The intra-section split on repeated `**Source:**` / `**Suggested name:**` markers remains as a safety fallback for docs rendered under the old scheme. Single-block sections (the common case) yield exactly one item, byte-identical to today (CON-2).
 - C3/C4: `sections_by_stem` and `resolve_sections_by_stem` become `dict[str, list[dict]]`; assignment → append; Force-Atomic reconciliation (`:1297-1342`) iterates the list, not `.get(stem)` scalar.
 - `confirmed_items[]` may now contain multiple entries sharing one `source_path` — downstream (render) keys per-entry, not per-stem.
 
@@ -282,6 +282,11 @@ OUTPUT: at most one delete_source per origin-stem
   - Trade-offs: reconciliation loop touches a list; single-thread is a length-1 list (no behaviour change).
   - User confirmed: ✅ 2026-06-10
 
+- [x] **OQ5 Reversal — Per-atomic flat-numbered headers (2026-06-11).** The original OQ5 decision ("single heading per source acceptable; blocks carry their own `source_stem`") was reversed after live validation revealed that the second atomic in a multi-source block had no header and was not recognisable as a distinct proposal during review. **New behaviour:** each atomic gets its own flat-numbered `### S0k — title` header (S01, S02, S03 … globally across the whole document). `suggestion_id` is assigned per-atomic in the reducer and the renderer emits one heading per atomic action. The parser needed no change because the per-atomic headers make each block a separate `### SNN` section, which `split_into_sections` already handles; the intra-section split fallback (repeated `**Source:**` markers) remains for backward-compat.
+  - Rationale: a headerless second atomic was invisible as a distinct proposal; a renderer-only hotpatch was considered but rejected because `suggestion_id` is a contract field consumed by downstream (source_section in Daily-Updates, parser round-trip). Flat numbering is the simplest scheme consistent with the existing `### SNN` parsing contract.
+  - Changed components: `suggestions-reducer.py` v1.9.0 (per-atomic `suggestion_id`), `suggestions-render.py` v0.7.0 (per-atomic `### SNN` header emission). `suggestion-parser.py` v0.10.0 was verified unchanged — existing `split_into_sections` on `### SNN` already handles the new layout; round-trip tests added.
+  - Supersedes: OQ5 lean in `requirements.md` §8 ("N independent blocks with single per-source heading"), and the "single heading is acceptable" note in Implementation Gotchas (this section, now marked superseded).
+
 ## Quality Requirements
 
 - **Performance:** Pass-1 main-thread cost ≤ +10% vs F-32 baseline (measured, 20-item mixed batch).
@@ -308,7 +313,7 @@ OUTPUT: at most one delete_source per origin-stem
 
 ### Implementation Gotchas
 - `action` field in parser is always `None` (`:177`) — inference is downstream; do not assume the parser sets it.
-- Reducer's per-source heading (`### SNN — title`) is emitted by the **orchestrator**, not the reducer — the N-block layout must coordinate with that heading (OQ5: blocks carry their own `source_stem` so the single heading is acceptable).
+- ~~Reducer's per-source heading (`### SNN — title`) is emitted by the **orchestrator**, not the reducer — the N-block layout must coordinate with that heading (OQ5: blocks carry their own `source_stem` so the single heading is acceptable).~~ **[SUPERSEDED — see OQ5 Reversal below]**
 - Voice items have NO explicit `source_stem` today (implicit = note path) — ADR-4 makes it explicit; ensure the analyst sets it for ALL items, not just multi-thread, to keep downstream uniform.
 - Segmentation must score each thread against the **full thread text**, mirroring the existing voice-transcript "score against full content not summary" rule (`inbox-analyst.md:178-183`).
 

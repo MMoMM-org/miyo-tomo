@@ -1,7 +1,10 @@
 # General — Tomo
-<!-- Conventions, naming rules, code style, git workflow. Updated: 2026-06-09 -->
+<!-- Conventions, naming rules, code style, git workflow. Updated: 2026-06-11 -->
 <!-- What goes here: how files are named, folder structure, style choices, branch conventions -->
 <!-- What does NOT go here: tool-specific quirks (→ tools.md), domain rules (→ domain.md) -->
+
+<!-- 2026-06-11 -->
+- **Docs-only / analytical tasks still need a spec-compliance pass focused on CITATION INTEGRITY — it's the docs-task equivalent of running the test suite.** When a task's deliverable is prose carrying `file:line` / ADR / spec citations rather than code, run a reviewer that OPENS each cited location and confirms it actually supports the claim, and confirms no figure is presented as a measurement unless it's quoted from a real file. F-41 T6.2/T6.3 (2026-06-11): the `cost-analysis.md` doc cited a bare `README.md:55`, which resolves to the **repo-root** README (an architecture table) instead of the spec-level `docs/XDD/specs/016-.../README.md:55` where the `~$26/run` figure lives — an ambiguous citation that reads as correct until someone follows it to the wrong file. The same pass confirmed zero fabricated cost numbers (every projected figure was explicitly labelled "analytical bound"). Rules: (a) an unqualified `README.md:NN` is a hallucination trap in any repo with nested READMEs — always qualify the relative path; (b) when a measured number can't be produced (e.g. live cost run blocked by Kado 429 from host), document the analytical bound + a deferred in-container validation step rather than inventing a figure.
 
 <!-- 2026-05-26 -->
 - **All slash commands should have `description` and `argument-hint` frontmatter fields** like `tomo-help.md` does. These give Claude Code better UI hints for the command picker. Also audit user-facing report strings in commands/skills for stale references like "/inbox pass 2" — the pipeline vocabulary changed (suggest, fan-resolve, synthesize, transcribe, idle) and old "pass N" phrasing confuses users. Touch point: `tomo/dot_claude/commands/*.md` frontmatter.

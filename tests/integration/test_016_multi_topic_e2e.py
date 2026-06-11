@@ -308,7 +308,8 @@ def test_two_thread_two_atomics(tmp_path):
     """One source with 2 atomics (distinct titles, shared source_stem) → 2 confirmed.
 
     Verifies: both distinct titles survive, both share the same source stem,
-    ids are S01 and S01#1, and the resulting note filenames are distinct.
+    ids are S01 and S02 (flat per-atomic numbering, OQ5 reversal 2026-06-11),
+    and the resulting note filenames are distinct.
     """
     stem = "two-topic-memo"
     result = _make_item_result(stem, actions=[
@@ -329,8 +330,11 @@ def test_two_thread_two_atomics(tmp_path):
         f"both titles must survive; got {titles}"
     )
     ids = {c["id"] for c in atomics}
+    # Flat per-atomic numbering: each atomic gets its own SNN header (S01, S02, …).
+    # The old sub-block scheme (S01#1) was reversed after live validation — see
+    # docs/XDD/specs/016-multi-topic-atomic-notes/solution.md OQ5 reversal note.
     assert "S01" in ids, f"first block id must be S01; got {ids}"
-    assert "S01#1" in ids, f"second block id must be S01#1; got {ids}"
+    assert "S02" in ids, f"second block id must be S02; got {ids}"
 
     # Both share the same source stem
     for c in atomics:
@@ -361,10 +365,12 @@ def test_five_thread_stress(tmp_path):
     )
     titles = {c["title"] for c in atomics}
     assert len(titles) == 5, f"all 5 titles must be distinct; got {titles}"
-    # Ids: first block is bare S01; subsequent blocks carry #1..#4 suffix.
+    # Flat per-atomic numbering: each atomic gets its own SNN header (S01..S05).
+    # The old sub-block scheme (S01#1..S01#4) was reversed after live validation —
+    # see docs/XDD/specs/016-multi-topic-atomic-notes/solution.md OQ5 reversal note.
     ids = {c["id"] for c in atomics}
-    assert ids == {"S01", "S01#1", "S01#2", "S01#3", "S01#4"}, (
-        f"5-thread ids must be exactly S01..S01#4; got {ids}"
+    assert ids == {"S01", "S02", "S03", "S04", "S05"}, (
+        f"5-thread ids must be exactly S01..S05; got {ids}"
     )
 
 

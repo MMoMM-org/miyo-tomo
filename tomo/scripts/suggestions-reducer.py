@@ -117,16 +117,30 @@ def _location_link(location: str) -> str:
     return f"[[{loc}/]]" if loc else ""
 
 
+def _atomic_survives(action: dict) -> bool:
+    """An atomic survives coexistence if it is worthy (>=0.5) or force_atomic.
+
+    `force_atomic` is the action-level flag the analyst sets when the user
+    ticked **Force Atomic Note**; it overrides a sub-threshold worthiness.
+    """
+    if action.get("force_atomic"):
+        return True
+    return action.get("atomic_note_worthiness", 0) >= 0.5
+
+
 def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     """Deterministic coexistence enforcement (analyst Step 9 table).
 
-    If an item has both create_atomic_note AND update_daily with log_entry,
-    resolve based on worthiness:
-      >= 0.5: keep create_atomic_note, convert log_entry to log_link
-      <  0.5: drop create_atomic_note, keep log_entry
+    F-41: an item may carry N create_atomic_note actions (one per topic) plus
+    an update_daily with a log_entry. Resolve per-atomic instead of inspecting
+    only the first:
+      - Survivors = atomics with worthiness >= 0.5 OR force_atomic truthy.
+      - Sub-worthy atomics are dropped individually.
+      - If >=1 survivor remains, convert every log_entry → log_link targeting
+        the FIRST survivor's title/stem; otherwise keep the log_entry as-is.
     """
-    has_atomic = any(a.get("kind") == "create_atomic_note" for a in actions)
-    if not has_atomic:
+    atomics = [a for a in actions if a.get("kind") == "create_atomic_note"]
+    if not atomics:
         return actions
 
     has_log_entry = False
@@ -141,20 +155,26 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     if not has_log_entry:
         return actions
 
-    atomic_action = next(a for a in actions if a.get("kind") == "create_atomic_note")
-    worthiness = atomic_action.get("atomic_note_worthiness", 0)
+    survivors = [a for a in atomics if _atomic_survives(a)]
+    sub_worthy = [a for a in atomics if not _atomic_survives(a)]
 
-    if worthiness >= 0.5:
+    # Drop sub-worthy atomics individually, preserving order of the rest.
+    if sub_worthy:
+        drop = {id(a) for a in sub_worthy}
+        actions = [a for a in actions if id(a) not in drop]
+
+    if survivors:
+        first = survivors[0]
+        target = first.get("suggested_title") or first.get("stem", "")
         for a in actions:
             if a.get("kind") != "update_daily":
                 continue
             new_updates = []
             for u in a.get("updates") or []:
                 if u.get("kind") == "log_entry":
-                    stem = atomic_action.get("suggested_title") or atomic_action.get("stem", "")
                     new_updates.append({
                         "kind": "log_link",
-                        "target_stem": stem,
+                        "target_stem": target,
                         "time": u.get("time"),
                         "time_source": u.get("time_source"),
                         "position": u.get("position"),
@@ -163,8 +183,6 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
                 else:
                     new_updates.append(u)
             a["updates"] = new_updates
-    else:
-        actions = [a for a in actions if a.get("kind") != "create_atomic_note"]
 
     return actions
 
@@ -323,6 +341,17 @@ def _ensure_moc_suffix(title: str) -> str:
     if title.endswith(" MOC"):
         return title[:-4] + _MOC_SUFFIX
     return title + _MOC_SUFFIX
+
+
+def _atomic_id(section_id: str, atomic_idx: int) -> str:
+    """Per-atomic cluster/title key within a source section (F-41).
+
+    A source may now emit N atomics. The 0th keeps the bare section_id so the
+    single-thread case is byte-identical to the pre-F-41 keying (CON-2); later
+    atomics get an `#idx` suffix so their titles do not overwrite each other in
+    `section_titles` and resolve to their own atomic in `_enrich_proposed_mocs`.
+    """
+    return section_id if atomic_idx == 0 else f"{section_id}#{atomic_idx}"
 
 
 def _enrich_proposed_mocs(
@@ -958,6 +987,9 @@ def main() -> int:
         section_id = f"S{idx:02d}"
         rendered_actions: list[dict] = []
         had_update_daily = False
+        # F-41: index atomics within this source so each gets a distinct
+        # cluster/title key (see _atomic_id). 0th keeps the bare section_id.
+        atomic_idx = 0
         actions = _enforce_coexistence(result.get("actions", []))
         for action in actions:
             kind = action.get("kind")
@@ -1030,24 +1062,26 @@ def main() -> int:
             # Collect Proposed-MOC candidates from atomic-note actions; the
             # actual normalisation + threshold + parent-vote + shared-tag fold
             # happens in `build_topic_clusters` after the action loop completes.
-            if kind == "create_atomic_note" and action.get("needs_new_moc"):
-                topic_raw = (action.get("proposed_moc_topic") or "").strip()
-                if topic_raw:
-                    cls = action.get("classification") or {}
-                    parent = cls.get("category") or ""
-                    item_tags = [t for t in (action.get("tags_to_add") or []) if t]
-                    cluster_candidates.append(
-                        ClusterCandidate(
-                            section_id=section_id,
-                            topic=topic_raw,
-                            parent=parent,
-                            tags=item_tags,
-                        )
-                    )
-            # Record section_id → title for note_titles post-processing.
             if kind == "create_atomic_note":
+                atomic_key = _atomic_id(section_id, atomic_idx)
+                if action.get("needs_new_moc"):
+                    topic_raw = (action.get("proposed_moc_topic") or "").strip()
+                    if topic_raw:
+                        cls = action.get("classification") or {}
+                        parent = cls.get("category") or ""
+                        item_tags = [t for t in (action.get("tags_to_add") or []) if t]
+                        cluster_candidates.append(
+                            ClusterCandidate(
+                                section_id=atomic_key,
+                                topic=topic_raw,
+                                parent=parent,
+                                tags=item_tags,
+                            )
+                        )
+                # Record per-atomic key → title for note_titles post-processing.
                 title = (action.get("suggested_title") or "").strip() or stem
-                section_titles[section_id] = title
+                section_titles[atomic_key] = title
+                atomic_idx += 1
 
         # The per-item `Material für [[daily]]` mirror block is gone as of
         # 2026-04-22 — the top Daily Notes Updates block owns the log_link

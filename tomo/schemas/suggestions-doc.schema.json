@@ -12,6 +12,11 @@
     "run_id": {"type": "string"},
     "profile": {"type": "string"},
     "source_items": {"type": "integer", "minimum": 0},
+    "doc_variant": {
+      "type": "string",
+      "enum": ["primary", "fan-resolve"],
+      "description": "Document variant — primary (normal inbox run) or fan-resolve (XDD 012 force-atomic resolve doc)."
+    },
     "sections": {
       "type": "array",
       "items": {
@@ -30,7 +35,12 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {"type": "string"},
-                "rendered_md": {"type": "string"}
+                "rendered_md": {"type": "string"},
+                "suggestion_id": {
+                  "type": "string",
+                  "pattern": "^S[0-9]{2,}$",
+                  "description": "Flat global per-atomic suggestion number (F-41 T1). Present only on create_atomic_note actions."
+                }
               }
             }
           }

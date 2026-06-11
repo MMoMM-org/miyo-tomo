@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_suggestions_reducer_multi_atomic.py — F-41 T3.1.
+# version: 0.2.0
+"""test_suggestions_reducer_multi_atomic.py — F-41 T3.1 + T1.
 
 Covers the two silent-collapse fixes in suggestions-reducer.py that let N
 atomic notes from a single source coexist (C1) and keep distinct titles (C2):
@@ -16,6 +16,9 @@ atomic notes from a single source coexist (C1) and keep distinct titles (C2):
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -307,3 +310,318 @@ def test_single_atomic_proposed_moc_byte_identical_keying():
     assert proposed[0]["note_titles"] == ["Lone Topic Note"]
     # The cluster item key must be the bare section id for single-thread.
     assert proposed[0]["items"] == ["S01"]
+
+
+# ── T1 — flat per-atomic suggestion_id (F-41 reversal of OQ5) ────────────────
+#
+# These integration tests run the full reducer via subprocess so that the
+# emitted suggestions-doc.json is inspected exactly as the renderer (T2)
+# and parser (T3) will consume it.  Style mirrors test_suggestions_reducer_fan_resolve.py.
+
+REPO_ROOT_T1 = TESTS_DIR.parent
+REDUCER_PATH = REPO_ROOT_T1 / "tomo" / "scripts" / "suggestions-reducer.py"
+SCHEMA_PATH = REPO_ROOT_T1 / "tomo" / "schemas" / "suggestions-doc.schema.json"
+
+_DEPS = "/tmp/claude/py_deps"
+_SCRIPTS_DIR = str(REPO_ROOT_T1 / "tomo" / "scripts")
+_extra = ":".join(p for p in [_DEPS, _SCRIPTS_DIR] if os.path.isdir(p))
+_ENV_T1 = {
+    **os.environ,
+    "PYTHONPATH": _extra + (":" + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else ""),
+}
+
+
+def _write_shared_ctx(path: Path) -> None:
+    path.write_text(json.dumps({
+        "schema_version": "1",
+        "run_id": "test-t1",
+        "mocs": [],
+        "tag_prefixes": [],
+        "classification_keywords": {},
+    }), encoding="utf-8")
+
+
+def _write_state(path: Path, stems: list[str]) -> None:
+    lines = [
+        json.dumps({
+            "stem": s,
+            "path": f"100 Inbox/{s}.md",
+            "status": "done",
+            "run_id": "test-t1",
+            "ts": "2026-06-11T10:00:00Z",
+        })
+        for s in stems
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_result_atomic(
+    items_dir: Path,
+    stem: str,
+    atomics: list[dict],
+    daily_content: str | None = None,
+) -> None:
+    """Write a result.json with N atomic actions plus an optional log_entry."""
+    items_dir.mkdir(parents=True, exist_ok=True)
+    actions: list[dict] = []
+    for a in atomics:
+        actions.append({
+            "kind": "create_atomic_note",
+            "suggested_title": a["title"],
+            "atomic_note_worthiness": a.get("worthiness", 0.8),
+            "template": "t_note_tomo",
+            "location": "Atlas/202 Notes/",
+            "candidate_mocs": [],
+            "needs_new_moc": False,
+            "tags_to_add": [],
+            "classification": {"category": "100 Philosophy", "confidence": 0.9},
+            "alternatives": [],
+        })
+    if daily_content is not None:
+        actions.append({
+            "kind": "update_daily",
+            "date": "2026-06-11",
+            "daily_note_path": "Daily/2026-06-11.md",
+            "updates": [{
+                "kind": "log_entry",
+                "time": "09:00",
+                "time_source": "frontmatter",
+                "position": "append",
+                "content": daily_content,
+                "confidence": 0.8,
+                "reason": "noted",
+            }],
+        })
+    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+        "schema_version": "1",
+        "stem": stem,
+        "path": f"100 Inbox/{stem}.md",
+        "type": "fleeting_note",
+        "type_confidence": 0.9,
+        "force_atomic": False,
+        "actions": actions,
+        "candidate_mocs": [],
+        "classification": {"category": "100 Philosophy", "confidence": 0.9},
+        "needs_new_moc": False,
+        "proposed_moc_topic": None,
+        "tags_to_add": [],
+        "atomic_note_worthiness": 0.8,
+        "alternatives": [],
+        "issues": [],
+        "duration_ms": 0,
+    }, ensure_ascii=False), encoding="utf-8")
+
+
+def _write_result_daily_only(items_dir: Path, stem: str) -> None:
+    """Write a result.json with only a log_entry (no atomics — daily-only)."""
+    items_dir.mkdir(parents=True, exist_ok=True)
+    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+        "schema_version": "1",
+        "stem": stem,
+        "path": f"100 Inbox/{stem}.md",
+        "type": "fleeting_note",
+        "type_confidence": 0.9,
+        "force_atomic": False,
+        "actions": [{
+            "kind": "update_daily",
+            "date": "2026-06-11",
+            "daily_note_path": "Daily/2026-06-11.md",
+            "updates": [{
+                "kind": "log_entry",
+                "time": "08:00",
+                "time_source": "frontmatter",
+                "position": "append",
+                "content": "daily only content",
+                "confidence": 0.8,
+                "reason": "noted",
+            }],
+        }],
+        "candidate_mocs": [],
+        "classification": {"category": "100 Philosophy", "confidence": 0.9},
+        "needs_new_moc": False,
+        "proposed_moc_topic": None,
+        "tags_to_add": [],
+        "atomic_note_worthiness": 0.0,
+        "alternatives": [],
+        "issues": [],
+        "duration_ms": 0,
+    }, ensure_ascii=False), encoding="utf-8")
+
+
+def _run_reducer(tmp_path: Path, stems: list[str]) -> dict:
+    items_dir = tmp_path / "items"
+    items_dir.mkdir(exist_ok=True)
+    shared_ctx = tmp_path / "shared-ctx.json"
+    state = tmp_path / "state.jsonl"
+    output = tmp_path / "doc.json"
+    _write_shared_ctx(shared_ctx)
+    _write_state(state, stems)
+
+    result = subprocess.run(
+        [
+            sys.executable, str(REDUCER_PATH),
+            "--state", str(state),
+            "--items-dir", str(items_dir),
+            "--run-id", "test-t1",
+            "--profile", "miyo",
+            "--shared-ctx", str(shared_ctx),
+            "--output", str(output),
+        ],
+        capture_output=True, text=True, check=False, env=_ENV_T1,
+    )
+    assert result.returncode == 0, (
+        f"reducer exit {result.returncode};\nstderr:\n{result.stderr}"
+    )
+    return json.loads(output.read_text(encoding="utf-8"))
+
+
+def _atomic_actions_from_doc(doc: dict) -> list[dict]:
+    """Extract all {kind, rendered_md, ...} action dicts for create_atomic_note."""
+    out = []
+    for section in doc.get("sections", []):
+        for action in section.get("actions", []):
+            if action.get("kind") == "create_atomic_note":
+                out.append(action)
+    return out
+
+
+def _log_links_from_doc(doc: dict) -> list[dict]:
+    out = []
+    for group in doc.get("daily_notes_updates", []):
+        out.extend(group.get("log_links", []))
+    return out
+
+
+# ── T1 RED tests ──────────────────────────────────────────────────────────────
+
+
+def test_t1_two_sources_flat_suggestion_ids(tmp_path):
+    """Source A (2 atomics) + Source B (1 atomic) → S01, S02, S03.
+
+    Each create_atomic_note action in sections[].actions[] carries a flat
+    `suggestion_id` sequenced globally across all sources.
+    """
+    _write_result_atomic(tmp_path / "items", "src-a",
+                         [{"title": "Alpha"}, {"title": "Beta"}])
+    _write_result_atomic(tmp_path / "items", "src-b",
+                         [{"title": "Gamma"}])
+
+    # Need items dir to exist before _run_reducer creates it — already created above.
+    doc = _run_reducer(tmp_path, ["src-a", "src-b"])
+
+    atomic_actions = _atomic_actions_from_doc(doc)
+    ids = [a.get("suggestion_id") for a in atomic_actions]
+    assert ids == ["S01", "S02", "S03"], (
+        f"Expected flat global suggestion_ids ['S01','S02','S03'], got {ids}"
+    )
+
+
+def test_t1_daily_only_item_does_not_increment_counter(tmp_path):
+    """Source A (2 atomics) → S01, S02; daily-only item in between → no id;
+    Source B (1 atomic) thereafter → S03 (NOT S02)."""
+    # Alphabetically: src-a, src-b-daily-only, src-c
+    _write_result_atomic(tmp_path / "items", "src-a",
+                         [{"title": "Alpha"}, {"title": "Beta"}])
+    _write_result_daily_only(tmp_path / "items", "src-b-daily-only")
+    _write_result_atomic(tmp_path / "items", "src-c",
+                         [{"title": "Gamma"}])
+
+    doc = _run_reducer(tmp_path, ["src-a", "src-b-daily-only", "src-c"])
+
+    atomic_actions = _atomic_actions_from_doc(doc)
+    ids = [a.get("suggestion_id") for a in atomic_actions]
+    assert ids == ["S01", "S02", "S03"], (
+        f"Daily-only item must not increment counter; got {ids}"
+    )
+
+
+def test_t1_each_atomic_action_carries_suggestion_id(tmp_path):
+    """Every create_atomic_note action dict in sections[].actions[] has suggestion_id."""
+    _write_result_atomic(tmp_path / "items", "src-x",
+                         [{"title": "Note One"}, {"title": "Note Two"}])
+
+    doc = _run_reducer(tmp_path, ["src-x"])
+
+    atomic_actions = _atomic_actions_from_doc(doc)
+    assert len(atomic_actions) == 2
+    for action in atomic_actions:
+        assert "suggestion_id" in action, (
+            f"create_atomic_note action missing suggestion_id: {action}"
+        )
+        assert action["suggestion_id"].startswith("S"), action["suggestion_id"]
+
+
+def test_t1_log_link_source_section_matches_flat_suggestion_id(tmp_path):
+    """log_link.source_section == flat suggestion_id of the atomic that drove it."""
+    # src-a has 2 atomics + daily update → 2 log_links with source_section S01, S02
+    _write_result_atomic(tmp_path / "items", "src-a",
+                         [{"title": "Alpha"}, {"title": "Beta"}],
+                         daily_content="worked on philosophy")
+
+    doc = _run_reducer(tmp_path, ["src-a"])
+
+    log_links = _log_links_from_doc(doc)
+    # After coexistence enforcement, atomics at 0.8 worthiness both survive
+    # and the log_entry converts to a log_link pointing to the first atomic.
+    # The log_link's source_section must match the flat suggestion_id (S01).
+    assert len(log_links) >= 1
+    link_sections = {ll["source_section"] for ll in log_links}
+    # All source_section values must be flat SNN ids (no #idx suffix).
+    for section in link_sections:
+        assert "#" not in section, (
+            f"log_link.source_section contains #idx suffix: {section!r}"
+        )
+        assert section.startswith("S"), section
+
+    # The log_link that points to Alpha must have source_section == "S01".
+    alpha_links = [ll for ll in log_links if ll.get("target_stem") == "Alpha"]
+    if alpha_links:
+        assert alpha_links[0]["source_section"] == "S01", alpha_links[0]
+
+
+def test_t1_single_atomic_regression(tmp_path):
+    """Single-atomic source → exactly one action with suggestion_id 'S01' (CON-2)."""
+    _write_result_atomic(tmp_path / "items", "solo",
+                         [{"title": "Solo Note"}])
+
+    doc = _run_reducer(tmp_path, ["solo"])
+
+    atomic_actions = _atomic_actions_from_doc(doc)
+    assert len(atomic_actions) == 1
+    assert atomic_actions[0].get("suggestion_id") == "S01", atomic_actions[0]
+
+
+def test_t1_schema_validation_with_suggestion_id_field(tmp_path):
+    """suggestion_id survives schema validation — not stripped by additionalProperties.
+
+    This test imports jsonschema directly and validates the emitted doc against
+    the suggestions-doc.schema.json to catch the three-way spec/schema/consumer
+    drift described in the task brief.
+    """
+    try:
+        import jsonschema
+    except ImportError:
+        import pytest as _pytest
+        _pytest.skip("jsonschema not available")
+
+    _write_result_atomic(tmp_path / "items", "src-a",
+                         [{"title": "Alpha"}, {"title": "Beta"}])
+    doc = _run_reducer(tmp_path, ["src-a"])
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    # If schema strips suggestion_id (additionalProperties:false), validate
+    # would NOT raise — but we'd find no suggestion_id in the atomic actions.
+    # Validate must not raise on a doc that contains suggestion_id.
+    try:
+        jsonschema.validate(doc, schema)
+    except jsonschema.ValidationError as exc:
+        raise AssertionError(
+            f"Schema validation failed — suggestion_id may not be declared in schema: {exc.message}"
+        ) from exc
+
+    # Confirm field is present even after a round-trip through JSON (no stripping).
+    atomic_actions = _atomic_actions_from_doc(doc)
+    ids = [a.get("suggestion_id") for a in atomic_actions]
+    assert all(sid is not None for sid in ids), (
+        f"suggestion_id stripped from actions after schema validation round-trip: {ids}"
+    )

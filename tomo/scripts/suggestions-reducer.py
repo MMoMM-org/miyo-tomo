@@ -973,6 +973,13 @@ def main() -> int:
     stem_log_links: dict[str, list[dict]] = {}
     # stems whose content is fully captured in daily note(s) — source can be deleted
     daily_only_stems: set[str] = set()
+    # F-41 T1: global flat counter for suggestion_ids (S01, S02, …); increments
+    # for every rendered create_atomic_note across all sources.  Daily-only items
+    # (0 atomics) do NOT increment this counter.
+    suggestion_counter: int = 0
+    # title -> flat suggestion_id; populated as atomics are rendered so that
+    # log_link.source_section can reference the correct suggestion_id.
+    title_to_suggestion_id: dict[str, str] = {}
 
     for idx, stem in enumerate(done_stems, start=1):
         result_path = items_dir / f"{stem}.result.json"
@@ -1039,6 +1046,13 @@ def main() -> int:
                             })
                         elif ukind == "log_link":
                             target = u.get("target_stem", stem)
+                            # F-41 T1: source_section for atomic-derived log_links
+                            # must reference the flat suggestion_id of the atomic,
+                            # not the per-source section_id.  title_to_suggestion_id
+                            # is populated when atomics are rendered (above).
+                            ll_source_section = title_to_suggestion_id.get(
+                                target, section_id
+                            )
                             daily_groups[daily_stem]["log_links"].append({
                                 "target_stem": target,
                                 "time": u.get("time"),
@@ -1046,7 +1060,7 @@ def main() -> int:
                                 "position": u.get("position"),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
-                                "source_section": section_id,
+                                "source_section": ll_source_section,
                             })
                             # Record for per-item Material für mirror
                             stem_log_links.setdefault(stem, []).append({
@@ -1057,7 +1071,14 @@ def main() -> int:
             else:
                 rendered = renderer(action, stem)
             if rendered is not None:
-                rendered_actions.append({"kind": kind, "rendered_md": rendered})
+                rendered_action: dict = {"kind": kind, "rendered_md": rendered}
+                # F-41 T1: assign a flat global suggestion_id to each rendered
+                # atomic so the renderer (T2) can display SNN headers.
+                if kind == "create_atomic_note":
+                    suggestion_counter += 1
+                    suggestion_id_flat = f"S{suggestion_counter:02d}"
+                    rendered_action["suggestion_id"] = suggestion_id_flat
+                rendered_actions.append(rendered_action)
 
             # Collect Proposed-MOC candidates from atomic-note actions; the
             # actual normalisation + threshold + parent-vote + shared-tag fold
@@ -1081,6 +1102,9 @@ def main() -> int:
                 # Record per-atomic key → title for note_titles post-processing.
                 title = (action.get("suggested_title") or "").strip() or stem
                 section_titles[atomic_key] = title
+                # F-41 T1: map title → flat suggestion_id for log_link source_section.
+                if rendered is not None:
+                    title_to_suggestion_id[title] = f"S{suggestion_counter:02d}"
                 atomic_idx += 1
 
         # The per-item `Material für [[daily]]` mirror block is gone as of

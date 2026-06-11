@@ -300,6 +300,53 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
     return result
 
 
+def _is_source_field_line(line: str) -> bool:
+    """True when a section line is a `**Source:**` field (block boundary).
+
+    Mirrors parse_section's field detection: strip a leading "- ", match
+    RE_FIELD, normalise the key the same way, and compare to "source".
+    """
+    stripped = line.strip()
+    if not stripped:
+        return False
+    field_line = stripped[2:].strip() if stripped.startswith("- ") else stripped
+    m = RE_FIELD.match(field_line)
+    if not m:
+        return False
+    key = m.group(1).strip().rstrip(":").strip().lower()
+    return key == "source"
+
+
+def split_section_into_blocks(
+    section_id: str, lines: list[str]
+) -> list[tuple[str, list[str]]]:
+    """Split one section's lines into per-atomic-block (block_id, lines) groups.
+
+    A new block begins at each `**Source:**` field line (the first line the
+    renderer emits per atomic block). Sections with zero or one Source line
+    yield a single group whose id == section_id, so single-block output stays
+    byte-identical to the pre-split behaviour. Lines preceding the first
+    Source line (heading-level decision boxes, blanks) are attached to the
+    first block.
+    """
+    boundaries = [i for i, ln in enumerate(lines) if _is_source_field_line(ln)]
+    if len(boundaries) < 2:
+        return [(section_id, lines)]
+
+    groups: list[tuple[str, list[str]]] = []
+    for n, start in enumerate(boundaries):
+        end = boundaries[n + 1] if n + 1 < len(boundaries) else len(lines)
+        if n == 0:
+            # Attach any preamble (lines before the first Source) to block 0.
+            block_lines = lines[:end]
+            block_id = section_id
+        else:
+            block_lines = lines[start:end]
+            block_id = f"{section_id}#{n}"
+        groups.append((block_id, block_lines))
+    return groups
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Document splitter
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1142,11 +1189,19 @@ def main() -> int:
         return bare.strip().lower()
 
     # Keep parsed sections by stem so the Force-Atomic reconciliation pass
-    # can promote unapproved items later.
+    # can promote unapproved items later. A single rendered section can carry
+    # N atomic blocks (F-41), so the map is stem → list of per-block items.
     parsed_sections: list[dict] = []
-    sections_by_stem: dict[str, dict] = {}
+    sections_by_stem: dict[str, list[dict]] = {}
 
+    # F-41: split each rendered section into per-atomic-block groups on
+    # **Source:** boundaries. Sections with ≤1 Source line yield one group
+    # whose id == section_id, keeping single-block output byte-identical.
+    block_groups: list[tuple[str, list[str]]] = []
     for section_id, lines in raw_sections:
+        block_groups.extend(split_section_into_blocks(section_id, lines))
+
+    for section_id, lines in block_groups:
         try:
             item = parse_section(section_id, lines)
         except Exception as exc:  # noqa: BLE001
@@ -1168,7 +1223,7 @@ def main() -> int:
         parsed_sections.append(item)
         stem_key = _stem_of(item.get("source_path"))
         if stem_key:
-            sections_by_stem[stem_key] = item
+            sections_by_stem.setdefault(stem_key, []).append(item)
 
         if item["approved"]:
             confirmed_items.append({
@@ -1293,47 +1348,66 @@ def main() -> int:
     from_resolve = 0
     pending_fan_resolutions: list[dict] = []
     already_in = {_stem_of(c.get("source_path")) for c in confirmed_items}
+    # Track per-block confirmations by id so a stem with N atomic blocks can
+    # have some user-approved and the rest FAN-promoted without duplication.
+    confirmed_ids = {c.get("id") for c in confirmed_items}
     seen_pending: set[str] = set()
+
+    def _promote_entry(sec: dict, from_resolve_flag: bool) -> dict:
+        sec["approved"] = True
+        sec["delete_source"] = False
+        entry = {
+            "id": sec["id"],
+            "source_path": sec["source_path"],
+            "type": sec["type"],
+            "approved": True,
+            "delete_source": False,
+            "keep_origin": bool(sec.get("keep_origin", False)),
+            "action": sec.get("action"),
+            "title": sec["title"],
+            "tags": sec["tags"],
+            "parent_moc": sec["parent_moc"],
+            "parent_mocs": sec["parent_mocs"],
+            "destination": sec["destination"],
+            "template": sec["template"],
+            "summary": sec["summary"],
+            "classification": sec["classification"],
+            "force_atomic": True,  # trace marker for instruction-render logs
+        }
+        if from_resolve_flag:
+            entry["from_resolve"] = True
+        return entry
+
     for stem, log_entry in force_atomic_stems:
+        # Branch (a): primary-doc per-item section(s). A stem may carry N
+        # atomic blocks (F-41) — promote every block not already confirmed.
+        primary_secs = [
+            s for s in sections_by_stem.get(stem, [])
+            if s.get("id") not in confirmed_ids
+        ]
+        if primary_secs:
+            for sec in primary_secs:
+                entry = _promote_entry(sec, from_resolve_flag=False)
+                confirmed_items.append(entry)
+                confirmed_ids.add(entry["id"])
+                promoted += 1
+            already_in.add(stem)
+            skipped_items[:] = [
+                s for s in skipped_items
+                if _stem_of(s.get("source_path")) != stem
+            ]
+            continue
+
         if stem in already_in:
             continue  # user already checked per-item Approve — Force is a no-op
 
-        # Branch (a): primary-doc per-item section
-        sec = sections_by_stem.get(stem)
-        from_resolve_flag = False
-        if sec is None:
-            # Branch (b): resolve-doc atomic section
-            sec = resolve_sections_by_stem.get(stem)
-            from_resolve_flag = sec is not None
-
+        # Branch (b): resolve-doc atomic section
+        sec = resolve_sections_by_stem.get(stem)
         if sec is not None:
-            # Promote: mark approved, clear delete_source.
-            sec["approved"] = True
-            sec["delete_source"] = False
-            entry = {
-                "id": sec["id"],
-                "source_path": sec["source_path"],
-                "type": sec["type"],
-                "approved": True,
-                "delete_source": False,
-                "keep_origin": bool(sec.get("keep_origin", False)),
-                "action": sec.get("action"),
-                "title": sec["title"],
-                "tags": sec["tags"],
-                "parent_moc": sec["parent_moc"],
-                "parent_mocs": sec["parent_mocs"],
-                "destination": sec["destination"],
-                "template": sec["template"],
-                "summary": sec["summary"],
-                "classification": sec["classification"],
-                "force_atomic": True,  # trace marker for instruction-render logs
-            }
-            if from_resolve_flag:
-                entry["from_resolve"] = True
-                from_resolve += 1
-            else:
-                promoted += 1
+            entry = _promote_entry(sec, from_resolve_flag=True)
+            from_resolve += 1
             confirmed_items.append(entry)
+            confirmed_ids.add(entry["id"])
             already_in.add(stem)
             # Drop the matching skipped entry (if any) so counts stay clean.
             skipped_items[:] = [

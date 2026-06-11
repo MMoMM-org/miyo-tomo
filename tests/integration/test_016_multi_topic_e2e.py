@@ -333,8 +333,7 @@ def test_two_thread_two_atomics(tmp_path):
     # Flat per-atomic numbering: each atomic gets its own SNN header (S01, S02, …).
     # The old sub-block scheme (S01#1) was reversed after live validation — see
     # docs/XDD/specs/016-multi-topic-atomic-notes/solution.md OQ5 reversal note.
-    assert "S01" in ids, f"first block id must be S01; got {ids}"
-    assert "S02" in ids, f"second block id must be S02; got {ids}"
+    assert ids == {"S01", "S02"}, f"two-thread ids must be exactly S01 and S02; got {ids}"
 
     # Both share the same source stem
     for c in atomics:

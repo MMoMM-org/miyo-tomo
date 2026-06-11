@@ -162,7 +162,7 @@ create_atomic_note:                  # one PER worthy thread (N≥1 in actions[]
 
 - C1 `_enforce_coexistence` (`:144`): replace `next(...)` single-fetch with iteration over all `create_atomic_note` actions; coexistence (atomic-vs-`log_entry`) evaluated per-atomic.
 - C2 section titles (`:1047-1050`): key by `(section_id, atomic_index)` (or store `list[str]`) so N titles survive into `_enrich_proposed_mocs`.
-- Render: N independent Accept blocks, each with its own flat-numbered `### S0k — title` heading, each showing `**Source:** [[stem]]` and its own `**Decision (atomic note):**` checkboxes (OQ5 → per-item blocks; **OQ5 reversed 2026-06-11 — see below**).
+- Render: N independent Accept blocks, each with its own flat-numbered `### S0k — title` heading, each showing `**Source:** [[stem]]` and its own `**Decision (atomic note):**` checkboxes (**OQ5 reversed 2026-06-11 — see OQ5 Reversal ADR below**).
 
 #### Parser contract change
 

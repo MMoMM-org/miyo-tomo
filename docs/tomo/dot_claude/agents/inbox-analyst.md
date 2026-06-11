@@ -59,3 +59,58 @@ WHY: Bumped from 0.14.0 for terminology rename: `placeholder_mocs` →
 `placeholder_links` / "Placeholder MOC trigger" → "Placeholder link trigger"
 (behavior-identical rename). `update-tomo.sh` skips unchanged versions
 silently — the bump is required for the edit to ship to the Docker instance.
+
+## Step 7.5 Topical Segmentation — T2.1 (F-41, XDD 016)
+
+WHY this is the core behavioral change of F-41: a single multi-topic inbox item
+(e.g. a long voice memo mixing an appointment with an architecture argument) used to
+collapse into ONE atomic note, burying the distinct ideas. Step 7.5 splits the item
+into conceptual threads and emits one atomic per worthy thread.
+
+WHY agent-side, not a deterministic script (ADR-1): segmentation is a semantic
+judgment ("are these the same idea or two?") that only the LLM can make. A regex/
+heuristic splitter mis-segments nested quotes and topic drift (see the
+nested-quote regex-extraction failure-mode memo, #15). The analyst already holds the
+full item text and the scoring rubric, so segmentation lives where the context is.
+
+WHY N actions, not a `threads[]` wrapper (ADR-2): downstream consumers (reducer,
+instruction-render, Hashi) already iterate `actions[]` polymorphically. Emitting N
+flat `create_atomic_note` entries reuses that contract with zero schema-shape change —
+a wrapper object would force every consumer to learn a second nesting level. The
+schema's `actions[]` already permits N≥2 `create_atomic_note` from one source.
+
+WHY the >200-word gate (ADR-3): segmentation costs an extra LLM reasoning pass per
+item. The overwhelming majority of inbox items are short single-thread captures that
+gain nothing from a split. Gating on >200 words confines the cost to items long
+enough to plausibly carry multiple threads, and guarantees the ≤200-word path stays
+byte-identical to pre-F-41 single-note output (regression CON-2 / A1).
+
+WHY per-thread scoring against each thread's own full text (OQ3): a worthiness score
+is a property of a thread's content, not of the whole item. Scoring the merged item
+would let a strong thread drag a weak one over the 0.5 gate (or vice versa). Each
+thread gets its own worthiness, title, MOC match, and tags — mirroring the existing
+voice-transcript "score the full original content" rule, applied per thread.
+
+WHY sub-worthy threads collapse into ONE daily summary, not one update each (OQ4):
+fragments that fail the atomic gate are daily-log material. Emitting an `update_daily`
+per fragment would spam the daily note with disconnected one-liners. A single summary
+of the daily-log-worthy material keeps the daily note coherent.
+
+WHY `source_stem` on EVERY atomic, single- or multi-thread (ADR-4): uniformity.
+Consumers must group N atomics back to their originating inbox item; making
+`source_stem` conditional ("only when N≥2") forces every consumer to special-case the
+single-thread shape. Stamping it always — it is the item's filename stem — gives one
+provenance grouping key for all atomics. The schema marks it required on
+`create_atomic_note` for exactly this reason.
+
+WHY a single-default-thread fallback on ambiguity/failure: the item must never be
+lost. If the LLM cannot confidently segment, it treats the whole item as one thread —
+identical to the short-item path — so the worst case degrades to pre-F-41 behavior,
+never to a dropped capture.
+
+## Version 0.16.0
+
+WHY: Bumped from 0.15.0 for T2.1 — added Step 7.5 (topical segmentation) and updated
+Step 9 to iterate threads (N≥1) and stamp `source_stem` on every `create_atomic_note`
+(ADR-4). New feature → minor bump. `update-tomo.sh` skips unchanged versions silently —
+the bump is required for the edit to ship to the Docker instance.

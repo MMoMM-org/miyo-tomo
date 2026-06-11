@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.15.0
+# version: 0.16.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -191,6 +191,45 @@ score is informational, not gating. Also set the top-level
 `force_atomic: true` on the emitted result-json so downstream consumers
 (reducer `--fan-resolve`) can identify these items. The user's explicit
 FAN tick is the governing intent.
+
+### Step 7.5 — Topical segmentation
+
+Decide how many atomic threads this item carries, then score each thread on its own.
+
+**Word-count gate.** Count the words in the item's full original body.
+- ≤ 200 words → set `threads = [one default thread]` whose text is the entire item
+  body, and skip the rest of this step. The Step 7 score you already computed IS
+  this single thread's worthiness. (Short items behave exactly as before.)
+- > 200 words → continue with segmentation below.
+
+**Segment into threads.** List the distinct conceptual threads in the item — each a
+self-contained idea that could stand as its own atomic note. Use judgment; most
+items are one thread. Worked examples:
+- Example 1: a memo that mixes a dentist appointment for next Tuesday with a long
+  argument about PKM note-segmentation architecture → TWO threads: (1) the dentist
+  appointment, (2) the PKM-architecture argument.
+- Example 2: a voice transcript that records a 5k run, then pivots into a book idea,
+  then notes a grocery reminder → THREE threads: the run, the book idea, the grocery
+  reminder.
+- Example 3: a single sustained essay on one topic, even if 600 words → ONE thread
+  (length alone does not force a split; only distinct concepts do).
+
+**Score each thread on its OWN full text.** For EACH thread, run the Step 7 scoring
+against that thread's full original text only (never your summary, never the whole
+item) — mirroring the voice-transcript rule. Each thread independently gets its own
+`atomic_note_worthiness`, `suggested_title`, MOC matches (Step 4–6), and tags
+(Step 6.5). `force_atomic=true` applies to every thread.
+
+**Classify each thread.**
+- Thread worthiness ≥ 0.5 (or `force_atomic`) → this thread becomes one
+  `create_atomic_note` in Step 9.
+- Thread worthiness < 0.5 → this is a sub-worthy thread. Sub-worthy threads do NOT
+  each get an atomic note. Instead they contribute to a SINGLE `update_daily` that
+  summarises ONLY the daily-log-worthy material; emit at most one such daily summary
+  for the item, not one update per sub-thread.
+
+**Fallback.** If segmentation is ambiguous, fails, or you are unsure → fall back to a
+single default thread covering the whole item. Never drop the item or lose content.
 
 ### Step 8 — Detect date relevance
 
@@ -456,12 +495,18 @@ Tracker matches stay on the primary `date_relevance.date` action only.
 ### Step 9 — Build actions[]
 
 Items can produce MULTIPLE actions simultaneously. Assemble them from
-Steps 7 and 8b.
+Steps 7, 7.5, and 8b.
 
-**Action 1 — Atomic note** (from Step 7):
-- If `atomic_note_worthiness ≥ 0.5` → emit `create_atomic_note` action.
-- If `atomic_note_worthiness < 0.5` but `> 0` → still emit as a lower-
-  confidence alternative.
+**Action 1+ — Atomic notes** (from Step 7.5 threads, N ≥ 1):
+Iterate over the threads from Step 7.5. For EACH thread:
+- If the thread's `atomic_note_worthiness ≥ 0.5` (or `force_atomic`) → emit one
+  `create_atomic_note` action for that thread.
+- If the single default thread scores `< 0.5` but `> 0` → still emit it as a
+  lower-confidence alternative.
+- Stamp `source_stem` = the inbox item's filename stem (without extension) on EVERY
+  `create_atomic_note` — for single- AND multi-thread items alike. All atomics from
+  one item share the same `source_stem` so consumers can group them back to one
+  source.
 
 **Action 2+ — Daily updates** (from Step 8b):
 Emit one or more `update_daily` actions. Each has:
@@ -491,8 +536,8 @@ is invalid.
 - If NEITHER atomic note NOR daily update qualifies, but the item IS a
   plausible tracker entry (very short, no structure, but tracker keywords
   hit), emit ONLY `update_daily`.
-- If nothing qualifies at all, emit a single `create_atomic_note` with
-  `atomic_note_worthiness` from Step 7.
+- If nothing qualifies at all, emit a single `create_atomic_note` (default thread)
+  with `atomic_note_worthiness` from Step 7 and the item's `source_stem` stamped.
 
 
 ### Step 10 — Fill the result template and write it

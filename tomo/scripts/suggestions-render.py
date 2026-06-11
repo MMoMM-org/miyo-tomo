@@ -98,21 +98,24 @@ def render_daily_updates(d: dict) -> list[str]:
     return [md, ""]
 
 
+def _extract_atomic_title(rendered_md: str, fallback: str) -> str:
+    """Extract 'Suggested name' from rendered_md, strip ← hints, fall back to stem."""
+    m = re.search(r"\*\*Suggested name:\*\*\s*([^\n]+)", rendered_md)
+    title = m.group(1).strip() if m else fallback
+    if "←" in title:
+        title = title[:title.index("←")].strip()
+    return title
+
+
 def render_suggestions(d: dict) -> list[str]:
     if not d["sections"]:
         return []
     lines = ["## Suggestions", ""]
     for s in d["sections"]:
-        # Extract title from first action's "Suggested name" field, or fall back to stem
-        first_md = s["actions"][0]["rendered_md"] if s["actions"] else ""
-        m = re.search(r"\*\*Suggested name:\*\*\s*([^\n]+)", first_md)
-        title = m.group(1).strip() if m else s["stem"]
-        # Strip trailing comment hints like "← change if you want..."
-        if "←" in title:
-            title = title[:title.index("←")].strip()
-
-        lines.append(f"### {s['id']} — {title}")
-        for a in s["actions"]:
+        for i, a in enumerate(s["actions"]):
+            sid = a.get("suggestion_id") or s["id"]
+            title = _extract_atomic_title(a["rendered_md"], s["stem"])
+            lines.append(f"### {sid} — {title}")
             lines.append(a["rendered_md"])
             lines.append("")
     return lines

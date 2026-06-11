@@ -1,7 +1,8 @@
 # XDD 016 — Multi-topic detection for atomic-note-worthy items
 
-**Status:** PLAN complete — ready for implementation (6 phases, 17 tasks)
-**Current phase:** plan/ complete → /implement
+**Status:** Implemented — shipped 2026-06-11 (6 phases, 17 tasks)
+**Current phase:** Implemented
+**Last Updated:** 2026-06-11
 **Backlog origin:** F-41 (Should)
 **Triggering incident:** 2026-05-01 /inbox run, voice memo
 `Apothekerpfädchen 11__2026-04-22 10-14-41.md` — 183-sec transcript with
@@ -60,6 +61,12 @@ See requirements.md §8 (OQ1–OQ8). Tentative leans noted; stakeholder
 input required before SDD locks the surface — particularly OQ4
 (daily-log emission semantics in mixed-mode items) and OQ7
 (length-precheck token budget).
+
+## Decisions Log
+
+| Date | Decision | Notes |
+|------|----------|-------|
+| 2026-06-11 | Implementation complete | F-41 multi-topic atomic notes shipped across 6 phases on `feat/f-41-multi-topic-atomic-notes`. C1–C6 all closed: analyst Step 7.5 segmentation (>200w gate), N `create_atomic_note` wire format with shared `source_stem` (ADR-2/4), reducer N-block rendering, parser N-entry parsing + FAN resolve N, render filename collision guard (C5/ADR-7) + source-deletion completion gate (C6/ADR-6). `instruction-render` v0.21.0, parser v0.10.0. Tests: full suite 1001 passed / 1 skipped; 9 E2E cases (T6.1) + collision-guard & delete-gate unit suites. Docs: tier-3 multi-topic section + parser/render WHY-mirrors + backlog #32 code-complete (A11). Deferred to manual in-container validation: live cost measurement (≤+10% vs F-32; analytical bound in `cost-analysis.md`) and single-thread byte-identical render diff. |
 
 ## Notes
 

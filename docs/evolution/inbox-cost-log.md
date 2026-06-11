@@ -28,7 +28,7 @@ input/output/cache_create/cache_read). Actual billed cost may differ
 | **Items** | ~20 mixed (single-thread + multi-thread), Privat-Test |
 | **Vault** | Privat-Test |
 | **Versions** | inbox-analyst (F-41 build, Step 7.5 segmentation), TBD |
-| **Baseline** | F-32 (`README.md` nominal ~$26/run on opus; recorded current-architecture anchor ~$10–12 / 18-item Pass-1, 2026-05-26 rows below) |
+| **Baseline** | F-32 (`docs/XDD/specs/016-multi-topic-atomic-notes/README.md:55` nominal ~$26/run on opus; recorded current-architecture anchor ~$10–12 / 18-item Pass-1, 2026-05-26 rows below) |
 
 **Acceptance criterion:** measured Pass-1 main-thread cost increase **≤ +10%**
 vs the same-architecture baseline (PRD CON-3 / C2, §7, §10).

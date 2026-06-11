@@ -42,7 +42,7 @@ baseline.
 There is **no recorded token-count baseline labelled "F-32"** in the repo.
 What exists:
 
-- **`README.md:54-55`** states the constraint as *"≤ 10% increase on Pass-1
+- **`docs/XDD/specs/016-multi-topic-atomic-notes/README.md:55`** states the constraint as *"≤ 10% increase on Pass-1
   main-thread cost (F-32 baseline **~$26/run on opus**)."* This `~$26` is
   **approximate** and refers to the pre-018 architecture (opus main thread +
   sequential dispatch).
@@ -207,7 +207,7 @@ Two distinct tools exist; pick the right one:
 
 - **CON-3:** Pass-1 cost ≤ +10% vs F-32 baseline (quoted, §1).
 - **Baseline:** no recorded token-count baseline; nominal `~$26/run on opus`
-  (`README.md:55`, approximate) / recorded current-architecture anchor
+  (`docs/XDD/specs/016-multi-topic-atomic-notes/README.md:55`, approximate) / recorded current-architecture anchor
   ~$10–12 per 18-item Pass-1 (`inbox-cost-log.md`).
 - **Gate (verified):** segmentation runs only when body **> 200 words**
   (`inbox-analyst.md:199-203`); ≤200-word items pay zero extra.

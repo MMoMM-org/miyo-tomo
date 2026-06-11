@@ -552,31 +552,48 @@ def test_t1_each_atomic_action_carries_suggestion_id(tmp_path):
 
 
 def test_t1_log_link_source_section_matches_flat_suggestion_id(tmp_path):
-    """log_link.source_section == flat suggestion_id of the atomic that drove it."""
-    # src-a has 2 atomics + daily update → 2 log_links with source_section S01, S02
+    """log_link.source_section == flat suggestion_id of the atomic that drove it.
+
+    Cross-source setup forces section_id != suggestion_id for src-b:
+      src-a: 2 atomics (no daily)  → section_id=S01, suggestion_ids S01, S02
+      src-b: 1 atomic + daily      → section_id=S02, suggestion_id=S03
+
+    src-b's log_link targets "Gamma" (its only atomic, suggestion_id=S03).
+    Old per-source behavior: source_section == section_id == "S02"  [WRONG]
+    New flat behavior:       source_section == suggestion_id == "S03" [CORRECT]
+    This test WOULD FAIL with the old fallback (title_to_suggestion_id.get(target, section_id)).
+    """
+    # src-a: 2 atomics, no daily — occupies global suggestion_id slots S01 and S02.
     _write_result_atomic(tmp_path / "items", "src-a",
-                         [{"title": "Alpha"}, {"title": "Beta"}],
+                         [{"title": "Alpha"}, {"title": "Beta"}])
+    # src-b: 1 atomic + daily — section_id=S02, but atomic gets suggestion_id=S03.
+    _write_result_atomic(tmp_path / "items", "src-b",
+                         [{"title": "Gamma"}],
                          daily_content="worked on philosophy")
 
-    doc = _run_reducer(tmp_path, ["src-a"])
+    # Alphabetical order: src-a (idx=1 → section_id=S01), src-b (idx=2 → section_id=S02).
+    doc = _run_reducer(tmp_path, ["src-a", "src-b"])
 
+    # Verify the flat suggestion_ids are as expected.
+    atomic_actions = _atomic_actions_from_doc(doc)
+    ids = [a.get("suggestion_id") for a in atomic_actions]
+    assert ids == ["S01", "S02", "S03"], (
+        f"Expected flat suggestion_ids ['S01','S02','S03'], got {ids}"
+    )
+
+    # The log_link from src-b targets "Gamma" (suggestion_id=S03, section_id=S02).
     log_links = _log_links_from_doc(doc)
-    # After coexistence enforcement, atomics at 0.8 worthiness both survive
-    # and the log_entry converts to a log_link pointing to the first atomic.
-    # The log_link's source_section must match the flat suggestion_id (S01).
-    assert len(log_links) >= 1
-    link_sections = {ll["source_section"] for ll in log_links}
-    # All source_section values must be flat SNN ids (no #idx suffix).
-    for section in link_sections:
-        assert "#" not in section, (
-            f"log_link.source_section contains #idx suffix: {section!r}"
-        )
-        assert section.startswith("S"), section
+    assert len(log_links) == 1, f"Expected exactly 1 log_link, got {log_links}"
+    ll = log_links[0]
+    assert ll["target_stem"] == "Gamma", ll
 
-    # The log_link that points to Alpha must have source_section == "S01".
-    alpha_links = [ll for ll in log_links if ll.get("target_stem") == "Alpha"]
-    if alpha_links:
-        assert alpha_links[0]["source_section"] == "S01", alpha_links[0]
+    # DISCRIMINATING ASSERTION: source_section must be the flat suggestion_id
+    # "S03", NOT the per-source section_id "S02".
+    # Old per-source behavior would return "S02" here → this assert would FAIL.
+    assert ll["source_section"] == "S03", (
+        f"source_section is {ll['source_section']!r}; expected 'S03' (flat suggestion_id). "
+        f"'S02' means old per-source section_id was used — the fix is not in effect."
+    )
 
 
 def test_t1_single_atomic_regression(tmp_path):

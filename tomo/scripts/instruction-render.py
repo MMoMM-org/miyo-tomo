@@ -620,14 +620,15 @@ def _disambiguate_filename(base_filename: str, used_filenames: set[str]) -> str:
     Raises:
         ValueError: When the collision cannot be resolved within 99 attempts.
     """
+    assert base_filename.endswith(".md"), (
+        f"_disambiguate_filename requires a .md filename, got: {base_filename!r}"
+    )
+
     if base_filename not in used_filenames:
         return base_filename
 
     # Strip .md, append _NN, restore .md
-    if base_filename.endswith(".md"):
-        stem = base_filename[:-3]
-    else:
-        stem = base_filename
+    stem = base_filename[:-3]
 
     for i in range(1, 100):
         candidate = f"{stem}_{i:02d}.md"
@@ -1777,7 +1778,12 @@ def main() -> int:
         # 5. Write rendered file — guard against same-slug collision (C5, ADR-7)
         slug = slugify(title)
         base_filename = f"{date_prefix}_{slug}.md"
-        filename = _disambiguate_filename(base_filename, used_filenames)
+        try:
+            filename = _disambiguate_filename(base_filename, used_filenames)
+        except ValueError as exc:
+            print(f"  [{item_id}] ERROR: {exc}", file=sys.stderr)
+            errors += 1
+            continue
         used_filenames.add(filename)
         rendered_path = out_dir / filename
         rendered_path.write_text(rendered, encoding="utf-8")

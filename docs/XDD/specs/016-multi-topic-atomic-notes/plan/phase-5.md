@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Render N notes + delete gate (C5, C6)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---

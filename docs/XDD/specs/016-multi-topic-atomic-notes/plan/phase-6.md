@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration, E2E, cost & docs"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 6
 ---
@@ -55,6 +55,6 @@ Proves the whole pipeline end-to-end on real multi-thread input and locks the do
   3. Validate: docs cross-reference XDD 016; no stale single-atomic claims remain (`rg`).
   4. Success: tier-3 updated, WHY-mirrors complete `[ref: PRD/A11]`
 
-- [ ] **T6.4 Final validation & single-thread sign-off** `[activity: validate]`
+- [x] **T6.4 Final validation & single-thread sign-off** `[activity: validate]`
 
   Full suite green; single-thread output byte-identical to pre-feature (diff a pre/post run); lint clean; all A1–A11 satisfied; cost gate met. Finalize spec to Implemented via xdd-meta.

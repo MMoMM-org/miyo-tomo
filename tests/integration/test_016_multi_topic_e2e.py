@@ -636,19 +636,47 @@ def test_fan_ticked_multi_thread_resolve_doc(tmp_path):
 
 
 def test_overlapping_topics_moc_dedup(tmp_path):
-    """Atomics with overlapping MOC matches → MOC links deduped per atomic.
+    """_build_link_to_moc_actions deduplicates repeated parent_mocs on one item.
 
-    Scope: reducer → render → parser → build_actions() (Kado-free path).
-    Asserts that link_to_moc actions emitted by build_actions() do not
-    contain duplicate target_moc values for a single confirmed item.
+    Primary assertion (non-vacuous): a single confirmed item whose parent_mocs
+    list contains the SAME MOC path twice produces exactly ONE link_to_moc
+    action — proving the `seen` set in _build_link_to_moc_actions fires on the
+    second duplicate entry and suppresses it.
 
-    MOC deduplication is enforced by _build_link_to_moc_actions via parent_mocs
-    (the parser records all checked MOC wikilinks); the test verifies that
-    duplicate MOC paths in a single item's parent_mocs do not produce
-    duplicate link_to_moc actions (set semantics in the reducer).
+    The assertion WOULD FAIL if the `seen` set were removed from production
+    code: without it both iterations of `for parent in parents` would call
+    _emit(), which would append two identical actions (the early-return guard
+    `if key in seen` is the only thing preventing that).
+
+    Secondary assertion: two DIFFERENT atomics each referencing the same MOC
+    produce two distinct (source_note_title, target_moc) pairs — i.e. cross-item
+    links are NOT deduped away, only per-item duplicate entries are.
+
+    Scope: _build_link_to_moc_actions directly (Kado-free, cfg-free).
+    build_actions() requires concepts.calendar.granularities.daily.path in cfg
+    even when daily_updates=[]; calling the targeted helper directly is more
+    honest and avoids a config stub that doesn't reflect production shape.
     """
+    # ── Primary: per-item duplicate MOC dedup triggers `seen` set ─────────────
+    # One item with the same MOC listed twice in parent_mocs.
+    dup_item = {
+        "title": "Duplicate MOC Note",
+        "parent_mocs": ["Home (MOC)", "Home (MOC)"],
+    }
+    counter = [0]
+    actions_dup = _ir._build_link_to_moc_actions([dup_item], counter)
+
+    assert len(actions_dup) == 1, (
+        f"duplicate parent_mocs entry must produce exactly 1 link_to_moc "
+        f"(seen-set dedup); got {len(actions_dup)}: {actions_dup}"
+    )
+    assert actions_dup[0].get("target_moc") == "Home (MOC)", (
+        f"deduped action must target the shared MOC; got {actions_dup[0]}"
+    )
+
+    # ── Secondary: cross-item, distinct source → links preserved ──────────────
+    # Two atomics referencing the same MOC must each emit their own link action.
     stem = "overlapping-moc-memo"
-    # Both atomics reference the same candidate MOC
     shared_moc = {"path": "Atlas/200 Maps/Home (MOC).md", "score": 0.85, "pre_check": True}
     result = _make_item_result(stem, actions=[
         _atomic_action("Thread Alpha", stem=stem, worthiness=0.8,
@@ -666,14 +694,10 @@ def test_overlapping_topics_moc_dedup(tmp_path):
         f"overlapping-moc source must yield 2 atomics; got {atomics}"
     )
 
-    # Scope: _build_link_to_moc_actions directly (Kado-free, cfg-free path).
-    # build_actions() requires concepts.calendar.granularities.daily.path in cfg
-    # even when daily_updates=[]; calling the targeted helper directly is more
-    # honest and avoids a config stub that doesn't reflect production shape.
-    counter = [0]
-    link_actions = _ir._build_link_to_moc_actions(atomics, counter)
+    counter2 = [0]
+    link_actions = _ir._build_link_to_moc_actions(atomics, counter2)
 
-    # Collect (source_note_title, target_moc) pairs — must be unique per atomic
+    # Both atomics have different source titles → 2 distinct (source, moc) pairs.
     pairs = [
         (a.get("source_note_title", ""), a.get("target_moc", ""))
         for a in link_actions
@@ -681,9 +705,9 @@ def test_overlapping_topics_moc_dedup(tmp_path):
     assert len(pairs) == len(set(pairs)), (
         f"link_to_moc pairs must be unique (no duplicates); got {pairs}"
     )
-    # Each of the 2 atomics should contribute link_to_moc entries (pre_check=True)
-    assert len(link_actions) >= 1, (
-        f"pre_check=True MOC should generate at least 1 link_to_moc; got {link_actions}"
+    assert len(link_actions) >= 2, (
+        f"two distinct atomics referencing the same MOC must each produce a "
+        f"link_to_moc action (cross-item links are preserved); got {link_actions}"
     )
 
 

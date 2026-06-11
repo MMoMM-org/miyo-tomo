@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Parser N-entry parsing (C3, C4)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -29,7 +29,7 @@ phase: 4
 
 Delivers N parsed atomic entries per source — including the FAN resolve-doc path — with no silent overwrite.
 
-- [ ] **T4.1 Primary-doc N-entry parsing (C3)** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T4.1 Primary-doc N-entry parsing (C3)** `[activity: backend-logic]` `[parallel: true]`
 
   > **Plan-time correction (2026-06-11):** the renderer emits N atomic blocks under ONE
   > `### SNN` heading (OQ5), but `split_into_sections` splits only on `### SNN` and
@@ -47,7 +47,7 @@ Delivers N parsed atomic entries per source — including the FAN resolve-doc pa
   4. Validate: `./venv/bin/python -m pytest tests/ -k parser`; lint.
   5. Success: N entries per source `[ref: PRD/A5]`; mixed-approval honoured; single-block unchanged `[ref: PRD/CON-2]`
 
-- [ ] **T4.2 FAN resolve-doc N-entry parsing (C4)** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T4.2 FAN resolve-doc N-entry parsing (C4)** `[activity: backend-logic]` `[parallel: true]`
 
   1. Prime: Read FAN resolve handler (`:1238-1274`) and its use in reconciliation (`:1304-1306`) `[ref: SDD/C4]`
   2. Test (RED):

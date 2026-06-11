@@ -88,7 +88,7 @@ version: "1.0"
 |---|----------|---------------|---------------|
 | C1 | `suggestions-reducer.py:144` | `next(a for a in actions if kind==create_atomic_note)` — only first | Iterate ALL atomics in coexistence enforcement |
 | C2 | `suggestions-reducer.py:1047-1050` | `section_titles[section_id] = title` — overwrite | Key per-atomic (list or `section_id+idx`) |
-| C3 | `suggestion-parser.py:1171` | `sections_by_stem[stem] = item` — overwrite | `dict[str, list[dict]]`; append |
+| C3 | `suggestion-parser.py` `parse_section` + `:1171` | `split_into_sections` yields ONE section per `### SNN` heading; `parse_section` collapses N atomic blocks under that heading into ONE item (last-block-wins); `sections_by_stem[stem] = item` then overwrites | **Intra-section split:** `parse_section` (or a pre-split) must yield N items when a section carries N atomic blocks (split on `**Source:**` / `**Suggested name:**` boundaries), each sharing `source_path`; THEN `sections_by_stem` → `dict[str, list[dict]]`; append. *(Plan-time correction 2026-06-11: the render emits N blocks under one heading per OQ5, so the dict→list edit alone is insufficient.)* |
 | C4 | `suggestion-parser.py:1274` | `resolve_sections_by_stem[stem] = item` — overwrite (FAN) | `dict[str, list[dict]]`; append |
 | C5 | `instruction-render.py:1738` | `filename = date_prefix + slugify(title)` — collision on equal titles | Per-source collision guard → suffix `_NN` |
 | C6 | `instruction-render.py:933-952` | `paired_seen` dedup → delete after FIRST move_note | Gate delete on ALL move_notes-for-origin + daily committed |
@@ -166,6 +166,7 @@ create_atomic_note:                  # one PER worthy thread (N≥1 in actions[]
 
 #### Parser contract change
 
+- **C3 intra-section split (prerequisite):** the renderer emits N atomic blocks under ONE `### SNN` heading (OQ5), but `split_into_sections` splits only on `### SNN` and `parse_section` returns ONE dict (last-block-wins). So the parser must first split a single section into N items — one per atomic block, detected by repeated `**Source:**` / `**Suggested name:**` markers — each carrying the shared `source_path`. Single-block sections (the common case) yield exactly one item, byte-identical to today (CON-2).
 - C3/C4: `sections_by_stem` and `resolve_sections_by_stem` become `dict[str, list[dict]]`; assignment → append; Force-Atomic reconciliation (`:1297-1342`) iterates the list, not `.get(stem)` scalar.
 - `confirmed_items[]` may now contain multiple entries sharing one `source_path` — downstream (render) keys per-entry, not per-stem.
 

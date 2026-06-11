@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Reducer N-block rendering (C1, C2)"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -47,6 +47,6 @@ Delivers N independently-reviewable atomic Accept blocks from one source — no 
   4. Validate: snapshot test of a 2-atomic suggestions doc; lint.
   5. Success: N blocks, independently approvable `[ref: PRD/A4]`
 
-- [ ] **T3.3 Phase Validation** `[activity: validate]`
+- [x] **T3.3 Phase Validation** `[activity: validate]`
 
   Run reducer tests incl. single-thread regression; bump `# version:`; lint.

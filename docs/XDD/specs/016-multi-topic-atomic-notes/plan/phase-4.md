@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Parser N-entry parsing (C3, C4)"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -57,6 +57,6 @@ Delivers N parsed atomic entries per source — including the FAN resolve-doc pa
   4. Validate: parser FAN tests; lint.
   5. Success: FAN multi-thread → N reconciled `[ref: PRD/A8]`
 
-- [ ] **T4.3 Phase Validation** `[activity: validate]`
+- [x] **T4.3 Phase Validation** `[activity: validate]`
 
   Run parser tests incl. FAN single-thread regression; bump `# version:`; lint.

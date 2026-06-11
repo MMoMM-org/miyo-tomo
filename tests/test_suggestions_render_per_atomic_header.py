@@ -331,3 +331,49 @@ class TestPerAtomicHeaders:
                         f"Line before link_to_moc content must not be a ### header, "
                         f"got: {lines[i - 1]!r}"
                     )
+
+    def test_header_uses_action_suggestion_id_not_section_id(self):
+        """Header must use the action's suggestion_id, NOT the parent section's id.
+
+        Guard: section id='S99', action suggestion_id='S01'.  A renderer that
+        accidentally sources the ID from the section would emit '### S99 —';
+        the correct renderer emits '### S01 —'.
+        """
+        mod = _load_render_mod()
+        link_rendered = "- **Link to MOC:** [[Guard MOC]]\n"
+        doc = _make_suggestions_doc([
+            _make_section("S99", [
+                _make_atomic_action("S01", "Guard Note"),
+                {
+                    "kind": "link_to_moc",
+                    "rendered_md": link_rendered,
+                },
+            ])
+        ])
+
+        lines = mod.render_suggestions(doc)
+        headers = _collect_headers(lines)
+        text = "\n".join(lines)
+
+        # Exactly one header — for the atomic action
+        assert len(headers) == 1, (
+            f"Expected 1 header, got {len(headers)}: {headers}"
+        )
+        # Header must use the ACTION's suggestion_id ("S01"), not the section id ("S99")
+        assert headers[0].startswith("### S01 —"), (
+            f"Header must start with '### S01 —' (action suggestion_id), "
+            f"got: {headers[0]!r}"
+        )
+        assert "### S99" not in text, (
+            "Section id 'S99' must NOT appear as a header — action suggestion_id takes precedence"
+        )
+
+        # link_to_moc rendered_md must still appear without a header prefix
+        assert "Guard MOC" in text, "link_to_moc rendered_md must appear in output"
+        for i, ln in enumerate(lines):
+            if "Guard MOC" in ln:
+                if i > 0:
+                    assert not _HEADER_RE.match(lines[i - 1]), (
+                        f"Line before link_to_moc content must not be a ### header, "
+                        f"got: {lines[i - 1]!r}"
+                    )

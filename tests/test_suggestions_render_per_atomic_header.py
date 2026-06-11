@@ -73,7 +73,7 @@ def _make_suggestions_doc(sections: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _section(sid: str, actions: list[dict[str, Any]]) -> dict[str, Any]:
+def _make_section(sid: str, actions: list[dict[str, Any]]) -> dict[str, Any]:
     return {"id": sid, "stem": sid + "_stem", "actions": actions}
 
 
@@ -95,7 +95,7 @@ class TestPerAtomicHeaders:
         """A section with 2 create_atomic_note actions must emit 2 distinct ### headers."""
         mod = _load_render_mod()
         doc = _make_suggestions_doc([
-            _section("S01", [
+            _make_section("S01", [
                 _make_atomic_action("S01", "Alpha Note"),
                 _make_atomic_action("S02", "Beta Note"),
             ])
@@ -113,7 +113,7 @@ class TestPerAtomicHeaders:
         """Headers must use the 'Suggested name' from their respective atomic blocks."""
         mod = _load_render_mod()
         doc = _make_suggestions_doc([
-            _section("S01", [
+            _make_section("S01", [
                 _make_atomic_action("S01", "Alpha Note"),
                 _make_atomic_action("S02", "Beta Note"),
             ])
@@ -139,7 +139,7 @@ class TestPerAtomicHeaders:
         """Single-atomic section must still emit exactly one ### SNN — <title> header."""
         mod = _load_render_mod()
         doc = _make_suggestions_doc([
-            _section("S01", [
+            _make_section("S01", [
                 _make_atomic_action("S01", "Solo Note"),
             ])
         ])
@@ -157,14 +157,14 @@ class TestPerAtomicHeaders:
         """Total ### headers == total create_atomic_note actions across all sections."""
         mod = _load_render_mod()
         doc = _make_suggestions_doc([
-            _section("S01", [
+            _make_section("S01", [
                 _make_atomic_action("S01", "Alpha"),
                 _make_atomic_action("S02", "Beta"),
             ]),
-            _section("S03", [
+            _make_section("S03", [
                 _make_atomic_action("S03", "Gamma"),
             ]),
-            _section("S04", [
+            _make_section("S04", [
                 _make_atomic_action("S04", "Delta"),
                 _make_atomic_action("S05", "Epsilon"),
                 _make_atomic_action("S06", "Zeta"),
@@ -188,7 +188,7 @@ class TestPerAtomicHeaders:
         """Each header must use suggestion_id from the action, not the section id."""
         mod = _load_render_mod()
         doc = _make_suggestions_doc([
-            _section("S01", [
+            _make_section("S01", [
                 _make_atomic_action("S01", "Alpha"),
                 _make_atomic_action("S02", "Beta"),
             ])
@@ -212,7 +212,7 @@ class TestPerAtomicHeaders:
             "**Decision (atomic note):**\n- [ ] Approve\n"
         )
         doc = _make_suggestions_doc([
-            _section("S01", [
+            _make_section("S01", [
                 {
                     "kind": "create_atomic_note",
                     "suggestion_id": "S01",
@@ -235,7 +235,7 @@ class TestPerAtomicHeaders:
         """If action has no suggestion_id, fall back to section id for the first action."""
         mod = _load_render_mod()
         doc = _make_suggestions_doc([
-            _section("S05", [
+            _make_section("S05", [
                 {
                     "kind": "create_atomic_note",
                     "rendered_md": "**Suggested name:** Fallback Note\n**Decision:**\n- [ ] Approve\n",
@@ -261,7 +261,7 @@ class TestPerAtomicHeaders:
         block1_marker = "Source Alpha"
         block2_marker = "Source Beta"
         doc = _make_suggestions_doc([
-            _section("S01", [
+            _make_section("S01", [
                 {
                     "kind": "create_atomic_note",
                     "suggestion_id": "S01",
@@ -290,3 +290,44 @@ class TestPerAtomicHeaders:
         assert idx_h1 < idx_h2, "### S01 must precede ### S02"
         # Block1 content must appear between the two headers
         assert idx_h1 < idx_b1 < idx_h2, "block1 must be between ### S01 and ### S02"
+
+    # W2 — non-atomic action (link_to_moc) must not receive a ### header
+    def test_non_atomic_action_gets_no_header(self):
+        """A section with one create_atomic_note and one link_to_moc must emit exactly
+        ONE ### header (for the atomic) and render the link_to_moc rendered_md WITHOUT
+        a header prefix."""
+        mod = _load_render_mod()
+        link_rendered = "- **Link to MOC:** [[Some MOC]]\n"
+        doc = _make_suggestions_doc([
+            _make_section("S01", [
+                _make_atomic_action("S01", "Alpha Note"),
+                {
+                    "kind": "link_to_moc",
+                    "rendered_md": link_rendered,
+                },
+            ])
+        ])
+
+        lines = mod.render_suggestions(doc)
+        headers = _collect_headers(lines)
+
+        # Exactly one header — for the atomic only
+        assert len(headers) == 1, (
+            f"Expected 1 header (only for atomic), got {len(headers)}: {headers}"
+        )
+        assert "Alpha Note" in headers[0], (
+            f"The single header must belong to the atomic, got: {headers[0]!r}"
+        )
+
+        # link_to_moc rendered_md must still appear in output
+        text = "\n".join(lines)
+        assert "Some MOC" in text, "link_to_moc rendered_md must appear in output"
+
+        # No header line directly before the link_to_moc content
+        for i, ln in enumerate(lines):
+            if "Some MOC" in ln:
+                if i > 0:
+                    assert not _HEADER_RE.match(lines[i - 1]), (
+                        f"Line before link_to_moc content must not be a ### header, "
+                        f"got: {lines[i - 1]!r}"
+                    )

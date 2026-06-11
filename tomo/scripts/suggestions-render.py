@@ -112,10 +112,11 @@ def render_suggestions(d: dict) -> list[str]:
         return []
     lines = ["## Suggestions", ""]
     for s in d["sections"]:
-        for i, a in enumerate(s["actions"]):
-            sid = a.get("suggestion_id") or s["id"]
-            title = _extract_atomic_title(a["rendered_md"], s["stem"])
-            lines.append(f"### {sid} — {title}")
+        for a in s["actions"]:
+            if a.get("kind") == "create_atomic_note":
+                sid = a.get("suggestion_id") or s["id"]
+                title = _extract_atomic_title(a["rendered_md"], s["stem"])
+                lines.append(f"### {sid} — {title}")
             lines.append(a["rendered_md"])
             lines.append("")
     return lines

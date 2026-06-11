@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Reducer N-block rendering (C1, C2)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---
@@ -28,7 +28,7 @@ phase: 3
 
 Delivers N independently-reviewable atomic Accept blocks from one source — no silent collapse.
 
-- [ ] **T3.1 Coexistence + title handling for N atomics (C1, C2)** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T3.1 Coexistence + title handling for N atomics (C1, C2)** `[activity: backend-logic]` `[parallel: true]`
 
   1. Prime: Read `_enforce_coexistence` (`:120-169`), main action loop (`:948-1073`), `_enrich_proposed_mocs` (`:328-344`) `[ref: SDD/C1, C2]`
   2. Test (RED):
@@ -39,7 +39,7 @@ Delivers N independently-reviewable atomic Accept blocks from one source — no 
   4. Validate: `./venv/bin/python -m pytest tests/ -k reducer`; lint.
   5. Success: N atomics survive coexistence + titling `[ref: PRD/A4]`; single-thread unchanged `[ref: PRD/CON-2]`
 
-- [ ] **T3.2 N independent Accept blocks** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T3.2 N independent Accept blocks** `[activity: backend-logic]` `[parallel: true]`
 
   1. Prime: Read `render_create_atomic_note` (`:172-240`), section assembly (`:1068-1073`) `[ref: SDD/Reducer contract change]`
   2. Test (RED): 2-atomic source → 2 Accept blocks under one section, each with its own `**Decision (atomic note):**` checkboxes + `**Source:** [[stem]]`; blocks scannable for N≤3 `[ref: PRD/A4, OQ5]`

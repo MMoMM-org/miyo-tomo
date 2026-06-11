@@ -17,6 +17,7 @@ Usage:
 """
 
 import argparse
+import itertools
 import json
 import os
 import re
@@ -221,6 +222,10 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
 
         # ── Field lines: - **Field:** value  OR  **Field:** value ─
         # Strip leading "- " if present so RE_FIELD matches both forms.
+        # Reject lines with leading whitespace that isn't a list marker: they
+        # are body/continuation text, not structural fields (W1 guard).
+        if line != line.lstrip() and not stripped.startswith("- "):
+            continue
         field_line = stripped
         if field_line.startswith("- "):
             field_line = field_line[2:].strip()
@@ -305,7 +310,12 @@ def _is_source_field_line(line: str) -> bool:
 
     Mirrors parse_section's field detection: strip a leading "- ", match
     RE_FIELD, normalise the key the same way, and compare to "source".
+
+    The renderer always emits **Source:** flush-left (column 0). Any line
+    with leading whitespace is body/continuation text, not a field boundary.
     """
+    if line != line.lstrip():
+        return False
     stripped = line.strip()
     if not stripped:
         return False
@@ -1197,11 +1207,9 @@ def main() -> int:
     # F-41: split each rendered section into per-atomic-block groups on
     # **Source:** boundaries. Sections with ≤1 Source line yield one group
     # whose id == section_id, keeping single-block output byte-identical.
-    block_groups: list[tuple[str, list[str]]] = []
-    for section_id, lines in raw_sections:
-        block_groups.extend(split_section_into_blocks(section_id, lines))
-
-    for section_id, lines in block_groups:
+    for section_id, lines in itertools.chain.from_iterable(
+        split_section_into_blocks(sid, lns) for sid, lns in raw_sections
+    ):
         try:
             item = parse_section(section_id, lines)
         except Exception as exc:  # noqa: BLE001
@@ -1353,7 +1361,7 @@ def main() -> int:
     confirmed_ids = {c.get("id") for c in confirmed_items}
     seen_pending: set[str] = set()
 
-    def _promote_entry(sec: dict, from_resolve_flag: bool) -> dict:
+    def _promote_entry(sec: dict, from_resolve: bool) -> dict:
         sec["approved"] = True
         sec["delete_source"] = False
         entry = {
@@ -1374,7 +1382,7 @@ def main() -> int:
             "classification": sec["classification"],
             "force_atomic": True,  # trace marker for instruction-render logs
         }
-        if from_resolve_flag:
+        if from_resolve:
             entry["from_resolve"] = True
         return entry
 
@@ -1387,7 +1395,7 @@ def main() -> int:
         ]
         if primary_secs:
             for sec in primary_secs:
-                entry = _promote_entry(sec, from_resolve_flag=False)
+                entry = _promote_entry(sec, from_resolve=False)
                 confirmed_items.append(entry)
                 confirmed_ids.add(entry["id"])
                 promoted += 1
@@ -1404,7 +1412,7 @@ def main() -> int:
         # Branch (b): resolve-doc atomic section
         sec = resolve_sections_by_stem.get(stem)
         if sec is not None:
-            entry = _promote_entry(sec, from_resolve_flag=True)
+            entry = _promote_entry(sec, from_resolve=True)
             from_resolve += 1
             confirmed_items.append(entry)
             confirmed_ids.add(entry["id"])

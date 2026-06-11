@@ -7,11 +7,12 @@ parser must split that single section into N confirmed items rather than
 collapsing them to one (last-wins).
 
 Scenarios:
-  1. Two atomic blocks, both Approve [x]      → 2 confirmed, distinct titles
-  2. Mixed approval (block1 [x], block2 Skip) → 1 confirmed, 1 skipped
-  3. Force-Atomic on a daily log entry whose stem has 2 unapproved blocks
-     → BOTH promoted
-  4. Single-block section                     → exactly 1 item (CON-2)
+  1. Two atomic blocks, both Approve [x]            → 2 confirmed, distinct titles
+  2. Mixed approval (block1 [x], block2 Skip)       → 1 confirmed, 1 skipped
+  3. Force-Atomic on stem with 2 unapproved blocks  → BOTH promoted
+  4. Single-block section                           → exactly 1 item (CON-2)
+  5. Indented **Source:** in body text is NOT a boundary (W1 regression)
+  6. Reducer↔parser id-format alignment: S01 / S01#1 preserved in supporting_items
 
 Each doc is fed through the real parser via subprocess so the full
 argparse + pipeline flow is exercised (mirrors
@@ -114,6 +115,59 @@ def _two_atomic_fan_doc() -> str:
     return "\n".join(parts)
 
 
+def _two_atomic_doc_with_indented_source_in_body() -> str:
+    """Two atomic blocks where block 1's **Why:** continuation line starts with
+    an indented '  **Source:** ...' — must NOT be classified as a block boundary
+    (W1 regression guard)."""
+    parts = _doc_header()
+    parts += ["## Suggestions", "", "### S01 — Memo split", ""]
+    # Block 1: has an indented Source-like line inside **Why:**
+    parts += [
+        "**Source:** [[memo]]",
+        "**Suggested name:** First Topic",
+        "**Type:** fleeting_note",
+        "**Template:** Atomic Note.md",
+        "**Destination:** Atlas/202 Notes/",
+        "",
+        "**Why:** Classification 2600 (90%); best MOC match Atlas/Maps/Science.",
+        "  **Source:** secondary attribution note (indented, must be ignored).",
+        "",
+        "**Decision (atomic note):**",
+        "- [x] Approve",
+        "- [ ] Keep in inbox",
+        "- [ ] Skip (keep in inbox)",
+        "- [ ] Delete source",
+        "",
+    ]
+    # Block 2: flush-left **Source:** — the real boundary
+    parts += _atomic_block("Second Topic", accept=True)
+    return "\n".join(parts)
+
+
+def _two_atomic_doc_with_proposed_moc() -> str:
+    """Two atomic blocks for 'memo' (both approved) plus a ## Proposed MOCs
+    section whose supporting_items field references the two block ids S01 and
+    S01#1. Guards reducer↔parser id-format alignment (W2)."""
+    parts = _doc_header()
+    parts += ["## Suggestions", "", "### S01 — Memo split", ""]
+    parts += _atomic_block("First Topic", accept=True)
+    parts += _atomic_block("Second Topic", accept=True)
+    parts += [
+        "## Proposed MOCs",
+        "",
+        "### Proposed MOC: Memo Studies",
+        "",
+        "- [x] Approve",
+        "- [ ] Skip",
+        "",
+        "**Name:** Memo Studies",
+        "**Parent:** [[Atlas/200 Maps/2200 - Knowledge MOC]]",
+        "**Supporting items:** S01, S01#1",
+        "",
+    ]
+    return "\n".join(parts)
+
+
 def _run_parser(primary_path: Path) -> dict:
     cmd = [sys.executable, str(PARSER), "--file", str(primary_path)]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -189,3 +243,45 @@ def test_single_block_section_yields_exactly_one_item(tmp_path):
     assert len(memo) == 1, f"single block must yield exactly 1 item, got {memo}"
     assert memo[0]["title"] == "Only Topic", memo[0]
     assert memo[0]["id"] == "S01", memo[0]
+    assert out["total_sections"] == 1, out["total_sections"]
+
+
+def test_indented_source_in_body_is_not_a_block_boundary(tmp_path):
+    """W1 regression: an indented **Source:** line inside a **Why:** value
+    must not trigger a spurious block split — only flush-left Source lines
+    count as boundaries."""
+    primary = tmp_path / "suggestions.md"
+    primary.write_text(_two_atomic_doc_with_indented_source_in_body())
+
+    out = _run_parser(primary)
+
+    memo = [c for c in out["confirmed_items"] if _stem(c.get("source_path")) == "memo"]
+    assert len(memo) == 2, (
+        f"indented Source must NOT split block — expected 2 items, got {memo}"
+    )
+    titles = sorted(c["title"] for c in memo)
+    assert titles == ["First Topic", "Second Topic"], titles
+
+
+def test_two_block_ids_preserved_in_proposed_moc_supporting_items(tmp_path):
+    """W2: reducer emits atomic ids S01 (block 0) and S01#1 (block 1) into
+    Proposed MOC supporting_items. Parser must produce confirmed_item ids that
+    match those strings verbatim so instruction-render's id_index lookup resolves.
+    """
+    primary = tmp_path / "suggestions.md"
+    primary.write_text(_two_atomic_doc_with_proposed_moc())
+
+    out = _run_parser(primary)
+
+    memo = [c for c in out["confirmed_items"] if _stem(c.get("source_path")) == "memo"]
+    assert len(memo) == 2, f"expected 2 memo confirmed items, got {memo}"
+    confirmed_ids = {c["id"] for c in memo}
+    assert "S01" in confirmed_ids, confirmed_ids
+    assert "S01#1" in confirmed_ids, confirmed_ids
+
+    mocs = [c for c in out["confirmed_items"] if c.get("action") == "create_moc"]
+    assert len(mocs) == 1, f"expected 1 MOC confirmed, got {mocs}"
+    moc = mocs[0]
+    supporting = moc.get("supporting_items", "")
+    assert "S01" in supporting, f"S01 missing from supporting_items: {supporting!r}"
+    assert "S01#1" in supporting, f"S01#1 missing from supporting_items: {supporting!r}"

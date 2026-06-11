@@ -69,7 +69,7 @@ Tasks follow red-green-refactor: **Prime** → **Test** (red) → **Implement** 
 > parallel once Phase 2's output contract is fixed. Phase 6 integrates and validates E2E.
 
 - [x] [Phase 1: Schema & source_stem contract](phase-1.md)
-- [ ] [Phase 2: Analyst Step 7.5 segmentation](phase-2.md)
+- [x] [Phase 2: Analyst Step 7.5 segmentation](phase-2.md)
 - [ ] [Phase 3: Reducer N-block rendering (C1, C2)](phase-3.md)
 - [ ] [Phase 4: Parser N-entry parsing (C3, C4)](phase-4.md)
 - [ ] [Phase 5: Render N notes + delete gate (C5, C6)](phase-5.md)

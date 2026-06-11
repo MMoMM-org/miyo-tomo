@@ -601,6 +601,45 @@ def _validate_action_paths(actions: list[dict]) -> list[str]:
     return violations
 
 
+def _disambiguate_filename(base_filename: str, used_filenames: set[str]) -> str:
+    """Return a filename that is not in *used_filenames*.
+
+    When *base_filename* is not yet used, returns it unchanged (common case —
+    CON-2 regression guarantee).  On collision, appends a stable ``_NN`` suffix
+    (``_01``, ``_02``, …) in the order callers present collisions.  Raises
+    ``ValueError`` if all suffixes up to ``_99`` are already taken.
+
+    Args:
+        base_filename: The derived filename, e.g. ``2026-06-11_0900_my-topic.md``.
+        used_filenames: Set of filenames already claimed in this render run.
+            The caller is responsible for adding the returned name to this set.
+
+    Returns:
+        A distinct filename (may equal *base_filename* when there is no collision).
+
+    Raises:
+        ValueError: When the collision cannot be resolved within 99 attempts.
+    """
+    if base_filename not in used_filenames:
+        return base_filename
+
+    # Strip .md, append _NN, restore .md
+    if base_filename.endswith(".md"):
+        stem = base_filename[:-3]
+    else:
+        stem = base_filename
+
+    for i in range(1, 100):
+        candidate = f"{stem}_{i:02d}.md"
+        if candidate not in used_filenames:
+            return candidate
+
+    raise ValueError(
+        f"filename collision guard exhausted for slug '{stem}' — "
+        "all suffixes _01 through _99 are taken; cannot render without overwrite"
+    )
+
+
 def _dest_join(folder: str, title: str) -> str:
     """Join destination folder + sanitised title as filename (with .md)."""
     if not folder:
@@ -1645,6 +1684,7 @@ def main() -> int:
     date_prefix = now.strftime("%Y-%m-%d_%H%M")
 
     manifest: list[dict] = []
+    used_filenames: set[str] = set()
     errors = 0
 
     for item in confirmed:
@@ -1734,9 +1774,11 @@ def main() -> int:
             errors += 1
             continue
 
-        # 5. Write rendered file
+        # 5. Write rendered file — guard against same-slug collision (C5, ADR-7)
         slug = slugify(title)
-        filename = f"{date_prefix}_{slug}.md"
+        base_filename = f"{date_prefix}_{slug}.md"
+        filename = _disambiguate_filename(base_filename, used_filenames)
+        used_filenames.add(filename)
         rendered_path = out_dir / filename
         rendered_path.write_text(rendered, encoding="utf-8")
 

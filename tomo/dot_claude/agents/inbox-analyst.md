@@ -217,8 +217,8 @@ items are one thread. Worked examples:
 **Score each thread on its OWN full text.** For EACH thread, run the Step 7 scoring
 against that thread's full original text only (never your summary, never the whole
 item) — mirroring the voice-transcript rule. Each thread independently gets its own
-`atomic_note_worthiness`, `suggested_title`, MOC matches (Step 4–6), and tags
-(Step 6.5). `force_atomic=true` applies to every thread.
+`atomic_note_worthiness`, `suggested_title`, MOC matches (Steps 4–5), and tags
+(Step 6). `force_atomic=true` applies to every thread.
 
 **Classify each thread.**
 - Thread worthiness ≥ 0.5 (or `force_atomic`) → this thread becomes one

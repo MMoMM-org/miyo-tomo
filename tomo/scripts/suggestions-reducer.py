@@ -998,6 +998,21 @@ def main() -> int:
         # cluster/title key (see _atomic_id). 0th keeps the bare section_id.
         atomic_idx = 0
         actions = _enforce_coexistence(result.get("actions", []))
+        # F-41 T1 W1: pre-pass — assign flat suggestion_ids to all
+        # create_atomic_note actions before the main loop processes
+        # update_daily.  This makes log_link.source_section resolution
+        # order-independent: title_to_suggestion_id is fully populated
+        # regardless of whether update_daily appears before or after the
+        # atomics in actions[].
+        _pre_counter = suggestion_counter
+        for _pre_action in actions:
+            if _pre_action.get("kind") == "create_atomic_note":
+                _pre_counter += 1
+                _pre_title = (
+                    (_pre_action.get("suggested_title") or "").strip()
+                    or stem
+                )
+                title_to_suggestion_id[_pre_title] = f"S{_pre_counter:02d}"
         for action in actions:
             kind = action.get("kind")
             renderer = RENDERERS.get(kind)
@@ -1049,8 +1064,9 @@ def main() -> int:
                             # F-41 T1: source_section for atomic-derived log_links
                             # must reference the flat suggestion_id of the atomic,
                             # not the per-source section_id.  title_to_suggestion_id
-                            # is populated when atomics are rendered (above).
-                            ll_source_section = title_to_suggestion_id.get(
+                            # is pre-populated before this loop so the lookup is
+                            # order-independent (W1).
+                            log_link_source_section = title_to_suggestion_id.get(
                                 target, section_id
                             )
                             daily_groups[daily_stem]["log_links"].append({
@@ -1060,7 +1076,7 @@ def main() -> int:
                                 "position": u.get("position"),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
-                                "source_section": ll_source_section,
+                                "source_section": log_link_source_section,
                             })
                             # Record for per-item Material für mirror
                             stem_log_links.setdefault(stem, []).append({
@@ -1102,9 +1118,12 @@ def main() -> int:
                 # Record per-atomic key → title for note_titles post-processing.
                 title = (action.get("suggested_title") or "").strip() or stem
                 section_titles[atomic_key] = title
-                # F-41 T1: map title → flat suggestion_id for log_link source_section.
+                # F-41 T1: keep title_to_suggestion_id current for any callers
+                # that read it after the main loop.  The pre-pass already wrote
+                # this entry; the update here uses suggestion_id_flat (already
+                # computed above) rather than reconstructing from the counter.
                 if rendered is not None:
-                    title_to_suggestion_id[title] = f"S{suggestion_counter:02d}"
+                    title_to_suggestion_id[title] = suggestion_id_flat
                 atomic_idx += 1
 
         # The per-item `Material für [[daily]]` mirror block is gone as of

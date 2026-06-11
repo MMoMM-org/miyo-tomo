@@ -642,3 +642,113 @@ def test_t1_schema_validation_with_suggestion_id_field(tmp_path):
     assert all(sid is not None for sid in ids), (
         f"suggestion_id stripped from actions after schema validation round-trip: {ids}"
     )
+
+
+# ── W2 — order-independent log_link.source_section ────────────────────────────
+
+
+def _write_result_atomic_daily_first(
+    items_dir: Path,
+    stem: str,
+    atomics: list[dict],
+    daily_content: str,
+) -> None:
+    """Write a result.json with update_daily BEFORE create_atomic_note entries.
+
+    This is the reverse of _write_result_atomic (which appends daily last).
+    Used to prove that log_link.source_section resolution is order-independent.
+    """
+    items_dir.mkdir(parents=True, exist_ok=True)
+    daily_action = {
+        "kind": "update_daily",
+        "date": "2026-06-11",
+        "daily_note_path": "Daily/2026-06-11.md",
+        "updates": [{
+            "kind": "log_entry",
+            "time": "09:00",
+            "time_source": "frontmatter",
+            "position": "append",
+            "content": daily_content,
+            "confidence": 0.8,
+            "reason": "noted",
+        }],
+    }
+    atomic_actions = [
+        {
+            "kind": "create_atomic_note",
+            "suggested_title": a["title"],
+            "atomic_note_worthiness": a.get("worthiness", 0.8),
+            "template": "t_note_tomo",
+            "location": "Atlas/202 Notes/",
+            "candidate_mocs": [],
+            "needs_new_moc": False,
+            "tags_to_add": [],
+            "classification": {"category": "100 Philosophy", "confidence": 0.9},
+            "alternatives": [],
+        }
+        for a in atomics
+    ]
+    # update_daily is FIRST — this is the ordering that triggered the bug.
+    actions = [daily_action] + atomic_actions
+    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+        "schema_version": "1",
+        "stem": stem,
+        "path": f"100 Inbox/{stem}.md",
+        "type": "fleeting_note",
+        "type_confidence": 0.9,
+        "force_atomic": False,
+        "actions": actions,
+        "candidate_mocs": [],
+        "classification": {"category": "100 Philosophy", "confidence": 0.9},
+        "needs_new_moc": False,
+        "proposed_moc_topic": None,
+        "tags_to_add": [],
+        "atomic_note_worthiness": 0.8,
+        "alternatives": [],
+        "issues": [],
+        "duration_ms": 0,
+    }, ensure_ascii=False), encoding="utf-8")
+
+
+def test_t1_log_link_source_section_order_independent(tmp_path):
+    """W2: update_daily BEFORE create_atomic_note still resolves source_section to
+    the flat suggestion_id, not the per-source section_id.
+
+    Fixture ordering:
+      src-a: 2 atomics, no daily  → suggestion_ids S01, S02
+      src-b: update_daily FIRST, then 1 atomic  → section_id=S02, suggestion_id=S03
+
+    Old sequential behavior: title_to_suggestion_id was empty when update_daily
+    ran for src-b → fallback to section_id "S02" → source_section == "S02" [WRONG].
+    Pre-pass fix: map is populated before the loop → source_section == "S03" [CORRECT].
+    """
+    _write_result_atomic(tmp_path / "items", "src-a",
+                         [{"title": "Alpha"}, {"title": "Beta"}])
+    # update_daily appears FIRST in actions[] — this is the triggering condition.
+    _write_result_atomic_daily_first(
+        tmp_path / "items", "src-b",
+        [{"title": "Gamma"}],
+        daily_content="worked on philosophy",
+    )
+
+    doc = _run_reducer(tmp_path, ["src-a", "src-b"])
+
+    # Flat suggestion_ids must still be S01, S02, S03 regardless of action order.
+    atomic_actions = _atomic_actions_from_doc(doc)
+    ids = [a.get("suggestion_id") for a in atomic_actions]
+    assert ids == ["S01", "S02", "S03"], (
+        f"Flat suggestion_ids wrong with daily-first ordering: {ids}"
+    )
+
+    log_links = _log_links_from_doc(doc)
+    assert len(log_links) == 1, f"Expected 1 log_link, got {log_links}"
+    ll = log_links[0]
+    assert ll["target_stem"] == "Gamma", ll
+
+    # DISCRIMINATING ASSERTION: must be S03 (flat suggestion_id), not S02
+    # (per-source section_id).  Fails against old code where title_to_suggestion_id
+    # was empty at update_daily processing time.
+    assert ll["source_section"] == "S03", (
+        f"source_section is {ll['source_section']!r}; expected 'S03'. "
+        f"'S02' means the pre-pass fix is not in effect."
+    )

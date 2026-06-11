@@ -29,8 +29,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 # ── Repo paths ─────────────────────────────────────────────────────────────────
 
 TESTS_DIR = Path(__file__).resolve().parent.parent
@@ -57,31 +55,6 @@ def _load_mod(name: str, path: Path):
 
 
 _ir = _load_mod("instruction_render_016", SCRIPTS_DIR / "instruction-render.py")
-_reducer_mod = _load_mod("suggestions_reducer_016", SCRIPTS_DIR / "suggestions-reducer.py")
-_render_mod = _load_mod("suggestions_render_016", SCRIPTS_DIR / "suggestions-render.py")
-
-
-# ── Minimal vault-config for render stage ─────────────────────────────────────
-
-_MINIMAL_CONFIG_YAML = """\
-profile: miyo
-concepts:
-  inbox: "100 Inbox/"
-  atomic_note:
-    path: "Atlas/202 Notes/"
-  map_note:
-    path: "Atlas/200 Maps/"
-callouts:
-  editable: []
-"""
-
-_CFG_DICT = {
-    "profile": "miyo",
-    "concepts.inbox": "100 Inbox/",
-    "concepts.atomic_note.path": "Atlas/202 Notes/",
-    "concepts.map_note.path": "Atlas/200 Maps/",
-    "callouts.editable": [],
-}
 
 
 # ── Item-result fixture factories ──────────────────────────────────────────────
@@ -186,13 +159,6 @@ def _write_shared_ctx(tmp_path: Path) -> Path:
     p = tmp_path / "shared-ctx.json"
     p.write_text(json.dumps(ctx), encoding="utf-8")
     return p
-
-
-def _write_config(tmp_path: Path) -> Path:
-    """Write the minimal vault-config.yaml for the render and instruction stage."""
-    cfg_path = tmp_path / "vault-config.yaml"
-    cfg_path.write_text(_MINIMAL_CONFIG_YAML, encoding="utf-8")
-    return cfg_path
 
 
 # ── Pipeline runners ───────────────────────────────────────────────────────────
@@ -395,11 +361,11 @@ def test_five_thread_stress(tmp_path):
     )
     titles = {c["title"] for c in atomics}
     assert len(titles) == 5, f"all 5 titles must be distinct; got {titles}"
-    # Ids: S01, S01#1, S01#2, S01#3, S01#4
+    # Ids: first block is bare S01; subsequent blocks carry #1..#4 suffix.
     ids = {c["id"] for c in atomics}
-    assert "S01" in ids
-    assert "S01#1" in ids
-    assert "S01#4" in ids
+    assert ids == {"S01", "S01#1", "S01#2", "S01#3", "S01#4"}, (
+        f"5-thread ids must be exactly S01..S01#4; got {ids}"
+    )
 
 
 # ── Case 4 ─────────────────────────────────────────────────────────────────────
@@ -663,6 +629,7 @@ def test_overlapping_topics_moc_dedup(tmp_path):
         "title": "Duplicate MOC Note",
         "parent_mocs": ["Home (MOC)", "Home (MOC)"],
     }
+    # Mutable action-id counter: matches build_actions() convention (passed by ref as list).
     counter = [0]
     actions_dup = _ir._build_link_to_moc_actions([dup_item], counter)
 
@@ -694,6 +661,7 @@ def test_overlapping_topics_moc_dedup(tmp_path):
         f"overlapping-moc source must yield 2 atomics; got {atomics}"
     )
 
+    # Mutable action-id counter: matches build_actions() convention (passed by ref as list).
     counter2 = [0]
     link_actions = _ir._build_link_to_moc_actions(atomics, counter2)
 

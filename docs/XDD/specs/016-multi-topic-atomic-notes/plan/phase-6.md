@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration, E2E, cost & docs"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 6
 ---
@@ -27,7 +27,7 @@ phase: 6
 
 Proves the whole pipeline end-to-end on real multi-thread input and locks the docs.
 
-- [ ] **T6.1 End-to-end multi-topic suite (A10)** `[activity: integration-test]`
+- [x] **T6.1 End-to-end multi-topic suite (A10)** `[activity: integration-test]`
 
   1. Prime: Read PRD A10 cases + §7 Apothekerpfädchen success signal; existing E2E harness (`tests/integration/`) `[ref: PRD/A10, §7]`
   2. Test (RED) — one E2E per A10 case, analyst→reducer→parser→render:

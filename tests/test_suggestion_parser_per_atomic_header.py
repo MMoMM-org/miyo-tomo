@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """Round-trip tests for F-41 (XDD 016) T3 — per-atomic-header format.
 
 T2 changed the renderer so every create_atomic_note gets its OWN `### SNN — Title`
@@ -53,6 +53,9 @@ def _load_render_mod():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+_RENDER_MOD = _load_render_mod()
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -119,20 +122,23 @@ def _make_doc(sections: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _render_to_markdown(doc: dict[str, Any]) -> str:
     """Run the real renderer and return the Suggestions section as a markdown string."""
-    mod = _load_render_mod()
-    suggestion_lines = mod.render_suggestions(doc)
+    suggestion_lines = _RENDER_MOD.render_suggestions(doc)
     return "\n".join(suggestion_lines)
 
 
-def _full_doc_markdown(suggestions_md: str) -> str:
-    """Wrap suggestions markdown in a minimal valid suggestions doc (frontmatter + header)."""
+def _full_doc_markdown(suggestions_md: str, source_items: int) -> str:
+    """Wrap suggestions markdown in a minimal valid suggestions doc (frontmatter + header).
+
+    source_items must match the number of sections in the doc (one inbox item
+    per section).
+    """
     return "\n".join([
         "---",
         "type: tomo-suggestions",
         "generated: 2026-06-11T10:00:00Z",
         'tomo_version: "0.1.0"',
         "profile: miyo",
-        "source_items: 2",
+        f"source_items: {source_items}",
         "run_id: 2026-06-11-1000-t3test",
         "---",
         "",
@@ -142,7 +148,7 @@ def _full_doc_markdown(suggestions_md: str) -> str:
         "",
         "## Summary",
         "",
-        "- Items processed: 2",
+        f"- Items processed: {source_items}",
         "",
         suggestions_md,
     ])
@@ -163,7 +169,7 @@ def _run_parser(md: str, tmp_path: Path) -> dict:
     return json.loads(result.stdout)
 
 
-def _stem_of(src: str | None) -> str:
+def _stem(src: str | None) -> str:
     if not src:
         return ""
     return src.rsplit("/", 1)[-1].replace(".md", "").strip("[]").lower()
@@ -176,7 +182,10 @@ def _stem_of(src: str | None) -> str:
 class TestPerAtomicHeaderParserRoundTrip:
     """Scenario 1: two approved atomics, same source → two confirmed_items."""
 
-    def test_two_approved_atomics_same_source_yields_two_confirmed_items(self, tmp_path):
+    def test_two_approved_atomics_yield_correct_confirmed_items(self, tmp_path):
+        """Two atomics from the same source must each become a confirmed_item
+        with the shared source_path and distinct titles (C6 delete-gate groups
+        by source_path to offer 'delete [[memo]]?' once, not twice)."""
         doc = _make_doc([
             _make_section("S01", "memo", [
                 _make_action("S01", "memo", "First Topic"),
@@ -184,59 +193,22 @@ class TestPerAtomicHeaderParserRoundTrip:
             ])
         ])
         suggestions_md = _render_to_markdown(doc)
-        full_md = _full_doc_markdown(suggestions_md)
+        full_md = _full_doc_markdown(suggestions_md, source_items=1)
 
         out = _run_parser(full_md, tmp_path)
 
         memo_items = [
             c for c in out["confirmed_items"]
-            if _stem_of(c.get("source_path")) == "memo"
+            if _stem(c.get("source_path")) == "memo"
         ]
         assert len(memo_items) == 2, (
             f"Expected 2 confirmed memo items from new per-atomic-header format, "
             f"got {len(memo_items)}: {memo_items}"
         )
-
-    def test_two_approved_atomics_share_source_path(self, tmp_path):
-        """Both confirmed_items must carry the same source_path — C6 delete-gate
-        groups by source_path to offer 'delete [[memo]]?' once, not twice."""
-        doc = _make_doc([
-            _make_section("S01", "memo", [
-                _make_action("S01", "memo", "First Topic"),
-                _make_action("S02", "memo", "Second Topic"),
-            ])
-        ])
-        suggestions_md = _render_to_markdown(doc)
-        full_md = _full_doc_markdown(suggestions_md)
-
-        out = _run_parser(full_md, tmp_path)
-
-        memo_items = [
-            c for c in out["confirmed_items"]
-            if _stem_of(c.get("source_path")) == "memo"
-        ]
-        assert len(memo_items) == 2
         for item in memo_items:
-            assert _stem_of(item.get("source_path")) == "memo", (
+            assert _stem(item.get("source_path")) == "memo", (
                 f"source_path must resolve to 'memo', got: {item.get('source_path')!r}"
             )
-
-    def test_two_approved_atomics_have_distinct_titles(self, tmp_path):
-        doc = _make_doc([
-            _make_section("S01", "memo", [
-                _make_action("S01", "memo", "First Topic"),
-                _make_action("S02", "memo", "Second Topic"),
-            ])
-        ])
-        suggestions_md = _render_to_markdown(doc)
-        full_md = _full_doc_markdown(suggestions_md)
-
-        out = _run_parser(full_md, tmp_path)
-
-        memo_items = [
-            c for c in out["confirmed_items"]
-            if _stem_of(c.get("source_path")) == "memo"
-        ]
         titles = sorted(c["title"] for c in memo_items)
         assert titles == ["First Topic", "Second Topic"], (
             f"Confirmed titles must be distinct, got: {titles}"
@@ -253,31 +225,19 @@ class TestSingleAtomicRegressionGuard:
             ])
         ])
         suggestions_md = _render_to_markdown(doc)
-        full_md = _full_doc_markdown(suggestions_md)
+        full_md = _full_doc_markdown(suggestions_md, source_items=1)
 
         out = _run_parser(full_md, tmp_path)
 
         memo_items = [
             c for c in out["confirmed_items"]
-            if _stem_of(c.get("source_path")) == "memo"
+            if _stem(c.get("source_path")) == "memo"
         ]
         assert len(memo_items) == 1, (
             f"Single-atomic doc must yield exactly 1 confirmed_item, got {memo_items}"
         )
         assert memo_items[0]["title"] == "Only Topic"
         assert memo_items[0]["id"] == "S01"
-
-    def test_single_atomic_total_sections_is_one(self, tmp_path):
-        doc = _make_doc([
-            _make_section("S01", "memo", [
-                _make_action("S01", "memo", "Only Topic"),
-            ])
-        ])
-        suggestions_md = _render_to_markdown(doc)
-        full_md = _full_doc_markdown(suggestions_md)
-
-        out = _run_parser(full_md, tmp_path)
-
         assert out.get("total_sections") == 1, (
             f"total_sections must be 1 for single-atomic doc, got {out.get('total_sections')}"
         )
@@ -294,13 +254,13 @@ class TestMixedApprovalPerAtomicHeader:
             ])
         ])
         suggestions_md = _render_to_markdown(doc)
-        full_md = _full_doc_markdown(suggestions_md)
+        full_md = _full_doc_markdown(suggestions_md, source_items=1)
 
         out = _run_parser(full_md, tmp_path)
 
         memo_confirmed = [
             c for c in out["confirmed_items"]
-            if _stem_of(c.get("source_path")) == "memo"
+            if _stem(c.get("source_path")) == "memo"
         ]
         assert len(memo_confirmed) == 1, (
             f"Only the approved atomic must be confirmed, got {memo_confirmed}"
@@ -315,16 +275,19 @@ class TestMixedApprovalPerAtomicHeader:
             ])
         ])
         suggestions_md = _render_to_markdown(doc)
-        full_md = _full_doc_markdown(suggestions_md)
+        full_md = _full_doc_markdown(suggestions_md, source_items=1)
 
         out = _run_parser(full_md, tmp_path)
 
         memo_skipped = [
             s for s in out["skipped"]
-            if _stem_of(s.get("source_path")) == "memo"
+            if _stem(s.get("source_path")) == "memo"
         ]
         assert len(memo_skipped) == 1, (
             f"The unapproved atomic must appear in skipped, got {memo_skipped}"
+        )
+        assert memo_skipped[0]["id"] == "S02", (
+            f"The skipped item must be S02 (Second Topic), got id={memo_skipped[0].get('id')!r}"
         )
 
 
@@ -344,7 +307,7 @@ class TestMultiSourceGrouping:
             ]),
         ])
         suggestions_md = _render_to_markdown(doc)
-        full_md = _full_doc_markdown(suggestions_md)
+        full_md = _full_doc_markdown(suggestions_md, source_items=2)
 
         out = _run_parser(full_md, tmp_path)
 
@@ -353,8 +316,8 @@ class TestMultiSourceGrouping:
             f"Expected 3 confirmed_items for 3 approved atomics, got {len(confirmed)}: {confirmed}"
         )
 
-        memo_items = [c for c in confirmed if _stem_of(c.get("source_path")) == "memo"]
-        journal_items = [c for c in confirmed if _stem_of(c.get("source_path")) == "journal"]
+        memo_items = [c for c in confirmed if _stem(c.get("source_path")) == "memo"]
+        journal_items = [c for c in confirmed if _stem(c.get("source_path")) == "journal"]
 
         assert len(memo_items) == 2, (
             f"2 memo atomics expected, got {len(memo_items)}: {memo_items}"

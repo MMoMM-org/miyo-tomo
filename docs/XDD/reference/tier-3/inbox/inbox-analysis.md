@@ -98,6 +98,87 @@ For each unprocessed inbox item:
 10. Output InboxItemAnalysis object
 ```
 
+## 4a. Multi-Topic Segmentation (Step 7.5)
+
+> **Feature:** F-41 / [XDD 016 — Multi-topic detection](../../../specs/016-multi-topic-atomic-notes/requirements.md).
+> Introduced 2026-06-11. Slots between worthiness (Step 7) and emission (Step 8)
+> as `Step 7.5` in `inbox-analyst.md`.
+
+A single inbox item can carry several conceptually distinct, individually worthy
+threads — most often a long voice memo where the user thinks aloud about multiple
+things in one capture. Before F-41 the analyst scored and emitted the whole item
+once, so a multi-thread item collapsed into a single atomic note and the
+non-dominant threads were lost. Step 7.5 detects the threads and emits one
+`create_atomic_note` per worthy thread.
+
+### When it fires
+
+A length pre-check gates the segmentation pass:
+
+- **≤ 200 words** → segmentation is skipped. The analyst sets `threads = [one
+  default thread]` whose text is the entire item — exactly the pre-F-41 path.
+  Short captures rarely carry multiple threads and the extra reasoning pass is
+  not worth the cost.
+- **> 200 words** → the analyst runs segmentation: it lists the distinct
+  concepts in the body and treats each as a candidate thread.
+
+Segmentation is LLM judgment, not a deterministic splitter — deciding whether two
+passages are "the same idea or two" is semantic and lives where the analyst
+already holds the full item text and the scoring rubric. On ambiguity or failure,
+the analyst falls back to a single default thread, so the worst case degrades to
+pre-F-41 single-note behaviour and never drops the capture.
+
+### The `threads[]` conceptual model
+
+Each detected thread carries:
+
+| Field | Meaning |
+|-------|---------|
+| `title_hint` | Suggested title for the thread's atomic note |
+| `summary` | Short description of the thread's content |
+| `topics[]` | Topics extracted **per thread** (a thread's topics are a property of the thread, not the whole item) |
+| `worthiness_score` | Atomic-note worthiness scored against the thread's OWN full text, not the merged item |
+| `dominant_classification` | The thread's primary item type |
+
+For single-thread items `threads[]` has length 1, preserving current behaviour.
+
+Each thread is scored independently against its own content. Scoring the merged
+item would let a strong thread drag a weak one over (or under) the 0.5 gate. A
+thread with `worthiness_score >= 0.5` (or matching the `force_atomic` override per
+XDD 012) emits its own atomic; sub-worthy threads instead contribute to a single
+`update_daily` summarising the daily-log-worthy material only (not one
+`update_daily` per fragment, which would spam the daily note).
+
+### Provenance — the `source_stem` key
+
+Every emitted `create_atomic_note` carries `source_stem` — the originating inbox
+item's filename stem. It is stamped on **all** atomics, single- or multi-thread,
+not only when N≥2: making it conditional would force every downstream consumer to
+special-case the single-thread shape. `source_stem` is the one grouping key that
+lets the reducer, parser, and render group N atomics back to their origin and gate
+source deletion until every derived thread is captured. Voice transcripts
+additionally embed the audio reference per XDD 009 §F3 (audio-peer pattern) —
+unchanged mechanism.
+
+### Wire format — N actions, not a `threads[]` wrapper
+
+The `threads[]` model above is **conceptual**. On the wire, a multi-thread item
+emits **N separate `create_atomic_note` actions in the existing `actions[]`
+array** — there is no `threads[]` wrapper object in the output (XDD 016 ADR-2).
+Rationale: `actions[]` is already polymorphic and multi-capable, every downstream
+consumer (suggestions-reducer, suggestion-parser, instruction-render, Hashi)
+already iterates it, and `instructions.schema.json` already permits N≥1 actions
+per source. Keeping the change to cardinality rather than shape confines the blast
+radius — each atomic is self-contained (its own title / MOC match / tags /
+`source_stem`), and downstream groups by `source_stem` rather than assuming
+one-atomic-per-source.
+
+Downstream cardinality handling (the six former N=1 collapse points and their
+fixes) is documented in the WHY-mirrors for the affected scripts:
+`docs/tomo/scripts/suggestions-reducer.md` (C1/C2),
+`docs/tomo/scripts/suggestion-parser.md` (C3/C4), and
+`docs/tomo/scripts/instruction-render.md` (C5/C6).
+
 ## 5. Classification Heuristics
 
 Classification into item type uses content signals:

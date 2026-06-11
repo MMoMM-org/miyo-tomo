@@ -40,7 +40,7 @@ Proves the whole pipeline end-to-end on real multi-thread input and locks the do
   4. Validate: full `./venv/bin/python -m pytest`; the Apothekerpfädchen case yields 1 daily + 1 atomic, both linked to source `[ref: PRD/§7]`
   5. Success: all 8 A10 cases green `[ref: PRD/A10]`; Apothekerpfädchen resolved `[ref: PRD/§10, context.md #19]`
 
-- [ ] **T6.2 Cost regression vs F-32 baseline** `[activity: performance-test]`
+- [x] **T6.2 Cost regression vs F-32 baseline** `[activity: performance-test]`
 
   1. Prime: Read the F-32 cost-measurement tool (`scripts/measure-f47-token-cost.py`) + auto-memory token-cost note `[ref: PRD/§7, CON-3]`
   2. Test (RED): 20-item mixed single+multi batch → main-thread cost tracked vs F-32 baseline.
@@ -48,7 +48,7 @@ Proves the whole pipeline end-to-end on real multi-thread input and locks the do
   4. Validate: cost increase ≤10% `[ref: PRD/CON-3, §10]`
   5. Success: Pass-1 cost within +10% `[ref: PRD/§7]`
 
-- [ ] **T6.3 Documentation (A11)** `[activity: documentation]`
+- [x] **T6.3 Documentation (A11)** `[activity: documentation]`
 
   1. Prime: Read tier-3 `reference/tier-3/inbox/inbox-analysis.md`; WHY-mirror convention (CLAUDE.md) `[ref: PRD/A11]`
   2. Implement: add a multi-topic section to the tier-3 spec (when segmentation fires, output shape); write/update WHY-mirrors under `docs/tomo/` for every runtime file touched (analyst, reducer, parser, render); mark backlog F-41 + GH #32 code-complete.

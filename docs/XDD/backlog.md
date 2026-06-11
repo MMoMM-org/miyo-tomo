@@ -49,7 +49,7 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 | F-36 | **#28** | New-section proposal logic |
 | F-37 | ☐ #22 | Daily-log date-source re-audit |
 | F-39 | ☐ #20 | Profile-driven `daily_log.entry_time_format` |
-| F-41 | **#32** | Multi-topic detection (resolves the open half of context #19) |
+| F-41 | **#32** | Multi-topic detection — **code-complete 2026-06-11** (XDD 016 shipped; see Done record) |
 | F-42 | **#33** | Suggestions document UX pass |
 | F-44 | **#30** | Knowledge-garden audit skill |
 | F-45 | **#31** | Weekly/monthly review skill |
@@ -105,6 +105,7 @@ Deferred-by-nature Could items kept in the backlog as an idea store; promote to 
 | F-33 | Force Atomic Note via follow-up doc | 2026-04-23 | XDD 012 (commit 08a1f22) |
 | F-35 | MSP Condition C — Placeholder MOC trigger | 2026-05-07 | Code-complete (commit 5b3a031); live-validation pending |
 | F-38 | "Create daily note first" checkbox | 2026-06-03 | Emitted at suggestions-reducer.py:369 |
+| F-41 | Multi-topic detection — N atomics per source | 2026-06-11 | XDD 016 (GH #32); Step 7.5 segmentation (inbox-analyst v0.16.0) + C1–C6 cardinality fixes (suggestions-reducer, suggestion-parser v0.10.0, instruction-render v0.21.0); live-validation pending |
 | F-43 | MOC-creation skill | 2026-05-21 | `/moc-propose` + `moc-architect` shipped; F-47 blocker cleared; live-validation pending |
 | F-47 | Tomo lifecycle state (frontmatter + byFrontmatter discovery) | 2026-05-21 | XDD 017 all 6 phases; 300 tests |
 | F-49 | `resolve_stem_to_path`/`path_exists` latent bug | 2026-05-26 | Both added to KadoClient (commit f1600e5) |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.1
+# version: 0.21.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -977,7 +977,7 @@ def _build_delete_source_actions(
 
     # (3) move_note origins — completion gate: emit one delete per origin stem
     # only after ALL expected atomics are represented in move_notes (OQ6).
-    # Collect accepted daily stems for the daily_pending check.
+    # Collect accepted daily stems for reason-string annotation (" + daily").
     daily_stems: set[str] = set()
     for day in daily_updates:
         for bucket in ("trackers", "log_entries", "log_links"):

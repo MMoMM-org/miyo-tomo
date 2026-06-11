@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Render N notes + delete gate (C5, C6)"
-status: in_progress
+status: done
 version: "1.0"
 phase: 5
 ---
@@ -27,7 +27,7 @@ phase: 5
 
 Delivers N distinct rendered notes and a source-deletion that fires only after every derived thread is captured.
 
-- [ ] **T5.1 Filename collision guard (C5)** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T5.1 Filename collision guard (C5)** `[activity: backend-logic]` `[parallel: true]`
 
   1. Prime: Read atomic render loop (`:1650-1772`), filename derivation (`:1738-1741`), manifest append (`:1743-1766`) `[ref: SDD/C5, ADR-7]`
   2. Test (RED):
@@ -38,7 +38,7 @@ Delivers N distinct rendered notes and a source-deletion that fires only after e
   4. Validate: `./venv/bin/python -m pytest tests/ -k render`; lint.
   5. Success: N distinct notes per source `[ref: PRD/A6]`
 
-- [ ] **T5.2 Source-deletion completion gate (C6)** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T5.2 Source-deletion completion gate (C6)** `[activity: backend-logic]` `[parallel: true]`
 
   1. Prime: Read `_build_delete_source_actions` (`:866-954`), paired-delete (`:933-952`), build_actions order (`:1018-1066`) `[ref: SDD/C6, Complex Logic]`
   2. Test (RED):
@@ -50,6 +50,6 @@ Delivers N distinct rendered notes and a source-deletion that fires only after e
   4. Validate: render delete-gate tests; lint.
   5. Success: source preserved until all threads captured `[ref: PRD/§8 OQ6]`
 
-- [ ] **T5.3 Phase Validation** `[activity: validate]`
+- [x] **T5.3 Phase Validation** `[activity: validate]`
 
   Run render tests incl. single-thread delete regression; bump `# version:`; lint.

@@ -12,7 +12,7 @@ Tests:
      2 confirmed atomics + 2 move_notes → exactly 1 delete_source (gate passes)
   2. test_two_atomics_only_one_move_note_no_delete
      2 confirmed atomics but only 1 move_note → NO delete (gate defers; OQ6)
-  3. test_two_atomics_one_daily_delete_after_all_three
+  3. test_two_atomics_one_daily_delete_after_all_threads_present
      2 atomics + 1 daily + 2 move_notes → exactly 1 delete (combined reason)
   4. test_keep_origin_any_true_skips_delete
      keep_origin=True on first confirmed item, False on second → no delete

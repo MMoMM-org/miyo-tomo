@@ -1,5 +1,5 @@
 # topic_clusters.py — Pure clustering helper for atomic-note → Proposed MOC.
-# version: 0.2.0
+# version: 0.3.0
 """Group atomic-note candidates into Proposed MOC clusters.
 
 Why this lives in a module of its own:

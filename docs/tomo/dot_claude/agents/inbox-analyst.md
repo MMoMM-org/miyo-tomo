@@ -153,10 +153,26 @@ False-positive safety: tested against a single-topic essay (Oxygen Not Included,
 words, 4 sections) — all trials returned 1 thread with the new prompt; no over-split
 observed.
 
-NEXT lever if under-segmentation persists: make the Pass A enumeration a mandatory
-schema-validated output (emit `topics_enumerated[]` in the result JSON, validated by
-validate-result.py). This was deliberately NOT done here because it adds schema and
-Python complexity; the prompt change is the minimal-cost first intervention.
+TRIED AND REVERTED (2026-06-12): the two follow-up levers below were both implemented,
+live-tested, and rolled back to this 0.17.0 state. The dead-end commits are preserved on
+branch `backup/f41-forcing-field-experiment` if the schema field is ever wanted again.
+
+1. Mandatory `topics_enumerated[]` schema field (was v0.18.0): made the Pass A enumeration
+   a required, schema-validated output. INEFFECTIVE — the model dutifully enumerated 3–8
+   topics yet still emitted the same number of atomics. Enumeration ≠ emission: forcing the
+   list does not force action on it. Worse, the apparent "gap" (enumerated > emitted) was
+   largely a MEASUREMENT ARTIFACT: the un-emitted enumerated topics were appointments and
+   errands (e.g. Apotheke/Zahnarzt/Physio), which correctly route to the daily-log as
+   `log_entry`/`log_link` actions and are NOT atomic-worthy by design. The voice memo
+   genuinely has one evergreen idea, so 1 atomic is correct, not under-segmentation.
+
+2. Opus 4.8 for the analyst step (was v0.19.0): same correct evergreen-vs-appointment
+   discrimination as Sonnet, no measurable segmentation gain, at +57% run cost
+   (20-item Pass-1: ~$22.6 opus-analysts vs ~$14.4 sonnet-analysts; 1.67× per-token).
+   Reverted to Sonnet — not worth the cost for zero demonstrated win.
+
+Conclusion: the 0.17.0 de-biased two-pass PROMPT is the right floor. Segmentation need not
+be 100% (the user edits notes); appointment-vs-evergreen routing already works correctly.
 
 ## Version 0.17.0
 

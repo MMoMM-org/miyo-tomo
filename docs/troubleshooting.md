@@ -51,15 +51,28 @@
 
 A green Tomo Context icon in Obsidian confirms the **socket connection** is up — it does **not** confirm that editor context is flowing or that Hashi is otherwise functioning. Read it as "the pipe is open," not "everything works." If the icon is green but Claude doesn't see your active note, selection, or cursor, the problem is downstream of the connection — start with Hashi's [context guide](https://github.com/MMoMM-org/miyo-tomo-hashi/blob/main/docs/context.md).
 
+### The `橋:<port>` Statusline Indicator Can Lag Behind Reality
+
+Claude Code's statusline shows a Hashi segment — `橋:<port> ✓` (green) when Hashi is reachable, `橋:<port> ✗` (red) when it isn't. This indicator probes the **real host upstream** (`host.docker.internal:<port>`), so green genuinely means Hashi is answering — but it can be **stale for a short window** in two compounding ways:
+
+1. **It is cached for 60 seconds.** A reachability probe on every render would be wasteful, so the result is reused for up to 60s. Toggling Hashi on or off won't flip the indicator until the cache expires.
+2. **It only refreshes when Claude Code re-renders the statusline — i.e. on activity.** While Claude sits idle at the prompt, nothing re-renders, so the segment can show a value older than 60s. Type a message or run a tool and it refreshes (subject to the cache above).
+
+**This is expected, not a bug.** If the indicator disagrees with reality after you've toggled Hashi, do something in the session (or wait past the 60s cache) and it will catch up. The actual bridge connection is unaffected by what the indicator shows.
+
 ### socat "Connection refused" / Port Mismatch
 
-**Symptom:** The container log (visible in `tomo-instance` at launch, or via `docker logs`) shows a line like:
+**Symptom:** The proxy log at `~/.claude/ide/socat.log` inside the container (`tomo-home/.claude/ide/socat.log` on the host) shows repeated lines like:
 
 ```
-2026/05/31 10:02:50 socat[1769] E connect(5, AF=2 0.250.250.254:23027, 16): Connection refused
+2026/05/31 10:02:50 socat[1769] E connect(5, AF=2 192.168.65.254:23027, 16): Connection refused
 ```
+
+These are written to the logfile, **not** the interactive session — a dead upstream no longer floods the terminal (fixed in #48).
 
 **Cause:** The container proxy tried to reach Hashi at `host.docker.internal:<port>` (here port `23027`) but nothing was listening there. Almost always this is a **port mismatch** — Tomo Context and Hashi are set to different ports — or Hashi isn't running / isn't listening yet.
+
+> If the address in the error is in the `0.x.x.x` range (e.g. `0.250.250.254`) rather than a real gateway IP, `host.docker.internal` isn't resolving — relaunch with an up-to-date `begin-tomo.sh` (`update-tomo.sh`), which maps `host.docker.internal:host-gateway` on the container (#48). An old launcher without that mapping is the usual cause of a *permanent* connection-refused loop.
 
 **Fix:**
 1. Check the port Hashi is actually listening on in its plugin settings (Hashi's default is `23027`).

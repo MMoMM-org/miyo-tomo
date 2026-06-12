@@ -1111,7 +1111,7 @@ def main() -> int:
                         cluster_candidates.append(
                             ClusterCandidate(
                                 section_id=atomic_key,
-                                topic=topic_raw,
+                                topic=topic_raw,  # strip_moc_marker is applied in build_topic_clusters
                                 parent=parent,
                                 tags=item_tags,
                             )

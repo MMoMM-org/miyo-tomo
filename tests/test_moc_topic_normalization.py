@@ -102,6 +102,24 @@ class TestStripMocMarker:
     def test_empty_string(self):
         assert strip_moc_marker("") == ""
 
+    # W1: word-boundary guards — must NOT strip mid-word "moc"
+    def test_no_strip_biomoc(self):
+        """'biomoc' ends with 'moc' but has no boundary — must be unchanged."""
+        assert strip_moc_marker("biomoc") == "biomoc"
+
+    def test_no_strip_thermoc(self):
+        """'Thermoc' ends with 'moc' but has no boundary — must be unchanged."""
+        assert strip_moc_marker("Thermoc") == "Thermoc"
+
+    def test_no_strip_mocha(self):
+        """'Mocha' does not end with 'moc' — must be unchanged."""
+        assert strip_moc_marker("Mocha") == "Mocha"
+
+    # W3: iterative strip — double-suffix must be fully removed in one call
+    def test_double_suffix_stripped(self):
+        """'Board Games (MOC) (MOC)' must yield 'Board Games' (iterative strip)."""
+        assert strip_moc_marker("Board Games (MOC) (MOC)") == "Board Games"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Clustering merges mixed-form topics into one cluster

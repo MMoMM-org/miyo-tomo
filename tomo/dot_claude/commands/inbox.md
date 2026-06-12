@@ -4,7 +4,7 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --recover"
 ---
 # /inbox
-# version: 0.11.0
+# version: 0.12.0
 
 ## Arguments
 
@@ -80,6 +80,8 @@ Report to user:
 - If `pending_approval` is non-empty: "Waiting for approval on: [list paths]"
 
 If `drift_indicators` is non-empty, surface those as warnings.
+
+For any drift indicator with `type` == `orphaned_state`, surface its `detail` prominently as its own line (not buried in the warning list) and recommend running `/inbox --recover`.
 
 Exit.
 

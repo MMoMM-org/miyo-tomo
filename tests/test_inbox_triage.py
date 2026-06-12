@@ -884,6 +884,85 @@ class TestDriftDetection:
 
 
 # ---------------------------------------------------------------------------
+# Orphaned-state detection (step 8b) — #37
+# ---------------------------------------------------------------------------
+
+
+class TestOrphanedStateDetection:
+    def test_captured_with_no_downstream_docs_flags_orphaned(self):
+        """captured items + every downstream bucket empty → one orphaned_state."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            captured_hits=[
+                {"path": INBOX_PATH + "a.md", "modified": ""},
+                {"path": INBOX_PATH + "b.md", "modified": ""},
+            ],
+        )
+
+        drift = mod.detect_orphaned_state(state)
+
+        assert len(drift) == 1
+        assert drift[0]["type"] == "orphaned_state"
+        assert drift[0]["path"] == INBOX_PATH
+        assert "2 captured source items" in drift[0]["detail"]
+        assert "--recover" in drift[0]["detail"]
+
+    def test_single_captured_uses_singular(self):
+        """Detail string is grammatical for a single captured item."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            captured_hits=[{"path": INBOX_PATH + "a.md", "modified": ""}],
+        )
+
+        drift = mod.detect_orphaned_state(state)
+
+        assert len(drift) == 1
+        assert "1 captured source item " in drift[0]["detail"]
+
+    def test_captured_with_pending_suggestion_not_orphaned(self):
+        """A surviving pending-approval suggestions doc → no orphaned_state."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            captured_hits=[{"path": INBOX_PATH + "a.md", "modified": ""}],
+            pending_approval=[{
+                "path": INBOX_PATH + "s.md",
+                "doc_type": "suggestions",
+                "message": "",
+            }],
+        )
+
+        assert mod.detect_orphaned_state(state) == []
+
+    def test_captured_with_instructions_not_orphaned(self):
+        """A surviving instructions doc → no orphaned_state."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            captured_hits=[{"path": INBOX_PATH + "a.md", "modified": ""}],
+            instructions_hits=[_instructions_hit(
+                INBOX_PATH + "i.md", sources=[{"path": INBOX_PATH + "a.md"}],
+            )],
+        )
+
+        assert mod.detect_orphaned_state(state) == []
+
+    def test_no_captured_items_not_orphaned(self):
+        """No captured items → no orphaned_state regardless of other buckets."""
+        mod = _load_module()
+
+        state = mod.TriageState(inbox_path=INBOX_PATH)
+
+        assert mod.detect_orphaned_state(state) == []
+
+
+# ---------------------------------------------------------------------------
 # Action determination (step 9) — priority order
 # ---------------------------------------------------------------------------
 

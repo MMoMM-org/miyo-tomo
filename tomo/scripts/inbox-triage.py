@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.0
+# version: 0.9.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -565,6 +565,51 @@ def detect_drift(
 
 
 # ---------------------------------------------------------------------------
+# Step 8b: detect orphaned state
+# ---------------------------------------------------------------------------
+
+def detect_orphaned_state(state: TriageState) -> list[dict]:
+    """Flag captured source items whose downstream docs have all vanished.
+
+    mark-captured writes tomo.state=captured only after a suggestions doc was
+    written, so captured items normally have a surviving downstream doc
+    (pending-approval suggestion → approved → instructions). When captured
+    items exist but every downstream bucket is empty, the suggestions/
+    instructions docs were lost (e.g. deleted before approval) and the Pass-1
+    analysis is stranded — triage would otherwise route to idle and the loss
+    would be silent.
+
+    Advisory only: this reuses the buckets already fetched (no extra Kado
+    calls) and emits a single aggregate indicator. It cannot distinguish a
+    genuinely orphaned run from a fully-applied batch that was archived while
+    its captured source items still linger in the inbox (source items have a
+    single terminal state and Tomo never moves them out), so the detail wording
+    leaves that to the user and the indicator never changes the routed action.
+    """
+    downstream = (
+        state.pending_approval
+        + state.approved_suggestions
+        + state.approved_fan
+        + state.approved_moc_proposals
+        + state.instructions_hits
+    )
+    if not state.captured_hits or downstream:
+        return []
+
+    n = len(state.captured_hits)
+    plural = "s" if n != 1 else ""
+    return [{
+        "path": state.inbox_path,
+        "type": "orphaned_state",
+        "detail": (
+            f"{n} captured source item{plural} but no surviving "
+            f"suggestion/instruction docs — run /inbox --recover to reprocess "
+            f"if you did not already apply and archive them"
+        ),
+    }]
+
+
+# ---------------------------------------------------------------------------
 # Step 9: determine action
 # ---------------------------------------------------------------------------
 
@@ -774,7 +819,8 @@ def main(
     # Step 8: drift
     cache_dir = output_dir / "inbox-cache"
     new_drift = detect_drift(state, state.manifest, cache_dir)
-    all_drift = state.drift_indicators + new_drift
+    # Step 8b: orphaned-state consistency check (reuses already-fetched buckets)
+    all_drift = state.drift_indicators + new_drift + detect_orphaned_state(state)
 
     # Step 9: action
     action, idle_reasons = determine_action(state, to_process)

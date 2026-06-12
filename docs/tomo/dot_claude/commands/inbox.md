@@ -22,6 +22,10 @@ WHY: The `transcribe` action dispatches `voice-transcriber` directly from `/inbo
 
 WHY: When the triage script determines there is nothing to process, the command reads `idle_reasons` and `pending_approval` from the routing plan and reports them directly to the user. This preserves the user's ability to understand why nothing happened. Earlier versions of the command impersonated the orchestrator unconditionally and relied on the orchestrator's own early-exit to surface "inbox is empty" — but that early-exit message was buried in orchestrator output and easy to miss. The idle branch in the router surfaces the reasons at the command level where they are immediately visible.
 
+## Orphaned-State Drift Is Surfaced Prominently (#37)
+
+WHY: `inbox-triage.py` emits an `orphaned_state` drift indicator when source items are marked `tomo.state=captured` but every downstream doc (suggestions / instructions) has vanished — typically a suggestions doc deleted before approval, which strands the Pass-1 analysis. Triage routes such a state to `idle`, so without explicit surfacing the loss would be silent. The command lifts the indicator's `detail` out of the generic warning list and pairs it with a `/inbox --recover` recommendation. It is advisory, not action-changing: a fully-applied-then-archived batch whose captured source items still linger in the inbox is indistinguishable from a genuinely orphaned one (source items have a single terminal state and Tomo never moves them out of the inbox), so the user — not the router — decides whether to recover.
+
 ## --pass1/--pass2/--recover Are Flag Passthroughs to Triage
 
 WHY: Force flags are passed through to `inbox-triage.py` (`--pass1` → `--force-pass1`, `--pass2` → `--force-pass2`, `--recover` → `--recover`). The triage script owns the override logic and produces the correct routing plan regardless. The command does not need to interpret these flags itself — it just forwards them and routes on whatever action the triage script decides. This keeps the override semantics in one place (triage) rather than split between the command and the script.

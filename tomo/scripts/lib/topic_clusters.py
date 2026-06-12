@@ -66,6 +66,21 @@ class Cluster(TypedDict):
     tags: list[str]
 
 
+# ── Public helpers ───────────────────────────────────────────────────────────
+
+
+def strip_moc_marker(topic: str) -> str:
+    """Remove a trailing MOC marker from a topic phrase, returning the bare form.
+
+    Handles: "X MOC", "X (MOC)", "X(MOC)" (case-insensitive, whitespace-tolerant).
+    Guard: returns the original string unchanged when stripping would produce an
+    empty result (e.g. bare "MOC" or "(MOC)" are not stripped).
+    Only trailing markers are removed — leading/mid-string occurrences are kept.
+    """
+    stripped = re.sub(r"\s*\(?\s*moc\s*\)?\s*$", "", topic.strip(), flags=re.IGNORECASE)
+    return stripped if stripped else topic
+
+
 # ── Internal helpers (kept private — `suggestions-reducer.py` re-exports its
 #     own `normalise_topic` for backwards compatibility with existing tests
 #     that import it by name) ─────────────────────────────────────────────────
@@ -165,7 +180,7 @@ def build_topic_clusters(
     """
     grouped: dict[str, list[tuple[str, str, str, list[str]]]] = {}
     for candidate in items:
-        topic_raw = (candidate.topic or "").strip()
+        topic_raw = strip_moc_marker((candidate.topic or "").strip())
         if not topic_raw:
             continue
         norm = normalise_topic(topic_raw)
@@ -182,7 +197,7 @@ def build_topic_clusters(
     for _norm, hits in grouped.items():
         if len(hits) < threshold:
             continue
-        display_topic = hits[0][1]  # first occurrence's original casing
+        display_topic = hits[0][1]  # first occurrence's bare casing
         parents = [h[2] for h in hits if h[2]]
         parent = max(set(parents), key=parents.count) if parents else ""
         # Tags: compute shared parent tags instead of dumping all leaf tags.

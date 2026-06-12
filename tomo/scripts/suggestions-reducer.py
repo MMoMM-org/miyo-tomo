@@ -46,6 +46,7 @@ from lib.topic_clusters import (  # noqa: E402, F401
     ClusterCandidate,
     build_topic_clusters,
     normalise_topic,  # re-export for tests/test-004-phase3.sh
+    strip_moc_marker,
 )
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
 
@@ -207,7 +208,7 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
             lines.append(moc_link_line(moc))
 
     if action.get("needs_new_moc"):
-        topic = action.get("proposed_moc_topic") or ""
+        topic = strip_moc_marker(action.get("proposed_moc_topic") or "")
         if topic:
             lines.append("")
             lines.append(

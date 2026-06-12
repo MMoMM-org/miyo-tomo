@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.7.1
+# version: 0.8.0
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -240,9 +240,16 @@ hashi_check() {
     return
   fi
 
-  # TCP-probe 127.0.0.1:<port> — ≤3s timeout, crash-proof
+  # TCP-probe the real host upstream <host>:<port> — ≤3s timeout, crash-proof.
+  # Target is host.docker.internal (the host where Hashi listens), NOT 127.0.0.1:
+  # inside the container 127.0.0.1:<port> is the socat listener, which accepts
+  # unconditionally before its upstream connect() — probing it yields a false
+  # green whenever socat runs, regardless of Hashi (#48). HASHI_PROBE_HOST is an
+  # injectable override for tests; default resolves via the docker --add-host
+  # host-gateway mapping.
+  local probe_host="${HASHI_PROBE_HOST:-host.docker.internal}"
   local probe_rc=1
-  ( timeout 3 bash -c ": </dev/tcp/127.0.0.1/${port}" ) 2>/dev/null
+  ( timeout 3 bash -c ": </dev/tcp/${probe_host}/${port}" ) 2>/dev/null
   probe_rc=$?
 
   if [[ "$probe_rc" -eq 0 ]]; then

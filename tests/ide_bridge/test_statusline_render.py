@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_statusline_render.py — Pytest-driven tests for tomo-statusline.sh (T3.2, T4.3).
 
 Feeds JSON on stdin, stubs the probes (PATH shims or injected env vars),
@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import subprocess
 from pathlib import Path
 
@@ -356,6 +357,69 @@ def test_hashi_no_tags_substate(tmp_path):
             f"Hashi must not show Tags sub-state (state={hashi_state}).\n"
             f"bridge segment: {bridge_segment!r}\nstdout: {r.stdout!r}"
         )
+
+
+# ── Live-path probe semantics: target the upstream, not the socat listener (#48)
+#
+# The cache-seeded tests above bypass the live probe. These drive the real
+# hashi_check() path (no cache seed) and inject HASHI_PROBE_HOST so the probe
+# target is controllable. They lock in the #48 fix: green must reflect a real
+# open upstream port, not merely "something is listening on the lock port".
+
+
+def test_hashi_live_probe_reachable_upstream_renders_green(tmp_path):
+    """#48: live probe to an OPEN upstream port → 橋:<port> ✓ (green).
+
+    Opens a real listener, names the lock file after its port, and points
+    HASHI_PROBE_HOST at 127.0.0.1 so the /dev/tcp connect succeeds.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        port = srv.getsockname()[1]
+        r = _run_statusline(
+            mcp_json_content=_make_mcp_json(23026),
+            kado_cache_content="ok",
+            lock_files={f"{port}.lock": _LOCK_JSON},
+            # no hashi_cache_content → live hashi_check() runs
+            extra_env={"HASHI_PROBE_HOST": "127.0.0.1"},
+            tmp_path=tmp_path,
+        )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    assert f"橋:{port}" in r.stdout, (
+        f"Expected '橋:{port}' in output.\nstdout: {r.stdout!r}"
+    )
+    assert "✓" in r.stdout and ANSI_GREEN in r.stdout, (
+        f"Expected green ✓ for a reachable upstream.\nstdout: {r.stdout!r}"
+    )
+
+
+def test_hashi_live_probe_dead_upstream_renders_red(tmp_path):
+    """#48 regression: live probe to a CLOSED upstream port → 橋:<port> ✗ (red).
+
+    This is the core fix: previously the probe hit 127.0.0.1:<port> (the socat
+    listener, always accepting) and showed false-green. With the probe pointed
+    at the real upstream and nothing listening there, it must go red.
+    """
+    # Reserve then release a port so it is reliably closed during the probe.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tmp_sock:
+        tmp_sock.bind(("127.0.0.1", 0))
+        closed_port = tmp_sock.getsockname()[1]
+    r = _run_statusline(
+        mcp_json_content=_make_mcp_json(23026),
+        kado_cache_content="ok",
+        lock_files={f"{closed_port}.lock": _LOCK_JSON},
+        # no hashi_cache_content → live hashi_check() runs
+        extra_env={"HASHI_PROBE_HOST": "127.0.0.1"},
+        tmp_path=tmp_path,
+    )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    assert f"橋:{closed_port}" in r.stdout, (
+        f"Expected '橋:{closed_port}' in output.\nstdout: {r.stdout!r}"
+    )
+    assert "✗" in r.stdout and ANSI_RED in r.stdout, (
+        f"Expected red ✗ for a dead upstream (no false-green).\nstdout: {r.stdout!r}"
+    )
 
 
 # ── Color codes retained for ALL states (F7-AC3) ─────────────────────────────

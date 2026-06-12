@@ -3,7 +3,7 @@
 # Sets up git config (fallback only), runs on-start hook if present,
 # spawns the Tomo Context (socat IDE Bridge) proxy and enables IDE auto-connect
 # when exactly one lock file is present, then launches Claude Code.
-# version: 0.4.1
+# version: 0.4.2
 set -e
 
 # ── Git config (fallback only) ───────────────────────────
@@ -49,7 +49,12 @@ if [ -d "$IDE_DIR" ]; then
     elif [ "$_lock_count" -eq 1 ]; then
         _lock_file="$_lock_list"
         _port=$(basename "$_lock_file" .lock)
-        socat TCP-LISTEN:"$_port",fork,reuseaddr,bind=127.0.0.1 TCP:host.docker.internal:"$_port" &
+        # Redirect socat stderr to a logfile, not the interactive TTY: with a
+        # dead upstream socat logs `E connect(...) Connection refused` on every
+        # accepted connection, flooding the session and corrupting OSC-52
+        # clipboard escapes (#48). The log keeps the connect history recoverable.
+        socat TCP-LISTEN:"$_port",fork,reuseaddr,bind=127.0.0.1 TCP:host.docker.internal:"$_port" \
+            2>>"$IDE_DIR/socat.log" &
         export CLAUDE_CODE_AUTO_CONNECT_IDE=true
     fi
     unset _lock_list _lock_count _lock_file _port

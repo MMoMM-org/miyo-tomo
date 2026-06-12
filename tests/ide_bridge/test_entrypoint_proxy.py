@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_entrypoint_proxy.py — Pytest-driven tests for the IDE Bridge proxy spawn
 in docker/entrypoint.sh.
 
@@ -409,6 +409,26 @@ def test_entrypoint_version_is_040():
     assert version >= (0, 4, 0), (
         f"entrypoint.sh version {match.group(1)} is below 0.4.0. "
         "Must be bumped to 0.4.0 for the CLAUDE_CODE_AUTO_CONNECT_IDE change."
+    )
+
+
+def test_socat_stderr_redirected_to_logfile():
+    """#48: socat stderr must be redirected off the interactive TTY.
+
+    With a dead upstream socat logs `E connect(...) Connection refused` per
+    accepted connection, flooding the session and corrupting OSC-52 clipboard
+    escapes. Redirection is shell-level (not an argv token), so the argv-shim
+    tests can't see it — assert it statically against the source.
+    """
+    block = _extract_ide_bridge_block()
+    assert block, "Could not extract IDE Bridge block from entrypoint.sh"
+    socat_lines = [ln for ln in block.splitlines() if "socat TCP-LISTEN" in ln]
+    assert socat_lines, "No socat TCP-LISTEN invocation found in entrypoint.sh"
+    # The redirect may be on the socat line or a continuation; assert the block
+    # routes socat stderr to the ide socat.log rather than the TTY.
+    assert "2>>" in block and "socat.log" in block, (
+        "socat invocation must redirect stderr to ~/.claude/ide/socat.log (#48).\n"
+        f"block:\n{block}"
     )
 
 

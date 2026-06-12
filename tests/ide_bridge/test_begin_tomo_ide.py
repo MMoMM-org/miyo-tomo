@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """test_begin_tomo_ide.py — Pytest-driven tests for the IDE Bridge banner and
 socat drift rebuild in scripts/lib/begin-tomo.sh.template (T3.1).
 
@@ -566,6 +566,21 @@ def test_voice_banner_unchanged(tmp_path):
     combined = result.stdout + result.stderr
     assert "ENABLED" in combined or "Voice" in combined, (
         f"Voice banner missing after IDE changes.\nstdout: {result.stdout}\nstderr:{result.stderr}"
+    )
+
+
+def test_docker_run_adds_host_gateway_mapping():
+    """#48: docker run must map host.docker.internal:host-gateway.
+
+    The container statusline probe targets host.docker.internal:<port>; without
+    this --add-host the name only resolves on Docker Desktop and would fail-RED
+    on Linux even when Hashi is up. Static-source check — the suite stubs the
+    probe and never reaches a live `docker run`.
+    """
+    content = TEMPLATE.read_text()
+    assert "--add-host" in content and "host.docker.internal:host-gateway" in content, (
+        "begin-tomo.sh.template docker run must pass "
+        "--add-host host.docker.internal:host-gateway (#48)."
     )
 
 

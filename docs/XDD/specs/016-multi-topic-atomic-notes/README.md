@@ -1,7 +1,8 @@
 # XDD 016 — Multi-topic detection for atomic-note-worthy items
 
-**Status:** PRD draft — 2026-05-07
-**Current phase:** requirements.md (PRD)
+**Status:** Implemented — shipped 2026-06-11 (6 phases, 17 tasks)
+**Current phase:** Implemented
+**Last Updated:** 2026-06-11
 **Backlog origin:** F-41 (Should)
 **Triggering incident:** 2026-05-01 /inbox run, voice memo
 `Apothekerpfädchen 11__2026-04-22 10-14-41.md` — 183-sec transcript with
@@ -60,6 +61,14 @@ See requirements.md §8 (OQ1–OQ8). Tentative leans noted; stakeholder
 input required before SDD locks the surface — particularly OQ4
 (daily-log emission semantics in mixed-mode items) and OQ7
 (length-precheck token budget).
+
+## Decisions Log
+
+| Date | Decision | Notes |
+|------|----------|-------|
+| 2026-06-11 | Implementation complete | F-41 multi-topic atomic notes shipped across 6 phases on `feat/f-41-multi-topic-atomic-notes`. C1–C6 all closed: analyst Step 7.5 segmentation (>200w gate), N `create_atomic_note` wire format with shared `source_stem` (ADR-2/4), reducer N-block rendering, parser N-entry parsing + FAN resolve N, render filename collision guard (C5/ADR-7) + source-deletion completion gate (C6/ADR-6). `instruction-render` v0.21.0, parser v0.10.0. Tests: full suite 1001 passed / 1 skipped; 9 E2E cases (T6.1) + collision-guard & delete-gate unit suites. Docs: tier-3 multi-topic section + parser/render WHY-mirrors + backlog #32 code-complete (A11). Deferred to manual in-container validation: live cost measurement (≤+10% vs F-32; analytical bound in `cost-analysis.md`) and single-thread byte-identical render diff. |
+| 2026-06-12 | Deferred validations closed | Both post-ship deferred items resolved. **Single-thread render diff:** ✅ covered by `test_single_thread_no_regression` (A10 case 1) — ≤200-word items skip segmentation and are byte-identical to pre-feature; the per-atomic `### S0k` header on long single-topic items is the intended OQ5 reversal, not a regression. **Live cost ≤+10% vs F-32:** ✅ CON-3 accepted on the analytical bound (~3–6% typical, single-digit % aggressive — `cost-analysis.md` §3.3, now `status: accepted`). A dedicated confirmatory run was declined — no same-architecture F-32 control exists to diff against, so a measured total cannot be cleanly compared to the +10% gate; the §4 procedure is retained for opportunistic capture on the next natural production Pass-1 run. Separately: post-ship tuning (forcing field v0.18.0, Opus v0.19.0) both reverted — analyst stays Sonnet v0.17.0 (see `docs/ai/memory/decisions.md` 2026-06-12). |
+| 2026-06-11 | OQ5 reversed — per-atomic flat-numbered headers | Live validation showed the second atomic in a multi-source block had no header and was unrecognisable as a distinct proposal. Decision reversed: each atomic now gets its own flat-numbered `### S0k — title` header (globally across the whole doc). `suggestion_id` assigned per-atomic in reducer; renderer emits one header per atomic. Parser unchanged — `split_into_sections` already handles per-atomic `### SNN` markers. `suggestions-reducer.py` → v1.9.0, `suggestions-render.py` → v0.7.0. E2E id assertions updated to flat scheme (S01/S02 not S01/S01#1). See `solution.md` OQ5 Reversal ADR for full rationale. |
 
 ## Notes
 

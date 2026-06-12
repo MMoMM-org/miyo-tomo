@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.7.1
+# version: 1.9.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -46,6 +46,7 @@ from lib.topic_clusters import (  # noqa: E402, F401
     ClusterCandidate,
     build_topic_clusters,
     normalise_topic,  # re-export for tests/test-004-phase3.sh
+    strip_moc_marker,
 )
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
 
@@ -117,16 +118,30 @@ def _location_link(location: str) -> str:
     return f"[[{loc}/]]" if loc else ""
 
 
+def _atomic_survives(action: dict) -> bool:
+    """An atomic survives coexistence if it is worthy (>=0.5) or force_atomic.
+
+    `force_atomic` is the action-level flag the analyst sets when the user
+    ticked **Force Atomic Note**; it overrides a sub-threshold worthiness.
+    """
+    if action.get("force_atomic"):
+        return True
+    return action.get("atomic_note_worthiness", 0) >= 0.5
+
+
 def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     """Deterministic coexistence enforcement (analyst Step 9 table).
 
-    If an item has both create_atomic_note AND update_daily with log_entry,
-    resolve based on worthiness:
-      >= 0.5: keep create_atomic_note, convert log_entry to log_link
-      <  0.5: drop create_atomic_note, keep log_entry
+    F-41: an item may carry N create_atomic_note actions (one per topic) plus
+    an update_daily with a log_entry. Resolve per-atomic instead of inspecting
+    only the first:
+      - Survivors = atomics with worthiness >= 0.5 OR force_atomic truthy.
+      - Sub-worthy atomics are dropped individually.
+      - If >=1 survivor remains, convert every log_entry → log_link targeting
+        the FIRST survivor's title/stem; otherwise keep the log_entry as-is.
     """
-    has_atomic = any(a.get("kind") == "create_atomic_note" for a in actions)
-    if not has_atomic:
+    atomics = [a for a in actions if a.get("kind") == "create_atomic_note"]
+    if not atomics:
         return actions
 
     has_log_entry = False
@@ -141,20 +156,26 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     if not has_log_entry:
         return actions
 
-    atomic_action = next(a for a in actions if a.get("kind") == "create_atomic_note")
-    worthiness = atomic_action.get("atomic_note_worthiness", 0)
+    survivors = [a for a in atomics if _atomic_survives(a)]
+    sub_worthy = [a for a in atomics if not _atomic_survives(a)]
 
-    if worthiness >= 0.5:
+    # Drop sub-worthy atomics individually, preserving order of the rest.
+    if sub_worthy:
+        drop = {id(a) for a in sub_worthy}
+        actions = [a for a in actions if id(a) not in drop]
+
+    if survivors:
+        first = survivors[0]
+        target = first.get("suggested_title") or first.get("stem", "")
         for a in actions:
             if a.get("kind") != "update_daily":
                 continue
             new_updates = []
             for u in a.get("updates") or []:
                 if u.get("kind") == "log_entry":
-                    stem = atomic_action.get("suggested_title") or atomic_action.get("stem", "")
                     new_updates.append({
                         "kind": "log_link",
-                        "target_stem": stem,
+                        "target_stem": target,
                         "time": u.get("time"),
                         "time_source": u.get("time_source"),
                         "position": u.get("position"),
@@ -163,8 +184,6 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
                 else:
                     new_updates.append(u)
             a["updates"] = new_updates
-    else:
-        actions = [a for a in actions if a.get("kind") != "create_atomic_note"]
 
     return actions
 
@@ -189,7 +208,7 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
             lines.append(moc_link_line(moc))
 
     if action.get("needs_new_moc"):
-        topic = action.get("proposed_moc_topic") or ""
+        topic = strip_moc_marker(action.get("proposed_moc_topic") or "")
         if topic:
             lines.append("")
             lines.append(
@@ -323,6 +342,17 @@ def _ensure_moc_suffix(title: str) -> str:
     if title.endswith(" MOC"):
         return title[:-4] + _MOC_SUFFIX
     return title + _MOC_SUFFIX
+
+
+def _atomic_id(section_id: str, atomic_idx: int) -> str:
+    """Per-atomic cluster/title key within a source section (F-41).
+
+    A source may now emit N atomics. The 0th keeps the bare section_id so the
+    single-thread case is byte-identical to the pre-F-41 keying (CON-2); later
+    atomics get an `#idx` suffix so their titles do not overwrite each other in
+    `section_titles` and resolve to their own atomic in `_enrich_proposed_mocs`.
+    """
+    return section_id if atomic_idx == 0 else f"{section_id}#{atomic_idx}"
 
 
 def _enrich_proposed_mocs(
@@ -944,6 +974,13 @@ def main() -> int:
     stem_log_links: dict[str, list[dict]] = {}
     # stems whose content is fully captured in daily note(s) — source can be deleted
     daily_only_stems: set[str] = set()
+    # F-41 T1: global flat counter for suggestion_ids (S01, S02, …); increments
+    # for every rendered create_atomic_note across all sources.  Daily-only items
+    # (0 atomics) do NOT increment this counter.
+    suggestion_counter: int = 0
+    # title -> flat suggestion_id; populated as atomics are rendered so that
+    # log_link.source_section can reference the correct suggestion_id.
+    title_to_suggestion_id: dict[str, str] = {}
 
     for idx, stem in enumerate(done_stems, start=1):
         result_path = items_dir / f"{stem}.result.json"
@@ -958,7 +995,25 @@ def main() -> int:
         section_id = f"S{idx:02d}"
         rendered_actions: list[dict] = []
         had_update_daily = False
+        # F-41: index atomics within this source so each gets a distinct
+        # cluster/title key (see _atomic_id). 0th keeps the bare section_id.
+        atomic_idx = 0
         actions = _enforce_coexistence(result.get("actions", []))
+        # F-41 T1 W1: pre-pass — assign flat suggestion_ids to all
+        # create_atomic_note actions before the main loop processes
+        # update_daily.  This makes log_link.source_section resolution
+        # order-independent: title_to_suggestion_id is fully populated
+        # regardless of whether update_daily appears before or after the
+        # atomics in actions[].
+        _pre_counter = suggestion_counter
+        for _pre_action in actions:
+            if _pre_action.get("kind") == "create_atomic_note":
+                _pre_counter += 1
+                _pre_title = (
+                    (_pre_action.get("suggested_title") or "").strip()
+                    or stem
+                )
+                title_to_suggestion_id[_pre_title] = f"S{_pre_counter:02d}"
         for action in actions:
             kind = action.get("kind")
             renderer = RENDERERS.get(kind)
@@ -1007,6 +1062,14 @@ def main() -> int:
                             })
                         elif ukind == "log_link":
                             target = u.get("target_stem", stem)
+                            # F-41 T1: source_section for atomic-derived log_links
+                            # must reference the flat suggestion_id of the atomic,
+                            # not the per-source section_id.  title_to_suggestion_id
+                            # is pre-populated before this loop so the lookup is
+                            # order-independent (W1).
+                            log_link_source_section = title_to_suggestion_id.get(
+                                target, section_id
+                            )
                             daily_groups[daily_stem]["log_links"].append({
                                 "target_stem": target,
                                 "time": u.get("time"),
@@ -1014,7 +1077,7 @@ def main() -> int:
                                 "position": u.get("position"),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
-                                "source_section": section_id,
+                                "source_section": log_link_source_section,
                             })
                             # Record for per-item Material für mirror
                             stem_log_links.setdefault(stem, []).append({
@@ -1025,29 +1088,44 @@ def main() -> int:
             else:
                 rendered = renderer(action, stem)
             if rendered is not None:
-                rendered_actions.append({"kind": kind, "rendered_md": rendered})
+                rendered_action: dict = {"kind": kind, "rendered_md": rendered}
+                # F-41 T1: assign a flat global suggestion_id to each rendered
+                # atomic so the renderer (T2) can display SNN headers.
+                if kind == "create_atomic_note":
+                    suggestion_counter += 1
+                    suggestion_id_flat = f"S{suggestion_counter:02d}"
+                    rendered_action["suggestion_id"] = suggestion_id_flat
+                rendered_actions.append(rendered_action)
 
             # Collect Proposed-MOC candidates from atomic-note actions; the
             # actual normalisation + threshold + parent-vote + shared-tag fold
             # happens in `build_topic_clusters` after the action loop completes.
-            if kind == "create_atomic_note" and action.get("needs_new_moc"):
-                topic_raw = (action.get("proposed_moc_topic") or "").strip()
-                if topic_raw:
-                    cls = action.get("classification") or {}
-                    parent = cls.get("category") or ""
-                    item_tags = [t for t in (action.get("tags_to_add") or []) if t]
-                    cluster_candidates.append(
-                        ClusterCandidate(
-                            section_id=section_id,
-                            topic=topic_raw,
-                            parent=parent,
-                            tags=item_tags,
-                        )
-                    )
-            # Record section_id → title for note_titles post-processing.
             if kind == "create_atomic_note":
+                atomic_key = _atomic_id(section_id, atomic_idx)
+                if action.get("needs_new_moc"):
+                    topic_raw = (action.get("proposed_moc_topic") or "").strip()
+                    if topic_raw:
+                        cls = action.get("classification") or {}
+                        parent = cls.get("category") or ""
+                        item_tags = [t for t in (action.get("tags_to_add") or []) if t]
+                        cluster_candidates.append(
+                            ClusterCandidate(
+                                section_id=atomic_key,
+                                topic=topic_raw,  # strip_moc_marker is applied in build_topic_clusters
+                                parent=parent,
+                                tags=item_tags,
+                            )
+                        )
+                # Record per-atomic key → title for note_titles post-processing.
                 title = (action.get("suggested_title") or "").strip() or stem
-                section_titles[section_id] = title
+                section_titles[atomic_key] = title
+                # F-41 T1: keep title_to_suggestion_id current for any callers
+                # that read it after the main loop.  The pre-pass already wrote
+                # this entry; the update here uses suggestion_id_flat (already
+                # computed above) rather than reconstructing from the counter.
+                if rendered is not None:
+                    title_to_suggestion_id[title] = suggestion_id_flat
+                atomic_idx += 1
 
         # The per-item `Material für [[daily]]` mirror block is gone as of
         # 2026-04-22 — the top Daily Notes Updates block owns the log_link

@@ -7,6 +7,7 @@
   "actions": [
     {
       "kind": "create_atomic_note",
+      "source_stem": "<SOURCE_STEM>",
       "suggested_title": "<SUGGESTED_TITLE>",
       "template": "<TEMPLATE>",
       "location": "<LOCATION>",
@@ -51,6 +52,7 @@
           "content": "<CONTENT>",
           "reason": "<REASON>",
           "confidence": 0.0,
+          "position": "after_last_line",
           "time": "<TIME>",
           "time_source": "<TIME_SOURCE>"
         },
@@ -59,10 +61,12 @@
           "target_stem": "<TARGET_STEM>",
           "reason": "<REASON>",
           "confidence": 0.0,
+          "position": "after_last_line",
           "time": "<TIME>",
           "time_source": "<TIME_SOURCE>"
         }
-      ]
+      ],
+      "daily_note_stem": "<DAILY_NOTE_STEM>"
     },
     {
       "kind": "link_to_moc",
@@ -85,5 +89,6 @@
     "source": "filename"
   },
   "issues": [],
-  "duration_ms": 0
+  "duration_ms": 0,
+  "force_atomic": false
 }

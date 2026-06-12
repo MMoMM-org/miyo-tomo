@@ -145,6 +145,81 @@ def _resolve_doc_for_furano() -> str:
     ])
 
 
+def _resolve_doc_for_furano_two_blocks() -> str:
+    """Force-Atomic Resolve doc with TWO approved atomic blocks under S01.
+
+    Mirrors the multi-block render layout produced by suggestions-reducer.py:
+    N atomics concatenated under the same ### SNN heading. Each block begins
+    with a **Source:** field line — the boundary used by
+    split_section_into_blocks — followed by **Suggested name:** and the rest
+    of the fields (same order as _atomic_block in test_suggestion_parser_multi_atomic.py).
+    """
+    return "\n".join([
+        "---",
+        "type: tomo-suggestions",
+        "generated: 2026-04-23T11:00:00Z",
+        'tomo_version: "0.1.0"',
+        "profile: miyo",
+        "source_items: 1",
+        "run_id: 2026-04-23T11-00-00Z-test03",
+        "---",
+        "",
+        "# Inbox Suggestions — Force-Atomic Resolve — 2026-04-23",
+        "",
+        "- [x] Approved",
+        "",
+        "## Summary",
+        "",
+        "- Items processed: 1",
+        "- Sections: 1",
+        "",
+        "## Suggestions",
+        "",
+        "### S01 — Furano trip reflections",
+        "",
+        "**Source:** [[Furano]]",
+        "**Suggested name:** Furano trip reflections",
+        "**Type:** fleeting_note",
+        "**Template:** Atomic Note.md",
+        "**Destination:** Atlas/202 Notes/",
+        "**Classification:** 2600 - Applied Sciences",
+        "",
+        "**Decision (atomic note):**",
+        "- [x] Approve",
+        "- [ ] Keep in inbox",
+        "- [ ] Skip (keep in inbox)",
+        "- [ ] Delete source",
+        "",
+        "**Tags:**",
+        "- topic/travel",
+        "",
+        "**Parent MOC:** [[Japan]]",
+        "",
+        "**Summary:** Day trip reflections from Furano and Biei.",
+        "",
+        "**Source:** [[Furano]]",
+        "**Suggested name:** Furano lavender fields",
+        "**Type:** fleeting_note",
+        "**Template:** Atomic Note.md",
+        "**Destination:** Atlas/202 Notes/",
+        "**Classification:** 2600 - Applied Sciences",
+        "",
+        "**Decision (atomic note):**",
+        "- [x] Approve",
+        "- [ ] Keep in inbox",
+        "- [ ] Skip (keep in inbox)",
+        "- [ ] Delete source",
+        "",
+        "**Tags:**",
+        "- topic/nature",
+        "",
+        "**Parent MOC:** [[Japan]]",
+        "",
+        "**Summary:** Lavender fields are the main attraction in Furano.",
+        "",
+    ])
+
+
 def _run_parser(primary_path: Path, resolve_path: Path | None = None) -> dict:
     cmd = [sys.executable, str(PARSER), "--file", str(primary_path)]
     if resolve_path is not None:
@@ -245,3 +320,61 @@ def test_fan_with_primary_section_uses_legacy_promote(tmp_path):
     assert entry.get("from_resolve") is not True, (
         f"legacy path must NOT set from_resolve; got {entry}"
     )
+
+
+def test_fan_resolve_multi_block_promotes_all(tmp_path):
+    """Scenario D (T4.2 RED): resolve doc S01 contains TWO approved atomic
+    blocks — BOTH must appear in confirmed_items (from_resolve=True each),
+    not just the last one (the pre-T4.2 last-wins bug).
+    """
+    primary = tmp_path / "suggestions.md"
+    resolve = tmp_path / "suggestions-fan.md"
+    primary.write_text(_primary_doc_with_fan_on_furano(include_furano_section=False))
+    resolve.write_text(_resolve_doc_for_furano_two_blocks())
+
+    out = _run_parser(primary, resolve)
+
+    assert out.get("pending_fan_resolutions") == [], (
+        f"multi-block resolve doc should clear pending; got "
+        f"{out.get('pending_fan_resolutions')}"
+    )
+
+    furano_entries = [
+        c for c in out.get("confirmed_items", [])
+        if "furano" in (c.get("source_path") or "").lower()
+    ]
+    assert len(furano_entries) == 2, (
+        f"expected 2 Furano confirmed items (one per block), got "
+        f"{[e.get('title') for e in furano_entries]}"
+    )
+    for entry in furano_entries:
+        assert entry.get("force_atomic") is True, entry
+        assert entry.get("from_resolve") is True, entry
+
+    titles = {e.get("title") for e in furano_entries}
+    assert "Furano trip reflections" in titles, titles
+    assert "Furano lavender fields" in titles, titles
+
+
+def test_fan_resolve_single_block_no_regression(tmp_path):
+    """Scenario E (T4.2 single-thread regression): resolve doc with ONE
+    block still yields exactly 1 confirmed item — byte-identical to pre-T4.2.
+    """
+    primary = tmp_path / "suggestions.md"
+    resolve = tmp_path / "suggestions-fan.md"
+    primary.write_text(_primary_doc_with_fan_on_furano(include_furano_section=False))
+    resolve.write_text(_resolve_doc_for_furano())
+
+    out = _run_parser(primary, resolve)
+
+    furano_entries = [
+        c for c in out.get("confirmed_items", [])
+        if "furano" in (c.get("source_path") or "").lower()
+    ]
+    assert len(furano_entries) == 1, (
+        f"single-block resolve must yield exactly 1 confirmed, got "
+        f"{[e.get('title') for e in furano_entries]}"
+    )
+    entry = furano_entries[0]
+    assert entry.get("force_atomic") is True, entry
+    assert entry.get("from_resolve") is True, entry

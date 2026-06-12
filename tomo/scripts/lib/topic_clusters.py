@@ -1,5 +1,5 @@
 # topic_clusters.py — Pure clustering helper for atomic-note → Proposed MOC.
-# version: 0.2.0
+# version: 0.3.0
 """Group atomic-note candidates into Proposed MOC clusters.
 
 Why this lives in a module of its own:
@@ -24,6 +24,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from typing import TypedDict
+
+# Matches a trailing MOC marker that is preceded by whitespace ("X MOC")
+# or wrapped in parentheses ("X (MOC)" / "X(MOC)").
+# Requires an explicit word boundary before "moc" — bare suffix like "biomoc"
+# or "Thermoc" does NOT match and is left unchanged.
+_MOC_MARKER_RE = re.compile(r"(\s*\(\s*moc\s*\)|\s+moc)\s*$", re.IGNORECASE)
 
 
 # ── Public types ─────────────────────────────────────────────────────────────
@@ -64,6 +70,35 @@ class Cluster(TypedDict):
     items: list[str]
     parent: str
     tags: list[str]
+
+
+# ── Public helpers ───────────────────────────────────────────────────────────
+
+
+def strip_moc_marker(topic: str) -> str:
+    """Remove trailing MOC marker(s) from a topic phrase, returning the bare form.
+
+    Handles: "X MOC", "X (MOC)", "X(MOC)" — case-insensitive, whitespace-tolerant.
+    Iterates until stable so double-suffixed forms ("X (MOC) (MOC)") are fully
+    stripped in a single call.
+
+    Word-boundary rule: "moc" is only stripped when preceded by whitespace
+    (the space-separated form "X MOC") or a parenthesised block ("(MOC)").
+    Mid-word endings such as "biomoc" or "Thermoc" are left unchanged.
+
+    Guard: if stripping would empty the entire string (e.g. bare "MOC" or
+    "(MOC)"), the original string is returned unchanged.
+
+    Only trailing markers are removed — leading or mid-string occurrences
+    (e.g. "MOC Design Patterns", "Using MOC Patterns") are kept.
+    """
+    t = topic.strip()
+    while True:
+        stripped = _MOC_MARKER_RE.sub("", t).strip()
+        if stripped == t or not stripped:
+            break
+        t = stripped
+    return t if t else topic.strip()
 
 
 # ── Internal helpers (kept private — `suggestions-reducer.py` re-exports its
@@ -165,7 +200,7 @@ def build_topic_clusters(
     """
     grouped: dict[str, list[tuple[str, str, str, list[str]]]] = {}
     for candidate in items:
-        topic_raw = (candidate.topic or "").strip()
+        topic_raw = strip_moc_marker((candidate.topic or "").strip())
         if not topic_raw:
             continue
         norm = normalise_topic(topic_raw)
@@ -182,7 +217,7 @@ def build_topic_clusters(
     for _norm, hits in grouped.items():
         if len(hits) < threshold:
             continue
-        display_topic = hits[0][1]  # first occurrence's original casing
+        display_topic = hits[0][1]  # first occurrence's bare casing
         parents = [h[2] for h in hits if h[2]]
         parent = max(set(parents), key=parents.count) if parents else ""
         # Tags: compute shared parent tags instead of dumping all leaf tags.

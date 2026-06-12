@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.15.0
+# version: 0.17.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -192,6 +192,64 @@ score is informational, not gating. Also set the top-level
 (reducer `--fan-resolve`) can identify these items. The user's explicit
 FAN tick is the governing intent.
 
+### Step 7.5 — Topical segmentation
+
+Decide how many atomic threads this item carries, then score each thread on its own.
+
+**Word-count gate.** Count the words in the item's full original body.
+- ≤ 200 words → `threads = [one default thread]` (the entire body); skip the rest of
+  this step. The Step 7 score you already computed IS this thread's worthiness.
+  (Short items behave exactly as before.)
+- > 200 words → segment below. Long items — especially voice memos and
+  brain-dumps — frequently bundle several unrelated topics, so segment actively.
+
+**Segment in two explicit passes — do BOTH, in order:**
+
+*Pass A — enumerate.* Read the full body and list EVERY distinct topic, claim, plan,
+idea, or errand you find, as a flat bullet list. Do NOT judge worthiness and do NOT
+merge yet — just inventory what is there. A typical multi-topic memo yields 2–5
+bullets. Conversational filler (greetings, "let me think", describing your
+surroundings, meta-remarks about the recording) is NOT a topic — skip it.
+
+*Pass B — consolidate.* Merge bullets that are facets of the SAME underlying concept
+into one thread. Bullets from clearly DIFFERENT domains stay separate — e.g. an
+errand/appointment, a knowledge-management idea, and a hobby tip are three different
+domains and therefore three threads. Each resulting thread is a self-contained idea,
+its text drawn from the corresponding part of the body.
+
+Length alone never forces a split (a 600-word essay on ONE subject is ONE thread);
+only genuinely distinct concepts split.
+
+Worked examples:
+- Example A: a "quick brain-dump" listing an errand (pick up a prescription, plus a
+  dentist appointment on Friday), then a note-taking insight (organise MOCs by
+  question rather than by topic), then a coffee-brewing ratio tip → THREE threads
+  (errand, MOC insight, coffee tip): three different domains.
+- Example B: a voice memo that rambles about the room, then states a doctor's
+  appointment, then argues about PKM/tool architecture → TWO substantive threads
+  (the appointment, the architecture argument); the rambling/filler is not a thread.
+- Example C: a single sustained essay on one subject, even at 600 words → ONE thread.
+
+**Score each thread on its OWN full text.** For EACH thread, run the Step 7 scoring
+against that thread's own text only (never your summary, never the whole item). Each
+thread independently gets its own `atomic_note_worthiness`, `suggested_title`, MOC
+matches (Steps 4–5), and tags (Step 6). `force_atomic=true` applies to every thread.
+
+**Classify each thread.**
+- Thread worthiness ≥ 0.5 (or `force_atomic`) → one `create_atomic_note` in Step 9.
+- Thread worthiness < 0.5 → sub-worthy; it does NOT get its own atomic note.
+  - If the Step 8b daily path is active (`date_relevance` set AND
+    `shared_ctx.daily_notes` configured) → sub-worthy threads contribute to a SINGLE
+    `update_daily` summarising ONLY the daily-log-worthy material; emit at most one
+    such daily summary per item.
+  - If the Step 8b daily path is NOT active AND no thread is atomic-worthy → emit a
+    single default `create_atomic_note` so the item is never lost.
+
+**Fallback.** Collapse to a single thread ONLY when the body genuinely covers one
+topic. Do NOT collapse merely because segmentation feels effortful or uncertain — if
+Pass A surfaced multiple distinct-domain bullets, keep them as separate threads.
+Never drop the item or lose content.
+
 ### Step 8 — Detect date relevance
 
 Set `date_relevance` if a date appears in filename/frontmatter/content
@@ -308,11 +366,13 @@ Determine if this item should appear in the daily note's log section.
 
 - If `shared_ctx.daily_notes.daily_log.enabled` is `false` → no log at all.
   Skip this evaluation.
-- If `atomic_note_worthiness ≥ 0.5` → this item will become an atomic note
-  → emit `log_link` (reference from daily log to the new note).
-  Set `target_stem` to the stem that `create_atomic_note` will use.
-  Set `reason` (≤80 chars) explaining: e.g. `"Substantive note (worthiness 0.7) → link from daily log"`
-- If `atomic_note_worthiness < 0.5` AND content is short (< 500 chars) AND
+- If ANY thread from Step 7.5 became (or will become) a `create_atomic_note`
+  (worthiness ≥ 0.5 or `force_atomic`) → emit `log_link` (reference from daily
+  log to the new note). Never emit `log_entry` when any thread is atomic-worthy —
+  the Step 9 coexistence table forbids `create_atomic_note` + `log_entry`.
+  Set `target_stem` to the stem that the first `create_atomic_note` will use.
+  Set `reason` (≤80 chars): e.g. `"Substantive thread (worthiness 0.7) → link from daily log"`
+- If NO thread is atomic-worthy AND content is short (< 500 chars) AND
   item has `date_relevance` → emit `log_entry` (embed content inline in
   daily log).
   Set `content` to a cleaned summary (≤300 chars, strip frontmatter noise).
@@ -456,12 +516,18 @@ Tracker matches stay on the primary `date_relevance.date` action only.
 ### Step 9 — Build actions[]
 
 Items can produce MULTIPLE actions simultaneously. Assemble them from
-Steps 7 and 8b.
+Steps 7, 7.5, and 8b.
 
-**Action 1 — Atomic note** (from Step 7):
-- If `atomic_note_worthiness ≥ 0.5` → emit `create_atomic_note` action.
-- If `atomic_note_worthiness < 0.5` but `> 0` → still emit as a lower-
-  confidence alternative.
+**Action(s) 1–N — Atomic notes** (from Step 7.5 threads):
+Iterate over the threads from Step 7.5. For EACH thread:
+- If the thread's `atomic_note_worthiness ≥ 0.5` (or `force_atomic`) → emit one
+  `create_atomic_note` action for that thread.
+- If the single default thread scores `< 0.5` but `> 0` → still emit it as a
+  lower-confidence alternative.
+- Stamp `source_stem` = the inbox item's filename stem (without extension) on EVERY
+  `create_atomic_note` — for single- AND multi-thread items alike. All atomics from
+  one item share the same `source_stem` so consumers can group them back to one
+  source.
 
 **Action 2+ — Daily updates** (from Step 8b):
 Emit one or more `update_daily` actions. Each has:
@@ -491,8 +557,8 @@ is invalid.
 - If NEITHER atomic note NOR daily update qualifies, but the item IS a
   plausible tracker entry (very short, no structure, but tracker keywords
   hit), emit ONLY `update_daily`.
-- If nothing qualifies at all, emit a single `create_atomic_note` with
-  `atomic_note_worthiness` from Step 7.
+- If nothing qualifies at all, emit a single `create_atomic_note` (default thread)
+  with `atomic_note_worthiness` from Step 7 and the item's `source_stem` stamped.
 
 
 ### Step 10 — Fill the result template and write it

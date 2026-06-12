@@ -35,3 +35,34 @@ existing gate is the correct mechanism.
 renderer. Any future use case that needs to surface note orphans in a proposal-doc
 must explicitly populate `orphan_suggestions` in the DiscoveryReport — the renderer
 will pick it up automatically. The renderer stays; only the cluster producer changed.
+
+## N atomic notes per source — C1/C2 (F-41, XDD 016)
+
+WHY: F-41 lets one inbox item emit N `create_atomic_note` actions (one per
+conceptual thread — see `docs/tomo/dot_claude/agents/inbox-analyst.md` Step 7.5
+and the wire-format ADR-2). The reducer is the first consumer that renders those
+atomics for the user, and it had two N=1 traps that silently dropped threads
+2..N.
+
+WHY iterate ALL atomics in coexistence enforcement (C1): `_enforce_coexistence`
+fetched the atomic action with `next(a for a in actions if kind ==
+create_atomic_note)` — only the FIRST. The atomic-vs-`log_entry` coexistence
+rules must be evaluated per atomic, so the single-fetch is replaced by iteration
+over every `create_atomic_note`. With one atomic this is identical to before
+(CON-2); with N it stops discarding the rest.
+
+WHY key section titles per-atomic (C2): the title bookkeeping used
+`section_titles[section_id] = title`, a scalar keyed by section. N atomics share
+one source section, so the last title overwrote the earlier ones before
+`_enrich_proposed_mocs` could use them — the per-atomic MOC enrichment then
+operated on the wrong (or a single) title. Keying per-atomic (by index, or a
+list) lets all N titles survive into enrichment.
+
+WHY N independent Accept blocks under one source heading, not nested checkboxes
+(OQ5): the reducer renders each atomic as its own per-item Accept block with its
+own `**Source:** [[stem]]` line and its own `[ ] Approved` toggle, so the user
+reviews and approves each thread independently. The per-source `### SNN — title`
+heading is emitted by the orchestrator (not the reducer); the per-block
+`source_stem` makes a single shared heading acceptable — the user can mentally
+group the blocks without visual nesting. Renders stay scannable at the typical
+N=2-3 and are designed for N=5 as the realistic upper bound.

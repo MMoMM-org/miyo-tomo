@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.1
+# version: 0.21.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -601,6 +601,46 @@ def _validate_action_paths(actions: list[dict]) -> list[str]:
     return violations
 
 
+def _disambiguate_filename(base_filename: str, used_filenames: set[str]) -> str:
+    """Return a filename that is not in *used_filenames*.
+
+    When *base_filename* is not yet used, returns it unchanged (common case —
+    CON-2 regression guarantee).  On collision, appends a stable ``_NN`` suffix
+    (``_01``, ``_02``, …) in the order callers present collisions.  Raises
+    ``ValueError`` if all suffixes up to ``_99`` are already taken.
+
+    Args:
+        base_filename: The derived filename, e.g. ``2026-06-11_0900_my-topic.md``.
+        used_filenames: Set of filenames already claimed in this render run.
+            The caller is responsible for adding the returned name to this set.
+
+    Returns:
+        A distinct filename (may equal *base_filename* when there is no collision).
+
+    Raises:
+        ValueError: When the collision cannot be resolved within 99 attempts.
+    """
+    assert base_filename.endswith(".md"), (
+        f"_disambiguate_filename requires a .md filename, got: {base_filename!r}"
+    )
+
+    if base_filename not in used_filenames:
+        return base_filename
+
+    # Strip .md, append _NN, restore .md
+    stem = base_filename[:-3]
+
+    for i in range(1, 100):
+        candidate = f"{stem}_{i:02d}.md"
+        if candidate not in used_filenames:
+            return candidate
+
+    raise ValueError(
+        f"filename collision guard exhausted for slug '{stem}' — "
+        "all suffixes _01 through _99 are taken; cannot render without overwrite"
+    )
+
+
 def _dest_join(folder: str, title: str) -> str:
     """Join destination folder + sanitised title as filename (with .md)."""
     if not folder:
@@ -886,13 +926,18 @@ def _build_delete_source_actions(
     """
     out: list[dict] = []
     confirmed_stems: set[str] = set()
-    confirmed_by_stem: dict[str, dict] = {}
+    # expected_by_stem: count of approved atomics per origin stem (gate denominator).
+    expected_by_stem: dict[str, int] = {}
+    # keep_origin_stems: stems where ANY confirmed item opts out of deletion.
+    keep_origin_stems: set[str] = set()
     for item in confirmed:
         sp = item.get("source_path")
         if sp:
             stem = _stem(sp)
             confirmed_stems.add(stem)
-            confirmed_by_stem[stem] = item
+            expected_by_stem[stem] = expected_by_stem.get(stem, 0) + 1
+            if item.get("keep_origin"):
+                keep_origin_stems.add(stem)
 
     inbox = inbox_path.rstrip("/") + "/"
 
@@ -930,25 +975,46 @@ def _build_delete_source_actions(
                     "reason": "Content fully captured in daily note.",
                 })
 
-    # (3) move_note origins — paired delete by default unless keep_origin
-    paired_seen: set[str] = set()
+    # (3) move_note origins — completion gate: emit one delete per origin stem
+    # only after ALL expected atomics are represented in move_notes (OQ6).
+    # Collect accepted daily stems for reason-string annotation (" + daily").
+    daily_stems: set[str] = set()
+    for day in daily_updates:
+        for bucket in ("trackers", "log_entries", "log_links"):
+            for entry in day.get(bucket, []) or []:
+                if entry.get("accepted"):
+                    s = _stem(entry.get("source_stem"))
+                    if s:
+                        daily_stems.add(s)
+
+    # Group move_notes by origin stem.
+    moves_by_origin: dict[str, list[dict]] = {}
     for mn in move_notes:
         if mn.get("action") != "move_note":
             continue
         origin = mn.get("origin_inbox_item")
-        if not origin or origin in paired_seen:
+        if not origin:
             continue
-        # Look up the confirmed item via origin stem to check keep_origin.
         origin_stem = _stem(origin)
-        cf = confirmed_by_stem.get(origin_stem)
-        if cf and cf.get("keep_origin"):
+        bucket_list = moves_by_origin.setdefault(origin_stem, [])
+        bucket_list.append(mn)
+
+    for origin_stem, moves in moves_by_origin.items():
+        if origin_stem in keep_origin_stems:
             continue
-        paired_seen.add(origin)
+        expected = expected_by_stem.get(origin_stem, 1)
+        if len(moves) < expected:
+            continue  # not all atomics rendered yet — defer (OQ6)
+        origin_path = moves[0].get("origin_inbox_item", "")
+        n = len(moves)
+        has_daily = origin_stem in daily_stems
+        daily_suffix = " + daily" if has_daily else ""
+        reason = f"Origin consumed by {n} atomic{'s' if n > 1 else ''}{daily_suffix}."
         out.append({
             "id": _next_id(counter),
             "action": "delete_source",
-            "source_path": origin,
-            "reason": f"Origin consumed by move_note {mn.get('id')}.",
+            "source_path": origin_path,
+            "reason": reason,
         })
 
     return out
@@ -1645,6 +1711,7 @@ def main() -> int:
     date_prefix = now.strftime("%Y-%m-%d_%H%M")
 
     manifest: list[dict] = []
+    used_filenames: set[str] = set()
     errors = 0
 
     for item in confirmed:
@@ -1734,9 +1801,16 @@ def main() -> int:
             errors += 1
             continue
 
-        # 5. Write rendered file
+        # 5. Write rendered file — guard against same-slug collision (C5, ADR-7)
         slug = slugify(title)
-        filename = f"{date_prefix}_{slug}.md"
+        base_filename = f"{date_prefix}_{slug}.md"
+        try:
+            filename = _disambiguate_filename(base_filename, used_filenames)
+        except ValueError as exc:
+            print(f"  [{item_id}] ERROR: {exc}", file=sys.stderr)
+            errors += 1
+            continue
+        used_filenames.add(filename)
         rendered_path = out_dir / filename
         rendered_path.write_text(rendered, encoding="utf-8")
 

@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.16.0
+# version: 0.17.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -197,45 +197,58 @@ FAN tick is the governing intent.
 Decide how many atomic threads this item carries, then score each thread on its own.
 
 **Word-count gate.** Count the words in the item's full original body.
-- ≤ 200 words → set `threads = [one default thread]` whose text is the entire item
-  body, and skip the rest of this step. The Step 7 score you already computed IS
-  this single thread's worthiness. (Short items behave exactly as before.)
-- > 200 words → continue with segmentation below.
+- ≤ 200 words → `threads = [one default thread]` (the entire body); skip the rest of
+  this step. The Step 7 score you already computed IS this thread's worthiness.
+  (Short items behave exactly as before.)
+- > 200 words → segment below. Long items — especially voice memos and
+  brain-dumps — frequently bundle several unrelated topics, so segment actively.
 
-**Segment into threads.** List the distinct conceptual threads in the item — each a
-self-contained idea that could stand as its own atomic note. Use judgment; most
-items are one thread. Worked examples:
-- Example 1: a memo that mixes a dentist appointment for next Tuesday with a long
-  argument about PKM note-segmentation architecture → TWO threads: (1) the dentist
-  appointment, (2) the PKM-architecture argument.
-- Example 2: a voice transcript that records a 5k run, then pivots into a book idea,
-  then notes a grocery reminder → THREE threads: the run, the book idea, the grocery
-  reminder.
-- Example 3: a single sustained essay on one topic, even if 600 words → ONE thread
-  (length alone does not force a split; only distinct concepts do).
+**Segment in two explicit passes — do BOTH, in order:**
+
+*Pass A — enumerate.* Read the full body and list EVERY distinct topic, claim, plan,
+idea, or errand you find, as a flat bullet list. Do NOT judge worthiness and do NOT
+merge yet — just inventory what is there. A typical multi-topic memo yields 2–5
+bullets. Conversational filler (greetings, "let me think", describing your
+surroundings, meta-remarks about the recording) is NOT a topic — skip it.
+
+*Pass B — consolidate.* Merge bullets that are facets of the SAME underlying concept
+into one thread. Bullets from clearly DIFFERENT domains stay separate — e.g. an
+errand/appointment, a knowledge-management idea, and a hobby tip are three different
+domains and therefore three threads. Each resulting thread is a self-contained idea,
+its text drawn from the corresponding part of the body.
+
+Length alone never forces a split (a 600-word essay on ONE subject is ONE thread);
+only genuinely distinct concepts split.
+
+Worked examples:
+- Example A: a "quick brain-dump" listing an errand (pick up a prescription, plus a
+  dentist appointment on Friday), then a note-taking insight (organise MOCs by
+  question rather than by topic), then a coffee-brewing ratio tip → THREE threads
+  (errand, MOC insight, coffee tip): three different domains.
+- Example B: a voice memo that rambles about the room, then states a doctor's
+  appointment, then argues about PKM/tool architecture → TWO substantive threads
+  (the appointment, the architecture argument); the rambling/filler is not a thread.
+- Example C: a single sustained essay on one subject, even at 600 words → ONE thread.
 
 **Score each thread on its OWN full text.** For EACH thread, run the Step 7 scoring
-against that thread's full original text only (never your summary, never the whole
-item). Each thread independently gets its own `atomic_note_worthiness`,
-`suggested_title`, MOC matches (Steps 4–5), and tags (Step 6).
-`force_atomic=true` applies to every thread.
+against that thread's own text only (never your summary, never the whole item). Each
+thread independently gets its own `atomic_note_worthiness`, `suggested_title`, MOC
+matches (Steps 4–5), and tags (Step 6). `force_atomic=true` applies to every thread.
 
 **Classify each thread.**
-- Thread worthiness ≥ 0.5 (or `force_atomic`) → this thread becomes one
-  `create_atomic_note` in Step 9.
-- Thread worthiness < 0.5 → this is a sub-worthy thread. Sub-worthy threads do NOT
-  each get an atomic note.
-  - If the Step 8b daily path is active (`date_relevance` is set AND
-    `shared_ctx.daily_notes` is configured) → sub-worthy threads contribute to a
-    SINGLE `update_daily` that summarises ONLY the daily-log-worthy material;
-    emit at most one such daily summary for the item, not one update per sub-thread.
-  - If the Step 8b daily path is NOT active (no `date_relevance` or no
-    `daily_notes` config) AND no thread is atomic-worthy → fall back to the Step 9
-    default rule: emit a single `create_atomic_note` (default thread) so the item
-    is never lost.
+- Thread worthiness ≥ 0.5 (or `force_atomic`) → one `create_atomic_note` in Step 9.
+- Thread worthiness < 0.5 → sub-worthy; it does NOT get its own atomic note.
+  - If the Step 8b daily path is active (`date_relevance` set AND
+    `shared_ctx.daily_notes` configured) → sub-worthy threads contribute to a SINGLE
+    `update_daily` summarising ONLY the daily-log-worthy material; emit at most one
+    such daily summary per item.
+  - If the Step 8b daily path is NOT active AND no thread is atomic-worthy → emit a
+    single default `create_atomic_note` so the item is never lost.
 
-**Fallback.** If segmentation is ambiguous, fails, or you are unsure → fall back to a
-single default thread covering the whole item. Never drop the item or lose content.
+**Fallback.** Collapse to a single thread ONLY when the body genuinely covers one
+topic. Do NOT collapse merely because segmentation feels effortful or uncertain — if
+Pass A surfaced multiple distinct-domain bullets, keep them as separate threads.
+Never drop the item or lose content.
 
 ### Step 8 — Detect date relevance
 

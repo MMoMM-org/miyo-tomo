@@ -114,3 +114,53 @@ WHY: Bumped from 0.15.0 for T2.1 — added Step 7.5 (topical segmentation) and u
 Step 9 to iterate threads (N≥1) and stamp `source_stem` on every `create_atomic_note`
 (ADR-4). New feature → minor bump. `update-tomo.sh` skips unchanged versions silently —
 the bump is required for the edit to ship to the Docker instance.
+
+## Step 7.5 — Two-Pass Segmentation Rewrite (2026-06-12, v0.17.0)
+
+WHY changed: Live full-flow validation revealed consistent under-segmentation — Sonnet
+returned 1 atomic note instead of 2-3 for clearly multi-topic items (voice memos mixing
+an appointment, a PKM insight, and a hobby tip). The old wording anchored on "most items
+are one thread" and "if unsure → collapse", which biased the model toward the single-note
+outcome in the full pipeline's attention context.
+
+WHAT changed: Three coordinated edits:
+
+1. De-biased framing: removed the "most items are one thread" anchor and the
+   "unsure → collapse" fallback. The new fallback is explicit: collapse ONLY when the
+   body genuinely covers one topic; the model must NOT collapse merely because
+   segmentation feels effortful or uncertain.
+
+2. Two-pass enumerate-first structure (Pass A → Pass B): Pass A forces an inventory of
+   ALL distinct topics as a flat bullet list BEFORE any merging judgment. Pass B then
+   consolidates bullets that are facets of the same concept. The mandatory enumeration
+   step is the primary anti-skip mechanism — the model cannot produce a single-thread
+   output without first having listed the topics, making under-segmentation visible in
+   the reasoning chain.
+
+3. Sharper worked examples: examples now name domain differences explicitly ("three
+   different domains → three threads") and include a filler/substance distinction
+   (voice memo rambling is not a thread).
+
+EVIDENCE and trade-offs: Isolated A/B testing (old vs new prompt, single-item runs)
+showed no measurable advantage for either wording — both segmented correctly in isolation
+(trial results: 3/2/1 threads as expected). The under-segmentation is a full-flow
+attention problem, not a pure wording problem: in the full pipeline, Step 7.5 competes
+with earlier steps for attention, and the "most items are one thread" anchor was the
+lowest-resistance path. Enumerate-First is the plausible anti-skip lever because it
+requires an intermediate output (the bullet list) before the collapse decision.
+
+False-positive safety: tested against a single-topic essay (Oxygen Not Included, 1376
+words, 4 sections) — all trials returned 1 thread with the new prompt; no over-split
+observed.
+
+NEXT lever if under-segmentation persists: make the Pass A enumeration a mandatory
+schema-validated output (emit `topics_enumerated[]` in the result JSON, validated by
+validate-result.py). This was deliberately NOT done here because it adds schema and
+Python complexity; the prompt change is the minimal-cost first intervention.
+
+## Version 0.17.0
+
+WHY: Bumped from 0.16.0 for de-biased two-pass Step 7.5 segmentation rewrite
+(anti-under-segmentation, F-41). Prompt-only change — no schema or Python touched.
+`update-tomo.sh` skips unchanged versions silently — the bump is required for the edit
+to ship to the Docker instance.

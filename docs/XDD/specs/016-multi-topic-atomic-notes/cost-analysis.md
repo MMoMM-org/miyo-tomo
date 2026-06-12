@@ -1,7 +1,7 @@
 ---
 title: "Cost analysis — F-41 multi-topic atomic notes (CON-3)"
-status: analytical-bound
-version: "1.0"
+status: accepted (analytical bound; CON-3 closed 2026-06-12)
+version: "1.1"
 ---
 
 # Cost Analysis — XDD 016 (F-41), task T6.2
@@ -151,11 +151,16 @@ therefore a **design contract backed by a tunable gate**, not a fixed property.
 > token-mass orders of magnitude. They are **not** a measurement. The measured
 > delta is established only by the deferred live run in §4.
 
-## 4. Deferred live validation (manual, in-container)
+## 4. Live validation (manual, in-container) — retained for opportunistic capture
 
-> **Status: DEFERRED / PENDING.** Per the user's decision, the live measured run
-> is a manual in-container step, logged later. It is **not** executed by this
-> task.
+> **Status: CLOSED (2026-06-12) — CON-3 accepted on the analytical bound (§3).**
+> Decision: the analytical bound (~3–6% on a typical batch, single-digit % even in
+> the aggressive case — §3.3) is rigorous and is accepted as the CON-3 answer. A
+> dedicated confirmatory run was declined because **no same-architecture F-32
+> control exists** to diff against (§2), so a measured total-run number cannot be
+> cleanly attributed to the segmentation delta or compared to the +10% gate. The
+> procedure below is retained so the real delta can be captured **opportunistically**
+> on the next natural production Pass-1 run — not as a dedicated quota spend.
 
 **Why in-container:** host-side full-pipeline runs hit Kado 429 rate limits on
 the heavy read storm (auto-memory: *"Kado 429 blocks heavy host-side runs"*).
@@ -215,5 +220,7 @@ Two distinct tools exist; pick the right one:
   (`solution.md:239`, `requirements.md:273-275`), not per thread.
 - **Projected bound:** typical ~30%-long batches add single-digit-% reasoning
   tokens → well inside +10% (table §3.3, labelled projection).
-- **Deferred:** the live 20-item in-container measurement (§4), logged to
-  `inbox-cost-log.md`, establishes the actual delta. PENDING.
+- **Closed (2026-06-12):** CON-3 accepted on the analytical bound above; no
+  same-architecture F-32 control exists for a clean measured diff (§2), so the
+  bound is the operative answer. The §4 procedure is retained for opportunistic
+  capture of the real delta on the next natural production Pass-1 run.

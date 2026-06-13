@@ -127,6 +127,29 @@ def test_none_client_leaves_groups_unchanged() -> None:
     assert groups["2026-04-29"]["exists"] is True
 
 
+def test_extensionless_path_is_normalised_to_md() -> None:
+    # Regression: the analyst emits daily_note_path WITHOUT .md
+    # ("Calendar/301 Daily/2026-04-29"). Kado's note read is .md-only and returns
+    # VALIDATION_ERROR (a generic error, not NotFound) on extensionless paths,
+    # which fail-open would swallow → exists stayed True → warning never fired.
+    groups = {"2026-04-29": _entry("2026-04-29", exists=True)}
+    paths = {"2026-04-29": "Calendar/301 Daily/2026-04-29"}  # no .md
+    client = _FakeKado(KadoNotFoundError("missing"))
+    missing = annotate_daily_note_existence(groups, paths, client)
+    assert missing == 1
+    assert groups["2026-04-29"]["exists"] is False
+    # The read must have been issued against the .md-normalised path.
+    assert client.reads == ["Calendar/301 Daily/2026-04-29.md"]
+
+
+def test_path_with_md_is_not_double_suffixed() -> None:
+    groups = {"2026-04-29": _entry("2026-04-29", exists=True)}
+    paths = {"2026-04-29": "Calendar/301 Daily/2026-04-29.md"}
+    client = _FakeKado(KadoNotFoundError("missing"))
+    annotate_daily_note_existence(groups, paths, client)
+    assert client.reads == ["Calendar/301 Daily/2026-04-29.md"]
+
+
 def test_dedup_one_read_per_path() -> None:
     groups = {
         "2026-04-29": _entry("2026-04-29", exists=True),

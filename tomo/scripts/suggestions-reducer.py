@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.10.1
+# version: 1.10.2
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -870,16 +870,24 @@ def annotate_daily_note_existence(
         path = daily_path_by_stem.get(stem)
         if not path:
             continue
-        if path not in cache:
+        # The analyst emits an extensionless daily_note_path (e.g.
+        # "Calendar/301 Daily/2026-04-29"). Kado's kado-read note op is .md-only
+        # and returns VALIDATION_ERROR (not NOT_FOUND) without the extension —
+        # which the fail-open branch below would swallow, leaving exists=True and
+        # the warning silently absent. Normalise to .md (mirrors
+        # instruction-render._resolve_daily_path) so a missing note reads as a
+        # clean not-found.
+        read_path = path if path.endswith(".md") else f"{path}.md"
+        if read_path not in cache:
             ok = True  # fail-open default
             try:
-                client.read_note(path)
+                client.read_note(read_path)
             except KadoNotFoundError:
                 ok = False
             except Exception:  # noqa: BLE001 — transient/other error: keep exists=True
                 ok = True
-            cache[path] = ok
-        if not cache[path]:
+            cache[read_path] = ok
+        if not cache[read_path]:
             entry["exists"] = False
             missing += 1
     return missing

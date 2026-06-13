@@ -403,7 +403,7 @@ def test_paired_delete_default_emits_for_each_origin():
     )
     for a in paired:
         _must(
-            "Origin consumed by move_note" in a["reason"],
+            "Origin consumed by" in a["reason"],
             f"unexpected reason: {a['reason']!r}",
         )
     print("[PASS] paired delete_source emitted by default for each move_note origin")

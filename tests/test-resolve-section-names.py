@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test-resolve-section-names.py — Unit tests for resolve_section_names + paired delete_source.
 
 Covers:
@@ -403,7 +403,7 @@ def test_paired_delete_default_emits_for_each_origin():
     )
     for a in paired:
         _must(
-            "Origin consumed by move_note" in a["reason"],
+            "Origin consumed by" in a["reason"],
             f"unexpected reason: {a['reason']!r}",
         )
     print("[PASS] paired delete_source emitted by default for each move_note origin")
@@ -508,6 +508,194 @@ def test_audio_peer_is_not_paired_deleted_via_origin():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# #29 / #28 — heading fallback + new-section-before-footer
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Heading-structured MOC: NO editable callout anywhere, content lives in H2s.
+_HEADING_MOC_BODY = """\
+---
+title: Topics (MOC)
+---
+
+# [[Topics (MOC)]]
+
+## Overview
+
+Some intro.
+
+## Key Concepts
+
+- [[Existing Note]]
+
+## Sources
+"""
+
+# MOC with both a [!blocks] callout and an H2 — the callout must still win.
+_CALLOUT_AND_HEADING_MOC_BODY = """\
+---
+title: Mixed (MOC)
+---
+
+> [!connect] Your way around
+> up:: [[X]]
+
+# [[Mixed (MOC)]]
+
+> [!blocks] Key Concepts
+> - [[A]]
+
+## Extra Section
+
+- [[B]]
+
+> [!video] Action Items
+"""
+
+# MOC with only a footer callout, no editable content callout and no H2 heading.
+_FOOTER_ONLY_MOC_BODY = """\
+---
+title: Bare (MOC)
+---
+
+# [[Bare (MOC)]]
+
+Some intro prose.
+
+> [!video] Action Items
+> - [ ] do thing
+"""
+
+# Nothing anchorable: prose only.
+_NOTHING_MOC_BODY = """\
+---
+title: Empty (MOC)
+---
+
+# [[Empty (MOC)]]
+
+Just prose, no callouts, no H2 sections.
+"""
+
+# Footer markers (video/calendar) are deliberately excluded here so they are
+# NOT treated as editable content callouts — otherwise tier-1 would land
+# content inside [!video] instead of triggering the heading / new-section paths.
+_CONTENT_CALLOUTS = ["connect", "blocks", "anchor"]
+
+
+def _link_action(moc: str, path: str) -> dict:
+    return {
+        "id": "I10",
+        "action": "link_to_moc",
+        "target_moc": moc,
+        "target_moc_path": path,
+        "anchor": _callout_anchor(),
+        "placement": "inside",
+        "line_to_add": "- [[New Note]]",
+    }
+
+
+def test_heading_fallback_when_no_editable_callout():
+    """#29: a MOC with no editable callout falls back to a content heading;
+    the preferred 'Key Concepts' beats the earlier 'Overview', and the anchor
+    is rewritten to type=heading / placement=after (Hashi has no callout-inside
+    for headings)."""
+    path = "Atlas/200 Maps/Topics (MOC).md"
+    client = StubClient(notes={path: _HEADING_MOC_BODY})
+    actions = [_link_action("Topics (MOC)", path)]
+    n = ir.resolve_section_names(actions, client, _CONTENT_CALLOUTS)
+    a = actions[0]
+    _must(n == 1, f"expected 1 resolution, got {n}")
+    _must(a["anchor"]["type"] == "heading",
+          f"expected heading anchor, got {a['anchor']['type']!r}")
+    _must(a["anchor"]["value"] == "Key Concepts",
+          f"expected preferred 'Key Concepts', got {a['anchor']['value']!r}")
+    _must(a["placement"] == "after",
+          f"expected placement=after for heading, got {a['placement']!r}")
+    print("[PASS] #29: heading fallback resolves to preferred H2 with placement=after")
+
+
+def test_editable_callout_wins_over_heading():
+    """#29: precedence preserved — when both an editable callout and an H2
+    exist, the callout still wins (tier 1)."""
+    path = "Atlas/200 Maps/Mixed (MOC).md"
+    client = StubClient(notes={path: _CALLOUT_AND_HEADING_MOC_BODY})
+    actions = [_link_action("Mixed (MOC)", path)]
+    n = ir.resolve_section_names(actions, client, _CONTENT_CALLOUTS)
+    a = actions[0]
+    _must(n == 1, f"expected 1 resolution, got {n}")
+    _must(a["anchor"]["type"] == "callout",
+          f"expected callout anchor to win, got {a['anchor']['type']!r}")
+    _must(a["anchor"]["value"] == "[!blocks] Key Concepts",
+          f"expected [!blocks], got {a['anchor']['value']!r}")
+    print("[PASS] #29: editable callout still wins over an H2 heading")
+
+
+def test_new_section_before_footer_when_nothing_else_fits():
+    """#28: no editable callout and no content heading → anchor on the footer
+    callout with placement=before and a '## <section>' block prepended to
+    line_to_add, so applying inserts a fresh content section ahead of the
+    footer."""
+    path = "Atlas/200 Maps/Bare (MOC).md"
+    client = StubClient(notes={path: _FOOTER_ONLY_MOC_BODY})
+    actions = [_link_action("Bare (MOC)", path)]
+    n = ir.resolve_section_names(actions, client, _CONTENT_CALLOUTS)
+    a = actions[0]
+    _must(n == 1, f"expected 1 resolution, got {n}")
+    _must(a["anchor"]["type"] == "callout",
+          f"expected callout (footer) anchor, got {a['anchor']['type']!r}")
+    _must(a["anchor"]["value"] == "[!video] Action Items",
+          f"expected footer callout anchor, got {a['anchor']['value']!r}")
+    _must(a["placement"] == "before",
+          f"expected placement=before, got {a['placement']!r}")
+    _must(a["line_to_add"].startswith("## Key Concepts\n\n- [[New Note]]"),
+          f"expected prepended section block, got {a['line_to_add']!r}")
+    print("[PASS] #28: new section emitted before footer via before+multiline")
+
+
+def test_nothing_anchorable_stays_null():
+    """#28 residual: no callout, no heading, no footer → anchor stays null
+    (documented residual for truly bare MOCs)."""
+    path = "Atlas/200 Maps/Empty (MOC).md"
+    client = StubClient(notes={path: _NOTHING_MOC_BODY})
+    actions = [_link_action("Empty (MOC)", path)]
+    n = ir.resolve_section_names(actions, client, _CONTENT_CALLOUTS)
+    a = actions[0]
+    _must(n == 0, f"expected 0 resolutions, got {n}")
+    _must(a["anchor"]["value"] is None,
+          f"expected null anchor for bare MOC, got {a['anchor']['value']!r}")
+    print("[PASS] #28: nothing anchorable leaves the anchor null")
+
+
+def test_before_multiline_validates_against_schema():
+    """The generalized primitive (placement=before + multi-line line_to_add)
+    validates against instructions.schema.json."""
+    import json
+
+    import jsonschema
+
+    schema = json.loads(
+        (REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json").read_text()
+    )
+    doc = {
+        "schema_version": "1",
+        "type": "tomo-instructions",
+        "generated": "2026-06-13T00:00:00Z",
+        "profile": "miyo",
+        "actions": [{
+            "id": "I01",
+            "action": "link_to_moc",
+            "target_moc": "Bare (MOC)",
+            "target_moc_path": "Atlas/200 Maps/Bare (MOC).md",
+            "anchor": {"type": "callout", "value": "[!video] Action Items"},
+            "placement": "before",
+            "line_to_add": "## Key Concepts\n\n- [[New Note]]",
+        }],
+    }
+    jsonschema.validate(doc, schema)
+    print("[PASS] schema: placement=before + multi-line line_to_add validates")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -519,6 +707,11 @@ def main() -> None:
     test_no_in_set_create_moc_stays_null()
     test_pre_set_anchor_value_is_preserved()
     test_heading_anchor_skipped_by_resolver()
+    test_heading_fallback_when_no_editable_callout()
+    test_editable_callout_wins_over_heading()
+    test_new_section_before_footer_when_nothing_else_fits()
+    test_nothing_anchorable_stays_null()
+    test_before_multiline_validates_against_schema()
     test_paired_delete_default_emits_for_each_origin()
     test_keep_origin_suppresses_paired_delete()
     test_skipped_delete_source_still_works()

@@ -761,8 +761,8 @@ File* after moving. If Tomo Hashi automates this, do it AFTER the move so
 | `target_moc` | string | MOC stem (no path, no `.md`) — the name Obsidian resolves by. |
 | `target_moc_path` | string \| null | Resolved vault-relative full path. See "Resolution rules" below. |
 | `anchor` | object | `{type: "callout"\|"heading"\|"line", value: string\|null}` — where in the MOC to find the insertion point. See "Anchor types" below. |
-| `placement` | string | `"inside"` or `"after"` — where to write relative to the anchor. See "Placement modes". |
-| `line_to_add` | string | Pre-formatted content to insert (bullet style, link form, etc. all decided Tomo-side). Hashi writes it verbatim, prepending `> ` only when `placement="inside"` on a callout anchor. |
+| `placement` | string | `"inside"`, `"after"`, or `"before"` — where to write relative to the anchor. See "Placement modes". |
+| `line_to_add` | string | Pre-formatted content to insert (bullet style, link form, etc. all decided Tomo-side). May be **multi-line** (embedded `\n`) to insert a block — e.g. a new section heading plus its first bullet. Hashi writes it verbatim for `after`/`before`; for `inside` on a callout anchor it prepends `> ` to **each** line. |
 | `source_note_title` | string \| null | Informational — which note's link this represents. |
 
 **Anchor types** (post-2026-04-30 contract — replaces the old
@@ -776,8 +776,11 @@ File* after moving. If Tomo Hashi automates this, do it AFTER the move so
 
 `anchor.value` is `null` only at emission time when the renderer cannot
 resolve a concrete value yet. The Pass-2 resolver populates it via Kado
-read for callout-typed anchors. Heading and line anchors are populated
-upstream by the analyst; the resolver does not touch them.
+read: it prefers the highest-priority editable callout; when the target
+MOC has no editable callout it falls back to a content **heading** anchor
+(it rewrites `anchor.type` to `heading`), and when neither exists it emits
+a new-section block (see "Placement modes → before"). Line anchors are
+populated upstream by the analyst; the resolver does not touch them.
 
 **Placement modes:**
 
@@ -790,6 +793,12 @@ upstream by the analyst; the resolver does not touch them.
   anchor's terminal line** (for callouts: after the closing `>` line; for
   headings: after the heading line; for lines: after the matched line).
   Verbatim, no `> ` prefix.
+- **`before`** — insert `line_to_add` immediately **before the matched
+  anchor's first line**, verbatim, no `> ` prefix. Used to drop a new
+  content section in ahead of a footer callout: the anchor is the first
+  footer-marker callout (`[!video]` / `[!calendar]` / …) and `line_to_add`
+  is the multi-line block `## <Section>\n\n- [[<note>]]`. Valid for any
+  anchor type.
 
 **Default placement for new emissions:**
 

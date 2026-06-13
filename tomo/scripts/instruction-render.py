@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.21.0
+# version: 0.22.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1446,40 +1446,51 @@ def backfill_supporting_items_parents(confirmed: list[dict]) -> None:
                 sup["parent_moc"] = new_moc_title
 
 
+# Footer-marker callouts: content sections live BEFORE the first of these.
+# Used to anchor a new section ahead of the MOC footer (#28 / F-36). Mirrors
+# the LYT MOC template footer (docs/XDD/reference/tier-3/lyt-moc/section-placement.md).
+# TODO F-55: make this profile-configurable rather than a hardcoded set.
+FOOTER_CALLOUTS = {"video", "calendar", "puzzle", "compass"}
+
+# Heading for a brand-new content section when a MOC has neither an editable
+# callout nor a content heading to anchor on (#28 / F-36). Matches the standard
+# template's primary editable section.
+DEFAULT_NEW_SECTION_TITLE = "Key Concepts"
+
+
 def resolve_section_names(actions: list[dict], client, editable_callouts: list[str]) -> int:
-    """Best-effort: resolve `anchor.value` on callout-typed link_to_moc actions
-    by reading the target MOC and finding its first editable callout.
+    """Best-effort: resolve the insertion anchor on callout-typed link_to_moc
+    actions by reading the target MOC. Three-tier anchor resolution per action:
 
-    Function name retained for stability of imports; populates the new
-    `anchor.value` field instead of the removed `section_name` field.
+      1. Editable callout — the highest-priority editable callout (config-driven,
+         scored blocks > other > connect). Anchor stays type=callout.
+      2. Content heading (#29 / F-30) — when the MOC has no editable callout,
+         fall back to a content H2–H6 heading before the footer. Rewrites
+         anchor.type to "heading" and placement to "after" (Hashi has no
+         "inside" for headings).
+      3. New section before footer (#28 / F-36) — when neither exists, anchor on
+         the first footer-marker callout with placement="before" and prepend a
+         "## <section>" block to line_to_add, so applying inserts a fresh
+         content section ahead of the footer.
 
-    Two-tier resolution per action:
+    Tiers are evaluated against the live MOC first, then (for not-yet-existing
+    in-set MOCs) against the create_moc's `template` body — same rules apply.
 
-      1. Read the target MOC via Kado at `target_moc_path` and scan for the
-         first editable callout (matched against `editable_callouts`).
-      2. If tier 1 returns None AND the action targets a not-yet-existing MOC
-         (a same-set `create_moc.destination` matches the path), fall back to
-         reading that create_moc's `template` via Kado and scanning the
-         template body for an editable callout. This keeps in-set
-         create+link pairs from landing in the navigation callout at execute
-         time — the template's first editable callout is the semantically
-         correct insertion target.
-
-    Leaves section_name null when:
-      - client is None (offline / test mode)
+    Function name retained for import stability. Leaves the anchor unresolved
+    (action emitted as-is) when:
+      - client is None (offline / test mode) or editable_callouts is empty
       - target_moc_path is null
-      - the target MOC has no editable callout matching the config AND
-        either there is no in-set create_moc for the path, the create_moc
-        has no `template` field, or the template has no editable callout
+      - neither the MOC nor its template yields a callout, heading, or footer
       - Kado read fails for both the MOC and (where applicable) the template
 
-    Returns the count of actions populated.
+    Returns the count of actions resolved.
     """
     if client is None or not editable_callouts:
         return 0
     import re
     editable_set = {name for name in editable_callouts if name}
     callout_re = re.compile(r"^>\s*\[!([A-Za-z][A-Za-z0-9_-]*)\][+-]?.*$")
+    heading_re = re.compile(r"^(#{2,6})\s+(.+?)\s*$")
 
     # `connect` is conventionally the navigation callout (up:: / related::),
     # not where content-note bullets belong. Drop it to the back of the line:
@@ -1492,6 +1503,24 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             return 1
         return 2
 
+    def _callout_name(line: str) -> str | None:
+        m = callout_re.match(line)
+        return m.group(1) if m else None
+
+    def _strip_prefix(line: str) -> str:
+        s = line.lstrip()
+        if s.startswith(">"):
+            s = s[1:].lstrip()
+        return s
+
+    def _footer_index(lines: list[str]) -> int:
+        """Line index of the first footer-marker callout, or len(lines)."""
+        for i, raw in enumerate(lines):
+            name = _callout_name(raw.rstrip())
+            if name and name in FOOTER_CALLOUTS:
+                return i
+        return len(lines)
+
     def _pick_editable_callout(content: str) -> str | None:
         """Scan content for editable callouts and return the highest-priority
         one's full first line (sans leading `> `). Used for both live MOC
@@ -1499,25 +1528,64 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         candidates: list[tuple[int, str]] = []
         for raw in content.splitlines():
             line = raw.rstrip()
-            m = callout_re.match(line)
-            if not m:
+            name = _callout_name(line)
+            if not name or name not in editable_set:
                 continue
-            name = m.group(1)
-            if name not in editable_set:
-                continue
-            stripped = line.lstrip()
-            if stripped.startswith(">"):
-                stripped = stripped[1:].lstrip()
-            candidates.append((_score(name), stripped))
+            candidates.append((_score(name), _strip_prefix(line)))
         if not candidates:
             return None
         # Highest score wins; ties resolved by first occurrence (stable).
         return max(enumerate(candidates), key=lambda x: (x[1][0], -x[0]))[1][1]
 
-    # Tier-1 cache: keyed by MOC path
-    moc_cache: dict[str, str | None] = {}
+    def _pick_content_heading(content: str) -> str | None:
+        """First content H2–H6 heading before the footer; prefer one that reads
+        like a content section. Returns the heading text (sans leading #)."""
+        lines = content.splitlines()
+        cutoff = _footer_index(lines)
+        headings = [
+            m.group(2).strip()
+            for raw in lines[:cutoff]
+            if (m := heading_re.match(raw.rstrip()))
+        ]
+        if not headings:
+            return None
+        preferred = {"key concepts", "concepts", "notes"}
+        for h in headings:
+            if h.lower() in preferred:
+                return h
+        return headings[0]
 
-    def _resolve_from_moc(path: str) -> str | None:
+    def _find_footer_callout(content: str) -> str | None:
+        """Full first line (sans `> `) of the first footer-marker callout."""
+        for raw in content.splitlines():
+            line = raw.rstrip()
+            name = _callout_name(line)
+            if name and name in FOOTER_CALLOUTS:
+                return _strip_prefix(line)
+        return None
+
+    def _pick_anchor(content: str) -> dict | None:
+        """Three-tier anchor resolution. Returns the anchor decision as a dict
+        (type/value plus optional placement + new_section), or None when nothing
+        in the body is anchorable."""
+        callout = _pick_editable_callout(content)
+        if callout:
+            return {"type": "callout", "value": callout}
+        heading = _pick_content_heading(content)
+        if heading:
+            return {"type": "heading", "value": heading, "placement": "after"}
+        footer = _find_footer_callout(content)
+        if footer:
+            return {
+                "type": "callout", "value": footer, "placement": "before",
+                "new_section": DEFAULT_NEW_SECTION_TITLE,
+            }
+        return None
+
+    # Tier-1 cache: keyed by MOC path
+    moc_cache: dict[str, dict | None] = {}
+
+    def _resolve_from_moc(path: str) -> dict | None:
         if path in moc_cache:
             return moc_cache[path]
         try:
@@ -1526,24 +1594,24 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         except Exception:  # noqa: BLE001
             moc_cache[path] = None
             return None
-        section = _pick_editable_callout(content)
-        moc_cache[path] = section
-        return section
+        res = _pick_anchor(content)
+        moc_cache[path] = res
+        return res
 
     # Tier-2 cache: keyed by template name (templates are usually shared
     # across many in-set create_moc actions — read each at most once).
-    tmpl_cache: dict[str, str | None] = {}
+    tmpl_cache: dict[str, dict | None] = {}
 
-    def _resolve_from_template(template: str) -> str | None:
+    def _resolve_from_template(template: str) -> dict | None:
         if template in tmpl_cache:
             return tmpl_cache[template]
         body = read_template(client, template)
         if body is None:
             tmpl_cache[template] = None
             return None
-        section = _pick_editable_callout(body)
-        tmpl_cache[template] = section
-        return section
+        res = _pick_anchor(body)
+        tmpl_cache[template] = res
+        return res
 
     # Index in-set create_moc actions by destination so tier-2 can find the
     # template that the not-yet-existing MOC will be built from.
@@ -1568,16 +1636,23 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         path = a.get("target_moc_path")
         if not path:
             continue
-        section = _resolve_from_moc(path)
-        if section is None:
+        res = _resolve_from_moc(path)
+        if res is None:
             # Tier-2 fallback: in-set create_moc landing at this path
             create = create_moc_by_dest.get(path)
             if create:
                 template = create.get("template")
                 if template:
-                    section = _resolve_from_template(template)
-        if section:
-            anchor["value"] = section
+                    res = _resolve_from_template(template)
+        if res:
+            anchor["type"] = res["type"]
+            anchor["value"] = res["value"]
+            if res.get("placement"):
+                a["placement"] = res["placement"]
+            if res.get("new_section"):
+                # Prepend a fresh "## <section>" block; the resolved footer
+                # anchor + placement="before" drops it ahead of the footer.
+                a["line_to_add"] = f"## {res['new_section']}\n\n{a.get('line_to_add', '')}"
             resolved += 1
     return resolved
 

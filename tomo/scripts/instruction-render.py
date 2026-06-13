@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.23.0
+# version: 0.24.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -40,7 +40,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.doc_frontmatter import build_tomo_block  # noqa: E402
-from lib.kado_client import KadoClient, KadoError  # noqa: E402
+from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -748,11 +748,12 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
        the suggestions doc cannot offer a future-MOC as a parent option when
        reviewing atomic items.
 
-    Both passes emit content-bullet links into the target MOC's content
-    callout (anchor.type=callout, placement=inside). resolve_anchors
+    Both passes emit content-bullet links into the target MOC. Default
+    placement is "after" (the bullet lands below the matched callout, not
+    inside its body — the standing contract with Hashi). resolve_section_names
     populates anchor.value via Kado read; if the target MOC has no editable
-    callout, the action lands with anchor.value=null (Hashi reports a
-    runtime error in that case).
+    callout it falls back to a heading anchor, and if it has none of those
+    either the action lands with anchor.value=null.
 
     Dedup by (target_moc, line_to_add) so a parent_moc that happens to also
     appear in supporting_items isn't double-emitted.
@@ -1260,7 +1261,6 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         lines.append(f"- **Position:** {pos_desc}")
         lines.append("- **Content to add:**")
         lines.append(f"  > {action.get('content', '')}")
-        lines.append("- **If daily note doesn't exist:** Create it first, then add the entry.")
         return "\n".join(lines)
 
     if kind == "update_log_link":
@@ -1405,6 +1405,25 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         for a in bucket:
             body_parts.append(_render_action_md(a, cfg))
             body_parts.append("")
+
+    # Skipped daily-note actions (#37/I38): surfaced so the user knows a log
+    # entry / tracker was dropped because its daily note does not exist (Hashi
+    # cannot create one). Create the daily note and re-run to apply these.
+    skipped_daily = metadata.get("skipped_daily") or []
+    if skipped_daily:
+        body_parts.append("## Skipped — daily note missing")
+        body_parts.append("")
+        body_parts.append(
+            "These actions were not emitted because their target daily note "
+            "does not exist (Hashi modifies daily notes, it does not create "
+            "them). Create the daily note in Obsidian and re-run `/inbox` to "
+            "apply them:")
+        body_parts.append("")
+        for a in skipped_daily:
+            stem = _stem(a.get("daily_note_path")) or a.get("date", "?")
+            detail = a.get("content") or a.get("field") or a.get("target_stem") or ""
+            body_parts.append(f"- `{a.get('action')}` → [[{stem}]] — {detail}".rstrip(" —"))
+        body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"
 
 
@@ -1725,6 +1744,56 @@ def resolve_target_moc_paths(actions: list[dict], client) -> int:
     return resolved
 
 
+# Daily-note-targeting actions modify (never create) their daily note.
+DAILY_NOTE_ACTIONS = {"update_tracker", "update_log_entry", "update_log_link"}
+
+
+def filter_missing_daily_notes(
+    actions: list[dict], client,
+) -> tuple[list[dict], list[dict]]:
+    """Drop daily-note actions whose target daily note does not exist (#37/I38).
+
+    update_tracker / update_log_entry / update_log_link MODIFY an existing daily
+    note. Hashi only modifies — it cannot create a daily note (unlike create_moc
+    / move_note, which create their targets). When the target is absent (e.g. a
+    log entry dated to a historical day the user never opened), the action is
+    unappliable, so skip it here instead of emitting an instruction Hashi must
+    fail on. Skipped actions are surfaced (stderr + the instructions.md
+    "Skipped" section) so the user can create the daily note and re-run.
+
+    Returns (kept, skipped). Non-daily actions are always kept. Fail-open: if
+    `client` is None (offline/test) or a Kado read fails for any reason other
+    than a definitive not-found, the action is kept — never drop on a transient
+    error.
+    """
+    if client is None:
+        return actions, []
+    exists_cache: dict[str, bool] = {}
+
+    def _exists(path: str) -> bool:
+        if path in exists_cache:
+            return exists_cache[path]
+        ok = True  # fail-open default
+        try:
+            client.read_note(path)
+        except KadoNotFoundError:
+            ok = False
+        except Exception:  # noqa: BLE001 — transient/other error: keep the action
+            ok = True
+        exists_cache[path] = ok
+        return ok
+
+    kept: list[dict] = []
+    skipped: list[dict] = []
+    for a in actions:
+        path = a.get("daily_note_path")
+        if a.get("action") in DAILY_NOTE_ACTIONS and path and not _exists(path):
+            skipped.append(a)
+            continue
+        kept.append(a)
+    return kept, skipped
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Render approved suggestions into note files.")
     p.add_argument("--suggestions", required=True, help="Path to parsed suggestions JSON")
@@ -1952,6 +2021,20 @@ def main() -> int:
         print(f"  [resolve] anchor.value populated for {resolved_sections} link_to_moc action(s)",
               file=sys.stderr)
 
+    # ── Drop daily-note actions whose target daily note doesn't exist ────
+    # Hashi modifies, never creates, a daily note (#37/I38). Skip unappliable
+    # daily-note actions and surface them rather than emit a failing action.
+    actions, skipped_daily = filter_missing_daily_notes(actions, client)
+    if skipped_daily:
+        print(
+            f"  [skip] {len(skipped_daily)} daily-note action(s) skipped — "
+            "target daily note does not exist (Hashi cannot create it):",
+            file=sys.stderr,
+        )
+        for a in skipped_daily:
+            print(f"    • {a.get('id')} {a.get('action')} → {a.get('daily_note_path')}",
+                  file=sys.stderr)
+
     # ── Path Shape Contract guard (Hashi handoff 2026-04-26) ─────────────
     # Catch non-conforming paths before they reach the JSON. Hashi fails
     # closed on these with non-actionable error messages — catching upstream
@@ -2004,6 +2087,7 @@ def main() -> int:
             "generated": generated_iso,
             "profile": profile_name,
             "tomo_version": tomo_version,
+            "skipped_daily": skipped_daily,
         },
         cfg,
     )

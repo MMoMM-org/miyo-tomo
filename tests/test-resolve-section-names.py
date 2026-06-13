@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """test-resolve-section-names.py — Unit tests for resolve_section_names + paired delete_source.
 
 Covers:
@@ -40,14 +40,18 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(SCRIPTS_DIR / "lib"))
 
-from kado_client import KadoNotFoundError  # noqa: E402
-
 _spec = importlib.util.spec_from_file_location(
     "instruction_render", SCRIPTS_DIR / "instruction-render.py"
 )
 ir = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(ir)
+
+# Use the SAME KadoNotFoundError class instruction-render imports
+# (`lib.kado_client`), not `kado_client` — they are distinct module objects
+# under the test's sys.path, so a bare `from kado_client import ...` would be a
+# different class and `except KadoNotFoundError` in the module wouldn't catch it.
+KadoNotFoundError = ir.KadoNotFoundError
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -696,6 +700,59 @@ def test_before_multiline_validates_against_schema():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# filter_missing_daily_notes (#37 / I38) — skip daily actions for absent notes
+# ──────────────────────────────────────────────────────────────────────────────
+
+_DAILY = "Calendar/301 Daily/2026-06-13.md"
+_MISSING = "Calendar/301 Daily/2026-04-29.md"
+
+
+def _log_action(path):
+    return {"id": "I50", "action": "update_log_entry", "daily_note_path": path,
+            "date": "2026-04-29", "content": "Morgen-Routine durchgezogen"}
+
+
+def test_daily_action_kept_when_note_exists():
+    """Daily note exists → update_log_entry is kept."""
+    client = StubClient(notes={_DAILY: "# 2026-06-13\n\n## Daily Log\n"})
+    acts = [_log_action(_DAILY)]
+    kept, skipped = ir.filter_missing_daily_notes(acts, client)
+    _must(len(kept) == 1 and not skipped, f"expected kept, got kept={kept} skipped={skipped}")
+    print("[PASS] I38: daily action kept when the daily note exists")
+
+
+def test_daily_action_skipped_when_note_missing():
+    """Daily note absent (KadoNotFoundError) → action skipped, not emitted."""
+    client = StubClient(notes={})  # _MISSING not registered → NOT_FOUND
+    acts = [_log_action(_MISSING)]
+    kept, skipped = ir.filter_missing_daily_notes(acts, client)
+    _must(not kept and len(skipped) == 1,
+          f"expected skipped, got kept={kept} skipped={skipped}")
+    _must(skipped[0]["id"] == "I50", "wrong action skipped")
+    print("[PASS] I38: daily action skipped when the daily note is missing")
+
+
+def test_non_daily_actions_never_filtered():
+    """link_to_moc / create_moc are kept regardless of daily-note existence."""
+    client = StubClient(notes={})
+    acts = [
+        {"id": "I01", "action": "create_moc", "destination": "X/Y (MOC).md"},
+        {"id": "I02", "action": "link_to_moc", "target_moc": "Z (MOC)"},
+    ]
+    kept, skipped = ir.filter_missing_daily_notes(acts, client)
+    _must(len(kept) == 2 and not skipped, f"non-daily must be kept, got skipped={skipped}")
+    print("[PASS] I38: non-daily actions are never filtered")
+
+
+def test_filter_fail_open_without_client():
+    """client=None (offline/test) → keep everything, skip nothing."""
+    acts = [_log_action(_MISSING)]
+    kept, skipped = ir.filter_missing_daily_notes(acts, None)
+    _must(len(kept) == 1 and not skipped, "must fail open when client is None")
+    print("[PASS] I38: fail-open when client is None")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -712,6 +769,10 @@ def main() -> None:
     test_new_section_before_footer_when_nothing_else_fits()
     test_nothing_anchorable_stays_null()
     test_before_multiline_validates_against_schema()
+    test_daily_action_kept_when_note_exists()
+    test_daily_action_skipped_when_note_missing()
+    test_non_daily_actions_never_filtered()
+    test_filter_fail_open_without_client()
     test_paired_delete_default_emits_for_each_origin()
     test_keep_origin_suppresses_paired_delete()
     test_skipped_delete_source_still_works()

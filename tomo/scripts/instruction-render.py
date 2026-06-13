@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.22.0
+# version: 0.23.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1652,7 +1652,11 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             if res.get("new_section"):
                 # Prepend a fresh "## <section>" block; the resolved footer
                 # anchor + placement="before" drops it ahead of the footer.
-                a["line_to_add"] = f"## {res['new_section']}\n\n{a.get('line_to_add', '')}"
+                # Trailing \n separates the block from the footer callout it is
+                # inserted before — Hashi writes line_to_add VERBATIM and adds no
+                # implicit spacing (confirmed hashi#65, 2026-06-13), so Tomo owns
+                # the blank line.
+                a["line_to_add"] = f"## {res['new_section']}\n\n{a.get('line_to_add', '')}\n"
             resolved += 1
     return resolved
 

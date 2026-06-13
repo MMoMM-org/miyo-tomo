@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test-resolve-section-names.py — Unit tests for resolve_section_names + paired delete_source.
 
 Covers:
@@ -647,8 +647,8 @@ def test_new_section_before_footer_when_nothing_else_fits():
           f"expected footer callout anchor, got {a['anchor']['value']!r}")
     _must(a["placement"] == "before",
           f"expected placement=before, got {a['placement']!r}")
-    _must(a["line_to_add"].startswith("## Key Concepts\n\n- [[New Note]]"),
-          f"expected prepended section block, got {a['line_to_add']!r}")
+    _must(a["line_to_add"] == "## Key Concepts\n\n- [[New Note]]\n",
+          f"expected section block with trailing newline, got {a['line_to_add']!r}")
     print("[PASS] #28: new section emitted before footer via before+multiline")
 
 

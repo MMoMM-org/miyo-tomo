@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.17.0
+# version: 0.17.1
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -278,7 +278,8 @@ keys that represent the event/capture time. Treat maintenance keys as if
 they were absent.
 
 - **Prefer (event-date keys):** `recorded`, `Recorded`, `created`, `Created`,
-  `date`, `Date`, `event_date`, `EventDate`, `captured`, `Captured`.
+  `date`, `Date`, `event_date`, `EventDate`, `captured`, `Captured`,
+  `DateStamp`, `datestamp`.
   When multiple are present, use the first one in this priority order.
 - **Ignore (maintenance keys):** `updated`, `Updated`, `modified`, `Modified`,
   `last_modified`, `LastModified`, `lastmod`. These reflect the most recent

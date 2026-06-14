@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.9.1
+# version: 1.10.2
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -49,6 +49,7 @@ from lib.topic_clusters import (  # noqa: E402, F401
     strip_moc_marker,
 )
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
+from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -412,11 +413,19 @@ def render_daily_notes_updates_block(
 
     for entry in daily_notes_updates:
         stem = entry["daily_note_stem"]
-        lines.append(f"### [[{stem}]]")
+        if entry.get("exists", True):
+            lines.append(f"### [[{stem}]]")
+        else:
+            # I38: warn in the Pass-1 doc (where the user accepts) that this
+            # date's daily note is absent. Hashi modifies daily notes, it does
+            # not create them — see domain_hashi_modifies_never_creates. The
+            # #58 Pass-2 backstop drops the action; this heading lets the user
+            # create the note (or skip) before they ever accept the entry.
+            lines.append(
+                f"### [[{stem}]] ⚠️ daily note doesn't exist — "
+                "create it first or the entry is skipped"
+            )
         lines.append("")
-        if not entry.get("exists", True):
-            lines.append(f"- [ ] Create daily note [[{stem}]] first")
-            lines.append("")
 
         trackers = entry.get("trackers") or []
         if trackers:
@@ -838,6 +847,52 @@ def load_field_sections(shared_ctx_path: Path) -> dict[str, str]:
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+# ── I38 Pass-1: flag daily-note groups whose target note doesn't exist ────────
+# Symmetric with instruction-render.filter_missing_daily_notes (#58, Pass-2).
+
+def annotate_daily_note_existence(
+    daily_groups: dict[str, dict],
+    daily_path_by_stem: dict[str, str],
+    client,
+) -> int:
+    """Set entry["exists"]=False for daily-note groups whose note is absent.
+
+    One deduplicated Kado read per unique daily-note path. Fail-open: a None
+    client (offline/test) or any error other than a definitive not-found keeps
+    exists=True — never raise a false "missing" alarm. Returns the count of
+    groups flagged missing.
+    """
+    if client is None:
+        return 0
+    missing = 0
+    cache: dict[str, bool] = {}
+    for stem, entry in daily_groups.items():
+        path = daily_path_by_stem.get(stem)
+        if not path:
+            continue
+        # The analyst emits an extensionless daily_note_path (e.g.
+        # "Calendar/301 Daily/2026-04-29"). Kado's kado-read note op is .md-only
+        # and returns VALIDATION_ERROR (not NOT_FOUND) without the extension —
+        # which the fail-open branch below would swallow, leaving exists=True and
+        # the warning silently absent. Normalise to .md (mirrors
+        # instruction-render._resolve_daily_path) so a missing note reads as a
+        # clean not-found.
+        read_path = path if path.endswith(".md") else f"{path}.md"
+        if read_path not in cache:
+            ok = True  # fail-open default
+            try:
+                client.read_note(read_path)
+            except KadoNotFoundError:
+                ok = False
+            except Exception:  # noqa: BLE001 — transient/other error: keep exists=True
+                ok = True
+            cache[read_path] = ok
+        if not cache[read_path]:
+            entry["exists"] = False
+            missing += 1
+    return missing
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Reduce per-item result JSONs into a single suggestions-doc JSON."
@@ -877,6 +932,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="XDD 012 fan-resolve mode: include ONLY items whose result.json has "
                         "force_atomic=true; skip daily_notes_updates, proposed_mocs, and "
                         "needs_attention; emit doc_variant='fan-resolve' for the renderer.")
+    p.add_argument("--no-kado", action="store_true",
+                   help="Skip the live Kado daily-note existence check (I38). "
+                        "Offline/test mode: all daily notes are assumed to exist.")
     return p
 
 
@@ -970,6 +1028,9 @@ def main() -> int:
     section_titles: dict[str, str] = {}
     # daily_note_stem -> {trackers, log_entries, log_links}
     daily_groups: dict[str, dict] = {}
+    # daily_note_stem -> daily_note_path (I38: for the Kado existence check;
+    # kept off the entry dict because the output schema is additionalProperties:false)
+    daily_path_by_stem: dict[str, str] = {}
     # stem -> [(daily_note_stem, time, reason)] for Material für mirror
     stem_log_links: dict[str, list[dict]] = {}
     # stems whose content is fully captured in daily note(s) — source can be deleted
@@ -1040,6 +1101,9 @@ def main() -> int:
                             "log_entries": [],
                             "log_links": [],
                         }
+                    dpath = action.get("daily_note_path")
+                    if dpath and daily_stem not in daily_path_by_stem:
+                        daily_path_by_stem[daily_stem] = dpath
                     for u in action.get("updates") or []:
                         ukind = u.get("kind")
                         if ukind == "tracker":
@@ -1168,6 +1232,19 @@ def main() -> int:
             "error": f"{err.get('kind', 'unknown')}: {err.get('message', '')}".strip(": "),
         })
 
+    # I38: flag groups whose daily note doesn't exist so Pass 1 surfaces it
+    # (not just the #58 Pass-2 backstop). On by default; --no-kado disables.
+    # Fail-open — no Kado config / unreachable → all exists=True (prior behavior).
+    kado_client = None
+    if not args.no_kado and not args.fan_resolve:
+        try:
+            kado_client = KadoClient()
+        except Exception:  # noqa: BLE001 — no Kado config → fail-open
+            kado_client = None
+    missing_daily = annotate_daily_note_existence(
+        daily_groups, daily_path_by_stem, kado_client
+    )
+
     daily_notes_updates = sorted(daily_groups.values(), key=lambda d: d["daily_note_stem"])
     daily_notes_updates_sorted = daily_notes_updates
     rendered_daily_updates_md = render_daily_notes_updates_block(
@@ -1225,6 +1302,7 @@ def main() -> int:
     print(
         f"suggestions-reducer: done={len(done_stems)} failed={len(failed_entries)} "
         f"sections={len(sections)} daily_notes_updates={len(daily_notes_updates)} "
+        f"daily_notes_missing={missing_daily} "
         f"proposed_mocs={len(proposed_mocs)} out={out_path}",
         file=sys.stderr,
     )

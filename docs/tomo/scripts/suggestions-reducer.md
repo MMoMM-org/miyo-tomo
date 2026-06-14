@@ -66,3 +66,41 @@ heading is emitted by the orchestrator (not the reducer); the per-block
 `source_stem` makes a single shared heading acceptable — the user can mentally
 group the blocks without visual nesting. Renders stay scannable at the typical
 N=2-3 and are designed for N=5 as the realistic upper bound.
+
+## Pass-1 missing-daily-note surfacing — I38 (#58 sibling)
+
+WHY the reducer reaches Kado at all: the reducer was a pure offline reduce over
+local `result.json` files. I38 surfaced that an `update_log_entry` /
+`update_tracker` / `update_log_link` dated to a daily note the user never
+created is unappliable — Hashi MODIFIES daily notes, it does not create them
+(see `domain_hashi_modifies_never_creates`; contrast `create_moc` / `move_note`,
+which create their targets). PR #58 added the Pass-2 backstop
+(`instruction-render.filter_missing_daily_notes`), but that only surfaces the
+skip in `instructions.md` — *after* the user already accepted the entry. The
+daily-log decision is made in the Pass-1 SUGGESTIONS doc (the
+`### [[<date>]]` Daily-Notes-Updates block), so the existence warning belongs
+there too. `annotate_daily_note_existence` does one deduplicated Kado read per
+unique daily-note path and flags `exists=False`; the heading then renders the
+`⚠️ daily note doesn't exist` warning. Symmetric with #58, not a replacement —
+#58 stays as the Pass-2 drop.
+
+WHY fail-open: a None client (offline / `--no-kado` / no Kado config) or any
+error other than a definitive `KadoNotFoundError` keeps `exists=True`. A false
+"missing" warning on a note that actually exists is worse than silence — it
+would push the user to recreate a note they already have. A transient Kado
+hiccup must never produce that, so only a definitive not-found flags the note.
+
+WHY `daily_note_path` is held in a side map, not on the entry: the output
+suggestions-doc schema is `additionalProperties: false` on daily-notes-updates
+entries, so the path used for the Kado read cannot live on the entry dict. It is
+collected into `daily_path_by_stem` for the duration of the existence check and
+discarded — only the already-schema'd `exists` boolean reaches the output.
+
+WHY skip the check in `--fan-resolve`: the Force-Atomic resolve doc wipes
+`daily_notes_updates` immediately after, so checking existence there would spend
+Kado reads on a block that is discarded. The check is gated off for that variant.
+
+WHY on by default with `--no-kado` escape (not opt-in): an opt-in flag would
+have to be threaded through the `suggest-handling` SKILL.md invocation — a
+second touch point that drifts. On-by-default keeps the surfacing automatic in
+real Pass-1 runs; `--no-kado` keeps tests and offline runs deterministic.

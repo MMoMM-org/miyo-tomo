@@ -180,3 +180,18 @@ WHY: Bumped from 0.16.0 for de-biased two-pass Step 7.5 segmentation rewrite
 (anti-under-segmentation, F-41). Prompt-only change — no schema or Python touched.
 `update-tomo.sh` skips unchanged versions silently — the bump is required for the edit
 to ship to the Docker instance.
+
+## DateStamp recognized as an event-date key (I38 follow-up, 2026-06-14)
+
+WHY: the Step 8 frontmatter scan's preferred event-date keys originally omitted
+`DateStamp` — but `DateStamp: YYYY-MM-DD` (paired with `UUID: YYYYMMDDHHMMSS`) is
+the capture-time convention of the target vault's note template. Because the key
+was unlisted, date resolution for such notes was non-deterministic: the LLM
+sometimes improvised reading `DateStamp`, but otherwise fell through to the body
+(`recorded:` in voice transcripts — content-priority), the filename date, or the
+today-fallback. Symptom (test vault): editing a note's `DateStamp` did not
+reliably move its daily-log target, and one note with only a `DateStamp` defaulted
+to today. Adding `DateStamp`/`datestamp` (lowest frontmatter priority, after the
+explicit semantic keys) makes the vault's convention an officially recognized
+event date so resolution is deterministic. Maintenance keys (`Updated`, etc.)
+remain ignored.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.0
+# version: 0.24.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1415,9 +1415,8 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         body_parts.append("")
         body_parts.append(
             "These actions were not emitted because their target daily note "
-            "does not exist (Hashi modifies daily notes, it does not create "
-            "them). Create the daily note in Obsidian and re-run `/inbox` to "
-            "apply them:")
+            "does not exist. Create the daily note in Obsidian and re-run "
+            "`/inbox` to apply them:")
         body_parts.append("")
         for a in skipped_daily:
             stem = _stem(a.get("daily_note_path")) or a.get("date", "?")

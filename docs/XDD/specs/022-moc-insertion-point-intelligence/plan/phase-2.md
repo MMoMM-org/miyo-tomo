@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Schema additions"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -29,7 +29,7 @@ phase: 2
 
 Establishes the data contract additions every later phase writes to / reads from.
 
-- [ ] **T2.1 `candidate_mocs[].anchor` (item-result)** `[parallel: true]` `[activity: data-architecture]`
+- [x] **T2.1 `candidate_mocs[].anchor` (item-result)** `[parallel: true]` `[activity: data-architecture]`
 
   1. Prime: Read `candidate_mocs[]` and the dead `link_to_moc.section_name` `[ref: item-result.schema.json; lines: 67-79, 188-197]`.
   2. Test (red): schema-validation test — a `create_atomic_note` with `candidate_mocs[].anchor = {type,value,placement,new_section?}` validates; one without `anchor` still validates (optional).
@@ -37,7 +37,7 @@ Establishes the data contract additions every later phase writes to / reads from
   4. Validate: `./venv/bin/python -m pytest` schema tests pass; legacy result fixtures still validate.
   5. Success: [ ] new+old artifacts validate `[ref: solution.md/CON-4]`
 
-- [ ] **T2.2 `mocs[].headings[]` + `editable_callouts[]` (shared-ctx)** `[parallel: true]` `[activity: data-architecture]`
+- [x] **T2.2 `mocs[].headings[]` + `editable_callouts[]` (shared-ctx)** `[parallel: true]` `[activity: data-architecture]`
 
   1. Prime: Read `mocs[]` `[ref: shared-ctx.schema.json; lines: 12-24]` (`additionalProperties:false`).
   2. Test (red): a `mocs[]` entry with `headings:[{text,level}]` + `editable_callouts:[string]` validates; one without still validates.
@@ -45,7 +45,7 @@ Establishes the data contract additions every later phase writes to / reads from
   4. Validate: schema tests pass.
   5. Success: [ ] inventory fields optional + valid `[ref: solution.md/ADR-2]`
 
-- [ ] **T2.3 `link_to_moc.new_section` (instructions)** `[activity: data-architecture]`
+- [x] **T2.3 `link_to_moc.new_section` (instructions)** `[activity: data-architecture]`
 
   1. Prime: Read `link_to_moc` + `anchor` `[ref: instructions.schema.json; lines: 78-102]`; confirm Hashi applies existing shapes (no Hashi change) `[ref: research-synthesis.md/Hashi contract]`.
   2. Test (red): a `link_to_moc` with `new_section:"<H2 title>"` validates; one without (null/absent) validates.
@@ -53,6 +53,6 @@ Establishes the data contract additions every later phase writes to / reads from
   4. Validate: schema tests pass; the #28 wire shape from the prior handoff still validates.
   5. Success: [ ] explicit new_section validates, no Hashi shape change `[ref: solution.md/ADR-3]`
 
-- [ ] **T2.4 Phase Validation** `[activity: validate]`
+- [x] **T2.4 Phase Validation** `[activity: validate]`
 
   - Run schema test suite. Confirm every legacy fixture in `tomo-instance/tomo-tmp` / `tests/` still validates (additive-only proof).

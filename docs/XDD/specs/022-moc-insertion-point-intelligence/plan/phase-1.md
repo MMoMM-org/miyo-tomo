@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Shared parse foundation"
-status: pending
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -30,7 +30,7 @@ phase: 1
 Establishes the shared MOC-structure parsing capability both the inventory producer and the render
 fallback depend on.
 
-- [ ] **T1.1 `lib/moc_structure.py` parser** `[activity: domain-modeling]`
+- [x] **T1.1 `lib/moc_structure.py` parser** `[activity: domain-modeling]`
 
   1. Prime: Read the existing inline regexes and footer logic `[ref: instruction-render.py; lines: 1471, 1476, 1510-1511, 1558-1601]`.
   2. Test (red): `tests/test_moc_structure.py` under `./venv/bin/python` —
@@ -44,6 +44,6 @@ fallback depend on.
      - [ ] Heading inventory matches render-time `_pick_content_heading` extraction on the same body `[ref: solution.md/ADR-4]`
      - [ ] Footer set is parameterized `[ref: solution.md/Implementation Gotchas]`
 
-- [ ] **T1.2 Phase Validation** `[activity: validate]`
+- [x] **T1.2 Phase Validation** `[activity: validate]`
 
   - Run `tests/test_moc_structure.py`. Confirm the lib is import-clean and has no Kado/IO dependency (pure functions over a body string).

@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Inventory producers"
-status: pending
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -29,7 +29,7 @@ phase: 3
 
 Produces the per-MOC heading/callout inventory and lands it in shared-ctx within budget.
 
-- [ ] **T3.1 moc-tree-builder inventory** `[activity: backend]`
+- [x] **T3.1 moc-tree-builder inventory** `[activity: backend]`
 
   1. Prime: Read the body-read + cache-entry build `[ref: moc-tree-builder.py; lines: 290-323]` and the existing read site `raw_by_path` (`:292`).
   2. Test (red): given a MOC body, the cache entry gains `headings:[{text,level}]` + `editable_callouts:[string]` via `moc_structure`; non-MOC notes unaffected; no extra Kado call issued (assert read count unchanged).
@@ -37,7 +37,7 @@ Produces the per-MOC heading/callout inventory and lands it in shared-ctx within
   4. Validate: builder tests pass; cache schema bump consistent with F-34 scoped-cache shape `[ref: README/Decisions Log]`.
   5. Success: [ ] inventory present, zero new Kado reads `[ref: solution.md/ADR-4, CON-3]`
 
-- [ ] **T3.2 shared-ctx-builder A-trimmed copy** `[activity: backend]`
+- [x] **T3.2 shared-ctx-builder A-trimmed copy** `[activity: backend]`
 
   1. Prime: Read `build_mocs` + the `enforce_budget` trim-pass pattern `[ref: shared-ctx-builder.py; lines: 210-227, 561-612]`.
   2. Test (red):
@@ -50,6 +50,6 @@ Produces the per-MOC heading/callout inventory and lands it in shared-ctx within
      - [ ] inventory trimmed + capped + Dewey-skipped `[ref: solution.md/ADR-2]`
      - [ ] budget trim drops inventory first `[ref: solution.md/Error Handling]`
 
-- [ ] **T3.3 Phase Validation** `[activity: validate]`
+- [x] **T3.3 Phase Validation** `[activity: validate]`
 
   - Run builder test suites. Confirm shared-ctx total stays within budget and no classification MOC carries inventory.

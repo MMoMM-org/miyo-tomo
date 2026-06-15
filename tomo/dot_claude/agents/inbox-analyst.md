@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.17.2
+# version: 0.17.3
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -181,11 +181,11 @@ Evaluate the tiers in strict order — first tier that fires wins:
 
 - **TIER-4 — H1 title last-resort.**
   If `moc.headings` is absent/empty AND `moc.editable_callouts` is
-  absent/empty, use the MOC's H1 title (the note's own title / file stem):
+  absent/empty, use `moc.title` (the MOC's own H1 title from shared-ctx):
   ```json
-  {"type": "heading", "value": "<MOC H1 title>", "placement": "after", "new_section": null}
+  {"type": "heading", "value": "<moc.title>", "placement": "after", "new_section": null}
   ```
-  If the MOC has no H1 either, fall back to the first body line:
+  If `moc.title` is empty or absent, fall back to the first body line:
   ```json
   {"type": "line", "value": "<first body line>", "placement": "after", "new_section": null}
   ```

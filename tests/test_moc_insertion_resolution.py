@@ -277,6 +277,25 @@ class TestTier2NewSection:
         assert anchor["new_section"] == "Cognitive Biases"
         assert anchor["new_section"] != "Key Concepts"
 
+    def test_tier2_new_section_null_footer_value_schema_valid(self, item_result_schema):
+        """TIER-2: value=None is valid when no footer callout is present (prompt allows null)."""
+        candidate = {
+            "path": "Atlas/200 Maps/Psychology (MOC).md",
+            "score": 0.55,
+            "pre_check": True,
+            "anchor": {
+                "type": "callout",
+                "value": None,
+                "placement": "before",
+                "new_section": "Behavioural Science",
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        anchor = candidate["anchor"]
+        assert anchor["value"] is None
+        assert anchor["new_section"] is not None
+        assert anchor["new_section"] != "Key Concepts"
+
 
 # ===========================================================================
 # AC-7: TIER-3 — No headings, editable callout present → callout inside
@@ -483,8 +502,8 @@ class TestEC5ClassificationExcluded:
 class TestAnchorSchemaConstraints:
     """Schema-level rejection tests — verify the contract rejects malformed anchors."""
 
-    def test_anchor_value_null_is_valid(self, item_result_schema):
-        """anchor.value as null is a valid schema value (resolved but empty)."""
+    def test_anchor_value_null_is_schema_legal_unresolved_sentinel(self, item_result_schema):
+        """anchor.value=null is schema-legal (sentinel for an unresolved anchor — absent when the LLM could not match any anchor text)."""
         candidate = {
             "path": "Atlas/200 Maps/Tech (MOC).md",
             "score": 0.60,

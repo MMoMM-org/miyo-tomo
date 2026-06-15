@@ -1,6 +1,6 @@
 ---
 title: "Phase 7: Cross-repo + live walk"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 7
 ---

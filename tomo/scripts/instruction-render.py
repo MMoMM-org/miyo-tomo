@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.7
+# version: 0.24.8
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1677,6 +1677,68 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
     return resolved
 
 
+def _emit_resolution_telemetry(actions: list[dict]) -> None:
+    """Emit a single metadata-only stderr line reporting four-tier MOC-insertion outcomes.
+
+    Tallies per-tier counts across all link_to_moc actions and prints ONE tagged
+    line. Privacy (Constitution L2): only metadata is recorded — tier names, MOC
+    paths/stems, and counts. anchor.value (heading text) and note body content
+    are NEVER included.
+
+    Tier derivation (first match wins):
+      - top-level new_section set             → new_section tier
+      - anchor.type == "heading", value set   → heading tier
+      - anchor.type == "callout", value set   → callout tier
+      - anchor.type == "line"                 → line tier
+      - anchor.value is None/absent           → unresolved
+    """
+    counts: dict[str, int] = {
+        "heading": 0,
+        "new_section": 0,
+        "callout": 0,
+        "line": 0,
+        "unresolved": 0,
+    }
+    moc_paths: list[str] = []
+
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        moc_path = a.get("target_moc_path") or a.get("target_moc") or ""
+        if moc_path:
+            moc_paths.append(moc_path)
+        anchor = a.get("anchor") or {}
+        anchor_type = anchor.get("type")
+        anchor_value = anchor.get("value")
+
+        if a.get("new_section"):
+            counts["new_section"] += 1
+        elif not anchor_value:
+            counts["unresolved"] += 1
+        elif anchor_type == "heading":
+            counts["heading"] += 1
+        elif anchor_type == "callout":
+            counts["callout"] += 1
+        elif anchor_type == "line":
+            counts["line"] += 1
+        else:
+            counts["unresolved"] += 1
+
+    moc_count = len(moc_paths)
+    moc_list = " ".join(moc_paths)
+    print(
+        f"[instruction-render] moc-insertion resolution — "
+        f"heading={counts['heading']} "
+        f"new_section={counts['new_section']} "
+        f"callout={counts['callout']} "
+        f"line={counts['line']} "
+        f"unresolved={counts['unresolved']} "
+        f"mocs={moc_count}"
+        + (f" paths=[{moc_list}]" if moc_paths else ""),
+        file=sys.stderr,
+    )
+
+
 def _serialize_new_sections(actions: list[dict]) -> int:
     """Build line_to_add from the top-level new_section field for every link_to_moc action.
 
@@ -2064,6 +2126,11 @@ def main() -> int:
     if serialized_sections:
         print(f"  [render] new-section heading serialized for {serialized_sections} link_to_moc action(s)",
               file=sys.stderr)
+
+    # ── T7.1: Metadata-only four-tier resolution telemetry ───────────────
+    # Emits ONE tagged stderr line with per-tier counts and MOC paths.
+    # Privacy (Constitution L2): no heading text or note content — metadata only.
+    _emit_resolution_telemetry(actions)
 
     # ── Drop daily-note actions whose target daily note doesn't exist ────
     # Hashi modifies, never creates, a daily note (#37/I38). Skip unappliable

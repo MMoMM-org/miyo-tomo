@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Pass-1 four-tier decision"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -50,7 +50,7 @@ Moves the placement decision into the Pass-1 LLM so it can be reviewed.
      - [ ] new-section named from topic `[ref: AC-5]`
      - [ ] classification excluded `[ref: EC-5]`
 
-- [ ] **T4.2 Semantic-fit guardrail** `[activity: prompt-engineering]`
+- [x] **T4.2 Semantic-fit guardrail** `[activity: prompt-engineering]`
 
   1. Prime: Review the semantic-fit requirement `[ref: requirements.md/AC-2]` and the "chaos vault" constraint.
   2. Test (red): the keyword-mispick fixture (note shares tokens with the wrong heading) resolves to the semantically correct heading, proving fit is by meaning not overlap.
@@ -58,6 +58,6 @@ Moves the placement decision into the Pass-1 LLM so it can be reviewed.
   4. Validate: the mispick fixture passes.
   5. Success: [ ] semantic fit beats keyword overlap `[ref: AC-2]`
 
-- [ ] **T4.3 Phase Validation** `[activity: validate]`
+- [x] **T4.3 Phase Validation** `[activity: validate]`
 
   - Run analyst contract fixtures. Confirm emitted results validate against the Phase-2 schema and every tier path is covered.

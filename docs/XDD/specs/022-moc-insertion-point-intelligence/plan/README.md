@@ -119,7 +119,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 1: Shared parse foundation](phase-1.md)
 - [x] [Phase 2: Schema additions](phase-2.md)
 - [x] [Phase 3: Inventory producers](phase-3.md)
-- [ ] [Phase 4: Pass-1 four-tier decision](phase-4.md)
+- [x] [Phase 4: Pass-1 four-tier decision](phase-4.md)
 - [ ] [Phase 5: Render honor path](phase-5.md)
 - [ ] [Phase 6: Suggestions surfacing](phase-6.md)
 - [ ] [Phase 7: Cross-repo + live walk](phase-7.md)

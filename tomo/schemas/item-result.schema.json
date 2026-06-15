@@ -77,7 +77,7 @@
               "anchor": {
                 "type": "object",
                 "description": "Optional insertion hint resolved by the LLM from MOC headings/callouts. Carried forward into the instruction-render step to produce a concrete link_to_moc anchor. Absent when the LLM could not identify a suitable insertion point.",
-                "required": ["type", "placement"],
+                "required": ["type", "value", "placement"],
                 "additionalProperties": false,
                 "properties": {
                   "type": {"type": "string", "enum": ["heading", "callout", "line"], "description": "What kind of anchor the LLM matched."},

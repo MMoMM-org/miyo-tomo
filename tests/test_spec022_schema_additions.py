@@ -200,6 +200,22 @@ class TestT21ItemResultAnchor:
         with pytest.raises(ValidationError):
             validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)
 
+    def test_candidate_moc_anchor_missing_value_rejected(self, item_result_schema):
+        """anchor object missing the required 'value' key is rejected (key must be present; null is still a legal value)."""
+        candidate_mocs = [
+            {
+                "path": "Atlas/200 Maps/Tech (MOC).md",
+                "score": 0.9,
+                "pre_check": False,
+                "anchor": {
+                    "type": "heading",
+                    "placement": "after",
+                },
+            }
+        ]
+        with pytest.raises(ValidationError):
+            validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)
+
     def test_empty_candidate_mocs_still_validates(self, item_result_schema):
         """Empty candidate_mocs array still validates (no items to check)."""
         validate(instance=_make_item_result([]), schema=item_result_schema)

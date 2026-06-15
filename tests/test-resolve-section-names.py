@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """test-resolve-section-names.py — Unit tests for resolve_section_names + paired delete_source.
 
 Covers:
@@ -46,6 +46,8 @@ _spec = importlib.util.spec_from_file_location(
 ir = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(ir)
+
+import moc_structure  # noqa: E402 — after sys.path setup
 
 # Use the SAME KadoNotFoundError class instruction-render imports
 # (`lib.kado_client`), not `kado_client` — they are distinct module objects
@@ -1055,6 +1057,114 @@ def test_honored_anchor_schema_compliance():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# T5.3 — build-vs-render parity (ADR-4) + EC-2 template heading-fit
+# ──────────────────────────────────────────────────────────────────────────────
+
+# A template body with headings and a footer callout but NO editable callout.
+# This fixture drives both parity and EC-2 tests.
+_HEADING_TEMPLATE_BODY = """\
+# Decision Making (MOC)
+
+## Overview
+Some intro.
+
+## Key Concepts
+- existing bullet
+
+> [!video] Action Items
+> - watch this
+"""
+
+# Editable callout set that does NOT include "video" (a footer marker),
+# so the template has no editable callout → heading fallback is triggered.
+_HEADING_TEMPLATE_CALLOUTS = ["connect", "blocks", "anchor"]
+
+
+def test_moc_structure_parse_headings_agrees_with_render_fallback():
+    """T5.3 / ADR-4: moc_structure.parse_headings on the template body returns
+    the same two headings that the render-time fallback sees, AND the render
+    path selects 'Key Concepts' (preferred set beats earlier 'Overview').
+
+    This pins build-vs-render parity: if the two parsers ever diverge, this
+    test fails at the moc_structure assertion before the render assertion.
+    """
+    # Build-time parse via the shared lib.
+    headings = moc_structure.parse_headings(_HEADING_TEMPLATE_BODY, ir.FOOTER_CALLOUTS)
+    texts = [h["text"] for h in headings]
+    _must(
+        texts == ["Overview", "Key Concepts"],
+        f"moc_structure.parse_headings should yield exactly ['Overview', 'Key Concepts'], "
+        f"got {texts!r}",
+    )
+
+    # Render-time: a MOC with this body goes through resolve_section_names.
+    path = "Atlas/200 Maps/Decision Making (MOC).md"
+    client = StubClient(notes={path: _HEADING_TEMPLATE_BODY})
+    actions = [_link_action("Decision Making (MOC)", path)]
+    n = ir.resolve_section_names(actions, client, _HEADING_TEMPLATE_CALLOUTS)
+    a = actions[0]
+    _must(n == 1, f"expected 1 resolution, got {n}")
+    _must(
+        a["anchor"]["type"] == "heading",
+        f"expected heading anchor, got {a['anchor']['type']!r}",
+    )
+    _must(
+        a["anchor"]["value"] == "Key Concepts",
+        f"expected 'Key Concepts' (preferred beats 'Overview'), got {a['anchor']['value']!r}",
+    )
+    print("[PASS] T5.3/ADR-4: moc_structure parse agrees with render fallback; 'Key Concepts' selected")
+
+
+def test_ec2_template_heading_fit_resolves_via_shared_parser():
+    """T5.3 / EC-2: an in-set create_moc whose target MOC doesn't exist yet
+    resolves heading-fit via the template body through _resolve_from_template.
+
+    The template has headings but NO editable callout — so the callout tier
+    misses and the heading fallback fires, selecting 'Key Concepts'.
+    """
+    template_path = "Atlas/900 Templates/t_decision_moc.md"
+    moc_path = "Atlas/200 Maps/Decision Making (MOC).md"
+    client = StubClient(
+        notes={template_path: _HEADING_TEMPLATE_BODY},
+        names={"t_decision_moc.md": template_path},
+    )
+    actions = [
+        {
+            "id": "I01",
+            "action": "create_moc",
+            "title": "Decision Making (MOC)",
+            "destination": moc_path,
+            "template": "t_decision_moc.md",
+        },
+        {
+            "id": "I10",
+            "action": "link_to_moc",
+            "target_moc": "Decision Making (MOC)",
+            "target_moc_path": moc_path,
+            "anchor": _callout_anchor(),
+            "placement": "inside",
+            "line_to_add": "- [[Eisenhower Matrix]]",
+        },
+    ]
+    n = ir.resolve_section_names(actions, client, _HEADING_TEMPLATE_CALLOUTS)
+    a = actions[1]
+    _must(n == 1, f"expected 1 resolution, got {n}")
+    _must(
+        a["anchor"]["type"] == "heading",
+        f"expected heading anchor from template, got {a['anchor']['type']!r}",
+    )
+    _must(
+        a["anchor"]["value"] == "Key Concepts",
+        f"expected 'Key Concepts' from template heading fallback, got {a['anchor']['value']!r}",
+    )
+    _must(
+        a["placement"] == "after",
+        f"expected placement=after for heading anchor, got {a['placement']!r}",
+    )
+    print("[PASS] T5.3/EC-2: in-set create_moc template heading-fit resolves to 'Key Concepts'")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1085,6 +1195,8 @@ def main() -> None:
     test_keep_origin_suppresses_paired_delete()
     test_skipped_delete_source_still_works()
     test_audio_peer_is_not_paired_deleted_via_origin()
+    test_moc_structure_parse_headings_agrees_with_render_fallback()
+    test_ec2_template_heading_fit_resolves_via_shared_parser()
     print("\nAll tests passed.")
 
 

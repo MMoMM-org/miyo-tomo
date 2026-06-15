@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.5
+# version: 0.24.6
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -41,6 +41,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.doc_frontmatter import build_tomo_block  # noqa: E402
 from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E402
+import lib.moc_structure as moc_structure  # noqa: E402
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1519,10 +1520,7 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
     """
     if client is None or not editable_callouts:
         return 0
-    import re
     editable_set = {name for name in editable_callouts if name}
-    callout_re = re.compile(r"^>\s*\[!([A-Za-z][A-Za-z0-9_-]*)\][+-]?.*$")
-    heading_re = re.compile(r"^(#{2,6})\s+(.+?)\s*$")
 
     # `connect` is conventionally the navigation callout (up:: / related::),
     # not where content-note bullets belong. Drop it to the back of the line:
@@ -1535,50 +1533,32 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             return 1
         return 2
 
-    def _callout_name(line: str) -> str | None:
-        m = callout_re.match(line)
-        return m.group(1) if m else None
-
-    def _strip_prefix(line: str) -> str:
-        s = line.lstrip()
-        if s.startswith(">"):
-            s = s[1:].lstrip()
-        return s
-
-    def _footer_index(lines: list[str]) -> int:
-        """Line index of the first footer-marker callout, or len(lines)."""
-        for i, raw in enumerate(lines):
-            name = _callout_name(raw.rstrip())
-            if name and name in FOOTER_CALLOUTS:
-                return i
-        return len(lines)
-
     def _pick_editable_callout(content: str) -> str | None:
         """Scan content for editable callouts and return the highest-priority
         one's full first line (sans leading `> `). Used for both live MOC
         bodies and template bodies — same scoring rules apply."""
-        candidates: list[tuple[int, str]] = []
-        for raw in content.splitlines():
-            line = raw.rstrip()
-            name = _callout_name(line)
-            if not name or name not in editable_set:
-                continue
-            candidates.append((_score(name), _strip_prefix(line)))
-        if not candidates:
+        # moc_structure.parse_editable_callouts returns stripped lines in
+        # document order; apply existing scoring on top of that list (ADR-4).
+        lines = moc_structure.parse_editable_callouts(content, editable_set)
+        if not lines:
             return None
-        # Highest score wins; ties resolved by first occurrence (stable).
-        return max(enumerate(candidates), key=lambda x: (x[1][0], -x[0]))[1][1]
+        candidates = [(i, line) for i, line in enumerate(lines)]
+        # Extract the callout type name from the stripped line to score it.
+        _name_re = re.compile(r"^\[!([A-Za-z][A-Za-z0-9_-]*)\]")
+        def _name_from_stripped(line: str) -> str:
+            m = _name_re.match(line)
+            return m.group(1) if m else ""
+        scored = [(_score(_name_from_stripped(line)), i, line) for i, line in candidates]
+        # Highest score wins; ties resolved by first occurrence (stable sort key: -i).
+        best = max(scored, key=lambda x: (x[0], -x[1]))
+        return best[2]
 
     def _pick_content_heading(content: str) -> str | None:
         """First content H2–H6 heading before the footer; prefer one that reads
         like a content section. Returns the heading text (sans leading #)."""
-        lines = content.splitlines()
-        cutoff = _footer_index(lines)
-        headings = [
-            m.group(2).strip()
-            for raw in lines[:cutoff]
-            if (m := heading_re.match(raw.rstrip()))
-        ]
+        # moc_structure.parse_headings handles footer boundary and H2-H6 filtering
+        # (ADR-4); apply existing preferred-set logic on the returned list.
+        headings = [h["text"] for h in moc_structure.parse_headings(content, FOOTER_CALLOUTS)]
         if not headings:
             return None
         preferred = {"key concepts", "concepts", "notes"}
@@ -1589,12 +1569,17 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
 
     def _find_footer_callout(content: str) -> str | None:
         """Full first line (sans `> `) of the first footer-marker callout."""
-        for raw in content.splitlines():
-            line = raw.rstrip()
-            name = _callout_name(line)
-            if name and name in FOOTER_CALLOUTS:
-                return _strip_prefix(line)
-        return None
+        lines = content.splitlines()
+        idx = moc_structure.footer_index(lines, FOOTER_CALLOUTS)
+        if idx >= len(lines):
+            return None
+        raw = lines[idx].rstrip()
+        # Strip leading `> ` blockquote prefix (same transform as moc_structure
+        # applies internally for editable callouts).
+        s = raw.lstrip()
+        if s.startswith(">"):
+            s = s[1:].lstrip()
+        return s
 
     def _pick_anchor(content: str) -> dict | None:
         """Three-tier anchor resolution. Returns the anchor decision as a dict

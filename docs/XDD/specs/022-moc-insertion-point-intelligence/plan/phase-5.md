@@ -45,7 +45,7 @@ Makes Pass-2 honor the reviewed Pass-1 decision and keep the heuristic as fallba
      - [ ] user edit honored `[ref: AC-12]`
      - [ ] EC-6 → new section `[ref: requirements.md/EC-6]`
 
-- [ ] **T5.2 new_section serialize + retire DEFAULT_NEW_SECTION_TITLE** `[activity: backend]`
+- [x] **T5.2 new_section serialize + retire DEFAULT_NEW_SECTION_TITLE** `[activity: backend]`
 
   1. Prime: Read `DEFAULT_NEW_SECTION_TITLE` + the current line_to_add mutation `[ref: instruction-render.py; lines: 1476, 1677]`.
   2. Test (red): an anchor with `new_section:"Reasoning"` serializes `line_to_add = "## Reasoning\n\n- [[Note]]\n"` (trailing newline preserved, AC-6); the hardcoded "Key Concepts" no longer appears as a default name.
@@ -53,7 +53,7 @@ Makes Pass-2 honor the reviewed Pass-1 decision and keep the heuristic as fallba
   4. Validate: spacing/newline regression test (mirrors PR #57) passes.
   5. Success: [ ] new section named + spaced correctly `[ref: AC-5,AC-6]`
 
-- [ ] **T5.3 Render fallback shares the parse lib + template path** `[activity: backend]`
+- [x] **T5.3 Render fallback shares the parse lib + template path** `[activity: backend]`
 
   1. Prime: Read `_pick_anchor` + `_resolve_from_template` `[ref: instruction-render.py; lines: 1585-1601, 1623-1632]`.
   2. Test (red):
@@ -61,7 +61,7 @@ Makes Pass-2 honor the reviewed Pass-1 decision and keep the heuristic as fallba
      - EC-2: an in-run new MOC (not yet existing) resolves heading-fit against the create-MOC template body.
   3. Implement (green): import `moc_structure` in the fallback; route the template-body case through it.
   4. Validate: fallback + EC-2 tests pass; no parser divergence build-vs-render.
-  5. Success: [ ] one parser, both sites `[ref: solution.md/ADR-4]`; [ ] in-run MOC vs template `[ref: EC-2]`
+  5. Success: [x] one parser, both sites `[ref: solution.md/ADR-4]`; [x] in-run MOC vs template `[ref: EC-2]`
 
 - [ ] **T5.4 Phase Validation** `[activity: validate]`
 

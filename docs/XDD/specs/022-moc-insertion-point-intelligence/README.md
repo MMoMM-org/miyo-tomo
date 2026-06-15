@@ -33,6 +33,7 @@
 | 2026-06-15 | SDD ADR-2 = A-trimmed cost strategy | Eager headings-only inventory, cap ~8/MOC, skip Dewey, enforce_budget drops inventory first; per-item regression deferred to #45 |
 | 2026-06-15 | SDD ADR-3 = explicit new_section field on instructions link_to_moc | Cleaner than line_to_add string mutation; render builds line_to_add at serialize; no Hashi change |
 | 2026-06-15 | SDD complete — all 7 ADRs confirmed | New shared lib `lib/moc_structure.py`; honor via existing anchor.value guard; no new Kado/Hashi surface |
+| 2026-06-15 | Spec quality validation passed (4 perspectives) | Alignment 22/22 (zero code drift); ambiguity ~6%. 9 findings fixed: stale SDD status table + ADR-3 PENDING leftovers; EC-3 defined; no-H1 `type:line` test added; KPI baseline reframed to AC-14/15 walk; AC-2 acceptance basis; AC-16 trigger disambiguated; hard byte bound; partial-inventory note |
 
 ## Context
 

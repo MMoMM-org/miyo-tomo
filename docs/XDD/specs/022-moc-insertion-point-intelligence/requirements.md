@@ -132,7 +132,9 @@ review.
   - [ ] **AC-2** Given a note whose fitting heading shares **zero literal token overlap** with the
     note (e.g. a "First Principles Thinking" note vs a "Reasoning Techniques" heading), When
     Pass-1 resolves placement, Then the semantically correct heading is still chosen (fit is by
-    meaning, not keyword overlap).
+    meaning, not keyword overlap). *Acceptance basis: a named keyword-mispick fixture resolves to
+    the semantically-right heading and is owner-reviewed — illustrative (this is an LLM-judged
+    outcome), not a statistical pass rate.*
   - [ ] **AC-3** Given any target MOC, When placement is resolved, Then exactly one of the four
     tiers (fitting heading → new section → editable callout → note title) fires, evaluated in that
     order, and the chosen tier is recorded so the suggestions doc and the instruction set name the
@@ -263,6 +265,11 @@ carried into the suggestions document for review, then honored at Pass-2 render.
 - **EC-2 (in-run new MOC):** A MOC proposed in the same run does not yet exist → heading-fit is
   judged against the create-MOC **template body**; the suggestions doc notes the MOC will be
   created. → Expected: placement resolves against template structure, no failure.
+- **EC-3 (ambiguous fit — two or more plausible headings):** More than one existing heading
+  plausibly fits the note → Expected: Pass-1 picks the single best-fit heading as the placement AND
+  flags the runner-up(s) so the suggestions doc can surface them as an advisory (AC-16); the user
+  retargets by editing the `**Placement:**` line. The default decision is always the best-fit
+  heading — never left ambiguous.
 - **EC-5 (classification MOC):** Target is a classification-layer MOC → Expected: excluded as an
   insertion target before resolution (never receives a link).
 - **EC-6 (user overrides to a non-existent heading):** User edits the placement to a heading the
@@ -279,9 +286,12 @@ carried into the suggestions document for review, then honored at Pass-2 render.
 
 ### Key Performance Indicators
 
-- **Correct placement (Quality):** On the validation set, ≥ the current baseline of note-links land
-  under a semantically appropriate section (not a scaffold callout or arbitrary first-heading),
-  judged by the owner on review.
+- **Correct placement (Quality):** Measured by the AC-14/AC-15 live walk (binary: the new-section
+  path fires correctly on a real MOC) plus owner review of the placement line on the validation-run
+  suggestions doc — each link lands under a content section, never a scaffold callout or arbitrary
+  first-heading. The owner-judged "correct placement %" on the first validation run is recorded in
+  `docs/evolution/inbox-cost-log.md` as the baseline for future comparison (no prior numeric
+  baseline exists — this run establishes it).
 - **Reviewability (Adoption):** 100% of proposed MOC links display a `**Placement:**` line — zero
   bare `[[Target#]]` anchors in the suggestions document.
 - **New-section reachability (Quality):** The #28 new-section path fires on at least one real-vault

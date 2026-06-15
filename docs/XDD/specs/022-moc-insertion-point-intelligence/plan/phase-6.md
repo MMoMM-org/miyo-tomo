@@ -46,7 +46,7 @@ Surfaces the placement decision in the suggestions document so the user can revi
 
   1. Prime: Review the ambiguous-fit affordance `[ref: requirements.md/AC-16]`.
   2. Test (red): when ≥2 content headings are plausible, an advisory "Other sections in this MOC: …" line appears so the user can retarget without a re-run.
-  3. Implement (green): emit the advisory line when the anchor carries alternatives (or when the MOC has ≥2 content headings).
+  3. Implement (green): emit the advisory line ONLY when Pass-1 flagged ≥2 plausible fits (the anchor carries `alternatives`). Do NOT trigger on raw heading count (most MOCs have ≥2 headings → would flood the doc).
   4. Validate: advisory render test passes.
   5. Success: [ ] alternatives surfaced `[ref: AC-16]`
 

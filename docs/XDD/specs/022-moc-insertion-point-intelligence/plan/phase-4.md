@@ -41,6 +41,7 @@ Moves the placement decision into the Pass-1 LLM so it can be reviewed.
      - Headings present, none fits → `anchor:{type:callout,value:<footer>,placement:before,new_section:<topic>}` with `new_section ≠ "Key Concepts"` (AC-4/AC-5).
      - No headings, editable callout present → `anchor:{type:callout,value:<callout>,placement:inside}` (AC-7).
      - No headings, no callout → `anchor:{type:heading,value:<H1 title>,placement:after}` (AC-9).
+     - No headings, no callout, AND no H1 (the chaos-vault tail of EC-1) → `anchor:{type:line,value:<first body line>,placement:after}` — never unresolved (AC-10).
      - Classification MOC → no anchor / excluded as target (EC-5).
   3. Implement (green): extend Step 4 of `inbox-analyst.md` to emit `candidate_mocs[].anchor` per pre-checked MOC using the four-tier order against `shared_ctx.mocs[].headings`/`editable_callouts`. Use the exact emission shape (HOW, not WHAT). Bump `# version:`. Run the skill-author/agent-author audit after editing.
   4. Validate: schema-valid result fixtures; agent-author audit clean (no host-path leak, no Hashi internals).

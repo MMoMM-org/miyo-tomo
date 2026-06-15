@@ -45,7 +45,7 @@ Produces the per-MOC heading/callout inventory and lands it in shared-ctx within
      - Dewey/classification MOCs (`is_classification`) carry NO inventory (skipped).
      - Under `--max-bytes` pressure, `enforce_budget` drops inventory BEFORE topics.
   3. Implement (green): copy trimmed inventory from cache into `mocs[]`; add the cap + Dewey-skip; extend `enforce_budget` to drop `headings`/`editable_callouts` first.
-  4. Validate: builder tests pass; measure delta ≤ ~7 KB on the 63-MOC vault `[ref: research-synthesis.md/Cost]`. Bump `# version:`.
+  4. Validate: builder tests pass; assert shared-ctx delta ≤ 8192 bytes on the 63-MOC fixture (≈7 KB design estimate) `[ref: research-synthesis.md/Cost]`. Bump `# version:`.
   5. Success:
      - [ ] inventory trimmed + capped + Dewey-skipped `[ref: solution.md/ADR-2]`
      - [ ] budget trim drops inventory first `[ref: solution.md/Error Handling]`

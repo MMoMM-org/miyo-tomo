@@ -39,8 +39,8 @@ version: "1.0"
 | pattern | Pipeline relocation: move a deterministic render-time decision into the Pass-1 LLM stage, surface it for review, honor it at render |
 | keyComponents | moc-structure lib (NEW), moc-tree-builder, shared-ctx-builder, inbox-analyst, suggestions-reducer, instruction-render |
 | externalIntegrations | Kado (read), Hashi (apply — no new shape) |
-| validationPassed | 12 |
-| validationPending | 2 (ADR-2, ADR-3) |
+| validationPassed | 14 |
+| validationPending | 0 |
 
 ---
 
@@ -276,8 +276,8 @@ ADD: anchor: {                                       # optional; present only wh
        new_section: string | null                    # set when proposing a new H2 (tier-2)
      }
 
-# instructions.schema.json link_to_moc (:78-92) — ADR-3 (PENDING)
-ADD (if ADR-3=explicit): new_section: string | null  # the H2 title to create; render builds line_to_add from it
+# instructions.schema.json link_to_moc (:78-92) — ADR-3 (confirmed)
+ADD: new_section: string | null  # the H2 title to create; render builds line_to_add from it at serialize
 ```
 
 #### Application Data Models
@@ -421,6 +421,8 @@ sequenceDiagram
 - **Kado read fails for a MOC** → no inventory for that MOC; Pass-1 cannot judge fit → falls to
   tier-3/4 deterministically; render heuristic remains as the safety net (today's behavior). Never
   blocks the run.
+- **Partial inventory (some MOCs read, some failed)** → inventory is per-MOC; a failed read on one
+  MOC does NOT affect placement on its sibling MOCs (placement is resolved per (note, MOC) — EC-4).
 - **MOC absent / path null** → existing missing-target surfacing pattern (I38) applies; no link
   emitted into a non-existent MOC.
 - **User edits to a non-existent heading (EC-6)** → Pass-2 treats an unknown user-supplied heading

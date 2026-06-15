@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.10.4
+# version: 1.10.5
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -125,9 +125,14 @@ def _placement_line(anchor: dict) -> str:
         # null value without new_section → nothing was resolved; fall to line-tier.
         if not value:
             return _LINE_TIER
-        # Extract `> [!name]` from value like "[!blocks] Key Concepts"
+        # Extract `> [!name]` from value like "[!blocks] Key Concepts".
+        # Guard: truncated LLM output like "[!blocks" (no closing "]") would
+        # produce a garbled name via split("]")[0]. Fall to line-tier instead.
         if value.startswith("[!"):
-            name = value[2:].split("]")[0]
+            rest = value[2:]
+            if "]" not in rest:
+                return _LINE_TIER
+            name = rest.split("]")[0]
             callout_ref = f"> [!{name}]"
         else:
             callout_ref = value

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_suggestions_reducer_t6_1_placement.py — spec 022 T6.1.
 
 Covers AC-11 / AC-12: **Placement:** line per candidate-MOC link in the
@@ -208,6 +208,38 @@ class TestMocLinkLinePlacementFormats:
         output = moc_link_line(moc)
         assert "inside the ``" not in output, f"Empty callout ref must not appear: {output!r}"
         assert "**Placement:** under the note title" in output
+
+    def test_callout_truncated_value_no_closing_bracket_falls_back_to_line_tier(self):
+        """type:callout, value lacks closing ']' (truncated LLM output) → line-tier fallback.
+
+        '[!blocks' (no ']') would produce garbled '> [!blocks' callout ref via
+        split("]")[0] yielding the whole string. Guard returns line-tier instead.
+        """
+        moc = make_moc("Atlas/200 Maps/Tools MOC.md", anchor={
+            "type": "callout",
+            "value": "[!blocks",
+            "placement": "inside",
+            "new_section": None,
+        })
+        output = moc_link_line(moc)
+        assert "> [!blocks" not in output, f"Garbled callout ref must not appear: {output!r}"
+        assert "**Placement:** under the note title" in output
+
+    def test_unknown_anchor_type_falls_back_to_line_tier(self):
+        """Unknown anchor type (e.g. future schema extension) falls through to line-tier.
+
+        Pins the existing fallthrough: a type not in the current enum set must
+        never raise and must produce a valid, user-readable placement hint.
+        """
+        moc = make_moc("Atlas/200 Maps/Philosophy MOC.md", anchor={
+            "type": "section",
+            "value": "x",
+            "placement": "after",
+            "new_section": None,
+        })
+        output = moc_link_line(moc)
+        assert "**Placement:** under the note title (no matching section or callout found)" in output
+        assert "←" in output
 
 
 # ── Integration: render_create_atomic_note with anchors ──────────────────────

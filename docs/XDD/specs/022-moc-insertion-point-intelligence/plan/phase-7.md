@@ -31,7 +31,7 @@ phase: 7
 
 Closes governance + proves the redesign end-to-end against the real vault.
 
-- [ ] **T7.1 Tracking events (metadata-only)** `[activity: backend]`
+- [x] **T7.1 Tracking events (metadata-only)** `[activity: backend]`
 
   1. Prime: Review the PRD tracking table + L2 Privacy `[ref: requirements.md/Tracking Requirements; solution.md/System-Wide Patterns]`.
   2. Test (red): emitted lifecycle.discovery events carry tier-fired / MOC-path / counts only — assert NO note content or full heading text is logged.
@@ -39,7 +39,7 @@ Closes governance + proves the redesign end-to-end against the real vault.
   4. Validate: log-content assertion passes (metadata-only).
   5. Success: [ ] metadata-only logging `[ref: Constitution L2 Privacy]`
 
-- [ ] **T7.2 Cross-repo artifacts** `[cross-repo]` `[needs-hashi]` `[activity: documentation]`
+- [x] **T7.2 Cross-repo artifacts** `[cross-repo]` `[needs-hashi]` `[activity: documentation]`
 
   1. Prime: Read the prior handoffs `[ref: _outbox/for-hashi/2026-06-13_*; _inbox/from-hashi/*]` and the Kokoro ADR location.
   2. Test (red): n/a (docs) — checklist: Kokoro ADR exists describing the Pass-2→Pass-1 relocation; `_outbox/for-hashi/` handoff states the new emission uses existing shapes and requests the real walk.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.6
+# version: 0.24.7
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -277,6 +277,10 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
 _RELATED_MARKER_RE = re.compile(r"^[\s>\-]*related::\s*(.*)", re.MULTILINE)
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+# Extracts the callout type from a stripped (no leading `> `) callout opening
+# line, e.g. "[!blocks] Key Concepts" → "blocks". Used by resolve_section_names
+# to score the list returned by moc_structure.parse_editable_callouts.
+_EDITABLE_NAME_RE = re.compile(r"^\[!([A-Za-z][A-Za-z0-9_-]*)\]")
 
 
 def _extract_existing_related(content: str) -> list[str]:
@@ -1542,13 +1546,10 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         lines = moc_structure.parse_editable_callouts(content, editable_set)
         if not lines:
             return None
-        candidates = [(i, line) for i, line in enumerate(lines)]
-        # Extract the callout type name from the stripped line to score it.
-        _name_re = re.compile(r"^\[!([A-Za-z][A-Za-z0-9_-]*)\]")
-        def _name_from_stripped(line: str) -> str:
-            m = _name_re.match(line)
+        def _name(line: str) -> str:
+            m = _EDITABLE_NAME_RE.match(line)
             return m.group(1) if m else ""
-        scored = [(_score(_name_from_stripped(line)), i, line) for i, line in candidates]
+        scored = [(_score(_name(line)), i, line) for i, line in enumerate(lines)]
         # Highest score wins; ties resolved by first occurrence (stable sort key: -i).
         best = max(scored, key=lambda x: (x[0], -x[1]))
         return best[2]

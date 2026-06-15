@@ -594,7 +594,9 @@ def test_t31_moc_entry_carries_headings_and_editable_callouts():
     # editable_callouts: lines whose callout type is in editable_set
     assert "editable_callouts" in moc_entry, "MOC entry must carry editable_callouts"
     assert isinstance(moc_entry["editable_callouts"], list)
-    # [!blocks] and [!connect] are in editable set; [!video] is footer-only
+    # [!blocks] and [!connect] are in editable_set; [!video] is absent because
+    # "video" is not in editable_set (parse_editable_callouts scans the full body,
+    # not footer-bounded).
     assert any("blocks" in c for c in moc_entry["editable_callouts"])
     assert any("connect" in c for c in moc_entry["editable_callouts"])
     assert not any("video" in c for c in moc_entry["editable_callouts"])

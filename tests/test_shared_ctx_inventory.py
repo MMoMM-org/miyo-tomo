@@ -52,7 +52,6 @@ def _moc_entry(
     topics: list[str] | None = None,
     headings: list[dict] | None = None,
     editable_callouts: list[str] | None = None,
-    is_classification_title: bool = False,
 ) -> dict:
     """Return a map_notes cache entry that build_mocs consumes."""
     entry: dict = {
@@ -218,7 +217,6 @@ def test_t32_enforce_budget_drops_inventory_before_topics():
     but topics may still be present (partially or fully).
     """
     ctx = _ctx_with_inventory(n_mocs=2, n_topics=6, n_headings=4, n_callouts=2)
-    full_bytes = len(serialize(ctx))
 
     # Budget that's tight enough to force trimming but allows topics to survive
     # We calculate a budget that removes inventory but keeps at least some topics.
@@ -248,21 +246,49 @@ def test_t32_enforce_budget_drops_inventory_before_topics():
 
 
 def test_t32_enforce_budget_drops_editable_callouts_then_headings():
-    """T3.2: Within the inventory trim pass, editable_callouts are dropped before
-    headings (both must be gone under sufficient budget pressure anyway, but
-    the order matters for progressive trimming behavior).
+    """T3.2: editable_callouts are dropped BEFORE headings within the inventory
+    trim pass.
 
-    This test uses a budget that forces headings to be removed too.
+    Proving the order requires a budget that lands BETWEEN the size with
+    editable_callouts removed (headings still present) and the size with all
+    inventory removed. At that budget the correct order leaves headings intact
+    after dropping editable_callouts; a reversed order would fail this test.
     """
+    import copy
     ctx = _ctx_with_inventory(n_mocs=3, n_topics=8, n_headings=6, n_callouts=3)
 
-    # Extremely tight budget forces all trimming
-    budget = 200  # far below any realistic ctx size
+    size_full = len(serialize(ctx))
 
-    trimmed_ctx, _dropped = enforce_budget(ctx, budget)
+    ctx_no_callouts = copy.deepcopy(ctx)
+    for moc in ctx_no_callouts["mocs"]:
+        moc.pop("editable_callouts", None)
+    size_no_callouts = len(serialize(ctx_no_callouts))
+
+    # Sanity: the full ctx must exceed the no-callouts size (so a budget set at
+    # the no-callouts size still forces a trim, but only of editable_callouts).
+    assert size_full > size_no_callouts, (
+        "fixture must have editable_callouts large enough to keep size_full > size_no_callouts"
+    )
+
+    # Budget = exactly the no-callouts size: dropping editable_callouts is enough
+    # to fit, so headings are NOT yet trimmed. A reversed drop order would have
+    # emptied headings first and left editable_callouts — failing the asserts below.
+    budget = size_no_callouts
+
+    trimmed_ctx, dropped = enforce_budget(ctx, budget)
+
     for moc in trimmed_ctx["mocs"]:
-        assert not moc.get("headings"), "headings must be dropped under tight budget"
-        assert not moc.get("editable_callouts"), "editable_callouts must be dropped under tight budget"
+        # editable_callouts dropped first → gone
+        assert not moc.get("editable_callouts"), (
+            f"editable_callouts must be dropped first in {moc['path']}"
+        )
+        # headings dropped only AFTER editable_callouts → still present at this budget
+        assert moc.get("headings"), (
+            f"headings must STILL be present in {moc['path']} — they are dropped "
+            "only after editable_callouts (reversed order would empty them here)"
+        )
+    # topics untouched — inventory trim happens before the topic-shorten pass
+    assert dropped == 0, f"topics must not be dropped at this budget; got dropped={dropped}"
 
 
 def test_t32_enforce_budget_inventory_trim_is_ordered_before_topics():
@@ -272,14 +298,6 @@ def test_t32_enforce_budget_inventory_trim_is_ordered_before_topics():
     """
     import copy
     ctx = _ctx_with_inventory(n_mocs=2, n_topics=4, n_headings=3, n_callouts=2)
-
-    # Measure sizes at each step
-    size_full = len(serialize(ctx))
-
-    ctx_no_callouts = copy.deepcopy(ctx)
-    for moc in ctx_no_callouts["mocs"]:
-        moc.pop("editable_callouts", None)
-    size_no_callouts = len(serialize(ctx_no_callouts))
 
     ctx_no_inv = copy.deepcopy(ctx)
     for moc in ctx_no_inv["mocs"]:

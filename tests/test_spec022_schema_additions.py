@@ -434,3 +434,26 @@ class TestT62AnchorAltHeadings:
         ]
         with pytest.raises(ValidationError):
             validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)
+
+    def test_anchor_alt_headings_empty_string_item_rejected(self, item_result_schema):
+        """anchor.alt_headings with an empty-string item is rejected (minLength:1 on items).
+
+        Empty strings produce `## ` (blank backtick-heading) in the render advisory.
+        The schema must reject them at the source so the reducer never receives them.
+        """
+        candidate_mocs = [
+            {
+                "path": "Atlas/200 Maps/Self-Care (MOC).md",
+                "score": 0.85,
+                "pre_check": True,
+                "anchor": {
+                    "type": "heading",
+                    "value": "Habits",
+                    "placement": "after",
+                    "new_section": None,
+                    "alt_headings": [""],
+                },
+            }
+        ]
+        with pytest.raises(ValidationError):
+            validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)

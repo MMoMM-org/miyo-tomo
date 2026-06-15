@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.17.4
+# version: 0.17.5
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -168,7 +168,7 @@ Evaluate the tiers in strict order — first tier that fires wins:
   ```json
   {"type": "heading", "value": "<best-fit heading>", "placement": "after", "new_section": null, "alt_headings": ["<runner-up heading>", "..."]}
   ```
-  When only one heading fits (or none), DO NOT emit `alt_headings` — omit the
+  When exactly one heading fits, DO NOT emit `alt_headings` — omit the
   key entirely. `alt_headings` lists ONLY genuinely-plausible runner-ups (NOT
   every other heading in the MOC) — it drives an advisory the user can act on;
   flooding it with all headings defeats the purpose.

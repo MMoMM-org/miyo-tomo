@@ -346,6 +346,34 @@ class TestMocLinkLinePlacementFormats:
         output = moc_link_line(moc)
         assert "**Other sections in this MOC:**" not in output
 
+    def test_alt_headings_empty_string_item_filtered_out(self):
+        """alt_headings with empty-string item → blank heading filtered; valid runner-up still appears."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+            "alt_headings": ["", "Routines"],
+        })
+        output = moc_link_line(moc)
+        # Blank `## ` must NOT appear
+        assert "`## `" not in output, f"Blank backtick-heading must be filtered: {output!r}"
+        # Valid runner-up still renders
+        assert "`## Routines`" in output
+        assert "**Other sections in this MOC:**" in output
+
+    def test_alt_headings_only_empty_strings_emits_no_advisory(self):
+        """alt_headings containing only empty strings → no advisory line after filtering."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+            "alt_headings": [""],
+        })
+        output = moc_link_line(moc)
+        assert "**Other sections in this MOC:**" not in output
+
     def test_unknown_anchor_type_falls_back_to_line_tier(self):
         """Unknown anchor type (e.g. future schema extension) falls through to line-tier.
 

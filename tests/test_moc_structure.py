@@ -35,6 +35,7 @@ FIXTURE_BODY = """\
 
 ## Core Concepts
 ### Feedback Loops
+#### Reinforcing vs Balancing
 ### Emergence
 
 ## Applications
@@ -100,6 +101,8 @@ class TestParseHeadings:
         assert by_text["Applications"] == 2
         assert by_text["Feedback Loops"] == 3
         assert by_text["Emergence"] == 3
+        # H4 in scope — proves regex caps at H6, not H3
+        assert by_text["Reinforcing vs Balancing"] == 4
 
     def test_order_preserved(self):
         headings = parse_headings(FIXTURE_BODY, FOOTER_SET)
@@ -173,3 +176,18 @@ class TestParseEditableCallouts:
     def test_empty_editable_set_returns_empty(self):
         result = parse_editable_callouts(FIXTURE_BODY, set())
         assert result == []
+
+    def test_scans_whole_body_including_after_footer(self):
+        # Pins the documented whole-body-scan contract: parse_editable_callouts
+        # is NOT bounded by the footer. A callout that the caller marks editable
+        # is returned even when it sits after the footer boundary — both future
+        # consumers (moc-tree-builder, instruction-render) rely on this for
+        # template bodies that have no footer.
+        body = (
+            "## Section\n"
+            "> [!calendar]- Recent Updates\n"  # footer marker → footer boundary here
+            "> [!video] Action Items\n"        # after footer, but editable_set asks for it
+        )
+        result = parse_editable_callouts(body, {"video"})
+        assert len(result) == 1
+        assert result[0].startswith("[!video]")

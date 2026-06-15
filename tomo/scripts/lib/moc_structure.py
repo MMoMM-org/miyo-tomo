@@ -28,7 +28,7 @@ def _callout_name(line: str) -> str | None:
 
 def _strip_gt_prefix(line: str) -> str:
     """Strip leading `> ` (blockquote prefix) from a callout line."""
-    s = line.lstrip()
+    s = line.lstrip()  # leading whitespace only; callout `>` handled next
     if s.startswith(">"):
         s = s[1:].lstrip()
     return s
@@ -55,7 +55,7 @@ def footer_index(lines: list[str], footer_set: set[str]) -> int:
 
 
 def parse_headings(body: str, footer_set: set[str]) -> list[dict]:
-    """Return ordered heading dicts for H2–H3 headings before the footer.
+    """Return ordered heading dicts for H2–H6 headings before the footer.
 
     Each dict has keys ``text`` (str) and ``level`` (int, 2–6).  H1 headings
     are excluded.  Only lines before the footer boundary (as determined by

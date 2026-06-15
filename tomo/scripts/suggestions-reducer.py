@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.10.2
+# version: 1.10.3
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -86,8 +86,53 @@ def last_state_per_stem(state_path: Path) -> dict[str, dict]:
 
 # ── Rendering ────────────────────────────────────────────────────────────────
 
+def _placement_line(anchor: dict) -> str:
+    """Return the UX-locked **Placement:** line for a resolved anchor (spec 022 AC-12).
+
+    Four formats keyed on anchor.type + new_section (verbatim wording is UX-locked):
+      heading              → under `## <value>`
+      callout + new_section → new section `## <new_section>` (created before the footer)
+      callout (no new_section) → inside the `> [!<name>]` callout
+      line                 → under the note title (no matching section or callout found)
+    """
+    anchor_type = anchor.get("type", "")
+    value = anchor.get("value") or ""
+    new_section = anchor.get("new_section")
+
+    if anchor_type == "heading":
+        return (
+            f"**Placement:** under `## {value}`"
+            "    ← edit the heading to move the link"
+        )
+    if anchor_type == "callout":
+        if new_section:
+            return (
+                f"**Placement:** new section `## {new_section}` (created before the footer)"
+                "    ← rename or change"
+            )
+        # Extract `> [!name]` from value like "[!blocks] Key Concepts"
+        if value.startswith("[!"):
+            name = value[2:].split("]")[0]
+            callout_ref = f"> [!{name}]"
+        else:
+            callout_ref = value
+        return (
+            f"**Placement:** inside the `{callout_ref}` callout"
+            "    ← change to a `## Heading` to place under a section"
+        )
+    # type:line — last-resort tier
+    return (
+        "**Placement:** under the note title (no matching section or callout found)"
+        "    ← add a `## Heading` to target a section"
+    )
+
+
 def moc_link_line(moc: dict) -> str:
-    """Render a candidate-MOC checkbox line. MOC must be a dict per schema."""
+    """Render a candidate-MOC checkbox line plus optional Placement hint (spec 022 T6.1).
+
+    Returns a single checkbox line when no anchor is present (back-compat).
+    Returns checkbox + **Placement:** line (newline-joined) when anchor is present.
+    """
     path = moc.get("path", "")
     link = path[:-3] if path.endswith(".md") else path
     # pre_check is explicit per schema. If omitted, infer from score ≥ 0.5.
@@ -96,7 +141,11 @@ def moc_link_line(moc: dict) -> str:
     else:
         is_checked = (moc.get("score") or 0) >= 0.5
     marker = "[x]" if is_checked else "[ ]"
-    return f"- {marker} [[{link}]]"
+    checkbox = f"- {marker} [[{link}]]"
+    anchor = moc.get("anchor")
+    if not anchor:
+        return checkbox
+    return checkbox + "\n" + _placement_line(anchor)
 
 
 def _template_link(template: str) -> str:
@@ -322,11 +371,13 @@ def render_update_daily(action: dict, stem: str, field_sections: dict[str, str] 
 
 
 def render_link_to_moc(action: dict, stem: str) -> str:
+    # AC-11: never emit a bare [[Target#section]] wikilink.
+    # section_name was a dead field (section_name was never reliably populated
+    # by the analyst — spec 022 uses the anchor field on candidate_mocs instead).
     target = action.get("target_moc", "")
-    section = action.get("section_name", "")
     return (
         f"**Source:** [[{stem}]]\n"
-        f"**Link to existing MOC:** [[{target}#{section}]]\n"
+        f"**Link to existing MOC:** [[{target}]]\n"
         "\n**Decision (link to MOC):**\n- [x] Approve\n- [ ] Skip"
     )
 

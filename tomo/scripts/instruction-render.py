@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.4
+# version: 0.24.5
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1490,17 +1490,6 @@ def backfill_supporting_items_parents(confirmed: list[dict]) -> None:
 # TODO F-55: make this profile-configurable rather than a hardcoded set.
 FOOTER_CALLOUTS = {"video", "calendar", "puzzle", "compass"}
 
-# Heading for a brand-new content section when a MOC has neither an editable
-# callout nor a content heading to anchor on (#28 / F-36). Matches the standard
-# template's primary editable section.
-# DEFAULT_NEW_SECTION_TITLE was retired as a new-section name source by ADR-6
-# (spec 022 T5.2): section names must come from the Pass-1 LLM anchor
-# (new_section field) rather than a hardcoded literal. The constant is kept
-# ONLY for the empty-MOC template ("Key Concepts" template section label) and
-# must NOT be used to populate anchor.new_section in any code path.
-DEFAULT_NEW_SECTION_TITLE = "Key Concepts"
-
-
 def resolve_section_names(actions: list[dict], client, editable_callouts: list[str]) -> int:
     """Best-effort: resolve the insertion anchor on callout-typed link_to_moc
     actions by reading the target MOC. Three-tier anchor resolution per action:
@@ -1703,13 +1692,13 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
 
 
 def _serialize_new_sections(actions: list[dict]) -> int:
-    """Build line_to_add from anchor.new_section for every link_to_moc action.
+    """Build line_to_add from the top-level new_section field for every link_to_moc action.
 
     This is the SINGLE serialize site for new-section headings (ADR-3, spec 022
     T5.2). It runs AFTER resolve_section_names so it covers both:
       - Honored Pass-1 anchors (value already set → skipped by resolver).
-      - Heuristic-resolved anchors (value populated by resolver, new_section
-        may be set on the anchor dict).
+      - Heuristic-resolved anchors: new_section is NOT set by the resolver;
+        only Pass-1 LLM anchors produce a non-None top-level new_section field.
 
     Contract (AC-6): the serialized shape is exactly
         "## <section>\\n\\n<bullet>\\n"

@@ -898,8 +898,9 @@ def test_serialize_skips_non_link_to_moc():
     """_serialize_new_sections must only touch link_to_moc actions."""
     actions = [
         {"id": "I01", "action": "create_moc", "title": "X"},
+        # new_section is a TOP-LEVEL action field per schema — not inside anchor.
         {"id": "I02", "action": "move_note", "line_to_add": "- [[Y]]",
-         "anchor": {"new_section": "Should Not Apply"}},
+         "new_section": "Should Not Apply"},
     ]
     n = ir._serialize_new_sections(actions)
     assert n == 0, f"expected 0 serializations on non-link_to_moc, got {n}"

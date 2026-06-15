@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Render honor path"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -63,6 +63,6 @@ Makes Pass-2 honor the reviewed Pass-1 decision and keep the heuristic as fallba
   4. Validate: fallback + EC-2 tests pass; no parser divergence build-vs-render.
   5. Success: [x] one parser, both sites `[ref: solution.md/ADR-4]`; [x] in-run MOC vs template `[ref: EC-2]`
 
-- [ ] **T5.4 Phase Validation** `[activity: validate]`
+- [x] **T5.4 Phase Validation** `[activity: validate]`
 
   - Run the render test suite + the existing instruction-render tests (regression). Confirm honor path, fallback, and spacing all green.

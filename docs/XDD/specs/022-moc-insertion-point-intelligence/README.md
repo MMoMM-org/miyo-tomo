@@ -34,6 +34,9 @@
 | 2026-06-15 | SDD ADR-3 = explicit new_section field on instructions link_to_moc | Cleaner than line_to_add string mutation; render builds line_to_add at serialize; no Hashi change |
 | 2026-06-15 | SDD complete — all 7 ADRs confirmed | New shared lib `lib/moc_structure.py`; honor via existing anchor.value guard; no new Kado/Hashi surface |
 | 2026-06-15 | Spec quality validation passed (4 perspectives) | Alignment 22/22 (zero code drift); ambiguity ~6%. 9 findings fixed: stale SDD status table + ADR-3 PENDING leftovers; EC-3 defined; no-H1 `type:line` test added; KPI baseline reframed to AC-14/15 walk; AC-2 acceptance basis; AC-16 trigger disambiguated; hard byte bound; partial-inventory note |
+| 2026-06-15 | Phase 4 (Pass-1 four-tier) implemented | inbox-analyst emits `candidate_mocs[].anchor` via four-tier order; 26 contract fixtures (AC-1,2,4,5,7,9,10,EC-5); both reviews PASS |
+| 2026-06-15 | Phase 5 (render honor path) implemented | `_emit` stamps Pass-1 anchor (heuristic auto-suppresses via `anchor.value` guard); independent `_serialize_new_sections`; render fallback unified on `lib/moc_structure` (ADR-4) |
+| 2026-06-15 | Honor-path anchor decomposed at `_emit` to satisfy instructions.schema.json | Pass-1 anchor `{type,value,placement,new_section}` was stamped whole into the action `anchor` (allows only `{type,value}`, additionalProperties:false). Decompose: `anchor`={type,value}, lift `placement`/`new_section` to top-level action fields. Added end-to-end schema-validation test as the contract guard |
 
 ## Context
 

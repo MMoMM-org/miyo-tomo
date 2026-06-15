@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.2
+# version: 0.24.3
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1484,6 +1484,11 @@ FOOTER_CALLOUTS = {"video", "calendar", "puzzle", "compass"}
 # Heading for a brand-new content section when a MOC has neither an editable
 # callout nor a content heading to anchor on (#28 / F-36). Matches the standard
 # template's primary editable section.
+# DEFAULT_NEW_SECTION_TITLE was retired as a new-section name source by ADR-6
+# (spec 022 T5.2): section names must come from the Pass-1 LLM anchor
+# (new_section field) rather than a hardcoded literal. The constant is kept
+# ONLY for the empty-MOC template ("Key Concepts" template section label) and
+# must NOT be used to populate anchor.new_section in any code path.
 DEFAULT_NEW_SECTION_TITLE = "Key Concepts"
 
 
@@ -1605,9 +1610,11 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             return {"type": "heading", "value": heading, "placement": "after"}
         footer = _find_footer_callout(content)
         if footer:
+            # ADR-6 (spec 022 T5.2): no hardcoded section name here.
+            # new_section must come from the Pass-1 LLM anchor; the heuristic
+            # path produces a bare bullet (placement=before with no heading prefix).
             return {
                 "type": "callout", "value": footer, "placement": "before",
-                "new_section": DEFAULT_NEW_SECTION_TITLE,
             }
         return None
 
@@ -1678,16 +1685,50 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             anchor["value"] = res["value"]
             if res.get("placement"):
                 a["placement"] = res["placement"]
-            if res.get("new_section"):
-                # Prepend a fresh "## <section>" block; the resolved footer
-                # anchor + placement="before" drops it ahead of the footer.
-                # Trailing \n separates the block from the footer callout it is
-                # inserted before — Hashi writes line_to_add VERBATIM and adds no
-                # implicit spacing (confirmed hashi#65, 2026-06-13), so Tomo owns
-                # the blank line.
-                a["line_to_add"] = f"## {res['new_section']}\n\n{a.get('line_to_add', '')}\n"
+            # new_section serialization removed: _serialize_new_sections (T5.2)
+            # now handles this for ALL link_to_moc actions after this pass,
+            # covering both honored (Pass-1) and heuristic-resolved anchors.
             resolved += 1
     return resolved
+
+
+def _serialize_new_sections(actions: list[dict]) -> int:
+    """Build line_to_add from anchor.new_section for every link_to_moc action.
+
+    This is the SINGLE serialize site for new-section headings (ADR-3, spec 022
+    T5.2). It runs AFTER resolve_section_names so it covers both:
+      - Honored Pass-1 anchors (value already set → skipped by resolver).
+      - Heuristic-resolved anchors (value populated by resolver, new_section
+        may be set on the anchor dict).
+
+    Contract (AC-6): the serialized shape is exactly
+        "## <section>\\n\\n<bullet>\\n"
+    where <bullet> is the current line_to_add (the "- [[Note]]" line) and the
+    trailing \\n ensures Hashi writes the blank-line gap between the new heading
+    and whatever follows. Hashi writes line_to_add VERBATIM (hashi#65).
+
+    Idempotency guard: if line_to_add already starts with "## ", the action is
+    skipped to prevent double-prepending when the function is called more than
+    once on the same action list.
+
+    Returns the count of actions whose line_to_add was mutated.
+    """
+    mutated = 0
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        anchor = a.get("anchor")
+        if not isinstance(anchor, dict):
+            continue
+        new_section = anchor.get("new_section")
+        if not new_section:
+            continue
+        bullet = a.get("line_to_add", "")
+        if bullet.startswith("## "):
+            continue  # idempotency guard
+        a["line_to_add"] = f"## {new_section}\n\n{bullet}\n"
+        mutated += 1
+    return mutated
 
 
 def resolve_target_moc_paths(actions: list[dict], client) -> int:
@@ -2029,6 +2070,15 @@ def main() -> int:
     resolved_sections = resolve_section_names(actions, client, cfg["callouts.editable"])
     if resolved_sections:
         print(f"  [resolve] anchor.value populated for {resolved_sections} link_to_moc action(s)",
+              file=sys.stderr)
+
+    # ── Serialize new-section headings (T5.2 / ADR-3) ────────────────────
+    # Build line_to_add from anchor.new_section for ALL link_to_moc actions
+    # (both honored Pass-1 anchors and heuristic-resolved ones). Runs here so
+    # both paths are covered exactly once before the JSON/MD writes.
+    serialized_sections = _serialize_new_sections(actions)
+    if serialized_sections:
+        print(f"  [render] new-section heading serialized for {serialized_sections} link_to_moc action(s)",
               file=sys.stderr)
 
     # ── Drop daily-note actions whose target daily note doesn't exist ────

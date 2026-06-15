@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Render honor path"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---
@@ -31,7 +31,7 @@ phase: 5
 
 Makes Pass-2 honor the reviewed Pass-1 decision and keep the heuristic as fallback only.
 
-- [ ] **T5.1 `_emit` stamps + threads the Pass-1 anchor** `[activity: backend]`
+- [x] **T5.1 `_emit` stamps + threads the Pass-1 anchor** `[activity: backend]`
 
   1. Prime: Read `_build_link_to_moc_actions` + `_emit` `[ref: instruction-render.py; lines: 739-827, 765-785]` and the heuristic skip guard (`:1652`).
   2. Test (red):

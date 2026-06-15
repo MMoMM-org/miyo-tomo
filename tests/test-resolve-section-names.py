@@ -636,9 +636,14 @@ def test_editable_callout_wins_over_heading():
 
 def test_new_section_before_footer_when_nothing_else_fits():
     """#28: no editable callout and no content heading → anchor on the footer
-    callout with placement=before and a '## <section>' block prepended to
-    line_to_add, so applying inserts a fresh content section ahead of the
-    footer."""
+    callout with placement=before. The resolver sets up the footer anchor but
+    no longer injects a hardcoded new-section name (ADR-6, spec 022 T5.2).
+    line_to_add stays as the bare bullet — section heading only comes from a
+    Pass-1 anchor carrying new_section, serialized by _serialize_new_sections.
+    """
+    # ADR-6: DEFAULT_NEW_SECTION_TITLE ("Key Concepts") retired as name source.
+    # The heuristic footer tier no longer injects new_section; only Pass-1 LLM
+    # anchors carry a topic-derived new_section value.
     path = "Atlas/200 Maps/Bare (MOC).md"
     client = StubClient(notes={path: _FOOTER_ONLY_MOC_BODY})
     actions = [_link_action("Bare (MOC)", path)]
@@ -651,9 +656,10 @@ def test_new_section_before_footer_when_nothing_else_fits():
           f"expected footer callout anchor, got {a['anchor']['value']!r}")
     _must(a["placement"] == "before",
           f"expected placement=before, got {a['placement']!r}")
-    _must(a["line_to_add"] == "## Key Concepts\n\n- [[New Note]]\n",
-          f"expected section block with trailing newline, got {a['line_to_add']!r}")
-    print("[PASS] #28: new section emitted before footer via before+multiline")
+    # ADR-6: no hardcoded "Key Concepts" heading — bare bullet remains.
+    _must(a["line_to_add"] == "- [[New Note]]",
+          f"expected bare bullet (no hardcoded section name), got {a['line_to_add']!r}")
+    print("[PASS] #28: footer anchor set, bare bullet (no hardcoded section name per ADR-6)")
 
 
 def test_nothing_anchorable_stays_null():
@@ -753,6 +759,171 @@ def test_filter_fail_open_without_client():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# T5.2 — _serialize_new_sections (spec 022, ADR-3)
+#
+# These tests cover the independent serialize pass that builds line_to_add from
+# anchor.new_section for ALL link_to_moc actions — both honored (Pass-1) and
+# heuristic-resolved. The pass runs after resolve_section_names so that a
+# Pass-1 anchor carrying new_section but skipped by the resolver (because its
+# value was already set) still gets the correct "## <section>" prefix.
+#
+# ADR-3: render builds line_to_add from new_section AT SERIALIZE, not inside
+#         resolve_section_names.
+# ADR-6: retire DEFAULT_NEW_SECTION_TITLE ("Key Concepts") as the new-section
+#         name source.
+# AC-5:  new_section is derived from the note's dominant topic, not a hardcoded literal.
+# AC-6:  exact shape: "## <section>\n\n- [[<Note>]]\n" (trailing newline preserved).
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _honored_link_action(
+    moc: str,
+    path: str,
+    *,
+    anchor_value: str,
+    anchor_type: str = "heading",
+    placement: str = "before",
+    new_section: str,
+    note_title: str = "New Note",
+) -> dict:
+    """Factory for a link_to_moc action with a pre-set (honored) anchor."""
+    return {
+        "id": "I10",
+        "action": "link_to_moc",
+        "target_moc": moc,
+        "target_moc_path": path,
+        "anchor": {
+            "type": anchor_type,
+            "value": anchor_value,
+            "placement": placement,
+            "new_section": new_section,
+        },
+        "placement": placement,
+        "line_to_add": f"- [[{note_title}]]",
+    }
+
+
+def test_serialize_honored_anchor_with_new_section():
+    """T5.2 / ADR-3: a HONORED anchor (value already set, skipped by resolver)
+    carrying new_section:"Reasoning" still serializes line_to_add as
+    "## Reasoning\\n\\n- [[Note]]\\n" via _serialize_new_sections.
+
+    This is the core bug the task fixes: resolve_section_names skips honored
+    anchors at :1661-1664 so the old mutation at :1681-1683 never fires for them.
+    The new independent pass covers all link_to_moc actions.
+    """
+    path = "Atlas/200 Maps/Philosophy (MOC).md"
+    actions = [
+        _honored_link_action(
+            "Philosophy (MOC)",
+            path,
+            anchor_value="[!video] Action Items",
+            anchor_type="callout",
+            placement="before",
+            new_section="Reasoning",
+            note_title="Note",
+        )
+    ]
+    # Serialize pass runs; resolve_section_names has NOT changed anchor
+    n = ir._serialize_new_sections(actions)
+    assert n == 1, f"expected 1 serialized, got {n}"
+    assert actions[0]["line_to_add"] == "## Reasoning\n\n- [[Note]]\n", (
+        f"got: {actions[0]['line_to_add']!r}"
+    )
+
+
+def test_serialize_ac6_exact_spacing():
+    """T5.2 / AC-6: exact spacing contract — '## <section>\\n\\n<bullet>\\n'.
+    The blank line between heading and bullet and the trailing newline are
+    both mandatory (Hashi writes line_to_add verbatim, hashi#65).
+    """
+    path = "Atlas/200 Maps/Engineering (MOC).md"
+    actions = [
+        _honored_link_action(
+            "Engineering (MOC)",
+            path,
+            anchor_value="[!blocks] Footer",
+            anchor_type="callout",
+            placement="before",
+            new_section="Mental Models",
+            note_title="First Principles",
+        )
+    ]
+    ir._serialize_new_sections(actions)
+    result = actions[0]["line_to_add"]
+    # Exact shape per AC-6
+    assert result == "## Mental Models\n\n- [[First Principles]]\n", (
+        f"AC-6 spacing violated: {result!r}"
+    )
+    # Explicit component checks to catch off-by-one whitespace regressions
+    parts = result.split("\n")
+    assert parts[0] == "## Mental Models", f"heading line wrong: {parts[0]!r}"
+    assert parts[1] == "", "blank line between heading and bullet must be empty"
+    assert parts[2] == "- [[First Principles]]", f"bullet wrong: {parts[2]!r}"
+    assert parts[3] == "", "trailing newline produces empty final element"
+
+
+def test_serialize_idempotent():
+    """T5.2: running _serialize_new_sections twice must NOT double-prepend the heading.
+    Guard: if line_to_add already starts with '## ', skip (idempotent).
+    """
+    path = "Atlas/200 Maps/Philosophy (MOC).md"
+    actions = [
+        _honored_link_action(
+            "Philosophy (MOC)",
+            path,
+            anchor_value="[!video] Action Items",
+            anchor_type="callout",
+            placement="before",
+            new_section="Reasoning",
+            note_title="Note",
+        )
+    ]
+    ir._serialize_new_sections(actions)
+    first = actions[0]["line_to_add"]
+    ir._serialize_new_sections(actions)
+    second = actions[0]["line_to_add"]
+    assert first == second, (
+        f"idempotency violated — second pass changed line_to_add:\n"
+        f"  first:  {first!r}\n"
+        f"  second: {second!r}"
+    )
+
+
+def test_serialize_skips_non_link_to_moc():
+    """_serialize_new_sections must only touch link_to_moc actions."""
+    actions = [
+        {"id": "I01", "action": "create_moc", "title": "X"},
+        {"id": "I02", "action": "move_note", "line_to_add": "- [[Y]]",
+         "anchor": {"new_section": "Should Not Apply"}},
+    ]
+    n = ir._serialize_new_sections(actions)
+    assert n == 0, f"expected 0 serializations on non-link_to_moc, got {n}"
+    # move_note line_to_add untouched
+    assert actions[1]["line_to_add"] == "- [[Y]]"
+
+
+def test_serialize_skips_action_without_new_section():
+    """Actions with anchor.new_section=None or absent are left unchanged."""
+    path = "Atlas/200 Maps/Japan (MOC).md"
+    actions = [
+        {
+            "id": "I10",
+            "action": "link_to_moc",
+            "target_moc": "Japan (MOC)",
+            "target_moc_path": path,
+            "anchor": {"type": "callout", "value": "[!blocks] Key Concepts",
+                       "new_section": None},
+            "placement": "inside",
+            "line_to_add": "- [[Sapporo]]",
+        }
+    ]
+    n = ir._serialize_new_sections(actions)
+    assert n == 0, f"expected 0 serializations when new_section is None, got {n}"
+    assert actions[0]["line_to_add"] == "- [[Sapporo]]"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -769,6 +940,11 @@ def main() -> None:
     test_new_section_before_footer_when_nothing_else_fits()
     test_nothing_anchorable_stays_null()
     test_before_multiline_validates_against_schema()
+    test_serialize_honored_anchor_with_new_section()
+    test_serialize_ac6_exact_spacing()
+    test_serialize_idempotent()
+    test_serialize_skips_non_link_to_moc()
+    test_serialize_skips_action_without_new_section()
     test_daily_action_kept_when_note_exists()
     test_daily_action_skipped_when_note_missing()
     test_non_daily_actions_never_filtered()

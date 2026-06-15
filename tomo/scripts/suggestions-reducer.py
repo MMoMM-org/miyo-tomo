@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.10.3
+# version: 1.10.4
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -86,6 +86,12 @@ def last_state_per_stem(state_path: Path) -> dict[str, dict]:
 
 # ── Rendering ────────────────────────────────────────────────────────────────
 
+_LINE_TIER = (
+    "**Placement:** under the note title (no matching section or callout found)"
+    "    ← add a `## Heading` to target a section"
+)
+
+
 def _placement_line(anchor: dict) -> str:
     """Return the UX-locked **Placement:** line for a resolved anchor (spec 022 AC-12).
 
@@ -93,13 +99,19 @@ def _placement_line(anchor: dict) -> str:
       heading              → under `## <value>`
       callout + new_section → new section `## <new_section>` (created before the footer)
       callout (no new_section) → inside the `> [!<name>]` callout
-      line                 → under the note title (no matching section or callout found)
+      line / unresolved    → under the note title (no matching section or callout found)
+
+    null-value guard: the schema allows value:null (unresolved LLM output). When
+    value is falsy and the branch needs it (heading, or callout-without-new_section),
+    fall back to the line-tier format — semantically correct (nothing was matched).
     """
     anchor_type = anchor.get("type", "")
     value = anchor.get("value") or ""
     new_section = anchor.get("new_section")
 
     if anchor_type == "heading":
+        if not value:
+            return _LINE_TIER
         return (
             f"**Placement:** under `## {value}`"
             "    ← edit the heading to move the link"
@@ -110,6 +122,9 @@ def _placement_line(anchor: dict) -> str:
                 f"**Placement:** new section `## {new_section}` (created before the footer)"
                 "    ← rename or change"
             )
+        # null value without new_section → nothing was resolved; fall to line-tier.
+        if not value:
+            return _LINE_TIER
         # Extract `> [!name]` from value like "[!blocks] Key Concepts"
         if value.startswith("[!"):
             name = value[2:].split("]")[0]
@@ -120,11 +135,8 @@ def _placement_line(anchor: dict) -> str:
             f"**Placement:** inside the `{callout_ref}` callout"
             "    ← change to a `## Heading` to place under a section"
         )
-    # type:line — last-resort tier
-    return (
-        "**Placement:** under the note title (no matching section or callout found)"
-        "    ← add a `## Heading` to target a section"
-    )
+    # type:line, unknown type, or unresolved — last-resort tier
+    return _LINE_TIER
 
 
 def moc_link_line(moc: dict) -> str:

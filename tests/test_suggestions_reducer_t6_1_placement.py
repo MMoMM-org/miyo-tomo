@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_suggestions_reducer_t6_1_placement.py — spec 022 T6.1.
 
 Covers AC-11 / AC-12: **Placement:** line per candidate-MOC link in the
@@ -15,6 +15,7 @@ factory in test_suggestions_reducer_n_blocks.py — NOT hand-invented markdown.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -174,6 +175,40 @@ class TestMocLinkLinePlacementFormats:
             assert placement is not None
             assert "←" in placement, f"Missing ← in placement for anchor type={anchor['type']}"
 
+    def test_heading_anchor_null_value_falls_back_to_line_tier(self):
+        """type:heading, value:null → line-tier fallback; no empty `## ` in output.
+
+        The schema allows value:null (unresolved LLM output). An empty heading
+        text would produce '**Placement:** under `## `' — unusable for the user.
+        Guard ensures the line-tier format is emitted instead.
+        """
+        moc = make_moc("Atlas/200 Maps/Philosophy MOC.md", anchor={
+            "type": "heading",
+            "value": None,
+            "placement": "inside",
+            "new_section": None,
+        })
+        output = moc_link_line(moc)
+        assert "## `" not in output, f"Empty heading must not appear: {output!r}"
+        assert "**Placement:** under the note title" in output
+
+    def test_callout_anchor_null_value_no_new_section_falls_back_to_line_tier(self):
+        """type:callout, value:null, new_section:null → line-tier fallback; no empty callout.
+
+        Without new_section the callout-name branch needs value to build `> [!name]`.
+        A null value would produce `` inside the `` callout `` — empty backticks.
+        Guard falls back to line-tier instead.
+        """
+        moc = make_moc("Atlas/200 Maps/Tools MOC.md", anchor={
+            "type": "callout",
+            "value": None,
+            "placement": "inside",
+            "new_section": None,
+        })
+        output = moc_link_line(moc)
+        assert "inside the ``" not in output, f"Empty callout ref must not appear: {output!r}"
+        assert "**Placement:** under the note title" in output
+
 
 # ── Integration: render_create_atomic_note with anchors ──────────────────────
 
@@ -200,7 +235,6 @@ class TestRenderCreateAtomicNotePlacement:
             "new_section": None,
         })])
         md = render_create_atomic_note(action, "source-note")
-        import re
         # AC-11: bare [[Target#]] or [[Target#]] pattern must not appear
         assert not re.search(r"\[\[[^\]]*#[^\]]*\]\]", md), (
             f"Found bare [[Target#]] anchor in rendered output (AC-11 violation):\n{md}"
@@ -243,7 +277,6 @@ class TestRenderLinkToMocAC11:
         """section_name present → no [[Target#Section]] bare wikilink (AC-11)."""
         action = {"kind": "link_to_moc", "target_moc": "Philosophy MOC", "section_name": "Core Topics"}
         md = render_link_to_moc(action, "source-note")
-        import re
         assert not re.search(r"\[\[[^\]]*#[^\]]*\]\]", md), (
             f"Bare [[Target#]] wikilink must not appear (AC-11):\n{md}"
         )

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.3
+# version: 0.24.4
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -774,9 +774,16 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
         if not target_moc or not source_title or key in seen:
             return
         seen.add(key)
-        # Honor the Pass-1 anchor when provided; fall back to the default
-        # null-callout so resolve_section_names can populate it at render time.
-        stamped_anchor = anchor if anchor else {"type": "callout", "value": None}
+        # Decompose the Pass-1 anchor: the instructions.schema.json `anchor`
+        # object allows ONLY {type, value} (additionalProperties:false).
+        # `placement` and `new_section` are TOP-LEVEL fields on link_to_moc,
+        # not nested inside the anchor. Honor their values from the Pass-1
+        # anchor but lift them out before writing. When no anchor is provided,
+        # fall back to a null-callout so resolve_section_names can populate it.
+        stamped_anchor = {
+            "type": (anchor or {}).get("type", "callout"),
+            "value": (anchor or {}).get("value"),
+        }
         out.append({
             "id": _next_id(counter),
             "action": "link_to_moc",
@@ -790,6 +797,8 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
             # of today's emission paths produce that.
             "anchor": stamped_anchor,
             "placement": (anchor or {}).get("placement", "after"),
+            # new_section lifted to top-level per instructions schema (T5.2/ADR-3).
+            "new_section": (anchor or {}).get("new_section"),
             "line_to_add": f"- [[{source_title}]]",
             "source_note_title": source_title,
         })
@@ -1600,8 +1609,9 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
 
     def _pick_anchor(content: str) -> dict | None:
         """Three-tier anchor resolution. Returns the anchor decision as a dict
-        (type/value plus optional placement + new_section), or None when nothing
-        in the body is anchorable."""
+        (type/value plus optional placement), or None when nothing is anchorable.
+        new_section is no longer injected here (ADR-6, T5.2); it comes from
+        the Pass-1 LLM anchor and lives at the top-level action field."""
         callout = _pick_editable_callout(content)
         if callout:
             return {"type": "callout", "value": callout}
@@ -1717,10 +1727,9 @@ def _serialize_new_sections(actions: list[dict]) -> int:
     for a in actions:
         if a.get("action") != "link_to_moc":
             continue
-        anchor = a.get("anchor")
-        if not isinstance(anchor, dict):
-            continue
-        new_section = anchor.get("new_section")
+        # new_section is a TOP-LEVEL field on link_to_moc (instructions schema),
+        # not nested inside anchor. Read from the action, not from anchor dict.
+        new_section = a.get("new_section")
         if not new_section:
             continue
         bullet = a.get("line_to_add", "")

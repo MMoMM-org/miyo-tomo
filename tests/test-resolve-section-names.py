@@ -786,7 +786,12 @@ def _honored_link_action(
     new_section: str,
     note_title: str = "New Note",
 ) -> dict:
-    """Factory for a link_to_moc action with a pre-set (honored) anchor."""
+    """Factory for a link_to_moc action with a pre-set (honored) anchor.
+
+    Follows the instructions schema contract:
+      - anchor = {type, value} ONLY (additionalProperties:false)
+      - placement and new_section are TOP-LEVEL fields on the action
+    """
     return {
         "id": "I10",
         "action": "link_to_moc",
@@ -795,10 +800,9 @@ def _honored_link_action(
         "anchor": {
             "type": anchor_type,
             "value": anchor_value,
-            "placement": placement,
-            "new_section": new_section,
         },
         "placement": placement,
+        "new_section": new_section,
         "line_to_add": f"- [[{note_title}]]",
     }
 
@@ -904,7 +908,7 @@ def test_serialize_skips_non_link_to_moc():
 
 
 def test_serialize_skips_action_without_new_section():
-    """Actions with anchor.new_section=None or absent are left unchanged."""
+    """Actions with top-level new_section=None or absent are left unchanged."""
     path = "Atlas/200 Maps/Japan (MOC).md"
     actions = [
         {
@@ -912,15 +916,141 @@ def test_serialize_skips_action_without_new_section():
             "action": "link_to_moc",
             "target_moc": "Japan (MOC)",
             "target_moc_path": path,
-            "anchor": {"type": "callout", "value": "[!blocks] Key Concepts",
-                       "new_section": None},
+            # new_section at TOP LEVEL (per instructions schema), not inside anchor
+            "anchor": {"type": "callout", "value": "[!blocks] Key Concepts"},
             "placement": "inside",
+            "new_section": None,
             "line_to_add": "- [[Sapporo]]",
         }
     ]
     n = ir._serialize_new_sections(actions)
     assert n == 0, f"expected 0 serializations when new_section is None, got {n}"
     assert actions[0]["line_to_add"] == "- [[Sapporo]]"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# T5.2 schema regression — honored anchor decomposition
+#
+# Guards the contract that _emit decomposes the Pass-1 anchor dict so that the
+# action written to instructions.json has:
+#   - anchor = {type, value} ONLY  (no placement, no new_section inside anchor)
+#   - placement at TOP LEVEL on the action
+#   - new_section at TOP LEVEL on the action
+#
+# The instructions.schema.json anchor def has additionalProperties:false with
+# only {type, value} — any extra fields cause schema validation failure.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _instructions_schema() -> dict:
+    import json
+    return json.loads(
+        (REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json").read_text()
+    )
+
+
+def _make_confirmed_with_pass1_anchor(
+    parent_moc_stem: str,
+    parent_moc_path: str,
+    anchor: dict,
+) -> list[dict]:
+    """Minimal confirmed item that drives _build_link_to_moc_actions with a Pass-1 anchor."""
+    return [
+        {
+            "id": "S01",
+            "approved": True,
+            "action": "create_atomic_note",
+            "title": "First Principles Thinking",
+            "source_path": "100 Inbox/first-principles.md",
+            "parent_mocs": [parent_moc_stem],
+            "candidate_mocs": [
+                {
+                    "path": parent_moc_path,
+                    "score": 0.75,
+                    "pre_check": True,
+                    "anchor": anchor,
+                }
+            ],
+        }
+    ]
+
+
+def test_honored_anchor_schema_compliance():
+    """T5.2 schema regression: a Pass-1 anchor with placement+new_section inside
+    it must NOT appear verbatim in the emitted action's anchor field.
+
+    Contract (instructions.schema.json):
+      - anchor allows ONLY {type, value} (additionalProperties:false)
+      - placement is a TOP-LEVEL field on the link_to_moc action
+      - new_section is a TOP-LEVEL field on the link_to_moc action
+
+    This test exercises the full emission path (_build_link_to_moc_actions +
+    _serialize_new_sections) and validates the output action against the real
+    instructions schema. It will FAIL if _emit stamps the raw Pass-1 anchor
+    dict (with extra fields) into the action.
+    """
+    import jsonschema
+
+    schema = _instructions_schema()
+
+    pass1_anchor = {
+        "type": "callout",
+        "value": "[!video] Action Items",
+        "placement": "before",
+        "new_section": "Reasoning",
+    }
+    moc_path = "Atlas/200 Maps/Philosophy (MOC).md"
+    moc_stem = "Philosophy (MOC)"
+    confirmed = _make_confirmed_with_pass1_anchor(moc_stem, moc_path, pass1_anchor)
+
+    counter = [0]
+    actions = ir._build_link_to_moc_actions(confirmed, counter)
+    ir._serialize_new_sections(actions)
+
+    link_actions = [a for a in actions if a.get("action") == "link_to_moc"]
+    _must(len(link_actions) == 1, f"expected 1 link_to_moc action, got {len(link_actions)}")
+
+    a = link_actions[0]
+
+    # Anchor must be type+value only — no extra fields.
+    anchor = a["anchor"]
+    _must(
+        set(anchor.keys()) == {"type", "value"},
+        f"anchor must have ONLY type+value, got keys: {set(anchor.keys())}",
+    )
+    _must(anchor["type"] == "callout", f"anchor type wrong: {anchor['type']!r}")
+    _must(
+        anchor["value"] == "[!video] Action Items",
+        f"anchor value wrong: {anchor['value']!r}",
+    )
+
+    # placement and new_section must be at the TOP LEVEL of the action.
+    _must(a.get("placement") == "before", f"top-level placement wrong: {a.get('placement')!r}")
+    _must(
+        a.get("new_section") == "Reasoning",
+        f"top-level new_section wrong: {a.get('new_section')!r}",
+    )
+
+    # line_to_add must be serialized with the section heading (AC-6).
+    _must(
+        a.get("line_to_add") == "## Reasoning\n\n- [[First Principles Thinking]]\n",
+        f"line_to_add wrong: {a.get('line_to_add')!r}",
+    )
+
+    # The full instruction document must pass jsonschema validation.
+    doc = {
+        "schema_version": "1",
+        "type": "tomo-instructions",
+        "generated": "2026-06-15T00:00:00Z",
+        "profile": "miyo",
+        "actions": [a],
+    }
+    try:
+        jsonschema.validate(instance=doc, schema=schema)
+    except jsonschema.ValidationError as exc:
+        _must(False, f"instructions.schema.json rejected the emitted action: {exc.message[:300]}")
+
+    print("[PASS] honored anchor decomposed: anchor={type,value}, placement+new_section at top level, schema valid")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -945,6 +1075,7 @@ def main() -> None:
     test_serialize_idempotent()
     test_serialize_skips_non_link_to_moc()
     test_serialize_skips_action_without_new_section()
+    test_honored_anchor_schema_compliance()
     test_daily_action_kept_when_note_exists()
     test_daily_action_skipped_when_note_missing()
     test_non_daily_actions_never_filtered()

@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Pass-1 four-tier decision"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---

@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.17.1
+# version: 0.17.2
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -147,6 +147,52 @@ signal of intent than a freshly-inferred label.
 
 If `placeholder_links` is absent or empty, skip this trigger silently —
 the field is optional in the schema.
+
+**Anchor emission (four-tier) — thematic MOCs only.**
+
+For each pre-checked thematic MOC (those with `pre_check: true` after the
+Classification Guard above), resolve one `anchor` object using the inventory
+in `shared_ctx.mocs[].headings` and `shared_ctx.mocs[].editable_callouts`.
+Evaluate the tiers in strict order — first tier that fires wins:
+
+- **TIER-1 — Semantic heading fit.**
+  Look at `moc.headings[]` (each has `text` and `level`). Pick the heading
+  whose *meaning* best fits the note's dominant topic. Fit is by conceptual
+  meaning, not literal keyword overlap. If a fitting heading is found:
+  ```json
+  {"type": "heading", "value": "<heading text>", "placement": "after", "new_section": null}
+  ```
+
+- **TIER-2 — New section (headings present but none fits).**
+  If `moc.headings` is non-empty but no heading fits the note's topic:
+  ```json
+  {"type": "callout", "value": "<footer callout text or null>", "placement": "before", "new_section": "<note dominant topic>"}
+  ```
+  `new_section` is the note's dominant topic label (e.g. "Mental Models",
+  "Cognitive Biases") — derived from the item's content. It is NEVER the
+  literal string "Key Concepts".
+
+- **TIER-3 — Editable callout fallback.**
+  If `moc.headings` is absent or empty AND `moc.editable_callouts` is
+  non-empty, use the first (highest-priority) callout:
+  ```json
+  {"type": "callout", "value": "<editable callout string>", "placement": "inside", "new_section": null}
+  ```
+
+- **TIER-4 — H1 title last-resort.**
+  If `moc.headings` is absent/empty AND `moc.editable_callouts` is
+  absent/empty, use the MOC's H1 title (the note's own title / file stem):
+  ```json
+  {"type": "heading", "value": "<MOC H1 title>", "placement": "after", "new_section": null}
+  ```
+  If the MOC has no H1 either, fall back to the first body line:
+  ```json
+  {"type": "line", "value": "<first body line>", "placement": "after", "new_section": null}
+  ```
+
+If `shared_ctx.mocs[].headings` and `shared_ctx.mocs[].editable_callouts` are
+both absent (old shared-ctx artifact without inventory), omit the `anchor` key
+entirely for that MOC — downstream consumers degrade gracefully.
 
 ### Step 5 — Match classification category
 

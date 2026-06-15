@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_instruction_render_four_tier_tracking.py — T7.1 metadata-only four-tier resolution telemetry.
 
 Verifies that _emit_resolution_telemetry():
@@ -154,14 +154,31 @@ def test_emit_resolution_telemetry_never_leaks_anchor_value(capsys):
 
 
 def test_emit_resolution_telemetry_never_leaks_note_content(capsys):
-    """Privacy (Constitution L2): note body/target content MUST NOT appear in telemetry."""
-    actions = _make_actions()
+    """Privacy (Constitution L2): link_to_moc fields carrying note content MUST NOT leak.
+
+    At telemetry time a resolved link_to_moc action carries source_note_title
+    (the user's note title) and line_to_add (e.g. '- [[Note Title]]'). Neither
+    must appear in the emitted line. This test places SECRET_CONTENT in exactly
+    those fields on a valid link_to_moc action — not in a skipped log_entry —
+    so the assertion is real, not trivially passing because the action is filtered
+    before any field is read.
+    """
+    actions = [
+        {
+            "action": "link_to_moc",
+            "target_moc_path": "PKM/Concepts MOC.md",
+            "source_note_title": SECRET_CONTENT,
+            "line_to_add": f"- [[{SECRET_CONTENT}]]",
+            "anchor": {"type": "heading", "value": "Section", "placement": "after"},
+        },
+    ]
 
     ir._emit_resolution_telemetry(actions)
 
     err = capsys.readouterr().err
     assert SECRET_CONTENT not in err, (
-        f"PRIVACY VIOLATION: note content '{SECRET_CONTENT}' leaked into telemetry: {err!r}"
+        f"PRIVACY VIOLATION: note content '{SECRET_CONTENT}' leaked via "
+        f"source_note_title/line_to_add into telemetry: {err!r}"
     )
 
 
@@ -209,4 +226,25 @@ def test_emit_resolution_telemetry_ignores_non_link_to_moc(capsys):
     assert "heading=1" in err, f"Expected only 1 heading from 1 link_to_moc, got: {err!r}"
     assert "mocs=1" in err or "Solo MOC" in err, (
         f"Expected 1 MOC counted, got: {err!r}"
+    )
+
+
+def test_emit_resolution_telemetry_target_moc_fallback(capsys):
+    """target_moc fallback is used when target_moc_path is absent or None."""
+    actions = [
+        {
+            "action": "link_to_moc",
+            "target_moc_path": None,
+            "target_moc": "PKM/Fallback MOC",
+            "anchor": {"type": "callout", "value": "[!links]", "placement": "after"},
+        },
+    ]
+
+    ir._emit_resolution_telemetry(actions)
+
+    err = capsys.readouterr().err
+    assert "callout=1" in err, f"Expected callout=1, got: {err!r}"
+    assert "mocs=1" in err, f"Expected mocs=1, got: {err!r}"
+    assert "Fallback MOC" in err, (
+        f"Expected fallback stem 'Fallback MOC' in paths, got: {err!r}"
     )

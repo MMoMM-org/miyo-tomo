@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.8
+# version: 0.24.9
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1685,12 +1685,13 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
     paths/stems, and counts. anchor.value (heading text) and note body content
     are NEVER included.
 
-    Tier derivation (first match wins):
-      - top-level new_section set             → new_section tier
-      - anchor.type == "heading", value set   → heading tier
-      - anchor.type == "callout", value set   → callout tier
-      - anchor.type == "line"                 → line tier
-      - anchor.value is None/absent           → unresolved
+    Tier derivation (first match wins, execution order):
+      1. top-level new_section set            → new_section tier
+      2. anchor.value is None/absent          → unresolved
+      3. anchor.type == "heading"             → heading tier
+      4. anchor.type == "callout"             → callout tier
+      5. anchor.type == "line"                → line tier
+      6. else                                 → unresolved
     """
     counts: dict[str, int] = {
         "heading": 0,

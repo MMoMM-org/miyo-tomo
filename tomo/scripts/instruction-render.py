@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.1
+# version: 0.24.2
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -762,11 +762,21 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
     out: list[dict] = []
     seen: set[tuple[str, str]] = set()
 
-    def _emit(target_moc: str, source_title: str) -> None:
+    def _find_candidate(item: dict, target_stem: str) -> dict | None:
+        """Return the candidate_mocs[] entry whose path stem matches target_stem, or None."""
+        for cand in item.get("candidate_mocs") or []:
+            if _moc_stem(cand.get("path", "")) == target_stem:
+                return cand
+        return None
+
+    def _emit(target_moc: str, source_title: str, anchor: dict | None = None) -> None:
         key = (target_moc, source_title)
         if not target_moc or not source_title or key in seen:
             return
         seen.add(key)
+        # Honor the Pass-1 anchor when provided; fall back to the default
+        # null-callout so resolve_section_names can populate it at render time.
+        stamped_anchor = anchor if anchor else {"type": "callout", "value": None}
         out.append({
             "id": _next_id(counter),
             "action": "link_to_moc",
@@ -778,8 +788,8 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
             # always after". inside is reserved for the rare case where a
             # specific entry must be collected inside a callout's body — none
             # of today's emission paths produce that.
-            "anchor": {"type": "callout", "value": None},
-            "placement": "after",
+            "anchor": stamped_anchor,
+            "placement": (anchor or {}).get("placement", "after"),
             "line_to_add": f"- [[{source_title}]]",
             "source_note_title": source_title,
         })
@@ -798,7 +808,8 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
         else:
             source_title = item.get("title") or _stem(item.get("source_path"))
         for parent in parents:
-            _emit(_moc_stem(parent), source_title)
+            cand = _find_candidate(item, _moc_stem(parent))
+            _emit(_moc_stem(parent), source_title, anchor=cand.get("anchor") if cand else None)
 
     # Pass 2 — supporting_items down-links: each new MOC pulls its approved
     # supporting atomic notes as children. Required because the suggestions

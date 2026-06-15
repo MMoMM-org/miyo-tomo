@@ -37,6 +37,8 @@
 | 2026-06-15 | Phase 4 (Pass-1 four-tier) implemented | inbox-analyst emits `candidate_mocs[].anchor` via four-tier order; 26 contract fixtures (AC-1,2,4,5,7,9,10,EC-5); both reviews PASS |
 | 2026-06-15 | Phase 5 (render honor path) implemented | `_emit` stamps Pass-1 anchor (heuristic auto-suppresses via `anchor.value` guard); independent `_serialize_new_sections`; render fallback unified on `lib/moc_structure` (ADR-4) |
 | 2026-06-15 | Honor-path anchor decomposed at `_emit` to satisfy instructions.schema.json | Pass-1 anchor `{type,value,placement,new_section}` was stamped whole into the action `anchor` (allows only `{type,value}`, additionalProperties:false). Decompose: `anchor`={type,value}, lift `placement`/`new_section` to top-level action fields. Added end-to-end schema-validation test as the contract guard |
+| 2026-06-15 | Phase 6 (suggestions surfacing) implemented | `**Placement:**` line per candidate MOC (4 UX-locked formats + `←` hint, never bare `[[Target#]]`); dead `section_name` removed from `render_link_to_moc`; both reviews PASS |
+| 2026-06-15 | T6.2 expanded to full vertical slice (user decision) | AC-16 needed Pass-1 runner-up flagging that Phase 4 never built. User chose to implement fully (cost: zero new Kado reads/LLM calls, small fixed prompt bump). Added optional `alt_headings` to anchor schema → inbox-analyst TIER-1 emits runner-ups when ≥2 fit → reducer renders "Other sections in this MOC:" advisory. Schema-before-consumer ordering |
 
 ## Context
 

@@ -66,7 +66,7 @@ def test_pass1_callout_anchor_stamped_on_action():
         "First Principles Thinking",
         parent_mocs=["Mental Models (MOC)"],
         candidate_mocs=[
-            {"path": "Mental Models (MOC).md", "score": 0.9, "pre_check": "pass", "anchor": anchor},
+            {"path": "Mental Models (MOC).md", "score": 0.9, "pre_check": True, "anchor": anchor},
         ],
     )
     actions = _build_link_to_moc_actions([item], [0])
@@ -88,7 +88,7 @@ def test_pass1_anchor_not_re_resolved_by_heuristic():
         "First Principles Thinking",
         parent_mocs=["Mental Models (MOC)"],
         candidate_mocs=[
-            {"path": "Mental Models (MOC).md", "score": 0.9, "pre_check": "pass", "anchor": anchor},
+            {"path": "Mental Models (MOC).md", "score": 0.9, "pre_check": True, "anchor": anchor},
         ],
     )
     actions = _build_link_to_moc_actions([item], [0])
@@ -127,7 +127,7 @@ def test_no_pass1_anchor_falls_to_heuristic():
         parent_mocs=["PKM (MOC)"],
         candidate_mocs=[
             # anchor absent → heuristic should run
-            {"path": "PKM (MOC).md", "score": 0.8, "pre_check": "pass"},
+            {"path": "PKM (MOC).md", "score": 0.8, "pre_check": True},
         ],
     )
     actions = _build_link_to_moc_actions([item], [0])
@@ -171,7 +171,7 @@ def test_ec6_user_edited_heading_absent_from_moc_passes_through():
         "First Principles Thinking",
         parent_mocs=["Mental Models (MOC)"],
         candidate_mocs=[
-            {"path": "Mental Models (MOC).md", "score": 0.9, "pre_check": "pass", "anchor": anchor},
+            {"path": "Mental Models (MOC).md", "score": 0.9, "pre_check": True, "anchor": anchor},
         ],
     )
     actions = _build_link_to_moc_actions([item], [0])
@@ -183,7 +183,7 @@ def test_ec6_user_edited_heading_absent_from_moc_passes_through():
     assert a["anchor"]["value"] == "Reasoning Biases"
     assert a["placement"] == "after"
 
-    # resolve_section_names must NOT overwrite it (heading type is skipped at line:1650)
+    # resolve_section_names must NOT overwrite it (non-callout anchors are skipped)
     class _MustNotCallClient:
         def read_note(self, *args, **kwargs):
             raise AssertionError("resolve_section_names should not call Kado for a heading anchor")
@@ -204,7 +204,6 @@ def test_ec6_user_edited_heading_absent_from_moc_passes_through():
 def test_pass2_supporting_items_downlinks_get_null_anchor():
     """Pass-2 down-links (supporting_items) have no per-candidate anchor → null anchor."""
     child = _make_atomic_item("S10", "Deep Work", parent_mocs=[], candidate_mocs=[])
-    child["id"] = "S10"
     moc_item = {
         "id": "S99",
         "action": "create_moc",

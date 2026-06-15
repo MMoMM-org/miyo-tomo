@@ -88,6 +88,10 @@
         "placement": {"type": "string", "enum": ["inside", "after", "before"], "description": "Where to write relative to the matched anchor. inside (callout only) appends as last line of callout body with > prefix. after inserts immediately after the matched anchor's terminal line, verbatim. before inserts immediately before the matched anchor's first line, verbatim."},
         "line_to_add": {"type": "string", "description": "Pre-formatted content to insert (bullet style, link form, etc. all decided Tomo-side). May be multi-line (embedded \\n) to insert a block such as a new section heading plus its first bullet. Hashi writes the content verbatim for placement=after/before; for placement=inside on a callout anchor it prepends '> ' to each line."},
         "source_note_title": {"type": ["string", "null"]},
+        "new_section": {
+          "type": ["string", "null"],
+          "description": "Optional heading text for a new section to create when the anchor did not exist at resolution time. Hashi inserts the section (verbatim) immediately before the line_to_add content. Null when the anchor was found and no new section is needed."
+        },
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     },

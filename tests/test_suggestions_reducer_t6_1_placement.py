@@ -225,6 +225,127 @@ class TestMocLinkLinePlacementFormats:
         assert "> [!blocks" not in output, f"Garbled callout ref must not appear: {output!r}"
         assert "**Placement:** under the note title" in output
 
+    # ── T6.2 alt_headings advisory ────────────────────────────────────────────
+
+    def test_alt_headings_present_emits_advisory_line(self):
+        """anchor with non-empty alt_headings → exactly one **Other sections in this MOC:** advisory line."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+            "alt_headings": ["Routines", "Morning Practice"],
+        })
+        output = moc_link_line(moc)
+        assert "**Other sections in this MOC:**" in output
+
+    def test_alt_headings_advisory_contains_runner_up_as_heading(self):
+        """Advisory renders runner-up heading(s) as `## <heading>` in backticks."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+            "alt_headings": ["Routines"],
+        })
+        output = moc_link_line(moc)
+        assert "`## Routines`" in output
+
+    def test_alt_headings_multiple_runner_ups_all_in_advisory(self):
+        """Multiple runner-ups all appear in the advisory line, comma-joined."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+            "alt_headings": ["Routines", "Morning Practice"],
+        })
+        output = moc_link_line(moc)
+        assert "`## Routines`" in output
+        assert "`## Morning Practice`" in output
+
+    def test_alt_headings_advisory_has_retarget_hint(self):
+        """Advisory contains the ← edit hint pointing user to change Placement."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+            "alt_headings": ["Routines"],
+        })
+        output = moc_link_line(moc)
+        assert "← edit the Placement above to retarget" in output
+
+    def test_alt_headings_advisory_follows_placement_line(self):
+        """Advisory appears AFTER the **Placement:** line (never before it)."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+            "alt_headings": ["Routines"],
+        })
+        lines = moc_link_line(moc).split("\n")
+        pl_idx = next((i for i, l in enumerate(lines) if l.startswith("**Placement:**")), None)
+        adv_idx = next((i for i, l in enumerate(lines) if l.startswith("**Other sections")), None)
+        assert pl_idx is not None, "Placement line must exist"
+        assert adv_idx is not None, "Advisory line must exist"
+        assert adv_idx > pl_idx, "Advisory must follow Placement line"
+
+    def test_absent_alt_headings_no_advisory(self):
+        """anchor without alt_headings → no advisory line (most MOCs, no ambiguous fit)."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+        })
+        output = moc_link_line(moc)
+        assert "**Other sections in this MOC:**" not in output
+
+    def test_null_alt_headings_no_advisory(self):
+        """anchor.alt_headings=None → no advisory line."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+            "alt_headings": None,
+        })
+        output = moc_link_line(moc)
+        assert "**Other sections in this MOC:**" not in output
+
+    def test_empty_alt_headings_no_advisory(self):
+        """anchor.alt_headings=[] → no advisory line."""
+        moc = make_moc("Atlas/200 Maps/Health MOC.md", anchor={
+            "type": "heading",
+            "value": "Habits",
+            "placement": "after",
+            "new_section": None,
+            "alt_headings": [],
+        })
+        output = moc_link_line(moc)
+        assert "**Other sections in this MOC:**" not in output
+
+    def test_advisory_does_not_key_off_raw_heading_count(self):
+        """Advisory is driven by alt_headings field ONLY — not by a raw count of MOC headings.
+
+        A MOC with many headings but no alt_headings must NOT trigger the advisory.
+        Only the explicit alt_headings field drives it (most MOCs have ≥2 headings;
+        triggering on count would flood the doc).
+        """
+        # This MOC has a heading anchor but no alt_headings — should NOT emit advisory
+        # even though a real MOC would typically have multiple headings in its inventory.
+        moc = make_moc("Atlas/200 Maps/Systems Thinking MOC.md", anchor={
+            "type": "heading",
+            "value": "Mental Models",
+            "placement": "after",
+            "new_section": None,
+            # alt_headings intentionally absent — unambiguous fit
+        })
+        output = moc_link_line(moc)
+        assert "**Other sections in this MOC:**" not in output
+
     def test_unknown_anchor_type_falls_back_to_line_tier(self):
         """Unknown anchor type (e.g. future schema extension) falls through to line-tier.
 

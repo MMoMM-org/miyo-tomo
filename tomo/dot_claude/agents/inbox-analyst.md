@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.17.3
+# version: 0.17.4
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -162,6 +162,16 @@ Evaluate the tiers in strict order — first tier that fires wins:
   ```json
   {"type": "heading", "value": "<heading text>", "placement": "after", "new_section": null}
   ```
+  When TWO OR MORE headings genuinely fit the note's topic, put the single
+  best-fit heading in `value` and list the other plausible heading text(s) in
+  `alt_headings`:
+  ```json
+  {"type": "heading", "value": "<best-fit heading>", "placement": "after", "new_section": null, "alt_headings": ["<runner-up heading>", "..."]}
+  ```
+  When only one heading fits (or none), DO NOT emit `alt_headings` — omit the
+  key entirely. `alt_headings` lists ONLY genuinely-plausible runner-ups (NOT
+  every other heading in the MOC) — it drives an advisory the user can act on;
+  flooding it with all headings defeats the purpose.
 
 - **TIER-2 — New section (headings present but none fits).**
   If `moc.headings` is non-empty but no heading fits the note's topic:

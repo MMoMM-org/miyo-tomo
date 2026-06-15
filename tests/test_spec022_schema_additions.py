@@ -335,3 +335,102 @@ class TestT23InstructionsLinkToMocNewSection:
                 instance=_make_instructions_link_to_moc({"mystery_field": "nope"}),
                 schema=instructions_schema,
             )
+
+
+# ===========================================================================
+# T6.2 — item-result: alt_headings on candidate_mocs[].anchor (AC-16 ambiguous-fit advisory)
+# ===========================================================================
+
+
+class TestT62AnchorAltHeadings:
+    """alt_headings is an optional [array, null] field on candidate_mocs[].anchor (spec 022 T6.2 / AC-16)."""
+
+    def test_anchor_with_alt_headings_list_validates(self, item_result_schema):
+        """anchor WITH alt_headings array of strings validates (AC-16 ambiguous-fit case)."""
+        candidate_mocs = [
+            {
+                "path": "Atlas/200 Maps/Self-Care (MOC).md",
+                "score": 0.85,
+                "pre_check": True,
+                "anchor": {
+                    "type": "heading",
+                    "value": "Habits",
+                    "placement": "after",
+                    "new_section": None,
+                    "alt_headings": ["Routines", "Morning Practice"],
+                },
+            }
+        ]
+        validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)
+
+    def test_anchor_without_alt_headings_still_validates(self, item_result_schema):
+        """anchor WITHOUT alt_headings (old artifact) still validates — additive-only back-compat."""
+        candidate_mocs = [
+            {
+                "path": "Atlas/200 Maps/Self-Care (MOC).md",
+                "score": 0.85,
+                "pre_check": True,
+                "anchor": {
+                    "type": "heading",
+                    "value": "Habits",
+                    "placement": "after",
+                    "new_section": None,
+                },
+            }
+        ]
+        validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)
+
+    def test_anchor_alt_headings_null_validates(self, item_result_schema):
+        """anchor.alt_headings=null validates (explicit null is allowed)."""
+        candidate_mocs = [
+            {
+                "path": "Atlas/200 Maps/Self-Care (MOC).md",
+                "score": 0.85,
+                "pre_check": True,
+                "anchor": {
+                    "type": "heading",
+                    "value": "Habits",
+                    "placement": "after",
+                    "new_section": None,
+                    "alt_headings": None,
+                },
+            }
+        ]
+        validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)
+
+    def test_anchor_alt_headings_empty_list_validates(self, item_result_schema):
+        """anchor.alt_headings=[] (empty list) validates."""
+        candidate_mocs = [
+            {
+                "path": "Atlas/200 Maps/Self-Care (MOC).md",
+                "score": 0.85,
+                "pre_check": True,
+                "anchor": {
+                    "type": "heading",
+                    "value": "Habits",
+                    "placement": "after",
+                    "new_section": None,
+                    "alt_headings": [],
+                },
+            }
+        ]
+        validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)
+
+    def test_anchor_alt_headings_non_string_item_rejected(self, item_result_schema):
+        """anchor.alt_headings with a non-string item is rejected (items must be strings)."""
+        candidate_mocs = [
+            {
+                "path": "Atlas/200 Maps/Self-Care (MOC).md",
+                "score": 0.85,
+                "pre_check": True,
+                "anchor": {
+                    "type": "heading",
+                    "value": "Habits",
+                    "placement": "after",
+                    "new_section": None,
+                    "alt_headings": [42],
+                },
+            }
+        ]
+        with pytest.raises(ValidationError):
+            validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)

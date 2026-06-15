@@ -558,6 +558,111 @@ class TestEC5ClassificationExcluded:
 # ===========================================================================
 
 
+# ===========================================================================
+# AC-16 / T6.2 — TIER-1 ambiguous-fit: ≥2 headings fit → alt_headings advisory
+# ===========================================================================
+
+
+class TestTier1AmbiguousFitAltHeadings:
+    """AC-16: When ≥2 headings genuinely fit, anchor.alt_headings carries runner-up(s).
+
+    When only one heading fits, alt_headings is absent. When two or more genuinely fit,
+    the chosen best-fit goes in value and the remaining plausible headings go in alt_headings.
+    """
+
+    def test_ambiguous_fit_with_two_headings_schema_valid(self, item_result_schema):
+        """When ≥2 headings fit, anchor with alt_headings validates against item-result schema."""
+        candidate = {
+            "path": "Atlas/200 Maps/Health (MOC).md",
+            "score": 0.78,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Habits",
+                "placement": "after",
+                "new_section": None,
+                "alt_headings": ["Routines"],
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+
+    def test_ambiguous_fit_chosen_anchor_not_in_alt_headings(self, item_result_schema):
+        """Chosen best-fit heading (value) must NOT appear in alt_headings."""
+        candidate = {
+            "path": "Atlas/200 Maps/Health (MOC).md",
+            "score": 0.78,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Habits",
+                "placement": "after",
+                "new_section": None,
+                "alt_headings": ["Routines", "Morning Practice"],
+            },
+        }
+        anchor = candidate["anchor"]
+        assert anchor["value"] not in anchor["alt_headings"], (
+            "Chosen anchor value must not appear in alt_headings — it is the CHOSEN heading"
+        )
+
+    def test_ambiguous_fit_alt_headings_is_non_empty_list(self, item_result_schema):
+        """alt_headings is a non-empty list of strings when ambiguous fit fires."""
+        candidate = {
+            "path": "Atlas/200 Maps/Health (MOC).md",
+            "score": 0.78,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Habits",
+                "placement": "after",
+                "new_section": None,
+                "alt_headings": ["Routines"],
+            },
+        }
+        alt = candidate["anchor"]["alt_headings"]
+        assert isinstance(alt, list)
+        assert len(alt) >= 1
+        assert all(isinstance(h, str) and h for h in alt)
+
+    def test_single_fit_no_alt_headings(self, item_result_schema):
+        """When only ONE heading fits, alt_headings is absent — omitted, not null."""
+        candidate = {
+            "path": "Atlas/200 Maps/Systems Thinking (MOC).md",
+            "score": 0.75,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Reasoning Techniques",
+                "placement": "after",
+                "new_section": None,
+                # alt_headings intentionally absent
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        assert "alt_headings" not in candidate["anchor"], (
+            "Single-fit: alt_headings must be absent, not null or empty list"
+        )
+
+    def test_ambiguous_fit_multiple_runner_ups_all_strings(self, item_result_schema):
+        """alt_headings may carry multiple runner-up headings — all must be strings."""
+        candidate = {
+            "path": "Atlas/200 Maps/Wellbeing (MOC).md",
+            "score": 0.72,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Sleep",
+                "placement": "after",
+                "new_section": None,
+                "alt_headings": ["Rest & Recovery", "Evening Practices"],
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        alt = candidate["anchor"]["alt_headings"]
+        assert len(alt) == 2
+        assert all(isinstance(h, str) for h in alt)
+
+
 class TestAnchorSchemaConstraints:
     """Schema-level rejection tests — verify the contract rejects malformed anchors."""
 

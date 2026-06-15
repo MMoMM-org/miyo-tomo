@@ -83,7 +83,9 @@
                   "type": {"type": "string", "enum": ["heading", "callout", "line"], "description": "What kind of anchor the LLM matched."},
                   "value": {"type": ["string", "null"], "description": "Text of the matched anchor, or null when unresolved."},
                   "placement": {"type": "string", "enum": ["inside", "before", "after"], "description": "Where to insert relative to the matched anchor."},
-                  "new_section": {"type": ["string", "null"], "description": "Optional heading text to create as a new section when the MOC lacks a suitable anchor. Null when not needed."}
+                  "new_section": {"type": ["string", "null"], "description": "Optional heading text to create as a new section when the MOC lacks a suitable anchor. Null when not needed."},
+                  "alt_headings": {"type": ["array", "null"], "items": {"type": "string"},
+                    "description": "Runner-up heading text(s) Pass-1 also judged a plausible fit (AC-16 ambiguous-fit advisory). Present only when ≥2 headings genuinely fit; absent/null otherwise. Does NOT change the chosen anchor in `value`."}
                 }
               }
             }

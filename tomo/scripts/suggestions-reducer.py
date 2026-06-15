@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.10.5
+# version: 1.10.6
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -162,7 +162,15 @@ def moc_link_line(moc: dict) -> str:
     anchor = moc.get("anchor")
     if not anchor:
         return checkbox
-    return checkbox + "\n" + _placement_line(anchor)
+    parts = [checkbox, _placement_line(anchor)]
+    alt_headings = anchor.get("alt_headings") or []
+    if alt_headings:
+        rendered = ", ".join(f"`## {h}`" for h in alt_headings)
+        parts.append(
+            f"**Other sections in this MOC:** {rendered}"
+            "    ← edit the Placement above to retarget"
+        )
+    return "\n".join(parts)
 
 
 def _template_link(template: str) -> str:

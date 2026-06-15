@@ -32,7 +32,7 @@ phase: 4
 
 Moves the placement decision into the Pass-1 LLM so it can be reviewed.
 
-- [ ] **T4.1 inbox-analyst emits `candidate_mocs[].anchor`** `[activity: prompt-engineering]`
+- [x] **T4.1 inbox-analyst emits `candidate_mocs[].anchor`** `[activity: prompt-engineering]`
 
   1. Prime: Read Step 4 MOC match + pre_check + classification guard `[ref: inbox-analyst.md; lines: 113-150, 121-126, 612-615]`; the anchor shape `[ref: item-result.schema.json candidate_mocs[].anchor]`.
   2. Test (red): contract fixtures for the analyst's emitted `result.json` —

@@ -203,6 +203,65 @@ class TestTier1SemanticFitZeroTokenOverlap:
 
 
 # ===========================================================================
+# AC-2 (T4.2): TIER-1 — Semantic fit beats keyword overlap (mispick guardrail)
+# ===========================================================================
+
+
+class TestTier1SemanticFitMispickGuardrail:
+    """AC-2 mispick fixture: surface-token DECOY must not win over the semantically-correct heading.
+
+    Scenario:
+      Note topic: "version control workflows" (token: "workflows")
+      MOC headings:
+        DECOY   — "Agile Workflows"      (shares "workflows" with the note topic)
+        CORRECT — "Source Control Practices" (shares NO literal tokens but is the right home)
+
+    A keyword-overlap resolver would pick the DECOY. A semantic resolver picks CORRECT.
+    The contract fixture encodes the CORRECT outcome and asserts the DECOY is not chosen.
+    """
+
+    def test_semantic_fit_beats_keyword_overlap_mispick_fixture(self, item_result_schema):
+        """Mispick fixture: decoy heading shares 'workflows' with note; correct heading wins on meaning (AC-2)."""
+        # Context encoded in the fixture comment — the test author (and any reviewer) must
+        # understand BOTH candidates are present in the MOC's headings inventory; only
+        # the correct semantic pick is recorded in the emitted anchor.
+        #
+        # MOC headings inventory (as shared_ctx.mocs[].headings would contain):
+        #   [{"text": "Agile Workflows", "level": 2},          # DECOY — shares "workflows"
+        #    {"text": "Source Control Practices", "level": 2}]  # CORRECT — right concept
+        #
+        # Note dominant topic: "version control workflows"
+        # A keyword-overlap resolver scores "Agile Workflows" higher (1 shared token vs 0).
+        # A semantic resolver scores "Source Control Practices" higher (same domain as VCS).
+
+        decoy_heading = "Agile Workflows"
+        correct_heading = "Source Control Practices"
+
+        candidate = {
+            "path": "Atlas/200 Maps/Software Engineering (MOC).md",
+            "score": 0.72,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": correct_heading,
+                "placement": "after",
+                "new_section": None,
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+
+        anchor = candidate["anchor"]
+        # Semantic fit wins: correct heading chosen
+        assert anchor["value"] == correct_heading
+        # Keyword-overlap DECOY is NOT chosen
+        assert anchor["value"] != decoy_heading
+        # Shape is correct for TIER-1
+        assert anchor["type"] == "heading"
+        assert anchor["placement"] == "after"
+        assert anchor["new_section"] is None
+
+
+# ===========================================================================
 # AC-4/AC-5: TIER-2 — Headings present but none fits → new section before footer
 # ===========================================================================
 

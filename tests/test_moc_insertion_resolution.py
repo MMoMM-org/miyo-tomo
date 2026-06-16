@@ -1240,6 +1240,51 @@ class TestPickAnchorNoFooter:
             "H2 last-line must be excluded from tier-4 line candidates"
         )
 
+    def test_h1_last_line_not_used_as_line_anchor_falls_back_to_prior_content(self) -> None:
+        """H1 as last body line with real content before it: tier-4 uses the prior content line.
+
+        This is the ACTIVE test for the `startswith("#")` filter — parse_headings
+        only matches #{2,6}, so tier-2 does NOT fire on a second H1. Tier-4 runs
+        and the filter is the only guard excluding the H1 line. Without the filter,
+        the H1 would be returned as the anchor value.
+        """
+        real_content = "A plain paragraph of content."
+        # Second H1 at the end: parse_headings (H2–H6 only) ignores it → tier-2 skips
+        # → tier-4 runs → filter must exclude it → prior real line is used instead.
+        moc_body = f"# Title (MOC)\n\n{real_content}\n\n# Some H1 Section"
+        client = _FakeKadoClient({"Atlas/200 Maps/Title (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            target_moc_path="Atlas/200 Maps/Title (MOC).md",
+        )
+        _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        anchor_value = action["anchor"].get("value")
+        assert anchor_value != "# Some H1 Section", (
+            "H1 last-line must be excluded from tier-4 line candidates by the '#' filter"
+        )
+        # Falls back to the last real content line
+        assert anchor_value == real_content
+
+    def test_h1_only_body_not_resolved(self) -> None:
+        """Body with only H1 lines and no real content: tier-4 returns None (unresolved).
+
+        parse_headings ignores H1 → tier-2 skips; footer absent → tier-3 skips;
+        '#' filter removes the H1 lines → no body_lines → _pick_anchor returns None.
+        Without the filter the H1 would be wrongly returned as the anchor value.
+        """
+        moc_body = "# Title (MOC)\n\n# Some H1 Section"
+        client = _FakeKadoClient({"Atlas/200 Maps/H1Only (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            target_moc_path="Atlas/200 Maps/H1Only (MOC).md",
+        )
+        resolved = _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        assert resolved == 0, (
+            "Body with only H1 lines must not be resolvable — '#' filter leaves no candidates"
+        )
+
 
 # ── (b) apply loop: null-value line anchor → resolved ───────────────────────
 

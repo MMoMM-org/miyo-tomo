@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_moc_insertion_resolution.py — Contract fixtures for T4.1 (spec 022 Phase 4).
+# version: 0.2.0
+"""test_moc_insertion_resolution.py — Contract fixtures for T4.1/T4.2 (spec 022/023 Phase 4).
 
 Validates that inbox-analyst emits candidate_mocs[].anchor in the correct four-tier
 order per pre-checked thematic MOC.
@@ -16,17 +16,25 @@ The tested contracts are based on the SDD algorithm:
            placement:after}
   EC-5    classification MOC → excluded as target, never gets anchor
 
+  T4.2 (spec 023 Phase 4) — render-layer contracts:
+    (a) _pick_anchor: footer-less MOC → {type:line, value:<last body line>, placement:after}
+    (b) apply loop: null-value line anchor → resolved to last body line
+    (c) _serialize_new_sections: yields "## <section>\\n\\n- [[Note]]\\n" (AC-10)
+    (d) telemetry: tier1_confident count + rejected_to_tier2 count, NO heading text in line
+    (e) _emit: fit_confidence stripped from Pass-2 anchor (no-leak contract)
+
 These are *contract* fixtures — inline dicts that represent what the LLM agent should
 emit. Schema validation confirms shape; structural assertions confirm tier semantics.
 
 Spec: docs/XDD/specs/022-moc-insertion-point-intelligence/
+      docs/XDD/specs/023-moc-placement-fit-confidence/
 """
 from __future__ import annotations
 
+import io
 import json
 import sys
 from pathlib import Path
-
 import pytest
 
 _DEPS = "/tmp/claude/py_deps"
@@ -34,6 +42,20 @@ if Path(_DEPS).is_dir() and _DEPS not in sys.path:
     sys.path.insert(0, _DEPS)
 
 from jsonschema import ValidationError, validate  # noqa: E402
+
+# Import render-layer helpers for T4.2 unit tests.
+# instruction-render.py has a hyphen → must use importlib.util.
+import importlib.util  # noqa: E402
+
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "tomo" / "scripts"
+sys.path.insert(0, str(_SCRIPTS_DIR))
+_ir_spec = importlib.util.spec_from_file_location(
+    "instruction_render", _SCRIPTS_DIR / "instruction-render.py"
+)
+_ir = importlib.util.module_from_spec(_ir_spec)
+assert _ir_spec.loader is not None
+sys.modules["instruction_render"] = _ir
+_ir_spec.loader.exec_module(_ir)
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
@@ -1054,3 +1076,425 @@ class TestTier2HasFooter:
         assert anchor["type"] == "callout"
         assert anchor["placement"] == "before"
         assert anchor["value"] is None
+
+
+# ===========================================================================
+# T4.2 (spec 023 Phase 4) — render-layer contracts
+# ===========================================================================
+# These tests exercise instruction-render.py module-level functions directly
+# via the _ir importlib handle loaded at module top.
+#
+# (a) _pick_anchor: footer-less MOC body → {type:line, value:<last body line>, placement:after}
+# (b) apply loop: null-value line anchor resolved to last body line
+# (c) _serialize_new_sections: correct spacing "## <s>\n\n- [[N]]\n" (AC-10)
+# (d) telemetry: tier1_confident + rejected_to_tier2 counts; NO heading text
+# (e) _emit: fit_confidence stripped from Pass-2 anchor (no-leak contract)
+# ===========================================================================
+
+
+class _FakeKadoClient:
+    """Minimal Kado stand-in for resolve_section_names tests.
+
+    Stores a mapping of vault-path → body string.  read_note(path) returns
+    {"content": body}; any unknown path raises RuntimeError (simulating
+    Kado NOT_FOUND so the resolver skips gracefully).
+    """
+
+    def __init__(self, notes: dict[str, str]) -> None:
+        self._notes = notes
+
+    def read_note(self, path: str) -> dict:
+        if path not in self._notes:
+            raise RuntimeError(f"NOT_FOUND: {path}")
+        return {"content": self._notes[path]}
+
+
+def _make_link_to_moc_action(
+    *,
+    anchor_type: str = "callout",
+    anchor_value: str | None = None,
+    target_moc_path: str | None = "Atlas/200 Maps/Test (MOC).md",
+    new_section: str | None = None,
+    placement: str = "after",
+    fit_confidence: float | None = None,
+) -> dict:
+    """Minimal link_to_moc action dict for resolver tests."""
+    anchor: dict = {"type": anchor_type, "value": anchor_value}
+    if fit_confidence is not None:
+        anchor["fit_confidence"] = fit_confidence
+    action: dict = {
+        "action": "link_to_moc",
+        "target_moc": "Test (MOC)",
+        "target_moc_path": target_moc_path,
+        "anchor": anchor,
+        "placement": placement,
+        "line_to_add": "- [[Source Note]]",
+        "source_note_title": "Source Note",
+        "new_section": new_section,
+    }
+    return action
+
+
+# ── (a) _pick_anchor: footer-less MOC → last body line ──────────────────────
+
+
+class TestPickAnchorNoFooter:
+    """(a) resolve_section_names._pick_anchor: footer-less MOC body → line/after with last body line (AC-9).
+
+    Exercised through resolve_section_names with a controlled fake client.
+    A footer-less MOC has: no editable callout, no content headings, no footer callout.
+    """
+
+    def test_footerless_moc_resolves_to_line_type(self) -> None:
+        """A footer-less MOC body causes _pick_anchor to return type='line' (4th tier)."""
+        # MOC body: only a plain paragraph — no callout, no heading, no footer
+        moc_body = "# Plain (MOC)\n\nThis is just content.\n\nAnother paragraph here."
+        client = _FakeKadoClient({"Atlas/200 Maps/Plain (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            target_moc_path="Atlas/200 Maps/Plain (MOC).md",
+        )
+        resolved = _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        assert resolved == 1
+        assert action["anchor"]["type"] == "line"
+
+    def test_footerless_moc_resolves_to_placement_after(self) -> None:
+        """Footer-less MOC: resolved anchor placement is 'after' (AC-9 — last body line)."""
+        moc_body = "# Plain (MOC)\n\nThis is just content.\n\nAnother paragraph here."
+        client = _FakeKadoClient({"Atlas/200 Maps/Plain (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            target_moc_path="Atlas/200 Maps/Plain (MOC).md",
+        )
+        _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        assert action["placement"] == "after"
+
+    def test_footerless_moc_value_is_last_non_empty_body_line(self) -> None:
+        """Footer-less MOC: anchor.value is the last non-empty line of the MOC body."""
+        last_line = "Another paragraph here."
+        moc_body = f"# Plain (MOC)\n\nThis is just content.\n\n{last_line}"
+        client = _FakeKadoClient({"Atlas/200 Maps/Plain (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            target_moc_path="Atlas/200 Maps/Plain (MOC).md",
+        )
+        _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        assert action["anchor"]["value"] == last_line
+
+    def test_footerless_moc_trailing_blank_lines_ignored(self) -> None:
+        """Footer-less MOC: trailing blank lines do not become the anchor value."""
+        last_line = "Last real line."
+        # Body ends with two blank lines after the last real line
+        moc_body = f"# Plain (MOC)\n\nFirst paragraph.\n\n{last_line}\n\n\n"
+        client = _FakeKadoClient({"Atlas/200 Maps/Plain (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            target_moc_path="Atlas/200 Maps/Plain (MOC).md",
+        )
+        _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        assert action["anchor"]["value"] == last_line
+
+    def test_entirely_empty_moc_body_not_resolved(self) -> None:
+        """MOC body with no usable lines leaves the anchor unresolved (graceful degradation)."""
+        # Graceful-degradation per SDD: if no usable line, _pick_anchor returns None
+        moc_body = "# Empty (MOC)\n\n\n   \n"
+        client = _FakeKadoClient({"Atlas/200 Maps/Empty (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            target_moc_path="Atlas/200 Maps/Empty (MOC).md",
+        )
+        resolved = _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        # Cannot resolve if no usable body line — stays unresolved (0 resolutions)
+        assert resolved == 0
+
+
+# ── (b) apply loop: null-value line anchor → resolved ───────────────────────
+
+
+class TestApplyLoopLineAnchor:
+    """(b) Apply loop processes null-value 'line' type anchors (new T4.2 behaviour).
+
+    Prior to T4.2, the guard `if anchor.get("type") != "callout": continue`
+    skipped ALL line anchors. After T4.2, null-value line anchors are processed
+    and resolved to the MOC's last body line.  Populated line anchors are left
+    untouched (honor-guard).
+    """
+
+    def test_null_line_anchor_resolved_by_apply_loop(self) -> None:
+        """Null-value 'line' anchor: apply loop fills it from the live MOC body."""
+        last_line = "- [[Related Concept]]"
+        moc_body = f"# NoFooter (MOC)\n\nSome content.\n\n{last_line}"
+        client = _FakeKadoClient({"Atlas/200 Maps/NoFooter (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="line",
+            anchor_value=None,
+            target_moc_path="Atlas/200 Maps/NoFooter (MOC).md",
+        )
+        resolved = _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        assert resolved == 1
+        assert action["anchor"]["type"] == "line"
+        assert action["anchor"]["value"] == last_line
+
+    def test_populated_line_anchor_honor_guard_untouched(self) -> None:
+        """Populated 'line' anchor: honor-guard leaves the value unchanged (not overwritten)."""
+        existing_value = "Already resolved line text."
+        moc_body = "# NoFooter (MOC)\n\nSome content.\n\nDifferent last line."
+        client = _FakeKadoClient({"Atlas/200 Maps/NoFooter (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="line",
+            anchor_value=existing_value,
+            target_moc_path="Atlas/200 Maps/NoFooter (MOC).md",
+        )
+        # Honor-guard: a line anchor with a non-null value is NOT touched
+        resolved = _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        assert resolved == 0  # already-set → skip
+        assert action["anchor"]["value"] == existing_value  # unchanged
+
+
+# ── (c) _serialize_new_sections: correct spacing (AC-10) ────────────────────
+
+
+class TestSerializeNewSectionsSpacing:
+    """(c) _serialize_new_sections yields the correct spacing per AC-10.
+
+    Contract: "## <section>\\n\\n<bullet>\\n"
+    The blank line between the heading and the bullet ensures Hashi writes it
+    correctly (hashi#65). No flush-against-footer, no dangling section.
+    """
+
+    def test_new_section_spacing_format(self) -> None:
+        """_serialize_new_sections produces '## <s>\\n\\n- [[N]]\\n' (AC-10)."""
+        action = _make_link_to_moc_action(
+            anchor_type="line",
+            anchor_value="Last line of MOC.",
+            new_section="First Principles",
+            placement="after",
+        )
+        action["line_to_add"] = "- [[Source Note]]"
+        _ir._serialize_new_sections([action])
+        assert action["line_to_add"] == "## First Principles\n\n- [[Source Note]]\n"
+
+    def test_new_section_starts_with_h2(self) -> None:
+        """Serialized line_to_add starts with '## ' (two hashes + space)."""
+        action = _make_link_to_moc_action(new_section="Cognitive Patterns")
+        action["line_to_add"] = "- [[Note Title]]"
+        _ir._serialize_new_sections([action])
+        assert action["line_to_add"].startswith("## ")
+
+    def test_new_section_blank_line_between_heading_and_bullet(self) -> None:
+        """Serialized output has a blank line (\\n\\n) between heading and bullet."""
+        action = _make_link_to_moc_action(new_section="Systems")
+        action["line_to_add"] = "- [[A Note]]"
+        _ir._serialize_new_sections([action])
+        # The heading line ends with \n, then there's a blank line before the bullet
+        lines = action["line_to_add"].split("\n")
+        # lines[0] = "## Systems", lines[1] = "", lines[2] = "- [[A Note]]", lines[3] = ""
+        assert lines[1] == "", "Expected blank line between heading and bullet"
+
+    def test_new_section_trailing_newline(self) -> None:
+        """Serialized line_to_add ends with a trailing '\\n'."""
+        action = _make_link_to_moc_action(new_section="Learning")
+        action["line_to_add"] = "- [[My Note]]"
+        _ir._serialize_new_sections([action])
+        assert action["line_to_add"].endswith("\n")
+
+    def test_idempotency_guard_prevents_double_prepend(self) -> None:
+        """Calling _serialize_new_sections twice does NOT double-prepend '## '."""
+        action = _make_link_to_moc_action(new_section="Ethics")
+        action["line_to_add"] = "- [[Philosophy Note]]"
+        _ir._serialize_new_sections([action])
+        first = action["line_to_add"]
+        _ir._serialize_new_sections([action])
+        assert action["line_to_add"] == first  # unchanged on second call
+
+
+# ── (d) telemetry: tier1_confident + rejected_to_tier2 counts ───────────────
+
+
+class TestResolutionTelemetry:
+    """(d) _emit_resolution_telemetry: new tier1_confident + rejected_to_tier2 counts (T4.2).
+
+    Counts must appear in the stderr line; heading TEXT must NOT appear
+    (Constitution L2 — metadata-only, never note content).
+    """
+
+    def _capture_telemetry(self, actions: list[dict]) -> str:
+        """Run _emit_resolution_telemetry and capture its stderr output."""
+        buf = io.StringIO()
+        orig_stderr = sys.stderr
+        sys.stderr = buf
+        try:
+            _ir._emit_resolution_telemetry(actions)
+        finally:
+            sys.stderr = orig_stderr
+        return buf.getvalue()
+
+    def test_telemetry_contains_tier1_confident_field(self) -> None:
+        """Telemetry line includes 'tier1_confident=N' field."""
+        # One tier-1 heading anchor with numeric fit_confidence
+        confident_action = _make_link_to_moc_action(
+            anchor_type="heading",
+            anchor_value="Reasoning Techniques",
+            fit_confidence=0.89,
+        )
+        line = self._capture_telemetry([confident_action])
+        assert "tier1_confident=" in line, (
+            f"Expected 'tier1_confident=' in telemetry line, got: {line!r}"
+        )
+
+    def test_telemetry_tier1_confident_count_correct(self) -> None:
+        """tier1_confident count matches the number of heading anchors with numeric fit_confidence."""
+        actions = [
+            _make_link_to_moc_action(
+                anchor_type="heading",
+                anchor_value="Concepts",
+                fit_confidence=0.85,
+            ),
+            _make_link_to_moc_action(
+                anchor_type="heading",
+                anchor_value="Methods",
+                fit_confidence=0.72,
+            ),
+            # heading without fit_confidence — NOT a tier1_confident
+            _make_link_to_moc_action(anchor_type="heading", anchor_value="Tools"),
+        ]
+        line = self._capture_telemetry(actions)
+        assert "tier1_confident=2" in line, (
+            f"Expected tier1_confident=2 in: {line!r}"
+        )
+
+    def test_telemetry_contains_rejected_to_tier2_field(self) -> None:
+        """Telemetry line includes 'rejected_to_tier2=N' field."""
+        # A new_section anchor signals tier-1 rejection → tier-2
+        tier2_action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            new_section="Japanische Städte",
+        )
+        line = self._capture_telemetry([tier2_action])
+        assert "rejected_to_tier2=" in line, (
+            f"Expected 'rejected_to_tier2=' in telemetry line, got: {line!r}"
+        )
+
+    def test_telemetry_rejected_to_tier2_count_correct(self) -> None:
+        """rejected_to_tier2 counts new_section anchors (heading rejected, tier-2 fired)."""
+        actions = [
+            _make_link_to_moc_action(
+                anchor_type="callout",
+                anchor_value=None,
+                new_section="Topic A",
+            ),
+            _make_link_to_moc_action(
+                anchor_type="line",
+                anchor_value=None,
+                new_section="Topic B",
+            ),
+            # No new_section — NOT a rejected_to_tier2
+            _make_link_to_moc_action(anchor_type="heading", anchor_value="Direct Heading"),
+        ]
+        line = self._capture_telemetry(actions)
+        assert "rejected_to_tier2=2" in line, (
+            f"Expected rejected_to_tier2=2 in: {line!r}"
+        )
+
+    def test_telemetry_contains_no_heading_text(self) -> None:
+        """Telemetry line must NOT contain heading text (Constitution L2 metadata-only)."""
+        sensitive_heading = "SENSITIVE_HEADING_TEXT_DO_NOT_LOG"
+        action = _make_link_to_moc_action(
+            anchor_type="heading",
+            anchor_value=sensitive_heading,
+            fit_confidence=0.88,
+        )
+        line = self._capture_telemetry([action])
+        assert sensitive_heading not in line, (
+            f"Heading text leaked into telemetry! Line: {line!r}"
+        )
+
+    def test_telemetry_no_new_section_text_in_line(self) -> None:
+        """Telemetry line must NOT contain new_section text (Constitution L2 metadata-only)."""
+        sensitive_section = "SENSITIVE_SECTION_NAME_DO_NOT_LOG"
+        action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            new_section=sensitive_section,
+        )
+        line = self._capture_telemetry([action])
+        assert sensitive_section not in line, (
+            f"new_section text leaked into telemetry! Line: {line!r}"
+        )
+
+
+# ── (e) _emit: fit_confidence stripped — no-leak contract ───────────────────
+
+
+class TestEmitFitConfidenceNoLeak:
+    """(e) _build_link_to_moc_actions._emit: fit_confidence is NOT propagated to Pass-2 anchor.
+
+    The Pass-1 anchor from inbox-analyst may carry fit_confidence (a spec 023 field).
+    The Pass-2 instructions.schema.json anchor allows ONLY {type, value}
+    (additionalProperties:false). _emit must decompose only type+value and discard
+    fit_confidence (and any other extra fields).
+
+    This test DOCUMENTS and LOCKS the existing contract. If it passes before the
+    implementation step, that is expected — the contract already held.
+    """
+
+    def _build_confirmed_item_with_anchor(self, anchor: dict) -> dict:
+        """Minimal confirmed item that triggers _emit with the given anchor."""
+        return {
+            "id": "S01",
+            "title": "Source Note",
+            "action": "create_atomic_note",
+            "source_path": "100 Inbox/source-note.md",
+            "parent_mocs": ["Target (MOC)"],
+            "candidate_mocs": [
+                {
+                    "path": "Atlas/200 Maps/Target (MOC).md",
+                    "score": 0.8,
+                    "pre_check": True,
+                    "anchor": anchor,
+                }
+            ],
+        }
+
+    def test_fit_confidence_absent_from_pass2_anchor(self) -> None:
+        """Pass-1 anchor with fit_confidence → Pass-2 anchor has NO fit_confidence key."""
+        pass1_anchor = {
+            "type": "heading",
+            "value": "Key Concepts",
+            "placement": "after",
+            "new_section": None,
+            "fit_confidence": 0.89,  # present in Pass-1
+        }
+        confirmed = [self._build_confirmed_item_with_anchor(pass1_anchor)]
+        actions = _ir._build_link_to_moc_actions(confirmed, counter=[0])
+        assert len(actions) >= 1
+        link_action = next(a for a in actions if a.get("action") == "link_to_moc")
+        stamped = link_action["anchor"]
+        assert "fit_confidence" not in stamped, (
+            f"fit_confidence leaked into Pass-2 anchor: {stamped!r}"
+        )
+
+    def test_pass2_anchor_has_only_type_and_value(self) -> None:
+        """Pass-2 anchor dict contains ONLY 'type' and 'value' keys (schema contract)."""
+        pass1_anchor = {
+            "type": "heading",
+            "value": "Reasoning",
+            "placement": "after",
+            "new_section": "Extras",
+            "fit_confidence": 0.75,
+            "alt_headings": ["Other"],
+        }
+        confirmed = [self._build_confirmed_item_with_anchor(pass1_anchor)]
+        actions = _ir._build_link_to_moc_actions(confirmed, counter=[0])
+        link_action = next(a for a in actions if a.get("action") == "link_to_moc")
+        stamped = link_action["anchor"]
+        # Only type and value allowed
+        assert set(stamped.keys()) == {"type", "value"}, (
+            f"Unexpected keys in Pass-2 anchor: {set(stamped.keys())!r}"
+        )

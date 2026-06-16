@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.9
+# version: 0.24.10
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1583,7 +1583,7 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         return s
 
     def _pick_anchor(content: str) -> dict | None:
-        """Three-tier anchor resolution. Returns the anchor decision as a dict
+        """Four-tier anchor resolution. Returns the anchor decision as a dict
         (type/value plus optional placement), or None when nothing is anchorable.
         new_section is no longer injected here (ADR-6, T5.2); it comes from
         the Pass-1 LLM anchor and lives at the top-level action field."""
@@ -1601,6 +1601,18 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             return {
                 "type": "callout", "value": footer, "placement": "before",
             }
+        # Tier 4 (spec 023 AC-9): no footer callout → last body line.
+        # placement stays "after" (bullet lands below the last line).
+        # "Body line" excludes blank lines and the H1 title line (which is metadata,
+        # not content). Graceful degradation: if the body has no usable line,
+        # return None — do NOT fabricate a line.
+        lines = content.splitlines()
+        body_lines = [
+            ln for ln in lines
+            if ln.strip() and not ln.lstrip().startswith("# ")
+        ]
+        if body_lines:
+            return {"type": "line", "value": body_lines[-1], "placement": "after"}
         return None
 
     # Tier-1 cache: keyed by MOC path
@@ -1650,10 +1662,10 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         anchor = a.get("anchor")
         if not isinstance(anchor, dict):
             continue
-        if anchor.get("type") != "callout":
-            continue  # heading/line anchors are populated upstream, not here
+        if anchor.get("type") not in ("callout", "line"):
+            continue  # heading anchors are populated upstream, not here
         if anchor.get("value"):
-            continue  # already set
+            continue  # already set (honor-guard — leave populated anchors untouched)
         path = a.get("target_moc_path")
         if not path:
             continue
@@ -1686,12 +1698,18 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
     are NEVER included.
 
     Tier derivation (first match wins, execution order):
-      1. top-level new_section set            → new_section tier
+      1. top-level new_section set            → new_section tier (+ rejected_to_tier2)
       2. anchor.value is None/absent          → unresolved
       3. anchor.type == "heading"             → heading tier
+         + tier1_confident when fit_confidence is a number
       4. anchor.type == "callout"             → callout tier
       5. anchor.type == "line"                → line tier
       6. else                                 → unresolved
+
+    Extra spec-023 counts (metadata-only — numbers, never text):
+      tier1_confident   — heading anchors that carry a numeric fit_confidence
+      rejected_to_tier2 — actions with a top-level new_section (tier-1 was
+                          rejected and tier-2 generated a new-section anchor)
     """
     counts: dict[str, int] = {
         "heading": 0,
@@ -1699,6 +1717,8 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
         "callout": 0,
         "line": 0,
         "unresolved": 0,
+        "tier1_confident": 0,
+        "rejected_to_tier2": 0,
     }
     moc_paths: list[str] = []
 
@@ -1714,10 +1734,16 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
 
         if a.get("new_section"):
             counts["new_section"] += 1
+            counts["rejected_to_tier2"] += 1
         elif not anchor_value:
             counts["unresolved"] += 1
         elif anchor_type == "heading":
             counts["heading"] += 1
+            # tier1_confident: a heading anchor whose fit_confidence is a number
+            # (numbers only — never the heading text itself, Constitution L2).
+            fit_conf = anchor.get("fit_confidence")
+            if isinstance(fit_conf, (int, float)):
+                counts["tier1_confident"] += 1
         elif anchor_type == "callout":
             counts["callout"] += 1
         elif anchor_type == "line":
@@ -1734,6 +1760,8 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
         f"callout={counts['callout']} "
         f"line={counts['line']} "
         f"unresolved={counts['unresolved']} "
+        f"tier1_confident={counts['tier1_confident']} "
+        f"rejected_to_tier2={counts['rejected_to_tier2']} "
         f"mocs={moc_count}"
         + (f" paths=[{moc_list}]" if moc_paths else ""),
         file=sys.stderr,

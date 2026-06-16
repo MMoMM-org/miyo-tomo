@@ -1603,13 +1603,16 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             }
         # Tier 4 (spec 023 AC-9): no footer callout → last body line.
         # placement stays "after" (bullet lands below the last line).
-        # "Body line" excludes blank lines and the H1 title line (which is metadata,
-        # not content). Graceful degradation: if the body has no usable line,
-        # return None — do NOT fabricate a line.
+        # Exclude blank lines and ALL heading lines (#, ##, … — any level).
+        # Invariant: only H1 can realistically appear here because any H2–H6
+        # would have been claimed by _pick_content_heading (tier 2) before
+        # reaching this branch. The broad `#` filter is belt-and-suspenders.
+        # Graceful degradation: if the body has no usable line, return None —
+        # do NOT fabricate a line.
         lines = content.splitlines()
         body_lines = [
             ln for ln in lines
-            if ln.strip() and not ln.lstrip().startswith("# ")
+            if ln.strip() and not ln.lstrip().startswith("#")
         ]
         if body_lines:
             return {"type": "line", "value": body_lines[-1], "placement": "after"}
@@ -1734,6 +1737,9 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
 
         if a.get("new_section"):
             counts["new_section"] += 1
+            # rejected_to_tier2 mirrors new_section by construction today; kept
+            # as a separate counter so a future branch that sets new_section
+            # without a tier-1 rejection (e.g. a heuristic path) can diverge.
             counts["rejected_to_tier2"] += 1
         elif not anchor_value:
             counts["unresolved"] += 1

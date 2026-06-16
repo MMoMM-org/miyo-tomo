@@ -1212,6 +1212,34 @@ class TestPickAnchorNoFooter:
         # Cannot resolve if no usable body line — stays unresolved (0 resolutions)
         assert resolved == 0
 
+    def test_h2_last_line_not_used_as_line_anchor(self) -> None:
+        """Belt-and-suspenders: H2 as last body line is NOT used as the line anchor value.
+
+        Invariant: any H2–H6 would have been claimed by _pick_content_heading (tier 2)
+        before tier 4 is reached. If that invariant held, the H2 would not be the last
+        line here. The broad '#' filter is defensive — this test documents and locks that
+        even if an H2 somehow survives to tier 4, it is excluded from line candidates,
+        and the resolver falls back to the preceding real content line (or unresolved).
+        """
+        # Body: real content line followed by an H2 with no footer and no editable callout.
+        # parse_headings (tier 2) finds no H2–H6 because this MOC has no proper section
+        # headings recognised by it (the H2 IS the last line — a structural edge case).
+        # Tier 4 must NOT emit the H2 as the line anchor value.
+        real_content = "A plain paragraph of content."
+        moc_body = f"# Sparse (MOC)\n\n{real_content}\n\n## Orphan Heading"
+        client = _FakeKadoClient({"Atlas/200 Maps/Sparse (MOC).md": moc_body})
+        action = _make_link_to_moc_action(
+            anchor_type="callout",
+            anchor_value=None,
+            target_moc_path="Atlas/200 Maps/Sparse (MOC).md",
+        )
+        _ir.resolve_section_names([action], client, editable_callouts=["blocks"])
+        anchor_value = action["anchor"].get("value")
+        # The H2 heading line must not be the anchor value regardless of tier reached
+        assert anchor_value != "## Orphan Heading", (
+            "H2 last-line must be excluded from tier-4 line candidates"
+        )
+
 
 # ── (b) apply loop: null-value line anchor → resolved ───────────────────────
 

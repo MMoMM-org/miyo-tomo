@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.17.5
+# version: 0.18.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -155,32 +155,45 @@ Classification Guard above), resolve one `anchor` object using the inventory
 in `shared_ctx.mocs[].headings` and `shared_ctx.mocs[].editable_callouts`.
 Evaluate the tiers in strict order — first tier that fires wins:
 
-- **TIER-1 — Semantic heading fit.**
+- **TIER-1 — Semantic heading fit (confidence-gated).**
   Look at `moc.headings[]` (each has `text` and `level`). Pick the heading
   whose *meaning* best fits the note's dominant topic. Fit is by conceptual
-  meaning, not literal keyword overlap. If a fitting heading is found:
+  meaning, not literal keyword overlap. Rate the best heading's fit in
+  `fit_confidence` from 0.0 to 1.0: 1.0 = the heading is clearly the note's
+  topical home; ~0.3 = the heading is generic/structural scaffolding (e.g.
+  "Content", "Structure", "Overview", "Primer Questions", "Processes") that
+  does not actually describe the note's topic.
+  IF `fit_confidence >= 0.6`, emit:
   ```json
-  {"type": "heading", "value": "<heading text>", "placement": "after", "new_section": null}
+  {"type": "heading", "value": "<best-fit heading>", "placement": "after", "new_section": null, "fit_confidence": <0.6-1.0>}
   ```
-  When TWO OR MORE headings genuinely fit the note's topic, put the single
-  best-fit heading in `value` and list the other plausible heading text(s) in
-  `alt_headings`:
+  When TWO OR MORE headings genuinely fit, list the other plausible heading
+  text(s) in `alt_headings`:
   ```json
-  {"type": "heading", "value": "<best-fit heading>", "placement": "after", "new_section": null, "alt_headings": ["<runner-up heading>", "..."]}
+  {"type": "heading", "value": "<best-fit heading>", "placement": "after", "new_section": null, "fit_confidence": <0.6-1.0>, "alt_headings": ["<runner-up heading>", "..."]}
   ```
   When exactly one heading fits, DO NOT emit `alt_headings` — omit the
   key entirely. `alt_headings` lists ONLY genuinely-plausible runner-ups (NOT
   every other heading in the MOC) — it drives an advisory the user can act on;
   flooding it with all headings defeats the purpose.
+  IF `fit_confidence < 0.6`, do NOT emit a tier-1 anchor — go to TIER-2
+  and put the best-but-rejected heading into that anchor's `alt_headings`.
 
-- **TIER-2 — New section (headings present but none fits).**
-  If `moc.headings` is non-empty but no heading fits the note's topic:
+- **TIER-2 — New section (no confident heading fit).**
+  If `moc.headings` is non-empty but no heading scores `fit_confidence >= 0.6`:
+  Name the section from the note's dominant topic (e.g. "Mental Models",
+  "Cognitive Biases") — NEVER the literal string "Key Concepts".
+  IF `moc.has_footer` is true (or absent):
   ```json
-  {"type": "callout", "value": "<footer callout text or null>", "placement": "before", "new_section": "<note dominant topic>"}
+  {"type": "callout", "value": null, "placement": "before", "new_section": "<note dominant topic>", "alt_headings": ["<rejected heading if any>"]}
   ```
-  `new_section` is the note's dominant topic label (e.g. "Mental Models",
-  "Cognitive Biases") — derived from the item's content. It is NEVER the
-  literal string "Key Concepts".
+  ELSE (`moc.has_footer` is false):
+  ```json
+  {"type": "line", "value": null, "placement": "after", "new_section": "<note dominant topic>", "alt_headings": ["<rejected heading if any>"]}
+  ```
+  `value` is always `null` — the render resolver fills the footer callout text
+  or last body line at Pass-2. Do NOT fabricate a value for `value`.
+  Omit `alt_headings` when no heading was rejected (empty headings inventory).
 
 - **TIER-3 — Editable callout fallback.**
   If `moc.headings` is absent or empty AND `moc.editable_callouts` is

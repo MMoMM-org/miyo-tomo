@@ -727,3 +727,293 @@ class TestAnchorSchemaConstraints:
         }
         with pytest.raises(ValidationError):
             validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+
+
+# ===========================================================================
+# Phase 3 (spec 023): Confidence-gated TIER-1 + has_footer TIER-2
+# ===========================================================================
+
+
+class TestTier1ConfidenceGated:
+    """TIER-1 confidence gate: fit_confidence >= 0.6 required for tier-1 heading anchor.
+
+    Locks the emission shape for the confidence-gated tier-1 path (spec 023 ADR-4).
+    Phase 4 render consumes these EXACT shapes.
+    """
+
+    def test_tier1_confident_has_fit_confidence(self, item_result_schema):
+        """Tier-1 confident anchor must carry fit_confidence >= 0.6."""
+        candidate = {
+            "path": "Atlas/200 Maps/Concepts (MOC).md",
+            "score": 0.82,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Thinking Frameworks",
+                "placement": "after",
+                "new_section": None,
+                "fit_confidence": 0.89,
+                "alt_headings": ["Core Concepts"],
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        anchor = candidate["anchor"]
+        assert anchor["type"] == "heading"
+        assert anchor["new_section"] is None
+        assert "fit_confidence" in anchor
+        conf = anchor["fit_confidence"]
+        assert isinstance(conf, float)
+        assert 0.6 <= conf <= 1.0
+
+    def test_tier1_confident_schema_valid(self, item_result_schema):
+        """Tier-1 confident anchor validates against item-result schema."""
+        candidate = {
+            "path": "Atlas/200 Maps/Concepts (MOC).md",
+            "score": 0.82,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Thinking Frameworks",
+                "placement": "after",
+                "new_section": None,
+                "fit_confidence": 0.89,
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+
+    def test_tier1_confident_min_threshold(self, item_result_schema):
+        """Tier-1 anchor at exactly the gate threshold (0.6) is valid tier-1."""
+        candidate = {
+            "path": "Atlas/200 Maps/Philosophy (MOC).md",
+            "score": 0.65,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Epistemology",
+                "placement": "after",
+                "new_section": None,
+                "fit_confidence": 0.6,
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        assert candidate["anchor"]["fit_confidence"] == 0.6
+
+    def test_tier1_fit_confidence_out_of_range_rejected(self, item_result_schema):
+        """fit_confidence > 1.0 is rejected by schema (bounds violation)."""
+        candidate = {
+            "path": "Atlas/200 Maps/Concepts (MOC).md",
+            "score": 0.82,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Thinking Frameworks",
+                "placement": "after",
+                "new_section": None,
+                "fit_confidence": 1.01,
+            },
+        }
+        with pytest.raises(ValidationError):
+            validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+
+    def test_tier1_fit_confidence_negative_rejected(self, item_result_schema):
+        """fit_confidence < 0.0 is rejected by schema (bounds violation)."""
+        candidate = {
+            "path": "Atlas/200 Maps/Concepts (MOC).md",
+            "score": 0.82,
+            "pre_check": True,
+            "anchor": {
+                "type": "heading",
+                "value": "Thinking Frameworks",
+                "placement": "after",
+                "new_section": None,
+                "fit_confidence": -0.1,
+            },
+        }
+        with pytest.raises(ValidationError):
+            validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+
+    def test_tier1_rejected_heading_in_tier2_alt_headings(self, item_result_schema):
+        """When tier-1 is rejected (fit < 0.6), the rejected heading appears in tier-2 alt_headings.
+
+        Scenario: Japan note → Japan (MOC). Best heading 'Content' is structural scaffolding,
+        scores ~0.3 < 0.6 → falls through to TIER-2; 'Content' goes into alt_headings so the
+        user can retarget to it in one edit (spec 023 ADR-3).
+        """
+        candidate = {
+            "path": "Atlas/200 Maps/Japan (MOC).md",
+            "score": 0.71,
+            "pre_check": True,
+            "anchor": {
+                "type": "callout",
+                "value": None,
+                "placement": "before",
+                "new_section": "Japanische Städte",
+                "alt_headings": ["Content"],
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        anchor = candidate["anchor"]
+        # This is a tier-2 anchor (no fit_confidence)
+        assert anchor["type"] in ("callout", "line")
+        assert anchor["new_section"] is not None
+        # The rejected heading is in alt_headings
+        assert "alt_headings" in anchor
+        assert "Content" in anchor["alt_headings"]
+
+    def test_tier1_rejected_no_fit_confidence_on_tier2(self, item_result_schema):
+        """Tier-2 anchors (after tier-1 rejection) must NOT carry fit_confidence."""
+        candidate = {
+            "path": "Atlas/200 Maps/Japan (MOC).md",
+            "score": 0.71,
+            "pre_check": True,
+            "anchor": {
+                "type": "callout",
+                "value": None,
+                "placement": "before",
+                "new_section": "Japanische Städte",
+                "alt_headings": ["Content"],
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        # Tier-2: fit_confidence must be absent or null (not a tier-1 heading anchor)
+        anchor = candidate["anchor"]
+        assert anchor.get("fit_confidence") is None
+
+
+class TestTier2HasFooter:
+    """TIER-2 with has_footer branching (spec 023 ADR-2 + ADR-5).
+
+    When no heading scores >= 0.6, TIER-2 fires. The anchor type depends on
+    moc.has_footer: true → callout/before with null value; false → line/after with null value.
+    Pass-1 always emits value:null; Pass-2 render fills the actual text.
+    """
+
+    def test_tier2_footer_true_callout_before_null_value(self, item_result_schema):
+        """TIER-2 with has_footer=true: type=callout, placement=before, value=null."""
+        candidate = {
+            "path": "Atlas/200 Maps/Japan (MOC).md",
+            "score": 0.71,
+            "pre_check": True,
+            "anchor": {
+                "type": "callout",
+                "value": None,
+                "placement": "before",
+                "new_section": "Japanische Städte",
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        anchor = candidate["anchor"]
+        assert anchor["type"] == "callout"
+        assert anchor["placement"] == "before"
+        assert anchor["value"] is None
+        assert anchor["new_section"] is not None
+        assert anchor["new_section"] != "Key Concepts"
+
+    def test_tier2_footer_true_schema_valid(self, item_result_schema):
+        """TIER-2 footer=true anchor validates against item-result schema."""
+        candidate = {
+            "path": "Atlas/200 Maps/History (MOC).md",
+            "score": 0.68,
+            "pre_check": True,
+            "anchor": {
+                "type": "callout",
+                "value": None,
+                "placement": "before",
+                "new_section": "Ancient Civilizations",
+                "alt_headings": ["Overview"],
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+
+    def test_tier2_no_footer_line_after_null_value(self, item_result_schema):
+        """TIER-2 with has_footer=false: type=line, placement=after, value=null.
+
+        Pass-1 cannot see the MOC body — it emits null; render fills the last body line.
+        """
+        candidate = {
+            "path": "Atlas/200 Maps/Concepts (MOC).md",
+            "score": 0.65,
+            "pre_check": True,
+            "anchor": {
+                "type": "line",
+                "value": None,
+                "placement": "after",
+                "new_section": "First Principles",
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        anchor = candidate["anchor"]
+        assert anchor["type"] == "line"
+        assert anchor["placement"] == "after"
+        assert anchor["value"] is None
+        assert anchor["new_section"] is not None
+        assert anchor["new_section"] != "Key Concepts"
+
+    def test_tier2_no_footer_schema_valid(self, item_result_schema):
+        """TIER-2 no-footer (line/after/null) validates against item-result schema."""
+        candidate = {
+            "path": "Atlas/200 Maps/Mental Models (MOC).md",
+            "score": 0.72,
+            "pre_check": True,
+            "anchor": {
+                "type": "line",
+                "value": None,
+                "placement": "after",
+                "new_section": "Cognitive Patterns",
+                "alt_headings": ["Structure"],
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+
+    def test_tier2_no_footer_rejected_heading_in_alt_headings(self, item_result_schema):
+        """Tier-2 no-footer: rejected tier-1 heading appears in alt_headings (ADR-3)."""
+        candidate = {
+            "path": "Atlas/200 Maps/Concepts (MOC).md",
+            "score": 0.65,
+            "pre_check": True,
+            "anchor": {
+                "type": "line",
+                "value": None,
+                "placement": "after",
+                "new_section": "First Principles",
+                "alt_headings": ["Content"],
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        anchor = candidate["anchor"]
+        assert anchor.get("alt_headings") is not None
+        assert len(anchor["alt_headings"]) >= 1
+        # Structural scaffolding heading is the rejected runner-up
+        assert "Content" in anchor["alt_headings"]
+
+    def test_tier2_new_section_never_key_concepts_footer(self, item_result_schema):
+        """TIER-2 footer path: new_section is NEVER the literal 'Key Concepts'."""
+        candidate = {
+            "path": "Atlas/200 Maps/Engineering (MOC).md",
+            "score": 0.60,
+            "pre_check": True,
+            "anchor": {
+                "type": "callout",
+                "value": None,
+                "placement": "before",
+                "new_section": "Systems Design",
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        assert candidate["anchor"]["new_section"] != "Key Concepts"
+
+    def test_tier2_new_section_never_key_concepts_no_footer(self, item_result_schema):
+        """TIER-2 no-footer path: new_section is NEVER the literal 'Key Concepts'."""
+        candidate = {
+            "path": "Atlas/200 Maps/Engineering (MOC).md",
+            "score": 0.60,
+            "pre_check": True,
+            "anchor": {
+                "type": "line",
+                "value": None,
+                "placement": "after",
+                "new_section": "Systems Design",
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        assert candidate["anchor"]["new_section"] != "Key Concepts"

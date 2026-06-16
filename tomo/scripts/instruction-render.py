@@ -1496,8 +1496,9 @@ def backfill_supporting_items_parents(confirmed: list[dict]) -> None:
 FOOTER_CALLOUTS = {"video", "calendar", "puzzle", "compass"}
 
 def resolve_section_names(actions: list[dict], client, editable_callouts: list[str]) -> int:
-    """Best-effort: resolve the insertion anchor on callout-typed link_to_moc
-    actions by reading the target MOC. Three-tier anchor resolution per action:
+    """Best-effort: resolve the insertion anchor on callout- or line-typed
+    link_to_moc actions by reading the target MOC. Four-tier anchor resolution
+    per action (_pick_anchor, first match wins):
 
       1. Editable callout — the highest-priority editable callout (config-driven,
          scored blocks > other > connect). Anchor stays type=callout.
@@ -1505,10 +1506,13 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
          fall back to a content H2–H6 heading before the footer. Rewrites
          anchor.type to "heading" and placement to "after" (Hashi has no
          "inside" for headings).
-      3. New section before footer (#28 / F-36) — when neither exists, anchor on
-         the first footer-marker callout with placement="before" and prepend a
+      3. Footer callout (#28 / F-36) — when neither exists, anchor on the first
+         footer-marker callout with placement="before" and prepend a
          "## <section>" block to line_to_add, so applying inserts a fresh
          content section ahead of the footer.
+      4. Last body line (spec 023 AC-9) — when the MOC has no footer callout,
+         anchor on the last non-blank, non-heading body line with type=line and
+         placement="after". Returns None when no usable body line exists.
 
     Tiers are evaluated against the live MOC first, then (for not-yet-existing
     in-set MOCs) against the create_moc's `template` body — same rules apply.
@@ -1517,7 +1521,8 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
     (action emitted as-is) when:
       - client is None (offline / test mode) or editable_callouts is empty
       - target_moc_path is null
-      - neither the MOC nor its template yields a callout, heading, or footer
+      - neither the MOC nor its template yields a callout, heading, footer, or
+        usable body line
       - Kado read fails for both the MOC and (where applicable) the template
 
     Returns the count of actions resolved.

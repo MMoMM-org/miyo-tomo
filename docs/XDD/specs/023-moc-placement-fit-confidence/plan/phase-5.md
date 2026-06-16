@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Live walk + regression"
-status: pending
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -31,7 +31,7 @@ phase: 5
 
 Closes the 022 gap end-to-end and guards the full suite against regression.
 
-- [ ] **T5.1 Live-validation walk** `[cross-repo]` `[needs-hashi]` `[activity: validate]`
+- [x] **T5.1 Live-validation walk** `[cross-repo]` `[needs-hashi]` `[activity: validate]`
 
   1. Prime: Confirm `100 Inbox/First Principles Thinking.md` exists; **rebuild the MOC structure cache (`/explore-vault`)** so headings AND `has_footer` are fresh. Pick the cases: strong fit (FPT → `Concepts (MOC)` `Thinking Frameworks`); the regression (a Japanese-city note → `Japan (MOC)`, structural headings incl. `Content`, HAS a footer); and the no-footer case (a note → footer-less `Concepts (MOC)`).
   2. Test (red): run `/inbox` Pass-1 → the strong fit lands tier-1 with `(confidence: NN%)` on the Placement line (AC-11); the city note does NOT land under `## Content` — proposed as a new section showing `(before the footer)`, with `Content` in the "Other sections" advisory (AC-5, AC-6, AC-13); a footer-less target shows `(at the end of the MOC)` (AC-9, AC-13); the tier-2 path fires on a real MOC (AC-7).
@@ -43,6 +43,6 @@ Closes the 022 gap end-to-end and guards the full suite against regression.
      - [ ] no-footer new section resolves + applies after last line, correct spacing `[ref: AC-9, AC-10]`
      - [ ] tier-1 confidence % and tier-2 destination shown in the doc `[ref: AC-11, AC-13]`
 
-- [ ] **T5.2 Phase Validation + full regression** `[activity: validate]`
+- [x] **T5.2 Phase Validation + full regression** `[activity: validate]`
 
   - Run the full `./venv/bin/python -m pytest tests/` suite (true baseline ~840 pass; only known failures are the 8 pre-existing `tests/ide_bridge`). Confirm no new regressions. Verify `update-tomo` synced every edited managed file — grep the instance copies of `moc-tree-builder.py`, `shared-ctx-builder.py`, `inbox-analyst.md`, `suggestions-reducer.py`, `instruction-render.py` for the bumped `# version:` (and the schema). Confirm `fit_confidence` does not appear in any generated `instructions.json` action anchor.

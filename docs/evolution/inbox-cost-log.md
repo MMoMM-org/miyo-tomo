@@ -56,6 +56,35 @@ vs the same-architecture baseline (PRD CON-3 / C2, §7, §10).
   → typical ~30%-long batch adds single-digit-% reasoning tokens, inside +10%.
 - No fabricated figures: measured columns left TBD until the run is logged.
 
+### 2026-06-16 — Pass 1 (suggest), 21 items, spec-023 T5.1 live validation
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-06-16 |
+| **Phase** | Pass 1 (suggest) — MOC placement-fit confidence live walk |
+| **Items** | 21 dispatched, 21 `done`, 0 errors (21 subagents, 398 turns) |
+| **Vault** | Privat-Test |
+| **Versions** | suggestions-reducer v1.10.8, instruction-render v0.24.10, inbox-analyst v0.18.0, moc-tree-builder v0.6.1, shared-ctx-builder v1.5.1 |
+
+| Metric | This run | Baseline (2026-05-26, 18 items) | Delta |
+|--------|----------|----------------------------------|-------|
+| Main session cost | $2.33 | — | — |
+| Subagents cost | $10.45 | — | — |
+| **Total cost** | **$12.77** | $10.71 | +$2.06 (3 more items) |
+| **Per-item** | **$0.61** | $0.59 | **+2%** (within noise) |
+| Model | Sonnet 4.6 | Sonnet 4.6 | — |
+
+**Spec-023 success metrics:**
+- **AC-1/4/11 (tier-1 confidence %)** — ✅ live. `under \`## Thinking Frameworks\` (confidence: 90%)` (FPT strong fit) + 50–90% across the run.
+- **AC-5/6/7/13 (footer tier-2, the 022 regression)** — ✅ live. Japanese-city notes became `new section \`## Japanische Städte\`/\`Japanische Geographie\`/\`Hokkaido\` (before the footer)` with `## Content` demoted to the **Other sections** advisory — NOT filed under the structural `## Content` heading. Intra-cluster consistency held.
+- **No `fit_confidence` leak** — ✅ suggestions doc shows `%`, raw field absent (0 occurrences).
+- **AC-9 (no-footer `(at the end of the MOC)`)** — ⚠️ **NOT triggered live this run**: no inbox item fell to tier-2 against a footer-less MOC (Concepts (MOC) only drew the FPT *tier-1* hit). Surfacing + last-body-line resolution are unit-covered (`test_moc_insertion_resolution.py`, `test_suggestions_reducer_t6_1_placement.py`). Accepted on unit coverage (user decision 2026-06-16).
+
+**Notes:**
+- Cost envelope held: 023 added zero new LLM passes and zero new Kado reads by design; the +$2.06 is entirely item-count-driven (21 vs 18). Per-item +2% is within run-to-run noise.
+- MOC structure cache rebuilt via `/explore-vault` first so `has_footer` was fresh (Concepts (MOC)=false, Japan (MOC)=true, both confirmed in cache).
+- Pass-2 (`instructions.json`) not executed this walk; the no-`fit_confidence`-in-action-anchor check rides on `TestEmitFitConfidenceNoLeak` (unit) + the clean Pass-1 doc.
+
 ### 2026-06-09 — Pass 1 (suggest), 18 items, spec-021 T4.3 live validation
 
 | Key | Value |

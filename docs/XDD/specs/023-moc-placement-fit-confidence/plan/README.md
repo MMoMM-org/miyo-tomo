@@ -133,7 +133,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 2: Footer inventory](phase-2.md)
 - [x] [Phase 3: Pass-1 confidence gate](phase-3.md)
 - [x] [Phase 4: Surfacing & resolution](phase-4.md)
-- [ ] [Phase 5: Live walk + regression](phase-5.md)
+- [x] [Phase 5: Live walk + regression](phase-5.md)
 
 ---
 

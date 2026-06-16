@@ -39,7 +39,7 @@ version: "1.0"
 | title | MOC placement-fit confidence |
 | status | IN_REVIEW |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 12 |
+| acceptanceCriteria | 14 |
 
 ---
 
@@ -109,14 +109,16 @@ None.
 - **User Story:** As the PKM owner, I want a proposed new section to land correctly even in MOCs that have no footer callout, so the more-frequent tier-2 path doesn't produce an unanchored or misplaced section.
 - **Acceptance Criteria (Gherkin Format):**
   - [ ] **AC-8** Given a tier-2 new-section decision for a MOC that HAS a footer callout, When Pass-1 emits the anchor, Then it anchors the new section before the footer (unchanged 022 behavior).
-  - [ ] **AC-9** Given a tier-2 new-section decision for a MOC with NO footer callout (e.g. Concepts (MOC)), When Pass-1 emits the anchor, Then the new section is anchored to be inserted after the last body line (a `line`-type anchor with `placement: after`) — reusing an existing Hashi shape, no new wire shape.
+  - [ ] **AC-9** Given a tier-2 new-section decision for a MOC with NO footer callout (e.g. Concepts (MOC)), When Pass-1 emits the anchor, Then it emits a `line`-type anchor with `placement: after` and a null value (signalling "append at the end of the MOC") — and at Pass-2 the render resolver fills that value with the MOC's actual last body line — reusing an existing Hashi shape, no new wire shape. (Pass-1 cannot see the MOC body; the exact line is resolved at render where the live MOC is read — symmetric with how the footer-callout text is resolved for AC-8.)
   - [ ] **AC-10** Given either footer case, When the instruction is rendered/applied, Then the new `## <Topic>` heading and its link are inserted with correct spacing (no flush-against-footer, no dangling section).
+  - [ ] **AC-9a** Given Pass-1 must choose between the footer (AC-8) and no-footer (AC-9) branch before the live MOC is read, When the analyst resolves a tier-2 placement, Then it reads a `has_footer` flag on the MOC inventory (`shared_ctx.mocs[].has_footer`, derived cheaply at cache-build time from the MOC body — no new Kado read) to pick the truthful anchor type.
 
 #### Feature 4: Surface confidence in the suggestions doc
 - **User Story:** As the PKM owner, I want to see the placement confidence in the suggestions doc, so I can spot and review borderline placements before approving.
 - **Acceptance Criteria (Gherkin Format):**
   - [ ] **AC-11** Given a tier-1 heading placement with a `fit_confidence`, When the suggestions doc renders the `**Placement:**` line, Then it shows the confidence as a percentage (e.g. `under \`## Thinking Frameworks\` (confidence: 89%)`), consistent with the existing Why-line percentages.
   - [ ] **AC-12** Given an anchor without `fit_confidence` (tier-2/3/4, or a legacy result), When the suggestions doc renders, Then no confidence annotation appears and the line is unchanged from 022 (back-compat).
+  - [ ] **AC-13** Given a tier-2 new-section placement, When the suggestions doc renders the `**Placement:**` line, Then it shows WHERE the section will land so the user sees the destination before approving — `new section \`## <Topic>\` (before the footer)` for a footer MOC, or `new section \`## <Topic>\` (at the end of the MOC)` for a footer-less MOC. The conceptual destination is shown (not the literal last-line text, which is resolved at Pass-2).
 
 ### Should Have Features
 - A confidence indicator on the ambiguous-fit advisory (`**Other sections in this MOC:**`) when the runner-up is close to the chosen heading. *(Deferred unless trivial; AC-16 of 022 already lists runner-ups.)*

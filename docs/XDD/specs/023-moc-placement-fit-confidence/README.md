@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-15 |
-| **Current Phase** | SDD complete — PLAN deferred |
+| **Current Phase** | Implementing — Phase 1 ✅; PLAN 5 phases, 11 tasks |
 | **Last Updated** | 2026-06-16 |
 
 ## Documents
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 12 ACs, 0 clarification markers; approved 2026-06-16 |
 | solution.md | completed | 4 ADRs confirmed; threshold 0.6; no-footer→line; reject→alt_headings; approved 2026-06-16 |
-| plan/ | pending | Deferred by user — plan when ready to implement |
+| plan/ | in_review | 5 phases (schema → footer-inventory → gate → surfacing+resolution → live walk), 11 tasks, 2 parallel; created 2026-06-16, revised for the Pass-1/Pass-2 split |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -26,6 +26,9 @@
 | 2026-06-15 | Builds on spec 022 (extends `candidate_mocs[].anchor` + four-tier order) | Confidence is the missing signal that gates tier-1 vs tier-2; cleaner than a hardcoded structural-heading blocklist (generalizes). |
 | 2026-06-16 | PRD approved (12 ACs); SDD approved (ADR-1..4 confirmed) | Scope locked: hardcoded threshold 0.6, confidence surfaced as %, no-footer tier-2 fix included, gate-rejected heading → alt_headings. Non-goals: no MOC-selection change, no config threshold, no new Hashi shape, no structural-heading blocklist. |
 | 2026-06-16 | PLAN deferred by user | PRD + SDD banked; implementation planning + build to resume later. Spec 022 Phase 7 (T7.3 live walk / T7.4) remains the active in-flight work. |
+| 2026-06-16 | PLAN created; resume 023 ahead of 022 Phase 7 | 023 is the gap 022's live walk exposed — scaffolding-heading fits + tier-2 never firing. Implemented on the same `feat/moc-insertion-llm-resolution` branch (023 extends 022's anchor/four-tier machinery; not a separate concern). No cross-repo Kokoro ADR / Hashi handoff needed — 023 changes no component interaction or wire shape (Tomo-internal). 022 T7.3/T7.4 deferred behind 023. |
+| 2026-06-16 | Phase 1 shipped (schema `fit_confidence`); commit 1a01faf | RED→GREEN, 31/31 tests, spec-compliance + code-quality PASS. |
+| 2026-06-16 | DEVIATION: AC-9 resolves at Pass-2, not Pass-1; + `has_footer` inventory (ADR-2 corrected, ADR-5 added) | Tracing the code revealed the Pass-1 analyst inventory has NO MOC body — so the SDD's "analyst emits `<last body line>`" is unimplementable. Corrected: analyst emits a truthful null-value anchor (`callout/before` vs `line/after`, chosen via a new cheap `has_footer` flag), the render resolver fills the exact line/footer-text at Pass-2. User also added a transparency requirement (AC-13): the suggestions doc must show WHERE a tier-2 section lands (`(before the footer)` / `(at the end of the MOC)`) — which forces footer-awareness at Pass-1 (the doc is a Pass-1 artifact). PRD +AC-9a/AC-13 (14 ACs); SDD ADR-2/ADR-5 + directory map (+moc-tree-builder, +shared-ctx-builder); PLAN 4→5 phases. User confirmed design + conceptual-wording 2026-06-16. |
 
 ## Context
 

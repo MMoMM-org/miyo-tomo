@@ -47,7 +47,7 @@ version: "1.0"
 
 - **CON-1** Builds on spec 022 — requires the shipped `candidate_mocs[].anchor` (type/value/placement/new_section/alt_headings), the four-tier order in `inbox-analyst.md`, the shared `lib/moc_structure.py`, the `_serialize_new_sections` honor path in `instruction-render.py`, and the suggestions-doc `**Placement:**` line in `suggestions-reducer.py`.
 - **CON-2** No new Kado reads and no new LLM passes — `fit_confidence` is scored within the existing Pass-1 analysis over already-loaded inventory (the 022 cost contract holds).
-- **CON-3** No new Hashi wire shape — the no-footer fallback reuses the existing `type:line` anchor + `placement:after`.
+- **CON-3** No new Hashi wire shape — the no-footer fallback reuses the existing `type:line` anchor + `placement:after`; the exact line is resolved at render (Pass-2), not emitted by the analyst (Pass-1 has no MOC body).
 - **CON-4** Threshold is hardcoded in `inbox-analyst.md` (matching existing 0.7/0.5/0.15 inline thresholds); no config surface this phase.
 - **CON-5** Metadata-only telemetry (MiYo Constitution L2 Privacy) — counts and the confidence *number* only; never note content or heading text.
 - **CON-6** Insertion-point only — must not touch MOC-selection (`candidate_mocs[].score`, `needs_new_moc`, `proposed_moc_topic`).
@@ -82,11 +82,17 @@ version: "1.0"
   relevance: HIGH
   why: "_placement_line (~95-144) appends the confidence %; back-compat when absent. version 1.10.7"
 - file: tomo/scripts/instruction-render.py
-  relevance: MEDIUM
-  why: "_emit_resolution_telemetry gains a tier-1-confident vs tier-1-rejected→tier-2 count (metadata only). version 0.24.9"
+  relevance: HIGH
+  why: "resolve_section_names/_pick_anchor (~1498-1604) gains a 4th resolver tier — no footer → last body line (type:line/after); _emit_resolution_telemetry (~1680) gains a tier-1-confident vs tier-1-rejected→tier-2 count (metadata only). version 0.24.9"
+- file: tomo/scripts/moc-tree-builder.py
+  relevance: HIGH
+  why: "MOC cache entry (~372) gains has_footer (footer_index < len(lines), from body bytes already in hand — no new Kado read). Cache-schema change → rebuild via /explore-vault."
+- file: tomo/scripts/shared-ctx-builder.py
+  relevance: HIGH
+  why: "Passes has_footer through to shared_ctx.mocs[] (~241-244) so Pass-1 can pick the truthful tier-2 anchor type before the live MOC is read."
 - file: tomo/scripts/lib/moc_structure.py
   relevance: MEDIUM
-  why: "footer_index() identifies whether a MOC has a footer (drives the no-footer branch); last body line for the line anchor"
+  why: "footer_index() identifies whether a MOC has a footer (drives has_footer at cache build AND the no-footer last-line resolution at render); no change needed."
 ```
 
 ### Implementation Boundaries
@@ -132,17 +138,20 @@ graph LR
 ```
 tomo/
 ├── schemas/
-│   └── item-result.schema.json        # MODIFY: + anchor.fit_confidence (optional, 0-1, nullable)
+│   └── item-result.schema.json        # MODIFY: + anchor.fit_confidence (optional, 0-1, nullable) [DONE — Phase 1]
 ├── dot_claude/agents/
-│   └── inbox-analyst.md               # MODIFY: TIER-1 confidence gate (>=0.6) + reject→alt_headings; TIER-2 no-footer line branch; bump version
+│   └── inbox-analyst.md               # MODIFY: TIER-1 confidence gate (>=0.6) + reject→alt_headings; TIER-2 reads has_footer → callout/before (footer) | line/after value:null (no footer); bump version
 └── scripts/
-    ├── suggestions-reducer.py         # MODIFY: _placement_line appends " (confidence: NN%)"; bump version
-    └── instruction-render.py          # MODIFY: telemetry gains tier1_confident / tier1_rejected counts (metadata only); bump version
+    ├── moc-tree-builder.py            # MODIFY: cache entry + has_footer (footer_index < len(lines); body bytes in hand, no Kado read); bump version
+    ├── shared-ctx-builder.py          # MODIFY: pass has_footer into shared_ctx.mocs[]; bump version
+    ├── suggestions-reducer.py         # MODIFY: _placement_line appends " (confidence: NN%)" on tier-1; "(before the footer)" / "(at the end of the MOC)" on tier-2 new sections; bump version
+    └── instruction-render.py          # MODIFY: resolve_section_names/_pick_anchor 4th tier (no footer → last body line, type:line/after) + resolve null-value line anchors; telemetry gains tier1_confident / tier1_rejected counts (metadata only); bump version
 
 tests/
-├── test_spec022_schema_additions.py   # MODIFY/ADD: fit_confidence accepts 0-1/null + back-compat + out-of-range reject
-├── test_moc_insertion_resolution.py   # ADD: TIER-1 gate contract fixtures (confident→tier1; weak→tier2; Japan-Content regression; reject→alt_headings); no-footer→line
-└── test_suggestions_reducer_t6_1_placement.py  # ADD: confidence % rendered; absent → unchanged
+├── test_spec022_schema_additions.py   # DONE (Phase 1): fit_confidence accepts 0-1/null + back-compat + out-of-range reject
+├── test_moc_structure_inventory.py    # ADD: has_footer true/false at cache build (footer present vs footer-less body)
+├── test_moc_insertion_resolution.py   # ADD: TIER-1 gate contract fixtures (confident→tier1; weak→tier2; Japan-Content regression; reject→alt_headings); no-footer null-value line anchor → render resolves last body line
+└── test_suggestions_reducer_t6_1_placement.py  # ADD: confidence % rendered; tier-2 footer vs end-of-MOC wording; absent → unchanged
 ```
 
 ### Interface Specifications
@@ -194,23 +203,25 @@ No HTTP API. The "interface" is the Pass-1 → suggestions-render contract (the 
 
 #### Example: TIER-2 with the no-footer branch (inbox-analyst.md)
 
-**Why this example:** Routing more notes to tier-2 makes the no-footer case common; this shows both branches.
+**Why this example:** Routing more notes to tier-2 makes the no-footer case common; this shows both branches. **Pass-1 cannot see the MOC body** — so it emits the *intent* (a truthful anchor TYPE chosen via `moc.has_footer`) with a `null` value where the body text is unknown; the **render resolver fills the exact value at Pass-2** (the footer callout text, or the last body line). This is symmetric with how 022 already resolves the footer-callout text from a `callout`-type anchor whose value the analyst left null.
 
 ```text
 - **TIER-2 — New section (no confident heading fit).**
   Name the section from the note's dominant topic (NEVER literal "Key Concepts").
-  IF the MOC has a footer callout (one of the footer markers):
-    {"type":"callout","value":"<footer callout text>","placement":"before",
+  IF `moc.has_footer` is true:
+    {"type":"callout","value":null,"placement":"before",
      "new_section":"<topic>","alt_headings":[<rejected heading if any>]}
-  ELSE (MOC has no footer callout):
-    {"type":"line","value":"<last body line of the MOC>","placement":"after",
+    # render resolves value → the MOC's first footer-marker callout (unchanged 022)
+  ELSE (`moc.has_footer` is false):
+    {"type":"line","value":null,"placement":"after",
      "new_section":"<topic>","alt_headings":[<rejected heading if any>]}
+    # render resolves value → the MOC's last body line (NEW: the no-footer tier)
 ```
 
 #### Example: render the confidence (suggestions-reducer.py `_placement_line`)
 
 ```python
-# In the anchor_type == "heading" branch, after building the base line:
+# Tier-1 heading branch — append the confidence % (AC-11):
 conf = anchor.get("fit_confidence")
 suffix = f" (confidence: {int(conf * 100)}%)" if isinstance(conf, (int, float)) else ""
 return (
@@ -218,6 +229,13 @@ return (
     "    ← edit the heading to move the link"
 )
 # absent/None fit_confidence → suffix == "" → line identical to 022 (back-compat, AC-12)
+
+# Tier-2 new-section branch (AC-13) — show WHERE the section lands, by anchor TYPE
+# (the analyst already chose the truthful type via has_footer; the reducer reads it,
+# it does NOT re-derive footer presence):
+#   anchor.type == "callout" (footer) → "new section `## <topic>` (before the footer)"
+#   anchor.type == "line"    (no footer) → "new section `## <topic>` (at the end of the MOC)"
+# The conceptual destination is shown; the literal last-line text is NOT (resolved at Pass-2).
 ```
 
 #### Test Examples as Interface Documentation
@@ -238,43 +256,53 @@ return (
 ## Runtime View
 
 ### Primary Flow: confidence-gated placement
-1. Pass-1 pre-checks a thematic MOC; reads `moc.headings` / `moc.editable_callouts` from shared-ctx.
+1. Pass-1 pre-checks a thematic MOC; reads `moc.headings` / `moc.editable_callouts` / `moc.has_footer` from shared-ctx.
 2. TIER-1: LLM picks the best heading, assigns `fit_confidence` (0-1).
 3. Gate: `fit_confidence >= 0.6` → emit tier-1 heading anchor carrying `fit_confidence` (+ runner-ups in `alt_headings`).
-4. Else: fall through to TIER-2 → new section named from topic; footer present → `callout/before`, else → `line/after` last body line; rejected heading → `alt_headings`.
-5. Pass-2 honor path (022, unchanged) stamps the anchor; `_serialize_new_sections` builds `line_to_add`.
-6. Render: `_placement_line` shows the confidence % on tier-1 placements; resolution telemetry counts confident-tier-1 vs rejected→tier-2.
+4. Else: fall through to TIER-2 → new section named from topic; `has_footer` → `callout/before` with `value:null`, else → `line/after` with `value:null`; rejected heading → `alt_headings`.
+5. Suggestions doc (Pass-1): `_placement_line` shows the confidence % on tier-1 placements, and `(before the footer)` / `(at the end of the MOC)` on tier-2 new sections (by anchor type).
+6. Pass-2 (post-approval): `resolve_section_names` fills null values from the live MOC — footer-callout text (callout) or last body line (line); honored heading anchors pass through; `_serialize_new_sections` builds `line_to_add`; resolution telemetry counts confident-tier-1 vs rejected→tier-2 (metadata only).
 
 ### Error Handling
 - **Empty/degraded inventory** (no headings cached): no `fit_confidence`; behaves as 022 graceful-degradation (omit anchor / tier-4). The prompt must NOT fabricate a confidence for inventory it wasn't given.
+- **`has_footer` absent** (pre-023 shared-ctx artifact, or cache not yet rebuilt): the analyst treats it as unknown and falls back to 022 tier-2 — emit the `callout/before` placeholder (render then finds a footer if one exists, else leaves it unresolved exactly as 022 did). No regression; the no-footer last-line path simply doesn't engage until the cache carries `has_footer`.
+- **No-footer resolve with empty body** (MOC has no body lines): the `line`-anchor resolution finds no last line → leave unresolved (omit), consistent with 022 graceful-degradation; do not fabricate a line.
 - **Malformed/out-of-range confidence** from the LLM: schema rejects <0 or >1 (validate-result step strips/flags); render guards with `isinstance` so a non-number suffix is simply omitted.
 - **fit_confidence on a non-heading anchor**: schema allows it (nullable) but the render only reads it for `type==heading`; tiers 2-4 carry null.
 
 ### Complex Logic — confidence-gated four-tier (Pass-1)
 
+The decision spans two passes — the analyst (Pass-1) emits *intent* over the inventory it has; the render resolver (Pass-2) fills body-derived values from the live MOC.
+
 ```
-ALGORITHM: resolve_placement_v2(note, moc_inventory)   # extends 022
-INPUT: note, moc_inventory {headings[], editable_callouts[], h1_title, footer?, last_line}
+PASS-1 (inbox-analyst) — emit_anchor(note, moc_inventory)
+INPUT: note, moc_inventory {headings[], editable_callouts[], h1_title, has_footer}   # NO body / last_line
 OUTPUT: anchor {type, value, placement, new_section?, alt_headings?, fit_confidence?}
 
-1. IF moc.is_classification: EXCLUDE                         # EC-5 (022)
-2. TIER-1: best, others = LLM_rank_headings(note, headings)  # semantic
-   conf = LLM_fit_confidence(note, best)                     # 0..1
+1. IF moc.is_classification: EXCLUDE                          # EC-5 (022)
+2. TIER-1: best, others = LLM_rank_headings(note, headings)   # semantic
+   conf = LLM_fit_confidence(note, best)                      # 0..1
    IF best AND conf >= 0.6:
      RETURN {heading, best, after, new_section:null, fit_confidence:conf, alt_headings:others}
-3. TIER-2: IF headings non-empty (but none confident):       # NEW gate condition
-     name = topic_name(note)
-     reject = [best] + others   # carry the rejected heading(s) for retarget
-     IF footer: RETURN {callout, footer, before, new_section:name, alt_headings:reject}
-     ELSE:      RETURN {line, last_line, after, new_section:name, alt_headings:reject}   # no-footer (NEW)
-4. TIER-3: IF editable_callouts non-empty:                   # unchanged (022)
-     RETURN {callout, editable[priority], inside}
-5. TIER-4: RETURN {heading, h1_title, after}                 # unchanged; line if no H1
+3. TIER-2: IF headings non-empty (but none confident):        # confidence gate
+     name = topic_name(note);  reject = [best] + others        # carry rejected heading(s)
+     IF moc.has_footer: RETURN {callout, value:null, before, new_section:name, alt_headings:reject}
+     ELSE:              RETURN {line,    value:null, after,  new_section:name, alt_headings:reject}  # no-footer (NEW)
+4. TIER-3: IF editable_callouts non-empty: RETURN {callout, editable[priority], inside}  # 022
+5. TIER-4: RETURN {heading, h1_title, after}                  # 022; line if no H1
+
+PASS-2 (instruction-render: resolve_section_names/_pick_anchor) — fill null values from live MOC
+  FOR each link_to_moc whose anchor.value is null:
+    read MOC body
+    callout-type → first footer-marker callout text         # 022
+    line-type    → MOC's last body line                     # NEW (AC-9), placement stays "after"
+  (heading anchors are honored as-is — value already set by Pass-1)
 ```
 
 **Traced walkthrough (the two walk cases):**
-- *First Principles Thinking → Concepts (MOC):* best heading "Thinking Frameworks", `conf≈0.9 ≥ 0.6` → TIER-1 heading anchor, `fit_confidence:0.9`, `alt_headings:["Core Concepts"]`. Renders `under \`## Thinking Frameworks\` (confidence: 90%)`. ✅ AC-1/4/11.
-- *Sapporo → Japan (MOC):* best heading "Content" is structural, `conf≈0.3 < 0.6` → TIER-1 rejected → TIER-2. Japan (MOC) HAS a `[!video]` footer → `{callout, "[!video]…", before, new_section:"Japanische Städte", alt_headings:["Content"]}`. Renders `new section \`## Japanische Städte\``, advisory offers `Content`. ✅ AC-5/6/7. (If Japan had no footer → `line/after` last line, AC-9.)
+- *First Principles Thinking → Concepts (MOC):* best heading "Thinking Frameworks", `conf≈0.9 ≥ 0.6` → Pass-1 TIER-1 heading anchor, `fit_confidence:0.9`, `alt_headings:["Core Concepts"]`. Renders `under \`## Thinking Frameworks\` (confidence: 90%)`. ✅ AC-1/4/11.
+- *Sapporo → Japan (MOC):* best heading "Content" is structural, `conf≈0.3 < 0.6` → TIER-1 rejected → TIER-2. `Japan.has_footer == true` → Pass-1 emits `{callout, value:null, before, new_section:"Japanische Städte", alt_headings:["Content"]}`; doc renders `new section \`## Japanische Städte\` (before the footer)`, advisory offers `Content`; Pass-2 fills value = the `[!video]` callout. ✅ AC-5/6/7/13.
+- *No-footer variant (Concepts (MOC) has no footer):* `has_footer == false` → Pass-1 emits `{line, value:null, after, new_section:"<topic>"}`; doc renders `new section \`## <topic>\` (at the end of the MOC)`; Pass-2 fills value = the MOC's last body line. ✅ AC-9/9a/13.
 
 ## Deployment View
 No change to deployment topology. Ships via `scripts/update-tomo.sh` into the instance (bump `# version:` on each edited managed file). No feature flag — additive and degrades to 022 behavior when `fit_confidence` is absent. No Hashi/Kado version dependency.
@@ -293,9 +321,14 @@ No change to deployment topology. Ships via `scripts/update-tomo.sh` into the in
   - Trade-offs: LLM confidence is uncalibrated; mitigated by tuning the threshold against the live-walk corpus and user review.
   - User confirmed: **Yes (2026-06-16)**
 
-- [x] **ADR-2 No-footer tier-2 → `line`/`after` last body line**: when a MOC has no footer callout, anchor the new section after the last body line.
-  - Rationale: reuses an existing Hashi shape (verified `type:line` matches any body line); avoids a new `end_of_note` placement + Hashi handoff; tier-2 is now common so footer-less MOCs must be handled.
-  - Trade-offs: "after last line" is a slightly arbitrary spot for sparse MOCs; acceptable and editable.
+- [x] **ADR-2 No-footer tier-2 → `line`/`after` last body line, RESOLVED AT RENDER**: when a MOC has no footer callout, the new section anchors after the last body line. Pass-1 emits a `line`/`after` anchor with a **null value** (it cannot see the MOC body); the **render resolver (Pass-2) fills the value with the live MOC's last body line** — symmetric with how 022 resolves a footer-callout anchor's null value.
+  - Rationale: reuses an existing Hashi shape (`type:line` matches any body line); avoids a new `end_of_note` placement + Hashi handoff; tier-2 is now common so footer-less MOCs must be handled. Resolving at render is the ONLY workable layer — the Pass-1 analyst's inventory has no MOC body.
+  - Trade-offs: "after last line" is a slightly arbitrary spot for sparse MOCs; acceptable and editable. Adds a 4th tier to `_pick_anchor` and null-value `line`-anchor handling to `resolve_section_names` (the SDD originally — wrongly — scoped instruction-render to telemetry only).
+  - User confirmed: **Yes (2026-06-16)** — corrected from "analyst emits the line" to "render resolves the line" 2026-06-16 after tracing that Pass-1 has no body access.
+
+- [x] **ADR-5 `has_footer` inventory flag for Pass-1 footer-awareness + conceptual doc wording**: a cheap boolean `has_footer` is computed at cache-build (`moc-tree-builder`, from body bytes already in hand — no new Kado read) and surfaced on `shared_ctx.mocs[]`. Pass-1 reads it to choose the **truthful** tier-2 anchor type (`callout/before` vs `line/after`) BEFORE the live MOC is read, so the suggestions doc can show WHERE the section lands (`(before the footer)` / `(at the end of the MOC)`) at review time.
+  - Rationale: the suggestions doc is a Pass-1 artifact (built before approval); the render resolver runs at Pass-2 (after approval), so footer presence must be known at Pass-1 for the doc to be truthful. Encoding it in the anchor TYPE keeps every consumer (doc render + render resolver) reading one source of truth. The conceptual destination (not the literal last-line text) is shown — clean, no stale raw body line in the review surface.
+  - Trade-offs: adds a cache-schema field (`has_footer`) → cache rebuild via `/explore-vault`; a stale flag could pick the wrong tier-2 type (rare; cache is rebuilt operationally; render is still the source of truth for the actual insert).
   - User confirmed: **Yes (2026-06-16)**
 
 - [x] **ADR-3 Rejected tier-1 runner-up → `alt_headings`**: a heading rejected by the gate is carried into 022's existing advisory.
@@ -325,9 +358,13 @@ No change to deployment topology. Ships via `scripts/update-tomo.sh` into the in
 - [ ] IF the best heading's `fit_confidence` < 0.6, THEN THE SYSTEM SHALL fall through to tier-2 (new section) and place the rejected heading in `alt_headings`.
 - [ ] WHEN no MOC offers a heading ≥ threshold for a note, THE SYSTEM SHALL fire the tier-2 new-section path (closes 022 #28).
 
-**No-footer fallback [PRD AC-8..10]**
-- [ ] IF a tier-2 MOC has a footer callout, THEN THE SYSTEM SHALL anchor `callout/before` (unchanged).
-- [ ] IF a tier-2 MOC has no footer callout, THEN THE SYSTEM SHALL anchor `line/after` the last body line.
+**No-footer fallback [PRD AC-8..10, AC-9a]**
+- [ ] WHEN building the MOC cache, THE SYSTEM SHALL record `has_footer` per MOC (no new Kado read) and surface it on `shared_ctx.mocs[]`.
+- [ ] IF a tier-2 MOC has a footer (`has_footer` true), THEN Pass-1 SHALL emit a `callout/before` anchor with null value, AND Pass-2 SHALL resolve it to the footer-callout text (unchanged 022).
+- [ ] IF a tier-2 MOC has no footer (`has_footer` false), THEN Pass-1 SHALL emit a `line/after` anchor with null value, AND Pass-2 SHALL resolve the value to the MOC's last body line.
+
+**Tier-2 placement transparency [PRD AC-13]**
+- [ ] WHEN the suggestions doc renders a tier-2 new section, THE SYSTEM SHALL show the conceptual destination — `(before the footer)` for a callout anchor, `(at the end of the MOC)` for a line anchor.
 
 **Render [PRD AC-11..12]**
 - [ ] WHEN a tier-1 placement carries `fit_confidence`, THE SYSTEM SHALL render `(confidence: NN%)` on the Placement line.
@@ -346,7 +383,11 @@ No change to deployment topology. Ships via `scripts/update-tomo.sh` into the in
 - LLM-confidence is uncalibrated (accepted, ADR-1). If the hardcoded 0.6 proves wrong, a config threshold (deferred Could-Have) is the escape hatch.
 
 ### Implementation Gotchas
-- **Schema BEFORE consumers** — add `fit_confidence` to the schema first, or `additionalProperties:false` strips it and the analyst's emission is silently dropped → render reads None. (Same 022 trap.)
+- **Pass-1 has no MOC body** — the analyst inventory is `headings[] + editable_callouts[] + has_footer` only (no body, no last_line). The analyst must emit `value:null` for tier-2 anchors and let the render resolver fill the footer-callout text / last body line. Do NOT instruct the LLM to emit `<last body line>` — it would hallucinate a string Hashi can't match. (This corrects the original SDD example.)
+- **Two-pass timing** — the suggestions doc is Pass-1 (pre-approval); the render resolver is Pass-2 (post-approval). Anything the doc must show about placement (footer vs end-of-MOC) has to be decidable at Pass-1 → hence `has_footer` on the inventory (ADR-5), not a render-time lookup.
+- **Render resolves null `line` anchors now** — `resolve_section_names` historically skipped `line`-type anchors ("populated upstream"). 023 adds: a `line` anchor with empty value → resolve to the MOC's last body line. Keep the existing honor-guard — a `line` anchor whose value is ALREADY set (legacy/heuristic) is left untouched.
+- **`has_footer` is a cache-schema change** — bump the cache and rebuild via `/explore-vault` before the live walk, or Pass-1 sees no `has_footer` and must degrade gracefully (treat absent as "unknown" → safe default; see Error Handling).
+- **Schema BEFORE consumers** — `fit_confidence` was added to the schema first (Phase 1), or `additionalProperties:false` strips it and the analyst's emission is silently dropped → render reads None. (Same 022 trap.)
 - **Version bumps** — bump `# version:` on `inbox-analyst.md`, `suggestions-reducer.py`, `instruction-render.py` or `update-tomo` silently skips them.
 - **`alt_headings` semantic broadened** — now also carries the gate-rejected heading; keep the render dedup/empty-filter from 022 (don't show an empty/`## ` advisory).
 - **Don't double-gate Pass-2** — the honor path already suppresses the heuristic on a populated anchor; 023 changes only what Pass-1 emits, not Pass-2 resolution.

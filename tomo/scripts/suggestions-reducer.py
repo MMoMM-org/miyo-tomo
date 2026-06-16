@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.10.7
+# version: 1.10.8
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -112,14 +112,16 @@ def _placement_line(anchor: dict) -> str:
     if anchor_type == "heading":
         if not value:
             return _LINE_TIER
+        conf = anchor.get("fit_confidence")
+        suffix = f" (confidence: {int(conf * 100)}%)" if isinstance(conf, (int, float)) else ""
         return (
-            f"**Placement:** under `## {value}`"
+            f"**Placement:** under `## {value}`{suffix}"
             "    ← edit the heading to move the link"
         )
     if anchor_type == "callout":
         if new_section:
             return (
-                f"**Placement:** new section `## {new_section}` (created before the footer)"
+                f"**Placement:** new section `## {new_section}` (before the footer)"
                 "    ← rename or change"
             )
         # null value without new_section → nothing was resolved; fall to line-tier.
@@ -139,6 +141,12 @@ def _placement_line(anchor: dict) -> str:
         return (
             f"**Placement:** inside the `{callout_ref}` callout"
             "    ← change to a `## Heading` to place under a section"
+        )
+    # type:line with a new_section → no footer, section goes at the end
+    if anchor_type == "line" and new_section:
+        return (
+            f"**Placement:** new section `## {new_section}` (at the end of the MOC)"
+            "    ← rename or change"
         )
     # type:line, unknown type, or unresolved — last-resort tier
     return _LINE_TIER

@@ -93,7 +93,7 @@ class TestMocLinkLinePlacementFormats:
         lines = moc_link_line(moc).split("\n")
         placement = next((l for l in lines if l.startswith("**Placement:**")), None)
         assert placement is not None, "Expected a **Placement:** line"
-        assert placement == "**Placement:** new section `## Agile Methods` (created before the footer)    ← rename or change"
+        assert placement == "**Placement:** new section `## Agile Methods` (before the footer)    ← rename or change"
 
     def test_callout_no_new_section_emits_inside_callout(self):
         """type:callout, new_section null → 'inside the `> [!<name>]` callout'"""
@@ -473,3 +473,95 @@ class TestRenderLinkToMocAC11:
         action = {"kind": "link_to_moc", "target_moc": "Philosophy MOC", "section_name": "Core Topics"}
         md = render_link_to_moc(action, "source-note")
         assert "Philosophy MOC" in md
+
+
+# ── spec 023 T4.1: confidence % + tier-2 destination ─────────────────────────
+
+_placement_line = _mod._placement_line  # type: ignore[attr-defined]
+
+
+class TestPlacementLineSpec023T41:
+    """spec 023 T4.1 — fit_confidence % and tier-2 destination phrases (AC-11/12/13)."""
+
+    def test_heading_anchor_with_fit_confidence_appends_percent(self):
+        """AC-11: heading anchor + fit_confidence:0.89 → '(confidence: 89%)' suffix."""
+        anchor = {
+            "type": "heading",
+            "value": "Frameworks and Methodologies",
+            "placement": "inside",
+            "new_section": None,
+            "fit_confidence": 0.89,
+        }
+        result = _placement_line(anchor)
+        assert result == (
+            "**Placement:** under `## Frameworks and Methodologies` (confidence: 89%)"
+            "    ← edit the heading to move the link"
+        )
+
+    def test_heading_anchor_without_fit_confidence_byte_identical_to_022(self):
+        """AC-12: heading anchor with no fit_confidence is identical to 022 output."""
+        anchor_022 = {
+            "type": "heading",
+            "value": "Frameworks and Methodologies",
+            "placement": "inside",
+            "new_section": None,
+        }
+        anchor_023_no_conf = {
+            "type": "heading",
+            "value": "Frameworks and Methodologies",
+            "placement": "inside",
+            "new_section": None,
+            "fit_confidence": None,
+        }
+        result_legacy = _placement_line(anchor_022)
+        result_no_conf = _placement_line(anchor_023_no_conf)
+        expected = (
+            "**Placement:** under `## Frameworks and Methodologies`"
+            "    ← edit the heading to move the link"
+        )
+        assert result_legacy == expected
+        assert result_no_conf == expected
+
+    def test_tier2_callout_new_section_renders_before_footer(self):
+        """AC-13: tier-2 callout + new_section → '(before the footer)' destination."""
+        anchor = {
+            "type": "callout",
+            "value": "[!blocks] Key Concepts",
+            "placement": "after",
+            "new_section": "Agile Methods",
+        }
+        result = _placement_line(anchor)
+        assert result == (
+            "**Placement:** new section `## Agile Methods` (before the footer)"
+            "    ← rename or change"
+        )
+
+    def test_tier2_line_new_section_renders_at_end_of_moc(self):
+        """AC-13: tier-2 line + new_section → '(at the end of the MOC)' destination."""
+        anchor = {
+            "type": "line",
+            "value": "some body line",
+            "placement": "after",
+            "new_section": "Agile Methods",
+        }
+        result = _placement_line(anchor)
+        assert result == (
+            "**Placement:** new section `## Agile Methods` (at the end of the MOC)"
+            "    ← rename or change"
+        )
+
+    def test_non_numeric_fit_confidence_ignored(self):
+        """A string fit_confidence value yields no suffix (guard: only int/float accepted)."""
+        anchor = {
+            "type": "heading",
+            "value": "Core Topics",
+            "placement": "inside",
+            "new_section": None,
+            "fit_confidence": "high",
+        }
+        result = _placement_line(anchor)
+        assert "(confidence:" not in result
+        assert result == (
+            "**Placement:** under `## Core Topics`"
+            "    ← edit the heading to move the link"
+        )

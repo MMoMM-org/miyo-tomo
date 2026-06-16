@@ -95,10 +95,11 @@ _LINE_TIER = (
 def _placement_line(anchor: dict) -> str:
     """Return the UX-locked **Placement:** line for a resolved anchor (spec 022 AC-12).
 
-    Four formats keyed on anchor.type + new_section (verbatim wording is UX-locked):
-      heading              → under `## <value>`
-      callout + new_section → new section `## <new_section>` (created before the footer)
+    Five formats keyed on anchor.type + new_section (verbatim wording is UX-locked):
+      heading              → under `## <value>` [(confidence: N%)]
+      callout + new_section → new section `## <new_section>` (before the footer)
       callout (no new_section) → inside the `> [!<name>]` callout
+      line + new_section   → new section `## <new_section>` (at the end of the MOC)
       line / unresolved    → under the note title (no matching section or callout found)
 
     null-value guard: the schema allows value:null (unresolved LLM output). When
@@ -113,7 +114,11 @@ def _placement_line(anchor: dict) -> str:
         if not value:
             return _LINE_TIER
         conf = anchor.get("fit_confidence")
-        suffix = f" (confidence: {int(conf * 100)}%)" if isinstance(conf, (int, float)) else ""
+        suffix = (
+            f" (confidence: {int(conf * 100)}%)"
+            if isinstance(conf, (int, float)) and not isinstance(conf, bool)
+            else ""
+        )
         return (
             f"**Placement:** under `## {value}`{suffix}"
             "    ← edit the heading to move the link"

@@ -484,7 +484,11 @@ class TestPlacementLineSpec023T41:
     """spec 023 T4.1 — fit_confidence % and tier-2 destination phrases (AC-11/12/13)."""
 
     def test_heading_anchor_with_fit_confidence_appends_percent(self):
-        """AC-11: heading anchor + fit_confidence:0.89 → '(confidence: 89%)' suffix."""
+        """AC-11: heading anchor + fit_confidence:0.89 → '(confidence: 89%)' suffix.
+
+        Conversion is int(conf * 100) — truncation, not rounding — so 0.895 → 89%,
+        not 90%.  This is deliberate: avoid over-promising precision to the user.
+        """
         anchor = {
             "type": "heading",
             "value": "Frameworks and Methodologies",
@@ -497,6 +501,9 @@ class TestPlacementLineSpec023T41:
             "**Placement:** under `## Frameworks and Methodologies` (confidence: 89%)"
             "    ← edit the heading to move the link"
         )
+        # Truncation pin: 0.895 must render as 89%, not 90%.
+        anchor_895 = {**anchor, "fit_confidence": 0.895}
+        assert "(confidence: 89%)" in _placement_line(anchor_895)
 
     def test_heading_anchor_without_fit_confidence_byte_identical_to_022(self):
         """AC-12: heading anchor with no fit_confidence is identical to 022 output."""
@@ -565,3 +572,23 @@ class TestPlacementLineSpec023T41:
             "**Placement:** under `## Core Topics`"
             "    ← edit the heading to move the link"
         )
+
+    def test_bool_fit_confidence_ignored(self):
+        """bool fit_confidence (True/False) yields no suffix.
+
+        bool subclasses int in Python, so isinstance(True, (int, float)) is True.
+        The guard explicitly excludes bool to prevent 'confidence: 100%' from a
+        True value or 'confidence: 0%' from a False value.
+        """
+        base_anchor = {
+            "type": "heading",
+            "value": "Core Topics",
+            "placement": "inside",
+            "new_section": None,
+        }
+        for bool_val in (True, False):
+            anchor = {**base_anchor, "fit_confidence": bool_val}
+            result = _placement_line(anchor)
+            assert "(confidence:" not in result, (
+                f"fit_confidence={bool_val!r} must not produce a confidence suffix"
+            )

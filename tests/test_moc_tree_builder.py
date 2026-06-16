@@ -633,6 +633,87 @@ def test_t31_non_moc_note_has_no_inventory_fields():
     assert "editable_callouts" not in note_entry, "Non-MOC note must NOT have editable_callouts"
 
 
+def test_t21_moc_entry_has_footer_true_when_footer_callout_present():
+    """T2.1 (spec 023): has_footer is True when the MOC body contains a footer-marker callout.
+
+    The footer set is FOOTER_CALLOUTS = {video, calendar, puzzle, compass}.
+    A body with a > [!video] line must yield has_footer == True in the cache entry.
+    No new Kado call is made — parsed from body already in raw_by_path.
+    """
+    moc_path = "Atlas/200 Maps/WithFooter.md"
+    note_path = "Atlas/202 Notes/Plain.md"
+
+    moc_body = (
+        "---\ntitle: WithFooter\ntags:\n  - type/others/moc\n---\n"
+        "# WithFooter\n\n"
+        "## Key Concepts\n\n"
+        "Some content.\n\n"
+        "> [!video] Footer video\n"
+        "footer content\n"
+    )
+    note_body = "---\ntitle: Plain\n---\n# Plain\n\nSome idea.\n"
+
+    client = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": note_path}],
+        },
+        notes={moc_path: moc_body, note_path: note_body},
+    )
+    cfg = _config()
+    cfg["callouts"] = {"editable": ["blocks"]}
+
+    cache = _cache(client, cfg)
+    by_path = {e["path"]: e for e in cache["entries"]}
+    moc_entry = by_path[moc_path]
+
+    assert "has_footer" in moc_entry, "MOC entry must carry has_footer"
+    assert moc_entry["has_footer"] is True, (
+        "has_footer must be True when a footer-marker callout (e.g. > [!video]) is present"
+    )
+
+
+def test_t21_moc_entry_has_footer_false_when_no_footer_callout():
+    """T2.1 (spec 023): has_footer is False when the MOC body has headings but NO footer-marker callout.
+
+    A body with H2 headings and editable callouts but no {video,calendar,puzzle,compass}
+    callout must yield has_footer == False in the cache entry.
+    """
+    moc_path = "Atlas/200 Maps/NoFooter.md"
+    note_path = "Atlas/202 Notes/Plain.md"
+
+    moc_body = (
+        "---\ntitle: NoFooter\ntags:\n  - type/others/moc\n---\n"
+        "# NoFooter\n\n"
+        "## Key Concepts\n\n"
+        "Some content.\n\n"
+        "> [!blocks]+ My Blocks\n"
+        "> block content\n"
+    )
+    note_body = "---\ntitle: Plain\n---\n# Plain\n\nSome idea.\n"
+
+    client = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": note_path}],
+        },
+        notes={moc_path: moc_body, note_path: note_body},
+    )
+    cfg = _config()
+    cfg["callouts"] = {"editable": ["blocks"]}
+
+    cache = _cache(client, cfg)
+    by_path = {e["path"]: e for e in cache["entries"]}
+    moc_entry = by_path[moc_path]
+
+    assert "has_footer" in moc_entry, "MOC entry must carry has_footer"
+    assert moc_entry["has_footer"] is False, (
+        "has_footer must be False when no footer-marker callout is present"
+    )
+
+
 def test_t31_no_extra_kado_call_for_inventory():
     """T3.1: Inventory parsing must NOT trigger additional Kado calls — it parses
     body bytes already in raw_by_path.

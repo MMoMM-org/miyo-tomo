@@ -179,6 +179,59 @@ def test_t32_moc_without_inventory_in_cache_omits_inventory_fields():
 
 
 # ---------------------------------------------------------------------------
+# T2.1 (spec 023): has_footer passthrough into mocs[]
+# ---------------------------------------------------------------------------
+
+def test_t21_build_mocs_passes_through_has_footer():
+    """T2.1 (spec 023): build_mocs copies has_footer from a cache entry into the mocs[] entry.
+
+    A non-classification cache entry carrying has_footer=True must yield
+    a mocs[] dict that also carries has_footer=True. Mirrors the passthrough
+    pattern used by headings/editable_callouts.
+    """
+    entry = _moc_entry()
+    entry["has_footer"] = True
+
+    result = build_mocs(_cache_with([entry]))
+    assert result, "build_mocs must not return empty list"
+    moc = result[0]
+
+    assert "has_footer" in moc, "mocs[] entry must carry has_footer when cache entry has it"
+    assert moc["has_footer"] is True
+
+
+def test_t21_build_mocs_passes_through_has_footer_false():
+    """T2.1 (spec 023): has_footer=False is also passed through (not silently dropped).
+
+    A False flag is meaningful — it tells the Pass-1 analyst that no footer
+    anchor is available as a tier-2 fallback.
+    """
+    entry = _moc_entry()
+    entry["has_footer"] = False
+
+    result = build_mocs(_cache_with([entry]))
+    moc = result[0]
+
+    assert "has_footer" in moc, "mocs[] entry must carry has_footer even when False"
+    assert moc["has_footer"] is False
+
+
+def test_t21_build_mocs_omits_has_footer_when_absent_from_cache():
+    """T2.1 (spec 023): If the cache entry has no has_footer key, mocs[] entry must not inject one.
+
+    Mirrors the headings/editable_callouts pattern: only passthrough, never inject.
+    """
+    entry = _moc_entry()  # no has_footer in cache entry
+
+    result = build_mocs(_cache_with([entry]))
+    moc = result[0]
+
+    assert "has_footer" not in moc, (
+        "has_footer must not be injected when cache entry does not carry it"
+    )
+
+
+# ---------------------------------------------------------------------------
 # T3.2-2: enforce_budget drops inventory before topics
 # ---------------------------------------------------------------------------
 

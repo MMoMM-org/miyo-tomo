@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.6.1
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -373,6 +373,10 @@ def build_entries(
             entry["editable_callouts"] = moc_structure.parse_editable_callouts(
                 body, editable_set
             )
+            # T2.1 (spec 023): footer presence flag — pure computation over body,
+            # no new Kado call.
+            _lines = body.splitlines()
+            entry["has_footer"] = moc_structure.footer_index(_lines, FOOTER_CALLOUTS) < len(_lines)
 
         entries.append(entry)
 

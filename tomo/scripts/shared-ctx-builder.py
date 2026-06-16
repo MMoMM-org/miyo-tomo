@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.5.0
+# version: 1.5.1
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -244,6 +244,9 @@ def build_mocs(cache: dict) -> list[dict]:
             raw_callouts = entry.get("editable_callouts")
             if raw_callouts:
                 moc["editable_callouts"] = list(raw_callouts)
+            # T2.1 (spec 023): footer presence flag passthrough
+            if "has_footer" in entry:
+                moc["has_footer"] = entry["has_footer"]
         out.append(moc)
     return out
 

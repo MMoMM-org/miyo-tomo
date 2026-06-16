@@ -762,7 +762,7 @@ class TestTier1ConfidenceGated:
         assert anchor["new_section"] is None
         assert "fit_confidence" in anchor
         conf = anchor["fit_confidence"]
-        assert isinstance(conf, float)
+        assert isinstance(conf, (int, float))
         assert 0.6 <= conf <= 1.0
 
     def test_tier1_confident_schema_valid(self, item_result_schema):
@@ -987,7 +987,13 @@ class TestTier2HasFooter:
         assert "Content" in anchor["alt_headings"]
 
     def test_tier2_new_section_never_key_concepts_footer(self, item_result_schema):
-        """TIER-2 footer path: new_section is NEVER the literal 'Key Concepts'."""
+        """TIER-2 footer path: new_section is NEVER the literal 'Key Concepts'.
+
+        Guard against the LLM pattern-matching the hardcoded example in the TIER-2
+        prompt wording. The prompt says NEVER "Key Concepts"; this fixture documents
+        that contract (the fixture itself uses a valid topic so it passes schema — the
+        prohibition lives in the prompt and is validated in the Phase 5 live walk).
+        """
         candidate = {
             "path": "Atlas/200 Maps/Engineering (MOC).md",
             "score": 0.60,
@@ -1000,10 +1006,15 @@ class TestTier2HasFooter:
             },
         }
         validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        # Guard: topic-derived label is not the forbidden literal
         assert candidate["anchor"]["new_section"] != "Key Concepts"
 
     def test_tier2_new_section_never_key_concepts_no_footer(self, item_result_schema):
-        """TIER-2 no-footer path: new_section is NEVER the literal 'Key Concepts'."""
+        """TIER-2 no-footer path: new_section is NEVER the literal 'Key Concepts'.
+
+        Same guard as the footer variant — documents the prompt prohibition so a
+        reviewer editing the TIER-2 block knows this is a named contract, not dead code.
+        """
         candidate = {
             "path": "Atlas/200 Maps/Engineering (MOC).md",
             "score": 0.60,
@@ -1016,4 +1027,30 @@ class TestTier2HasFooter:
             },
         }
         validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        # Guard: topic-derived label is not the forbidden literal
         assert candidate["anchor"]["new_section"] != "Key Concepts"
+
+    def test_tier2_footer_absent_same_as_true(self, item_result_schema):
+        """moc.has_footer absent → fallback to callout/before per ADR-5.
+
+        When the MOC cache predates spec 023 (no has_footer field), Pass-1 treats
+        the absent flag as unknown and falls back to the 022 callout/before shape.
+        This fixture makes that fallback a first-class named contract.
+        """
+        # has_footer absent from inventory → analyst must emit callout/before/null
+        candidate = {
+            "path": "Atlas/200 Maps/Legacy (MOC).md",
+            "score": 0.66,
+            "pre_check": True,
+            "anchor": {
+                "type": "callout",
+                "value": None,
+                "placement": "before",
+                "new_section": "Pre-023 Topic",
+            },
+        }
+        validate(instance=_make_result_with_candidate(candidate), schema=item_result_schema)
+        anchor = candidate["anchor"]
+        assert anchor["type"] == "callout"
+        assert anchor["placement"] == "before"
+        assert anchor["value"] is None

@@ -1747,8 +1747,10 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
             counts["heading"] += 1
             # tier1_confident: a heading anchor whose fit_confidence is a number
             # (numbers only — never the heading text itself, Constitution L2).
+            # Exclude bool explicitly: True/False are int subclasses in Python
+            # but must not count as a confidence value.
             fit_conf = anchor.get("fit_confidence")
-            if isinstance(fit_conf, (int, float)):
+            if isinstance(fit_conf, (int, float)) and not isinstance(fit_conf, bool):
                 counts["tier1_confident"] += 1
         elif anchor_type == "callout":
             counts["callout"] += 1

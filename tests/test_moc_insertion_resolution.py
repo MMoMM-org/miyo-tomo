@@ -1456,6 +1456,22 @@ class TestResolutionTelemetry:
             f"new_section text leaked into telemetry! Line: {line!r}"
         )
 
+    def test_bool_fit_confidence_not_counted_as_tier1_confident(self) -> None:
+        """fit_confidence=True (a bool) must NOT increment tier1_confident.
+
+        bool is a subclass of int in Python, so isinstance(True, (int, float)) is True.
+        The guard must exclude bools explicitly — True/False are not confidence values.
+        """
+        action = _make_link_to_moc_action(
+            anchor_type="heading",
+            anchor_value="Some Heading",
+            fit_confidence=True,  # type: ignore[arg-type]  # intentional invalid input
+        )
+        line = self._capture_telemetry([action])
+        assert "tier1_confident=0" in line, (
+            f"bool True counted as tier1_confident — expected 0, got: {line!r}"
+        )
+
 
 # ── (e) _emit: fit_confidence stripped — no-leak contract ───────────────────
 

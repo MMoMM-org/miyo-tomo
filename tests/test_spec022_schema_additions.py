@@ -457,3 +457,69 @@ class TestT62AnchorAltHeadings:
         ]
         with pytest.raises(ValidationError):
             validate(instance=_make_item_result(candidate_mocs), schema=item_result_schema)
+
+
+# ===========================================================================
+# T1.1 — item-result: fit_confidence on candidate_mocs[].anchor (spec 023)
+# ===========================================================================
+
+
+def _make_anchor_moc(anchor_extra: dict | None = None) -> list:
+    """candidate_mocs list with one item carrying a minimal valid anchor, optionally extended."""
+    anchor = {
+        "type": "heading",
+        "value": "Notes",
+        "placement": "after",
+        "new_section": None,
+    }
+    if anchor_extra is not None:
+        anchor.update(anchor_extra)
+    return [
+        {
+            "path": "Atlas/200 Maps/Tech (MOC).md",
+            "score": 0.85,
+            "pre_check": True,
+            "anchor": anchor,
+        }
+    ]
+
+
+class TestT11FitConfidence:
+    """fit_confidence is an optional [number, null] field on candidate_mocs[].anchor (spec 023 T1.1)."""
+
+    def test_anchor_with_fit_confidence_number_validates(self, item_result_schema):
+        """anchor WITH fit_confidence=0.89 validates."""
+        validate(
+            instance=_make_item_result(_make_anchor_moc({"fit_confidence": 0.89})),
+            schema=item_result_schema,
+        )
+
+    def test_anchor_with_fit_confidence_null_validates(self, item_result_schema):
+        """anchor WITH fit_confidence=null validates."""
+        validate(
+            instance=_make_item_result(_make_anchor_moc({"fit_confidence": None})),
+            schema=item_result_schema,
+        )
+
+    def test_anchor_without_fit_confidence_validates(self, item_result_schema):
+        """022-shaped anchor WITHOUT fit_confidence key still validates (back-compat)."""
+        validate(
+            instance=_make_item_result(_make_anchor_moc()),
+            schema=item_result_schema,
+        )
+
+    def test_anchor_fit_confidence_above_one_rejected(self, item_result_schema):
+        """anchor.fit_confidence=1.01 is rejected (maximum: 1)."""
+        with pytest.raises(ValidationError):
+            validate(
+                instance=_make_item_result(_make_anchor_moc({"fit_confidence": 1.01})),
+                schema=item_result_schema,
+            )
+
+    def test_anchor_fit_confidence_below_zero_rejected(self, item_result_schema):
+        """anchor.fit_confidence=-0.1 is rejected (minimum: 0)."""
+        with pytest.raises(ValidationError):
+            validate(
+                instance=_make_item_result(_make_anchor_moc({"fit_confidence": -0.1})),
+                schema=item_result_schema,
+            )

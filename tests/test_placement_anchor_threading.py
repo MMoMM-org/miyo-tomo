@@ -371,3 +371,82 @@ class TestEndToEnd:
         actions = _ir._build_link_to_moc_actions([confirmed], [0])
         link = next(a for a in actions if a["action"] == "link_to_moc")
         assert link["anchor"]["value"] == "Thinking Frameworks"
+
+    def test_beppu_anchor_survives_reducer_to_render(self):
+        """Headline bug case: new-section-before-footer must not collapse to [!blocks]."""
+        action = _beppu_action()
+        # pre_check=True so the MOC checkbox renders [x] and the parser picks it up.
+        action["candidate_mocs"][0]["pre_check"] = True
+        md = _render_section_md(action, "Beppu Onsen")
+        item = _parser.parse_section(
+            "S05", md.splitlines(), _doc_anchor_map_for(action)
+        )
+        assert item is not None, "parse_section must return an item"
+        assert len(item["candidate_mocs"]) == 1, "one checked MOC must produce one candidate"
+        confirmed = {
+            "id": "S05",
+            "source_path": "100 Inbox/Beppu Onsen.md",
+            "title": action["suggested_title"],
+            "action": None,
+            "parent_mocs": item["parent_mocs"],
+            "candidate_mocs": item["candidate_mocs"],
+        }
+        actions = _ir._build_link_to_moc_actions([confirmed], [0])
+        link = next(a for a in actions if a["action"] == "link_to_moc")
+        # Bug guard: must NOT collapse to [!blocks] Key Concepts — the old heuristic path.
+        assert link["anchor"]["type"] == "callout"
+        assert link["placement"] == "before"
+        assert link["new_section"] == "Japanische Geographie"
+        assert link["anchor"].get("value") is None  # no pre-existing callout matched
+
+
+# ---------------------------------------------------------------------------
+# Pending-MOC state machine — each checked MOC binds to its OWN Placement line
+# ---------------------------------------------------------------------------
+
+
+class TestMultiMocBinding:
+    def test_two_consecutive_checked_mocs_each_get_own_anchor(self):
+        """Two checked MOC checkboxes each followed by a distinct Placement line
+        must bind independently — Japan→callout/new_section, Concepts→heading.
+
+        This tests the `pending_moc` state machine: the second Placement line
+        must NOT overwrite the first, and neither anchor must bleed to both MOCs.
+        """
+        md = "\n".join([
+            "**Source:** [[Multi Topic Note]]",
+            "**Link to MOC:**",
+            "- [x] [[Atlas/200 Maps/Japan (MOC)]]",
+            "**Placement:** new section `## Japanische Geographie` (before the footer)    ← rename or change",
+            "- [x] [[Atlas/200 Maps/Concepts (MOC)]]",
+            "**Placement:** under `## Thinking Frameworks`    ← edit the heading to move the link",
+            "",
+            "**Decision (atomic note):**",
+            "- [x] Approve",
+        ])
+        doc_anchors = {
+            "japan (moc)": BEPPU_ANCHOR,
+            "concepts (moc)": FPT_ANCHOR,
+        }
+        item = _parser.parse_section("S01", md.splitlines(), doc_anchors)
+        assert item is not None
+        cands = item["candidate_mocs"]
+        assert len(cands) == 2, f"expected 2 candidates, got {len(cands)}: {cands}"
+
+        # Identify each candidate by MOC stem — order must not be assumed.
+        by_stem = {_parser._moc_path_stem(c["path"]): c["anchor"] for c in cands}
+
+        japan_anchor = by_stem.get("japan (moc)")
+        assert japan_anchor is not None, "Japan (MOC) candidate missing"
+        assert japan_anchor["type"] == "callout"
+        assert japan_anchor["placement"] == "before"
+        assert japan_anchor["new_section"] == "Japanische Geographie"
+
+        concepts_anchor = by_stem.get("concepts (moc)")
+        assert concepts_anchor is not None, "Concepts (MOC) candidate missing"
+        assert concepts_anchor["type"] == "heading"
+        assert concepts_anchor["value"] == "Thinking Frameworks"
+
+        # Strict non-bleed: neither anchor should appear on the wrong MOC.
+        assert by_stem["japan (moc)"] is not by_stem["concepts (moc)"]
+        assert by_stem["japan (moc)"]["type"] != by_stem["concepts (moc)"]["type"]

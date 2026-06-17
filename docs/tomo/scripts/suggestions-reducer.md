@@ -104,3 +104,29 @@ WHY on by default with `--no-kado` escape (not opt-in): an opt-in flag would
 have to be threaded through the `suggest-handling` SKILL.md invocation — a
 second touch point that drifts. On-by-default keeps the surfacing automatic in
 real Pass-1 runs; `--no-kado` keeps tests and offline runs deterministic.
+
+## Persist Pass-1 placement anchor into suggestions-doc (spec 022/023)
+
+WHY `persist_candidate_anchors` writes `candidate_mocs: [{path, anchor}]` onto
+each create_atomic_note action: the rendered `**Placement:**` line is for the
+human, but Pass-2 (suggestion-parser) needs the STRUCTURED anchor as the
+apply-time default — the line cannot always round-trip (last-resort tier carries
+no anchor; `alt_headings` and exact `new_section` spacing are line-lossy). The
+schema field was added FIRST (`additionalProperties:false` would otherwise strip
+it silently — the exact spec-schema-consumer drift class that caused the original
+bug). The persisted shape is slim (`path` + the item-result `anchor` object only)
+— score/pre_check stay out; the checkbox state is re-read from the markdown at
+Pass-2 because the user may tick/untick.
+
+WHY persistence is check-state-agnostic: every candidate with a structured
+anchor is written, not just pre-checked ones. The reducer cannot know the final
+checkbox state (the user edits the markdown between Pass-1 and Pass-2); the
+parser is the authority that binds anchors only to MOCs that are still `[x]` at
+apply time. Persisting all anchors keeps the default available if the user ticks
+a previously-unchecked MOC.
+
+## Version 1.11.0
+
+WHY: Bumped for the spec 022/023 anchor persistence
+(`persist_candidate_anchors`, `candidate_mocs` on rendered create_atomic_note
+actions). `update-tomo.sh` skips unchanged versions silently.

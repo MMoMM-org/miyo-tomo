@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.0
+# version: 0.11.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -53,6 +53,69 @@ RE_SOURCE = re.compile(r"`([^`]+)`|(\S+\.md)")
 # Type field: word_word (confidence: 0.85)  or  word_word (confidence 85%)
 RE_TYPE = re.compile(r"([a-z_]+)\s*\(confidence[:\s]*([\d.]+%?)\)")
 
+# ── Placement line reverse-parsers (spec 022/023) ──────────────────────────
+# Mirror suggestions-reducer.py _placement_line (the SOURCE OF TRUTH for the
+# rendered format). Each reverse-parser recovers the structured anchor the
+# reducer rendered so a hand-edited Placement line overrides the doc-JSON
+# default; an unedited line round-trips to the same anchor.
+#   under `## <H>` [(confidence: N%)]            → heading/after
+#   new section `## <X>` (before the footer)     → callout/before + new_section
+#   new section `## <X>` (at the end of the MOC) → line/after + new_section
+#   inside the `> [!name]` callout               → callout (value)
+#   inside the `<ref>` callout                   → callout (value)
+RE_PLACEMENT_HEADING = re.compile(
+    r"\*\*Placement:\*\*\s*under\s+`##\s*([^`]+?)`", re.IGNORECASE
+)
+RE_PLACEMENT_NEW_SECTION = re.compile(
+    r"\*\*Placement:\*\*\s*new section\s+`##\s*([^`]+?)`\s*\((before the footer|at the end of the MOC)\)",
+    re.IGNORECASE,
+)
+RE_PLACEMENT_CALLOUT = re.compile(
+    r"\*\*Placement:\*\*\s*inside the\s+`([^`]+?)`\s+callout", re.IGNORECASE
+)
+
+
+def parse_placement_line(line: str) -> dict | None:
+    """Reverse-parse a rendered ``**Placement:**`` line into a structured anchor.
+
+    Returns ``None`` for the last-resort "under the note title" tier or any
+    unrecognised line, signalling the caller to fall back to the structured
+    doc-JSON default anchor (spec 022/023 BOTH design).
+    """
+    if not line:
+        return None
+    m = RE_PLACEMENT_NEW_SECTION.search(line)
+    if m:
+        section = m.group(1).strip()
+        if m.group(2).lower().startswith("before the footer"):
+            return {
+                "type": "callout",
+                "value": None,
+                "placement": "before",
+                "new_section": section,
+            }
+        return {
+            "type": "line",
+            "value": None,
+            "placement": "after",
+            "new_section": section,
+        }
+    m = RE_PLACEMENT_HEADING.search(line)
+    if m:
+        return {
+            "type": "heading",
+            "value": m.group(1).strip(),
+            "placement": "after",
+        }
+    m = RE_PLACEMENT_CALLOUT.search(line)
+    if m:
+        return {
+            "type": "callout",
+            "value": m.group(1).strip(),
+            "placement": "inside",
+        }
+    return None
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -72,6 +135,39 @@ def _extract_wikilink(text: str) -> str | None:
     """Return the first wikilink target found, or None."""
     m = RE_WIKILINK.search(text)
     return m.group(1).strip() if m else None
+
+
+def _moc_path_stem(ref: str | None) -> str:
+    """Bare lowercase stem of a MOC path/wikilink target for matching.
+
+    `Atlas/200 Maps/Concepts (MOC).md` → `concepts (moc)`
+    `Atlas/200 Maps/Concepts (MOC)`    → `concepts (moc)`
+    """
+    if not ref:
+        return ""
+    bare = ref.rsplit("/", 1)[-1]
+    if bare.endswith(".md"):
+        bare = bare[:-3]
+    return bare.strip().lower()
+
+
+def _bind_candidate_anchor(
+    result: dict,
+    moc_ref: str,
+    override: dict | None,
+    doc_anchors: dict[str, dict],
+) -> None:
+    """Append a {path, anchor} entry for a checked MOC (spec 022/023 BOTH design).
+
+    Anchor precedence: the reverse-parsed **Placement:** line (``override``)
+    when it parsed to a recognised anchor, else the structured doc-JSON default
+    keyed by MOC stem. When neither is available, no candidate is recorded —
+    instruction-render falls back to its own resolution.
+    """
+    anchor = override or doc_anchors.get(_moc_path_stem(moc_ref))
+    if anchor is None:
+        return
+    result["candidate_mocs"].append({"path": moc_ref, "anchor": anchor})
 
 
 def _parse_tags(value: str) -> list[str]:
@@ -134,7 +230,59 @@ def _normalise_action(text: str) -> str:
 # Section parser
 # ──────────────────────────────────────────────────────────────────────────────
 
-def parse_section(section_id: str, lines: list[str]) -> dict | None:
+def load_doc_anchor_map(doc_path: str) -> dict[str, dict[str, dict]]:
+    """Build ``{section_id → {moc_stem → anchor}}`` from a suggestions-doc JSON.
+
+    The reducer persists ``candidate_mocs: [{path, anchor}]`` on each
+    create_atomic_note action (spec 022/023). This map is the structured
+    apply-time DEFAULT anchor, indexed by section id (S##) and MOC stem so
+    parse_section can look up the anchor for each checked MOC. Returns an empty
+    map when the doc is absent or unreadable (backward-compatible — Pass-2 then
+    relies on the rendered **Placement:** line alone).
+    """
+    try:
+        with open(doc_path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    out: dict[str, dict[str, dict]] = {}
+    for section in doc.get("sections") or []:
+        sec_id = section.get("id")
+        if not sec_id:
+            continue
+        per_moc: dict[str, dict] = {}
+        for action in section.get("actions") or []:
+            for cand in action.get("candidate_mocs") or []:
+                anchor = cand.get("anchor")
+                path = cand.get("path")
+                if anchor and path:
+                    per_moc[_moc_path_stem(path)] = anchor
+        if per_moc:
+            out[sec_id] = per_moc
+    return out
+
+
+def _default_doc_path(markdown_path: str) -> str:
+    """Derive the sibling suggestions-doc JSON path for a markdown doc.
+
+    The pipeline always writes the structured doc to
+    ``tomo-tmp/suggestions-doc.json`` (relative to the instance cwd). Prefer a
+    sibling file next to the markdown; fall back to the canonical tomo-tmp path.
+    """
+    if markdown_path:
+        sibling = os.path.join(
+            os.path.dirname(markdown_path), "suggestions-doc.json"
+        )
+        if os.path.isfile(sibling):
+            return sibling
+    return os.path.join("tomo-tmp", "suggestions-doc.json")
+
+
+def parse_section(
+    section_id: str,
+    lines: list[str],
+    doc_anchors: dict[str, dict] | None = None,
+) -> dict | None:
     """
     Parse one section and return a structured dict, or None on fatal error.
 
@@ -180,20 +328,37 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
         "tags": [],
         "parent_moc": None,
         "parent_mocs": [],  # all checked MOCs from Link to MOC checkboxes
+        # spec 022/023: [{path, anchor}] for each CHECKED MOC. The anchor is the
+        # apply-time placement: the reverse-parsed **Placement:** line (override)
+        # when recognised, else the structured doc-JSON default (doc_anchors).
+        "candidate_mocs": [],
         "destination": None,
         "template": None,
         "summary": None,
         "classification": None,
     }
+    doc_anchors = doc_anchors or {}
 
     # State: when we see "Link to MOC:" header, subsequent checkboxes are
     # MOC selections (not approve/skip). Reset when we hit a Decision header
     # or another field.
     in_moc_list = False
+    # The MOC checkbox most recently seen while in_moc_list — its following
+    # **Placement:** line (if any) binds to it for anchor override.
+    pending_moc: str | None = None
 
     for line in lines:
         stripped = line.strip()
         if not stripped:
+            continue
+
+        # ── Placement line (spec 022/023) — binds to the most recent checked
+        # MOC. Handled before generic field parsing so it does NOT reset the
+        # MOC-list state (multiple MOC checkboxes can each carry a Placement).
+        if in_moc_list and pending_moc and stripped.startswith("**Placement:**"):
+            override = parse_placement_line(stripped)
+            _bind_candidate_anchor(result, pending_moc, override, doc_anchors)
+            pending_moc = None
             continue
 
         # ── Checkbox lines ────────────────────────────────────────
@@ -205,8 +370,14 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
             # MOC selection checkboxes (under "Link to MOC:" header)
             if in_moc_list:
                 wl = _extract_wikilink(text)
+                # Flush any prior checked MOC that had no Placement line — it
+                # falls back to its structured doc-JSON default.
+                if pending_moc:
+                    _bind_candidate_anchor(result, pending_moc, None, doc_anchors)
+                    pending_moc = None
                 if wl and cb_checked:
                     result["parent_mocs"].append(wl)
+                    pending_moc = wl
                 continue
 
             # Decision checkboxes (approve/skip/delete/keep-origin)
@@ -239,7 +410,18 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
         key = m.group(1).strip().rstrip(":").strip().lower()
         val = m.group(2).strip()
 
-        # Any new field header ends the MOC checkbox region
+        # `**Placement:**` and `**Other sections in this MOC:**` are part of a
+        # MOC block — they must NOT close the checkbox region (otherwise the
+        # next `- [x] [[MOC]]` checkbox is misread as a Decision box). Skip them
+        # here; Placement is handled above, Other-sections is display-only.
+        if key in ("placement", "other sections in this moc"):
+            continue
+
+        # Any new field header ends the MOC checkbox region. Flush a still-
+        # pending checked MOC to its structured doc-JSON default anchor.
+        if pending_moc:
+            _bind_candidate_anchor(result, pending_moc, None, doc_anchors)
+            pending_moc = None
         in_moc_list = False
 
         if key == "source":
@@ -290,6 +472,11 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
 
         elif key == "classification":
             result["classification"] = val
+
+    # Flush a checked MOC still pending at end-of-section (no Placement line,
+    # no trailing field) to its structured doc-JSON default anchor.
+    if pending_moc:
+        _bind_candidate_anchor(result, pending_moc, None, doc_anchors)
 
     # ── MOC consolidation ──────────────────────────────────────
     # If parent_moc was not set directly but parent_mocs has checked items,
@@ -1154,6 +1341,16 @@ def main() -> int:
             "primary doc's FAN log_entries by stem (XDD 012)."
         ),
     )
+    parser.add_argument(
+        "--suggestions-doc",
+        metavar="PATH",
+        help=(
+            "Optional structured suggestions-doc JSON (reducer output). Supplies "
+            "the Pass-1 placement anchor as the apply-time default per checked "
+            "MOC (spec 022/023). Defaults to the sibling suggestions-doc.json or "
+            "tomo-tmp/suggestions-doc.json; absent → Placement-line parsing only."
+        ),
+    )
     args = parser.parse_args()
 
     # ── Read input ────────────────────────────────────────────────
@@ -1204,6 +1401,14 @@ def main() -> int:
     parsed_sections: list[dict] = []
     sections_by_stem: dict[str, list[dict]] = {}
 
+    # spec 022/023: load the structured Pass-1 anchor map (section id → moc
+    # stem → anchor) from the sibling suggestions-doc JSON. Supplies the
+    # apply-time DEFAULT anchor per checked MOC; the rendered **Placement:**
+    # line overrides it when hand-edited. Absent doc → empty map (back-compat).
+    doc_anchor_map = load_doc_anchor_map(
+        args.suggestions_doc or _default_doc_path(filename)
+    )
+
     # F-41: split each rendered section into per-atomic-block groups on
     # **Source:** boundaries. Sections with ≤1 Source line yield one group
     # whose id == section_id, keeping single-block output byte-identical.
@@ -1211,7 +1416,10 @@ def main() -> int:
         split_section_into_blocks(sid, lns) for sid, lns in raw_sections
     ):
         try:
-            item = parse_section(section_id, lines)
+            # Per-block ids carry a "#N" suffix (F-41); the anchor map is keyed
+            # by the base section id.
+            base_id = section_id.split("#", 1)[0]
+            item = parse_section(section_id, lines, doc_anchor_map.get(base_id))
         except Exception as exc:  # noqa: BLE001
             print(
                 f"warning: skipping {section_id} — parse error: {exc}",
@@ -1246,6 +1454,7 @@ def main() -> int:
                 "tags": item["tags"],
                 "parent_moc": item["parent_moc"],
                 "parent_mocs": item["parent_mocs"],
+                "candidate_mocs": item.get("candidate_mocs", []),
                 "destination": item["destination"],
                 "template": item["template"],
                 "summary": item["summary"],
@@ -1381,6 +1590,7 @@ def main() -> int:
             "tags": sec["tags"],
             "parent_moc": sec["parent_moc"],
             "parent_mocs": sec["parent_mocs"],
+            "candidate_mocs": sec.get("candidate_mocs", []),
             "destination": sec["destination"],
             "template": sec["template"],
             "summary": sec["summary"],

@@ -40,6 +40,31 @@
                   "type": "string",
                   "pattern": "^S[0-9]{2,}$",
                   "description": "Flat global per-atomic suggestion number (F-41 T1). Present only on create_atomic_note actions."
+                },
+                "candidate_mocs": {
+                  "type": "array",
+                  "description": "Structured Pass-1 placement anchors per candidate MOC (spec 022/023). Threaded to Pass-2 so suggestion-parser.py can use the LLM-resolved anchor as the apply-time default. Present only on create_atomic_note actions that carry MOC candidates.",
+                  "items": {
+                    "type": "object",
+                    "required": ["path", "anchor"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "path": {"type": "string", "description": "Vault-relative MOC path."},
+                      "anchor": {
+                        "type": "object",
+                        "description": "Resolved Pass-1 placement anchor (spec 022/023 item-result anchor shape).",
+                        "additionalProperties": false,
+                        "properties": {
+                          "type": {"type": "string", "enum": ["heading", "callout", "line"]},
+                          "value": {"type": ["string", "null"]},
+                          "placement": {"type": "string", "enum": ["before", "after", "inside"]},
+                          "new_section": {"type": ["string", "null"]},
+                          "alt_headings": {"type": "array", "items": {"type": "string"}},
+                          "fit_confidence": {"type": ["number", "null"]}
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }

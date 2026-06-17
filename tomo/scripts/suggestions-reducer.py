@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.10.8
+# version: 1.11.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -184,6 +184,26 @@ def moc_link_line(moc: dict) -> str:
             "    ← edit the Placement above to retarget"
         )
     return "\n".join(parts)
+
+
+def persist_candidate_anchors(action: dict) -> list[dict]:
+    """Return slim ``[{path, anchor}]`` for each candidate MOC carrying an anchor.
+
+    Threads the Pass-1 LLM-resolved placement anchor (spec 022/023) into the
+    suggestions-doc JSON so suggestion-parser.py can use it as the apply-time
+    default. Every candidate with a structured anchor is persisted regardless of
+    checkbox state — the anchor is the load-bearing field; which MOCs are
+    actually checked is re-read from the markdown at Pass-2 (a user may
+    tick/untick), where the anchor is bound only to checked MOCs.
+    """
+    out: list[dict] = []
+    for moc in action.get("candidate_mocs") or []:
+        anchor = moc.get("anchor")
+        path = moc.get("path")
+        if not anchor or not path:
+            continue
+        out.append({"path": path, "anchor": anchor})
+    return out
 
 
 def _template_link(template: str) -> str:
@@ -1248,6 +1268,13 @@ def main() -> int:
                     suggestion_counter += 1
                     suggestion_id_flat = f"S{suggestion_counter:02d}"
                     rendered_action["suggestion_id"] = suggestion_id_flat
+                    # spec 022/023: persist the structured Pass-1 placement
+                    # anchor per candidate MOC so Pass-2 (suggestion-parser)
+                    # can use the LLM-resolved anchor as the apply-time default
+                    # instead of falling back to the old _pick_anchor heuristic.
+                    cand_anchors = persist_candidate_anchors(action)
+                    if cand_anchors:
+                        rendered_action["candidate_mocs"] = cand_anchors
                 rendered_actions.append(rendered_action)
 
             # Collect Proposed-MOC candidates from atomic-note actions; the

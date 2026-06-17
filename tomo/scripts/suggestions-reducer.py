@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.11.0
+# version: 1.11.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -140,7 +140,8 @@ def _placement_line(anchor: dict) -> str:
             if "]" not in rest:
                 return _LINE_TIER
             name = rest.split("]")[0]
-            callout_ref = f"> [!{name}]"
+            title = rest[len(name) + 1:]  # everything after "]", e.g. " Key Concepts"
+            callout_ref = f"> [!{name}]{title}"
         else:
             callout_ref = value
         return (

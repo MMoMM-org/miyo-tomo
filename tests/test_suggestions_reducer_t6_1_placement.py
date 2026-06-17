@@ -96,7 +96,7 @@ class TestMocLinkLinePlacementFormats:
         assert placement == "**Placement:** new section `## Agile Methods` (before the footer)    ← rename or change"
 
     def test_callout_no_new_section_emits_inside_callout(self):
-        """type:callout, new_section null → 'inside the `> [!<name>]` callout'"""
+        """type:callout, new_section null → 'inside the `> [!<name>] <title>` callout' (GH #65)"""
         moc = make_moc("Atlas/200 Maps/Tools MOC.md", anchor={
             "type": "callout",
             "value": "[!blocks] Key Concepts",
@@ -106,7 +106,7 @@ class TestMocLinkLinePlacementFormats:
         lines = moc_link_line(moc).split("\n")
         placement = next((l for l in lines if l.startswith("**Placement:**")), None)
         assert placement is not None, "Expected a **Placement:** line"
-        assert placement == "**Placement:** inside the `> [!blocks]` callout    ← change to a `## Heading` to place under a section"
+        assert placement == "**Placement:** inside the `> [!blocks] Key Concepts` callout    ← change to a `## Heading` to place under a section"
 
     def test_line_anchor_emits_under_note_title(self):
         """type:line → 'under the note title (no matching section or callout found)'"""
@@ -592,3 +592,41 @@ class TestPlacementLineSpec023T41:
             assert "(confidence:" not in result, (
                 f"fit_confidence={bool_val!r} must not produce a confidence suffix"
             )
+
+
+# ── GH #65: callout title preserved in tier-3 placement ─────────────────────
+
+class TestPlacementLineCalloutTitle:
+    """GH #65 — tier-3 callout placement must include the human title.
+
+    The anchor value carries the full callout line, e.g. '[!blocks] Key Concepts'.
+    _placement_line must render '> [!blocks] Key Concepts' (not bare '> [!blocks]').
+    """
+
+    def test_callout_with_title_renders_full_callout_ref(self):
+        """value '[!blocks] Key Concepts' → '> [!blocks] Key Concepts' in placement."""
+        anchor = {
+            "type": "callout",
+            "value": "[!blocks] Key Concepts",
+            "placement": "inside",
+            "new_section": None,
+        }
+        result = _placement_line(anchor)
+        assert result == (
+            "**Placement:** inside the `> [!blocks] Key Concepts` callout"
+            "    ← change to a `## Heading` to place under a section"
+        )
+
+    def test_callout_without_title_renders_bare_callout_ref(self):
+        """value '[!blocks]' (no title) → '> [!blocks]' — bare form preserved."""
+        anchor = {
+            "type": "callout",
+            "value": "[!blocks]",
+            "placement": "inside",
+            "new_section": None,
+        }
+        result = _placement_line(anchor)
+        assert result == (
+            "**Placement:** inside the `> [!blocks]` callout"
+            "    ← change to a `## Heading` to place under a section"
+        )

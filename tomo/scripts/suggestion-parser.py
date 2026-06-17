@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.11.0
+# version: 0.12.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -693,7 +693,47 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
             "supporting_items": items_str,
         })
 
-    return mocs
+    return _merge_proposed_mocs_by_name(mocs)
+
+
+def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
+    """Collapse approved Proposed MOCs that resolve to the same final Name into a
+    single create_moc whose supporting_items and tags are the UNION of the group
+    (#67). Decision 2026-06-17: merge on Name only — same-name proposals collapse
+    regardless of parent; the first occurrence's parent is kept. Without this, two
+    proposals renamed to one Name emit two create_moc at the same destination and
+    the second overwrites the first on apply, silently dropping children.
+    """
+    merged: dict[str, dict] = {}
+    order: list[str] = []
+    for moc in mocs:
+        name = moc.get("title", "")
+        head = merged.get(name)
+        if head is None:
+            merged[name] = moc
+            order.append(name)
+            continue
+        head["supporting_items"] = _union_supporting_items(
+            head.get("supporting_items"), moc.get("supporting_items")
+        )
+        for tag in moc.get("tags") or []:
+            if tag not in head["tags"]:
+                head["tags"].append(tag)
+    return [merged[name] for name in order]
+
+
+def _union_supporting_items(a: str | None, b: str | None) -> str:
+    """Union two comma-separated supporting-item strings, preserving first-seen
+    order and de-duplicating. Empty inputs are skipped."""
+    out: list[str] = []
+    for raw in (a, b):
+        if not raw:
+            continue
+        for tok in raw.split(","):
+            tok = tok.strip()
+            if tok and tok not in out:
+                out.append(tok)
+    return ", ".join(out)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

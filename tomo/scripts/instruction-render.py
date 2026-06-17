@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.10
+# version: 0.25.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -41,6 +41,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.doc_frontmatter import build_tomo_block  # noqa: E402
 from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E402
+from lib.obsidian_filename import sanitize_stem  # noqa: E402
 import lib.moc_structure as moc_structure  # noqa: E402
 
 
@@ -647,13 +648,30 @@ def _disambiguate_filename(base_filename: str, used_filenames: set[str]) -> str:
 
 
 def _dest_join(folder: str, title: str) -> str:
-    """Join destination folder + sanitised title as filename (with .md)."""
+    """Join destination folder + Obsidian-safe title as filename (with .md)."""
     if not folder:
         folder = ""
     folder = folder.rstrip("/") + "/"
-    # Obsidian allows Umlauts, em-dash etc. — no slug; just add .md.
-    filename = title if title.endswith(".md") else f"{title}.md"
-    return f"{folder}{filename}"
+    # Obsidian allows Umlauts, em-dash etc. — no slug. Forbidden chars
+    # (\ / : * ? " < > |) in the title would crash Hashi's rename/create, so
+    # the filename stem is sanitised; the note's displayed title (frontmatter/H1)
+    # keeps the original. Link targets are sanitised the same way (_wikilink).
+    stem = title[:-3] if title.endswith(".md") else title
+    return f"{folder}{sanitize_stem(stem)}.md"
+
+
+def _wikilink(title: str) -> str:
+    """Render an Obsidian wikilink whose target resolves to the safe filename.
+
+    When the title contains Obsidian-forbidden chars the file is stored under
+    a sanitised stem (see _dest_join), so the link must target that stem or it
+    dangles. An alias preserves the original title as display text:
+    ``[[safe-stem|Original: Title]]``. Titles already safe render as ``[[Title]]``.
+    """
+    stem = sanitize_stem(title)
+    if stem != title:
+        return f"[[{stem}|{title}]]"
+    return f"[[{title}]]"
 
 
 def _build_create_moc_actions(
@@ -665,23 +683,38 @@ def _build_create_moc_actions(
     link_to_moc so IDs for new MOCs precede anything that links into them.
     """
     out: list[dict] = []
+    by_dest: dict[str, dict] = {}
     for m in manifest:
         if m.get("action") != "create_moc":
             continue
         title = m.get("title", "")
         rendered = m.get("rendered_file", "")
-        out.append({
+        destination = _dest_join(m.get("destination", ""), title)
+        # Defense-in-depth (#67): two approved proposals resolving to the same
+        # destination would emit two create_moc; the second overwrites the first
+        # on apply, dropping the first's children. The parser merges by Name
+        # upstream; this guard ensures a duplicate can never reach Hashi even if
+        # upstream misses it — union supporting_items into the survivor.
+        existing = by_dest.get(destination)
+        if existing is not None:
+            existing["supporting_items"] = _union_supporting_items(
+                existing.get("supporting_items"), m.get("supporting_items")
+            ) or None
+            continue
+        action = {
             "id": _next_id(counter),
             "action": "create_moc",
             "source": _inbox_join(inbox_path, rendered) if rendered else "",
-            "destination": _dest_join(m.get("destination", ""), title),
+            "destination": destination,
             "title": title,
             "rendered_file": rendered,
             "parent_moc": _moc_stem(m.get("parent_moc")) or None,
             "template": m.get("template") or None,
             "tags": m.get("tags", []) or [],
             "supporting_items": m.get("supporting_items") or None,
-        })
+        }
+        by_dest[destination] = action
+        out.append(action)
     return out
 
 
@@ -739,6 +772,23 @@ def _parse_supporting_items(raw: str | list | None) -> list[str]:
         if tok:
             out.append(tok)
     return out
+
+
+def _union_supporting_items(a, b):
+    """Union two supporting_items values (string of SNN IDs or list of stems),
+    preserving first-seen order and de-duplicating (#67 defense-in-depth).
+
+    Returns a list when either input is a list, else a comma-joined string —
+    matching the shape both flows emit (suggestion = string, moc-proposal = list).
+    """
+    items: list[str] = []
+    for raw in (a, b):
+        for tok in _parse_supporting_items(raw):
+            if tok not in items:
+                items.append(tok)
+    if isinstance(a, list) or isinstance(b, list):
+        return items
+    return ", ".join(items)
 
 
 def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:
@@ -804,8 +854,16 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
             "placement": (anchor or {}).get("placement", "after"),
             # new_section lifted to top-level per instructions schema (T5.2/ADR-3).
             "new_section": (anchor or {}).get("new_section"),
-            "line_to_add": f"- [[{source_title}]]",
-            "source_note_title": source_title,
+            # fit_confidence lifted to top-level (parallel to new_section) so
+            # _emit_resolution_telemetry can observe the per-placement score
+            # (#64). Both are Tomo-internal and stripped before the wire — the
+            # anchor itself stays {type, value} (anchor no-leak contract).
+            "fit_confidence": (anchor or {}).get("fit_confidence"),
+            # Wikilink target resolves to the (possibly sanitised) filename;
+            # source_note_title carries the safe stem so every reference to a
+            # forbidden-char note round-trips to the renamed file (#69).
+            "line_to_add": f"- {_wikilink(source_title)}",
+            "source_note_title": sanitize_stem(source_title),
         })
 
     # Pass 1 — parent_mocs up-links from every confirmed item.
@@ -1729,6 +1787,10 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
         "rejected_to_tier2": 0,
     }
     moc_paths: list[str] = []
+    # Individual placement confidence values (#64) — numbers only, never the
+    # heading text (Constitution L2). Lets a multi-item run reconstruct the
+    # fit_confidence distribution for tuning the 0.6 threshold (ADR-4).
+    fit_values: list[float] = []
 
     for a in actions:
         if a.get("action") != "link_to_moc":
@@ -1739,6 +1801,12 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
         anchor = a.get("anchor") or {}
         anchor_type = anchor.get("type")
         anchor_value = anchor.get("value")
+        # fit_confidence is lifted to the top-level action field by _emit (it is
+        # stripped before the wire alongside new_section). Read it here so the
+        # per-placement score is observable in the real pipeline, not only in
+        # unit tests. Exclude bool explicitly: True/False are int subclasses.
+        fit_conf = a.get("fit_confidence")
+        has_fit = isinstance(fit_conf, (int, float)) and not isinstance(fit_conf, bool)
 
         if a.get("new_section"):
             counts["new_section"] += 1
@@ -1750,13 +1818,10 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
             counts["unresolved"] += 1
         elif anchor_type == "heading":
             counts["heading"] += 1
-            # tier1_confident: a heading anchor whose fit_confidence is a number
-            # (numbers only — never the heading text itself, Constitution L2).
-            # Exclude bool explicitly: True/False are int subclasses in Python
-            # but must not count as a confidence value.
-            fit_conf = anchor.get("fit_confidence")
-            if isinstance(fit_conf, (int, float)) and not isinstance(fit_conf, bool):
+            # tier1_confident: a heading anchor whose fit_confidence is a number.
+            if has_fit:
                 counts["tier1_confident"] += 1
+                fit_values.append(round(float(fit_conf), 2))
         elif anchor_type == "callout":
             counts["callout"] += 1
         elif anchor_type == "line":
@@ -1776,9 +1841,72 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
         f"tier1_confident={counts['tier1_confident']} "
         f"rejected_to_tier2={counts['rejected_to_tier2']} "
         f"mocs={moc_count}"
+        + (f" fit_confidence=[{', '.join(f'{v:.2f}' for v in fit_values)}]" if fit_values else "")
         + (f" paths=[{moc_list}]" if moc_paths else ""),
         file=sys.stderr,
     )
+
+
+def _merge_new_section_links(actions: list[dict]) -> int:
+    """Merge link_to_moc actions targeting the same (target_moc, new_section)
+    into ONE action, so two notes assigned the same new section produce a single
+    heading with multiple bullets instead of duplicate `## <section>` headings (#70).
+
+    Must run BEFORE _serialize_new_sections: at this point each action's
+    line_to_add is still the bare "- [[Note]]" bullet, so merging is a simple
+    newline-join of bullets. The first action of each group is kept and
+    accumulates every member's bullet (emission order preserved); the rest are
+    removed in place. Only groups with a truthy new_section are merged —
+    anchor-based inserts (no new_section) are left untouched. A merged section
+    spans multiple source notes, so source_note_title is cleared on the survivor.
+
+    Returns the count of actions removed.
+    """
+    heads: dict[tuple[str, str], dict] = {}
+    drop: set[int] = set()
+    for idx, a in enumerate(actions):
+        if a.get("action") != "link_to_moc":
+            continue
+        new_section = a.get("new_section")
+        if not new_section:
+            continue
+        key = (a.get("target_moc") or "", new_section)
+        head = heads.get(key)
+        if head is None:
+            heads[key] = a
+            continue
+        bullet = a.get("line_to_add", "")
+        head_line = head.get("line_to_add", "")
+        if bullet and bullet not in head_line.split("\n"):
+            head["line_to_add"] = f"{head_line}\n{bullet}" if head_line else bullet
+        head["source_note_title"] = None
+        drop.add(idx)
+    if drop:
+        actions[:] = [a for i, a in enumerate(actions) if i not in drop]
+    return len(drop)
+
+
+def _strip_internal_link_fields(actions: list[dict]) -> int:
+    """Remove Tomo-internal fields from link_to_moc actions before the wire (#68/#64).
+
+    new_section is baked into line_to_add by _serialize_new_sections and
+    fit_confidence is consumed by telemetry; both are Tomo-internal and absent
+    from Hashi's link_to_moc schema (additionalProperties:false). Leaving them on
+    makes Hashi reject every MOC link (the un-discriminated oneOf falls through to
+    move_note and reports a misleading "must have required property source").
+    MUST run AFTER _serialize_new_sections and _emit_resolution_telemetry.
+
+    Returns the count of fields removed.
+    """
+    stripped = 0
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        for field in ("new_section", "fit_confidence"):
+            if field in a:
+                del a[field]
+                stripped += 1
+    return stripped
 
 
 def _serialize_new_sections(actions: list[dict]) -> int:
@@ -2160,6 +2288,15 @@ def main() -> int:
         print(f"  [resolve] anchor.value populated for {resolved_sections} link_to_moc action(s)",
               file=sys.stderr)
 
+    # ── Merge same-section links (#70) ───────────────────────────────────
+    # Collapse link_to_moc actions sharing (target_moc, new_section) into one
+    # bullet list BEFORE serialization, so two notes in the same new section
+    # yield one heading, not duplicate `## <section>` headings.
+    merged_sections = _merge_new_section_links(actions)
+    if merged_sections:
+        print(f"  [render] {merged_sections} duplicate new-section link(s) merged",
+              file=sys.stderr)
+
     # ── Serialize new-section headings (T5.2 / ADR-3) ────────────────────
     # Build line_to_add from anchor.new_section for ALL link_to_moc actions
     # (both honored Pass-1 anchors and heuristic-resolved ones). Runs here so
@@ -2173,6 +2310,12 @@ def main() -> int:
     # Emits ONE tagged stderr line with per-tier counts and MOC paths.
     # Privacy (Constitution L2): no heading text or note content — metadata only.
     _emit_resolution_telemetry(actions)
+
+    # ── Strip Tomo-internal link_to_moc fields before the wire (#68/#64) ──
+    stripped_internal = _strip_internal_link_fields(actions)
+    if stripped_internal:
+        print(f"  [render] {stripped_internal} internal link_to_moc field(s) stripped before wire",
+              file=sys.stderr)
 
     # ── Drop daily-note actions whose target daily note doesn't exist ────
     # Hashi modifies, never creates, a daily note (#37/I38). Skip unappliable

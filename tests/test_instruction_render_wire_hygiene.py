@@ -1,0 +1,280 @@
+"""test_instruction_render_wire_hygiene.py — apply-blocker fixes (#68/#69/#70/#64).
+
+Covers the producer-side hygiene that makes a Tomo instruction set appliable by
+Hashi without hand-patching:
+
+  #68 — new_section is stripped from link_to_moc before the wire (Hashi's
+        link_to_moc schema is additionalProperties:false and rejects it).
+  #64 — fit_confidence is lifted to a top-level action field (for telemetry) and
+        likewise stripped before the wire.
+  #69 — forbidden filename chars (\\ / : * ? " < > |) in a suggested title are
+        sanitised in the destination basename AND in every wikilink that targets
+        the renamed note (alias preserves the original title for display).
+  #70 — two notes assigned the same (target_moc, new_section) merge into ONE
+        heading with multiple bullets instead of duplicate `## <section>` blocks.
+
+Plus a cross-repo parity guard: Tomo's link_to_moc/move_note allowed-properties
+must match Hashi's schema (MiYo Constitution L2 — coordinated public interface).
+"""
+from __future__ import annotations
+
+import importlib.util
+import io
+import json
+import sys
+from contextlib import redirect_stderr
+from pathlib import Path
+
+import pytest
+
+_DEPS = "/tmp/claude/py_deps"
+if Path(_DEPS).is_dir() and _DEPS not in sys.path:
+    sys.path.insert(0, _DEPS)
+
+from jsonschema import validate  # noqa: E402
+
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "tomo" / "scripts"
+sys.path.insert(0, str(_SCRIPTS_DIR))
+_ir_spec = importlib.util.spec_from_file_location(
+    "instruction_render", _SCRIPTS_DIR / "instruction-render.py"
+)
+_ir = importlib.util.module_from_spec(_ir_spec)
+assert _ir_spec.loader is not None
+sys.modules["instruction_render"] = _ir
+_ir_spec.loader.exec_module(_ir)
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
+HASHI_SCHEMA = Path("/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json")
+
+
+@pytest.fixture(scope="module")
+def instructions_schema() -> dict:
+    return json.loads((SCHEMAS_DIR / "instructions.schema.json").read_text(encoding="utf-8"))
+
+
+def _link_action(**over) -> dict:
+    base = {
+        "id": "I01",
+        "action": "link_to_moc",
+        "target_moc": "Japan (MOC)",
+        "target_moc_path": "Atlas/200 Maps/Japan (MOC).md",
+        "anchor": {"type": "callout", "value": "[!blocks] Key Concepts"},
+        "placement": "after",
+        "line_to_add": "- [[Note]]",
+        "source_note_title": "Note",
+        "new_section": None,
+        "fit_confidence": None,
+        "applied": False,
+    }
+    base.update(over)
+    return base
+
+
+# ── #68 — new_section / fit_confidence no-leak ──────────────────────────────
+
+
+class TestInternalFieldStrip:
+    def test_strip_removes_new_section_and_fit_confidence(self):
+        actions = [_link_action(new_section="Hokkaido", fit_confidence=0.82)]
+        removed = _ir._strip_internal_link_fields(actions)
+        assert removed == 2
+        assert "new_section" not in actions[0]
+        assert "fit_confidence" not in actions[0]
+
+    def test_strip_is_idempotent(self):
+        actions = [_link_action(new_section="X", fit_confidence=0.5)]
+        _ir._strip_internal_link_fields(actions)
+        assert _ir._strip_internal_link_fields(actions) == 0
+
+    def test_strip_ignores_non_link_actions(self):
+        actions = [{"action": "move_note", "new_section": "leftover"}]
+        assert _ir._strip_internal_link_fields(actions) == 0
+        assert actions[0]["new_section"] == "leftover"
+
+    def test_serialize_then_strip_bakes_heading_and_drops_field(self):
+        actions = [_link_action(new_section="Hokkaido", line_to_add="- [[Furano]]")]
+        _ir._serialize_new_sections(actions)
+        _ir._strip_internal_link_fields(actions)
+        assert actions[0]["line_to_add"] == "## Hokkaido\n\n- [[Furano]]\n"
+        assert "new_section" not in actions[0]
+
+    def test_stripped_link_validates_against_tomo_schema(self, instructions_schema):
+        action = _link_action(new_section="Hokkaido", fit_confidence=0.9,
+                              line_to_add="- [[Furano]]")
+        _ir._serialize_new_sections([action])
+        _ir._strip_internal_link_fields([action])
+        doc = {
+            "schema_version": "1",
+            "type": "tomo-instructions",
+            "generated": "2026-06-17T00:00:00Z",
+            "profile": "miyo",
+            "actions": [action],
+        }
+        validate(instance=doc, schema=instructions_schema)  # must not raise
+
+    def test_unstripped_new_section_would_fail_tomo_schema(self, instructions_schema):
+        """Regression guard: new_section on the wire is now schema-invalid
+        (mirrors Hashi's additionalProperties:false rejection)."""
+        from jsonschema import ValidationError
+        action = _link_action(new_section="Hokkaido")
+        del action["fit_confidence"]
+        doc = {
+            "schema_version": "1", "type": "instructions",
+            "generated": "2026-06-17T00:00:00Z", "profile": "miyo",
+            "actions": [action],
+        }
+        with pytest.raises(ValidationError):
+            validate(instance=doc, schema=instructions_schema)
+
+
+# ── Cross-repo parity (Constitution L2) ─────────────────────────────────────
+
+
+def _props(schema: dict, defname: str) -> set:
+    return set(schema["$defs"][defname]["properties"].keys())
+
+
+@pytest.mark.skipif(not HASHI_SCHEMA.exists(), reason="Hashi schema not present")
+class TestHashiSchemaParity:
+    def test_link_to_moc_props_match_hashi(self, instructions_schema):
+        hashi = json.loads(HASHI_SCHEMA.read_text(encoding="utf-8"))
+        assert _props(instructions_schema, "link_to_moc") == _props(hashi, "link_to_moc")
+
+    def test_move_note_props_match_hashi(self, instructions_schema):
+        hashi = json.loads(HASHI_SCHEMA.read_text(encoding="utf-8"))
+        assert _props(instructions_schema, "move_note") == _props(hashi, "move_note")
+
+
+# ── #69 — filename sanitisation + resolvable references ─────────────────────
+
+COLON_TITLE = "Oxygen Not Included — Knowledge Progression: From Knowing Things"
+SAFE_STEM = "Oxygen Not Included — Knowledge Progression- From Knowing Things"
+
+
+class TestFilenameSanitisation:
+    def test_dest_join_sanitizes_colon(self):
+        dest = _ir._dest_join("Atlas/202 Notes", COLON_TITLE)
+        assert dest == f"Atlas/202 Notes/{SAFE_STEM}.md"
+        assert ":" not in dest
+
+    def test_wikilink_aliases_forbidden_char_title(self):
+        link = _ir._wikilink(COLON_TITLE)
+        assert link == f"[[{SAFE_STEM}|{COLON_TITLE}]]"
+
+    def test_wikilink_safe_title_no_alias(self):
+        assert _ir._wikilink("Plain Title") == "[[Plain Title]]"
+
+    def test_move_note_destination_is_obsidian_safe(self):
+        from lib.obsidian_filename import is_obsidian_safe
+        manifest = [{
+            "action": "create_atomic_note", "title": COLON_TITLE,
+            "destination": "Atlas/202 Notes/", "source_path": "src.md",
+            "rendered_file": "rendered.md", "parent_mocs": [],
+        }]
+        actions = _ir._build_move_note_actions(manifest, "100 Inbox/", [0])
+        basename = actions[0]["destination"].rsplit("/", 1)[-1]
+        assert is_obsidian_safe(basename)
+
+    def test_link_to_moc_refs_resolve_to_safe_stem(self):
+        confirmed = [{
+            "id": "S01", "action": "create_atomic_note", "title": COLON_TITLE,
+            "parent_mocs": ["Japan (MOC)"],
+            "candidate_mocs": [],
+        }]
+        actions = _ir._build_link_to_moc_actions(confirmed, [0])
+        link = next(a for a in actions if a["action"] == "link_to_moc")
+        assert link["line_to_add"] == f"- [[{SAFE_STEM}|{COLON_TITLE}]]"
+        assert link["source_note_title"] == SAFE_STEM
+        from lib.obsidian_filename import is_obsidian_safe
+        assert is_obsidian_safe(link["source_note_title"])
+
+
+# ── #70 — same-section merge ────────────────────────────────────────────────
+
+
+class TestNewSectionMerge:
+    def test_two_notes_same_section_merge_into_one(self):
+        actions = [
+            _link_action(id="I01", new_section="Hokkaido", line_to_add="- [[Furano]]"),
+            _link_action(id="I02", new_section="Hokkaido", line_to_add="- [[Hakodate]]"),
+        ]
+        removed = _ir._merge_new_section_links(actions)
+        assert removed == 1
+        links = [a for a in actions if a["action"] == "link_to_moc"]
+        assert len(links) == 1
+        assert links[0]["line_to_add"] == "- [[Furano]]\n- [[Hakodate]]"
+
+    def test_distinct_sections_not_merged(self):
+        actions = [
+            _link_action(id="I01", new_section="Hokkaido", line_to_add="- [[Furano]]"),
+            _link_action(id="I02", new_section="Kansai", line_to_add="- [[Osaka]]"),
+        ]
+        assert _ir._merge_new_section_links(actions) == 0
+        assert len([a for a in actions if a["action"] == "link_to_moc"]) == 2
+
+    def test_same_section_different_moc_not_merged(self):
+        actions = [
+            _link_action(id="I01", target_moc="Japan (MOC)", new_section="Maps",
+                         line_to_add="- [[A]]"),
+            _link_action(id="I02", target_moc="Europe (MOC)", new_section="Maps",
+                         line_to_add="- [[B]]"),
+        ]
+        assert _ir._merge_new_section_links(actions) == 0
+
+    def test_links_without_new_section_untouched(self):
+        actions = [
+            _link_action(id="I01", line_to_add="- [[A]]"),
+            _link_action(id="I02", line_to_add="- [[B]]"),
+        ]
+        assert _ir._merge_new_section_links(actions) == 0
+
+    def test_merged_then_serialized_is_one_section(self):
+        actions = [
+            _link_action(id="I01", new_section="Hokkaido", line_to_add="- [[Furano]]"),
+            _link_action(id="I02", new_section="Hokkaido", line_to_add="- [[Hakodate]]"),
+        ]
+        _ir._merge_new_section_links(actions)
+        _ir._serialize_new_sections(actions)
+        links = [a for a in actions if a["action"] == "link_to_moc"]
+        assert links[0]["line_to_add"] == "## Hokkaido\n\n- [[Furano]]\n- [[Hakodate]]\n"
+
+
+# ── #64 — individual fit_confidence telemetry ───────────────────────────────
+
+
+class TestFitConfidenceTelemetry:
+    def _telemetry(self, actions) -> str:
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            _ir._emit_resolution_telemetry(actions)
+        return buf.getvalue()
+
+    def test_individual_values_appended(self):
+        actions = [
+            _link_action(id="I01", anchor={"type": "heading", "value": "Concepts"},
+                         fit_confidence=0.85),
+            _link_action(id="I02", anchor={"type": "heading", "value": "Methods"},
+                         fit_confidence=0.72),
+        ]
+        line = self._telemetry(actions)
+        assert "fit_confidence=[0.85, 0.72]" in line
+
+    def test_no_values_no_field(self):
+        actions = [_link_action(anchor={"type": "callout", "value": "[!blocks] X"})]
+        assert "fit_confidence=[" not in self._telemetry(actions)
+
+    def test_emit_lifts_fit_confidence_to_top_level(self):
+        confirmed = [{
+            "id": "S01", "action": "create_atomic_note", "title": "Note",
+            "parent_mocs": ["Japan (MOC)"],
+            "candidate_mocs": [{
+                "path": "Atlas/200 Maps/Japan (MOC).md",
+                "anchor": {"type": "heading", "value": "Concepts", "fit_confidence": 0.9},
+            }],
+        }]
+        actions = _ir._build_link_to_moc_actions(confirmed, [0])
+        link = next(a for a in actions if a["action"] == "link_to_moc")
+        assert link["fit_confidence"] == 0.9
+        # anchor no-leak: the wire anchor stays {type, value}
+        assert set(link["anchor"].keys()) == {"type", "value"}

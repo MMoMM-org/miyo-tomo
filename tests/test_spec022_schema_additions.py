@@ -300,33 +300,30 @@ class TestT22SharedCtxMocFields:
 
 
 class TestT23InstructionsLinkToMocNewSection:
-    """new_section is an optional [string, null] field on link_to_moc actions (spec 022 T2.3)."""
+    """new_section is Tomo-INTERNAL and stripped before the wire (#68 reverses
+    spec 022 T2.3): the heading is baked into line_to_add by _serialize_new_sections,
+    so new_section is redundant on the wire and Hashi's link_to_moc schema
+    (additionalProperties:false) rejects it. Tomo's schema now matches Hashi's."""
 
-    def test_link_to_moc_with_new_section_string_validates(self, instructions_schema):
-        """link_to_moc WITH new_section as string passes validation."""
-        validate(
-            instance=_make_instructions_link_to_moc({"new_section": "## New Section"}),
-            schema=instructions_schema,
-        )
-
-    def test_link_to_moc_with_new_section_null_validates(self, instructions_schema):
-        """link_to_moc WITH new_section as null passes validation."""
-        validate(
-            instance=_make_instructions_link_to_moc({"new_section": None}),
-            schema=instructions_schema,
-        )
-
-    def test_link_to_moc_without_new_section_still_validates(self, instructions_schema):
-        """link_to_moc WITHOUT new_section (old artifact) still passes (additive-only)."""
-        validate(instance=_make_instructions_link_to_moc(), schema=instructions_schema)
-
-    def test_link_to_moc_new_section_invalid_type_rejected(self, instructions_schema):
-        """link_to_moc with new_section as integer is rejected."""
+    def test_link_to_moc_with_new_section_string_rejected(self, instructions_schema):
+        """link_to_moc WITH new_section on the wire is now rejected (#68)."""
         with pytest.raises(ValidationError):
             validate(
-                instance=_make_instructions_link_to_moc({"new_section": 42}),
+                instance=_make_instructions_link_to_moc({"new_section": "## New Section"}),
                 schema=instructions_schema,
             )
+
+    def test_link_to_moc_with_new_section_null_rejected(self, instructions_schema):
+        """Even new_section=null is rejected — the key itself is not allowed (#68)."""
+        with pytest.raises(ValidationError):
+            validate(
+                instance=_make_instructions_link_to_moc({"new_section": None}),
+                schema=instructions_schema,
+            )
+
+    def test_link_to_moc_without_new_section_validates(self, instructions_schema):
+        """link_to_moc WITHOUT new_section is the only valid wire shape (#68)."""
+        validate(instance=_make_instructions_link_to_moc(), schema=instructions_schema)
 
     def test_link_to_moc_extra_field_rejected(self, instructions_schema):
         """link_to_moc with undeclared extra field is rejected (additionalProperties: false)."""

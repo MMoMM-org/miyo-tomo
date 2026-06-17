@@ -1118,10 +1118,13 @@ def _make_link_to_moc_action(
     placement: str = "after",
     fit_confidence: float | None = None,
 ) -> dict:
-    """Minimal link_to_moc action dict for resolver tests."""
+    """Minimal link_to_moc action dict for resolver tests.
+
+    fit_confidence is a TOP-LEVEL action field at telemetry time: _emit lifts it
+    off the Pass-1 anchor (parallel to new_section) so the anchor itself stays
+    {type, value} (anchor no-leak contract); telemetry reads the top-level field.
+    """
     anchor: dict = {"type": anchor_type, "value": anchor_value}
-    if fit_confidence is not None:
-        anchor["fit_confidence"] = fit_confidence
     action: dict = {
         "action": "link_to_moc",
         "target_moc": "Test (MOC)",
@@ -1132,6 +1135,8 @@ def _make_link_to_moc_action(
         "source_note_title": "Source Note",
         "new_section": new_section,
     }
+    if fit_confidence is not None:
+        action["fit_confidence"] = fit_confidence
     return action
 
 

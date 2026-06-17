@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
 T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
@@ -1352,3 +1352,263 @@ class TestMainWritesRoutingPlan:
         assert "total_ms" in plan["metrics"]
         assert "kado_calls" in plan["metrics"]
         assert "docs_cached" in plan["metrics"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #66 — terminal-approved re-synthesis path
+# ---------------------------------------------------------------------------
+
+
+class TestForcePass2TerminalApprovedRecovery:
+    """A. Recovery path: --force-pass2 includes terminal-approved docs
+    whose instructions are absent in the synthesize work-list."""
+
+    def test_force_pass2_terminal_approved_no_instructions_in_work_list(self, tmp_path):
+        """terminal-approved + missing instructions + --force-pass2
+        → approved_suggestions non-empty → to_process non-empty."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "2026-05-22_1432_suggestions.md"
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(sugg_path)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [_fm_hit(sugg_path, "suggestions", "approved")],
+                "tomo.state=accepted": [],
+            },
+            read_note_responses={
+                sugg_path: {"content": _suggestions_body(approved=True), "modified": 0},
+            },
+        )
+
+        state = mod.discover(
+            client, INBOX_PATH, output_dir=str(tmp_path), force_pass2=True,
+        )
+
+        assert len(state.approved_suggestions) == 1, (
+            "terminal-approved suggestions doc must be in approved_suggestions when --force-pass2"
+        )
+        assert state.approved_suggestions[0]["path"] == sugg_path
+
+        covered, to_process = mod.compute_coverage(state)
+        assert sugg_path in to_process, (
+            "uncovered terminal-approved doc must appear in to_process"
+        )
+
+    def test_force_pass2_terminal_approved_covered_stays_out(self, tmp_path):
+        """terminal-approved + existing instructions → NOT in to_process
+        (already covered; no redundant re-synthesis)."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "2026-05-22_1432_suggestions.md"
+        instr_path = INBOX_PATH + "2026-05-24_0900_instructions.md"
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(sugg_path), _listdir_item(instr_path)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [_instructions_hit(
+                    instr_path,
+                    sources=[{"path": sugg_path, "checksum": "sha256:abc"}],
+                )],
+                "tomo.state=approved": [_fm_hit(sugg_path, "suggestions", "approved")],
+                "tomo.state=accepted": [],
+            },
+            read_note_responses={
+                sugg_path: {"content": _suggestions_body(approved=True), "modified": 0},
+            },
+        )
+
+        state = mod.discover(
+            client, INBOX_PATH, output_dir=str(tmp_path), force_pass2=True,
+        )
+
+        covered, to_process = mod.compute_coverage(state)
+        assert sugg_path not in to_process, (
+            "already-covered terminal-approved doc must stay out of to_process"
+        )
+
+    def test_force_pass2_terminal_approved_fan_in_work_list(self, tmp_path):
+        """terminal-approved suggestions-fan doc → approved_fan bucket."""
+        mod = _load_module()
+
+        fan_path = INBOX_PATH + "2026-05-23_1328_suggestions-fan.md"
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(fan_path)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [_fm_hit(fan_path, "suggestions-fan", "approved")],
+                "tomo.state=accepted": [],
+            },
+            read_note_responses={
+                fan_path: {"content": _suggestions_body(approved=True), "modified": 0},
+            },
+        )
+
+        state = mod.discover(
+            client, INBOX_PATH, output_dir=str(tmp_path), force_pass2=True,
+        )
+
+        assert len(state.approved_fan) == 1
+        assert state.approved_fan[0]["path"] == fan_path
+
+    def test_no_force_pass2_terminal_approved_excluded(self, tmp_path):
+        """Without --force-pass2, terminal-approved docs are NOT added to buckets."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "2026-05-22_1432_suggestions.md"
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(sugg_path)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [_fm_hit(sugg_path, "suggestions", "approved")],
+                "tomo.state=accepted": [],
+            },
+            read_note_responses={
+                sugg_path: {"content": _suggestions_body(approved=True), "modified": 0},
+            },
+        )
+
+        state = mod.discover(
+            client, INBOX_PATH, output_dir=str(tmp_path), force_pass2=False,
+        )
+
+        # Without force_pass2, terminal docs should NOT populate approved buckets
+        # (normal flow: they were already processed)
+        assert len(state.approved_suggestions) == 0
+
+
+class TestOrphanedApprovedDetection:
+    """B. detect_orphaned_state must count terminal-approved docs as surviving
+    downstream, so the state is treated as re-synthesizable, NOT orphaned."""
+
+    def test_terminal_approved_not_treated_as_orphaned(self):
+        """captured + terminal-approved suggestions → NOT orphaned_state."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            captured_hits=[{"path": INBOX_PATH + "a.md", "modified": ""}],
+            terminal_approved_hits=[_fm_hit(
+                INBOX_PATH + "2026-05-22_1432_suggestions.md", "suggestions", "approved",
+            )],
+        )
+
+        assert mod.detect_orphaned_state(state) == [], (
+            "terminal-approved doc is surviving downstream — must not trigger orphaned_state"
+        )
+
+    def test_no_terminal_approved_still_orphaned(self):
+        """captured + NO terminal-approved → still flags orphaned_state."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            captured_hits=[{"path": INBOX_PATH + "a.md", "modified": ""}],
+            terminal_approved_hits=[],
+        )
+
+        drift = mod.detect_orphaned_state(state)
+        assert len(drift) == 1
+        assert drift[0]["type"] == "orphaned_state"
+
+    def test_terminal_approved_with_no_captured_not_orphaned(self):
+        """No captured items → no orphaned_state regardless."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            terminal_approved_hits=[_fm_hit(
+                INBOX_PATH + "s.md", "suggestions", "approved",
+            )],
+        )
+
+        assert mod.detect_orphaned_state(state) == []
+
+
+class TestTerminalApprovedMessaging:
+    """C. Action determination + routing distinguishes three states clearly."""
+
+    def test_force_pass2_terminal_approved_routes_synthesize_with_work_list(self, tmp_path):
+        """--force-pass2 + terminal-approved uncovered → action=synthesize,
+        approved_suggestions non-empty in routing plan."""
+        mod = _load_module()
+
+        sugg_path = INBOX_PATH + "2026-05-22_1432_suggestions.md"
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(sugg_path)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [_fm_hit(sugg_path, "suggestions", "approved")],
+                "tomo.state=accepted": [],
+            },
+            read_note_responses={
+                sugg_path: {"content": _suggestions_body(approved=True), "modified": 0},
+            },
+        )
+
+        rc = mod.main(
+            [
+                "--inbox-path", INBOX_PATH,
+                "--output-dir", str(tmp_path),
+                "--force-pass2",
+            ],
+            client_factory=lambda: client,
+        )
+
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        assert plan["action"] == "synthesize"
+        assert len(plan["approved_suggestions"]) == 1, (
+            "terminal-approved doc must appear in routing plan approved_suggestions"
+        )
+        assert plan["approved_suggestions"][0]["path"] == sugg_path
+
+    def test_force_pass2_no_terminal_approved_synthesize_empty_ok(self, tmp_path):
+        """--force-pass2 with genuinely nothing approved → synthesize with
+        empty approved_suggestions (conductor reports nothing to do; no crash)."""
+        mod = _load_module()
+
+        client = FakeKadoClient(
+            listdir_items=[],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [],
+                "tomo.state=accepted": [],
+            },
+        )
+
+        rc = mod.main(
+            [
+                "--inbox-path", INBOX_PATH,
+                "--output-dir", str(tmp_path),
+                "--force-pass2",
+            ],
+            client_factory=lambda: client,
+        )
+
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        assert plan["action"] == "synthesize"
+        assert plan["approved_suggestions"] == []

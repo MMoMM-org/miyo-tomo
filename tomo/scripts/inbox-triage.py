@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.0
+# version: 0.10.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -71,6 +71,11 @@ class TriageState:
     pending_approval: list[dict] = field(default_factory=list)
     drift_indicators: list[dict] = field(default_factory=list)
     manifest: dict = field(default_factory=dict)
+
+    # Terminal-state approved docs from byFrontmatter (tomo.state=approved).
+    # Populated by discover() so detect_orphaned_state() can count them as
+    # surviving downstream, and so --force-pass2 can re-synthesize them.
+    terminal_approved_hits: list[dict] = field(default_factory=list)
 
     # Flags passed through for T2.2
     force_pass1: bool = False
@@ -281,11 +286,17 @@ def read_approval_state(
     pending_approval_hits: list[dict],
     pending_accept_hits: list[dict],
     output_dir: str,
+    *,
+    terminal_approved_hits: list[dict] | None = None,
+    force_pass2: bool = False,
 ) -> tuple[
     list[dict], list[dict], list[dict],
     list[dict], list[dict], list[dict], dict,
 ]:
     """Read full bodies for pending docs, scan approvals, cache bodies.
+
+    When force_pass2=True, also reads and caches terminal-approved docs
+    (tomo.state=approved) so they can be included in the synthesize work-list.
 
     Returns (approved_suggestions, approved_fan, approved_moc_proposals,
              force_atomic_items, pending_approval, drift_indicators, manifest).
@@ -380,6 +391,53 @@ def read_approval_state(
                 "message": f"Awaiting user approval ({doc_type})",
             })
 
+    # When --force-pass2: read + cache terminal-approved docs so the conductor
+    # can re-synthesize instructions for any that have no covering instructions doc.
+    if force_pass2 and terminal_approved_hits:
+        # Build set of paths already in approved buckets (from pending-approval flow)
+        already_approved = {d["path"] for d in approved_suggestions + approved_fan}
+        for doc in terminal_approved_hits:
+            vault_path = doc["path"]
+            if vault_path in already_approved:
+                continue
+            doc_type = _get_doc_type(doc)
+            if doc_type not in ("suggestions", "suggestions-fan"):
+                continue
+            filename = _filename_from_path(vault_path)
+            try:
+                result = client.read_note(vault_path)
+            except KadoError as exc:
+                print(
+                    f"[inbox-triage] WARNING: kado-read failed for {vault_path}: {exc}",
+                    file=sys.stderr,
+                )
+                drift_indicators.append({
+                    "path": vault_path,
+                    "type": "missing_source",
+                    "detail": str(exc),
+                })
+                continue
+            body = result.get("content", "")
+            cache_path = cache_dir / filename
+            cache_path.write_text(body, encoding="utf-8")
+            checksum = _compute_checksum(body)
+            manifest[filename] = {
+                "vault_path": vault_path,
+                "checksum": checksum,
+                "cached_at": datetime.datetime.now(
+                    datetime.timezone.utc
+                ).isoformat(),
+            }
+            entry = {
+                "path": vault_path,
+                "modified": str(doc.get("modified", "")),
+                "cache_path": str(cache_path),
+            }
+            if doc_type == "suggestions":
+                approved_suggestions.append(entry)
+            elif doc_type == "suggestions-fan":
+                approved_fan.append(entry)
+
     # Write manifest
     manifest_path = cache_dir / "manifest.json"
     manifest_path.write_text(
@@ -457,6 +515,8 @@ def discover(
         manifest,
     ) = read_approval_state(
         client, pending_approval_hits, pending_accept_hits, output_dir,
+        terminal_approved_hits=approved_hits,
+        force_pass2=force_pass2,
     )
 
     return TriageState(
@@ -477,6 +537,7 @@ def discover(
         pending_approval=pending_approval,
         drift_indicators=drift_indicators,
         manifest=manifest,
+        terminal_approved_hits=approved_hits,
         force_pass1=force_pass1,
         force_pass2=force_pass2,
         recover=recover,
@@ -592,6 +653,7 @@ def detect_orphaned_state(state: TriageState) -> list[dict]:
         + state.approved_fan
         + state.approved_moc_proposals
         + state.instructions_hits
+        + state.terminal_approved_hits
     )
     if not state.captured_hits or downstream:
         return []

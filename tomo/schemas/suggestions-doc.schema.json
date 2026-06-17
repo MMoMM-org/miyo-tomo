@@ -53,6 +53,7 @@
                       "anchor": {
                         "type": "object",
                         "description": "Resolved Pass-1 placement anchor (spec 022/023 item-result anchor shape).",
+                        "required": ["type", "placement"],
                         "additionalProperties": false,
                         "properties": {
                           "type": {"type": "string", "enum": ["heading", "callout", "line"]},

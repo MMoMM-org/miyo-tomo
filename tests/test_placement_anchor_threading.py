@@ -198,6 +198,8 @@ class TestParserDefaultAnchor:
 
     def test_beppu_default_anchor_new_section_callout(self):
         md = _render_section_md(_beppu_action(), "Beppu Onsen")
+        # Beppu atomic_note_worthiness=0.3 → Approve renders unchecked.
+        assert "- [ ] Approve" in md
         item = _parser.parse_section(
             "S05", md.splitlines(), _doc_anchor_map_for(_beppu_action())
         )
@@ -450,3 +452,29 @@ class TestMultiMocBinding:
         # Strict non-bleed: neither anchor should appear on the wrong MOC.
         assert by_stem["japan (moc)"] is not by_stem["concepts (moc)"]
         assert by_stem["japan (moc)"]["type"] != by_stem["concepts (moc)"]["type"]
+
+
+# ---------------------------------------------------------------------------
+# _default_doc_path — sibling-file branch
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultDocPath:
+    def test_sibling_file_returned_when_present(self, tmp_path):
+        """When suggestions-doc.json exists next to the markdown file,
+        _default_doc_path returns that sibling path rather than the canonical
+        tomo-tmp/suggestions-doc.json fallback."""
+        sibling = tmp_path / "suggestions-doc.json"
+        sibling.write_text("{}", encoding="utf-8")
+        md_path = str(tmp_path / "2026-06-17_suggestions.md")
+        result = _parser._default_doc_path(md_path)
+        assert result == str(sibling)
+
+    def test_canonical_fallback_when_no_sibling(self, tmp_path):
+        """When no sibling exists, _default_doc_path returns the canonical
+        tomo-tmp/suggestions-doc.json (relative path, caller resolves from cwd)."""
+        md_path = str(tmp_path / "2026-06-17_suggestions.md")
+        # No sibling created — file does not exist.
+        result = _parser._default_doc_path(md_path)
+        import os
+        assert result == os.path.join("tomo-tmp", "suggestions-doc.json")

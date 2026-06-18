@@ -296,6 +296,66 @@ def test_fan_with_resolve_promotes_from_resolve(tmp_path):
     assert entry.get("from_resolve") is True, entry
 
 
+def _primary_doc_confirmed_s01_plus_fan_furano() -> str:
+    """Primary doc with an APPROVED atomic at S01 (a different note) AND a
+    FAN-ticked log entry for Furano. The confirmed S01 collides with the
+    resolve doc's S01 Furano — the regression this guards."""
+    return "\n".join([
+        "---", "type: tomo-suggestions", "generated: 2026-04-23T10:00:00Z",
+        'tomo_version: "0.1.0"', "profile: miyo", "source_items: 2",
+        "run_id: 2026-04-23T10-00-00Z-test01", "---", "",
+        "# Inbox Suggestions — 2026-04-23", "",
+        "- [x] Approved", "",
+        "## Daily Notes Updates", "",
+        "### [[2026-04-17]]", "",
+        "**Possible Log Entries (inline text):**",
+        "- after_last_line — Furano liegt im Zentrum Hokkaidos.",
+        "  - Source: [[Furano]]",
+        "  - [ ] Accept",
+        "  - [x] Force Atomic Note (create/keep a standalone note for this item) ✅ 2026-06-18",
+        "",
+        "## Suggestions", "",
+        "### S01 — Some Other Confirmed Note", "",
+        "- [x] Accept",
+        "- [ ] Skip",
+        "- [ ] Delete source", "",
+        "**Suggested name:** Some Other Confirmed Note",
+        "**Source:** [[Other Note]]",
+        "**Type:** fleeting_note",
+        "**Template:** Atomic Note.md",
+        "**Destination:** Atlas/202 Notes/",
+        "**Parent MOC:** [[Concepts]]", "",
+        "**Summary:** Unrelated note that happens to occupy S01.", "",
+    ])
+
+
+def test_fan_resolve_id_collision_with_primary_promotes(tmp_path):
+    """Regression: the resolve doc's atomic id (S01) collides with an already-
+    confirmed primary item (also S01). The merge must still promote the resolve
+    atomic (re-numbered to a collision-free id), not drop it to pending — and
+    confirmed_items must have no duplicate ids (id_index integrity)."""
+    primary = tmp_path / "suggestions.md"
+    resolve = tmp_path / "suggestions-fan.md"
+    primary.write_text(_primary_doc_confirmed_s01_plus_fan_furano())
+    resolve.write_text(_resolve_doc_for_furano())  # Furano atomic at S01
+
+    out = _run_parser(primary, resolve)
+
+    assert out.get("pending_fan_resolutions") == [], (
+        f"collision must not drop to pending; got {out.get('pending_fan_resolutions')}"
+    )
+    furano = [c for c in out.get("confirmed_items", [])
+              if "furano" in (c.get("source_path") or "").lower()]
+    assert len(furano) == 1, f"Furano must be promoted, got {furano}"
+    assert furano[0].get("from_resolve") is True, furano[0]
+
+    ids = [c.get("id") for c in out.get("confirmed_items", [])]
+    assert len(ids) == len(set(ids)), f"confirmed_items has duplicate ids: {ids}"
+    assert furano[0]["id"] not in ("S01",), (
+        f"resolve atomic must be re-id'd off the colliding S01, got {furano[0]['id']}"
+    )
+
+
 def test_fan_with_primary_section_uses_legacy_promote(tmp_path):
     """Scenario C: FAN ticked AND primary-doc per-item section present.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.0
+# version: 0.12.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1614,6 +1614,20 @@ def main() -> int:
     # have some user-approved and the rest FAN-promoted without duplication.
     confirmed_ids = {c.get("id") for c in confirmed_items}
     seen_pending: set[str] = set()
+    # The resolve doc has its OWN S01.. id namespace that collides with the
+    # primary doc's, so resolve atomics are de-duped against ids promoted FROM
+    # the resolve doc (not the primary confirmed_ids) and re-numbered to a
+    # collision-free SNN — otherwise a colliding id both drops the atomic here
+    # AND corrupts instruction-render's id_index (same id, two items).
+    resolve_promoted_ids: set[str] = set()
+    _used_nums = {
+        int(m.group(1)) for m in (re.match(r"S0*(\d+)", c or "") for c in confirmed_ids) if m
+    }
+    _id_counter = [max(_used_nums, default=0)]
+
+    def _alloc_resolve_id() -> str:
+        _id_counter[0] += 1
+        return f"S{_id_counter[0]:02d}"
 
     def _promote_entry(sec: dict, from_resolve: bool) -> dict:
         sec["approved"] = True
@@ -1668,11 +1682,13 @@ def main() -> int:
         # blocks (F-41 T4.2) — promote every block not already confirmed.
         resolve_secs = [
             s for s in resolve_sections_by_stem.get(stem, [])
-            if s.get("id") not in confirmed_ids
+            if s.get("id") not in resolve_promoted_ids
         ]
         if resolve_secs:
             for sec in resolve_secs:
+                resolve_promoted_ids.add(sec.get("id"))
                 entry = _promote_entry(sec, from_resolve=True)
+                entry["id"] = _alloc_resolve_id()
                 from_resolve += 1
                 confirmed_items.append(entry)
                 confirmed_ids.add(entry["id"])

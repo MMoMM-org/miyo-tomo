@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.8
+# version: 0.2.9
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -158,6 +158,12 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - Required tokens always resolve: uuid, datestamp, title
   - Config-sourced tokens need matching `frontmatter.optional` entries with defaults
   - Point at: `.claude/skills/template-render/SKILL.md`
+
+- **placement / section / put note in / merge sections / land together / link to MOC / steer placement / no section entry** →
+  - In a suggestions doc, a note's MOC section is set by a `**Placement:**` line under a checked `- [x] [[…MOC]]` link; forms + the merge rule are in the `suggestions-doc-format` skill
+  - Two notes with the same `(MOC, new section)` merge into one section at Pass-2
+  - Let Tomo do it: describe the change (e.g. "put Beppu and Furano in Japanische Städte") and the `suggestions-doc-assist` skill computes the edits, shows a diff, and writes them after you confirm
+  - Point at: `.claude/skills/suggestions-doc-format/SKILL.md`, `.claude/skills/suggestions-doc-assist/SKILL.md`
 
 ### Configuration
 

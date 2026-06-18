@@ -4,7 +4,7 @@ description: Use PROACTIVELY when producing or parsing suggestions, suggestions-
 user-invocable: false
 ---
 # Suggestions Doc Format
-# version: 0.1.0
+# version: 0.2.0
 
 ## Approval Checkboxes
 
@@ -45,6 +45,31 @@ When ticked, the item gets a fan companion analysis before synthesis.
 ## Suggestions-Fan Companion
 
 Mirrors the parent suggestions doc but contains only force-atomic items with expanded analysis. Filename pattern: `<date>_suggestions-fan.md`.
+
+## Steering Placements by Hand
+
+Where an atomic note lands inside a MOC is controlled by an optional `**Placement:**`
+line placed on the line **directly under** a checked `- [x] [[…MOC]]` link (column 0).
+The reducer renders it only for a pre-resolved candidate; a user may add or edit one
+under any checked MOC. A hand-edited Placement line overrides the doc-JSON.
+
+Valid forms — `suggestion-parser.py` reverse-parses these exactly:
+
+| Intent | Line |
+|--------|------|
+| Existing heading | `` **Placement:** under `## <Heading>` `` |
+| New section before the MOC footer | `` **Placement:** new section `## <Name>` (before the footer) `` |
+| New section at the end (no footer) | `` **Placement:** new section `## <Name>` (at the end of the MOC) `` |
+| Inside an editable callout | `` **Placement:** inside the `[!<type>] <title>` callout `` |
+
+Merge rule: notes that target the **same MOC** with the **same** new-section name collapse
+into one `## <Name>` section (one heading, multiple bullets) at Pass-2. To group notes, give
+them an identical `(MOC, new section)` pair.
+
+A checked `[x]` MOC with **no** Placement line still produces a link — Pass-2 resolves its
+section heuristically (editable callout, then heading). The Placement line only overrides that
+default; it is not required for the link to exist. `parent_mocs` (every checked MOC) drives
+link emission; `candidate_mocs` carries the anchor override only.
 
 ## Tomo Frontmatter
 

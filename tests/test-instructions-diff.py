@@ -285,6 +285,54 @@ def test_daily_only_delete_inference_reconciles():
     print("[PASS] daily-only delete inference reconciles on both sides")
 
 
+def test_batched_link_to_moc_reconciles():
+    """#70: two notes merged under one (MOC, new_section) \u2192 ONE batched
+    link_to_moc (source_note_title=None, multi-bullet) must still reconcile \u2014
+    the audit credits each note via its bullets and counts coverage as pairs."""
+    def _item(sid, title, src):
+        anchor = {"type": "callout", "value": "[!blocks] Key Concepts",
+                  "placement": "before", "new_section": "Japanische St\u00e4dte"}
+        return {
+            "id": sid, "source_path": src, "action": None, "title": title,
+            "tags": [], "parent_moc": "Japan (MOC)",
+            "parent_mocs": ["Japan (MOC)"],
+            "candidate_mocs": [{"path": "Atlas/200 Maps/Japan (MOC)", "anchor": anchor}],
+        }
+
+    def _man(sid, title, src, rendered):
+        return {
+            "id": sid, "action": None, "title": title, "source_path": src,
+            "rendered_file": rendered, "destination": "Atlas/202 Notes/",
+            "parent_moc": "Japan (MOC)", "parent_mocs": ["Japan (MOC)"], "tags": [],
+        }
+
+    confirmed = [_item("S01", "Asahikawa \u2014 Snow city", "Asahikawa.md"),
+                 _item("S02", "Sapporo \u2014 Hokkaido capital", "Sapporo.md")]
+    manifest = [_man("S01", "Asahikawa \u2014 Snow city", "Asahikawa.md", "2026-04-21_1200_asahikawa.md"),
+                _man("S02", "Sapporo \u2014 Hokkaido capital", "Sapporo.md", "2026-04-21_1200_sapporo.md")]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+
+    # Real producer path: build_actions, then the main() post-processing that
+    # applies the #70 merge + serialize + internal-field strip.
+    actions = ir.build_actions(manifest, confirmed, [], [], CFG)
+    merged = ir._merge_new_section_links(actions)
+    ir._serialize_new_sections(actions)
+    ir._strip_internal_link_fields(actions)
+    instrs = {"schema_version": "1", "type": "tomo-instructions",
+              "action_count": len(actions), "actions": actions}
+
+    links = [a for a in actions if a["action"] == "link_to_moc"]
+    _must(merged == 1, f"expected 1 merge, got {merged}")
+    _must(len(links) == 1, f"expected 1 batched link_to_moc, got {len(links)}")
+    _must(links[0].get("source_note_title") is None, "batched link must have source_note_title=None")
+
+    rc, _, out = _run(parsed, instrs)
+    _must(rc == 0, f"batched link_to_moc must reconcile, got rc={rc}\n{out}")
+    _must("link_to_moc" in out and "[DIFF]" not in out.split("per-item")[0],
+          "count table must not flag link_to_moc as [DIFF]")
+    print("[PASS] #70 batched link_to_moc reconciles \u2192 exit 0")
+
+
 def main() -> int:
     test_happy_path_reconciles()
     test_missing_instruction_fails()
@@ -292,6 +340,7 @@ def main() -> int:
     test_supporting_items_expansion_reconciles()
     test_truly_empty_moc_warns()
     test_daily_only_delete_inference_reconciles()
+    test_batched_link_to_moc_reconciles()
     print("\n\u2713 All instructions-diff tests passed.")
     return 0
 

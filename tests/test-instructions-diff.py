@@ -333,6 +333,53 @@ def test_batched_link_to_moc_reconciles():
     print("[PASS] #70 batched link_to_moc reconciles \u2192 exit 0")
 
 
+def test_batched_link_to_moc_coverage_gap_fails():
+    """#70 failure case (review M13): a batched link_to_moc that drops one note's
+    bullet leaves that note's (note, MOC) pair uncovered — the coverage audit
+    must flag a hard fail (rc=1), not silently pass on the merged action count."""
+    def _item(sid, title, src):
+        anchor = {"type": "callout", "value": "[!blocks] Key Concepts",
+                  "placement": "before", "new_section": "Japanische Städte"}
+        return {
+            "id": sid, "source_path": src, "action": None, "title": title,
+            "tags": [], "parent_moc": "Japan (MOC)",
+            "parent_mocs": ["Japan (MOC)"],
+            "candidate_mocs": [{"path": "Atlas/200 Maps/Japan (MOC)", "anchor": anchor}],
+        }
+
+    def _man(sid, title, src, rendered):
+        return {
+            "id": sid, "action": None, "title": title, "source_path": src,
+            "rendered_file": rendered, "destination": "Atlas/202 Notes/",
+            "parent_moc": "Japan (MOC)", "parent_mocs": ["Japan (MOC)"], "tags": [],
+        }
+
+    confirmed = [_item("S01", "Asahikawa — Snow city", "Asahikawa.md"),
+                 _item("S02", "Sapporo — Hokkaido capital", "Sapporo.md")]
+    manifest = [_man("S01", "Asahikawa — Snow city", "Asahikawa.md", "2026-04-21_1200_asahikawa.md"),
+                _man("S02", "Sapporo — Hokkaido capital", "Sapporo.md", "2026-04-21_1200_sapporo.md")]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+
+    actions = ir.build_actions(manifest, confirmed, [], [], CFG)
+    ir._merge_new_section_links(actions)
+    ir._serialize_new_sections(actions)
+    ir._strip_internal_link_fields(actions)
+    # Tamper: drop the Sapporo (S02) bullet from the batched link_to_moc so its
+    # (note, MOC) pair is no longer covered.
+    for a in actions:
+        if a["action"] == "link_to_moc" and "Sapporo" in a.get("line_to_add", ""):
+            a["line_to_add"] = "\n".join(
+                ln for ln in a["line_to_add"].split("\n") if "Sapporo" not in ln
+            )
+    instrs = {"schema_version": "1", "type": "tomo-instructions",
+              "action_count": len(actions), "actions": actions}
+
+    rc, _, out = _run(parsed, instrs)
+    _must(rc == 1, f"dropped-bullet coverage gap must fail, got rc={rc}\n{out}")
+    _must("[DIFF]" in out, "output must contain [DIFF] marker")
+    print("[PASS] #70 batched link_to_moc coverage gap (dropped bullet) → rc=1")
+
+
 def main() -> int:
     test_happy_path_reconciles()
     test_missing_instruction_fails()

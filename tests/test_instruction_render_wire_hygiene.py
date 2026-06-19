@@ -119,13 +119,48 @@ class TestInternalFieldStrip:
         from jsonschema import ValidationError
         action = _link_action(new_section="Hokkaido")
         del action["fit_confidence"]
+        # type MUST be the valid const "tomo-instructions" so the ValidationError
+        # fires on the unstripped new_section (additionalProperties:false), NOT on
+        # a top-level type mismatch — otherwise the test would pass even if the
+        # new_section rejection regressed (review H9).
         doc = {
-            "schema_version": "1", "type": "instructions",
+            "schema_version": "1", "type": "tomo-instructions",
             "generated": "2026-06-17T00:00:00Z", "profile": "miyo",
             "actions": [action],
         }
         with pytest.raises(ValidationError):
             validate(instance=doc, schema=instructions_schema)
+
+    def test_strip_before_serialize_drops_heading(self):
+        """Order regression (review M15): _serialize_new_sections MUST run before
+        _strip_internal_link_fields. If strip runs first it consumes new_section
+        and serialize has nothing to bake → the `## <section>` heading is silently
+        omitted from line_to_add."""
+        action = _link_action(new_section="Hokkaido", line_to_add="- [[Furano]]")
+        # Wrong order: strip first, then serialize.
+        _ir._strip_internal_link_fields([action])
+        _ir._serialize_new_sections([action])
+        assert not action["line_to_add"].startswith("## "), (
+            "strip-before-serialize must NOT produce a heading (proves the "
+            "ordering dependency)"
+        )
+
+
+# ── FOOTER_CALLOUTS cross-file sync (review M8) ─────────────────────────────
+
+
+def test_footer_callouts_match_across_modules():
+    """instruction-render.py and moc-tree-builder.py each hardcode FOOTER_CALLOUTS
+    (the lib deliberately never hardcodes it — footer_set is caller-supplied per
+    spec 022/#35/F-55). The two copies carry a "mirrors exactly" comment with no
+    enforcement; this test is the enforcement (review M8)."""
+    _mtb_spec = importlib.util.spec_from_file_location(
+        "moc_tree_builder", _SCRIPTS_DIR / "moc-tree-builder.py"
+    )
+    _mtb = importlib.util.module_from_spec(_mtb_spec)
+    assert _mtb_spec.loader is not None
+    _mtb_spec.loader.exec_module(_mtb)
+    assert set(_ir.FOOTER_CALLOUTS) == set(_mtb.FOOTER_CALLOUTS)
 
 
 # ── Cross-repo parity (Constitution L2) ─────────────────────────────────────
@@ -213,6 +248,21 @@ class TestNewSectionMerge:
         assert _ir._merge_new_section_links(actions) == 0
         assert len([a for a in actions if a["action"] == "link_to_moc"]) == 2
 
+    def test_same_moc_different_reference_form_merges(self):
+        """Review M9: two actions targeting the SAME MOC by different reference
+        forms (bare stem vs full path) and the same new_section must merge — the
+        merge key normalises target_moc through _moc_stem()."""
+        actions = [
+            _link_action(id="I01", target_moc="Japan (MOC)", new_section="Hokkaido",
+                         line_to_add="- [[Furano]]"),
+            _link_action(id="I02", target_moc="Atlas/200 Maps/Japan (MOC).md",
+                         new_section="Hokkaido", line_to_add="- [[Hakodate]]"),
+        ]
+        assert _ir._merge_new_section_links(actions) == 1
+        links = [a for a in actions if a["action"] == "link_to_moc"]
+        assert len(links) == 1
+        assert links[0]["line_to_add"] == "- [[Furano]]\n- [[Hakodate]]"
+
     def test_same_section_different_moc_not_merged(self):
         actions = [
             _link_action(id="I01", target_moc="Japan (MOC)", new_section="Maps",
@@ -263,6 +313,22 @@ class TestFitConfidenceTelemetry:
     def test_no_values_no_field(self):
         actions = [_link_action(anchor={"type": "callout", "value": "[!blocks] X"})]
         assert "fit_confidence=[" not in self._telemetry(actions)
+
+    def test_subthreshold_confidence_still_recorded_gate_is_prompt_only(self):
+        """The 0.6 fit_confidence gate (tier-1 heading vs tier-2 new-section) is
+        enforced UPSTREAM by the inbox-analyst LLM prompt — there is NO Python
+        code that branches on 0.6. This test pins that reality (review H10): a
+        heading anchor with sub-0.6 confidence is still recorded in the telemetry
+        and counted as tier1_confident (the resolver does not re-gate it). If a
+        future change adds code-level gating, this test should be updated
+        deliberately alongside it."""
+        actions = [
+            _link_action(id="I01", anchor={"type": "heading", "value": "Concepts"},
+                         fit_confidence=0.59),
+        ]
+        line = self._telemetry(actions)
+        assert "fit_confidence=[0.59]" in line
+        assert "tier1_confident=1" in line
 
     def test_emit_lifts_fit_confidence_to_top_level(self):
         confirmed = [{

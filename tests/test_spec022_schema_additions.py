@@ -285,6 +285,32 @@ class TestT22SharedCtxMocFields:
                 schema=shared_ctx_schema,
             )
 
+    def test_moc_with_has_footer_validates(self, shared_ctx_schema):
+        """mocs[] item WITH has_footer boolean validates (review H1) — the field
+        is emitted by shared-ctx-builder and consumed by inbox-analyst; it must
+        be declared or additionalProperties:false would reject every footer MOC."""
+        validate(instance=_make_shared_ctx({"has_footer": True}), schema=shared_ctx_schema)
+        validate(instance=_make_shared_ctx({"has_footer": False}), schema=shared_ctx_schema)
+
+    def test_moc_has_footer_non_bool_rejected(self, shared_ctx_schema):
+        """has_footer must be a boolean."""
+        with pytest.raises(ValidationError):
+            validate(
+                instance=_make_shared_ctx({"has_footer": "yes"}),
+                schema=shared_ctx_schema,
+            )
+
+    def test_moc_editable_callouts_over_cap_rejected(self, shared_ctx_schema):
+        """editable_callouts is capped at maxItems:4 (review M6) — matches the
+        builder's _CALLOUTS_CAP truncation."""
+        with pytest.raises(ValidationError):
+            validate(
+                instance=_make_shared_ctx(
+                    {"editable_callouts": ["[!a] 1", "[!b] 2", "[!c] 3", "[!d] 4", "[!e] 5"]}
+                ),
+                schema=shared_ctx_schema,
+            )
+
     def test_moc_extra_field_still_rejected(self, shared_ctx_schema):
         """mocs[] item with undeclared extra field is still rejected (additionalProperties: false)."""
         with pytest.raises(ValidationError):

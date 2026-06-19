@@ -14,6 +14,7 @@ exercised.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -353,6 +354,11 @@ def test_fan_resolve_id_collision_with_primary_promotes(tmp_path):
     assert len(ids) == len(set(ids)), f"confirmed_items has duplicate ids: {ids}"
     assert furano[0]["id"] not in ("S01",), (
         f"resolve atomic must be re-id'd off the colliding S01, got {furano[0]['id']}"
+    )
+    # The renumbered id must be a well-formed S## — not None/""/garbage that would
+    # also satisfy "not S01" while corrupting id_index integrity (review M12).
+    assert re.match(r"^S\d+$", furano[0]["id"] or ""), (
+        f"renumbered id must match ^S\\d+$, got {furano[0]['id']!r}"
     )
 
 

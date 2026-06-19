@@ -240,6 +240,13 @@ class TestTier1SemanticFitMispickGuardrail:
 
     A keyword-overlap resolver would pick the DECOY. A semantic resolver picks CORRECT.
     The contract fixture encodes the CORRECT outcome and asserts the DECOY is not chosen.
+
+    CONTRACT FIXTURE — tests the SCHEMA contract + documents expected LLM output
+    shape; it does NOT exercise resolver logic (the semantic pick is made by the
+    inbox-analyst LLM in Pass-1, not by any Python function here). The live
+    behaviour is validated by the spec-022 Phase-7 live-walk (T7.3/T7.4), not by
+    this fixture. Do not read a green result here as proof the resolver beats
+    keyword overlap (review M14).
     """
 
     def test_semantic_fit_beats_keyword_overlap_mispick_fixture(self, item_result_schema):
@@ -1446,8 +1453,12 @@ class TestResolutionTelemetry:
             f"Expected tier1_confident=2 in: {line!r}"
         )
 
-    def test_telemetry_contains_rejected_to_tier2_field(self) -> None:
-        """Telemetry line includes 'rejected_to_tier2=N' field."""
+    def test_telemetry_contains_new_section_field(self) -> None:
+        """Telemetry line includes 'new_section=N' field.
+
+        (rejected_to_tier2 was removed — it always equalled new_section by
+        construction; the new_section counter is the surviving signal.)
+        """
         # A new_section anchor signals tier-1 rejection → tier-2
         tier2_action = _make_link_to_moc_action(
             anchor_type="callout",
@@ -1455,12 +1466,12 @@ class TestResolutionTelemetry:
             new_section="Japanische Städte",
         )
         line = self._capture_telemetry([tier2_action])
-        assert "rejected_to_tier2=" in line, (
-            f"Expected 'rejected_to_tier2=' in telemetry line, got: {line!r}"
+        assert "new_section=" in line, (
+            f"Expected 'new_section=' in telemetry line, got: {line!r}"
         )
 
-    def test_telemetry_rejected_to_tier2_count_correct(self) -> None:
-        """rejected_to_tier2 counts new_section anchors (heading rejected, tier-2 fired)."""
+    def test_telemetry_new_section_count_correct(self) -> None:
+        """new_section counts new_section anchors (heading rejected, tier-2 fired)."""
         actions = [
             _make_link_to_moc_action(
                 anchor_type="callout",
@@ -1472,12 +1483,12 @@ class TestResolutionTelemetry:
                 anchor_value=None,
                 new_section="Topic B",
             ),
-            # No new_section — NOT a rejected_to_tier2
+            # No new_section — NOT counted
             _make_link_to_moc_action(anchor_type="heading", anchor_value="Direct Heading"),
         ]
         line = self._capture_telemetry(actions)
-        assert "rejected_to_tier2=2" in line, (
-            f"Expected rejected_to_tier2=2 in: {line!r}"
+        assert "new_section=2" in line, (
+            f"Expected new_section=2 in: {line!r}"
         )
 
     def test_telemetry_contains_no_heading_text(self) -> None:

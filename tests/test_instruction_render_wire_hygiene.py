@@ -45,6 +45,11 @@ _ir_spec.loader.exec_module(_ir)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
+# Committed verbatim copy of Hashi's instructions.schema.json. The parity test
+# runs UNCONDITIONALLY against this snapshot so it never silently skips in CI /
+# containers without a co-located Hashi checkout. A separate drift check verifies
+# the snapshot still matches the live Hashi schema when that checkout is present.
+HASHI_SCHEMA_SNAPSHOT = SCHEMAS_DIR / "hashi-instructions.schema.json"
 HASHI_SCHEMA = Path("/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json")
 
 
@@ -170,15 +175,38 @@ def _props(schema: dict, defname: str) -> set:
     return set(schema["$defs"][defname]["properties"].keys())
 
 
-@pytest.mark.skipif(not HASHI_SCHEMA.exists(), reason="Hashi schema not present")
 class TestHashiSchemaParity:
-    def test_link_to_moc_props_match_hashi(self, instructions_schema):
-        hashi = json.loads(HASHI_SCHEMA.read_text(encoding="utf-8"))
-        assert _props(instructions_schema, "link_to_moc") == _props(hashi, "link_to_moc")
+    """Parity guard against the COMMITTED Hashi snapshot — runs unconditionally so
+    CI / containers without a co-located Hashi checkout still exercise it. The
+    snapshot is a verbatim copy of Hashi's instructions.schema.json; a separate
+    drift check (below) catches the snapshot falling behind the live Hashi schema."""
 
-    def test_move_note_props_match_hashi(self, instructions_schema):
-        hashi = json.loads(HASHI_SCHEMA.read_text(encoding="utf-8"))
-        assert _props(instructions_schema, "move_note") == _props(hashi, "move_note")
+    @pytest.fixture(scope="class")
+    def hashi_snapshot(self) -> dict:
+        return json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
+
+    def test_link_to_moc_props_match_snapshot(self, instructions_schema, hashi_snapshot):
+        assert _props(instructions_schema, "link_to_moc") == _props(hashi_snapshot, "link_to_moc")
+
+    def test_move_note_props_match_snapshot(self, instructions_schema, hashi_snapshot):
+        assert _props(instructions_schema, "move_note") == _props(hashi_snapshot, "move_note")
+
+    @pytest.mark.skipif(
+        not HASHI_SCHEMA.exists(),
+        reason="live Hashi checkout not present — snapshot drift cannot be verified",
+    )
+    def test_snapshot_matches_live_hashi(self, hashi_snapshot):
+        """Drift guard: when a co-located Hashi checkout exists, the committed
+        snapshot must still match the live schema's link_to_moc/move_note property
+        sets. A failure here means the snapshot is stale — refresh it from
+        Hashi/src/schema/instructions.schema.json (this is a real finding, not a
+        test bug)."""
+        live = json.loads(HASHI_SCHEMA.read_text(encoding="utf-8"))
+        for defname in ("link_to_moc", "move_note"):
+            assert _props(hashi_snapshot, defname) == _props(live, defname), (
+                f"snapshot {defname} props drifted from live Hashi — "
+                f"refresh tomo/schemas/hashi-instructions.schema.json"
+            )
 
 
 # ── #69 — filename sanitisation + resolvable references ─────────────────────

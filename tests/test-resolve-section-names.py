@@ -571,15 +571,31 @@ Some intro prose.
 > - [ ] do thing
 """
 
-# Nothing anchorable: prose only.
+# Nothing anchorable after filtering: ONLY the H1 title remains.
+# Tier 1 (callout) misses, tier 2 (content heading) misses — the lone H1 is
+# excluded from the heading tier — and tier 4 (last body line) finds nothing
+# because every non-blank line is a heading (filtered out by `#`). This is the
+# graceful-degradation residual: anchor stays null rather than fabricating a line.
+# NB: no YAML frontmatter — _pick_anchor scans the raw content it is given and
+# does not strip frontmatter, so a `title:` line would otherwise be picked up by
+# tier 4 as the last body line.
 _NOTHING_MOC_BODY = """\
----
-title: Empty (MOC)
----
-
 # [[Empty (MOC)]]
+"""
 
-Just prose, no callouts, no H2 sections.
+# Tier-4 trigger: plain paragraph body — NO callouts, NO content headings (only
+# the H1 title), NO footer callout. The callout/heading/footer tiers all miss, so
+# the resolver lands on the LAST non-empty body line as a type=line anchor.
+_PLAIN_PARAGRAPH_MOC_BODY = """\
+---
+title: Prose (MOC)
+---
+
+# [[Prose (MOC)]]
+
+This is some introductory prose about the topic.
+
+The final paragraph is the last anchorable body line.
 """
 
 # Footer markers (video/calendar) are deliberately excluded here so they are
@@ -665,8 +681,12 @@ def test_new_section_before_footer_when_nothing_else_fits():
 
 
 def test_nothing_anchorable_stays_null():
-    """#28 residual: no callout, no heading, no footer → anchor stays null
-    (documented residual for truly bare MOCs)."""
+    """Graceful-degradation residual: a MOC whose ONLY non-blank line is the H1
+    title has nothing usable after filtering — tier 1 (callout), tier 2 (content
+    heading), tier 3 (footer) AND tier 4 (last body line, which excludes headings)
+    all miss → anchor stays null. Body shape: H1 only, no prose/callouts/footer.
+    Contrast with test_tier4_last_body_line_when_only_prose, where a plain
+    paragraph body DOES leave a usable last line for tier 4."""
     path = "Atlas/200 Maps/Empty (MOC).md"
     client = StubClient(notes={path: _NOTHING_MOC_BODY})
     actions = [_link_action("Empty (MOC)", path)]
@@ -675,7 +695,28 @@ def test_nothing_anchorable_stays_null():
     _must(n == 0, f"expected 0 resolutions, got {n}")
     _must(a["anchor"]["value"] is None,
           f"expected null anchor for bare MOC, got {a['anchor']['value']!r}")
-    print("[PASS] #28: nothing anchorable leaves the anchor null")
+    print("[PASS] residual: H1-only MOC (nothing usable) leaves the anchor null")
+
+
+def test_tier4_last_body_line_when_only_prose():
+    """Tier 4 (spec 023 AC-9): a MOC with plain paragraph content — no callouts,
+    no content headings (only the H1 title), no footer callout — resolves to a
+    type=line anchor whose value is the LAST non-empty body line, placement=after.
+    Body shape: H1 + prose paragraphs (no headings/callouts/footer). Contrast with
+    test_nothing_anchorable_stays_null, whose body has no prose line for tier 4."""
+    path = "Atlas/200 Maps/Prose (MOC).md"
+    client = StubClient(notes={path: _PLAIN_PARAGRAPH_MOC_BODY})
+    actions = [_link_action("Prose (MOC)", path)]
+    n = ir.resolve_section_names(actions, client, _CONTENT_CALLOUTS)
+    a = actions[0]
+    _must(n == 1, f"expected 1 resolution, got {n}")
+    _must(a["anchor"]["type"] == "line",
+          f"expected type=line anchor for tier 4, got {a['anchor']['type']!r}")
+    _must(a["anchor"]["value"] == "The final paragraph is the last anchorable body line.",
+          f"expected last body line as anchor value, got {a['anchor']['value']!r}")
+    _must(a["placement"] == "after",
+          f"expected placement=after for tier-4 line anchor, got {a['placement']!r}")
+    print("[PASS] tier-4: plain-prose MOC resolves to last body line (type=line, after)")
 
 
 def test_before_multiline_validates_against_schema():
@@ -1180,6 +1221,7 @@ def main() -> None:
     test_editable_callout_wins_over_heading()
     test_new_section_before_footer_when_nothing_else_fits()
     test_nothing_anchorable_stays_null()
+    test_tier4_last_body_line_when_only_prose()
     test_before_multiline_validates_against_schema()
     test_serialize_honored_anchor_with_new_section()
     test_serialize_ac6_exact_spacing()

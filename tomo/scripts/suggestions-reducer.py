@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.11.1
+# version: 1.12.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -29,6 +29,7 @@ Rendering rules (replicated from the retired suggestion-builder format):
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import sys
 import time
@@ -141,7 +142,7 @@ def _placement_line(anchor: dict) -> str:
                 return _LINE_TIER
             name = rest.split("]")[0]
             title = rest[len(name) + 1:]  # everything after "]", e.g. " Key Concepts"
-            callout_ref = f"> [!{name}]{title}"
+            callout_ref = f"[!{name}]{title}"
         else:
             callout_ref = value
         return (
@@ -203,7 +204,7 @@ def persist_candidate_anchors(action: dict) -> list[dict]:
         path = moc.get("path")
         if not anchor or not path:
             continue
-        out.append({"path": path, "anchor": anchor})
+        out.append({"path": path, "anchor": copy.deepcopy(anchor)})
     return out
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.1
+# version: 0.13.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -22,6 +22,15 @@ import json
 import os
 import re
 import sys
+
+# H5 (spec 022/023): the supporting_items union is shared with
+# instruction-render via lib/supporting_items.py. Ensure the script dir is on
+# the path so `lib.supporting_items` resolves both when run as a hyphenated
+# top-level script and when loaded via spec_from_file_location in tests.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # noqa: E402
+from lib.supporting_items import (  # noqa: E402
+    union_supporting_items as _union_supporting_items,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -720,20 +729,6 @@ def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
             if tag not in head["tags"]:
                 head["tags"].append(tag)
     return [merged[name] for name in order]
-
-
-def _union_supporting_items(a: str | None, b: str | None) -> str:
-    """Union two comma-separated supporting-item strings, preserving first-seen
-    order and de-duplicating. Empty inputs are skipped."""
-    out: list[str] = []
-    for raw in (a, b):
-        if not raw:
-            continue
-        for tok in raw.split(","):
-            tok = tok.strip()
-            if tok and tok not in out:
-                out.append(tok)
-    return ", ".join(out)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ Caller is responsible for supplying footer_set and editable_set — this
 library never hardcodes either. FOOTER_CALLOUTS stays hardcoded only in
 instruction-render.py per spec 022 / #35 / F-55.
 """
-# version: 1.0.0
+# version: 1.1.0
 
 import re as _re
 
@@ -26,12 +26,16 @@ def _callout_name(line: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _strip_gt_prefix(line: str) -> str:
+def strip_gt_prefix(line: str) -> str:
     """Strip leading `> ` (blockquote prefix) from a callout line."""
     s = line.lstrip()  # leading whitespace only; callout `>` handled next
     if s.startswith(">"):
         s = s[1:].lstrip()
     return s
+
+
+# Backwards-compatible private alias (pre-1.1.0 callers).
+_strip_gt_prefix = strip_gt_prefix
 
 
 def footer_index(lines: list[str], footer_set: set[str]) -> int:
@@ -105,5 +109,51 @@ def parse_editable_callouts(body: str, editable_set: set[str]) -> list[str]:
         line = raw.rstrip()
         name = _callout_name(line)
         if name and name in editable_set:
-            result.append(_strip_gt_prefix(line))
+            result.append(strip_gt_prefix(line))
     return result
+
+
+def parse_moc_inventory(
+    body: str, footer_set: set[str], editable_set: set[str]
+) -> dict:
+    """Single-split inventory of a MOC body — headings + callouts + has_footer.
+
+    Equivalent to calling ``parse_headings(body, footer_set)``,
+    ``parse_editable_callouts(body, editable_set)`` and a footer-presence
+    check separately, but splits the body **once** instead of three times
+    (spec 022/023 review M5). Use this when a caller needs more than one of
+    the three facts about the same body.
+
+    Args:
+        body: Raw MOC body string.
+        footer_set: Callout names that delimit the footer (heading scan stops
+                    at the first such callout; ``has_footer`` reflects its
+                    presence).
+        editable_set: Callout names considered editable (an empty set yields
+                      an empty ``editable_callouts`` list).
+
+    Returns:
+        ``{"headings": [{"text","level"}…], "editable_callouts": [str…],
+        "has_footer": bool}``.
+    """
+    if not body:
+        return {"headings": [], "editable_callouts": [], "has_footer": False}
+    lines = body.splitlines()
+    cutoff = footer_index(lines, footer_set)
+    headings: list[dict] = []
+    for raw in lines[:cutoff]:
+        m = _HEADING_RE.match(raw.rstrip())
+        if m:
+            headings.append({"text": m.group(2).strip(), "level": len(m.group(1))})
+    editable: list[str] = []
+    if editable_set:
+        for raw in lines:
+            line = raw.rstrip()
+            name = _callout_name(line)
+            if name and name in editable_set:
+                editable.append(strip_gt_prefix(line))
+    return {
+        "headings": headings,
+        "editable_callouts": editable,
+        "has_footer": cutoff < len(lines),
+    }

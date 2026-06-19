@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.1
+# version: 0.7.0
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -93,6 +93,16 @@ H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 
 # Frontmatter block
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
+
+# Dewey/classification MOC titles look like "2600 - Applied Sciences". Mirrors
+# shared-ctx-builder.is_classification_moc — those MOCs carry NO body inventory
+# (shared-ctx filters it out), so moc-tree skips computing it for them (M7).
+DEWEY_CLASSIFICATION_RE = re.compile(r"^\d{4}\s*-\s*")
+
+
+def is_classification_moc(title: str) -> bool:
+    """True for Dewey-layer MOCs (titles like '2600 - Applied Sciences')."""
+    return bool(DEWEY_CLASSIFICATION_RE.match(title or ""))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -367,16 +377,18 @@ def build_entries(
             entry["classification"] = None
             entry["linked_notes"] = _count_linked_notes(body, moc_stem_set)
 
-            # T3.1 (spec 022): inventory — parse headings and editable callouts
-            # from body bytes already in raw_by_path (no new Kado call).
-            entry["headings"] = moc_structure.parse_headings(body, FOOTER_CALLOUTS)
-            entry["editable_callouts"] = moc_structure.parse_editable_callouts(
-                body, editable_set
-            )
-            # T2.1 (spec 023): footer presence flag — pure computation over body,
-            # no new Kado call.
-            _lines = body.splitlines()
-            entry["has_footer"] = moc_structure.footer_index(_lines, FOOTER_CALLOUTS) < len(_lines)
+            # T3.1 (spec 022) + M5/M7: inventory — headings, editable callouts and
+            # footer presence in ONE body split (parse_moc_inventory), from body
+            # bytes already in raw_by_path (no new Kado call). Skip for
+            # classification/Dewey MOCs — shared-ctx-builder filters their
+            # inventory out anyway, so computing it is pure waste.
+            if not is_classification_moc(title):
+                inv = moc_structure.parse_moc_inventory(
+                    body, FOOTER_CALLOUTS, editable_set
+                )
+                entry["headings"] = inv["headings"]
+                entry["editable_callouts"] = inv["editable_callouts"]
+                entry["has_footer"] = inv["has_footer"]
 
         entries.append(entry)
 
@@ -440,6 +452,12 @@ def build_cache_builder_feed(entries: list[dict], placeholder_links: list[dict])
     working unchanged. This preserves the vault-explorer Step 9 contract:
         moc-tree-builder.py > moc-output.json ; cache-builder.py --mocs moc-output.json
     (SDD line 183 — "still emits the cache-builder-shaped map_notes superset").
+
+    M11: the inventory fields (headings/editable_callouts/has_footer) ride along
+    on each map_note INTENTIONALLY — do NOT strip them here. cache-builder copies
+    map_notes verbatim into discovery-cache.yaml, and shared-ctx-builder reads
+    these fields back from that cache. Stripping them would break has_footer /
+    headings / editable_callouts entirely (no other source feeds shared-ctx).
     """
     return {
         "map_notes": [e for e in entries if e["kind"] == "moc"],

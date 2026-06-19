@@ -5,8 +5,12 @@
 Ensures the reducer's --fan-resolve flag:
 (a) filters items to only those whose result.json has force_atomic=true,
 (b) emits doc_variant="fan-resolve",
-(c) drops daily_notes_updates, proposed_mocs, needs_attention,
-(d) uses the Force-Atomic Resolve precedence note.
+(c) drops daily_notes_updates and needs_attention,
+(d) uses the Force-Atomic Resolve precedence note,
+(e) KEEPS proposed_mocs — a standalone-fan force-atomic item with no thematic
+    MOC match must be able to propose a new MOC (the per-item "see Proposed MOCs
+    section" note would otherwise be a dead end). Pass-2 merges these by-name
+    with the primary doc's proposed MOCs (#67).
 """
 from __future__ import annotations
 
@@ -51,7 +55,27 @@ def _write_state(path: Path, stems: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _write_result(items_dir: Path, stem: str, force_atomic: bool) -> None:
+def _write_result(
+    items_dir: Path,
+    stem: str,
+    force_atomic: bool,
+    *,
+    needs_new_moc: bool = False,
+    proposed_moc_topic: str | None = None,
+) -> None:
+    action = {
+        "kind": "create_atomic_note",
+        "title": f"{stem} atomic",
+        "template": "Atomic Note.md",
+        "location": "Atlas/202 Notes/",
+        "candidate_mocs": [],
+        "tags": ["topic/test"],
+        "summary": f"synthetic atomic for {stem}",
+        "needs_new_moc": needs_new_moc,
+        "proposed_moc_topic": proposed_moc_topic,
+        "classification": {"category": "2700 - Art & Recreation", "confidence": 0.6},
+        "tags_to_add": ["topic/recreation/board-games"] if needs_new_moc else [],
+    }
     (items_dir / f"{stem}.result.json").write_text(json.dumps({
         "schema_version": "1",
         "stem": stem,
@@ -59,21 +83,11 @@ def _write_result(items_dir: Path, stem: str, force_atomic: bool) -> None:
         "type": "fleeting_note",
         "type_confidence": 0.5,
         "force_atomic": force_atomic,
-        "actions": [
-            {
-                "kind": "create_atomic_note",
-                "title": f"{stem} atomic",
-                "template": "Atomic Note.md",
-                "location": "Atlas/202 Notes/",
-                "candidate_mocs": [],
-                "tags": ["topic/test"],
-                "summary": f"synthetic atomic for {stem}",
-            }
-        ],
+        "actions": [action],
         "candidate_mocs": [],
         "classification": {"category": "2600 - Applied Sciences", "confidence": 0.5},
-        "needs_new_moc": False,
-        "proposed_moc_topic": None,
+        "needs_new_moc": needs_new_moc,
+        "proposed_moc_topic": proposed_moc_topic,
         "tags_to_add": [],
         "atomic_note_worthiness": 0.2,
         "alternatives": [],
@@ -118,6 +132,9 @@ def test_fan_resolve_filters_and_sets_variant(tmp_path):
 
     assert doc["doc_variant"] == "fan-resolve", doc.get("doc_variant")
     assert doc["daily_notes_updates"] == [], doc["daily_notes_updates"]
+    # proposed_mocs is empty here because the forced item has needs_new_moc=False
+    # — NOT because fan-resolve drops the block (it no longer does). See
+    # test_fan_resolve_keeps_proposed_mocs for the kept-block guard.
     assert doc["proposed_mocs"] == [], doc["proposed_mocs"]
     assert doc["needs_attention"] == [], doc["needs_attention"]
     assert "Force-Atomic Resolve" in doc["decision_precedence_note"], (
@@ -128,6 +145,48 @@ def test_fan_resolve_filters_and_sets_variant(tmp_path):
     assert section_stems == ["Furano"], (
         f"expected only Furano in fan-resolve; got {section_stems}"
     )
+
+
+def test_fan_resolve_keeps_proposed_mocs(tmp_path):
+    """Regression (fan proposed-MOC fix): a force-atomic item with no thematic
+    MOC match (needs_new_moc=True) must surface its proposed MOC in the
+    fan-resolve doc — previously --fan-resolve dropped proposed_mocs to [],
+    leaving the per-item 'see Proposed MOCs section' note a dead end."""
+    items_dir = tmp_path / "items"
+    items_dir.mkdir()
+    shared_ctx = tmp_path / "shared-ctx.json"
+    state = tmp_path / "state.jsonl"
+    output = tmp_path / "doc.json"
+    _minimal_shared_ctx(shared_ctx)
+
+    _write_state(state, ["Wingspan"])
+    _write_result(items_dir, "Wingspan", force_atomic=True,
+                  needs_new_moc=True, proposed_moc_topic="Board Games")
+
+    result = subprocess.run(
+        [
+            sys.executable, str(REDUCER),
+            "--state", str(state),
+            "--items-dir", str(items_dir),
+            "--run-id", "test-run",
+            "--profile", "miyo",
+            "--shared-ctx", str(shared_ctx),
+            "--fan-resolve",
+            "--threshold", "1",
+            "--output", str(output),
+        ],
+        capture_output=True, text=True, check=False, env=_ENV,
+    )
+    assert result.returncode == 0, result.stderr
+
+    doc = json.loads(output.read_text(encoding="utf-8"))
+    assert doc["doc_variant"] == "fan-resolve", doc.get("doc_variant")
+    # The fix: proposed_mocs survives in fan-resolve mode.
+    assert doc["proposed_mocs"], (
+        f"fan-resolve must KEEP proposed_mocs; got {doc['proposed_mocs']}"
+    )
+    topics = " ".join(json.dumps(p) for p in doc["proposed_mocs"])
+    assert "Board Games" in topics, topics
 
 
 def test_primary_mode_unchanged_without_flag(tmp_path):

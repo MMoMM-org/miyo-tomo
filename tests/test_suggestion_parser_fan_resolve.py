@@ -444,3 +444,60 @@ def test_fan_resolve_single_block_no_regression(tmp_path):
     entry = furano_entries[0]
     assert entry.get("force_atomic") is True, entry
     assert entry.get("from_resolve") is True, entry
+
+
+def _doc_with_proposed_moc(name: str, supporting: str, topic: str) -> str:
+    """Minimal suggestions doc carrying a single approved Proposed MOC."""
+    return "\n".join([
+        "---",
+        "type: tomo-suggestions",
+        "generated: 2026-06-19T10:00:00Z",
+        'tomo_version: "0.1.0"',
+        "profile: miyo",
+        "source_items: 1",
+        "run_id: 2026-06-19T10-00-00Z-merge",
+        "---",
+        "",
+        "# Inbox Suggestions — 2026-06-19",
+        "",
+        "- [x] Approved",
+        "",
+        "## Proposed MOCs",
+        "",
+        f"### Proposed MOC: {topic}",
+        f"- **Name:** {name}",
+        "- **Parent:** [[2700 - Art & Recreation]]",
+        f"- **Supporting items:** {supporting}",
+        "- **Decision:**",
+        "  - [x] Approve (create this MOC with the Name above)",
+        "  - [ ] Skip",
+        "",
+    ])
+
+
+def test_fan_and_primary_proposed_mocs_merge_by_name(tmp_path):
+    """Fan proposed-MOC fix: a Proposed MOC in the fan-resolve doc merges
+    by-name (#67) with a same-named Proposed MOC in the primary doc → ONE
+    create_moc with the union of supporting items, not two. Regression guard
+    for the parser half of the fan proposed-MOC fix."""
+    primary = tmp_path / "suggestions.md"
+    fan = tmp_path / "suggestions-fan.md"
+    primary.write_text(
+        _doc_with_proposed_moc("Board Games (MOC)", "Catan", topic="Gesellschaftsspiele")
+    )
+    fan.write_text(
+        _doc_with_proposed_moc("Board Games (MOC)", "Wingspan", topic="Games")
+    )
+
+    out = _run_parser(primary, fan)
+
+    mocs = [c for c in out.get("confirmed_items", []) if c.get("action") == "create_moc"]
+    assert len(mocs) == 1, (
+        f"expected ONE merged create_moc, got {len(mocs)}: "
+        f"{[m.get('title') for m in mocs]}"
+    )
+    assert mocs[0]["title"] == "Board Games (MOC)", mocs[0].get("title")
+    supporting = mocs[0].get("supporting_items") or ""
+    assert "Catan" in supporting and "Wingspan" in supporting, (
+        f"merged MOC must union supporting items; got {supporting!r}"
+    )

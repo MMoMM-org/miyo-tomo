@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.1
+# version: 0.14.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1528,11 +1528,35 @@ def main() -> int:
     except Exception:
         pass
 
-    proposed_mocs = parse_proposed_mocs(text, config_template=moc_template)
+    # Read the companion fan-resolve doc up-front (if any) so its proposed
+    # MOCs merge by-name with the primary's: a fanned force-atomic item can
+    # have no thematic match and propose a new MOC that joins the same-named
+    # primary proposal (#67). resolve_text is reused by the atomic-section
+    # reconciliation pass below.
+    resolve_text = ""
+    if args.fan_resolve_file:
+        try:
+            with open(args.fan_resolve_file, encoding="utf-8") as fh:
+                resolve_text = fh.read()
+        except OSError as exc:
+            print(
+                f"warning: cannot read --fan-resolve-file "
+                f"{args.fan_resolve_file}: {exc}",
+                file=sys.stderr,
+            )
+            resolve_text = ""
+
+    primary_pmocs = parse_proposed_mocs(text, config_template=moc_template)
+    fan_pmocs = (
+        parse_proposed_mocs(resolve_text, config_template=moc_template)
+        if resolve_text.strip() else []
+    )
+    proposed_mocs = _merge_proposed_mocs_by_name(primary_pmocs + fan_pmocs)
     if proposed_mocs:
         confirmed_items.extend(proposed_mocs)
         print(
-            f"proposed_mocs: {len(proposed_mocs)} approved",
+            f"proposed_mocs: {len(proposed_mocs)} approved"
+            + (f" ({len(fan_pmocs)} from fan-resolve)" if fan_pmocs else ""),
             file=sys.stderr,
         )
 
@@ -1558,39 +1582,28 @@ def main() -> int:
     # F-41 (T4.2): resolve-doc is list-valued — a single SNN heading can carry
     # N atomic blocks (same multi-block render layout as the primary doc).
     resolve_sections_by_stem: dict[str, list[dict]] = {}
-    if args.fan_resolve_file:
-        try:
-            with open(args.fan_resolve_file, encoding="utf-8") as fh:
-                resolve_text = fh.read()
-        except OSError as exc:
-            print(
-                f"warning: cannot read --fan-resolve-file "
-                f"{args.fan_resolve_file}: {exc}",
-                file=sys.stderr,
-            )
-            resolve_text = ""
-        if resolve_text.strip():
-            for section_id, lines in itertools.chain.from_iterable(
-                split_section_into_blocks(sid, lns)
-                for sid, lns in split_into_sections(resolve_text)
-            ):
-                try:
-                    item = parse_section(section_id, lines)
-                except Exception as exc:  # noqa: BLE001
-                    print(
-                        f"warning: resolve-doc {section_id} parse error: {exc}",
-                        file=sys.stderr,
-                    )
-                    continue
-                if item is None:
-                    continue
-                # Only approved atomic sections count. Unchecked = user
-                # hasn't accepted the proposal yet.
-                if not item.get("approved"):
-                    continue
-                stem_key = _stem_of(item.get("source_path"))
-                if stem_key:
-                    resolve_sections_by_stem.setdefault(stem_key, []).append(item)
+    if args.fan_resolve_file and resolve_text.strip():
+        for section_id, lines in itertools.chain.from_iterable(
+            split_section_into_blocks(sid, lns)
+            for sid, lns in split_into_sections(resolve_text)
+        ):
+            try:
+                item = parse_section(section_id, lines)
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"warning: resolve-doc {section_id} parse error: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            if item is None:
+                continue
+            # Only approved atomic sections count. Unchecked = user
+            # hasn't accepted the proposal yet.
+            if not item.get("approved"):
+                continue
+            stem_key = _stem_of(item.get("source_path"))
+            if stem_key:
+                resolve_sections_by_stem.setdefault(stem_key, []).append(item)
 
     # ── Reconcile Force Atomic Note promotions ─────────────────
     # When the user ticks [x] Force Atomic Note on a log_entry, they're

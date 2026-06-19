@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.12.0
+# version: 1.13.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1369,13 +1369,16 @@ def main() -> int:
         daily_notes_updates_sorted, daily_only_stems=daily_only_stems
     )
 
-    # XDD 012 fan-resolve: drop the aggregated blocks the resolve doc
-    # doesn't need. Keep sections (atomic proposals) and override the
-    # precedence note so the user sees what this doc is for.
+    # fan-resolve: drop the aggregated blocks that belong to the primary
+    # doc (daily-note updates, needs-attention). Proposed MOCs are KEPT —
+    # a standalone-fan force-atomic item can have no thematic MOC match and
+    # propose a new MOC; without the section the per-item "see Proposed MOCs
+    # section below" note is a dead end. Pass-2 merges these by-name with the
+    # primary doc's proposed MOCs (#67). Keep sections (atomic proposals) and
+    # override the precedence note so the user sees what this doc is for.
     if args.fan_resolve:
         daily_notes_updates = []
         rendered_daily_updates_md = ""
-        proposed_mocs = []
         needs_attention = []
         precedence_note = (
             "This is a **Force-Atomic Resolve** doc. Tomo noticed you ticked "

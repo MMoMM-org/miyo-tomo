@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.5.1
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -289,7 +289,11 @@ def derive_expected(parsed: dict) -> dict:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def summarize_actual(instrs: dict) -> dict:
-    """Flatten the actual action list into the same shape used for diff."""
+    """Flatten the actual action list into the same shape used for diff.
+
+    link_to_moc is counted as (note, MOC) pairs (one per bullet/source note),
+    not as raw action count, so #70-batched actions reconcile per merged note.
+    """
     actions = instrs.get("actions") or []
     counts: dict[str, int] = {}
     for a in actions:

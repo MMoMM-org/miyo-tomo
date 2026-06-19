@@ -74,3 +74,26 @@ WHY: Bumped across the F-41 work for the C5 filename collision guard
 (per-origin expected-count gate replacing paired-delete-after-first).
 `update-tomo.sh` skips unchanged versions silently — the bump is required for the
 edit to ship to the Docker instance.
+
+## link_to_moc internal-field lifetime
+
+WHY `new_section` / `fit_confidence` (and the defensive `alt_headings` guard)
+live on the action object only between two well-defined points:
+
+- They are LIFTED onto the action in `_build_link_to_moc_actions._emit` from the
+  Pass-1 anchor. They are deliberately TOP-LEVEL action fields, not nested in
+  `anchor` — the `instructions.schema.json` `anchor` object is
+  `additionalProperties:false {type,value}`, so anything extra inside it would
+  be rejected (anchor no-leak contract).
+- They are CONSUMED in-place by the pipeline: `_serialize_new_sections` bakes
+  `new_section` into `line_to_add`; `_emit_resolution_telemetry` reads
+  `fit_confidence` for per-placement scoring.
+- They are REMOVED by `_strip_internal_link_fields`, which MUST run after
+  serialize + telemetry. They never reach Hashi — the link_to_moc wire schema
+  is also `additionalProperties:false`, and leaving them on makes Hashi's
+  un-discriminated `oneOf` fall through to `move_note` with a misleading
+  "must have required property source" error.
+
+The one-line comment at `_emit` records this lifetime at the lift site; this
+section is the full rationale. Parity-locked with the wire-hygiene contract
+(see `reference_link_to_moc_wire_hygiene`).

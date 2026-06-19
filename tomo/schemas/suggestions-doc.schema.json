@@ -60,7 +60,7 @@
                           "value": {"type": ["string", "null"]},
                           "placement": {"type": "string", "enum": ["before", "after", "inside"]},
                           "new_section": {"type": ["string", "null"]},
-                          "alt_headings": {"type": "array", "items": {"type": "string"}},
+                          "alt_headings": {"type": "array", "items": {"type": "string", "pattern": "^[^\\n\\r]+$"}},
                           "fit_confidence": {"type": ["number", "null"]}
                         }
                       }

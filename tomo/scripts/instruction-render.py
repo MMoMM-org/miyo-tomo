@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.26.0
+# version: 0.26.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -796,6 +796,9 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
         if not target_moc or not source_title or key in seen:
             return
         seen.add(key)
+        # Internal-field lifetime: new_section / fit_confidence (and any future
+        # alt_headings) live on the action from here until
+        # _strip_internal_link_fields removes them — never on the wire.
         # Decompose the Pass-1 anchor: the instructions.schema.json `anchor`
         # object allows ONLY {type, value} (additionalProperties:false).
         # `placement` and `new_section` are TOP-LEVEL fields on link_to_moc,
@@ -1520,6 +1523,7 @@ def backfill_supporting_items_parents(confirmed: list[dict]) -> None:
 # TODO F-55: make this profile-configurable rather than a hardcoded set.
 FOOTER_CALLOUTS = {"video", "calendar", "puzzle", "compass"}
 
+
 def resolve_section_names(actions: list[dict], client, editable_callouts: list[str]) -> int:
     """Best-effort: resolve the insertion anchor on callout- or line-typed
     link_to_moc actions by reading the target MOC.
@@ -1585,13 +1589,18 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         to live MOC bodies and template bodies (ADR-4)."""
         if not editable_lines:
             return None
-        def _name(line: str) -> str:
+
+        def _line_name(line: str) -> str:
             m = _EDITABLE_NAME_RE.match(line)
             return m.group(1) if m else ""
-        scored = [(_score(_name(line)), i, line) for i, line in enumerate(editable_lines)]
-        # Highest score wins; ties resolved by first occurrence (stable sort key: -i).
-        best = max(scored, key=lambda x: (x[0], -x[1]))
-        return best[2]
+
+        # Highest score wins; ties resolved by first occurrence (stable sort
+        # key: -i). _line_name extracts the callout type for _score.
+        best = max(
+            enumerate(editable_lines),
+            key=lambda iv: (_score(_line_name(iv[1])), -iv[0]),
+        )
+        return best[1]
 
     def _pick_content_heading(headings: list[dict]) -> str | None:
         """First content H2–H6 heading (from a pre-parsed list) before the
@@ -1803,8 +1812,11 @@ def _emit_resolution_telemetry(actions: list[dict]) -> None:
         else:
             counts["unresolved"] += 1
 
-    moc_count = len(moc_paths)
-    moc_list = " ".join(moc_paths)
+    # Dedup paths preserving first-seen order: a MOC linked N times appears N
+    # times in moc_paths, but the telemetry line should list each MOC once.
+    unique_paths = list(dict.fromkeys(moc_paths))
+    moc_count = len(unique_paths)
+    moc_list = " ".join(unique_paths)
     print(
         f"[instruction-render] moc-insertion resolution — "
         f"heading={counts['heading']} "

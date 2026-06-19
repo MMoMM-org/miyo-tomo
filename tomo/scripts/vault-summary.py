@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """
 vault-summary.py — Aggregate pipeline stats into a single JSON summary.
 
@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date
 from itertools import islice
 from typing import Any
 
@@ -422,7 +423,6 @@ def main() -> None:
     )
     if args.render_md:
         config = load_yaml_safe(args.config, "--config")
-        from datetime import date  # noqa: PLC0415
         print(render_markdown(summary, config, updated=date.today().isoformat()), end="")
         return
     print(json.dumps(summary, indent=2, ensure_ascii=False))

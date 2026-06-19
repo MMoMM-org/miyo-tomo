@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.0
+# version: 0.13.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -284,7 +284,14 @@ def _default_doc_path(markdown_path: str) -> str:
         )
         if os.path.isfile(sibling):
             return sibling
-    return os.path.join("tomo-tmp", "suggestions-doc.json")
+    fallback = os.path.join("tomo-tmp", "suggestions-doc.json")
+    exists = "exists" if os.path.isfile(fallback) else "does NOT exist"
+    print(
+        f"note: no sibling suggestions-doc.json; falling back to "
+        f"cwd-relative {fallback} ({exists})",
+        file=sys.stderr,
+    )
+    return fallback
 
 
 def parse_section(

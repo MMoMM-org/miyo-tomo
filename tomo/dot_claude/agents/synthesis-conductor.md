@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.8.0
+# version: 0.8.1
 
 **Active agent: synthesis-conductor**
 
@@ -98,18 +98,19 @@ primary back in — the fan's atomics are self-contained.
 
 For `DOC_TYPE` = `suggestions` without a fan companion (`approved_fan` is empty):
 ```bash
-python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" --suggestions-doc tomo-tmp/suggestions-doc.json > tomo-tmp/parsed-suggestions.json
 ```
 
 For `DOC_TYPE` = `suggestions` with a fan companion (`approved_fan` is non-empty):
 ```bash
-python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" --fan-resolve-file "<approved_fan[0].cache_path>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" --fan-resolve-file "<approved_fan[0].cache_path>" --suggestions-doc tomo-tmp/suggestions-doc.json > tomo-tmp/parsed-suggestions.json
 ```
 
 For `DOC_TYPE` = `suggestions-fan` (standalone — `approved_suggestions` is empty, so there is no primary to merge into):
 ```bash
 python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
 ```
+If `tomo-tmp/suggestions-doc.json` is absent (standalone-fan or force-pass2 flow), omit `--suggestions-doc` — the parser falls back to Placement-line parsing only.
 
 For `DOC_TYPE` = `moc-proposal`:
 ```bash

@@ -2,7 +2,7 @@
 # validate-result.py — Validate a tomo-tmp/items/<stem>.result.json
 # against the item-result schema. Used by inbox-analyst immediately after
 # writing the file, before state-update done.
-# version: 0.2.0
+# version: 0.3.0
 """
 Inputs (CLI):
   --result   Path to <stem>.result.json
@@ -27,10 +27,12 @@ from pathlib import Path
 
 
 REQUIRED_TOP = {"schema_version", "stem", "path", "type", "type_confidence", "actions"}
+# link_to_moc is NOT a Pass-1 (item-result) action — it is synthesized in
+# Pass-2 against instructions.schema.json by instruction-render.py. The
+# inbox-analyst LLM never emits it into an item-result.
 ALLOWED_KINDS = {
     "create_atomic_note",
     "update_daily",
-    "link_to_moc",
     "create_moc",
     "modify_note",
 }
@@ -39,7 +41,6 @@ REQUIRED_PER_KIND = {
         "kind", "suggested_title", "template", "location", "candidate_mocs", "tags_to_add",
     },
     "update_daily": {"kind", "date", "daily_note_path", "updates"},
-    "link_to_moc": {"kind", "target_moc", "section_name"},
     "create_moc": {"kind", "moc_title", "parent_moc"},
     "modify_note": {"kind", "target_path", "diff_description"},
 }

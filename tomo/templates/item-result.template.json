@@ -69,11 +69,6 @@
       "daily_note_stem": "<DAILY_NOTE_STEM>"
     },
     {
-      "kind": "link_to_moc",
-      "target_moc": "<TARGET_MOC>",
-      "section_name": "<SECTION_NAME>"
-    },
-    {
       "kind": "create_moc",
       "moc_title": "<MOC_TITLE>",
       "parent_moc": "<PARENT_MOC>"

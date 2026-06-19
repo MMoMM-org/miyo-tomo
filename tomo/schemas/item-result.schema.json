@@ -39,7 +39,6 @@
         "oneOf": [
           {"$ref": "#/$defs/create_atomic_note"},
           {"$ref": "#/$defs/update_daily"},
-          {"$ref": "#/$defs/link_to_moc"},
           {"$ref": "#/$defs/create_moc"},
           {"$ref": "#/$defs/modify_note"}
         ]
@@ -199,16 +198,6 @@
           ]
         },
         "time_source": {"type": "string"}
-      }
-    },
-    "link_to_moc": {
-      "type": "object",
-      "required": ["kind", "target_moc", "section_name"],
-      "additionalProperties": false,
-      "properties": {
-        "kind": {"const": "link_to_moc"},
-        "target_moc": {"type": "string"},
-        "section_name": {"type": "string"}
       }
     },
     "create_moc": {

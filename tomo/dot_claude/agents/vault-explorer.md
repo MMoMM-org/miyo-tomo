@@ -11,7 +11,7 @@ skills:
 ---
 
 # Vault Explorer Agent
-# version: 0.14.0
+# version: 0.14.1
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -609,7 +609,7 @@ Render the human-readable summary deterministically from the data:
    python3 scripts/vault-summary.py --render-md > config/vault-config.md
 
 # STRICT — Generate `config/vault-config.md` ONLY via `vault-summary.py --render-md`. NEVER hand-write or Edit it.
-# Why: a hand-composed summary drifts from the YAML in format AND facts (e.g. listing ignore-callouts as editable) — issue #72.
+# Why: a hand-composed summary drifts from the YAML in format AND facts (e.g. listing ignore-callouts as editable).
 
 ## Re-Run Behavior
 

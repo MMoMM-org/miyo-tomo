@@ -1,6 +1,6 @@
 ---
 title: "Phase 7: Cross-repo + live walk"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 7
 ---
@@ -47,16 +47,26 @@ Closes governance + proves the redesign end-to-end against the real vault.
   4. Validate: handoff + ADR reference the spec ID and the existing-shapes claim.
   5. Success: [ ] L2 reflection + handoff filed `[ref: solution.md/ADR-7]`
 
-- [ ] **T7.3 Live-validation walk** `[cross-repo]` `[needs-hashi]` `[activity: validate]`
+- [x] **T7.3 Live-validation walk** `[cross-repo]` `[needs-hashi]` `[activity: validate]`
 
   1. Prime: Confirm the test note `100 Inbox/First Principles Thinking.md` exists and pick a target MOC where no H2 fits `[ref: requirements.md/AC-14]`. Use host-vs-live-Kado (sandbox off; URL+token from `tomo-instance/.mcp.json`).
   2. Test (red): run `/inbox` Pass-1 → a new H2 section is proposed, its name appears in the suggestions doc, and it is renamable (AC-14).
   3. Implement (green): execute the walk; confirm Pass-2 renders the new section and (through Hashi) it lands before the footer with correct spacing and the link under it (AC-15). Log the run cost to `docs/evolution/inbox-cost-log.md`.
   4. Validate: vault state diff matches the emitted `instructions.json`; #28 fired on a real MOC (not a fixture).
   5. Success:
-     - [ ] #28 fires + reviewable + renamable `[ref: AC-14]`
-     - [ ] applies before footer, correct spacing `[ref: AC-15]`
+     - [x] #28 fires + reviewable + renamable `[ref: AC-14]`
+     - [x] applies before footer, correct spacing `[ref: AC-15]`
 
-- [ ] **T7.4 Phase Validation + full regression** `[activity: validate]`
+  Validated 2026-06-20 on the live Privat-Test vault: Pass-1 proposed a new
+  `## Tokyo Temples` section for Senso-ji on Japan (MOC) (renamed by the
+  reviewer → renamable) and First Principles resolved to the existing
+  `## Thinking Frameworks` heading at 90% (tier-1). The emitted
+  `instructions.json` placed the new section before the Japan footer with the
+  link under it (AC-15). The walk additionally surfaced and fixed three
+  pre-existing fan-flow bugs (orthogonal to 022): fan-resolve dropped proposed
+  MOCs (0c7a4b9) and proposed-MOC members were lost on the render→parse
+  round-trip (41de668), each with regression tests.
 
-  - Run the full `./venv/bin/python -m pytest tests/` suite (true baseline ~840 pass; only known failures are the 8 pre-existing `tests/ide_bridge`). Confirm no new regressions. Verify `update-tomo` synced every edited managed file (grep instance versions).
+- [x] **T7.4 Phase Validation + full regression** `[activity: validate]`
+
+  - Run the full `./venv/bin/python -m pytest tests/` suite (true baseline ~840 pass; only known failures are the 8 pre-existing `tests/ide_bridge`). Confirm no new regressions. Verify `update-tomo` synced every edited managed file (grep instance versions). **Result: 1342 passed, 1 skipped (env-gated voice test); instance synced.**

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.26.1
+# version: 0.27.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1871,6 +1871,60 @@ def _merge_new_section_links(actions: list[dict]) -> int:
     return len(drop)
 
 
+def _rewrite_existing_section_anchors(actions: list[dict], client) -> int:
+    """#73: when a link_to_moc carries a top-level new_section whose heading
+    ALREADY exists in the target MOC, rewrite it to a heading anchor
+    (placement=after) and drop new_section — so apply lands the bullet(s) under
+    the existing section instead of creating a duplicate `## <name>` heading.
+
+    Producer-side only (no Hashi change). Runs AFTER _merge_new_section_links
+    (so a same-name group is already one multi-bullet action) and BEFORE
+    _serialize_new_sections (while new_section is still a live top-level field
+    and line_to_add is still the bare bullet block). Reads each distinct target
+    MOC once; offline/None client → no-op. Matches heading names
+    case-insensitively and anchors on the MOC's actual heading text.
+
+    Returns the count of actions rewritten.
+    """
+    if client is None:
+        return 0
+    # target_moc_path → {casefolded heading text: actual heading text}
+    heading_cache: dict[str, dict[str, str]] = {}
+
+    def _existing_headings(path: str) -> dict[str, str]:
+        if path in heading_cache:
+            return heading_cache[path]
+        try:
+            result = client.read_note(path)
+            content = result.get("content", "") or ""
+        except Exception:  # noqa: BLE001
+            heading_cache[path] = {}
+            return heading_cache[path]
+        inv = moc_structure.parse_moc_inventory(content, FOOTER_CALLOUTS, set())
+        names = {h["text"].casefold(): h["text"] for h in inv["headings"]}
+        heading_cache[path] = names
+        return names
+
+    rewritten = 0
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        new_section = a.get("new_section")
+        if not new_section:
+            continue
+        path = a.get("target_moc_path")
+        if not path:
+            continue
+        actual = _existing_headings(path).get(new_section.casefold())
+        if actual is None:
+            continue
+        a["anchor"] = {"type": "heading", "value": actual}
+        a["placement"] = "after"
+        a["new_section"] = None
+        rewritten += 1
+    return rewritten
+
+
 def _strip_internal_link_fields(actions: list[dict]) -> int:
     """Remove Tomo-internal fields from link_to_moc actions before the wire (#68/#64).
 
@@ -2289,6 +2343,15 @@ def main() -> int:
     merged_sections = _merge_new_section_links(actions)
     if merged_sections:
         print(f"  [render] {merged_sections} duplicate new-section link(s) merged",
+              file=sys.stderr)
+
+    # ── Rewrite new_section → existing-heading anchor (#73) ───────────────
+    # Before serializing a fresh `## <name>`, check the live MOC: if a heading
+    # with that name already exists (re-run, cross-run, or LLM proposing an
+    # existing name), anchor under it instead of emitting a duplicate heading.
+    rewritten_sections = _rewrite_existing_section_anchors(actions, client)
+    if rewritten_sections:
+        print(f"  [render] {rewritten_sections} new-section link(s) rewritten to existing heading",
               file=sys.stderr)
 
     # ── Serialize new-section headings (T5.2 / ADR-3) ────────────────────

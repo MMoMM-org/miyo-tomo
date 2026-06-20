@@ -62,10 +62,12 @@ class FakeKadoClient:
         listdir_items: list[dict] | None = None,
         frontmatter_responses: dict[str, list[dict]] | None = None,
         read_note_responses: dict[str, dict] | None = None,
+        read_frontmatter_responses: dict[str, dict] | None = None,
     ):
         self._listdir_items = listdir_items or []
         self._frontmatter_responses = frontmatter_responses or {}
         self._read_note_responses = read_note_responses or {}
+        self._read_frontmatter_responses = read_frontmatter_responses or {}
 
     def list_dir(self, path: str, *, depth: int = None, limit: int = 500) -> list:
         return self._listdir_items
@@ -78,6 +80,12 @@ class FakeKadoClient:
 
     def read_note(self, path: str) -> dict:
         return self._read_note_responses.get(path, {"content": "", "modified": 0})
+
+    def read_frontmatter(self, path: str) -> dict:
+        # Mirror KadoClient.read_frontmatter: {content: <parsed fm dict>}. These
+        # tests pre-populate sources via the byFrontmatter hit, so the default
+        # empty result is non-destructive (enrich only overwrites on non-empty).
+        return self._read_frontmatter_responses.get(path, {"content": {}})
 
 
 # ---------------------------------------------------------------------------

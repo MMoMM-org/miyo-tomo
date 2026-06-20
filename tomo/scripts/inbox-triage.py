@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.0
+# version: 0.11.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -163,6 +163,38 @@ def query_frontmatter(
         "tomo.state=accepted", path_prefix=inbox_path,
     )
     return pending_approval, pending_accept, captured, instructions, approved, accepted
+
+
+def enrich_instructions_frontmatter(
+    client: KadoClient, instructions_hits: list[dict]
+) -> None:
+    """Populate each instructions hit's ``frontmatter`` from a real read (#74).
+
+    Kado byFrontmatter returns ``frontmatter={}`` (see _get_doc_type), so the
+    hits from query_frontmatter carry no ``tomo.sources``. compute_coverage and
+    detect_drift both read ``instr_doc['frontmatter']['tomo']['sources']`` — so
+    without this enrichment ``covered_paths`` is always empty: every approved doc
+    reads as uncovered and ``--force-pass2`` re-synthesizes already-applied sets.
+    Reads frontmatter once per instructions doc; a failed read leaves the hit's
+    frontmatter empty (the doc reads as uncovered — safe-by-default).
+    """
+    for hit in instructions_hits:
+        path = hit.get("path")
+        if not path:
+            continue
+        try:
+            fm = client.read_frontmatter(path)
+        except KadoError as exc:
+            print(
+                f"[inbox-triage] WARNING: read_frontmatter failed for {path}: {exc}",
+                file=sys.stderr,
+            )
+            continue
+        content = fm.get("content")
+        # Only overwrite when the read yields a real frontmatter dict — an empty
+        # result must not clobber anything already on the hit (non-destructive).
+        if isinstance(content, dict) and content:
+            hit["frontmatter"] = content
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +526,10 @@ def discover(
      instructions_hits, approved_hits, accepted_hits) = (
         query_frontmatter(client, inbox_path)
     )
+
+    # Step 3b: enrich instructions hits with real frontmatter — byFrontmatter
+    # returns {} so tomo.sources is invisible to coverage/drift otherwise (#74).
+    enrich_instructions_frontmatter(client, instructions_hits)
 
     # Step 4: compute new sources
     new_sources = compute_new_sources(

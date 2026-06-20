@@ -37,11 +37,15 @@ class FakeKadoClient:
         frontmatter_responses: dict[str, list[dict]] | None = None,
         read_note_responses: dict[str, dict] | None = None,
         read_note_errors: dict[str, Exception] | None = None,
+        read_frontmatter_responses: dict[str, dict] | None = None,
+        read_frontmatter_errors: dict[str, Exception] | None = None,
     ):
         self._listdir_items = listdir_items or []
         self._frontmatter_responses = frontmatter_responses or {}
         self._read_note_responses = read_note_responses or {}
         self._read_note_errors = read_note_errors or {}
+        self._read_frontmatter_responses = read_frontmatter_responses or {}
+        self._read_frontmatter_errors = read_frontmatter_errors or {}
         self.calls: list[tuple[str, dict]] = []
 
     def list_dir(self, path: str, *, depth: int = None, limit: int = 500) -> list:
@@ -60,6 +64,13 @@ class FakeKadoClient:
         if path in self._read_note_errors:
             raise self._read_note_errors[path]
         return self._read_note_responses.get(path, {"content": "", "modified": 0})
+
+    def read_frontmatter(self, path: str) -> dict:
+        self.calls.append(("read_frontmatter", {"path": path}))
+        if path in self._read_frontmatter_errors:
+            raise self._read_frontmatter_errors[path]
+        # Mirror KadoClient.read_frontmatter: {content: <parsed fm dict>, ...}.
+        return self._read_frontmatter_responses.get(path, {"content": {}})
 
 
 # ---------------------------------------------------------------------------
@@ -676,6 +687,80 @@ def _instructions_hit(
             },
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Instructions-frontmatter enrichment (step 3b, #74)
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichInstructionsFrontmatter:
+    """#74: byFrontmatter hits carry frontmatter={} (Kado limitation); the
+    enrichment step must read the real frontmatter so compute_coverage and
+    detect_drift can see tomo.sources."""
+
+    def test_enrich_populates_sources_from_read(self):
+        mod = _load_module()
+        instr_path = INBOX_PATH + "2026-06-18_1815_instructions.md"
+        sugg_path = INBOX_PATH + "2026-06-18_1432_suggestions.md"
+        hits = [{"path": instr_path, "modified": 1716300000000, "frontmatter": {}}]
+        client = FakeKadoClient(read_frontmatter_responses={
+            instr_path: {"content": {"tomo": {
+                "doc_type": "instructions",
+                "sources": [{"path": sugg_path, "checksum": "sha256:abc"}],
+            }}},
+        })
+
+        mod.enrich_instructions_frontmatter(client, hits)
+
+        assert hits[0]["frontmatter"]["tomo"]["sources"][0]["path"] == sugg_path
+
+    def test_enrichment_makes_coverage_exclude_covered_doc(self):
+        """Regression for #74: empty frontmatter → doc re-processed; after
+        enrichment the covering instructions doc is correctly excluded."""
+        mod = _load_module()
+        instr_path = INBOX_PATH + "2026-06-18_1815_instructions.md"
+        sugg_path = INBOX_PATH + "2026-06-18_1432_suggestions.md"
+        approved = [{"path": sugg_path, "modified": "1", "cache_path": ""}]
+        client = FakeKadoClient(read_frontmatter_responses={
+            instr_path: {"content": {"tomo": {
+                "sources": [{"path": sugg_path, "checksum": "sha256:abc"}],
+            }}},
+        })
+
+        # Before enrichment: empty frontmatter → doc reads as uncovered.
+        before = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            approved_suggestions=list(approved),
+            instructions_hits=[{"path": instr_path, "modified": 1, "frontmatter": {}}],
+        )
+        covered_before, to_process_before = mod.compute_coverage(before)
+        assert sugg_path not in covered_before
+        assert sugg_path in to_process_before
+
+        # After enrichment: tomo.sources visible → doc is covered.
+        hits = [{"path": instr_path, "modified": 1, "frontmatter": {}}]
+        mod.enrich_instructions_frontmatter(client, hits)
+        after = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            approved_suggestions=list(approved),
+            instructions_hits=hits,
+        )
+        covered_after, to_process_after = mod.compute_coverage(after)
+        assert sugg_path in covered_after
+        assert sugg_path not in to_process_after
+
+    def test_read_failure_leaves_frontmatter_empty(self):
+        """A failed frontmatter read must not crash; the hit stays uncovered."""
+        mod = _load_module()
+        from lib.kado_client import KadoError
+        instr_path = INBOX_PATH + "2026-06-18_1815_instructions.md"
+        hits = [{"path": instr_path, "modified": 1, "frontmatter": {}}]
+        client = FakeKadoClient(read_frontmatter_errors={instr_path: KadoError("boom")})
+
+        mod.enrich_instructions_frontmatter(client, hits)  # must not raise
+
+        assert hits[0]["frontmatter"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -1413,15 +1498,22 @@ class TestForcePass2TerminalApprovedRecovery:
                 "tomo.state=pending-approval": [],
                 "tomo.state=pending-accept": [],
                 "tomo.state=captured": [],
-                "tomo.doc_type=instructions": [_instructions_hit(
-                    instr_path,
-                    sources=[{"path": sugg_path, "checksum": "sha256:abc"}],
-                )],
+                # byFrontmatter returns frontmatter={} (Kado limitation); the
+                # sources come from the read_frontmatter enrichment below (#74).
+                "tomo.doc_type=instructions": [
+                    {"path": instr_path, "modified": 1716300000000, "frontmatter": {}},
+                ],
                 "tomo.state=approved": [_fm_hit(sugg_path, "suggestions", "approved")],
                 "tomo.state=accepted": [],
             },
             read_note_responses={
                 sugg_path: {"content": _suggestions_body(approved=True), "modified": 0},
+            },
+            read_frontmatter_responses={
+                instr_path: {"content": {"tomo": {
+                    "doc_type": "instructions",
+                    "sources": [{"path": sugg_path, "checksum": "sha256:abc"}],
+                }}},
             },
         )
 

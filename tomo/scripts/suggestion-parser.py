@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.14.0
+# version: 0.15.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -604,11 +604,49 @@ def split_into_sections(text: str) -> list[tuple[str, list[str]]]:
 RE_PROPOSED_MOC_HEADER = re.compile(r"^###\s+Proposed MOC:\s*(.*)", re.IGNORECASE)
 
 
-def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
+def _load_json_doc(path: str) -> dict:
+    """Load a structured suggestions-doc JSON, or {} on any error."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _topic_member_stems(doc: dict) -> dict[str, list[str]]:
+    """Map proposed-MOC topic → member source-stems from a structured doc.
+
+    The reducer records each proposed MOC's member SNN ids in ``items``; the
+    markdown render drops them (only ``note_titles`` survive). Recover them by
+    resolving each ``items`` SNN id to its section ``stem``.
+    """
+    id_to_stem: dict[str, str] = {}
+    for sec in doc.get("sections") or []:
+        sid, stem = sec.get("id"), sec.get("stem")
+        if sid and stem:
+            id_to_stem[sid] = stem
+    out: dict[str, list[str]] = {}
+    for pm in doc.get("proposed_mocs") or []:
+        topic = (pm.get("topic") or "").strip()
+        stems = [id_to_stem[i] for i in (pm.get("items") or []) if i in id_to_stem]
+        if topic and stems:
+            out[topic] = stems
+    return out
+
+
+def parse_proposed_mocs(
+    text: str, config_template: str = "", topic_members: dict | None = None
+) -> list[dict]:
     """Parse the ## Proposed MOCs section and return approved MOC items.
 
     Each approved Proposed MOC becomes a confirmed_item with action=create_moc.
+
+    ``topic_members`` (topic → member source-stems, from the structured doc)
+    enriches each block's ``member_stems`` BEFORE the same-name merge, so a name
+    merged from multiple topics keeps every topic's members.
     """
+    topic_members = topic_members or {}
     mocs: list[dict] = []
 
     # Find the ## Proposed MOCs section
@@ -644,6 +682,12 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
         items_str = ""
         approved = False
         tags: list[str] = []
+        # The block's first line is the "### Proposed MOC: <topic>" header. The
+        # markdown render drops the SNN members (only note_titles survive), so
+        # the topic is the key used to recover members from the structured
+        # suggestions-doc JSON (see _topic_member_stems / the binding pass).
+        thm = RE_PROPOSED_MOC_HEADER.match(block[0]) if block else None
+        topic = thm.group(1).strip() if thm else ""
 
         for line in block:
             stripped = line.strip()
@@ -707,6 +751,11 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
             "summary": None,
             "classification": None,
             "supporting_items": items_str,
+            # Internal (stripped before output by the binding pass): the topic
+            # keys structured-doc member recovery; member_stems holds the
+            # recovered source-stems until they're mapped to confirmed ids.
+            "topic": topic,
+            "member_stems": list(topic_members.get(topic, [])),
         })
 
     return _merge_proposed_mocs_by_name(mocs)
@@ -735,6 +784,13 @@ def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
         for tag in moc.get("tags") or []:
             if tag not in head["tags"]:
                 head["tags"].append(tag)
+        # Union recovered members so a name merged from multiple topics
+        # (e.g. "Gesellschaftsspiele" + "Games" → "Board Games (MOC)") keeps
+        # every member's stem for the down-link binding pass.
+        head_ms = head.setdefault("member_stems", [])
+        for s in moc.get("member_stems") or []:
+            if s not in head_ms:
+                head_ms.append(s)
     return [merged[name] for name in order]
 
 
@@ -1447,9 +1503,8 @@ def main() -> int:
     # stem → anchor) from the sibling suggestions-doc JSON. Supplies the
     # apply-time DEFAULT anchor per checked MOC; the rendered **Placement:**
     # line overrides it when hand-edited. Absent doc → empty map (back-compat).
-    doc_anchor_map = load_doc_anchor_map(
-        args.suggestions_doc or _default_doc_path(filename)
-    )
+    _primary_doc_path = args.suggestions_doc or _default_doc_path(filename)
+    doc_anchor_map = load_doc_anchor_map(_primary_doc_path)
 
     # F-41: split each rendered section into per-atomic-block groups on
     # **Source:** boundaries. Sections with ≤1 Source line yield one group
@@ -1546,9 +1601,24 @@ def main() -> int:
             )
             resolve_text = ""
 
-    primary_pmocs = parse_proposed_mocs(text, config_template=moc_template)
+    # Recover proposed-MOC members from the structured docs (the render drops
+    # the SNN members; we resolve topic → source-stems and bind them to the
+    # create_moc below so the new MOC gets its child down-links).
+    import os
+    primary_members = _topic_member_stems(_load_json_doc(_primary_doc_path))
+    fan_members = (
+        _topic_member_stems(_load_json_doc(os.path.join("tomo-tmp", "suggestions-fan-doc.json")))
+        if args.fan_resolve_file else {}
+    )
+    # Enrich member_stems INSIDE parse (before its internal same-name merge) so
+    # a name merged from multiple topics keeps every topic's members.
+    primary_pmocs = parse_proposed_mocs(
+        text, config_template=moc_template, topic_members=primary_members
+    )
     fan_pmocs = (
-        parse_proposed_mocs(resolve_text, config_template=moc_template)
+        parse_proposed_mocs(
+            resolve_text, config_template=moc_template, topic_members=fan_members
+        )
         if resolve_text.strip() else []
     )
     proposed_mocs = _merge_proposed_mocs_by_name(primary_pmocs + fan_pmocs)
@@ -1749,6 +1819,28 @@ def main() -> int:
             "be triggered by Pass 2.",
             file=sys.stderr,
         )
+
+    # Bind proposed-MOC members → supporting_items (down-links). Runs AFTER fan
+    # reconciliation so a fan-promoted member (re-numbered id) is resolvable.
+    # member_stems were recovered from the structured docs; map them to the
+    # FINAL confirmed-item ids so _build_link_to_moc_actions emits the child
+    # links into the new MOC. Strip the internal helper fields afterwards.
+    _stem_to_id = {
+        _stem_of(c.get("source_path")): c.get("id")
+        for c in confirmed_items
+        if c.get("source_path") and c.get("id")
+    }
+    for c in confirmed_items:
+        if c.get("action") == "create_moc":
+            ids = [
+                _stem_to_id[_stem_of(s)]
+                for s in (c.get("member_stems") or [])
+                if _stem_of(s) in _stem_to_id
+            ]
+            if ids:
+                c["supporting_items"] = ", ".join(ids)
+        c.pop("member_stems", None)
+        c.pop("topic", None)
 
     output = {
         "confirmed_items": confirmed_items,

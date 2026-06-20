@@ -501,3 +501,59 @@ def test_fan_and_primary_proposed_mocs_merge_by_name(tmp_path):
     assert "Catan" in supporting and "Wingspan" in supporting, (
         f"merged MOC must union supporting items; got {supporting!r}"
     )
+
+
+def test_proposed_moc_members_recovered_from_structured_doc(tmp_path):
+    """Core fix: proposed-MOC members are dropped by the markdown render but
+    recovered from the structured suggestions-doc.json (topic -> items ->
+    section stems) and bound to the create_moc as supporting_items (final
+    confirmed ids), so the new MOC gets its child down-links."""
+    primary = tmp_path / "suggestions.md"
+    structured = tmp_path / "suggestions-doc.json"
+    primary.write_text("\n".join([
+        "---", "type: tomo-suggestions", "generated: 2026-06-20T10:00:00Z",
+        'tomo_version: "0.1.0"', "profile: miyo", "source_items: 1",
+        "run_id: 2026-06-20T10-00-00Z-rec", "---", "",
+        "# Inbox Suggestions", "", "- [x] Approved", "",
+        "## Suggestions", "",
+        "### S02 — Catan Strategien", "",
+        "**Source:** [[Catan Strategien]]",
+        "**Suggested name:** Catan Strategien",
+        "**Template:** Atomic Note.md",
+        "**Destination:** Atlas/202 Notes/",
+        "**Classification:** 2700 - Art & Recreation", "",
+        "**Decision (atomic note):**",
+        "- [x] Approve",
+        "- [ ] Skip (keep in inbox)", "",
+        "## Proposed MOCs", "",
+        "### Proposed MOC: Gesellschaftsspiele",
+        "- **Name:** Board Games (MOC)",
+        "- **Parent:** [[2700 - Art & Recreation]]",
+        "- **Supporting notes:** Catan Strategien",
+        "- **Decision:**",
+        "  - [x] Approve (create this MOC with the Name above)", "",
+    ]), encoding="utf-8")
+    structured.write_text(json.dumps({
+        "schema_version": "1",
+        "sections": [{"id": "S02", "stem": "Catan Strategien"}],
+        "proposed_mocs": [{
+            "topic": "Gesellschaftsspiele", "name": "Board Games (MOC)",
+            "items": ["S02"], "note_titles": ["Catan Strategien"],
+        }],
+    }), encoding="utf-8")
+
+    r = subprocess.run(
+        [sys.executable, str(PARSER), "--file", str(primary),
+         "--suggestions-doc", str(structured)],
+        capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    mocs = [c for c in out["confirmed_items"] if c.get("action") == "create_moc"]
+    assert len(mocs) == 1, mocs
+    sup = mocs[0].get("supporting_items") or ""
+    assert "S02" in sup, (
+        f"expected recovered member id S02 in supporting_items, got {sup!r}"
+    )
+    # internal helper fields must not leak into output
+    assert "member_stems" not in mocs[0] and "topic" not in mocs[0], mocs[0]

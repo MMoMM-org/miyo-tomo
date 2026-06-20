@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.27.0
+# version: 0.28.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -2412,6 +2412,17 @@ def main() -> int:
     # matching stem" convention — deterministic linkage on the consumer
     # side, clearer failure mode if the user later renames the .md.
     md_peer_stem = f"{date_prefix}_instructions"
+    # Build the tomo: block once and carry it in the machine doc too (#74):
+    # Hashi ≥ v0.11.0 accepts an optional top-level `tomo` object (handoff
+    # 2026-06-20) and ignores it for execution, so the .json is self-describing
+    # (state + sources) — matching the .md frontmatter. Omitted entirely when no
+    # run_id is available (never emitted as null — schema types it as object).
+    instructions_tomo_block = _build_tomo_block_for_instructions({
+        "upstream_type": args.upstream_type,
+        "upstream_path": args.upstream_path,
+        "upstream_body_path": args.upstream_body,
+        "run_id": args.run_id,
+    })
     instructions_doc = {
         "schema_version": "1",
         "type": "tomo-instructions",
@@ -2423,6 +2434,8 @@ def main() -> int:
         "md_peer": md_peer_stem,
         "actions": actions,
     }
+    if instructions_tomo_block is not None:
+        instructions_doc["tomo"] = instructions_tomo_block
     instructions_json_path = out_dir / "instructions.json"
     instructions_json_path.write_text(
         json.dumps(instructions_doc, ensure_ascii=False, indent=2), encoding="utf-8"

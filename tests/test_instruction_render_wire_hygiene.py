@@ -136,6 +136,47 @@ class TestInternalFieldStrip:
         with pytest.raises(ValidationError):
             validate(instance=doc, schema=instructions_schema)
 
+
+# ── #74 — optional top-level tomo block in instructions.json ────────────────
+
+
+class TestInstructionsJsonTomoBlock:
+    """#74: the machine doc carries an optional top-level tomo block (state +
+    sources) so it is self-describing, matching the .md frontmatter. Hashi
+    ≥ v0.11.0 accepts and ignores it."""
+
+    def test_top_level_tomo_block_validates(self, instructions_schema):
+        block = _ir._build_tomo_block_for_instructions({
+            "upstream_type": "suggestions",
+            "upstream_path": "100 Inbox/2026-06-20_1432_suggestions.md",
+            "upstream_body_path": None,
+            "run_id": "pass2-run-001",
+        })
+        assert block is not None
+        assert block["sources"][0]["path"].endswith("_suggestions.md")
+        doc = {
+            "schema_version": "1", "type": "tomo-instructions",
+            "generated": "2026-06-20T12:00:00Z", "profile": "miyo",
+            "actions": [], "tomo": block,
+        }
+        validate(instance=doc, schema=instructions_schema)  # must not raise
+
+    def test_doc_without_tomo_block_still_validates(self, instructions_schema):
+        """Backward-compat: tomo is not in required — omitting it stays valid."""
+        doc = {
+            "schema_version": "1", "type": "tomo-instructions",
+            "generated": "2026-06-20T12:00:00Z", "profile": "miyo", "actions": [],
+        }
+        validate(instance=doc, schema=instructions_schema)  # must not raise
+
+    def test_tomo_block_omitted_when_no_run_id(self):
+        """No run_id → builder returns None → key never emitted (never null)."""
+        block = _ir._build_tomo_block_for_instructions({
+            "upstream_type": "suggestions", "upstream_path": "x.md",
+            "upstream_body_path": None, "run_id": None,
+        })
+        assert block is None
+
     def test_strip_before_serialize_drops_heading(self):
         """Order regression (review M15): _serialize_new_sections MUST run before
         _strip_internal_link_fields. If strip runs first it consumes new_section
@@ -190,6 +231,12 @@ class TestHashiSchemaParity:
 
     def test_move_note_props_match_snapshot(self, instructions_schema, hashi_snapshot):
         assert _props(instructions_schema, "move_note") == _props(hashi_snapshot, "move_note")
+
+    def test_snapshot_carries_tomo_block(self, hashi_snapshot, instructions_schema):
+        """Snapshot refreshed from Hashi v0.11.0 — the optional top-level tomo
+        block must be present in both Hashi's snapshot and Tomo's own schema (#74)."""
+        assert "tomo" in hashi_snapshot["properties"]
+        assert "tomo" in instructions_schema["properties"]
 
     @pytest.mark.skipif(
         not HASHI_SCHEMA.exists(),

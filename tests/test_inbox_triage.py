@@ -491,8 +491,9 @@ class TestCacheWritesBodyAndManifest:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         entry = manifest["2026-05-22_1432_suggestions.md"]
         assert entry["vault_path"] == sugg_path
-        expected_checksum = "sha256:" + hashlib.sha256(body_content.encode("utf-8")).hexdigest()
-        assert entry["checksum"] == expected_checksum
+        # Checksum is body-only (frontmatter stripped) per #78-B — use the
+        # canonical function so the manifest stays comparable to recorded sources.
+        assert entry["checksum"] == mod._compute_checksum(body_content)
         assert "cached_at" in entry
 
 

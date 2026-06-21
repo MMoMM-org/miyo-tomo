@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.28.0
+# version: 0.29.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -39,7 +39,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from lib.doc_frontmatter import build_tomo_block  # noqa: E402
+from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block  # noqa: E402
 from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 import lib.moc_structure as moc_structure  # noqa: E402
@@ -1363,18 +1363,22 @@ _UPSTREAM_TYPES: list[str] = ["suggestions", "moc-proposal", "suggestions-fan"]
 
 
 def _compute_sha256(file_path: str) -> str | None:
-    """Compute SHA-256 checksum of a file's text contents.
+    """Compute the SHA-256 checksum of a doc's BODY (frontmatter stripped).
 
-    Returns 'sha256:<hex>' or None on read error. Reads as UTF-8 to match
-    how vault docs are stored and transmitted.
+    Returns 'sha256:<hex>' or None on read error. Hashes the body only — Tomo
+    mutates the `tomo:` frontmatter (state/updated_at) after rendering, so a
+    frontmatter-inclusive hash would make every covered doc read as drifted on
+    the next /inbox run (#78). The consumer side (inbox-triage._compute_checksum)
+    strips identically, so recorded and current checksums stay comparable.
     """
     import hashlib
 
     try:
         content = Path(file_path).read_text(encoding="utf-8")
-        return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
     except (FileNotFoundError, OSError):
         return None
+    body = body_after_frontmatter(content)
+    return "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:

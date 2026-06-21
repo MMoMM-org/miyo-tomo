@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.11.0
+# version: 0.12.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -31,6 +31,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.audio_constants import AUDIO_EXTS  # noqa: E402
+from lib.doc_frontmatter import body_after_frontmatter  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 
@@ -273,8 +274,15 @@ def _get_doc_type(hit: dict) -> str:
 
 
 def _compute_checksum(content: str) -> str:
-    """Compute sha256 checksum of content."""
-    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    """Compute the sha256 checksum of a doc's BODY (frontmatter stripped).
+
+    Hashes the body only so Tomo's own post-render frontmatter mutation
+    (tomo.state → approved, updated_at) does not register as content drift on
+    the next run (#78). Mirrors instruction-render._compute_sha256 exactly so
+    recorded (tomo.sources[].checksum) and current checksums are comparable.
+    """
+    body = body_after_frontmatter(content)
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
     return f"sha256:{digest}"
 
 

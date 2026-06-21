@@ -1069,8 +1069,26 @@ class TestActionDetermination:
         assert action == "suggest"
         assert idle_reasons == []
 
-    def test_force_pass2(self):
-        """force_pass2=True → 'synthesize' (even if nothing approved)."""
+    def test_force_pass2_with_work_synthesizes(self):
+        """--pass2 selects the synthesize phase (skips transcribe) when there is
+        real work — to_process non-empty (#78-A)."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            force_pass2=True,
+            has_audio=True,
+        )
+
+        action, idle_reasons = mod.determine_action(
+            state, to_process={INBOX_PATH + "x_suggestions.md"}
+        )
+        assert action == "synthesize"
+        assert idle_reasons == []
+
+    def test_force_pass2_no_work_is_idle(self):
+        """--pass2 with nothing to synthesize → idle, not a redundant re-render
+        (#78-A). Coverage/drift already excluded everything covered+unchanged."""
         mod = _load_module()
 
         state = mod.TriageState(
@@ -1080,8 +1098,36 @@ class TestActionDetermination:
         )
 
         action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "idle"
+        assert len(idle_reasons) > 0
+
+    def test_force_all_overrides_synthesize_despite_coverage(self):
+        """--force (sledgehammer) synthesizes all approved regardless of
+        coverage/to_process (#78-A)."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            force_all=True,
+            approved_suggestions=[{"path": INBOX_PATH + "x_suggestions.md"}],
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
         assert action == "synthesize"
-        assert idle_reasons == []
+
+    def test_force_all_resuggests_when_sources(self):
+        """--force re-suggests (Pass 1) when sources are present, even captured
+        ones folded into new_sources (#78-A)."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            force_all=True,
+            new_sources=[{"path": INBOX_PATH + "Note.md"}],
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "suggest"
 
     def test_transcribe(self):
         """has_audio=True → 'transcribe'."""
@@ -1675,9 +1721,9 @@ class TestTerminalApprovedMessaging:
         )
         assert plan["approved_suggestions"][0]["path"] == sugg_path
 
-    def test_force_pass2_no_terminal_approved_synthesize_empty_ok(self, tmp_path):
-        """--force-pass2 with genuinely nothing approved → synthesize with
-        empty approved_suggestions (conductor reports nothing to do; no crash)."""
+    def test_force_pass2_no_terminal_approved_is_idle(self, tmp_path):
+        """--pass2 with genuinely nothing approved → idle (coverage-respecting:
+        nothing to synthesize, so no redundant run) (#78-A)."""
         mod = _load_module()
 
         client = FakeKadoClient(
@@ -1703,5 +1749,5 @@ class TestTerminalApprovedMessaging:
 
         assert rc == 0
         plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
-        assert plan["action"] == "synthesize"
+        assert plan["action"] == "idle"
         assert plan["approved_suggestions"] == []

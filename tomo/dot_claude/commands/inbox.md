@@ -1,15 +1,16 @@
 ---
 name: inbox
 description: Run the inbox workflow — triage, then route to the appropriate conductor.
-argument-hint: "optional: --pass1 | --pass2 | --recover"
+argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 ---
 # /inbox
-# version: 0.12.0
+# version: 0.13.0
 
 ## Arguments
 
 - `--pass1` — force Pass 1 (suggest) regardless of inbox state
-- `--pass2` — force Pass 2 (synthesize) regardless of inbox state
+- `--pass2` — run Pass 2 (synthesize), re-processing ONLY docs that are uncovered or content-changed; idle if everything is already covered
+- `--force` — sledgehammer: ignore coverage/drift and redo everything, including re-suggesting already-captured items (Pass 1)
 - `--recover` — treat captured items as fresh (re-process)
 
 ## Steps
@@ -17,10 +18,10 @@ argument-hint: "optional: --pass1 | --pass2 | --recover"
 ### 1. Run triage
 
 ```bash
-python3 scripts/inbox-triage.py [--force-pass1] [--force-pass2] [--recover] --output-dir tomo-tmp
+python3 scripts/inbox-triage.py [--force-pass1] [--force-pass2] [--force] [--recover] --output-dir tomo-tmp
 ```
 
-Pass through any flags the user provided: `--pass1` → `--force-pass1`, `--pass2` → `--force-pass2`, `--recover` → `--recover`.
+Pass through any flags the user provided: `--pass1` → `--force-pass1`, `--pass2` → `--force-pass2`, `--force` → `--force`, `--recover` → `--recover`.
 
 ### 2. Read routing plan
 

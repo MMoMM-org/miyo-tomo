@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.0
+# version: 0.13.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -81,6 +81,7 @@ class TriageState:
     # Flags passed through for T2.2
     force_pass1: bool = False
     force_pass2: bool = False
+    force_all: bool = False
     recover: bool = False
 
 
@@ -507,6 +508,7 @@ def discover(
     output_dir: str = "tomo-tmp",
     force_pass1: bool = False,
     force_pass2: bool = False,
+    force_all: bool = False,
     recover: bool = False,
 ) -> TriageState:
     """Execute steps 1-6 of the triage algorithm.
@@ -517,7 +519,9 @@ def discover(
     inbox_path:  Vault-relative inbox path (e.g. "100 Inbox/").
     output_dir:  Local directory for cache files.
     force_pass1: Flag passed through to T2.2.
-    force_pass2: Flag passed through to T2.2.
+    force_pass2: Flag passed through to T2.2 (coverage/drift-respecting Pass 2).
+    force_all:   --force sledgehammer: ignore coverage/drift; also re-suggest
+                 already-captured items (folds captured_hits into new_sources).
     recover:     Flag passed through to T2.2.
 
     Returns
@@ -544,6 +548,13 @@ def discover(
         md_files, pending_approval_hits, pending_accept_hits,
         captured_hits, instructions_hits, approved_hits, accepted_hits,
     )
+    # --force re-suggests already-captured items too (Pass 1 redo): fold them
+    # into new_sources so determine_action routes to "suggest" (#78-A).
+    if force_all and captured_hits:
+        seen = {s["path"] for s in new_sources}
+        new_sources = new_sources + [
+            h for h in captured_hits if h.get("path") and h["path"] not in seen
+        ]
 
     # Step 5: check audio
     has_audio = check_audio(audio_files, md_files)
@@ -560,7 +571,7 @@ def discover(
     ) = read_approval_state(
         client, pending_approval_hits, pending_accept_hits, output_dir,
         terminal_approved_hits=approved_hits,
-        force_pass2=force_pass2,
+        force_pass2=force_pass2 or force_all,
     )
 
     return TriageState(
@@ -584,6 +595,7 @@ def discover(
         terminal_approved_hits=approved_hits,
         force_pass1=force_pass1,
         force_pass2=force_pass2,
+        force_all=force_all,
         recover=recover,
     )
 
@@ -592,17 +604,25 @@ def discover(
 # Step 7: compute coverage
 # ---------------------------------------------------------------------------
 
-def compute_coverage(state: TriageState) -> tuple[set[str], set[str]]:
+def compute_coverage(
+    state: TriageState, drifted_paths: set[str] | None = None,
+) -> tuple[set[str], set[str]]:
     """Determine which approved docs are already covered by instructions.
 
     Returns (covered_paths, to_process) where to_process = approved - covered.
+
+    A source whose path is in ``drifted_paths`` (its content changed since the
+    covering instructions were generated) is NOT counted as covered — it must be
+    re-synthesized. So to_process = uncovered ∪ drifted (#78-A).
     """
+    drifted_paths = drifted_paths or set()
     covered_paths: set[str] = set()
     for instr_doc in state.instructions_hits:
         tomo = (instr_doc.get("frontmatter") or {}).get("tomo") or {}
         for source in tomo.get("sources") or []:
-            if source.get("path"):
-                covered_paths.add(source["path"])
+            path = source.get("path")
+            if path and path not in drifted_paths:
+                covered_paths.add(path)
 
     approved_paths = set()
     for bucket in (
@@ -615,6 +635,25 @@ def compute_coverage(state: TriageState) -> tuple[set[str], set[str]]:
 
     to_process = approved_paths - covered_paths
     return covered_paths, to_process
+
+
+def _filter_approved_to_work(state: TriageState, to_process: set[str]) -> None:
+    """Trim the approved buckets to docs that still need synthesis (#78-A).
+
+    After a coverage+drift pass, ``to_process`` holds exactly the approved docs
+    that are uncovered or content-drifted. Keep only those in the synthesize
+    work-list so a coverage-respecting ``--pass2`` doesn't re-render an
+    already-applied set. Mutates state in place; ``--force`` callers skip this.
+    """
+    state.approved_suggestions = [
+        d for d in state.approved_suggestions if d.get("path") in to_process
+    ]
+    state.approved_fan = [
+        d for d in state.approved_fan if d.get("path") in to_process
+    ]
+    state.approved_moc_proposals = [
+        d for d in state.approved_moc_proposals if d.get("path") in to_process
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -732,15 +771,33 @@ def determine_action(
     if state.force_pass1:
         return "suggest", []
 
-    # 2. --force-pass2
-    if state.force_pass2:
-        return "synthesize", []
+    # 2. --force (sledgehammer): redo everything, ignore coverage/drift/captured.
+    #    Pass 1 wins when there are sources to (re-)suggest (captured items are
+    #    folded into new_sources under --force); otherwise re-synthesize all
+    #    approved. Falls through to idle only when the inbox is genuinely empty.
+    if state.force_all:
+        if state.new_sources:
+            return "suggest", []
+        if (
+            state.approved_suggestions
+            or state.approved_fan
+            or state.approved_moc_proposals
+        ):
+            return "synthesize", []
 
-    # 3. has_audio
+    # 3. --pass2: select the synthesize phase (skip transcribe/suggest), but
+    #    coverage/drift-respecting — synthesize only when there is real work,
+    #    otherwise idle (no redundant re-render of an applied set) (#78-A).
+    if state.force_pass2:
+        if to_process:
+            return "synthesize", []
+        return "idle", _build_idle_reasons(state, to_process)
+
+    # 4. has_audio
     if state.has_audio:
         return "transcribe", []
 
-    # 4. force_atomic_items AND NOT fan_doc_exists
+    # 5. force_atomic_items AND NOT fan_doc_exists
     fan_doc_exists = (
         len(state.approved_fan) > 0
         or any(
@@ -751,19 +808,19 @@ def determine_action(
     if state.force_atomic_items and not fan_doc_exists:
         return "fan-resolve", []
 
-    # 5. to_process non-empty
+    # 6. to_process non-empty
     if to_process:
         return "synthesize", []
 
-    # 6. --recover with captured items
+    # 7. --recover with captured items
     if state.recover and state.captured_hits:
         return "suggest", []
 
-    # 7. new_sources present
+    # 8. new_sources present
     if state.new_sources:
         return "suggest", []
 
-    # 8. idle
+    # 9. idle
     idle_reasons = _build_idle_reasons(state, to_process)
     return "idle", idle_reasons
 
@@ -849,7 +906,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--force-pass2", action="store_true", default=False,
-        help="Force synthesize action",
+        help="Run Pass 2 (synthesize), coverage/drift-respecting — only "
+             "re-synthesizes uncovered or content-changed approved docs",
+    )
+    p.add_argument(
+        "--force", action="store_true", default=False,
+        help="Sledgehammer: ignore coverage/drift and redo everything, "
+             "including re-suggesting already-captured items (Pass 1)",
     )
     p.add_argument(
         "--recover", action="store_true", default=False,
@@ -911,6 +974,7 @@ def main(
             output_dir=args.output_dir,
             force_pass1=args.force_pass1,
             force_pass2=args.force_pass2,
+            force_all=args.force,
             recover=args.recover,
         )
     except KadoError as exc:
@@ -919,14 +983,20 @@ def main(
 
     t_discover = time.perf_counter()
 
-    # Step 7: coverage
-    covered_paths, to_process = compute_coverage(state)
-
-    # Step 8: drift
+    # Step 8: drift (computed BEFORE coverage — a drifted source is not covered)
     cache_dir = output_dir / "inbox-cache"
     new_drift = detect_drift(state, state.manifest, cache_dir)
     # Step 8b: orphaned-state consistency check (reuses already-fetched buckets)
     all_drift = state.drift_indicators + new_drift + detect_orphaned_state(state)
+    drifted_paths = {
+        d["path"] for d in all_drift if d.get("type") == "checksum_mismatch"
+    }
+
+    # Step 7: coverage (drift-aware) + trim the synthesize work-list so the
+    # conductor only re-processes docs that need it. --force keeps everything.
+    covered_paths, to_process = compute_coverage(state, drifted_paths)
+    if not state.force_all:
+        _filter_approved_to_work(state, to_process)
 
     # Step 9: action
     action, idle_reasons = determine_action(state, to_process)

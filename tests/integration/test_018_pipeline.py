@@ -368,9 +368,11 @@ class TestCoverageExcludesAlreadyProcessedDocs:
                 ],
                 "tomo.state=pending-accept": [],
                 "tomo.state=captured": [],
+                # No checksum → detect_drift skips it; the doc is covered and
+                # undrifted, so the suggestions doc is excluded → idle (#78).
                 "tomo.doc_type=instructions": [
                     _fm_hit(instr_path, "instructions", "pending-apply",
-                            sources=[{"path": sugg_path, "checksum": "sha256:abc"}]),
+                            sources=[{"path": sugg_path}]),
                 ],
             },
             read_note_responses={
@@ -523,8 +525,10 @@ class TestForcePass1OverridesApprovedState:
 
 
 class TestForcePass2OverridesAll:
-    def test_force_pass2_produces_synthesize_despite_no_approved(self, tmp_path):
-        """--force-pass2 flag produces action=synthesize even when no approved docs exist."""
+    def test_force_pass2_no_work_is_idle_not_transcribe(self, tmp_path):
+        """--pass2 selects the synthesize phase (short-circuits transcribe) but,
+        with nothing to synthesize, resolves to idle — not a redundant run and
+        not a fallthrough to transcribe (#78-A)."""
         client = FakeKadoClient(
             listdir_items=[_file(INBOX + "recording.m4a")],
             frontmatter_responses=_empty_frontmatter(),
@@ -533,8 +537,40 @@ class TestForcePass2OverridesAll:
         plan = _run_pipeline(tmp_path, client, extra_args=["--force-pass2"])
         schema = _load_schema()
 
-        # force-pass2 overrides transcribe priority
+        assert plan["action"] == "idle"
+        json_validate(instance=plan, schema=schema)
+
+    def test_force_redoes_everything_ignoring_coverage(self, tmp_path):
+        """--force (sledgehammer) re-synthesizes a covered+undrifted approved doc
+        that --pass2 would skip (#78-A)."""
+        sugg_path = INBOX + "2026-05-22_1432_suggestions.md"
+        instr_path = INBOX + "2026-05-24_0900_instructions.md"
+        body = _suggestions_body(approved=True)
+
+        client = FakeKadoClient(
+            listdir_items=[_file(sugg_path), _file(instr_path)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [
+                    _fm_hit(instr_path, "instructions", "pending-apply",
+                            sources=[{"path": sugg_path}]),
+                ],
+                "tomo.state=approved": [_fm_hit(sugg_path, "suggestions", "approved")],
+                "tomo.state=accepted": [],
+            },
+            read_note_responses={
+                sugg_path: {"content": body, "modified": 0},
+            },
+        )
+
+        plan = _run_pipeline(tmp_path, client, extra_args=["--force"])
+        schema = _load_schema()
+
+        # --pass2 would idle here (covered+undrifted); --force redoes it.
         assert plan["action"] == "synthesize"
+        assert any(s["path"] == sugg_path for s in plan["approved_suggestions"])
         json_validate(instance=plan, schema=schema)
 
 

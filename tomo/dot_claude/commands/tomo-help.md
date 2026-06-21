@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.9
+# version: 0.2.10
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -98,7 +98,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
 
 - **inbox / pass1 / pass2 / recover / captured / approved / applied** →
   - `/inbox` auto-detects next action: approved suggestions → Pass 2; otherwise dispatches the orchestrator for Pass 1 (which exits early if nothing to do)
-  - Manual override: `/inbox --pass1`, `--pass2`, `--recover`
+  - Manual override: `/inbox --pass1`, `--pass2` (re-does only changed/uncovered), `--force` (redo everything incl Pass 1), `--recover`
   - State lives in `tomo.state` frontmatter (no lifecycle tags). Per-doc-type:
     - source: `captured` (terminal — Pass-1 marks it, then it stays)
     - suggestions / suggestions-fan: `pending-approval → approved`

@@ -1129,6 +1129,66 @@ class TestActionDetermination:
         action, idle_reasons = mod.determine_action(state, to_process=set())
         assert action == "suggest"
 
+    def test_pass2_force_synthesizes_despite_full_coverage(self):
+        """--pass2 --force synthesizes ALL approved even when everything is
+        covered (to_process empty) — the modifier fills the 'redo all Pass 2'
+        gap, and Pass 2 wins over the bare-force suggest branch (#78)."""
+        mod = _load_module()
+
+        state = mod.TriageState(
+            inbox_path=INBOX_PATH,
+            force_pass2=True,
+            force_all=True,
+            new_sources=[{"path": INBOX_PATH + "New.md"}],  # must NOT divert to suggest
+            approved_suggestions=[{"path": INBOX_PATH + "x_suggestions.md"}],
+        )
+
+        action, idle_reasons = mod.determine_action(state, to_process=set())
+        assert action == "synthesize"
+
+    def test_force_folds_captured_into_new_sources(self, tmp_path):
+        """--force (no phase) re-suggests captured items: they are folded into
+        new_sources (#78)."""
+        mod = _load_module()
+        cap = INBOX_PATH + "Captured.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(cap)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [{"path": cap, "modified": 0}],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [],
+                "tomo.state=accepted": [],
+            },
+        )
+        state = mod.discover(
+            client, INBOX_PATH, output_dir=str(tmp_path), force_all=True,
+        )
+        assert cap in {s["path"] for s in state.new_sources}
+
+    def test_pass2_force_does_not_fold_captured(self, tmp_path):
+        """--pass2 --force is a synthesize-only redo — it must NOT re-intake
+        captured sources (#78)."""
+        mod = _load_module()
+        cap = INBOX_PATH + "Captured.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(cap)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [{"path": cap, "modified": 0}],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [],
+                "tomo.state=accepted": [],
+            },
+        )
+        state = mod.discover(
+            client, INBOX_PATH, output_dir=str(tmp_path),
+            force_pass2=True, force_all=True,
+        )
+        assert cap not in {s["path"] for s in state.new_sources}
+
     def test_transcribe(self):
         """has_audio=True → 'transcribe'."""
         mod = _load_module()

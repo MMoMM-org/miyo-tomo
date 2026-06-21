@@ -4,14 +4,18 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 ---
 # /inbox
-# version: 0.13.0
+# version: 0.14.0
 
 ## Arguments
 
-- `--pass1` — force Pass 1 (suggest) regardless of inbox state
-- `--pass2` — run Pass 2 (synthesize), re-processing ONLY docs that are uncovered or content-changed; idle if everything is already covered
-- `--force` — sledgehammer: ignore coverage/drift and redo everything, including re-suggesting already-captured items (Pass 1)
-- `--recover` — treat captured items as fresh (re-process)
+`--force` is a modifier: combine it with a phase, or use it alone.
+
+- `--pass1` — run Pass 1 (suggest) now, for new sources only
+- `--pass2` — run Pass 2 (synthesize), only for uncovered or content-changed docs; idle if everything is already covered
+- `--pass1 --force` — re-suggest everything, including already-captured items
+- `--pass2 --force` — re-synthesize ALL approved docs, ignoring coverage/drift
+- `--force` (alone) — full rebuild: re-suggest (incl. captured), then synthesize all
+- `--recover` — treat captured items as fresh (≈ `--pass1 --force`)
 
 ## Steps
 

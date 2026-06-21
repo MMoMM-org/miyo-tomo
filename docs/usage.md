@@ -43,7 +43,31 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
     - **Via Tomo Hashi**: run the instruction-set executor in [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) on the file. Choose preview mode — `Preview on` (approve each action), `Preview off` (visible apply), or `No confirmation` (background).
 5. **Cleanup.** Re-run `/inbox`. When it sees an instruction set with all actions applied (whether by hand or by Hashi), `state-promoter.py` transitions source items from `tomo.state: captured` to `tomo.state: active` and `mark-captured.py` archives completed workflow docs per your vault-config rules.
 
-`/inbox` is auto-resumable: it inspects checkbox state in existing suggestions and instruction docs to decide whether to run Pass 1, run Pass 2, run cleanup, or do nothing. Force a specific phase with `/inbox --pass1`, `/inbox --pass2`, or `/inbox --cleanup`.
+`/inbox` is auto-resumable: there is no state you have to track. Each run it re-reads the inbox from the vault, works out what changed, and does the next step — run Pass 1, run Pass 2, transcribe audio, run cleanup, or report idle. You just keep running `/inbox`.
+
+#### What a re-run redoes (and what it leaves alone)
+
+Each `/inbox` does **one step**, and prefers finishing in-flight work over new intake. The common situations:
+
+- **New note dropped** → Pass 1 suggests it.
+- **You approved a suggestions doc** → Pass 2 synthesises its instructions.
+- **You re-run after applying** → Tomo sees the work is already done (an instruction set covers it, unchanged) and stays **idle** — it will *not* re-render a duplicate.
+- **You edited an approved suggestions doc** after its instructions were generated → Tomo detects the change and re-synthesises just that one.
+- **Approved work pending *and* a new note** → Pass 2 runs first (finish the batch); the new note is suggested on your next run. Want to intake the new note now instead? `/inbox --pass1`.
+
+Tomo only treats a doc as "changed" when its **body** changes (your edits) — its own bookkeeping (marking a doc approved) never counts as a change.
+
+#### Forcing a phase
+
+| Command | Does |
+|---------|------|
+| `/inbox --pass1` | Suggest new sources now (even if Pass 2 work is pending) |
+| `/inbox --pass2` | Synthesise only what's changed or not yet done |
+| `/inbox --pass2 --force` | Re-synthesise **all** approved docs, ignoring "already done" |
+| `/inbox --pass1 --force` | Re-suggest **everything**, including already-captured items |
+| `/inbox --force` | Full rebuild — re-suggest, then re-synthesise everything |
+
+`--force` is a modifier you add to a phase (or use alone for a full rebuild). For the decision logic in detail, see [Inbox Change Detection & Pass Routing](XDD/reference/tier-2/workflows/inbox-change-detection.md) (with flowchart).
 
 ### Refresh vault discovery
 

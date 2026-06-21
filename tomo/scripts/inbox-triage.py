@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.0
+# version: 0.14.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -549,8 +549,10 @@ def discover(
         captured_hits, instructions_hits, approved_hits, accepted_hits,
     )
     # --force re-suggests already-captured items too (Pass 1 redo): fold them
-    # into new_sources so determine_action routes to "suggest" (#78-A).
-    if force_all and captured_hits:
+    # into new_sources so determine_action routes to "suggest" (#78). Skip when
+    # --force is combined with --pass2 — that's a synthesize-only redo and must
+    # not re-intake captured sources.
+    if force_all and not force_pass2 and captured_hits:
         seen = {s["path"] for s in new_sources}
         new_sources = new_sources + [
             h for h in captured_hits if h.get("path") and h["path"] not in seen
@@ -767,14 +769,29 @@ def determine_action(
     Returns (action, idle_reasons). idle_reasons is non-empty only
     when action == 'idle'.
     """
-    # 1. --force-pass1
+    # --force is a MODIFIER (#78): combine it with a phase, or use it alone.
+    #   --pass1          → suggest phase, new sources only
+    #   --pass1 --force  → suggest phase, captured folded into new_sources (redo all)
+    #   --pass2          → synthesize phase, coverage/drift-respecting (only changed)
+    #   --pass2 --force  → synthesize phase, ALL approved (ignore coverage)
+    #   --force          → full rebuild: re-suggest (incl captured) then synthesize
+
+    # 1. --pass1 (suggest phase). The captured-fold under --force happens upstream
+    #    in discover(), so this branch is identical for --pass1 and --pass1 --force.
     if state.force_pass1:
         return "suggest", []
 
-    # 2. --force (sledgehammer): redo everything, ignore coverage/drift/captured.
-    #    Pass 1 wins when there are sources to (re-)suggest (captured items are
-    #    folded into new_sources under --force); otherwise re-synthesize all
-    #    approved. Falls through to idle only when the inbox is genuinely empty.
+    # 2. --pass2 (synthesize phase; skips transcribe/suggest). Coverage/drift-
+    #    respecting by default → synthesize only uncovered/drifted, else idle.
+    #    With --force, synthesize ALL approved (the work-list is left untrimmed
+    #    upstream), so it fires even when everything is covered.
+    if state.force_pass2:
+        if state.force_all or to_process:
+            return "synthesize", []
+        return "idle", _build_idle_reasons(state, to_process)
+
+    # 3. --force with no explicit phase: full rebuild. Re-suggest first when there
+    #    are sources (captured folded in), otherwise re-synthesize all approved.
     if state.force_all:
         if state.new_sources:
             return "suggest", []
@@ -784,14 +801,6 @@ def determine_action(
             or state.approved_moc_proposals
         ):
             return "synthesize", []
-
-    # 3. --pass2: select the synthesize phase (skip transcribe/suggest), but
-    #    coverage/drift-respecting — synthesize only when there is real work,
-    #    otherwise idle (no redundant re-render of an applied set) (#78-A).
-    if state.force_pass2:
-        if to_process:
-            return "synthesize", []
-        return "idle", _build_idle_reasons(state, to_process)
 
     # 4. has_audio
     if state.has_audio:

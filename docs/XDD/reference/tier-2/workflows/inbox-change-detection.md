@@ -143,22 +143,49 @@ flowchart TD
     IDLE --> RPT[report idle reasons + drift warnings]
 ```
 
-## 6. The flags — the two predictable re-run cases (#78)
+## 5b. When multiple changes are pending at once
 
-A user who hits a problem should get the right behavior without Tomo asking
-"should I update X / delete temp?". Two explicit knobs cover the predictable cases:
+`determine_action` returns **one action per run** — first match wins. When several
+changes are present, the priority order decides which advances *this* run; the rest
+wait for the next `/inbox`. The ordering encodes a single rule: **finish in-flight
+work before starting new intake.**
 
-| Flag | Meaning | Coverage/drift |
-|------|---------|----------------|
-| *(none)* | Auto-route: new content → suggest; fresh approvals → synthesize | respected |
-| `--pass1` | Force the suggest phase | n/a |
-| `--pass2` | Run Pass 2, **only** for uncovered or drifted docs; idle if all done | **respected** |
-| `--force` | Sledgehammer: ignore coverage/drift, re-synthesize **all** approved, and re-suggest already-`captured` items (Pass 1) | **ignored** |
-| `--recover` | Treat `captured` items as fresh (re-suggest) — recover an orphaned state | n/a |
+| Pending at once | What runs now | What waits |
+|-----------------|---------------|-----------|
+| approved-uncovered **+** new note | **synthesize** (Pass 2 on the approved doc) | the new note → next run suggests it |
+| approved-covered-unchanged **+** new note | **suggest** (covered doc is `to_process`-empty, so skipped) | nothing — covered doc stays done |
+| drifted-covered doc **+** new note | **synthesize** (drift → uncovered → re-render) | the new note |
+| audio **+** anything | **transcribe** (blocking precondition) | everything else |
 
-`--pass2` is the everyday "redo what I changed" button; `--force` is the rare "rebuild
-everything" button. The split is why a second `/inbox --pass2` after an applied run is
-**idle**, not a duplicate instruction set.
+So each `/inbox` moves the inbox **one step**, draining higher-priority work first.
+`--pass1` is the override for "intake my new notes *now*, even though synthesize work
+is pending" — it phase-selects suggest. (Theoretical starvation — new notes never
+suggested while approved work is always pending — is why that override exists; in
+practice the user approves in batches and `to_process` drains.)
+
+## 6. The flags — a complete, symmetric matrix (#78)
+
+A user who hits a problem should get the right behavior without Tomo asking "should I
+update X / delete temp?". `--force` is a **modifier**: every phase has a
+state-respecting form and a force-all form.
+
+|              | "only what's needed" (state-respecting) | "redo all" (ignore state) |
+|--------------|------------------------------------------|----------------------------|
+| **Pass 1**   | `--pass1` (new sources only)             | `--pass1 --force` (incl. captured) |
+| **Pass 2**   | `--pass2` (only uncovered/drifted)       | `--pass2 --force` (all approved, ignore coverage) |
+| **both**     | `/inbox` (auto)                          | `--force` (full rebuild) |
+
+- `--pass2` is the everyday "redo what I changed" button → a second `/inbox --pass2`
+  after an applied run is **idle**, not a duplicate.
+- `--pass2 --force` fills the "redo all of Pass 2 only" cell a bare sledgehammer
+  couldn't express.
+- `--force` alone re-suggests (captured folded in), then synthesizes on the next run.
+- `--recover` is a named convenience ≈ `--pass1 --force` (recover an orphaned state).
+
+Mechanics: `determine_action` evaluates `--pass2` before the bare-`--force` branch (so
+`--pass2 --force` synthesizes, never diverts to suggest); the captured-fold in `discover`
+is gated `force_all and not force_pass2` (so `--pass2 --force` never re-intakes captured);
+the work-list trim is skipped whenever `force_all` is set (so all approved docs survive).
 
 ## 7. What the conductor sees
 

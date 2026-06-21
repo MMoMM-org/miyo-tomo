@@ -18,3 +18,4 @@
 ## Critical Documentation
 <!-- Add important docs here when created — Claude loads these on demand -->
 <!-- - [Architecture Overview](../architecture/overview.md) -->
+- [Inbox Change Detection & Pass Routing](../../XDD/reference/tier-2/workflows/inbox-change-detection.md) — how triage detects what changed (new/drift/coverage) + the determine_action routing tree + flag semantics (--pass2 vs --force). Mermaid flowchart + state diagram. (#74/#78)

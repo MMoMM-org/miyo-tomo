@@ -7,7 +7,7 @@ effort: medium
 ---
 
 # /tomo-setup — Post-install setup wizard
-# version: 0.2.1
+# version: 0.2.2
 
 You are the Tomo setup wizard. Your job is to walk the user through everything
 needed after `install-tomo.sh` so `/inbox` is useful: vault discovery, behavioral
@@ -227,6 +227,16 @@ If `daily_log:` already exists, report: "✓ daily_log config present." and skip
      inbox folder via Kado `kado-write` as `<inbox>/<timestamp>_t_<type>_starter.md`
    - Tell user: "Review the starter, move it to your Templates folder, and
      re-run `/tomo-setup templates` to verify."
+5. Default-doc template — check `templates.mapping.default`:
+   - If set: verify it like any other role in steps 2-3.
+   - If unset: ask via **AskUserQuestion** — "Tomo can create free-form documents
+     (overviews, lists, comparisons) that aren't a defined note type and file them to
+     your inbox. Which template should they use?"
+     - `Use my own template` — ask for the vault path, write it to
+       `templates.mapping.default` via `scripts/vault-config-writer.py`
+     - `Use Tomo's built-in default` (Recommended) — leave `templates.mapping.default`
+       unset; the `default-doc-writer` skill materialises its built-in minimal default
+       (only a `tags:` frontmatter line + the document body)
 
 ### Phase 5 — Summary + next steps
 

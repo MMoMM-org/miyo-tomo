@@ -91,7 +91,6 @@ Deferred-by-nature Could items kept in the backlog as an idea store; promote to 
 | F-22 | Document splitting for large batches | Could | Soft limit 30 items; no splitting logic. Batches are typically <10. |
 | F-23 | Archive subdirectory for processed items | Could | Optional move to `+/archive/YYYY-MM/`. Tags-only suffices for MVP. |
 | F-24 | Delete auxiliary files after cleanup | Could | Rendered notes/diffs stay in inbox after cleanup. Safer to leave for now. |
-| F-25 | Inbox-note template definition | Should* | Tomo has atomic-note templates only; inbox-note structure undefined (user's inbox is zettelkasten-lean). *Nominally Should but deferred by nature — promote to an issue if a feature needs it. |
 
 ## Done (historical record)
 
@@ -100,6 +99,7 @@ Deferred-by-nature Could items kept in the backlog as an idea store; promote to 
 | F-08 | Configurable MOC proposal minimum | 2026-06-03 | `MocProposalConfig.min_notes` config-driven (shared-ctx-builder.py:79-95) |
 | F-11 | Callout-based tracker syntax | 2026-06-03 | `callout_body` in `TRACKER_SYNTAXES` (vault-config-writer.py:401); title-matching → F-17 |
 | F-13 | Standalone MOC density scan | 2026-06-03 | Superseded by F-43 `/moc-propose` (no `/scan-mocs` needed) |
+| F-25 | Default-doc template for undefined types | 2026-06-22 | `t_default_tomo.md` (tags + body) + `templates.mapping.default` role + `/tomo-setup` Phase 4 ask + `default-doc-writer` skill |
 | F-26 | Voice memo transcription | 2026-04-21 | faster-whisper, XDD 009 (commits c7c9688…5d6aed7) |
 | F-27 | Custom @-file picker | 2026-04-21 | `file-suggestion.sh` v0.5.0, spec 010 DONE |
 | F-33 | Force Atomic Note via follow-up doc | 2026-04-23 | XDD 012 (commit 08a1f22) |

@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.4.0
 """doc_frontmatter.py — Producer helper for the 'tomo:' frontmatter block.
 
 Every Tomo-produced doc (suggestions, suggestions-fan, moc-proposal,
@@ -125,6 +125,27 @@ def parse_tomo_block(frontmatter: dict) -> dict | None:
         The tomo block dict, or None if the 'tomo' key is absent.
     """
     return frontmatter.get("tomo")
+
+
+def body_after_frontmatter(text: str) -> str:
+    """Return a markdown doc's body with its leading YAML frontmatter removed.
+
+    Used for STABLE content checksums. Tomo mutates the ``tomo:`` block
+    (``state``, ``updated_at``) in a doc's frontmatter AFTER rendering its
+    instructions, so a frontmatter-inclusive hash reports false drift on every
+    covered doc on the next run. Hashing only the body makes "drift" mean a real
+    content edit (approval, placement, item changes — all live in the body).
+
+    Strips only the FIRST leading ``---`` … ``---`` block. Returns the text
+    unchanged when it has no leading frontmatter or the fence is unclosed.
+    """
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return text
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return "".join(lines[i + 1:])
+    return text
 
 
 # ---------------------------------------------------------------------------

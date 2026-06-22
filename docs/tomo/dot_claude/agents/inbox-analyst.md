@@ -181,6 +181,49 @@ WHY: Bumped from 0.16.0 for de-biased two-pass Step 7.5 segmentation rewrite
 `update-tomo.sh` skips unchanged versions silently — the bump is required for the edit
 to ship to the Docker instance.
 
+## TIER-1 Confidence Gate + TIER-2 has_footer Branch (spec 023, v0.18.0)
+
+WHY the confidence gate exists (ADR-4): spec 022's four-tier resolution picked the
+best-matching heading unconditionally. In practice this misfiled notes under
+structural/scaffolding headings like "Content", "Structure", "Overview", and "Primer
+Questions" — headings that organise the MOC template but do not describe a note's
+topic. The fix is a confidence gate: the LLM rates the best heading's semantic fit
+0-1, and TIER-1 only wins if that score clears 0.6. A scaffolding heading scores
+~0.3; a clear topical home scores 0.9+. This is the same LLM-confidence pattern
+already used for `type_confidence`, `candidate_mocs[].score`,
+`classification.confidence`, and `atomic_note_worthiness`.
+
+WHY 0.6 (ADR-4): hardcoded to match the existing 0.7/0.5/0.15 inline thresholds
+(no config surface this phase). 0.6 is the starting calibration point — tunable via
+a prompt edit + version bump if the live-walk corpus reveals it's too tight or too
+loose.
+
+WHY the rejected heading goes into `alt_headings` (ADR-3): the heading the system
+almost chose is the most likely manual retarget. Putting it in `alt_headings` reuses
+the shipped advisory surface from spec 022; the user can retarget in one edit. The
+field semantic is now slightly broader: "plausible-but-not-chosen headings (including
+gate-rejected ones)", not just "ambiguous-fit runner-ups".
+
+WHY TIER-2 emits `value:null` (ADR-2): Pass-1 (the analyst) has no access to the
+MOC body — its inventory is `headings[] + editable_callouts[] + has_footer` only.
+The actual footer-callout text and the last body line are body-derived values that
+only exist at Pass-2 (the render resolver). So Pass-1 emits the *intent* with a null
+value; the render resolver fills it from the live MOC. This is symmetric with how
+spec 022 already resolved footer-callout text via a null-value callout anchor.
+
+WHY `has_footer` drives the TIER-2 anchor type (ADR-5): the suggestions doc is a
+Pass-1 artifact built before user approval; the render resolver runs at Pass-2
+(after approval). To show the user WHERE the new section will land — "(before the
+footer)" vs "(at the end of the MOC)" — the analyst must know footer presence at
+Pass-1, before the live MOC is read. `has_footer` is a cheap boolean added to the
+MOC cache at build time (from body bytes already in hand — no new Kado read) and
+surfaced on `shared_ctx.mocs[]`. Encoding the destination in the anchor TYPE (callout
+vs line) keeps every consumer (doc render + render resolver) reading one source of
+truth. `has_footer` absent falls back to callout/before (022 behaviour).
+
+Spec 023 ADR references: ADR-2 (null value, render resolves), ADR-3 (rejected →
+alt_headings), ADR-4 (threshold 0.6), ADR-5 (has_footer → anchor type).
+
 ## DateStamp recognized as an event-date key (I38 follow-up, 2026-06-14)
 
 WHY: the Step 8 frontmatter scan's preferred event-date keys originally omitted

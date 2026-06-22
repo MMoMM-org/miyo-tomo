@@ -30,6 +30,26 @@
       "type": "string",
       "description": "Stem of the companion human-readable markdown, in the same folder (e.g. '2026-04-21_0918_instructions'). Explicit linkage rather than inferred from timestamp/convention — lets Tomo Hashi refuse with a clear error when the peer is missing or renamed. Always populated by instruction-render.py v0.6.0+; not in the required set so v0.5.x artefacts still validate."
     },
+    "tomo": {
+      "type": "object",
+      "description": "Tomo lifecycle/provenance metadata mirroring the human-readable .md frontmatter (doc_type/state/run_id/sources). Tomo-owned; Hashi ignores it for execution — Hashi only runs `actions`. Optional and additive: instruction sets without this block still validate. Kept permissive (no additionalProperties:false) so Tomo can evolve the block without a coordinated round-trip (tomo-to-hashi handoff 2026-06-20, miyo-tomo#74).",
+      "properties": {
+        "doc_type": {"type": "string"},
+        "state": {"type": "string"},
+        "run_id": {"type": ["string", "null"]},
+        "updated_at": {"type": "string"},
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {"type": "string"},
+              "checksum": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
     "actions": {
       "type": "array",
       "items": {

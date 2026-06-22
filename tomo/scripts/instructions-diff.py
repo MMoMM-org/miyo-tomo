@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.1
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -11,7 +11,9 @@ cross-checks the two JSONs item-by-item and surfaces:
     actual in instructions.json).
   - Per-confirmed-item coverage: each atomic/create_moc item should have
     exactly one file action (move_note or create_moc) plus one
-    link_to_moc per parent_moc.
+    link_to_moc per parent_moc. link_to_moc coverage is counted as
+    (note, MOC) pairs so a #70-batched action (several notes merged under
+    one target_moc + new_section) credits each note via its bullets.
   - Daily-update coverage: each accepted tracker/log_entry/log_link in
     parsed-suggestions should produce one matching action.
   - Skip / delete coverage: explicit skipped[] entries and daily-only
@@ -36,8 +38,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
+
+# Wikilink bullet in a link_to_moc line_to_add, e.g. "- [[Note]]" or
+# "- [[safe-stem|Original Title]]". Used to credit each note in a #70-batched
+# link_to_moc (which merges several notes under one (target_moc, new_section)).
+_BULLET_RE = re.compile(r"^\s*-\s*\[\[(.+?)\]\]", re.MULTILINE)
+
+
+def _bullet_titles(line_to_add: str | None) -> list[str]:
+    """Note titles referenced by the bullets in a link_to_add block. For an
+    aliased link [[stem|Title]] the display Title is returned (it matches the
+    suggestion item title the coverage check keys on)."""
+    titles: list[str] = []
+    for m in _BULLET_RE.finditer(line_to_add or ""):
+        ref = m.group(1)
+        titles.append(ref.split("|", 1)[1] if "|" in ref else ref)
+    return titles
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -270,7 +289,11 @@ def derive_expected(parsed: dict) -> dict:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def summarize_actual(instrs: dict) -> dict:
-    """Flatten the actual action list into the same shape used for diff."""
+    """Flatten the actual action list into the same shape used for diff.
+
+    link_to_moc is counted as (note, MOC) pairs (one per bullet/source note),
+    not as raw action count, so #70-batched actions reconcile per merged note.
+    """
     actions = instrs.get("actions") or []
     counts: dict[str, int] = {}
     for a in actions:
@@ -279,6 +302,11 @@ def summarize_actual(instrs: dict) -> dict:
     move_by_stem: dict[str, dict] = {}
     create_mocs: list[dict] = []
     links_by_source: dict[str, list[str]] = {}
+    # link_to_moc COVERAGE is counted as (note, MOC) pairs, not raw actions: a
+    # #70-batched action merges several notes under one (target_moc, new_section),
+    # so it covers one pair per bullet. This keeps the count table reconciling
+    # with the expected pair count and credits each merged note in per-item.
+    link_pairs = 0
     for a in actions:
         kind = a["action"]
         if kind == "move_note":
@@ -289,8 +317,20 @@ def summarize_actual(instrs: dict) -> dict:
         elif kind == "create_moc":
             create_mocs.append(a)
         elif kind == "link_to_moc":
-            src = a.get("source_note_title") or ""
-            links_by_source.setdefault(src, []).append(_moc_stem(a.get("target_moc")))
+            target = _moc_stem(a.get("target_moc"))
+            src = a.get("source_note_title")
+            if src:
+                links_by_source.setdefault(src, []).append(target)
+                link_pairs += 1
+            else:
+                bullets = _bullet_titles(a.get("line_to_add"))
+                for note_title in bullets:
+                    links_by_source.setdefault(note_title, []).append(target)
+                    link_pairs += 1
+                if not bullets:
+                    links_by_source.setdefault("", []).append(target)
+                    link_pairs += 1
+    counts["link_to_moc"] = link_pairs
 
     # Daily actions — bucket by kind
     daily_by_kind: dict[str, list[dict]] = {

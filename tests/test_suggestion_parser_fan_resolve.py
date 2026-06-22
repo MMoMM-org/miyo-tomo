@@ -14,6 +14,7 @@ exercised.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -296,6 +297,71 @@ def test_fan_with_resolve_promotes_from_resolve(tmp_path):
     assert entry.get("from_resolve") is True, entry
 
 
+def _primary_doc_confirmed_s01_plus_fan_furano() -> str:
+    """Primary doc with an APPROVED atomic at S01 (a different note) AND a
+    FAN-ticked log entry for Furano. The confirmed S01 collides with the
+    resolve doc's S01 Furano — the regression this guards."""
+    return "\n".join([
+        "---", "type: tomo-suggestions", "generated: 2026-04-23T10:00:00Z",
+        'tomo_version: "0.1.0"', "profile: miyo", "source_items: 2",
+        "run_id: 2026-04-23T10-00-00Z-test01", "---", "",
+        "# Inbox Suggestions — 2026-04-23", "",
+        "- [x] Approved", "",
+        "## Daily Notes Updates", "",
+        "### [[2026-04-17]]", "",
+        "**Possible Log Entries (inline text):**",
+        "- after_last_line — Furano liegt im Zentrum Hokkaidos.",
+        "  - Source: [[Furano]]",
+        "  - [ ] Accept",
+        "  - [x] Force Atomic Note (create/keep a standalone note for this item) ✅ 2026-06-18",
+        "",
+        "## Suggestions", "",
+        "### S01 — Some Other Confirmed Note", "",
+        "- [x] Accept",
+        "- [ ] Skip",
+        "- [ ] Delete source", "",
+        "**Suggested name:** Some Other Confirmed Note",
+        "**Source:** [[Other Note]]",
+        "**Type:** fleeting_note",
+        "**Template:** Atomic Note.md",
+        "**Destination:** Atlas/202 Notes/",
+        "**Parent MOC:** [[Concepts]]", "",
+        "**Summary:** Unrelated note that happens to occupy S01.", "",
+    ])
+
+
+def test_fan_resolve_id_collision_with_primary_promotes(tmp_path):
+    """Regression: the resolve doc's atomic id (S01) collides with an already-
+    confirmed primary item (also S01). The merge must still promote the resolve
+    atomic (re-numbered to a collision-free id), not drop it to pending — and
+    confirmed_items must have no duplicate ids (id_index integrity)."""
+    primary = tmp_path / "suggestions.md"
+    resolve = tmp_path / "suggestions-fan.md"
+    primary.write_text(_primary_doc_confirmed_s01_plus_fan_furano())
+    resolve.write_text(_resolve_doc_for_furano())  # Furano atomic at S01
+
+    out = _run_parser(primary, resolve)
+
+    assert out.get("pending_fan_resolutions") == [], (
+        f"collision must not drop to pending; got {out.get('pending_fan_resolutions')}"
+    )
+    furano = [c for c in out.get("confirmed_items", [])
+              if "furano" in (c.get("source_path") or "").lower()]
+    assert len(furano) == 1, f"Furano must be promoted, got {furano}"
+    assert furano[0].get("from_resolve") is True, furano[0]
+
+    ids = [c.get("id") for c in out.get("confirmed_items", [])]
+    assert len(ids) == len(set(ids)), f"confirmed_items has duplicate ids: {ids}"
+    assert furano[0]["id"] not in ("S01",), (
+        f"resolve atomic must be re-id'd off the colliding S01, got {furano[0]['id']}"
+    )
+    # The renumbered id must be a well-formed S## — not None/""/garbage that would
+    # also satisfy "not S01" while corrupting id_index integrity (review M12).
+    assert re.match(r"^S\d+$", furano[0]["id"] or ""), (
+        f"renumbered id must match ^S\\d+$, got {furano[0]['id']!r}"
+    )
+
+
 def test_fan_with_primary_section_uses_legacy_promote(tmp_path):
     """Scenario C: FAN ticked AND primary-doc per-item section present.
 
@@ -378,3 +444,116 @@ def test_fan_resolve_single_block_no_regression(tmp_path):
     entry = furano_entries[0]
     assert entry.get("force_atomic") is True, entry
     assert entry.get("from_resolve") is True, entry
+
+
+def _doc_with_proposed_moc(name: str, supporting: str, topic: str) -> str:
+    """Minimal suggestions doc carrying a single approved Proposed MOC."""
+    return "\n".join([
+        "---",
+        "type: tomo-suggestions",
+        "generated: 2026-06-19T10:00:00Z",
+        'tomo_version: "0.1.0"',
+        "profile: miyo",
+        "source_items: 1",
+        "run_id: 2026-06-19T10-00-00Z-merge",
+        "---",
+        "",
+        "# Inbox Suggestions — 2026-06-19",
+        "",
+        "- [x] Approved",
+        "",
+        "## Proposed MOCs",
+        "",
+        f"### Proposed MOC: {topic}",
+        f"- **Name:** {name}",
+        "- **Parent:** [[2700 - Art & Recreation]]",
+        f"- **Supporting items:** {supporting}",
+        "- **Decision:**",
+        "  - [x] Approve (create this MOC with the Name above)",
+        "  - [ ] Skip",
+        "",
+    ])
+
+
+def test_fan_and_primary_proposed_mocs_merge_by_name(tmp_path):
+    """Fan proposed-MOC fix: a Proposed MOC in the fan-resolve doc merges
+    by-name (#67) with a same-named Proposed MOC in the primary doc → ONE
+    create_moc with the union of supporting items, not two. Regression guard
+    for the parser half of the fan proposed-MOC fix."""
+    primary = tmp_path / "suggestions.md"
+    fan = tmp_path / "suggestions-fan.md"
+    primary.write_text(
+        _doc_with_proposed_moc("Board Games (MOC)", "Catan", topic="Gesellschaftsspiele")
+    )
+    fan.write_text(
+        _doc_with_proposed_moc("Board Games (MOC)", "Wingspan", topic="Games")
+    )
+
+    out = _run_parser(primary, fan)
+
+    mocs = [c for c in out.get("confirmed_items", []) if c.get("action") == "create_moc"]
+    assert len(mocs) == 1, (
+        f"expected ONE merged create_moc, got {len(mocs)}: "
+        f"{[m.get('title') for m in mocs]}"
+    )
+    assert mocs[0]["title"] == "Board Games (MOC)", mocs[0].get("title")
+    supporting = mocs[0].get("supporting_items") or ""
+    assert "Catan" in supporting and "Wingspan" in supporting, (
+        f"merged MOC must union supporting items; got {supporting!r}"
+    )
+
+
+def test_proposed_moc_members_recovered_from_structured_doc(tmp_path):
+    """Core fix: proposed-MOC members are dropped by the markdown render but
+    recovered from the structured suggestions-doc.json (topic -> items ->
+    section stems) and bound to the create_moc as supporting_items (final
+    confirmed ids), so the new MOC gets its child down-links."""
+    primary = tmp_path / "suggestions.md"
+    structured = tmp_path / "suggestions-doc.json"
+    primary.write_text("\n".join([
+        "---", "type: tomo-suggestions", "generated: 2026-06-20T10:00:00Z",
+        'tomo_version: "0.1.0"', "profile: miyo", "source_items: 1",
+        "run_id: 2026-06-20T10-00-00Z-rec", "---", "",
+        "# Inbox Suggestions", "", "- [x] Approved", "",
+        "## Suggestions", "",
+        "### S02 — Catan Strategien", "",
+        "**Source:** [[Catan Strategien]]",
+        "**Suggested name:** Catan Strategien",
+        "**Template:** Atomic Note.md",
+        "**Destination:** Atlas/202 Notes/",
+        "**Classification:** 2700 - Art & Recreation", "",
+        "**Decision (atomic note):**",
+        "- [x] Approve",
+        "- [ ] Skip (keep in inbox)", "",
+        "## Proposed MOCs", "",
+        "### Proposed MOC: Gesellschaftsspiele",
+        "- **Name:** Board Games (MOC)",
+        "- **Parent:** [[2700 - Art & Recreation]]",
+        "- **Supporting notes:** Catan Strategien",
+        "- **Decision:**",
+        "  - [x] Approve (create this MOC with the Name above)", "",
+    ]), encoding="utf-8")
+    structured.write_text(json.dumps({
+        "schema_version": "1",
+        "sections": [{"id": "S02", "stem": "Catan Strategien"}],
+        "proposed_mocs": [{
+            "topic": "Gesellschaftsspiele", "name": "Board Games (MOC)",
+            "items": ["S02"], "note_titles": ["Catan Strategien"],
+        }],
+    }), encoding="utf-8")
+
+    r = subprocess.run(
+        [sys.executable, str(PARSER), "--file", str(primary),
+         "--suggestions-doc", str(structured)],
+        capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    mocs = [c for c in out["confirmed_items"] if c.get("action") == "create_moc"]
+    assert len(mocs) == 1, mocs
+    sup = mocs[0].get("supporting_items") or ""
+    assert "S02" in sup, (
+        f"expected recovered member id S02 in supporting_items, got {sup!r}"
+    )
+    # internal helper fields must not leak into output
+    assert "member_stems" not in mocs[0] and "topic" not in mocs[0], mocs[0]

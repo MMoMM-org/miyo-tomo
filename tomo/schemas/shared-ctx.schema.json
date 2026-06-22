@@ -19,7 +19,27 @@
           "path": {"type": "string", "minLength": 1},
           "title": {"type": "string", "minLength": 1},
           "topics": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
-          "is_classification": {"type": "boolean"}
+          "is_classification": {"type": "boolean"},
+          "has_footer": {"type": "boolean", "description": "True when the MOC body contains a footer callout (video/calendar/puzzle/compass). Absent in pre-spec-023 cache entries — consumer treats absent as true (footer-aware tier)."},
+          "headings": {
+            "type": "array",
+            "description": "Ordered list of headings present in the MOC body, extracted by shared-ctx-builder for LLM insertion-point resolution.",
+            "items": {
+              "type": "object",
+              "required": ["text", "level"],
+              "additionalProperties": false,
+              "properties": {
+                "text": {"type": "string", "description": "Heading text without leading # characters."},
+                "level": {"type": "integer", "minimum": 1, "maximum": 6, "description": "Heading level (1=H1 … 6=H6)."}
+              }
+            }
+          },
+          "editable_callouts": {
+            "type": "array",
+            "description": "Opening lines of callouts present in the MOC body that Tomo is permitted to insert into (e.g. '[!blocks] Key Concepts'). Extracted by shared-ctx-builder for LLM anchor resolution.",
+            "maxItems": 4,
+            "items": {"type": "string", "minLength": 1}
+          }
         }
       }
     },

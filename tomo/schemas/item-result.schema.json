@@ -39,7 +39,6 @@
         "oneOf": [
           {"$ref": "#/$defs/create_atomic_note"},
           {"$ref": "#/$defs/update_daily"},
-          {"$ref": "#/$defs/link_to_moc"},
           {"$ref": "#/$defs/create_moc"},
           {"$ref": "#/$defs/modify_note"}
         ]
@@ -73,7 +72,23 @@
             "properties": {
               "path": {"type": "string"},
               "score": {"type": "number", "minimum": 0, "maximum": 1},
-              "pre_check": {"type": "boolean"}
+              "pre_check": {"type": "boolean"},
+              "anchor": {
+                "type": "object",
+                "description": "Optional insertion hint resolved by the LLM from MOC headings/callouts. Carried forward into the instruction-render step to produce a concrete link_to_moc anchor. Absent when the LLM could not identify a suitable insertion point.",
+                "required": ["type", "value", "placement"],
+                "additionalProperties": false,
+                "properties": {
+                  "type": {"type": "string", "enum": ["heading", "callout", "line"], "description": "What kind of anchor the LLM matched."},
+                  "value": {"type": ["string", "null"], "description": "Text of the matched anchor, or null when unresolved."},
+                  "placement": {"type": "string", "enum": ["inside", "before", "after"], "description": "Where to insert relative to the matched anchor."},
+                  "new_section": {"type": ["string", "null"], "description": "Optional heading text to create as a new section when the MOC lacks a suitable anchor. Null when not needed."},
+                  "alt_headings": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1, "pattern": "^[^\\n\\r]+$"},
+                    "description": "Runner-up heading text(s) Pass-1 also judged a plausible fit (AC-16 ambiguous-fit advisory). Present only when ≥2 headings genuinely fit; absent/null otherwise. Does NOT change the chosen anchor in `value`."},
+                  "fit_confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1,
+                    "description": "LLM 0-1 confidence in the chosen tier-1 heading's semantic fit. Present only for tier-1 heading anchors; null/absent for tiers 2-4 and legacy results."}
+                }
+              }
             }
           }
         },
@@ -183,16 +198,6 @@
           ]
         },
         "time_source": {"type": "string"}
-      }
-    },
-    "link_to_moc": {
-      "type": "object",
-      "required": ["kind", "target_moc", "section_name"],
-      "additionalProperties": false,
-      "properties": {
-        "kind": {"const": "link_to_moc"},
-        "target_moc": {"type": "string"},
-        "section_name": {"type": "string"}
       }
     },
     "create_moc": {

@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.17.1
+# version: 0.18.1
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -147,6 +147,75 @@ signal of intent than a freshly-inferred label.
 
 If `placeholder_links` is absent or empty, skip this trigger silently —
 the field is optional in the schema.
+
+**Anchor emission (four Pass-1 placement tiers) — thematic MOCs only.**
+
+For each pre-checked thematic MOC (those with `pre_check: true` after the
+Classification Guard above), resolve one `anchor` object using the inventory
+in `shared_ctx.mocs[].headings` and `shared_ctx.mocs[].editable_callouts`.
+Evaluate the Pass-1 placement tiers in strict order — first tier that fires wins:
+
+- **Pass-1 placement TIER-1 — Semantic heading fit (confidence-gated).**
+  Look at `moc.headings[]` (each has `text` and `level`). Pick the heading
+  whose *meaning* best fits the note's dominant topic. Fit is by conceptual
+  meaning, not literal keyword overlap. Rate the best heading's fit in
+  `fit_confidence` from 0.0 to 1.0: 1.0 = the heading is clearly the note's
+  topical home; ~0.3 = the heading is generic/structural scaffolding (e.g.
+  "Content", "Structure", "Overview", "Primer Questions", "Processes") that
+  does not actually describe the note's topic.
+  IF `fit_confidence >= 0.6`, emit:
+  ```json
+  {"type": "heading", "value": "<best-fit heading>", "placement": "after", "new_section": null, "fit_confidence": <0.6-1.0>}
+  ```
+  When TWO OR MORE headings genuinely fit, list the other plausible heading
+  text(s) in `alt_headings`:
+  ```json
+  {"type": "heading", "value": "<best-fit heading>", "placement": "after", "new_section": null, "fit_confidence": <0.6-1.0>, "alt_headings": ["<runner-up heading>", "..."]}
+  ```
+  When exactly one heading fits, DO NOT emit `alt_headings` — omit the
+  key entirely. `alt_headings` lists ONLY genuinely-plausible runner-ups (NOT
+  every other heading in the MOC) — it drives an advisory the user can act on;
+  flooding it with all headings defeats the purpose.
+  IF `fit_confidence < 0.6`, do NOT emit a Pass-1 placement TIER-1 anchor — go to
+  Pass-1 placement TIER-2 and put the best-but-rejected heading into that anchor's `alt_headings`.
+
+- **Pass-1 placement TIER-2 — New section (no confident heading fit).**
+  If `moc.headings` is non-empty but no heading scores `fit_confidence >= 0.6`:
+  Name the section from the note's dominant topic (e.g. "Mental Models",
+  "Cognitive Biases") — NEVER the literal string "Key Concepts".
+  IF `moc.has_footer` is true (or absent):
+  ```json
+  {"type": "callout", "value": null, "placement": "before", "new_section": "<note dominant topic>", "alt_headings": ["<rejected heading if any>"]}
+  ```
+  ELSE (`moc.has_footer` is false):
+  ```json
+  {"type": "line", "value": null, "placement": "after", "new_section": "<note dominant topic>", "alt_headings": ["<rejected heading if any>"]}
+  ```
+  `value` is always `null` — the render resolver fills the footer callout text
+  or last body line at Pass-2. Do NOT fabricate a value for `value`.
+  Omit `alt_headings` when no heading was rejected (empty headings inventory).
+
+- **Pass-1 placement TIER-3 — Editable callout fallback.**
+  If `moc.headings` is absent or empty AND `moc.editable_callouts` is
+  non-empty, use the first (highest-priority) callout:
+  ```json
+  {"type": "callout", "value": "<editable callout string>", "placement": "inside", "new_section": null}
+  ```
+
+- **Pass-1 placement TIER-4 — H1 title last-resort.**
+  If `moc.headings` is absent/empty AND `moc.editable_callouts` is
+  absent/empty, use `moc.title` (the MOC's own H1 title from shared-ctx):
+  ```json
+  {"type": "heading", "value": "<moc.title>", "placement": "after", "new_section": null}
+  ```
+  If `moc.title` is empty or absent, fall back to the first body line:
+  ```json
+  {"type": "line", "value": "<first body line>", "placement": "after", "new_section": null}
+  ```
+
+If `shared_ctx.mocs[].headings` and `shared_ctx.mocs[].editable_callouts` are
+both absent (old shared-ctx artifact without inventory), omit the `anchor` key
+entirely for that MOC — downstream consumers degrade gracefully.
 
 ### Step 5 — Match classification category
 

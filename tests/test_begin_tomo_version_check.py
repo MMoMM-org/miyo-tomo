@@ -286,11 +286,11 @@ class TestVersionCheckBlock:
 # ── C. Template structure tests ──────────────────────────────────────────────
 
 class TestTemplateStructure:
-    def test_version_is_0_15_0(self):
-        """Template must carry version 0.15.0 after the --no-auth-port bump."""
+    def test_version_is_0_16_0(self):
+        """Template must carry version 0.16.0 after the exposeAuthPort/--no-auth-port bump."""
         content = TEMPLATE.read_text(encoding="utf-8")
-        assert "# version: 0.15.0" in content, (
-            f"Template version not bumped to 0.15.0. Found: "
+        assert "# version: 0.16.0" in content, (
+            f"Template version not bumped to 0.16.0. Found: "
             f"{[ln for ln in content.splitlines() if '# version:' in ln]}"
         )
 

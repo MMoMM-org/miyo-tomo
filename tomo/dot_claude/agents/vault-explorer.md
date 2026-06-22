@@ -11,7 +11,7 @@ skills:
 ---
 
 # Vault Explorer Agent
-# version: 0.13.0
+# version: 0.14.1
 
 You are the vault explorer. Your job is to learn the vault's structure, patterns, and content so that
 Tomo can work effectively. You run as part of the `/explore-vault` command. You are read-only with
@@ -604,24 +604,12 @@ Close with: "Run /inbox to start processing notes."
 
 ### Step 10b — Write Human-Readable Summary
 
-Using the same JSON from Step 10, write a concise Markdown summary to
-`config/vault-config.md` via the Write tool. Sections (in order):
+Render the human-readable summary deterministically from the data:
 
-- Vault Info (vault name, inbox path, framework display name, `total_notes`)
-- Folder Layout (`notes_per_concept` as a concept → count table; `unmapped_folders`)
-- MOCs (`moc_count`, `moc_max_depth`, `key_moc_titles`, relationship marker pattern)
-- Tag Taxonomy (`tag_namespace_count`, `tag_prefix_table` as a prefix → example table)
-- Frontmatter Patterns (`frontmatter_required_count` / `frontmatter_optional_count`)
-- Relationships (`relationship_markers`: marker + position for each)
-- Callouts (`callout_protected_count` protected, `callout_editable_count` editable)
-- Trackers (`tracker_field_count` fields, if applicable)
+   python3 scripts/vault-summary.py --render-md > config/vault-config.md
 
-Keep the summary readable and short — the YAML is the source of truth; this file is
-for human scanning. Header frontmatter: `version: 0.2.0` and `Updated by vault-explorer
-on YYYY-MM-DD` as a comment below.
-
-**STRICT:** Write to `config/vault-config.md` only. Do NOT run python to compute
-values — all numbers come from the JSON produced in Step 10.
+# STRICT — Generate `config/vault-config.md` ONLY via `vault-summary.py --render-md`. NEVER hand-write or Edit it.
+# Why: a hand-composed summary drifts from the YAML in format AND facts (e.g. listing ignore-callouts as editable).
 
 ## Re-Run Behavior
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.10.2
+# version: 1.13.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -29,6 +29,7 @@ Rendering rules (replicated from the retired suggestion-builder format):
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import sys
 import time
@@ -86,8 +87,84 @@ def last_state_per_stem(state_path: Path) -> dict[str, dict]:
 
 # ── Rendering ────────────────────────────────────────────────────────────────
 
+_LINE_TIER = (
+    "**Placement:** under the note title (no matching section or callout found)"
+    "    ← add a `## Heading` to target a section"
+)
+
+
+def _placement_line(anchor: dict) -> str:
+    """Return the UX-locked **Placement:** line for a resolved anchor (spec 022 AC-12).
+
+    Five formats keyed on anchor.type + new_section (verbatim wording is UX-locked):
+      heading              → under `## <value>` [(confidence: N%)]
+      callout + new_section → new section `## <new_section>` (before the footer)
+      callout (no new_section) → inside the `> [!<name>]` callout
+      line + new_section   → new section `## <new_section>` (at the end of the MOC)
+      line / unresolved    → under the note title (no matching section or callout found)
+
+    null-value guard: the schema allows value:null (unresolved LLM output). When
+    value is falsy and the branch needs it (heading, or callout-without-new_section),
+    fall back to the line-tier format — semantically correct (nothing was matched).
+    """
+    anchor_type = anchor.get("type", "")
+    value = anchor.get("value") or ""
+    new_section = anchor.get("new_section")
+
+    if anchor_type == "heading":
+        if not value:
+            return _LINE_TIER
+        conf = anchor.get("fit_confidence")
+        suffix = (
+            f" (confidence: {int(conf * 100)}%)"
+            if isinstance(conf, (int, float)) and not isinstance(conf, bool)
+            else ""
+        )
+        return (
+            f"**Placement:** under `## {value}`{suffix}"
+            "    ← edit the heading to move the link"
+        )
+    if anchor_type == "callout":
+        if new_section:
+            return (
+                f"**Placement:** new section `## {new_section}` (before the footer)"
+                "    ← rename or change"
+            )
+        # null value without new_section → nothing was resolved; fall to line-tier.
+        if not value:
+            return _LINE_TIER
+        # Extract `> [!name]` from value like "[!blocks] Key Concepts".
+        # Guard: truncated LLM output like "[!blocks" (no closing "]") would
+        # produce a garbled name via split("]")[0]. Fall to line-tier instead.
+        if value.startswith("[!"):
+            rest = value[2:]
+            if "]" not in rest:
+                return _LINE_TIER
+            name = rest.split("]")[0]
+            title = rest[len(name) + 1:]  # everything after "]", e.g. " Key Concepts"
+            callout_ref = f"[!{name}]{title}"
+        else:
+            callout_ref = value
+        return (
+            f"**Placement:** inside the `{callout_ref}` callout"
+            "    ← change to a `## Heading` to place under a section"
+        )
+    # type:line with a new_section → no footer, section goes at the end
+    if anchor_type == "line" and new_section:
+        return (
+            f"**Placement:** new section `## {new_section}` (at the end of the MOC)"
+            "    ← rename or change"
+        )
+    # type:line, unknown type, or unresolved — last-resort tier
+    return _LINE_TIER
+
+
 def moc_link_line(moc: dict) -> str:
-    """Render a candidate-MOC checkbox line. MOC must be a dict per schema."""
+    """Render a candidate-MOC checkbox line plus optional Placement hint (spec 022 T6.1).
+
+    Returns a single checkbox line when no anchor is present (back-compat).
+    Returns checkbox + **Placement:** line (newline-joined) when anchor is present.
+    """
     path = moc.get("path", "")
     link = path[:-3] if path.endswith(".md") else path
     # pre_check is explicit per schema. If omitted, infer from score ≥ 0.5.
@@ -96,7 +173,39 @@ def moc_link_line(moc: dict) -> str:
     else:
         is_checked = (moc.get("score") or 0) >= 0.5
     marker = "[x]" if is_checked else "[ ]"
-    return f"- {marker} [[{link}]]"
+    checkbox = f"- {marker} [[{link}]]"
+    anchor = moc.get("anchor")
+    if not anchor:
+        return checkbox
+    parts = [checkbox, _placement_line(anchor)]
+    alt_headings = [h for h in (anchor.get("alt_headings") or []) if h]
+    if alt_headings:
+        rendered = ", ".join(f"`## {h}`" for h in alt_headings)
+        parts.append(
+            f"**Other sections in this MOC:** {rendered}"
+            "    ← edit the Placement above to retarget"
+        )
+    return "\n".join(parts)
+
+
+def persist_candidate_anchors(action: dict) -> list[dict]:
+    """Return slim ``[{path, anchor}]`` for each candidate MOC carrying an anchor.
+
+    Threads the Pass-1 LLM-resolved placement anchor (spec 022/023) into the
+    suggestions-doc JSON so suggestion-parser.py can use it as the apply-time
+    default. Every candidate with a structured anchor is persisted regardless of
+    checkbox state — the anchor is the load-bearing field; which MOCs are
+    actually checked is re-read from the markdown at Pass-2 (a user may
+    tick/untick), where the anchor is bound only to checked MOCs.
+    """
+    out: list[dict] = []
+    for moc in action.get("candidate_mocs") or []:
+        anchor = moc.get("anchor")
+        path = moc.get("path")
+        if not anchor or not path:
+            continue
+        out.append({"path": path, "anchor": copy.deepcopy(anchor)})
+    return out
 
 
 def _template_link(template: str) -> str:
@@ -322,11 +431,13 @@ def render_update_daily(action: dict, stem: str, field_sections: dict[str, str] 
 
 
 def render_link_to_moc(action: dict, stem: str) -> str:
+    # AC-11: never emit a bare [[Target#section]] wikilink.
+    # section_name was a dead field (section_name was never reliably populated
+    # by the analyst — spec 022 uses the anchor field on candidate_mocs instead).
     target = action.get("target_moc", "")
-    section = action.get("section_name", "")
     return (
         f"**Source:** [[{stem}]]\n"
-        f"**Link to existing MOC:** [[{target}#{section}]]\n"
+        f"**Link to existing MOC:** [[{target}]]\n"
         "\n**Decision (link to MOC):**\n- [x] Approve\n- [ ] Skip"
     )
 
@@ -1159,6 +1270,13 @@ def main() -> int:
                     suggestion_counter += 1
                     suggestion_id_flat = f"S{suggestion_counter:02d}"
                     rendered_action["suggestion_id"] = suggestion_id_flat
+                    # spec 022/023: persist the structured Pass-1 placement
+                    # anchor per candidate MOC so Pass-2 (suggestion-parser)
+                    # can use the LLM-resolved anchor as the apply-time default
+                    # instead of falling back to the old _pick_anchor heuristic.
+                    cand_anchors = persist_candidate_anchors(action)
+                    if cand_anchors:
+                        rendered_action["candidate_mocs"] = cand_anchors
                 rendered_actions.append(rendered_action)
 
             # Collect Proposed-MOC candidates from atomic-note actions; the
@@ -1251,13 +1369,16 @@ def main() -> int:
         daily_notes_updates_sorted, daily_only_stems=daily_only_stems
     )
 
-    # XDD 012 fan-resolve: drop the aggregated blocks the resolve doc
-    # doesn't need. Keep sections (atomic proposals) and override the
-    # precedence note so the user sees what this doc is for.
+    # fan-resolve: drop the aggregated blocks that belong to the primary
+    # doc (daily-note updates, needs-attention). Proposed MOCs are KEPT —
+    # a standalone-fan force-atomic item can have no thematic MOC match and
+    # propose a new MOC; without the section the per-item "see Proposed MOCs
+    # section below" note is a dead end. Pass-2 merges these by-name with the
+    # primary doc's proposed MOCs (#67). Keep sections (atomic proposals) and
+    # override the precedence note so the user sees what this doc is for.
     if args.fan_resolve:
         daily_notes_updates = []
         rendered_daily_updates_md = ""
-        proposed_mocs = []
         needs_attention = []
         precedence_note = (
             "This is a **Force-Atomic Resolve** doc. Tomo noticed you ticked "

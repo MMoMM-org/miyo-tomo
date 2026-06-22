@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """test-resolve-section-names.py — Unit tests for resolve_section_names + paired delete_source.
 
 Covers:
@@ -46,6 +46,8 @@ _spec = importlib.util.spec_from_file_location(
 ir = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(ir)
+
+import moc_structure  # noqa: E402 — after sys.path setup
 
 # Use the SAME KadoNotFoundError class instruction-render imports
 # (`lib.kado_client`), not `kado_client` — they are distinct module objects
@@ -569,15 +571,31 @@ Some intro prose.
 > - [ ] do thing
 """
 
-# Nothing anchorable: prose only.
+# Nothing anchorable after filtering: ONLY the H1 title remains.
+# Tier 1 (callout) misses, tier 2 (content heading) misses — the lone H1 is
+# excluded from the heading tier — and tier 4 (last body line) finds nothing
+# because every non-blank line is a heading (filtered out by `#`). This is the
+# graceful-degradation residual: anchor stays null rather than fabricating a line.
+# NB: no YAML frontmatter — _pick_anchor scans the raw content it is given and
+# does not strip frontmatter, so a `title:` line would otherwise be picked up by
+# tier 4 as the last body line.
 _NOTHING_MOC_BODY = """\
----
-title: Empty (MOC)
----
-
 # [[Empty (MOC)]]
+"""
 
-Just prose, no callouts, no H2 sections.
+# Tier-4 trigger: plain paragraph body — NO callouts, NO content headings (only
+# the H1 title), NO footer callout. The callout/heading/footer tiers all miss, so
+# the resolver lands on the LAST non-empty body line as a type=line anchor.
+_PLAIN_PARAGRAPH_MOC_BODY = """\
+---
+title: Prose (MOC)
+---
+
+# [[Prose (MOC)]]
+
+This is some introductory prose about the topic.
+
+The final paragraph is the last anchorable body line.
 """
 
 # Footer markers (video/calendar) are deliberately excluded here so they are
@@ -636,9 +654,14 @@ def test_editable_callout_wins_over_heading():
 
 def test_new_section_before_footer_when_nothing_else_fits():
     """#28: no editable callout and no content heading → anchor on the footer
-    callout with placement=before and a '## <section>' block prepended to
-    line_to_add, so applying inserts a fresh content section ahead of the
-    footer."""
+    callout with placement=before. The resolver sets up the footer anchor but
+    no longer injects a hardcoded new-section name (ADR-6, spec 022 T5.2).
+    line_to_add stays as the bare bullet — section heading only comes from a
+    Pass-1 anchor carrying new_section, serialized by _serialize_new_sections.
+    """
+    # ADR-6: DEFAULT_NEW_SECTION_TITLE ("Key Concepts") retired as name source.
+    # The heuristic footer tier no longer injects new_section; only Pass-1 LLM
+    # anchors carry a topic-derived new_section value.
     path = "Atlas/200 Maps/Bare (MOC).md"
     client = StubClient(notes={path: _FOOTER_ONLY_MOC_BODY})
     actions = [_link_action("Bare (MOC)", path)]
@@ -651,14 +674,19 @@ def test_new_section_before_footer_when_nothing_else_fits():
           f"expected footer callout anchor, got {a['anchor']['value']!r}")
     _must(a["placement"] == "before",
           f"expected placement=before, got {a['placement']!r}")
-    _must(a["line_to_add"] == "## Key Concepts\n\n- [[New Note]]\n",
-          f"expected section block with trailing newline, got {a['line_to_add']!r}")
-    print("[PASS] #28: new section emitted before footer via before+multiline")
+    # ADR-6: no hardcoded "Key Concepts" heading — bare bullet remains.
+    _must(a["line_to_add"] == "- [[New Note]]",
+          f"expected bare bullet (no hardcoded section name), got {a['line_to_add']!r}")
+    print("[PASS] #28: footer anchor set, bare bullet (no hardcoded section name per ADR-6)")
 
 
 def test_nothing_anchorable_stays_null():
-    """#28 residual: no callout, no heading, no footer → anchor stays null
-    (documented residual for truly bare MOCs)."""
+    """Graceful-degradation residual: a MOC whose ONLY non-blank line is the H1
+    title has nothing usable after filtering — tier 1 (callout), tier 2 (content
+    heading), tier 3 (footer) AND tier 4 (last body line, which excludes headings)
+    all miss → anchor stays null. Body shape: H1 only, no prose/callouts/footer.
+    Contrast with test_tier4_last_body_line_when_only_prose, where a plain
+    paragraph body DOES leave a usable last line for tier 4."""
     path = "Atlas/200 Maps/Empty (MOC).md"
     client = StubClient(notes={path: _NOTHING_MOC_BODY})
     actions = [_link_action("Empty (MOC)", path)]
@@ -667,7 +695,28 @@ def test_nothing_anchorable_stays_null():
     _must(n == 0, f"expected 0 resolutions, got {n}")
     _must(a["anchor"]["value"] is None,
           f"expected null anchor for bare MOC, got {a['anchor']['value']!r}")
-    print("[PASS] #28: nothing anchorable leaves the anchor null")
+    print("[PASS] residual: H1-only MOC (nothing usable) leaves the anchor null")
+
+
+def test_tier4_last_body_line_when_only_prose():
+    """Tier 4 (spec 023 AC-9): a MOC with plain paragraph content — no callouts,
+    no content headings (only the H1 title), no footer callout — resolves to a
+    type=line anchor whose value is the LAST non-empty body line, placement=after.
+    Body shape: H1 + prose paragraphs (no headings/callouts/footer). Contrast with
+    test_nothing_anchorable_stays_null, whose body has no prose line for tier 4."""
+    path = "Atlas/200 Maps/Prose (MOC).md"
+    client = StubClient(notes={path: _PLAIN_PARAGRAPH_MOC_BODY})
+    actions = [_link_action("Prose (MOC)", path)]
+    n = ir.resolve_section_names(actions, client, _CONTENT_CALLOUTS)
+    a = actions[0]
+    _must(n == 1, f"expected 1 resolution, got {n}")
+    _must(a["anchor"]["type"] == "line",
+          f"expected type=line anchor for tier 4, got {a['anchor']['type']!r}")
+    _must(a["anchor"]["value"] == "The final paragraph is the last anchorable body line.",
+          f"expected last body line as anchor value, got {a['anchor']['value']!r}")
+    _must(a["placement"] == "after",
+          f"expected placement=after for tier-4 line anchor, got {a['placement']!r}")
+    print("[PASS] tier-4: plain-prose MOC resolves to last body line (type=line, after)")
 
 
 def test_before_multiline_validates_against_schema():
@@ -753,6 +802,410 @@ def test_filter_fail_open_without_client():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# T5.2 — _serialize_new_sections (spec 022, ADR-3)
+#
+# These tests cover the independent serialize pass that builds line_to_add from
+# anchor.new_section for ALL link_to_moc actions — both honored (Pass-1) and
+# heuristic-resolved. The pass runs after resolve_section_names so that a
+# Pass-1 anchor carrying new_section but skipped by the resolver (because its
+# value was already set) still gets the correct "## <section>" prefix.
+#
+# ADR-3: render builds line_to_add from new_section AT SERIALIZE, not inside
+#         resolve_section_names.
+# ADR-6: retire DEFAULT_NEW_SECTION_TITLE ("Key Concepts") as the new-section
+#         name source.
+# AC-5:  new_section is derived from the note's dominant topic, not a hardcoded literal.
+# AC-6:  exact shape: "## <section>\n\n- [[<Note>]]\n" (trailing newline preserved).
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _honored_link_action(
+    moc: str,
+    path: str,
+    *,
+    anchor_value: str,
+    anchor_type: str = "heading",
+    placement: str = "before",
+    new_section: str,
+    note_title: str = "New Note",
+) -> dict:
+    """Factory for a link_to_moc action with a pre-set (honored) anchor.
+
+    Follows the instructions schema contract:
+      - anchor = {type, value} ONLY (additionalProperties:false)
+      - placement and new_section are TOP-LEVEL fields on the action
+    """
+    return {
+        "id": "I10",
+        "action": "link_to_moc",
+        "target_moc": moc,
+        "target_moc_path": path,
+        "anchor": {
+            "type": anchor_type,
+            "value": anchor_value,
+        },
+        "placement": placement,
+        "new_section": new_section,
+        "line_to_add": f"- [[{note_title}]]",
+    }
+
+
+def test_serialize_honored_anchor_with_new_section():
+    """T5.2 / ADR-3: a HONORED anchor (value already set, skipped by resolver)
+    carrying new_section:"Reasoning" still serializes line_to_add as
+    "## Reasoning\\n\\n- [[Note]]\\n" via _serialize_new_sections.
+
+    This is the core bug the task fixes: resolve_section_names skips honored
+    anchors at :1661-1664 so the old mutation at :1681-1683 never fires for them.
+    The new independent pass covers all link_to_moc actions.
+    """
+    path = "Atlas/200 Maps/Philosophy (MOC).md"
+    actions = [
+        _honored_link_action(
+            "Philosophy (MOC)",
+            path,
+            anchor_value="[!video] Action Items",
+            anchor_type="callout",
+            placement="before",
+            new_section="Reasoning",
+            note_title="Note",
+        )
+    ]
+    # Serialize pass runs; resolve_section_names has NOT changed anchor
+    n = ir._serialize_new_sections(actions)
+    assert n == 1, f"expected 1 serialized, got {n}"
+    assert actions[0]["line_to_add"] == "## Reasoning\n\n- [[Note]]\n", (
+        f"got: {actions[0]['line_to_add']!r}"
+    )
+
+
+def test_serialize_ac6_exact_spacing():
+    """T5.2 / AC-6: exact spacing contract — '## <section>\\n\\n<bullet>\\n'.
+    The blank line between heading and bullet and the trailing newline are
+    both mandatory (Hashi writes line_to_add verbatim, hashi#65).
+    """
+    path = "Atlas/200 Maps/Engineering (MOC).md"
+    actions = [
+        _honored_link_action(
+            "Engineering (MOC)",
+            path,
+            anchor_value="[!blocks] Footer",
+            anchor_type="callout",
+            placement="before",
+            new_section="Mental Models",
+            note_title="First Principles",
+        )
+    ]
+    ir._serialize_new_sections(actions)
+    result = actions[0]["line_to_add"]
+    # Exact shape per AC-6
+    assert result == "## Mental Models\n\n- [[First Principles]]\n", (
+        f"AC-6 spacing violated: {result!r}"
+    )
+    # Explicit component checks to catch off-by-one whitespace regressions
+    parts = result.split("\n")
+    assert parts[0] == "## Mental Models", f"heading line wrong: {parts[0]!r}"
+    assert parts[1] == "", "blank line between heading and bullet must be empty"
+    assert parts[2] == "- [[First Principles]]", f"bullet wrong: {parts[2]!r}"
+    assert parts[3] == "", "trailing newline produces empty final element"
+
+
+def test_serialize_idempotent():
+    """T5.2: running _serialize_new_sections twice must NOT double-prepend the heading.
+    Guard: if line_to_add already starts with '## ', skip (idempotent).
+    """
+    path = "Atlas/200 Maps/Philosophy (MOC).md"
+    actions = [
+        _honored_link_action(
+            "Philosophy (MOC)",
+            path,
+            anchor_value="[!video] Action Items",
+            anchor_type="callout",
+            placement="before",
+            new_section="Reasoning",
+            note_title="Note",
+        )
+    ]
+    ir._serialize_new_sections(actions)
+    first = actions[0]["line_to_add"]
+    ir._serialize_new_sections(actions)
+    second = actions[0]["line_to_add"]
+    assert first == second, (
+        f"idempotency violated — second pass changed line_to_add:\n"
+        f"  first:  {first!r}\n"
+        f"  second: {second!r}"
+    )
+
+
+def test_serialize_skips_non_link_to_moc():
+    """_serialize_new_sections must only touch link_to_moc actions."""
+    actions = [
+        {"id": "I01", "action": "create_moc", "title": "X"},
+        # new_section is a TOP-LEVEL action field per schema — not inside anchor.
+        {"id": "I02", "action": "move_note", "line_to_add": "- [[Y]]",
+         "new_section": "Should Not Apply"},
+    ]
+    n = ir._serialize_new_sections(actions)
+    assert n == 0, f"expected 0 serializations on non-link_to_moc, got {n}"
+    # move_note line_to_add untouched
+    assert actions[1]["line_to_add"] == "- [[Y]]"
+
+
+def test_serialize_skips_action_without_new_section():
+    """Actions with top-level new_section=None or absent are left unchanged."""
+    path = "Atlas/200 Maps/Japan (MOC).md"
+    actions = [
+        {
+            "id": "I10",
+            "action": "link_to_moc",
+            "target_moc": "Japan (MOC)",
+            "target_moc_path": path,
+            # new_section at TOP LEVEL (per instructions schema), not inside anchor
+            "anchor": {"type": "callout", "value": "[!blocks] Key Concepts"},
+            "placement": "inside",
+            "new_section": None,
+            "line_to_add": "- [[Sapporo]]",
+        }
+    ]
+    n = ir._serialize_new_sections(actions)
+    assert n == 0, f"expected 0 serializations when new_section is None, got {n}"
+    assert actions[0]["line_to_add"] == "- [[Sapporo]]"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# T5.2 schema regression — honored anchor decomposition
+#
+# Guards the contract that _emit decomposes the Pass-1 anchor dict so that the
+# action written to instructions.json has:
+#   - anchor = {type, value} ONLY  (no placement, no new_section inside anchor)
+#   - placement at TOP LEVEL on the action
+#   - new_section at TOP LEVEL on the action
+#
+# The instructions.schema.json anchor def has additionalProperties:false with
+# only {type, value} — any extra fields cause schema validation failure.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _instructions_schema() -> dict:
+    import json
+    return json.loads(
+        (REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json").read_text()
+    )
+
+
+def _make_confirmed_with_pass1_anchor(
+    parent_moc_stem: str,
+    parent_moc_path: str,
+    anchor: dict,
+) -> list[dict]:
+    """Minimal confirmed item that drives _build_link_to_moc_actions with a Pass-1 anchor."""
+    return [
+        {
+            "id": "S01",
+            "approved": True,
+            "action": "create_atomic_note",
+            "title": "First Principles Thinking",
+            "source_path": "100 Inbox/first-principles.md",
+            "parent_mocs": [parent_moc_stem],
+            "candidate_mocs": [
+                {
+                    "path": parent_moc_path,
+                    "score": 0.75,
+                    "pre_check": True,
+                    "anchor": anchor,
+                }
+            ],
+        }
+    ]
+
+
+def test_honored_anchor_schema_compliance():
+    """T5.2 schema regression: a Pass-1 anchor with placement+new_section inside
+    it must NOT appear verbatim in the emitted action's anchor field.
+
+    Contract (instructions.schema.json):
+      - anchor allows ONLY {type, value} (additionalProperties:false)
+      - placement is a TOP-LEVEL field on the link_to_moc action
+      - new_section is a TOP-LEVEL field on the link_to_moc action
+
+    This test exercises the full emission path (_build_link_to_moc_actions +
+    _serialize_new_sections) and validates the output action against the real
+    instructions schema. It will FAIL if _emit stamps the raw Pass-1 anchor
+    dict (with extra fields) into the action.
+    """
+    import jsonschema
+
+    schema = _instructions_schema()
+
+    pass1_anchor = {
+        "type": "callout",
+        "value": "[!video] Action Items",
+        "placement": "before",
+        "new_section": "Reasoning",
+    }
+    moc_path = "Atlas/200 Maps/Philosophy (MOC).md"
+    moc_stem = "Philosophy (MOC)"
+    confirmed = _make_confirmed_with_pass1_anchor(moc_stem, moc_path, pass1_anchor)
+
+    counter = [0]
+    actions = ir._build_link_to_moc_actions(confirmed, counter)
+    ir._serialize_new_sections(actions)
+
+    link_actions = [a for a in actions if a.get("action") == "link_to_moc"]
+    _must(len(link_actions) == 1, f"expected 1 link_to_moc action, got {len(link_actions)}")
+
+    a = link_actions[0]
+
+    # Anchor must be type+value only — no extra fields.
+    anchor = a["anchor"]
+    _must(
+        set(anchor.keys()) == {"type", "value"},
+        f"anchor must have ONLY type+value, got keys: {set(anchor.keys())}",
+    )
+    _must(anchor["type"] == "callout", f"anchor type wrong: {anchor['type']!r}")
+    _must(
+        anchor["value"] == "[!video] Action Items",
+        f"anchor value wrong: {anchor['value']!r}",
+    )
+
+    # placement and new_section must be at the TOP LEVEL of the action.
+    _must(a.get("placement") == "before", f"top-level placement wrong: {a.get('placement')!r}")
+    _must(
+        a.get("new_section") == "Reasoning",
+        f"top-level new_section wrong: {a.get('new_section')!r}",
+    )
+
+    # line_to_add must be serialized with the section heading (AC-6).
+    _must(
+        a.get("line_to_add") == "## Reasoning\n\n- [[First Principles Thinking]]\n",
+        f"line_to_add wrong: {a.get('line_to_add')!r}",
+    )
+
+    # The full instruction document must pass jsonschema validation.
+    doc = {
+        "schema_version": "1",
+        "type": "tomo-instructions",
+        "generated": "2026-06-15T00:00:00Z",
+        "profile": "miyo",
+        "actions": [a],
+    }
+    try:
+        jsonschema.validate(instance=doc, schema=schema)
+    except jsonschema.ValidationError as exc:
+        _must(False, f"instructions.schema.json rejected the emitted action: {exc.message[:300]}")
+
+    print("[PASS] honored anchor decomposed: anchor={type,value}, placement+new_section at top level, schema valid")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# T5.3 — build-vs-render parity (ADR-4) + EC-2 template heading-fit
+# ──────────────────────────────────────────────────────────────────────────────
+
+# A template body with headings and a footer callout but NO editable callout.
+# This fixture drives both parity and EC-2 tests.
+_HEADING_TEMPLATE_BODY = """\
+# Decision Making (MOC)
+
+## Overview
+Some intro.
+
+## Key Concepts
+- existing bullet
+
+> [!video] Action Items
+> - watch this
+"""
+
+# Editable callout set that does NOT include "video" (a footer marker),
+# so the template has no editable callout → heading fallback is triggered.
+_HEADING_TEMPLATE_CALLOUTS = ["connect", "blocks", "anchor"]
+
+
+def test_moc_structure_parse_headings_agrees_with_render_fallback():
+    """T5.3 / ADR-4: moc_structure.parse_headings on the template body returns
+    the same two headings that the render-time fallback sees, AND the render
+    path selects 'Key Concepts' (preferred set beats earlier 'Overview').
+
+    This pins build-vs-render parity: if the two parsers ever diverge, this
+    test fails at the moc_structure assertion before the render assertion.
+    """
+    # Build-time parse via the shared lib.
+    headings = moc_structure.parse_headings(_HEADING_TEMPLATE_BODY, ir.FOOTER_CALLOUTS)
+    texts = [h["text"] for h in headings]
+    _must(
+        texts == ["Overview", "Key Concepts"],
+        f"moc_structure.parse_headings should yield exactly ['Overview', 'Key Concepts'], "
+        f"got {texts!r}",
+    )
+
+    # Render-time: a MOC with this body goes through resolve_section_names.
+    path = "Atlas/200 Maps/Decision Making (MOC).md"
+    client = StubClient(notes={path: _HEADING_TEMPLATE_BODY})
+    actions = [_link_action("Decision Making (MOC)", path)]
+    n = ir.resolve_section_names(actions, client, _HEADING_TEMPLATE_CALLOUTS)
+    a = actions[0]
+    _must(n == 1, f"expected 1 resolution, got {n}")
+    _must(
+        a["anchor"]["type"] == "heading",
+        f"expected heading anchor, got {a['anchor']['type']!r}",
+    )
+    _must(
+        a["anchor"]["value"] == "Key Concepts",
+        f"expected 'Key Concepts' (preferred beats 'Overview'), got {a['anchor']['value']!r}",
+    )
+    print("[PASS] T5.3/ADR-4: moc_structure parse agrees with render fallback; 'Key Concepts' selected")
+
+
+def test_ec2_template_heading_fit_resolves_via_shared_parser():
+    """T5.3 / EC-2: an in-set create_moc whose target MOC doesn't exist yet
+    resolves heading-fit via the template body through _resolve_from_template.
+
+    The template has headings but NO editable callout — so the callout tier
+    misses and the heading fallback fires, selecting 'Key Concepts'.
+    """
+    template_path = "Atlas/900 Templates/t_decision_moc.md"
+    moc_path = "Atlas/200 Maps/Decision Making (MOC).md"
+    client = StubClient(
+        notes={template_path: _HEADING_TEMPLATE_BODY},
+        names={"t_decision_moc.md": template_path},
+    )
+    actions = [
+        {
+            "id": "I01",
+            "action": "create_moc",
+            "title": "Decision Making (MOC)",
+            "destination": moc_path,
+            "template": "t_decision_moc.md",
+        },
+        {
+            "id": "I10",
+            "action": "link_to_moc",
+            "target_moc": "Decision Making (MOC)",
+            "target_moc_path": moc_path,
+            "anchor": _callout_anchor(),
+            "placement": "inside",
+            "line_to_add": "- [[Eisenhower Matrix]]",
+        },
+    ]
+    n = ir.resolve_section_names(actions, client, _HEADING_TEMPLATE_CALLOUTS)
+    a = actions[1]
+    _must(n == 1, f"expected 1 resolution, got {n}")
+    _must(
+        a["anchor"]["type"] == "heading",
+        f"expected heading anchor from template, got {a['anchor']['type']!r}",
+    )
+    _must(
+        a["anchor"]["value"] == "Key Concepts",
+        f"expected 'Key Concepts' from template heading fallback, got {a['anchor']['value']!r}",
+    )
+    _must(
+        a["placement"] == "after",
+        f"expected placement=after for heading anchor, got {a['placement']!r}",
+    )
+    print("[PASS] T5.3/EC-2: in-set create_moc template heading-fit resolves to 'Key Concepts'")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -768,7 +1221,14 @@ def main() -> None:
     test_editable_callout_wins_over_heading()
     test_new_section_before_footer_when_nothing_else_fits()
     test_nothing_anchorable_stays_null()
+    test_tier4_last_body_line_when_only_prose()
     test_before_multiline_validates_against_schema()
+    test_serialize_honored_anchor_with_new_section()
+    test_serialize_ac6_exact_spacing()
+    test_serialize_idempotent()
+    test_serialize_skips_non_link_to_moc()
+    test_serialize_skips_action_without_new_section()
+    test_honored_anchor_schema_compliance()
     test_daily_action_kept_when_note_exists()
     test_daily_action_skipped_when_note_missing()
     test_non_daily_actions_never_filtered()
@@ -777,6 +1237,8 @@ def main() -> None:
     test_keep_origin_suppresses_paired_delete()
     test_skipped_delete_source_still_works()
     test_audio_peer_is_not_paired_deleted_via_origin()
+    test_moc_structure_parse_headings_agrees_with_render_fallback()
+    test_ec2_template_heading_fit_resolves_via_shared_parser()
     print("\nAll tests passed.")
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.4.0
+# version: 1.6.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -207,8 +207,20 @@ def reconcile_map_notes_against_vault(
 
 # ── Builders ─────────────────────────────────────────────────────────────────
 
+_HEADINGS_CAP = 8  # T3.2 (spec 022): max headings per MOC in shared-ctx
+_CALLOUTS_CAP = 4  # M6: max editable_callouts per MOC in shared-ctx (schema maxItems)
+
+
 def build_mocs(cache: dict) -> list[dict]:
-    """Emit MOC list with topics fallback to title when topics empty."""
+    """Emit MOC list with topics fallback to title when topics empty.
+
+    T3.2 (spec 022): A-trimmed inventory is copied from the cache when present:
+      - headings: [{text, level}], capped at _HEADINGS_CAP (8); H2-H6 only
+        (H1 is the MOC title, excluded by moc_structure.parse_headings).
+      - editable_callouts: [str] — callout opening lines in editable_set.
+      - Classification/Dewey MOCs (is_classification==True) carry NO inventory.
+      - Entries without headings/editable_callouts in the cache omit the fields.
+    """
     out = []
     for entry in cache.get("map_notes") or []:
         title = (entry.get("title") or "").strip()
@@ -218,12 +230,25 @@ def build_mocs(cache: dict) -> list[dict]:
             topics = [title] if title else []
         if not (title and path and topics):
             continue
-        out.append({
+        is_classification = is_classification_moc(title)
+        moc: dict = {
             "path": path,
             "title": title,
             "topics": topics,
-            "is_classification": is_classification_moc(title),
-        })
+            "is_classification": is_classification,
+        }
+        # T3.2: copy inventory only for non-classification MOCs
+        if not is_classification:
+            raw_headings = entry.get("headings")
+            if raw_headings:
+                moc["headings"] = raw_headings[:_HEADINGS_CAP]
+            raw_callouts = entry.get("editable_callouts")
+            if raw_callouts:
+                moc["editable_callouts"] = list(raw_callouts)[:_CALLOUTS_CAP]
+            # T2.1 (spec 023): footer presence flag passthrough
+            if "has_footer" in entry:
+                moc["has_footer"] = entry["has_footer"]
+        out.append(moc)
     return out
 
 
@@ -566,7 +591,10 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
     2. Drop negative_keywords from each tracker.
     3. Drop positive_keywords from each tracker.
     4. Drop auto-seeded keywords from each tracker (keeps name/type/section/syntax/description).
-    5. Shorten mocs[].topics (existing behaviour).
+    5. T3.2 (spec 022): Drop editable_callouts from mocs[] (cheapest inventory first).
+    6. T3.2 (spec 022): Greedily drop headings from mocs[] one MOC at a time
+       (heaviest first) until the ctx fits, before topics \u2014 still expensive.
+    7. Shorten mocs[].topics (original behaviour).
 
     Never drops description itself. Never trims placeholder_links.
     Returns (ctx, moc_topics_dropped).
@@ -593,7 +621,29 @@ def enforce_budget(ctx: dict, max_bytes: int) -> tuple[dict, int]:
         if len(data) <= max_bytes:
             return ctx, 0
 
-    # Pass 5: shorten mocs[].topics (original behaviour)
+    # Pass 5 (T3.2): drop editable_callouts from all mocs[] before touching topics
+    for moc in ctx["mocs"]:
+        moc.pop("editable_callouts", None)
+    data = serialize(ctx)
+    if len(data) <= max_bytes:
+        return ctx, 0
+
+    # Pass 6 (T3.2/H3): greedily drop headings one MOC at a time — heaviest
+    # (most headings) first — re-checking the budget after each drop. This keeps
+    # headings on as many MOCs as possible (the smallest-heading MOCs survive
+    # longest) instead of an atomic all-MOC drop that defeats spec 022 tier-1.
+    heading_mocs = sorted(
+        (moc for moc in ctx["mocs"] if moc.get("headings")),
+        key=lambda m: len(m["headings"]),
+        reverse=True,
+    )
+    for moc in heading_mocs:
+        moc.pop("headings", None)
+        data = serialize(ctx)
+        if len(data) <= max_bytes:
+            return ctx, 0
+
+    # Pass 7: shorten mocs[].topics (original behaviour)
     dropped = 0
     while len(data) > max_bytes:
         victim = -1

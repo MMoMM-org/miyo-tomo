@@ -66,3 +66,45 @@ WHY: Bumped for the F-41 C3/C4 cardinality changes (intra-section split,
 `sections_by_stem` / `resolve_sections_by_stem` → `dict[str, list[dict]]`, FAN
 resolve N-entry parsing). `update-tomo.sh` skips unchanged versions silently —
 the bump is required for the edit to ship to the Docker instance.
+
+## Pass-1 placement anchor → Pass-2 apply (spec 022/023)
+
+WHY `candidate_mocs: [{path, anchor}]` is emitted per checked MOC: the Pass-1
+LLM resolves an insertion anchor for each pre-checked thematic MOC
+(`candidate_mocs[].anchor` in the item-result — heading/callout/line + placement
++ new_section). That decision was dropped between Pass-1 and Pass-2, so applied
+links silently fell back to instruction-render's `_pick_anchor` heuristic
+(FPT → "Core Concepts" instead of "Thinking Frameworks"; Beppu collapsed to a
+`[\!blocks]` callout instead of a new `## Japanische Geographie` section). The
+parser now re-attaches the anchor so `instruction-render._build_link_to_moc_actions`
+→ `_find_candidate(item, parent_stem).get("anchor")` stamps the real decision.
+
+WHY "BOTH" (doc-JSON default + Placement-line override): the rendered
+`**Placement:**` line IS the anchor by default, so reverse-parsing it
+(`parse_placement_line`) round-trips to the same anchor when unedited and yields
+the user's edit when changed. The structured doc-JSON anchor
+(`load_doc_anchor_map` over the reducer's `suggestions-doc.json`) is the fallback
+when the line is the last-resort "under the note title" form or otherwise
+unparseable — it also carries `new_section`/`alt_headings` the line can't fully
+express. Override wins; default fills the gap. `_bind_candidate_anchor` is the
+single precedence point.
+
+WHY each checked MOC binds to the FOLLOWING Placement line (not a single
+per-item line): `moc_link_line` renders checkbox + its own Placement (+ Other
+sections) per candidate, so a multi-MOC item has N interleaved blocks. The
+parser tracks `pending_moc` and binds the next `**Placement:**` to it; the
+`placement` / `other sections in this moc` field keys are skipped so they do not
+close the MOC checkbox region (which would misread the next `- [x] [[MOC]]` as a
+Decision box).
+
+WHY `--suggestions-doc` defaults to the sibling / `tomo-tmp/suggestions-doc.json`
+and fails open: the conductor invokes the parser with only `--file <cache>`; the
+structured doc always lives at `tomo-tmp/suggestions-doc.json` relative to the
+instance cwd. An absent/unreadable doc → empty map → Placement-line parsing
+alone (back-compat), never a crash.
+
+## Version 0.11.0
+
+WHY: Bumped for the spec 022/023 placement-anchor threading (`candidate_mocs`
+on confirmed items, `parse_placement_line`, `load_doc_anchor_map`,
+`--suggestions-doc`). `update-tomo.sh` skips unchanged versions silently.

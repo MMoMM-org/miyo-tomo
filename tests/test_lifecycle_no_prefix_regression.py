@@ -64,8 +64,18 @@ def _inject_doc_frontmatter_fake() -> types.ModuleType:
     class _FakeSchemaValidationError(Exception):
         pass
 
+    def _body_after_frontmatter(text: str) -> str:
+        lines = text.splitlines(keepends=True)
+        if not lines or lines[0].strip() != "---":
+            return text
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                return "".join(lines[i + 1:])
+        return text
+
     fake_mod.build_tomo_block = _build_tomo_block  # type: ignore[attr-defined]
     fake_mod.SchemaValidationError = _FakeSchemaValidationError  # type: ignore[attr-defined]
+    fake_mod.body_after_frontmatter = _body_after_frontmatter  # type: ignore[attr-defined]
 
     return fake_mod
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_moc_tree_builder.py — Behavioural tests for the rebuilt MOC-structure
 cache builder (spec 021, Phase 1 T1.4).
 
@@ -534,3 +534,222 @@ def test_excluded_leak_counter_flags_entries_under_excluded_prefix():
     assert _builder._count_excluded_leaks(entries, ["X"]) == 1  # prefix normalised w/ trailing /
     # A path that merely shares a name prefix but not a folder boundary is NOT a leak.
     assert _builder._count_excluded_leaks([{"path": "Xenon/Note.md"}], ["X/"]) == 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# T3.1 — MOC heading/callout inventory in cache entries (spec 022)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_t31_moc_entry_carries_headings_and_editable_callouts():
+    """T3.1: A MOC body is parsed for H2-H6 headings + editable callouts and the
+    result is stored in the cache entry's `headings` and `editable_callouts` fields.
+
+    No new Kado call must happen — the body is already in raw_by_path.
+    """
+    moc_path = "Atlas/200 Maps/Knowledge.md"
+    note_path = "Atlas/202 Notes/Idea.md"
+
+    moc_body = (
+        "---\ntitle: Knowledge\ntags:\n  - type/others/moc\n---\n"
+        "# Knowledge\n\n"
+        "## Key Concepts\n\n"
+        "Some content.\n\n"
+        "### Details\n\n"
+        "More content.\n\n"
+        "> [!blocks]+ My Blocks\n"
+        "> block content\n\n"
+        "> [!connect] Connect\n"
+        "connect content\n\n"
+        "> [!video] Footer video\n"
+        "footer content\n"
+    )
+    note_body = "---\ntitle: Idea\n---\n# Idea\n\nSome idea.\n"
+
+    client = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": note_path}],
+        },
+        notes={moc_path: moc_body, note_path: note_body},
+    )
+    # Supply callouts.editable in config so the builder can read it.
+    cfg = _config()
+    cfg["callouts"] = {"editable": ["blocks", "connect"]}
+
+    cache = _cache(client, cfg)
+    by_path = {e["path"]: e for e in cache["entries"]}
+    moc_entry = by_path[moc_path]
+
+    # headings: only H2+ before footer (video callout is footer boundary)
+    assert "headings" in moc_entry, "MOC entry must carry headings"
+    assert isinstance(moc_entry["headings"], list)
+    # Expect ## Key Concepts (level 2) and ### Details (level 3) only
+    # — H1 excluded, and everything after > [!video] is past the footer boundary.
+    assert {"text": "Key Concepts", "level": 2} in moc_entry["headings"]
+    assert {"text": "Details", "level": 3} in moc_entry["headings"]
+    # H1 must NOT appear in headings
+    assert not any(h["level"] == 1 for h in moc_entry["headings"])
+
+    # editable_callouts: lines whose callout type is in editable_set
+    assert "editable_callouts" in moc_entry, "MOC entry must carry editable_callouts"
+    assert isinstance(moc_entry["editable_callouts"], list)
+    # [!blocks] and [!connect] are in editable_set; [!video] is absent because
+    # "video" is not in editable_set (parse_editable_callouts scans the full body,
+    # not footer-bounded).
+    assert any("blocks" in c for c in moc_entry["editable_callouts"])
+    assert any("connect" in c for c in moc_entry["editable_callouts"])
+    assert not any("video" in c for c in moc_entry["editable_callouts"])
+
+
+def test_t31_non_moc_note_has_no_inventory_fields():
+    """T3.1: Non-MOC note entries must NOT carry headings or editable_callouts.
+
+    Inventory is MOC-only — adding it to notes would bloat the cache with
+    irrelevant data and break the kind-discriminated contract.
+    """
+    moc_path = "Atlas/200 Maps/Home.md"
+    note_path = "Atlas/202 Notes/Idea.md"
+
+    client = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": note_path}],
+        },
+        notes={
+            moc_path: "---\ntitle: Home\n---\n# Home\n\n## Section\n",
+            note_path: "---\ntitle: Idea\n---\n# Idea\n\n## Note Section\n",
+        },
+    )
+    cfg = _config()
+    cfg["callouts"] = {"editable": ["blocks"]}
+
+    cache = _cache(client, cfg)
+    by_path = {e["path"]: e for e in cache["entries"]}
+
+    note_entry = by_path[note_path]
+    assert "headings" not in note_entry, "Non-MOC note must NOT have headings"
+    assert "editable_callouts" not in note_entry, "Non-MOC note must NOT have editable_callouts"
+
+
+def test_t21_moc_entry_has_footer_true_when_footer_callout_present():
+    """T2.1 (spec 023): has_footer is True when the MOC body contains a footer-marker callout.
+
+    The footer set is FOOTER_CALLOUTS = {video, calendar, puzzle, compass}.
+    A body with a > [!video] line must yield has_footer == True in the cache entry.
+    No new Kado call is made — parsed from body already in raw_by_path.
+    """
+    moc_path = "Atlas/200 Maps/WithFooter.md"
+    note_path = "Atlas/202 Notes/Plain.md"
+
+    moc_body = (
+        "---\ntitle: WithFooter\ntags:\n  - type/others/moc\n---\n"
+        "# WithFooter\n\n"
+        "## Key Concepts\n\n"
+        "Some content.\n\n"
+        "> [!video] Footer video\n"
+        "footer content\n"
+    )
+    note_body = "---\ntitle: Plain\n---\n# Plain\n\nSome idea.\n"
+
+    client = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": note_path}],
+        },
+        notes={moc_path: moc_body, note_path: note_body},
+    )
+    cfg = _config()
+    cfg["callouts"] = {"editable": ["blocks"]}
+
+    cache = _cache(client, cfg)
+    by_path = {e["path"]: e for e in cache["entries"]}
+    moc_entry = by_path[moc_path]
+
+    assert "has_footer" in moc_entry, "MOC entry must carry has_footer"
+    assert moc_entry["has_footer"] is True, (
+        "has_footer must be True when a footer-marker callout (e.g. > [!video]) is present"
+    )
+
+
+def test_t21_moc_entry_has_footer_false_when_no_footer_callout():
+    """T2.1 (spec 023): has_footer is False when the MOC body has headings but NO footer-marker callout.
+
+    A body with H2 headings and editable callouts but no {video,calendar,puzzle,compass}
+    callout must yield has_footer == False in the cache entry.
+    """
+    moc_path = "Atlas/200 Maps/NoFooter.md"
+    note_path = "Atlas/202 Notes/Plain.md"
+
+    moc_body = (
+        "---\ntitle: NoFooter\ntags:\n  - type/others/moc\n---\n"
+        "# NoFooter\n\n"
+        "## Key Concepts\n\n"
+        "Some content.\n\n"
+        "> [!blocks]+ My Blocks\n"
+        "> block content\n"
+    )
+    note_body = "---\ntitle: Plain\n---\n# Plain\n\nSome idea.\n"
+
+    client = FakeKadoClient(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": note_path}],
+        },
+        notes={moc_path: moc_body, note_path: note_body},
+    )
+    cfg = _config()
+    cfg["callouts"] = {"editable": ["blocks"]}
+
+    cache = _cache(client, cfg)
+    by_path = {e["path"]: e for e in cache["entries"]}
+    moc_entry = by_path[moc_path]
+
+    assert "has_footer" in moc_entry, "MOC entry must carry has_footer"
+    assert moc_entry["has_footer"] is False, (
+        "has_footer must be False when no footer-marker callout is present"
+    )
+
+
+def test_t31_no_extra_kado_call_for_inventory():
+    """T3.1: Inventory parsing must NOT trigger additional Kado calls — it parses
+    body bytes already in raw_by_path.
+
+    The read count must equal the number of notes in the vault, the same as
+    without inventory parsing.
+    """
+    moc_path = "Atlas/200 Maps/Home.md"
+    note_path = "Atlas/202 Notes/Idea.md"
+
+    class CountingFakeKado(FakeKadoClient):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self.read_count = 0
+
+        def read_note(self, path):
+            self.read_count += 1
+            return super().read_note(path)
+
+    counting_client = CountingFakeKado(
+        tagged=[{"path": moc_path}],
+        listings={
+            "Atlas/200 Maps/": [{"path": moc_path}],
+            "Atlas/202 Notes/": [{"path": note_path}],
+        },
+        notes={
+            moc_path: "---\ntitle: Home\n---\n# Home\n\n## Section\n\n> [!blocks] B\n",
+            note_path: "---\ntitle: Idea\n---\n# Idea\n",
+        },
+    )
+    cfg = _config()
+    cfg["callouts"] = {"editable": ["blocks"]}
+
+    _cache(counting_client, cfg)
+    # 2 paths, each read exactly once — no extra call for inventory
+    assert counting_client.read_count == 2, (
+        f"Expected 2 Kado reads, got {counting_client.read_count} — "
+        "inventory must parse body already in memory, not re-read from Kado"
+    )

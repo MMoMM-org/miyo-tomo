@@ -3,7 +3,7 @@
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
 > Status: Implemented (with deviations)
 > Children: [Inbox Analysis](../../tier-3/inbox/inbox-analysis.md) · [Suggestions Document](../../tier-3/inbox/suggestions-document.md) · [Instruction Set Generation](../../tier-3/inbox/instruction-set-generation.md) · [Instruction Set Apply](../../tier-3/inbox/instruction-set-apply.md) · [Instruction Set Cleanup](../../tier-3/inbox/instruction-set-cleanup.md) · [State Tag Lifecycle](../../tier-3/inbox/state-tag-lifecycle.md)
-> Related: [existing workflow doc](../../workflows/inbox-process.md)
+> Related: [existing workflow doc](../../workflows/inbox-process.md) · [Inbox Change Detection & Pass Routing](inbox-change-detection.md) (how triage decides what changed + which action)
 
 ---
 

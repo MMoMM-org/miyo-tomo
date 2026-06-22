@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.1
+# version: 0.29.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -39,8 +39,14 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from lib.doc_frontmatter import build_tomo_block  # noqa: E402
+from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block  # noqa: E402
 from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E402
+from lib.obsidian_filename import sanitize_stem  # noqa: E402
+import lib.moc_structure as moc_structure  # noqa: E402
+from lib.supporting_items import (  # noqa: E402
+    parse_supporting_items as _parse_supporting_items,
+    union_supporting_items as _union_supporting_items,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -276,6 +282,10 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
 _RELATED_MARKER_RE = re.compile(r"^[\s>\-]*related::\s*(.*)", re.MULTILINE)
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+# Extracts the callout type from a stripped (no leading `> `) callout opening
+# line, e.g. "[!blocks] Key Concepts" → "blocks". Used by resolve_section_names
+# to score the list returned by moc_structure.parse_editable_callouts.
+_EDITABLE_NAME_RE = re.compile(r"^\[!([A-Za-z][A-Za-z0-9_-]*)\]")
 
 
 def _extract_existing_related(content: str) -> list[str]:
@@ -642,13 +652,30 @@ def _disambiguate_filename(base_filename: str, used_filenames: set[str]) -> str:
 
 
 def _dest_join(folder: str, title: str) -> str:
-    """Join destination folder + sanitised title as filename (with .md)."""
+    """Join destination folder + Obsidian-safe title as filename (with .md)."""
     if not folder:
         folder = ""
     folder = folder.rstrip("/") + "/"
-    # Obsidian allows Umlauts, em-dash etc. — no slug; just add .md.
-    filename = title if title.endswith(".md") else f"{title}.md"
-    return f"{folder}{filename}"
+    # Obsidian allows Umlauts, em-dash etc. — no slug. Forbidden chars
+    # (\ / : * ? " < > |) in the title would crash Hashi's rename/create, so
+    # the filename stem is sanitised; the note's displayed title (frontmatter/H1)
+    # keeps the original. Link targets are sanitised the same way (_wikilink).
+    stem = title[:-3] if title.endswith(".md") else title
+    return f"{folder}{sanitize_stem(stem)}.md"
+
+
+def _wikilink(title: str) -> str:
+    """Render an Obsidian wikilink whose target resolves to the safe filename.
+
+    When the title contains Obsidian-forbidden chars the file is stored under
+    a sanitised stem (see _dest_join), so the link must target that stem or it
+    dangles. An alias preserves the original title as display text:
+    ``[[safe-stem|Original: Title]]``. Titles already safe render as ``[[Title]]``.
+    """
+    stem = sanitize_stem(title)
+    if stem != title:
+        return f"[[{stem}|{title}]]"
+    return f"[[{title}]]"
 
 
 def _build_create_moc_actions(
@@ -660,23 +687,38 @@ def _build_create_moc_actions(
     link_to_moc so IDs for new MOCs precede anything that links into them.
     """
     out: list[dict] = []
+    by_dest: dict[str, dict] = {}
     for m in manifest:
         if m.get("action") != "create_moc":
             continue
         title = m.get("title", "")
         rendered = m.get("rendered_file", "")
-        out.append({
+        destination = _dest_join(m.get("destination", ""), title)
+        # Defense-in-depth (#67): two approved proposals resolving to the same
+        # destination would emit two create_moc; the second overwrites the first
+        # on apply, dropping the first's children. The parser merges by Name
+        # upstream; this guard ensures a duplicate can never reach Hashi even if
+        # upstream misses it — union supporting_items into the survivor.
+        existing = by_dest.get(destination)
+        if existing is not None:
+            existing["supporting_items"] = _union_supporting_items(
+                existing.get("supporting_items"), m.get("supporting_items")
+            ) or None
+            continue
+        action = {
             "id": _next_id(counter),
             "action": "create_moc",
             "source": _inbox_join(inbox_path, rendered) if rendered else "",
-            "destination": _dest_join(m.get("destination", ""), title),
+            "destination": destination,
             "title": title,
             "rendered_file": rendered,
             "parent_moc": _moc_stem(m.get("parent_moc")) or None,
             "template": m.get("template") or None,
             "tags": m.get("tags", []) or [],
             "supporting_items": m.get("supporting_items") or None,
-        })
+        }
+        by_dest[destination] = action
+        out.append(action)
     return out
 
 
@@ -716,26 +758,6 @@ def _build_move_note_actions(
     return out
 
 
-def _parse_supporting_items(raw: str | list | None) -> list[str]:
-    """Parse supporting_items into a list of stems.
-
-    Accepts two formats:
-      - list: ["Thought Collisions", "Map of Content"] (moc-proposal-parser)
-      - str:  "S02, S06, S12" (suggestion-parser, SNN IDs only)
-    """
-    if not raw:
-        return []
-    if isinstance(raw, list):
-        return [s.strip() for s in raw if isinstance(s, str) and s.strip()]
-    s = raw.strip().strip("[](){}")
-    out: list[str] = []
-    for tok in s.split(","):
-        tok = tok.strip().strip("[]()").lstrip("#")
-        if tok:
-            out.append(tok)
-    return out
-
-
 def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:
     """Emit link_to_moc actions from two sources:
 
@@ -762,11 +784,31 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
     out: list[dict] = []
     seen: set[tuple[str, str]] = set()
 
-    def _emit(target_moc: str, source_title: str) -> None:
+    def _find_candidate(item: dict, target_stem: str) -> dict | None:
+        """Return the candidate_mocs[] entry whose path stem matches target_stem, or None."""
+        for cand in item.get("candidate_mocs") or []:
+            if _moc_stem(cand.get("path", "")) == target_stem:
+                return cand
+        return None
+
+    def _emit(target_moc: str, source_title: str, anchor: dict | None = None) -> None:
         key = (target_moc, source_title)
         if not target_moc or not source_title or key in seen:
             return
         seen.add(key)
+        # Internal-field lifetime: new_section / fit_confidence (and any future
+        # alt_headings) live on the action from here until
+        # _strip_internal_link_fields removes them — never on the wire.
+        # Decompose the Pass-1 anchor: the instructions.schema.json `anchor`
+        # object allows ONLY {type, value} (additionalProperties:false).
+        # `placement` and `new_section` are TOP-LEVEL fields on link_to_moc,
+        # not nested inside the anchor. Honor their values from the Pass-1
+        # anchor but lift them out before writing. When no anchor is provided,
+        # fall back to a null-callout so resolve_section_names can populate it.
+        stamped_anchor = {
+            "type": (anchor or {}).get("type", "callout"),
+            "value": (anchor or {}).get("value"),
+        }
         out.append({
             "id": _next_id(counter),
             "action": "link_to_moc",
@@ -778,10 +820,20 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
             # always after". inside is reserved for the rare case where a
             # specific entry must be collected inside a callout's body — none
             # of today's emission paths produce that.
-            "anchor": {"type": "callout", "value": None},
-            "placement": "after",
-            "line_to_add": f"- [[{source_title}]]",
-            "source_note_title": source_title,
+            "anchor": stamped_anchor,
+            "placement": (anchor or {}).get("placement", "after"),
+            # new_section lifted to top-level per instructions schema (T5.2/ADR-3).
+            "new_section": (anchor or {}).get("new_section"),
+            # fit_confidence lifted to top-level (parallel to new_section) so
+            # _emit_resolution_telemetry can observe the per-placement score
+            # (#64). Both are Tomo-internal and stripped before the wire — the
+            # anchor itself stays {type, value} (anchor no-leak contract).
+            "fit_confidence": (anchor or {}).get("fit_confidence"),
+            # Wikilink target resolves to the (possibly sanitised) filename;
+            # source_note_title carries the safe stem so every reference to a
+            # forbidden-char note round-trips to the renamed file (#69).
+            "line_to_add": f"- {_wikilink(source_title)}",
+            "source_note_title": sanitize_stem(source_title),
         })
 
     # Pass 1 — parent_mocs up-links from every confirmed item.
@@ -798,7 +850,8 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
         else:
             source_title = item.get("title") or _stem(item.get("source_path"))
         for parent in parents:
-            _emit(_moc_stem(parent), source_title)
+            cand = _find_candidate(item, _moc_stem(parent))
+            _emit(_moc_stem(parent), source_title, anchor=cand.get("anchor") if cand else None)
 
     # Pass 2 — supporting_items down-links: each new MOC pulls its approved
     # supporting atomic notes as children. Required because the suggestions
@@ -1310,18 +1363,22 @@ _UPSTREAM_TYPES: list[str] = ["suggestions", "moc-proposal", "suggestions-fan"]
 
 
 def _compute_sha256(file_path: str) -> str | None:
-    """Compute SHA-256 checksum of a file's text contents.
+    """Compute the SHA-256 checksum of a doc's BODY (frontmatter stripped).
 
-    Returns 'sha256:<hex>' or None on read error. Reads as UTF-8 to match
-    how vault docs are stored and transmitted.
+    Returns 'sha256:<hex>' or None on read error. Hashes the body only — Tomo
+    mutates the `tomo:` frontmatter (state/updated_at) after rendering, so a
+    frontmatter-inclusive hash would make every covered doc read as drifted on
+    the next /inbox run (#78). The consumer side (inbox-triage._compute_checksum)
+    strips identically, so recorded and current checksums stay comparable.
     """
     import hashlib
 
     try:
         content = Path(file_path).read_text(encoding="utf-8")
-        return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
     except (FileNotFoundError, OSError):
         return None
+    body = body_after_frontmatter(content)
+    return "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
@@ -1470,15 +1527,22 @@ def backfill_supporting_items_parents(confirmed: list[dict]) -> None:
 # TODO F-55: make this profile-configurable rather than a hardcoded set.
 FOOTER_CALLOUTS = {"video", "calendar", "puzzle", "compass"}
 
-# Heading for a brand-new content section when a MOC has neither an editable
-# callout nor a content heading to anchor on (#28 / F-36). Matches the standard
-# template's primary editable section.
-DEFAULT_NEW_SECTION_TITLE = "Key Concepts"
-
 
 def resolve_section_names(actions: list[dict], client, editable_callouts: list[str]) -> int:
-    """Best-effort: resolve the insertion anchor on callout-typed link_to_moc
-    actions by reading the target MOC. Three-tier anchor resolution per action:
+    """Best-effort: resolve the insertion anchor on callout- or line-typed
+    link_to_moc actions by reading the target MOC.
+
+    NOTE on "tier" — three independent concepts share the word elsewhere in
+    this module; this docstring's tiers are ONLY the fourth:
+      - Pass-1 LLM confidence tier (fit_confidence threshold, upstream).
+      - Pass-2 source fallback (live MOC body first, then the create_moc's
+        `template` body for not-yet-existing in-set MOCs) — see _resolve_from_moc
+        / _resolve_from_template below.
+      - The Pass-2 resolver fallback tier described here: _pick_anchor's
+        four-way anchor selection, first match wins, applied to whichever body
+        the source fallback supplied.
+
+    _pick_anchor four-way anchor selection (first match wins):
 
       1. Editable callout — the highest-priority editable callout (config-driven,
          scored blocks > other > connect). Anchor stays type=callout.
@@ -1486,29 +1550,31 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
          fall back to a content H2–H6 heading before the footer. Rewrites
          anchor.type to "heading" and placement to "after" (Hashi has no
          "inside" for headings).
-      3. New section before footer (#28 / F-36) — when neither exists, anchor on
-         the first footer-marker callout with placement="before" and prepend a
+      3. Footer callout (#28 / F-36) — when neither exists, anchor on the first
+         footer-marker callout with placement="before" and prepend a
          "## <section>" block to line_to_add, so applying inserts a fresh
          content section ahead of the footer.
+      4. Last body line (spec 023 AC-9) — when the MOC has no footer callout,
+         anchor on the last non-blank, non-heading body line with type=line and
+         placement="after". Returns None when no usable body line exists.
 
-    Tiers are evaluated against the live MOC first, then (for not-yet-existing
-    in-set MOCs) against the create_moc's `template` body — same rules apply.
+    The four-way selection is run against the live MOC body first, then (for
+    not-yet-existing in-set MOCs) against the create_moc's `template` body —
+    same selection rules apply.
 
     Function name retained for import stability. Leaves the anchor unresolved
     (action emitted as-is) when:
       - client is None (offline / test mode) or editable_callouts is empty
       - target_moc_path is null
-      - neither the MOC nor its template yields a callout, heading, or footer
+      - neither the MOC nor its template yields a callout, heading, footer, or
+        usable body line
       - Kado read fails for both the MOC and (where applicable) the template
 
     Returns the count of actions resolved.
     """
     if client is None or not editable_callouts:
         return 0
-    import re
     editable_set = {name for name in editable_callouts if name}
-    callout_re = re.compile(r"^>\s*\[!([A-Za-z][A-Za-z0-9_-]*)\][+-]?.*$")
-    heading_re = re.compile(r"^(#{2,6})\s+(.+?)\s*$")
 
     # `connect` is conventionally the navigation callout (up:: / related::),
     # not where content-note bullets belong. Drop it to the back of the line:
@@ -1521,118 +1587,126 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             return 1
         return 2
 
-    def _callout_name(line: str) -> str | None:
-        m = callout_re.match(line)
-        return m.group(1) if m else None
-
-    def _strip_prefix(line: str) -> str:
-        s = line.lstrip()
-        if s.startswith(">"):
-            s = s[1:].lstrip()
-        return s
-
-    def _footer_index(lines: list[str]) -> int:
-        """Line index of the first footer-marker callout, or len(lines)."""
-        for i, raw in enumerate(lines):
-            name = _callout_name(raw.rstrip())
-            if name and name in FOOTER_CALLOUTS:
-                return i
-        return len(lines)
-
-    def _pick_editable_callout(content: str) -> str | None:
-        """Scan content for editable callouts and return the highest-priority
-        one's full first line (sans leading `> `). Used for both live MOC
-        bodies and template bodies — same scoring rules apply."""
-        candidates: list[tuple[int, str]] = []
-        for raw in content.splitlines():
-            line = raw.rstrip()
-            name = _callout_name(line)
-            if not name or name not in editable_set:
-                continue
-            candidates.append((_score(name), _strip_prefix(line)))
-        if not candidates:
+    def _pick_editable_callout(editable_lines: list[str]) -> str | None:
+        """Return the highest-priority editable callout's full first line (sans
+        leading `> `) from a pre-parsed list, or None. Same scoring rules apply
+        to live MOC bodies and template bodies (ADR-4)."""
+        if not editable_lines:
             return None
-        # Highest score wins; ties resolved by first occurrence (stable).
-        return max(enumerate(candidates), key=lambda x: (x[1][0], -x[0]))[1][1]
 
-    def _pick_content_heading(content: str) -> str | None:
-        """First content H2–H6 heading before the footer; prefer one that reads
-        like a content section. Returns the heading text (sans leading #)."""
-        lines = content.splitlines()
-        cutoff = _footer_index(lines)
-        headings = [
-            m.group(2).strip()
-            for raw in lines[:cutoff]
-            if (m := heading_re.match(raw.rstrip()))
-        ]
-        if not headings:
+        def _line_name(line: str) -> str:
+            m = _EDITABLE_NAME_RE.match(line)
+            return m.group(1) if m else ""
+
+        # Highest score wins; ties resolved by first occurrence (stable sort
+        # key: -i). _line_name extracts the callout type for _score.
+        best = max(
+            enumerate(editable_lines),
+            key=lambda iv: (_score(_line_name(iv[1])), -iv[0]),
+        )
+        return best[1]
+
+    def _pick_content_heading(headings: list[dict]) -> str | None:
+        """First content H2–H6 heading (from a pre-parsed list) before the
+        footer; prefer one that reads like a content section. Returns the
+        heading text (sans leading #)."""
+        texts = [h["text"] for h in headings]
+        if not texts:
             return None
         preferred = {"key concepts", "concepts", "notes"}
-        for h in headings:
+        for h in texts:
             if h.lower() in preferred:
                 return h
-        return headings[0]
+        return texts[0]
 
-    def _find_footer_callout(content: str) -> str | None:
+    def _find_footer_callout(lines: list[str]) -> str | None:
         """Full first line (sans `> `) of the first footer-marker callout."""
-        for raw in content.splitlines():
-            line = raw.rstrip()
-            name = _callout_name(line)
-            if name and name in FOOTER_CALLOUTS:
-                return _strip_prefix(line)
-        return None
+        idx = moc_structure.footer_index(lines, FOOTER_CALLOUTS)
+        if idx >= len(lines):
+            return None
+        return moc_structure.strip_gt_prefix(lines[idx].rstrip())
 
     def _pick_anchor(content: str) -> dict | None:
-        """Three-tier anchor resolution. Returns the anchor decision as a dict
-        (type/value plus optional placement + new_section), or None when nothing
-        in the body is anchorable."""
-        callout = _pick_editable_callout(content)
+        """Four-tier anchor resolution. Returns the anchor decision as a dict
+        (type/value plus optional placement), or None when nothing is anchorable.
+        new_section is no longer injected here (ADR-6, T5.2); it comes from
+        the Pass-1 LLM anchor and lives at the top-level action field."""
+        # Single split of the body (M5): one inventory covers editable callouts,
+        # headings, and footer presence; `lines` is reused for the footer-line
+        # lookup and the tier-4 body-line scan.
+        lines = content.splitlines()
+        inventory = moc_structure.parse_moc_inventory(
+            content, FOOTER_CALLOUTS, editable_set
+        )
+        callout = _pick_editable_callout(inventory["editable_callouts"])
         if callout:
             return {"type": "callout", "value": callout}
-        heading = _pick_content_heading(content)
+        heading = _pick_content_heading(inventory["headings"])
         if heading:
             return {"type": "heading", "value": heading, "placement": "after"}
-        footer = _find_footer_callout(content)
-        if footer:
-            return {
-                "type": "callout", "value": footer, "placement": "before",
-                "new_section": DEFAULT_NEW_SECTION_TITLE,
-            }
+        if inventory["has_footer"]:
+            footer = _find_footer_callout(lines)
+            if footer:
+                # ADR-6 (spec 022 T5.2): no hardcoded section name here.
+                # new_section must come from the Pass-1 LLM anchor; the heuristic
+                # path produces a bare bullet (placement=before, no heading prefix).
+                return {
+                    "type": "callout", "value": footer, "placement": "before",
+                }
+        # Tier 4 (spec 023 AC-9): no footer callout → last body line.
+        # placement stays "after" (bullet lands below the last line).
+        # Exclude blank lines and ALL heading lines (#, ##, … — any level).
+        # Invariant: only H1 can realistically appear here because any H2–H6
+        # would have been claimed by _pick_content_heading (tier 2) before
+        # reaching this branch. The broad `#` filter is belt-and-suspenders.
+        # Graceful degradation: if the body has no usable line, return None —
+        # do NOT fabricate a line.
+        # Also exclude callout-opener lines (`> [!important] …`): a non-editable,
+        # non-footer callout opener is not a plain body line, so anchoring on it
+        # as type=line would produce a type/value mismatch.
+        body_lines = [
+            ln for ln in lines
+            if ln.strip()
+            and not ln.lstrip().startswith("#")
+            and not ln.lstrip().lstrip(">").lstrip().startswith("[!")
+        ]
+        if body_lines:
+            return {"type": "line", "value": body_lines[-1], "placement": "after"}
         return None
 
-    # Tier-1 cache: keyed by MOC path
-    moc_cache: dict[str, dict | None] = {}
+    # Cache of anchor decisions keyed by live MOC path (read each MOC once).
+    moc_body_cache: dict[str, dict | None] = {}
 
     def _resolve_from_moc(path: str) -> dict | None:
-        if path in moc_cache:
-            return moc_cache[path]
+        if path in moc_body_cache:
+            return moc_body_cache[path]
         try:
             result = client.read_note(path)
             content = result.get("content", "") or ""
         except Exception:  # noqa: BLE001
-            moc_cache[path] = None
+            moc_body_cache[path] = None
             return None
         res = _pick_anchor(content)
-        moc_cache[path] = res
+        moc_body_cache[path] = res
         return res
 
-    # Tier-2 cache: keyed by template name (templates are usually shared
-    # across many in-set create_moc actions — read each at most once).
-    tmpl_cache: dict[str, dict | None] = {}
+    # Cache of anchor decisions keyed by template name (templates are usually
+    # shared across many in-set create_moc actions — read each at most once).
+    template_body_cache: dict[str, dict | None] = {}
 
     def _resolve_from_template(template: str) -> dict | None:
-        if template in tmpl_cache:
-            return tmpl_cache[template]
+        if template in template_body_cache:
+            return template_body_cache[template]
         body = read_template(client, template)
         if body is None:
-            tmpl_cache[template] = None
+            template_body_cache[template] = None
             return None
         res = _pick_anchor(body)
-        tmpl_cache[template] = res
+        template_body_cache[template] = res
         return res
 
-    # Index in-set create_moc actions by destination so tier-2 can find the
-    # template that the not-yet-existing MOC will be built from.
+    # Index in-set create_moc actions by destination so the template-body
+    # fallback can find the template a not-yet-existing MOC will be built from.
     create_moc_by_dest: dict[str, dict] = {}
     for a in actions:
         if a.get("action") == "create_moc":
@@ -1647,16 +1721,17 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         anchor = a.get("anchor")
         if not isinstance(anchor, dict):
             continue
-        if anchor.get("type") != "callout":
-            continue  # heading/line anchors are populated upstream, not here
+        if anchor.get("type") not in ("callout", "line"):
+            continue  # heading anchors are populated upstream, not here
         if anchor.get("value"):
-            continue  # already set
+            continue  # already set (honor-guard — leave populated anchors untouched)
         path = a.get("target_moc_path")
         if not path:
             continue
         res = _resolve_from_moc(path)
         if res is None:
-            # Tier-2 fallback: in-set create_moc landing at this path
+            # Template-body fallback: in-set create_moc landing at this path
+            # (the live MOC doesn't exist yet, so resolve against its template).
             create = create_moc_by_dest.get(path)
             if create:
                 template = create.get("template")
@@ -1667,16 +1742,261 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
             anchor["value"] = res["value"]
             if res.get("placement"):
                 a["placement"] = res["placement"]
-            if res.get("new_section"):
-                # Prepend a fresh "## <section>" block; the resolved footer
-                # anchor + placement="before" drops it ahead of the footer.
-                # Trailing \n separates the block from the footer callout it is
-                # inserted before — Hashi writes line_to_add VERBATIM and adds no
-                # implicit spacing (confirmed hashi#65, 2026-06-13), so Tomo owns
-                # the blank line.
-                a["line_to_add"] = f"## {res['new_section']}\n\n{a.get('line_to_add', '')}\n"
+            # new_section serialization removed: _serialize_new_sections (T5.2)
+            # now handles this for ALL link_to_moc actions after this pass,
+            # covering both honored (Pass-1) and heuristic-resolved anchors.
             resolved += 1
     return resolved
+
+
+def _emit_resolution_telemetry(actions: list[dict]) -> None:
+    """Emit a single metadata-only stderr line reporting four-tier MOC-insertion outcomes.
+
+    Tallies per-tier counts across all link_to_moc actions and prints ONE tagged
+    line. Privacy (Constitution L2): only metadata is recorded — tier names, MOC
+    paths/stems, and counts. anchor.value (heading text) and note body content
+    are NEVER included.
+
+    Tier derivation (first match wins, execution order):
+      1. top-level new_section set            → new_section tier
+      2. anchor.value is None/absent          → unresolved
+      3. anchor.type == "heading"             → heading tier
+         + tier1_confident when fit_confidence is a number
+      4. anchor.type == "callout"             → callout tier
+      5. anchor.type == "line"                → line tier
+      6. else                                 → unresolved
+
+    Extra spec-023 counts (metadata-only — numbers, never text):
+      tier1_confident   — heading anchors that carry a numeric fit_confidence
+    """
+    counts: dict[str, int] = {
+        "heading": 0,
+        "new_section": 0,
+        "callout": 0,
+        "line": 0,
+        "unresolved": 0,
+        "tier1_confident": 0,
+    }
+    moc_paths: list[str] = []
+    # Individual placement confidence values (#64) — numbers only, never the
+    # heading text (Constitution L2). Lets a multi-item run reconstruct the
+    # fit_confidence distribution for tuning the 0.6 threshold (ADR-4).
+    fit_values: list[float] = []
+
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        moc_path = a.get("target_moc_path") or a.get("target_moc") or ""
+        if moc_path:
+            moc_paths.append(moc_path)
+        anchor = a.get("anchor") or {}
+        anchor_type = anchor.get("type")
+        anchor_value = anchor.get("value")
+        # fit_confidence is lifted to the top-level action field by _emit (it is
+        # stripped before the wire alongside new_section). Read it here so the
+        # per-placement score is observable in the real pipeline, not only in
+        # unit tests. Exclude bool explicitly: True/False are int subclasses.
+        fit_conf = a.get("fit_confidence")
+        has_fit = isinstance(fit_conf, (int, float)) and not isinstance(fit_conf, bool)
+
+        if a.get("new_section"):
+            counts["new_section"] += 1
+        elif not anchor_value:
+            counts["unresolved"] += 1
+        elif anchor_type == "heading":
+            counts["heading"] += 1
+            # tier1_confident: a heading anchor whose fit_confidence is a number.
+            if has_fit:
+                counts["tier1_confident"] += 1
+                fit_values.append(round(float(fit_conf), 2))
+        elif anchor_type == "callout":
+            counts["callout"] += 1
+        elif anchor_type == "line":
+            counts["line"] += 1
+        else:
+            counts["unresolved"] += 1
+
+    # Dedup paths preserving first-seen order: a MOC linked N times appears N
+    # times in moc_paths, but the telemetry line should list each MOC once.
+    unique_paths = list(dict.fromkeys(moc_paths))
+    moc_count = len(unique_paths)
+    moc_list = " ".join(unique_paths)
+    print(
+        f"[instruction-render] moc-insertion resolution — "
+        f"heading={counts['heading']} "
+        f"new_section={counts['new_section']} "
+        f"callout={counts['callout']} "
+        f"line={counts['line']} "
+        f"unresolved={counts['unresolved']} "
+        f"tier1_confident={counts['tier1_confident']} "
+        f"mocs={moc_count}"
+        + (f" fit_confidence=[{', '.join(f'{v:.2f}' for v in fit_values)}]" if fit_values else "")
+        + (f" paths=[{moc_list}]" if moc_paths else ""),
+        file=sys.stderr,
+    )
+
+
+def _merge_new_section_links(actions: list[dict]) -> int:
+    """Merge link_to_moc actions targeting the same (target_moc, new_section)
+    into ONE action, so two notes assigned the same new section produce a single
+    heading with multiple bullets instead of duplicate `## <section>` headings (#70).
+
+    Must run BEFORE _serialize_new_sections: at this point each action's
+    line_to_add is still the bare "- [[Note]]" bullet, so merging is a simple
+    newline-join of bullets. The first action of each group is kept and
+    accumulates every member's bullet (emission order preserved); the rest are
+    removed in place. Only groups with a truthy new_section are merged —
+    anchor-based inserts (no new_section) are left untouched. A merged section
+    spans multiple source notes, so source_note_title is cleared on the survivor.
+
+    Returns the count of actions removed.
+    """
+    heads: dict[tuple[str, str], dict] = {}
+    drop: set[int] = set()
+    for idx, a in enumerate(actions):
+        if a.get("action") != "link_to_moc":
+            continue
+        new_section = a.get("new_section")
+        if not new_section:
+            continue
+        key = (_moc_stem(a.get("target_moc") or ""), new_section)
+        head = heads.get(key)
+        if head is None:
+            heads[key] = a
+            continue
+        bullet = a.get("line_to_add", "")
+        head_line = head.get("line_to_add", "")
+        if bullet and bullet not in head_line.split("\n"):
+            head["line_to_add"] = f"{head_line}\n{bullet}" if head_line else bullet
+        head["source_note_title"] = None
+        drop.add(idx)
+    if drop:
+        actions[:] = [a for i, a in enumerate(actions) if i not in drop]
+    return len(drop)
+
+
+def _rewrite_existing_section_anchors(actions: list[dict], client) -> int:
+    """#73: when a link_to_moc carries a top-level new_section whose heading
+    ALREADY exists in the target MOC, rewrite it to a heading anchor
+    (placement=after) and drop new_section — so apply lands the bullet(s) under
+    the existing section instead of creating a duplicate `## <name>` heading.
+
+    Producer-side only (no Hashi change). Runs AFTER _merge_new_section_links
+    (so a same-name group is already one multi-bullet action) and BEFORE
+    _serialize_new_sections (while new_section is still a live top-level field
+    and line_to_add is still the bare bullet block). Reads each distinct target
+    MOC once; offline/None client → no-op. Matches heading names
+    case-insensitively and anchors on the MOC's actual heading text.
+
+    Returns the count of actions rewritten.
+    """
+    if client is None:
+        return 0
+    # target_moc_path → {casefolded heading text: actual heading text}
+    heading_cache: dict[str, dict[str, str]] = {}
+
+    def _existing_headings(path: str) -> dict[str, str]:
+        if path in heading_cache:
+            return heading_cache[path]
+        try:
+            result = client.read_note(path)
+            content = result.get("content", "") or ""
+        except Exception:  # noqa: BLE001
+            heading_cache[path] = {}
+            return heading_cache[path]
+        inv = moc_structure.parse_moc_inventory(content, FOOTER_CALLOUTS, set())
+        names = {h["text"].casefold(): h["text"] for h in inv["headings"]}
+        heading_cache[path] = names
+        return names
+
+    rewritten = 0
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        new_section = a.get("new_section")
+        if not new_section:
+            continue
+        path = a.get("target_moc_path")
+        if not path:
+            continue
+        actual = _existing_headings(path).get(new_section.casefold())
+        if actual is None:
+            continue
+        a["anchor"] = {"type": "heading", "value": actual}
+        a["placement"] = "after"
+        a["new_section"] = None
+        rewritten += 1
+    return rewritten
+
+
+def _strip_internal_link_fields(actions: list[dict]) -> int:
+    """Remove Tomo-internal fields from link_to_moc actions before the wire (#68/#64).
+
+    new_section is baked into line_to_add by _serialize_new_sections and
+    fit_confidence is consumed by telemetry; both are Tomo-internal and absent
+    from Hashi's link_to_moc schema (additionalProperties:false). Leaving them on
+    makes Hashi reject every MOC link (the un-discriminated oneOf falls through to
+    move_note and reports a misleading "must have required property source").
+    MUST run AFTER _serialize_new_sections and _emit_resolution_telemetry.
+
+    Returns the count of fields removed.
+    """
+    stripped = 0
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        # alt_headings is a defense-in-depth guard: it does not reach the
+        # action level today, but the Hashi anchor schema is
+        # additionalProperties:false {type,value}, so if a future change ever
+        # lifts alt_headings to the action level it must not reach the wire.
+        for field in ("new_section", "fit_confidence", "alt_headings"):
+            if field in a:
+                del a[field]
+                stripped += 1
+    return stripped
+
+
+def _serialize_new_sections(actions: list[dict]) -> int:
+    """Build line_to_add from the top-level new_section field for every link_to_moc action.
+
+    This is the SINGLE serialize site for new-section headings (ADR-3, spec 022
+    T5.2). It runs AFTER resolve_section_names so it covers both:
+      - Honored Pass-1 anchors (value already set → skipped by resolver).
+      - Heuristic-resolved anchors: new_section is NOT set by the resolver;
+        only Pass-1 LLM anchors produce a non-None top-level new_section field.
+
+    Contract (AC-6): the serialized shape is exactly
+        "## <section>\\n\\n<bullet>\\n"
+    where <bullet> is the current line_to_add (the "- [[Note]]" line) and the
+    trailing \\n ensures Hashi writes the blank-line gap between the new heading
+    and whatever follows. Hashi writes line_to_add VERBATIM (hashi#65).
+
+    Idempotency guard: if line_to_add already starts with "## ", the action is
+    skipped to prevent double-prepending when the function is called more than
+    once on the same action list.
+
+    Returns the count of actions whose line_to_add was mutated.
+    """
+    mutated = 0
+    for a in actions:
+        if a.get("action") != "link_to_moc":
+            continue
+        # new_section is a TOP-LEVEL field on link_to_moc (instructions schema),
+        # not nested inside anchor. Read from the action, not from anchor dict.
+        new_section = a.get("new_section")
+        if not new_section:
+            continue
+        # Collapse a (possibly hallucinated) multi-line LLM value to one line so
+        # a single heading is written into the MOC, never two.
+        new_section = new_section.split("\n", 1)[0].strip()
+        if not new_section:
+            continue
+        bullet = a.get("line_to_add", "")
+        if bullet.startswith("## "):
+            continue  # idempotency guard
+        a["line_to_add"] = f"## {new_section}\n\n{bullet}\n"
+        mutated += 1
+    return mutated
 
 
 def resolve_target_moc_paths(actions: list[dict], client) -> int:
@@ -2020,6 +2340,44 @@ def main() -> int:
         print(f"  [resolve] anchor.value populated for {resolved_sections} link_to_moc action(s)",
               file=sys.stderr)
 
+    # ── Merge same-section links (#70) ───────────────────────────────────
+    # Collapse link_to_moc actions sharing (target_moc, new_section) into one
+    # bullet list BEFORE serialization, so two notes in the same new section
+    # yield one heading, not duplicate `## <section>` headings.
+    merged_sections = _merge_new_section_links(actions)
+    if merged_sections:
+        print(f"  [render] {merged_sections} duplicate new-section link(s) merged",
+              file=sys.stderr)
+
+    # ── Rewrite new_section → existing-heading anchor (#73) ───────────────
+    # Before serializing a fresh `## <name>`, check the live MOC: if a heading
+    # with that name already exists (re-run, cross-run, or LLM proposing an
+    # existing name), anchor under it instead of emitting a duplicate heading.
+    rewritten_sections = _rewrite_existing_section_anchors(actions, client)
+    if rewritten_sections:
+        print(f"  [render] {rewritten_sections} new-section link(s) rewritten to existing heading",
+              file=sys.stderr)
+
+    # ── Serialize new-section headings (T5.2 / ADR-3) ────────────────────
+    # Build line_to_add from anchor.new_section for ALL link_to_moc actions
+    # (both honored Pass-1 anchors and heuristic-resolved ones). Runs here so
+    # both paths are covered exactly once before the JSON/MD writes.
+    serialized_sections = _serialize_new_sections(actions)
+    if serialized_sections:
+        print(f"  [render] new-section heading serialized for {serialized_sections} link_to_moc action(s)",
+              file=sys.stderr)
+
+    # ── T7.1: Metadata-only four-tier resolution telemetry ───────────────
+    # Emits ONE tagged stderr line with per-tier counts and MOC paths.
+    # Privacy (Constitution L2): no heading text or note content — metadata only.
+    _emit_resolution_telemetry(actions)
+
+    # ── Strip Tomo-internal link_to_moc fields before the wire (#68/#64) ──
+    stripped_internal = _strip_internal_link_fields(actions)
+    if stripped_internal:
+        print(f"  [render] {stripped_internal} internal link_to_moc field(s) stripped before wire",
+              file=sys.stderr)
+
     # ── Drop daily-note actions whose target daily note doesn't exist ────
     # Hashi modifies, never creates, a daily note (#37/I38). Skip unappliable
     # daily-note actions and surface them rather than emit a failing action.
@@ -2058,6 +2416,17 @@ def main() -> int:
     # matching stem" convention — deterministic linkage on the consumer
     # side, clearer failure mode if the user later renames the .md.
     md_peer_stem = f"{date_prefix}_instructions"
+    # Build the tomo: block once and carry it in the machine doc too (#74):
+    # Hashi ≥ v0.11.0 accepts an optional top-level `tomo` object (handoff
+    # 2026-06-20) and ignores it for execution, so the .json is self-describing
+    # (state + sources) — matching the .md frontmatter. Omitted entirely when no
+    # run_id is available (never emitted as null — schema types it as object).
+    instructions_tomo_block = _build_tomo_block_for_instructions({
+        "upstream_type": args.upstream_type,
+        "upstream_path": args.upstream_path,
+        "upstream_body_path": args.upstream_body,
+        "run_id": args.run_id,
+    })
     instructions_doc = {
         "schema_version": "1",
         "type": "tomo-instructions",
@@ -2069,6 +2438,8 @@ def main() -> int:
         "md_peer": md_peer_stem,
         "actions": actions,
     }
+    if instructions_tomo_block is not None:
+        instructions_doc["tomo"] = instructions_tomo_block
     instructions_json_path = out_dir / "instructions.json"
     instructions_json_path.write_text(
         json.dumps(instructions_doc, ensure_ascii=False, indent=2), encoding="utf-8"

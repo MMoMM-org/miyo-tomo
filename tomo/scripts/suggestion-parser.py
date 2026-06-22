@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.0
+# version: 0.15.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -22,6 +22,15 @@ import json
 import os
 import re
 import sys
+
+# H5 (spec 022/023): the supporting_items union is shared with
+# instruction-render via lib/supporting_items.py. Ensure the script dir is on
+# the path so `lib.supporting_items` resolves both when run as a hyphenated
+# top-level script and when loaded via spec_from_file_location in tests.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # noqa: E402
+from lib.supporting_items import (  # noqa: E402
+    union_supporting_items as _union_supporting_items,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -53,6 +62,69 @@ RE_SOURCE = re.compile(r"`([^`]+)`|(\S+\.md)")
 # Type field: word_word (confidence: 0.85)  or  word_word (confidence 85%)
 RE_TYPE = re.compile(r"([a-z_]+)\s*\(confidence[:\s]*([\d.]+%?)\)")
 
+# ── Placement line reverse-parsers (spec 022/023) ──────────────────────────
+# Mirror suggestions-reducer.py _placement_line (the SOURCE OF TRUTH for the
+# rendered format). Each reverse-parser recovers the structured anchor the
+# reducer rendered so a hand-edited Placement line overrides the doc-JSON
+# default; an unedited line round-trips to the same anchor.
+#   under `## <H>` [(confidence: N%)]            → heading/after
+#   new section `## <X>` (before the footer)     → callout/before + new_section
+#   new section `## <X>` (at the end of the MOC) → line/after + new_section
+#   inside the `> [!name]` callout               → callout (value)
+#   inside the `<ref>` callout                   → callout (value)
+RE_PLACEMENT_HEADING = re.compile(
+    r"\*\*Placement:\*\*\s*under\s+`##\s*([^`]+?)`", re.IGNORECASE
+)
+RE_PLACEMENT_NEW_SECTION = re.compile(
+    r"\*\*Placement:\*\*\s*new section\s+`##\s*([^`]+?)`\s*\((before the footer|at the end of the MOC)\)",
+    re.IGNORECASE,
+)
+RE_PLACEMENT_CALLOUT = re.compile(
+    r"\*\*Placement:\*\*\s*inside the\s+`([^`]+?)`\s+callout", re.IGNORECASE
+)
+
+
+def parse_placement_line(line: str) -> dict | None:
+    """Reverse-parse a rendered ``**Placement:**`` line into a structured anchor.
+
+    Returns ``None`` for the last-resort "under the note title" tier or any
+    unrecognised line, signalling the caller to fall back to the structured
+    doc-JSON default anchor (spec 022/023 BOTH design).
+    """
+    if not line:
+        return None
+    m = RE_PLACEMENT_NEW_SECTION.search(line)
+    if m:
+        section = m.group(1).strip()
+        if m.group(2).lower().startswith("before the footer"):
+            return {
+                "type": "callout",
+                "value": None,
+                "placement": "before",
+                "new_section": section,
+            }
+        return {
+            "type": "line",
+            "value": None,
+            "placement": "after",
+            "new_section": section,
+        }
+    m = RE_PLACEMENT_HEADING.search(line)
+    if m:
+        return {
+            "type": "heading",
+            "value": m.group(1).strip(),
+            "placement": "after",
+        }
+    m = RE_PLACEMENT_CALLOUT.search(line)
+    if m:
+        return {
+            "type": "callout",
+            "value": m.group(1).strip(),
+            "placement": "inside",
+        }
+    return None
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -72,6 +144,39 @@ def _extract_wikilink(text: str) -> str | None:
     """Return the first wikilink target found, or None."""
     m = RE_WIKILINK.search(text)
     return m.group(1).strip() if m else None
+
+
+def _moc_path_stem(ref: str | None) -> str:
+    """Bare lowercase stem of a MOC path/wikilink target for matching.
+
+    `Atlas/200 Maps/Concepts (MOC).md` → `concepts (moc)`
+    `Atlas/200 Maps/Concepts (MOC)`    → `concepts (moc)`
+    """
+    if not ref:
+        return ""
+    bare = ref.rsplit("/", 1)[-1]
+    if bare.endswith(".md"):
+        bare = bare[:-3]
+    return bare.strip().lower()
+
+
+def _bind_candidate_anchor(
+    result: dict,
+    moc_ref: str,
+    override: dict | None,
+    doc_anchors: dict[str, dict],
+) -> None:
+    """Append a {path, anchor} entry for a checked MOC (spec 022/023 BOTH design).
+
+    Anchor precedence: the reverse-parsed **Placement:** line (``override``)
+    when it parsed to a recognised anchor, else the structured doc-JSON default
+    keyed by MOC stem. When neither is available, no candidate is recorded —
+    instruction-render falls back to its own resolution.
+    """
+    anchor = override or doc_anchors.get(_moc_path_stem(moc_ref))
+    if anchor is None:
+        return
+    result["candidate_mocs"].append({"path": moc_ref, "anchor": anchor})
 
 
 def _parse_tags(value: str) -> list[str]:
@@ -134,7 +239,66 @@ def _normalise_action(text: str) -> str:
 # Section parser
 # ──────────────────────────────────────────────────────────────────────────────
 
-def parse_section(section_id: str, lines: list[str]) -> dict | None:
+def load_doc_anchor_map(doc_path: str) -> dict[str, dict[str, dict]]:
+    """Build ``{section_id → {moc_stem → anchor}}`` from a suggestions-doc JSON.
+
+    The reducer persists ``candidate_mocs: [{path, anchor}]`` on each
+    create_atomic_note action (spec 022/023). This map is the structured
+    apply-time DEFAULT anchor, indexed by section id (S##) and MOC stem so
+    parse_section can look up the anchor for each checked MOC. Returns an empty
+    map when the doc is absent or unreadable (backward-compatible — Pass-2 then
+    relies on the rendered **Placement:** line alone).
+    """
+    try:
+        with open(doc_path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    out: dict[str, dict[str, dict]] = {}
+    for section in doc.get("sections") or []:
+        sec_id = section.get("id")
+        if not sec_id:
+            continue
+        per_moc: dict[str, dict] = {}
+        for action in section.get("actions") or []:
+            for cand in action.get("candidate_mocs") or []:
+                anchor = cand.get("anchor")
+                path = cand.get("path")
+                if anchor and path:
+                    per_moc[_moc_path_stem(path)] = anchor
+        if per_moc:
+            out[sec_id] = per_moc
+    return out
+
+
+def _default_doc_path(markdown_path: str) -> str:
+    """Derive the sibling suggestions-doc JSON path for a markdown doc.
+
+    The pipeline always writes the structured doc to
+    ``tomo-tmp/suggestions-doc.json`` (relative to the instance cwd). Prefer a
+    sibling file next to the markdown; fall back to the canonical tomo-tmp path.
+    """
+    if markdown_path:
+        sibling = os.path.join(
+            os.path.dirname(markdown_path), "suggestions-doc.json"
+        )
+        if os.path.isfile(sibling):
+            return sibling
+    fallback = os.path.join("tomo-tmp", "suggestions-doc.json")
+    exists = "exists" if os.path.isfile(fallback) else "does NOT exist"
+    print(
+        f"note: no sibling suggestions-doc.json; falling back to "
+        f"cwd-relative {fallback} ({exists})",
+        file=sys.stderr,
+    )
+    return fallback
+
+
+def parse_section(
+    section_id: str,
+    lines: list[str],
+    doc_anchors: dict[str, dict] | None = None,
+) -> dict | None:
     """
     Parse one section and return a structured dict, or None on fatal error.
 
@@ -180,20 +344,37 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
         "tags": [],
         "parent_moc": None,
         "parent_mocs": [],  # all checked MOCs from Link to MOC checkboxes
+        # spec 022/023: [{path, anchor}] for each CHECKED MOC. The anchor is the
+        # apply-time placement: the reverse-parsed **Placement:** line (override)
+        # when recognised, else the structured doc-JSON default (doc_anchors).
+        "candidate_mocs": [],
         "destination": None,
         "template": None,
         "summary": None,
         "classification": None,
     }
+    doc_anchors = doc_anchors or {}
 
     # State: when we see "Link to MOC:" header, subsequent checkboxes are
     # MOC selections (not approve/skip). Reset when we hit a Decision header
     # or another field.
     in_moc_list = False
+    # The MOC checkbox most recently seen while in_moc_list — its following
+    # **Placement:** line (if any) binds to it for anchor override.
+    pending_moc: str | None = None
 
     for line in lines:
         stripped = line.strip()
         if not stripped:
+            continue
+
+        # ── Placement line (spec 022/023) — binds to the most recent checked
+        # MOC. Handled before generic field parsing so it does NOT reset the
+        # MOC-list state (multiple MOC checkboxes can each carry a Placement).
+        if in_moc_list and pending_moc and stripped.startswith("**Placement:**"):
+            override = parse_placement_line(stripped)
+            _bind_candidate_anchor(result, pending_moc, override, doc_anchors)
+            pending_moc = None
             continue
 
         # ── Checkbox lines ────────────────────────────────────────
@@ -205,8 +386,14 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
             # MOC selection checkboxes (under "Link to MOC:" header)
             if in_moc_list:
                 wl = _extract_wikilink(text)
+                # Flush any prior checked MOC that had no Placement line — it
+                # falls back to its structured doc-JSON default.
+                if pending_moc:
+                    _bind_candidate_anchor(result, pending_moc, None, doc_anchors)
+                    pending_moc = None
                 if wl and cb_checked:
                     result["parent_mocs"].append(wl)
+                    pending_moc = wl
                 continue
 
             # Decision checkboxes (approve/skip/delete/keep-origin)
@@ -239,7 +426,18 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
         key = m.group(1).strip().rstrip(":").strip().lower()
         val = m.group(2).strip()
 
-        # Any new field header ends the MOC checkbox region
+        # `**Placement:**` and `**Other sections in this MOC:**` are part of a
+        # MOC block — they must NOT close the checkbox region (otherwise the
+        # next `- [x] [[MOC]]` checkbox is misread as a Decision box). Skip them
+        # here; Placement is handled above, Other-sections is display-only.
+        if key in ("placement", "other sections in this moc"):
+            continue
+
+        # Any new field header ends the MOC checkbox region. Flush a still-
+        # pending checked MOC to its structured doc-JSON default anchor.
+        if pending_moc:
+            _bind_candidate_anchor(result, pending_moc, None, doc_anchors)
+            pending_moc = None
         in_moc_list = False
 
         if key == "source":
@@ -290,6 +488,11 @@ def parse_section(section_id: str, lines: list[str]) -> dict | None:
 
         elif key == "classification":
             result["classification"] = val
+
+    # Flush a checked MOC still pending at end-of-section (no Placement line,
+    # no trailing field) to its structured doc-JSON default anchor.
+    if pending_moc:
+        _bind_candidate_anchor(result, pending_moc, None, doc_anchors)
 
     # ── MOC consolidation ──────────────────────────────────────
     # If parent_moc was not set directly but parent_mocs has checked items,
@@ -401,11 +604,49 @@ def split_into_sections(text: str) -> list[tuple[str, list[str]]]:
 RE_PROPOSED_MOC_HEADER = re.compile(r"^###\s+Proposed MOC:\s*(.*)", re.IGNORECASE)
 
 
-def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
+def _load_json_doc(path: str) -> dict:
+    """Load a structured suggestions-doc JSON, or {} on any error."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _topic_member_stems(doc: dict) -> dict[str, list[str]]:
+    """Map proposed-MOC topic → member source-stems from a structured doc.
+
+    The reducer records each proposed MOC's member SNN ids in ``items``; the
+    markdown render drops them (only ``note_titles`` survive). Recover them by
+    resolving each ``items`` SNN id to its section ``stem``.
+    """
+    id_to_stem: dict[str, str] = {}
+    for sec in doc.get("sections") or []:
+        sid, stem = sec.get("id"), sec.get("stem")
+        if sid and stem:
+            id_to_stem[sid] = stem
+    out: dict[str, list[str]] = {}
+    for pm in doc.get("proposed_mocs") or []:
+        topic = (pm.get("topic") or "").strip()
+        stems = [id_to_stem[i] for i in (pm.get("items") or []) if i in id_to_stem]
+        if topic and stems:
+            out[topic] = stems
+    return out
+
+
+def parse_proposed_mocs(
+    text: str, config_template: str = "", topic_members: dict | None = None
+) -> list[dict]:
     """Parse the ## Proposed MOCs section and return approved MOC items.
 
     Each approved Proposed MOC becomes a confirmed_item with action=create_moc.
+
+    ``topic_members`` (topic → member source-stems, from the structured doc)
+    enriches each block's ``member_stems`` BEFORE the same-name merge, so a name
+    merged from multiple topics keeps every topic's members.
     """
+    topic_members = topic_members or {}
     mocs: list[dict] = []
 
     # Find the ## Proposed MOCs section
@@ -441,6 +682,12 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
         items_str = ""
         approved = False
         tags: list[str] = []
+        # The block's first line is the "### Proposed MOC: <topic>" header. The
+        # markdown render drops the SNN members (only note_titles survive), so
+        # the topic is the key used to recover members from the structured
+        # suggestions-doc JSON (see _topic_member_stems / the binding pass).
+        thm = RE_PROPOSED_MOC_HEADER.match(block[0]) if block else None
+        topic = thm.group(1).strip() if thm else ""
 
         for line in block:
             stripped = line.strip()
@@ -504,9 +751,47 @@ def parse_proposed_mocs(text: str, config_template: str = "") -> list[dict]:
             "summary": None,
             "classification": None,
             "supporting_items": items_str,
+            # Internal (stripped before output by the binding pass): the topic
+            # keys structured-doc member recovery; member_stems holds the
+            # recovered source-stems until they're mapped to confirmed ids.
+            "topic": topic,
+            "member_stems": list(topic_members.get(topic, [])),
         })
 
-    return mocs
+    return _merge_proposed_mocs_by_name(mocs)
+
+
+def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
+    """Collapse approved Proposed MOCs that resolve to the same final Name into a
+    single create_moc whose supporting_items and tags are the UNION of the group
+    (#67). Decision 2026-06-17: merge on Name only — same-name proposals collapse
+    regardless of parent; the first occurrence's parent is kept. Without this, two
+    proposals renamed to one Name emit two create_moc at the same destination and
+    the second overwrites the first on apply, silently dropping children.
+    """
+    merged: dict[str, dict] = {}
+    order: list[str] = []
+    for moc in mocs:
+        name = moc.get("title", "")
+        head = merged.get(name)
+        if head is None:
+            merged[name] = moc
+            order.append(name)
+            continue
+        head["supporting_items"] = _union_supporting_items(
+            head.get("supporting_items"), moc.get("supporting_items")
+        )
+        for tag in moc.get("tags") or []:
+            if tag not in head["tags"]:
+                head["tags"].append(tag)
+        # Union recovered members so a name merged from multiple topics
+        # (e.g. "Gesellschaftsspiele" + "Games" → "Board Games (MOC)") keeps
+        # every member's stem for the down-link binding pass.
+        head_ms = head.setdefault("member_stems", [])
+        for s in moc.get("member_stems") or []:
+            if s not in head_ms:
+                head_ms.append(s)
+    return [merged[name] for name in order]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1154,6 +1439,16 @@ def main() -> int:
             "primary doc's FAN log_entries by stem (XDD 012)."
         ),
     )
+    parser.add_argument(
+        "--suggestions-doc",
+        metavar="PATH",
+        help=(
+            "Optional structured suggestions-doc JSON (reducer output). Supplies "
+            "the Pass-1 placement anchor as the apply-time default per checked "
+            "MOC (spec 022/023). Defaults to the sibling suggestions-doc.json or "
+            "tomo-tmp/suggestions-doc.json; absent → Placement-line parsing only."
+        ),
+    )
     args = parser.parse_args()
 
     # ── Read input ────────────────────────────────────────────────
@@ -1204,6 +1499,13 @@ def main() -> int:
     parsed_sections: list[dict] = []
     sections_by_stem: dict[str, list[dict]] = {}
 
+    # spec 022/023: load the structured Pass-1 anchor map (section id → moc
+    # stem → anchor) from the sibling suggestions-doc JSON. Supplies the
+    # apply-time DEFAULT anchor per checked MOC; the rendered **Placement:**
+    # line overrides it when hand-edited. Absent doc → empty map (back-compat).
+    _primary_doc_path = args.suggestions_doc or _default_doc_path(filename)
+    doc_anchor_map = load_doc_anchor_map(_primary_doc_path)
+
     # F-41: split each rendered section into per-atomic-block groups on
     # **Source:** boundaries. Sections with ≤1 Source line yield one group
     # whose id == section_id, keeping single-block output byte-identical.
@@ -1211,7 +1513,10 @@ def main() -> int:
         split_section_into_blocks(sid, lns) for sid, lns in raw_sections
     ):
         try:
-            item = parse_section(section_id, lines)
+            # Per-block ids carry a "#N" suffix (F-41); the anchor map is keyed
+            # by the base section id.
+            base_id = section_id.split("#", 1)[0]
+            item = parse_section(section_id, lines, doc_anchor_map.get(base_id))
         except Exception as exc:  # noqa: BLE001
             print(
                 f"warning: skipping {section_id} — parse error: {exc}",
@@ -1246,6 +1551,7 @@ def main() -> int:
                 "tags": item["tags"],
                 "parent_moc": item["parent_moc"],
                 "parent_mocs": item["parent_mocs"],
+                "candidate_mocs": item.get("candidate_mocs", []),
                 "destination": item["destination"],
                 "template": item["template"],
                 "summary": item["summary"],
@@ -1277,11 +1583,50 @@ def main() -> int:
     except Exception:
         pass
 
-    proposed_mocs = parse_proposed_mocs(text, config_template=moc_template)
+    # Read the companion fan-resolve doc up-front (if any) so its proposed
+    # MOCs merge by-name with the primary's: a fanned force-atomic item can
+    # have no thematic match and propose a new MOC that joins the same-named
+    # primary proposal (#67). resolve_text is reused by the atomic-section
+    # reconciliation pass below.
+    resolve_text = ""
+    if args.fan_resolve_file:
+        try:
+            with open(args.fan_resolve_file, encoding="utf-8") as fh:
+                resolve_text = fh.read()
+        except OSError as exc:
+            print(
+                f"warning: cannot read --fan-resolve-file "
+                f"{args.fan_resolve_file}: {exc}",
+                file=sys.stderr,
+            )
+            resolve_text = ""
+
+    # Recover proposed-MOC members from the structured docs (the render drops
+    # the SNN members; we resolve topic → source-stems and bind them to the
+    # create_moc below so the new MOC gets its child down-links).
+    import os
+    primary_members = _topic_member_stems(_load_json_doc(_primary_doc_path))
+    fan_members = (
+        _topic_member_stems(_load_json_doc(os.path.join("tomo-tmp", "suggestions-fan-doc.json")))
+        if args.fan_resolve_file else {}
+    )
+    # Enrich member_stems INSIDE parse (before its internal same-name merge) so
+    # a name merged from multiple topics keeps every topic's members.
+    primary_pmocs = parse_proposed_mocs(
+        text, config_template=moc_template, topic_members=primary_members
+    )
+    fan_pmocs = (
+        parse_proposed_mocs(
+            resolve_text, config_template=moc_template, topic_members=fan_members
+        )
+        if resolve_text.strip() else []
+    )
+    proposed_mocs = _merge_proposed_mocs_by_name(primary_pmocs + fan_pmocs)
     if proposed_mocs:
         confirmed_items.extend(proposed_mocs)
         print(
-            f"proposed_mocs: {len(proposed_mocs)} approved",
+            f"proposed_mocs: {len(proposed_mocs)} approved"
+            + (f" ({len(fan_pmocs)} from fan-resolve)" if fan_pmocs else ""),
             file=sys.stderr,
         )
 
@@ -1307,39 +1652,28 @@ def main() -> int:
     # F-41 (T4.2): resolve-doc is list-valued — a single SNN heading can carry
     # N atomic blocks (same multi-block render layout as the primary doc).
     resolve_sections_by_stem: dict[str, list[dict]] = {}
-    if args.fan_resolve_file:
-        try:
-            with open(args.fan_resolve_file, encoding="utf-8") as fh:
-                resolve_text = fh.read()
-        except OSError as exc:
-            print(
-                f"warning: cannot read --fan-resolve-file "
-                f"{args.fan_resolve_file}: {exc}",
-                file=sys.stderr,
-            )
-            resolve_text = ""
-        if resolve_text.strip():
-            for section_id, lines in itertools.chain.from_iterable(
-                split_section_into_blocks(sid, lns)
-                for sid, lns in split_into_sections(resolve_text)
-            ):
-                try:
-                    item = parse_section(section_id, lines)
-                except Exception as exc:  # noqa: BLE001
-                    print(
-                        f"warning: resolve-doc {section_id} parse error: {exc}",
-                        file=sys.stderr,
-                    )
-                    continue
-                if item is None:
-                    continue
-                # Only approved atomic sections count. Unchecked = user
-                # hasn't accepted the proposal yet.
-                if not item.get("approved"):
-                    continue
-                stem_key = _stem_of(item.get("source_path"))
-                if stem_key:
-                    resolve_sections_by_stem.setdefault(stem_key, []).append(item)
+    if args.fan_resolve_file and resolve_text.strip():
+        for section_id, lines in itertools.chain.from_iterable(
+            split_section_into_blocks(sid, lns)
+            for sid, lns in split_into_sections(resolve_text)
+        ):
+            try:
+                item = parse_section(section_id, lines)
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"warning: resolve-doc {section_id} parse error: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            if item is None:
+                continue
+            # Only approved atomic sections count. Unchecked = user
+            # hasn't accepted the proposal yet.
+            if not item.get("approved"):
+                continue
+            stem_key = _stem_of(item.get("source_path"))
+            if stem_key:
+                resolve_sections_by_stem.setdefault(stem_key, []).append(item)
 
     # ── Reconcile Force Atomic Note promotions ─────────────────
     # When the user ticks [x] Force Atomic Note on a log_entry, they're
@@ -1365,6 +1699,20 @@ def main() -> int:
     # have some user-approved and the rest FAN-promoted without duplication.
     confirmed_ids = {c.get("id") for c in confirmed_items}
     seen_pending: set[str] = set()
+    # The resolve doc has its OWN S01.. id namespace that collides with the
+    # primary doc's, so resolve atomics are de-duped against ids promoted FROM
+    # the resolve doc (not the primary confirmed_ids) and re-numbered to a
+    # collision-free SNN — otherwise a colliding id both drops the atomic here
+    # AND corrupts instruction-render's id_index (same id, two items).
+    resolve_promoted_ids: set[str] = set()
+    _used_nums = {
+        int(m.group(1)) for m in (re.match(r"S0*(\d+)", c or "") for c in confirmed_ids) if m
+    }
+    _id_counter = [max(_used_nums, default=0)]
+
+    def _alloc_resolve_id() -> str:
+        _id_counter[0] += 1
+        return f"S{_id_counter[0]:02d}"
 
     def _promote_entry(sec: dict, from_resolve: bool) -> dict:
         sec["approved"] = True
@@ -1381,6 +1729,7 @@ def main() -> int:
             "tags": sec["tags"],
             "parent_moc": sec["parent_moc"],
             "parent_mocs": sec["parent_mocs"],
+            "candidate_mocs": sec.get("candidate_mocs", []),
             "destination": sec["destination"],
             "template": sec["template"],
             "summary": sec["summary"],
@@ -1418,11 +1767,13 @@ def main() -> int:
         # blocks (F-41 T4.2) — promote every block not already confirmed.
         resolve_secs = [
             s for s in resolve_sections_by_stem.get(stem, [])
-            if s.get("id") not in confirmed_ids
+            if s.get("id") not in resolve_promoted_ids
         ]
         if resolve_secs:
             for sec in resolve_secs:
+                resolve_promoted_ids.add(sec.get("id"))
                 entry = _promote_entry(sec, from_resolve=True)
+                entry["id"] = _alloc_resolve_id()
                 from_resolve += 1
                 confirmed_items.append(entry)
                 confirmed_ids.add(entry["id"])
@@ -1468,6 +1819,28 @@ def main() -> int:
             "be triggered by Pass 2.",
             file=sys.stderr,
         )
+
+    # Bind proposed-MOC members → supporting_items (down-links). Runs AFTER fan
+    # reconciliation so a fan-promoted member (re-numbered id) is resolvable.
+    # member_stems were recovered from the structured docs; map them to the
+    # FINAL confirmed-item ids so _build_link_to_moc_actions emits the child
+    # links into the new MOC. Strip the internal helper fields afterwards.
+    _stem_to_id = {
+        _stem_of(c.get("source_path")): c.get("id")
+        for c in confirmed_items
+        if c.get("source_path") and c.get("id")
+    }
+    for c in confirmed_items:
+        if c.get("action") == "create_moc":
+            ids = [
+                _stem_to_id[_stem_of(s)]
+                for s in (c.get("member_stems") or [])
+                if _stem_of(s) in _stem_to_id
+            ]
+            if ids:
+                c["supporting_items"] = ", ".join(ids)
+        c.pop("member_stems", None)
+        c.pop("topic", None)
 
     output = {
         "confirmed_items": confirmed_items,

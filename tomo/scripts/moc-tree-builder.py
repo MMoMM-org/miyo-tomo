@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.7.0
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -46,8 +46,20 @@ import yaml
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _SCRIPT_DIR)
 
-from lib import moc_scan, placeholder_detect, up_parse  # noqa: E402
+from lib import moc_scan, moc_structure, placeholder_detect, up_parse  # noqa: E402
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402
+
+# Footer-marker callouts: content sections live BEFORE the first of these.
+# Mirrors instruction-render.py:FOOTER_CALLOUTS exactly (spec 022 / #35 / F-55 —
+# stays hardcoded, NOT a config knob; F-55 tracks making it profile-configurable).
+# WHY local duplicate: moc-tree-builder must not import instruction-render (runtime
+# boundary) and moc_structure must not hardcode either (library contract).
+FOOTER_CALLOUTS: frozenset[str] = frozenset({"video", "calendar", "puzzle", "compass"})
+
+# Default editable callout names when vault-config has no callouts.editable block.
+# Matches the CONFIG_DEFAULTS in instruction-render.py so build-time and render-time
+# agree on what "editable" means before /explore-vault has written the config.
+_DEFAULT_EDITABLE: frozenset[str] = frozenset({"connect", "blocks", "anchor"})
 
 # ── Reuse cache-builder TTL/timestamp + atomic-write primitives ─────────────────
 # cache-builder.py is hyphenated → load via importlib so we can import its
@@ -81,6 +93,16 @@ H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 
 # Frontmatter block
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
+
+# Dewey/classification MOC titles look like "2600 - Applied Sciences". Mirrors
+# shared-ctx-builder.is_classification_moc — those MOCs carry NO body inventory
+# (shared-ctx filters it out), so moc-tree skips computing it for them (M7).
+DEWEY_CLASSIFICATION_RE = re.compile(r"^\d{4}\s*-\s*")
+
+
+def is_classification_moc(title: str) -> bool:
+    """True for Dewey-layer MOCs (titles like '2600 - Applied Sciences')."""
+    return bool(DEWEY_CLASSIFICATION_RE.match(title or ""))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -217,6 +239,34 @@ def _resolve_up_state(target: "str | None", moc_stem_set: set[str]) -> str:
     return "valid" if target in moc_stem_set else "broken"
 
 
+def _editable_set_from_config(config: dict) -> frozenset[str]:
+    """Return the editable callout names from vault-config `callouts.editable`.
+
+    Falls back to _DEFAULT_EDITABLE when the key is absent or empty, matching
+    the same default instruction-render.py uses (CONFIG_DEFAULTS).
+
+    The vault-config shape is:
+        callouts:
+          editable:
+            - blocks
+            - connect
+    or (dict form from vault-config-writer):
+        callouts:
+          editable:
+            blocks: ...
+            connect: ...
+    """
+    callouts_cfg = config.get("callouts") or {}
+    editable = callouts_cfg.get("editable")
+    if isinstance(editable, dict):
+        names = list(editable.keys())
+    elif isinstance(editable, list):
+        names = [str(x) for x in editable if x]
+    else:
+        names = []
+    return frozenset(names) if names else _DEFAULT_EDITABLE
+
+
 def _count_linked_notes(body: str, moc_stem_set: set[str]) -> int:
     """Count wikilinks in a MOC body that point to non-MOC notes.
 
@@ -237,7 +287,7 @@ def _count_linked_notes(body: str, moc_stem_set: set[str]) -> int:
 
 
 def build_entries(
-    client, scan_result, script_dir: str
+    client, scan_result, script_dir: str, config: dict | None = None
 ) -> tuple[list[dict], list[dict], dict]:
     """Assemble CacheEntry dicts + the placeholder list from a ScanResult.
 
@@ -246,6 +296,9 @@ def build_entries(
     carry classification (None — legacy/live faithful) and linked_notes (the int
     count of non-MOC wikilinks) so cache-builder's build_classifications /
     build_scan_stats consume the projection without collapse (C2).
+
+    T3.1 (spec 022): MOC entries additionally carry headings + editable_callouts
+    parsed from the body bytes already in raw_by_path — no new Kado call.
 
     Returns
     -------
@@ -287,6 +340,10 @@ def build_entries(
         in_scope_vault_paths=set(scan_result.in_scope_note_paths),
     )
 
+    # T3.1 (spec 022): editable_set from vault-config callouts.editable;
+    # footer_set is hardcoded to match instruction-render.py (F-55 boundary).
+    editable_set = _editable_set_from_config(config or {})
+
     entries: list[dict] = []
     for path in sorted(moc_paths | note_paths):
         content = raw_by_path[path]
@@ -319,6 +376,19 @@ def build_entries(
             # linked_notes is the INT count of wikilinks that are NOT other MOCs.
             entry["classification"] = None
             entry["linked_notes"] = _count_linked_notes(body, moc_stem_set)
+
+            # T3.1 (spec 022) + M5/M7: inventory — headings, editable callouts and
+            # footer presence in ONE body split (parse_moc_inventory), from body
+            # bytes already in raw_by_path (no new Kado call). Skip for
+            # classification/Dewey MOCs — shared-ctx-builder filters their
+            # inventory out anyway, so computing it is pure waste.
+            if not is_classification_moc(title):
+                inv = moc_structure.parse_moc_inventory(
+                    body, FOOTER_CALLOUTS, editable_set
+                )
+                entry["headings"] = inv["headings"]
+                entry["editable_callouts"] = inv["editable_callouts"]
+                entry["has_footer"] = inv["has_footer"]
 
         entries.append(entry)
 
@@ -382,6 +452,12 @@ def build_cache_builder_feed(entries: list[dict], placeholder_links: list[dict])
     working unchanged. This preserves the vault-explorer Step 9 contract:
         moc-tree-builder.py > moc-output.json ; cache-builder.py --mocs moc-output.json
     (SDD line 183 — "still emits the cache-builder-shaped map_notes superset").
+
+    M11: the inventory fields (headings/editable_callouts/has_footer) ride along
+    on each map_note INTENTIONALLY — do NOT strip them here. cache-builder copies
+    map_notes verbatim into discovery-cache.yaml, and shared-ctx-builder reads
+    these fields back from that cache. Stripping them would break has_footer /
+    headings / editable_callouts entirely (no other source feeds shared-ctx).
     """
     return {
         "map_notes": [e for e in entries if e["kind"] == "moc"],
@@ -470,7 +546,7 @@ def run_with_client(client, config: dict) -> tuple[dict, dict]:
     started = time.monotonic()
     scan_result = moc_scan.scan(client, config)
     entries, placeholder_links, placeholder_stats = build_entries(
-        client, scan_result, _SCRIPT_DIR
+        client, scan_result, _SCRIPT_DIR, config=config
     )
     cache = assemble_cache(config, entries, placeholder_links)
     feed = build_cache_builder_feed(entries, placeholder_links)

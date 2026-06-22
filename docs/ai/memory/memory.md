@@ -9,7 +9,7 @@
 - [domain.md](domain.md) — business rules, data models [updated: 2026-06-09]
 - [decisions.md](decisions.md) — architecture choices [updated: 2026-06-12]
 - [context.md](context.md) — current focus [updated: 2026-06-12]
-- [troubleshooting.md](troubleshooting.md) — known issues [updated: 2026-06-06]
+- [troubleshooting.md](troubleshooting.md) — known issues [updated: 2026-06-20]
 
 ## Archive
 <!-- Archived entries live in archive/YYYY-MM/. Not loaded at session start. -->
@@ -18,3 +18,4 @@
 ## Critical Documentation
 <!-- Add important docs here when created — Claude loads these on demand -->
 <!-- - [Architecture Overview](../architecture/overview.md) -->
+- [Inbox Change Detection & Pass Routing](../../XDD/reference/tier-2/workflows/inbox-change-detection.md) — how triage detects what changed (new/drift/coverage) + the determine_action routing tree + flag semantics (--pass2 vs --force). Mermaid flowchart + state diagram. (#74/#78)

@@ -18,6 +18,33 @@ Städte") and produces the mechanically-correct edits, so the user supplies inte
 reviews the diff rather than authoring fragile syntax. It exists because the
 `suggestions-doc-format` skill *documents* the forms but nothing *applies* them.
 
+## Why This Skill Also Consolidates Proposed MOCs (v0.2.0)
+
+WHY: Pass-1 can surface two *separate* new-MOC proposals in the `## Proposed MOCs` section
+when an item's topics split across what is really one map (e.g. notes A,B propose "Games" and
+note C proposes "Board Games", both not-yet-existing). The user wants them as one MOC. Done by
+hand this is a two-front edit — rename the proposal's `**Name:**` line *and* re-point the
+member notes — which is where the user previously spent manual effort.
+
+WHY (the note-side edit is intentionally NOT performed): the parser already does the merge.
+`suggestion-parser.py:parse_proposed_mocs` ends with `_merge_proposed_mocs_by_name`, which
+collapses two approved blocks sharing the same final `**Name:**` into a single `create_moc`
+and **unions their member stems** (#67, decision 2026-06-17 — the code comment even names the
+"Games" → "Board Games" case). Member→MOC binding is recovered from each block's
+`### Proposed MOC: <topic>` header via `_topic_member_stems`, keyed off the structured
+suggestions-doc JSON — *not* the note body in `## Suggestions`. So the minimal correct edit is:
+set the source block's `**Name:**` to the target name and tick both `Approve` boxes. Editing the
+per-note section would be a no-op at best; the STRICT block in step 3b forbids it so the skill
+does not waste edits chasing a binding that does not flow through the note body. Pass-2's
+`instruction-render.py` backfill (`_prepend_create_moc_titles_to_supporting`) then stamps the
+single MOC title onto every unioned member.
+
+WHY (the markdown blocks are NOT physically collapsed): because the parser merges by Name at
+Pass-2, leaving both `### Proposed MOC:` blocks in place produces the correct single MOC while
+keeping the doc's rendered shape intact. Physically deleting a block would diverge from the
+renderer's output for no functional gain and risks dropping a topic header that the binding
+pass relies on. The skill therefore edits in place and lets the parser do the collapse.
+
 ## Why Vault Writes Route Through the kado-write Helper, Not Direct
 
 WHY: Tomo runs sandboxed in Docker and has no direct filesystem access to the vault —

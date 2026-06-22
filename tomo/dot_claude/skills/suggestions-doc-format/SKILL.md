@@ -4,7 +4,7 @@ description: Use PROACTIVELY when producing or parsing suggestions, suggestions-
 user-invocable: false
 ---
 # Suggestions Doc Format
-# version: 0.2.0
+# version: 0.3.0
 
 ## Approval Checkboxes
 
@@ -70,6 +70,19 @@ A checked `[x]` MOC with **no** Placement line still produces a link — Pass-2 
 section heuristically (editable callout, then heading). The Placement line only overrides that
 default; it is not required for the link to exist. `parent_mocs` (every checked MOC) drives
 link emission; `candidate_mocs` carries the anchor override only.
+
+## Consolidating Proposed MOCs
+
+The `## Proposed MOCs` section lists new-MOC proposals as `### Proposed MOC: <topic>` blocks,
+each with a `- **Name:** <name>` line and a `- [ ] Approve` checkbox.
+
+To collapse two proposed MOCs into one: set their `**Name:**` lines to the **same** value and
+check `- [x] Approve` on both. Two approved blocks with an identical final Name merge into one
+`create_moc` whose supporting notes are the **union** of both blocks. A note's membership is
+recovered from its block's `### Proposed MOC: <topic>` header, so renaming the `**Name:**` line
+alone re-homes every member of that block — the `## Suggestions` section needs no edit.
+
+The `**Name:**` value is read up to its `←` edit-hint; keep or drop the hint suffix freely.
 
 ## Tomo Frontmatter
 

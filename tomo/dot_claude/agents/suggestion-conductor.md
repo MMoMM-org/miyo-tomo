@@ -5,6 +5,7 @@ model: sonnet
 skills:
   - routing-plan-consumer
   - suggest-handling
+  - tag-handler-interpreter
   - force-atomic-handling
   - suggestions-doc-format
   - kado-discovery-patterns
@@ -18,7 +19,7 @@ tools:
 ---
 
 # Suggestion Conductor
-# version: 0.6.0
+# version: 0.7.0
 
 **Active agent: suggestion-conductor**
 
@@ -95,10 +96,17 @@ Capture stdout as `PROFILE` (string).
 
 | action | Go to |
 |--------|-------|
-| suggest | Follow the `suggest-handling` skill (already loaded) |
+| suggest | Follow the `suggest-handling` skill (already loaded); then see Step 3a |
 | fan-resolve | Follow the `force-atomic-handling` skill (already loaded) |
 
 The skill has the complete pipeline. Follow it now.
+
+### Step 3a — Tag-handler compose (suggest path only)
+
+After `suggest-handling` completes: check whether `routing-plan.json` `handled[]` is non-empty.
+
+If `handled[]` is non-empty: follow the `tag-handler-interpreter` skill (already loaded).
+If `handled[]` is absent or empty: skip — nothing to do.
 
 ---
 

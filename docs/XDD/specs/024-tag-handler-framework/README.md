@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-23 |
-| **Current Phase** | Ready |
+| **Current Phase** | Implemented |
 | **Last Updated** | 2026-06-23 |
 
 ## Documents
@@ -37,6 +37,7 @@
 | 2026-06-23 | Phase 3 producer→consumer contract = new `tag-handler-group.schema.json` | A merged group spans multiple captures, so it does NOT fit per-item `item-result.schema.json`. A dedicated group-result artifact (handler/target/marker/composed_block/source_paths) is the skill→reducer interface — additive, avoids touching the hot item-result path. Schema defined BEFORE producer/consumer (anti-drift). |
 | 2026-06-23 | Phase 4 expanded: approved groups need explicit approval→render linkage | Explore map found approved tag-handler groups are NOT wired from suggestions-doc → suggestion-parser → instruction-render. P4 = T4.0 hashi-instructions `insert_under_marker` $def + T4.1 linkage+render + T4.2 guards + T4.3 validation. Run SEQUENTIALLY (same files). |
 | 2026-06-23 | Approval linkage = **deterministic group id** from (handler, target_path) | `group_id()` lives in tag-handler-group.py; reducer renders it as the suggestion id, parser extracts approved ids, instruction-render recomputes + matches, reading the group-result JSONs as the data source-of-truth. No new schema field, no skill re-touch, no fragile markdown re-parse of the multi-line composed block. |
+| 2026-06-23 | Implementation complete | Phases 1-6 shipped on branch feat/tag-handler-framework (commits 754b064..371e468). Framework: resolver + triage detection + interpreter/compose + Pass-2 `insert_under_marker` render + `tomo-tag-handler-wizard` + writer + shipped `tsukai.json` + user/WHY docs. E2E AC-1..AC-5 green (`test_tag_handler_e2e.py`); AC-5 byte-identity preserved. Cross-repo: Hashi `insert_under_marker` landed (PR #73), conformance parity-guarded; Kokoro ADR-023 draft handoff pending. Full suite 1546 passed, ruff clean. |
 
 ## Context
 

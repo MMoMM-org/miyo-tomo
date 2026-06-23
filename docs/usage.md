@@ -49,7 +49,7 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
 
 If you use [Tomo Tsukai](https://github.com/MMoMM-org/miyo-tomo-tsukai) or another MiYo tool that tags inbox notes with `MiYo/<Feature>/…`, and you have a matching handler registered, `/inbox` groups all such captures for the same target into **one** merged suggestion rather than surfacing them individually. You review and approve it the same way you would any other suggestion. No special command is needed — the grouping happens automatically during Pass 1.
 
-To register or edit a handler, use **`/tomo-tag-handler-wizard`**. See [Configuration → Tag-handler framework](configuration.md#configtag-handlers----tag-handler-framework) for the full reference.
+To register or edit a handler, use **`/tomo-tag-handler-wizard`**. See [Configuration → Tag-handler framework](configuration.md#configtag-handlers--tag-handler-framework) for the full reference.
 
 #### What a re-run redoes (and what it leaves alone)
 

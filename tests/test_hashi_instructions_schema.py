@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_hashi_instructions_schema.py — JSON Schema validation tests for hashi-instructions.schema.json.
 
 Covers T4.0 (XDD 024 Phase 4): insert_under_marker action $def.
@@ -73,10 +73,10 @@ def test_valid_insert_under_marker_validates(schema):
     )
 
 
-def test_anchor_heading_reused(schema):
-    """anchor with type:heading and value:'Captures' validates (reuses shared anchor $def)."""
+def test_anchor_callout_type_validates(schema):
+    """anchor with type:callout validates — exercises the shared anchor $def's callout branch."""
     action = _make_insert_under_marker(
-        anchor={"type": "heading", "value": "Captures"}
+        anchor={"type": "callout", "value": "[!captures]"}
     )
     validate(instance=_make_instructions([action]), schema=schema)
 
@@ -106,6 +106,21 @@ def test_missing_target_path_fails(schema):
     """An insert_under_marker action missing 'target_path' is rejected."""
     action = _make_insert_under_marker()
     del action["target_path"]
+    with pytest.raises(ValidationError):
+        validate(instance=_make_instructions([action]), schema=schema)
+
+
+def test_missing_anchor_fails(schema):
+    """An insert_under_marker action missing 'anchor' is rejected (required shared $def field)."""
+    action = _make_insert_under_marker()
+    del action["anchor"]
+    with pytest.raises(ValidationError):
+        validate(instance=_make_instructions([action]), schema=schema)
+
+
+def test_invalid_placement_fails(schema):
+    """An insert_under_marker action with an invalid placement value is rejected."""
+    action = _make_insert_under_marker(placement="top")
     with pytest.raises(ValidationError):
         validate(instance=_make_instructions([action]), schema=schema)
 

@@ -237,7 +237,7 @@
       "type": "object",
       "required": ["id", "action", "target_path", "anchor", "placement", "content"],
       "additionalProperties": false,
-      "description": "Insert a multi-line markdown block under a heading/anchor marker in an arbitrary vault note. Reuses the shared anchor $def and placement enum. Modify-only — Tomo guarantees the target_path and anchor exist before emitting. Introduced by spec 024-tag-handler-framework (T1.1a handoff 2026-06-23).",
+      "description": "Insert a multi-line markdown block under a heading/anchor marker in an arbitrary vault note. Reuses the shared `anchor` $def; `placement` uses the same inline enum as `link_to_moc`. Modify-only — Tomo guarantees the target_path and anchor exist before emitting. Introduced by spec 024-tag-handler-framework (T1.1a handoff 2026-06-23).",
       "properties": {
         "id": {"$ref": "#/$defs/action_id"},
         "action": {"const": "insert_under_marker"},

@@ -59,6 +59,7 @@ render_tag_handler_updates_block = _reducer_mod.render_tag_handler_updates_block
 parse_tag_handler_groups = _parser_mod.parse_tag_handler_groups
 _build_insert_under_marker_actions = _render_mod._build_insert_under_marker_actions
 _marker_to_anchor_value = _render_mod._marker_to_anchor_value
+_load_tag_handler_groups = _render_mod._load_tag_handler_groups
 
 from jsonschema import validate as _validate  # noqa: E402
 
@@ -282,6 +283,20 @@ def test_end_to_end_approved_then_render():
     assert len(actions) == 1
     assert actions[0]["target_path"] == g["target_path"]
     assert actions[0]["content"] == g["composed_block"]
+
+
+# ── 7. failure path: malformed group file skipped (L1) ────────────────────────
+
+
+def test_malformed_group_file_is_skipped(tmp_path):
+    """_load_tag_handler_groups skips an unparseable JSON file and returns only
+    the valid group — no crash (Constitution L1 failure-path coverage)."""
+    (tmp_path / "bad.json").write_text("not json{", encoding="utf-8")
+    good = _group()
+    (tmp_path / "good.json").write_text(json.dumps(good), encoding="utf-8")
+
+    loaded = _load_tag_handler_groups(str(tmp_path))
+    assert loaded == [good]
 
 
 if __name__ == "__main__":

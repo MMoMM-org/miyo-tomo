@@ -53,7 +53,8 @@ from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filenam
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
-# it loads via importlib. SCRIPT_DIR is already on sys.path (inserted above).
+# it loads via importlib. sys.path already includes the script directory
+# (inserted above).
 import importlib.util as _ilu  # noqa: E402
 
 _thg_spec = _ilu.spec_from_file_location(

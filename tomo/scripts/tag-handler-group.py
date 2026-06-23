@@ -100,6 +100,10 @@ def group_id(group: dict[str, Any]) -> str:
 
     A null target_path (group surfaced but unresolved) slugs to ``none`` so the
     id is still well-formed; such a group never produces an instruction anyway.
+
+    Slug collisions are possible when two handlers or target_paths differ ONLY in
+    non-alphanumeric characters (both collapse to the same slug), so handler +
+    target_path combinations are expected to be distinct at the alphanumeric level.
     """
     handler_slug = _slug(group.get("handler") or "")
     target_slug = _slug(group.get("target_path") or "") or "none"

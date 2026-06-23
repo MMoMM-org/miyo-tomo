@@ -150,6 +150,29 @@
       }
     },
     "rendered_daily_updates_md": {"type": "string"},
+    "tag_handler_updates": {
+      "type": "array",
+      "description": "Tag-handler group-result objects (spec 024 T3.3). Each element conforms to tag-handler-group.schema.json. Empty when --tag-handler-groups-dir is absent.",
+      "items": {
+        "type": "object",
+        "required": ["schema_version", "handler", "target_path", "marker", "composed_block", "source_paths"],
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {"const": "1"},
+          "handler": {"type": "string"},
+          "target_path": {"type": ["string", "null"]},
+          "marker": {"type": "string"},
+          "composed_block": {"type": "string"},
+          "source_paths": {"type": "array", "items": {"type": "string"}},
+          "placement": {"type": "string", "enum": ["inside", "before", "after"]},
+          "compose_mode": {"type": "string", "enum": ["llm_directive", "field_template"]}
+        }
+      }
+    },
+    "rendered_tag_handler_updates_md": {
+      "type": "string",
+      "description": "Pre-rendered ## Tag-Handler Updates markdown section (spec 024 T3.3). Empty string when no groups."
+    },
     "decision_precedence_note": {"type": "string"},
     "needs_attention": {
       "type": "array",

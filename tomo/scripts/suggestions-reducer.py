@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.13.0
+# version: 1.14.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -622,6 +622,91 @@ RENDERERS = {
 }
 
 
+# ── Tag-handler group rendering (spec 024 T3.3) ───────────────────────────────
+
+
+def render_tag_handler_group(group: dict) -> str:
+    """Render one tag-handler group-result as a suggestion item block.
+
+    Each group is the output of the tag-handler-interpreter skill: N source inbox
+    items sharing the same (handler, target_path) pair, already composed upstream
+    into a single `composed_block`. This function renders it ONCE (AC-3 cardinality).
+
+    Mirrors the tri-state Approve-checkbox style used by existing render functions.
+    """
+    target = group.get("target_path") or ""
+    marker = group.get("marker") or ""
+    composed_block = group.get("composed_block") or ""
+    handler = group.get("handler") or ""
+    source_paths = group.get("source_paths") or []
+
+    lines: list[str] = []
+    # Target note reference — strip .md suffix for wikilink style
+    link = target[:-3] if target.endswith(".md") else target
+    if link:
+        lines.append(f"**Target:** [[{link}]]")
+    else:
+        lines.append("**Target:** *(unresolved — check handler config)*")
+
+    lines.append(f"**Marker:** `{marker}`")
+    lines.append(f"**Handler:** `{handler}`")
+
+    if source_paths:
+        source_links = ", ".join(
+            f"[[{(p[:-3] if p.endswith('.md') else p)}]]" for p in source_paths
+        )
+        lines.append(f"**Sources ({len(source_paths)}):** {source_links}")
+
+    lines.append("")
+    lines.append(composed_block)
+    lines.append("")
+    lines.append("**Decision (tag-handler update):**")
+    lines.append("- [x] Approve")
+    lines.append("- [ ] Skip")
+    return "\n".join(lines)
+
+
+def collect_tag_handler_groups(groups_dir: "Path | None") -> list[dict]:
+    """Load and return all tag-handler group-result JSONs from `groups_dir`.
+
+    Returns [] when the dir argument is None, missing, or empty — additive
+    safety: an absent registry leaves the suggestions doc unchanged.
+    """
+    if groups_dir is None:
+        return []
+    p = Path(groups_dir)
+    if not p.exists() or not p.is_dir():
+        return []
+    groups: list[dict] = []
+    for f in sorted(p.glob("*.json")):
+        try:
+            groups.append(json.loads(f.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            continue
+    return groups
+
+
+def render_tag_handler_updates_block(groups: list[dict]) -> str:
+    """Render the ## Tag-Handler Updates section from a list of group-results.
+
+    Mirrors `render_daily_notes_updates_block` in structure: returns "" when
+    empty so callers can omit the section cleanly.
+    """
+    if not groups:
+        return ""
+    lines: list[str] = ["## Tag-Handler Updates", ""]
+    for group in groups:
+        target = group.get("target_path") or ""
+        link = target[:-3] if target.endswith(".md") else target
+        heading = f"[[{link}]]" if link else "*(unresolved)*"
+        marker = group.get("marker") or ""
+        lines.append(f"### {heading} — `{marker}`")
+        lines.append("")
+        lines.append(render_tag_handler_group(group))
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 # ── MOC Proposal rendering (F-43 T3.1) ───────────────────────────────────────
 
 
@@ -1046,6 +1131,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-kado", action="store_true",
                    help="Skip the live Kado daily-note existence check (I38). "
                         "Offline/test mode: all daily notes are assumed to exist.")
+    p.add_argument(
+        "--tag-handler-groups-dir",
+        default=None,
+        help="Directory containing tag-handler group-result JSONs (spec 024 T3.3). "
+             "When absent or empty the suggestions doc is unchanged — additive safety.",
+    )
     return p
 
 
@@ -1369,6 +1460,13 @@ def main() -> int:
         daily_notes_updates_sorted, daily_only_stems=daily_only_stems
     )
 
+    # spec 024 T3.3: load tag-handler group-results (additive — missing dir = [])
+    tag_handler_groups_dir = (
+        Path(args.tag_handler_groups_dir) if args.tag_handler_groups_dir else None
+    )
+    tag_handler_updates = collect_tag_handler_groups(tag_handler_groups_dir)
+    rendered_tag_handler_updates_md = render_tag_handler_updates_block(tag_handler_updates)
+
     # fan-resolve: drop the aggregated blocks that belong to the primary
     # doc (daily-note updates, needs-attention). Proposed MOCs are KEPT —
     # a standalone-fan force-atomic item can have no thematic MOC match and
@@ -1410,6 +1508,8 @@ def main() -> int:
         "sections": sections,
         "daily_notes_updates": daily_notes_updates,
         "rendered_daily_updates_md": rendered_daily_updates_md,
+        "tag_handler_updates": tag_handler_updates,             # spec 024 T3.3
+        "rendered_tag_handler_updates_md": rendered_tag_handler_updates_md,  # spec 024 T3.3
         "decision_precedence_note": precedence_note,
         "proposed_mocs": proposed_mocs,
         "needs_attention": needs_attention,
@@ -1424,6 +1524,7 @@ def main() -> int:
         f"suggestions-reducer: done={len(done_stems)} failed={len(failed_entries)} "
         f"sections={len(sections)} daily_notes_updates={len(daily_notes_updates)} "
         f"daily_notes_missing={missing_daily} "
+        f"tag_handler_updates={len(tag_handler_updates)} "
         f"proposed_mocs={len(proposed_mocs)} out={out_path}",
         file=sys.stderr,
     )

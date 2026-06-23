@@ -31,7 +31,7 @@ phase: 5
 
 Makes the framework user-operable end-to-end: a wizard authors handlers as pure data, a Tsukai reference handler ships, and the why is documented.
 
-- [ ] **T5.1 `tomo-tag-handler-wizard` skill** `[activity: frontend-ui]`
+- [x] **T5.1 `tomo-tag-handler-wizard` skill** `[activity: frontend-ui]`
 
   1. Prime: Read the wizard spec `[ref: SDD/Section 7; lines: 144-148]` and the `tomo-trackers-wizard` skill it mirrors.
   2. Test (RED): wizard collects `tag_prefix`, `capture_segments`, `read_fields`, `action`, `target.map`, `marker`, `compose` via AskUserQuestion; writes `config/tag-handlers/<feature>.json`; the written file **validates against `tag-handler.schema.json`**; an invalid combination is rejected before write (atomic — no partial file); AskUserQuestion option-count stays ≤4.
@@ -39,7 +39,7 @@ Makes the framework user-operable end-to-end: a wizard authors handlers as pure 
   4. Validate: wizard produces a schema-valid handler; lint/skill-author audit clean.
   5. Success: A user can author a handler with no skill authoring `[ref: PRD/FR-13; lines: 82-84]` `[ref: PRD/AC-2; lines: 108]`.
 
-- [ ] **T5.2 Ship `config/tag-handlers/tsukai.json` reference handler** `[activity: data-architecture]`
+- [x] **T5.2 Ship `config/tag-handlers/tsukai.json` reference handler** `[activity: data-architecture]`
 
   1. Prime: Read the concrete Tsukai handler `[ref: PRD/Section 6; lines: 88-103]` and `[ref: SDD/Section 2; lines: 24-39]`.
   2. Test (RED): `tsukai.json` validates against `tag-handler.schema.json`; matches `MiYo/Tsukai/` with segment `repo`, field `category`, action `insert_under_marker`, marker `## Captures`, compose directive; `target.map` (`repo_note_map`) is present as a user-fill stub.

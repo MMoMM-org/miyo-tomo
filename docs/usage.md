@@ -45,6 +45,12 @@ This is the day-to-day loop. When new items have landed in your inbox folder (vo
 
 `/inbox` is auto-resumable: there is no state you have to track. Each run it re-reads the inbox from the vault, works out what changed, and does the next step — run Pass 1, run Pass 2, transcribe audio, run cleanup, or report idle. You just keep running `/inbox`.
 
+#### Tagged notes from MiYo tools
+
+If you use [Tomo Tsukai](https://github.com/MMoMM-org/miyo-tomo-tsukai) or another MiYo tool that tags inbox notes with `MiYo/<Feature>/…`, and you have a matching handler registered, `/inbox` groups all such captures for the same target into **one** merged suggestion rather than surfacing them individually. You review and approve it the same way you would any other suggestion. No special command is needed — the grouping happens automatically during Pass 1.
+
+To register or edit a handler, use **`/tomo-tag-handler-wizard`**. See [Configuration → Tag-handler framework](configuration.md#configtag-handlers----tag-handler-framework) for the full reference.
+
 #### What a re-run redoes (and what it leaves alone)
 
 Each `/inbox` does **one step**, and prefers finishing in-flight work over new intake. The common situations:

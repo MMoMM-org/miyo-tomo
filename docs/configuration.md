@@ -139,6 +139,41 @@ Lives at `~/.tomo/instances.json` (override with `TOMO_REGISTRY_FILE` for tests)
 
 You don't edit this file by hand — install and update maintain it. Entries whose `path` directory has gone missing are flagged `[stale]` in the installer's selection menu.
 
+### config/tag-handlers/ — tag-handler framework
+
+| What | Detail |
+|---|---|
+| **Location** | `tomo-instance/config/tag-handlers/<feature>.json` — one file per handler. |
+| **Who manages it** | You (via the **tomo-tag-handler-wizard** — see below). Do not hand-edit the JSON. |
+| **What it does** | Tomo recognizes inbox notes that carry a registered `MiYo/<Feature>/…` tag and handles them as a group: it reads the declared frontmatter fields, merges all captures for the same target into **one** suggestion, and surfaces that suggestion in the normal Pass-1 suggestions doc for you to approve. The approved action is then applied like any other inbox action. |
+| **Effect if the folder is empty** | None — a run with no registered handlers is identical to a run without the framework. |
+
+#### What a handler controls
+
+Each handler file declares:
+
+- **Which tag prefix to match** — e.g. `MiYo/Tsukai/` — and which path segments after the prefix carry meaningful values (e.g. the repo name).
+- **Which frontmatter fields to read** from the matched note (e.g. `category`).
+- **A target note** — resolved from the captured segment values via a mapping you supply (e.g. repo name → dev-log note path).
+- **A marker heading** in that target note under which the composed content is inserted.
+- **A compose directive** — either a free-text instruction to the model (which synthesises all captures in the batch into one logical update) or a mechanical field list (no model call).
+
+#### Tsukai reference handler
+
+Tomo ships a reference handler for [Tomo Tsukai](https://github.com/MMoMM-org/miyo-tomo-tsukai) at `config/tag-handlers/tsukai.json`. It recognises `MiYo/Tsukai/<repo>` tags and routes each batch's captures to the note you map to that repo. The handler works out of the box once you fill in the repo-to-note mapping via the wizard.
+
+#### Authoring and editing handlers
+
+Use the **tomo-tag-handler-wizard** slash command:
+
+```
+/tomo-tag-handler-wizard
+```
+
+The wizard walks you through every field with guided questions, validates the result, and writes the handler file atomically. No manual JSON editing, no skill authoring. Run the same command again on an existing handler's tag prefix to edit it.
+
+After adding or editing a handler, restart Claude Code in the container so agents load the updated registry.
+
 ### profiles/<name>.yaml — framework profiles (read-only)
 
 You don't hand-edit these — choose one via `vault-config.yaml`'s `profile` field. The shipped profiles are `miyo` and `lyt` under `tomo-instance/profiles/`. Each profile defines `concept_defaults`, `classification`, and other framework defaults that act as the L2 layer beneath your vault-config.

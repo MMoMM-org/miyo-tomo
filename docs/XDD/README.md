@@ -22,6 +22,7 @@
 | 015 | [MSP Condition B — Accumulation](specs/015-msp-condition-b-accumulation/) | Superseded | Shipped 2026-06-04 then **superseded by 021** (2026-06-10) — Condition B retired from `/inbox`, capability moved to `/moc-propose`; GH #27 closed |
 | 016 | [Multi-Topic Atomic Notes](specs/016-multi-topic-atomic-notes/) | Plan complete | PRD+SDD+Plan (6 phases, 17 tasks) 2026-06-10; ready for /implement. Branch `feat/f-41-multi-topic-atomic-notes` |
 | 018 | [Agent Architecture Cleanup](specs/018-agent-architecture-cleanup/) | Live-validated | Review + live testing complete 2026-05-27. Conductors refactored to pure routers, skills own pipelines, synthesis-conductor dispatched on haiku, moc-proposal-parser added, related:: aggregation Tomo-side, inbox-triage state coverage extended. |
+| 024 | [Tag-Handler Framework](specs/024-tag-handler-framework/) | Phase 5 | Phases 1–4 shipped (detect → compose → render → guards). T5.3 docs complete. |
 
 ## Architecture Reference
 

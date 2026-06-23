@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Pass-1 compose + suggestion"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---

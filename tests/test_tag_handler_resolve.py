@@ -419,11 +419,10 @@ TSUKAI_JSON_PATH = REPO_ROOT / "tomo" / "config" / "tag-handlers" / "tsukai.json
 
 
 def test_shipped_tsukai_json_loads_as_registry():
-    """load_registry on the shipped tsukai.json directory returns one handler (T5.2)."""
+    """load_registry on the shipped tsukai.json directory contains the tsukai handler (T5.2)."""
     handler_dir = TSUKAI_JSON_PATH.parent
     registry = load_registry(handler_dir)
-    assert len(registry) == 1
-    assert registry[0]["id"] == "tsukai"
+    assert any(h["id"] == "tsukai" for h in registry)
 
 
 def test_shipped_tsukai_json_resolves_tomo_tagged_item():

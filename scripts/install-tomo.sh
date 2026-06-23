@@ -1318,8 +1318,8 @@ if [ -d "$TOMO_SOURCE/config/tag-handlers" ]; then
         name=$(basename "$f")
         cp "$f" "$INSTANCE_PATH/config/tag-handlers/$name"
     done
+    print_ok "config/tag-handlers/"
 fi
-print_ok "config/tag-handlers/"
 
 # user-rules README (only if not present — user territory)
 if [ ! -f "$INSTANCE_PATH/config/user-rules/README.md" ]; then

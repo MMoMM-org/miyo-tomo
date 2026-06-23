@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.7.0
+# version: 0.7.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -478,6 +478,13 @@ for f in "$TOMO_SOURCE/schemas/"*.json; do
     add_bytewise "$f" "$INSTANCE_PATH/schemas/$name" "schemas/$name" "schemas"
 done
 
+# Tag-handler configs (bytewise) — shipped reference handlers (e.g. tsukai.json)
+for f in "$TOMO_SOURCE/config/tag-handlers/"*.json; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    add_bytewise "$f" "$INSTANCE_PATH/config/tag-handlers/$name" "config/tag-handlers/$name" "tag-handlers"
+done
+
 # Templates — regenerated from schemas; check if regen would change anything.
 # We compute the expected content into a tmp file and cmp.
 TEMPLATE_TMP="$(mktemp -p "${TMPDIR:-/tmp}")"
@@ -572,6 +579,7 @@ print_section_plan "runtime-scripts" "Runtime scripts"
 print_section_plan "retired"         "Retiring removed files"
 print_section_plan "profiles"        "Profiles"
 print_section_plan "schemas"         "Schemas"
+print_section_plan "tag-handlers"    "Tag-handler configs"
 print_section_plan "templates"       "Templates (regenerated from schemas)"
 print_section_plan "settings"        "Settings.json"
 print_section_plan "container-home"  "Container home (entrypoint)"
@@ -848,6 +856,7 @@ execute_section "runtime-scripts" "Runtime scripts"
 execute_section "retired"         "Retiring removed files"
 execute_section "profiles"        "Profiles"
 execute_section "schemas"         "Schemas"
+execute_section "tag-handlers"    "Tag-handler configs"
 execute_section "templates"       "Templates"
 execute_section "settings"        "Settings.json"
 execute_section "container-home"  "Container home (entrypoint)"

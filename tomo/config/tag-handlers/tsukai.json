@@ -1,0 +1,17 @@
+{
+  "id": "tsukai",
+  "enabled": true,
+  "match": {
+    "tag_prefix": "MiYo/Tsukai/",
+    "capture_segments": ["repo"],
+    "read_fields": ["category"]
+  },
+  "action": "insert_under_marker",
+  "target": {
+    "by": "repo",
+    "map": {}
+  },
+  "marker": "## Captures",
+  "placement": "inside",
+  "compose": "Synthesize the batch's captures into one dated logical status update, grouped by category."
+}

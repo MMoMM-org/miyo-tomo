@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_tag_handler_schema.py — JSON Schema validation tests for tag-handler.schema.json.
 
 Covers T1.2 (XDD 024 Phase 1): handler config schema for the tag-handler framework.
@@ -203,3 +203,69 @@ def test_extra_top_level_property_fails(schema):
     handler["unexpected_field"] = "should fail"
     with pytest.raises(ValidationError):
         validate(instance=handler, schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# T5.2 — shipped tsukai.json on disk validates against the schema
+# ---------------------------------------------------------------------------
+
+TSUKAI_JSON_PATH = REPO_ROOT / "tomo" / "config" / "tag-handlers" / "tsukai.json"
+
+
+def test_shipped_tsukai_json_exists():
+    """tomo/config/tag-handlers/tsukai.json must exist on disk (T5.2)."""
+    assert TSUKAI_JSON_PATH.exists(), (
+        f"Shipped handler not found at {TSUKAI_JSON_PATH}"
+    )
+
+
+def test_shipped_tsukai_json_validates_against_schema(schema):
+    """The shipped tsukai.json passes schema validation (T5.2 / AC-2)."""
+    handler = json.loads(TSUKAI_JSON_PATH.read_text(encoding="utf-8"))
+    validate(instance=handler, schema=schema)
+
+
+def test_shipped_tsukai_json_id_is_tsukai(schema):
+    """The shipped tsukai.json has id='tsukai' (PRD §6)."""
+    handler = json.loads(TSUKAI_JSON_PATH.read_text(encoding="utf-8"))
+    assert handler["id"] == "tsukai"
+
+
+def test_shipped_tsukai_json_enabled_true(schema):
+    """The shipped tsukai.json has enabled=true (PRD §6)."""
+    handler = json.loads(TSUKAI_JSON_PATH.read_text(encoding="utf-8"))
+    assert handler.get("enabled") is True
+
+
+def test_shipped_tsukai_json_match_fields(schema):
+    """The shipped tsukai.json match block has tag_prefix, capture_segments, read_fields (PRD §6)."""
+    handler = json.loads(TSUKAI_JSON_PATH.read_text(encoding="utf-8"))
+    match = handler["match"]
+    assert match["tag_prefix"] == "MiYo/Tsukai/"
+    assert match["capture_segments"] == ["repo"]
+    assert match["read_fields"] == ["category"]
+
+
+def test_shipped_tsukai_json_action_and_marker(schema):
+    """The shipped tsukai.json has action='insert_under_marker', marker='## Captures', placement='inside' (PRD §6)."""
+    handler = json.loads(TSUKAI_JSON_PATH.read_text(encoding="utf-8"))
+    assert handler["action"] == "insert_under_marker"
+    assert handler["marker"] == "## Captures"
+    assert handler["placement"] == "inside"
+
+
+def test_shipped_tsukai_json_compose_is_string(schema):
+    """The shipped tsukai.json compose is a string LLM directive (PRD §6)."""
+    handler = json.loads(TSUKAI_JSON_PATH.read_text(encoding="utf-8"))
+    assert isinstance(handler["compose"], str)
+    assert len(handler["compose"]) > 0
+
+
+def test_shipped_tsukai_json_target_map_stub_yields_null_for_unknown_repo(schema):
+    """The shipped target.map stub does not crash for unknown repos (AC-5 / T5.2)."""
+    handler = json.loads(TSUKAI_JSON_PATH.read_text(encoding="utf-8"))
+    target = handler.get("target", {})
+    assert target.get("by") == "repo"
+    # The map is a stub (may be empty or have placeholder values).
+    # An unknown repo key must not be present — so it will resolve to null.
+    assert "UnknownRepo" not in target.get("map", {})

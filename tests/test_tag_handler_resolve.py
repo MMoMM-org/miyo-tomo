@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_tag_handler_resolve.py — Behavioural tests for tag-handler-resolve.py.
 
 Covers T1.3 (XDD 024 Phase 1): deterministic resolver — load registry, match
@@ -409,3 +409,64 @@ def test_unknown_action_raises_error(tmp_path):
     item = {"path": "100 Inbox/note.md", "tags": ["Misc/Anything"], "frontmatter": {}}
     with pytest.raises(ValueError, match="unknown action"):
         resolve_item(item, registry)
+
+
+# ---------------------------------------------------------------------------
+# T5.2 — shipped tsukai.json on disk: load + resolve against real handler
+# ---------------------------------------------------------------------------
+
+TSUKAI_JSON_PATH = REPO_ROOT / "tomo" / "config" / "tag-handlers" / "tsukai.json"
+
+
+def test_shipped_tsukai_json_loads_as_registry():
+    """load_registry on the shipped tsukai.json directory returns one handler (T5.2)."""
+    handler_dir = TSUKAI_JSON_PATH.parent
+    registry = load_registry(handler_dir)
+    assert len(registry) == 1
+    assert registry[0]["id"] == "tsukai"
+
+
+def test_shipped_tsukai_json_resolves_tomo_tagged_item():
+    """resolve_item with a MiYo/Tsukai/Tomo tag + category frontmatter returns correct fields (T5.2 / AC-2).
+
+    PRD §6 exact shape:
+      handler == "tsukai"
+      vars    == {"repo": "Tomo"}  (from capture_segments)
+      fields  == {"category": "feature"}  (from read_fields)
+      marker  == "## Captures"
+      action  == "insert_under_marker"
+      placement == "inside"
+    """
+    handler_dir = TSUKAI_JSON_PATH.parent
+    registry = load_registry(handler_dir)
+
+    item = {
+        "path": "100 Inbox/tsukai-capture.md",
+        "tags": ["MiYo/Tsukai/Tomo"],
+        "frontmatter": {"category": "feature"},
+    }
+    result = resolve_item(item, registry)
+
+    assert result is not None
+    assert result["handler"] == "tsukai"
+    assert result["vars"] == {"repo": "Tomo"}
+    assert result["fields"] == {"category": "feature"}
+    assert result["marker"] == "## Captures"
+    assert result["action"] == "insert_under_marker"
+    assert result["placement"] == "inside"
+
+
+def test_shipped_tsukai_json_unmapped_repo_yields_null_target():
+    """resolve_item with an unmapped repo key returns target_path=None — no crash (T5.2 / AC-5 guard)."""
+    handler_dir = TSUKAI_JSON_PATH.parent
+    registry = load_registry(handler_dir)
+
+    item = {
+        "path": "100 Inbox/tsukai-capture.md",
+        "tags": ["MiYo/Tsukai/UnmappedRepo"],
+        "frontmatter": {},
+    }
+    result = resolve_item(item, registry)
+    assert result is not None
+    assert result["handler"] == "tsukai"
+    assert result["target_path"] is None

@@ -1,10 +1,10 @@
 #!/bin/bash
 # install-tomo.sh — Create a Tomo instance from source templates.
-# Copies agents, skills, commands, and configs into the instance directory.
+# Copies agents, skills, commands, and configs (incl. tag-handlers/) into the instance directory.
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.5.2
+# version: 0.5.3
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1309,6 +1309,17 @@ else
 fi
 
 # vault-example.yaml stays in tomo/config/ as schema reference — not copied to instance
+
+# Tag-handler configs — shipped reference handlers (e.g. tsukai.json)
+mkdir -p "$INSTANCE_PATH/config/tag-handlers"
+if [ -d "$TOMO_SOURCE/config/tag-handlers" ]; then
+    for f in "$TOMO_SOURCE/config/tag-handlers/"*.json; do
+        [ -f "$f" ] || continue
+        name=$(basename "$f")
+        cp "$f" "$INSTANCE_PATH/config/tag-handlers/$name"
+    done
+fi
+print_ok "config/tag-handlers/"
 
 # user-rules README (only if not present — user territory)
 if [ ! -f "$INSTANCE_PATH/config/user-rules/README.md" ]; then

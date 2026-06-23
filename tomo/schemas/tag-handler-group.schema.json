@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tomo Tag Handler Group Result",
+  "description": "A composed group from the tag-handler-interpreter skill (skill→reducer interface). One group = all handled[] items sharing the same (handler, target_path) pair, composed into a single block. Spec: docs/XDD/specs/024-tag-handler-framework/ SDD §5 + README decisions.",
+  "type": "object",
+  "required": ["schema_version", "handler", "target_path", "marker", "composed_block", "source_paths"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Schema version sentinel. Always '1' for this revision."
+    },
+    "handler": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ID of the tag-handler that claimed all items in this group."
+    },
+    "target_path": {
+      "type": ["string", "null"],
+      "description": "Resolved vault-relative path of the target note, or null when the target map had no entry for the captured vars. A null group is surfaced (not silently dropped) — consumers must guard."
+    },
+    "marker": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Anchor string in the target note (mirrors tag-handler config, e.g. '## Captures')."
+    },
+    "composed_block": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The merged content block for this group — either the output of one LLM compose call (directive path) or the mechanical join of field values (template path)."
+    },
+    "source_paths": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Vault-relative paths of all inbox items in this group (for traceability / suggestion rendering)."
+    },
+    "placement": {
+      "type": "string",
+      "enum": ["inside", "before", "after"],
+      "description": "Insertion position relative to the anchor. Mirrors tag-handler config."
+    },
+    "compose_mode": {
+      "type": "string",
+      "enum": ["llm_directive", "field_template"],
+      "description": "How the composed_block was produced: 'llm_directive' = one LLM merge call; 'field_template' = deterministic field join (no LLM)."
+    }
+  }
+}

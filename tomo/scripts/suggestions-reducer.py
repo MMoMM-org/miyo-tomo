@@ -1508,12 +1508,15 @@ def main() -> int:
         "sections": sections,
         "daily_notes_updates": daily_notes_updates,
         "rendered_daily_updates_md": rendered_daily_updates_md,
-        "tag_handler_updates": tag_handler_updates,             # spec 024 T3.3
-        "rendered_tag_handler_updates_md": rendered_tag_handler_updates_md,  # spec 024 T3.3
         "decision_precedence_note": precedence_note,
         "proposed_mocs": proposed_mocs,
         "needs_attention": needs_attention,
     }
+    # spec 024 T3.3: omit-when-empty — a no-groups run is byte-identical to pre-T3.3.
+    # render.py reads rendered_tag_handler_updates_md via .get() so absent is fine.
+    if tag_handler_updates:
+        doc["tag_handler_updates"] = tag_handler_updates
+        doc["rendered_tag_handler_updates_md"] = rendered_tag_handler_updates_md
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(

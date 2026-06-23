@@ -32,20 +32,26 @@ phase: 3
 
 Enables Pass-1 to turn a batch's handled items into reviewable, merged suggestion blocks — one per (handler, target) group.
 
-- [ ] **T3.1 `tag-handler-interpreter` skill — group by (handler, target_path)** `[activity: backend-api]`
+> **Build decomposition note**: phase-T3.1's "interpreter skill" split into a deterministic, testable
+> grouping core (T3.1 below) and the runtime skill itself (folded into T3.2 with the compose logic).
+> SDD §10 resolved: compose = **lean in-skill** (no separate analyst dispatch). Producer→consumer
+> contract = new `tag-handler-group.schema.json` (a merged group spans captures, so it does not fit
+> per-item `item-result.schema.json`).
 
-  1. Prime: Read the interpreter/compose spec `[ref: SDD/Section 5; lines: 95-103]` and the suggestion-conductor load pattern for conditional skills.
-  2. Test (RED): conductor loads the interpreter **only** when `routing-plan.handled` is non-empty; grouping bins items by `(handler, target_path)`; two repos in one batch → two groups; conductor does **not** load the skill on an empty/absent `handled`.
-  3. Implement: Author the `tag-handler-interpreter` skill (loaded by suggestion-conductor on non-empty `handled`) that groups `handled[]` by `(handler, target_path)`.
-  4. Validate: grouping unit tests pass; cold-path (no handled) untouched; lint clean.
+- [x] **T3.1 `tag-handler-group.py` grouping helper + `tag-handler-group.schema.json`** `[activity: backend-api]`
+
+  1. Prime: Read the interpreter/compose spec `[ref: SDD/Section 5; lines: 95-103]` and the `handled[]` shape.
+  2. Test (RED): `group_handled` bins by `(handler, target_path)` (merge same-key, split different-key, deterministic order, null target, empty→[]); `compose_field_template` mechanical join, no LLM; group-result schema accept + reject (missing composed_block, empty source_paths).
+  3. Implement: Deterministic, pure `tomo/scripts/tag-handler-group.py` (group stubs + mechanical compose) + `tomo/schemas/tag-handler-group.schema.json` (group-result contract: composed_block, source_paths, target nullable).
+  4. Validate: 33 unit tests pass; pure (no LLM/network); lint clean.
   5. Success: Handled items grouped per (handler, target) for compose `[ref: PRD/FR-7; lines: 66-67]`.
 
-- [ ] **T3.2 Compose — LLM directive (merge) + field template (mechanical)** `[activity: backend-api]`
+- [ ] **T3.2 `tag-handler-interpreter` skill + conductor wiring (lean in-skill compose)** `[activity: backend-api]`
 
-  1. Prime: Read the compose contract `[ref: SDD/Section 5; lines: 97-101]` and the FR-8 merge requirement `[ref: PRD/FR-8; lines: 68-69]`.
-  2. Test (RED): LLM directive → one compose call receives the **whole group** (all captures' title/category/Summary/body) and returns one merged status-update markdown block; three captures → one block (cardinality 1, not 3); field-template compose → mechanical join, no LLM call; group of one → still one block.
-  3. Implement: Implement the per-group compose dispatch (LLM directive path + mechanical field-template path) inside the interpreter flow.
-  4. Validate: compose tests pass (merge cardinality asserted); no LLM invoked on the field-template path; lint clean.
+  1. Prime: Read the compose contract `[ref: SDD/Section 5; lines: 97-101]`, the FR-8 merge requirement `[ref: PRD/FR-8; lines: 68-69]`, the `suggest-handling` skill + suggestion-conductor patterns.
+  2. Test (skill — validated by skill-author audit + spec-compliance, not unit-TDD): loaded by the conductor only on non-empty `routing-plan.handled`; runs the grouping helper; LLM directive → ONE merged dated block per group (cardinality 1, not per-item — STRICT); field-template → mechanical join (no LLM); writes group-result JSON conforming to the schema.
+  3. Implement: Author `tomo/dot_claude/skills/tag-handler-interpreter/SKILL.md` (imperative-only) + wire the conductor conditional load + a `docs/tomo/` WHY-doc.
+  4. Validate: skill-author audit clean; runtime file imperative-only with WHY in docs/tomo; conductor edit minimal + additive.
   5. Success: A group composes to exactly one merged update `[ref: PRD/FR-8; lines: 68-69]` `[ref: PRD/AC-3; lines: 109-110]`.
 
 - [ ] **T3.3 `suggestions-reducer.py` — render group as a suggestion item** `[activity: frontend-ui]`

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_suggestions_reducer_tag_handler_groups.py — T3.3 (spec 024).
 
-Covers the tag-handler group-result render path in suggestions-reducer:
+Covers the tag-handler group-result render path in suggestions-reducer and
+the surface in suggestions-render:
   1. One group → one suggestion item with composed_block + target_path + marker + Approve box.
   2. A group with N source_paths renders composed_block ONCE (N→1 merge already upstream).
   3. Two groups → two distinct suggestion items.
-  4. No/empty --tag-handler-groups-dir → suggestions doc is byte-identical to today
-     (additive safety — absent registry does not disturb the existing doc).
+  4. No/empty --tag-handler-groups-dir → doc fields are ABSENT (byte-identity; proven via
+     main() invocation, not just the collection helper).
   5. Rendered tag_handler_updates[] present in the doc JSON structure.
+  6. The FINAL rendered markdown (suggestions-render.py) surfaces the group block.
 
 Fixtures conform to tomo/schemas/tag-handler-group.schema.json (schema_version "1",
 required: handler, target_path, marker, composed_block, source_paths).
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -40,6 +43,18 @@ _reducer_spec.loader.exec_module(_reducer_mod)
 render_tag_handler_group = _reducer_mod.render_tag_handler_group  # type: ignore[attr-defined]
 collect_tag_handler_groups = _reducer_mod.collect_tag_handler_groups  # type: ignore[attr-defined]
 render_tag_handler_updates_block = _reducer_mod.render_tag_handler_updates_block  # type: ignore[attr-defined]
+
+# Load suggestions-render.py (hyphen filename → importlib).
+_render_spec = importlib.util.spec_from_file_location(
+    "suggestions_render", SCRIPTS_DIR / "suggestions-render.py"
+)
+_render_mod = importlib.util.module_from_spec(_render_spec)
+assert _render_spec.loader is not None
+sys.modules["suggestions_render"] = _render_mod
+_render_spec.loader.exec_module(_render_mod)
+
+render_tag_handler_updates_fn = _render_mod.render_tag_handler_updates  # type: ignore[attr-defined]
+render_suggestions_fn = _render_mod.render_suggestions  # type: ignore[attr-defined]
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -73,6 +88,51 @@ def _group(
 
 def _write_group(dir_path: Path, filename: str, group: dict) -> None:
     (dir_path / filename).write_text(json.dumps(group), encoding="utf-8")
+
+
+def _minimal_state(state_path: Path, stems: list[str]) -> None:
+    """Write a minimal JSONL state file for the reducer stub run."""
+    lines = []
+    for stem in stems:
+        lines.append(json.dumps({
+            "stem": stem,
+            "path": f"100 Inbox/{stem}.md",
+            "status": "done",
+            "run_id": "test-run",
+            "ts": "2026-06-23T12:00:00Z",
+        }))
+    state_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _run_reducer_main(tmp: Path, *, groups_dir: Path | None = None) -> dict:
+    """Invoke the reducer main() with a minimal stub inbox and return the doc JSON."""
+    state_path = tmp / "state.jsonl"
+    items_dir = tmp / "items"
+    out_path = tmp / "doc.json"
+    items_dir.mkdir(parents=True, exist_ok=True)
+    _minimal_state(state_path, [])  # no inbox items — we only care about tag-handler path
+
+    # Build argv for the reducer
+    argv = [
+        "suggestions-reducer.py",
+        "--state", str(state_path),
+        "--items-dir", str(items_dir),
+        "--run-id", "test-run",
+        "--profile", "miyo",
+        "--output", str(out_path),
+        "--no-kado",
+    ]
+    if groups_dir is not None:
+        argv += ["--tag-handler-groups-dir", str(groups_dir)]
+
+    old_argv = sys.argv
+    sys.argv = argv
+    try:
+        _reducer_mod.main()  # type: ignore[attr-defined]
+    finally:
+        sys.argv = old_argv
+
+    return json.loads(out_path.read_text(encoding="utf-8"))
 
 
 # ── T3.3-1: one group → one suggestion item ───────────────────────────────────
@@ -153,41 +213,75 @@ def test_two_groups_two_suggestions() -> None:
     assert "Projects/Alpha/Notes.md" in combined or "Alpha" in combined
 
 
-# ── T3.3-4: no groups dir → doc unchanged (additive safety) ──────────────────
+# ── T3.3-4: no groups dir → fields absent in doc JSON (byte-identity) ─────────
 
 
 def test_no_groups_dir_unchanged() -> None:
-    """When --tag-handler-groups-dir is absent or empty → doc JSON is unchanged."""
-    # collect_tag_handler_groups(None) must return []
-    result_none = collect_tag_handler_groups(None)
-    assert result_none == [], "None dir must return empty list"
+    """When --tag-handler-groups-dir is absent or empty → doc JSON is unchanged.
 
-    # collect_tag_handler_groups(<non-existent path>) must return []
-    result_missing = collect_tag_handler_groups(Path("/tmp/does-not-exist-xxxxxxxxxxx"))
-    assert result_missing == [], "Missing dir must return empty list"
-
-    # collect_tag_handler_groups(<empty dir>) must return []
+    Proven via main() invocation: neither tag_handler_updates nor
+    rendered_tag_handler_updates_md must be present in the output doc.
+    """
+    # Helper-level sanity (fast path — keeps the unit-test value)
+    assert collect_tag_handler_groups(None) == [], "None dir must return empty list"
+    assert collect_tag_handler_groups(Path("/tmp/does-not-exist-xxxxxxxxxxx")) == [], \
+        "Missing dir must return empty list"
     with tempfile.TemporaryDirectory() as tmpdir:
-        result_empty = collect_tag_handler_groups(Path(tmpdir))
-    assert result_empty == [], "Empty dir must return empty list"
+        assert collect_tag_handler_groups(Path(tmpdir)) == [], \
+            "Empty dir must return empty list"
+
+    # Main()-level proof: no --tag-handler-groups-dir → fields absent from doc.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        doc = _run_reducer_main(Path(tmpdir))
+
+    assert "tag_handler_updates" not in doc, (
+        "tag_handler_updates must be absent when no groups dir is passed — "
+        f"found: {doc.get('tag_handler_updates')}"
+    )
+    assert "rendered_tag_handler_updates_md" not in doc, (
+        "rendered_tag_handler_updates_md must be absent when no groups dir is passed"
+    )
 
 
 # ── T3.3-5: rendered items present in the doc JSON structure ─────────────────
 
 
 def test_group_suggestion_in_doc_output() -> None:
-    """tag_handler_updates[] and rendered_tag_handler_updates_md are in the doc JSON."""
+    """tag_handler_updates[] and rendered_tag_handler_updates_md appear in doc JSON
+    when groups are present, and the rendered markdown contains the composed_block."""
     g = _group(
         composed_block="- A captured insight",
         target_path="Atlas/Reading Log.md",
         marker="## Captures",
     )
 
-    groups = [g]
-    tag_handler_updates = groups  # passed through to doc
-    rendered_md = render_tag_handler_updates_block(groups)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        groups_dir = Path(tmpdir)
+        _write_group(groups_dir, "group-test.json", g)
 
-    # Simulate the doc dict structure (mirrors daily_notes_updates pattern)
+        doc = _run_reducer_main(Path(tmpdir) / "run", groups_dir=groups_dir)
+
+    assert "tag_handler_updates" in doc
+    assert len(doc["tag_handler_updates"]) == 1
+    assert "rendered_tag_handler_updates_md" in doc
+    assert "A captured insight" in doc["rendered_tag_handler_updates_md"]
+
+
+# ── T3.3-6: final rendered markdown surfaces the group block ─────────────────
+
+
+def test_group_surfaces_in_final_rendered_markdown() -> None:
+    """suggestions-render.py must include composed_block + target + marker + Approve
+    in the final user-facing markdown (not just in the JSON)."""
+    composed = "- Finished reading *The Pragmatic Programmer* ch.5"
+    g = _group(
+        composed_block=composed,
+        target_path="Atlas/300 Reading/Reading Log.md",
+        marker="## Captures",
+    )
+    rendered_block = render_tag_handler_updates_block([g])
+
+    # Build a minimal suggestions-doc that render.py would consume
     doc: dict[str, Any] = {
         "schema_version": "1",
         "generated": "2026-06-23T12:00:00Z",
@@ -198,14 +292,17 @@ def test_group_suggestion_in_doc_output() -> None:
         "sections": [],
         "daily_notes_updates": [],
         "rendered_daily_updates_md": "",
-        "tag_handler_updates": tag_handler_updates,
-        "rendered_tag_handler_updates_md": rendered_md,
+        "tag_handler_updates": [g],
+        "rendered_tag_handler_updates_md": rendered_block,
         "decision_precedence_note": "",
         "proposed_mocs": [],
         "needs_attention": [],
     }
 
-    assert "tag_handler_updates" in doc
-    assert len(doc["tag_handler_updates"]) == 1
-    assert "rendered_tag_handler_updates_md" in doc
-    assert "A captured insight" in doc["rendered_tag_handler_updates_md"]
+    final_lines = render_tag_handler_updates_fn(doc)
+    final_md = "\n".join(final_lines)
+
+    assert composed in final_md, "composed_block must appear verbatim in final markdown"
+    assert "Reading Log" in final_md, "target note reference must appear"
+    assert "## Captures" in final_md, "marker must appear"
+    assert "Approve" in final_md, "Approve checkbox must be present in final markdown"

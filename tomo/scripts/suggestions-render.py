@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.8.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -98,6 +98,18 @@ def render_daily_updates(d: dict) -> list[str]:
     return [md, ""]
 
 
+def render_tag_handler_updates(d: dict) -> list[str]:
+    """Render the ## Tag-Handler Updates block from the pre-rendered reducer output.
+
+    Mirrors render_daily_updates: reads rendered_tag_handler_updates_md verbatim,
+    returns [] when absent or empty so the section is omitted cleanly.
+    """
+    md = (d.get("rendered_tag_handler_updates_md") or "").strip()
+    if not md:
+        return []
+    return [md, ""]
+
+
 def _extract_atomic_title(rendered_md: str, fallback: str) -> str:
     """Extract 'Suggested name' from rendered_md, strip ← hints, fall back to stem."""
     m = re.search(r"\*\*Suggested name:\*\*\s*([^\n]+)", rendered_md)
@@ -190,6 +202,7 @@ def main() -> int:
     parts.extend(render_header(d))
     parts.extend(render_summary(d))
     parts.extend(render_daily_updates(d))
+    parts.extend(render_tag_handler_updates(d))
     parts.extend(render_suggestions(d))
     parts.extend(render_proposed_mocs(d))
     parts.extend(render_needs_attention(d))

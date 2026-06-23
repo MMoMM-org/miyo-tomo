@@ -81,6 +81,48 @@ rejected with the same mechanism. The registry table in SDD §4 is the single ex
 point; adding a new action requires updating the table AND removing it from
 `_DEFERRED_ACTIONS` (or adding it as a new shipped action).
 
+## Cross-repo Apply (Hashi) — `insert_under_marker` is LIVE
+
+WHY: Automated apply via Hashi's `insert_under_marker` action is **live** as of 2026-06-23 (Hashi PR #73,
+1219-green suite). The SDD (§6) framed manual apply as the fallback if Hashi was late — it was not late.
+Manual apply is **not** the steady-state; it is a fallback only if Hashi regresses or is unavailable.
+
+**Contract Tomo emits (Pass-2 render):**
+
+```jsonc
+{
+  "id": "I01",
+  "action": "insert_under_marker",
+  "target_path": "Efforts/400 On/Tomo Dev Log.md",  // verbatim vault-relative path (byte-equal discipline)
+  "anchor": { "type": "heading", "value": "Captures" }, // reuses existing anchor $def
+  "placement": "inside",
+  "content": "### 2026-06-23\n\n- Shipped X\n- Decided Y"  // multi-line, inserted as-is
+}
+```
+
+This shape is conformance-tested against the verbatim Hashi snapshot
+`tomo/schemas/hashi-instructions.schema.json` (the parity-guarded contract copy).
+The unconditional guard lives in `tests/test_instruction_render_wire_hygiene.py`:
+it fails if the snapshot drifts from the real Hashi schema. Additional cross-repo and
+group-instruction tests: `tests/test_tag_handler_e2e.py`,
+`tests/test_tag_handler_group_instruction_linkage.py`, `tests/test_hashi_instructions_schema.py`.
+
+**Confirmed semantics (from Hashi's landed notice):**
+
+- `placement:"inside"` + heading anchor = **append at the END of the heading's section** — content
+  lands immediately above the next same-or-higher heading (or EOF), preserving all existing section
+  content. Dated blocks accrete at the bottom of `## Captures`; the shipped `tsukai.json` handler
+  uses this. "Append, never replace" is the invariant.
+- `placement:"inside"` + line anchor is **rejected** by Hashi (*"placement: inside not supported for
+  line anchor"*); use `before`/`after` for line markers. The Tsukai handler uses a heading anchor, so
+  this edge case does not arise in the default config.
+- `inside` + callout anchor works as before (appends with `> ` prefix).
+
+**Cross-repo contract pin:** the `insert_under_marker` action is recorded in Kokoro via
+`_outbox/for-kokoro/2026-06-23_tomo-to-kokoro_insert-under-marker-contract.md` — a ready-to-land
+draft ADR-023 extending ADR-016's nine-action contract to ten (Constitution L2 Architecture).
+Kokoro assigns the final number and lands it; Tomo's side is the draft carrier.
+
 ## Additive-Safety / AC-5 Byte-Identity Rationale
 
 WHY: AC-5 from spec 024 requirements states that a `/inbox` run with no registered

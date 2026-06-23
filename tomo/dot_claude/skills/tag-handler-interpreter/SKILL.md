@@ -56,9 +56,10 @@ For each stub at index `<i>`:
   - `handler`: from stub
   - `target_path`: from stub (may be null — do not drop null-target groups)
   - `marker`: from stub
-  - `placement`: from stub
   - `source_paths`: from stub
   - `composed_block`: the merged block from step 3
+- Optional (include when the group stub supplies them / when known):
+  - `placement`: from stub
   - `compose_mode`: `"llm_directive"` if compose was a string; `"field_template"` if compose was an array
 
 The reducer reads these files to render suggestion items.

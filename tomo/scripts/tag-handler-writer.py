@@ -36,6 +36,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import NoReturn
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent.parent  # tomo/scripts/ → tomo/ → repo root
@@ -53,7 +54,7 @@ except ImportError:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 
-def _die(msg: str, code: int = 1) -> None:
+def _die(msg: str, code: int = 1) -> NoReturn:
     print(f"error: {msg}", file=sys.stderr)
     sys.exit(code)
 

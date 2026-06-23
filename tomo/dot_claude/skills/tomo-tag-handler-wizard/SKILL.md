@@ -8,7 +8,7 @@ effort: medium
 ---
 
 # Tomo Tag-Handler Wizard
-# version: 0.1.0
+# version: 0.1.1
 
 ## Persona
 
@@ -20,8 +20,8 @@ inbox notes carrying a specific tag prefix. No skill authoring needed.
 
 You collect each field via AskUserQuestion, assemble the handler dict, and
 write `config/tag-handlers/<id>.json` by invoking the writer script.
-The script validates the handler against the schema before writing; you
-surface any rejection as an error and loop back to fix it.
+Surface the writer's non-zero exit as a clear error and loop back to fix the inputs;
+do not report success on a non-zero exit.
 
 Be idempotent: if a handler file already exists, pre-fill every question
 with the current value as the default choice.
@@ -67,7 +67,7 @@ State {
 - Keep user-facing wording about what the handler does; do not name internal scripts or executor components.
 
 **Never:**
-- Write the output JSON file directly with the Write tool — atomicity and validation are enforced by the writer script.
+- Write the output JSON file directly with the Write tool.
 - Ask more than one question at a time.
 - Present 5+ options in a single AskUserQuestion.
 - Create a handler for an id that conflicts with an existing file without first confirming an Edit intent.
@@ -194,11 +194,13 @@ Options:
 - Re-edit (loop back to step 2)
 - Cancel
 
-On Write: assemble handler dict, write to `tomo-tmp/tag-handler-draft.json` via Bash,
-then invoke:
+On Write: assemble handler dict, then invoke via Bash:
 ```
-python3 scripts/tag-handler-writer.py --input tomo-tmp/tag-handler-draft.json
+mkdir -p tomo-tmp && python3 -c "import json,sys; open('tomo-tmp/tag-handler-<id>-draft.json','w').write(json.dumps(<handler_dict>))"
+python3 scripts/tag-handler-writer.py --input tomo-tmp/tag-handler-<id>-draft.json
 ```
+
+Replace `<id>` with the actual handler id and `<handler_dict>` with the assembled dict.
 
 If the writer exits non-zero, show the error from stderr and ask the user whether to
 re-edit or cancel. Do not proceed.

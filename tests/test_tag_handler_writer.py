@@ -280,3 +280,33 @@ class TestRoundTrip:
         assert len(registry) == 1
         assert isinstance(registry[0]["compose"], list)
         assert registry[0]["compose"] == ["created", "Summary", "link"]
+
+
+# ---------------------------------------------------------------------------
+# (d) filename-safety: unsafe id chars are sanitised to produce a safe stem
+# ---------------------------------------------------------------------------
+
+class TestSafeStem:
+    def test_id_with_unsafe_chars_uses_safe_stem(self, tmp_path):
+        """Handler id with a colon (e.g. 'tag:foo') must produce a sanitised filename.
+
+        _safe_stem replaces unsafe filesystem chars (colon, space, slash, …) with
+        underscores. The output file must be named after the sanitised stem — NOT
+        the raw id — so the file is writable on all target filesystems.
+        """
+        out_dir = tmp_path / "handlers"
+        out_dir.mkdir()
+        # Build a handler whose id contains a colon (unsafe on most filesystems)
+        handler = _tsukai_handler()
+        handler["id"] = "tag:foo"
+
+        result = _run_writer(handler, out_dir)
+        assert result.returncode == 0, f"writer failed unexpectedly: {result.stderr}"
+
+        # The raw id "tag:foo" contains ':' → _safe_stem replaces it with '_'
+        # so the expected filename is "tag_foo.json", NOT "tag:foo.json"
+        assert (out_dir / "tag_foo.json").exists(), (
+            f"expected tag_foo.json but found: {list(out_dir.iterdir())}"
+        )
+        # The raw-id filename must NOT exist
+        assert not (out_dir / "tag:foo.json").exists()

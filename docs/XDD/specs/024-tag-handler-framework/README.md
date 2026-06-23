@@ -5,15 +5,15 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-23 |
-| **Current Phase** | PRD |
+| **Current Phase** | SDD |
 | **Last Updated** | 2026-06-23 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | in_progress | PRD — design locked in #47 brainstorm |
-| solution.md | pending | |
+| requirements.md | completed | PRD — design locked in #47 brainstorm |
+| solution.md | in_progress | SDD drafted; awaiting PRD→SDD gate approval |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -26,6 +26,10 @@
 | 2026-06-23 | Handler = pure data, not a skill | skill-author isn't installed in Tomo; matches Tomo's "logic in skills, config in data" principle. Authored via a wizard. |
 | 2026-06-23 | Aggregation: merge per (handler, target note) | LLM composes one logical status update with full batch context, not a per-capture dump. |
 | 2026-06-23 | Additive-only on hot paths | Tomo near-MVP; a /inbox run with no registered handlers must be byte-identical to today. |
+| 2026-06-23 | SDD OQ-2: ship `insert_under_marker` only; other 3 actions declared-but-deferred | Registry extensible; one flagship action proves the model without overbuild. |
+| 2026-06-23 | SDD OQ-3: append a new dated status block, never replace under the marker | Preserves history; user review is the idempotency gate. |
+| 2026-06-23 | SDD finding: `insert_under_marker` needs a NEW Hashi action (cross-repo) | Existing vocab can't insert a multi-line block into an arbitrary note at a marker. |
+| 2026-06-23 | Phasing: Phase-1 Tomo-only + manual apply; Phase-2 Hashi action via handoff | Ships v1 end-to-end with no cross-repo dependency (MVP boundary already manual). |
 
 ## Context
 

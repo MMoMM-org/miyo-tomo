@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Pass-2 render + guards"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -56,7 +56,7 @@ Enables Pass-2 to render an approved group into a Hashi `insert_under_marker` in
   4. Validate: `./venv/bin/python` tests pass; emitted instruction matches SDD §6 JSON; approve/skip honored; lint clean.
   5. Success: Approved group → valid `insert_under_marker` instruction `[ref: PRD/FR-10; lines: 73-74]` `[ref: SDD/Section 6; lines: 122-128]`.
 
-- [ ] **T4.2 Guards — missing target (checkbox) + missing marker (error)** `[activity: backend-api]`
+- [x] **T4.2 Guards — missing target (checkbox) + missing marker (error)** `[activity: backend-api]`
 
   1. Prime: Read the guard spec `[ref: SDD/Section 5; lines: 106-110]` and `[ref: PRD/FR-11,FR-12; lines: 76-80]`.
   2. Test (RED): target_path missing on disk → "create it first" checkbox (daily-note-existence pattern, reducer), **no instruction** until it exists; marker absent in an existing target → error item, **no instruction** (no silent append/relocate); both paths exercised via a **fake-vault read** for marker-existence (FR-12 is a filesystem-access path); happy path (target+marker present) → instruction emitted.
@@ -64,6 +64,6 @@ Enables Pass-2 to render an approved group into a Hashi `insert_under_marker` in
   4. Validate: `./venv/bin/python` guard tests pass (both denial paths, Constitution L1); lint clean.
   5. Success: Missing target → checkbox; missing marker → error `[ref: PRD/AC-4; lines: 111]` `[ref: PRD/FR-11,FR-12; lines: 76-80]`.
 
-- [ ] **T4.3 Phase Validation** `[activity: validate]`
+- [x] **T4.3 Phase Validation** `[activity: validate]`
 
   - Run all Phase 4 tests under `./venv/bin/python`. Verify the instruction matches SDD §6 and that both guard denial paths fire (incl. the fake-vault marker read). Lint clean. **Gate: instruction emitted; guards fire (AC-4).**

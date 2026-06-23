@@ -8,7 +8,7 @@
 - [x] [Phase 1: Hashi handoff (early/parallel) + resolver foundations](phase-1.md)
 - [x] [Phase 2: Triage detection](phase-2.md)
 - [x] [Phase 3: Pass-1 compose + suggestion](phase-3.md)
-- [ ] [Phase 4: Pass-2 render + guards](phase-4.md)
+- [x] [Phase 4: Pass-2 render + guards](phase-4.md)
 - [ ] [Phase 5: Authoring wizard + Tsukai handler + docs](phase-5.md)
 - [ ] [Phase 6: Integration & validation](phase-6.md)
 

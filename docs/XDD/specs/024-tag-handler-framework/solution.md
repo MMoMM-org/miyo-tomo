@@ -38,7 +38,14 @@ config/tag-handlers/<feature>.json   ← pure data (authored by wizard)
 }
 ```
 
-- `compose` is **either** a string (LLM directive) **or** an array of field names (mechanical template).
+- `compose` is **either** a string (LLM directive) **or** an array of field names (mechanical template) —
+  expressed as a JSON-Schema `oneOf` (string xor array of strings) so T1.2 is unambiguous.
+- `enabled` (default `true`): a `false` handler is skipped exactly like an invalid one (not matched, not
+  an error).
+- `marker` → `anchor.value` transform: strip a leading run of `#` plus the following space and trim
+  (`"## Captures"` → `"Captures"`); heading level is **not** significant for matching.
+- `target.map` is the per-feature mapping the PRD prose calls `repo_note_map` — they are the same field
+  (`target.map`, keyed by `target.by`). The PRD prose name is an alias, not a separate key.
 - A JSON Schema `tomo/schemas/tag-handler.schema.json` validates each file at load; an invalid handler
   is skipped with a logged warning (never aborts the run — additive-safety).
 
@@ -77,8 +84,13 @@ The registry table is the single extension point.
 ### Triage — `inbox-triage.py`
 After `compute_new_sources`, run `tag-handler-resolve` over each new source's tags+frontmatter. A match
 adds a `handled[]` entry to `routing-plan.json` (`{path, handler, vars, target_path, action, …}`) and the
-item is **excluded** from the generic `suggest` lane. No match → unchanged. Empty registry → resolver
-returns nothing → zero new entries (AC-5).
+item is **excluded** from the generic `suggest` lane. No match → unchanged.
+
+**Schema change required (not pure-additive):** `routing-plan.schema.json` has `additionalProperties:false`,
+so it must be **extended** with a `handled[]` property (and the `action` enum may gain a `handle` value).
+To preserve AC-5, triage **omits the `handled` key entirely when the registry is empty / no item matched**
+— an empty `handled:[]` would still validate after the schema change, but emitting nothing keeps an
+empty-registry run byte-identical to today (and schema-valid before the extension lands).
 
 ### Pass-1 — interpreter skill + compose
 A thin `tag-handler-interpreter` skill (loaded by the suggestion-conductor when `routing-plan.handled`
@@ -102,9 +114,10 @@ marker heading), never replace existing content — preserves history; idempoten
 
 ## 6. The new instruction + cross-repo dependency
 
-`insert_under_marker` is **not** expressible with the current Hashi vocabulary (`link_to_moc` is
-MOC-stem-scoped and writes a single `line_to_add`; `update_log_entry` is daily-note-scoped). It needs a
-new instruction action:
+`insert_under_marker` is **not** expressible with the current Hashi vocabulary: `link_to_moc` is
+**MOC-stem-scoped** (targets a MOC by stem, not an arbitrary note path) and `update_log_entry` is
+**daily-note-scoped**. (`link_to_moc.line_to_add` may itself be multi-line — the blocker is the *target
+scoping*, not line count.) It needs a new instruction action:
 
 ```jsonc
 { "id": "...", "action": "insert_under_marker",
@@ -114,16 +127,19 @@ new instruction action:
   "content": "<multi-line composed status update>" }
 ```
 
-**This is a cross-repo contract change** (`miyo-tomo-hashi` must implement the executor side) and per the
-MiYo Constitution (L2 Architecture) must be reflected in **Kokoro** and coordinated via the handoff
-protocol (`_outbox/for-hashi/`).
+Note: `placement:"inside"` is today defined **callout-only** in Hashi; `inside` relative to a *heading*
+anchor (content beneath the heading, above the next same-or-higher heading) is a **new semantic the
+executor must define** — called out in the handoff.
 
-**Phasing decision (recommended — confirm at gate):**
-- **Phase 1 (this spec, Tomo-only):** detect → compose → render the `insert_under_marker` instruction →
-  **manual apply** (the user pastes the composed block under the marker). This is already the MVP boundary
-  ("Hashi/manual applies Pass-2"), so v1 ships end-to-end Tomo-side with **no Hashi dependency**.
-- **Phase 2 (cross-repo, separate):** Hashi implements the `insert_under_marker` executor; Kokoro records
-  the contract; handoff via `_outbox/for-hashi/`. Automates the apply.
+**This is a cross-repo contract change** (`miyo-tomo-hashi` must implement the executor side) and per the
+MiYo Constitution (L2 Architecture) must be reflected in **Kokoro** (the authoritative repo) — a concrete
+ADR/design-note routed via `_outbox/for-kokoro/`, not folded into the Hashi handoff (PLAN T1.1).
+
+**Phasing decision (confirmed 2026-06-23):** the Hashi `insert_under_marker` ask ships **first**
+(PLAN T1.1) so the executor lands in parallel with Tomo's side — manual apply is only the **fallback** if
+Hashi is late, not the planned interim. Tomo's side (detect → compose → render the instruction) is
+cross-repo-independent and proceeds regardless; the only externally-blocked step is the *automated* apply
+(T6.2). The Kokoro contract note is part of T1.1's done-definition (before/alongside implementation, L2).
 
 ## 7. Authoring — `tomo-tag-handler-wizard`
 

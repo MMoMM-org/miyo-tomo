@@ -31,6 +31,7 @@
 | 2026-06-23 | SDD finding: `insert_under_marker` needs a NEW Hashi action (cross-repo) | Existing vocab can't insert a multi-line block into an arbitrary note at a marker. |
 | 2026-06-23 | Phasing: Phase-1 Tomo-only + manual apply; Phase-2 Hashi action via handoff | Ships v1 end-to-end with no cross-repo dependency (MVP boundary already manual). |
 | 2026-06-23 | PLAN: Hashi handoff is T1 (ships first, parallel) | A well-explained Hashi ask early lets the executor land before Tomo's side is done — no manual-apply interim. Only insert_under_marker needs a new Hashi action; route_to_folder/link_to_moc reuse move_note/link_to_moc. |
+| 2026-06-23 | /validate 024 → fixes applied | 3-perspective validation (all SDD code-claims held). Fixed: HIGH phasing contradiction (SDD §6 reconciled to Hashi-first), MED routing-plan.schema.json must be extended + omit `handled` when empty (AC-5), MED Kokoro reflection now first-class (T1.1b, `_outbox/for-kokoro/`), + parity polish (placement/enabled/marker-transform/compose-oneOf). |
 
 ## Context
 

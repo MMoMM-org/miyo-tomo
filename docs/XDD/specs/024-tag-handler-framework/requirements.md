@@ -90,13 +90,17 @@ skills.
 ```json
 {
   "id": "tsukai",
+  "enabled": true,
   "match": { "tag_prefix": "MiYo/Tsukai/", "capture_segments": ["repo"], "read_fields": ["category"] },
   "action": "insert_under_marker",
   "target": { "by": "repo", "map": { "Tomo": "Efforts/…/Tomo Dev Log.md" } },
   "marker": "## Captures",
+  "placement": "inside",
   "compose": "Synthesize the batch's captures into one dated logical status update, grouped by category."
 }
 ```
+
+> `target.map` is the field FR-14/NG3 refer to in prose as `repo_note_map` — same field, keyed by `target.by`.
 
 ## 7. Acceptance Criteria
 

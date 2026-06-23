@@ -17,10 +17,14 @@
 ## Tasks
 
 ### P1 — Handoff + foundations
-- **T1.1** Draft + send the **Hashi handoff** (`_outbox/for-hashi/insert-under-marker-action.md`): the new
+- **T1.1a** Draft + send the **Hashi handoff** (`_outbox/for-hashi/insert-under-marker-action.md`): the new
   `insert_under_marker` instruction contract (`target_path`, `anchor{type:heading,value}`, `placement`,
-  `content`), reusing Hashi's existing `anchor` resolution; acceptance + test shape. Add the cross-repo
-  contract note to **Kokoro** (constitution L2). **Ships first** so Hashi builds in parallel.
+  `content`), reusing Hashi's existing `anchor` resolution; flags that `inside`-on-heading is a new
+  executor semantic; acceptance + test shape. **Ships first** so Hashi builds in parallel.
+- **T1.1b** **Kokoro contract note** (constitution L2, Architecture): a concrete ADR / design-note in
+  miyo-kokoro recording the `insert_under_marker` instruction-set schema addition, routed via
+  `_outbox/for-kokoro/`. Part of T1's done-definition — the contract must live in the authoritative repo
+  before/alongside implementation, not folded into the Hashi handoff.
 - **T1.2** `tomo/schemas/tag-handler.schema.json` — handler config JSON Schema (match/action/target/marker/
   placement/compose). Invalid handler → skipped with logged warning.
 - **T1.3** `tomo/scripts/tag-handler-resolve.py` — deterministic resolver (load registry, match tag_prefix,
@@ -28,9 +32,12 @@
   (lexical-by-id), unmapped-target (`target_path=null`), invalid-handler-skip.
 
 ### P2 — Triage detection
+- **T2.0** Extend `tomo/schemas/routing-plan.schema.json` (it is `additionalProperties:false`): add the
+  `handled[]` property (and a `handle` action value if needed). **Prereq for T2.1.**
 - **T2.1** `inbox-triage.py`: after `compute_new_sources`, run resolver; add `handled[]` to
-  `routing-plan.json`; exclude handled items from the `suggest` lane. **Empty registry → zero entries,
-  byte-identical run (AC-5).** Tests: handled-item partition; empty-registry identity; mixed batch.
+  `routing-plan.json`; exclude handled items from the `suggest` lane. **Omit the `handled` key entirely
+  when empty → byte-identical run (AC-5).** Tests: handled-item partition; empty-registry identity (no
+  `handled` key, schema-valid); mixed batch.
 
 ### P3 — Pass-1 compose + suggestion
 - **T3.1** `tag-handler-interpreter` skill — loaded by suggestion-conductor when `routing-plan.handled`
@@ -44,7 +51,8 @@
 - **T4.1** `instruction-render.py`: approved group → `insert_under_marker` instruction reusing the
   `anchor` machinery (`type:heading`, `value:<marker w/o ##>`, `placement`).
 - **T4.2** Guards: target-missing → "create it first" checkbox (daily-note pattern, reducer); marker-missing
-  → error item, no instruction. Tests: both guard paths (Constitution L1 denial-path coverage).
+  → error item, no instruction. Tests: both guard paths (Constitution L1 denial-path coverage), incl. a
+  **fake-vault read** for the marker-existence check (FR-12 is a filesystem-access path, not pre-supplied input).
 
 ### P5 — Authoring + Tsukai + docs
 - **T5.1** `tomo-tag-handler-wizard` skill (AskUserQuestion → writes `config/tag-handlers/<feature>.json`,

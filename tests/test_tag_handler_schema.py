@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+# version: 0.2.0
+"""test_tag_handler_schema.py — JSON Schema validation tests for tag-handler.schema.json.
+
+Covers T1.2 (XDD 024 Phase 1): handler config schema for the tag-handler framework.
+
+Spec: docs/XDD/specs/024-tag-handler-framework/
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+_DEPS = "/tmp/claude/py_deps"
+if Path(_DEPS).is_dir() and _DEPS not in sys.path:
+    sys.path.insert(0, _DEPS)
+
+from jsonschema import ValidationError, validate  # noqa: E402
+
+TESTS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = TESTS_DIR.parent
+SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "tag-handler.schema.json"
+
+
+@pytest.fixture(scope="module")
+def schema() -> dict:
+    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# Helpers — minimal valid fixture builders
+# ---------------------------------------------------------------------------
+
+def _make_handler(**overrides) -> dict:
+    """Return a minimal valid tag-handler config with all required fields."""
+    base = {
+        "id": "tsukai",
+        "match": {
+            "tag_prefix": "MiYo/Tsukai/",
+        },
+        "action": "insert_under_marker",
+        "compose": "Synthesize the batch's captures into one dated status update.",
+    }
+    base.update(overrides)
+    return base
+
+
+# ---------------------------------------------------------------------------
+# Happy-path — full tsukai example from SDD §2
+# ---------------------------------------------------------------------------
+
+
+def test_valid_tsukai_handler_validates(schema):
+    """The full tsukai handler example from SDD §2 passes validation."""
+    handler = {
+        "id": "tsukai",
+        "enabled": True,
+        "match": {
+            "tag_prefix": "MiYo/Tsukai/",
+            "capture_segments": ["repo"],
+            "read_fields": ["category"],
+        },
+        "action": "insert_under_marker",
+        "target": {
+            "by": "repo",
+            "map": {"Tomo": "Efforts/.../Tomo Dev Log.md"},
+        },
+        "marker": "## Captures",
+        "placement": "inside",
+        "compose": "Synthesize the batch's captures into one dated status update, grouped by category.",
+    }
+    validate(instance=handler, schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# compose — oneOf: string xor array-of-strings
+# ---------------------------------------------------------------------------
+
+
+def test_compose_string_validates(schema):
+    """compose as a plain string (LLM directive) passes validation."""
+    validate(instance=_make_handler(compose="Write a status update."), schema=schema)
+
+
+def test_compose_array_of_strings_validates(schema):
+    """compose as an array of field name strings (mechanical template) passes validation."""
+    validate(instance=_make_handler(compose=["category", "repo"]), schema=schema)
+
+
+def test_compose_number_fails_oneof(schema):
+    """compose as a number is rejected — must be string or array-of-strings."""
+    with pytest.raises(ValidationError):
+        validate(instance=_make_handler(compose=42), schema=schema)
+
+
+def test_compose_object_fails_oneof(schema):
+    """compose as an object is rejected — must be string or array-of-strings."""
+    with pytest.raises(ValidationError):
+        validate(instance=_make_handler(compose={"template": "status"}), schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# match.tag_prefix — required
+# ---------------------------------------------------------------------------
+
+
+def test_missing_match_tag_prefix_fails(schema):
+    """A handler missing match.tag_prefix is rejected."""
+    handler = _make_handler()
+    handler["match"] = {}  # tag_prefix omitted
+    with pytest.raises(ValidationError):
+        validate(instance=handler, schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# action — enum enforcement
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_action_value_fails(schema):
+    """An unknown action value is rejected by the schema enum."""
+    with pytest.raises(ValidationError):
+        validate(instance=_make_handler(action="do_something_unknown"), schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# enabled — default: true (documentation-only in JSON Schema draft-07)
+# ---------------------------------------------------------------------------
+
+
+def test_enabled_defaults_true_when_omitted(schema):
+    """The schema declares default:true for enabled; validation passes when omitted."""
+    # JSON Schema `default` is documentation-only — the validator does NOT inject it.
+    # Assert only that the schema declares the default, not that the instance is mutated.
+    handler = _make_handler()
+    assert "enabled" not in handler
+    validate(instance=handler, schema=schema)  # must not raise
+    enabled_prop = schema.get("properties", {}).get("enabled", {})
+    assert enabled_prop.get("default") is True, "Schema must declare default:true for 'enabled'"
+
+
+# ---------------------------------------------------------------------------
+# action — deferred actions are schema-valid (resolver enforces, not schema)
+# ---------------------------------------------------------------------------
+
+
+def test_deferred_action_is_schema_valid(schema):
+    """Deferred action values (route_to_folder) pass the schema — the resolver rejects them."""
+    validate(instance=_make_handler(action="route_to_folder"), schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# W2 — compose empty array is rejected (minItems:1 on array branch)
+# ---------------------------------------------------------------------------
+
+
+def test_compose_empty_array_fails_oneof(schema):
+    """compose=[] is rejected — array branch requires at least one field name."""
+    with pytest.raises(ValidationError):
+        validate(instance=_make_handler(compose=[]), schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# W3 — required top-level fields: id, action, compose
+# ---------------------------------------------------------------------------
+
+
+def test_missing_required_id_fails(schema):
+    """A handler missing 'id' is rejected."""
+    handler = _make_handler()
+    del handler["id"]
+    with pytest.raises(ValidationError):
+        validate(instance=handler, schema=schema)
+
+
+def test_missing_required_action_fails(schema):
+    """A handler missing 'action' is rejected."""
+    handler = _make_handler()
+    del handler["action"]
+    with pytest.raises(ValidationError):
+        validate(instance=handler, schema=schema)
+
+
+def test_missing_required_compose_fails(schema):
+    """A handler missing 'compose' is rejected."""
+    handler = _make_handler()
+    del handler["compose"]
+    with pytest.raises(ValidationError):
+        validate(instance=handler, schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# W4 — additionalProperties:false at root level
+# ---------------------------------------------------------------------------
+
+
+def test_extra_top_level_property_fails(schema):
+    """An unknown top-level property is rejected (additionalProperties:false)."""
+    handler = _make_handler()
+    handler["unexpected_field"] = "should fail"
+    with pytest.raises(ValidationError):
+        validate(instance=handler, schema=schema)

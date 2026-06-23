@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tomo Tag Handler Config",
+  "description": "Schema for a single tag-handler config file (config/tag-handlers/<feature>.json). Defines matching rules, the action to perform, and how to compose the output. Spec: docs/XDD/specs/024-tag-handler-framework/",
+  "type": "object",
+  "required": ["id", "match", "action", "compose"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique handler identifier; also used as the routing-plan marker."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "When false, the handler is skipped exactly like an invalid one."
+    },
+    "match": {
+      "type": "object",
+      "required": ["tag_prefix"],
+      "additionalProperties": false,
+      "properties": {
+        "tag_prefix": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tag prefix this handler matches (e.g. 'MiYo/Tsukai/')."
+        },
+        "capture_segments": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "description": "Names for suffix path segments after the prefix."
+        },
+        "read_fields": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "description": "Frontmatter fields exposed to the compose step."
+        }
+      }
+    },
+    "action": {
+      "type": "string",
+      "enum": ["insert_under_marker", "route_to_folder", "link_to_moc", "enrich_frontmatter"],
+      "description": "Action registry v1 value. The resolver (not this schema) rejects declared-but-deferred actions at runtime."
+    },
+    "target": {
+      "type": "object",
+      "required": ["by", "map"],
+      "additionalProperties": false,
+      "properties": {
+        "by": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Which capture segment key is used to look up the map."
+        },
+        "map": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "Mapping from capture segment value to target vault path."
+        }
+      }
+    },
+    "marker": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Anchor string in the target note (e.g. '## Captures'). Transformed to anchor.value by the resolver."
+    },
+    "placement": {
+      "type": "string",
+      "enum": ["inside", "before", "after"],
+      "description": "Where to insert relative to the matched anchor."
+    },
+    "compose": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "LLM directive: free-text instruction for how to synthesize the batch."
+        },
+        {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "minItems": 1,
+          "description": "Mechanical template: ordered list of frontmatter field names to render."
+        }
+      ],
+      "description": "How to compose the handler output. Either a string (LLM directive) or an array of field names (mechanical template)."
+    }
+  }
+}

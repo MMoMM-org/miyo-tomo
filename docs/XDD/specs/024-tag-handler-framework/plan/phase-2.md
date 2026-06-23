@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Triage detection"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 2
 ---
@@ -31,7 +31,7 @@ phase: 2
 
 Enables `/inbox` triage to recognize registered-tag notes and partition them out of the generic suggest lane — without changing behavior when no handler is registered.
 
-- [ ] **T2.0 Extend `tomo/schemas/routing-plan.schema.json`** `[activity: data-architecture]`
+- [x] **T2.0 Extend `tomo/schemas/routing-plan.schema.json`** `[activity: data-architecture]`
 
   1. Prime: Read the schema-change requirement `[ref: SDD/Section 5; lines: 89-93]` and the current `routing-plan.schema.json` (`additionalProperties:false`).
   2. Test (RED): a routing plan **with** a `handled[]` array validates; the `handled[]` entry shape (`{path, handler, vars, target_path, action, …}`) validates; a routing plan **without** `handled` still validates (omission is legal); add the `handle` action enum value only if needed and assert pre-existing plans remain valid.

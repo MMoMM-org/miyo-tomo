@@ -1811,3 +1811,282 @@ class TestTerminalApprovedMessaging:
         plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
         assert plan["action"] == "idle"
         assert plan["approved_suggestions"] == []
+
+
+# ===========================================================================
+# T2.1 — Tag-handler resolver integration (XDD 024 Phase 2)
+# ===========================================================================
+
+
+def _tsukai_handler() -> dict:
+    """Canonical tsukai handler (mirrors test_tag_handler_resolve.py / SDD §2)."""
+    return {
+        "id": "tsukai",
+        "enabled": True,
+        "match": {
+            "tag_prefix": "MiYo/Tsukai/",
+            "capture_segments": ["repo"],
+            "read_fields": ["category"],
+        },
+        "action": "insert_under_marker",
+        "target": {
+            "by": "repo",
+            "map": {"Tomo": "Efforts/Tomo Dev Log.md"},
+        },
+        "marker": "## Captures",
+        "placement": "inside",
+        "compose": "Synthesize the batch captures into one dated status update.",
+    }
+
+
+def _write_registry(tmp_path: Path, *handlers: dict) -> Path:
+    """Write handler configs into a tmp registry dir and return its path."""
+    reg_dir = tmp_path / "tag-handlers"
+    reg_dir.mkdir(parents=True, exist_ok=True)
+    for h in handlers:
+        (reg_dir / f"{h['id']}.json").write_text(json.dumps(h), encoding="utf-8")
+    return reg_dir
+
+
+def _fm_content(tags: list[str] | None = None, **extra) -> dict:
+    """A read_frontmatter response body for a new source: {content: {...}}."""
+    fm: dict = {}
+    if tags is not None:
+        fm["tags"] = tags
+    fm.update(extra)
+    return {"content": fm, "modified": 1716300000000}
+
+
+class TestTagHandlerResolution:
+    """T2.1: resolve new sources against the handler registry, partition the
+    matched ones into handled[] and exclude them from the suggest lane."""
+
+    def test_handled_item_partitioned(self, tmp_path):
+        """A MiYo/Tsukai/Tomo-tagged new source → handled[], removed from
+        fresh_sources."""
+        mod = _load_module()
+
+        tagged = INBOX_PATH + "tsukai-capture.md"
+        reg_dir = _write_registry(tmp_path, _tsukai_handler())
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(tagged)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [],
+                "tomo.state=accepted": [],
+            },
+            read_frontmatter_responses={
+                tagged: _fm_content(tags=["MiYo/Tsukai/Tomo"], category="feature"),
+            },
+        )
+
+        rc = mod.main(
+            [
+                "--inbox-path", INBOX_PATH,
+                "--output-dir", str(tmp_path),
+                "--registry-dir", str(reg_dir),
+            ],
+            client_factory=lambda: client,
+        )
+
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        # all-handled batch still wakes the suggest conductor; it loads the tag-handler-interpreter on non-empty handled[] (SDD §5)
+        assert plan["action"] == "suggest"
+        assert "handled" in plan
+        assert len(plan["handled"]) == 1
+        entry = plan["handled"][0]
+        assert entry["path"] == tagged
+        assert entry["handler"] == "tsukai"
+        assert entry["vars"] == {"repo": "Tomo"}
+        assert entry["target_path"] == "Efforts/Tomo Dev Log.md"
+        assert entry["action"] == "insert_under_marker"
+        # Excluded from the generic suggest lane
+        fresh_paths = {s["path"] for s in plan["fresh_sources"]}
+        assert tagged not in fresh_paths
+
+    def test_empty_registry_byte_identity(self, tmp_path):
+        """AC-5: no registry → NO handled key, fresh_sources identical, and
+        ZERO extra Kado read calls vs. the no-registry baseline."""
+        mod = _load_module()
+
+        src = INBOX_PATH + "fresh-note.md"
+
+        def _make_client():
+            return FakeKadoClient(
+                listdir_items=[_listdir_item(src)],
+                frontmatter_responses={
+                    "tomo.state=pending-approval": [],
+                    "tomo.state=pending-accept": [],
+                    "tomo.state=captured": [],
+                    "tomo.doc_type=instructions": [],
+                    "tomo.state=approved": [],
+                    "tomo.state=accepted": [],
+                },
+            )
+
+        # Baseline: no --registry-dir at all (registry resolves to the real
+        # config/tag-handlers, which does not exist → empty registry).
+        baseline_client = _make_client()
+        rc0 = mod.main(
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path / "base")],
+            client_factory=lambda: baseline_client,
+        )
+        assert rc0 == 0
+        baseline_plan = json.loads(
+            (tmp_path / "base" / "routing-plan.json").read_text(encoding="utf-8")
+        )
+        baseline_calls = len(baseline_client.calls)
+
+        # Explicit empty registry dir.
+        empty_reg = tmp_path / "tag-handlers"
+        empty_reg.mkdir(parents=True, exist_ok=True)
+        client = _make_client()
+        rc = mod.main(
+            [
+                "--inbox-path", INBOX_PATH,
+                "--output-dir", str(tmp_path / "run"),
+                "--registry-dir", str(empty_reg),
+            ],
+            client_factory=lambda: client,
+        )
+        assert rc == 0
+        plan = json.loads(
+            (tmp_path / "run" / "routing-plan.json").read_text(encoding="utf-8")
+        )
+
+        # (a) no handled key
+        assert "handled" not in plan
+        # (b) fresh_sources unchanged
+        assert plan["fresh_sources"] == baseline_plan["fresh_sources"]
+        assert {s["path"] for s in plan["fresh_sources"]} == {src}
+        # (c) Kado read-call count unchanged vs. baseline (no per-source reads)
+        assert len(client.calls) == baseline_calls
+
+    def test_mixed_batch(self, tmp_path):
+        """One handled + one generic → handled[] has the tagged, fresh_sources
+        has the generic."""
+        mod = _load_module()
+
+        tagged = INBOX_PATH + "tsukai-capture.md"
+        generic = INBOX_PATH + "plain-note.md"
+        reg_dir = _write_registry(tmp_path, _tsukai_handler())
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(tagged), _listdir_item(generic)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [],
+                "tomo.state=accepted": [],
+            },
+            read_frontmatter_responses={
+                tagged: _fm_content(tags=["MiYo/Tsukai/Tomo"]),
+                generic: _fm_content(tags=["random/tag"]),
+            },
+        )
+
+        rc = mod.main(
+            [
+                "--inbox-path", INBOX_PATH,
+                "--output-dir", str(tmp_path),
+                "--registry-dir", str(reg_dir),
+            ],
+            client_factory=lambda: client,
+        )
+
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        handled_paths = {e["path"] for e in plan["handled"]}
+        fresh_paths = {s["path"] for s in plan["fresh_sources"]}
+        assert handled_paths == {tagged}
+        assert fresh_paths == {generic}
+
+    def test_unmatched_item_unchanged(self, tmp_path):
+        """An untagged new source stays in fresh_sources, absent from handled[].
+        With a non-empty registry but no match, handled is omitted entirely."""
+        mod = _load_module()
+
+        src = INBOX_PATH + "untagged.md"
+        reg_dir = _write_registry(tmp_path, _tsukai_handler())
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(src)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [],
+                "tomo.state=accepted": [],
+            },
+            read_frontmatter_responses={
+                src: _fm_content(tags=[]),
+            },
+        )
+
+        rc = mod.main(
+            [
+                "--inbox-path", INBOX_PATH,
+                "--output-dir", str(tmp_path),
+                "--registry-dir", str(reg_dir),
+            ],
+            client_factory=lambda: client,
+        )
+
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        # No match → handled key omitted (mirrors AC-5 "nothing matched")
+        assert "handled" not in plan
+        fresh_paths = {s["path"] for s in plan["fresh_sources"]}
+        assert src in fresh_paths
+
+    def test_unmapped_target_surfaced(self, tmp_path):
+        """Handled item whose captured repo is unmapped → handled[] entry with
+        target_path=null, no crash, still excluded from fresh_sources."""
+        mod = _load_module()
+
+        tagged = INBOX_PATH + "tsukai-kado.md"
+        reg_dir = _write_registry(tmp_path, _tsukai_handler())
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(tagged)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [],
+                "tomo.state=accepted": [],
+            },
+            read_frontmatter_responses={
+                # "Kado" is not in the target map → target_path resolves to null.
+                tagged: _fm_content(tags=["MiYo/Tsukai/Kado"]),
+            },
+        )
+
+        rc = mod.main(
+            [
+                "--inbox-path", INBOX_PATH,
+                "--output-dir", str(tmp_path),
+                "--registry-dir", str(reg_dir),
+            ],
+            client_factory=lambda: client,
+        )
+
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        # all-handled batch still wakes the suggest conductor; it loads the tag-handler-interpreter on non-empty handled[] (SDD §5)
+        assert plan["action"] == "suggest"
+        assert len(plan["handled"]) == 1
+        entry = plan["handled"][0]
+        assert entry["path"] == tagged
+        assert entry["target_path"] is None
+        fresh_paths = {s["path"] for s in plan["fresh_sources"]}
+        assert tagged not in fresh_paths

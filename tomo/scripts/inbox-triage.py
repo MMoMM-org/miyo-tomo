@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.14.0
+# version: 0.15.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -34,6 +34,26 @@ from lib.audio_constants import AUDIO_EXTS  # noqa: E402
 from lib.doc_frontmatter import body_after_frontmatter  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
+
+# tag-handler-resolve.py is hyphenated — load it as a module via importlib so its
+# load_registry/resolve_item are importable (house pattern for hyphenated scripts).
+import importlib.util as _importlib_util  # noqa: E402
+
+_resolver_spec = _importlib_util.spec_from_file_location(
+    "tag_handler_resolve", SCRIPT_DIR / "tag-handler-resolve.py"
+)
+if _resolver_spec is None or _resolver_spec.loader is None:
+    raise ImportError(f"Cannot load tag-handler-resolve.py from {SCRIPT_DIR}")
+_resolver_mod = _importlib_util.module_from_spec(_resolver_spec)
+sys.modules.setdefault("tag_handler_resolve", _resolver_mod)
+_resolver_spec.loader.exec_module(_resolver_mod)
+load_registry = _resolver_mod.load_registry
+resolve_item = _resolver_mod.resolve_item
+
+# Default registry directory: repo-root config/tag-handlers (SCRIPT_DIR is
+# tomo/scripts; parent.parent is the repo root). Reachable from inside the
+# instance because the resolver script references the same path.
+_DEFAULT_REGISTRY_DIR = SCRIPT_DIR.parent.parent / "config" / "tag-handlers"
 
 _RE_APPROVED = re.compile(r"^\s*-\s+\[x\]\s+Approved", re.MULTILINE | re.IGNORECASE)
 _RE_ACCEPT = re.compile(r"^\s*-\s+\[x\]\s+Accept", re.MULTILINE | re.IGNORECASE)
@@ -77,6 +97,13 @@ class TriageState:
     # Populated by discover() so detect_orphaned_state() can count them as
     # surviving downstream, and so --force-pass2 can re-synthesize them.
     terminal_approved_hits: list[dict] = field(default_factory=list)
+
+    # Tag-handler resolution (XDD 024 T2.1). handled[] holds one routing-plan
+    # entry per new source claimed by a handler; handled_paths is the set of
+    # their paths (excluded from fresh_sources). Both stay empty when the
+    # registry is empty or nothing matched — AC-5 byte-identity.
+    handled: list[dict] = field(default_factory=list)
+    handled_paths: set[str] = field(default_factory=set)
 
     # Flags passed through for T2.2
     force_pass1: bool = False
@@ -220,6 +247,87 @@ def compute_new_sources(
             known_paths.add(hit["path"])
 
     return [f for f in md_files if f["path"] not in known_paths]
+
+
+# ---------------------------------------------------------------------------
+# Step 4b: resolve new sources against the tag-handler registry (XDD 024 T2.1)
+# ---------------------------------------------------------------------------
+
+def resolve_handlers(
+    client, new_sources: list[dict], registry: list[dict],
+) -> tuple[list[dict], set[str]]:
+    """Match each new source's tags against *registry*; partition the matches.
+
+    Returns ``(handled, handled_paths)``. A matched source contributes one
+    routing-plan ``handled[]`` entry (shape per routing-plan.schema.json) and
+    its path is added to ``handled_paths`` so build_routing_plan can drop it
+    from the suggest lane.
+
+    The caller MUST short-circuit on an empty registry BEFORE calling this —
+    when registry is empty there are no per-source reads (AC-5 zero-extra-calls).
+    A source's tags + frontmatter come from one read_frontmatter() per source.
+    A failed read leaves the source unhandled (falls through to the suggest
+    lane — safe by default). A handler whose action is deferred/unknown raises
+    ValueError inside resolve_item; we surface it as a warning and leave the
+    source unhandled rather than aborting the whole triage run.
+    """
+    handled: list[dict] = []
+    handled_paths: set[str] = set()
+
+    for source in new_sources:
+        path = source.get("path")
+        if not path:
+            continue
+        try:
+            fm_result = client.read_frontmatter(path)
+        except KadoError as exc:
+            print(
+                f"[inbox-triage] WARNING: read_frontmatter failed for {path}: {exc}",
+                file=sys.stderr,
+            )
+            continue
+
+        frontmatter = fm_result.get("content")
+        if not isinstance(frontmatter, dict):
+            frontmatter = {}
+        tags = frontmatter.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tags]
+
+        item = {"path": path, "tags": tags, "frontmatter": frontmatter}
+        try:
+            match = resolve_item(item, registry)
+        except ValueError as exc:
+            print(
+                f"[inbox-triage] WARNING: handler resolution skipped for {path}: {exc}",
+                file=sys.stderr,
+            )
+            continue
+
+        if match is None:
+            continue
+
+        # Required keys always emitted; target_path may legitimately be null.
+        # The optional keys (marker/placement/compose) are typed+constrained in
+        # the schema, so omit them entirely when the handler left them unset
+        # rather than emitting null (which the schema rejects).
+        # 'fields' from resolve_item is intentionally omitted here — consumed by
+        # the Phase 3 compose step, not part of the routing-plan entry.
+        entry: dict = {
+            "path": path,
+            "handler": match["handler"],
+            "vars": match["vars"],
+            "target_path": match["target_path"],
+            "action": match["action"],
+        }
+        for key in ("marker", "placement", "compose"):
+            value = match.get(key)
+            if value is not None:
+                entry[key] = value
+        handled.append(entry)
+        handled_paths.add(path)
+
+    return handled, handled_paths
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +618,7 @@ def discover(
     force_pass2: bool = False,
     force_all: bool = False,
     recover: bool = False,
+    registry_dir: Path | str | None = None,
 ) -> TriageState:
     """Execute steps 1-6 of the triage algorithm.
 
@@ -558,6 +667,18 @@ def discover(
             h for h in captured_hits if h.get("path") and h["path"] not in seen
         ]
 
+    # Step 4b: resolve new sources against the tag-handler registry (T2.1).
+    # AC-5: load_registry returns [] for a missing/empty dir → short-circuit
+    # BEFORE any per-source frontmatter read, so an empty registry makes ZERO
+    # extra Kado calls and emits no handled[].
+    registry = load_registry(
+        registry_dir if registry_dir is not None else _DEFAULT_REGISTRY_DIR
+    )
+    handled: list[dict] = []
+    handled_paths: set[str] = set()
+    if registry:
+        handled, handled_paths = resolve_handlers(client, new_sources, registry)
+
     # Step 5: check audio
     has_audio = check_audio(audio_files, md_files)
 
@@ -595,6 +716,8 @@ def discover(
         drift_indicators=drift_indicators,
         manifest=manifest,
         terminal_approved_hits=approved_hits,
+        handled=handled,
+        handled_paths=handled_paths,
         force_pass1=force_pass1,
         force_pass2=force_pass2,
         force_all=force_all,
@@ -874,7 +997,12 @@ def build_routing_plan(
     if state.recover:
         seen = {s["path"] for s in dispatch_sources}
         dispatch_sources += [h for h in state.captured_hits if h["path"] not in seen]
-    return {
+    # Tag-handler claimed items (T2.1) leave the generic suggest lane.
+    if state.handled_paths:
+        dispatch_sources = [
+            s for s in dispatch_sources if s["path"] not in state.handled_paths
+        ]
+    plan = {
         "action": action,
         "timestamp": datetime.datetime.now(
             datetime.timezone.utc
@@ -895,6 +1023,11 @@ def build_routing_plan(
         "skip_stems": [],
         "metrics": metrics,
     }
+    # AC-5: omit the handled key entirely when nothing matched — an empty
+    # handled:[] would validate but breaks byte-identity with a pre-024 run.
+    if state.handled:
+        plan["handled"] = state.handled
+    return plan
 
 
 # ---------------------------------------------------------------------------
@@ -930,6 +1063,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--output-dir", default="tomo-tmp",
         help="Output directory (default: tomo-tmp)",
+    )
+    p.add_argument(
+        "--registry-dir", default=None,
+        help="Tag-handler registry directory (default: <repo>/config/tag-handlers)",
     )
     return p
 
@@ -985,6 +1122,7 @@ def main(
             force_pass2=args.force_pass2,
             force_all=args.force,
             recover=args.recover,
+            registry_dir=args.registry_dir,
         )
     except KadoError as exc:
         print(f"ERROR: Triage failed: {exc}", file=sys.stderr)
@@ -1065,7 +1203,7 @@ def main(
 def _count_kado_calls(state: TriageState) -> int:
     """Estimate Kado call count from state.
 
-    1 listDir + 4 byFrontmatter + N body reads.
+    1 listDir + 6 byFrontmatter + N body reads.
     """
     body_reads = (
         len(state.approved_suggestions)

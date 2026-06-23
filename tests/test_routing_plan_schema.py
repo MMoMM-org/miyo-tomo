@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.3.0
 """test_routing_plan_schema.py — JSON Schema validation tests for routing-plan.schema.json.
 
 Covers T1.1 (XDD 018 Phase 1): schema structure, required fields, enum values,
@@ -403,6 +403,201 @@ def test_metrics_extra_property_rejected(schema):
                 "timestamp": "2026-05-26T10:00:00Z",
                 "inbox_path": "100 Inbox",
                 "metrics": {"unknown_metric": 99},
+            },
+            schema=schema,
+        )
+
+
+# ---------------------------------------------------------------------------
+# T2.0 — handled[] extension (XDD 024 Phase 2)
+# ---------------------------------------------------------------------------
+
+
+def test_handled_array_with_full_shape_validates(schema):
+    """A routing plan with a fully-populated handled[] entry passes validation."""
+    validate(
+        instance={
+            "action": "suggest",
+            "timestamp": "2026-06-23T14:00:00Z",
+            "inbox_path": "100 Inbox",
+            "handled": [
+                {
+                    "path": "100 Inbox/my-note.md",
+                    "handler": "tsukai",
+                    "vars": {"repo": "Tomo"},
+                    "target_path": "Efforts/.../Tomo Dev Log.md",
+                    "action": "insert_under_marker",
+                    "marker": "## Captures",
+                    "placement": "inside",
+                    "compose": "Synthesize the batch into a dated status update.",
+                }
+            ],
+        },
+        schema=schema,
+    )
+
+
+def test_handled_entry_null_target_path_validates(schema):
+    """A handled entry with target_path: null passes validation (unmapped target)."""
+    validate(
+        instance={
+            "action": "suggest",
+            "timestamp": "2026-06-23T14:00:00Z",
+            "inbox_path": "100 Inbox",
+            "handled": [
+                {
+                    "path": "100 Inbox/my-note.md",
+                    "handler": "tsukai",
+                    "vars": {"repo": "Unknown"},
+                    "target_path": None,
+                    "action": "insert_under_marker",
+                }
+            ],
+        },
+        schema=schema,
+    )
+
+
+def test_handled_array_omitted_still_validates_ac5(schema):
+    """A routing plan with no 'handled' key passes validation (AC-5: optional field)."""
+    plan = {
+        "action": "suggest",
+        "timestamp": "2026-06-23T14:00:00Z",
+        "inbox_path": "100 Inbox",
+    }
+    assert "handled" not in plan
+    validate(instance=plan, schema=schema)
+
+
+def test_handled_entry_extra_property_rejected(schema):
+    """A handled entry with an unknown extra property is rejected (additionalProperties:false)."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance={
+                "action": "suggest",
+                "timestamp": "2026-06-23T14:00:00Z",
+                "inbox_path": "100 Inbox",
+                "handled": [
+                    {
+                        "path": "100 Inbox/my-note.md",
+                        "handler": "tsukai",
+                        "vars": {"repo": "Tomo"},
+                        "target_path": "Efforts/.../Tomo Dev Log.md",
+                        "action": "insert_under_marker",
+                        "unknown_field": "should fail",
+                    }
+                ],
+            },
+            schema=schema,
+        )
+
+
+def test_handled_entry_missing_required_handler_rejected(schema):
+    """A handled entry missing 'handler' is rejected (required field)."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance={
+                "action": "suggest",
+                "timestamp": "2026-06-23T14:00:00Z",
+                "inbox_path": "100 Inbox",
+                "handled": [
+                    {
+                        "path": "100 Inbox/my-note.md",
+                        "vars": {"repo": "Tomo"},
+                        "target_path": "Efforts/.../Tomo Dev Log.md",
+                        "action": "insert_under_marker",
+                    }
+                ],
+            },
+            schema=schema,
+        )
+
+
+def test_handled_entry_compose_array_validates(schema):
+    """A handled entry with compose as an array of field names passes validation."""
+    validate(
+        instance={
+            "action": "suggest",
+            "timestamp": "2026-06-23T14:00:00Z",
+            "inbox_path": "100 Inbox",
+            "handled": [
+                {
+                    "path": "100 Inbox/my-note.md",
+                    "handler": "tsukai",
+                    "vars": {"repo": "Tomo"},
+                    "target_path": "Efforts/.../Tomo Dev Log.md",
+                    "action": "insert_under_marker",
+                    "compose": ["title", "created"],
+                }
+            ],
+        },
+        schema=schema,
+    )
+
+
+def test_handled_entry_compose_empty_array_rejected(schema):
+    """A handled entry with compose=[] is rejected (minItems:1 on array branch)."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance={
+                "action": "suggest",
+                "timestamp": "2026-06-23T14:00:00Z",
+                "inbox_path": "100 Inbox",
+                "handled": [
+                    {
+                        "path": "100 Inbox/my-note.md",
+                        "handler": "tsukai",
+                        "vars": {"repo": "Tomo"},
+                        "target_path": "Efforts/.../Tomo Dev Log.md",
+                        "action": "insert_under_marker",
+                        "compose": [],
+                    }
+                ],
+            },
+            schema=schema,
+        )
+
+
+def test_handled_entry_invalid_placement_rejected(schema):
+    """A handled entry with an invalid placement value is rejected."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance={
+                "action": "suggest",
+                "timestamp": "2026-06-23T14:00:00Z",
+                "inbox_path": "100 Inbox",
+                "handled": [
+                    {
+                        "path": "100 Inbox/my-note.md",
+                        "handler": "tsukai",
+                        "vars": {"repo": "Tomo"},
+                        "target_path": "Efforts/.../Tomo Dev Log.md",
+                        "action": "insert_under_marker",
+                        "placement": "top",
+                    }
+                ],
+            },
+            schema=schema,
+        )
+
+
+def test_handled_entry_invalid_action_rejected(schema):
+    """A handled entry with an unknown action value is rejected by the enum."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance={
+                "action": "suggest",
+                "timestamp": "2026-06-23T14:00:00Z",
+                "inbox_path": "100 Inbox",
+                "handled": [
+                    {
+                        "path": "100 Inbox/my-note.md",
+                        "handler": "tsukai",
+                        "vars": {"repo": "Tomo"},
+                        "target_path": "Efforts/.../Tomo Dev Log.md",
+                        "action": "do_something_unknown",
+                    }
+                ],
             },
             schema=schema,
         )

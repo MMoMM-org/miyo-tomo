@@ -138,6 +138,67 @@
         "kado_calls": {"type": "integer"},
         "docs_cached": {"type": "integer"}
       }
+    },
+    "handled": {
+      "type": "array",
+      "description": "Inbox items routed by a tag-handler. Omitted entirely when the registry is empty (AC-5). Pass-1 skips handled items.",
+      "items": {
+        "type": "object",
+        "required": ["path", "handler", "vars", "target_path", "action"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Vault-relative path of the inbox item."
+          },
+          "handler": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID of the tag-handler that claimed this item."
+          },
+          "vars": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+            "description": "Captured segment values keyed by segment name (string→string)."
+          },
+          "target_path": {
+            "type": ["string", "null"],
+            "description": "Resolved vault-relative target path, or null when the target map had no entry for the captured vars."
+          },
+          "marker": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Anchor string in the target note (mirrors tag-handler config)."
+          },
+          "action": {
+            "type": "string",
+            "enum": ["insert_under_marker", "route_to_folder", "link_to_moc", "enrich_frontmatter"],
+            "description": "Action registry value from the handler config. Mirrors tag-handler.schema.json:43."
+          },
+          "placement": {
+            "type": "string",
+            "enum": ["inside", "before", "after"],
+            "description": "Insertion position relative to the anchor."
+          },
+          "compose": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "description": "LLM directive from the handler config."
+              },
+              {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "minItems": 1,
+                "description": "Mechanical template: ordered list of frontmatter field names."
+              }
+            ],
+            "description": "Compose directive from the handler config (string or array-of-strings)."
+          }
+        }
+      }
     }
   }
 }

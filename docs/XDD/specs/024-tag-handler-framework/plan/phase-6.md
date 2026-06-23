@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration & validation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 6
 ---
@@ -39,7 +39,7 @@ Proves the framework end-to-end on the Tomo side and wires the automated cross-r
   4. Validate: E2E test passes; AC-1..AC-5 each asserted; lint clean.
   5. Success: AC-1..AC-5 demonstrated end-to-end on the Tomo side `[ref: PRD/AC-1..AC-5; lines: 107-112]`.
 
-- [ ] **T6.2 Wire automated cross-repo apply (when Hashi action lands)** `[activity: integration]`
+- [x] **T6.2 Wire automated cross-repo apply (when Hashi action lands)** `[activity: integration]`
 
   1. Prime: Read the cross-repo phasing `[ref: SDD/Section 6; lines: 134-142]` and the T1.1 handoff contract.
   2. Test (RED): once Hashi implements `insert_under_marker`, the rendered instruction applies via Hashi against a test vault; cross-repo E2E (Tomo renders → Hashi applies → target note updated under marker); until then, manual apply is the documented fallback.
@@ -47,6 +47,6 @@ Proves the framework end-to-end on the Tomo side and wires the automated cross-r
   4. Validate: cross-repo E2E passes against a test vault/fake; if Hashi not yet landed, mark deferred with the manual-apply fallback documented.
   5. Success: Automated apply works end-to-end across repos `[ref: SDD/Section 6; lines: 138-142]`.
 
-- [ ] **T6.3 Phase Validation** `[activity: validate]`
+- [x] **T6.3 Phase Validation** `[activity: validate]`
 
   - Run the full suite under `./venv/bin/python`. Verify AC-1..AC-5 via T6.1; confirm AC-5 byte-identity holds against the final integrated pipeline. If the Hashi action has landed, run the cross-repo E2E (T6.2); otherwise record it deferred with the manual-apply fallback. Lint clean. **Gate: E2E (AC-1..AC-5); wire Hashi apply when it lands.**

@@ -40,7 +40,7 @@ phase: 4
 
 Enables Pass-2 to render an approved group into a Hashi `insert_under_marker` instruction and to fail safely when the target note or marker is absent.
 
-- [ ] **T4.0 `hashi-instructions.schema.json` — `insert_under_marker` $def** `[activity: data-architecture]`
+- [x] **T4.0 `hashi-instructions.schema.json` — `insert_under_marker` $def** `[activity: data-architecture]`
 
   1. Prime: Read the current schema (9 actions, shared `anchor`/`placement` $defs) and the handoff contract `[ref: SDD/Section 6; lines: 122-132]`.
   2. Test (RED): a valid `insert_under_marker` instruction (`target_path`, `anchor{type:heading,value}`, `placement`, multi-line `content`) validates; missing `content`/`target_path` fails; reuses the existing `anchor`/`placement` $defs; existing instructions still validate (no regression).

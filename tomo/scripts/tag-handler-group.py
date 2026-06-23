@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """tag-handler-group.py — Deterministic grouping helper for tag-handler results.
 
 Groups routing-plan handled[] items by (handler, target_path) and provides a
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +76,34 @@ def group_handled(handled_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return (handler, target is None, target or "")
 
     return [groups[k] for k in sorted(groups.keys(), key=_sort_key)]
+
+
+# ---------------------------------------------------------------------------
+# Stable group identity
+# ---------------------------------------------------------------------------
+
+_SLUG_STRIP_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slug(value: str) -> str:
+    """Lowercase, collapse non-alphanumeric runs to single hyphens, trim hyphens."""
+    return _SLUG_STRIP_RE.sub("-", (value or "").lower()).strip("-")
+
+
+def group_id(group: dict[str, Any]) -> str:
+    """Return a deterministic, markdown-safe id for a group's (handler, target_path).
+
+    Stable for the same (handler, target_path) pair and distinct for different
+    pairs. The id is embedded verbatim into a suggestion block so Pass-2 can map
+    an approved group back to its group-result JSON — so it must contain no
+    spaces or markdown-special characters (handler + slugified target_path only).
+
+    A null target_path (group surfaced but unresolved) slugs to ``none`` so the
+    id is still well-formed; such a group never produces an instruction anyway.
+    """
+    handler_slug = _slug(group.get("handler") or "")
+    target_slug = _slug(group.get("target_path") or "") or "none"
+    return f"th-{handler_slug}-{target_slug}"
 
 
 # ---------------------------------------------------------------------------

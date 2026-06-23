@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.29.0
+# version: 0.30.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -47,6 +47,19 @@ from lib.supporting_items import (  # noqa: E402
     parse_supporting_items as _parse_supporting_items,
     union_supporting_items as _union_supporting_items,
 )
+
+# tag-handler-group.py is a hyphenated top-level script (not a lib module); load
+# it via importlib for the stable group_id slug (spec 024 T4.1). SCRIPT_DIR is
+# already on sys.path (inserted above).
+import importlib.util as _ilu  # noqa: E402
+
+_thg_spec = _ilu.spec_from_file_location(
+    "tag_handler_group", str(SCRIPT_DIR / "tag-handler-group.py")
+)
+_thg_mod = _ilu.module_from_spec(_thg_spec)
+sys.modules["tag_handler_group"] = _thg_mod
+_thg_spec.loader.exec_module(_thg_mod)
+group_id = _thg_mod.group_id  # noqa: E305
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -384,6 +397,7 @@ _REQUIRED_PATH_FIELDS = {
     "update_log_link": ("daily_note_path",),
     "delete_source": ("source_path",),
     "add_relationship": ("target_moc_path",),
+    "insert_under_marker": ("target_path",),
 }
 
 
@@ -1093,6 +1107,84 @@ def _build_skip_actions(skipped: list[dict], inbox_path: str, counter: list[int]
     return out
 
 
+def _marker_to_anchor_value(marker: str) -> str:
+    """Strip a heading marker down to its anchor text (spec 024 T4.1).
+
+    Hashi's `heading` anchor matches heading text WITHOUT the leading `#` run,
+    so a config marker like ``## Captures`` must be normalised to ``Captures``.
+    Strips the leading run of ``#`` and the single following space, then trims.
+    A marker with no leading ``#`` is returned trimmed unchanged.
+    """
+    m = (marker or "").strip()
+    stripped = m.lstrip("#")
+    # Drop exactly the conventional single space after the #-run.
+    if stripped.startswith(" "):
+        stripped = stripped[1:]
+    return stripped.strip()
+
+
+def _load_tag_handler_groups(groups_dir: str | None) -> list[dict]:
+    """Load all tag-handler group-result JSONs from `groups_dir`.
+
+    Mirrors suggestions-reducer.collect_tag_handler_groups: returns [] when the
+    dir is None, missing, or empty; skips unreadable/invalid files silently.
+    """
+    if not groups_dir:
+        return []
+    p = Path(groups_dir)
+    if not p.exists() or not p.is_dir():
+        return []
+    groups: list[dict] = []
+    for f in sorted(p.glob("*.json")):
+        try:
+            groups.append(json.loads(f.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            continue
+    return groups
+
+
+def _build_insert_under_marker_actions(
+    groups: list[dict],
+    approved_group_ids: list[str],
+    counter: list[int],
+) -> list[dict]:
+    """Emit one insert_under_marker action per APPROVED tag-handler group (T4.1).
+
+    A group is emitted only when its `group_id` is in `approved_group_ids` (the
+    Pass-2 approval gate from suggestion-parser). A group not in the approved
+    set produces NO instruction. The composed_block already carries the dated
+    status block; it is inserted verbatim as `content` (append semantics live in
+    Hashi's executor — Tomo just emits the instruction).
+
+    Each action: target_path = group.target_path, anchor = heading with the
+    marker stripped to its text, placement = group.placement (default "inside"),
+    content = group.composed_block.
+    """
+    if not groups or not approved_group_ids:
+        return []
+    approved = set(approved_group_ids)
+    out: list[dict] = []
+    for group in groups:
+        if group_id(group) not in approved:
+            continue
+        target_path = group.get("target_path")
+        if not target_path:
+            # Unresolved target (null) — never emit a path-less instruction.
+            continue
+        out.append({
+            "id": _next_id(counter),
+            "action": "insert_under_marker",
+            "target_path": target_path,
+            "anchor": {
+                "type": "heading",
+                "value": _marker_to_anchor_value(group.get("marker") or ""),
+            },
+            "placement": group.get("placement") or "inside",
+            "content": group.get("composed_block") or "",
+        })
+    return out
+
+
 def _build_up_preservation_actions(
     manifest: list[dict],
     kado_client,
@@ -1142,6 +1234,8 @@ def build_actions(
     skipped: list[dict],
     cfg: dict,
     kado_client=None,
+    tag_handler_groups: list[dict] | None = None,
+    approved_tag_handler_group_ids: list[str] | None = None,
 ) -> list[dict]:
     """Assemble the full ordered action list.
 
@@ -1156,8 +1250,9 @@ def build_actions(
       3. move_note          — atomic notes
       4. link_to_moc        — parent_mocs up-links + supporting_items down-links
       5. update_tracker / update_log_entry / update_log_link
-      6. delete_source
-      7. skip
+      6. insert_under_marker — approved tag-handler group blocks (spec 024 T4.1)
+      7. delete_source
+      8. skip
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]
@@ -1168,6 +1263,9 @@ def build_actions(
     out.extend(move_notes)
     out.extend(_build_link_to_moc_actions(confirmed, counter))
     out.extend(_build_daily_update_actions(daily_updates, cfg, counter))
+    out.extend(_build_insert_under_marker_actions(
+        tag_handler_groups or [], approved_tag_handler_group_ids or [], counter,
+    ))
     out.extend(_build_delete_source_actions(
         confirmed, move_notes, daily_updates, skipped, inbox_path, counter,
     ))
@@ -1194,6 +1292,7 @@ SECTION_TITLES = [
     ("new_files", "New Files"),
     ("moc_links", "MOC Links"),
     ("daily_updates", "Daily Updates"),
+    ("tag_handler_updates", "Tag-Handler Updates"),
     ("deletions", "Source Deletions"),
     ("skips", "Skips"),
 ]
@@ -1207,6 +1306,8 @@ def _md_section_for(action: dict) -> str:
         return "moc_links"
     if kind in ("update_tracker", "update_log_entry", "update_log_link"):
         return "daily_updates"
+    if kind == "insert_under_marker":
+        return "tag_handler_updates"
     if kind == "delete_source":
         return "deletions"
     if kind == "skip":
@@ -1351,6 +1452,19 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         if src:
             lines.append(f"- **Source:** [[{_stem(src)}]]")
         lines.append(f"- **Reason:** {action.get('reason', 'Skipped by user.')}")
+        return "\n".join(lines)
+
+    if kind == "insert_under_marker":
+        target = action.get("target_path", "")
+        anchor = action.get("anchor") or {}
+        anchor_value = anchor.get("value", "")
+        placement = action.get("placement", "inside")
+        lines = [f"{heading_prefix}Insert under `{anchor_value}` in [[{_stem(target)}]]", "- [ ] Applied"]
+        lines.append(f"- **Target:** [[{_stem(target)}]]")
+        lines.append(f"- **Marker:** `{anchor_value}` (heading, placement: {placement})")
+        lines.append("- **Insert this block:**")
+        for content_line in (action.get("content", "") or "").splitlines():
+            lines.append(f"  > {content_line}")
         return "\n".join(lines)
 
     # Fallback — unknown action type
@@ -2140,6 +2254,13 @@ def main() -> int:
         default=None,
         help="Local path to cached upstream doc body (for SHA-256 checksum computation)",
     )
+    p.add_argument(
+        "--tag-handler-groups-dir",
+        default=None,
+        help="Directory of tag-handler group-result JSONs (spec 024 T4.1). Each "
+             "group whose group_id is approved in the suggestions doc becomes one "
+             "insert_under_marker action. Absent/empty → no such actions.",
+    )
     args = p.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -2151,14 +2272,23 @@ def main() -> int:
     confirmed = suggestions.get("confirmed_items", [])
     daily_updates = suggestions.get("daily_updates", [])
     skipped = suggestions.get("skipped", [])
+    # spec 024 T4.1: approved tag-handler group ids (from suggestion-parser) +
+    # the group-result JSONs they map to. Either being empty means no
+    # insert_under_marker actions are emitted.
+    approved_tag_handler_group_ids = suggestions.get(
+        "approved_tag_handler_group_ids", []
+    )
+    tag_handler_groups = _load_tag_handler_groups(args.tag_handler_groups_dir)
 
     cfg = load_config(args.config)
     inbox_path = cfg["concepts.inbox"]
     profile_name = cfg["profile"]
 
-    # No confirmed items AND no daily updates AND no skipped items → nothing to do.
-    if not confirmed and not daily_updates and not skipped:
-        print("instruction-render: no confirmed items, daily updates, or skips", file=sys.stderr)
+    # No confirmed items AND no daily updates AND no skipped items AND no
+    # approved tag-handler groups → nothing to do.
+    if (not confirmed and not daily_updates and not skipped
+            and not approved_tag_handler_group_ids):
+        print("instruction-render: no confirmed items, daily updates, skips, or tag-handler groups", file=sys.stderr)
         return 0
 
     client: KadoClient | None = None
@@ -2319,7 +2449,11 @@ def main() -> int:
     )
 
     # ── Build the unified action list (T1.1) ─────────────────────────────
-    actions = build_actions(manifest, confirmed, daily_updates, skipped, cfg, kado_client=client)
+    actions = build_actions(
+        manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,
+        tag_handler_groups=tag_handler_groups,
+        approved_tag_handler_group_ids=approved_tag_handler_group_ids,
+    )
 
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────
     # Best-effort; actions stay with `target_moc_path: null` if Kado is

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.14.0
+# version: 1.15.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -51,6 +51,18 @@ from lib.topic_clusters import (  # noqa: E402, F401
 )
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
+
+# tag-handler-group.py is a hyphenated top-level script (not a lib module), so
+# it loads via importlib. SCRIPT_DIR is already on sys.path (inserted above).
+import importlib.util as _ilu  # noqa: E402
+
+_thg_spec = _ilu.spec_from_file_location(
+    "tag_handler_group", str(Path(__file__).resolve().parent / "tag-handler-group.py")
+)
+_thg_mod = _ilu.module_from_spec(_thg_spec)
+sys.modules["tag_handler_group"] = _thg_mod
+_thg_spec.loader.exec_module(_thg_mod)
+group_id = _thg_mod.group_id  # noqa: E305 — spec 024 T4.1: stable group identity
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -641,6 +653,11 @@ def render_tag_handler_group(group: dict) -> str:
     source_paths = group.get("source_paths") or []
 
     lines: list[str] = []
+    # Group id — the stable (handler, target_path) slug Pass-2 reads back to map
+    # an approved group to its group-result JSON (spec 024 T4.1). Mirrors the
+    # suggestion_id convention; emitted as a field line so suggestion-parser can
+    # extract it without changing the `### [[link]] — marker` heading shape.
+    lines.append(f"**Group:** `{group_id(group)}`")
     # Target note reference — strip .md suffix for wikilink style
     link = target[:-3] if target.endswith(".md") else target
     if link:

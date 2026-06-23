@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.15.0
+# version: 0.16.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1415,6 +1415,81 @@ def parse_daily_updates(text: str) -> list[dict]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Tag-Handler Updates parser  (spec 024 T4.1)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Group-id field line:  **Group:** `th-<handler>-<target-slug>`
+RE_TAG_HANDLER_GROUP_ID = re.compile(
+    r"\*\*Group:\*\*\s*`([^`]+)`", re.IGNORECASE
+)
+
+
+def parse_tag_handler_groups(text: str) -> list[str]:
+    """Return the group ids the user APPROVED in the ## Tag-Handler Updates section.
+
+    The reducer renders one block per (handler, target_path) group, each carrying
+    a ``**Group:** `<group_id>` `` field line and a tri-state decision:
+        - [x] Approve
+        - [ ] Skip
+    A group whose Approve box is checked is included; a ``[x] Skip`` (or an
+    un-ticked Approve) group is NOT. Group blocks are delimited by the
+    ``**Group:**`` line — a new id starts a new block, and the most recent
+    Approve/Skip checkbox seen after that line decides the block.
+
+    Returns the approved ids in document order. Empty list when the section is
+    absent or no group is approved.
+    """
+    lines = text.splitlines()
+    in_section = False
+    approved: list[str] = []
+    current_id: str | None = None
+    current_approved: bool = False
+
+    def _flush() -> None:
+        nonlocal current_id, current_approved
+        if current_id is not None and current_approved:
+            approved.append(current_id)
+        current_id = None
+        current_approved = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped == "## Tag-Handler Updates":
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            # Next top-level section ends Tag-Handler Updates.
+            _flush()
+            break
+        if not in_section:
+            continue
+
+        gm = RE_TAG_HANDLER_GROUP_ID.search(stripped)
+        if gm:
+            # New group block — flush the previous one first.
+            _flush()
+            current_id = gm.group(1).strip()
+            continue
+
+        if current_id is None:
+            continue
+
+        # Decision checkboxes: Approve toggles inclusion; Skip leaves it out.
+        cb = RE_CHECKED.match(stripped)
+        if cb and "approve" in cb.group(1).lower():
+            current_approved = True
+            continue
+        cb_un = RE_UNCHECKED.match(stripped)
+        if cb_un and "approve" in cb_un.group(1).lower():
+            current_approved = False
+            continue
+
+    _flush()
+    return approved
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1627,6 +1702,14 @@ def main() -> int:
         print(
             f"proposed_mocs: {len(proposed_mocs)} approved"
             + (f" ({len(fan_pmocs)} from fan-resolve)" if fan_pmocs else ""),
+            file=sys.stderr,
+        )
+
+    # ── Parse Tag-Handler Updates (spec 024 T4.1) ─────────────
+    approved_tag_handler_group_ids = parse_tag_handler_groups(text)
+    if approved_tag_handler_group_ids:
+        print(
+            f"tag_handler_groups: {len(approved_tag_handler_group_ids)} approved",
             file=sys.stderr,
         )
 
@@ -1849,6 +1932,10 @@ def main() -> int:
         # XDD 012: items with FAN-without-section that Pass 2 must
         # resolve via a follow-up subflow. Empty list when nothing pending.
         "pending_fan_resolutions": pending_fan_resolutions,
+        # spec 024 T4.1: group ids the user approved in ## Tag-Handler Updates.
+        # instruction-render maps each to its group-result JSON and emits one
+        # insert_under_marker. Empty list when no group approved.
+        "approved_tag_handler_group_ids": approved_tag_handler_group_ids,
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),

@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Authoring wizard + Tsukai handler + docs"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -47,7 +47,7 @@ Makes the framework user-operable end-to-end: a wizard authors handlers as pure 
   4. Validate: schema-validation test passes; resolver matches it on a Tsukai-tagged fixture.
   5. Success: Tsukai works out-of-the-box once the user fills `repo_note_map` `[ref: PRD/FR-14; lines: 85-86]`.
 
-- [ ] **T5.3 Docs — config/inbox docs + `docs/tomo/` WHY-docs** `[activity: documentation]`
+- [x] **T5.3 Docs — config/inbox docs + `docs/tomo/` WHY-docs** `[activity: documentation]`
 
   1. Prime: Read the doc-routing rules (repo CLAUDE.md: `docs/tomo/<mirrored-path>.md` is the WHY layer) and `[ref: PRD/AC-6; lines: 113]`.
   2. Test (acceptance): config/inbox user docs describe the tag-handler framework + wizard; `docs/tomo/` WHY-docs cover the resolver, the interpreter skill, and the wizard (no executor internals leaked into user-facing docs).
@@ -55,6 +55,6 @@ Makes the framework user-operable end-to-end: a wizard authors handlers as pure 
   4. Validate: docs match shipped behavior; no Hashi/script internals in user-facing docs.
   5. Success: Framework documented in Tomo's config/inbox docs `[ref: PRD/AC-6; lines: 113]`.
 
-- [ ] **T5.4 Phase Validation** `[activity: validate]`
+- [x] **T5.4 Phase Validation** `[activity: validate]`
 
   - Run all Phase 5 tests under `./venv/bin/python`. Verify a wizard-authored handler validates and the Tsukai reference handler resolves. Confirm docs cover the framework + WHY-docs exist. Lint/skill-author audit clean. **Gate: handler authorable end-to-end (AC-2, AC-6).**

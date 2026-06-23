@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.16.0
+# version: 1.16.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1175,10 +1175,11 @@ def annotate_tag_handler_group_guards(
       - note not found              → guard="target_missing"  (FR-11)
       - note found, marker absent    → guard="marker_missing"  (FR-12)
       - note found, marker present   → guard="ok"
-    Fail-open: a None client (offline/test) or any non-not-found error keeps
-    guard="ok" — never block a group on a transient Kado failure. A group whose
-    target_path is already null is left untouched (the render surfaces it as
-    unresolved; T4.1 emits no instruction for it).
+    Fail-open: a None client (offline/test), any non-not-found error, OR an
+    empty/anomalous read response (e.g. read_note returns {} without raising)
+    keeps guard="ok" — never block a group when marker presence can't actually
+    be determined. A group whose target_path is already null is left untouched
+    (the render surfaces it as unresolved; T4.1 emits no instruction for it).
 
     Returns a {guard_value: count} tally for logging.
     """
@@ -1204,9 +1205,16 @@ def annotate_tag_handler_group_guards(
             try:
                 note = client.read_note(read_path)
                 content = note.get("content", "") if isinstance(note, dict) else ""
-                body = body_after_frontmatter(content)
-                if not _marker_present(body, marker):
-                    guard = "marker_missing"
+                # Fail-open on an empty/anomalous response ({} or no content):
+                # read_note can return {} without raising on a transport glitch.
+                # With no body we cannot determine marker presence, so do NOT run
+                # the marker check (it would false-negative to marker_missing and
+                # block the group). Leave guard="ok" — Hashi handles a genuinely
+                # unresolvable anchor gracefully downstream.
+                if content:
+                    body = body_after_frontmatter(content)
+                    if not _marker_present(body, marker):
+                        guard = "marker_missing"
             except KadoNotFoundError:
                 guard = "target_missing"
             except Exception:  # noqa: BLE001 — transient/other error: stay "ok"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_tag_handler_group_guards.py — T4.2 (spec 024 Phase 4).
 
 The two Pass-1 guards (FR-11 / FR-12) that stop an unappliable tag-handler group
@@ -154,7 +154,7 @@ def test_guard_ok_when_target_and_marker_present():
     assert tally["ok"] == 1
 
 
-def test_guard_target_missing(tmp_path):
+def test_guard_target_missing():
     """FR-11: target note absent on disk → guard=target_missing (fake-vault read)."""
     g = _group()
     client = FakeKado({})  # empty vault — read_note raises NotFound
@@ -197,6 +197,19 @@ def test_guard_fail_open_transient_error():
 
     g = _group()
     annotate_tag_handler_group_guards([g], _Boom())
+    assert g["guard"] == "ok"
+
+
+def test_guard_fail_open_empty_response():
+    """An empty/anomalous read response ({} — no raise) fails open to ok, NOT
+    marker_missing (W1): with no body, marker presence is indeterminate, so the
+    group must not be blocked on a transport glitch."""
+    class _Empty:
+        def read_note(self, path):
+            return {}  # empty dict, no content, no exception
+
+    g = _group()
+    annotate_tag_handler_group_guards([g], _Empty())
     assert g["guard"] == "ok"
 
 

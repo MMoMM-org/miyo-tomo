@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration & validation"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 6
 ---
@@ -31,7 +31,7 @@ phase: 6
 
 Proves the framework end-to-end on the Tomo side and wires the automated cross-repo apply once Hashi's action lands.
 
-- [ ] **T6.1 E2E (Tomo-side): captures → merged suggestion → instruction** `[activity: integration]`
+- [x] **T6.1 E2E (Tomo-side): captures → merged suggestion → instruction** `[activity: integration]`
 
   1. Prime: Read the full pipeline integration `[ref: SDD/Section 5; lines: 82-114]` and AC-1..AC-5 `[ref: PRD/Section 7; lines: 107-112]`.
   2. Test (RED): 3 Tsukai captures for one repo in a batch → triage marks all three `handled` (AC-1) → grouped + composed into **one** merged status-update suggestion targeting the repo-mapped note under `## Captures` (AC-3) → approved → one `insert_under_marker` instruction rendered; a user-authored handler drives the flow (AC-2); missing target/marker guards fire (AC-4); an empty-registry control run is byte-identical (AC-5).

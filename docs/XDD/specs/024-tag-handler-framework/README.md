@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-23 |
-| **Current Phase** | SDD |
+| **Current Phase** | Ready |
 | **Last Updated** | 2026-06-23 |
 
 ## Documents
@@ -13,8 +13,8 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | PRD — design locked in #47 brainstorm |
-| solution.md | in_progress | SDD drafted; awaiting PRD→SDD gate approval |
-| plan/ | pending | |
+| solution.md | completed | SDD — 3-layer design, action registry, cross-repo finding |
+| plan/ | completed | 6 phases; Hashi handoff ships first (T1.1, parallel) |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -30,6 +30,7 @@
 | 2026-06-23 | SDD OQ-3: append a new dated status block, never replace under the marker | Preserves history; user review is the idempotency gate. |
 | 2026-06-23 | SDD finding: `insert_under_marker` needs a NEW Hashi action (cross-repo) | Existing vocab can't insert a multi-line block into an arbitrary note at a marker. |
 | 2026-06-23 | Phasing: Phase-1 Tomo-only + manual apply; Phase-2 Hashi action via handoff | Ships v1 end-to-end with no cross-repo dependency (MVP boundary already manual). |
+| 2026-06-23 | PLAN: Hashi handoff is T1 (ships first, parallel) | A well-explained Hashi ask early lets the executor land before Tomo's side is done — no manual-apply interim. Only insert_under_marker needs a new Hashi action; route_to_folder/link_to_moc reuse move_note/link_to_moc. |
 
 ## Context
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.15.0
+# version: 1.16.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -42,7 +42,7 @@ import yaml
 # `normalise_topic` here so external callers that import it from this module
 # (e.g. `tests/test-004-phase3.sh`) keep working.
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # noqa: E402
-from lib.doc_frontmatter import build_tomo_block  # noqa: E402 — F-47 T2.4
+from lib.doc_frontmatter import build_tomo_block, body_after_frontmatter  # noqa: E402 — F-47 T2.4 / spec 024 T4.2
 from lib.topic_clusters import (  # noqa: E402, F401
     ClusterCandidate,
     build_topic_clusters,
@@ -646,12 +646,19 @@ def render_tag_handler_group(group: dict) -> str:
     into a single `composed_block`. This function renders it ONCE (AC-3 cardinality).
 
     Mirrors the tri-state Approve-checkbox style used by existing render functions.
+
+    spec 024 T4.2 guards: when group["guard"] is "target_missing" (FR-11) or
+    "marker_missing" (FR-12), the block renders WITHOUT an Approve box — the
+    absence of an Approve checkbox is the gate that stops suggestion-parser from
+    extracting the group id, so Pass-2 emits no instruction until the user fixes
+    the vault. "ok" or an absent guard renders the normal approvable block.
     """
     target = group.get("target_path") or ""
     marker = group.get("marker") or ""
     composed_block = group.get("composed_block") or ""
     handler = group.get("handler") or ""
     source_paths = group.get("source_paths") or []
+    guard = group.get("guard") or "ok"
 
     lines: list[str] = []
     # Group id — the stable (handler, target_path) slug Pass-2 reads back to map
@@ -678,6 +685,24 @@ def render_tag_handler_group(group: dict) -> str:
     lines.append("")
     lines.append(composed_block)
     lines.append("")
+
+    # ── Guard branches (FR-11 / FR-12) — no Approve box, so no instruction ──
+    if guard == "target_missing":
+        lines.append(
+            f"⚠️ **Target note doesn't exist** — [[{link}]] is not in the vault. "
+            "Hashi modifies notes, it does not create them."
+        )
+        lines.append("- [ ] Create it first (then re-run `/inbox` to apply this update)")
+        return "\n".join(lines)
+
+    if guard == "marker_missing":
+        lines.append(
+            f"⚠️ **Marker not found** — the heading `{marker}` is missing from "
+            f"[[{link}]]. Add the heading to the note (no content was inserted) "
+            "and re-run `/inbox`."
+        )
+        return "\n".join(lines)
+
     lines.append("**Decision (tag-handler update):**")
     lines.append("- [x] Approve")
     lines.append("- [ ] Skip")
@@ -1107,6 +1132,92 @@ def annotate_daily_note_existence(
     return missing
 
 
+# ── spec 024 T4.2: tag-handler group guards (FR-11 target, FR-12 marker) ──────
+# Mirrors annotate_daily_note_existence: one Kado read per unique target_path,
+# fail-open. The guard is the gate — a non-"ok" group renders WITHOUT an Approve
+# box, so suggestion-parser never extracts its id and Pass-2 emits no instruction.
+
+
+def _marker_present(body: str, marker: str) -> bool:
+    """True when `marker` appears as a heading line in the note body.
+
+    Matches the marker against each body line after normalising both to a
+    leading `#`-run + single space + text form, so "## Captures" in config
+    matches a "##  Captures" or "## Captures " heading in the note. A non-
+    heading marker (no leading `#`) falls back to an exact stripped-line match.
+    """
+    target = (marker or "").strip()
+    if not target:
+        return False
+
+    def _norm_heading(line: str) -> str:
+        s = line.strip()
+        hashes = len(s) - len(s.lstrip("#"))
+        if hashes == 0:
+            return s  # not a heading — compare verbatim
+        return "#" * hashes + " " + s[hashes:].strip()
+
+    norm_target = _norm_heading(target)
+    for line in body.splitlines():
+        if _norm_heading(line) == norm_target:
+            return True
+    return False
+
+
+def annotate_tag_handler_group_guards(
+    groups: list[dict],
+    client,
+) -> dict[str, int]:
+    """Set group["guard"] to "ok" | "target_missing" | "marker_missing" per FR-11/FR-12.
+
+    For each group with a non-null target_path, one deduplicated Kado read of the
+    target note:
+      - note not found              → guard="target_missing"  (FR-11)
+      - note found, marker absent    → guard="marker_missing"  (FR-12)
+      - note found, marker present   → guard="ok"
+    Fail-open: a None client (offline/test) or any non-not-found error keeps
+    guard="ok" — never block a group on a transient Kado failure. A group whose
+    target_path is already null is left untouched (the render surfaces it as
+    unresolved; T4.1 emits no instruction for it).
+
+    Returns a {guard_value: count} tally for logging.
+    """
+    tally = {"ok": 0, "target_missing": 0, "marker_missing": 0}
+    if client is None:
+        return tally
+    # Cache the guard outcome per (target_path, marker) so two groups sharing a
+    # target are read once. marker is part of the key because two handlers can
+    # target the same note under different markers.
+    cache: dict[tuple[str, str], str] = {}
+    for group in groups:
+        target_path = group.get("target_path")
+        if not target_path:
+            continue  # null target — leave for the unresolved render path
+        marker = group.get("marker") or ""
+        key = (target_path, marker)
+        if key not in cache:
+            # Kado note read is .md-only; an extensionless path returns
+            # VALIDATION_ERROR (not NOT_FOUND) which the fail-open branch would
+            # swallow. Normalise to .md first (mirrors annotate_daily_note_existence).
+            read_path = target_path if target_path.endswith(".md") else f"{target_path}.md"
+            guard = "ok"  # fail-open default
+            try:
+                note = client.read_note(read_path)
+                content = note.get("content", "") if isinstance(note, dict) else ""
+                body = body_after_frontmatter(content)
+                if not _marker_present(body, marker):
+                    guard = "marker_missing"
+            except KadoNotFoundError:
+                guard = "target_missing"
+            except Exception:  # noqa: BLE001 — transient/other error: stay "ok"
+                guard = "ok"
+            cache[key] = guard
+        result = cache[key]
+        group["guard"] = result
+        tally[result] = tally.get(result, 0) + 1
+    return tally
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Reduce per-item result JSONs into a single suggestions-doc JSON."
@@ -1483,6 +1594,10 @@ def main() -> int:
         Path(args.tag_handler_groups_dir) if args.tag_handler_groups_dir else None
     )
     tag_handler_updates = collect_tag_handler_groups(tag_handler_groups_dir)
+    # spec 024 T4.2: guard each group — target_missing (FR-11) / marker_missing
+    # (FR-12) render without an Approve box, so Pass-2 emits no instruction.
+    # Fail-open via the shared kado_client; --no-kado / fan-resolve → all "ok".
+    guard_tally = annotate_tag_handler_group_guards(tag_handler_updates, kado_client)
     rendered_tag_handler_updates_md = render_tag_handler_updates_block(tag_handler_updates)
 
     # fan-resolve: drop the aggregated blocks that belong to the primary
@@ -1546,6 +1661,9 @@ def main() -> int:
         f"sections={len(sections)} daily_notes_updates={len(daily_notes_updates)} "
         f"daily_notes_missing={missing_daily} "
         f"tag_handler_updates={len(tag_handler_updates)} "
+        f"tag_handler_guards=ok:{guard_tally['ok']}/"
+        f"target_missing:{guard_tally['target_missing']}/"
+        f"marker_missing:{guard_tally['marker_missing']} "
         f"proposed_mocs={len(proposed_mocs)} out={out_path}",
         file=sys.stderr,
     )

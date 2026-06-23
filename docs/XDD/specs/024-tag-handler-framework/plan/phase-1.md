@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Hashi handoff (early/parallel) + resolver foundations"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -67,6 +67,6 @@ Establishes the cross-repo contract (so Hashi can build in parallel) and the det
   4. Validate: `./venv/bin/python` resolver tests pass; lint clean; types/contract match SDD §3 output JSON.
   5. Success: Resolver output drives triage/compose/render downstream `[ref: PRD/FR-2,FR-3,FR-6; lines: 49-67]` `[ref: SDD/Section 3; lines: 56-67]`.
 
-- [ ] **T1.4 Phase Validation** `[activity: validate]`
+- [x] **T1.4 Phase Validation** `[activity: validate]`
 
   - Run all Phase 1 tests under `./venv/bin/python`. Verify resolver match/no-match/collision/unmapped/invalid-skip paths against SDD §3 and the schema against SDD §2. Confirm both handoffs (`_outbox/for-hashi/`, `_outbox/for-kokoro/`) are sent. Lint clean. **Gate: resolver tests green.**

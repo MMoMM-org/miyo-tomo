@@ -5,7 +5,7 @@
 
 ## Phases
 
-- [ ] [Phase 1: Hashi handoff (early/parallel) + resolver foundations](phase-1.md)
+- [x] [Phase 1: Hashi handoff (early/parallel) + resolver foundations](phase-1.md)
 - [ ] [Phase 2: Triage detection](phase-2.md)
 - [ ] [Phase 3: Pass-1 compose + suggestion](phase-3.md)
 - [ ] [Phase 4: Pass-2 render + guards](phase-4.md)

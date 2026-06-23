@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Pass-1 compose + suggestion"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -46,7 +46,7 @@ Enables Pass-1 to turn a batch's handled items into reviewable, merged suggestio
   4. Validate: 33 unit tests pass; pure (no LLM/network); lint clean.
   5. Success: Handled items grouped per (handler, target) for compose `[ref: PRD/FR-7; lines: 66-67]`.
 
-- [ ] **T3.2 `tag-handler-interpreter` skill + conductor wiring (lean in-skill compose)** `[activity: backend-api]`
+- [x] **T3.2 `tag-handler-interpreter` skill + conductor wiring (lean in-skill compose)** `[activity: backend-api]`
 
   1. Prime: Read the compose contract `[ref: SDD/Section 5; lines: 97-101]`, the FR-8 merge requirement `[ref: PRD/FR-8; lines: 68-69]`, the `suggest-handling` skill + suggestion-conductor patterns.
   2. Test (skill — validated by skill-author audit + spec-compliance, not unit-TDD): loaded by the conductor only on non-empty `routing-plan.handled`; runs the grouping helper; LLM directive → ONE merged dated block per group (cardinality 1, not per-item — STRICT); field-template → mechanical join (no LLM); writes group-result JSON conforming to the schema.
@@ -54,7 +54,7 @@ Enables Pass-1 to turn a batch's handled items into reviewable, merged suggestio
   4. Validate: skill-author audit clean; runtime file imperative-only with WHY in docs/tomo; conductor edit minimal + additive.
   5. Success: A group composes to exactly one merged update `[ref: PRD/FR-8; lines: 68-69]` `[ref: PRD/AC-3; lines: 109-110]`.
 
-- [ ] **T3.3 `suggestions-reducer.py` — render group as a suggestion item** `[activity: frontend-ui]`
+- [x] **T3.3 `suggestions-reducer.py` — render group as a suggestion item** `[activity: frontend-ui]`
 
   1. Prime: Read the reducer/suggestion-render spec `[ref: SDD/Section 5; lines: 101-103]` and `[ref: PRD/FR-9; lines: 72-73]`.
   2. Test (RED): one group → one suggestion item (proposed block + target + marker + `Approve` box); multi-capture group → merged block with cardinality 1; two groups → two suggestion items; reuses the existing suggestions-doc format.
@@ -62,6 +62,6 @@ Enables Pass-1 to turn a batch's handled items into reviewable, merged suggestio
   4. Validate: `./venv/bin/python` reducer tests pass against a live-render fixture; lint clean.
   5. Success: Each group is a reviewable suggestion in the suggestions doc `[ref: PRD/FR-9; lines: 72-73]` `[ref: PRD/AC-3; lines: 109-110]`.
 
-- [ ] **T3.4 Phase Validation** `[activity: validate]`
+- [x] **T3.4 Phase Validation** `[activity: validate]`
 
   - Run all Phase 3 tests under `./venv/bin/python`. Verify the merge-cardinality gate (a group of N captures → one suggestion) against SDD §5 / AC-3. Lint clean. **Gate: merged status update from a group (AC-3).**

@@ -71,6 +71,7 @@ _group_mod = _load("tag_handler_group", "tag-handler-group.py")
 _reducer_mod = _load("suggestions_reducer", "suggestions-reducer.py")
 _parser_mod = _load("suggestion_parser", "suggestion-parser.py")
 _render_mod = _load("instruction_render", "instruction-render.py")
+_writer_mod = _load("tag_handler_writer", "tag-handler-writer.py")
 
 group_id = _group_mod.group_id
 annotate_tag_handler_group_guards = _reducer_mod.annotate_tag_handler_group_guards
@@ -78,6 +79,7 @@ render_tag_handler_updates_block = _reducer_mod.render_tag_handler_updates_block
 parse_tag_handler_groups = _parser_mod.parse_tag_handler_groups
 _build_insert_under_marker_actions = _render_mod._build_insert_under_marker_actions
 _marker_to_anchor_value = _render_mod._marker_to_anchor_value
+write_handler = _writer_mod.write_handler
 
 from lib.kado_client import KadoNotFoundError  # noqa: E402
 
@@ -335,16 +337,19 @@ class TestAC2UserAuthoredHandler:
     dict is NOT hardcoded; the test writes it into a tmp dir as a JSON file."""
 
     def test_user_authored_handler_written_to_registry(self, tmp_path):
-        """The handler is authored by writing JSON to the registry directory;
-        only this handler config drives the match — not any hardcoded data."""
+        """The handler is authored via tag-handler-writer.py (schema-validated,
+        atomic write) — only this handler config drives the match, not hardcoded data.
+        Exercises the real writer contract: schema validation + atomic write (FR-13)."""
         mod = _load_triage()
 
-        # Author the handler via the tag-handler-writer.py interface:
-        # produce the handler JSON and write it explicitly to the registry.
-        # This simulates what the tomo-tag-handler-wizard does (FR-13).
+        # Author the handler via the real tag-handler-writer.py write_handler()
+        # function — the same path the tomo-tag-handler-wizard skill uses (FR-13).
+        # This exercises schema validation + atomic write, not a raw json.dumps.
         handler = _tsukai_handler()
-        reg_dir = _write_registry(tmp_path, handler)
-        written_json = json.loads((reg_dir / "tsukai.json").read_text(encoding="utf-8"))
+        reg_dir = tmp_path / "tag-handlers"
+        reg_dir.mkdir(parents=True, exist_ok=True)
+        written_path = write_handler(handler, reg_dir)
+        written_json = json.loads(written_path.read_text(encoding="utf-8"))
         assert written_json["id"] == "tsukai"  # authored file is readable
 
         cap = INBOX_PATH + "tsukai-capture.md"

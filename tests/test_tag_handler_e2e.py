@@ -78,7 +78,6 @@ annotate_tag_handler_group_guards = _reducer_mod.annotate_tag_handler_group_guar
 render_tag_handler_updates_block = _reducer_mod.render_tag_handler_updates_block
 parse_tag_handler_groups = _parser_mod.parse_tag_handler_groups
 _build_insert_under_marker_actions = _render_mod._build_insert_under_marker_actions
-_marker_to_anchor_value = _render_mod._marker_to_anchor_value
 write_handler = _writer_mod.write_handler
 
 from lib.kado_client import KadoNotFoundError  # noqa: E402
@@ -118,6 +117,8 @@ class FakeKadoClient:
 
     def read_note(self, path: str) -> dict:
         self.calls.append(("read_note", {"path": path}))
+        # Intentional: raises on unmapped paths — this fake is triage-only here; no
+        # silent-stub read_note is expected (unlike the same-named fake in test_inbox_triage.py).
         if path not in self._read_note_responses:
             raise KadoNotFoundError(f"not found: {path}")
         return self._read_note_responses[path]
@@ -611,6 +612,10 @@ class TestAC5EmptyRegistry:
         assert "handled" not in plan, "Empty registry must not emit handled key"
         # (b) fresh_sources identical to baseline
         assert plan["fresh_sources"] == baseline_plan["fresh_sources"]
+        # (b2) Absolute invariant: the source note must appear in fresh_sources
+        assert {s["path"] for s in plan["fresh_sources"]} == {src}, (
+            "fresh_sources must contain the source note path"
+        )
         # (c) No extra Kado calls vs baseline
         assert len(client.calls) == baseline_calls
 

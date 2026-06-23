@@ -48,7 +48,7 @@ Enables Pass-2 to render an approved group into a Hashi `insert_under_marker` in
   4. Validate: `./venv/bin/python` schema tests pass; existing hashi-instructions fixtures still validate.
   5. Success: Schema admits `insert_under_marker` matching the T1.1a handoff contract `[ref: SDD/Section 6; lines: 122-128]`.
 
-- [ ] **T4.1 Approval linkage + render: parser + `instruction-render.py` → `insert_under_marker`** `[activity: backend-api]`
+- [x] **T4.1 Approval linkage + render: parser + `instruction-render.py` → `insert_under_marker`** `[activity: backend-api]`
 
   1. Prime: Read the Pass-2 render spec `[ref: SDD/Section 5; lines: 104-110]`, the instruction shape `[ref: SDD/Section 6; lines: 122-128]`, `build_actions`/`_build_*_actions` in instruction-render.py, the suggestion_id convention, and `render_tag_handler_group` in suggestions-reducer.py.
   2. Test (RED): `group_id(group)` is a deterministic slug of (handler, target_path); reducer renders the id as the suggestion id; suggestion-parser extracts approved group ids → confirmed list; `_build_insert_under_marker_actions` loads approved group-result JSONs and emits the instruction (`target_path`, `anchor{type:"heading", value:<marker w/o ##>}`, `placement`, multi-line `content`); `marker`→`anchor.value` strips the `#`-run; cadence appends a new dated block (never replaces); a skipped group emits NO instruction.

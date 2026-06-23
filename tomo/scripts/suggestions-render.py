@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.0
+# version: 0.9.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -77,6 +77,7 @@ def render_header(d: dict) -> list[str]:
 
 def render_summary(d: dict) -> list[str]:
     daily_count = len(d.get("daily_notes_updates") or [])
+    th_count = len(d.get("tag_handler_updates") or [])
     lines = [
         "## Summary",
         "",
@@ -85,6 +86,8 @@ def render_summary(d: dict) -> list[str]:
     ]
     if daily_count:
         lines.append(f"- Daily note updates: {daily_count}")
+    if th_count:
+        lines.append(f"- Tag-handler updates: {th_count}")
     lines.append(f"- Proposed MOCs: {len(d['proposed_mocs'])}")
     lines.append(f"- Needs attention: {len(d['needs_attention'])}")
     lines.append("")
@@ -214,10 +217,11 @@ def main() -> int:
 
     section_count = len(d.get("sections", []))
     daily_count = len(d.get("daily_notes_updates") or [])
+    th_count = len(d.get("tag_handler_updates") or [])
     moc_count = len(d.get("proposed_mocs") or [])
     print(
         f"suggestions-render: sections={section_count} daily={daily_count} "
-        f"mocs={moc_count} out={args.output}",
+        f"tag_handler={th_count} mocs={moc_count} out={args.output}",
         file=sys.stderr,
     )
     return 0

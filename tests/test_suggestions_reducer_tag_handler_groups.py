@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_suggestions_reducer_tag_handler_groups.py — T3.3 (spec 024).
 
 Covers the tag-handler group-result render path in suggestions-reducer and
@@ -306,3 +306,30 @@ def test_group_surfaces_in_final_rendered_markdown() -> None:
     assert "Reading Log" in final_md, "target note reference must appear"
     assert "## Captures" in final_md, "marker must appear"
     assert "Approve" in final_md, "Approve checkbox must be present in final markdown"
+
+
+# ── T3.3-7: malformed group file is silently skipped (S1 failure-path) ────────
+
+
+def test_malformed_group_file_is_skipped() -> None:
+    """A malformed JSON file in the groups dir is silently skipped; valid groups load.
+
+    Covers the `except (json.JSONDecodeError, OSError): continue` path in
+    collect_tag_handler_groups — L1 failure-path coverage for the file-load loop.
+    """
+    valid = _group(
+        composed_block="- A valid captured entry",
+        source_paths=["100 Inbox/valid-note.md"],
+    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        d = Path(tmpdir)
+        # Write one malformed file and one valid file
+        (d / "bad-group.json").write_text("not json{", encoding="utf-8")
+        _write_group(d, "good-group.json", valid)
+
+        groups = collect_tag_handler_groups(d)
+
+    assert len(groups) == 1, (
+        f"Expected exactly 1 valid group (bad file skipped), got {len(groups)}"
+    )
+    assert groups[0]["composed_block"] == "- A valid captured entry"

@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Triage detection"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -39,7 +39,7 @@ Enables `/inbox` triage to recognize registered-tag notes and partition them out
   4. Validate: `./venv/bin/python` schema tests pass; existing routing-plan fixtures still validate.
   5. Success: Schema admits `handled[]` while keeping every current plan valid `[ref: SDD/Section 5; lines: 89-93]`.
 
-- [ ] **T2.1 `inbox-triage.py` — detect & partition handled items** `[activity: backend-api]`
+- [x] **T2.1 `inbox-triage.py` — detect & partition handled items** `[activity: backend-api]`
 
   1. Prime: Read the triage integration spec `[ref: SDD/Section 5; lines: 84-93]` and the resolver output contract `[ref: SDD/Section 3; lines: 56-67]`.
   2. Test (RED): handled-item partition (matched item → `handled[]`, excluded from `suggest` lane); **empty-registry identity** (no `handled` key emitted, output byte-identical & schema-valid — AC-5); mixed batch (some handled, some generic → both lanes correct); unmatched item path unchanged.
@@ -47,6 +47,6 @@ Enables `/inbox` triage to recognize registered-tag notes and partition them out
   4. Validate: `./venv/bin/python` triage tests pass; empty-registry golden run diff is empty; lint clean.
   5. Success: Handled items partitioned; empty registry byte-identical `[ref: PRD/AC-5; lines: 112]` `[ref: PRD/FR-3; lines: 54-55]`.
 
-- [ ] **T2.2 Phase Validation** `[activity: validate]`
+- [x] **T2.2 Phase Validation** `[activity: validate]`
 
   - Run all Phase 2 tests under `./venv/bin/python`. Verify the byte-identity gate (empty registry → no `handled` key, identical output) and the handled/suggest partition against SDD §5. Lint clean. **Gate: empty-registry byte-identity (AC-5).**

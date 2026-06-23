@@ -219,3 +219,12 @@ matching a known cluster to confirm a Proposed-MOC suggestion surfaces, and a Pa
 check vs the F-32 baseline (no regression — additive cold-path design). Open quality polish
 (optional): tiny residue keys (`@` fragments, structural `i_*` tokens). Open SDD risk to confirm:
 whether `dataview-inline-field` returns callout-embedded `up::` (SDD §Risks / A5).
+
+## Spec 024 — `_count_kado_calls` undercounts handler frontmatter reads
+
+`inbox-triage.py` `_count_kado_calls` does not include the per-source `read_frontmatter`
+calls that `resolve_handlers` makes when a handler registry is active (one read per new source).
+The `kado_calls` metric therefore undercounts on active-registry `/inbox` runs. **Byte-identity
+(AC-5) is unaffected** — the empty-registry path makes zero handler reads, so a no-registry run
+is byte-identical and its count is correct. Surfaced during T2.1 code review (2026-06-23).
+Follow-up: thread a handler-read counter through `TriageState` and add it to the metric.

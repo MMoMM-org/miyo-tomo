@@ -8,7 +8,7 @@ effort: medium
 ---
 
 # Tomo Tag-Handler Wizard
-# version: 0.1.1
+# version: 0.1.2
 
 ## Persona
 
@@ -166,8 +166,8 @@ Options:
 AskUserQuestion: "Where should the composed content land relative to the marker heading?"
 
 Options:
-- inside — beneath the heading, above the next same-or-higher heading (default)
-- after — immediately after the heading line
+- after — immediately after the heading line (top of section, newest-first)
+- inside — beneath the heading, above the next same-or-higher heading (end of section)
 - before — immediately before the heading line
 
 ### 10. Collect compose mode

@@ -62,7 +62,8 @@
           {"$ref": "#/$defs/update_log_link"},
           {"$ref": "#/$defs/create_moc"},
           {"$ref": "#/$defs/delete_source"},
-          {"$ref": "#/$defs/skip"}
+          {"$ref": "#/$defs/skip"},
+          {"$ref": "#/$defs/insert_under_marker"}
         ]
       }
     }
@@ -230,6 +231,35 @@
         "action": {"const": "skip"},
         "source_path": {"type": ["string", "null"]},
         "reason": {"type": ["string", "null"]},
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "insert_under_marker": {
+      "type": "object",
+      "required": ["id", "action", "target_path", "anchor", "placement", "content"],
+      "additionalProperties": false,
+      "description": "Insert a multi-line markdown block under a heading/anchor marker in an arbitrary vault note. Reuses the shared `anchor` $def; `placement` uses the same inline enum as `link_to_moc`. Modify-only — Tomo guarantees the target_path and anchor exist before emitting. Introduced by spec 024-tag-handler-framework (T1.1a handoff 2026-06-23).",
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "insert_under_marker"},
+        "target_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Vault-relative path to the target note (full path, not a MOC stem). Tomo guarantees the note exists before emitting this action."
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor",
+          "description": "Where in the target note to find the insertion point. type=heading matches heading text without '#' prefix (most common for this action); type=callout and type=line are also valid."
+        },
+        "placement": {
+          "type": "string",
+          "enum": ["inside", "before", "after"],
+          "description": "Where to insert content relative to the matched anchor. inside (heading) = beneath the matched heading, above the next same-or-higher-level heading. before/after keep standard semantics."
+        },
+        "content": {
+          "type": "string",
+          "description": "Multi-line markdown block to insert verbatim. May contain embedded newlines. Hashi inserts as-is without transformation."
+        },
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     }

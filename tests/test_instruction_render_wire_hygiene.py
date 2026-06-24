@@ -15,6 +15,9 @@ Hashi without hand-patching:
 
 Plus a cross-repo parity guard: Tomo's link_to_moc/move_note allowed-properties
 must match Hashi's schema (MiYo Constitution L2 — coordinated public interface).
+
+test_snapshot_matches_upstream_hashi requires network access — it skips
+automatically when the upstream GitHub URL is unreachable (offline runs).
 """
 from __future__ import annotations
 
@@ -22,6 +25,8 @@ import importlib.util
 import io
 import json
 import sys
+import urllib.error
+import urllib.request
 from contextlib import redirect_stderr
 from pathlib import Path
 
@@ -47,10 +52,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
 # Committed verbatim copy of Hashi's instructions.schema.json. The parity test
 # runs UNCONDITIONALLY against this snapshot so it never silently skips in CI /
-# containers without a co-located Hashi checkout. A separate drift check verifies
-# the snapshot still matches the live Hashi schema when that checkout is present.
+# containers without a co-located Hashi checkout. A separate network drift check
+# (test_snapshot_matches_upstream_hashi) pulls the live schema from GitHub and
+# verifies the snapshot is current — skips offline automatically.
 HASHI_SCHEMA_SNAPSHOT = SCHEMAS_DIR / "hashi-instructions.schema.json"
-HASHI_SCHEMA = Path("/Volumes/Moon/Coding/MiYo/Hashi/src/schema/instructions.schema.json")
+
+# Public GitHub raw URL for Hashi's live schema — no local checkout required.
+# test_snapshot_matches_upstream_hashi fetches this; all other tests use HASHI_SCHEMA_SNAPSHOT.
+_HASHI_UPSTREAM_URL = (
+    "https://raw.githubusercontent.com/MMoMM-org/miyo-tomo-hashi/main/"
+    "src/schema/instructions.schema.json"
+)
 
 
 @pytest.fixture(scope="module")
@@ -238,22 +250,76 @@ class TestHashiSchemaParity:
         assert "tomo" in hashi_snapshot["properties"]
         assert "tomo" in instructions_schema["properties"]
 
-    @pytest.mark.skipif(
-        not HASHI_SCHEMA.exists(),
-        reason="live Hashi checkout not present — snapshot drift cannot be verified",
-    )
-    def test_snapshot_matches_live_hashi(self, hashi_snapshot):
-        """Drift guard: when a co-located Hashi checkout exists, the committed
-        snapshot must still match the live schema's link_to_moc/move_note property
-        sets. A failure here means the snapshot is stale — refresh it from
-        Hashi/src/schema/instructions.schema.json (this is a real finding, not a
-        test bug)."""
-        live = json.loads(HASHI_SCHEMA.read_text(encoding="utf-8"))
-        for defname in ("link_to_moc", "move_note"):
-            assert _props(hashi_snapshot, defname) == _props(live, defname), (
-                f"snapshot {defname} props drifted from live Hashi — "
-                f"refresh tomo/schemas/hashi-instructions.schema.json"
+    def test_snapshot_matches_upstream_hashi(self, hashi_snapshot):
+        """Network drift guard: the committed snapshot must match the live Hashi
+        schema published on GitHub for every action $def (not just link_to_moc/
+        move_note — catches insert_under_marker-style whole-action drift too).
+
+        Skips automatically when the upstream URL is unreachable so offline runs
+        and CI without network still pass. When network is available this test RUNS
+        and verifies no action def has drifted required fields or property names.
+
+        A failure here means the snapshot is stale — refresh
+        tomo/schemas/hashi-instructions.schema.json from upstream Hashi.
+        """
+        try:
+            req = urllib.request.Request(
+                _HASHI_UPSTREAM_URL,
+                headers={"User-Agent": "miyo-tomo-test/1.0"},
             )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status != 200:
+                    pytest.skip(
+                        f"upstream Hashi schema unreachable — HTTP {resp.status} — offline"
+                    )
+                live = json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, OSError):
+            pytest.skip("upstream Hashi schema unreachable — offline")
+
+        # Compare every action def's required fields and property names.
+        def _action_defs(schema: dict) -> set[str]:
+            return {
+                name
+                for name, defn in schema.get("$defs", {}).items()
+                if "properties" in defn and "action" in defn["properties"]
+            }
+
+        snap_defs = _action_defs(hashi_snapshot)
+        live_defs = _action_defs(live)
+        only_in_snap = snap_defs - live_defs
+        only_in_live = live_defs - snap_defs
+
+        assert not only_in_snap and not only_in_live, (
+            "Action set differs between snapshot and upstream Hashi.\n"
+            f"  Only in snapshot: {sorted(only_in_snap)}\n"
+            f"  Only in upstream: {sorted(only_in_live)}\n"
+            "Fix: refresh tomo/schemas/hashi-instructions.schema.json from upstream Hashi."
+        )
+
+        mismatches: list[str] = []
+        for defname in sorted(snap_defs & live_defs):
+            snap_req = frozenset(hashi_snapshot["$defs"][defname].get("required", []))
+            live_req = frozenset(live["$defs"][defname].get("required", []))
+            snap_props = _props(hashi_snapshot, defname)
+            live_props = _props(live, defname)
+            if snap_req != live_req:
+                mismatches.append(
+                    f"  {defname}: required mismatch\n"
+                    f"    snap only:  {sorted(snap_req - live_req)}\n"
+                    f"    live only:  {sorted(live_req - snap_req)}"
+                )
+            if snap_props != live_props:
+                mismatches.append(
+                    f"  {defname}: property-name mismatch\n"
+                    f"    snap only:  {sorted(snap_props - live_props)}\n"
+                    f"    live only:  {sorted(live_props - snap_props)}"
+                )
+
+        assert not mismatches, (
+            "Action $def structure drifted from upstream Hashi:\n"
+            + "\n".join(mismatches)
+            + "\nFix: refresh tomo/schemas/hashi-instructions.schema.json from upstream Hashi."
+        )
 
 
 # ── #69 — filename sanitisation + resolvable references ─────────────────────

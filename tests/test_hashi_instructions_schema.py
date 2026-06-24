@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_hashi_instructions_schema.py — JSON Schema validation tests for hashi-instructions.schema.json.
 
 Covers T4.0 (XDD 024 Phase 4): insert_under_marker action $def.
+Also validates insert_under_marker against Tomo's producer schema (instructions.schema.json)
+to guard against drift between the two copies.
 
 Spec: docs/XDD/specs/024-tag-handler-framework/
 Handoff contract: _outbox/for-hashi/2026-06-23_tomo-to-hashi_insert-under-marker-action.md
@@ -24,11 +26,17 @@ from jsonschema import ValidationError, validate  # noqa: E402
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "hashi-instructions.schema.json"
+PRODUCER_SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"
 
 
 @pytest.fixture(scope="module")
 def schema() -> dict:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def producer_schema() -> dict:
+    return json.loads(PRODUCER_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +78,17 @@ def test_valid_insert_under_marker_validates(schema):
     validate(
         instance=_make_instructions([_make_insert_under_marker()]),
         schema=schema,
+    )
+
+
+def test_valid_insert_under_marker_validates_against_producer_schema(producer_schema):
+    """insert_under_marker must also validate against Tomo's producer schema
+    (instructions.schema.json).  This test is the RED gate for the drift fix:
+    it fails when insert_under_marker is absent from the producer schema and
+    passes after the $def + oneOf ref are added."""
+    validate(
+        instance=_make_instructions([_make_insert_under_marker()]),
+        schema=producer_schema,
     )
 
 

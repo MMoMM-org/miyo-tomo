@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.32.0
+# version: 0.33.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -2302,10 +2302,12 @@ def main() -> int:
     )
     p.add_argument(
         "--tag-handler-groups-dir",
-        default=None,
+        default="tomo-tmp/tag-handler-groups",
         help="Directory of tag-handler group-result JSONs (spec 024 T4.1). Each "
              "group whose group_id is approved in the suggestions doc becomes one "
-             "insert_under_marker action. Absent/empty → no such actions.",
+             "insert_under_marker action. Default: cwd-relative "
+             "tomo-tmp/tag-handler-groups (instance runtime); absent/empty → no "
+             "such actions. Host/tests override.",
     )
     args = p.parse_args()
 

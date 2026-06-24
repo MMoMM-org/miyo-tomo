@@ -59,13 +59,8 @@ if Path(_DEPS).is_dir() and _DEPS not in sys.path:
 #                Tracked for resolution.  REMOVE entry when fixed.
 # ---------------------------------------------------------------------------
 PRODUCER_ONLY_PROPS: dict[tuple[str, str], str] = {
-    ("add_relationship", "error"):
-        "drift — instruction-render.py emits `error` on un-appliable add_relationship "
-        "actions (child-missing / non-markdown-asset); Hashi's additionalProperties:false "
-        "schema rejects it at apply time. "
-        "Tracked: _outbox/for-hashi/2026-06-24_tomo-to-hashi_add-relationship-error-field.md. "
-        "REMOVE this exception when resolved (Tomo filters the field before the wire "
-        "OR Hashi adds the field to its schema).",
+    # Empty — add_relationship.error was resolved: filter_unappliable_relationships
+    # removes error-bearing sentinels before the wire (spec 024 follow-up).
 }
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

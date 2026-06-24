@@ -133,7 +133,6 @@
         "marker": {"type": "string", "description": "Dataview inline-field marker that locates the line to replace, e.g. 'up::' or 'related::'. Hashi locates the first line whose stripped content (after optional '> ' callout prefix) starts with this marker."},
         "line": {"type": "string", "description": "Pre-formatted full line content to write, e.g. 'up:: [[Hobbies (MOC)]]' or 'related:: [[A]], [[B]]'. Hashi replaces the located marker line with this verbatim, preserving the line's leading '> ' prefix if the marker was inside a callout. Multi-link aggregation for related:: is done Tomo-side."},
         "source_note_title": {"type": ["string", "null"]},
-        "error": {"type": ["string", "null"], "description": "Optional error code when applied=false (e.g. 'child-missing' when the target note was deleted between proposal and render)."},
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     },

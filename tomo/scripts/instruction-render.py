@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.30.0
+# version: 0.31.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1581,19 +1581,32 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # entry / tracker was dropped because its daily note does not exist (Hashi
     # cannot create one). Create the daily note and re-run to apply these.
     skipped_daily = metadata.get("skipped_daily") or []
-    if skipped_daily:
-        body_parts.append("## Skipped — daily note missing")
+    skipped_rel = metadata.get("skipped_rel") or []
+    if skipped_daily or skipped_rel:
+        body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
-        body_parts.append(
-            "These actions were not emitted because their target daily note "
-            "does not exist. Create the daily note in Obsidian and re-run "
-            "`/inbox` to apply them:")
-        body_parts.append("")
-        for a in skipped_daily:
-            stem = _stem(a.get("daily_note_path")) or a.get("date", "?")
-            detail = a.get("content") or a.get("field") or a.get("target_stem") or ""
-            body_parts.append(f"- `{a.get('action')}` → [[{stem}]] — {detail}".rstrip(" —"))
-        body_parts.append("")
+        if skipped_daily:
+            body_parts.append(
+                "**Daily note missing** — Create the daily note in Obsidian "
+                "and re-run `/inbox` to apply:")
+            body_parts.append("")
+            for a in skipped_daily:
+                stem = _stem(a.get("daily_note_path")) or a.get("date", "?")
+                detail = a.get("content") or a.get("field") or a.get("target_stem") or ""
+                body_parts.append(f"- `{a.get('action')}` → [[{stem}]] — {detail}".rstrip(" —"))
+            body_parts.append("")
+        if skipped_rel:
+            body_parts.append(
+                "**Up-link child not found** — The child note was missing or "
+                "non-markdown at render time. Create the note and re-run `/inbox` "
+                "to add the up-link:")
+            body_parts.append("")
+            for a in skipped_rel:
+                target = a.get("target_moc_path") or "?"
+                error = a.get("error") or "?"
+                line = a.get("line") or ""
+                body_parts.append(f"- `add_relationship` → `{target}` [{error}] — {line}".rstrip(" —"))
+            body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"
 
 
@@ -2227,6 +2240,32 @@ def filter_missing_daily_notes(
     return kept, skipped
 
 
+def filter_unappliable_relationships(
+    actions: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Drop add_relationship actions that carry a truthy `error` key.
+
+    emit_up_preservation_actions sets error='child-missing' or
+    error='non-markdown-asset' on un-appliable sentinels (applied=False).
+    Hashi's wire schema has additionalProperties:false and no `error` field, so
+    a single error-bearing action causes Hashi to reject the entire instruction
+    set. This filter intercepts them before serialisation.
+
+    Pure function — no Kado call needed; the `error` marker is set at emission.
+    Returns (kept, skipped). Non-add_relationship actions are always kept.
+    Skipped items are surfaced to the user via stderr and the instructions.md
+    Skipped section (same pattern as filter_missing_daily_notes).
+    """
+    kept: list[dict] = []
+    skipped: list[dict] = []
+    for a in actions:
+        if a.get("action") == "add_relationship" and a.get("error"):
+            skipped.append(a)
+        else:
+            kept.append(a)
+    return kept, skipped
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Render approved suggestions into note files.")
     p.add_argument("--suggestions", required=True, help="Path to parsed suggestions JSON")
@@ -2526,6 +2565,24 @@ def main() -> int:
             print(f"    • {a.get('id')} {a.get('action')} → {a.get('daily_note_path')}",
                   file=sys.stderr)
 
+    # ── Drop add_relationship sentinels with an error (child-missing / ──────
+    # non-markdown-asset). Hashi's additionalProperties:false wire schema has
+    # no `error` field — a single error-bearing action causes Hashi to reject
+    # the ENTIRE instruction set. Filter here and surface to the user.
+    actions, skipped_rel = filter_unappliable_relationships(actions)
+    if skipped_rel:
+        print(
+            f"  [skip] {len(skipped_rel)} add_relationship action(s) skipped — "
+            "child note missing or non-markdown (cannot add up-link):",
+            file=sys.stderr,
+        )
+        for a in skipped_rel:
+            print(
+                f"    • {a.get('id')} {a.get('action')} → {a.get('target_moc_path')} "
+                f"[{a.get('error')}]",
+                file=sys.stderr,
+            )
+
     # ── Path Shape Contract guard (Hashi handoff 2026-04-26) ─────────────
     # Catch non-conforming paths before they reach the JSON. Hashi fails
     # closed on these with non-actionable error messages — catching upstream
@@ -2592,6 +2649,7 @@ def main() -> int:
             "profile": profile_name,
             "tomo_version": tomo_version,
             "skipped_daily": skipped_daily,
+            "skipped_rel": skipped_rel,
         },
         cfg,
     )

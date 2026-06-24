@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_instruction_render_up_preservation.py — Rule 4.x existing-up:: preservation.
 
 F-43 T4.2: Verifies that emit_up_preservation_actions produces correct
 add_relationship action sequences for all Rule 4.x outcomes (PRD AC-4.1 …
 AC-4.6) as defined in SDD Example 1.
 
-Eight tests, one per TDD-guardian-approved plan entry:
+Eight Rule 4.x tests, one per TDD-guardian-approved plan entry:
   1. test_rule_41_no_up_default
   2. test_rule_42_valid_up_default
   3. test_rule_43_broken_up_default
@@ -14,7 +14,15 @@ Eight tests, one per TDD-guardian-approved plan entry:
   5. test_rule_45_valid_up_override
   6. test_rule_46_per_child_individual_target
   7. test_self_link_skipped
-  8. test_child_missing_at_render_time
+  8. test_child_missing_at_render_time  ← CONVERTED: new contract (filtered, not wire error)
+
+Filter tests (spec 024 follow-up):
+  9. test_filter_unappliable_relationships_keeps_valid
+  10. test_filter_unappliable_relationships_routes_error_to_skipped
+  11. test_filter_unappliable_relationships_non_markdown_asset
+  12. test_filter_unappliable_relationships_mixed
+  13. test_wire_actions_have_no_error_field_on_child_missing
+  14. test_wire_actions_have_no_error_field_on_non_markdown_asset
 """
 from __future__ import annotations
 
@@ -278,37 +286,192 @@ def test_self_link_skipped() -> None:
 
 
 # ── Child missing at render time ────────────────────────────────────────────────
+# CONVERTED CONTRACT: emit_up_preservation_actions still returns the sentinel
+# (so callers can route it to skipped), but the sentinel must NOT appear on the
+# wire actions list — filter_unappliable_relationships removes it before emit.
 
 
 def test_child_missing_at_render_time() -> None:
-    """Kado raises NOT_FOUND → schema-valid sentinel with applied=False, error=child-missing.
+    """Kado raises NOT_FOUND → sentinel with applied=False, error=child-missing.
 
-    SDD edge case: child deleted between proposal write and apply.
-    emit_up_preservation_actions catches KadoError(NOT_FOUND), emits one
-    action dict that is schema-valid (Option A: string placeholders, applied=False,
-    error="child-missing").  Other children in the cluster are unaffected (no
-    exception escapes the function).
+    emit_up_preservation_actions emits the sentinel so the filter can route it.
+    The sentinel is NOT expected on the wire — filter_unappliable_relationships
+    intercepts it. This test covers only the emit function contract, not the wire.
     """
-    # kado with no notes → resolve_stem_to_path raises KadoError
     kado = _FakeKadoClient(notes={})
     actions = ir.emit_up_preservation_actions(
         "deleted-note", "Some MOC", override_flag=False, kado_client=kado, counter=_counter()
     )
-    assert len(actions) == 1, f"Expected one error-sentinel action; got {actions!r}"
+    assert len(actions) == 1, f"Expected one sentinel action; got {actions!r}"
     sentinel = actions[0]
     assert sentinel.get("action") == "add_relationship"
     assert sentinel.get("applied") is False, f"applied must be False; got {sentinel!r}"
     assert sentinel.get("error") == "child-missing", f"error must be 'child-missing'; got {sentinel!r}"
-    # Schema compliance (Option A): required string fields must be non-null strings.
-    assert isinstance(sentinel.get("target_moc_path"), str), (
-        f"target_moc_path must be a string (Option A); got {sentinel.get('target_moc_path')!r}"
+    # Sentinel fields must be strings (not None) so the action is describable.
+    assert isinstance(sentinel.get("target_moc_path"), str)
+    assert isinstance(sentinel.get("marker"), str)
+    assert isinstance(sentinel.get("line"), str)
+
+
+# ── filter_unappliable_relationships ────────────────────────────────────────────
+# New filter function (spec 024 follow-up): routes error-bearing add_relationship
+# actions to the skipped bucket so they never reach the wire.
+
+
+def test_filter_unappliable_relationships_keeps_valid() -> None:
+    """Valid add_relationship actions (no error) pass through unchanged."""
+    actions = [
+        {"id": "I01", "action": "add_relationship", "target_moc_path": "Atlas/Note.md",
+         "marker": "up::", "line": "up:: [[MOC]]", "applied": None},
+        {"id": "I02", "action": "add_relationship", "target_moc_path": "Atlas/Other.md",
+         "marker": "related::", "line": "related:: [[MOC]]", "applied": None},
+    ]
+    kept, skipped = ir.filter_unappliable_relationships(actions)
+    assert len(kept) == 2, f"Both valid actions must be kept; got {kept!r}"
+    assert skipped == [], f"No skipped expected; got {skipped!r}"
+
+
+def test_filter_unappliable_relationships_routes_error_to_skipped() -> None:
+    """add_relationship with error='child-missing' is routed to skipped, not kept."""
+    valid = {"id": "I01", "action": "add_relationship", "target_moc_path": "Atlas/Note.md",
+             "marker": "up::", "line": "up:: [[MOC]]", "applied": None}
+    sentinel = {"id": "I02", "action": "add_relationship", "target_moc_path": "deleted-note",
+                "marker": "up::", "line": "up:: [[Some MOC]]", "applied": False,
+                "error": "child-missing"}
+    kept, skipped = ir.filter_unappliable_relationships([valid, sentinel])
+    assert kept == [valid], f"Only valid action should be kept; got {kept!r}"
+    assert skipped == [sentinel], f"Sentinel must be skipped; got {skipped!r}"
+
+
+def test_filter_unappliable_relationships_non_markdown_asset() -> None:
+    """add_relationship with error='non-markdown-asset' is routed to skipped."""
+    sentinel = {"id": "I01", "action": "add_relationship",
+                "target_moc_path": "Attachments/image.png",
+                "marker": "up::", "line": "up:: [[Some MOC]]", "applied": False,
+                "error": "non-markdown-asset"}
+    kept, skipped = ir.filter_unappliable_relationships([sentinel])
+    assert kept == [], f"No kept expected; got {kept!r}"
+    assert skipped == [sentinel], f"Sentinel must be skipped; got {skipped!r}"
+
+
+def test_filter_unappliable_relationships_mixed() -> None:
+    """Non-add_relationship actions and error-free add_relationships pass through."""
+    move = {"id": "I01", "action": "move_note", "source": "100 Inbox/x.md",
+            "destination": "Atlas/x.md", "title": "X"}
+    valid_rel = {"id": "I02", "action": "add_relationship",
+                 "target_moc_path": "Atlas/Note.md", "marker": "up::", "line": "up:: [[M]]"}
+    bad_rel = {"id": "I03", "action": "add_relationship",
+               "target_moc_path": "gone", "marker": "up::", "line": "up:: [[M]]",
+               "applied": False, "error": "child-missing"}
+    kept, skipped = ir.filter_unappliable_relationships([move, valid_rel, bad_rel])
+    assert kept == [move, valid_rel], f"move + valid_rel must be kept; got {kept!r}"
+    assert skipped == [bad_rel], f"bad_rel must be skipped; got {skipped!r}"
+
+
+# ── Wire contract: no error-bearing actions on the wire ─────────────────────────
+# These tests drive build_actions end-to-end and assert that error-bearing
+# add_relationship sentinels never appear in the returned list.  The filter
+# must be applied inside (or immediately after) build_actions or in main().
+# The tests here verify the contract from the caller's perspective — via
+# filter_unappliable_relationships applied to the output of build_actions.
+
+
+def test_wire_actions_have_no_error_field_on_child_missing() -> None:
+    """When a child is missing, no add_relationship with error reaches the wire.
+
+    Scenario: one child is registered (present), one is missing.
+    After applying filter_unappliable_relationships, the missing-child sentinel
+    must not appear in the kept list.
+    """
+    kado = _FakeKadoClient(
+        notes={"present-note": ("Atlas/202 Notes/present-note.md", "# Present\n\nProse.\n")},
+        existing_paths=set(),
     )
-    assert isinstance(sentinel.get("marker"), str), (
-        f"marker must be a string (Option A); got {sentinel.get('marker')!r}"
+    manifest = [{
+        "id": "MOC01",
+        "action": "create_moc",
+        "title": "Some MOC",
+        "rendered_file": "2026-06-24_0000_some-moc.md",
+        "destination": "Atlas/200 Maps/",
+        "parent_moc": None,
+        "tags": [],
+        "supporting_items": "present-note, missing-note",
+        "override_preserve_existing_up": False,
+    }]
+    cfg = {
+        "concepts.inbox": "100 Inbox",
+        "concepts.calendar.granularities.daily.path": "Calendar/Daily",
+        "daily_log.heading": "Daily Log",
+        "daily_log.heading_level": 2,
+        "callouts.editable": ["blocks"],
+        "profile": "miyo",
+    }
+    raw_actions = ir.build_actions(
+        manifest=manifest, confirmed=[], daily_updates=[], skipped=[], cfg=cfg, kado_client=kado,
     )
-    assert isinstance(sentinel.get("line"), str), (
-        f"line must be a string (Option A); got {sentinel.get('line')!r}"
+    wire_actions, skipped_rel = ir.filter_unappliable_relationships(raw_actions)
+
+    # No action on the wire may carry an "error" key with a truthy value
+    error_on_wire = [a for a in wire_actions if a.get("error")]
+    assert error_on_wire == [], (
+        f"error-bearing add_relationship actions must not reach wire; got {error_on_wire!r}"
     )
+    # The missing-note sentinel must be in skipped
+    assert len(skipped_rel) == 1, f"Expected 1 skipped (missing-note); got {skipped_rel!r}"
+    assert skipped_rel[0].get("error") == "child-missing"
+    # The valid present-note action must still be on the wire
+    rel_actions = [a for a in wire_actions if a.get("action") == "add_relationship"]
+    assert len(rel_actions) == 1, f"Expected 1 wire add_relationship; got {rel_actions!r}"
+    assert rel_actions[0]["target_moc_path"] == "Atlas/202 Notes/present-note.md"
+
+
+def test_wire_actions_have_no_error_field_on_non_markdown_asset() -> None:
+    """When a child resolves to a non-markdown path, its sentinel is filtered.
+
+    Simulate: resolve_stem_to_path returns a .png path (non-markdown asset).
+    The sentinel must go to skipped, not to the wire.
+    """
+    class _NonMarkdownKado(_FakeKadoClient):
+        """Returns a non-markdown path for 'image-asset' stem."""
+        def resolve_stem_to_path(self, stem: str) -> str | None:
+            if stem == "image-asset":
+                return "Attachments/image-asset.png"
+            return super().resolve_stem_to_path(stem)
+
+    kado = _NonMarkdownKado(
+        notes={"real-note": ("Atlas/202 Notes/real-note.md", "# Real\n\nProse.\n")},
+        existing_paths=set(),
+    )
+    manifest = [{
+        "id": "MOC01",
+        "action": "create_moc",
+        "title": "Some MOC",
+        "rendered_file": "2026-06-24_0000_some-moc.md",
+        "destination": "Atlas/200 Maps/",
+        "parent_moc": None,
+        "tags": [],
+        "supporting_items": "real-note, image-asset",
+        "override_preserve_existing_up": False,
+    }]
+    cfg = {
+        "concepts.inbox": "100 Inbox",
+        "concepts.calendar.granularities.daily.path": "Calendar/Daily",
+        "daily_log.heading": "Daily Log",
+        "daily_log.heading_level": 2,
+        "callouts.editable": ["blocks"],
+        "profile": "miyo",
+    }
+    raw_actions = ir.build_actions(
+        manifest=manifest, confirmed=[], daily_updates=[], skipped=[], cfg=cfg, kado_client=kado,
+    )
+    wire_actions, skipped_rel = ir.filter_unappliable_relationships(raw_actions)
+
+    error_on_wire = [a for a in wire_actions if a.get("error")]
+    assert error_on_wire == [], (
+        f"error-bearing add_relationship actions must not reach wire; got {error_on_wire!r}"
+    )
+    assert len(skipped_rel) == 1, f"Expected 1 skipped (non-markdown-asset); got {skipped_rel!r}"
+    assert skipped_rel[0].get("error") == "non-markdown-asset"
 
 
 # ── Fix 2: extract_first_up_marker ignores frontmatter ─────────────────────────

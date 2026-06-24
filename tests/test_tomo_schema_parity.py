@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 1.0.0
-"""test_tomo_schema_parity.py — action-contract parity guard between Tomo's two instruction schemas.
+# version: 2.0.0
+"""test_tomo_schema_parity.py — bidirectional action-contract parity guard between Tomo's two instruction schemas.
 
 tomo/schemas/instructions.schema.json    — Tomo's producer copy (original, from xdd-008).
 tomo/schemas/hashi-instructions.schema.json — verbatim mirror of Hashi's wire schema.
@@ -12,21 +12,31 @@ Contract rules checked:
   1. The set of oneOf $refs (actions) must be identical.
   2. Required fields must match for every shared action $def (breaking-contract check).
   3. Every property defined in the Hashi snapshot must also be present in Tomo's
-     producer schema — Tomo cannot emit fields that Hashi's schema rejects.
+     producer schema (Hashi ⊆ Tomo) — if Hashi defines a property that Tomo is missing,
+     Tomo would fail to emit it and the instruction set would be incomplete.
+  4. [NEW — the apply-breaking direction] Every property in Tomo's PRODUCER schema must
+     also appear in Hashi's wire schema (Tomo ⊆ Hashi), unless it is explicitly listed
+     in PRODUCER_ONLY_PROPS below with a documented reason.  A Tomo-only property that
+     reaches Hashi causes the ENTIRE instruction set to be rejected at apply time because
+     Hashi's schema has additionalProperties:false on every action $def.
 
-Note: Tomo's producer schema may legitimately carry extra optional properties that
-Hashi's live schema does not yet accept (e.g. add_relationship.error — a pre-existing
-deviation tracked for a separate Hashi schema update via handoff).  Those
-Tomo-only fields are NOT flagged by this test because they are producer-internal
-annotations.  The inverse IS flagged: if Hashi defines a field that Tomo's producer
-schema is missing, Tomo would fail to emit it.
+Exception registry (PRODUCER_ONLY_PROPS):
+  Properties may appear in the Tomo producer schema but not in Hashi's wire schema for
+  exactly two reasons:
+    "stripped"  — the property is removed before serialisation and never reaches Hashi.
+    "drift"     — a known, tracked divergence; Hashi would reject it if it arrived on the
+                  wire.  These are technical debt entries — REMOVE when resolved (either
+                  Tomo filters the field before the wire, or Hashi adds the field).
 
 If this test fails it means:
   - An action was added to one schema but not the other (oneOf ref mismatch), OR
   - A required field changed in one schema (required mismatch), OR
-  - Hashi's schema defines a property that Tomo's producer schema does not.
+  - Hashi's schema defines a property missing from Tomo's producer schema, OR
+  - [NEW] Tomo's producer schema defines a property absent from Hashi's wire schema and
+    not listed in PRODUCER_ONLY_PROPS.
 
-Fix: add the missing action or field to BOTH tomo/schemas/*.json files.
+Fix: add the missing field to both schemas, OR add an entry to PRODUCER_ONLY_PROPS with
+a "stripped" or "drift" reason.
 
 MiYo Constitution L2 — coordinated public interface between components.
 """
@@ -39,6 +49,24 @@ from pathlib import Path
 _DEPS = "/tmp/claude/py_deps"
 if Path(_DEPS).is_dir() and _DEPS not in sys.path:
     sys.path.insert(0, _DEPS)
+
+# ---------------------------------------------------------------------------
+# Exception registry — Tomo producer-schema properties intentionally absent
+# from the Hashi wire schema.  Each entry MUST carry a reason.
+#
+#   "stripped" — removed before serialisation; never reaches Hashi (safe).
+#   "drift"    — a KNOWN unresolved divergence Hashi would reject at apply time.
+#                Tracked for resolution.  REMOVE entry when fixed.
+# ---------------------------------------------------------------------------
+PRODUCER_ONLY_PROPS: dict[tuple[str, str], str] = {
+    ("add_relationship", "error"):
+        "drift — instruction-render.py emits `error` on un-appliable add_relationship "
+        "actions (child-missing / non-markdown-asset); Hashi's additionalProperties:false "
+        "schema rejects it at apply time. "
+        "Tracked: _outbox/for-hashi/2026-06-24_tomo-to-hashi_add-relationship-error-field.md. "
+        "REMOVE this exception when resolved (Tomo filters the field before the wire "
+        "OR Hashi adds the field to its schema).",
+}
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
@@ -79,22 +107,36 @@ def _property_names(schema: dict, defname: str) -> frozenset[str]:
 
 
 def test_tomo_instruction_schemas_action_parity():
-    """The two instruction schemas must expose a compatible action contract.
+    """The two instruction schemas must expose a bidirectionally compatible action contract.
 
-    Three checks (all offline, no network required):
+    Four checks (all offline, no network required):
     1. oneOf $refs — the action set must be identical in both schemas.
     2. required fields — the required list must match for every shared $def
        (catches breaking contract changes).
-    3. Hashi-defined properties in Tomo — every property in the Hashi snapshot
-       must also appear in Tomo's producer schema (Tomo must accept what Hashi
-       defines; the reverse is allowed — Tomo may carry producer-only optional
-       fields that have not yet been added to Hashi).
+    3. Hashi ⊆ Tomo — every property in the Hashi snapshot must also appear in
+       Tomo's producer schema (Tomo must be able to emit what Hashi defines).
+    4. [NEW] Tomo ⊆ Hashi — every property in Tomo's producer schema must also
+       appear in Hashi's wire schema, UNLESS explicitly listed in PRODUCER_ONLY_PROPS
+       with a documented reason.  This is the apply-breaking direction: a Tomo-only
+       property causes Hashi to reject the entire instruction set at apply time
+       (Hashi's additionalProperties:false).  This check is the recurrence guard for
+       that class of bug.
 
-    This is the guard introduced to prevent a recurrence of the insert_under_marker
-    drift (spec 024 Phase 4, T4.0): insert_under_marker was added to the Hashi
-    snapshot but was missing from instructions.schema.json; this test catches that.
+    The PRODUCER_ONLY_PROPS registry (module-level) tracks known exceptions with one
+    of two reasons:
+      "stripped" — removed before serialisation; never reaches Hashi (safe).
+      "drift"    — a known, unresolved divergence Hashi would reject; tracked for fix.
 
-    FIX on failure: add the missing action or field to BOTH tomo/schemas/*.json files.
+    This guard was introduced in spec 024 Phase 4:
+      - T4.0 caught insert_under_marker missing from instructions.schema.json (Hashi ⊆ Tomo).
+      - Bidirectional extension (T4.x) catches add_relationship.error present in
+        instructions.schema.json but absent from hashi-instructions.schema.json
+        (Tomo ⊆ Hashi, the apply-breaking direction).
+
+    FIX on failure:
+      - For Check 1/2/3: add the missing action or field to BOTH tomo/schemas/*.json.
+      - For Check 4: add the property to Hashi's schema, OR add an entry to
+        PRODUCER_ONLY_PROPS in this file with a "stripped" or "drift" reason.
     """
     tomo = _load(TOMO_SCHEMA_PATH)
     hashi = _load(HASHI_SNAPSHOT_PATH)
@@ -112,7 +154,7 @@ def test_tomo_instruction_schemas_action_parity():
         "Fix: add the missing action to BOTH tomo/schemas/*.json files."
     )
 
-    # --- Check 2 + 3: per-def required fields + Hashi-property coverage ---
+    # --- Checks 2, 3, 4: per-def required fields + bidirectional property coverage ---
     shared_defs = _action_defs(tomo) & _action_defs(hashi)
     mismatches: list[str] = []
 
@@ -122,7 +164,7 @@ def test_tomo_instruction_schemas_action_parity():
         tomo_props = _property_names(tomo, defname)
         hashi_props = _property_names(hashi, defname)
 
-        # Required fields must match exactly (breaking-contract check).
+        # Check 2: required fields must match exactly (breaking-contract check).
         if tomo_req != hashi_req:
             mismatches.append(
                 f"  {defname}: required mismatch\n"
@@ -130,9 +172,8 @@ def test_tomo_instruction_schemas_action_parity():
                 f"    hashi only: {sorted(hashi_req - tomo_req)}"
             )
 
-        # Every property Hashi defines must appear in Tomo's producer schema.
-        # (Tomo-only optional properties are allowed — they are producer-internal
-        # and need a separate Hashi handoff to be accepted on the wire.)
+        # Check 3: Hashi ⊆ Tomo — every property Hashi defines must appear in Tomo's
+        # producer schema (Tomo must be able to emit what Hashi accepts).
         hashi_only_props = hashi_props - tomo_props
         if hashi_only_props:
             mismatches.append(
@@ -140,8 +181,27 @@ def test_tomo_instruction_schemas_action_parity():
                 f"    missing in tomo: {sorted(hashi_only_props)}"
             )
 
+        # Check 4 [NEW]: Tomo ⊆ Hashi — every property in Tomo's producer schema must
+        # appear in Hashi's wire schema, UNLESS in PRODUCER_ONLY_PROPS.
+        # A property that reaches Hashi but is absent from Hashi's schema causes Hashi
+        # to reject the whole instruction set (additionalProperties:false).
+        tomo_only_props = tomo_props - hashi_props
+        unregistered = {
+            prop
+            for prop in tomo_only_props
+            if (defname, prop) not in PRODUCER_ONLY_PROPS
+        }
+        if unregistered:
+            mismatches.append(
+                f"  {defname}: Tomo producer schema has properties absent from "
+                f"Hashi's wire schema and NOT in PRODUCER_ONLY_PROPS\n"
+                f"    unregistered tomo-only: {sorted(unregistered)}\n"
+                f"    Fix: add to Hashi's schema OR add to PRODUCER_ONLY_PROPS "
+                f"with a 'stripped' or 'drift' reason."
+            )
+
     assert not mismatches, (
         "Action $def structure parity violation:\n"
         + "\n".join(mismatches)
-        + "\nFix: add the missing action or field to BOTH tomo/schemas/*.json files."
+        + "\nFix: see docstring for per-check remediation."
     )

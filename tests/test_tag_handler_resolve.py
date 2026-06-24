@@ -434,7 +434,7 @@ def test_shipped_tsukai_json_resolves_tomo_tagged_item():
       fields  == {"category": "feature"}  (from read_fields)
       marker  == "## Captures"
       action  == "insert_under_marker"
-      placement == "inside"
+      placement == "after"
     """
     handler_dir = TSUKAI_JSON_PATH.parent
     registry = load_registry(handler_dir)
@@ -452,7 +452,7 @@ def test_shipped_tsukai_json_resolves_tomo_tagged_item():
     assert result["fields"] == {"category": "feature"}
     assert result["marker"] == "## Captures"
     assert result["action"] == "insert_under_marker"
-    assert result["placement"] == "inside"
+    assert result["placement"] == "after"
 
 
 def test_shipped_tsukai_json_unmapped_repo_yields_null_target():

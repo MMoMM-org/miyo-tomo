@@ -12,6 +12,6 @@
     "map": {}
   },
   "marker": "## Captures",
-  "placement": "inside",
+  "placement": "after",
   "compose": "Synthesize the batch's captures into one dated logical status update, grouped by category."
 }

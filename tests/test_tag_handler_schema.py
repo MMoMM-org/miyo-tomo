@@ -247,11 +247,11 @@ def test_shipped_tsukai_json_match_fields(schema):
 
 
 def test_shipped_tsukai_json_action_and_marker(schema):
-    """The shipped tsukai.json has action='insert_under_marker', marker='## Captures', placement='inside' (PRD §6)."""
+    """The shipped tsukai.json has action='insert_under_marker', marker='## Captures', placement='after' (PRD §6)."""
     handler = json.loads(TSUKAI_JSON_PATH.read_text(encoding="utf-8"))
     assert handler["action"] == "insert_under_marker"
     assert handler["marker"] == "## Captures"
-    assert handler["placement"] == "inside"
+    assert handler["placement"] == "after"
 
 
 def test_shipped_tsukai_json_compose_is_string(schema):

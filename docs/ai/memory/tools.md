@@ -111,3 +111,9 @@ Key differences from inside Docker: hostname is `127.0.0.1` (not `host.docker.in
 ## `update-tomo.sh` retires source-deleted scripts only via a hardcoded list
 
 Deleting a runtime `tomo/scripts/*.py` from source does NOT remove it from existing instances on `update-tomo --yolo`: the sync copies/versions present files but only retires (deletes) instance scripts named in the hardcoded `RETIRED_SCRIPTS` array (`scripts/update-tomo.sh` ~:454). Miss the entry → the orphan persists in every instance after every update. When you delete a runtime script, add its basename to `RETIRED_SCRIPTS` in the same change (021 T3.3 deleted `atomic-note-indexer.py` but missed the array; caught during instance cleanup, fixed in `99d8412`). Same mechanism + `RETIRED_SCRIPT_TESTS` for tests.
+
+<\!-- 2026-06-24 -->
+
+## Container project skills are `/name`-invocable only — never proactively auto-triggered
+
+The Tomo container's Claude Code surfaces **no "available skills" block** to the model, so project skills in `.claude/skills/` are reachable only by explicit `/name` invocation — the `Use PROACTIVELY` + trigger phrases in a SKILL `description` are inert in the container. Verified from an instance session log (`87113fcd`): the user typed "edit the tsukai handler" and the model **improvised** (Bash find → Read → "what would you like to change?") instead of invoking `tomo-tag-handler-wizard`; only an explicit `/tomo-tag-handler-wizard` injected the skill body. Consequences: (1) don't rely on description-triggers for runtime UX — make every user-facing skill discoverable in `/tomo-help` and reachable by `/name`; (2) a command shim for a skill is redundant (a user-invocable skill already resolves via `/name` — added then reverted this session); (3) only plugin-packaged skills would auto-trigger. The host Claude Code, by contrast, DOES inject the available-skills list.

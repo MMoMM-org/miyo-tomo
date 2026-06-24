@@ -121,6 +121,29 @@ def test_match_returns_resolution(tmp_path):
     assert result["compose"] == "Synthesize the batch captures into one dated status update."
 
 
+def test_match_strips_leading_hash_on_tag(tmp_path):
+    """A '#'-prefixed tag (the shape Kado/Obsidian return) resolves identically.
+
+    Regression: read_frontmatter returns tags like '#MiYo/Tsukai/Tomo'; the
+    resolver must strip the leading '#' before prefix-matching, else no real
+    capture is ever detected (synthetic '#'-less fixtures hid this).
+    """
+    _write_handler(tmp_path, "tsukai.json", _tsukai_handler())
+    registry = load_registry(tmp_path)
+
+    item = {
+        "path": "100 Inbox/capture.md",
+        "tags": ["#MiYo/Tsukai/Tomo"],
+        "frontmatter": {"category": "feature"},
+    }
+    result = resolve_item(item, registry)
+
+    assert result is not None
+    assert result["handler"] == "tsukai"
+    assert result["vars"] == {"repo": "Tomo"}
+    assert result["action"] == "insert_under_marker"
+
+
 # ---------------------------------------------------------------------------
 # T2: test_no_match — no matching handler → None
 # ---------------------------------------------------------------------------

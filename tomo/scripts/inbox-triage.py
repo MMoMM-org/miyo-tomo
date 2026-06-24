@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.16.0
+# version: 0.17.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -53,7 +53,10 @@ resolve_item = _resolver_mod.resolve_item
 # Default registry directory: repo-root config/tag-handlers (SCRIPT_DIR is
 # tomo/scripts; parent.parent is the repo root). Reachable from inside the
 # instance because the resolver script references the same path.
-_DEFAULT_REGISTRY_DIR = SCRIPT_DIR.parent.parent / "config" / "tag-handlers"
+# Instance-correct default: cwd-relative, matching the instance runtime layout
+# (commands run with cwd = instance root, where config/tag-handlers lives). Host
+# runs and tests pass --registry-dir to override (their cwd has no config/ here).
+_DEFAULT_REGISTRY_DIR = Path("config/tag-handlers")
 
 _RE_APPROVED = re.compile(r"^\s*-\s+\[x\]\s+Approved", re.MULTILINE | re.IGNORECASE)
 _RE_ACCEPT = re.compile(r"^\s*-\s+\[x\]\s+Accept", re.MULTILINE | re.IGNORECASE)
@@ -1079,7 +1082,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--registry-dir", default=None,
-        help="Tag-handler registry directory (default: <repo>/config/tag-handlers)",
+        help="Tag-handler registry directory (default: cwd-relative "
+             "config/tag-handlers, correct for the instance runtime; override "
+             "for host/test runs)",
     )
     return p
 

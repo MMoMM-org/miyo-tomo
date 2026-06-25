@@ -69,14 +69,14 @@ class TestCalloutClassificationFaithful:
     def test_ignore_callouts_not_listed_as_editable(self):
         md = _vs.render_markdown(_summary(), _config())
         callouts = md.split("## Callouts", 1)[1].split("## ", 1)[0]
-        editable_line = next(l for l in callouts.splitlines() if "editable" in l)
+        editable_line = next(line for line in callouts.splitlines() if "editable" in line)
         for name in ("rainbow", "recycle", "orbit"):
             assert name not in editable_line, f"{name} (ignore) leaked into editable"
 
     def test_ignore_callouts_listed_under_ignore(self):
         md = _vs.render_markdown(_summary(), _config())
         callouts = md.split("## Callouts", 1)[1]
-        ignore_line = next(l for l in callouts.splitlines() if "ignore" in l)
+        ignore_line = next(line for line in callouts.splitlines() if "ignore" in line)
         for name in ("rainbow", "recycle", "orbit"):
             assert name in ignore_line
 

@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Interpreter Compose"
-status: in_progress
+status: done
 version: "1.0"
 phase: 4
 ---
@@ -37,7 +37,8 @@ marker), runs the script, which imports the helper and prints `{status:ok, compo
 or `{status:fallback, reason}`. The skill (step 4) writes the group-result from that result (on fallback it
 composes the prose block itself). T4.1a = the script + tests (TDD); T4.1/4.2 = the SKILL.md orchestration.
 
-- [ ] **T4.1 Target read + synthesize-cell production** `[activity: ai-orchestration]`
+- [x] **T4.1a Orchestration script `tag-handler-compose.py` + tests** `[activity: backend-logic]` — payload→helper→{ok|fallback} JSON; 23 tests (matrix + fallbacks + malformed input). Commit 809ebdd (+ mutation-gap fix 26d8f47).
+- [x] **T4.1 Target read + synthesize-cell production** `[activity: ai-orchestration]`
   1. Prime: read the interpreter step-2/3 and the kado-read section mode `[ref: SDD/Integration Points]`
   2. Test: (skill-level; verify via a dry-run fixture) for an `output_format` stub the interpreter reads the
      target section (least-payload section read) and produces one synth value per cell directive at the
@@ -47,7 +48,7 @@ composes the prose block itself). T4.1a = the script + tests (TDD); T4.1/4.2 = t
   4. Validate: skill audit (skill-author) clean; no executor internals; imperatives-only.
   - Success: `[ref: PRD/FR-17]` granularity scope; `[ref: PRD/FR-18]` field vs synthesize.
 
-- [ ] **T4.2 Group-result emission + STRICT reword** `[activity: ai-orchestration]`
+- [x] **T4.2 Group-result emission + STRICT reword** `[activity: ai-orchestration]`
   1. Prime: one-block-per-group invariant `[ref: SDD/Constraints]`
   2. Test: group-result written for an output_format group includes `composed_block` (N rows for per_item,
      1 for merged) + `output_format` + `resolved_anchor`; on helper `Fallback` it writes a plain prose
@@ -56,6 +57,6 @@ composes the prose block itself). T4.1a = the script + tests (TDD); T4.1/4.2 = t
   4. Validate: a fixture group-result validates against the Phase-1 group-result schema.
   - Success: `[ref: PRD/FR-19]` fallback path; `[ref: 024 FR-8/AC-3]` one block per group preserved.
 
-- [ ] **T4.3 Phase Validation** `[activity: validate]`
+- [x] **T4.3 Phase Validation** `[activity: validate]` — skill-author audit PASS; full suite 1675 green; ruff clean. Full table/list × order × granularity matrix + forced fallback validated live in Phase 7.
   - Skill-author audit passes; a sample run produces schema-valid group-results for table/list × append/
     newest × per_item/merged and for a forced mismatch (fallback). ruff/lint clean for any touched scripts.

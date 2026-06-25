@@ -220,7 +220,7 @@ def test_replace_section_not_in_tomo_producer(tomo_producer_schema):
     """replace_section action is NOT present in Tomo's producer schema (no emitter; ADR-7).
     Validates our deliberate asymmetry: mirror has replace_section, producer does not."""
     action_refs = {
-        entry.get("$ref", "").lstrip("#/$defs/")
+        entry.get("$ref", "")[len("#/$defs/"):]
         for entry in tomo_producer_schema["properties"]["actions"]["items"]["oneOf"]
     }
     assert "replace_section" not in action_refs, (

@@ -87,6 +87,7 @@
       "description": "How to compose the handler output. Either a string (LLM directive) or an array of field names (mechanical template)."
     },
     "output_format": {
+      "$comment": "CON-1 DRIFT GUARD: this object's property names and types are structurally identical to output_format in tag-handler-group.schema.json (descriptions differ intentionally: config view vs group-result view). Any structural change here MUST be mirrored there, and vice versa. Spec: docs/XDD/specs/025-structure-aware-tag-handler-compose/ ADR-2.",
       "type": "object",
       "description": "OPTIONAL — structure-aware rendering spec. Absent ⇒ today's prose-block behaviour. Spec: docs/XDD/specs/025-structure-aware-tag-handler-compose/ (FR-15, FR-18).",
       "required": ["structure", "order", "granularity", "cells"],

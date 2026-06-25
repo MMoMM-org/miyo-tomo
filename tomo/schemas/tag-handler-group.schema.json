@@ -49,6 +49,7 @@
       "description": "How the composed_block was produced: 'llm_directive' = one LLM merge call; 'field_template' = deterministic field join (no LLM)."
     },
     "output_format": {
+      "$comment": "CON-1 DRIFT GUARD: this object's property names and types are structurally identical to output_format in tag-handler.schema.json (descriptions differ intentionally: group-result view vs config view). Any structural change here MUST be mirrored there, and vice versa. Spec: docs/XDD/specs/025-structure-aware-tag-handler-compose/ ADR-2.",
       "type": "object",
       "description": "Structure-aware rendering spec carried through from the tag-handler config. Present only when the handler config included output_format. Spec: docs/XDD/specs/025-structure-aware-tag-handler-compose/.",
       "required": ["structure", "order", "granularity", "cells"],

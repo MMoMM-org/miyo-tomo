@@ -160,7 +160,7 @@ def _parse_table(lines: list[str]) -> TargetStructure:
         # Stop at a new heading (section boundary)
         if _HEADING_RE.match(line):
             break
-        if _is_table_header(line):
+        if _is_table_header(line) and not _is_table_separator(line):
             # Look ahead for separator
             if i + 1 < len(lines) and _is_table_separator(lines[i + 1]):
                 header = line

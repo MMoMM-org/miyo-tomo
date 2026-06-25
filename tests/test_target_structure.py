@@ -171,6 +171,34 @@ class TestParseSection:
         result = parse_section([], "table_row")
         assert result.kind == "none"
 
+    def test_heading_stops_table_scan(self):
+        """W1: heading boundary halts table scan — table AFTER heading is not found."""
+        lines = ["prose", "## Next Section", "| A | B |", "| --- | --- |"]
+        result = parse_section(lines, "table_row")
+        assert result.kind == "none"
+
+    def test_heading_stops_list_scan(self):
+        """W1: heading boundary halts list scan — list AFTER heading is not found."""
+        lines = ["prose", "## Next", "- item"]
+        result = parse_section(lines, "list_item")
+        assert result.kind == "none"
+
+    def test_list_mixed_bullet_first_wins(self):
+        """ADR-10: mixed-bullet list — first item's style is authoritative."""
+        result = parse_section(["- first", "* second"], "list_item")
+        assert result.bullet == "-"
+
+    def test_consecutive_separator_lines_not_parsed_as_table(self):
+        """S2: two separator-only lines must NOT be mistaken for header+separator.
+
+        _TABLE_HEADER_RE matches separator lines too (both contain '|').
+        The fix: header candidate is excluded when it also matches _TABLE_SEP_RE,
+        so |---|---| + |---|---| stays kind=none.
+        """
+        lines = ["|---|---|", "|---|---|"]
+        result = parse_section(lines, "table_row")
+        assert result.kind == "none"
+
 
 # ---------------------------------------------------------------------------
 # T2.2  assemble — row/item construction + anchor selection
@@ -397,8 +425,9 @@ def test_no_io_kado_llm_imports():
             f"target_structure.py must not use {name}"
         )
 
-    # Check the module's own imports via its __spec__ source
+    # Check the module's own imports via its __spec__ source.
+    # Use bare module names so both `import X` and `from X import Y` forms are caught.
     import inspect
     source = inspect.getsource(ts)
-    for bad in ("kado_client", "import anthropic", "import openai", "import requests", "import httpx"):
-        assert bad not in source, f"Found forbidden import '{bad}' in target_structure.py"
+    for bad in ("kado_client", "anthropic", "openai", "requests", "httpx"):
+        assert bad not in source, f"Found forbidden module '{bad}' in target_structure.py"

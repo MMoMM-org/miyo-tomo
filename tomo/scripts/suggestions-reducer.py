@@ -659,7 +659,11 @@ _FALLBACK_REASON_LABELS: dict[str, str] = {
     "no_structure_under_marker": (
         "no matching table or list under the marker — falling back to a text note"
     ),
+    "marker_missing": (
+        "the marker heading wasn't found in the note — falling back to a text note"
+    ),
 }
+_FALLBACK_REASON_DEFAULT = "the target structure didn't match — falling back to a text note"
 
 
 def render_tag_handler_group(group: dict) -> str:
@@ -753,7 +757,7 @@ def render_tag_handler_group(group: dict) -> str:
     # ── Fallback warning (spec 025 T6.2 / ADR-8 / FR-19) — Approve box retained ──
     if fallback:
         reason_key = fallback.get("reason", "")
-        reason_label = _FALLBACK_REASON_LABELS.get(reason_key, reason_key)
+        reason_label = _FALLBACK_REASON_LABELS.get(reason_key, _FALLBACK_REASON_DEFAULT)
         link_ref = f"[[{link}]]" if link else handler
         lines.append(
             f"⚠️ **Fallback** — `{handler}` → {link_ref}: {reason_label}."

@@ -355,9 +355,9 @@ def _group_with_output_format(
         "order": order,
         "granularity": granularity,
         "cells": [
-            {"key": "date", "type": "auto_date"},
-            {"key": "category", "type": "static", "value": "fix"},
-            {"key": "note", "type": "synthesize"},
+            {"field": "date"},
+            {"field": "category"},
+            {"synthesize": "one-line summary of the change"},
         ],
     }
     return g
@@ -524,6 +524,26 @@ def test_fallback_no_structure_under_marker_keeps_approve_box() -> None:
     rendered = render_tag_handler_group(g)
 
     assert "- [x] Approve" in rendered or "- [ ] Approve" in rendered
+
+
+def test_fallback_reason_never_leaks_raw_key() -> None:
+    """Any schema-valid fallback.reason renders human-readable text, never the raw key.
+
+    marker_missing is a schema enum value for fallback.reason; if it arrives as a
+    reason WITHOUT a hard guard set, the render must still show a plain-language
+    string — never the bare snake_case code.
+    """
+    g = _group_with_fallback(reason="marker_missing")  # no group["guard"] set
+    rendered = render_tag_handler_group(g)
+
+    assert "⚠️" in rendered
+    assert "marker_missing" not in rendered  # raw key must not leak to the user
+    assert "marker heading" in rendered.lower()
+    # An unknown/future reason degrades to a neutral phrase, still no raw key
+    g2 = _group_with_fallback(reason="some_future_reason")
+    rendered2 = render_tag_handler_group(g2)
+    assert "some_future_reason" not in rendered2
+    assert "falling back to a text note" in rendered2
 
 
 def test_fallback_warning_names_handler_and_target() -> None:

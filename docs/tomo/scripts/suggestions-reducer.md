@@ -164,8 +164,10 @@ of a `fallback` key does not change that.
 
 WHY `_FALLBACK_REASON_LABELS` maps reason codes to plain English: reason codes
 like `cell_count_mismatch` are internal; the user sees "the section's columns
-don't match the configured cells — falling back to a text note". Unmapped
-reason codes fall through to the raw key (graceful forward-compat).
+don't match the configured cells — falling back to a text note". All three
+schema enum values (incl. `marker_missing`) are mapped; any unmapped/future
+reason falls through to `_FALLBACK_REASON_DEFAULT`, a neutral phrase — never the
+raw snake_case key (a raw key in user-facing text is itself an internals leak).
 
 ### target_missing guard rewording (T6.1 no-executor-internals cleanup)
 

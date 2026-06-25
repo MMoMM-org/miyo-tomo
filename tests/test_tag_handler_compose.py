@@ -353,17 +353,17 @@ class TestMissingPayloadFile:
         assert exit_code != 0
 
     def test_no_traceback_in_stdout(self, tmp_path, capsys):
-        _call_main(str(tmp_path / "nonexistent.json"), capsys)
-        captured = capsys.readouterr()
-        assert "Traceback" not in captured.out
-        assert "Traceback" not in captured.err
+        # A leaked traceback is not parseable JSON, so _call_main returns None.
+        # Asserting on the return value is mutation-resistant (capsys is already
+        # drained inside _call_main — a second readouterr() would be empty).
+        result, _ = _call_main(str(tmp_path / "nonexistent.json"), capsys)
+        assert result is not None
+        assert result["status"] == "error"
 
     def test_stdout_is_parseable_json(self, tmp_path, capsys):
-        _call_main(str(tmp_path / "nonexistent.json"), capsys)
-        captured = capsys.readouterr()
-        # stdout may be empty if error goes to stderr; at minimum no raw traceback
-        if captured.out.strip():
-            json.loads(captured.out)  # must not raise
+        result, _ = _call_main(str(tmp_path / "nonexistent.json"), capsys)
+        assert result is not None
+        assert result["status"] == "error"
 
 
 # ---------------------------------------------------------------------------
@@ -378,12 +378,12 @@ class TestMalformedJsonPayload:
         assert exit_code != 0
 
     def test_no_traceback(self, tmp_path, capsys):
+        # Mutation-resistant: a leaked traceback → _call_main returns None.
         p = tmp_path / "bad.json"
         p.write_text("{not valid json")
-        _call_main(str(p), capsys)
-        captured = capsys.readouterr()
-        assert "Traceback" not in captured.out
-        assert "Traceback" not in captured.err
+        result, _ = _call_main(str(p), capsys)
+        assert result is not None
+        assert result["status"] == "error"
 
     def test_stdout_or_stderr_has_error_message(self, tmp_path, capsys):
         p = tmp_path / "bad.json"

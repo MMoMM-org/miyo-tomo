@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_tag_handler_group.py — Behavioural tests for tag-handler-group.py.
 
 Covers T3.1 (XDD 024 Phase 3):
@@ -40,6 +40,16 @@ _group_spec.loader.exec_module(_group_mod)
 
 group_handled = _group_mod.group_handled
 compose_field_template = _group_mod.compose_field_template
+
+# Load resolver for round-trip test (T3.3)
+_RESOLVER_PATH = SCRIPTS_DIR / "tag-handler-resolve.py"
+_resolver_spec = importlib.util.spec_from_file_location("tag_handler_resolve", _RESOLVER_PATH)
+_resolver_mod = importlib.util.module_from_spec(_resolver_spec)
+sys.modules["tag_handler_resolve"] = _resolver_mod
+_resolver_spec.loader.exec_module(_resolver_mod)
+
+load_registry = _resolver_mod.load_registry
+resolve_item = _resolver_mod.resolve_item
 
 from jsonschema import ValidationError, validate as _validate  # noqa: E402
 
@@ -502,3 +512,152 @@ class TestComposeFieldTemplate:
         captures = [{"path": "100 Inbox/a.md", "fields": {"category": "fix"}}]
         result = compose_field_template(captures, ["category"])
         assert len(result) > 0
+
+
+# ===========================================================================
+# T3.2 — output_format propagation into the group stub (spec 025 Phase 3)
+# ===========================================================================
+
+_OUTPUT_FORMAT = {
+    "structure": "table_row",
+    "order": "append",
+    "granularity": "per_item",
+    "cells": [{"field": "category"}],
+}
+
+
+def _handled_item_with_output_format(path: str, handler: str = "tsukai") -> dict:
+    """Return a handled[] item that includes output_format."""
+    item = _handled_item(path, handler=handler)
+    item["output_format"] = _OUTPUT_FORMAT
+    return item
+
+
+class TestGroupHandledOutputFormat:
+    """T3.2: group_handled carries output_format from item into the stub."""
+
+    def test_stub_carries_output_format_from_item(self):
+        """T3.2 (RED→GREEN): item with output_format → stub includes output_format verbatim."""
+        item = _handled_item_with_output_format("100 Inbox/note.md")
+        groups = group_handled([item])
+        assert len(groups) == 1
+        assert "output_format" in groups[0]
+        assert groups[0]["output_format"] == _OUTPUT_FORMAT
+
+    def test_stub_without_output_format_is_absent_or_none(self):
+        """T3.2 backward compat: item WITHOUT output_format → stub key absent or None."""
+        item = _handled_item("100 Inbox/note.md")
+        groups = group_handled([item])
+        assert len(groups) == 1
+        assert groups[0].get("output_format") is None
+
+    def test_different_handlers_keep_own_output_format(self):
+        """T3.2: items from different handlers keep their OWN output_format (no cross-contamination)."""
+        of_alpha = {"structure": "table_row", "order": "append", "granularity": "per_item", "cells": [{"field": "a"}]}
+        of_beta = {"structure": "table_row", "order": "append", "granularity": "per_batch", "cells": [{"field": "b"}]}
+
+        item_alpha = _handled_item("100 Inbox/a.md", handler="alpha", target_path="Notes/A.md")
+        item_alpha["output_format"] = of_alpha
+
+        item_beta = _handled_item("100 Inbox/b.md", handler="beta", target_path="Notes/B.md")
+        item_beta["output_format"] = of_beta
+
+        groups = group_handled([item_alpha, item_beta])
+        assert len(groups) == 2
+
+        alpha_group = next(g for g in groups if g["handler"] == "alpha")
+        beta_group = next(g for g in groups if g["handler"] == "beta")
+
+        assert alpha_group["output_format"] == of_alpha
+        assert beta_group["output_format"] == of_beta
+        # Ensure no cross-contamination
+        assert alpha_group["output_format"] != of_beta
+        assert beta_group["output_format"] != of_alpha
+
+    def test_same_group_multiple_items_output_format_from_first(self):
+        """T3.2: multiple items sharing (handler, target) → output_format from the first item."""
+        item_a = _handled_item_with_output_format("100 Inbox/a.md")
+        item_b = _handled_item("100 Inbox/b.md")  # no output_format on second item
+        groups = group_handled([item_a, item_b])
+        assert len(groups) == 1
+        # First item's output_format wins (stub built from first item)
+        assert groups[0]["output_format"] == _OUTPUT_FORMAT
+
+
+# ===========================================================================
+# T3.3 — resolve → group round-trip (spec 025 Phase 3 validation)
+# ===========================================================================
+
+
+def _write_handler_file(directory: Path, filename: str, config: dict) -> None:
+    """Write a handler config JSON into the given registry directory."""
+    p = directory / filename
+    p.write_text(json.dumps(config), encoding="utf-8")
+
+
+class TestResolveGroupRoundTrip:
+    """T3.3: output_format survives the full resolve→group pipeline unchanged."""
+
+    def test_output_format_reaches_stub_unchanged(self, tmp_path):
+        """T3.3: feed a config with output_format through resolve_item then group_handled;
+        assert the stub's output_format equals the config's output_format exactly."""
+        handler_config = {
+            "id": "roundtrip-handler",
+            "enabled": True,
+            "match": {
+                "tag_prefix": "MiYo/Test/",
+                "capture_segments": ["repo"],
+            },
+            "action": "insert_under_marker",
+            "target": {
+                "by": "repo",
+                "map": {"Tomo": "Efforts/Tomo Log.md"},
+            },
+            "marker": "## Captures",
+            "placement": "after",
+            "compose": "Synthesize.",
+            "output_format": _OUTPUT_FORMAT,
+        }
+        _write_handler_file(tmp_path, "roundtrip.json", handler_config)
+        registry = load_registry(tmp_path)
+
+        item = {
+            "path": "100 Inbox/round-trip.md",
+            "tags": ["MiYo/Test/Tomo"],
+            "frontmatter": {},
+        }
+        resolved = resolve_item(item, registry)
+        assert resolved is not None
+        assert resolved["output_format"] == _OUTPUT_FORMAT
+
+        # Simulate handled[] array (group_handled expects path + handler fields)
+        handled_item = {"path": item["path"], **resolved}
+        groups = group_handled([handled_item])
+
+        assert len(groups) == 1
+        assert groups[0]["output_format"] == _OUTPUT_FORMAT
+
+    def test_existing_resolve_tests_still_pass(self, tmp_path):
+        """T3.3 backward compat: resolver without output_format still produces correct shape."""
+        handler = {
+            "id": "prose-handler",
+            "enabled": True,
+            "match": {"tag_prefix": "MiYo/Tsukai/", "capture_segments": ["repo"]},
+            "action": "insert_under_marker",
+            "target": {"by": "repo", "map": {"Tomo": "Efforts/Tomo Log.md"}},
+            "marker": "## Captures",
+            "placement": "after",
+            "compose": "Write a prose update.",
+        }
+        _write_handler_file(tmp_path, "prose.json", handler)
+        registry = load_registry(tmp_path)
+
+        item = {"path": "100 Inbox/note.md", "tags": ["MiYo/Tsukai/Tomo"], "frontmatter": {}}
+        resolved = resolve_item(item, registry)
+        assert resolved is not None
+        assert resolved.get("output_format") is None
+
+        handled_item = {"path": item["path"], **resolved}
+        groups = group_handled([handled_item])
+        assert len(groups) == 1
+        assert groups[0].get("output_format") is None

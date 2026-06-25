@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Render (block anchor)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---
@@ -27,7 +27,7 @@ and unit-tested against fixture group-results independently. `[parallel: true]` 
 
 Emits the correct `insert_under_marker` action per matrix cell, including the new block anchor.
 
-- [ ] **T5.1 Block-anchor emission branch** `[activity: backend-logic]`
+- [x] **T5.1 Block-anchor emission branch** `[activity: backend-logic]`
   1. Prime: read `_build_insert_under_marker_actions` + the resolved_anchor contract `[ref: SDD/Boundary 1]`
   2. Test (RED): given a fixture group-result with `output_format.structure=table_row, order=newest_first`
      and `resolved_anchor.value="| Date | … |\n| --- | … |"` → the emitted action has `anchor.type="block"`,
@@ -39,6 +39,6 @@ Emits the correct `insert_under_marker` action per matrix cell, including the ne
   4. Validate: `./venv/bin/python -m pytest tests/ -k instruction_render -q`; ruff clean.
   - Success: `[ref: PRD/FR-16]` matrix anchors; `[ref: SDD/Boundary 1]` byte-exact block value.
 
-- [ ] **T5.2 Phase Validation** `[activity: validate]`
+- [x] **T5.2 Phase Validation** `[activity: validate]`
   - Emitted actions validate against `instructions.schema.json` (now with `block`); parity test green;
     backward-compat path unchanged; ruff clean.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """tag-handler-resolve.py — Deterministic tag-handler resolver.
 
 Loads the registry from config/tag-handlers/*.json, validates each file
@@ -212,6 +212,7 @@ def resolve_item(item: dict[str, Any], registry: list[dict]) -> dict[str, Any] |
             "action": action,
             "placement": handler.get("placement"),
             "compose": handler.get("compose"),
+            "output_format": handler.get("output_format"),
         }
 
     return None

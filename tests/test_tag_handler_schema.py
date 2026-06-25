@@ -238,12 +238,17 @@ def test_shipped_tsukai_json_enabled_true(schema):
 
 
 def test_shipped_tsukai_json_match_fields(schema):
-    """The shipped tsukai.json match block has tag_prefix, capture_segments, read_fields (PRD §6)."""
+    """The shipped tsukai.json match block has tag_prefix, capture_segments, read_fields (PRD §6).
+
+    T7.2 migration added 'created' to read_fields so the {field: created} cell has a value.
+    """
     handler = json.loads(TSUKAI_JSON_PATH.read_text(encoding="utf-8"))
     match = handler["match"]
     assert match["tag_prefix"] == "MiYo/Tsukai/"
     assert match["capture_segments"] == ["repo"]
-    assert match["read_fields"] == ["category"]
+    # T7.2: 'created' added alongside 'category' to support the output_format {field: created} cell
+    assert "category" in match["read_fields"]
+    assert "created" in match["read_fields"]
 
 
 def test_shipped_tsukai_json_action_and_marker(schema):

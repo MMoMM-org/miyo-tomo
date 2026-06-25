@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-25 |
-| **Current Phase** | Ready |
+| **Current Phase** | Implemented |
 | **Last Updated** | 2026-06-25 |
 
 ## Documents
@@ -30,6 +30,7 @@
 | 2026-06-25 | PRD completed | 24 Gherkin ACs (FR-15…FR-20); research surfaced producer-chain propagation gap + 3-way-drift + raw-bytes-anchor risks |
 | 2026-06-25 | SDD completed; ADR-9/10/11 confirmed | Parse: first matching structure wins; mixed bullets: first-item authoritative (no warn); preview: verbatim rows + mode line |
 | 2026-06-25 | PLAN completed; spec Ready | 7 phases / 23 tasks, TDD; Phase 1 (schema) is a hard gate for Phases 3-6 (CON-1 drift); Phase 2 helper parallelizable |
+| 2026-06-25 | Implementation complete | Shipped on feat/structure-aware-tag-handler-compose (20 commits, 7 phases, all spec-compliance + code-quality gates passed). Delivers: output_format object + 4 coordinated schemas (block anchor + replace_section mirror); target_structure.py pure helper; tag-handler-compose.py orchestration script (skill→script→lib for ADR-3); producer-chain propagation; interpreter SKILL.md compose; instruction-render block-anchor emission (byte-exact); reducer mode-descriptor + fallback ⚠️; tsukai.json migrated. 1704 tests green, parity + ruff clean. T7.3 host-side validated on real Dev Log bytes; full /inbox live apply deferred with two preconditions (## Captures heading; verify Tsukai emits `created` frontmatter). |
 
 ## Context
 

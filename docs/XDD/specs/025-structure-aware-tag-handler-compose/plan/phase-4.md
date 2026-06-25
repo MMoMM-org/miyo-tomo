@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Interpreter Compose"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -28,6 +28,14 @@ parse tables. On `Fallback`, it composes a plain prose block.
 ## Tasks
 
 Wires structure-aware compose into the interpreter while keeping all parsing/assembly in the helper.
+
+**Deviation (approved 2026-06-25, user-confirmed):** the plan framed Phase 4 as a SKILL.md-only edit, but
+an LLM skill cannot directly call the pure `target_structure.assemble()` (ADR-3 determinism). Added a thin
+orchestration script `tomo/scripts/tag-handler-compose.py` (skill→script→lib pattern): the skill writes a
+payload (`tomo-tmp/compose-payload-<i>.json`: section_lines + output_format + cell_values_per_item +
+marker), runs the script, which imports the helper and prints `{status:ok, composed_block, resolved_anchor}`
+or `{status:fallback, reason}`. The skill (step 4) writes the group-result from that result (on fallback it
+composes the prose block itself). T4.1a = the script + tests (TDD); T4.1/4.2 = the SKILL.md orchestration.
 
 - [ ] **T4.1 Target read + synthesize-cell production** `[activity: ai-orchestration]`
   1. Prime: read the interpreter step-2/3 and the kado-read section mode `[ref: SDD/Integration Points]`

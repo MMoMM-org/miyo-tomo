@@ -4,7 +4,7 @@ description: Use PROACTIVELY when routing-plan.action is "suggest" AND routing-p
 user-invocable: false
 ---
 # Tag Handler Interpreter
-# version: 0.1.1
+# version: 0.2.0
 
 ## When to Activate
 
@@ -25,19 +25,34 @@ mkdir -p tomo-tmp/tag-handler-groups
 python3 scripts/tag-handler-group.py
 ```
 
-Read `tomo-tmp/tag-handler-group-stubs.json`. Each stub has: `handler`, `target_path`, `marker`, `placement`, `compose`, `source_paths`.
+Read `tomo-tmp/tag-handler-group-stubs.json`. Each stub has: `handler`, `target_path`, `marker`, `placement`, `compose`, `source_paths`, and (when configured) `output_format`.
 
 ### 2. Read source notes for each group
 
 For each stub in the stubs array:
 - For each path in `source_paths`: read the note via `mcp__kado__kado-read` with `operation: "note"`.
 - Collect the note's title, frontmatter fields, and body for use in compose (step 3).
+- If the stub has `output_format`: ALSO read the TARGET note's marker section — `mcp__kado__kado-read` with `operation: "note"`, section mode on the stub's `marker` (least-payload section read). Keep the raw section lines (verbatim, unmodified) for step 3.
 
 ### 3. Compose one block per group
 
-# STRICT — ONE block per group (FR-8/AC-3): never emit one block per source item; the whole group merges into a single dated status update.
+# STRICT — ONE composed_block per group: every group produces exactly one group-result with one composed_block. A structure-aware group emits its N rows/items INSIDE that single composed_block — N rows are NOT N blocks. Never emit one block per source item.
 
 For each stub:
+
+**If the stub has `output_format` (structure-aware compose):**
+- For each `synthesize` cell directive: produce a single-line value. Scope by `output_format.granularity`: `per_item` = one value per source capture; `merged` = one value over the whole group. For each `field` cell: take the raw value from the stub's `fields` (no synthesis).
+- Build `cell_values_per_item` — a list of cell-value lists, one inner list per emitted row/item (for `merged`, exactly one inner list), each inner list ordered to match `output_format.cells`.
+- Write `tomo-tmp/compose-payload-<i>.json` with keys: `section_lines` (the raw target section from step 2), `output_format` (from the stub), `cell_values_per_item`, `marker` (from the stub).
+- Run:
+
+```bash
+python3 scripts/tag-handler-compose.py tomo-tmp/compose-payload-<i>.json
+```
+
+- Read the printed JSON:
+  - `status: "ok"` → carry its `composed_block` and `resolved_anchor` into step 4 verbatim.
+  - `status: "fallback"` → synthesize a plain dated prose status block (as in the STRING-directive path below) for `composed_block`, and carry `fallback.reason` into step 4.
 
 **If `compose` is a STRING (LLM directive):**
 - Synthesize all of this group's source notes (title, frontmatter fields, body) into exactly ONE dated status-update markdown block, following the directive as the synthesis instruction.
@@ -61,5 +76,8 @@ For each stub at index `<i>`:
 - Optional (include when the group stub supplies them / when known):
   - `placement`: from stub
   - `compose_mode`: `"llm_directive"` if compose was a string; `"field_template"` if compose was an array
+  - `output_format`: from stub, when the stub had one
+  - `resolved_anchor`: the `{type, value, placement}` from the compose output, verbatim, when its `status` was `"ok"`
+  - `fallback`: `{ "reason": <reason> }`, ONLY when the compose output `status` was `"fallback"`
 
 The reducer reads these files to render suggestion items.

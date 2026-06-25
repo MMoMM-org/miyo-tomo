@@ -173,3 +173,74 @@ def test_existing_instructions_no_regression(schema):
         ]),
         schema=schema,
     )
+
+
+# ---------------------------------------------------------------------------
+# T1.3 (spec 025 Phase 1) — block anchor + replace_section in mirror
+# ADR-7: add 'block' to both wire schemas; mirror replace_section, no Tomo emitter.
+# ---------------------------------------------------------------------------
+
+TOMO_PRODUCER_SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"
+
+
+@pytest.fixture(scope="module")
+def tomo_producer_schema() -> dict:
+    return json.loads(TOMO_PRODUCER_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def test_insert_under_marker_with_block_anchor_validates_hashi(schema):
+    """insert_under_marker with anchor.type='block' validates against the Hashi mirror schema (ADR-7)."""
+    action = _make_insert_under_marker(
+        anchor={"type": "block", "value": "| Tool | Action |\n|------|--------|"}
+    )
+    validate(instance=_make_instructions([action]), schema=schema)
+
+
+def test_insert_under_marker_with_block_anchor_validates_tomo_producer(tomo_producer_schema):
+    """insert_under_marker with anchor.type='block' validates against Tomo's producer schema (ADR-7)."""
+    action = _make_insert_under_marker(
+        anchor={"type": "block", "value": "| Tool | Action |\n|------|--------|"}
+    )
+    validate(instance=_make_instructions([action]), schema=tomo_producer_schema)
+
+
+def test_replace_section_validates_in_mirror(schema):
+    """replace_section action validates in the Hashi mirror schema (ADR-7, no Tomo emitter)."""
+    action = {
+        "id": "I01",
+        "action": "replace_section",
+        "target_path": "Efforts/Tomo Dev Log.md",
+        "anchor": {"type": "heading", "value": "Captures"},
+        "content": "| Date | Summary |\n|------|---------|",
+    }
+    validate(instance=_make_instructions([action]), schema=schema)
+
+
+def test_replace_section_not_in_tomo_producer(tomo_producer_schema):
+    """replace_section action is NOT present in Tomo's producer schema (no emitter; ADR-7).
+    Validates our deliberate asymmetry: mirror has replace_section, producer does not."""
+    action_refs = {
+        entry.get("$ref", "").lstrip("#/$defs/")
+        for entry in tomo_producer_schema["properties"]["actions"]["items"]["oneOf"]
+    }
+    assert "replace_section" not in action_refs, (
+        "replace_section should NOT be in Tomo's producer schema actions.items.oneOf — "
+        "there is no Tomo emitter (spec 025 ADR-7). If an emitter is added later, "
+        "remove this test and add replace_section to instructions.schema.json."
+    )
+
+
+def test_anchor_block_type_in_hashi_schema(schema):
+    """The 'block' type is present in the anchor $def enum in the Hashi mirror schema."""
+    anchor_enum = schema["$defs"]["anchor"]["properties"]["type"]["enum"]
+    assert "block" in anchor_enum, (
+        "anchor.$def.type enum must include 'block' in hashi-instructions.schema.json (ADR-7)"
+    )
+
+
+def test_anchor_block_type_in_tomo_producer_schema(tomo_producer_schema):
+    """The 'block' type is present in the anchor $def enum in Tomo's producer schema."""
+    anchor_enum = tomo_producer_schema["$defs"]["anchor"]["properties"]["type"]["enum"]
+    assert "block" in anchor_enum, (
+        "anchor.$def.type enum must include 'block' in instructions.schema.json (ADR-7)"
+    )

@@ -47,6 +47,102 @@
       "type": "string",
       "enum": ["llm_directive", "field_template"],
       "description": "How the composed_block was produced: 'llm_directive' = one LLM merge call; 'field_template' = deterministic field join (no LLM)."
+    },
+    "output_format": {
+      "type": "object",
+      "description": "Structure-aware rendering spec carried through from the tag-handler config. Present only when the handler config included output_format. Spec: docs/XDD/specs/025-structure-aware-tag-handler-compose/.",
+      "required": ["structure", "order", "granularity", "cells"],
+      "additionalProperties": false,
+      "properties": {
+        "structure": {
+          "type": "string",
+          "enum": ["table_row", "list_item"],
+          "description": "Output block shape: table_row = one Markdown table row per item; list_item = one bullet per item."
+        },
+        "order": {
+          "type": "string",
+          "enum": ["append", "newest_first"],
+          "description": "Insertion order relative to existing rows/items under the anchor."
+        },
+        "granularity": {
+          "type": "string",
+          "enum": ["per_item", "merged"],
+          "description": "per_item = one row/bullet per inbox item; merged = LLM-merged single block."
+        },
+        "cells": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Ordered cell definitions carried from handler config.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["field"],
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Frontmatter field name to project verbatim into this cell."
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["synthesize"],
+                "additionalProperties": false,
+                "properties": {
+                  "synthesize": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "LLM directive for synthesizing this cell's content from the batch."
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "join": {
+          "type": "string",
+          "default": " — ",
+          "description": "Separator between cells for list_item structure. Ignored for table_row."
+        }
+      }
+    },
+    "resolved_anchor": {
+      "type": "object",
+      "description": "Structural anchor resolved by the interpreter for structured insertion. Present only for structured (output_format) groups. Spec: docs/XDD/specs/025-structure-aware-tag-handler-compose/ SDD Data Models.",
+      "required": ["type", "value", "placement"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["heading", "block"],
+          "description": "Anchor type: heading = matched heading (table header or section); block = matched N-line block (e.g. table header+separator rows)."
+        },
+        "value": {
+          "type": "string",
+          "description": "The matched anchor content (heading text or \\n-joined block lines)."
+        },
+        "placement": {
+          "type": "string",
+          "enum": ["inside", "after"],
+          "description": "Where to insert relative to the resolved anchor: inside = beneath the heading / before next same-level heading; after = immediately after the matched block's last line."
+        }
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "description": "Present when structured rendering was requested but could not be performed. The group falls back to prose-block behaviour. Spec: docs/XDD/specs/025-structure-aware-tag-handler-compose/.",
+      "required": ["reason"],
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": ["cell_count_mismatch", "no_structure_under_marker", "marker_missing"],
+          "description": "Why structured rendering was skipped: cell_count_mismatch = cells != table columns; no_structure_under_marker = heading found but no table/list below it; marker_missing = anchor not found in target note."
+        }
+      }
     }
   }
 }

@@ -199,6 +199,109 @@ class TestGroupSchema:
         with pytest.raises(ValidationError):
             _validate(instance=group, schema=GROUP_SCHEMA)
 
+    # -----------------------------------------------------------------------
+    # T1.2 (spec 025 Phase 1) — output_format, resolved_anchor, fallback
+    # -----------------------------------------------------------------------
+
+    def _make_output_format(self, **overrides) -> dict:
+        of = {
+            "structure": "table_row",
+            "order": "append",
+            "granularity": "per_item",
+            "cells": [{"field": "category"}],
+        }
+        of.update(overrides)
+        return of
+
+    def test_group_with_output_format_validates(self):
+        """Group result with a valid output_format block passes validation."""
+        group = _make_group()
+        group["output_format"] = self._make_output_format()
+        _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_group_with_resolved_anchor_heading_validates(self):
+        """Group result with resolved_anchor type=heading passes validation."""
+        group = _make_group()
+        group["resolved_anchor"] = {"type": "heading", "value": "## Captures", "placement": "inside"}
+        _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_group_with_resolved_anchor_block_validates(self):
+        """Group result with resolved_anchor type=block passes validation."""
+        group = _make_group()
+        group["resolved_anchor"] = {"type": "block", "value": "row1\nrow2", "placement": "after"}
+        _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_group_with_fallback_validates(self):
+        """Group result with a valid fallback block passes validation."""
+        group = _make_group()
+        group["fallback"] = {"reason": "cell_count_mismatch"}
+        _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_group_with_all_new_fields_validates(self):
+        """Group result with output_format + resolved_anchor + fallback all together passes."""
+        group = _make_group()
+        group["output_format"] = self._make_output_format()
+        group["resolved_anchor"] = {"type": "heading", "value": "Captures", "placement": "inside"}
+        group["fallback"] = {"reason": "no_structure_under_marker"}
+        _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_existing_prose_only_group_still_validates(self):
+        """Existing prose-only group-result (no new fields) still validates (backward compat)."""
+        group = _make_group()
+        _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_output_format_unknown_subkey_rejected(self):
+        """output_format with unknown sub-key is REJECTED (additionalProperties:false)."""
+        group = _make_group()
+        group["output_format"] = self._make_output_format()
+        group["output_format"]["extra"] = "bad"
+        with pytest.raises(ValidationError):
+            _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_resolved_anchor_unknown_subkey_rejected(self):
+        """resolved_anchor with unknown sub-key is REJECTED (additionalProperties:false)."""
+        group = _make_group()
+        group["resolved_anchor"] = {
+            "type": "heading", "value": "Captures", "placement": "inside", "extra": "bad"
+        }
+        with pytest.raises(ValidationError):
+            _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_resolved_anchor_invalid_type_rejected(self):
+        """resolved_anchor.type with an invalid value is REJECTED."""
+        group = _make_group()
+        group["resolved_anchor"] = {"type": "callout", "value": "x", "placement": "inside"}
+        with pytest.raises(ValidationError):
+            _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_resolved_anchor_invalid_placement_rejected(self):
+        """resolved_anchor.placement with an invalid value is REJECTED."""
+        group = _make_group()
+        group["resolved_anchor"] = {"type": "heading", "value": "x", "placement": "before"}
+        with pytest.raises(ValidationError):
+            _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_fallback_invalid_reason_rejected(self):
+        """fallback.reason with an invalid enum value is REJECTED."""
+        group = _make_group()
+        group["fallback"] = {"reason": "unknown_reason"}
+        with pytest.raises(ValidationError):
+            _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_fallback_unknown_subkey_rejected(self):
+        """fallback with unknown sub-key is REJECTED (additionalProperties:false)."""
+        group = _make_group()
+        group["fallback"] = {"reason": "cell_count_mismatch", "extra": "bad"}
+        with pytest.raises(ValidationError):
+            _validate(instance=group, schema=GROUP_SCHEMA)
+
+    def test_group_unknown_top_level_key_still_rejected(self):
+        """A group with a completely unknown top-level key is still REJECTED."""
+        group = _make_group()
+        group["new_mystery_field"] = "oops"
+        with pytest.raises(ValidationError):
+            _validate(instance=group, schema=GROUP_SCHEMA)
+
 
 # ===========================================================================
 # group_handled — grouping logic

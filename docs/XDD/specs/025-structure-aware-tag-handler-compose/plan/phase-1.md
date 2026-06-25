@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Schema Foundation"
-status: pending
+status: done
 version: "1.0"
 phase: 1
 ---
@@ -28,7 +28,7 @@ mirror `replace_section`, no Tomo emitter). Keep `additionalProperties:false` ev
 
 Establishes the data contracts so producer/consumer changes can't be silently dropped.
 
-- [ ] **T1.1 `output_format` in tag-handler.schema.json** `[activity: data-architecture]`
+- [x] **T1.1 `output_format` in tag-handler.schema.json** `[activity: data-architecture]`
   1. Prime: read the existing `compose` oneOf + `additionalProperties:false` `[ref: SDD/Internal API Changes]`
   2. Test (RED): a config with a valid `output_format` (structure/order/granularity/cells/join) validates;
      a config with an unknown `output_format` sub-key is REJECTED; a cell that is neither `{field}` nor
@@ -38,7 +38,7 @@ Establishes the data contracts so producer/consumer changes can't be silently dr
   4. Validate: `./venv/bin/python -m pytest tests/ -k tag_handler_schema -q`; ruff clean.
   - Success: `[ref: PRD/FR-15]` opt-in object accepted; `[ref: PRD/FR-18]` typed cells enforced.
 
-- [ ] **T1.2 group-result schema extensions** `[activity: data-architecture]`
+- [x] **T1.2 group-result schema extensions** `[activity: data-architecture]`
   1. Prime: read `tag-handler-group.schema.json` `[ref: SDD/Data Models — GroupResult]`
   2. Test (RED): a group-result with `output_format` + `resolved_anchor {type,value,placement}` + `fallback
      {reason}` validates; unknown keys REJECTED; existing prose-only group-result still validates.
@@ -48,7 +48,7 @@ Establishes the data contracts so producer/consumer changes can't be silently dr
   4. Validate: schema unit tests green; ruff clean.
   - Success: `[ref: SDD/Data Models]` group-result carries structure metadata.
 
-- [ ] **T1.3 Wire-schema `block` anchor + `replace_section` mirror** `[activity: data-architecture]`
+- [x] **T1.3 Wire-schema `block` anchor + `replace_section` mirror** `[activity: data-architecture]`
   1. Prime: compare Tomo `instructions.schema.json` / `hashi-instructions.schema.json` anchor enum (:120)
      against the shipped Hashi schema `[ref: SDD/ADR-7]`
   2. Test (RED): an `insert_under_marker` action with `anchor.type:"block"` validates against BOTH Tomo
@@ -59,6 +59,6 @@ Establishes the data contracts so producer/consumer changes can't be silently dr
   4. Validate: parity + schema tests green; ruff clean.
   - Success: `[ref: SDD/ADR-7]` parity holds; emitting `block` later won't fail parity.
 
-- [ ] **T1.4 Phase Validation** `[activity: validate]`
+- [x] **T1.4 Phase Validation** `[activity: validate]`
   - Run `./venv/bin/python -m pytest tests/ -k "schema or parity" -q`; ruff clean. Confirm backward-compat
     (existing configs/group-results/instruction sets still validate). **Gate Phases 3–6 on this being green.**

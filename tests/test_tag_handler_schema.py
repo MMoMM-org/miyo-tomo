@@ -269,3 +269,146 @@ def test_shipped_tsukai_json_target_map_stub_yields_null_for_unknown_repo(schema
     # The map is a stub (may be empty or have placeholder values).
     # An unknown repo key must not be present — so it will resolve to null.
     assert "UnknownRepo" not in target.get("map", {})
+
+
+# ---------------------------------------------------------------------------
+# T1.1 (spec 025 Phase 1) — output_format optional object
+# FR-15: opt-in object accepted; FR-18: typed cells enforced.
+# ---------------------------------------------------------------------------
+
+
+def _make_handler_with_output_format(**of_overrides) -> dict:
+    """Return a handler with a full valid output_format block, merged with overrides."""
+    of = {
+        "structure": "table_row",
+        "order": "append",
+        "granularity": "per_item",
+        "cells": [{"field": "category"}, {"synthesize": "one-line summary"}],
+    }
+    of.update(of_overrides)
+    return _make_handler(output_format=of)
+
+
+def test_output_format_full_valid_validates(schema):
+    """A handler with a fully populated output_format block passes validation (FR-15)."""
+    validate(instance=_make_handler_with_output_format(), schema=schema)
+
+
+def test_output_format_with_join_validates(schema):
+    """output_format with optional join string passes validation."""
+    validate(
+        instance=_make_handler_with_output_format(join=" | "),
+        schema=schema,
+    )
+
+
+def test_output_format_list_item_structure_validates(schema):
+    """output_format structure=list_item is a valid enum value."""
+    validate(
+        instance=_make_handler_with_output_format(structure="list_item"),
+        schema=schema,
+    )
+
+
+def test_output_format_absent_still_validates(schema):
+    """A handler without output_format still validates (backward compat)."""
+    handler = _make_handler()
+    assert "output_format" not in handler
+    validate(instance=handler, schema=schema)
+
+
+def test_output_format_unknown_subkey_rejected(schema):
+    """An output_format with an unknown sub-key is REJECTED (additionalProperties:false)."""
+    handler = _make_handler_with_output_format()
+    handler["output_format"]["unknown_key"] = "bad"
+    with pytest.raises(ValidationError):
+        validate(instance=handler, schema=schema)
+
+
+def test_output_format_invalid_structure_enum_rejected(schema):
+    """output_format.structure with an invalid enum value is REJECTED."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance=_make_handler_with_output_format(structure="paragraph"),
+            schema=schema,
+        )
+
+
+def test_output_format_invalid_order_enum_rejected(schema):
+    """output_format.order with an invalid enum value is REJECTED."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance=_make_handler_with_output_format(order="random"),
+            schema=schema,
+        )
+
+
+def test_output_format_invalid_granularity_enum_rejected(schema):
+    """output_format.granularity with an invalid enum value is REJECTED."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance=_make_handler_with_output_format(granularity="chunked"),
+            schema=schema,
+        )
+
+
+def test_output_format_cells_empty_array_rejected(schema):
+    """output_format.cells=[] is REJECTED (minItems:1)."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance=_make_handler_with_output_format(cells=[]),
+            schema=schema,
+        )
+
+
+def test_output_format_cell_unknown_key_rejected(schema):
+    """A cell with neither 'field' nor 'synthesize' is REJECTED (FR-18)."""
+    with pytest.raises(ValidationError):
+        validate(
+            instance=_make_handler_with_output_format(
+                cells=[{"unknown_key": "value"}]
+            ),
+            schema=schema,
+        )
+
+
+def test_output_format_cell_with_field_validates(schema):
+    """A cell with only {field: ...} passes validation (FR-18)."""
+    validate(
+        instance=_make_handler_with_output_format(
+            cells=[{"field": "category"}]
+        ),
+        schema=schema,
+    )
+
+
+def test_output_format_cell_with_synthesize_validates(schema):
+    """A cell with only {synthesize: ...} passes validation (FR-18)."""
+    validate(
+        instance=_make_handler_with_output_format(
+            cells=[{"synthesize": "one-line summary"}]
+        ),
+        schema=schema,
+    )
+
+
+def test_output_format_missing_required_structure_rejected(schema):
+    """output_format missing required 'structure' is REJECTED."""
+    of = {
+        "order": "append",
+        "granularity": "per_item",
+        "cells": [{"field": "category"}],
+    }
+    with pytest.raises(ValidationError):
+        validate(instance=_make_handler(output_format=of), schema=schema)
+
+
+def test_output_format_missing_required_cells_rejected(schema):
+    """output_format missing required 'cells' is REJECTED."""
+    of = {
+        "structure": "table_row",
+        "order": "append",
+        "granularity": "per_item",
+    }
+    with pytest.raises(ValidationError):
+        validate(instance=_make_handler(output_format=of), schema=schema)

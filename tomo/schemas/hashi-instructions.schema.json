@@ -56,14 +56,15 @@
         "oneOf": [
           {"$ref": "#/$defs/move_note"},
           {"$ref": "#/$defs/link_to_moc"},
+          {"$ref": "#/$defs/insert_under_marker"},
+          {"$ref": "#/$defs/replace_section"},
           {"$ref": "#/$defs/add_relationship"},
           {"$ref": "#/$defs/update_tracker"},
           {"$ref": "#/$defs/update_log_entry"},
           {"$ref": "#/$defs/update_log_link"},
           {"$ref": "#/$defs/create_moc"},
           {"$ref": "#/$defs/delete_source"},
-          {"$ref": "#/$defs/skip"},
-          {"$ref": "#/$defs/insert_under_marker"}
+          {"$ref": "#/$defs/skip"}
         ]
       }
     }
@@ -117,7 +118,7 @@
       "required": ["type", "value"],
       "additionalProperties": false,
       "properties": {
-        "type": {"type": "string", "enum": ["callout", "heading", "line"], "description": "callout = match callout opening line (e.g. '[!blocks] Key Concepts'); heading = match heading text without # prefix (any heading level); line = match body line by literal content."},
+        "type": {"type": "string", "enum": ["callout", "heading", "line", "block"], "description": "callout = match callout opening line (e.g. '[!blocks] Key Concepts'); heading = match heading text without # prefix (any heading level); line = match body line by literal content (substring); block = match N consecutive lines, the value's \\n-joined lines, each exact after trimming trailing whitespace — for unique multi-row markers (e.g. a table's header row + separator row together) that a single line anchor cannot express. inside is unsupported for block."},
         "value": {"type": ["string", "null"], "description": "Content of the anchor to match. Null is permitted only at emission time when the renderer cannot resolve a concrete value yet (resolver populates later via Kado read)."}
       }
     },
@@ -259,6 +260,19 @@
           "type": "string",
           "description": "Multi-line markdown block to insert verbatim. May contain embedded newlines. Hashi inserts as-is without transformation."
         },
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "replace_section": {
+      "type": "object",
+      "required": ["id", "action", "target_path", "anchor", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "replace_section"},
+        "target_path": {"type": "string", "description": "Vault-relative full path of ANY existing note to modify (not a MOC stem). Hashi modifies only; Tomo guarantees the note exists before emitting."},
+        "anchor": {"$ref": "#/$defs/anchor", "description": "Marker locating the section to overwrite. Heading-scoped for v1: anchor.type must be heading; the section body (line after the heading down to the next heading of same-or-higher level, or EOF) is replaced and the heading line preserved. A non-heading anchor type fails gracefully."},
+        "content": {"type": "string", "description": "Multi-line markdown block that REPLACES the heading section body. MAY contain embedded \\n (blank lines preserved). Unlike insert_under_marker, replace_section overwrites — the prior section body is discarded. Anchor-not-found / missing target → graceful no-op, never a blind write."},
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     }

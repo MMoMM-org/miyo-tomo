@@ -130,3 +130,47 @@ a previously-unchecked MOC.
 WHY: Bumped for the spec 022/023 anchor persistence
 (`persist_candidate_anchors`, `candidate_mocs` on rendered create_atomic_note
 actions). `update-tomo.sh` skips unchanged versions silently.
+
+## Structure-Aware Preview + Fallback Warning (spec 025 T6.1/T6.2)
+
+### Mode descriptor (ADR-11 / FR-20)
+
+WHY `_OUTPUT_FORMAT_*_LABELS` maps and the `**Format:**` field line: when a
+group-result carries `output_format`, the user sees a one-line human-readable
+summary (e.g. "table row · newest first · per item") next to the verbatim
+preview rows. The labels are the only surface — no executor-internal names
+(no "Hashi", no action-type, no script name) may appear in the rendered text.
+This is the no-executor-internals rule (Marcus 2026-06-13, "das mit hashi
+rausnehmen") applied to the new structure-aware path. The descriptor sits in
+the field-lines block (before the blank line + composed_block), consistent with
+the existing `**Handler:**` / `**Marker:**` field style. When `output_format`
+is absent the function renders byte-identically to before (backward compat).
+
+### Fallback ⚠️ + Approve-box gating (ADR-8 / FR-19)
+
+WHY the Approve box is retained on fallback: a fallback means the structure
+helper could not match the target section and composed a plain prose block
+instead. That prose block is still a valid, safe update — the user approves
+it knowingly (proposal-first model). Dropping the Approve box would silently
+discard the composed content, forcing the user to re-trigger the whole flow.
+The ⚠️ line names the handler, target, and a plain-language reason so the user
+understands why the preview is prose, not a table row.
+
+WHY hard guards take priority over fallback: `target_missing` and
+`marker_missing` represent structural problems in the vault — the target does
+not exist or the target heading is absent. Even a prose fallback cannot be
+applied without a target. Hard guards always drop the Approve box; the presence
+of a `fallback` key does not change that.
+
+WHY `_FALLBACK_REASON_LABELS` maps reason codes to plain English: reason codes
+like `cell_count_mismatch` are internal; the user sees "the section's columns
+don't match the configured cells — falling back to a text note". Unmapped
+reason codes fall through to the raw key (graceful forward-compat).
+
+### target_missing guard rewording (T6.1 no-executor-internals cleanup)
+
+WHY reworded from "Hashi modifies notes, it does not create them" to "The
+target note must exist before this update can be applied": the old phrasing
+named Hashi (an executor internal). The new phrasing is executor-neutral and
+states the constraint directly without naming the mechanism.
+

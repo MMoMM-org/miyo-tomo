@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Reduce / Review Surface"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 6
 ---
@@ -27,7 +27,7 @@ names.
 
 Makes the structure-aware output reviewable and the fallback explicit before approval.
 
-- [ ] **T6.1 Verbatim preview + mode descriptor** `[activity: backend-logic]`
+- [x] **T6.1 Verbatim preview + mode descriptor** `[activity: backend-logic]`
   1. Prime: read `render_tag_handler_group` + the daily-note ⚠️ pattern `[ref: SDD/User Interface & UX]`
   2. Test (RED): an output_format group renders the literal row(s)/item(s) and a one-line mode descriptor;
      per_item shows all N lines, merged shows one; output text contains NO executor internals.
@@ -36,7 +36,7 @@ Makes the structure-aware output reviewable and the fallback explicit before app
   4. Validate: `./venv/bin/python -m pytest tests/ -k suggestions_reducer -q`; ruff clean.
   - Success: `[ref: PRD/FR-20]` mode + verbatim preview; no-executor-internals rule honored.
 
-- [ ] **T6.2 Fallback ⚠️ + Approve-box gating** `[activity: backend-logic]`
+- [x] **T6.2 Fallback ⚠️ + Approve-box gating** `[activity: backend-logic]`
   1. Prime: existing guard branches (ok/target_missing/marker_missing) `[ref: SDD/Error Handling]`
   2. Test (RED): a group-result with `fallback.reason` renders a ⚠️ line naming handler/target/reason and a
      prose-block preview; Approve box behaviour matches existing guard convention; marker_missing still uses
@@ -45,5 +45,5 @@ Makes the structure-aware output reviewable and the fallback explicit before app
   4. Validate: reducer tests green for each fallback reason; ruff clean.
   - Success: `[ref: PRD/FR-19]` warning surfaced; user approves the fallback knowingly.
 
-- [ ] **T6.3 Phase Validation** `[activity: validate]`
+- [x] **T6.3 Phase Validation** `[activity: validate]`
   - Reducer renders correctly for every mode + every fallback reason; no executor internals; ruff clean.

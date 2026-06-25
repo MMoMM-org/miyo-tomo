@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """tag-handler-resolve.py — Deterministic tag-handler resolver.
 
 Loads the registry from config/tag-handlers/*.json, validates each file
@@ -152,11 +152,16 @@ def resolve_item(item: dict[str, Any], registry: list[dict]) -> dict[str, Any] |
         if not prefix:
             continue
 
-        # Find the first tag (in item order) that carries this prefix
+        # Find the first tag (in item order) that carries this prefix.
+        # Obsidian/Kado return frontmatter tags with a leading '#'
+        # (e.g. '#MiYo/Tsukai/Tomo'); strip it before matching so both
+        # '#'-prefixed and bare tags resolve identically. matched_tag keeps
+        # the normalized (bare) form so the suffix binding below is correct.
         matched_tag: str | None = None
         for tag in tags:
-            if tag.startswith(prefix):
-                matched_tag = tag
+            normalized = tag[1:] if tag.startswith("#") else tag
+            if normalized.startswith(prefix):
+                matched_tag = normalized
                 break
 
         if matched_tag is None:

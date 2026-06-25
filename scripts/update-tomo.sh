@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.7.1
+# version: 0.8.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -267,7 +267,7 @@ print_step "Updating instance at $INSTANCE_PATH"
 
 # ── Plan tables (parallel arrays — bash 3.2 compatible) ──
 
-PLAN_KIND=()    # versioned | bytewise | retire | settings | template | launcher
+PLAN_KIND=()    # versioned | bytewise | seed | retire | settings | template | launcher
 PLAN_SRC=()
 PLAN_DST=()
 PLAN_LABEL=()
@@ -337,6 +337,30 @@ add_bytewise() {
     status="${result%%|*}"
     detail="${result#*|}"
     add_plan "bytewise" "$src" "$dst" "$label" "$status" "$detail" "$section"
+}
+
+# Decide status for a seed file (create-only). Used for user-owned configs
+# shipped as reference templates: seed once when absent, then NEVER overwrite —
+# the user populates per-vault values (e.g. tag-handler target.map) that a
+# bytewise overwrite would silently wipe. --force is the explicit reseed escape.
+scan_seed() {
+    local src="$1"; local dst="$2"
+    if [ ! -f "$dst" ]; then
+        echo "create|new (seed)"
+    elif [ "$FORCE" = "true" ]; then
+        echo "update|forced reseed (overwrites local edits)"
+    else
+        echo "current|user-owned (preserved)"
+    fi
+}
+
+add_seed() {
+    local src="$1"; local dst="$2"; local label="$3"; local section="$4"
+    local result status detail
+    result=$(scan_seed "$src" "$dst")
+    status="${result%%|*}"
+    detail="${result#*|}"
+    add_plan "seed" "$src" "$dst" "$label" "$status" "$detail" "$section"
 }
 
 # ── Pre-flight scan ──────────────────────────────────────
@@ -478,11 +502,13 @@ for f in "$TOMO_SOURCE/schemas/"*.json; do
     add_bytewise "$f" "$INSTANCE_PATH/schemas/$name" "schemas/$name" "schemas"
 done
 
-# Tag-handler configs (bytewise) — shipped reference handlers (e.g. tsukai.json)
+# Tag-handler configs (seed/create-only) — shipped as reference handlers (e.g.
+# tsukai.json) but user-owned: the user populates target.map per their vault, so
+# we seed once and never overwrite (a bytewise sync would wipe their map).
 for f in "$TOMO_SOURCE/config/tag-handlers/"*.json; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
-    add_bytewise "$f" "$INSTANCE_PATH/config/tag-handlers/$name" "config/tag-handlers/$name" "tag-handlers"
+    add_seed "$f" "$INSTANCE_PATH/config/tag-handlers/$name" "config/tag-handlers/$name" "tag-handlers"
 done
 
 # Templates — regenerated from schemas; check if regen would change anything.
@@ -781,7 +807,7 @@ execute_one() {
     ensure_dir "$(dirname "$dst")"
 
     case "$kind" in
-        versioned|bytewise|template|settings)
+        versioned|bytewise|template|settings|seed)
             if cp "$src" "$dst" 2>/dev/null; then
                 # Hooks, statusline and the container entrypoint need exec bit
                 case "$label" in

@@ -4,7 +4,7 @@ description: Run the inbox workflow — triage, then route to the appropriate co
 argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 ---
 # /inbox
-# version: 0.14.0
+# version: 0.16.0
 
 ## Arguments
 
@@ -22,7 +22,7 @@ argument-hint: "optional: --pass1 | --pass2 | --force | --recover"
 ### 1. Run triage
 
 ```bash
-python3 scripts/inbox-triage.py [--force-pass1] [--force-pass2] [--force] [--recover] --output-dir tomo-tmp
+python3 scripts/inbox-triage.py [--force-pass1] [--force-pass2] [--force] [--recover]
 ```
 
 Pass through any flags the user provided: `--pass1` → `--force-pass1`, `--pass2` → `--force-pass2`, `--force` → `--force`, `--recover` → `--recover`.

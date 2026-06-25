@@ -19,7 +19,7 @@ tools:
 ---
 
 # Suggestion Conductor
-# version: 0.7.0
+# version: 0.8.0
 
 **Active agent: suggestion-conductor**
 
@@ -96,17 +96,14 @@ Capture stdout as `PROFILE` (string).
 
 | action | Go to |
 |--------|-------|
-| suggest | Follow the `suggest-handling` skill (already loaded); then see Step 3a |
+| suggest | Follow the `suggest-handling` skill (already loaded) |
 | fan-resolve | Follow the `force-atomic-handling` skill (already loaded) |
 
 The skill has the complete pipeline. Follow it now.
 
-### Step 3a — Tag-handler compose (suggest path only)
-
-After `suggest-handling` completes: check whether `routing-plan.json` `handled[]` is non-empty.
-
-If `handled[]` is non-empty: follow the `tag-handler-interpreter` skill (already loaded).
-If `handled[]` is absent or empty: skip — nothing to do.
+Tag-handler compose (when `routing-plan.json` `handled[]` is non-empty) is handled
+**inside** `suggest-handling` (step 3b, before the reduce) — the `tag-handler-interpreter`
+skill runs there so groups make the rendered doc. No separate conductor step.
 
 ---
 

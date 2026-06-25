@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.16.1
+# version: 1.17.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1251,8 +1251,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Directory to write the proposal-doc (required when --moc-proposal-mode is set).",
     )
     # ── Inbox mode (existing) ─────────────────────────────────────────────────
-    p.add_argument("--state")
-    p.add_argument("--items-dir")
+    # Instance-correct cwd-relative defaults (instance runtime cwd = instance root).
+    # Host/test runs override. --output is dual-use (moc-proposal-mode wants a dir)
+    # so it stays explicit.
+    p.add_argument("--state", default="tomo-tmp/inbox-state.jsonl")
+    p.add_argument("--items-dir", default="tomo-tmp/items")
     p.add_argument("--run-id")
     p.add_argument("--profile")
     p.add_argument("--output")
@@ -1270,8 +1273,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "Offline/test mode: all daily notes are assumed to exist.")
     p.add_argument(
         "--tag-handler-groups-dir",
-        default=None,
+        default="tomo-tmp/tag-handler-groups",
         help="Directory containing tag-handler group-result JSONs (spec 024 T3.3). "
+             "Default: cwd-relative tomo-tmp/tag-handler-groups (instance runtime). "
              "When absent or empty the suggestions doc is unchanged — additive safety.",
     )
     return p

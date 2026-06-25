@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.1.0
+# version: 0.2.0
 
 ## When to Activate
 
@@ -87,10 +87,18 @@ Agent(
 )
 ```
 
+### 3b. Tag-handler groups (only when `handled[]` is non-empty)
+
+Check `routing-plan.json` `handled[]`. If it is non-empty, follow the
+**tag-handler-interpreter** skill NOW — before Reduce — to produce
+`tomo-tmp/tag-handler-groups/`. The reducer picks these up automatically (its
+`--tag-handler-groups-dir` default). This MUST run before step 4, or the groups
+miss the rendered doc. If `handled[]` is absent or empty, skip this step.
+
 ### 4. Reduce
 
 ```bash
-python3 scripts/suggestions-reducer.py --state tomo-tmp/inbox-state.jsonl --items-dir tomo-tmp/items --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-doc.json
+python3 scripts/suggestions-reducer.py --run-id <RUN_ID> --profile <PROFILE> --output tomo-tmp/suggestions-doc.json
 ```
 
 ### 5. Render

@@ -4,7 +4,7 @@ description: Use PROACTIVELY when routing-plan.action is "suggest" AND routing-p
 user-invocable: false
 ---
 # Tag Handler Interpreter
-# version: 0.1.0
+# version: 0.1.1
 
 ## When to Activate
 
@@ -22,7 +22,7 @@ mkdir -p tomo-tmp/tag-handler-groups
 ```
 
 ```bash
-python3 tomo/scripts/tag-handler-group.py --routing-plan tomo-tmp/routing-plan.json --output tomo-tmp/tag-handler-group-stubs.json
+python3 scripts/tag-handler-group.py
 ```
 
 Read `tomo-tmp/tag-handler-group-stubs.json`. Each stub has: `handler`, `target_path`, `marker`, `placement`, `compose`, `source_paths`.
@@ -50,7 +50,7 @@ For each stub:
 ### 4. Write group-result files
 
 For each stub at index `<i>`:
-- Write `tomo-tmp/tag-handler-groups/<i>.json` conforming to `tomo/schemas/tag-handler-group.schema.json`.
+- Write `tomo-tmp/tag-handler-groups/<i>.json` conforming to `schemas/tag-handler-group.schema.json`.
 - Required fields:
   - `schema_version`: `"1"`
   - `handler`: from stub

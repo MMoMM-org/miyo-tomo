@@ -264,6 +264,35 @@ def test_placement_default_inside():
     assert actions[0]["placement"] == "inside"
 
 
+def test_placement_after_prepends_blank_line():
+    """placement='after' guarantees a blank line between heading and content.
+
+    Hashi inserts content verbatim immediately after the heading line, so Tomo
+    prepends a newline to keep the block off the heading line (top-of-section).
+    """
+    block = "### 2026-06-24\n\n- Shipped Z"
+    g = _group(placement="after", composed_block=block)
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    assert actions[0]["placement"] == "after"
+    assert actions[0]["content"] == "\n" + block
+
+
+def test_placement_after_no_double_blank_when_already_leading_newline():
+    """Idempotent: content already starting with a newline is not doubled."""
+    block = "\n### 2026-06-24\n\n- Shipped Z"
+    g = _group(placement="after", composed_block=block)
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    assert actions[0]["content"] == block
+
+
+def test_placement_inside_content_verbatim():
+    """placement='inside' leaves content verbatim — no blank-line prepend."""
+    block = "### 2026-06-24\n\n- Shipped Z"
+    g = _group(placement="inside", composed_block=block)
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    assert actions[0]["content"] == block
+
+
 def test_null_target_group_no_instruction():
     """An approved group with a null target_path emits no path-less instruction."""
     g = _group(target_path=None)

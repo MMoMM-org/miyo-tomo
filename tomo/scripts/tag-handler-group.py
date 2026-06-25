@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """tag-handler-group.py — Deterministic grouping helper for tag-handler results.
 
 Groups routing-plan handled[] items by (handler, target_path) and provides a
@@ -167,14 +167,17 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--routing-plan",
         metavar="PATH",
-        required=True,
-        help="Path to routing-plan.json produced by inbox-triage.py",
+        default="tomo-tmp/routing-plan.json",
+        help="Path to routing-plan.json produced by inbox-triage.py "
+             "(default: cwd-relative tomo-tmp/routing-plan.json — instance runtime)",
     )
     p.add_argument(
         "--output",
         metavar="PATH",
-        default="-",
-        help="Output path for JSON groups array (default: stdout)",
+        default="tomo-tmp/tag-handler-group-stubs.json",
+        help="Output path for the JSON group-stubs array "
+             "(default: cwd-relative tomo-tmp/tag-handler-group-stubs.json; "
+             "pass '-' for stdout)",
     )
     return p
 

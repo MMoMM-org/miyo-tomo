@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.11
+# version: 0.2.12
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -182,6 +182,13 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
 - **git / git user / git author / .gitconfig** →
   - Container has `~/.gitconfig` written by `install-tomo.sh` from host's global config (or user-entered values)
   - Re-run `install-tomo.sh` on the host to change
+
+- **tag handler / tag-handler / tsukai / capture routing / route captures / edit handler / add handler / MiYo/Tsukai / dev-log captures** →
+  - Tag-handlers route inbox notes tagged `MiYo/<Feature>/…` (e.g. Tomo Tsukai's `MiYo/Tsukai/<repo>`) into a target note under a heading marker — all captures for one target merge into a single Pass-1 suggestion you approve
+  - Edit or add one with the **tomo-tag-handler-wizard** (say "edit tag handler" / "add tag handler", or run `/tomo-tag-handler-wizard`); it writes schema-validated via `tag-handler-writer.py` — don't hand-edit the JSON
+  - Config: `config/tag-handlers/<feature>.json` (user-owned; `update-tomo` preserves your edits). Key fields: `target.map` (captured segment → target note path), `placement` (`after` = top/newest-first · `inside` = end · `before`), `marker` (the heading anchor)
+  - Modify-only: the target note must already exist and contain the `marker` heading
+  - Point at: `.claude/skills/tomo-tag-handler-wizard/SKILL.md`, `config/tag-handlers/tsukai.json`
 
 ### Troubleshooting
 

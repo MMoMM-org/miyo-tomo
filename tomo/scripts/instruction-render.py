@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.31.0
+# version: 0.33.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1171,6 +1171,13 @@ def _build_insert_under_marker_actions(
         if not target_path:
             # Unresolved target (null) — never emit a path-less instruction.
             continue
+        placement = group.get("placement") or "inside"
+        content = group.get("composed_block") or ""
+        # placement="after" inserts content immediately after the heading line;
+        # Hashi writes it verbatim with no padding, so guarantee one blank line
+        # between the heading and the block (top-of-section readability).
+        if placement == "after" and content and not content.startswith("\n"):
+            content = "\n" + content
         out.append({
             "id": _next_id(counter),
             "action": "insert_under_marker",
@@ -1179,8 +1186,8 @@ def _build_insert_under_marker_actions(
                 "type": "heading",
                 "value": _marker_to_anchor_value(group.get("marker") or ""),
             },
-            "placement": group.get("placement") or "inside",
-            "content": group.get("composed_block") or "",
+            "placement": placement,
+            "content": content,
         })
     return out
 
@@ -2295,10 +2302,12 @@ def main() -> int:
     )
     p.add_argument(
         "--tag-handler-groups-dir",
-        default=None,
+        default="tomo-tmp/tag-handler-groups",
         help="Directory of tag-handler group-result JSONs (spec 024 T4.1). Each "
              "group whose group_id is approved in the suggestions doc becomes one "
-             "insert_under_marker action. Absent/empty → no such actions.",
+             "insert_under_marker action. Default: cwd-relative "
+             "tomo-tmp/tag-handler-groups (instance runtime); absent/empty → no "
+             "such actions. Host/tests override.",
     )
     args = p.parse_args()
 

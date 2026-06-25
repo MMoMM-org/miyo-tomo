@@ -81,9 +81,9 @@ KADO_URL=127.0.0.1:<port>/mcp ./venv/bin/python tomo/scripts/<script>.py ...
 
 Each phase is a separate file. Tasks follow red-green-refactor: **Prime → Test → Implement → Validate**.
 
-- [ ] [Phase 1: Schema Foundation](phase-1.md)
-- [ ] [Phase 2: Deterministic Helper (target_structure.py)](phase-2.md)
-- [ ] [Phase 3: Producer-Chain Propagation](phase-3.md)
+- [x] [Phase 1: Schema Foundation](phase-1.md)
+- [x] [Phase 2: Deterministic Helper (target_structure.py)](phase-2.md)
+- [x] [Phase 3: Producer-Chain Propagation](phase-3.md)
 - [ ] [Phase 4: Interpreter Compose](phase-4.md)
 - [ ] [Phase 5: Render (block anchor)](phase-5.md)
 - [ ] [Phase 6: Reduce / Review Surface](phase-6.md)

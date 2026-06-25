@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Producer-Chain Propagation"
-status: in_progress
+status: done
 version: "1.0"
 phase: 3
 ---

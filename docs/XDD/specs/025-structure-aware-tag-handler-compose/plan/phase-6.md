@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Reduce / Review Surface"
-status: in_progress
+status: done
 version: "1.0"
 phase: 6
 ---

@@ -394,6 +394,8 @@ def test_output_format_group_mode_descriptor_list_item_merged() -> None:
     assert "list item" in rendered, "structure 'list_item' → 'list item'"
     assert "append" in rendered, "order 'append' → 'append'"
     assert "merged" in rendered, "granularity 'merged' → 'merged'"
+    # merged shows exactly the single composed line, verbatim (symmetric with per_item N-line test)
+    assert "- Combined entry for the day" in rendered
 
 
 def test_output_format_group_verbatim_composed_block_present() -> None:
@@ -486,6 +488,8 @@ def test_fallback_cell_count_mismatch_renders_warning() -> None:
     assert "insert_under_marker" not in rendered
     # Some explanation about the column/cell mismatch
     assert "column" in rendered.lower() or "cell" in rendered.lower() or "match" in rendered.lower()
+    # The prose fallback block is previewed alongside the ⚠️ (FR-19: approve the fallback knowingly)
+    assert "Fell back to prose because columns differ" in rendered
 
 
 def test_fallback_cell_count_mismatch_keeps_approve_box() -> None:
@@ -510,6 +514,8 @@ def test_fallback_no_structure_under_marker_renders_warning() -> None:
     assert "Hashi" not in rendered
     # Some explanation about missing table/list under marker
     assert "table" in rendered.lower() or "list" in rendered.lower() or "marker" in rendered.lower()
+    # The prose fallback block is previewed alongside the ⚠️ (FR-19)
+    assert "Fell back to prose: no table found" in rendered
 
 
 def test_fallback_no_structure_under_marker_keeps_approve_box() -> None:

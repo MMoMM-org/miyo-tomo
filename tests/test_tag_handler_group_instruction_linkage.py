@@ -420,7 +420,13 @@ def test_heading_anchor_emitted_for_append_order():
 
 
 def test_heading_anchor_emitted_for_list_item():
-    """list_item structure → heading anchor (not block), regardless of order."""
+    """list_item structure → heading anchor (not block), regardless of order.
+
+    Also covers the structured heading+after blank-line prepend path: the
+    composed_block must receive a leading '\\n' (same as the legacy heading path).
+    Mutation guard: deleting the prepend line in instruction-render.py would
+    leave this assertion red.
+    """
     g = _group_with_output_format(
         structure="list_item",
         order="newest_first",
@@ -433,6 +439,25 @@ def test_heading_anchor_emitted_for_list_item():
     a = actions[0]
     assert a["anchor"]["type"] == "heading"
     assert a["anchor"]["value"] == "Captures"
+    # placement=after on a heading anchor must prepend a blank line (top-of-section).
+    assert a["content"] == "\n" + _TABLE_ROW
+
+
+def test_heading_anchor_after_structured_no_double_blank():
+    """Idempotent: structured heading+after path does not double-prefix content
+    that already starts with a newline."""
+    already_prefixed = "\n" + _TABLE_ROW
+    g = _group_with_output_format(
+        structure="list_item",
+        order="newest_first",
+        resolved_anchor_type="heading",
+        resolved_anchor_value="Captures",
+        resolved_anchor_placement="after",
+        placement="after",
+        composed_block=already_prefixed,
+    )
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    assert actions[0]["content"] == already_prefixed
 
 
 def test_no_output_format_unchanged_heading_path():
@@ -456,11 +481,19 @@ def test_no_output_format_unchanged_heading_path():
 
 def test_block_anchor_validates_against_instructions_schema():
     """An emitted block-anchor action validates against instructions.schema.json
-    (spec 025 T5.2 — schema must now include 'block' in anchor.type enum)."""
+    (spec 025 T5.2 — schema must now include 'block' in anchor.type enum).
+
+    Uses the Tomo producer schema (instructions.schema.json) rather than the
+    Hashi consumer schema (hashi-instructions.schema.json used at module level):
+    instruction-render.py is the producer and must satisfy the producer-side
+    contract. Both schemas carry 'block' in anchor.type — this test pins the
+    producer contract specifically.
+    """
     g = _group_with_output_format()
     actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
     for a in actions:
         a["applied"] = False
+    # Producer-side contract: instructions.schema.json (not hashi-instructions.schema.json).
     INSTRUCTIONS_SCHEMA_LOCAL = json.loads(
         (SCHEMA_DIR / "instructions.schema.json").read_text(encoding="utf-8")
     )

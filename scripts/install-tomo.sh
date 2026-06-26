@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.5.3
+# version: 0.5.4
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -228,7 +228,7 @@ fi
 
 printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
 printf "  ${C_BOLD}MiYo Tomo${C_RESET} — Setup Wizard v${TOMO_VERSION}\n"
-printf "  ${C_DIM}AI-assisted PKM workflows for Obsidian${C_RESET}\n"
+printf "  ${C_DIM}Personal Knowledge Companion${C_RESET}\n"
 printf "${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
 
 # ── Prerequisites ─────────────────────────────────────────

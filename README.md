@@ -1,9 +1,5 @@
 
 <p align="center">
-  <img src="assets/tomo-hanko.png" alt="Tomo hanko seal (友)" width="140">
-</p>
-
-<p align="center">
   <img src="assets/tomo_banner_clean.svg" alt="MiYo Tomo — Personal Knowledge Companion" width="680">
 </p>
 
@@ -14,6 +10,10 @@
 AI-assisted PKM workflows for Obsidian via [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) MCP server.
 
 Tomo runs inside an isolated Docker container. All vault access goes through Kado — no direct filesystem access to your Obsidian vault.
+
+<p align="center">
+  <img src="assets/tomo-hanko.png" alt="Tomo hanko seal (友)" width="140">
+</p>
 
 ## What Tomo Does
 

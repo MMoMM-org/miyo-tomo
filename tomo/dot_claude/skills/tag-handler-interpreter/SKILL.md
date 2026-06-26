@@ -4,7 +4,7 @@ description: Use PROACTIVELY when routing-plan.action is "suggest" AND routing-p
 user-invocable: false
 ---
 # Tag Handler Interpreter
-# version: 0.2.2
+# version: 0.2.3
 
 ## When to Activate
 
@@ -32,7 +32,7 @@ Read `tomo-tmp/tag-handler-group-stubs.json`. Each stub has: `handler`, `target_
 For each stub in the stubs array:
 - For each path in `source_paths`: read the note via `mcp__kado__kado-read` with `operation: "note"`.
 - Collect the note's title, frontmatter fields, and body for use in compose (step 3).
-- If the stub has `output_format`: ALSO read the TARGET note's marker section — `mcp__kado__kado-read` with `operation: "note"`, section mode on the stub's `marker` (least-payload section read). Keep the raw section lines (verbatim, unmodified) for step 3.
+- If the stub has `output_format`: ALSO read the TARGET note's marker section — `mcp__kado__kado-read` with `operation: "note"`, `mode: "section"`, `heading:` the marker's HEADING TEXT with its leading `#` run stripped (e.g. marker `"## Captures"` → `heading: "Captures"`; Kado matches heading text, NOT the `##`-prefixed form). Keep the returned section lines (verbatim, unmodified) as `section_lines` for step 3. If Kado returns NOT_FOUND, pass empty `section_lines` (the helper then signals `no_structure_under_marker`).
 
 ### 3. Compose one block per group
 

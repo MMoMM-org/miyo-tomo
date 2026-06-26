@@ -4,7 +4,7 @@ description: Use PROACTIVELY when routing-plan.action is "suggest" AND routing-p
 user-invocable: false
 ---
 # Tag Handler Interpreter
-# version: 0.2.0
+# version: 0.2.1
 
 ## When to Activate
 
@@ -38,9 +38,11 @@ For each stub in the stubs array:
 
 # STRICT — ONE composed_block per group: every group produces exactly one group-result with one composed_block. A structure-aware group emits its N rows/items INSIDE that single composed_block — N rows are NOT N blocks. Never emit one block per source item.
 
-For each stub:
+For each stub, pick the compose path by this PRECEDENCE — first match wins, do NOT fall through:
 
-**If the stub has `output_format` (structure-aware compose):**
+# STRICT — `output_format` ALWAYS wins. A structure-aware stub ALSO carries a `compose` string, but when `output_format` is present you MUST take path 1 (structure-aware). The `compose` string is NOT a directive here — it is only the wording for the prose fallback inside path 1. NEVER take path 2 or path 3 when the stub has an `output_format` key.
+
+**Path 1 — stub has an `output_format` key → structure-aware compose (MANDATORY when present):**
 - For each `synthesize` cell directive: produce a single-line value. Scope by `output_format.granularity`: `per_item` = one value per source capture; `merged` = one value over the whole group. For each `field` cell: take the raw value from the stub's `fields` (no synthesis).
 - Build `cell_values_per_item` — a list of cell-value lists, one inner list per emitted row/item (for `merged`, exactly one inner list), each inner list ordered to match `output_format.cells`.
 - Write `tomo-tmp/compose-payload-<i>.json` with keys: `section_lines` (the raw target section from step 2), `output_format` (from the stub), `cell_values_per_item`, `marker` (from the stub).
@@ -52,13 +54,13 @@ python3 scripts/tag-handler-compose.py tomo-tmp/compose-payload-<i>.json
 
 - Read the printed JSON:
   - `status: "ok"` → carry its `composed_block` and `resolved_anchor` into step 4 verbatim.
-  - `status: "fallback"` → synthesize a plain dated prose status block (as in the STRING-directive path below) for `composed_block`, and carry `fallback.reason` into step 4.
+  - `status: "fallback"` → synthesize a plain dated prose status block (using the stub's `compose` string as the wording) for `composed_block`, and carry `fallback.reason` into step 4.
 
-**If `compose` is a STRING (LLM directive):**
+**Path 2 — stub has NO `output_format` and `compose` is a STRING (LLM directive):**
 - Synthesize all of this group's source notes (title, frontmatter fields, body) into exactly ONE dated status-update markdown block, following the directive as the synthesis instruction.
 - The result is one merged block, regardless of how many source items are in the group.
 
-**If `compose` is an ARRAY (field-template):**
+**Path 3 — stub has NO `output_format` and `compose` is an ARRAY (field-template):**
 - Produce a deterministic mechanical join: one bullet line per source item listing the field values named in the array.
 - No LLM synthesis.
 

@@ -7,9 +7,9 @@
 
 > ⚠️ **Alpha** — Tomo is under active development. Expect breaking changes, rough edges, and evolving commands. Feedback and issues welcome.
 
-AI-assisted PKM workflows for Obsidian via [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) MCP server.
+**Tomo (友, "friend") is an AI knowledge companion for your Obsidian vault** — not just an inbox processor. It helps you make sense of what you capture and shape it into knowledge you can navigate: triaging your inbox, exploring vault structure and MOC hierarchy, connecting notes, and turning raw material into well-formed notes. You stay the author throughout — Tomo proposes, you decide.
 
-Tomo runs inside an isolated Docker container. All vault access goes through Kado — no direct filesystem access to your Obsidian vault.
+Tomo runs inside an isolated Docker container. All vault access goes through [MiYo Kado](https://github.com/MMoMM-org/miyo-kado) — no direct filesystem access to your Obsidian vault.
 
 <p align="center">
   <img src="assets/tomo-hanko.png" alt="Tomo hanko seal (友)" width="140">

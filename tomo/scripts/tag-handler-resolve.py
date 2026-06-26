@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """tag-handler-resolve.py — Deterministic tag-handler resolver.
 
 Loads the registry from config/tag-handlers/*.json, validates each file
@@ -38,12 +38,16 @@ except ImportError:  # pragma: no cover — venv always has it; guard for edge c
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Schema path — relative to this script (always inside the Tomo repo)
+# Schema path — schemas/ is a sibling of scripts/ in BOTH layouts:
+#   repo:     tomo/scripts + tomo/schemas
+#   instance: tomo-instance/scripts + tomo-instance/schemas (flattened, no tomo/)
+# Do NOT use _SCRIPT_DIR.parent.parent / "tomo" / "schemas" — the instance has no
+# nested tomo/ dir, so that resolves to a missing path and the registry load
+# crashes at runtime (CON-2 / spec 025 live-walk regression).
 # ---------------------------------------------------------------------------
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _SCRIPT_DIR.parent.parent  # tomo/scripts/ → tomo/ → repo root
-_SCHEMA_PATH = _REPO_ROOT / "tomo" / "schemas" / "tag-handler.schema.json"
+_SCHEMA_PATH = _SCRIPT_DIR.parent / "schemas" / "tag-handler.schema.json"
 
 _SHIPPED_ACTION = "insert_under_marker"
 _DEFERRED_ACTIONS = frozenset(["route_to_folder", "link_to_moc", "enrich_frontmatter"])

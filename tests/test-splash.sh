@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-splash.sh — Preview the Tomo splash screen (logo above tagline).
-# version: 0.2.0
+# version: 0.2.1
 
 set -e
 
@@ -51,5 +51,4 @@ printf "\n"
 printf "               %b友  MiYo Tomo%b %bv%s%b\n" \
     "$C_MAGENTA_BOLD" "$C_RESET" "$C_DIM" "$VERSION" "$C_RESET"
 printf "           %bPersonal Knowledge Companion%b\n" "$C_CYAN" "$C_RESET"
-printf "             AI handles processes,\n"
-printf "                 not decisions\n"
+printf "  Think Deeper · Decide Better · Connect Smarter\n"

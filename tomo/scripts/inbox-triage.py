@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.17.0
+# version: 0.17.1
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -311,11 +311,13 @@ def resolve_handlers(
             continue
 
         # Required keys always emitted; target_path may legitimately be null.
-        # The optional keys (marker/placement/compose) are typed+constrained in
-        # the schema, so omit them entirely when the handler left them unset
-        # rather than emitting null (which the schema rejects).
-        # 'fields' from resolve_item is intentionally omitted here — consumed by
-        # the Phase 3 compose step, not part of the routing-plan entry.
+        # The optional keys (marker/placement/compose/output_format) are
+        # typed+constrained in the schema, so omit them entirely when the handler
+        # left them unset rather than emitting null (which the schema rejects).
+        # output_format (spec 025) MUST be carried — without it the group stub
+        # gets null and the interpreter silently takes the prose compose path.
+        # 'fields' from resolve_item is NOT carried — the compose step reads each
+        # {field} cell from the source note's own frontmatter (per item).
         entry: dict = {
             "path": path,
             "handler": match["handler"],
@@ -323,7 +325,7 @@ def resolve_handlers(
             "target_path": match["target_path"],
             "action": match["action"],
         }
-        for key in ("marker", "placement", "compose"):
+        for key in ("marker", "placement", "compose", "output_format"):
             value = match.get(key)
             if value is not None:
                 entry[key] = value

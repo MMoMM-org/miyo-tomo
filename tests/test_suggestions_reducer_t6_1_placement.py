@@ -78,7 +78,7 @@ class TestMocLinkLinePlacementFormats:
             "new_section": None,
         })
         lines = moc_link_line(moc).split("\n")
-        placement = next((l for l in lines if l.startswith("**Placement:**")), None)
+        placement = next((line for line in lines if line.startswith("**Placement:**")), None)
         assert placement is not None, "Expected a **Placement:** line"
         assert placement == "**Placement:** under `## Frameworks and Methodologies`    ← edit the heading to move the link"
 
@@ -91,7 +91,7 @@ class TestMocLinkLinePlacementFormats:
             "new_section": "Agile Methods",
         })
         lines = moc_link_line(moc).split("\n")
-        placement = next((l for l in lines if l.startswith("**Placement:**")), None)
+        placement = next((line for line in lines if line.startswith("**Placement:**")), None)
         assert placement is not None, "Expected a **Placement:** line"
         assert placement == "**Placement:** new section `## Agile Methods` (before the footer)    ← rename or change"
 
@@ -104,7 +104,7 @@ class TestMocLinkLinePlacementFormats:
             "new_section": None,
         })
         lines = moc_link_line(moc).split("\n")
-        placement = next((l for l in lines if l.startswith("**Placement:**")), None)
+        placement = next((line for line in lines if line.startswith("**Placement:**")), None)
         assert placement is not None, "Expected a **Placement:** line"
         assert placement == "**Placement:** inside the `[!blocks] Key Concepts` callout    ← change to a `## Heading` to place under a section"
 
@@ -117,7 +117,7 @@ class TestMocLinkLinePlacementFormats:
             "new_section": None,
         })
         lines = moc_link_line(moc).split("\n")
-        placement = next((l for l in lines if l.startswith("**Placement:**")), None)
+        placement = next((line for line in lines if line.startswith("**Placement:**")), None)
         assert placement is not None, "Expected a **Placement:** line"
         assert placement == "**Placement:** under the note title (no matching section or callout found)    ← add a `## Heading` to target a section"
 
@@ -142,7 +142,7 @@ class TestMocLinkLinePlacementFormats:
             "new_section": None,
         })
         lines = moc_link_line(moc).split("\n")
-        checkbox = next((l for l in lines if l.startswith("- [x]") or l.startswith("- [ ]")), None)
+        checkbox = next((line for line in lines if line.startswith("- [x]") or line.startswith("- [ ]")), None)
         assert checkbox is not None, "Checkbox line must remain"
         assert "[[Atlas/200 Maps/Philosophy MOC]]" in checkbox
 
@@ -155,8 +155,8 @@ class TestMocLinkLinePlacementFormats:
             "new_section": None,
         })
         lines = moc_link_line(moc).split("\n")
-        cb_idx = next(i for i, l in enumerate(lines) if l.startswith("- ["))
-        pl_idx = next((i for i, l in enumerate(lines) if l.startswith("**Placement:**")), None)
+        cb_idx = next(i for i, line in enumerate(lines) if line.startswith("- ["))
+        pl_idx = next((i for i, line in enumerate(lines) if line.startswith("**Placement:**")), None)
         assert pl_idx is not None
         assert pl_idx == cb_idx + 1, "Placement must immediately follow the checkbox line"
 
@@ -171,7 +171,7 @@ class TestMocLinkLinePlacementFormats:
         for anchor in anchors:
             moc = make_moc("Atlas/200 Maps/Philosophy MOC.md", anchor=anchor)
             lines = moc_link_line(moc).split("\n")
-            placement = next((l for l in lines if l.startswith("**Placement:**")), None)
+            placement = next((line for line in lines if line.startswith("**Placement:**")), None)
             assert placement is not None
             assert "←" in placement, f"Missing ← in placement for anchor type={anchor['type']}"
 
@@ -286,8 +286,8 @@ class TestMocLinkLinePlacementFormats:
             "alt_headings": ["Routines"],
         })
         lines = moc_link_line(moc).split("\n")
-        pl_idx = next((i for i, l in enumerate(lines) if l.startswith("**Placement:**")), None)
-        adv_idx = next((i for i, l in enumerate(lines) if l.startswith("**Other sections")), None)
+        pl_idx = next((i for i, line in enumerate(lines) if line.startswith("**Placement:**")), None)
+        adv_idx = next((i for i, line in enumerate(lines) if line.startswith("**Other sections")), None)
         assert pl_idx is not None, "Placement line must exist"
         assert adv_idx is not None, "Advisory line must exist"
         assert adv_idx > pl_idx, "Advisory must follow Placement line"

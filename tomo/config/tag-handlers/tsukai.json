@@ -4,7 +4,7 @@
   "match": {
     "tag_prefix": "MiYo/Tsukai/",
     "capture_segments": ["repo"],
-    "read_fields": ["category"]
+    "read_fields": ["category", "created"]
   },
   "action": "insert_under_marker",
   "target": {
@@ -13,5 +13,15 @@
   },
   "marker": "## Captures",
   "placement": "after",
-  "compose": "Synthesize the batch's captures into one dated logical status update, grouped by category."
+  "compose": "Synthesize the batch's captures into one dated logical status update, grouped by category.",
+  "output_format": {
+    "structure": "table_row",
+    "order": "newest_first",
+    "granularity": "per_item",
+    "cells": [
+      {"field": "created"},
+      {"field": "category"},
+      {"synthesize": "one-line summary of what changed"}
+    ]
+  }
 }

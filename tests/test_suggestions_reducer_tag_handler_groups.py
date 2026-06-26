@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# version: 0.3.0
-"""test_suggestions_reducer_tag_handler_groups.py — T3.3 (spec 024).
+# version: 0.4.0
+"""test_suggestions_reducer_tag_handler_groups.py — T3.3 (spec 024) + T6.1/T6.2 (spec 025).
 
 Covers the tag-handler group-result render path in suggestions-reducer and
 the surface in suggestions-render:
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import sys
 import tempfile
 from pathlib import Path
@@ -333,3 +332,249 @@ def test_malformed_group_file_is_skipped() -> None:
         f"Expected exactly 1 valid group (bad file skipped), got {len(groups)}"
     )
     assert groups[0]["composed_block"] == "- A valid captured entry"
+
+
+# ── T6.1 (spec 025): verbatim preview + mode descriptor ──────────────────────
+
+
+def _group_with_output_format(
+    *,
+    structure: str = "table_row",
+    order: str = "newest_first",
+    granularity: str = "per_item",
+    composed_block: str = "| 2026-06-25 | fix | resolveBlock landed |",
+    source_paths: list[str] | None = None,
+) -> dict:
+    """Build a group fixture that carries output_format (spec 025)."""
+    g = _group(
+        composed_block=composed_block,
+        source_paths=source_paths or ["100 Inbox/dev-log-1.md"],
+    )
+    g["output_format"] = {
+        "structure": structure,
+        "order": order,
+        "granularity": granularity,
+        "cells": [
+            {"field": "date"},
+            {"field": "category"},
+            {"synthesize": "one-line summary of the change"},
+        ],
+    }
+    return g
+
+
+def test_output_format_group_has_mode_descriptor() -> None:
+    """A group with output_format renders a one-line mode descriptor (spec 025 T6.1 / FR-20).
+
+    Descriptor must encode: structure (table_row→"table row"), order (newest_first→"newest first"),
+    granularity (per_item→"per item"). Must NOT contain executor internals.
+    """
+    g = _group_with_output_format(
+        structure="table_row",
+        order="newest_first",
+        granularity="per_item",
+    )
+    rendered = render_tag_handler_group(g)
+
+    assert "table row" in rendered, "structure must be human-readable in descriptor"
+    assert "newest first" in rendered, "order must be human-readable in descriptor"
+    assert "per item" in rendered, "granularity must be human-readable in descriptor"
+
+
+def test_output_format_group_mode_descriptor_list_item_merged() -> None:
+    """list_item / append / merged renders the correct descriptor terms."""
+    g = _group_with_output_format(
+        structure="list_item",
+        order="append",
+        granularity="merged",
+        composed_block="- Combined entry for the day",
+    )
+    rendered = render_tag_handler_group(g)
+
+    assert "list item" in rendered, "structure 'list_item' → 'list item'"
+    assert "append" in rendered, "order 'append' → 'append'"
+    assert "merged" in rendered, "granularity 'merged' → 'merged'"
+    # merged shows exactly the single composed line, verbatim (symmetric with per_item N-line test)
+    assert "- Combined entry for the day" in rendered
+
+
+def test_output_format_group_verbatim_composed_block_present() -> None:
+    """The verbatim composed_block rows are still present alongside the mode descriptor."""
+    row = "| 2026-06-25 | feature | output_format schema |"
+    g = _group_with_output_format(composed_block=row)
+    rendered = render_tag_handler_group(g)
+
+    assert row in rendered, "composed_block must appear verbatim"
+    # Approve box must still be present for an ok-guard group
+    assert "Approve" in rendered
+
+
+def test_output_format_group_per_item_shows_all_lines() -> None:
+    """per_item composed_block with N lines: all lines must appear."""
+    block = "| 2026-06-24 | fix | line 1 |\n| 2026-06-25 | feature | line 2 |"
+    g = _group_with_output_format(
+        granularity="per_item",
+        composed_block=block,
+        source_paths=["100 Inbox/a.md", "100 Inbox/b.md"],
+    )
+    rendered = render_tag_handler_group(g)
+
+    assert "line 1" in rendered
+    assert "line 2" in rendered
+
+
+def test_output_format_group_no_executor_internals() -> None:
+    """No executor internals (Hashi, action-type, script names) in rendered text (spec 025 T6.1)."""
+    g = _group_with_output_format()
+    rendered = render_tag_handler_group(g)
+
+    forbidden = ["Hashi", "insert_under_marker", "update_log_entry", "action-type"]
+    for term in forbidden:
+        assert term not in rendered, f"Executor internal '{term}' must not appear in rendered output"
+
+
+def test_target_missing_guard_no_executor_internals() -> None:
+    """target_missing guard text must not mention executor internals (T6.1 cleanup)."""
+    g = _group()
+    g["guard"] = "target_missing"
+    rendered = render_tag_handler_group(g)
+
+    # Must NOT contain old "Hashi modifies notes" phrasing
+    assert "Hashi modifies" not in rendered, (
+        "target_missing guard must use executor-neutral phrasing"
+    )
+    # Must retain the intent: note must exist before update
+    assert "exist" in rendered.lower() or "create" in rendered.lower(), (
+        "target_missing guard must still convey that the target note must exist"
+    )
+    # No Approve box (hard guard)
+    assert "- [x] Approve" not in rendered
+
+
+def test_group_without_output_format_backward_compat() -> None:
+    """A group WITHOUT output_format renders byte-identically to before (backward compat)."""
+    g = _group()  # no output_format key
+    rendered = render_tag_handler_group(g)
+
+    # Must contain composed_block, marker, target, and Approve box
+    assert g["composed_block"] in rendered
+    assert g["marker"] in rendered
+    assert "Approve" in rendered
+    # Must NOT contain a format descriptor (no output_format present)
+    assert "**Format:**" not in rendered
+
+
+# ── T6.2 (spec 025): fallback ⚠️ + Approve-box gating ───────────────────────
+
+
+def _group_with_fallback(reason: str, **kwargs: Any) -> dict:
+    """Build a group fixture with a fallback reason (spec 025 T6.2)."""
+    g = _group_with_output_format(**kwargs)
+    g["fallback"] = {"reason": reason}
+    return g
+
+
+def test_fallback_cell_count_mismatch_renders_warning() -> None:
+    """fallback.reason=cell_count_mismatch → ⚠️ line with plain-language reason (FR-19)."""
+    g = _group_with_fallback(
+        reason="cell_count_mismatch",
+        composed_block="Fell back to prose because columns differ",
+    )
+    rendered = render_tag_handler_group(g)
+
+    assert "⚠️" in rendered, "Warning emoji must appear for fallback"
+    # Plain-language reason — must NOT mention executor internals
+    assert "Hashi" not in rendered
+    assert "insert_under_marker" not in rendered
+    # Some explanation about the column/cell mismatch
+    assert "column" in rendered.lower() or "cell" in rendered.lower() or "match" in rendered.lower()
+    # The prose fallback block is previewed alongside the ⚠️ (FR-19: approve the fallback knowingly)
+    assert "Fell back to prose because columns differ" in rendered
+
+
+def test_fallback_cell_count_mismatch_keeps_approve_box() -> None:
+    """fallback (not a hard guard) must KEEP the Approve box — user approves the prose fallback."""
+    g = _group_with_fallback(reason="cell_count_mismatch")
+    rendered = render_tag_handler_group(g)
+
+    assert "- [x] Approve" in rendered or "- [ ] Approve" in rendered, (
+        "Approve box must remain for fallback groups (not a hard guard)"
+    )
+
+
+def test_fallback_no_structure_under_marker_renders_warning() -> None:
+    """fallback.reason=no_structure_under_marker → ⚠️ line with plain-language reason."""
+    g = _group_with_fallback(
+        reason="no_structure_under_marker",
+        composed_block="Fell back to prose: no table found",
+    )
+    rendered = render_tag_handler_group(g)
+
+    assert "⚠️" in rendered
+    assert "Hashi" not in rendered
+    # Some explanation about missing table/list under marker
+    assert "table" in rendered.lower() or "list" in rendered.lower() or "marker" in rendered.lower()
+    # The prose fallback block is previewed alongside the ⚠️ (FR-19)
+    assert "Fell back to prose: no table found" in rendered
+
+
+def test_fallback_no_structure_under_marker_keeps_approve_box() -> None:
+    """no_structure_under_marker fallback must also keep the Approve box."""
+    g = _group_with_fallback(reason="no_structure_under_marker")
+    rendered = render_tag_handler_group(g)
+
+    assert "- [x] Approve" in rendered or "- [ ] Approve" in rendered
+
+
+def test_fallback_reason_never_leaks_raw_key() -> None:
+    """Any schema-valid fallback.reason renders human-readable text, never the raw key.
+
+    marker_missing is a schema enum value for fallback.reason; if it arrives as a
+    reason WITHOUT a hard guard set, the render must still show a plain-language
+    string — never the bare snake_case code.
+    """
+    g = _group_with_fallback(reason="marker_missing")  # no group["guard"] set
+    rendered = render_tag_handler_group(g)
+
+    assert "⚠️" in rendered
+    assert "marker_missing" not in rendered  # raw key must not leak to the user
+    assert "marker heading" in rendered.lower()
+    # An unknown/future reason degrades to a neutral phrase, still no raw key
+    g2 = _group_with_fallback(reason="some_future_reason")
+    rendered2 = render_tag_handler_group(g2)
+    assert "some_future_reason" not in rendered2
+    assert "falling back to a text note" in rendered2
+
+
+def test_fallback_warning_names_handler_and_target() -> None:
+    """The fallback ⚠️ line names the handler and target (spec 025 FR-19)."""
+    handler = "reading-log"
+    target = "Atlas/300 Reading/Reading Log.md"
+    g = _group_with_fallback(
+        reason="cell_count_mismatch",
+        composed_block="prose preview",
+    )
+    g["handler"] = handler
+    g["target_path"] = target
+    rendered = render_tag_handler_group(g)
+
+    assert "reading-log" in rendered, "handler name must appear in fallback warning"
+    assert "Reading Log" in rendered, "target note must be referenced in fallback warning"
+
+
+def test_hard_guard_takes_priority_over_fallback() -> None:
+    """Hard guards (target_missing/marker_missing) drop Approve box even when fallback is set."""
+    # target_missing + fallback → hard guard wins (no Approve box)
+    g = _group_with_fallback(reason="cell_count_mismatch")
+    g["guard"] = "target_missing"
+    rendered = render_tag_handler_group(g)
+
+    assert "- [x] Approve" not in rendered
+    assert "Create it first" in rendered or "exist" in rendered.lower()
+
+    # marker_missing + fallback → hard guard wins (no Approve box)
+    g2 = _group_with_fallback(reason="no_structure_under_marker")
+    g2["guard"] = "marker_missing"
+    rendered2 = render_tag_handler_group(g2)
+
+    assert "- [x] Approve" not in rendered2

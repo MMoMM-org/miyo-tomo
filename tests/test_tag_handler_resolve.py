@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_tag_handler_resolve.py — Behavioural tests for tag-handler-resolve.py.
 
 Covers T1.3 (XDD 024 Phase 1): deterministic resolver — load registry, match
@@ -492,3 +492,74 @@ def test_shipped_tsukai_json_unmapped_repo_yields_null_target():
     assert result is not None
     assert result["handler"] == "tsukai"
     assert result["target_path"] is None
+
+
+# ---------------------------------------------------------------------------
+# T3.1 — output_format propagation (spec 025 Phase 3 / FR-15)
+# ---------------------------------------------------------------------------
+
+
+def _handler_with_output_format() -> dict:
+    """Return a handler config WITH an output_format block (spec 025 FR-15)."""
+    return {
+        "id": "of-handler",
+        "enabled": True,
+        "match": {
+            "tag_prefix": "MiYo/Tsukai/",
+            "capture_segments": ["repo"],
+        },
+        "action": "insert_under_marker",
+        "target": {
+            "by": "repo",
+            "map": {"Tomo": "Efforts/Tomo Dev Log.md"},
+        },
+        "marker": "## Captures",
+        "placement": "after",
+        "compose": "Synthesize.",
+        "output_format": {
+            "structure": "table_row",
+            "order": "append",
+            "granularity": "per_item",
+            "cells": [{"field": "category"}],
+        },
+    }
+
+
+def test_resolve_item_carries_output_format_verbatim(tmp_path):
+    """T3.1 (RED→GREEN): handler config with output_format → resolve_item result includes it verbatim."""
+    _write_handler(tmp_path, "of-handler.json", _handler_with_output_format())
+    registry = load_registry(tmp_path)
+
+    item = {
+        "path": "100 Inbox/note.md",
+        "tags": ["MiYo/Tsukai/Tomo"],
+        "frontmatter": {},
+    }
+    result = resolve_item(item, registry)
+
+    assert result is not None
+    assert "output_format" in result
+    assert result["output_format"] == {
+        "structure": "table_row",
+        "order": "append",
+        "granularity": "per_item",
+        "cells": [{"field": "category"}],
+    }
+
+
+def test_resolve_item_output_format_absent_when_not_configured(tmp_path):
+    """T3.1 backward compat: handler WITHOUT output_format → key absent or None in result."""
+    # _tsukai_handler() does not have output_format
+    _write_handler(tmp_path, "tsukai.json", _tsukai_handler())
+    registry = load_registry(tmp_path)
+
+    item = {
+        "path": "100 Inbox/note.md",
+        "tags": ["MiYo/Tsukai/Tomo"],
+        "frontmatter": {"category": "feature"},
+    }
+    result = resolve_item(item, registry)
+
+    assert result is not None
+    # Key must be absent OR None — both are acceptable backward-compat shapes
+    assert result.get("output_format") is None

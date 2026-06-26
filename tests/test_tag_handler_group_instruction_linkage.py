@@ -328,5 +328,177 @@ def test_malformed_group_file_is_skipped(tmp_path):
     assert loaded == [good]
 
 
+# ── 8. block-anchor emission (spec 025 / T5.1) ───────────────────────────────
+
+
+_TABLE_ANCHOR_VALUE = "| Date | Type | Description |\n| --- | --- | --- |"
+_TABLE_ROW = "| 2026-06-25 | fix | landed |"
+
+
+def _group_with_output_format(
+    *,
+    structure: str = "table_row",
+    order: str = "newest_first",
+    resolved_anchor_type: str = "block",
+    resolved_anchor_value: str = _TABLE_ANCHOR_VALUE,
+    resolved_anchor_placement: str = "after",
+    composed_block: str = _TABLE_ROW,
+    placement: str | None = "after",
+) -> dict:
+    """Build a group-result fixture with output_format + resolved_anchor (spec 025).
+
+    Shape mirrors tag-handler-group.schema.json exactly.
+    """
+    g = _group(composed_block=composed_block, placement=placement)
+    g["output_format"] = {
+        "structure": structure,
+        "order": order,
+        "granularity": "per_item",
+        "cells": [{"field": "date"}, {"field": "type"}, {"synthesize": "one-line summary"}],
+    }
+    g["resolved_anchor"] = {
+        "type": resolved_anchor_type,
+        "value": resolved_anchor_value,
+        "placement": resolved_anchor_placement,
+    }
+    return g
+
+
+def test_block_anchor_emitted_for_table_newest_first():
+    """table_row + newest_first → anchor.type=block, value byte-identical, placement=after."""
+    g = _group_with_output_format()
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    assert len(actions) == 1
+    a = actions[0]
+    assert a["action"] == "insert_under_marker"
+    assert a["anchor"]["type"] == "block"
+    assert a["anchor"]["value"] == _TABLE_ANCHOR_VALUE  # byte-exact
+    assert a["placement"] == "after"
+
+
+def test_block_anchor_value_byte_exact():
+    """The block anchor value is NOT re-pretty-printed — it must be byte-identical
+    to resolved_anchor.value including embedded newlines and whitespace."""
+    custom_value = "| A | B |\n| -- | -- |"
+    g = _group_with_output_format(resolved_anchor_value=custom_value)
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    assert actions[0]["anchor"]["value"] == custom_value
+
+
+def test_block_anchor_no_leading_blank_line_in_content():
+    """CRITICAL: block-anchor table case MUST NOT prepend a blank line to content.
+
+    The legacy heading-after path prepends '\\n' for readability (lines 1179-1180
+    in the pre-T5.1 code). For a block-anchor table insertion, that blank line
+    would land between the separator row and the first data row — breaking the
+    Markdown table. The block-anchor path must skip the '\\n' prepend entirely.
+    """
+    g = _group_with_output_format(composed_block=_TABLE_ROW, placement="after")
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    content = actions[0]["content"]
+    assert not content.startswith("\n"), (
+        f"Block-anchor content must NOT start with a blank line; got: {content!r}"
+    )
+    assert content == _TABLE_ROW
+
+
+def test_heading_anchor_emitted_for_append_order():
+    """table_row + append (or list_item) → heading anchor (existing path), not block."""
+    g = _group_with_output_format(
+        structure="table_row",
+        order="append",
+        resolved_anchor_type="heading",
+        resolved_anchor_value="Captures",
+        resolved_anchor_placement="inside",
+        placement="inside",
+    )
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    a = actions[0]
+    assert a["anchor"]["type"] == "heading"
+    assert a["anchor"]["value"] == "Captures"
+    assert a["placement"] == "inside"
+
+
+def test_heading_anchor_emitted_for_list_item():
+    """list_item structure → heading anchor (not block), regardless of order.
+
+    Also covers the structured heading+after blank-line prepend path: the
+    composed_block must receive a leading '\\n' (same as the legacy heading path).
+    Mutation guard: deleting the prepend line in instruction-render.py would
+    leave this assertion red.
+    """
+    g = _group_with_output_format(
+        structure="list_item",
+        order="newest_first",
+        resolved_anchor_type="heading",
+        resolved_anchor_value="Captures",
+        resolved_anchor_placement="after",
+        placement="after",
+    )
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    a = actions[0]
+    assert a["anchor"]["type"] == "heading"
+    assert a["anchor"]["value"] == "Captures"
+    # placement=after on a heading anchor must prepend a blank line (top-of-section).
+    assert a["content"] == "\n" + _TABLE_ROW
+
+
+def test_heading_anchor_after_structured_no_double_blank():
+    """Idempotent: structured heading+after path does not double-prefix content
+    that already starts with a newline."""
+    already_prefixed = "\n" + _TABLE_ROW
+    g = _group_with_output_format(
+        structure="list_item",
+        order="newest_first",
+        resolved_anchor_type="heading",
+        resolved_anchor_value="Captures",
+        resolved_anchor_placement="after",
+        placement="after",
+        composed_block=already_prefixed,
+    )
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    assert actions[0]["content"] == already_prefixed
+
+
+def test_no_output_format_unchanged_heading_path():
+    """A group WITHOUT output_format/resolved_anchor → existing heading+inside path
+    is UNCHANGED (backward-compat guarantee).
+
+    heading anchor value is derived from the marker via _marker_to_anchor_value;
+    placement defaults to 'inside'; content is composed_block verbatim.
+    """
+    block = "### 2026-06-25\n\n- Shipped Y (feature)"
+    g = _group(composed_block=block, placement="inside")
+    # Confirm no output_format key present.
+    assert "output_format" not in g
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    a = actions[0]
+    assert a["anchor"]["type"] == "heading"
+    assert a["anchor"]["value"] == "Captures"
+    assert a["placement"] == "inside"
+    assert a["content"] == block
+
+
+def test_block_anchor_validates_against_instructions_schema():
+    """An emitted block-anchor action validates against instructions.schema.json
+    (spec 025 T5.2 — schema must now include 'block' in anchor.type enum).
+
+    Uses the Tomo producer schema (instructions.schema.json) rather than the
+    Hashi consumer schema (hashi-instructions.schema.json used at module level):
+    instruction-render.py is the producer and must satisfy the producer-side
+    contract. Both schemas carry 'block' in anchor.type — this test pins the
+    producer contract specifically.
+    """
+    g = _group_with_output_format()
+    actions = _build_insert_under_marker_actions([g], [group_id(g)], [0])
+    for a in actions:
+        a["applied"] = False
+    # Producer-side contract: instructions.schema.json (not hashi-instructions.schema.json).
+    INSTRUCTIONS_SCHEMA_LOCAL = json.loads(
+        (SCHEMA_DIR / "instructions.schema.json").read_text(encoding="utf-8")
+    )
+    _validate(instance=_wrap_instructions(actions), schema=INSTRUCTIONS_SCHEMA_LOCAL)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

@@ -1,5 +1,9 @@
 
 <p align="center">
+  <img src="assets/tomo-hanko.png" alt="Tomo hanko seal (友)" width="140">
+</p>
+
+<p align="center">
   <img src="assets/tomo_banner_clean.svg" alt="MiYo Tomo — Personal Knowledge Companion" width="680">
 </p>
 

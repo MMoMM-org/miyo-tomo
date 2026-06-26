@@ -26,7 +26,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent

@@ -97,3 +97,30 @@ live on the action object only between two well-defined points:
 The one-line comment at `_emit` records this lifetime at the lift site; this
 section is the full rationale. Parity-locked with the wire-hygiene contract
 (see `reference_link_to_moc_wire_hygiene`).
+
+## Block-anchor emission branch — spec 025 T5.1 / FR-16 / ADR-6
+
+WHY resolved_anchor is passed through verbatim (SDD Boundary 1): the Phase 4
+interpreter already resolved the exact multi-line anchor value by reading the
+live vault note (Kado `kado-read`). Re-deriving it in instruction-render would
+require a second vault read at render time, introducing a race condition (the
+note could change between Phase 4 and Phase 5) and would de-duplicate the
+anchor detection logic. The byte-exact `resolved_anchor.value` is the Phase
+4→5 contract; instruction-render must not re-pretty-print it.
+
+WHY block-anchor content MUST NOT receive the blank-line prepend (the critical
+`no-leading-\\n` rule): the legacy heading-anchor path prepends `\\n` to
+`placement="after"` content so there is a visual blank line between the heading
+text and the first block line. For a table insertion this is catastrophic: the
+blank line lands between the separator row (`| --- | --- |`) and the first data
+row, which breaks the Markdown table — parsers and Obsidian both require the
+data rows to immediately follow the separator with no intervening blank line.
+The block-anchor branch therefore skips the `\\n` prepend entirely. Heading
+anchors with `placement="after"` retain the legacy prepend unchanged.
+
+WHY the routing condition is `resolved_anchor["type"] != "block"` rather than
+inspecting `output_format.structure` or `order`: the `resolved_anchor` block is
+the Phase 4 interpreter's authoritative decision about what kind of anchor was
+found. Routing on its `type` field is the single source of truth — the same
+condition that triggered block-anchor resolution in Phase 4 is what selects
+the no-prepend path here, making the two phases symmetric and easy to trace.

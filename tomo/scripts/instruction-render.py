@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.33.0
+# version: 0.34.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1156,9 +1156,18 @@ def _build_insert_under_marker_actions(
     status block; it is inserted verbatim as `content` (append semantics live in
     Hashi's executor — Tomo just emits the instruction).
 
-    Each action: target_path = group.target_path, anchor = heading with the
-    marker stripped to its text, placement = group.placement (default "inside"),
-    content = group.composed_block.
+    Structured groups (output_format + resolved_anchor, spec 025 T5.1):
+      When the group carries a resolved_anchor (produced by Phase 4), the anchor
+      is passed through verbatim — type/value/placement from resolved_anchor,
+      never reconstructed. For block anchors (table_row + newest_first), the
+      blank-line prepend for placement="after" is SKIPPED: the content lands as
+      the first data row directly after the separator, preserving table structure.
+
+    Legacy groups (no output_format / no resolved_anchor):
+      anchor = heading derived from marker via _marker_to_anchor_value;
+      placement = group.placement (default "inside");
+      content = composed_block, with a single blank-line prepend when
+      placement="after" (top-of-section readability for heading anchors).
     """
     if not groups or not approved_group_ids:
         return []
@@ -1171,21 +1180,46 @@ def _build_insert_under_marker_actions(
         if not target_path:
             # Unresolved target (null) — never emit a path-less instruction.
             continue
-        placement = group.get("placement") or "inside"
+
+        resolved_anchor = group.get("resolved_anchor")
         content = group.get("composed_block") or ""
-        # placement="after" inserts content immediately after the heading line;
-        # Hashi writes it verbatim with no padding, so guarantee one blank line
-        # between the heading and the block (top-of-section readability).
-        if placement == "after" and content and not content.startswith("\n"):
-            content = "\n" + content
+
+        if resolved_anchor:
+            # Structured path (spec 025): pass resolved_anchor through byte-exact.
+            anchor = {
+                "type": resolved_anchor["type"],
+                "value": resolved_anchor["value"],
+            }
+            placement = resolved_anchor["placement"]
+            # Block anchors (e.g. table header+separator) must NOT receive a
+            # leading blank line — the content is the first data row and must
+            # land immediately after the separator to keep the table valid.
+            # Heading anchors with placement="after" keep the legacy prepend.
+            if (
+                placement == "after"
+                and resolved_anchor["type"] != "block"
+                and content
+                and not content.startswith("\n")
+            ):
+                content = "\n" + content
+        else:
+            # Legacy path: derive heading anchor from the marker string.
+            anchor = {
+                "type": "heading",
+                "value": _marker_to_anchor_value(group.get("marker") or ""),
+            }
+            placement = group.get("placement") or "inside"
+            # placement="after" inserts content immediately after the heading
+            # line; Hashi writes it verbatim with no padding, so guarantee one
+            # blank line between the heading and the block (top-of-section).
+            if placement == "after" and content and not content.startswith("\n"):
+                content = "\n" + content
+
         out.append({
             "id": _next_id(counter),
             "action": "insert_under_marker",
             "target_path": target_path,
-            "anchor": {
-                "type": "heading",
-                "value": _marker_to_anchor_value(group.get("marker") or ""),
-            },
+            "anchor": anchor,
             "placement": placement,
             "content": content,
         })

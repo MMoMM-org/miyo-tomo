@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.17.0
+# version: 1.18.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -638,6 +638,34 @@ RENDERERS = {
 # ── Tag-handler group rendering (spec 024 T3.3) ───────────────────────────────
 
 
+_OUTPUT_FORMAT_STRUCTURE_LABELS: dict[str, str] = {
+    "table_row": "table row",
+    "list_item": "list item",
+}
+_OUTPUT_FORMAT_ORDER_LABELS: dict[str, str] = {
+    "newest_first": "newest first",
+    "append": "append",
+}
+_OUTPUT_FORMAT_GRANULARITY_LABELS: dict[str, str] = {
+    "per_item": "per item",
+    "merged": "merged",
+}
+
+_FALLBACK_REASON_LABELS: dict[str, str] = {
+    "cell_count_mismatch": (
+        "the section's columns don't match the configured cells"
+        " — falling back to a text note"
+    ),
+    "no_structure_under_marker": (
+        "no matching table or list under the marker — falling back to a text note"
+    ),
+    "marker_missing": (
+        "the marker heading wasn't found in the note — falling back to a text note"
+    ),
+}
+_FALLBACK_REASON_DEFAULT = "the target structure didn't match — falling back to a text note"
+
+
 def render_tag_handler_group(group: dict) -> str:
     """Render one tag-handler group-result as a suggestion item block.
 
@@ -652,6 +680,14 @@ def render_tag_handler_group(group: dict) -> str:
     absence of an Approve checkbox is the gate that stops suggestion-parser from
     extracting the group id, so Pass-2 emits no instruction until the user fixes
     the vault. "ok" or an absent guard renders the normal approvable block.
+
+    spec 025 T6.1: when group["output_format"] is present a one-line mode descriptor
+    is added (structure · order · granularity) using human-readable labels — no
+    executor internals in the rendered text (ADR-11, no-executor-internals rule).
+
+    spec 025 T6.2: when group["fallback"] is set a ⚠️ line is appended with a
+    plain-language reason and the Approve box is kept — the user approves the prose
+    fallback knowingly (ADR-8 / FR-19). Hard guards take priority over fallback.
     """
     target = group.get("target_path") or ""
     marker = group.get("marker") or ""
@@ -659,6 +695,8 @@ def render_tag_handler_group(group: dict) -> str:
     handler = group.get("handler") or ""
     source_paths = group.get("source_paths") or []
     guard = group.get("guard") or "ok"
+    output_format = group.get("output_format")
+    fallback = group.get("fallback")
 
     lines: list[str] = []
     # Group id — the stable (handler, target_path) slug Pass-2 reads back to map
@@ -682,15 +720,28 @@ def render_tag_handler_group(group: dict) -> str:
         )
         lines.append(f"**Sources ({len(source_paths)}):** {source_links}")
 
+    # ── Mode descriptor (spec 025 T6.1 / ADR-11) — human-readable, no internals ──
+    if output_format:
+        structure_label = _OUTPUT_FORMAT_STRUCTURE_LABELS.get(
+            output_format.get("structure", ""), output_format.get("structure", "")
+        )
+        order_label = _OUTPUT_FORMAT_ORDER_LABELS.get(
+            output_format.get("order", ""), output_format.get("order", "")
+        )
+        granularity_label = _OUTPUT_FORMAT_GRANULARITY_LABELS.get(
+            output_format.get("granularity", ""), output_format.get("granularity", "")
+        )
+        lines.append(f"**Format:** {structure_label} · {order_label} · {granularity_label}")
+
     lines.append("")
     lines.append(composed_block)
     lines.append("")
 
-    # ── Guard branches (FR-11 / FR-12) — no Approve box, so no instruction ──
+    # ── Hard guards (FR-11 / FR-12) — no Approve box; take priority over fallback ──
     if guard == "target_missing":
         lines.append(
             f"⚠️ **Target note doesn't exist** — [[{link}]] is not in the vault. "
-            "Hashi modifies notes, it does not create them."
+            "The target note must exist before this update can be applied."
         )
         lines.append("- [ ] Create it first (then re-run `/inbox` to apply this update)")
         return "\n".join(lines)
@@ -702,6 +753,15 @@ def render_tag_handler_group(group: dict) -> str:
             "and re-run `/inbox`."
         )
         return "\n".join(lines)
+
+    # ── Fallback warning (spec 025 T6.2 / ADR-8 / FR-19) — Approve box retained ──
+    if fallback:
+        reason_key = fallback.get("reason", "")
+        reason_label = _FALLBACK_REASON_LABELS.get(reason_key, _FALLBACK_REASON_DEFAULT)
+        link_ref = f"[[{link}]]" if link else handler
+        lines.append(
+            f"⚠️ **Fallback** — `{handler}` → {link_ref}: {reason_label}."
+        )
 
     lines.append("**Decision (tag-handler update):**")
     lines.append("- [x] Approve")

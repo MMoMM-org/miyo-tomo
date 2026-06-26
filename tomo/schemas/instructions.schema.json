@@ -117,7 +117,7 @@
       "required": ["type", "value"],
       "additionalProperties": false,
       "properties": {
-        "type": {"type": "string", "enum": ["callout", "heading", "line"], "description": "callout = match callout opening line (e.g. '[!blocks] Key Concepts'); heading = match heading text without # prefix (any heading level); line = match body line by literal content."},
+        "type": {"type": "string", "enum": ["callout", "heading", "line", "block"], "description": "callout = match callout opening line (e.g. '[!blocks] Key Concepts'); heading = match heading text without # prefix (any heading level); line = match body line by literal content; block = match N consecutive lines, the value's \\n-joined lines, each exact after trimming trailing whitespace — for unique multi-row markers (e.g. a table's header row + separator row together) that a single line anchor cannot express. inside is unsupported for block."},
         "value": {"type": ["string", "null"], "description": "Content of the anchor to match. Null is permitted only at emission time when the renderer cannot resolve a concrete value yet (resolver populates later via Kado read)."}
       }
     },

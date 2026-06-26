@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """tag-handler-group.py — Deterministic grouping helper for tag-handler results.
 
 Groups routing-plan handled[] items by (handler, target_path) and provides a
@@ -64,6 +64,7 @@ def group_handled(handled_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "marker": item.get("marker"),
                 "placement": item.get("placement"),
                 "compose": item.get("compose"),
+                "output_format": item.get("output_format"),
                 "source_paths": [],
             }
 

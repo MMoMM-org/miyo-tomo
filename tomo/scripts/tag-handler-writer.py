@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """tag-handler-writer.py — Atomic schema-validated writer for tag-handler configs.
 
 WHY this script exists:
@@ -38,9 +38,11 @@ import tempfile
 from pathlib import Path
 from typing import NoReturn
 
+# schemas/ is a sibling of scripts/ in both repo (tomo/) and instance
+# (tomo-instance/, flattened — no nested tomo/). Do NOT use parent.parent/"tomo"
+# /"schemas": it resolves to a missing path in the instance and crashes (CON-2).
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _SCRIPT_DIR.parent.parent  # tomo/scripts/ → tomo/ → repo root
-_SCHEMA_PATH = _REPO_ROOT / "tomo" / "schemas" / "tag-handler.schema.json"
+_SCHEMA_PATH = _SCRIPT_DIR.parent / "schemas" / "tag-handler.schema.json"
 
 try:
     from jsonschema import ValidationError, validate as _jsonschema_validate

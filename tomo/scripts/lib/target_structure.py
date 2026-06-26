@@ -21,7 +21,7 @@ Anchor contract:
 - list_item + newest_first  → heading anchor {type:heading, value:<marker>, placement:after}
 - list_item + append        → heading anchor {type:heading, value:<marker>, placement:inside}
 """
-# version: 0.1.0
+# version: 0.1.1
 
 from __future__ import annotations
 
@@ -154,10 +154,10 @@ def parse_section(raw_section: list[str], structure_kind: str) -> TargetStructur
 
 def _parse_table(lines: list[str]) -> TargetStructure:
     """Scan for the first table (header + separator pair). ADR-9: prose skipped."""
-    i = 0
+    i = _skip_leading_heading(lines)
     while i < len(lines):
         line = lines[i]
-        # Stop at a new heading (section boundary)
+        # Stop at a new heading (next section boundary)
         if _HEADING_RE.match(line):
             break
         if _is_table_header(line) and not _is_table_separator(line):
@@ -178,13 +178,30 @@ def _parse_table(lines: list[str]) -> TargetStructure:
 
 def _parse_list(lines: list[str]) -> TargetStructure:
     """Scan for the first list item. ADR-10: first item's bullet style is authoritative."""
-    for line in lines:
+    i = _skip_leading_heading(lines)
+    while i < len(lines):
+        line = lines[i]
         if _HEADING_RE.match(line):
             break
         bullet = _list_bullet(line)
         if bullet is not None:
             return TargetStructure(kind="list", bullet=bullet)
+        i += 1
     return TargetStructure(kind="none")
+
+
+def _skip_leading_heading(lines: list[str]) -> int:
+    """Return the index past any leading heading line(s).
+
+    kado-read mode=section returns the section INCLUDING its own heading line
+    (e.g. '## Captures' first), so the boundary-stop in the parsers — which breaks
+    on a heading — must not fire on the section's OWN heading. Skip leading
+    heading lines here; SUBSEQUENT headings still delimit the next section.
+    """
+    i = 0
+    while i < len(lines) and _HEADING_RE.match(lines[i]):
+        i += 1
+    return i
 
 
 def _sanitize(cell: str) -> str:

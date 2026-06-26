@@ -183,6 +183,29 @@ class TestParseSection:
         result = parse_section(lines, "list_item")
         assert result.kind == "none"
 
+    def test_leading_section_heading_skipped_table(self):
+        """kado-read mode=section returns the section WITH its heading line first;
+        the parser must skip that leading heading and still find the table."""
+        lines = ["## Captures", "", "| Date | Type | Description |", "| --- | --- | --- |"]
+        result = parse_section(lines, "table_row")
+        assert result.kind == "table"
+        assert result.columns == 3
+        assert result.header_line == "| Date | Type | Description |"
+
+    def test_leading_section_heading_skipped_list(self):
+        """Leading section heading is skipped for list parsing too."""
+        lines = ["## Items", "", "- first item", "- second item"]
+        result = parse_section(lines, "list_item")
+        assert result.kind == "list"
+        assert result.bullet == "-"
+
+    def test_leading_heading_then_prose_then_table(self):
+        """Leading heading skipped AND ADR-9 prose-skip still holds after it."""
+        lines = ["## Captures", "", "intro prose", "| A | B |", "| --- | --- |"]
+        result = parse_section(lines, "table_row")
+        assert result.kind == "table"
+        assert result.columns == 2
+
     def test_list_mixed_bullet_first_wins(self):
         """ADR-10: mixed-bullet list — first item's style is authoritative."""
         result = parse_section(["- first", "* second"], "list_item")

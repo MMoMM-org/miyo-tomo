@@ -17,6 +17,17 @@ call-site of the interpreter skill satisfies that constraint. Any IO that crept 
 module would force all tests to mock network or filesystem, increasing fragility and
 coupling the structural logic to infrastructure concerns.
 
+## Why the parser skips a LEADING heading (v0.1.1, live-walk fix 2026-06-26)
+
+WHY: `kado-read mode=section` returns the target section INCLUDING its own heading line
+(`## Captures` as line 0). The boundary-stop that halts the scan at a heading (the W1 guard
+against cross-section contamination) would otherwise fire on the section's OWN heading at
+index 0 → no table found → `no_structure_under_marker` fallback, even though the table is
+right there. `_skip_leading_heading` advances past leading heading line(s) first; SUBSEQUENT
+headings still delimit the next section. This lets the interpreter pass the kado section
+verbatim instead of fragile LLM-side heading-stripping (which it had been improvising as a
+fallback-then-retry in the live walk).
+
 ## Why first-matching-structure-under-marker wins (ADR-9)
 
 WHY: A target section may contain introductory prose before the actual table or list —

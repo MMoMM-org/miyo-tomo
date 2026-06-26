@@ -1908,6 +1908,64 @@ class TestTagHandlerResolution:
         fresh_paths = {s["path"] for s in plan["fresh_sources"]}
         assert tagged not in fresh_paths
 
+    def test_handled_item_carries_output_format(self, tmp_path):
+        """spec 025 regression: a handler with output_format → the handled[] entry
+        carries it verbatim (and the routing-plan still schema-validates). Without
+        this hop the group stub gets null and the interpreter silently falls back
+        to the prose compose path — the bug surfaced only in the live walk."""
+        mod = _load_module()
+
+        tagged = INBOX_PATH + "tsukai-capture.md"
+        handler = _tsukai_handler()
+        handler["match"]["read_fields"] = ["category", "created"]
+        handler["output_format"] = {
+            "structure": "table_row",
+            "order": "newest_first",
+            "granularity": "per_item",
+            "cells": [
+                {"field": "created"},
+                {"field": "category"},
+                {"synthesize": "one-line summary of what changed"},
+            ],
+        }
+        reg_dir = _write_registry(tmp_path, handler)
+
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(tagged)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [],
+                "tomo.state=accepted": [],
+            },
+            read_frontmatter_responses={
+                tagged: _fm_content(
+                    tags=["MiYo/Tsukai/Tomo"], category="feature", created="2026-06-26"
+                ),
+            },
+        )
+
+        rc = mod.main(
+            [
+                "--inbox-path", INBOX_PATH,
+                "--output-dir", str(tmp_path),
+                "--registry-dir", str(reg_dir),
+            ],
+            client_factory=lambda: client,
+        )
+
+        assert rc == 0  # routing-plan validated against routing-plan.schema.json
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        entry = plan["handled"][0]
+        assert "output_format" in entry, (
+            "handled[] entry must carry output_format, else the interpreter falls "
+            "back to the prose compose path (spec 025 live-walk bug)"
+        )
+        assert entry["output_format"]["structure"] == "table_row"
+        assert entry["output_format"]["cells"][0] == {"field": "created"}
+
     def test_empty_registry_byte_identity(self, tmp_path):
         """AC-5: no registry → NO handled key, fresh_sources identical, and
         ZERO extra Kado read calls vs. the no-registry baseline."""

@@ -196,6 +196,10 @@
               }
             ],
             "description": "Compose directive from the handler config (string or array-of-strings)."
+          },
+          "output_format": {
+            "type": "object",
+            "description": "Structure-aware output spec, carried verbatim from the handler config (spec 025). Already validated against tag-handler.schema.json at config-load time; kept permissive here to avoid triplicating the strict shape (canonical definitions: tag-handler.schema.json + tag-handler-group.schema.json)."
           }
         }
       }

@@ -4,7 +4,7 @@ description: Use PROACTIVELY when routing-plan.action is "suggest" AND routing-p
 user-invocable: false
 ---
 # Tag Handler Interpreter
-# version: 0.2.1
+# version: 0.2.2
 
 ## When to Activate
 
@@ -43,7 +43,7 @@ For each stub, pick the compose path by this PRECEDENCE — first match wins, do
 # STRICT — `output_format` ALWAYS wins. A structure-aware stub ALSO carries a `compose` string, but when `output_format` is present you MUST take path 1 (structure-aware). The `compose` string is NOT a directive here — it is only the wording for the prose fallback inside path 1. NEVER take path 2 or path 3 when the stub has an `output_format` key.
 
 **Path 1 — stub has an `output_format` key → structure-aware compose (MANDATORY when present):**
-- For each `synthesize` cell directive: produce a single-line value. Scope by `output_format.granularity`: `per_item` = one value per source capture; `merged` = one value over the whole group. For each `field` cell: take the raw value from the stub's `fields` (no synthesis).
+- For each `synthesize` cell directive: produce a single-line value. Scope by `output_format.granularity`: `per_item` = one value per source capture; `merged` = one value over the whole group. For each `field` cell: read the named frontmatter field from EACH source note (the notes you read in step 2) — `per_item` uses that note's own value; `merged` uses the newest note's value. No synthesis.
 - Build `cell_values_per_item` — a list of cell-value lists, one inner list per emitted row/item (for `merged`, exactly one inner list), each inner list ordered to match `output_format.cells`.
 - Write `tomo-tmp/compose-payload-<i>.json` with keys: `section_lines` (the raw target section from step 2), `output_format` (from the stub), `cell_values_per_item`, `marker` (from the stub).
 - Run:

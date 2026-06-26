@@ -1,6 +1,6 @@
 # MiYo Tomo (友)
 
-AI-assisted PKM workflows for Obsidian via MiYo Kado MCP server.
+AI knowledge companion for Obsidian: proposes inbox triage, vault exploration, and note/MOC suggestions for the user to apply, via the MiYo Kado MCP server.
 Tomo runs inside a Docker container with sandbox isolation — all vault access goes through Kado.
 
 @~/Kouzou/standards/general.md

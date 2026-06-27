@@ -123,3 +123,20 @@ WHY keep_origin is reported independent of approval: only an approved group has 
 paired `delete_source` to suppress, so a stray keep-origin tick on a skipped
 group is harmless downstream. The output key `tag_handler_keep_origin_group_ids`
 feeds instruction-render's delete branch 4.
+
+## Per-item Force Atomic on suppressed light blocks (#88, v0.18.0)
+
+WHY a per-item `force_atomic` parse path: pre-#88 the only Force-Atomic checkbox
+was rendered under a daily `log_entry`, and the reconcile gathered force-atomic
+stems exclusively from `daily_updates[].log_entries[].force_atomic_note`. A
+suppressed low-worthiness item has a `log_link` or no daily at all, so its escape
+hatch was unreachable. `parse_section` now reads a section-level "Force Atomic
+Note" checkbox into `result["force_atomic"]`.
+
+WHY route section-level force-atomic to `pending_fan_resolutions` (branch c), not
+direct promotion (branch a): the light block carries no template / location / MOC
+— promoting the parsed section would create an incomplete atomic. Routing to the
+resolve subflow rebuilds the full atomic from source, identical to the
+daily-log_entry path. The section pass runs AFTER the daily loop so `already_in` /
+`seen_pending` de-dup, and the stem is dropped from `skipped_items` (it is being
+force-atomic'd, not skipped).

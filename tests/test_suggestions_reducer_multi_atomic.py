@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_suggestions_reducer_multi_atomic.py — F-41 T3.1 + T1.
 
 Covers the two silent-collapse fixes in suggestions-reducer.py that let N
@@ -119,6 +119,15 @@ def _atomics(actions: list[dict]) -> list[dict]:
     return [a for a in actions if a.get("kind") == "create_atomic_note"]
 
 
+def _survivors(actions: list[dict]) -> list[dict]:
+    """Atomics kept as real proposals (#88: sub-worthy are kept but flagged suppressed)."""
+    return [a for a in _atomics(actions) if not a.get("suppressed")]
+
+
+def _suppressed(actions: list[dict]) -> list[dict]:
+    return [a for a in _atomics(actions) if a.get("suppressed")]
+
+
 # ── C1 — _enforce_coexistence ────────────────────────────────────────────────
 
 
@@ -140,8 +149,8 @@ def test_two_survivors_both_kept_log_converted():
     assert _log_entries(out) == []
 
 
-def test_mixed_worthiness_drops_subworthy_keeps_survivor():
-    """Test 2: atomic 0.7 + atomic 0.3 + log_entry → 0.7 kept, 0.3 dropped."""
+def test_mixed_worthiness_suppresses_subworthy_keeps_survivor():
+    """Test 2 (#88): atomic 0.7 + atomic 0.3 + log_entry → 0.7 survives, 0.3 suppressed."""
     actions = [
         make_atomic(title="Keep", worthiness=0.7),
         make_atomic(title="Drop", worthiness=0.3),
@@ -149,17 +158,19 @@ def test_mixed_worthiness_drops_subworthy_keeps_survivor():
     ]
     out = _enforce_coexistence(actions)
 
-    kept = _atomics(out)
-    assert [a["suggested_title"] for a in kept] == ["Keep"]
+    assert [a["suggested_title"] for a in _survivors(out)] == ["Keep"]
+    assert [a["suggested_title"] for a in _suppressed(out)] == ["Drop"]
 
     links = _log_links(out)
     assert len(links) == 1
-    assert links[0]["target_stem"] == "Keep"
+    assert links[0]["target_stem"] == "Keep"  # converted to the survivor
     assert _log_entries(out) == []
 
 
-def test_all_subworthy_drops_atomics_keeps_log_entry():
-    """Test 3: atomic 0.3 + atomic 0.4 + log_entry → both dropped, log kept."""
+def test_all_subworthy_suppresses_atomics_keeps_log_entry():
+    """Test 3 (#88): atomic 0.3 + atomic 0.4 + log_entry → both suppressed, log kept.
+
+    No survivor → the log_entry is NOT converted to a log_link (stays as-is)."""
     actions = [
         make_atomic(title="A", worthiness=0.3),
         make_atomic(title="B", worthiness=0.4),
@@ -167,7 +178,8 @@ def test_all_subworthy_drops_atomics_keeps_log_entry():
     ]
     out = _enforce_coexistence(actions)
 
-    assert _atomics(out) == []
+    assert _survivors(out) == []
+    assert len(_suppressed(out)) == 2
     assert _log_links(out) == []
     entries = _log_entries(out)
     assert len(entries) == 1
@@ -214,23 +226,25 @@ def test_single_thread_coexistence_byte_identical():
     ]
 
 
-def test_single_subworthy_atomic_dropped_log_kept():
-    """Single sub-worthy atomic + log_entry → atomic dropped, log kept (legacy)."""
+def test_single_subworthy_atomic_suppressed_log_kept():
+    """Single sub-worthy atomic + log_entry → atomic suppressed (kept), log kept (#88)."""
     actions = [
         make_atomic(title="Weak", worthiness=0.3),
         make_update_daily(),
     ]
     out = _enforce_coexistence(actions)
-    assert _atomics(out) == []
+    assert _survivors(out) == []
+    assert len(_suppressed(out)) == 1
     assert len(_log_entries(out)) == 1
     assert _log_links(out) == []
 
 
-def test_no_log_entry_returns_actions_unchanged():
-    """Early return: atomic present but no log_entry → actions untouched."""
+def test_worthy_atomic_no_daily_unchanged():
+    """Worthy atomic, no daily → untouched (no suppression, no conversion)."""
     actions = [make_atomic(title="X", worthiness=0.9)]
     out = _enforce_coexistence(actions)
     assert out == actions
+    assert not out[0].get("suppressed")
 
 
 # ── C2 — per-atomic titles survive into proposed-MOC note_titles ──────────────

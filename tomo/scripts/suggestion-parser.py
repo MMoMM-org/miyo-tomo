@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.17.0
+# version: 0.18.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -352,6 +352,11 @@ def parse_section(
         "template": None,
         "summary": None,
         "classification": None,
+        # #88: per-item "Force Atomic Note" checkbox on a suppressed low-worthiness
+        # light block. When ticked, reconcile routes the stem to the resolve
+        # subflow (the light block lacks template/location/MOC, so the atomic is
+        # rebuilt from source) rather than promoting the incomplete section.
+        "force_atomic": False,
     }
     doc_anchors = doc_anchors or {}
 
@@ -396,9 +401,11 @@ def parse_section(
                     pending_moc = wl
                 continue
 
-            # Decision checkboxes (approve/skip/delete/keep-origin)
+            # Decision checkboxes (force-atomic/approve/skip/delete/keep-origin)
             text_lower = text.lower()
-            if "accept" in text_lower or "approve" in text_lower:
+            if "force atomic" in text_lower:
+                result["force_atomic"] = bool(cb_checked)
+            elif "accept" in text_lower or "approve" in text_lower:
                 result["approved"] = bool(cb_checked)
             elif "keep origin" in text_lower:
                 result["keep_origin"] = bool(cb_checked)
@@ -1921,6 +1928,32 @@ def main() -> int:
                 "source_path": log_entry.get("source_path") or f"{stem}.md",
                 "log_entry_summary": summary,
             })
+
+    # ── Section-level Force Atomic (suppressed low-worthiness blocks, #88) ──
+    # A suppressed light block has no Approve box (→ it landed in skipped_items)
+    # and carries no template/location/MOC. Ticking its "Force Atomic Note" box
+    # routes the stem to the resolve subflow (branch c) — Pass 2 rebuilds the
+    # full atomic from source. Runs AFTER the daily-driven loop so already_in /
+    # seen_pending de-dup against it.
+    for sec in parsed_sections:
+        if not sec.get("force_atomic"):
+            continue
+        stem = _stem_of(sec.get("source_path"))
+        if not stem or stem in already_in or stem in seen_pending:
+            continue
+        seen_pending.add(stem)
+        summary = (sec.get("summary") or sec.get("title") or "").strip()
+        if len(summary) > 140:
+            summary = summary[:137] + "…"
+        pending_fan_resolutions.append({
+            "stem": stem,
+            "source_path": sec.get("source_path") or f"{stem}.md",
+            "log_entry_summary": summary,
+        })
+        # Remove from skipped (it's being force-atomic'd, not skipped).
+        skipped_items[:] = [
+            s for s in skipped_items if _stem_of(s.get("source_path")) != stem
+        ]
 
     if promoted:
         print(

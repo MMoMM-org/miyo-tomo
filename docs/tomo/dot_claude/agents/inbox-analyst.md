@@ -238,3 +238,15 @@ to today. Adding `DateStamp`/`datestamp` (lowest frontmatter priority, after the
 explicit semantic keys) makes the vault's convention an officially recognized
 event date so resolution is deterministic. Maintenance keys (`Updated`, etc.)
 remain ignored.
+
+## Sub-0.5 atomics: emit the data, let the reducer suppress (#88, v0.19.0)
+
+WHY the analyst still emits a sub-0.5 `create_atomic_note` (rather than dropping
+it or pushing it to `alternatives[]`): the reducer is the single deterministic
+render gate and needs the data (worthiness, source_stem) to surface a
+low-worthiness "kept in inbox" block. The old Step 9 wording contradicted itself —
+"emit as a lower-confidence alternative" (vague) vs the fallback "emit a single
+create_atomic_note" — which the LLM resolved by emitting a full proposal (#88).
+The spec now says plainly: emit the sub-0.5 atomic with its worthiness; do not
+approve/promote it or push it to alternatives; the reducer owns suppression and
+the Force-Atomic opt-in. See docs/tomo/scripts/suggestions-reducer.md.

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_coexistence_enforcement.py — Tests for _enforce_coexistence in suggestions-reducer.
 
 Verifies the deterministic coexistence rules from inbox-analyst Step 9:
 - create_atomic_note + log_entry with worthiness >= 0.5 → convert log_entry to log_link
-- create_atomic_note + log_entry with worthiness < 0.5 → drop create_atomic_note
-- No violation (log_link or no daily) → pass through unchanged
+- worthiness < 0.5 (and not force_atomic) → flag create_atomic_note `suppressed`
+  (kept in the list for a light render, NOT promoted) — #88, regardless of daily
+- force_atomic → never suppressed (the opt-in escape hatch)
+- No violation (worthy atomic) → pass through unchanged
 """
 from __future__ import annotations
 
@@ -30,13 +32,16 @@ _spec.loader.exec_module(_mod)
 enforce = _mod._enforce_coexistence
 
 
-def _atomic(worthiness: float = 0.7, stem: str = "test-note") -> dict:
-    return {
+def _atomic(worthiness: float = 0.7, stem: str = "test-note", force_atomic: bool = False) -> dict:
+    a = {
         "kind": "create_atomic_note",
         "atomic_note_worthiness": worthiness,
         "suggested_title": stem,
         "stem": stem,
     }
+    if force_atomic:
+        a["force_atomic"] = True
+    return a
 
 
 def _daily_with_log_entry() -> dict:
@@ -127,18 +132,45 @@ class TestCoexistenceHighWorthiness:
 
 
 class TestCoexistenceLowWorthiness:
-    def test_atomic_dropped_log_entry_kept(self):
-        """Worthiness < 0.5: drop atomic, keep log_entry."""
+    def test_atomic_suppressed_log_entry_kept(self):
+        """Worthiness < 0.5 + log_entry: atomic flagged suppressed (kept), log_entry kept.
+
+        Contract change (#88): the sub-worthy atomic is no longer DROPPED — it is
+        flagged `suppressed` so the item still renders a light kept-in-inbox block.
+        """
         actions = [_atomic(0.3), _daily_with_log_entry()]
         result = enforce(actions)
 
-        kinds = [a["kind"] for a in result]
-        assert "create_atomic_note" not in kinds
-        assert "update_daily" in kinds
+        atomic = next(a for a in result if a["kind"] == "create_atomic_note")
+        assert atomic.get("suppressed") is True
 
         daily = next(a for a in result if a["kind"] == "update_daily")
-        update_kinds = [u["kind"] for u in daily["updates"]]
-        assert "log_entry" in update_kinds
+        assert "log_entry" in [u["kind"] for u in daily["updates"]]
+
+    def test_sub_worthy_with_log_link_suppressed(self):
+        """#88 regression: sub-0.5 + log_link → atomic suppressed (was surviving)."""
+        actions = [_atomic(0.4), _daily_with_log_link()]
+        result = enforce(actions)
+
+        atomic = next(a for a in result if a["kind"] == "create_atomic_note")
+        assert atomic.get("suppressed") is True
+        # log_link is untouched (no survivor → no conversion needed).
+        daily = next(a for a in result if a["kind"] == "update_daily")
+        assert "log_link" in [u["kind"] for u in daily["updates"]]
+
+    def test_sub_worthy_no_daily_suppressed(self):
+        """Sub-0.5 with no daily → atomic suppressed but KEPT (so the item surfaces)."""
+        actions = [_atomic(0.4)]
+        result = enforce(actions)
+        assert len(result) == 1
+        assert result[0].get("suppressed") is True
+
+    def test_force_atomic_not_suppressed(self):
+        """force_atomic overrides sub-0.5 — the escape hatch survives, unflagged."""
+        actions = [_atomic(0.4, force_atomic=True), _daily_with_log_link()]
+        result = enforce(actions)
+        atomic = next(a for a in result if a["kind"] == "create_atomic_note")
+        assert not atomic.get("suppressed")
 
 
 class TestCoexistenceNoViolation:

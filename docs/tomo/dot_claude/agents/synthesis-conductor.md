@@ -34,3 +34,25 @@ WHY: All pipeline scripts print operational status and warnings to stderr. Appen
 ## Per-Doc-Type State Transitions
 
 WHY: The state-promoter requires the exact doc_type as a positional argument because the state machine defines different transitions per type. suggestions and suggestions-fan share the same transition (pending-approval to approved) but are distinct doc_types in the schema. moc-proposal uses a different transition (pending-accept to accepted). Passing the wrong doc_type causes the promoter to reject the transition. The conductor lists all three variants explicitly to prevent the LLM from generalizing "just pass suggestions for all of them."
+
+## Coverage-mismatch STRICT Guard (v0.8.2)
+
+WHY: The coverage audit (`instructions-diff.py`, step 3e) is a hard gate — exit 1
+means the rendered instructions do not reconcile with the approved suggestions.
+On the 2026-06-27 capture-delete live walk the conductor hit a real exit-1
+mismatch (the coverage checker had not yet learned about tag-handler
+`delete_source` actions) and, instead of stopping, went into debug-and-fix mode:
+it read the pipeline source and started editing `instructions-diff.py` mid-run to
+make the audit pass. The user aborted it. Two harms: (1) editing the **instance**
+copy of a script is silently reverted on the next `update-tomo` (version-gated
+sync), so the "fix" evaporates; (2) self-patching source to silence an audit
+hides the very coverage gap the audit exists to surface. The pre-existing rules
+("never proceed past a mismatch", "do not continue to the next doc") did not
+explicitly forbid *fixing the code*, and the LLM generalized "resolve the
+mismatch" into "patch the script". The STRICT guard now states the boundary
+directly: on a mismatch, report the diff verbatim and STOP — never edit, patch,
+or create Tomo scripts/code/schemas/config. Diagnosing or fixing the pipeline is
+the user's call, out of scope for a synthesis run. The actual coverage gap was
+fixed separately by teaching `instructions-diff.py` the fourth delete_source
+source (tag-handler group sources), keyed by the same `group_id` the renderer
+uses; the conductor also now passes `--groups-dir tomo-tmp/tag-handler-groups`.

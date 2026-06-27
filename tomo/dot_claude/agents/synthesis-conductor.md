@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.8.1
+# version: 0.8.2
 
 **Active agent: synthesis-conductor**
 
@@ -159,11 +159,19 @@ Exit 2 = concurrency conflict (report and continue).
 ```bash
 python3 scripts/instructions-diff.py \
   --suggestions tomo-tmp/parsed-suggestions.json \
-  --instructions tomo-tmp/rendered/instructions.json
+  --instructions tomo-tmp/rendered/instructions.json \
+  --groups-dir tomo-tmp/tag-handler-groups
 ```
 
 Exit 0 = reconciled. Exit 1 = mismatch (report diff output verbatim to
 user and stop — do not continue to the next doc).
+
+STRICT — on a coverage mismatch (exit 1) you STOP and report the diff verbatim.
+You NEVER edit, patch, or create Tomo scripts, code, schemas, or config to make
+the audit pass. Diagnosing or fixing the pipeline is out of scope for this run —
+that is the user's call. Why: a mismatch means a real coverage gap; self-editing
+source mid-run corrupts the instance copy (lost on next update-tomo) and hides
+the gap.
 
 Repeat 3a–3e for the next entry in the work list.
 
@@ -184,3 +192,4 @@ Count the total number of approved docs processed across all buckets.
 - NEVER modify frontmatter directly — state-promoter.py handles it
 - NEVER skip the coverage audit
 - NEVER proceed past a coverage mismatch (exit 1 from instructions-diff)
+- NEVER edit/patch/create Tomo scripts, code, schemas, or config to resolve a coverage mismatch — report the diff verbatim and STOP

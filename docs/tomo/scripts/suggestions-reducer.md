@@ -176,3 +176,19 @@ target note must exist before this update can be applied": the old phrasing
 named Hashi (an executor internal). The new phrasing is executor-neutral and
 states the constraint directly without naming the mechanism.
 
+## Tag-handler "Keep origin" checkbox (v1.19.0)
+
+WHY the tag-handler decision block gained a third option: approving a group now
+deletes its consolidated inbox captures by default (instruction-render branch
+4). The new `- [ ] Keep origin` box lets the user retain the source notes when
+they want them to stay in the inbox — the per-group analogue of the atomic-note
+Keep-origin option. It sits between Approve and Skip and defaults unchecked
+(delete is the default).
+
+WHY the wording avoids executor internals: the line reads "leave the captured
+inbox notes in place after consolidating" — a user-visible effect — not
+"suppress the delete_source action". Naming the action type or the executor
+would leak internals into user-facing text (the same rule as the
+target_missing rewording above). The parser keys the opt-out on the block's
+`group_id`.
+

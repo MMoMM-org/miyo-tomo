@@ -67,6 +67,37 @@ deadlock the gate forever. An approved-but-not-yet-rendered thread legitimately
 defers the delete. This keeps the source alive until exactly the set of threads
 the user chose to keep have landed.
 
+## Branch 4 — tag-handler group source deletion (delete_source v0.35.0)
+
+WHY tag-handler captures need an explicit delete at all: a tag-handler group is
+consolidated into its target note via `insert_under_marker`, which *copies* the
+captured content as a status block. Unlike `move_note` — which physically
+relocates the inbox file, so the source vanishes for free — the copy leaves the
+inbox capture behind. Without branch 4 the captures pile up in the inbox after
+every run (the reported defect). Branch 4 restores parity with the move_note
+origin gate: an APPROVED group's `source_paths` are deleted by default once the
+content has been consolidated.
+
+WHY keyed by `group_id`, not origin stem: tag-handler captures are not move_note
+origins (no `confirmed_items` / `expected_by_stem` entries), so the completion
+gate in branch 3 never sees them. Branch 4 keys deletion on the group's
+`group_id` — the same id the suggestion-parser uses for the approval and
+keep-origin decisions — so a group's sources are deleted iff the group was
+approved and not kept. No per-thread count gate is needed: a group has exactly
+one insert, so "consolidated" is a single boolean, not an N-of-M completion.
+
+WHY Keep-origin is per-group here (vs per-stem for atomics): the suggestions doc
+renders one Approve/Keep-origin/Skip decision *per group*, so the opt-out is
+naturally group-scoped. A checked "Keep origin" box adds the group_id to
+`tag_handler_keep_origin_group_ids` (parser → `build_actions` →
+`_build_delete_source_actions`), which short-circuits the per-source emit.
+
+WHY ordering is safe without a depends_on field: Hashi applies actions in
+positional array order. `build_actions` emits the group's `insert_under_marker`
+(step 6) before any `delete_source` (step 7), so the captures are always copied
+into the target before their sources are trashed. The `emitted` set in branch 4
+also dedups against branches 1–3 so a source is never deleted twice.
+
 ## Version 0.21.0
 
 WHY: Bumped across the F-41 work for the C5 filename collision guard

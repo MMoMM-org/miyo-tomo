@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.34.0
+# version: 0.35.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -978,8 +978,11 @@ def _build_delete_source_actions(
     skipped: list[dict],
     inbox_path: str,
     counter: list[int],
+    tag_handler_groups: list[dict] | None = None,
+    approved_tag_handler_group_ids: list[str] | None = None,
+    keep_origin_group_ids: list[str] | None = None,
 ) -> list[dict]:
-    """Emit delete_source actions from three sources:
+    """Emit delete_source actions from four sources:
 
     1. `skipped[]` entries where the user explicitly checked "Delete source"
        (disposition == "delete_source").
@@ -991,6 +994,11 @@ def _build_delete_source_actions(
        delete_source for the origin inbox item. Audio + transcript peer
        pairs are NOT included here (they're independent upstream artifacts);
        only the origin from which Tomo derived the rendered atomic note.
+    4. Tag-handler group sources — for every APPROVED group not opted out via
+       "Keep origin", one delete_source per `source_path`. The group's
+       insert_under_marker (emitted earlier) copies the captures into the
+       target note, so the inbox sources are now redundant. Parity with (3),
+       but keyed by group_id rather than origin stem.
     """
     out: list[dict] = []
     confirmed_stems: set[str] = set()
@@ -1084,6 +1092,30 @@ def _build_delete_source_actions(
             "source_path": origin_path,
             "reason": reason,
         })
+
+    # (4) Tag-handler group sources — one delete per source_path of each
+    # APPROVED group, unless the group opted out via "Keep origin".
+    approved_groups = set(approved_tag_handler_group_ids or [])
+    kept_groups = set(keep_origin_group_ids or [])
+    emitted: set[str] = {a["source_path"] for a in out}
+    for group in (tag_handler_groups or []):
+        gid = group_id(group)
+        if gid not in approved_groups or gid in kept_groups:
+            continue
+        target = group.get("target_path") or ""
+        handler = group.get("handler") or ""
+        for sp in group.get("source_paths") or []:
+            full = sp if "/" in sp else f"{inbox}{sp}"
+            full = _ensure_md_extension(full)
+            if full in emitted:
+                continue
+            emitted.add(full)
+            out.append({
+                "id": _next_id(counter),
+                "action": "delete_source",
+                "source_path": full,
+                "reason": f"Source consolidated into {target} by {handler} handler.",
+            })
 
     return out
 
@@ -1277,6 +1309,7 @@ def build_actions(
     kado_client=None,
     tag_handler_groups: list[dict] | None = None,
     approved_tag_handler_group_ids: list[str] | None = None,
+    tag_handler_keep_origin_group_ids: list[str] | None = None,
 ) -> list[dict]:
     """Assemble the full ordered action list.
 
@@ -1292,7 +1325,7 @@ def build_actions(
       4. link_to_moc        — parent_mocs up-links + supporting_items down-links
       5. update_tracker / update_log_entry / update_log_link
       6. insert_under_marker — approved tag-handler group blocks (spec 024 T4.1)
-      7. delete_source
+      7. delete_source      — incl. approved tag-handler group sources (after their insert)
       8. skip
     """
     counter = [0]
@@ -1309,6 +1342,9 @@ def build_actions(
     ))
     out.extend(_build_delete_source_actions(
         confirmed, move_notes, daily_updates, skipped, inbox_path, counter,
+        tag_handler_groups=tag_handler_groups or [],
+        approved_tag_handler_group_ids=approved_tag_handler_group_ids or [],
+        keep_origin_group_ids=tag_handler_keep_origin_group_ids or [],
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
     # Aggregate related:: actions per target note: read existing related::,
@@ -2360,6 +2396,10 @@ def main() -> int:
     approved_tag_handler_group_ids = suggestions.get(
         "approved_tag_handler_group_ids", []
     )
+    # Group ids the user opted out of source-deletion via "Keep origin".
+    tag_handler_keep_origin_group_ids = suggestions.get(
+        "tag_handler_keep_origin_group_ids", []
+    )
     tag_handler_groups = _load_tag_handler_groups(args.tag_handler_groups_dir)
 
     cfg = load_config(args.config)
@@ -2535,6 +2575,7 @@ def main() -> int:
         manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,
         tag_handler_groups=tag_handler_groups,
         approved_tag_handler_group_ids=approved_tag_handler_group_ids,
+        tag_handler_keep_origin_group_ids=tag_handler_keep_origin_group_ids,
     )
 
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────

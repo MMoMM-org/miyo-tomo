@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_tag_handler_group_instruction_linkage.py — T4.1 (spec 024 Phase 4).
 
 Covers the approval→render linkage that turns an APPROVED tag-handler group
@@ -57,9 +57,21 @@ group_id = _group_mod.group_id
 render_tag_handler_group = _reducer_mod.render_tag_handler_group
 render_tag_handler_updates_block = _reducer_mod.render_tag_handler_updates_block
 parse_tag_handler_groups = _parser_mod.parse_tag_handler_groups
+parse_tag_handler_keep_origin = _parser_mod.parse_tag_handler_keep_origin
 _build_insert_under_marker_actions = _render_mod._build_insert_under_marker_actions
+_build_delete_source_actions = _render_mod._build_delete_source_actions
+build_actions = _render_mod.build_actions
 _marker_to_anchor_value = _render_mod._marker_to_anchor_value
 _load_tag_handler_groups = _render_mod._load_tag_handler_groups
+
+# Minimal config for build_actions (mirrors tests/test-008-phase1.py CFG).
+_CFG = {
+    "concepts.inbox": "100 Inbox/",
+    "concepts.calendar.granularities.daily.path": "Calendar/301 Daily/",
+    "daily_log.heading": "Daily Log",
+    "daily_log.heading_level": 2,
+    "profile": "miyo",
+}
 
 from jsonschema import validate as _validate  # noqa: E402
 
@@ -498,6 +510,117 @@ def test_block_anchor_validates_against_instructions_schema():
         (SCHEMA_DIR / "instructions.schema.json").read_text(encoding="utf-8")
     )
     _validate(instance=_wrap_instructions(actions), schema=INSTRUCTIONS_SCHEMA_LOCAL)
+
+
+# ── 9. tag-handler source deletion + Keep-origin opt-out ─────────────────────
+
+
+def _delete_sources(group, *, approved, kept=None):
+    """Run _build_delete_source_actions for a single tag-handler group in isolation
+    (no atomic/daily/skip inputs) and return the emitted delete_source actions."""
+    return _build_delete_source_actions(
+        [], [], [], [], "100 Inbox/", [0],
+        tag_handler_groups=[group],
+        approved_tag_handler_group_ids=approved,
+        keep_origin_group_ids=kept or [],
+    )
+
+
+def test_approved_group_emits_delete_source_per_source_path():
+    """An approved, non-kept group → one delete_source per source_path (happy)."""
+    srcs = [
+        "100 Inbox/202606242049_a.md",
+        "100 Inbox/202606260908_b.md",
+        "100 Inbox/202606261644_c.md",
+    ]
+    g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=srcs)
+    actions = _delete_sources(g, approved=[group_id(g)])
+    assert [a["source_path"] for a in actions] == srcs
+    assert all(a["action"] == "delete_source" for a in actions)
+    assert all(
+        a["reason"] == "Source consolidated into Efforts/Tomo Dev Log.md by tsukai handler."
+        for a in actions
+    )
+
+
+def test_kept_group_emits_no_delete_source():
+    """A group opted out via Keep origin → zero deletes (denial)."""
+    g = _group(source_paths=["100 Inbox/x.md"])
+    assert _delete_sources(g, approved=[group_id(g)], kept=[group_id(g)]) == []
+
+
+def test_skipped_group_emits_no_delete_source():
+    """A group not in the approved set → zero deletes (denial)."""
+    g = _group(source_paths=["100 Inbox/x.md"])
+    assert _delete_sources(g, approved=[]) == []
+
+
+def test_tag_handler_delete_source_validates_against_schema():
+    """An emitted tag-handler delete_source conforms to the instructions schema."""
+    g = _group(source_paths=["100 Inbox/x.md"])
+    actions = _delete_sources(g, approved=[group_id(g)])
+    for a in actions:
+        a["applied"] = False
+    _validate(instance=_wrap_instructions(actions), schema=INSTRUCTIONS_SCHEMA)
+
+
+def test_delete_source_after_insert_in_build_actions():
+    """Full build_actions: the tag-handler delete_source lands AFTER its
+    insert_under_marker (positional ordering contract — Hashi applies in order)."""
+    g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=["100 Inbox/x.md"])
+    actions = build_actions(
+        [], [], [], [], _CFG,
+        tag_handler_groups=[g],
+        approved_tag_handler_group_ids=[group_id(g)],
+    )
+    insert_idx = next(
+        i for i, a in enumerate(actions) if a["action"] == "insert_under_marker"
+    )
+    delete_idx = next(
+        i for i, a in enumerate(actions)
+        if a["action"] == "delete_source" and a["source_path"] == "100 Inbox/x.md"
+    )
+    assert delete_idx > insert_idx
+
+
+def test_build_actions_keep_origin_suppresses_delete():
+    """build_actions honors tag_handler_keep_origin_group_ids end-to-end (denial)."""
+    g = _group(source_paths=["100 Inbox/x.md"])
+    actions = build_actions(
+        [], [], [], [], _CFG,
+        tag_handler_groups=[g],
+        approved_tag_handler_group_ids=[group_id(g)],
+        tag_handler_keep_origin_group_ids=[group_id(g)],
+    )
+    assert not any(a["action"] == "delete_source" for a in actions)
+
+
+# ── 10. parser extracts Keep-origin; reducer renders the checkbox ────────────
+
+
+def test_parser_extracts_keep_origin_group_id():
+    """A group with [x] Keep origin → its id in parse_tag_handler_keep_origin (happy)."""
+    g = _group()
+    md = _render_section([g]).replace(
+        "- [ ] Keep origin", "- [x] Keep origin", 1
+    )
+    assert parse_tag_handler_keep_origin(md) == [group_id(g)]
+
+
+def test_parser_no_keep_origin_when_unchecked():
+    """The default rendered block (Keep origin unchecked) → empty set (denial)."""
+    g = _group()
+    md = _render_section([g])
+    assert parse_tag_handler_keep_origin(md) == []
+
+
+def test_reducer_renders_keep_origin_checkbox_without_internals():
+    """The tag-handler decision block offers Keep origin in user-facing wording —
+    no executor internals leak (delete_source / move_note / Hashi)."""
+    block = render_tag_handler_group(_group())
+    assert "- [ ] Keep origin" in block
+    for internal in ("delete_source", "move_note", "Hashi"):
+        assert internal not in block
 
 
 if __name__ == "__main__":

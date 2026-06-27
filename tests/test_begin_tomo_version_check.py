@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_begin_tomo_version_check.py — Tests for T3.3: non-fatal update-availability check.
 
 Covers:
@@ -12,6 +12,7 @@ B. Version-check block routing:
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -286,13 +287,20 @@ class TestVersionCheckBlock:
 # ── C. Template structure tests ──────────────────────────────────────────────
 
 class TestTemplateStructure:
-    def test_version_is_0_16_0(self):
-        """Template must carry version 0.16.0 after the exposeAuthPort/--no-auth-port bump."""
+    def test_version_at_least_0_16_0(self):
+        """Template version must be >= 0.16.0 (the exposeAuthPort/--no-auth-port bump).
+
+        Floor check rather than an exact pin so legitimate later bumps (e.g. the
+        tagline change to 0.16.1) don't spuriously fail this structural test.
+        """
         content = TEMPLATE.read_text(encoding="utf-8")
-        assert "# version: 0.16.0" in content, (
-            f"Template version not bumped to 0.16.0. Found: "
+        m = re.search(r"^# version: (\d+)\.(\d+)\.(\d+)", content, re.MULTILINE)
+        assert m, (
+            "Template missing a '# version: X.Y.Z' header. Found: "
             f"{[ln for ln in content.splitlines() if '# version:' in ln]}"
         )
+        version = tuple(int(g) for g in m.groups())
+        assert version >= (0, 16, 0), f"Template version {version} below floor 0.16.0"
 
     def test_config_file_uses_instance_path(self):
         """CONFIG_FILE in version-check block must derive from INSTANCE_PATH, not TOMO_REPO_ROOT."""

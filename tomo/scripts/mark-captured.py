@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 1.0.1
+# version: 1.0.2
 """mark-captured.py — Mark processed inbox source items with tomo.state=captured.
 
 Reads the state-file, finds all items with status=done, and writes a
@@ -20,9 +20,10 @@ Usage:
         --run-id <run-id>
 
 Exit codes:
-    0 — all done items marked (or already marked)
+    0 — all done items marked (or already marked, or no state-file / no done
+        items — a tag-handler-only batch records no per-item state)
     1 — one or more items failed (partial, logged to stderr)
-    2 — fatal error (no Kado connection, no state-file)
+    2 — fatal error (no Kado connection)
 """
 from __future__ import annotations
 
@@ -86,8 +87,17 @@ def main() -> int:
 
     state_path = Path(args.state)
     if not state_path.exists():
-        print(f"FATAL: state-file not found: {state_path}", file=sys.stderr)
-        return 2
+        # No state file means no per-item state was recorded this run — e.g. a
+        # batch consisting only of tag-handler captures, which route through the
+        # handled lane and never seed the state file. There is simply nothing to
+        # mark; this is not an error (same outcome as the "no done items" path
+        # below). FATAL-ing here instead caused a Pass-1 hard stop and tempted
+        # the orchestrator to improvise a state-file write.
+        print(
+            f"mark-captured: no state-file ({state_path}); no items to mark",
+            file=sys.stderr,
+        )
+        return 0
 
     try:
         client = KadoClient()

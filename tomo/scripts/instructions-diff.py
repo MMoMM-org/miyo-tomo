@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.1
+# version: 0.5.2
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -41,6 +41,41 @@ import json
 import re
 import sys
 from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+
+# tag-handler-group.py is a hyphenated top-level script; load it via importlib
+# for the stable group_id slug (spec 024 T4.1) — the SAME id the renderer keys
+# its tag-handler delete_source actions on, so coverage matching stays aligned.
+import importlib.util as _ilu  # noqa: E402
+
+_thg_spec = _ilu.spec_from_file_location(
+    "tag_handler_group", str(SCRIPT_DIR / "tag-handler-group.py")
+)
+_thg_mod = _ilu.module_from_spec(_thg_spec)
+sys.modules["tag_handler_group"] = _thg_mod
+_thg_spec.loader.exec_module(_thg_mod)
+group_id = _thg_mod.group_id  # noqa: E305
+
+
+def _load_tag_handler_groups(groups_dir: str | None) -> list[dict]:
+    """Load tag-handler group-result JSONs from `groups_dir` (mirrors the
+    renderer's loader). Returns [] when the dir is missing/empty so an absent
+    registry leaves coverage unchanged."""
+    if not groups_dir:
+        return []
+    d = Path(groups_dir)
+    if not d.is_dir():
+        return []
+    groups: list[dict] = []
+    for f in sorted(d.glob("*.json")):
+        try:
+            groups.append(json.loads(f.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return groups
+
 
 # Wikilink bullet in a link_to_moc line_to_add, e.g. "- [[Note]]" or
 # "- [[safe-stem|Original Title]]". Used to credit each note in a #70-batched
@@ -103,7 +138,7 @@ def load_json(path: Path) -> dict:
 # so the diff has an independent source of truth for the count math.
 # ──────────────────────────────────────────────────────────────────────────────
 
-def derive_expected(parsed: dict) -> dict:
+def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) -> dict:
     """Derive expected action counts & per-item coverage from parsed suggestions.
 
     Returns:
@@ -230,11 +265,13 @@ def derive_expected(parsed: dict) -> dict:
                 "source_stem": _stem(ll.get("source_stem", "")),
             })
 
-    # Delete source has three sources (post-2026-04-30):
+    # Delete source has four sources:
     #   1. explicit skipped[] disposition=delete_source
     #   2. daily-only inferences (source_stem in daily_updates but not confirmed)
     #   3. paired with move_note: confirmed atomic notes default to deleting
     #      their inbox origin unless the user opted out via "Keep origin".
+    #   4. tag-handler group sources: each APPROVED group (not "Keep origin")
+    #      deletes every consolidated inbox source (instruction-render branch 4).
     confirmed_stems = {_stem(it.get("source_path")) for it in confirmed if it.get("source_path")}
     expected_deletions: list[str] = []
     for sk in skipped:
@@ -267,6 +304,22 @@ def derive_expected(parsed: dict) -> dict:
             continue
         paired_origins_seen.add(stem)
         expected_deletions.append(stem)
+    # (4) tag-handler group sources — one expected delete per source_path of
+    # each approved, non-kept group. Keyed by the same group_id the renderer
+    # uses; deduped against sources 1-3 to mirror the renderer's emit dedup.
+    approved_groups = set(parsed.get("approved_tag_handler_group_ids") or [])
+    kept_groups = set(parsed.get("tag_handler_keep_origin_group_ids") or [])
+    th_seen = set(expected_deletions)
+    for group in (tag_handler_groups or []):
+        gid = group_id(group)
+        if gid not in approved_groups or gid in kept_groups:
+            continue
+        for sp in group.get("source_paths") or []:
+            stem = _stem(sp)
+            if stem in th_seen:
+                continue
+            th_seen.add(stem)
+            expected_deletions.append(stem)
     counts["delete_source"] = len(expected_deletions)
 
     expected_skips: list[str] = []
@@ -367,12 +420,14 @@ ACTION_ORDER = [
 ]
 
 
-def run_diff(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
+def run_diff(
+    parsed: dict, instrs: dict, tag_handler_groups: list[dict] | None = None
+) -> tuple[int, list[str]]:
     """Compare parsed suggestions with instructions.json.
 
     Returns (exit_code, observations). exit_code=0 means counts reconcile.
     """
-    expected = derive_expected(parsed)
+    expected = derive_expected(parsed, tag_handler_groups)
     actual = summarize_actual(instrs)
 
     lines: list[str] = []
@@ -528,12 +583,18 @@ def main() -> int:
         "--instructions", default="tomo-tmp/rendered/instructions.json",
         help="Path to instructions.json (default: tomo-tmp/rendered/instructions.json)",
     )
+    p.add_argument(
+        "--groups-dir", default="tomo-tmp/tag-handler-groups",
+        help="Dir of tag-handler group-result JSONs (default: tomo-tmp/tag-handler-groups). "
+             "Used to count expected delete_source for approved tag-handler groups.",
+    )
     args = p.parse_args()
 
     parsed = load_json(Path(args.suggestions))
     instrs = load_json(Path(args.instructions))
+    tag_handler_groups = _load_tag_handler_groups(args.groups_dir)
 
-    rc, _obs = run_diff(parsed, instrs)
+    rc, _obs = run_diff(parsed, instrs, tag_handler_groups)
     return rc
 
 

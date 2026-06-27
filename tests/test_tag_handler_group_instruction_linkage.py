@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_tag_handler_group_instruction_linkage.py — T4.1 (spec 024 Phase 4).
 
 Covers the approval→render linkage that turns an APPROVED tag-handler group
@@ -52,6 +52,7 @@ _group_mod = _load("tag_handler_group", "tag-handler-group.py")
 _reducer_mod = _load("suggestions_reducer", "suggestions-reducer.py")
 _parser_mod = _load("suggestion_parser", "suggestion-parser.py")
 _render_mod = _load("instruction_render", "instruction-render.py")
+_diff_mod = _load("instructions_diff", "instructions-diff.py")
 
 group_id = _group_mod.group_id
 render_tag_handler_group = _reducer_mod.render_tag_handler_group
@@ -621,6 +622,58 @@ def test_reducer_renders_keep_origin_checkbox_without_internals():
     assert "- [ ] Keep origin" in block
     for internal in ("delete_source", "move_note", "Hashi"):
         assert internal not in block
+
+
+# ── 11. coverage checker (instructions-diff) reconciles tag-handler deletes ──
+
+
+def _parsed_for(group, *, approved, kept=None):
+    return {
+        "confirmed_items": [],
+        "daily_updates": [],
+        "skipped": [],
+        "approved_tag_handler_group_ids": approved,
+        "tag_handler_keep_origin_group_ids": kept or [],
+    }
+
+
+def _instrs_for(group, *, approved, kept=None):
+    actions = build_actions(
+        [], [], [], [], _CFG,
+        tag_handler_groups=[group],
+        approved_tag_handler_group_ids=approved,
+        tag_handler_keep_origin_group_ids=kept or [],
+    )
+    return {"schema_version": "1", "type": "tomo-instructions",
+            "action_count": len(actions), "actions": actions}
+
+
+def test_coverage_reconciles_tag_handler_deletes():
+    """instructions-diff counts the approved group's source deletes → exit 0 (happy)."""
+    g = _group(source_paths=["100 Inbox/a.md", "100 Inbox/b.md", "100 Inbox/c.md"])
+    parsed = _parsed_for(g, approved=[group_id(g)])
+    instrs = _instrs_for(g, approved=[group_id(g)])
+    rc, _ = _diff_mod.run_diff(parsed, instrs, [g])
+    assert rc == 0
+
+
+def test_coverage_mismatch_without_groups():
+    """Regression: omitting the groups (the pre-fix state) leaves N delete_source
+    unexpected → exit 1. Proves the --groups-dir wiring is what closes the gap."""
+    g = _group(source_paths=["100 Inbox/a.md", "100 Inbox/b.md"])
+    parsed = _parsed_for(g, approved=[group_id(g)])
+    instrs = _instrs_for(g, approved=[group_id(g)])
+    rc, _ = _diff_mod.run_diff(parsed, instrs, [])  # groups omitted → mismatch
+    assert rc == 1
+
+
+def test_coverage_reconciles_with_keep_origin():
+    """Keep origin → 0 deletes expected and emitted → exit 0 (denial path)."""
+    g = _group(source_paths=["100 Inbox/a.md"])
+    parsed = _parsed_for(g, approved=[group_id(g)], kept=[group_id(g)])
+    instrs = _instrs_for(g, approved=[group_id(g)], kept=[group_id(g)])
+    rc, _ = _diff_mod.run_diff(parsed, instrs, [g])
+    assert rc == 0
 
 
 if __name__ == "__main__":

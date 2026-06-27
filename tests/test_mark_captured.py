@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_mark_captured.py — Behavioural tests for mark-captured.py.
 
 Verifies that mark-captured.py:
@@ -394,26 +394,34 @@ def test_write_failure_returns_exit_code_1(state_file, monkeypatch, capsys):
 
 
 # ---------------------------------------------------------------------------
-# T8 — nonexistent state file returns exit code 2 with FATAL in stderr
+# T8 — nonexistent state file is not an error (tag-handler-only batch) → exit 0
 # ---------------------------------------------------------------------------
 
 
-def test_missing_state_file_returns_exit_code_2(tmp_path, monkeypatch, capsys):
-    """Passing a nonexistent --state path causes main() to return 2 with FATAL message."""
+def test_missing_state_file_returns_exit_code_0(tmp_path, monkeypatch, capsys):
+    """A nonexistent --state path is not an error: a batch of only tag-handler
+    captures records no per-item state, so there is simply nothing to mark.
+    main() returns 0 with a clear note and no FATAL (and never reaches Kado)."""
     mod = _load_script_module()
 
     nonexistent = tmp_path / "no-such-file.jsonl"
 
+    # KadoClient must NOT be constructed — the missing-file check returns first.
+    monkeypatch.setattr(
+        mod, "KadoClient",
+        lambda: (_ for _ in ()).throw(AssertionError("KadoClient must not be called")),
+    )
     monkeypatch.setattr(
         sys, "argv",
         ["mark-captured.py", "--state", str(nonexistent), "--run-id", "run-t8"],
     )
     rc = mod.main()
 
-    assert rc == 2, f"expected exit 2 for missing state file, got {rc}"
+    assert rc == 0, f"expected exit 0 for missing state file, got {rc}"
 
     captured = capsys.readouterr()
-    assert "FATAL" in captured.err
+    assert "no state-file" in captured.err
+    assert "FATAL" not in captured.err
 
 
 # ---------------------------------------------------------------------------

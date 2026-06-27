@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.16.0
+# version: 0.17.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1424,33 +1424,35 @@ RE_TAG_HANDLER_GROUP_ID = re.compile(
 )
 
 
-def parse_tag_handler_groups(text: str) -> list[str]:
-    """Return the group ids the user APPROVED in the ## Tag-Handler Updates section.
+def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
+    """Walk the ## Tag-Handler Updates section, one record per group block.
 
     The reducer renders one block per (handler, target_path) group, each carrying
-    a ``**Group:** `<group_id>` `` field line and a tri-state decision:
+    a ``**Group:** `<group_id>` `` field line and the decision:
         - [x] Approve
+        - [ ] Keep origin (leave the captured inbox notes in place)
         - [ ] Skip
-    A group whose Approve box is checked is included; a ``[x] Skip`` (or an
-    un-ticked Approve) group is NOT. Group blocks are delimited by the
-    ``**Group:**`` line — a new id starts a new block, and the most recent
-    Approve/Skip checkbox seen after that line decides the block.
+    Group blocks are delimited by the ``**Group:**`` line — a new id starts a new
+    block, and the most recent checkbox state seen after that line decides it.
 
-    Returns the approved ids in document order. Empty list when the section is
-    absent or no group is approved.
+    Returns ``[(group_id, approved, keep_origin), ...]`` in document order. Empty
+    when the section is absent. Shared by the two public extractors below so the
+    section is parsed identically for both decisions.
     """
     lines = text.splitlines()
     in_section = False
-    approved: list[str] = []
+    records: list[tuple[str, bool, bool]] = []
     current_id: str | None = None
     current_approved: bool = False
+    current_keep_origin: bool = False
 
     def _flush() -> None:
-        nonlocal current_id, current_approved
-        if current_id is not None and current_approved:
-            approved.append(current_id)
+        nonlocal current_id, current_approved, current_keep_origin
+        if current_id is not None:
+            records.append((current_id, current_approved, current_keep_origin))
         current_id = None
         current_approved = False
+        current_keep_origin = False
 
     for line in lines:
         stripped = line.strip()
@@ -1475,18 +1477,51 @@ def parse_tag_handler_groups(text: str) -> list[str]:
         if current_id is None:
             continue
 
-        # Decision checkboxes: Approve toggles inclusion; Skip leaves it out.
+        # Decision checkboxes: Approve toggles inclusion; Keep origin suppresses
+        # source deletion; Skip leaves the group out.
         cb = RE_CHECKED.match(stripped)
-        if cb and "approve" in cb.group(1).lower():
-            current_approved = True
-            continue
+        if cb:
+            label = cb.group(1).lower()
+            if "keep origin" in label:
+                current_keep_origin = True
+                continue
+            if "approve" in label:
+                current_approved = True
+                continue
         cb_un = RE_UNCHECKED.match(stripped)
-        if cb_un and "approve" in cb_un.group(1).lower():
-            current_approved = False
-            continue
+        if cb_un:
+            label = cb_un.group(1).lower()
+            if "keep origin" in label:
+                current_keep_origin = False
+                continue
+            if "approve" in label:
+                current_approved = False
+                continue
 
     _flush()
-    return approved
+    return records
+
+
+def parse_tag_handler_groups(text: str) -> list[str]:
+    """Return the group ids the user APPROVED in ## Tag-Handler Updates.
+
+    A group whose Approve box is checked is included; a ``[x] Skip`` (or an
+    un-ticked Approve) group is NOT. Returns ids in document order, empty when
+    the section is absent or no group is approved.
+    """
+    return [gid for gid, approved, _ in _walk_tag_handler_decisions(text) if approved]
+
+
+def parse_tag_handler_keep_origin(text: str) -> list[str]:
+    """Return the group ids whose "Keep origin" box is checked.
+
+    A checked Keep-origin box opts the group out of having its consolidated
+    inbox sources deleted (instruction-render suppresses the paired
+    delete_source). Reported independently of approval — only an approved group
+    has a delete to suppress, so a stray keep-origin on a skipped group is
+    harmless downstream. Returns ids in document order.
+    """
+    return [gid for gid, _, keep in _walk_tag_handler_decisions(text) if keep]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1707,9 +1742,11 @@ def main() -> int:
 
     # ── Parse Tag-Handler Updates (spec 024 T4.1) ─────────────
     approved_tag_handler_group_ids = parse_tag_handler_groups(text)
+    tag_handler_keep_origin_group_ids = parse_tag_handler_keep_origin(text)
     if approved_tag_handler_group_ids:
         print(
-            f"tag_handler_groups: {len(approved_tag_handler_group_ids)} approved",
+            f"tag_handler_groups: {len(approved_tag_handler_group_ids)} approved, "
+            f"{len(tag_handler_keep_origin_group_ids)} keep-origin",
             file=sys.stderr,
         )
 
@@ -1936,6 +1973,9 @@ def main() -> int:
         # instruction-render maps each to its group-result JSON and emits one
         # insert_under_marker. Empty list when no group approved.
         "approved_tag_handler_group_ids": approved_tag_handler_group_ids,
+        # Group ids the user opted out of source-deletion via "Keep origin".
+        # instruction-render suppresses the paired delete_source for these.
+        "tag_handler_keep_origin_group_ids": tag_handler_keep_origin_group_ids,
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),

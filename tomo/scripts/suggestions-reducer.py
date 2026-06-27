@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.18.0
+# version: 1.19.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -765,6 +765,7 @@ def render_tag_handler_group(group: dict) -> str:
 
     lines.append("**Decision (tag-handler update):**")
     lines.append("- [x] Approve")
+    lines.append("- [ ] Keep origin (leave the captured inbox notes in place after consolidating)")
     lines.append("- [ ] Skip")
     return "\n".join(lines)
 

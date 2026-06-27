@@ -192,3 +192,35 @@ would leak internals into user-facing text (the same rule as the
 target_missing rewording above). The parser keys the opt-out on the block's
 `group_id`.
 
+
+## Sub-0.5 atomic suppression — kept in inbox (#88, v1.20.0)
+
+WHY render lives here, not in the analyst: the analyst keeps EMITTING the sub-0.5
+`create_atomic_note` (with its worthiness + source_stem) so the reducer has the
+data; the reducer is the single deterministic gate that decides what the user
+sees. Relying on the LLM analyst to "emit as an alternative vs a full action"
+produced a self-contradicting spec that the LLM resolved by emitting a full
+proposal (the #88 bug — a 0.4-worthiness run-log got a full atomic proposal).
+
+WHY the `has_log_entry` early-return was the bug: `_enforce_coexistence`
+previously dropped sub-worthy atomics ONLY when a daily `log_entry` coexisted
+(`if not has_log_entry: return actions`). With a `log_link` or no daily, the
+sub-worthy atomic survived and was rendered as a FULL proposal. The early-return
+is removed; sub-worthy atomics are now resolved regardless of daily coexistence.
+
+WHY flag `suppressed` instead of dropping: a section only renders when its action
+list is non-empty. Dropping a daily-less sub-worthy atomic would make the item
+VANISH from the doc — the user could neither see the worthiness nor Force-Atomic
+it. So the sub-worthy atomic is KEPT and flagged `suppressed`; the main loop
+renders a LIGHT "kept in inbox" block (`render_suppressed_atomic`) — worthiness +
+a Force Atomic Note checkbox, no template/location/MOC/Approve framing — and skips
+both `persist_candidate_anchors` and the Proposed-MOC cluster seed (a sub-worthy
+note must not seed a MOC). The never-lose invariant is now "surfaced as
+low-worthiness, kept in inbox," not "always emit a full atomic note."
+
+WHY item-level force_atomic is propagated onto the action before
+`_enforce_coexistence`: `_atomic_survives` reads `force_atomic`/worthiness off the
+ACTION, but the FAN / fan-resolve flow sets `force_atomic` on the ITEM (the action
+may carry neither). Without propagation, removing the early-return suppressed
+force-resolved atomics and dropped their proposed MOCs. The reducer now copies the
+item's `force_atomic` onto each create_atomic_note action first.

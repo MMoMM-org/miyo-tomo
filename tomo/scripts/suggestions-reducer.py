@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.19.0
+# version: 1.20.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -259,7 +259,9 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     an update_daily with a log_entry. Resolve per-atomic instead of inspecting
     only the first:
       - Survivors = atomics with worthiness >= 0.5 OR force_atomic truthy.
-      - Sub-worthy atomics are dropped individually.
+      - Sub-worthy atomics are flagged `suppressed` (kept in the list for a
+        light "kept in inbox" render, NOT promoted into the atomic pipeline) —
+        #88. Runs regardless of whether a daily log_entry coexists.
       - If >=1 survivor remains, convert every log_entry → log_link targeting
         the FIRST survivor's title/stem; otherwise keep the log_entry as-is.
     """
@@ -267,25 +269,18 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     if not atomics:
         return actions
 
-    has_log_entry = False
-    for a in actions:
-        if a.get("kind") != "update_daily":
-            continue
-        for u in a.get("updates") or []:
-            if u.get("kind") == "log_entry":
-                has_log_entry = True
-                break
-
-    if not has_log_entry:
-        return actions
-
     survivors = [a for a in atomics if _atomic_survives(a)]
     sub_worthy = [a for a in atomics if not _atomic_survives(a)]
 
-    # Drop sub-worthy atomics individually, preserving order of the rest.
-    if sub_worthy:
-        drop = {id(a) for a in sub_worthy}
-        actions = [a for a in actions if id(a) not in drop]
+    # #88: flag each sub-worthy atomic `suppressed` and KEEP it in the action
+    # list — the item still renders (a light "kept in inbox" block) but is not
+    # promoted into the atomic pipeline. This runs regardless of daily
+    # coexistence; the old `if not has_log_entry: return actions` early-out let
+    # sub-worthy atomics survive UNflagged when paired with a log_link or with
+    # no daily at all (the run-log case). Dropping them outright would make a
+    # daily-less item vanish (a section only renders for non-empty actions).
+    for a in sub_worthy:
+        a["suppressed"] = True
 
     if survivors:
         first = survivors[0]
@@ -379,6 +374,31 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
     lines.append("- [ ] Keep origin (skip the implicit delete of the inbox source after move_note)")
     lines.append("- [ ] Skip (keep in inbox)")
     lines.append("- [ ] Delete source")
+    return "\n".join(lines)
+
+
+def render_suppressed_atomic(action: dict, stem: str) -> str:
+    """Light block for a sub-0.5-worthiness atomic the reducer suppressed (#88).
+
+    Deliberately omits the template / location / MOC / Approve / Skip /
+    Delete-source framing — the item is NOT promoted into the atomic pipeline.
+    It reports the worthiness (so the user sees Tomo's judgement) and offers
+    Force Atomic Note as the opt-in escape hatch; otherwise the item stays in
+    the inbox untouched.
+    """
+    title = (action.get("suggested_title") or "").strip() or stem
+    worthiness = action.get("atomic_note_worthiness")
+    pct = f"{int(worthiness * 100)}%" if worthiness is not None else "below 50%"
+    lines = [
+        f"**Source:** [[{stem}]]",
+        f"**Suggested name:** {title}",
+        f"**Atomic-worthiness:** {pct} — below the 0.5 threshold; kept in inbox.",
+        "",
+        "Tomo did not promote this to an atomic note. Tick **Force Atomic Note** "
+        "to create one anyway; otherwise it stays in the inbox.",
+        "",
+        "- [ ] Force Atomic Note (create a standalone note for this item)",
+    ]
     return "\n".join(lines)
 
 
@@ -1463,7 +1483,16 @@ def main() -> int:
         # F-41: index atomics within this source so each gets a distinct
         # cluster/title key (see _atomic_id). 0th keeps the bare section_id.
         atomic_idx = 0
-        actions = _enforce_coexistence(result.get("actions", []))
+        item_actions = result.get("actions", [])
+        # #88: the item-level force_atomic flag (set by the FAN / force-atomic
+        # flow, e.g. fan-resolve) authoritatively overrides sub-worthiness.
+        # Propagate it onto each create_atomic_note action so _enforce_coexistence
+        # treats it as a survivor — the flag can live on the item, not the action.
+        if result.get("force_atomic"):
+            for _a in item_actions:
+                if _a.get("kind") == "create_atomic_note":
+                    _a["force_atomic"] = True
+        actions = _enforce_coexistence(item_actions)
         # F-41 T1 W1: pre-pass — assign flat suggestion_ids to all
         # create_atomic_note actions before the main loop processes
         # update_daily.  This makes log_link.source_section resolution
@@ -1553,6 +1582,10 @@ def main() -> int:
                                 "time": u.get("time"),
                                 "reason": u.get("reason", ""),
                             })
+            elif kind == "create_atomic_note" and action.get("suppressed"):
+                # #88: sub-0.5 atomic — render a light "kept in inbox" block
+                # instead of the full atomic-note proposal.
+                rendered = render_suppressed_atomic(action, stem)
             else:
                 rendered = renderer(action, stem)
             if rendered is not None:
@@ -1567,9 +1600,11 @@ def main() -> int:
                     # anchor per candidate MOC so Pass-2 (suggestion-parser)
                     # can use the LLM-resolved anchor as the apply-time default
                     # instead of falling back to the old _pick_anchor heuristic.
-                    cand_anchors = persist_candidate_anchors(action)
-                    if cand_anchors:
-                        rendered_action["candidate_mocs"] = cand_anchors
+                    # #88: suppressed atomics carry no MOC framing — skip.
+                    if not action.get("suppressed"):
+                        cand_anchors = persist_candidate_anchors(action)
+                        if cand_anchors:
+                            rendered_action["candidate_mocs"] = cand_anchors
                 rendered_actions.append(rendered_action)
 
             # Collect Proposed-MOC candidates from atomic-note actions; the
@@ -1577,7 +1612,8 @@ def main() -> int:
             # happens in `build_topic_clusters` after the action loop completes.
             if kind == "create_atomic_note":
                 atomic_key = _atomic_id(section_id, atomic_idx)
-                if action.get("needs_new_moc"):
+                # #88: a suppressed (sub-0.5) atomic must not seed a Proposed MOC.
+                if action.get("needs_new_moc") and not action.get("suppressed"):
                     topic_raw = (action.get("proposed_moc_topic") or "").strip()
                     if topic_raw:
                         cls = action.get("classification") or {}

@@ -103,12 +103,25 @@ def test_malformed_yaml_prints_error_to_stderr(tmp_path: Path) -> None:
     assert result.stdout.strip() == ""
 
 
-def test_invalid_yaml_mapping_exits_1(tmp_path: Path) -> None:
+def test_tab_indent_yaml_exits_1(tmp_path: Path) -> None:
     """Tab characters in indentation are a YAML scanner error."""
-    f = tmp_path / "dup.base"
+    f = tmp_path / "tab_indent.base"
     f.write_text("key:\n\t- tab_indented\n")
     result = run(f)
     assert result.returncode == 1
+
+
+def test_empty_file_exits_0(tmp_path: Path) -> None:
+    """An empty file is valid YAML (safe_load returns None) — exit 0.
+
+    Intentional divergence from the JSON gate, where an empty file fails
+    json.loads(). Documented here because callers route the gate by
+    extension (.base=YAML, .canvas=JSON) and the empty-input behaviours differ.
+    """
+    f = tmp_path / "empty.base"
+    f.write_text("")
+    result = run(f)
+    assert result.returncode == 0
 
 
 # ---------------------------------------------------------------------------

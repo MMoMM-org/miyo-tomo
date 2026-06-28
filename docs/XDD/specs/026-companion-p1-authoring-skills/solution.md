@@ -84,7 +84,7 @@ version: "1.0"
   why: "write_note (l.298), write_file (l.322), write_frontmatter (l.352) — kado-write-patterns refs"
 - file: tomo/scripts/token-render.py
   relevance: MEDIUM
-  why: "Markdown/token-only renderer; the .md path. NOT usable for .base/.canvas JSON"
+  why: "Markdown/token-only renderer; the .md path. NOT usable for .canvas (JSON) / .base (YAML)"
 - file: tomo/scripts/read-config-field.py
   relevance: MEDIUM
   why: "Resolves concepts.inbox + templates.mapping.<key>"
@@ -174,8 +174,9 @@ SkillAuthor: /skill-author                                      # author/audit e
 - **Justification:** Maximizes reuse, keeps each skill small/focused (Constitution L2), preserves the
   inbox-only boundary, and passes the "skill test" (each skill encodes non-obvious knowledge).
 - **Key Decisions:** see ADRs. Headline: one write-side skill symmetric to `kado-discovery-patterns`;
-  `.base`/`.canvas` composed directly (no token renderer) → staged file → `operation=file`;
-  `json.loads()` parse-gate in P1.
+  `.canvas` (JSON) / `.base` (YAML) composed directly (no token renderer) → staged file →
+  `operation=file`; extension-routed parse-gate in P1 (`.canvas` → `validate-json.py`,
+  `.base` → `validate-yaml.py`).
 
 ## Building Block View
 
@@ -212,10 +213,12 @@ graph LR
 │   ├── kado-write-patterns/SKILL.md        # NEW: write-side Kado helper invocations
 │   └── default-doc-writer/                 # DELETE (renamed → inbox-author)
 ├── tomo/scripts/
-│   ├── validate-json.py                    # NEW: deterministic JSON parse-gate (exit 0=valid/1=invalid)
+│   ├── validate-json.py                    # NEW: deterministic JSON parse-gate for .canvas (exit 0=valid/1=invalid)
+│   ├── validate-yaml.py                    # NEW: deterministic YAML parse-gate for .base (exit 0=valid/1=invalid)
 │   └── kado-write-file.py                  # MODIFY: add --no-overwrite (refuse + signal if vault path exists)
 ├── tests/
-│   ├── test_validate_json.py               # NEW: valid passes, invalid fails non-zero, no write
+│   ├── test_validate_json.py               # NEW: valid .canvas passes, invalid fails non-zero, no write
+│   ├── test_validate_yaml.py               # NEW: valid .base passes, invalid fails non-zero, no write
 │   ├── test_kado_write_file_no_overwrite.py # NEW: exists→refused signal; absent→writes; .base/.canvas
 │   └── test_inbox_author_pipeline.py       # NEW: compose+write, parse-gate blocks, collision warn-path, template fallback (fake Kado)
 ├── docs/tomo/dot_claude/skills/
@@ -226,7 +229,8 @@ graph LR
 │   ├── kado-write-patterns.md              # NEW: WHY + read/write boundary rationale
 │   └── default-doc-writer.md               # DELETE (renamed)
 ├── docs/tomo/scripts/
-│   └── validate-json.md                    # NEW: WHY for the extracted parse-gate
+│   ├── validate-json.md                    # NEW: WHY for the .canvas JSON parse-gate
+│   └── validate-yaml.md                    # NEW: WHY for the .base YAML parse-gate
 ├── evolution/2026-06/
 │   └── companion-mode-p1.md                # NEW: rollout log (5 skills, rename, RETIRED_SKILLS_DIRS)
 ├── scripts/update-tomo.sh                  # MODIFY: RETIRED_SKILLS_DIRS += default-doc-writer
@@ -297,8 +301,9 @@ External_Service_Kado:
 
 #### Example: inbox-author format dispatch + .base/.canvas path
 
-**Why this example:** the new branch (`.md` vs JSON) is the core extension; it must reuse the `.md`
-pipeline unchanged and add a JSON path with a parse-gate.
+**Why this example:** the new branch (`.md` vs direct-compose: `.canvas` JSON / `.base` YAML) is the
+core extension; it must reuse the `.md` pipeline unchanged and add a direct-compose path with an
+extension-routed parse-gate.
 
 ```text
 # Pseudocode — inbox-author orchestration (skill = imperatives; this shows the decision flow)
@@ -308,10 +313,14 @@ pipeline unchanged and add a JSON path with a parse-gate.
      body = read-config-field.py --field templates.mapping.<key>  → kado-read by stem
      on empty/missing → built-in minimal default (Write tool) + tell user
 3. Compose:
-     md   → token-render.py --template <staged-template> --tokens tomo-tmp/...json
-     base/canvas → compose JSON directly (guided by obsidian-bases/canvas)
-                   → Write to tomo-tmp/staged-artifact.<ext>
-                   → python3 scripts/validate-json.py tomo-tmp/staged-artifact.<ext>
+     md     → token-render.py --template <staged-template> --tokens tomo-tmp/...json
+     canvas → compose JSON directly (guided by obsidian-canvas)
+                   → Write to tomo-tmp/staged-artifact.canvas
+                   → python3 scripts/validate-json.py tomo-tmp/staged-artifact.canvas
+                     (exit 1 → STOP, surface error, do NOT write)
+     base   → compose YAML directly (guided by obsidian-bases)
+                   → Write to tomo-tmp/staged-artifact.base
+                   → python3 scripts/validate-yaml.py tomo-tmp/staged-artifact.base
                      (exit 1 → STOP, surface error, do NOT write)
 4. Write with collision guard:
      kado-write-file.py --no-overwrite --local tomo-tmp/staged-artifact.<ext> \
@@ -321,7 +330,7 @@ pipeline unchanged and add a JSON path with a parse-gate.
 5. Report vault path
 ```
 
-**Edge cases:** invalid JSON → no write (step 3). Unknown type, no vault template → default template +
+**Edge cases:** invalid `.canvas` JSON / `.base` YAML → no write (step 3). Unknown type, no vault template → default template +
 note (step 2). Collision → user-gated (step 4). Stem sanitization applies to the stem only;
 `.<ext>` appended separately.
 
@@ -331,7 +340,8 @@ note (step 2). Collision → user-gated (step 4). Stem sanitization applies to t
 
 1. User requests an artifact in-session.
 2. Tomo classifies format; relevant format skill auto-loads (description trigger).
-3. `inbox-author` resolves template (md) / composes JSON (base/canvas) and parse-checks JSON.
+3. `inbox-author` resolves template (md) / directly composes `.canvas` (JSON) or `.base` (YAML) and
+   runs the extension-routed parse-gate (`validate-json.py` for `.canvas`, `validate-yaml.py` for `.base`).
 4. Collision check → warn+ask if needed.
 5. `kado-write-patterns` invocation writes to the inbox; Tomo reports the path.
 
@@ -347,8 +357,8 @@ sequenceDiagram
     User->>Session: "make a reading-list base"
     Session->>Fmt: auto-load obsidian-bases (description)
     Session->>IA: compose + write
-    IA->>IA: compose .base JSON (guided by obsidian-bases)
-    IA->>IA: Write tomo-tmp/staged-artifact.base ; json.loads()
+    IA->>IA: compose .base YAML (guided by obsidian-bases)
+    IA->>IA: Write tomo-tmp/staged-artifact.base ; validate-yaml.py (yaml.safe_load())
     IA->>Kado: collision check (read inbox path)
     IA->>KWF: --local staged-artifact.base --vault <inbox>/<stem>.base
     KWF->>Kado: kado-write operation=file (base64)
@@ -358,8 +368,9 @@ sequenceDiagram
 
 ### Error Handling
 
-- **Invalid JSON (.base/.canvas):** parse-gate fails → no write; surface "<artifact> is not valid
-  JSON: <error>"; offer to recompose.
+- **Malformed artifact (.canvas JSON / .base YAML):** the extension-routed parse-gate fails
+  (`validate-json.py` for `.canvas`, `validate-yaml.py` for `.base`) → no write; surface
+  "<artifact> is not valid <JSON|YAML>: <error>"; offer to recompose.
 - **Template field empty / template not found in vault:** fall back to built-in minimal default; tell
   the user a fallback was used.
 - **Unknown type, no vault template:** use default template; tell the user no type-specific template
@@ -418,7 +429,7 @@ No change — single component (Tomo). Kado/Hashi untouched.
 
 ### System-Wide Patterns
 - **Security/Privacy:** inbox-only writes; existing key; no telemetry; kepano attribution in README.
-- **Error Handling:** fail-closed on invalid JSON; user-gated collision; graceful template fallback.
+- **Error Handling:** fail-closed on invalid `.canvas` JSON / `.base` YAML; user-gated collision; graceful template fallback.
 - **Performance:** skills are knowledge (no hot path). `.base`/`.canvas` are single-file writes.
 - **Logging/Auditing:** Kado's existing audit log records the write (metadata only).
 
@@ -437,8 +448,8 @@ WHY file authored BEFORE rationale is stripped from runtime. kepano attribution:
   - Trade-offs: a single broader trigger surface vs. several precise ones.
   - User confirmed: **Yes (2026-06-28)**
 
-- [x] **ADR-2 .base/.canvas staging path:** stage the composed JSON to `tomo-tmp/staged-artifact.<ext>`
-  before upload.
+- [x] **ADR-2 .base/.canvas staging path:** stage the composed artifact (`.canvas` JSON / `.base` YAML)
+  to `tomo-tmp/staged-artifact.<ext>` before upload.
   - Rationale: consistent with the existing `tomo-tmp/default-doc.md` pattern; deterministic single
     artifact per run.
   - Trade-offs: generic name (not stem-mirrored) — slightly less self-describing while debugging.
@@ -451,12 +462,19 @@ WHY file authored BEFORE rationale is stripped from runtime. kepano attribution:
   - Trade-offs: rename fan-out (docs mirror, RETIRED_SKILLS_DIRS, references).
   - User confirmed: **Yes (brainstorm 2026-06-28)**
 
-- [x] **ADR-4 .base/.canvas via direct-compose → operation=file; validate-json.py gate:** the `.md`
-  path keeps `token-render.py`; JSON formats are composed directly (token-render is md-only) and
-  written via `kado-write-file.py` `operation=file`; the deterministic `validate-json.py` script
-  (not inline LLM logic — see ADR-9) gates the write.
-  - Rationale: token-render cannot produce JSON; `kado-write-file.py` is already extension-agnostic;
-    Kado accepts non-`.md` via `operation=file` (verified). Parse-gate prevents malformed artifacts.
+- [x] **ADR-4 .base/.canvas via direct-compose → operation=file; extension-routed parse-gate:** the
+  `.md` path keeps `token-render.py`; the non-`.md` formats are composed directly (token-render is
+  md-only) and written via `kado-write-file.py` `operation=file`. `.canvas` is **JSON** (json-canvas
+  1.0) composed directly → gated by the deterministic `validate-json.py`; `.base` is **YAML** (not
+  JSON) composed directly → gated by the deterministic `validate-yaml.py`. Both gates are scripts, not
+  inline LLM logic (see ADR-9), and `inbox-author` routes the gate BY EXTENSION
+  (`.canvas` → `validate-json.py`, `.base` → `validate-yaml.py`).
+  - Correction: this supersedes the original `.base`-as-JSON assumption — `.base` files are Obsidian's
+    YAML-based view format, so a `json.loads()` gate would reject valid `.base` content; YAML needs its
+    own parse-gate.
+  - Rationale: token-render cannot produce JSON/YAML; `kado-write-file.py` is already
+    extension-agnostic; Kado accepts non-`.md` via `operation=file` (verified). The parse-gate prevents
+    malformed artifacts, matched to each format's real syntax.
   - Trade-offs: structural/semantic validation deferred to #92.
   - User confirmed: **Yes (2026-06-28)**
 
@@ -489,12 +507,13 @@ WHY file authored BEFORE rationale is stripped from runtime. kepano attribution:
   - User confirmed: **Yes (2026-06-28)**
 
 - [x] **ADR-9 extract safety logic to deterministic, testable scripts (Constitution L1):** the
-  JSON parse-gate → `tomo/scripts/validate-json.py`; the collision existence-check → a
-  `--no-overwrite` flag on `kado-write-file.py`. `inbox-author` SKILL prose *invokes* these; it does
+  parse-gates → `tomo/scripts/validate-json.py` (`.canvas` JSON) and `tomo/scripts/validate-yaml.py`
+  (`.base` YAML); the collision existence-check → a `--no-overwrite` flag on `kado-write-file.py`.
+  `inbox-author` SKILL prose *invokes* these (routing the parse-gate by extension); it does
   not implement the logic in LLM-executed imperatives.
   - Rationale: Constitution L1 Code Quality (core logic testable without an AI in the loop) and L1
-    Testing (write paths need happy + failure tests). Safety properties (no malformed JSON, no silent
-    overwrite) must not depend on LLM adherence.
+    Testing (write paths need happy + failure tests). Safety properties (no malformed JSON/YAML, no
+    silent overwrite) must not depend on LLM adherence.
   - Trade-offs: two small new/changed scripts + their unit tests vs. pure-prose simplicity.
   - User confirmed: **Yes (2026-06-28)**
 
@@ -510,22 +529,24 @@ WHY file authored BEFORE rationale is stripped from runtime. kepano attribution:
 - **Usability:** correct skill auto-loads per format family without the user naming it; no cross-format
   co-load; clear messages on fallback/collision/invalid-JSON.
 - **Security:** inbox-only writes via existing key; no new surface; no telemetry.
-- **Reliability:** fail-closed on invalid JSON; graceful template fallback; no silent overwrite;
+- **Reliability:** fail-closed on invalid `.canvas` JSON / `.base` YAML; graceful template fallback; no silent overwrite;
   `moc-architect` unaffected; full test suite green under `./venv/bin/python`.
 
 ### Test Strategy (Constitution L1 Testing — happy + failure per write path)
 
 Tests run under `./venv/bin/python -m pytest tests/` (system python lacks jsonschema → use venv).
 
-- **`test_validate_json.py`** — valid `.base`/`.canvas` JSON → exit 0; malformed JSON → exit 1 +
+- **`test_validate_json.py`** — valid `.canvas` JSON → exit 0; malformed JSON → exit 1 +
+  error message; no file written by the validator.
+- **`test_validate_yaml.py`** — valid `.base` YAML → exit 0; malformed YAML → exit 1 +
   error message; no file written by the validator.
 - **`test_kado_write_file_no_overwrite.py`** — `--no-overwrite` with an existing vault path → refused
   + "exists" signal, no overwrite; absent path → writes; covers a non-`.md` extension
   (`.base`/`.canvas`) through `operation=file` (`write_file`) against a fake/mock Kado (happy +
   denial).
 - **`test_inbox_author_pipeline.py`** — integration against a fake Kado at the public entry point
-  (mock at orchestrator, not helper): (a) compose+write happy path lands the artifact; (b) parse-gate
-  blocks the write on malformed JSON; (c) collision path returns the "exists" signal and triggers the
+  (mock at orchestrator, not helper): (a) compose+write happy path lands the artifact; (b) the extension-routed parse-gate
+  blocks the write on malformed `.canvas` JSON and on malformed `.base` YAML; (c) collision path returns the "exists" signal and triggers the
   warn branch; (d) template resolution falls back to built-in default + user note when the mapping is
   empty/missing. Permission boundary: assert writes target only `concepts.inbox`.
 
@@ -540,8 +561,9 @@ Tests run under `./venv/bin/python -m pytest tests/` (system python lacks jsonsc
   SHALL continue loading it by name with no regression.
 
 **Error Handling (PRD edge cases):**
-- [ ] IF composed `.base`/`.canvas` JSON fails `json.loads()`, THEN THE SYSTEM SHALL NOT write and
-  SHALL surface the parse error.
+- [ ] IF composed `.canvas` JSON fails `validate-json.py` (`json.loads()`) OR composed `.base` YAML
+  fails `validate-yaml.py` (`yaml.safe_load()`), THEN THE SYSTEM SHALL NOT write and SHALL surface the
+  parse error.
 - [ ] IF an inbox file with the same stem+extension exists, THEN THE SYSTEM SHALL warn and ask before
   overwriting.
 - [ ] IF a requested type has no mapping and no vault template, THEN THE SYSTEM SHALL write with the
@@ -561,7 +583,8 @@ Tests run under `./venv/bin/python -m pytest tests/` (system python lacks jsonsc
   the instance keeps stale skill content. Mitigation: bump every touched skill; grep instance after sync.
 
 ### Technical Debt
-- `.base`/`.canvas` have only a parse-gate in P1; structural/semantic validation is #92.
+- `.canvas` (JSON, via `validate-json.py`) and `.base` (YAML, via `validate-yaml.py`) have only a
+  parse-gate in P1; structural/semantic validation is #92.
 - `default` template key is a `default-doc-writer` convention absent from the schema example —
   consider canonizing it in a later config pass.
 

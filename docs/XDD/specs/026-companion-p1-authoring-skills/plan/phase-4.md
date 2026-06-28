@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: inbox-author (rename + extend)"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -35,7 +35,7 @@ phase: 4
 
 Delivers the orchestration skill that composes correct artifacts and lands them in the inbox.
 
-- [ ] **T4.1 Rename default-doc-writer → inbox-author** `[activity: docs-skill]`
+- [x] **T4.1 Rename default-doc-writer → inbox-author** `[activity: docs-skill]`
 
   1. Prime: Read the current skill + its WHY mirror `[ref: tomo/dot_claude/skills/default-doc-writer/SKILL.md;
      docs/tomo/dot_claude/skills/default-doc-writer.md]`.
@@ -48,7 +48,7 @@ Delivers the orchestration skill that composes correct artifacts and lands them 
   4. Validate: audit clean; STRICTs preserved verbatim; no format pre-load.
   5. Success: inbox-author exists with preserved pipeline `[ref: PRD/Feature 4 AC; SDD/ADR-3,ADR-6]`.
 
-- [ ] **T4.2 Extend inbox-author: template mapping + JSON path + collision** `[activity: docs-skill]`
+- [x] **T4.2 Extend inbox-author: template mapping + JSON path + collision** `[activity: docs-skill]`
 
   1. Prime: Read ADR-4/5/7 + resolve_template algorithm `[ref: SDD/Complex Logic]` + Phase 1 scripts.
   2. Test (`tests/test_inbox_author_pipeline.py`, fake Kado, mock at orchestrator — public entry point):
@@ -65,7 +65,7 @@ Delivers the orchestration skill that composes correct artifacts and lands them 
   4. Validate: `./venv/bin/python -m pytest tests/test_inbox_author_pipeline.py`; audit clean.
   5. Success: all five integration behaviors pass `[ref: PRD/Feature 4 AC; SDD/Test Strategy]`.
 
-- [ ] **T4.3 Rename fan-out** `[activity: refactor]`
+- [x] **T4.3 Rename fan-out** `[activity: refactor]`
 
   1. Prime: `rg default-doc-writer` across the repo `[ref: SDD/ADR-3 (d)]`.
   2. Test: `rg default-doc-writer` returns zero residual runtime references (historical/spec mentions
@@ -76,7 +76,7 @@ Delivers the orchestration skill that composes correct artifacts and lands them 
   4. Validate: `rg default-doc-writer` clean (triaged); RETIRED_SKILLS_DIRS contains it.
   5. Success: no dangling old-name references `[ref: PRD/Feature 4 AC; SDD/ADR-3]`.
 
-- [ ] **T4.4 Phase Validation** `[activity: validate]`
+- [x] **T4.4 Phase Validation** `[activity: validate]`
 
   - Run `tests/test_inbox_author_pipeline.py` + full suite under `./venv/bin/python`; `/skill-author`
     audit; `rg default-doc-writer` triaged clean.

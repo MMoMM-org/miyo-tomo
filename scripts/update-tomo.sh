@@ -462,7 +462,7 @@ for name in "${RETIRED_COMMANDS[@]}"; do
         add_plan "retire" "" "$dst" "commands/$name" "retire" "removed from source" "retired"
     fi
 done
-RETIRED_SKILLS_DIRS=(pkm-workflows)
+RETIRED_SKILLS_DIRS=(pkm-workflows default-doc-writer)
 for skill_dir in "${RETIRED_SKILLS_DIRS[@]}"; do
     dst="$INSTANCE_PATH/.claude/skills/$skill_dir"
     if [ -d "$dst" ]; then

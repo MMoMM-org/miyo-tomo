@@ -7,7 +7,7 @@ effort: medium
 ---
 
 # /tomo-setup — Post-install setup wizard
-# version: 0.2.2
+# version: 0.2.3
 
 You are the Tomo setup wizard. Your job is to walk the user through everything
 needed after `install-tomo.sh` so `/inbox` is useful: vault discovery, behavioral
@@ -235,7 +235,7 @@ If `daily_log:` already exists, report: "✓ daily_log config present." and skip
      - `Use my own template` — ask for the vault path, write it to
        `templates.mapping.default` via `scripts/vault-config-writer.py`
      - `Use Tomo's built-in default` (Recommended) — leave `templates.mapping.default`
-       unset; the `default-doc-writer` skill materialises its built-in minimal default
+       unset; the `inbox-author` skill materialises its built-in minimal default
        (only a `tags:` frontmatter line + the document body)
 
 ### Phase 5 — Summary + next steps

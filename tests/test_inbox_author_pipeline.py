@@ -28,7 +28,6 @@ READ_CONFIG_FIELD = REPO_ROOT / "tomo" / "scripts" / "read-config-field.py"
 LIB_DIR = REPO_ROOT / "tomo" / "scripts" / "lib"
 
 sys.path.insert(0, str(LIB_DIR.parent))
-from lib.kado_client import KadoError  # noqa: E402
 
 
 def _load_kwf():

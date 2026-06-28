@@ -104,12 +104,9 @@ def test_malformed_yaml_prints_error_to_stderr(tmp_path: Path) -> None:
 
 
 def test_invalid_yaml_mapping_exits_1(tmp_path: Path) -> None:
-    """A YAML mapping with duplicate scalar causes a parse error."""
+    """Tab characters in indentation are a YAML scanner error."""
     f = tmp_path / "dup.base"
-    # Duplicate keys with conflicting structure — scanner/parser error
-    f.write_text("key: |\n  unclosed block scalar that\n")
-    # Actually let's use a reliably invalid form: mapping value indicator in wrong place
-    f.write_text(": top-level-colon-only-no-key\n")
+    f.write_text("key:\n\t- tab_indented\n")
     result = run(f)
     assert result.returncode == 1
 

@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: inbox-author (rename + extend)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -13,7 +13,8 @@ phase: 4
 
 **Specification References**:
 - `[ref: SDD/ADR-3]` — rename `default-doc-writer` → `inbox-author`, preserve 5-step pipeline + 3 STRICTs
-- `[ref: SDD/ADR-4]` — `.base`/`.canvas` direct-compose → staged → validate-json.py → operation=file
+- `[ref: SDD/ADR-4]` — direct-compose → staged → parse-gate → operation=file; gate routes by extension:
+  `.canvas` (JSON) → validate-json.py, `.base` (YAML) → validate-yaml.py
 - `[ref: SDD/ADR-5]` — template mapping real keys + fallback chain
 - `[ref: SDD/ADR-6]` — drop format-skill pre-load (auto-load); keep `kado-write-patterns` pre-load
 - `[ref: SDD/ADR-7]` — collision via `--no-overwrite` warn+ask
@@ -51,12 +52,14 @@ Delivers the orchestration skill that composes correct artifacts and lands them 
 
   1. Prime: Read ADR-4/5/7 + resolve_template algorithm `[ref: SDD/Complex Logic]` + Phase 1 scripts.
   2. Test (`tests/test_inbox_author_pipeline.py`, fake Kado, mock at orchestrator — public entry point):
-     (a) compose+write happy path lands the artifact in `concepts.inbox`; (b) `validate-json.py` gate
-     blocks the write on malformed `.base`/`.canvas`; (c) `--no-overwrite` "exists" signal triggers the
+     (a) compose+write happy path lands the artifact in `concepts.inbox`; (b) the extension-routed
+     parse-gate blocks the write on malformed `.canvas` (validate-json.py) / `.base` (validate-yaml.py);
+     (c) `--no-overwrite` "exists" signal triggers the
      warn branch; (d) template resolution falls back to default + user note when mapping empty/missing;
      (e) writes only target the inbox.
   3. Implement via `/skill-author`: add the format dispatch (md keeps token-render; base/canvas
-     direct-compose → `tomo-tmp/staged-artifact.<ext>` → `validate-json.py` → `kado-write-file.py
+     direct-compose → `tomo-tmp/staged-artifact.<ext>` → parse-gate routed by extension
+     (`.canvas`→validate-json.py, `.base`→validate-yaml.py) → `kado-write-file.py
      operation=file`), template mapping with the real keys + fallback chain, and the `--no-overwrite`
      warn+ask collision step. Bump version. Update WHY mirror.
   4. Validate: `./venv/bin/python -m pytest tests/test_inbox_author_pipeline.py`; audit clean.

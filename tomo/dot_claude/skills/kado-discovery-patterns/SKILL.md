@@ -1,10 +1,10 @@
 ---
 name: kado-discovery-patterns
-description: Kado listDir and byFrontmatter query recipes, caching patterns, and error handling. Load when making Kado discovery calls outside of inbox-triage.py.
+description: Kado listDir and byFrontmatter query recipes, caching patterns, and error handling. Load when making Kado discovery calls outside of inbox-triage.py. (Write, compose, and upload operations → kado-write-patterns.)
 user-invocable: false
 ---
 # Kado Discovery Patterns
-# version: 0.1.0
+# version: 0.1.1
 
 ## Listing Files
 

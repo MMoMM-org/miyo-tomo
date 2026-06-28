@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Write-Side Helper Skill"
-status: pending
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -31,7 +31,7 @@ phase: 3
 
 Delivers the write-side Kado helper catalog the companion + Tomo use for all vault writes.
 
-- [ ] **T3.1 kado-write-patterns skill (new)** `[activity: docs-skill]`
+- [x] **T3.1 kado-write-patterns skill (new)** `[activity: docs-skill]`
 
   1. Prime: Read `kado-discovery-patterns` (to mirror shape + state the boundary), the helper scripts
      `[ref: tomo/scripts/{kado-write-file.py,read-config-field.py,token-render.py,validate-json.py}]`,
@@ -46,7 +46,7 @@ Delivers the write-side Kado helper catalog the companion + Tomo use for all vau
   4. Validate: audit clean; no read-side duplication; boundary explicit in both descriptions.
   5. Success: write-side invocations correct; read tasks routed to discovery-patterns `[ref: PRD/Feature 5 AC]`.
 
-- [ ] **T3.2 Phase Validation** `[activity: validate]`
+- [x] **T3.2 Phase Validation** `[activity: validate]`
 
   - `/skill-author` audit. Confirm the read/write split is unambiguous and the skill references the
     Phase 1 scripts (`validate-json.py`, `kado-write-file.py --no-overwrite`).

@@ -60,3 +60,12 @@ This phase delivers the two deterministic guards the skills depend on, each with
 
   - Run all Phase 1 tests under `./venv/bin/python`. Confirm both scripts fail-closed on the failure
     cases. Lint clean. No skill work begins until this phase is green.
+
+- [x] **T1.4 validate-yaml.py parse-gate (.base)** `[activity: backend-api]` — *add-on (ADR-4 correction)*
+
+  Added during Phase 3 after kepano source confirmed `.base` files are YAML, not JSON. `validate-json.py`
+  (json.loads) would reject every valid `.base`. Sibling `tomo/scripts/validate-yaml.py` (yaml.safe_load,
+  exit 0 valid / 1 malformed-or-missing, writes nothing, `# version: 0.1.0`) mirrors validate-json.py's
+  contract; callers route the gate by extension (.canvas→json, .base→yaml). Tests
+  `tests/test_validate_yaml.py` (incl. empty-YAML-is-valid divergence); WHY `docs/tomo/scripts/validate-yaml.md`.
+  `[ref: SDD/ADR-4 (corrected), ADR-9; PRD/Feature 4 AC]`

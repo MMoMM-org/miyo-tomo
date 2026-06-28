@@ -26,22 +26,31 @@ python3 scripts/kado-write-file.py --vault "100 Inbox/my-note.md" < tomo-tmp/ren
 
 ## Write a Non-.md Artifact (.base / .canvas)
 
-Run the parse gate first (exit 1 = malformed — STOP, do not write):
+Gate by extension before writing (exit 1 = malformed — STOP, do not write):
 
 ```bash
-python3 scripts/validate-json.py tomo-tmp/staged-artifact.base
+# .canvas — JSON format
+python3 scripts/validate-json.py tomo-tmp/staged-artifact.canvas
+# exit 0 → proceed; exit 1 → surface error, recompose
+
+# .base — YAML format (NOT JSON — do not run validate-json.py on .base)
+python3 scripts/validate-yaml.py tomo-tmp/staged-artifact.base
 # exit 0 → proceed; exit 1 → surface error, recompose
 ```
 
-Then write:
+Then write (same command for any non-.md extension):
 
 ```bash
 python3 scripts/kado-write-file.py \
   --local tomo-tmp/staged-artifact.base \
   --vault "100 Inbox/my-view.base"
+
+python3 scripts/kado-write-file.py \
+  --local tomo-tmp/staged-artifact.canvas \
+  --vault "100 Inbox/my-board.canvas"
 ```
 
-Non-`.md` target → `operation=file` (base64). Same pattern for `.canvas`.
+Non-`.md` target → `operation=file` (base64). Gate: `validate-json.py` for `.canvas`, `validate-yaml.py` for `.base`.
 
 ## Collision Check (--no-overwrite)
 

@@ -1,15 +1,17 @@
 ---
-name: default-doc-writer
-description: Use PROACTIVELY when the user asks Tomo to CREATE a free-form document and save it into the vault — an overview, list, summary, comparison, collection, or any artifact that is NOT one of the defined note types (atomic note, MOC, daily note, project, source). Triggers: "create me an overview of X", "erstell mir eine Übersicht / Liste / Zusammenfassung von …", "make a list of Y and put it in my vault", "write up a comparison of Z", "save this as a note in my inbox". Renders the content into the configured default template and writes it to the inbox folder.
+name: inbox-author
+description: "Use PROACTIVELY when the user asks Tomo to CREATE a free-form artifact and save it into the vault — overview, list, summary, comparison, compiled log, a .base view, or a .canvas. Composes correct format (via obsidian-markdown/bases/canvas) and writes to the inbox. NOT for defined-type notes produced by /inbox Pass-2."
 user-invocable: true
-argument-hint: "what to create, e.g. 'an overview of the vacations I took and the events I attended'"
+argument-hint: "what to create, e.g. 'an overview of my 2025 trips' or 'a reading-list base'"
+skills:
+  - kado-write-patterns
 ---
-# Default Doc Writer
-# version: 0.1.0
+# Inbox Author
+# version: 0.2.0
 
-Compose a free-form document the user asked for, wrap it in the default template, and write it
-to the inbox folder. Use this only for documents that do NOT fit a defined note type — defined
-types are produced by `/inbox`, never here.
+Compose a free-form artifact the user asked for and write it to the inbox folder. Use this only
+for artifacts that do NOT fit a defined note type — defined types are produced by `/inbox`, never
+here.
 
 ## Workflow
 

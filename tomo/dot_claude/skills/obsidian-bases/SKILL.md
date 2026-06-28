@@ -1,239 +1,300 @@
 ---
 name: obsidian-bases
-description: "Use PROACTIVELY when authoring an Obsidian .base (Bases) view — filters, formulas, properties, views, summaries. Triggers when the task mentions a .base file or a Bases view. (Markdown → obsidian-markdown; .canvas → obsidian-canvas.)"
+description: "Use PROACTIVELY when authoring an Obsidian .base (Bases) view — filters, formulas, properties, views, summaries. Triggers when the task mentions a .base file or a Bases view. (Markdown -> obsidian-markdown; .canvas -> obsidian-canvas.)"
 user-invocable: true
+model: sonnet
+effort: low
 ---
 # Obsidian Bases
-# version: 0.1.0
+# version: 0.1.1
 
-Format reference for Obsidian `.base` files. A `.base` file is a JSON document that defines a database view over vault notes. Compose the JSON directly — do not use a token renderer.
+Base files (`.base` extension) contain valid **YAML**. They define filters, formulas, and views over vault notes.
 
-## File Structure
+## Schema
 
-```json
-{
-  "filters": [],
-  "views": [
-    {
-      "type": "table",
-      "name": "View Name",
-      "properties": [],
-      "sort": [],
-      "group": null
-    }
-  ],
-  "formulas": [],
-  "summaries": []
-}
+```yaml
+# Global filters — applied to ALL views
+filters:
+  and:
+    - 'status == "active"'
+    - not:
+        - 'file.hasTag("archived")'
+
+# Computed properties usable in views
+formulas:
+  formula_name: 'expression'
+
+# Display names for properties and formulas
+properties:
+  property_name:
+    displayName: "Display Name"
+  formula.formula_name:
+    displayName: "Formula Label"
+
+# Custom aggregate formulas (used in view summaries:)
+summaries:
+  custom_agg: 'values.mean().round(3)'
+
+# One or more views
+views:
+  - type: table | cards | list | map
+    name: "View Name"
+    limit: 10
+    groupBy:
+      property: property_name
+      direction: ASC | DESC
+    filters:              # view-local filters; same structure as global
+      and:
+        - 'status == "active"'
+    order:                # properties to display, in column order
+      - file.name
+      - property_name
+      - formula.formula_name
+    summaries:            # map property name to summary formula
+      property_name: Average
 ```
 
-Top-level keys:
-- `filters` — global filter applied to every view (array of filter objects)
-- `views` — one or more view definitions (array); at least one required
-- `formulas` — computed property definitions (array; may be empty)
-- `summaries` — aggregate calculations shown at the bottom of views (array; may be empty)
+## Filter Syntax
 
-## Filters
+A filter is a **quoted expression string** or a recursive object with exactly one key: `and`, `or`, or `not`.
 
-Filters control which vault notes appear in the view. Global `filters` apply to all views; a `view.filters` array can add view-local conditions.
+```yaml
+# Single filter
+filters: 'status == "done"'
 
-**Single condition:**
-```json
-{
-  "property": "status",
-  "operator": "is",
-  "value": "active"
-}
+# AND — all must be true
+filters:
+  and:
+    - 'status == "done"'
+    - 'priority > 3'
+
+# OR — any must be true
+filters:
+  or:
+    - 'file.hasTag("book")'
+    - 'file.hasTag("article")'
+
+# NOT
+filters:
+  not:
+    - 'file.hasTag("archived")'
+
+# Nested
+filters:
+  or:
+    - file.hasTag("tag")
+    - and:
+        - file.hasTag("book")
+        - file.hasLink("Textbook")
+    - not:
+        - file.inFolder("Archive")
 ```
 
-**Compound filter (AND/OR):**
-```json
-{
-  "type": "and",
-  "filters": [
-    { "property": "status", "operator": "is", "value": "active" },
-    { "property": "due", "operator": "is-not-empty" }
-  ]
-}
-```
+### Filter Operators
 
-**Filter by tag:**
-```json
-{ "tag": "project" }
-```
-
-**Filter by folder/path prefix:**
-```json
-{ "path": "Projects/" }
-```
-
-**Operators:**
-- Equality: `is` / `is-not`
-- Text: `contains` / `does-not-contain` / `starts-with` / `ends-with`
-- Existence: `is-empty` / `is-not-empty`
-- Numeric/date comparison: `is-greater-than` / `is-less-than` / `is-greater-than-or-equal` / `is-less-than-or-equal`
+| Operator | Meaning |
+|----------|---------|
+| `==` | equals |
+| `!=` | not equal |
+| `>` `<` `>=` `<=` | numeric / date comparison |
+| `&&` | logical and (inside expression string) |
+| `\|\|` | logical or (inside expression string) |
+| `!` | logical not (inside expression string) |
 
 ## Properties
 
-Properties define which frontmatter fields appear as columns.
+Three types:
 
-```json
-{
-  "property": "status",
-  "label": "Status",
-  "hidden": false,
-  "width": 120
-}
-```
+1. **Note properties** — frontmatter: `author` or `note.author`
+2. **File metadata** — `file.name`, `file.mtime`, etc.
+3. **Formula results** — `formula.my_formula`
 
-- `property` — frontmatter key name (required)
-- `label` — column header override (optional; defaults to property name)
-- `hidden` — exclude from current view without removing from schema (optional; default `false`)
-- `width` — column width in pixels (optional)
+### File Properties
 
-**Built-in file properties** (no frontmatter required):
+| Property | Type | Description |
+|----------|------|-------------|
+| `file.name` | String | File name with extension |
+| `file.basename` | String | File name without extension |
+| `file.path` | String | Full vault path |
+| `file.folder` | String | Parent folder path |
+| `file.ext` | String | Extension |
+| `file.size` | Number | Size in bytes |
+| `file.ctime` | Date | Created time |
+| `file.mtime` | Date | Modified time |
+| `file.tags` | List | All tags |
+| `file.links` | List | Outbound links |
+| `file.backlinks` | List | Files linking here |
+| `file.embeds` | List | Embeds in the note |
+| `file.properties` | Object | All frontmatter properties |
 
-| Property | Type | Value |
-|---|---|---|
-| `file.name` | text | Filename without extension |
-| `file.path` | text | Full vault-relative path |
-| `file.ctime` | datetime | Creation timestamp |
-| `file.mtime` | datetime | Last-modified timestamp |
-| `file.size` | number | Size in bytes |
-| `file.tags` | multitext | All tags on the note |
-| `file.inlinks` | multitext | Notes that link to this note |
-| `file.outlinks` | multitext | Notes this note links to |
+### The `this` Keyword
 
-## Views
-
-### Table
-
-```json
-{
-  "type": "table",
-  "name": "All Notes",
-  "filters": [],
-  "properties": [
-    { "property": "status" },
-    { "property": "due" }
-  ],
-  "sort": [
-    { "property": "due", "direction": "asc" }
-  ],
-  "group": null
-}
-```
-
-- `sort` — array of `{ "property": "<key>", "direction": "asc" | "desc" }` objects
-- `group` — optional `{ "property": "<key>" }` to group rows by a property value; omit or `null` for ungrouped
-
-### Gallery
-
-```json
-{
-  "type": "gallery",
-  "name": "Cards",
-  "cover": { "property": "image" },
-  "properties": [
-    { "property": "status" }
-  ],
-  "sort": []
-}
-```
-
-- `cover.property` — frontmatter key whose value is an image path for the card thumbnail (optional)
-
-### Calendar
-
-```json
-{
-  "type": "calendar",
-  "name": "Schedule",
-  "date": { "property": "due" },
-  "properties": [
-    { "property": "status" }
-  ]
-}
-```
-
-- `date.property` — frontmatter key that provides the calendar date (required for calendar; must be a date/datetime property)
-
-### Board (Kanban)
-
-```json
-{
-  "type": "board",
-  "name": "Kanban",
-  "group": { "property": "status" },
-  "properties": [
-    { "property": "due" }
-  ],
-  "sort": []
-}
-```
-
-- `group.property` — property whose distinct values become the board columns (required for board)
-
-### List
-
-```json
-{
-  "type": "list",
-  "name": "Quick List",
-  "sort": [
-    { "property": "file.mtime", "direction": "desc" }
-  ]
-}
-```
-
-Minimal view — shows note titles only, no column config needed.
+In main content area: refers to the base file itself. When embedded: refers to the embedding file. In sidebar: refers to the active file in main content.
 
 ## Formulas
 
-Formulas define computed columns derived from other properties. See `reference/FUNCTIONS_REFERENCE.md` for the full function catalog.
+Defined under `formulas:`. Reference as `formula.name` in `order`, `properties`, and `summaries`.
 
-```json
-{
-  "name": "Days Until Due",
-  "type": "number",
-  "expression": "dateDiff(prop('due'), now(), 'days')"
-}
+```yaml
+formulas:
+  total: "price * quantity"
+  status_icon: 'if(done, "done", "pending")'
+  formatted_price: 'if(price, price.toFixed(2) + " dollars")'
+  created: 'file.ctime.format("YYYY-MM-DD")'
+  days_old: '(now() - file.ctime).days'
+  days_until_due: 'if(due_date, (date(due_date) - today()).days, "")'
 ```
 
-- `name` — column header for the formula result
-- `type` — result type: `text` | `number` | `boolean` | `date` | `datetime`
-- `expression` — function expression (see FUNCTIONS_REFERENCE for available functions)
+### Key Functions
 
-Reference a formula result in `properties` by using its `name` as the `property` value.
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `date()` | `date(string): date` | Parse string (`YYYY-MM-DD HH:mm:ss`) |
+| `now()` | `now(): date` | Current date and time |
+| `today()` | `today(): date` | Current date (00:00:00) |
+| `if()` | `if(condition, trueVal, falseVal?)` | Conditional |
+| `duration()` | `duration(string): duration` | Parse duration string |
+| `file()` | `file(path): file` | Get file object |
+| `link()` | `link(path, display?): Link` | Create a link |
 
-## Summaries
+For the complete function reference (Date, String, Number, List, File, Link, Object, RegExp types), see [FUNCTIONS_REFERENCE.md](references/FUNCTIONS_REFERENCE.md).
 
-Summaries aggregate formula or property values and appear in a row at the bottom of table views.
+### Duration Type
 
-```json
-{
-  "property": "due",
-  "formula": "countNotEmpty"
-}
+Date subtraction returns a **Duration**, not a number. Access `.days`, `.hours`, etc. before calling `.round()`.
+
+```yaml
+# CORRECT
+"(date(due_date) - today()).days"            # number of days
+"(now() - file.ctime).days.round(0)"        # rounded
+
+# WRONG — Duration has no .round() directly
+# "(now() - file.ctime).round(0)"
 ```
 
-Available formula values: `count`, `countEmpty`, `countNotEmpty`, `sum`, `average`, `min`, `max`, `range`
+### Date Arithmetic Units
 
-- `count` — total number of rows
-- `countEmpty` / `countNotEmpty` — rows where the property is absent/present
-- `sum` / `average` / `min` / `max` — numeric aggregates
-- `range` — max − min for numeric properties
+`y/year/years`, `M/month/months`, `d/day/days`, `w/week/weeks`, `h/hour/hours`, `m/minute/minutes`, `s/second/seconds`
+
+```yaml
+"now() + \"1 day\""      # tomorrow
+"today() + \"7d\""       # a week from today
+```
+
+## View Types
+
+### Table
+
+```yaml
+views:
+  - type: table
+    name: "My Table"
+    order:
+      - file.name
+      - status
+      - due_date
+    summaries:
+      price: Sum
+```
+
+### Cards
+
+```yaml
+views:
+  - type: cards
+    name: "Gallery"
+    order:
+      - file.name
+      - cover_image
+      - description
+```
+
+### List
+
+```yaml
+views:
+  - type: list
+    name: "Simple List"
+    order:
+      - file.name
+      - status
+```
+
+### Map
+
+Requires latitude/longitude properties and the Maps community plugin.
+
+```yaml
+views:
+  - type: map
+    name: "Locations"
+```
+
+## Default Summary Formulas
+
+| Name | Input | Description |
+|------|-------|-------------|
+| `Average` | Number | Mean |
+| `Min` / `Max` | Number | Smallest / largest |
+| `Sum` | Number | Total |
+| `Range` | Number | Max - Min |
+| `Median` | Number | Median |
+| `Stddev` | Number | Standard deviation |
+| `Earliest` / `Latest` | Date | Earliest / latest date |
+| `Checked` / `Unchecked` | Boolean | Count of true / false |
+| `Empty` / `Filled` | Any | Count of empty / non-empty |
+| `Unique` | Any | Count of unique values |
+
+## Embedding
+
+```markdown
+![[MyBase.base]]
+
+![[MyBase.base#View Name]]
+```
+
+## YAML Quoting Rules
+
+- Use **single quotes** for formulas containing double quotes: `'if(done, "Yes", "No")'`
+- Use **double quotes** for plain strings: `"My View Name"`
+- Strings containing `:`, `{`, `}`, `[`, `]`, `#`, `|`, `>`, `!`, etc. must be quoted.
 
 ## Troubleshooting
 
-**View shows no notes:** Check global `filters` — an overly strict filter eliminates all rows. Remove all filters temporarily to verify notes load, then re-add conditions.
+### YAML Syntax Errors
 
-**Property column missing:** The frontmatter key is absent or misspelled. Verify the exact key name with `kado-read` → `frontmatter`. Key names are case-sensitive.
+```yaml
+# WRONG — unquoted colon
+displayName: Status: Active
 
-**Calendar shows blank:** The `date.property` must point to a `date` or `datetime` frontmatter property. A `text` property with a date string will not render.
+# CORRECT
+displayName: "Status: Active"
 
-**Board columns empty:** `group.property` must have at least one non-empty value across the matched notes. Notes with an empty group property appear in an "ungrouped" column.
+# WRONG — double quotes inside double quotes
+formulas:
+  label: "if(done, "Yes", "No")"
 
-**Formula returns null:** Property reference in the expression does not match any frontmatter key. Use `prop('exact-key-name')` with the verbatim frontmatter key.
+# CORRECT — single quotes wrapping double quotes
+formulas:
+  label: 'if(done, "Yes", "No")'
+```
 
-**JSON parse error on write:** Run `python3 scripts/validate-json.py <path>` before writing. Common causes: trailing commas, single-quoted strings, missing closing braces.
+### Formula Errors
+
+**Duration without field access** — `(now() - file.ctime)` returns Duration, not a number:
+```yaml
+# WRONG
+"(now() - file.ctime).round(0)"
+# CORRECT
+"(now() - file.ctime).days.round(0)"
+```
+
+**Missing null guard** — properties may be absent on some notes:
+```yaml
+# WRONG — crashes if due_date is empty
+"(date(due_date) - today()).days"
+# CORRECT
+'if(due_date, (date(due_date) - today()).days, "")'
+```
+
+**Undefined formula reference** — every `formula.X` in `order` or `properties` needs a matching entry in `formulas`.

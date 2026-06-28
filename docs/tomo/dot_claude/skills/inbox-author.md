@@ -1,7 +1,7 @@
 # WHY: inbox-author (skill)
 
 > Rationale for `tomo/dot_claude/skills/inbox-author/SKILL.md`.
-> Renamed from `default-doc-writer` (spec 026, ADR-3).
+> Renamed from `default-doc-writer` (spec 026, ADR-3). Extended in T4.2 (ADR-4/5/7).
 
 ## Why Renamed from default-doc-writer (ADR-3)
 
@@ -74,3 +74,48 @@ is applied downstream after user approval. A free-form artifact is unclassified,
 anywhere but the inbox would (1) leave that boundary and (2) place an unreviewed artifact into
 structured vault space. The skill resolves `concepts.inbox` and writes there, with a
 `sanitize_stem`-cleaned filename so titles containing forbidden characters do not get rejected.
+
+## Why .canvas and .base Are Direct-Compose, Not Token-Rendered (ADR-4)
+
+WHY: `token-render.py` is a Markdown-only renderer — it takes a `.md` template with `{{token}}`
+placeholders and produces `.md` output. It cannot produce JSON (`.canvas` JSON Canvas 1.0) or
+YAML (`.base` Obsidian Bases). Instead, the skill composes these formats directly (guided by the
+matching format skill) and writes them to `tomo-tmp/staged-artifact.<ext>` before running the
+extension-routed parse-gate. The `kado-write-file.py` script is already extension-agnostic
+(`operation=note` for `.md`, `operation=file` base64 for everything else), so no new Kado
+surface is needed.
+
+## Why the Parse Gate Routes by Extension, Not by Content (ADR-4 corrected)
+
+WHY: `.canvas` files are JSON (JSON Canvas 1.0 spec); `.base` files are YAML (Obsidian Bases
+format). The two are syntactically distinct — valid YAML is not always valid JSON. If
+`validate-json.py` were applied to a `.base` file, it would reject valid YAML (which has bare
+strings, unquoted values, etc. that JSON forbids). Routing by extension — `.canvas` →
+`validate-json.py`, `.base` → `validate-yaml.py` — matches each gate to the file's actual
+syntax. The gate is deterministic (a subprocess call, not LLM inspection), satisfying ADR-9.
+
+## Why sanitize_stem Applies to the Stem, Not the Full Filename with Extension (ADR-2)
+
+WHY: `sanitize_stem` replaces characters forbidden by Obsidian (`\ / : * ? " < > |`) in the
+stem portion only. If applied to `"My Note.canvas"` as a whole, the `.` before `canvas` might
+be mangled by the transform. The STRICT block in step 4 enforces splitting: sanitize the raw
+title stem first, then append `.<ext>` separately. This is a correctness gotcha specific to the
+multi-format extension and was not needed in the `.md`-only predecessor.
+
+## Why Collision Is Handled with --no-overwrite + AskUserQuestion (ADR-7)
+
+WHY: The predecessor `default-doc-writer` overwrote silently — a data-loss risk when the user
+runs the same request twice or reuses a title. `kado-write-file.py --no-overwrite` is a
+deterministic existence check (exit 3 + `EXISTS:<path>` on stdout) that makes the collision
+testable (ADR-9). The skill then surfaces it via `AskUserQuestion` with explicit options
+(overwrite / rename / cancel) rather than guessing the user's intent. "Overwrite" re-runs
+without `--no-overwrite`; "rename" re-enters compose from a new title; "cancel" is a clean stop.
+
+## Why the Template Mapping Uses the Real Schema Keys (ADR-5)
+
+WHY: The prior skill used a `default` role informally. P1 aligns with the real
+`templates.mapping` schema keys: `atomic_note`, `map_note`, `daily`, `weekly`, `monthly`,
+`yearly`, `project`, `source`, `default`. These mirror `vault-config.yaml`'s actual field names.
+Unknown types (not in this list) fall back to a vault `byName` search for a matching template,
+then to the built-in minimal default — so user-defined templates still work without having a
+first-class key.

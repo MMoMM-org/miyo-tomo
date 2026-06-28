@@ -6,9 +6,7 @@ model: sonnet
 effort: low
 ---
 # Kado Write Patterns
-# version: 0.1.0
-
-Write-side helper catalog. Read/list/query operations are in kado-discovery-patterns.
+# version: 0.1.1
 
 ## Write a .md Note
 

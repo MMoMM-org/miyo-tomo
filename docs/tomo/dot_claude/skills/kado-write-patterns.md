@@ -34,13 +34,21 @@ parsing stderr. Three distinct exit codes (0=ok, 1=Kado error, 2=I/O error, 3=ex
 predictable stdout token (`EXISTS:<vault-path>`) make the branch deterministic. ADR-7 documents
 this as the collision-guard contract; `test_kado_write_file_no_overwrite.py` tests it.
 
-## Why validate-json.py Must Run Before Any .base/.canvas Write
+## Why the Parse Gate Routes by Extension (.canvas=JSON, .base=YAML)
 
-WHY: If a malformed JSON artifact reaches the vault, Obsidian silently shows an empty or broken
-canvas/base view. The parse gate (`validate-json.py`, exit 0 = valid, exit 1 = malformed) is
-deterministic and unit-tested; it must run before `kado-write-file.py` for every non-.md write.
-ADR-4 and ADR-9 document this requirement. The skill lists the gate invocation in the
-`.base/.canvas` section so it cannot be forgotten.
+WHY: If a malformed artifact reaches the vault, Obsidian silently shows an empty or broken
+canvas/base view. The parse gate is deterministic and unit-tested; it must run before
+`kado-write-file.py` for every non-.md write. The gate routes by file extension because the two
+formats are structurally different:
+
+- `.canvas` — JSON Canvas 1.0 spec; gate: `validate-json.py` (json.loads)
+- `.base` — Obsidian Bases; YAML-based view format; gate: `validate-yaml.py` (yaml.safe_load)
+
+Running `validate-json.py` on a `.base` file would reject valid YAML (JSON is a strict subset of
+YAML syntax requirements; a YAML file with e.g. unquoted strings is valid YAML but not valid JSON).
+ADR-4 and ADR-9 document the parse-gate requirement; the extension-routing decision reflects the
+confirmed format distinction from the kepano/obsidian-skills source. The skill lists both gate
+invocations in the non-.md write section so the correct gate cannot be forgotten.
 
 ## Why write_frontmatter Uses mode='merge' as Default
 

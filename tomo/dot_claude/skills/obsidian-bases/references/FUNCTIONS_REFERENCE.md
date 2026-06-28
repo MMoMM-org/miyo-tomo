@@ -1,6 +1,6 @@
 # Obsidian Bases — Functions Reference
 
-Complete function reference for `.base` formula expressions. Adapted from kepano/obsidian-skills (MIT).
+Complete function reference for `.base` formula expressions.
 
 ---
 

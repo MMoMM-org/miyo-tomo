@@ -1,6 +1,6 @@
 ---
 name: kado-write-patterns
-description: "Use PROACTIVELY when WRITING, composing, or uploading artifacts to the vault — .md notes, .base files, .canvas files, frontmatter updates, token-rendered templates. Triggers when the task involves writing to the inbox, composing artifacts, rendering templates, or updating note frontmatter. (Read, list, and query operations → kado-discovery-patterns.)"
+description: "Use PROACTIVELY when composing or WRITING artifacts to the vault — kado-write-file.py (.md→note, non-.md→file, --no-overwrite), validate-json.py parse-gate, write_frontmatter, token-render.py, read-config-field.py, sanitize_stem. The read/query side is in kado-discovery-patterns."
 user-invocable: true
 model: sonnet
 effort: low
@@ -159,3 +159,35 @@ vault_path = sanitize_stem(raw_stem) + ".base"  # NOT sanitize_stem(raw_stem + "
 ```
 
 Replaces Obsidian-forbidden characters (`\ / : * ? " < > |`) with `-`. Idempotent.
+
+## Error Handling
+
+Write a script to `tomo-tmp/write_safe.py` then run it:
+
+```python
+# tomo-tmp/write_safe.py
+import sys
+sys.path.insert(0, 'scripts')
+from lib.kado_client import KadoClient, KadoError, KadoConnectionError, KadoConcurrencyError
+
+try:
+    client = KadoClient()
+except KadoConnectionError:
+    print("Kado unreachable", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    result = client.write_frontmatter(path, {"tomo.state": "done"}, mode="merge")
+except KadoConcurrencyError:
+    print(f"concurrency conflict on {path} — re-read and retry", file=sys.stderr)
+    sys.exit(1)
+except KadoError as e:
+    print(f"kado-write failed for {path}: {e}", file=sys.stderr)
+    sys.exit(1)
+```
+
+```bash
+python3 tomo-tmp/write_safe.py
+```
+
+For `kado-write-file.py` errors use exit codes (0/1/2/3 — see Collision Check section). Do not redirect stderr to stdout or the exit-code signal is lost.

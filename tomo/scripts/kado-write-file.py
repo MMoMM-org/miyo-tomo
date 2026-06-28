@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """kado-write-file.py — Upload a local file to the vault via Kado.
 
 Auto-selects the Kado write operation by target extension:
@@ -69,8 +69,7 @@ def main() -> int:
         action="store_true",
         help=(
             "Refuse the write if the vault path already exists. "
-            "Signals collision via exit code 3 and prints EXISTS:<vault-path> on stdout. "
-            "T4.2 reads this exact contract — do not change the exit code or stdout format."
+            "Signals collision via exit code 3 and prints EXISTS:<vault-path> on stdout."
         ),
     )
     args = p.parse_args()
@@ -97,9 +96,15 @@ def main() -> int:
         return 1
 
     # Collision check: refuse write if vault path already exists.
-    if args.no_overwrite and client.path_exists(args.vault):
-        print(f"EXISTS:{args.vault}")
-        return 3
+    if args.no_overwrite:
+        try:
+            exists = client.path_exists(args.vault)
+        except KadoError as exc:
+            print(f"error: cannot check vault path: {exc}", file=sys.stderr)
+            return 1
+        if exists:
+            print(f"EXISTS:{args.vault}")
+            return 3
 
     # Markdown → operation="note"; anything else → operation="file" (base64).
     is_markdown = args.vault.lower().endswith(".md")

@@ -154,6 +154,31 @@ def test_non_md_extension_uses_write_file(tmp_path, monkeypatch, capsys):
 
 
 # ---------------------------------------------------------------------------
+# --no-overwrite: KadoError during path_exists() → exit 1
+# ---------------------------------------------------------------------------
+
+
+def test_no_overwrite_path_check_kado_error_exits_1(tmp_path, monkeypatch, capsys):
+    """KadoError raised by path_exists() under --no-overwrite must exit 1, not traceback."""
+    local = tmp_path / "artifact.md"
+    local.write_text("content")
+    vault = "100 Inbox/some-note.md"
+
+    class FakeClient:
+        def __init__(self):
+            pass
+
+        def path_exists(self, path: str) -> bool:
+            raise KadoError("connection refused")
+
+        def write_note(self, path, content):
+            raise AssertionError("must not reach write when path_exists fails")
+
+    rc = _run(monkeypatch, ["--no-overwrite", "--vault", vault, "--local", str(local)], FakeClient)
+    assert rc == 1
+
+
+# ---------------------------------------------------------------------------
 # Write-denial (KadoError during write) → exit 1
 # ---------------------------------------------------------------------------
 

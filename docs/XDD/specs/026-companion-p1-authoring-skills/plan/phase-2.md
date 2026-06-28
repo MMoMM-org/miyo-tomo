@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Format-Knowledge Skills"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -32,7 +32,7 @@ phase: 2
 
 Delivers the three format-knowledge skills the companion uses to author correct artifacts.
 
-- [ ] **T2.1 obsidian-markdown upgrade** `[activity: docs-skill] [parallel: true]`
+- [x] **T2.1 obsidian-markdown upgrade** `[activity: docs-skill] [parallel: true]`
 
   1. Prime: Read the existing skill `[ref: tomo/dot_claude/skills/obsidian-markdown/SKILL.md]`, the
      moc-architect load `[ref: tomo/dot_claude/agents/moc-architect.md; lines: 8-10]`, kepano
@@ -49,7 +49,7 @@ Delivers the three format-knowledge skills the companion uses to author correct 
   5. Success: user-invocable + auto-triggers on OFM syntax, no obsidian-fields co-load, no moc-architect
      regression `[ref: PRD/Feature 1 AC]`.
 
-- [ ] **T2.2 obsidian-bases skill (new)** `[activity: docs-skill] [parallel: true]`
+- [x] **T2.2 obsidian-bases skill (new)** `[activity: docs-skill] [parallel: true]`
 
   1. Prime: Read kepano `obsidian-bases` (SKILL + FUNCTIONS_REFERENCE) and ADR-6/ADR-8.
   2. Test (audit): `/skill-author` audit passes; description triggers on `.base` only (no co-load on
@@ -60,7 +60,7 @@ Delivers the three format-knowledge skills the companion uses to author correct 
   4. Validate: audit clean; access-agnostic; trigger anchored to `.base`.
   5. Success: produces valid `.base` knowledge; no cross-format co-load `[ref: PRD/Feature 2 AC]`.
 
-- [ ] **T2.3 obsidian-canvas skill (new)** `[activity: docs-skill] [parallel: true]`
+- [x] **T2.3 obsidian-canvas skill (new)** `[activity: docs-skill] [parallel: true]`
 
   1. Prime: Read kepano `json-canvas` (SKILL + EXAMPLES), JSON Canvas 1.0 spec (jsoncanvas.org), ADR-6/8.
   2. Test (audit): `/skill-author` audit passes; description triggers on `.canvas` only; body mentions
@@ -71,7 +71,7 @@ Delivers the three format-knowledge skills the companion uses to author correct 
   4. Validate: audit clean; access-agnostic; trigger anchored to `.canvas`.
   5. Success: produces valid JSON Canvas knowledge; no cross-format co-load `[ref: PRD/Feature 3 AC]`.
 
-- [ ] **T2.4 Phase Validation** `[activity: validate]`
+- [x] **T2.4 Phase Validation** `[activity: validate]`
 
   - Run `/skill-author` audit across all three. Confirm: each triggers only on its artifact type;
     none mention Kado; obsidian-fields callout boundary intact; moc-architect unaffected.

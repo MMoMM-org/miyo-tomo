@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Deterministic Safety Scripts (L1 gate)"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -30,7 +30,7 @@ phase: 1
 
 This phase delivers the two deterministic guards the skills depend on, each with happy + failure tests.
 
-- [ ] **T1.1 validate-json.py parse-gate** `[activity: backend-api]`
+- [x] **T1.1 validate-json.py parse-gate** `[activity: backend-api]`
 
   1. Prime: Read ADR-4/ADR-9 and the staging flow `[ref: SDD/Runtime View; SDD/ADR-9]`.
   2. Test (`tests/test_validate_json.py`): valid `.base`/`.canvas` JSON → exit 0; malformed JSON → exit 1
@@ -41,7 +41,7 @@ This phase delivers the two deterministic guards the skills depend on, each with
   5. Success: invalid JSON never passes the gate `[ref: PRD/Feature 4 AC; SDD/Test Strategy]`; WHY doc
      `docs/tomo/scripts/validate-json.md` exists.
 
-- [ ] **T1.2 kado-write-file.py --no-overwrite** `[activity: backend-api]`
+- [x] **T1.2 kado-write-file.py --no-overwrite** `[activity: backend-api]`
 
   1. Prime: Read the existing write branch `[ref: tomo/scripts/kado-write-file.py; lines: 78-84]` and
      `kado_client` read methods for existence checks `[ref: tomo/scripts/lib/kado_client.py]`.
@@ -56,7 +56,7 @@ This phase delivers the two deterministic guards the skills depend on, each with
   5. Success: collision is detected deterministically `[ref: PRD/Feature 4 AC; SDD/ADR-7]`; non-`.md`
      write path tested `[ref: SDD/Test Strategy]`.
 
-- [ ] **T1.3 Phase Validation** `[activity: validate]`
+- [x] **T1.3 Phase Validation** `[activity: validate]`
 
   - Run all Phase 1 tests under `./venv/bin/python`. Confirm both scripts fail-closed on the failure
     cases. Lint clean. No skill work begins until this phase is green.

@@ -14,9 +14,10 @@ runtime `SKILL.md`.
 
 ## Why this skill exists
 
-Obsidian Bases (`.base` files) use a JSON format that is not well-represented in Claude's training
+Obsidian Bases (`.base` files) use a YAML format that is not well-represented in Claude's training
 data. A session without this skill will either refuse to author `.base` files or produce structurally
-invalid JSON (wrong filter operator names, missing required keys, wrong view type values). The skill
+invalid output (wrong filter expression syntax, wrong view type names — `cards` not `gallery`,
+`map` not `board`, incorrect formula expression language, missing Duration type handling). The skill
 passes the "skill test" from the brainstorm charter: it encodes non-obvious knowledge the LLM does
 not already have.
 

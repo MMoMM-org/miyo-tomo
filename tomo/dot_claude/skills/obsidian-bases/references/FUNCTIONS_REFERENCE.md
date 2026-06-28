@@ -1,110 +1,188 @@
 # Obsidian Bases — Functions Reference
 
-Formula expressions used in `.base` `formulas[].expression` fields.
+Complete function reference for `.base` formula expressions. Adapted from kepano/obsidian-skills (MIT).
 
 ---
 
-## Property Access
+## Global Functions
 
-| Expression | Returns |
-|---|---|
-| `prop('key')` | Value of frontmatter property `key`; `null` if absent |
-| `prop('file.name')` | Note filename without extension |
-| `prop('file.path')` | Full vault-relative path |
-| `prop('file.ctime')` | Creation datetime |
-| `prop('file.mtime')` | Last-modified datetime |
-| `prop('file.size')` | File size in bytes (number) |
-
----
-
-## Arithmetic
-
-| Expression | Description |
-|---|---|
-| `add(a, b)` | a + b |
-| `subtract(a, b)` | a − b |
-| `multiply(a, b)` | a × b |
-| `divide(a, b)` | a / b (returns null when b = 0) |
-| `mod(a, b)` | a modulo b |
-| `abs(n)` | Absolute value |
-| `floor(n)` | Round down to nearest integer |
-| `ceil(n)` | Round up to nearest integer |
-| `round(n)` | Round to nearest integer |
-| `max(a, b)` | Larger of two numbers |
-| `min(a, b)` | Smaller of two numbers |
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `date()` | `date(string): date` | Parse string to date. Format: `YYYY-MM-DD HH:mm:ss` |
+| `duration()` | `duration(string): duration` | Parse duration string |
+| `now()` | `now(): date` | Current date and time |
+| `today()` | `today(): date` | Current date (time = 00:00:00) |
+| `if()` | `if(condition, trueResult, falseResult?)` | Conditional |
+| `min()` | `min(n1, n2, ...): number` | Smallest number |
+| `max()` | `max(n1, n2, ...): number` | Largest number |
+| `number()` | `number(any): number` | Convert to number |
+| `link()` | `link(path, display?): Link` | Create a link |
+| `list()` | `list(element): List` | Wrap in list if not already |
+| `file()` | `file(path): file` | Get file object |
+| `image()` | `image(path): image` | Create image for rendering |
+| `icon()` | `icon(name): icon` | Lucide icon by name |
+| `html()` | `html(string): html` | Render as HTML |
+| `escapeHTML()` | `escapeHTML(string): string` | Escape HTML characters |
 
 ---
 
-## Date & Time
+## Any Type Functions
 
-All date functions accept `date` / `datetime` property values or `now()`.
-
-| Expression | Description |
-|---|---|
-| `now()` | Current datetime |
-| `today()` | Current date (midnight) |
-| `dateDiff(a, b, unit)` | Difference between two dates in `unit`: `'days'` / `'hours'` / `'minutes'` / `'months'` / `'years'` |
-| `dateAdd(d, n, unit)` | Add n units to date d |
-| `formatDate(d, format)` | Format a date using Moment.js tokens (e.g. `'YYYY-MM-DD'`) |
-| `year(d)` | Extract year (number) |
-| `month(d)` | Extract month 1–12 (number) |
-| `day(d)` | Extract day of month (number) |
-| `weekday(d)` | Day of week 0 (Sun) – 6 (Sat) (number) |
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `isTruthy()` | `any.isTruthy(): boolean` | Coerce to boolean |
+| `isType()` | `any.isType(type): boolean` | Check type |
+| `toString()` | `any.toString(): string` | Convert to string |
 
 ---
 
-## Text
+## Date Functions and Fields
 
-| Expression | Description |
-|---|---|
-| `concat(a, b, ...)` | Concatenate strings |
-| `contains(text, sub)` | True if `text` contains `sub` |
-| `startsWith(text, prefix)` | True if `text` starts with `prefix` |
-| `endsWith(text, suffix)` | True if `text` ends with `suffix` |
-| `lower(text)` | Lowercase |
-| `upper(text)` | Uppercase |
-| `trim(text)` | Strip leading/trailing whitespace |
-| `replace(text, from, to)` | Replace first occurrence of `from` with `to` |
-| `slice(text, start, end)` | Substring (0-indexed, `end` exclusive) |
-| `length(text)` | Character count |
+**Fields:** `date.year`, `date.month`, `date.day`, `date.hour`, `date.minute`, `date.second`, `date.millisecond`
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `date()` | `date.date(): date` | Remove time portion |
+| `format()` | `date.format(string): string` | Format with Moment.js pattern |
+| `time()` | `date.time(): string` | Get time as string |
+| `relative()` | `date.relative(): string` | Human-readable relative time |
+| `isEmpty()` | `date.isEmpty(): boolean` | Always false for dates |
 
 ---
 
-## Logic & Conditionals
+## Duration Type
 
-| Expression | Description |
-|---|---|
-| `if(cond, then, else)` | Return `then` when `cond` is truthy, otherwise `else` |
-| `and(a, b)` | Logical AND |
-| `or(a, b)` | Logical OR |
-| `not(a)` | Logical NOT |
-| `equal(a, b)` | True if a equals b |
-| `gt(a, b)` | a > b |
-| `lt(a, b)` | a < b |
-| `gte(a, b)` | a >= b |
-| `lte(a, b)` | a <= b |
-| `empty(v)` | True if v is null, empty string, or empty array |
+When subtracting two dates the result is a **Duration** type, not a number. Duration has its own fields.
+
+**Duration Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `duration.days` | Number | Total days |
+| `duration.hours` | Number | Total hours |
+| `duration.minutes` | Number | Total minutes |
+| `duration.seconds` | Number | Total seconds |
+| `duration.milliseconds` | Number | Total milliseconds |
+
+**IMPORTANT:** Duration does NOT support `.round()`, `.floor()`, `.ceil()` directly. Access a numeric field first, then apply number functions.
+
+```yaml
+# CORRECT
+"(date(due_date) - today()).days"            # number of days
+"(now() - file.ctime).days.round(0)"        # rounded days
+
+# WRONG
+# "(now() - file.ctime).round(0)"           # Duration has no .round()
+```
 
 ---
 
-## Common Formula Patterns
+## Date Arithmetic
 
-**Days overdue (negative = overdue):**
-```
-dateDiff(now(), prop('due'), 'days')
-```
+```yaml
+# Units: y/year/years, M/month/months, d/day/days,
+#        w/week/weeks, h/hour/hours, m/minute/minutes, s/second/seconds
 
-**Status label with fallback:**
-```
-if(empty(prop('status')), 'Unknown', prop('status'))
-```
-
-**Full display title:**
-```
-concat(prop('file.name'), ' — ', prop('status'))
+"now() + \"1 day\""           # tomorrow
+"today() + \"7d\""            # a week from today
+"now() - file.ctime"          # returns Duration
+"(now() - file.ctime).days"   # days as number
+"now() + (duration('1d') * 2)"
 ```
 
-**Is this week (boolean):**
-```
-and(gte(prop('due'), today()), lte(prop('due'), dateAdd(today(), 7, 'days')))
-```
+---
+
+## String Functions
+
+**Field:** `string.length`
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `contains()` | `string.contains(value): boolean` | Check substring |
+| `containsAll()` | `string.containsAll(...values): boolean` | All substrings present |
+| `containsAny()` | `string.containsAny(...values): boolean` | Any substring present |
+| `startsWith()` | `string.startsWith(query): boolean` | Starts with query |
+| `endsWith()` | `string.endsWith(query): boolean` | Ends with query |
+| `isEmpty()` | `string.isEmpty(): boolean` | Empty or not present |
+| `lower()` | `string.lower(): string` | To lowercase |
+| `title()` | `string.title(): string` | To Title Case |
+| `trim()` | `string.trim(): string` | Remove whitespace |
+| `replace()` | `string.replace(pattern, replacement): string` | Replace pattern |
+| `repeat()` | `string.repeat(count): string` | Repeat string |
+| `reverse()` | `string.reverse(): string` | Reverse string |
+| `slice()` | `string.slice(start, end?): string` | Substring |
+| `split()` | `string.split(separator, n?): list` | Split to list |
+
+---
+
+## Number Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `abs()` | `number.abs(): number` | Absolute value |
+| `ceil()` | `number.ceil(): number` | Round up |
+| `floor()` | `number.floor(): number` | Round down |
+| `round()` | `number.round(digits?): number` | Round to digits |
+| `toFixed()` | `number.toFixed(precision): string` | Fixed-point notation |
+| `isEmpty()` | `number.isEmpty(): boolean` | Not present |
+
+---
+
+## List Functions
+
+**Field:** `list.length`
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `contains()` | `list.contains(value): boolean` | Element exists |
+| `containsAll()` | `list.containsAll(...values): boolean` | All elements exist |
+| `containsAny()` | `list.containsAny(...values): boolean` | Any element exists |
+| `filter()` | `list.filter(expression): list` | Filter by condition (uses `value`, `index`) |
+| `map()` | `list.map(expression): list` | Transform elements (uses `value`, `index`) |
+| `reduce()` | `list.reduce(expression, initial): any` | Reduce to single value (uses `value`, `index`, `acc`) |
+| `flat()` | `list.flat(): list` | Flatten nested lists |
+| `join()` | `list.join(separator): string` | Join to string |
+| `reverse()` | `list.reverse(): list` | Reverse order |
+| `slice()` | `list.slice(start, end?): list` | Sublist |
+| `sort()` | `list.sort(): list` | Sort ascending |
+| `unique()` | `list.unique(): list` | Remove duplicates |
+| `isEmpty()` | `list.isEmpty(): boolean` | No elements |
+
+---
+
+## File Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `asLink()` | `file.asLink(display?): Link` | Convert to link |
+| `hasLink()` | `file.hasLink(otherFile): boolean` | Has link to file |
+| `hasTag()` | `file.hasTag(...tags): boolean` | Has any of the tags |
+| `hasProperty()` | `file.hasProperty(name): boolean` | Has property |
+| `inFolder()` | `file.inFolder(folder): boolean` | In folder or subfolder |
+
+---
+
+## Link Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `asFile()` | `link.asFile(): file` | Get file object |
+| `linksTo()` | `link.linksTo(file): boolean` | Links to file |
+
+---
+
+## Object Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `isEmpty()` | `object.isEmpty(): boolean` | No properties |
+| `keys()` | `object.keys(): list` | List of keys |
+| `values()` | `object.values(): list` | List of values |
+
+---
+
+## Regular Expression Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `matches()` | `regexp.matches(string): boolean` | Test if matches |

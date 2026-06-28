@@ -157,10 +157,15 @@ def test_base_gate_passes_valid_yaml(tmp_path: Path) -> None:
 
 
 def test_canvas_uses_json_gate_not_yaml_gate(tmp_path: Path) -> None:
-    """Valid JSON that is not valid YAML is accepted by validate-json.py."""
-    # JSON with bare strings is not always valid YAML; this ensures routing is correct
-    canvas = tmp_path / "mixed.canvas"
-    canvas.write_text('{"key": null}')
+    """validate-json.py accepts well-formed JSON Canvas content (exit 0).
+
+    The routing-matters direction (a fixture that one gate accepts and the
+    other rejects) is proven by test_base_uses_yaml_gate_not_json_gate below;
+    a JSON-but-not-YAML fixture is impractical since JSON flow syntax also
+    parses as YAML.
+    """
+    canvas = tmp_path / "canvas.canvas"
+    canvas.write_text('{"nodes": [], "edges": []}')
     assert _run_gate(VALIDATE_JSON, canvas).returncode == 0
 
 
@@ -279,12 +284,18 @@ def test_template_mapping_known_type_key_resolved(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_write_always_targets_inbox_path(tmp_path: Path, monkeypatch) -> None:
-    """All write calls through the pipeline must have paths under concepts.inbox."""
-    inbox_prefix = "100 Inbox/"
+def test_write_targets_exact_vault_path_unmodified(tmp_path: Path, monkeypatch) -> None:
+    """kado-write-file.py writes to EXACTLY the --vault path, with no relocation.
+
+    The inbox-only boundary is a skill-level invariant: inbox-author constructs
+    <inbox>/<stem>.<ext> from concepts.inbox (covered by
+    test_inbox_path_resolved_from_config). This test guards the script half of
+    that contract — that kado-write-file does not mangle or redirect the path it
+    is handed, so the composed inbox path is the path actually written.
+    """
+    vault_path = "100 Inbox/artifact.md"
     local = tmp_path / "artifact.md"
     local.write_text("# Content")
-    vault_path = f"{inbox_prefix}artifact.md"
     write_calls: list[str] = []
 
     class FakeClient:
@@ -297,10 +308,9 @@ def test_write_always_targets_inbox_path(tmp_path: Path, monkeypatch) -> None:
 
     rc = _run_kwf(monkeypatch, ["--vault", vault_path, "--local", str(local)], FakeClient)
     assert rc == 0
-    for path in write_calls:
-        assert path.startswith(inbox_prefix), (
-            f"write escaped inbox boundary: {path!r}"
-        )
+    assert write_calls == [vault_path], (
+        f"script must write to the exact path given, got {write_calls!r}"
+    )
 
 
 def test_inbox_path_resolved_from_config(tmp_path: Path) -> None:

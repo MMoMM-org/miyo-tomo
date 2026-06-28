@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Deterministic Safety Scripts (L1 gate)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---

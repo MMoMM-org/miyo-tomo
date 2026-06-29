@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Docs, Attribution, Ops & Integration"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---
@@ -29,7 +29,7 @@ phase: 5
 
 Delivers the documentation, governance, and integration evidence that close the spec.
 
-- [ ] **T5.1 kepano attribution + dependency note (README)** `[activity: docs]`
+- [x] **T5.1 kepano attribution + dependency note (README)** `[activity: docs]`
 
   1. Prime: `[ref: SDD/ADR-8; CON-5]`; kepano MIT license.
   2. Test: README contains a general MIT attribution + dependency note for kepano/obsidian-skills; no
@@ -39,7 +39,7 @@ Delivers the documentation, governance, and integration evidence that close the 
   4. Validate: `rg -l "kepano" tomo/dot_claude/skills` returns nothing (attribution not in runtime).
   5. Success: MIT obligation satisfied `[ref: SDD/ADR-8; Constitution L1/L2 Dependencies]`.
 
-- [ ] **T5.2 Evolution log entry** `[activity: docs]`
+- [x] **T5.2 Evolution log entry** `[activity: docs]`
 
   1. Prime: `[ref: SDD/Directory Map]`; Constitution L2 Operations.
   2. Implement: `evolution/2026-06/companion-mode-p1.md` — what changed (5 skills, rename, 2 scripts,
@@ -47,7 +47,7 @@ Delivers the documentation, governance, and integration evidence that close the 
   3. Validate: entry is chronological + self-contained.
   4. Success: rollout reproducible from the log `[ref: Constitution L2 Operations]`.
 
-- [ ] **T5.3 PRIVACY.md companion paragraph** `[activity: docs]`
+- [x] **T5.3 PRIVACY.md companion paragraph** `[activity: docs]`
 
   1. Prime: Read `PRIVACY.md` "What vault content reaches the LLM".
   2. Implement: add a "Companion mode" paragraph (user-initiated; content read for compilations +
@@ -55,7 +55,7 @@ Delivers the documentation, governance, and integration evidence that close the 
   3. Validate: mirrors the `/inbox` paragraph; no new network surface claimed.
   4. Success: companion vault-read surface documented `[ref: Constitution L1 Privacy note]`.
 
-- [ ] **T5.4 Kokoro design-note handoff** `[activity: docs]`
+- [x] **T5.4 Kokoro design-note handoff** `[activity: docs]`
 
   1. Prime: `[ref: SDD/Building Block View cross-repo note]`; MiYo handoff protocol.
   2. Implement: `_outbox/for-kokoro/2026-06-..._tomo-to-kokoro_companion-mode-write-contract.md` — a

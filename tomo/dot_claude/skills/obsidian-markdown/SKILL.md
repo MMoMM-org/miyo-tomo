@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # Obsidian Markdown
-# version: 0.2.0
+# version: 0.3.0
 
 Reference for Obsidian-Flavored Markdown (OFM) syntax.
 
@@ -53,6 +53,8 @@ Internal links between vault notes. Resolution is by note title (filename withou
 **Stem rules:** the stem is the filename without the `.md` extension. Spaces are allowed (`[[My Note]]`). Path-style links (`[[folder/stem]]`) are accepted; Obsidian resolves them when stems are ambiguous.
 
 **Forbidden characters in stems:** `\ / : * ? " < > |` — links containing these will not resolve. Sanitise external-source filenames before deriving wikilinks.
+
+**Never wrap wikilinks or embeds in backticks or fenced code.** Write `[[stem]]` and `![[stem]]` bare in prose — inside an inline code span or code fence they render as literal text and the link will not resolve.
 
 ## Embeds
 

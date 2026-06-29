@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-28 |
-| **Current Phase** | Ready |
-| **Last Updated** | 2026-06-28 |
+| **Current Phase** | Implemented |
+| **Last Updated** | 2026-06-29 |
 
 ## Documents
 
@@ -36,6 +36,7 @@
 | 2026-06-28 | ADR-9 + fixes folded in | Extract parse-gate → `validate-json.py`; collision → `kado-write-file.py --no-overwrite` (deterministic + unit-tested); Test Strategy added; inbox-author drops format-skill pre-load (auto-load, L2 Perf); PRD/README name `kado-toolkit`→`kado-write-patterns`; PLAN to add evolution-log + PRIVACY.md + Kokoro design-note handoff (L2). |
 | 2026-06-28 | PLAN completed | 5 phases / 18 tasks (TDD). Phase 1 deterministic scripts hard-gate Phases 3-4; Phase 2 format skills parallel; Phase 5 docs/ops/integration incl. L2 tasks (evolution, PRIVACY, Kokoro handoff) + live walk. |
 | 2026-06-28 | Alignment validate → READY TO IMPLEMENT | AC→task + component→task coverage complete; zero drift (all pre-impl file states match SDD). Hygiene fixes folded: `--no-overwrite` exit-3 contract, version-bump checklist (T4.4), AC count corrected to 19. Spec phase → Ready. |
+| 2026-06-29 | Implementation complete | Companion Mode P1 shipped on branch `docs/companion-p1-authoring-skills` (35 commits). Delivered: `validate-json.py` + `validate-yaml.py` parse-gates, `kado-write-file.py --no-overwrite` collision guard; `obsidian-markdown` upgrade + new `obsidian-bases`/`obsidian-canvas`; `kado-write-patterns` write-side helper; `default-doc-writer`→`inbox-author` rename+extend (format dispatch, template mapping, collision). Full suite 1771 pass, ruff clean. Mid-impl ADR-4 correction (`.base` is YAML → added `validate-yaml.py`). Instance synced via update-tomo (versions match). Open follow-up: per-format live walk delegated to user. |
 | 2026-06-28 | ADR-4 corrected: `.base` is YAML, not JSON | During impl (Phase 2/3), kepano source + Obsidian docs confirmed `.base` files contain valid **YAML** (`.canvas` stays JSON per json-canvas spec). Original ADR-4 wrongly gated both with `validate-json.py` (`json.loads`), which would reject every valid `.base`. Resolution (user-approved): add sibling `validate-yaml.py` parse-gate for `.base` (task T1.4, mirrors validate-json.py contract), keep `validate-json.py` for `.canvas`; inbox-author + kado-write-patterns route the gate by extension. SDD ADR-4 + Runtime View updated. |
 
 ## Context

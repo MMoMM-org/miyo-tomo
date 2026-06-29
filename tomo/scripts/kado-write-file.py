@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """kado-write-file.py — Upload a local file to the vault via Kado.
 
 Auto-selects the Kado write operation by target extension:
@@ -34,11 +34,11 @@ Exit codes:
   3 — --no-overwrite: vault path already exists; no write performed.
       stdout: EXISTS:<vault-path>  (T4.2 reads this exact contract — do not change)
 
-Note on --no-overwrite for non-.md paths: the existence check uses
-KadoClient.path_exists(), which internally calls read_frontmatter. That method is
-.md-oriented; results for non-.md extensions (e.g. .base, .canvas) may be
-unreliable. The primary collision target for --no-overwrite is the .md inbox
-artifact path; non-.md collision detection is best-effort only.
+--no-overwrite works for all extensions: KadoClient.path_exists() routes the
+existence probe by extension (.md via read_frontmatter, non-.md via read_file),
+because Kado's frontmatter/note operations reject non-.md paths with
+VALIDATION_ERROR rather than NOT_FOUND. (Fixed after the spec 026 live walk,
+where a .base collision check errored out and the write fell back off-pipeline.)
 """
 from __future__ import annotations
 

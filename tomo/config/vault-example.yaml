@@ -128,6 +128,10 @@ templates:
     yearly: "Yearly Note.md"
     project: "Project.md"
     source: "Source.md"
+    # Optional: template for free-form artifacts Tomo authors into the inbox
+    # itself (overviews, lists, comparisons) that are not a defined note type.
+    # Used by the inbox-author skill; unset → built-in minimal default.
+    # default: "Zettelkasten.md"
   # Optional: custom token overrides applied before standard token resolution
   # custom_tokens:
   #   - token: "my_token"

@@ -34,7 +34,9 @@ only when you run a command such as `/inbox`. During `/inbox`:
 - **Note paths and titles** — appear in the per-item result so links and
   placements can be surfaced for your review.
 
-During **companion mode** skills (e.g. `/write-note`, `/compile`):
+During **companion mode** — when you ask Tomo in conversation to compose or
+compile an artifact (an overview, list, summary, comparison, a Bases view, or a
+Canvas) and write it to your inbox:
 
 - **Note content read for compilations** — when a companion skill gathers
   source notes to synthesise or compile, the bodies of those notes are sent

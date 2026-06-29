@@ -1,4 +1,4 @@
-# version: 0.8.0
+# version: 0.9.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -270,9 +270,22 @@ class KadoClient:
         return results[0]["path"]
 
     def path_exists(self, path: str) -> bool:
-        """Check whether a vault path exists."""
+        """Check whether a vault path exists.
+
+        Routes the existence probe by extension: ``.md`` notes via
+        :meth:`read_frontmatter` (the cheap metadata read), non-``.md`` files
+        (``.base``, ``.canvas``, ``.json`` …) via :meth:`read_file`. This split
+        is required because Kado's ``operation=frontmatter``/``note`` reject a
+        non-``.md`` path with VALIDATION_ERROR — not NOT_FOUND — so a uniform
+        ``.md`` probe makes the check error out (rather than return ``False``)
+        for every non-markdown path. Returns ``False`` only on a genuine
+        NOT_FOUND; any other Kado error propagates to the caller.
+        """
         try:
-            self.read_frontmatter(path)
+            if path.lower().endswith(".md"):
+                self.read_frontmatter(path)
+            else:
+                self.read_file(path)
             return True
         except KadoNotFoundError:
             return False

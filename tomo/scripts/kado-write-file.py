@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.2
 """kado-write-file.py — Upload a local file to the vault via Kado.
 
 Auto-selects the Kado write operation by target extension:
@@ -22,10 +22,23 @@ Usage:
   # Pipe stdin instead of reading a local path:
   cat foo.json | python3 scripts/kado-write-file.py --vault "100 Inbox/foo.json"
 
+  # Refuse the write if the vault path already exists:
+  python3 scripts/kado-write-file.py --no-overwrite \\
+    --local tomo-tmp/rendered/artifact.base \\
+    --vault "100 Inbox/artifact.base"
+
 Exit codes:
   0 — file written successfully
   1 — Kado returned an error
   2 — I/O or argument error
+  3 — --no-overwrite: vault path already exists; no write performed.
+      stdout: EXISTS:<vault-path>  (T4.2 reads this exact contract — do not change)
+
+--no-overwrite works for all extensions: KadoClient.path_exists() routes the
+existence probe by extension (.md via read_frontmatter, non-.md via read_file),
+because Kado's frontmatter/note operations reject non-.md paths with
+VALIDATION_ERROR rather than NOT_FOUND. (Fixed after the spec 026 live walk,
+where a .base collision check errored out and the write fell back off-pipeline.)
 """
 from __future__ import annotations
 
@@ -51,6 +64,14 @@ def main() -> int:
         "--vault", required=True,
         help="Vault-relative destination path, e.g. \"100 Inbox/2026-04-21_1200_instructions.json\".",
     )
+    p.add_argument(
+        "--no-overwrite",
+        action="store_true",
+        help=(
+            "Refuse the write if the vault path already exists. "
+            "Signals collision via exit code 3 and prints EXISTS:<vault-path> on stdout."
+        ),
+    )
     args = p.parse_args()
 
     try:
@@ -73,6 +94,17 @@ def main() -> int:
     except KadoError as exc:
         print(f"error: cannot connect to Kado: {exc}", file=sys.stderr)
         return 1
+
+    # Collision check: refuse write if vault path already exists.
+    if args.no_overwrite:
+        try:
+            exists = client.path_exists(args.vault)
+        except KadoError as exc:
+            print(f"error: cannot check vault path: {exc}", file=sys.stderr)
+            return 1
+        if exists:
+            print(f"EXISTS:{args.vault}")
+            return 3
 
     # Markdown → operation="note"; anything else → operation="file" (base64).
     is_markdown = args.vault.lower().endswith(".md")

@@ -34,6 +34,21 @@ only when you run a command such as `/inbox`. During `/inbox`:
 - **Note paths and titles** — appear in the per-item result so links and
   placements can be surfaced for your review.
 
+During **companion mode** — when you ask Tomo in conversation to compose or
+compile an artifact (an overview, list, summary, comparison, a Bases view, or a
+Canvas) and write it to your inbox:
+
+- **Note content read for compilations** — when a companion skill gathers
+  source notes to synthesise or compile, the bodies of those notes are sent
+  to the model. Only notes you explicitly reference or that fall within the
+  scope you confirm are included.
+- **Template fetches** — when a companion skill retrieves a note template
+  from the vault to fill or extend, that template's content reaches the
+  model. Templates contain structural markup, not personal data.
+- **No new network surface** — companion mode uses the same two surfaces as
+  every other Tomo command: Kado on loopback and the Anthropic API. No
+  additional endpoints are contacted.
+
 This is the intended design: you trigger the run, and the model needs your note
 content and the target MOCs' structure to propose accurate placements. Tomo
 proposes; you confirm before anything is applied.

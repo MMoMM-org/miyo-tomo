@@ -212,6 +212,6 @@ MIT
 
 ### Acknowledgements
 
-Tomo's format-knowledge skills (`obsidian-canvas`, `obsidian-bases`) draw on format conventions
-documented in [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) (MIT).
-Used as reference material; no source code copied.
+Tomo's format-knowledge skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-canvas`) draw on
+format conventions documented in [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills)
+(MIT). Used as reference material; no source code copied.

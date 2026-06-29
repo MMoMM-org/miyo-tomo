@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_kado_client_retry.py — Unit tests for HTTP retry-with-backoff in KadoClient._call_tool.
 
 Covers F-34 rate-limit resilience: _call_tool retries on HTTP 429/503 using
@@ -303,3 +303,51 @@ def test_retry_through_public_read_note():
 
     assert result == note_payload
     assert mock_sleep.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# note_exists — partial-read existence probe (issue #61)
+# ---------------------------------------------------------------------------
+
+
+def test_note_exists_sends_firstxchars_limit_one():
+    """The probe must request a 1-char partial read, not a full body."""
+    client = _make_client()
+    with patch.object(client, "_call_tool", return_value={"content": "x"}) as mock_call:
+        assert client.note_exists("Calendar/2026-04-29.md") is True
+
+    mock_call.assert_called_once_with(
+        "kado-read",
+        {
+            "operation": "note",
+            "path": "Calendar/2026-04-29.md",
+            "mode": "firstXChars",
+            "limit": 1,
+        },
+    )
+
+
+def test_note_exists_false_on_not_found():
+    """A definitive NOT_FOUND maps to False — the absence signal."""
+    client = _make_client()
+    with patch.object(client, "_call_tool", side_effect=KadoNotFoundError("missing")):
+        assert client.note_exists("Calendar/missing.md") is False
+
+
+def test_note_exists_propagates_other_errors():
+    """Transport/validation errors propagate — the caller owns fail-open policy."""
+    client = _make_client()
+    with patch.object(client, "_call_tool", side_effect=KadoError("boom")):
+        with pytest.raises(KadoError):
+            client.note_exists("Calendar/2026-04-29.md")
+
+
+def test_plain_read_note_omits_partial_params():
+    """A full read must not leak mode/limit into the payload (backward compat)."""
+    client = _make_client()
+    with patch.object(client, "_call_tool", return_value={"content": "body"}) as mock_call:
+        client.read_note("foo.md")
+
+    mock_call.assert_called_once_with(
+        "kado-read", {"operation": "note", "path": "foo.md"}
+    )

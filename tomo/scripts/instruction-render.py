@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.35.0
+# version: 0.35.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -40,7 +40,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block  # noqa: E402
-from lib.kado_client import KadoClient, KadoError, KadoNotFoundError  # noqa: E402
+from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 import lib.moc_structure as moc_structure  # noqa: E402
 from lib.supporting_items import (  # noqa: E402
@@ -2298,9 +2298,8 @@ def filter_missing_daily_notes(
             return exists_cache[path]
         ok = True  # fail-open default
         try:
-            client.read_note(path)
-        except KadoNotFoundError:
-            ok = False
+            # Cheap existence probe (1-char partial read) — body unused.
+            ok = client.note_exists(path)
         except Exception:  # noqa: BLE001 — transient/other error: keep the action
             ok = True
         exists_cache[path] = ok

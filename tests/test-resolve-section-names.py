@@ -52,8 +52,9 @@ import moc_structure  # noqa: E402 — after sys.path setup
 # Use the SAME KadoNotFoundError class instruction-render imports
 # (`lib.kado_client`), not `kado_client` — they are distinct module objects
 # under the test's sys.path, so a bare `from kado_client import ...` would be a
-# different class and `except KadoNotFoundError` in the module wouldn't catch it.
-KadoNotFoundError = ir.KadoNotFoundError
+# different class and the StubClient's `except KadoNotFoundError` wouldn't catch
+# what its own read_note raises.
+from lib.kado_client import KadoNotFoundError  # noqa: E402
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -129,6 +130,14 @@ class StubClient:
         if path in self.notes:
             return {"content": self.notes[path]}
         raise KadoNotFoundError(f"stub: not found: {path}")
+
+    def note_exists(self, path: str) -> bool:
+        # Mirrors the real client: NOT_FOUND → False, other errors propagate.
+        try:
+            self.read_note(path)
+        except KadoNotFoundError:
+            return False
+        return True
 
     def search_by_name(self, stem: str) -> list[dict]:
         self.search_calls.append(stem)

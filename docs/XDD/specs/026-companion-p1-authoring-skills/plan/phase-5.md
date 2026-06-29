@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Docs, Attribution, Ops & Integration"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -64,7 +64,13 @@ Delivers the documentation, governance, and integration evidence that close the 
   3. Validate: handoff frontmatter correct (`from: tomo`, `to: kokoro`, status `pending`).
   4. Success: L2 Architecture satisfied `[ref: Constitution L2 Architecture]`.
 
-- [ ] **T5.5 Integration: sync, suite, live walk** `[activity: validate]`
+- [x] **T5.5 Integration: sync, suite, live walk** `[activity: validate]`
+
+  *Done (deterministic half):* full suite 1771 pass + ruff clean; `update-tomo.sh --yolo` shipped all
+  6 created / 4 updated / 1 retired files; instance copies version-match the repo; `default-doc-writer`
+  retired from the instance. *User-delegated:* the per-format `.md`/`.base`/`.canvas` Compose-to-Inbox
+  live walk against the live vault (needs the running container + Kado) — to be run by the user in their
+  Tomo session (decision 2026-06-29). PRD live-walk acceptance tracked as the only open follow-up.
 
   1. Prime: version-gated sync caveat `[ref: SDD/Deployment View]`.
   2. Test: full suite green under `./venv/bin/python -m pytest tests/`; ruff clean.

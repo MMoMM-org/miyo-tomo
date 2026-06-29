@@ -87,7 +87,7 @@ Each phase is a separate file. Tasks follow red-green-refactor: **Prime → Test
 - [x] [Phase 2: Format-Knowledge Skills](phase-2.md)
 - [x] [Phase 3: Write-Side Helper Skill](phase-3.md)
 - [x] [Phase 4: inbox-author (rename + extend)](phase-4.md)
-- [ ] [Phase 5: Docs, Attribution, Ops & Integration](phase-5.md)
+- [x] [Phase 5: Docs, Attribution, Ops & Integration](phase-5.md)
 
 **Dependency order:** Phase 1 gates Phases 3 & 4. Phase 2 is independent (parallel with 1/3) but must
 exist before Phase 4 live validation (auto-load). Phase 3 precedes Phase 4 (inbox-author pre-loads

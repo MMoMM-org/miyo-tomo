@@ -1,6 +1,11 @@
 {
   "model": "sonnet",
   "outputStyle": "tomo-companion",
+  "companyAnnouncements": [
+    "Run /inbox to triage your Obsidian inbox — Tomo proposes where each note belongs, you approve.",
+    "Stuck or curious? Run /tomo-help for context-aware guidance on any Tomo workflow.",
+    "Got an under-organised topic? /moc-propose drafts a Map-of-Content into your inbox for review."
+  ],
   "permissions": {
     "allow": [
       "mcp__kado__*",

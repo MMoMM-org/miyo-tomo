@@ -87,7 +87,7 @@ The install script walks you through vault path, framework profile selection, co
 - `--yolo` — skip all permission prompts (trusted use only)
 - `--bash` — launch a bash shell instead of Claude Code (debugging)
 
-OAuth re-auth: run `claude login` inside the container — the launcher always exposes port 10000 for the OAuth callback.
+OAuth re-auth: run `claude login` inside the container. Port 10000 (the OAuth callback) is **not** exposed by default — normal operation runs off the mounted credentials. Pass `--auth-port` (or set `"exposeAuthPort": true` in `tomo-install.json`) to expose it for the in-container login.
 
 ## Prerequisites
 

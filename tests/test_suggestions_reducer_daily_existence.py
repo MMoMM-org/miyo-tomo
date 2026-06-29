@@ -76,7 +76,11 @@ def test_existing_daily_note_renders_plain_heading() -> None:
 # ── 2. Existence check (fail-open) ────────────────────────────────────────────
 
 class _FakeKado:
-    """Minimal KadoClient stand-in: read_note raises the configured error."""
+    """Minimal KadoClient stand-in: read_note raises the configured error.
+
+    note_exists mirrors the real client — translates KadoNotFoundError to
+    False and lets any other error propagate to the caller's fail-open branch.
+    """
 
     def __init__(self, exc: Exception | None) -> None:
         self._exc = exc
@@ -87,6 +91,13 @@ class _FakeKado:
         if self._exc is not None:
             raise self._exc
         return {"path": path}
+
+    def note_exists(self, path: str) -> bool:
+        try:
+            self.read_note(path)
+        except KadoNotFoundError:
+            return False
+        return True
 
 
 def _groups() -> tuple[dict, dict]:

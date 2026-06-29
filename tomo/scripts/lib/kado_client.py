@@ -1,4 +1,4 @@
-# version: 0.9.0
+# version: 0.10.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -118,6 +118,29 @@ class KadoClient:
         dict with keys: content (str), created (int), modified (int), size (int)
         """
         return self._call_read("note", path)
+
+    def note_exists(self, path: str) -> bool:
+        """Cheap existence probe for a note via a 1-char partial read.
+
+        Issues a ``kado-read operation=note`` with ``mode=firstXChars,
+        limit=1`` so Kado returns at most one code point instead of the whole
+        body — the response is discarded; only success vs. ``NOT_FOUND``
+        matters. Kado still raises ``KadoNotFoundError`` for an absent note
+        under a partial read (spec 007), so the absence signal is unchanged.
+
+        The caller is responsible for ``.md`` normalisation and for any
+        fail-open policy on transport/validation errors: a definitive absence
+        returns ``False``; any other Kado error propagates.
+
+        Returns
+        -------
+        bool — ``True`` if the note exists, ``False`` on ``KadoNotFoundError``.
+        """
+        try:
+            self._call_read("note", path, mode="firstXChars", limit=1)
+        except KadoNotFoundError:
+            return False
+        return True
 
     def read_file(self, path: str) -> dict:
         """Read a non-markdown file (audio, PDF, image, JSON, …) as bytes.
@@ -499,9 +522,20 @@ class KadoClient:
 
     # ── Internal helpers ───────────────────────────────────────────────────────
 
-    def _call_read(self, operation: str, path: str) -> dict:
-        """Call kado-read and return the parsed result dict."""
+    def _call_read(
+        self, operation: str, path: str, *, mode: str = None, limit: int = None
+    ) -> dict:
+        """Call kado-read and return the parsed result dict.
+
+        ``mode``/``limit`` drive Kado's partial-read modes (spec 007); both are
+        omitted from the payload when ``None`` so a plain read is byte-for-byte
+        the legacy full read.
+        """
         args = {"operation": operation, "path": path}
+        if mode is not None:
+            args["mode"] = mode
+        if limit is not None:
+            args["limit"] = limit
         return self._call_tool("kado-read", args)
 
     def _search_all(

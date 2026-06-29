@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.20.0
+# version: 1.20.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1201,9 +1201,8 @@ def annotate_daily_note_existence(
         if read_path not in cache:
             ok = True  # fail-open default
             try:
-                client.read_note(read_path)
-            except KadoNotFoundError:
-                ok = False
+                # Cheap existence probe (1-char partial read) — body unused.
+                ok = client.note_exists(read_path)
             except Exception:  # noqa: BLE001 — transient/other error: keep exists=True
                 ok = True
             cache[read_path] = ok

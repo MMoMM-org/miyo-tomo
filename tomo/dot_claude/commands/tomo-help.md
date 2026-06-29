@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.12
+# version: 0.2.13
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -212,8 +212,8 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
 
 - **auth / oauth / login / credentials expired / .credentials.json missing** →
   - **Inside the container**: run `claude login` and complete the browser flow
-  - Host port 10000 (the OAuth callback) is exposed automatically on every launch — no flag needed
-  - To NOT expose it (e.g. host-port collision when running multiple instances): host-side `bash begin-tomo.sh --no-auth-port`, or set `"exposeAuthPort": false` in `tomo-install.json`
+  - Host port 10000 (the OAuth callback) is NOT exposed by default — normal operation runs off the mounted credentials
+  - To expose it for the in-container login: host-side `bash begin-tomo.sh --auth-port`, or set `"exposeAuthPort": true` in `tomo-install.json`
   - No cleanup or re-install needed; your instance state survives
 
 - **first run / setup incomplete / nothing happens / don't know where to start** →

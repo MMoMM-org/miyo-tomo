@@ -326,17 +326,19 @@ class TestTemplateStructure:
         )
 
     def test_auth_port_flag_and_config_present(self):
-        """--no-auth-port flag, exposeAuthPort config read, and conditional
-        AUTH_FLAGS must all be present in the template."""
+        """--auth-port opt-in, --no-auth-port alias, exposeAuthPort config read,
+        and conditional AUTH_FLAGS must all be present in the template."""
         content = TEMPLATE.read_text(encoding="utf-8")
+        assert "--auth-port)" in content, "--auth-port opt-in flag case missing"
         assert "--no-auth-port)" in content, "--no-auth-port flag case missing"
         assert "exposeAuthPort" in content, "exposeAuthPort config read missing"
         assert "AUTH_FLAGS=()" in content, "conditional empty AUTH_FLAGS missing"
 
     def test_auth_port_does_not_use_jq_alternative_operator(self):
         """REGRESSION: jq's `//` returns the right side when the left is null OR
-        false, so `.exposeAuthPort // true` mis-reads an explicit `false` as
-        `true` and the toggle silently never disables the port."""
+        false, so a `//` alternative on the boolean exposeAuthPort mis-reads
+        values; the template must read the raw value and gate on an explicit
+        "true" (the port is opt-in, not exposed by default)."""
         content = TEMPLATE.read_text(encoding="utf-8")
         # Target the jq invocation specifically (not the explanatory comment,
         # which deliberately spells out the anti-pattern).
@@ -375,8 +377,9 @@ class TestTemplateStructure:
 def _run_auth_port_block(tmp_path: Path, config_json: str | None) -> str:
     """Extract the real exposeAuthPort config block from the template and run it.
 
-    Starts from EXPOSE_AUTH_PORT=true / AUTH_PORT_CLI_SET=false (no CLI flag) and
-    echoes the resulting EXPOSE_AUTH_PORT. config_json=None omits the config file.
+    Starts from EXPOSE_AUTH_PORT=false / AUTH_PORT_CLI_SET=false (no CLI flag) —
+    mirroring the new default (port not exposed unless opted in) — and echoes the
+    resulting EXPOSE_AUTH_PORT. config_json=None omits the config file.
     """
     content = TEMPLATE.read_text(encoding="utf-8")
     start = content.index("# ── Auth-port exposure from tomo-install.json")
@@ -390,7 +393,7 @@ def _run_auth_port_block(tmp_path: Path, config_json: str | None) -> str:
 
     script = (
         "set -e\n"
-        "EXPOSE_AUTH_PORT=true\n"
+        "EXPOSE_AUTH_PORT=false\n"
         "AUTH_PORT_CLI_SET=false\n"
         f'CONFIG_FILE="{config_file}"\n'
         f"{block}\n"
@@ -405,18 +408,18 @@ def _run_auth_port_block(tmp_path: Path, config_json: str | None) -> str:
 
 
 class TestAuthPortToggle:
-    def test_config_absent_field_keeps_port_exposed(self, tmp_path):
-        """No exposeAuthPort field → default true (port exposed)."""
-        assert _run_auth_port_block(tmp_path, '{"defaultMode":"default"}') == "true"
+    def test_config_absent_field_keeps_port_unexposed(self, tmp_path):
+        """No exposeAuthPort field → default false (port not exposed)."""
+        assert _run_auth_port_block(tmp_path, '{"defaultMode":"default"}') == "false"
 
-    def test_config_false_disables_port(self, tmp_path):
-        """exposeAuthPort:false → EXPOSE_AUTH_PORT=false (regression guard for jq `//`)."""
+    def test_config_false_keeps_port_unexposed(self, tmp_path):
+        """exposeAuthPort:false → EXPOSE_AUTH_PORT=false (matches the default)."""
         assert _run_auth_port_block(tmp_path, '{"exposeAuthPort":false}') == "false"
 
-    def test_config_true_keeps_port_exposed(self, tmp_path):
-        """exposeAuthPort:true → stays true (port exposed)."""
+    def test_config_true_exposes_port(self, tmp_path):
+        """exposeAuthPort:true → opt-in exposes the port (regression guard for jq `//`)."""
         assert _run_auth_port_block(tmp_path, '{"exposeAuthPort":true}') == "true"
 
-    def test_no_config_file_keeps_port_exposed(self, tmp_path):
-        """Missing config file → default true (port exposed)."""
-        assert _run_auth_port_block(tmp_path, None) == "true"
+    def test_no_config_file_keeps_port_unexposed(self, tmp_path):
+        """Missing config file → default false (port not exposed)."""
+        assert _run_auth_port_block(tmp_path, None) == "false"

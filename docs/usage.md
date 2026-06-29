@@ -219,7 +219,7 @@ Run from your host shell. Default behaviour (no flag) is a standard interactive 
 
 You can set a persistent default mode in `tomo-install.json`'s `defaultMode` field — values: `default`, `auto`, `yolo`, `bash`. The CLI flag still wins for that invocation.
 
-OAuth re-auth doesn't have a dedicated launcher flag. When your credentials expire, run `claude login` inside the container (the launcher always exposes port 10000 for the OAuth callback).
+OAuth re-auth: when your credentials expire, run `claude login` inside the container. Port 10000 (the OAuth callback) is not exposed by default — normal operation runs off the mounted credentials. Pass `--auth-port` for a single launch, or set `"exposeAuthPort": true` in `tomo-install.json` persistently, so the in-container login can complete.
 
 ### Slash commands inside the session
 

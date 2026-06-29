@@ -120,7 +120,7 @@ bash ~/MiYo/Tomo/<name>/begin-tomo.sh --help          # show all options
 
 The check is non-fatal: if the source repo or version info can't be read, it is skipped silently and never blocks launch.
 
-**Re-auth**: When your Claude Code credentials expire or you want to switch accounts, run `claude login` inside the container. The launcher always exposes port 10000 for the OAuth callback, so the in-container login can complete without restarting Tomo.
+**Re-auth**: When your Claude Code credentials expire or you want to switch accounts, run `claude login` inside the container. Port 10000 (the OAuth callback) is not exposed by default — normal operation runs off the mounted credentials. Expose it for the in-container login by passing `--auth-port` for a single launch, or set `"exposeAuthPort": true` in `tomo-install.json` to make it persistent; the login then completes without restarting Tomo.
 
 **Regenerating**: The launcher is regenerated every time you run `install-tomo.sh` or `update-tomo.sh` for that instance — re-run either if paths change.
 

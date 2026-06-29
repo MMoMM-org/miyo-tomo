@@ -68,9 +68,9 @@ Delivers the documentation, governance, and integration evidence that close the 
 
   *Done (deterministic half):* full suite 1771 pass + ruff clean; `update-tomo.sh --yolo` shipped all
   6 created / 4 updated / 1 retired files; instance copies version-match the repo; `default-doc-writer`
-  retired from the instance. *User-delegated:* the per-format `.md`/`.base`/`.canvas` Compose-to-Inbox
-  live walk against the live vault (needs the running container + Kado) — to be run by the user in their
-  Tomo session (decision 2026-06-29). PRD live-walk acceptance tracked as the only open follow-up.
+  retired from the instance. *Live walk (2026-06-29):* per-format `.md`/`.base`/`.canvas`
+  Compose-to-Inbox walk run by the user — **all green** after the `path_exists` extension-routing fix
+  (the `.base` walk first surfaced that bug; re-walked clean post-fix). All 22 PRD ACs demonstrably met.
 
   1. Prime: version-gated sync caveat `[ref: SDD/Deployment View]`.
   2. Test: full suite green under `./venv/bin/python -m pytest tests/`; ruff clean.

@@ -215,3 +215,7 @@ MIT
 Tomo's format-knowledge skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-canvas`) draw on
 format conventions documented in [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills)
 (MIT). Used as reference material; no source code copied.
+
+The `obsidian-dataview` skill draws on the official
+[blacksmithgu/obsidian-dataview](https://github.com/blacksmithgu/obsidian-dataview) documentation
+(MIT). Used as reference material; text is original, no source copied.

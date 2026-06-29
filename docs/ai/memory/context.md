@@ -1,29 +1,18 @@
 # Context — Tomo
-<!-- Current sprint focus, active work, known blockers. Updated: 2026-05-07 -->
+<!-- Current sprint focus, active work, known blockers. Updated: 2026-06-29 -->
 <!-- This file is short-lived — prune entries older than 2 weeks via /memory-cleanup -->
 
 ## Open tasks from session 2026-05-01
 
 > **Migrated to GitHub 2026-06-03:** the operational/perf items below now live as GitHub issues — #9 → epic #18, #16 → epic #19, Pass-2/Pass-1 token work → epic #24, F-32 → #40. The verified mapping is in `docs/XDD/backlog.md`. Entries kept here for session-reset continuity; GitHub is the source of truth for status.
+>
+> **Cleanup 2026-06-29:** resolved/done items (#9/#11/#12/#13/#16/#18/#19) removed — detailed bug-fix learnings archived to `archive/2026-06/context.md`, trivial done-markers pruned.
 
 Persisted here so they survive session resets. Move to backlog.md when long-term, mark resolved when done.
-
-### Operational follow-ups (do soon)
-
-- ~~**#11 Origin/main pushen**~~ ✅ Done — `main` is in sync with `origin/main` as of 2026-05-07.
-- ~~**#12 Hashi response handoffs archivieren**~~ ✅ Done — both 2026-04-30 hashi response items are in `_archive/outbox/2026-04/`.
-- ~~**#13 Memory: pending learnings**~~ ✅ Done 2026-05-07 — (a)/(b) → `general.md`, (c)/(e)/(f) already in `troubleshooting.md`, (d) tracked below.
 
 ### In-flight cost / model investigations
 
 - **F-32 parent-model sonnet pin verification** — `settings.json` `model:` field controls the parent /inbox session's model (parent-model inheritance). Last unpinned Pass-1 cost was ~$26 on opus main thread, ~79% of total Pass-1 cost despite only 30% of messages. Hypothesis: pinning sonnet at the parent drops main-thread cost to ~$7 with no quality regression on orchestration phases (A/A5/C are prompt-only). **Pending verification:** next /inbox live run with the sonnet pin active; record main-thread token count and cost. Touch points: `tomo/dot_claude/settings.json` `model:` field, F-32 in `backlog.md`.
-
-### Technische Bug-Fixes & Verifikation
-
-- **#9 Analyst: Audio-Klassifikation post-transcription** — **✅ Resolved 2026-06-03 → #33.** Die `asset`-Fehlklassifikation ist obsolet: Audios werden vor dem Dispatch herauspartitioniert (`inbox-triage.py:183`), der Analyst sieht sie nie, voice-transcriber löscht nicht. Der gültige Rest (Audio gehört zum löschbaren *source*-Set, ausgeführt von Hashi — NICHT Tomo) wandert ins Source-Model von #33. Original-Notiz: Audios werden nach Transcription nicht mehr gebraucht (User-Feedback 2026-05-01). Aktuell klassifiziert Analyst sie als `template:"asset"` mit destination `Atlas/290 Assets/295 Attachments/`, was suggeriert sie würden dorthin verschoben. Tatsächlich emittiert Pass 2 paired `delete_source` → Audio gelöscht. UI in suggestions.md verwirrend (zeigt destination die nie genutzt wird). Klassifikation sollte sein: (a) Skip + delete_source wenn transcription erfolgreich, oder (b) "delete after transcription" als expliziter Action-Type.
-- **#16 Suggestions.md Checkbox-Layout review** — **✅ Folded into #33 2026-06-03.** Root cause identifiziert: `origin` und `source` sind zwei Namen für dasselbe Konzept, und bei Voice-Items gibt es 3 Dateien (m4a / transcript=source / note). Lösung im #33-Source-Model: Terminologie auf "source" vereinheitlichen, source = {m4a + transcript}, ein "Delete source" entfernt beide via Instruction→Hashi. Original-Notiz: User-Feedback 2026-05-01, Audio+Transcript-Pairs (S02/S03/S04) UI verwirrend.
-- ~~**#18 Voice-Transcript Date-Field: `recorded:` statt `updated:`**~~ ✅ Done (commit `f6b264b`, already on main 2026-05-07). Fix Option 1 + 2 both shipped: `voice_render.py` v0.5.0 emits `recorded: <iso8601>` parsed from filename timestamps (`__YYYY-MM-DD HH:MM:SS` pattern); `inbox-analyst.md` Step 8 explicitly prefers event-date keys (`recorded`, `Recorded`, `created`, `Created`, `date`, `Date`, `event_date`, `EventDate`, `captured`, `Captured`) and ignores maintenance keys (`updated`, `Updated`, `modified`, `Modified`, `last_modified`, `LastModified`, `lastmod`). Verified via `lib/voice_render.py:_extract_recorded_iso` + `inbox-analyst.md:200-211` 2026-05-07.
-- **#19 Audio-Worthiness-Gap: lange Transkripte verlieren Atomic-Note** — **✅ Resolved 2026-06-12 (F-41 / spec 016 shipped + live-validated).** Hälfte (a) — Worthiness gegen Full-Content — via `f6b264b`; Hälfte (c) Multi-Topic-Detection via F-41 (analyst Step 7.5 de-biased two-pass, Sonnet v0.17.0). **Live-Validation 2026-06-12:** das exakte Memo unten splittet jetzt korrekt — PKM-Gedanke → 1 `create_atomic_note`, Physio/Uro-Termine → daily-log (`log_entry`). Die befürchtete "verlorene" Atomic-Note ist da. WICHTIG: "≥2 Threads → ≥2 Atomics" war eine Fehlannahme — Termine gehören korrekt ins Tageslog, nicht als Atomic; das Memo hat *eine* evergreen-würdige Idee, also ist 1 Atomic richtig (enumeration≠emission, siehe decisions.md 2026-06-12). Original-Notiz: User-Feedback 2026-05-01. **Konkretes Symptom (gleiches Memo wie #18):** 183-Sek-Audio (~1500+ chars Transkript) mit zwei substantiellen Threads — (i) Medizin (Physio + Uro-Termin), (ii) Tomo/PKM-Gedanken (Cloud-Code, Kontextgröße, Max-Plan). Analyst emittierte nur `update_daily` (fleeting log), kein `create_atomic_note`. Die PKM-Gedanken wären atomic-note-würdig gewesen, gehen verloren. **Ursache:** Analyst verdichtet das Transkript zu einem ~350-char Summary und testet das gegen die Worthiness-Schwelle (`reasoning` < 500 chars in result.json) → fleeting log entry only. Worthiness-Scoring läuft am Summary, nicht am Original-Transkript. **Fix-Optionen:** (a) Worthiness gegen Original-Transkript-Länge prüfen, nicht gegen Summary; (b) Audio-Transkripte explizit immer `create_atomic_note` (bypass worthiness) wenn `source_type=voice-transcript`; (c) **Multi-Topic-Detection** — wenn ein Item mehrere distinct concepts hat, mehrere Aktionen emittieren (Medizin → daily-log, PKM-Gedanken → atomic-note). **Workaround heute:** Force Atomic Note Checkbox in suggestions.md ankreuzen (XDD 012). **Empfehlung:** (a) + (c) zusammen — Worthiness am Originaltranskript + Multi-Topic-Splitting. Touch points: `inbox-analyst.md` Step 7 + Worthiness-Gate-Logik + Multi-Topic-Branch in Step 8.
 
 ### Performance / Architektur (eigene Sessions)
 

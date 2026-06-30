@@ -21,7 +21,7 @@ Covers:
           values for those types are populated upstream, not here).
 
   2. _build_delete_source_actions third source (post-2026-04-30 contract):
-       a. Default-pair: confirmed item with non-null origin_inbox_item AND
+       a. Default-pair: confirmed item with non-null source_inbox_item AND
           keep_source=False → paired delete_source emitted.
        b. Keep-origin: confirmed item with keep_source=True → no paired
           delete_source emitted for that origin.
@@ -406,9 +406,9 @@ def test_paired_delete_default_emits_for_each_origin():
     ]
     move_notes = [
         {"id": "I01", "action": "move_note",
-         "origin_inbox_item": "100 Inbox/Asahikawa.md"},
+         "source_inbox_item": "100 Inbox/Asahikawa.md"},
         {"id": "I02", "action": "move_note",
-         "origin_inbox_item": "100 Inbox/Furano.md"},
+         "source_inbox_item": "100 Inbox/Furano.md"},
     ]
     counter = [0]
     out = ir._build_delete_source_actions(
@@ -445,9 +445,9 @@ def test_keep_source_suppresses_paired_delete():
     ]
     move_notes = [
         {"id": "I01", "action": "move_note",
-         "origin_inbox_item": "100 Inbox/Asahikawa.md"},
+         "source_inbox_item": "100 Inbox/Asahikawa.md"},
         {"id": "I02", "action": "move_note",
-         "origin_inbox_item": "100 Inbox/Furano.md"},
+         "source_inbox_item": "100 Inbox/Furano.md"},
     ]
     counter = [0]
     out = ir._build_delete_source_actions(
@@ -496,20 +496,20 @@ def test_skipped_delete_source_still_works():
     print("[PASS] explicit Delete-source on skipped items still emits")
 
 
-def test_audio_peer_is_not_paired_deleted_via_origin():
+def test_audio_peer_is_not_paired_deleted_via_source():
     """Audio + transcript peer pairs are independent — peer files do not
-    appear as origin_inbox_item on move_note, so they don't get paired-
+    appear as source_inbox_item on move_note, so they don't get paired-
     deleted via the third source. This guards the 2026-04-30 peer-files
     contract from regressing."""
     confirmed = [
         {"id": "S01", "source_path": "Memo.m4a.md", "approved": True,
          "keep_source": False},
     ]
-    # The transcript's move_note has origin_inbox_item pointing back at
+    # The transcript's move_note has source_inbox_item pointing back at
     # the transcript markdown — NOT at the audio peer .m4a file.
     move_notes = [
         {"id": "I01", "action": "move_note",
-         "origin_inbox_item": "100 Inbox/Memo.m4a.md"},
+         "source_inbox_item": "100 Inbox/Memo.m4a.md"},
     ]
     counter = [0]
     out = ir._build_delete_source_actions(
@@ -749,7 +749,7 @@ def test_before_multiline_validates_against_schema():
         (REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json").read_text()
     )
     doc = {
-        "schema_version": "1",
+        "schema_version": "2",
         "type": "tomo-instructions",
         "generated": "2026-06-13T00:00:00Z",
         "profile": "miyo",
@@ -1115,7 +1115,7 @@ def test_honored_anchor_schema_compliance():
 
     # The full instruction document must pass jsonschema validation.
     doc = {
-        "schema_version": "1",
+        "schema_version": "2",
         "type": "tomo-instructions",
         "generated": "2026-06-15T00:00:00Z",
         "profile": "miyo",

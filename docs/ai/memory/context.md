@@ -1,113 +1,17 @@
 # Context — Tomo
-<!-- Current sprint focus, active work, known blockers. Updated: 2026-06-29 -->
+<!-- Current sprint focus, active work, known blockers. Updated: 2026-06-30 -->
 <!-- This file is short-lived — prune entries older than 2 weeks via /memory-cleanup -->
 
-## Open tasks from session 2026-05-01
+## Status (2026-06-30)
 
-> **Migrated to GitHub 2026-06-03:** the operational/perf items below now live as GitHub issues — #9 → epic #18, #16 → epic #19, Pass-2/Pass-1 token work → epic #24, F-32 → #40. The verified mapping is in `docs/XDD/backlog.md`. Entries kept here for session-reset continuity; GitHub is the source of truth for status.
->
-> **Cleanup 2026-06-29:** resolved/done items (#9/#11/#12/#13/#16/#18/#19) removed — detailed bug-fix learnings archived to `archive/2026-06/context.md`, trivial done-markers pruned.
+No active blockers. All operational, performance/cost, and deferred-review items
+previously parked here are now tracked at their canonical homes — GitHub issues
+(epic **#24** performance, **#40** F-32 cost, **#25** tech-debt) and
+`docs/XDD/backlog.md`. **GitHub is the source of truth for status.**
+Resolved + relocated detail lives in `archive/2026-06/context.md`.
 
-Persisted here so they survive session resets. Move to backlog.md when long-term, mark resolved when done.
+### In-flight
 
-### In-flight cost / model investigations
-
-- **F-32 parent-model sonnet pin verification** — `settings.json` `model:` field controls the parent /inbox session's model (parent-model inheritance). Last unpinned Pass-1 cost was ~$26 on opus main thread, ~79% of total Pass-1 cost despite only 30% of messages. Hypothesis: pinning sonnet at the parent drops main-thread cost to ~$7 with no quality regression on orchestration phases (A/A5/C are prompt-only). **Pending verification:** next /inbox live run with the sonnet pin active; record main-thread token count and cost. Touch points: `tomo/dot_claude/settings.json` `model:` field, F-32 in `backlog.md`.
-
-### Performance / Architektur (eigene Sessions)
-
-- **#15 Pass 2 Happy-Path als deterministisches Script (Option B/C)** — `scripts/run-pass2.sh` schreiben das die 5 Pass-2-Scripts in fester Reihenfolge ausführt. Agent ruft nur noch run-pass2.sh + handelt Step 2.5 Fan-Resolve und Error-Recovery. Erwartete Ersparnis: 80-90% der Subagent-Tokens.
-- **#17 Pass 1 Token-Audit: Easy Wins identifizieren** — Pass 1 verbraucht 14.7M tokens vs Pass 2 mit 440k (33× teurer). Hot Path: 19× inbox-analyst subagents (~370k each = 7.0M) + Parent /inbox session (7.14M). Investigationspunkte: Skills-Cache pro Dispatch, deterministische Arbeit auslagern, Bündelung von Steps, Item-Batching. Wichtig: nach `settings.json model: sonnet` Sync den Effekt auf Parent zuerst messen. Erwartetes Ziel: Pass 1 von 15M auf 5-7M.
-
-### Optional / Cosmetic
-
-- **#14 instruction-builder ICMDA-Refactor (optional)** — Body-Layout entspricht nicht TCS-ICMDA-Convention (Identity/Constraints/Mission/Decision/Activities/Output). Funktional kein Gewinn, nur Convention-Conformance. Nur angehen wenn andere Agents auch konvertiert werden.
-
-## Deferred Review Items
-
-From code review of `feat/018-inbox-routing-redesign` (2026-05-26, commit f1600e5).
-27 of 33 findings were fixed; these 13 are deferred.
-
-### R1 — instruction-render.py 1742 LOC refactor (2026-05-26)
-- Location: tomo/scripts/instruction-render.py
-- Concern: 3-6x Constitution L2 limit (300-500 LOC). Split into actions, render, resolve modules.
-- Reason deferred: Large refactoring — needs dedicated PR to avoid regressions
-- Branch: feat/018-inbox-routing-redesign
-
-### R2 — suggestion-parser.py 1433 LOC refactor (2026-05-26)
-- Location: tomo/scripts/suggestion-parser.py
-- Concern: Approaching L2 limit. Extract moc_proposal_parser.py.
-- Reason deferred: Same as R1 — dedicated refactoring PR
-- Branch: feat/018-inbox-routing-redesign
-
-### R3 — FakeKadoClient test duplication (2026-05-26)
-- Location: tests/test_inbox_triage.py:30, tests/integration/test_018_pipeline.py:57
-- Concern: FakeKadoClient copy-pasted between files, drift risk
-- Reason deferred: Test maintenance, not a bug. Both copies work.
-- Branch: feat/018-inbox-routing-redesign
-
-### R4 — Action priority cascade untested (2026-05-26)
-- Location: tests/test_inbox_triage.py
-- Concern: No test verifies priority order when multiple conditions are true simultaneously
-- Reason deferred: Individual actions tested; cascade is deterministic if/elif chain
-- Branch: feat/018-inbox-routing-redesign
-
-### R5 — mark-captured squelch-persist path untested (2026-05-26)
-- Location: tomo/scripts/mark-captured.py:158-193
-- Concern: MOC proposal rejection persistence path has no test coverage
-- Reason deferred: Secondary code path, not in critical flow
-- Branch: feat/018-inbox-routing-redesign
-
-### R6 — /inbox --cleanup removal undocumented (2026-05-26)
-- Location: tomo/dot_claude/commands/inbox.md
-- Concern: Old --cleanup flag silently dropped; cleanup is now implicit
-- Reason deferred: Docs gap, not a bug — cleanup behavior is correct
-- Branch: feat/018-inbox-routing-redesign
-
-### R7 — Private _extract_from_mcp_json import (2026-05-26)
-- Location: scripts/strip-tomo-frontmatter.py:52
-- Concern: Imports private API across module boundary
-- Reason deferred: Dev-only tool, minor coupling
-- Branch: feat/018-inbox-routing-redesign
-
-### R8 — strip-tomo-frontmatter --recursive defaults True (2026-05-26)
-- Location: scripts/strip-tomo-frontmatter.py:199
-- Concern: Recursive vault mutation by default is risky
-- Reason deferred: Dev-only tool; zero-config mode already overrides to non-recursive
-- Branch: feat/018-inbox-routing-redesign
-
-### R9 — Inbox cache contains full note bodies (2026-05-26)
-- Location: tomo/scripts/inbox-triage.py:276
-- Concern: tomo-tmp/inbox-cache/ stores full note content (Constitution L2 spirit)
-- Reason deferred: Container-local, ephemeral. L2 advisory.
-- Branch: feat/018-inbox-routing-redesign
-
-### R10 — doc_frontmatter raises at import time (2026-05-26)
-- Location: tomo/scripts/lib/doc_frontmatter.py:56
-- Concern: Missing schema file crashes all importing scripts at import
-- Reason deferred: Schema always present in Docker image; only affects broken deployments
-- Branch: feat/018-inbox-routing-redesign
-
-### R11 — No WHY docs for 6 new skills (2026-05-26)
-- Location: docs/tomo/dot_claude/skills/ (missing directory)
-- Concern: force-atomic-handling, instructions-coverage, kado-discovery-patterns, routing-plan-consumer, suggestions-doc-format, tomo-lifecycle-states — no WHY docs
-- Reason deferred: Docs debt — track in backlog
-- Branch: feat/018-inbox-routing-redesign
-
-### R12 — Naming inconsistency _hits suffix (2026-05-26)
-- Location: tomo/scripts/inbox-triage.py:66
-- Concern: Mixed _hits suffix on raw fields vs processed fields
-- Reason deferred: Internal naming, no external impact
-- Branch: feat/018-inbox-routing-redesign
-
-### R13 — XDD reference docs stale (2026-05-26)
-- Location: docs/XDD/reference/tier-2/workflows/, docs/XDD/reference/tier-3/inbox/
-- Concern: Still describe vault-executor, tag-captured.py, old tag-based lifecycle
-- Reason deferred: Docs debt — track in backlog
-- Branch: feat/018-inbox-routing-redesign
-
-## Verifikation für nächste Pass-1/Pass-2 Runs
-
-- Sonnet-Pin in `settings.json` greift → Parent /inbox sollte unter 2.5M tokens liegen (heute 7.14M auf opus)
-- `before_first_line` für Morgen-Routine (oder ähnliche Notes mit Position-Hinweis im Content) erscheint in `instructions.json` als `position: before_first_line` — nicht mehr als Fallback `after_last_line`
-- `link_to_moc` Actions emittieren `placement: "after"` statt `"inside"`
+- **PR #105** (open) — statusline pill redesign: theme-colored pills, style/caps
+  selectable via `~/.claude/tomo-statusline.conf` (hot-reload) or env. Awaiting
+  the owner's pick of default style before merge.

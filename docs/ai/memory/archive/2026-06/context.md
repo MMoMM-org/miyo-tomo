@@ -1,6 +1,24 @@
 # Context — Archived 2026-06
 <!-- Done/resolved items moved here by /memory-cleanup 2026-06-29. GitHub is SSoT for status. -->
 <!-- Trivial done-markers (#11/#12/#13) were pruned, not archived. -->
+<!-- Appended by /memory-cleanup 2026-06-30: resolved R11/R13 + open blocks relocated off context.md. -->
+
+## Deferred review item R11 (WHY-docs for 6 skills) — ✅ Resolved 2026-06-30 (PR #102, D-05)
+
+WHY-docs created at `docs/tomo/dot_claude/skills/` for force-atomic-handling, instructions-coverage, kado-discovery-patterns, routing-plan-consumer, suggestions-doc-format, tomo-lifecycle-states.
+
+## Deferred review item R13 (XDD reference docs stale) — ✅ Resolved 2026-06-30 (PR #102, D-06)
+
+Post-018 deprecation banners added to the 7 tier-2/tier-3 inbox reference docs.
+
+## Open items relocated off context.md (2026-06-30) — tracked in GitHub/backlog
+
+The 2026-05-01 / 05-26 working blocks were removed from the live `context.md` to keep it lean; all remain tracked at their canonical home (GitHub is SSoT):
+- **F-32** parent-model sonnet-pin cost verification → GH **#40** + `backlog.md`.
+- **#15** Pass-2 happy-path script · **#17** Pass-1 token audit → GH **#24** (Performance & Cost).
+- **#14** instruction-builder ICMDA refactor (optional / cosmetic).
+- **Deferred review items R1–R10, R12** (018 code review, commit `f1600e5`) — refactors / test-coverage / docs debt; tracked via `backlog.md` (D-07→#42, D-08) + epic **#25**.
+- **Pass-1/Pass-2 verification checklist** (sonnet-pin token target, `before_first_line`, `link_to_moc` placement) — fold into the next live `/inbox` run.
 
 ## #9 Analyst: Audio-Klassifikation post-transcription — ✅ Resolved 2026-06-03 → #33
 

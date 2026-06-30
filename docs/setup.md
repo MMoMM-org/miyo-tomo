@@ -106,12 +106,23 @@ The Tomo statusline (`tomo/scripts/tomo-statusline.sh`) renders as colored **pil
 Pill colors are read **live from the active `/theme`** — switch theme and the statusline follows;
 with no custom theme a built-in fallback palette is used.
 
-Two environment knobs tune it (set in the launcher or your shell):
+Two knobs tune it — **style** and **caps**:
 
-| Variable | Values | Default |
-|----------|--------|---------|
-| `TOMO_STATUSLINE_STYLE` | `d` two-tone · `c` ghost · `b` powerline | `d` |
-| `TOMO_STATUSLINE_CAPS` | `round` · `square` · `none` | `round` |
+| Knob | Values | Default |
+|------|--------|---------|
+| style | `d` two-tone · `c` ghost · `b` powerline | `d` |
+| caps | `round` · `square` · `none` | `round` |
+
+Set them per instance in `~/.claude/tomo-statusline.conf` (`key = value` lines), which is
+**hot-reloaded every render** — edit it and the next prompt updates, no relaunch:
+
+```conf
+style = c
+caps  = square
+```
+
+A one-off override via the `TOMO_STATUSLINE_STYLE` / `TOMO_STATUSLINE_CAPS` environment
+variables takes precedence over the file (useful for quickly trying a style).
 
 Rounded caps need a **Nerd Font** in your host terminal (the container only emits bytes — your
 terminal renders the glyphs). No Nerd Font? Set `TOMO_STATUSLINE_CAPS=square` (block caps `▌▐`,

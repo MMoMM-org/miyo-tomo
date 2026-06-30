@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.9.0
+# version: 0.9.1
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -21,10 +21,22 @@
 # host terminal does the font rendering (docker run -it attaches the host TTY).
 
 RESET="\033[0m"
-STYLE="${TOMO_STATUSLINE_STYLE:-d}"
+
+# Style + caps: an env var wins (handy for one-off testing), else the
+# per-instance config file ~/.claude/tomo-statusline.conf (key = value lines,
+# hot-reloaded every render — edit it and the next prompt updates), else the
+# default. This is the "let the user pick" surface — no relaunch needed.
+_SL_CONF="${HOME}/.claude/tomo-statusline.conf"
+_conf_get() {
+  [[ -f "$_SL_CONF" ]] || return 0
+  sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$_SL_CONF" 2>/dev/null \
+    | head -1 | tr -d '[:space:]'
+}
+STYLE="${TOMO_STATUSLINE_STYLE:-$(_conf_get style)}"; STYLE="${STYLE:-d}"
+_CAPS="${TOMO_STATUSLINE_CAPS:-$(_conf_get caps)}"; _CAPS="${_CAPS:-round}"
 
 # Cap glyphs are embedded literally (bash 3.2 has no $'\uXXXX').
-case "${TOMO_STATUSLINE_CAPS:-round}" in
+case "$_CAPS" in
   square) CAP_L="▌"; CAP_R="▐" ;;
   none)   CAP_L="";  CAP_R="" ;;
   *)      CAP_L=""; CAP_R="" ;;   # round — Nerd Font powerline half-circles

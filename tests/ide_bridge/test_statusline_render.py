@@ -709,6 +709,62 @@ def test_kado_read_probe_uses_byfrontmatter_not_bytag(tmp_path):
     )
 
 
+# ── Style/caps selection: env var + hot-reload conf file ─────────────────────
+
+def _write_conf(tmp_path: Path, body: str) -> None:
+    """Write ~/.claude/tomo-statusline.conf under the run's HOME."""
+    cdir = tmp_path / "home" / ".claude"
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "tomo-statusline.conf").write_text(body)
+
+
+def test_caps_square_via_conf_renders_block_caps(tmp_path):
+    """conf `caps = square` → block caps (▌/▐) appear; no relaunch needed."""
+    _write_conf(tmp_path, "caps = square\n")
+    r = _run_statusline(
+        mcp_json_content=_make_mcp_json(23026),
+        kado_cache_content="ok",
+        tmp_path=tmp_path,
+    )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    assert "▌" in r.stdout or "▐" in r.stdout, (
+        f"Expected block caps from conf caps=square.\nstdout: {r.stdout!r}"
+    )
+
+
+def test_caps_none_via_conf_omits_caps(tmp_path):
+    """conf `caps = none` → no cap glyphs at all (block or powerline)."""
+    _write_conf(tmp_path, "caps = none\n")
+    r = _run_statusline(
+        mcp_json_content=_make_mcp_json(23026),
+        kado_cache_content="ok",
+        tmp_path=tmp_path,
+    )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    assert "▌" not in r.stdout and "▐" not in r.stdout, (
+        f"caps=none must omit block caps.\nstdout: {r.stdout!r}"
+    )
+    # Powerline half-circle caps (U+E0B6/U+E0B4) must also be absent.
+    assert "" not in r.stdout and "" not in r.stdout, (
+        f"caps=none must omit powerline caps.\nstdout: {r.stdout!r}"
+    )
+
+
+def test_env_overrides_conf(tmp_path):
+    """Env var wins over the conf file: conf=square + env=none → no block caps."""
+    _write_conf(tmp_path, "caps = square\n")
+    r = _run_statusline(
+        mcp_json_content=_make_mcp_json(23026),
+        kado_cache_content="ok",
+        extra_env={"TOMO_STATUSLINE_CAPS": "none"},
+        tmp_path=tmp_path,
+    )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    assert "▌" not in r.stdout and "▐" not in r.stdout, (
+        f"Env caps=none must override conf caps=square.\nstdout: {r.stdout!r}"
+    )
+
+
 if __name__ == "__main__":
     import sys
     raise SystemExit(pytest.main([__file__, "-v"] + sys.argv[1:]))

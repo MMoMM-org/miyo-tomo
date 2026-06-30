@@ -1484,12 +1484,12 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
         if current_id is None:
             continue
 
-        # Decision checkboxes: Approve toggles inclusion; Keep origin suppresses
+        # Decision checkboxes: Approve toggles inclusion; Keep source files suppresses
         # source deletion; Skip leaves the group out.
         cb = RE_CHECKED.match(stripped)
         if cb:
             label = cb.group(1).lower()
-            if "keep origin" in label:
+            if "keep source" in label:
                 current_keep_source = True
                 continue
             if "approve" in label:
@@ -1498,7 +1498,7 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
         cb_un = RE_UNCHECKED.match(stripped)
         if cb_un:
             label = cb_un.group(1).lower()
-            if "keep origin" in label:
+            if "keep source" in label:
                 current_keep_source = False
                 continue
             if "approve" in label:

@@ -600,26 +600,25 @@ def test_build_actions_keep_source_suppresses_delete():
 
 
 def test_parser_extracts_keep_source_group_id():
-    """A group with [x] Keep origin → its id in parse_tag_handler_keep_source (happy)."""
+    """A group with [x] Keep source files → its id in parse_tag_handler_keep_source (happy)."""
     g = _group()
     md = _render_section([g]).replace(
-        "- [ ] Keep origin", "- [x] Keep origin", 1
+        "- [ ] Keep source files", "- [x] Keep source files", 1
     )
     assert parse_tag_handler_keep_source(md) == [group_id(g)]
 
 
 def test_parser_no_keep_source_when_unchecked():
-    """The default rendered block (Keep origin unchecked) → empty set (denial)."""
+    """The default rendered block (Keep source files unchecked) → empty set (denial)."""
     g = _group()
     md = _render_section([g])
     assert parse_tag_handler_keep_source(md) == []
 
 
 def test_reducer_renders_keep_source_checkbox_without_internals():
-    """The tag-handler decision block offers Keep origin in user-facing wording —
-    no executor internals leak (delete_source / move_note / Hashi)."""
+    """The tag-handler decision block offers 'Keep source files' — no executor internals leak."""
     block = render_tag_handler_group(_group())
-    assert "- [ ] Keep origin" in block
+    assert "- [ ] Keep source files" in block
     for internal in ("delete_source", "move_note", "Hashi"):
         assert internal not in block
 

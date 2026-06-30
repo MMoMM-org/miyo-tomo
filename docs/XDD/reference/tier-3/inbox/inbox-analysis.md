@@ -9,6 +9,13 @@
 > **Actual**: `inbox-analyst` runs as a per-item subagent, spawned by `inbox-orchestrator`. Each subagent receives distilled shared context (~10KB) and processes exactly one item, returning structured JSON. The orchestrator's reducer aggregates results. `suggestion-builder` was retired.
 > **See**: [specs/004-inbox-fanout-refactor/solution.md](../../../specs/004-inbox-fanout-refactor/solution.md)
 
+> **Post-018 Update (2026-05-27)**
+>
+> - `inbox-orchestrator` is retired. `inbox-analyst` is now dispatched by `suggestion-conductor` (impersonated in main session).
+> - `suggestion-builder` references below are historical — that agent never existed post-004.
+> - Tag-based lifecycle refs (`#MiYo-Tomo/captured`, `#MiYo-Tomo/proposed`, etc.) are superseded by frontmatter `tomo.state`. Source items get `tomo.state=captured` via `mark-captured.py`, not `tag-captured.py`.
+> - The analysis output format (§8) and per-item classification logic remain accurate. The agent itself is unchanged.
+
 ---
 
 ## 1. Purpose

@@ -1,11 +1,19 @@
 # Tier 3: State Tag Lifecycle
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
-> Status: Implemented (with deviations)
+> Status: **Superseded** by frontmatter-based lifecycle (F-47 + 018)
 
-> **⚠️ Deviation**
-> **Original**: 7-state tag-based lifecycle for all documents (captured → proposed → confirmed → instructions → applied → active/archived).
-> **Actual**: Simplified to 2 tags for source items only + checkbox-based state for workflow documents. Tags on workflow documents were dropped because frontmatter tags are not easily accessible to users in Obsidian.
+> **Post-018 Update (2026-05-27)**
+>
+> The tag-based lifecycle described in this document is **fully superseded** by the frontmatter-based state machine shipped in F-47 and refined in 018:
+>
+> - **No tags.** State lives in `tomo:` frontmatter block (`tomo.state`, `tomo.doc_type`), not `#MiYo-Tomo/*` tags.
+> - **`tag-captured.py` → `mark-captured.py`**: writes `tomo.state=captured` via `write_frontmatter(mode='merge')`.
+> - **`vault-executor` → not implemented**: the `active` state transition and cleanup described here do not exist yet.
+> - **State transitions via `state-promoter.py`**: validates transitions against the state machine, checks approval checkboxes, handles retries.
+> - **State machine**: see `tomo/dot_claude/skills/tomo-lifecycle-states/SKILL.md` and its WHY-doc at `docs/tomo/dot_claude/skills/tomo-lifecycle-states.md`.
+>
+> The checkbox-based user approval model (§4) is still accurate — `- [x] Approved` / `- [x] Accept` checkboxes remain the user-facing signal. But Tomo discovers them via `state-promoter.py check-tick`, not by scanning tags.
 
 ---
 

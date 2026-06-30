@@ -1,9 +1,20 @@
 # Tier 2: Inbox Processing Workflow
 
 > Parent: [PKM Intelligence Architecture](../../tier-1/pkm-intelligence-architecture.md)
-> Status: Implemented (with deviations)
+> Status: Partially stale — see update banner below
 > Children: [Inbox Analysis](../../tier-3/inbox/inbox-analysis.md) · [Suggestions Document](../../tier-3/inbox/suggestions-document.md) · [Instruction Set Generation](../../tier-3/inbox/instruction-set-generation.md) · [Instruction Set Apply](../../tier-3/inbox/instruction-set-apply.md) · [Instruction Set Cleanup](../../tier-3/inbox/instruction-set-cleanup.md) · [State Tag Lifecycle](../../tier-3/inbox/state-tag-lifecycle.md)
 > Related: [existing workflow doc](../../workflows/inbox-process.md) · [Inbox Change Detection & Pass Routing](inbox-change-detection.md) (how triage decides what changed + which action)
+
+> **Post-018 Update (2026-05-27)**
+>
+> XDD 018 (agent architecture cleanup) replaced the pipeline described below. Key changes:
+>
+> - **Agents:** `inbox-orchestrator` and `instruction-builder` are retired. Replaced by `suggestion-conductor` (Pass 1) and `synthesis-conductor` (Pass 2), both thin orchestrators with domain knowledge in lazy-loaded skills. `suggestion-builder` and `vault-executor` no longer exist.
+> - **Triage:** A deterministic Python script (`inbox-triage.py`) now makes all routing decisions before any LLM context is loaded. It produces `routing-plan.json` which conductors consume.
+> - **Lifecycle:** Tag-based lifecycle (`#MiYo-Tomo/captured`, `#MiYo-Tomo/active`, etc.) is replaced by frontmatter-based state (`tomo.state`, `tomo.doc_type`). `tag-captured.py` → `mark-captured.py`. State transitions via `state-promoter.py`.
+> - **Cleanup:** No vault-executor cleanup phase exists yet. The `active`/`archived` states and archival flow described in §7 are unimplemented.
+>
+> Authoritative sources: [018 SDD](../../specs/018-agent-architecture-cleanup/solution.md), agent WHY-docs at `docs/tomo/dot_claude/agents/`, skill WHY-docs at `docs/tomo/dot_claude/skills/`.
 
 ---
 

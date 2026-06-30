@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Breaking wire rename, schema_version bump & cross-repo handoff"
-status: pending
+status: completed
 version: "1.1"
 phase: 4
 ---
@@ -34,7 +34,7 @@ phase: 4
 Delivers the clean wire rename with an explicit version cutover and the cross-repo coordination
 artifacts. **This phase changes the Tomo↔Hashi contract — do not merge without the Hashi handoff.**
 
-- [ ] **T4.1 Rename wire field + bump schema_version in both schemas** `[activity: backend]`
+- [x] **T4.1 Rename wire field + bump schema_version in both schemas** `[activity: backend]`
 
   1. Prime: Read both schemas `[ref: SDD/Code Context; instructions.schema.json, hashi-instructions.schema.json]`.
   2. Test (red): a doc using `source_inbox_item` + `schema_version:"2"` validates; a doc using the
@@ -45,7 +45,7 @@ artifacts. **This phase changes the Tomo↔Hashi contract — do not merge witho
   4. Validate: schema validation tests pass for both repos' schema files.
   5. Success: only the new field + v2 validate `[ref: SDD/ADR-3]`.
 
-- [ ] **T4.2 Renderer emits source_inbox_item + schema_version 2** `[activity: backend]`
+- [x] **T4.2 Renderer emits source_inbox_item + schema_version 2** `[activity: backend]`
 
   1. Prime: Read `_build_move_note_actions` (~768) + the doc header emit (`instruction-render.py:2707`).
   2. Test (red): the emitted move_note action key is `source_inbox_item`; the doc header emits
@@ -56,7 +56,7 @@ artifacts. **This phase changes the Tomo↔Hashi contract — do not merge witho
   4. Validate: instruction-render suite green against v2; lint clean.
   5. Success: Tomo emits the v2 contract `[ref: SDD/ADR-3]`.
 
-- [ ] **T4.3 instructions-diff consumes the new field** `[activity: backend]`
+- [x] **T4.3 instructions-diff consumes the new field** `[activity: backend]`
 
   1. Prime: Read `instructions-diff.py` origin consumer `[ref: SDD/Code Context; instructions-diff.py; lines: 366-368]`.
   2. Test (red): the idempotency diff matches move_note by `source_inbox_item` stem (falls back to
@@ -65,7 +65,7 @@ artifacts. **This phase changes the Tomo↔Hashi contract — do not merge witho
   4. Validate: instructions-diff suite green.
   5. Success: diff stable under the renamed field `[ref: SDD/ADR-3]`.
 
-- [ ] **T4.4 Docs, CHANGELOG, version bumps** `[activity: backend]` `[parallel: true]`
+- [x] **T4.4 Docs, CHANGELOG, version bumps** `[activity: backend]` `[parallel: true]`
 
   1. Prime: `docs/instructions-json.md` (schema_version contract) + `tomo/CHANGELOG.md` table.
   2. Test: N/A.
@@ -75,7 +75,7 @@ artifacts. **This phase changes the Tomo↔Hashi contract — do not merge witho
   4. Validate: docs reflect v2; CHANGELOG row present.
   5. Success: wire change is documented `[ref: PRD/AC F4]`.
 
-- [ ] **T4.5 Kokoro ADR + Hashi handoff (cross-repo)** `[activity: coordination]`
+- [x] **T4.5 Kokoro ADR + Hashi handoff (cross-repo)** `[activity: coordination]`
 
   1. Prime: MiYo handoff protocol + the Kokoro ADR convention `[ref: SDD/Integration Points]`.
   2. Test: N/A (coordination artifacts).
@@ -86,7 +86,7 @@ artifacts. **This phase changes the Tomo↔Hashi contract — do not merge witho
   4. Validate: handoff file present in `_outbox/for-tomo-hashi/`; ADR drafted for Kokoro.
   5. Success: cross-repo migration coordinated `[ref: PRD/AC F4; constitution L2]`.
 
-- [ ] **T4.6 Phase Validation & integration** `[activity: validate]`
+- [x] **T4.6 Phase Validation & integration** `[activity: validate]`
 
   - Run full suite green. Confirm zero `origin_inbox_item`/`origin` in code, schemas, and
     user-facing text (whole-repo `rg`). Confirm the end-to-end path: voice item → suggestions doc

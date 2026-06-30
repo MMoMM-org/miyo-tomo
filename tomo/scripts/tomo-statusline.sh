@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.9.2
+# version: 0.9.3
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -39,9 +39,13 @@ _CAPS="${TOMO_STATUSLINE_CAPS:-$(_conf_get caps)}"; _CAPS="${_CAPS:-round}"
 case "$_CAPS" in
   square) CAP_L="▌"; CAP_R="▐" ;;
   none)   CAP_L="";  CAP_R="" ;;
-  *)      CAP_L=""; CAP_R="" ;;   # round — Nerd Font powerline half-circles
+  *)      # round — Nerd Font powerline half-circles (U+E0B6 / U+E0B4).
+          # Built via printf byte-escapes, NOT embedded literally: editors/tools
+          # silently strip these Private-Use glyphs, which blanks the caps.
+          CAP_L=$(printf '\xee\x82\xb6'); CAP_R=$(printf '\xee\x82\xb4') ;;
 esac
-PL_SEP=""                          # powerline arrow separator (style b)
+# Powerline arrow separator U+E0B0 (style b) — printf byte-escape, see above.
+PL_SEP=$(printf '\xee\x82\xb0')
 
 # "#rrggbb" -> "r;g;b" (decimal). Invalid input -> rc 1, no output.
 hex_rgb() {

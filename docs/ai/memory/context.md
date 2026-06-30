@@ -18,10 +18,16 @@ hot-reload selection (PR #105). All merged to main.
 Working the **MVP-Polish** milestone open issues on branch `feat/mvp-polish`.
 Goal: harden the core `/inbox` flow to "done".
 
-**Standalone issues (start here):**
-- **#28** (F-36) — New-section proposal when no existing section fits
-- **#29** (F-30) — LLM-driven insertion-point resolution for `link_to_moc`
-- **#33** (F-42) — Suggestions document UX pass
+**Standalone issues:**
+- ~~**#28** (F-36) — New-section proposal~~ — CLOSED 2026-06-30. Already shipped in
+  spec 022 (PR #75); was "Implemented but never closed". Verified via full suite +
+  recorded 022/023 live walks; 2 rotted resolver tests un-rotted in `15a821d`.
+- ~~**#29** (F-30) — LLM insertion-point resolution~~ — CLOSED 2026-06-30, same as #28.
+- **#33** (F-42) — Suggestions document UX pass — NEXT standalone. Genuine unbuilt
+  scope (design-first, own branch `feat/suggestions-ux-pass`, source-model
+  `origin`→`source` unification). Downstream: hashi#41.
+
+Note: #28/#29 downstream apply-support stays open in miyo-tomo-hashi (#42/#43).
 
 **Epics:**
 - **#17** — MOC Intelligence (Mental Squeeze Point + matching)

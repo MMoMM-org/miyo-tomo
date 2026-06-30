@@ -338,7 +338,7 @@ def parse_section(
         "type": None,
         "approved": False,
         "delete_source": False,
-        "keep_origin": False,
+        "keep_source": False,
         "action": None,
         "title": None,
         "tags": [],
@@ -408,7 +408,7 @@ def parse_section(
             elif "accept" in text_lower or "approve" in text_lower:
                 result["approved"] = bool(cb_checked)
             elif "keep origin" in text_lower:
-                result["keep_origin"] = bool(cb_checked)
+                result["keep_source"] = bool(cb_checked)
             elif "delete source" in text_lower or text_lower.startswith("delete"):
                 result["delete_source"] = bool(cb_checked)
             # "Skip" is the implicit inverse of Accept — no extra handling needed
@@ -1442,7 +1442,7 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
     Group blocks are delimited by the ``**Group:**`` line — a new id starts a new
     block, and the most recent checkbox state seen after that line decides it.
 
-    Returns ``[(group_id, approved, keep_origin), ...]`` in document order. Empty
+    Returns ``[(group_id, approved, keep_source), ...]`` in document order. Empty
     when the section is absent. Shared by the two public extractors below so the
     section is parsed identically for both decisions.
     """
@@ -1451,15 +1451,15 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
     records: list[tuple[str, bool, bool]] = []
     current_id: str | None = None
     current_approved: bool = False
-    current_keep_origin: bool = False
+    current_keep_source: bool = False
 
     def _flush() -> None:
-        nonlocal current_id, current_approved, current_keep_origin
+        nonlocal current_id, current_approved, current_keep_source
         if current_id is not None:
-            records.append((current_id, current_approved, current_keep_origin))
+            records.append((current_id, current_approved, current_keep_source))
         current_id = None
         current_approved = False
-        current_keep_origin = False
+        current_keep_source = False
 
     for line in lines:
         stripped = line.strip()
@@ -1490,7 +1490,7 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
         if cb:
             label = cb.group(1).lower()
             if "keep origin" in label:
-                current_keep_origin = True
+                current_keep_source = True
                 continue
             if "approve" in label:
                 current_approved = True
@@ -1499,7 +1499,7 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
         if cb_un:
             label = cb_un.group(1).lower()
             if "keep origin" in label:
-                current_keep_origin = False
+                current_keep_source = False
                 continue
             if "approve" in label:
                 current_approved = False
@@ -1519,7 +1519,7 @@ def parse_tag_handler_groups(text: str) -> list[str]:
     return [gid for gid, approved, _ in _walk_tag_handler_decisions(text) if approved]
 
 
-def parse_tag_handler_keep_origin(text: str) -> list[str]:
+def parse_tag_handler_keep_source(text: str) -> list[str]:
     """Return the group ids whose "Keep origin" box is checked.
 
     A checked Keep-origin box opts the group out of having its consolidated
@@ -1662,7 +1662,7 @@ def main() -> int:
                 "type": item["type"],
                 "approved": item["approved"],
                 "delete_source": item["delete_source"],
-                "keep_origin": item["keep_origin"],
+                "keep_source": item["keep_source"],
                 "action": item["action"],
                 "title": item["title"],
                 "tags": item["tags"],
@@ -1749,11 +1749,11 @@ def main() -> int:
 
     # ── Parse Tag-Handler Updates (spec 024 T4.1) ─────────────
     approved_tag_handler_group_ids = parse_tag_handler_groups(text)
-    tag_handler_keep_origin_group_ids = parse_tag_handler_keep_origin(text)
+    tag_handler_keep_source_group_ids = parse_tag_handler_keep_source(text)
     if approved_tag_handler_group_ids:
         print(
             f"tag_handler_groups: {len(approved_tag_handler_group_ids)} approved, "
-            f"{len(tag_handler_keep_origin_group_ids)} keep-origin",
+            f"{len(tag_handler_keep_source_group_ids)} keep-origin",
             file=sys.stderr,
         )
 
@@ -1850,7 +1850,7 @@ def main() -> int:
             "type": sec["type"],
             "approved": True,
             "delete_source": False,
-            "keep_origin": bool(sec.get("keep_origin", False)),
+            "keep_source": bool(sec.get("keep_source", False)),
             "action": sec.get("action"),
             "title": sec["title"],
             "tags": sec["tags"],
@@ -2008,7 +2008,7 @@ def main() -> int:
         "approved_tag_handler_group_ids": approved_tag_handler_group_ids,
         # Group ids the user opted out of source-deletion via "Keep origin".
         # instruction-render suppresses the paired delete_source for these.
-        "tag_handler_keep_origin_group_ids": tag_handler_keep_origin_group_ids,
+        "tag_handler_keep_source_group_ids": tag_handler_keep_source_group_ids,
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),

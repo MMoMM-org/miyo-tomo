@@ -980,7 +980,7 @@ def _build_delete_source_actions(
     counter: list[int],
     tag_handler_groups: list[dict] | None = None,
     approved_tag_handler_group_ids: list[str] | None = None,
-    keep_origin_group_ids: list[str] | None = None,
+    keep_source_group_ids: list[str] | None = None,
 ) -> list[dict]:
     """Emit delete_source actions from four sources:
 
@@ -1004,16 +1004,16 @@ def _build_delete_source_actions(
     confirmed_stems: set[str] = set()
     # expected_by_stem: count of approved atomics per origin stem (gate denominator).
     expected_by_stem: dict[str, int] = {}
-    # keep_origin_stems: stems where ANY confirmed item opts out of deletion.
-    keep_origin_stems: set[str] = set()
+    # keep_source_stems: stems where ANY confirmed item opts out of deletion.
+    keep_source_stems: set[str] = set()
     for item in confirmed:
         sp = item.get("source_path")
         if sp:
             stem = _stem(sp)
             confirmed_stems.add(stem)
             expected_by_stem[stem] = expected_by_stem.get(stem, 0) + 1
-            if item.get("keep_origin"):
-                keep_origin_stems.add(stem)
+            if item.get("keep_source"):
+                keep_source_stems.add(stem)
 
     inbox = inbox_path.rstrip("/") + "/"
 
@@ -1076,7 +1076,7 @@ def _build_delete_source_actions(
         bucket_list.append(mn)
 
     for origin_stem, moves in moves_by_origin.items():
-        if origin_stem in keep_origin_stems:
+        if origin_stem in keep_source_stems:
             continue
         expected = expected_by_stem.get(origin_stem, 1)
         if len(moves) < expected:
@@ -1096,7 +1096,7 @@ def _build_delete_source_actions(
     # (4) Tag-handler group sources — one delete per source_path of each
     # APPROVED group, unless the group opted out via "Keep origin".
     approved_groups = set(approved_tag_handler_group_ids or [])
-    kept_groups = set(keep_origin_group_ids or [])
+    kept_groups = set(keep_source_group_ids or [])
     emitted: set[str] = {a["source_path"] for a in out}
     for group in (tag_handler_groups or []):
         gid = group_id(group)
@@ -1309,7 +1309,7 @@ def build_actions(
     kado_client=None,
     tag_handler_groups: list[dict] | None = None,
     approved_tag_handler_group_ids: list[str] | None = None,
-    tag_handler_keep_origin_group_ids: list[str] | None = None,
+    tag_handler_keep_source_group_ids: list[str] | None = None,
 ) -> list[dict]:
     """Assemble the full ordered action list.
 
@@ -1344,7 +1344,7 @@ def build_actions(
         confirmed, move_notes, daily_updates, skipped, inbox_path, counter,
         tag_handler_groups=tag_handler_groups or [],
         approved_tag_handler_group_ids=approved_tag_handler_group_ids or [],
-        keep_origin_group_ids=tag_handler_keep_origin_group_ids or [],
+        keep_source_group_ids=tag_handler_keep_source_group_ids or [],
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
     # Aggregate related:: actions per target note: read existing related::,
@@ -2398,8 +2398,8 @@ def main() -> int:
         "approved_tag_handler_group_ids", []
     )
     # Group ids the user opted out of source-deletion via "Keep origin".
-    tag_handler_keep_origin_group_ids = suggestions.get(
-        "tag_handler_keep_origin_group_ids", []
+    tag_handler_keep_source_group_ids = suggestions.get(
+        "tag_handler_keep_source_group_ids", []
     )
     tag_handler_groups = _load_tag_handler_groups(args.tag_handler_groups_dir)
 
@@ -2576,7 +2576,7 @@ def main() -> int:
         manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,
         tag_handler_groups=tag_handler_groups,
         approved_tag_handler_group_ids=approved_tag_handler_group_ids,
-        tag_handler_keep_origin_group_ids=tag_handler_keep_origin_group_ids,
+        tag_handler_keep_source_group_ids=tag_handler_keep_source_group_ids,
     )
 
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────

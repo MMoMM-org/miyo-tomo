@@ -289,12 +289,12 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                     daily_only_seen.add(stem)
                     expected_deletions.append(stem)
     # Paired with move_note: every confirmed atomic note with a source_path
-    # AND keep_origin=False expects a paired delete on its origin.
+    # AND keep_source=False expects a paired delete on its origin.
     paired_origins_seen: set[str] = set()
     for item in confirmed:
         if item.get("action") == "create_moc":
             continue
-        if item.get("keep_origin"):
+        if item.get("keep_source"):
             continue
         sp = item.get("source_path")
         if not sp:
@@ -308,7 +308,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
     # each approved, non-kept group. Keyed by the same group_id the renderer
     # uses; deduped against sources 1-3 to mirror the renderer's emit dedup.
     approved_groups = set(parsed.get("approved_tag_handler_group_ids") or [])
-    kept_groups = set(parsed.get("tag_handler_keep_origin_group_ids") or [])
+    kept_groups = set(parsed.get("tag_handler_keep_source_group_ids") or [])
     th_seen = set(expected_deletions)
     for group in (tag_handler_groups or []):
         gid = group_id(group)

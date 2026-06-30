@@ -203,7 +203,7 @@ def test_action_building():
     #   - 1 daily-only: Sport source_stem (in daily_updates, not in confirmed)
     #   - 3 skipped disposition=delete_source: B1 .md, B3 .m4a, B4 dotted
     #   - 2 paired with move_note origins: A1 (Asahikawa) + A2 (Furano)
-    #     (both confirmed atomic notes default to delete origin; no keep_origin set)
+    #     (both confirmed atomic notes default to delete origin; no keep_source set)
     # Total: 6.
     _must(counts.get("delete_source") == 6, f"expected 6 delete_source, got {counts}")
     # B2 .md skip + B5 .m4a skip = 2.

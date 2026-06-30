@@ -22,8 +22,8 @@ Covers:
 
   2. _build_delete_source_actions third source (post-2026-04-30 contract):
        a. Default-pair: confirmed item with non-null origin_inbox_item AND
-          keep_origin=False → paired delete_source emitted.
-       b. Keep-origin: confirmed item with keep_origin=True → no paired
+          keep_source=False → paired delete_source emitted.
+       b. Keep-origin: confirmed item with keep_source=True → no paired
           delete_source emitted for that origin.
        c. Idempotence: skipped[]'s explicit Delete-source flag still works
           (existing behaviour).
@@ -396,13 +396,13 @@ def test_heading_anchor_skipped_line_anchor_resolved():
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_paired_delete_default_emits_for_each_origin():
-    """Confirmed items with non-null origin and keep_origin=False produce
+    """Confirmed items with non-null origin and keep_source=False produce
     one paired delete_source per move_note."""
     confirmed = [
         {"id": "S01", "source_path": "Asahikawa.md", "approved": True,
-         "keep_origin": False},
+         "keep_source": False},
         {"id": "S02", "source_path": "Furano.md", "approved": True,
-         "keep_origin": False},
+         "keep_source": False},
     ]
     move_notes = [
         {"id": "I01", "action": "move_note",
@@ -434,14 +434,14 @@ def test_paired_delete_default_emits_for_each_origin():
     print("[PASS] paired delete_source emitted by default for each move_note origin")
 
 
-def test_keep_origin_suppresses_paired_delete():
-    """Confirmed items with keep_origin=True must NOT produce a paired
+def test_keep_source_suppresses_paired_delete():
+    """Confirmed items with keep_source=True must NOT produce a paired
     delete_source."""
     confirmed = [
         {"id": "S01", "source_path": "Asahikawa.md", "approved": True,
-         "keep_origin": False},
+         "keep_source": False},
         {"id": "S02", "source_path": "Furano.md", "approved": True,
-         "keep_origin": True},  # ← user opted out
+         "keep_source": True},  # ← user opted out
     ]
     move_notes = [
         {"id": "I01", "action": "move_note",
@@ -463,7 +463,7 @@ def test_keep_origin_suppresses_paired_delete():
         paths == ["100 Inbox/Asahikawa.md"],
         f"only Asahikawa should be paired-deleted, got {paths}",
     )
-    print("[PASS] keep_origin=True suppresses paired delete_source for that origin")
+    print("[PASS] keep_source=True suppresses paired delete_source for that origin")
 
 
 def test_skipped_delete_source_still_works():
@@ -503,7 +503,7 @@ def test_audio_peer_is_not_paired_deleted_via_origin():
     contract from regressing."""
     confirmed = [
         {"id": "S01", "source_path": "Memo.m4a.md", "approved": True,
-         "keep_origin": False},
+         "keep_source": False},
     ]
     # The transcript's move_note has origin_inbox_item pointing back at
     # the transcript markdown — NOT at the audio peer .m4a file.
@@ -1266,7 +1266,7 @@ def main() -> None:
     test_non_daily_actions_never_filtered()
     test_filter_fail_open_without_client()
     test_paired_delete_default_emits_for_each_origin()
-    test_keep_origin_suppresses_paired_delete()
+    test_keep_source_suppresses_paired_delete()
     test_skipped_delete_source_still_works()
     test_audio_peer_is_not_paired_deleted_via_origin()
     test_moc_structure_parse_headings_agrees_with_render_fallback()

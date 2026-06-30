@@ -58,7 +58,7 @@ group_id = _group_mod.group_id
 render_tag_handler_group = _reducer_mod.render_tag_handler_group
 render_tag_handler_updates_block = _reducer_mod.render_tag_handler_updates_block
 parse_tag_handler_groups = _parser_mod.parse_tag_handler_groups
-parse_tag_handler_keep_origin = _parser_mod.parse_tag_handler_keep_origin
+parse_tag_handler_keep_source = _parser_mod.parse_tag_handler_keep_source
 _build_insert_under_marker_actions = _render_mod._build_insert_under_marker_actions
 _build_delete_source_actions = _render_mod._build_delete_source_actions
 build_actions = _render_mod.build_actions
@@ -523,7 +523,7 @@ def _delete_sources(group, *, approved, kept=None):
         [], [], [], [], "100 Inbox/", [0],
         tag_handler_groups=[group],
         approved_tag_handler_group_ids=approved,
-        keep_origin_group_ids=kept or [],
+        keep_source_group_ids=kept or [],
     )
 
 
@@ -584,14 +584,14 @@ def test_delete_source_after_insert_in_build_actions():
     assert delete_idx > insert_idx
 
 
-def test_build_actions_keep_origin_suppresses_delete():
-    """build_actions honors tag_handler_keep_origin_group_ids end-to-end (denial)."""
+def test_build_actions_keep_source_suppresses_delete():
+    """build_actions honors tag_handler_keep_source_group_ids end-to-end (denial)."""
     g = _group(source_paths=["100 Inbox/x.md"])
     actions = build_actions(
         [], [], [], [], _CFG,
         tag_handler_groups=[g],
         approved_tag_handler_group_ids=[group_id(g)],
-        tag_handler_keep_origin_group_ids=[group_id(g)],
+        tag_handler_keep_source_group_ids=[group_id(g)],
     )
     assert not any(a["action"] == "delete_source" for a in actions)
 
@@ -599,23 +599,23 @@ def test_build_actions_keep_origin_suppresses_delete():
 # ── 10. parser extracts Keep-origin; reducer renders the checkbox ────────────
 
 
-def test_parser_extracts_keep_origin_group_id():
-    """A group with [x] Keep origin → its id in parse_tag_handler_keep_origin (happy)."""
+def test_parser_extracts_keep_source_group_id():
+    """A group with [x] Keep origin → its id in parse_tag_handler_keep_source (happy)."""
     g = _group()
     md = _render_section([g]).replace(
         "- [ ] Keep origin", "- [x] Keep origin", 1
     )
-    assert parse_tag_handler_keep_origin(md) == [group_id(g)]
+    assert parse_tag_handler_keep_source(md) == [group_id(g)]
 
 
-def test_parser_no_keep_origin_when_unchecked():
+def test_parser_no_keep_source_when_unchecked():
     """The default rendered block (Keep origin unchecked) → empty set (denial)."""
     g = _group()
     md = _render_section([g])
-    assert parse_tag_handler_keep_origin(md) == []
+    assert parse_tag_handler_keep_source(md) == []
 
 
-def test_reducer_renders_keep_origin_checkbox_without_internals():
+def test_reducer_renders_keep_source_checkbox_without_internals():
     """The tag-handler decision block offers Keep origin in user-facing wording —
     no executor internals leak (delete_source / move_note / Hashi)."""
     block = render_tag_handler_group(_group())
@@ -633,7 +633,7 @@ def _parsed_for(group, *, approved, kept=None):
         "daily_updates": [],
         "skipped": [],
         "approved_tag_handler_group_ids": approved,
-        "tag_handler_keep_origin_group_ids": kept or [],
+        "tag_handler_keep_source_group_ids": kept or [],
     }
 
 
@@ -642,7 +642,7 @@ def _instrs_for(group, *, approved, kept=None):
         [], [], [], [], _CFG,
         tag_handler_groups=[group],
         approved_tag_handler_group_ids=approved,
-        tag_handler_keep_origin_group_ids=kept or [],
+        tag_handler_keep_source_group_ids=kept or [],
     )
     return {"schema_version": "1", "type": "tomo-instructions",
             "action_count": len(actions), "actions": actions}
@@ -667,7 +667,7 @@ def test_coverage_mismatch_without_groups():
     assert rc == 1
 
 
-def test_coverage_reconciles_with_keep_origin():
+def test_coverage_reconciles_with_keep_source():
     """Keep origin → 0 deletes expected and emitted → exit 0 (denial path)."""
     g = _group(source_paths=["100 Inbox/a.md"])
     parsed = _parsed_for(g, approved=[group_id(g)], kept=[group_id(g)])

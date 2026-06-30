@@ -66,18 +66,16 @@ _DECISION_BLOCK = (
     "\n"
     "**Decision (atomic note):**\n"
     "- [x] Approve\n"
-    "- [ ] Keep origin (skip the implicit delete of the inbox source after move_note)\n"
-    "- [ ] Skip (keep in inbox)\n"
-    "- [ ] Delete source"
+    "- [ ] Keep source files\n"
+    "      (don't delete the original(s) after the note is created — you may still need them)"
 )
 
 _DECISION_BLOCK_SKIP = (
     "\n"
     "**Decision (atomic note):**\n"
     "- [ ] Approve\n"
-    "- [ ] Keep origin (skip the implicit delete of the inbox source after move_note)\n"
-    "- [x] Skip (keep in inbox)\n"
-    "- [ ] Delete source"
+    "- [ ] Keep source files\n"
+    "      (don't delete the original(s) after the note is created — you may still need them)"
 )
 
 

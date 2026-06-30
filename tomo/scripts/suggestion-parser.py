@@ -401,13 +401,13 @@ def parse_section(
                     pending_moc = wl
                 continue
 
-            # Decision checkboxes (force-atomic/approve/skip/delete/keep-origin)
+            # Decision checkboxes (force-atomic/approve/skip/delete/keep-source)
             text_lower = text.lower()
             if "force atomic" in text_lower:
                 result["force_atomic"] = bool(cb_checked)
             elif "accept" in text_lower or "approve" in text_lower:
                 result["approved"] = bool(cb_checked)
-            elif "keep origin" in text_lower:
+            elif "keep source" in text_lower:
                 result["keep_source"] = bool(cb_checked)
             elif "delete source" in text_lower or text_lower.startswith("delete"):
                 result["delete_source"] = bool(cb_checked)
@@ -1437,7 +1437,7 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
     The reducer renders one block per (handler, target_path) group, each carrying
     a ``**Group:** `<group_id>` `` field line and the decision:
         - [x] Approve
-        - [ ] Keep origin (leave the captured inbox notes in place)
+        - [ ] Keep source files (leave the captured inbox notes in place)
         - [ ] Skip
     Group blocks are delimited by the ``**Group:**`` line — a new id starts a new
     block, and the most recent checkbox state seen after that line decides it.
@@ -1520,12 +1520,12 @@ def parse_tag_handler_groups(text: str) -> list[str]:
 
 
 def parse_tag_handler_keep_source(text: str) -> list[str]:
-    """Return the group ids whose "Keep origin" box is checked.
+    """Return the group ids whose "Keep source files" box is checked.
 
-    A checked Keep-origin box opts the group out of having its consolidated
+    A checked Keep source files box opts the group out of having its consolidated
     inbox sources deleted (instruction-render suppresses the paired
     delete_source). Reported independently of approval — only an approved group
-    has a delete to suppress, so a stray keep-origin on a skipped group is
+    has a delete to suppress, so a stray keep-source on a skipped group is
     harmless downstream. Returns ids in document order.
     """
     return [gid for gid, _, keep in _walk_tag_handler_decisions(text) if keep]
@@ -2006,7 +2006,7 @@ def main() -> int:
         # instruction-render maps each to its group-result JSON and emits one
         # insert_under_marker. Empty list when no group approved.
         "approved_tag_handler_group_ids": approved_tag_handler_group_ids,
-        # Group ids the user opted out of source-deletion via "Keep origin".
+        # Group ids the user opted out of source-deletion via "Keep source files".
         # instruction-render suppresses the paired delete_source for these.
         "tag_handler_keep_source_group_ids": tag_handler_keep_source_group_ids,
         "total_sections": total_sections,

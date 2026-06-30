@@ -22,7 +22,7 @@ Rendering rules (replicated from the retired suggestion-builder format):
   - `**New tags to add:** <csv>` (omitted when empty)
   - `**Link to MOC:**` with pre-checked boxes
   - `**Why:**` 1-2 sentences (from classification signals)
-  - `**Decision:**` tri-state Approve | Skip | Delete source (per action)
+  - `**Decision:**` two-box Approve | Keep source files (per atomic action)
   - Multi-action items emit each action's block under the same section
 """
 
@@ -309,7 +309,13 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
 def render_create_atomic_note(action: dict, stem: str) -> str:
     lines: list[str] = []
     title = (action.get("suggested_title") or "").strip() or stem
-    lines.append(f"**Source:** [[{stem}]]")
+    audio_peer = action.get("audio_peer")
+    if audio_peer:
+        # Basename only; preserve extension (.m4a etc) — never coerce to .md (ADR-1).
+        peer_name = audio_peer.rsplit("/", 1)[-1]
+        lines.append(f"**Source:** [[{stem}]] + [[{peer_name}]]")
+    else:
+        lines.append(f"**Source:** [[{stem}]]")
     lines.append(f"**Suggested name:** {title}")
     template = action.get("template")
     if template:

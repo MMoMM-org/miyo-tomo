@@ -363,9 +363,9 @@ def summarize_actual(instrs: dict) -> dict:
     for a in actions:
         kind = a["action"]
         if kind == "move_note":
-            # Match by the stem of origin_inbox_item (traceability field);
-            # falls back to the rendered_file stem if origin wasn't captured.
-            stem = _stem(a.get("origin_inbox_item")) or _stem(a.get("rendered_file"))
+            # Match by the stem of source_inbox_item (traceability field);
+            # falls back to the rendered_file stem if source wasn't captured.
+            stem = _stem(a.get("source_inbox_item")) or _stem(a.get("rendered_file"))
             move_by_stem[stem] = a
         elif kind == "create_moc":
             create_mocs.append(a)

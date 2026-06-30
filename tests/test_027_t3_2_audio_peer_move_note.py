@@ -129,16 +129,16 @@ def test_build_move_note_explicit_none_audio_peer():
     assert actions[0].get("audio_peer") is None
 
 
-def test_build_move_note_origin_inbox_item_unaffected():
-    """Adding audio_peer does not change how origin_inbox_item is built."""
+def test_build_move_note_source_inbox_item_unaffected():
+    """Adding audio_peer does not change how source_inbox_item is built."""
     peer = "100 Inbox/audio.m4a"
     actions = _call_build_move_note([_manifest_entry(audio_peer=peer, source_path="note.md")])
-    origin = actions[0].get("origin_inbox_item", "")
+    origin = actions[0].get("source_inbox_item", "")
     assert origin.endswith(".md"), (
-        f"origin_inbox_item must keep .md extension; got {origin!r}"
+        f"source_inbox_item must keep .md extension; got {origin!r}"
     )
     assert "audio" not in origin, (
-        "origin_inbox_item must not be the audio peer; it's the transcript source"
+        "source_inbox_item must not be the audio peer; it's the transcript source"
     )
 
 

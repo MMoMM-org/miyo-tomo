@@ -59,7 +59,7 @@ def _move_note(
     mn: dict = {
         "id": note_id,
         "action": "move_note",
-        "origin_inbox_item": origin_full,
+        "source_inbox_item": origin_full,
         "audio_peer": audio_peer,
         "source": f"{INBOX}/rendered-{note_id}.md",
         "destination": "200 Notes/Interview Notes.md",

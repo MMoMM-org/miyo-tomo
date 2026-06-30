@@ -384,7 +384,7 @@ def _aggregate_related_actions(
 # names additionally permitted nullable path fields so the validator skips
 # them when null/missing but still validates non-null values.
 _OPTIONAL_PATH_FIELDS = {
-    "move_note": ("origin_inbox_item",),
+    "move_note": ("source_inbox_item",),
     "link_to_moc": ("target_moc_path",),
     "skip": ("source_path",),
 }
@@ -771,7 +771,7 @@ def _build_move_note_actions(
             "destination": _dest_join(m.get("destination", ""), title),
             "title": title,
             "rendered_file": rendered,
-            "origin_inbox_item": origin,
+            "source_inbox_item": origin,
             "audio_peer": audio_peer,
             "parent_mocs": [_moc_stem(x) for x in (m.get("parent_mocs") or []) if x],
             "tags": m.get("tags", []) or [],
@@ -1075,7 +1075,7 @@ def _build_delete_source_actions(
     for mn in move_notes:
         if mn.get("action") != "move_note":
             continue
-        origin = mn.get("origin_inbox_item")
+        origin = mn.get("source_inbox_item")
         if not origin:
             continue
         origin_stem = _stem(origin)
@@ -1088,7 +1088,7 @@ def _build_delete_source_actions(
         expected = expected_by_stem.get(origin_stem, 1)
         if len(moves) < expected:
             continue  # not all atomics rendered yet — defer (OQ6)
-        origin_path = moves[0].get("origin_inbox_item", "")
+        origin_path = moves[0].get("source_inbox_item", "")
         n = len(moves)
         has_daily = origin_stem in daily_stems
         daily_suffix = " + daily" if has_daily else ""
@@ -1428,8 +1428,8 @@ def _render_action_md(action: dict, cfg: dict) -> str:
             lines.append(f"- **From:** `{action['source']}`")
         if action.get("destination"):
             lines.append(f"- **To:** `{action['destination']}`")
-        if action.get("origin_inbox_item"):
-            lines.append(f"- **Origin (reference):** [[{_stem(action['origin_inbox_item'])}]]")
+        if action.get("source_inbox_item"):
+            lines.append(f"- **Source (reference):** [[{_stem(action['source_inbox_item'])}]]")
         lines.append("- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P")
         return "\n".join(lines)
 
@@ -2726,7 +2726,7 @@ def main() -> int:
         "run_id": args.run_id,
     })
     instructions_doc = {
-        "schema_version": "1",
+        "schema_version": "2",
         "type": "tomo-instructions",
         "source_suggestions": source_suggestions,
         "generated": generated_iso,

@@ -65,7 +65,7 @@ def _make_move_note(origin_full_path: str, note_id: str = "A01") -> dict:
     return {
         "id": note_id,
         "action": "move_note",
-        "origin_inbox_item": origin_full_path,
+        "source_inbox_item": origin_full_path,
         "source": f"{INBOX}/rendered-{note_id}.md",
         "destination": "200 Notes/Some Topic.md",
         "title": "Some Topic",

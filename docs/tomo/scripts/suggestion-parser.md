@@ -109,7 +109,7 @@ WHY: Bumped for the spec 022/023 placement-anchor threading (`candidate_mocs`
 on confirmed items, `parse_placement_line`, `load_doc_anchor_map`,
 `--suggestions-doc`). `update-tomo.sh` skips unchanged versions silently.
 
-## Tag-handler Keep-origin extraction (v0.17.0)
+## Tag-handler Keep-source extraction (v0.17.0 → label updated v0.19.0)
 
 WHY a second extractor instead of a tuple return: `parse_tag_handler_groups`
 already has many callers (production + tests) that depend on its `list[str]`
@@ -120,9 +120,26 @@ keep_source)` per block; the existing `parse_tag_handler_groups` and the new
 break (the project is near-MVP — additive-only on hot paths).
 
 WHY keep_source is reported independent of approval: only an approved group has a
-paired `delete_source` to suppress, so a stray keep-origin tick on a skipped
+paired `delete_source` to suppress, so a stray keep-source tick on a skipped
 group is harmless downstream. The output key `tag_handler_keep_source_group_ids`
 feeds instruction-render's delete branch 4.
+
+WHY the label match changed from `"keep origin"` to `"keep source"` (v0.19.0,
+spec 027 / ADR-4): the rendered checkbox label was renamed from "Keep origin" to
+"Keep source files" for vocabulary consistency. The matcher uses substring match
+(`"keep source" in label.lower()`) so "Keep source files" resolves correctly.
+Both the atomic and tag-handler parsers now use the same substring.
+
+## Atomic keep_source label update (spec 027 / ADR-4, v0.19.0)
+
+WHY the atomic checkbox matcher (parse_section line ~410) was updated from
+`"keep origin" in text_lower` to `"keep source" in text_lower`: the rendered
+per-atomic decision block now emits "- [ ] Keep source files" instead of
+"- [ ] Keep origin". The old match silently produced keep_source=False for any
+checked "Keep source files" box, which would have deleted sources the user
+explicitly asked to keep — a silent data-loss bug. The "Delete source" branch
+(line ~412) is intentionally unchanged; the skipped-items delete_source flow is
+separate and still round-trips.
 
 ## Per-item Force Atomic on suppressed light blocks (#88, v0.18.0)
 

@@ -167,38 +167,45 @@ Each suggestion gets a stable ID (`S01`, `S02`, `S03`, ...):
 
 ## 6. User Interaction Model
 
-The user has three main choices per item, plus modification options:
+Each atomic suggestion carries a two-box decision block. The user approves or skips by toggling the Approve box; a separate Keep source files box opts out of deleting the inbox source.
 
-### Tri-State Per Item
-
-Each suggestion has two checkboxes — one for Approve, one for Delete:
+### Two-Box Per Item (spec 027 / ADR-4)
 
 ```markdown
-- [x] Approve     ← checked by default (Tomo's recommendation)
-- [ ] Delete source    ← unchecked by default; only relevant if Approve is unchecked
+**Decision (atomic note):**
+- [x] Approve
+- [ ] Keep source files
+      (don't delete the original(s) after the note is created — you may still need them)
 ```
 
-| State | Approve | Delete | What happens |
-|-------|---------|--------|--------------|
-| **Approve** | `[x]` | ignored | Item proceeds to Pass 2 instruction set |
-| **Skip** | `[ ]` | `[ ]` | Item stays in inbox as `captured`, re-processed next run |
-| **Delete** | `[ ]` | `[x]` | Source inbox file is deleted during cleanup |
+| Approve | Keep source files | What happens |
+|---------|-------------------|--------------|
+| `[x]` | `[ ]` | Note created; source inbox file deleted (default) |
+| `[x]` | `[x]` | Note created; source inbox file kept in inbox |
+| `[ ]` | any | Item stays in inbox as `captured`, re-processed next run (skip) |
 
-The Delete checkbox is only meaningful when Approve is unchecked. If both are checked, Approve wins.
+Not approving IS skipping — there is no separate Skip box. To delete a source without creating a note, mark the item in the skipped-items section (separate flow).
+
+Voice items render the source as a set when an audio peer exists:
+
+```markdown
+**Source:** [[transcript-stem]] + [[recording.m4a]]
+```
 
 ### Modification Options
 
 | Intent | How to express |
 |--------|---------------|
 | Approve as-is | Leave `[x] Approve` checked |
-| Skip (keep for later) | Uncheck `[ ] Approve`, leave Delete unchecked |
-| Delete source file | Uncheck Approve, check `[x] Delete source` |
+| Approve but keep source | Check `[x] Keep source files` |
+| Skip (keep for later) | Uncheck Approve (`[ ] Approve`) |
 | Pick alternative | Uncheck primary, check an alternative |
 | Modify specific field | Edit the field text below the suggestion (e.g., change title) |
 | Combine multiple actions | Approve primary AND also check tracker update sub-action |
 
 **Tomo reads the user's modifications via markdown parsing:**
 - Checkbox state on `- [x] Approve` / `- [ ]` lines
+- `keep_source` from the `- [x] Keep source files` line
 - Field values on `- Key: value` lines below the suggestion
 - Any freeform notes the user added are ignored unless in a recognized pattern
 

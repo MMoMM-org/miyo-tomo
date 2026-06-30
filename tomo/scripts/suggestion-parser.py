@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.1
+# version: 0.19.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 

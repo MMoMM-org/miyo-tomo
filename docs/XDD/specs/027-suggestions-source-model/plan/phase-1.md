@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Internal keep_origin→keep_source rename"
-status: pending
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -42,7 +42,7 @@ names change.
   5. Success: complete triage list covering `suggestion-parser.py`, `suggestions-reducer.py`,
      `instruction-render.py`, `instructions-diff.py`, tests `[ref: SDD/Building Block View]`.
 
-- [ ] **T1.2 Rename the parser field keep_origin→keep_source** `[activity: backend]`
+- [x] **T1.2 Rename the parser field keep_origin→keep_source** `[activity: backend]`
 
   1. Prime: Read `suggestion-parser.py` keep_origin paths `[ref: SDD/Code Context; suggestion-parser.py]`.
   2. Test (red): update/extend parser tests to assert the confirmed item exposes `keep_source`
@@ -54,7 +54,7 @@ names change.
   4. Validate: parser tests pass; lint clean.
   5. Success: no `keep_origin` symbol remains in `suggestion-parser.py` `[ref: SDD/ADR-5]`.
 
-- [ ] **T1.3 Rename render/diff plumbing keep_origin→keep_source** `[activity: backend]`
+- [x] **T1.3 Rename render/diff plumbing keep_origin→keep_source** `[activity: backend]`
 
   1. Prime: Read `instruction-render.py` keep_origin plumbing + `instructions-diff.py`
      `[ref: SDD/Code Context]`.
@@ -67,7 +67,7 @@ names change.
   5. Success: no `keep_origin` symbol remains in `instruction-render.py`/`instructions-diff.py`;
      suppression behavior identical `[ref: SDD/ADR-5]`.
 
-- [ ] **T1.4 Bump versions + docs/tomo counterparts** `[activity: backend]` `[parallel: true]`
+- [x] **T1.4 Bump versions + docs/tomo counterparts** `[activity: backend]` `[parallel: true]`
 
   1. Prime: Recall the version-gated sync rule (managed scripts need a `# version:` bump).
   2. Test: N/A.
@@ -76,7 +76,7 @@ names change.
   4. Validate: `grep` confirms bumped versions; counterpart docs reference `keep_source`.
   5. Success: edited managed scripts carry a new `# version:` `[ref: SDD/CON-5]`.
 
-- [ ] **T1.5 Phase Validation** `[activity: validate]`
+- [x] **T1.5 Phase Validation** `[activity: validate]`
 
   - Run the full suite (`./venv/bin/python -m pytest tests/ -q`). Confirm green (≥ baseline 1782).
     Confirm zero `keep_origin` symbols remain in code (user-facing labels deferred to Phase 2,

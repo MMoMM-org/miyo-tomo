@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.5.4
+# version: 0.5.5
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1380,6 +1380,16 @@ if [ -f "$HOME/.claude/.credentials.json" ]; then
     print_ok ".credentials.json (copied from host)"
 else
     print_warn "No .credentials.json found — browser auth will be needed"
+fi
+
+# Seed Tomo's branded Claude Code themes into the container home.
+# These live at ~/.claude/themes/ (home-level, not the workspace .claude/) and
+# are selected in-container via /theme. Absent dir → skip silently.
+if [ -d "$TOMO_SOURCE/dot_claude/themes" ]; then
+    mkdir -p "$HOME_DIR/.claude/themes"
+    if cp "$TOMO_SOURCE/dot_claude/themes/"*.json "$HOME_DIR/.claude/themes/" 2>/dev/null; then
+        print_ok "themes (tomo-*.json → ~/.claude/themes/)"
+    fi
 fi
 
 # Write .gitconfig for the Docker container user (coder)

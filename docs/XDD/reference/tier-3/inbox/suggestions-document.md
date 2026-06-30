@@ -10,6 +10,12 @@
 > **See**: [specs/004-inbox-fanout-refactor/solution.md](../../../specs/004-inbox-fanout-refactor/solution.md)
 > Related: [Inbox Analysis](inbox-analysis.md) · [State Tag Lifecycle](state-tag-lifecycle.md)
 
+> **Post-018 Update (2026-05-27)**
+>
+> - `inbox-orchestrator` is also retired. The pipeline is now: `inbox-triage.py` (deterministic routing) → `suggestion-conductor` (orchestrates fan-out) → `suggestions-reducer.py` + `suggestions-render.py`.
+> - Tag refs (`#MiYo-Tomo/proposed`, `#MiYo-Tomo/confirmed`) are superseded by frontmatter `tomo.state=pending-approval` / `tomo.state=approved`. User approval signal remains the `- [x] Approved` checkbox — that part is accurate.
+> - The document format itself (§2–§5) is still accurate. Only discovery/lifecycle mechanism changed.
+
 ---
 
 ## 1. Purpose

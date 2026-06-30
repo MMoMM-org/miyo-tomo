@@ -1,9 +1,20 @@
 # Tier 3: Instruction Set Cleanup
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
-> Status: Implemented
-> Agent: `vault-executor` (cleanup scope only in MVP)
+> Status: **Not implemented** — design spec only
+> Agent: ~~`vault-executor`~~ (never built; see banner)
 > Related: [Instruction Set Apply](instruction-set-apply.md) · [State Tag Lifecycle](state-tag-lifecycle.md)
+
+> **Post-018 Update (2026-05-27)**
+>
+> This document describes a cleanup phase and `vault-executor` agent that were **never implemented**. The current pipeline (post-018) has no automated cleanup/archival step:
+>
+> - `vault-executor` does not exist. No agent handles cleanup.
+> - Tag-based lifecycle (`#MiYo-Tomo/applied`, `#MiYo-Tomo/archived`, `#MiYo-Tomo/active`) is not used. The current system uses frontmatter `tomo.state` (see `tomo-lifecycle-states` skill).
+> - The `applied` state and auto-detection logic described in §5 are unimplemented.
+> - Archival and auxiliary file cleanup are unimplemented.
+>
+> This document is retained as a **design reference** for future cleanup implementation. If building cleanup, start from this spec but use the 018 frontmatter-based lifecycle model, not the tag model described here.
 
 ---
 

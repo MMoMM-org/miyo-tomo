@@ -1,9 +1,15 @@
 # Tier 3: Instruction Set Apply (MVP: User)
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
-> Status: Implemented
+> Status: Partially stale — tag refs superseded, user workflow accurate
 > Executor: **User** (MVP) / **Tomo Hashi** (Post-MVP, in progress)
 > Related: [Instruction Set Generation](instruction-set-generation.md) · [Instruction Set Cleanup](instruction-set-cleanup.md) · [instructions.json + .md contract](../../../../instructions-json.md)
+
+> **Post-018 Update (2026-05-27)**
+>
+> - Tag refs (`#MiYo-Tomo/instructions`, `#MiYo-Tomo/applied`) are superseded by frontmatter `tomo.state=pending-apply` / `tomo.state=applied`.
+> - The user workflow itself (per-action checkboxes, manual apply in Obsidian) is still accurate.
+> - The cleanup step after apply (vault-executor) is **not implemented** — see `instruction-set-cleanup.md` banner.
 
 ---
 

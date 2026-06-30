@@ -1,9 +1,15 @@
 # Tier 3: Instruction Set Generation (Pass 2)
 
 > Parent: [Inbox Processing](../../tier-2/workflows/inbox-processing.md)
-> Status: Implemented
-> Agent: `instruction-builder`
+> Status: Partially stale — agent replaced, format accurate
+> Agent: ~~`instruction-builder`~~ → `synthesis-conductor`
 > Related: [Suggestions Document](suggestions-document.md) · [Instruction Set Apply](instruction-set-apply.md)
+
+> **Post-018 Update (2026-05-27)**
+>
+> - `instruction-builder` is retired. Pass 2 is now handled by `synthesis-conductor`, a thin orchestrator that calls scripts in sequence: `suggestion-parser.py` → `instruction-render.py` → `upload-rendered.py` → `state-promoter.py`.
+> - Tag refs (`#MiYo-Tomo/confirmed`, `#MiYo-Tomo/instructions`) are superseded by frontmatter states: approved suggestions have `tomo.state=approved`, instructions are written with `tomo.state=pending-apply`.
+> - The instruction set **format** (action types, per-action checkboxes, `.md` + `.json` sibling pattern) remains accurate.
 
 ---
 

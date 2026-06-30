@@ -63,8 +63,8 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 | D-02 | ☐ #25 | Broken cross-reference in template-system docs |
 | D-03 | ☐ #25 | Broken cross-reference in workflow specs |
 | D-04 | ☐ #25 | Daily-note detection config examples outdated |
-| D-05 | ☐ #25 | WHY docs missing for 6 skills |
-| D-06 | ☐ #25 | XDD reference docs stale post-018 |
+| D-05 | ☑ #25 | Done 2026-06-30 — WHY-docs for 6 skills created at `docs/tomo/dot_claude/skills/` |
+| D-06 | ☑ #25 | Done 2026-06-30 — post-018 deprecation banners added to 7 stale reference docs |
 | D-07 | **#42** | `instruction-render.py` 1870 LOC refactor |
 | D-08 | ☐ #25 | `suggestion-parser.py` 1397 LOC refactor |
 | D-10 | **#41** | Documentation refresh (docs/ tree, coverage, screenshots) |

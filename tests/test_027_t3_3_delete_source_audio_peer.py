@@ -228,3 +228,27 @@ def test_audio_peer_not_duplicated_across_two_atomics():
     assert len(audio_deletes) == 1, (
         f"Audio peer delete must be emitted exactly once; got {len(audio_deletes)}"
     )
+
+
+def test_propose_only_builder_emits_actions_not_fs_deletes():
+    """_build_delete_source_actions returns delete_source action dicts — never
+    touches the filesystem. Verifies that NO Path.unlink call occurs (PRD F5).
+    """
+    import unittest.mock as mock
+
+    confirmed = [_confirmed(TRANSCRIPT_BASENAME)]
+    move_notes = [_move_note(TRANSCRIPT_FULL, audio_peer=AUDIO_FULL)]
+
+    # Patch Path.unlink so any accidental FS call raises immediately.
+    with mock.patch("pathlib.Path.unlink", side_effect=AssertionError("FS delete called")):
+        actions = _build(confirmed, move_notes)
+
+    # All returned items must be delete_source action dicts — no side effects.
+    deletes = _deletes(actions)
+    assert len(deletes) == 2, (
+        f"Expected 2 delete_source dicts (propose-only); got {len(deletes)}"
+    )
+    for d in deletes:
+        assert d.get("action") == "delete_source"
+        assert "source_path" in d
+        assert "reason" in d

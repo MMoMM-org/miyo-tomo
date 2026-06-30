@@ -54,7 +54,7 @@ any accepted `update_daily` for that stem has been handled. Until then it defers
 single explicit key to count expected atomics against, rather than inferring
 origin membership from note paths.
 
-WHY a `keep_origin` opt-out short-circuits the gate: if ANY confirmed atomic from
+WHY a `keep_source` opt-out short-circuits the gate: if ANY confirmed atomic from
 an origin carries the user's "Keep origin" decision, the origin is never deleted
 regardless of the count. The user's explicit intent to retain the source
 overrides the automatic completion gate — the gate's job is to PREVENT premature
@@ -89,7 +89,7 @@ one insert, so "consolidated" is a single boolean, not an N-of-M completion.
 WHY Keep-origin is per-group here (vs per-stem for atomics): the suggestions doc
 renders one Approve/Keep-origin/Skip decision *per group*, so the opt-out is
 naturally group-scoped. A checked "Keep origin" box adds the group_id to
-`tag_handler_keep_origin_group_ids` (parser → `build_actions` →
+`tag_handler_keep_source_group_ids` (parser → `build_actions` →
 `_build_delete_source_actions`), which short-circuits the per-source emit.
 
 WHY ordering is safe without a depends_on field: Hashi applies actions in

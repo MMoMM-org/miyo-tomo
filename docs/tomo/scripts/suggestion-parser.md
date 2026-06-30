@@ -115,13 +115,13 @@ WHY a second extractor instead of a tuple return: `parse_tag_handler_groups`
 already has many callers (production + tests) that depend on its `list[str]`
 contract. Rather than churn them all, the section is walked once by a shared
 private `_walk_tag_handler_decisions` that yields `(group_id, approved,
-keep_origin)` per block; the existing `parse_tag_handler_groups` and the new
-`parse_tag_handler_keep_origin` are thin filters over it. Additive, no contract
+keep_source)` per block; the existing `parse_tag_handler_groups` and the new
+`parse_tag_handler_keep_source` are thin filters over it. Additive, no contract
 break (the project is near-MVP — additive-only on hot paths).
 
-WHY keep_origin is reported independent of approval: only an approved group has a
+WHY keep_source is reported independent of approval: only an approved group has a
 paired `delete_source` to suppress, so a stray keep-origin tick on a skipped
-group is harmless downstream. The output key `tag_handler_keep_origin_group_ids`
+group is harmless downstream. The output key `tag_handler_keep_source_group_ids`
 feeds instruction-render's delete branch 4.
 
 ## Per-item Force Atomic on suppressed light blocks (#88, v0.18.0)

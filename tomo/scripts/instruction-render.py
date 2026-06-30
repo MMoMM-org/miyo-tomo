@@ -1099,20 +1099,17 @@ def _build_delete_source_actions(
             "source_path": origin_path,
             "reason": reason,
         })
-        # Paired audio peer delete — emitted once per origin stem, directly
-        # after the transcript delete. Takes the first non-None audio_peer from
-        # the move_notes for this stem (all atomics from one transcript share
-        # the same peer). keep_source_stems and the gate both apply above, so
-        # arriving here means both deletes are appropriate. Guard: no peer → skip.
-        audio_peer = next(
-            (mn.get("audio_peer") for mn in moves if mn.get("audio_peer")),
-            None,
-        )
-        if audio_peer:
+        # Paired audio peer delete — one delete per unique audio peer for this
+        # origin stem. Normally 0 or 1 peer; set deduplicates the multi-atomic
+        # case (two atomics from one transcript share the same peer path).
+        # keep_source_stems and the gate both apply above, so arriving here
+        # means both deletes are appropriate. Empty set → no audio delete (fail-safe).
+        audio_peers = {mn.get("audio_peer") for mn in moves if mn.get("audio_peer")}
+        for ap in sorted(audio_peers):
             out.append({
                 "id": _next_id(counter),
                 "action": "delete_source",
-                "source_path": audio_peer,
+                "source_path": ap,
                 "reason": "Audio peer of consumed origin.",
             })
 

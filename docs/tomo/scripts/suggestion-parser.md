@@ -175,7 +175,7 @@ reducer intentionally strips the directory when building the `[[wikilink]]` (rsp
 path). The parser cannot reconstruct the directory from the suggestions doc alone
 (the inbox path is known only at render time, not parse time). The basename is
 sufficient because `_build_move_note_actions` inbox-joins it to a full path before
-the action is emitted — the same join logic used for `origin_inbox_item`.
+the action is emitted — the same join logic used for `source_inbox_item`.
 
 WHY `audio_peer` must be included in the explicit `confirmed_items` projection dict
 (the `{...}` literal at the `confirmed_items.append(...)` call): the parser's

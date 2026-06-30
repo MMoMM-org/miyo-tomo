@@ -206,7 +206,7 @@ without offering choices that don't add information.
 
 WHY "Keep source files" not "Keep origin": aligns with the terminology the user
 already sees in the section heading and tag-handler block; avoids leaking the
-internal "origin_inbox_item" wire-field name into user-facing text.
+internal "source_inbox_item" wire-field name into user-facing text.
 
 ## Voice source rendered as a file set (spec 027 / ADR-1, v1.21.0)
 

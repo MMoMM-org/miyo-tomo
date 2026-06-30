@@ -165,7 +165,7 @@ WHY `audio_peer` flows from confirmed item → manifest entry → move_note acti
 then extracts the second wikilink from that rendered line — a basename — and
 attaches it to the confirmed item. From there it is carried verbatim into the
 manifest entry and into the move_note action, where `_build_move_note_actions`
-inbox-joins a bare basename to a full path (same pattern as `origin_inbox_item`)
+inbox-joins a bare basename to a full path (same pattern as `source_inbox_item`)
 but WITHOUT `_ensure_md_extension` — the `.m4a` extension must be preserved
 because it refers to an audio file, not a note.
 

@@ -90,8 +90,8 @@ def _decision_block_lines(md: str) -> list[str]:
 def _checkbox_lines(md: str) -> list[str]:
     """Return only lines matching the checkbox pattern within the decision block."""
     return [
-        l for l in _decision_block_lines(md)
-        if re.match(r"- \[[ x]\] ", l)
+        line for line in _decision_block_lines(md)
+        if re.match(r"- \[[ x]\] ", line)
     ]
 
 
@@ -115,7 +115,7 @@ def test_decision_block_has_approve_line():
     """Decision block contains the Approve checkbox."""
     md = render_create_atomic_note(_action(), "my-note")
     boxes = _checkbox_lines(md)
-    approve_lines = [l for l in boxes if "Approve" in l]
+    approve_lines = [line for line in boxes if "Approve" in line]
     assert len(approve_lines) == 1, (
         f"Expected 1 Approve line, got {approve_lines!r}"
     )
@@ -125,7 +125,7 @@ def test_decision_block_has_keep_source_files_line():
     """Decision block contains 'Keep source files' — not 'Keep origin' (PRD F1)."""
     md = render_create_atomic_note(_action(), "my-note")
     boxes = _checkbox_lines(md)
-    keep_lines = [l for l in boxes if "Keep source files" in l]
+    keep_lines = [line for line in boxes if "Keep source files" in line]
     assert len(keep_lines) == 1, (
         f"Expected 1 'Keep source files' checkbox, got {keep_lines!r} from boxes {boxes!r}"
     )
@@ -136,8 +136,8 @@ def test_decision_block_no_origin_wording():
     md = render_create_atomic_note(_action(), "my-note")
     block_lines = _decision_block_lines(md)
     origin_in_control = [
-        l for l in block_lines
-        if re.match(r"- \[[ x]\] ", l) and "origin" in l.lower()
+        line for line in block_lines
+        if re.match(r"- \[[ x]\] ", line) and "origin" in line.lower()
     ]
     assert origin_in_control == [], (
         f"Decision block contains 'origin' in a checkbox line: {origin_in_control!r}"
@@ -148,7 +148,7 @@ def test_decision_block_no_skip_checkbox():
     """Decision block must NOT have a Skip checkbox (not-approving IS skipping, ADR-4)."""
     md = render_create_atomic_note(_action(), "my-note")
     boxes = _checkbox_lines(md)
-    skip_lines = [l for l in boxes if re.search(r"\bSkip\b", l)]
+    skip_lines = [line for line in boxes if re.search(r"\bSkip\b", line)]
     assert skip_lines == [], (
         f"Decision block must not contain a 'Skip' checkbox; got {skip_lines!r}"
     )
@@ -161,7 +161,7 @@ def test_decision_block_no_per_atomic_delete_source():
     """
     md = render_create_atomic_note(_action(), "my-note")
     boxes = _checkbox_lines(md)
-    delete_lines = [l for l in boxes if "Delete source" in l]
+    delete_lines = [line for line in boxes if "Delete source" in line]
     assert delete_lines == [], (
         f"Decision block must not contain 'Delete source'; got {delete_lines!r}"
     )

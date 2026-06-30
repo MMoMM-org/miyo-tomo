@@ -109,6 +109,10 @@
         "needs_new_moc": {"type": "boolean"},
         "proposed_moc_topic": {"type": ["string", "null"]},
         "tags_to_add": {"type": "array", "items": {"type": "string"}},
+        "audio_peer": {
+          "type": ["string", "null"],
+          "description": "Vault-relative path to the companion audio file when this item is a voice transcript (e.g. '100 Inbox/recording.m4a'). Derived from the transcript's source: frontmatter key (written by voice_render.py). Null or absent for non-voice items (ADR-1, ADR-2)."
+        },
         "atomic_note_worthiness": {"type": "number", "minimum": 0, "maximum": 1},
         "alternatives": {
           "type": "array",

@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.19.0
+# version: 0.20.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -72,6 +72,7 @@ Extract:
 - Frontmatter (if present)
 - Body content
 - Title (frontmatter title → first H1 → filename stem)
+- `source:` (if present — audio peer filename for voice transcripts, written by `voice_render.py`)
 
 
 ### Step 2b — Check skip-flag pre-filter
@@ -250,6 +251,12 @@ An inbox item is a voice transcript when it carries a `transcribed:` frontmatter
 concatenated segment text — voice transcripts often carry 1500+ chars of
 multi-topic substance that scores well above 0.5, while a 350-char
 synthesis of the same content would fail the gate.
+
+When a transcript is detected, derive the `audio_peer` vault-relative path:
+take the directory of `<path>` (e.g. `100 Inbox/`) and append the `source:`
+frontmatter value (e.g. `2026-04-08_1430_interview.m4a`) →
+`audio_peer = "100 Inbox/2026-04-08_1430_interview.m4a"`.
+If `source:` is absent from the frontmatter, set `audio_peer` to `null`.
 
 **`force_atomic=true` override.**
 
@@ -602,6 +609,9 @@ Iterate over the threads from Step 7.5. For EACH thread:
   `create_atomic_note` — for single- AND multi-thread items alike. All atomics from
   one item share the same `source_stem` so consumers can group them back to one
   source.
+- Stamp `audio_peer` on EVERY `create_atomic_note` for voice transcripts: use the
+  vault-relative path derived in Step 7 (e.g. `"100 Inbox/recording.m4a"`). For
+  non-voice items, omit `audio_peer` or set it to `null`.
 
 **Action 2+ — Daily updates** (from Step 8b):
 Emit one or more `update_daily` actions. Each has:
@@ -663,6 +673,7 @@ Step 10.2 — substitute placeholders using the values from Steps 2-9:
 | `<CATEGORY>` (classification) | Step 5 | Dewey label like `2600 - Applied Sciences` |
 | `<PROPOSED_MOC_TOPIC>` | Step 4 when `needs_new_moc: true` | short thematic phrase |
 | `<DATE>` | Step 8 date_relevance | `YYYY-MM-DD` |
+| `audio_peer` | Step 7 voice detection | Vault-relative path (e.g. `100 Inbox/recording.m4a`); omit or `null` for non-voice items |
 | `candidate_mocs[].path` | Step 4 | MOC path including `.md` |
 | Numeric fields | Steps 3/5/7 | actual floats 0.0-1.0 |
 

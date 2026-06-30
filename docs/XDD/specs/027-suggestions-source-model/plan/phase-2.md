@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Two-box decision-block UX"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -32,7 +32,7 @@ phase: 2
 Delivers the unambiguous review surface: one source decision per item, consistent "source"
 wording, voice source shown as a set.
 
-- [ ] **T2.1 Render the two-box decision block** `[activity: frontend]`
+- [x] **T2.1 Render the two-box decision block** `[activity: frontend]`
 
   1. Prime: Read the current per-item render `[ref: SDD/Code Context; suggestions-reducer.py]`
      (decision block ~369-376) and the disposition matrix `[ref: SDD/ADR-4]`.
@@ -46,7 +46,7 @@ wording, voice source shown as a set.
   4. Validate: reducer render tests pass; lint clean.
   5. Success: block has two controls, source wording, matches ADR-4 mock `[ref: SDD/ADR-4]`.
 
-- [ ] **T2.2 Render the voice source as a file set** `[activity: frontend]`
+- [x] **T2.2 Render the voice source as a file set** `[activity: frontend]`
 
   1. Prime: Read how the source line is rendered today + the audio_peer intent `[ref: SDD/ADR-1; Runtime View]`.
      (NOTE: the `audio_peer` value is plumbed in Phase 3; here render the SET shape, tolerant of a
@@ -59,7 +59,7 @@ wording, voice source shown as a set.
   4. Validate: render tests pass for set + single-file cases.
   5. Success: voice items show the {transcript + audio} set; non-voice unchanged `[ref: SDD/ADR-4]`.
 
-- [ ] **T2.3 Parse the new label set** `[activity: backend]`
+- [x] **T2.3 Parse the new label set** `[activity: backend]`
 
   1. Prime: Read parser checkbox handling `[ref: SDD/Code Context; suggestion-parser.py]`.
   2. Test (red): parsing the new block sets `keep_source` from the "Keep source files" line;
@@ -71,7 +71,7 @@ wording, voice source shown as a set.
   4. Validate: parser tests pass; round-trip (render→parse) test green.
   5. Success: new block round-trips; skipped-items delete-only flow still works `[ref: SDD/ADR-4]`.
 
-- [ ] **T2.4 Update reference doc + version bumps** `[activity: backend]` `[parallel: true]`
+- [x] **T2.4 Update reference doc + version bumps** `[activity: backend]` `[parallel: true]`
 
   1. Prime: `docs/XDD/reference/tier-3/inbox/suggestions-document.md` §6 (tri-state model).
   2. Test: N/A.
@@ -80,7 +80,7 @@ wording, voice source shown as a set.
   4. Validate: docs reflect the new model; versions bumped.
   5. Success: reference doc matches the shipped block `[ref: SDD/CON-3]`.
 
-- [ ] **T2.5 Phase Validation** `[activity: validate]`
+- [x] **T2.5 Phase Validation** `[activity: validate]`
 
   - Run full suite; confirm green. Render a sample suggestions doc fixture and eyeball the block.
     Confirm zero "origin"/"Keep origin" in user-facing reducer output. Lint clean.

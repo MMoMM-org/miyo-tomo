@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-30 |
-| **Current Phase** | SDD |
+| **Current Phase** | PLAN |
 | **Last Updated** | 2026-06-30 |
 
 ## Documents
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 5 Must-Have features, Gherkin ACs; F4 reconciled to hard-cutover |
 | solution.md | completed | 5 ADRs; ADR-1/3/4 user-confirmed |
-| plan/ | pending | |
+| plan/ | completed | 4 phases, 21 tasks; TDD; sequenced by dependency/risk |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -29,6 +29,7 @@
 | 2026-06-30 | ADR-3 = HARD CUTOVER (no dual-accept window); Tomo+Hashi deploy in lockstep | User: "Hashi will be in sync" — single operator deploys both. Supersedes PRD F4 backward-compat; migration = apply-pending-then-upgrade-both + Kokoro ADR + Hashi#41 handoff |
 | 2026-06-30 | ADR-4 = two-box decision block (Approve + Keep source files); drop redundant "Skip" + per-atomic "Delete source" box | User feedback: un-approve IS skip; "keep in inbox/don't delete" is the real secondary intent; junk delete-only stays in skipped-items flow |
 | 2026-06-30 | ADR-3 refined: bump instruction `schema_version` "1"→"2" as the cutover signal | User Q surfaced the existing version gate; `docs/instructions-json.md` requires Hashi to reject unknown versions → v2 doc on v1-only Hashi fails loud, making the lockstep window safe |
+| 2026-06-30 | PLAN complete — 4 phases, 21 tasks, sequenced internal-rename → UX → audio-peer → wire-rename | Dependency/risk order; cross-repo breaking phase last; all 14 Gherkin ACs mapped; line refs alignment-verified (zero drift) |
 
 ## Context
 

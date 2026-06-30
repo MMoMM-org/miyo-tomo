@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.19.0
+# version: 0.20.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -335,6 +335,7 @@ def parse_section(
     result: dict = {
         "id": section_id,
         "source_path": None,
+        "audio_peer": None,
         "type": None,
         "approved": False,
         "delete_source": False,
@@ -452,8 +453,12 @@ def parse_section(
             if src:
                 result["source_path"] = src.group(1) or src.group(2)
             else:
-                wl = _extract_wikilink(val)
-                result["source_path"] = wl or val
+                # Voice source set: "[[stem]] + [[audio.m4a]]" → stem + peer.
+                # RE_WIKILINK.findall captures ALL wikilinks; index 0 is the
+                # transcript stem, index 1 (when present) is the audio peer basename.
+                wikilinks = RE_WIKILINK.findall(val)
+                result["source_path"] = wikilinks[0].strip() if wikilinks else val
+                result["audio_peer"] = wikilinks[1].strip() if len(wikilinks) >= 2 else None
 
         elif key == "type":
             # "#type/note/normal" or "fleeting_note (confidence: 0.85)"
@@ -1659,6 +1664,7 @@ def main() -> int:
             confirmed_items.append({
                 "id": item["id"],
                 "source_path": item["source_path"],
+                "audio_peer": item.get("audio_peer"),
                 "type": item["type"],
                 "approved": item["approved"],
                 "delete_source": item["delete_source"],

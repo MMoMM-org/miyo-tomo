@@ -758,6 +758,12 @@ def _build_move_note_actions(
         # Append .md only for bare/dotted note names; preserve real
         # extensions (e.g. `.m4a` for audio sources kept as origin reference).
         origin = _ensure_md_extension(origin)
+        # audio_peer is the companion audio file for voice transcripts.
+        # Join a bare basename with inbox_path exactly as we do for origin,
+        # but do NOT apply _ensure_md_extension — the .m4a must be preserved.
+        audio_peer = m.get("audio_peer") or None
+        if audio_peer and "/" not in audio_peer:
+            audio_peer = _inbox_join(inbox_path, audio_peer)
         out.append({
             "id": _next_id(counter),
             "action": "move_note",
@@ -766,6 +772,7 @@ def _build_move_note_actions(
             "title": title,
             "rendered_file": rendered,
             "origin_inbox_item": origin,
+            "audio_peer": audio_peer,
             "parent_mocs": [_moc_stem(x) for x in (m.get("parent_mocs") or []) if x],
             "tags": m.get("tags", []) or [],
         })
@@ -2444,6 +2451,7 @@ def main() -> int:
             continue
         title = item.get("title") or item.get("source_path", "untitled")
         source_path = item.get("source_path", "")
+        audio_peer = item.get("audio_peer")
         template_ref = item.get("template", "")
         tags = item.get("tags", [])
         parent_moc = item.get("parent_moc", "")
@@ -2539,6 +2547,7 @@ def main() -> int:
             "action": item.get("action", "create_note"),
             "title": title,
             "source_path": source_path,
+            "audio_peer": audio_peer,
             "template": template_ref,
             "rendered_file": filename,
             "rendered_path": str(rendered_path),

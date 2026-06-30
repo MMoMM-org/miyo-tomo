@@ -98,6 +98,26 @@ Sets up `<parent>/<name>/home/` as the Docker `/home/coder` mount, including Cla
 
 Tomo's branded Claude Code themes (`tomo/dot_claude/themes/tomo-*.json`) are also seeded into the home at `~/.claude/themes/`. Inside a session, select one with `/theme` (Tomo Ai 藍, Tomo Murasaki 紫, Tomo Cha 茶). They are home-level only — they never touch your host `~/.claude/`, and you can tweak any `.json` live (hot-reload) or drop in your own.
 
+### Statusline
+
+The Tomo statusline (`tomo/scripts/tomo-statusline.sh`) renders as colored **pills**:
+`✦ Model` · `友 Instance` · `🧠 Context` (fill bar, green→amber→red by load) ·
+`門 Kado` (gate port + connectivity/tags) · `橋 Hashi` (IDE-bridge port, shown only when connected).
+Pill colors are read **live from the active `/theme`** — switch theme and the statusline follows;
+with no custom theme a built-in fallback palette is used.
+
+Two environment knobs tune it (set in the launcher or your shell):
+
+| Variable | Values | Default |
+|----------|--------|---------|
+| `TOMO_STATUSLINE_STYLE` | `d` two-tone · `c` ghost · `b` powerline | `d` |
+| `TOMO_STATUSLINE_CAPS` | `round` · `square` · `none` | `round` |
+
+Rounded caps need a **Nerd Font** in your host terminal (the container only emits bytes — your
+terminal renders the glyphs). No Nerd Font? Set `TOMO_STATUSLINE_CAPS=square` (block caps `▌▐`,
+render in any font) or `none`. See the styles and themes rendered side by side in
+[`statusline-preview.html`](statusline-preview.html) (open in a browser).
+
 ### 8. Registry Update
 
 Finally, the installer records the instance in `~/.tomo/instances.json` (name → path → source repo → version) so future install/update runs can find it. The registry is a rebuildable index: if it's lost, your instances still launch via their own `begin-tomo.sh`, and the next install re-creates the entry. A registry write failure does not abort an otherwise successful install.

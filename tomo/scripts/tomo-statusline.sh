@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.8.0
+# version: 0.9.0
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -10,14 +10,79 @@
 #
 # NOTE: No set -e / set -u — a statusline must never crash.
 
-# ── Colors ────────────────────────────────────────────────
+# ── Palette + pill rendering ──────────────────────────────
+# Segment colors follow the active /theme: read ~/.claude/settings.json →
+# themes/<slug>.json overrides, falling back to a built-in palette when no
+# custom theme is selected. Style + caps are env-tunable:
+#   TOMO_STATUSLINE_STYLE = d (two-tone, default) | c (ghost) | b (powerline)
+#   TOMO_STATUSLINE_CAPS  = round (default) | square | none
+# Rounded caps need a Nerd Font in the host terminal; square uses block glyphs
+# that render anywhere; none omits caps. The container only emits bytes — the
+# host terminal does the font rendering (docker run -it attaches the host TTY).
 
-GREEN="\033[0;32m"
-YELLOW="\033[0;33m"
-RED="\033[0;31m"
-CYAN="\033[0;36m"
-MAGENTA_BOLD="\033[1;35m"
 RESET="\033[0m"
+STYLE="${TOMO_STATUSLINE_STYLE:-d}"
+
+# Cap glyphs are embedded literally (bash 3.2 has no $'\uXXXX').
+case "${TOMO_STATUSLINE_CAPS:-round}" in
+  square) CAP_L="▌"; CAP_R="▐" ;;
+  none)   CAP_L="";  CAP_R="" ;;
+  *)      CAP_L=""; CAP_R="" ;;   # round — Nerd Font powerline half-circles
+esac
+PL_SEP=""                          # powerline arrow separator (style b)
+
+# "#rrggbb" -> "r;g;b" (decimal). Invalid input -> rc 1, no output.
+hex_rgb() {
+  local h="${1#\#}"
+  [[ "$h" =~ ^[0-9a-fA-F]{6}$ ]] || return 1
+  printf '%d;%d;%d' "0x${h:0:2}" "0x${h:2:2}" "0x${h:4:2}"
+}
+
+# Read one override token's hex from the active custom theme; empty otherwise.
+_SETTINGS="${HOME}/.claude/settings.json"
+_THEMES_DIR="${HOME}/.claude/themes"
+theme_hex() {
+  local tok="$1" slug val
+  [[ -f "$_SETTINGS" ]] || return 0
+  slug=$(jq -r '.theme // ""' "$_SETTINGS" 2>/dev/null) || return 0
+  case "$slug" in custom:*) slug="${slug#custom:}" ;; *) return 0 ;; esac
+  [[ -f "$_THEMES_DIR/$slug.json" ]] || return 0
+  val=$(jq -r --arg k "$tok" '.overrides[$k] // ""' "$_THEMES_DIR/$slug.json" 2>/dev/null) || return 0
+  [[ "$val" =~ ^#[0-9a-fA-F]{6}$ ]] && printf '%s' "$val"
+}
+# token, fallback-hex -> "r;g;b" (theme value wins; fallback when absent)
+pick_rgb() {
+  local hx; hx=$(theme_hex "$1"); hx="${hx:-$2}"; hex_rgb "$hx"
+}
+
+# Segment palette (brand tokens for identity, state tokens for status).
+RGB_MODEL=$(pick_rgb claude      "#22d3ee")   # model      (brand)
+RGB_INST=$(pick_rgb  skill       "#c084fc")   # 友 instance (brand)
+RGB_OK=$(pick_rgb    success     "#4ade80")   # ok    / green
+RGB_WARN=$(pick_rgb  warning     "#fbbf24")   # warn  / amber
+RGB_ERR=$(pick_rgb   error       "#f87171")   # error / red
+RGB_INK=$(pick_rgb   inverseText "#0b0b14")   # dark text on bright pills
+RGB_DIM="120;120;130"                          # empty bar / subtle
+
+# Escape builders — emit literal \033 sequences for the final `echo -e`.
+_fg() { echo -n "\033[38;2;$1m"; }
+_bg() { echo -n "\033[48;2;$1m"; }
+
+# pill <rgb> <label> -> one rendered segment (escaped, for echo -e).
+# The label carries its own glyph (門:port etc.) so kanji+port stay contiguous.
+# Style b returns a *filled* body WITHOUT caps/separators — the line assembler
+# threads those so segments connect into one powerline.
+pill() {
+  local rgb="$1" label="$2"
+  case "$STYLE" in
+    c)  # ghost: colored caps + colored text, no fill
+        echo -n "$(_fg "$rgb")${CAP_L} ${label} ${CAP_R}${RESET}" ;;
+    b)  # powerline: filled body, ink text (caps/separators added by assembler)
+        echo -n "$(_bg "$rgb")$(_fg "$RGB_INK") ${label} ${RESET}" ;;
+    *)  # d (two-tone): solid filled pill, rounded caps, ink text
+        echo -n "$(_fg "$rgb")${CAP_L}$(_bg "$rgb")$(_fg "$RGB_INK") ${label} ${RESET}$(_fg "$rgb")${CAP_R}${RESET}" ;;
+  esac
+}
 
 # ── Input ─────────────────────────────────────────────────
 
@@ -31,16 +96,17 @@ CTX_PCT="${CTX_PCT:-0}"
 
 # ── Context bar ──────────────────────────────────────────
 
-block_bar() {
-  local pct="${1:-0}"
-  local filled_char="🟩" empty_char="⬜"
-  [[ "$pct" -ge 70 ]] && filled_char="🟨"
-  [[ "$pct" -ge 90 ]] && filled_char="🟥"
-  local filled=$(( pct / 10 ))
-  local empty=$(( 10 - filled ))
-  local bar=""
-  for (( i=0; i<filled; i++ )); do bar+="$filled_char"; done
-  for (( i=0; i<empty; i++ )); do bar+="$empty_char"; done
+ctx_bar() {
+  # pct -> an 8-cell block bar "████░░░░". The pill color conveys the state
+  # (ok/warn/crit); the bar conveys the fill level. Block glyphs render in any
+  # font, so this stays readable with or without a Nerd Font.
+  local pct="${1:-0}" filled empty bar="" i
+  filled=$(( (pct + 6) / 13 ))
+  [[ $filled -lt 0 ]] && filled=0
+  [[ $filled -gt 8 ]] && filled=8
+  empty=$(( 8 - filled ))
+  for (( i=0; i<filled; i++ )); do bar+="█"; done
+  for (( i=0; i<empty;  i++ )); do bar+="░"; done
   echo -n "$bar"
 }
 
@@ -286,28 +352,64 @@ HASHI_PORT="${HASHI_STATUS#*:}"
 # When no colon, HASHI_PORT equals HASHI_STATUS — normalize to "?"
 [[ "$HASHI_PORT" == "$HASHI_STATUS" ]] && HASHI_PORT="?"
 
-LINE="${CYAN}[${MODEL}]${RESET}"
+# Collect segments (parallel rgb + label arrays) in render order. Optional
+# segments (instance, Hashi) are simply not appended when absent.
+SEG_RGB=()
+SEG_LBL=()
+
+SEG_RGB+=("$RGB_MODEL"); SEG_LBL+=("✦ ${MODEL}")
+
 if [[ -n "$INSTANCE_LABEL" ]]; then
-  LINE+=" | ${MAGENTA_BOLD}友${RESET} ${INSTANCE_LABEL}"
+  SEG_RGB+=("$RGB_INST"); SEG_LBL+=("友 ${INSTANCE_LABEL}")
 fi
-LINE+=" | 🧠 $(block_bar "$CTX_PCT") ${CTX_PCT}%"
+
+CTX_RGB="$RGB_OK"
+[[ "$CTX_PCT" -ge 70 ]] && CTX_RGB="$RGB_WARN"
+[[ "$CTX_PCT" -ge 90 ]] && CTX_RGB="$RGB_ERR"
+SEG_RGB+=("$CTX_RGB"); SEG_LBL+=("🧠 $(ctx_bar "$CTX_PCT") ${CTX_PCT}%")
 
 case "$KADO_STATUS" in
-  ok)          LINE+=" | ${GREEN}門:${KADO_PORT} ✓${RESET}" ;;
-  tags_denied) LINE+=" | ${YELLOW}門:${KADO_PORT} ✓ Tags ✗${RESET}" ;;
-  unreachable) LINE+=" | ${RED}門:${KADO_PORT} ✗${RESET}" ;;
-  error)       LINE+=" | ${RED}門:${KADO_PORT} ✗${RESET}" ;;
-  no_config)   LINE+=" | ${YELLOW}門:${KADO_PORT} ?${RESET}" ;;
-  *)           LINE+=" | ${YELLOW}門:${KADO_PORT} ?${RESET}" ;;
+  ok)          SEG_RGB+=("$RGB_OK");   SEG_LBL+=("門:${KADO_PORT} ✓") ;;
+  tags_denied) SEG_RGB+=("$RGB_WARN"); SEG_LBL+=("門:${KADO_PORT} ✓ Tags ✗") ;;
+  unreachable) SEG_RGB+=("$RGB_ERR");  SEG_LBL+=("門:${KADO_PORT} ✗") ;;
+  error)       SEG_RGB+=("$RGB_ERR");  SEG_LBL+=("門:${KADO_PORT} ✗") ;;
+  *)           SEG_RGB+=("$RGB_WARN"); SEG_LBL+=("門:${KADO_PORT} ?") ;;
 esac
 
 # Hashi segment is shown ONLY when the IDE bridge is in use — i.e. a lock file
-# exists (ok/unreachable). When not configured/active (no_config), omit it
-# entirely rather than rendering a yellow "橋:? ?".
+# exists (ok/unreachable). When not configured/active, omit it entirely.
 case "$HASHI_STATE" in
-  ok)          LINE+=" | ${GREEN}橋:${HASHI_PORT} ✓${RESET}" ;;
-  unreachable) LINE+=" | ${RED}橋:${HASHI_PORT} ✗${RESET}" ;;
+  ok)          SEG_RGB+=("$RGB_OK");  SEG_LBL+=("橋:${HASHI_PORT} ✓") ;;
+  unreachable) SEG_RGB+=("$RGB_ERR"); SEG_LBL+=("橋:${HASHI_PORT} ✗") ;;
   *)           : ;;
 esac
+
+# ── Assemble by style ────────────────────────────────────
+LINE=""
+SEG_N="${#SEG_RGB[@]}"
+if [[ "$STYLE" == "b" ]]; then
+  # Connected powerline: rounded outer caps + arrow separators that blend each
+  # segment's color into the next.
+  LINE+="$(_fg "${SEG_RGB[0]}")${CAP_L}"
+  i=0
+  while [[ "$i" -lt "$SEG_N" ]]; do
+    LINE+="$(_bg "${SEG_RGB[$i]}")$(_fg "$RGB_INK") ${SEG_LBL[$i]} "
+    j=$(( i + 1 ))
+    if [[ "$j" -lt "$SEG_N" ]]; then
+      LINE+="$(_fg "${SEG_RGB[$i]}")$(_bg "${SEG_RGB[$j]}")${PL_SEP}"
+    else
+      LINE+="${RESET}$(_fg "${SEG_RGB[$i]}")${CAP_R}${RESET}"
+    fi
+    i="$j"
+  done
+else
+  # d (two-tone) / c (ghost): self-contained pills, space-separated.
+  i=0
+  while [[ "$i" -lt "$SEG_N" ]]; do
+    [[ "$i" -gt 0 ]] && LINE+=" "
+    LINE+="$(pill "${SEG_RGB[$i]}" "${SEG_LBL[$i]}")"
+    i=$(( i + 1 ))
+  done
+fi
 
 echo -e "$LINE"

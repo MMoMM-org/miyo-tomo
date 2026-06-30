@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_statusline_render.py — Pytest-driven tests for tomo-statusline.sh (T3.2, T4.3).
 
 Feeds JSON on stdin, stubs the probes (PATH shims or injected env vars),
@@ -31,10 +31,14 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 STATUSLINE_SH = REPO_ROOT / "tomo" / "scripts" / "tomo-statusline.sh"
 
-# ANSI escape sequences
-ANSI_GREEN = "\033[0;32m"
-ANSI_YELLOW = "\033[0;33m"
-ANSI_RED = "\033[0;31m"
+# Statusline colors are truecolor pills themed from the active /theme. The test
+# environment sets HOME=tmp_path/home with no settings.json, so the statusline
+# falls back to its built-in palette. These are that palette's state colors as
+# "r;g;b" triples — present in both the fg (38;2;…) and bg (48;2;…) sequences,
+# so a plain substring check is style-agnostic.
+ANSI_GREEN = "74;222;128"   # fallback success (#4ade80)
+ANSI_YELLOW = "251;191;36"  # fallback warning (#fbbf24)
+ANSI_RED = "248;113;113"    # fallback error   (#f87171)
 ANSI_RESET = "\033[0m"
 
 # Minimal stdin JSON (model name + context pct)

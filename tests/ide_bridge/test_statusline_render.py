@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_statusline_render.py — Pytest-driven tests for tomo-statusline.sh (T3.2, T4.3).
 
 Feeds JSON on stdin, stubs the probes (PATH shims or injected env vars),
@@ -31,10 +31,14 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 STATUSLINE_SH = REPO_ROOT / "tomo" / "scripts" / "tomo-statusline.sh"
 
-# ANSI escape sequences
-ANSI_GREEN = "\033[0;32m"
-ANSI_YELLOW = "\033[0;33m"
-ANSI_RED = "\033[0;31m"
+# Statusline colors are truecolor pills themed from the active /theme. The test
+# environment sets HOME=tmp_path/home with no settings.json, so the statusline
+# falls back to its built-in palette. These are that palette's state colors as
+# "r;g;b" triples — present in both the fg (38;2;…) and bg (48;2;…) sequences,
+# so a plain substring check is style-agnostic.
+ANSI_GREEN = "74;222;128"   # fallback success (#4ade80)
+ANSI_YELLOW = "251;191;36"  # fallback warning (#fbbf24)
+ANSI_RED = "248;113;113"    # fallback error   (#f87171)
 ANSI_RESET = "\033[0m"
 
 # Minimal stdin JSON (model name + context pct)
@@ -702,6 +706,62 @@ def test_kado_read_probe_uses_byfrontmatter_not_bytag(tmp_path):
     assert "byTag" not in payload_raw, (
         "F6-AC3: probe payload must NOT contain byTag.\n"
         f"Captured payload: {payload_raw!r}"
+    )
+
+
+# ── Style/caps selection: env var + hot-reload conf file ─────────────────────
+
+def _write_conf(tmp_path: Path, body: str) -> None:
+    """Write ~/.claude/tomo-statusline.conf under the run's HOME."""
+    cdir = tmp_path / "home" / ".claude"
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "tomo-statusline.conf").write_text(body)
+
+
+def test_caps_square_via_conf_renders_block_caps(tmp_path):
+    """conf `caps = square` → block caps (▌/▐) appear; no relaunch needed."""
+    _write_conf(tmp_path, "caps = square\n")
+    r = _run_statusline(
+        mcp_json_content=_make_mcp_json(23026),
+        kado_cache_content="ok",
+        tmp_path=tmp_path,
+    )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    assert "▌" in r.stdout or "▐" in r.stdout, (
+        f"Expected block caps from conf caps=square.\nstdout: {r.stdout!r}"
+    )
+
+
+def test_caps_none_via_conf_omits_caps(tmp_path):
+    """conf `caps = none` → no cap glyphs at all (block or powerline)."""
+    _write_conf(tmp_path, "caps = none\n")
+    r = _run_statusline(
+        mcp_json_content=_make_mcp_json(23026),
+        kado_cache_content="ok",
+        tmp_path=tmp_path,
+    )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    assert "▌" not in r.stdout and "▐" not in r.stdout, (
+        f"caps=none must omit block caps.\nstdout: {r.stdout!r}"
+    )
+    # Powerline half-circle caps (U+E0B6/U+E0B4) must also be absent.
+    assert "" not in r.stdout and "" not in r.stdout, (
+        f"caps=none must omit powerline caps.\nstdout: {r.stdout!r}"
+    )
+
+
+def test_env_overrides_conf(tmp_path):
+    """Env var wins over the conf file: conf=square + env=none → no block caps."""
+    _write_conf(tmp_path, "caps = square\n")
+    r = _run_statusline(
+        mcp_json_content=_make_mcp_json(23026),
+        kado_cache_content="ok",
+        extra_env={"TOMO_STATUSLINE_CAPS": "none"},
+        tmp_path=tmp_path,
+    )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    assert "▌" not in r.stdout and "▐" not in r.stdout, (
+        f"Env caps=none must override conf caps=square.\nstdout: {r.stdout!r}"
     )
 
 

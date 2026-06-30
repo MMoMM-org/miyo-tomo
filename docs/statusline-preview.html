@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tomo Statusline — Pill Styles & Themes</title>
+<style>
+  :root{
+    --bg:#0f1020; --text:#e6e8f5; --subtle:#8b90b0; --ink:#0b0b14;
+    --line:#2a2d44; --panel:#0a0b16;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);
+    font-family:"JetBrains Mono","Fira Code","SF Mono",Menlo,monospace;
+    margin:0;padding:40px 32px 90px;line-height:1.5}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--subtle);font-size:13px;margin-bottom:30px;max-width:820px}
+  h2{font-size:13px;color:var(--subtle);text-transform:uppercase;letter-spacing:1px;
+    font-weight:600;margin:34px 0 6px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .note{color:var(--subtle);font-size:12px;margin:6px 0 14px;max-width:820px}
+  code{background:#1c1e34;padding:1px 6px;border-radius:4px;color:#c4b5fd;font-size:12px}
+  .term{background:var(--panel);border:1px solid #232540;border-radius:8px;
+    padding:13px 16px;margin:8px 0;overflow-x:auto;white-space:nowrap;font-size:15px}
+  .row{display:inline-flex;align-items:center}
+  .tag{display:inline-block;width:120px;color:var(--subtle);font-size:11px;vertical-align:middle}
+
+  /* D — solid pill */
+  .d{display:inline-flex;align-items:center;padding:2px 12px;border-radius:999px;
+    color:var(--ink);font-weight:600;margin-right:8px}
+  /* C — ghost */
+  .c{display:inline-flex;align-items:center;padding:2px 12px;border-radius:999px;
+    background:transparent;border:1.5px solid currentColor;font-weight:600;margin-right:8px}
+  /* B — powerline connected */
+  .b{display:inline-flex;align-items:stretch;font-weight:600}
+  .b .s{display:inline-flex;align-items:center;padding:2px 12px;color:var(--ink)}
+  .b .cl{width:12px;border-radius:999px 0 0 999px}
+  .b .cr{width:12px;border-radius:0 999px 999px 0}
+
+  .bar{font-family:monospace;letter-spacing:-1px}
+  .legend{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;max-width:560px;
+    font-size:13px;margin:10px 0}
+  .legend b{color:var(--text);font-weight:600}
+  .sw{display:inline-block;width:13px;height:13px;border-radius:4px;vertical-align:middle;margin-right:6px}
+</style>
+</head>
+<body>
+
+<h1>Tomo Statusline — Pill Styles &amp; Themes 🎨</h1>
+<div class="sub">Browser approximation of <code>tomo/scripts/tomo-statusline.sh</code>. In the terminal, rounded caps
+come from a Nerd Font (<code>TOMO_STATUSLINE_CAPS=round</code>, default); without one use
+<code>TOMO_STATUSLINE_CAPS=square</code> (block caps <code>▌▐</code>) or <code>none</code>. Style via
+<code>TOMO_STATUSLINE_STYLE=d|c|b</code>. Colors are read live from the active <code>/theme</code>.</div>
+
+<h2>What each segment means</h2>
+<div class="legend">
+  <span><b>✦ Model</b></span><span>active model — brand color (<code>claude</code> token)</span>
+  <span><b>友 Instance</b></span><span>Tomo instance name — brand color (<code>skill</code> token)</span>
+  <span><b>🧠 Context</b></span><span>context-window fill bar + % — <b>green→amber→red</b> by load (≥70%, ≥90%)</span>
+  <span><b>門 Kado</b></span><span>Kado gate port + connectivity/tags — green ok · amber tags/?· red ✗</span>
+  <span><b>橋 Hashi</b></span><span>Hashi IDE-bridge port — shown only when connected · green ok · red ✗</span>
+</div>
+
+<!-- STYLE SHOWCASE (Tomo Ai) -->
+<h2>The three styles &nbsp;<span style="color:var(--subtle);text-transform:none;letter-spacing:0">— in Tomo Ai 藍</span></h2>
+
+<div class="note"><b>D · two-tone (default)</b> — solid filled pills, rounded caps, the context fill bar is the highlight.</div>
+<div class="term"><span class="tag">style=d</span>
+  <span class="d" style="background:#8b94ff">✦ Opus 4.8</span>
+  <span class="d" style="background:#a78bff">友 my-vault</span>
+  <span class="d" style="background:#5fd3a3"><span class="bar">🧠 ▰▰▱▱▱▱▱▱</span> 32%</span>
+  <span class="d" style="background:#2dd4bf">門:23026 ✓</span>
+  <span class="d" style="background:#6ea8ff">橋:23027 ✓</span>
+</div>
+
+<div class="note"><b>C · ghost</b> — colored caps + text, no fill. Subtle and light.</div>
+<div class="term"><span class="tag">style=c</span>
+  <span class="c" style="color:#8b94ff">✦ Opus 4.8</span>
+  <span class="c" style="color:#a78bff">友 my-vault</span>
+  <span class="c" style="color:#5fd3a3"><span class="bar">🧠 ▰▰▱▱▱▱▱▱</span> 32%</span>
+  <span class="c" style="color:#2dd4bf">門:23026 ✓</span>
+  <span class="c" style="color:#6ea8ff">橋:23027 ✓</span>
+</div>
+
+<div class="note"><b>B · powerline</b> — segments connect, rounded cap only at the very ends.</div>
+<div class="term"><span class="tag">style=b</span>
+  <span class="b">
+    <span class="cl" style="background:#8b94ff"></span>
+    <span class="s" style="background:#8b94ff">✦ Opus 4.8</span>
+    <span class="s" style="background:#a78bff">友 my-vault</span>
+    <span class="s" style="background:#5fd3a3"><span class="bar">🧠 ▰▰▱▱▱▱▱▱</span> 32%</span>
+    <span class="s" style="background:#2dd4bf">門:23026 ✓</span>
+    <span class="s" style="background:#6ea8ff">橋:23027 ✓</span>
+    <span class="cr" style="background:#6ea8ff"></span>
+  </span>
+</div>
+
+<!-- CONTEXT STATES -->
+<h2>Context states (segment color shifts with load)</h2>
+<div class="term"><span class="tag">&lt;70%</span>
+  <span class="d" style="background:#5fd3a3"><span class="bar">🧠 ▰▰▱▱▱▱▱▱</span> 32%</span>
+  <span class="tag" style="width:40px"></span>
+  <span class="d" style="background:#e8b86d"><span class="bar">🧠 ▰▰▰▰▰▰▱▱</span> 74%</span>
+  <span class="tag" style="width:40px"></span>
+  <span class="d" style="background:#ff8b9e"><span class="bar">🧠 ▰▰▰▰▰▰▰▱</span> 93%</span>
+</div>
+<div class="note">Same logic colors 門 Kado (ok/tags/✗) and 橋 Hashi (ok/✗).</div>
+
+<!-- THEMES -->
+<h2>Style D across the three themes</h2>
+<div class="note">Pill colors follow the active <code>/theme</code> — switch theme, the statusline follows.</div>
+
+<div class="term" style="background:#0a0b16"><span class="tag">Tomo Ai 藍</span>
+  <span class="d" style="background:#8b94ff">✦ Opus 4.8</span>
+  <span class="d" style="background:#a78bff">友 my-vault</span>
+  <span class="d" style="background:#5fd3a3"><span class="bar">🧠 ▰▰▱▱▱▱▱▱</span> 32%</span>
+  <span class="d" style="background:#2dd4bf">門:23026 ✓</span>
+  <span class="d" style="background:#6ea8ff">橋:23027 ✓</span>
+</div>
+
+<div class="term" style="background:#0c0814"><span class="tag">Tomo Murasaki 紫</span>
+  <span class="d" style="background:#a78bfa">✦ Opus 4.8</span>
+  <span class="d" style="background:#8700ff;color:#fff">友 my-vault</span>
+  <span class="d" style="background:#4ade80"><span class="bar">🧠 ▰▰▱▱▱▱▱▱</span> 32%</span>
+  <span class="d" style="background:#7c3aed;color:#fff">門:23026 ✓</span>
+  <span class="d" style="background:#9d7bd8">橋:23027 ✓</span>
+</div>
+
+<div class="term" style="background:#14100d"><span class="tag">Tomo Cha 茶</span>
+  <span class="d" style="background:#d77757;color:#1c1714">✦ Opus 4.8</span>
+  <span class="d" style="background:#c4856a;color:#1c1714">友 my-vault</span>
+  <span class="d" style="background:#8bbf6a;color:#1c1714"><span class="bar">🧠 ▰▰▱▱▱▱▱▱</span> 32%</span>
+  <span class="d" style="background:#7a9e6e;color:#1c1714">門:23026 ✓</span>
+  <span class="d" style="background:#a8896a;color:#1c1714">橋:23027 ✓</span>
+</div>
+
+<div class="note">No custom theme selected → a built-in fallback palette (cyan model / violet instance / green-amber-red states).</div>
+
+<h2>Tuning</h2>
+<div class="legend" style="grid-template-columns:auto 1fr;max-width:680px">
+  <span><code>TOMO_STATUSLINE_STYLE</code></span><span><b>d</b> two-tone (default) · <b>c</b> ghost · <b>b</b> powerline</span>
+  <span><code>TOMO_STATUSLINE_CAPS</code></span><span><b>round</b> (default, needs Nerd Font) · <b>square</b> (<code>▌▐</code>, any font) · <b>none</b></span>
+</div>
+
+</body>
+</html>

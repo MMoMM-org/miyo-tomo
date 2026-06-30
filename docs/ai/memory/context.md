@@ -4,14 +4,30 @@
 
 ## Status (2026-06-30)
 
-No active blockers. All operational, performance/cost, and deferred-review items
-previously parked here are now tracked at their canonical homes — GitHub issues
-(epic **#24** performance, **#40** F-32 cost, **#25** tech-debt) and
-`docs/XDD/backlog.md`. **GitHub is the source of truth for status.**
-Resolved + relocated detail lives in `archive/2026-06/context.md`.
+No active blockers. Operational, performance/cost, and deferred-review items are
+tracked at their canonical homes — GitHub issues + `docs/XDD/backlog.md`.
+**GitHub is the source of truth for status.** Resolved/relocated detail lives in
+`archive/2026-06/context.md`.
 
-### In-flight
+Recently shipped (this session): Tomo themes + install/update seeding (PR #103/#104),
+statusline pill redesign with theme-colored pills + `~/.claude/tomo-statusline.conf`
+hot-reload selection (PR #105). All merged to main.
 
-- **PR #105** (open) — statusline pill redesign: theme-colored pills, style/caps
-  selectable via `~/.claude/tomo-statusline.conf` (hot-reload) or env. Awaiting
-  the owner's pick of default style before merge.
+## Current focus — MVP-Polish
+
+Working the **MVP-Polish** milestone open issues on branch `feat/mvp-polish`.
+Goal: harden the core `/inbox` flow to "done".
+
+**Standalone issues (start here):**
+- **#28** (F-36) — New-section proposal when no existing section fits
+- **#29** (F-30) — LLM-driven insertion-point resolution for `link_to_moc`
+- **#33** (F-42) — Suggestions document UX pass
+
+**Epics:**
+- **#17** — MOC Intelligence (Mental Squeeze Point + matching)
+- **#18** — Inbox Analysis Quality
+- **#19** — Suggestions Doc UX
+- **#22** — Inbox Orchestration Robustness
+- **#24** — Performance & Cost
+
+Pick the next issue with `gh issue view <N>`; read its body + linked specs before planning.

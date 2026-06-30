@@ -7,7 +7,7 @@
   "required": ["schema_version", "type", "generated", "profile", "actions"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": "1"},
+    "schema_version": {"const": "2"},
     "type": {"const": "tomo-instructions"},
     "source_suggestions": {
       "type": ["string", "null"],
@@ -91,7 +91,7 @@
         "destination": {"type": "string", "description": "Vault-relative full target path including the final filename, e.g. 'Atlas/202 Notes/Asahikawa — ....md'."},
         "title": {"type": "string", "description": "Final title of the note (also the stem of the destination filename)."},
         "rendered_file": {"type": "string", "description": "Basename of the rendered file (redundant with source; kept for display)."},
-        "origin_inbox_item": {"type": ["string", "null"], "description": "Optional vault-relative path of the original inbox item this note was derived from. The delete_source action is the operational signal for cleanup; by default the renderer emits a paired delete_source for this origin unless the user opts out via the suggestions doc's 'Keep origin' checkbox."},
+        "source_inbox_item": {"type": ["string", "null"], "description": "Optional vault-relative path of the original inbox item this note was derived from. The delete_source action is the operational signal for cleanup; by default the renderer emits a paired delete_source for this source unless the user opts out via the suggestions doc's 'Keep source files' checkbox."},
         "parent_mocs": {"type": "array", "items": {"type": "string"}},
         "tags": {"type": "array", "items": {"type": "string"}},
         "applied": {"$ref": "#/$defs/applied_field"}

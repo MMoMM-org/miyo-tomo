@@ -122,7 +122,7 @@ class TestInternalFieldStrip:
         _ir._serialize_new_sections([action])
         _ir._strip_internal_link_fields([action])
         doc = {
-            "schema_version": "1",
+            "schema_version": "2",
             "type": "tomo-instructions",
             "generated": "2026-06-17T00:00:00Z",
             "profile": "miyo",
@@ -136,12 +136,13 @@ class TestInternalFieldStrip:
         from jsonschema import ValidationError
         action = _link_action(new_section="Hokkaido")
         del action["fit_confidence"]
-        # type MUST be the valid const "tomo-instructions" so the ValidationError
-        # fires on the unstripped new_section (additionalProperties:false), NOT on
-        # a top-level type mismatch — otherwise the test would pass even if the
-        # new_section rejection regressed (review H9).
+        # type MUST be the valid const "tomo-instructions" AND the correct
+        # schema_version so the ValidationError fires on the unstripped
+        # new_section (additionalProperties:false), NOT on a top-level mismatch —
+        # otherwise the test would pass even if the new_section rejection regressed
+        # (review H9).
         doc = {
-            "schema_version": "1", "type": "tomo-instructions",
+            "schema_version": "2", "type": "tomo-instructions",
             "generated": "2026-06-17T00:00:00Z", "profile": "miyo",
             "actions": [action],
         }
@@ -167,7 +168,7 @@ class TestInstructionsJsonTomoBlock:
         assert block is not None
         assert block["sources"][0]["path"].endswith("_suggestions.md")
         doc = {
-            "schema_version": "1", "type": "tomo-instructions",
+            "schema_version": "2", "type": "tomo-instructions",
             "generated": "2026-06-20T12:00:00Z", "profile": "miyo",
             "actions": [], "tomo": block,
         }
@@ -176,7 +177,7 @@ class TestInstructionsJsonTomoBlock:
     def test_doc_without_tomo_block_still_validates(self, instructions_schema):
         """Backward-compat: tomo is not in required — omitting it stays valid."""
         doc = {
-            "schema_version": "1", "type": "tomo-instructions",
+            "schema_version": "2", "type": "tomo-instructions",
             "generated": "2026-06-20T12:00:00Z", "profile": "miyo", "actions": [],
         }
         validate(instance=doc, schema=instructions_schema)  # must not raise
@@ -250,6 +251,14 @@ class TestHashiSchemaParity:
         assert "tomo" in hashi_snapshot["properties"]
         assert "tomo" in instructions_schema["properties"]
 
+    @pytest.mark.xfail(
+        strict=False,
+        reason=(
+            "T4.5 pending: spec-027 T4.1 renamed origin_inbox_item→source_inbox_item in the "
+            "local snapshot; the live Hashi schema on GitHub still has origin_inbox_item until "
+            "the Hashi#41 handoff lands. Remove this marker after T4.5 ships."
+        ),
+    )
     def test_snapshot_matches_upstream_hashi(self, hashi_snapshot):
         """Network drift guard: the committed snapshot must match the live Hashi
         schema published on GitHub for every action $def (not just link_to_moc/

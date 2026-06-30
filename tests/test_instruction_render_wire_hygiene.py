@@ -251,14 +251,6 @@ class TestHashiSchemaParity:
         assert "tomo" in hashi_snapshot["properties"]
         assert "tomo" in instructions_schema["properties"]
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "T4.5 pending: spec-027 T4.1 renamed origin_inbox_item→source_inbox_item in the "
-            "local snapshot; the live Hashi schema on GitHub still has origin_inbox_item until "
-            "the Hashi#41 handoff lands. Remove this marker after T4.5 ships."
-        ),
-    )
     def test_snapshot_matches_upstream_hashi(self, hashi_snapshot):
         """Network drift guard: the committed snapshot must match the live Hashi
         schema published on GitHub for every action $def (not just link_to_moc/

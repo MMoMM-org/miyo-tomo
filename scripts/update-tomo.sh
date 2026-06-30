@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.8.0
+# version: 0.8.1
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -562,6 +562,19 @@ if [ -n "$HOME_DIR" ] && [ -f "$ENTRYPOINT_SRC" ]; then
     add_versioned "$ENTRYPOINT_SRC" "$HOME_DIR/entrypoint.sh" "entrypoint.sh" "container-home"
 fi
 
+# Container-home themes (bytewise). Source repo → bind-mounted home at
+# ~/.claude/themes/. Bytewise (not versioned — theme JSONs carry no
+# `# version` header) so source-side theme tweaks propagate to existing
+# instances on update; install-tomo seeds the same files on fresh installs.
+# A user's own theme slugs are untouched — only the shipped tomo-*.json sync.
+if [ -n "$HOME_DIR" ] && [ -d "$TOMO_SOURCE/dot_claude/themes" ]; then
+    for f in "$TOMO_SOURCE/dot_claude/themes/"*.json; do
+        [ -f "$f" ] || continue
+        name=$(basename "$f")
+        add_bytewise "$f" "$HOME_DIR/.claude/themes/$name" "themes/$name" "themes"
+    done
+fi
+
 # begin-tomo.sh launcher (rendered from template, version-gated). The installed
 # launcher retains the template's `# version:` comment, so we version-compare
 # the template against the installed launcher (cannot byte-compare — rendered).
@@ -609,6 +622,7 @@ print_section_plan "tag-handlers"    "Tag-handler configs"
 print_section_plan "templates"       "Templates (regenerated from schemas)"
 print_section_plan "settings"        "Settings.json"
 print_section_plan "container-home"  "Container home (entrypoint)"
+print_section_plan "themes"          "Container home (themes)"
 print_section_plan "launcher"        "Launcher (begin-tomo.sh)"
 
 # Plan summary tally
@@ -886,6 +900,7 @@ execute_section "tag-handlers"    "Tag-handler configs"
 execute_section "templates"       "Templates"
 execute_section "settings"        "Settings.json"
 execute_section "container-home"  "Container home (entrypoint)"
+execute_section "themes"          "Container home (themes)"
 execute_section "launcher"        "Launcher (begin-tomo.sh)"
 
 # tomo-tmp scratch dirs (idempotent, no plan entry)

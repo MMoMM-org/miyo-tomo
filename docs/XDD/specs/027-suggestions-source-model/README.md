@@ -27,7 +27,8 @@
 | 2026-06-30 | PRD completed — 5 Must-Have features with Gherkin ACs | Locked decisions from issue #33 (2026-06-03); failure/denial cases per constitution L1 |
 | 2026-06-30 | ADR-1 = additive `audio_peer` companion (not full `source_files[]` list) | Additive on hot path; `source_path` has 20+ consumers; voice is the only multi-file source |
 | 2026-06-30 | ADR-3 = HARD CUTOVER (no dual-accept window); Tomo+Hashi deploy in lockstep | User: "Hashi will be in sync" — single operator deploys both. Supersedes PRD F4 backward-compat; migration = apply-pending-then-upgrade-both + Kokoro ADR + Hashi#41 handoff |
-| 2026-06-30 | ADR-4 = two-box decision block (Approve + Keep source files); drop redundant "Skip" | User feedback: un-approve IS skip; "keep in inbox/don't delete" is the real secondary intent |
+| 2026-06-30 | ADR-4 = two-box decision block (Approve + Keep source files); drop redundant "Skip" + per-atomic "Delete source" box | User feedback: un-approve IS skip; "keep in inbox/don't delete" is the real secondary intent; junk delete-only stays in skipped-items flow |
+| 2026-06-30 | ADR-3 refined: bump instruction `schema_version` "1"→"2" as the cutover signal | User Q surfaced the existing version gate; `docs/instructions-json.md` requires Hashi to reject unknown versions → v2 doc on v1-only Hashi fails loud, making the lockstep window safe |
 
 ## Context
 

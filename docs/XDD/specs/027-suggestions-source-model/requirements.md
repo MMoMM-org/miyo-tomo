@@ -299,8 +299,8 @@ instruction-render telemetry (no analytics, per constitution).
 - [x] ~~Migration window policy~~ — RESOLVED (ADR-3): hard cutover, no window; lockstep deploy +
   "apply pending first" procedure.
 - [x] ~~Final new field name~~ — RESOLVED: `source_inbox_item`.
-- [ ] Minor: remove the per-atomic "Delete source" box (junk delete-only stays in the
-  skipped-items flow)? — confirm during SDD finalize.
+- [x] ~~Minor: remove the per-atomic "Delete source" box?~~ — RESOLVED (2026-06-30): yes,
+  remove it; junk delete-only stays in the skipped-items flow.
 
 ---
 

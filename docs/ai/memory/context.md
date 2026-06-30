@@ -23,9 +23,12 @@ Goal: harden the core `/inbox` flow to "done".
   spec 022 (PR #75); was "Implemented but never closed". Verified via full suite +
   recorded 022/023 live walks; 2 rotted resolver tests un-rotted in `15a821d`.
 - ~~**#29** (F-30) — LLM insertion-point resolution~~ — CLOSED 2026-06-30, same as #28.
-- **#33** (F-42) — Suggestions document UX pass — NEXT standalone. Genuine unbuilt
-  scope (design-first, own branch `feat/suggestions-ux-pass`, source-model
-  `origin`→`source` unification). Downstream: hashi#41.
+- **#33** (F-42) — Suggestions document UX pass — IN PROGRESS (Phase 1). Branch
+  `feat/suggestions-ux-pass`. **Spec 027 PRD + SDD complete** (5 ADRs, 3 user-confirmed);
+  PLAN + implementation pending. Phase 1 = source-model unification (`origin`→`source`,
+  single keep/delete decision, voice source = {m4a+transcript} set, hard-cutover wire rename
+  with `schema_version` 1→2). Phase 2 (deferred) = broader checkbox/visual/clustering UX.
+  See `docs/XDD/specs/027-suggestions-source-model/`. Downstream: hashi#41 (lockstep apply).
 
 Note: #28/#29 downstream apply-support stays open in miyo-tomo-hashi (#42/#43).
 

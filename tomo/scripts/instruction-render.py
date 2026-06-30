@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.35.1
+# version: 0.35.2
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -1755,9 +1755,11 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
          anchor.type to "heading" and placement to "after" (Hashi has no
          "inside" for headings).
       3. Footer callout (#28 / F-36) — when neither exists, anchor on the first
-         footer-marker callout with placement="before" and prepend a
-         "## <section>" block to line_to_add, so applying inserts a fresh
-         content section ahead of the footer.
+         footer-marker callout with placement="before". No heading is injected
+         here (ADR-6, T5.2): the heuristic path emits a bare bullet. A fresh
+         "## <section>" heading is added only when the Pass-1 LLM anchor carried
+         a top-level new_section field, which _serialize_new_sections bakes into
+         line_to_add later in the pipeline.
       4. Last body line (spec 023 AC-9) — when the MOC has no footer callout,
          anchor on the last non-blank, non-heading body line with type=line and
          placement="after". Returns None when no usable body line exists.

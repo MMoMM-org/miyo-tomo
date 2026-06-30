@@ -349,8 +349,10 @@ def test_pre_set_anchor_value_is_preserved():
     print("[PASS] pre-set anchor.value preserved without I/O")
 
 
-def test_heading_anchor_skipped_by_resolver():
-    """Heading and line anchors are populated upstream, not by resolve_section_names."""
+def test_heading_anchor_skipped_line_anchor_resolved():
+    """Heading anchors are populated upstream (skipped here); line anchors with
+    an empty value ARE resolved by the four-tier resolver (spec 023 tier-4
+    extension — the loop processes `anchor.type in ("callout", "line")`)."""
     client = StubClient(notes={"Atlas/200 Maps/Japan (MOC).md": EXISTING_MOC_BODY})
     actions = [
         {
@@ -373,12 +375,20 @@ def test_heading_anchor_skipped_by_resolver():
         },
     ]
     n = ir.resolve_section_names(actions, client, EDITABLE_CALLOUTS)
-    _must(n == 0, f"resolver should skip heading/line anchors, got {n} resolutions")
+    _must(n == 1, f"resolver should resolve the line anchor only, got {n} resolutions")
+    # Heading anchor: skipped (populated upstream, never by this resolver).
     _must(
-        actions[0]["anchor"]["value"] is None and actions[1]["anchor"]["value"] is None,
-        "heading and line anchor values must remain untouched",
+        actions[0]["anchor"]["value"] is None,
+        "heading anchor value must remain untouched (skipped)",
     )
-    print("[PASS] resolver skips heading/line anchors (callout-only)")
+    # Line anchor: resolved against EXISTING_MOC_BODY → tier-1 editable callout
+    # `blocks` (highest score) → anchor rewritten to type=callout.
+    _must(
+        actions[1]["anchor"]["value"] == "[!blocks] Key Concepts"
+        and actions[1]["anchor"]["type"] == "callout",
+        f"line anchor must resolve to the editable callout, got {actions[1]['anchor']!r}",
+    )
+    print("[PASS] resolver skips heading anchors, resolves line anchors (tier-4)")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1038,9 +1048,11 @@ def test_honored_anchor_schema_compliance():
       - new_section is a TOP-LEVEL field on the link_to_moc action
 
     This test exercises the full emission path (_build_link_to_moc_actions +
-    _serialize_new_sections) and validates the output action against the real
-    instructions schema. It will FAIL if _emit stamps the raw Pass-1 anchor
-    dict (with extra fields) into the action.
+    _serialize_new_sections + _strip_internal_link_fields) and validates the
+    wire-ready action against the real instructions schema. It will FAIL if the
+    raw Pass-1 anchor dict (with extra fields) is stamped into the action, or if
+    the internal new_section/fit_confidence fields are not stripped before the
+    wire.
     """
     import jsonschema
 
@@ -1059,6 +1071,11 @@ def test_honored_anchor_schema_compliance():
     counter = [0]
     actions = ir._build_link_to_moc_actions(confirmed, counter)
     ir._serialize_new_sections(actions)
+    # Wire-hygiene (ADR-6/T5.2/#68): new_section + fit_confidence are
+    # Tomo-internal; the real pipeline strips them (after serialize bakes the
+    # heading into line_to_add) before emission. The schema forbids them
+    # (additionalProperties:false), so the wire-valid action is the stripped one.
+    ir._strip_internal_link_fields(actions)
 
     link_actions = [a for a in actions if a.get("action") == "link_to_moc"]
     _must(len(link_actions) == 1, f"expected 1 link_to_moc action, got {len(link_actions)}")
@@ -1077,11 +1094,17 @@ def test_honored_anchor_schema_compliance():
         f"anchor value wrong: {anchor['value']!r}",
     )
 
-    # placement and new_section must be at the TOP LEVEL of the action.
+    # placement stays a top-level wire field; new_section/fit_confidence are
+    # internal and stripped before the wire (the heading is now baked into
+    # line_to_add).
     _must(a.get("placement") == "before", f"top-level placement wrong: {a.get('placement')!r}")
     _must(
-        a.get("new_section") == "Reasoning",
-        f"top-level new_section wrong: {a.get('new_section')!r}",
+        "new_section" not in a,
+        f"new_section must be stripped before the wire, still present: {a.get('new_section')!r}",
+    )
+    _must(
+        "fit_confidence" not in a,
+        f"fit_confidence must be stripped before the wire, still present: {a.get('fit_confidence')!r}",
     )
 
     # line_to_add must be serialized with the section heading (AC-6).
@@ -1103,7 +1126,7 @@ def test_honored_anchor_schema_compliance():
     except jsonschema.ValidationError as exc:
         _must(False, f"instructions.schema.json rejected the emitted action: {exc.message[:300]}")
 
-    print("[PASS] honored anchor decomposed: anchor={type,value}, placement+new_section at top level, schema valid")
+    print("[PASS] honored anchor decomposed: anchor={type,value}, placement top-level, new_section stripped + baked into line_to_add, schema valid")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

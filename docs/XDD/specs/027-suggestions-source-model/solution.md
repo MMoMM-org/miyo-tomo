@@ -1,7 +1,7 @@
 ---
 title: "Suggestions document source-model unification — Solution Design"
-status: draft
-version: "1.0"
+status: completed
+version: "1.1"
 ---
 
 # Solution Design Document
@@ -65,7 +65,7 @@ version: "1.0"
   why: "Hashi-facing wire contract; origin_inbox_item:94"
 - file: tomo/dot_claude/agents/inbox-analyst.md
   relevance: HIGH
-  why: "Detects voice via transcribed:; reads transcript source: frontmatter (must also EMIT audio peer)"
+  why: "Detects voice via transcribed:; transcript frontmatter already contains source: (written by voice_render.py) — analyst must ADD source: extraction + EMIT audio peer"
 - file: tomo/dot_claude/agents/voice-transcriber.md
   relevance: MEDIUM
   why: "Writes transcript with `source: <audio filename>` frontmatter — the audio↔transcript link"
@@ -106,10 +106,11 @@ graph LR
 
 Extend the existing deterministic script pipeline — **no new components**. Model an item's
 source as a **set of files** so one keep/delete decision governs the whole set; carry the
-audio peer from the analyst (which already reads the transcript `source:` frontmatter) through
-the manifest/confirmed-item to the delete builder; unify naming on `source`; and rename the
-wire field behind a backward-compatible dual-accept window so Tomo and Hashi can deploy in any
-order before the old name is retired.
+audio peer from the analyst (the transcript frontmatter it loads already contains `source:`,
+written by `voice_render.py`; the analyst adds a `source:` extraction step — no new Kado read)
+through the manifest/confirmed-item to the delete builder; unify naming on `source`; and
+**hard-cut** the wire-field rename (no alias), bumping `schema_version` `"1"`→`"2"` so a v2 doc
+reaching a v1-only Hashi fails loud — Tomo and Hashi deploy in lockstep.
 
 ## Building Block View
 
@@ -121,7 +122,7 @@ order before the old name is retired.
 | `suggestions-reducer.py` | Collapse the 4-box block to the new decision model (ADR-4); render the source as a file set for voice items; rename labels origin→source. |
 | `suggestion-parser.py` | Parse the new label set; rename `keep_origin`→`keep_source`; carry the source set + audio peer onto confirmed items. |
 | `instruction-render.py` | `_build_move_note_actions`: emit `source_inbox_item` (new name) + carry audio peer. `_build_delete_source_actions`: emit a `delete_source` for EACH file in the source set (transcript + audio) unless kept. Rename `keep_origin_*`→`keep_source_*`. |
-| `instructions-diff.py` | Accept both old/new wire field names (migration); rename internal `keep_origin`. |
+| `instructions-diff.py` | Consume `source_inbox_item` only (hard cutover, no alias); rename internal `keep_origin`→`keep_source`. |
 | `instructions.schema.json` + `hashi-instructions.schema.json` | Rename `origin_inbox_item`→`source_inbox_item` (no alias); bump `schema_version` const `"1"`→`"2"` (ADR-3). |
 | `docs/instructions-json.md` + `tomo/CHANGELOG.md` | Document the schema_version v2 bump + the breaking rename (incompatible-change classification). |
 
@@ -172,7 +173,7 @@ fails loud with a version error rather than a confusing field error.
 - **Hashi apply** (`miyo-tomo-hashi#41`): must accept `source_inbox_item` (renamed, no alias)
   and apply a `delete_source` per audio peer. Must land in the SAME deploy as this change
   (ADR-3 lockstep). Handoff via `_outbox/for-tomo-hashi/`.
-- **Kokoro**: ADR recording the wire-field rename + migration window.
+- **Kokoro**: ADR recording the wire-field rename + `schema_version` 1→2 bump + the lockstep "apply-pending-then-upgrade-both" migration procedure.
 
 ## Runtime View
 
@@ -213,7 +214,7 @@ two candidate layouts.
 ### Pattern Documentation
 - Reuses: deterministic render (scripts), `write_frontmatter` discipline, the completion-gate
   pattern in `_build_delete_source_actions`, schema `additionalProperties:false` as a drift gate.
-- New: source-as-set model; dual-accept wire-field migration window.
+- New: source-as-set model; `schema_version`-gated hard-cutover wire-field rename.
 
 ## Architecture Decisions
 
@@ -230,8 +231,10 @@ two candidate layouts.
   acceptable since the voice case is the only multi-file source today.
 
 ### ADR-2 — Audio peer captured by the analyst (recommended, low-controversy)
-- **Choice:** `inbox-analyst` emits `audio_peer` per item from the transcript `source:`
-  frontmatter it already reads. Carried through manifest → confirmed item → renderer.
+- **Choice:** `inbox-analyst` emits `audio_peer` per item by extracting the transcript's
+  `source:` frontmatter. That key already exists in the transcript frontmatter the analyst loads
+  (written by `voice_render.py`), so this ADDS a `source:` extraction step — not a new Kado read.
+  Carried through manifest → confirmed item → renderer.
 - **Alternative (rejected):** renderer re-derives the peer by listing the inbox for
   `<stem>.<audioext>` — extra Kado reads (429 risk), and must guess the extension.
 - **Rationale:** no new Kado calls; the link already exists at analysis time.
@@ -291,7 +294,7 @@ two candidate layouts.
 | Quality | Target |
 |---------|--------|
 | Correctness | Voice item delete proposes BOTH files; keep suppresses BOTH; no-peer = single file |
-| Compatibility | 100% of old-name instruction docs apply during the window |
+| Compatibility | Pre-cutover (v1) docs rejected with a clear `schema_version` error; mitigated by apply-pending-first |
 | Safety | 0 Tomo-side deletes (instructions only); fail-safe when audio_peer absent |
 | Testability | Authorize + reject path for every decision (CON-2) |
 
@@ -302,7 +305,7 @@ two candidate layouts.
 | F1 Terminology | ADR-4 labels + ADR-5 rename; no "origin" in user text/live fields |
 | F2 Single decision | ADR-4 Layout |
 | F3 Voice set delete | ADR-1 audio_peer + ADR-2 capture + delete-builder per-file emit |
-| F4 Migration | ADR-3 dual-accept window + Kokoro ADR + hashi#41 handoff |
+| F4 Migration | ADR-3 hard cutover (schema_version 1→2) + Kokoro ADR + hashi#41 handoff |
 | F5 Propose-only | Unchanged: builder emits delete_source instructions only |
 
 ## Risks and Technical Debt
@@ -326,6 +329,6 @@ two candidate layouts.
 
 - **Source set:** the file(s) an item was derived from; voice = {transcript .md + audio}.
 - **Audio peer:** the original audio file linked from a transcript's `source:` frontmatter.
-- **Dual-accept window:** period during which both old/new wire field names are accepted on apply.
+- **Hard cutover:** the wire field is renamed with no alias; only the new name validates. Stale v1 docs must be applied before upgrading — they fail loud against v2.
 - **Completion gate:** the rule that a source is proposed for deletion only after all expected
   atomics derived from it are represented in the instruction set.

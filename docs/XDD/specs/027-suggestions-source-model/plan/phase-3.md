@@ -1,7 +1,7 @@
 ---
 title: "Phase 3: Audio-peer plumbing & source-set deletion"
 status: pending
-version: "1.0"
+version: "1.1"
 phase: 3
 ---
 
@@ -18,7 +18,8 @@ phase: 3
 
 **Key Decisions**:
 - ADR-1/2: confirmed item carries an optional `audio_peer` path (None when absent), sourced from
-  the transcript `source:` frontmatter the analyst already reads — no new Kado calls.
+  the transcript `source:` frontmatter — the analyst ADDS this extraction (the key is already in
+  the loaded frontmatter, written by `voice_render.py`) — no new Kado calls.
 - Delete builder emits one `delete_source` per {primary, audio_peer}, behind the existing
   completion gate; `keep_source` suppresses BOTH; no peer → single-file (unchanged).
 - `_ensure_md_extension` must NOT be applied to the `.m4a`.
@@ -35,13 +36,15 @@ the audio; keeping the source keeps both; no orphaned audio.
 
 - [ ] **T3.1 Analyst emits audio_peer** `[activity: backend]`
 
-  1. Prime: Read `inbox-analyst.md` voice detection + `source:` frontmatter usage
-     `[ref: SDD/Code Context; inbox-analyst.md]` and `voice-transcriber.md` (writes `source:`).
+  1. Prime: Read `inbox-analyst.md` voice detection (`transcribed:`) and confirm the transcript
+     frontmatter carries `source:` (written by `voice_render.py`); the analyst does NOT extract
+     `source:` today `[ref: SDD/Code Context; inbox-analyst.md]`.
   2. Test (red): a contract/fixture test asserting that a voice item's analyst output carries the
      `audio_peer` (vault-relative audio path) when the transcript declares `source:`, and omits it
      (None) otherwise `[ref: PRD/AC F3]`.
-  3. Implement (green): extend the `inbox-analyst` per-item output spec to emit `audio_peer` from
-     the transcript `source:` frontmatter it already reads (no new Kado read). Update the per-item
+  3. Implement (green): add `source:` extraction to `inbox-analyst` — the key already exists in
+     the transcript frontmatter it loads (written by `voice_render.py`), so this is a new
+     extraction step, NOT a new Kado read — and emit it as `audio_peer`. Update the per-item
      output schema if one is enforced.
   4. Validate: contract/fixture test passes.
   5. Success: analyst output carries `audio_peer` for voice items `[ref: SDD/ADR-2]`.
@@ -62,7 +65,10 @@ the audio; keeping the source keeps both; no orphaned audio.
      and the completion gate `[ref: SDD/Glossary; Completion gate]`.
   2. Test (red): voice item, keep_source=False → emits delete_source for transcript AND audio peer
      (both behind the gate); keep_source=True → emits NEITHER; no audio_peer → exactly one delete
-     (unchanged); gate not yet satisfied → defers both `[ref: PRD/AC F3; constitution L1 reject path]`.
+     (unchanged); gate not yet satisfied → defers both; **multi-atomic: two atomics from one
+     transcript with an audio_peer → neither the transcript nor the audio delete fires until BOTH
+     atomics are rendered, then both fire**; **degraded fail-safe: audio_peer absent when one was
+     expected → never emits an audio delete** `[ref: PRD/AC F3; constitution L1 reject path]`.
   3. Implement (green): after the gate passes for an origin stem, also emit a `delete_source` for
      its `audio_peer` (reason e.g. "Audio peer of consumed origin"); `keep_source_stems` suppress
      both; guard `audio_peer is None`.
@@ -81,4 +87,5 @@ the audio; keeping the source keeps both; no orphaned audio.
 - [ ] **T3.5 Phase Validation** `[activity: validate]`
 
   - Run full suite. Add an end-to-end test: a confirmed voice item (keep_source unchecked) yields
-    two `delete_source` actions (transcript + audio) and zero Tomo-side deletes. Lint clean.
+    two `delete_source` actions (transcript + audio) and zero Tomo-side deletes — assert no
+    `Path.unlink`/Kado-delete call occurs in the render path, not just output shape. Lint clean.

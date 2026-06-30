@@ -30,6 +30,7 @@
 | 2026-06-30 | ADR-4 = two-box decision block (Approve + Keep source files); drop redundant "Skip" + per-atomic "Delete source" box | User feedback: un-approve IS skip; "keep in inbox/don't delete" is the real secondary intent; junk delete-only stays in skipped-items flow |
 | 2026-06-30 | ADR-3 refined: bump instruction `schema_version` "1"→"2" as the cutover signal | User Q surfaced the existing version gate; `docs/instructions-json.md` requires Hashi to reject unknown versions → v2 doc on v1-only Hashi fails loud, making the lockstep window safe |
 | 2026-06-30 | PLAN complete — 4 phases, 21 tasks, sequenced internal-rename → UX → audio-peer → wire-rename | Dependency/risk order; cross-repo breaking phase last; all 14 Gherkin ACs mapped; line refs alignment-verified (zero drift) |
+| 2026-06-30 | Validation sweep (5-perspective /validate) — removed ~14 residual dual-accept/backward-compat/migration-window phrases from PRD+SDD; corrected ADR-2 analyst `source:` premise (analyst must ADD extraction); added multi-atomic + degraded fail-safe test cases (T3.3) | Hard-cutover (ADR-3) was confirmed but never swept through PRD/SDD bodies; alignment found the analyst does not currently read `source:`. PRD/SDD/PLAN now internally consistent with ADR-3; no L1 constitution violations |
 
 ## Context
 

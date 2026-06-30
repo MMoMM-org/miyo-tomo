@@ -1,7 +1,7 @@
 ---
 title: "Phase 4: Breaking wire rename, schema_version bump & cross-repo handoff"
 status: pending
-version: "1.0"
+version: "1.1"
 phase: 4
 ---
 
@@ -82,7 +82,7 @@ artifacts. **This phase changes the Tomo↔Hashi contract — do not merge witho
   3. Implement: write a Kokoro ADR recording the breaking rename + schema_version v2 + the
      "apply-pending-then-upgrade-both" lockstep procedure; create `_outbox/for-tomo-hashi/` handoff
      for Hashi#41 (accept `source_inbox_item`, apply a `delete_source` per audio peer, gate on
-     schema_version v2 — must land in the same deploy).
+     `schema_version` const `"2"` — must land in the same deploy).
   4. Validate: handoff file present in `_outbox/for-tomo-hashi/`; ADR drafted for Kokoro.
   5. Success: cross-repo migration coordinated `[ref: PRD/AC F4; constitution L2]`.
 
@@ -91,5 +91,6 @@ artifacts. **This phase changes the Tomo↔Hashi contract — do not merge witho
   - Run full suite green. Confirm zero `origin_inbox_item`/`origin` in code, schemas, and
     user-facing text (whole-repo `rg`). Confirm the end-to-end path: voice item → suggestions doc
     (two-box) → confirm → instruction set (v2, `source_inbox_item`, paired transcript+audio
-    `delete_source`) validates against the v2 schema. Lint clean. **Do not mark complete until the
-    Hashi#41 handoff is recorded.**
+    `delete_source`) validates against the v2 schema. Lint clean. The merge PR must reference spec
+    027 / issue #33 (constitution L1 Code Quality). **Do not mark complete until the Hashi#41
+    handoff is recorded.**

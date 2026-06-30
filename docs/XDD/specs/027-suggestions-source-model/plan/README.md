@@ -1,7 +1,7 @@
 ---
 title: "Suggestions source-model unification — Implementation Plan"
-status: draft
-version: "1.0"
+status: completed
+version: "1.1"
 ---
 
 # Implementation Plan
@@ -56,7 +56,7 @@ the design; record it here for traceability.
 
 **Key Design Decisions** (from SDD — build to these):
 - **ADR-1**: Additive `audio_peer` companion field (not a `source_files[]` list) — additive on the hot path.
-- **ADR-2**: `inbox-analyst` emits `audio_peer` from the transcript `source:` frontmatter it already reads (no new Kado calls).
+- **ADR-2**: `inbox-analyst` emits `audio_peer` by ADDING `source:` extraction — the key already exists in the transcript frontmatter it loads (written by `voice_render.py`), so it is a new extraction step, not a new Kado call.
 - **ADR-3**: HARD CUTOVER wire rename `origin_inbox_item`→`source_inbox_item` in both schemas + bump `schema_version` `"1"`→`"2"`; Tomo+Hashi lockstep; Kokoro ADR + Hashi#41 handoff.
 - **ADR-4**: Two-box per-item block (Approve + Keep source files); drop redundant Skip + per-atomic Delete box; voice source rendered as the {transcript + audio} set.
 - **ADR-5**: Internal rename `keep_origin`→`keep_source` across parser/reducer/render/diff/tests.

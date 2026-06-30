@@ -1,7 +1,7 @@
 ---
 title: "Suggestions document source-model unification (#33 / F-42 Phase 1)"
-status: draft
-version: "1.0"
+status: completed
+version: "1.1"
 ---
 
 # Product Requirements Document
@@ -121,7 +121,7 @@ persona — captured under Constraints and the migration requirement, not as a r
     user-facing label contains the word "origin" (the keep control reads **"Keep source"**).
   - [ ] Given the parsed review state and the rendered instruction set, When I inspect the
     internal decision field, Then it is named with the `source` concept (no `keep_origin`
-    field remains in the codebase outside backward-compat shims).
+    field remains in the codebase).
   - [ ] Given the consolidation/tag-handler blocks, When they render a keep control, Then they
     also read "Keep source" (consistent across all render sites, not just per-item atomics).
 
@@ -229,8 +229,9 @@ both.
 - Scenario: Multiple atomics derived from one transcript → Expected: still one source-set
   decision; the existing completion gate (delete only after all expected atomics rendered)
   continues to hold, now covering the audio peer too.
-- Scenario: Old-format instruction doc applied mid-migration → Expected: old field name still
-  honored; no apply failure.
+- Scenario: Old-format (v1) instruction doc reaching upgraded Hashi → Expected: rejected with a
+  clear "unknown schema_version" error (no silent field failure); mitigation is to apply any
+  pending instruction sets BEFORE upgrading Tomo + Hashi.
 
 ## Success Metrics
 
@@ -239,11 +240,11 @@ both.
 - **Quality (primary):** Zero orphaned audio files in the inbox after a confirmed-and-applied
   voice item with Keep source unchecked (target: 0 strays; today: 1 stray per voice capture).
 - **Clarity:** Zero occurrences of the word "origin" in user-facing review text and zero
-  `keep_origin`/`origin_*`-named live fields (excluding the documented compat shim).
+  `keep_origin`/`origin_*`-named live fields (no compat shim exists — hard cutover).
 - **Safety:** 100% of source deletions emitted as instructions (no Tomo-side filesystem
   deletes) — invariant, not a trend.
-- **Compatibility:** 100% of pre-change instruction documents continue to apply during the
-  migration window.
+- **Cutover safety:** Pre-change (v1) instruction documents are applied BEFORE the upgrade; any
+  v1 doc reaching v2 Hashi fails loud with a `schema_version` error rather than mis-applying.
 
 ### Tracking Requirements
 
@@ -264,8 +265,9 @@ instruction-render telemetry (no analytics, per constitution).
 
 - **Constitution L2 (Architecture):** The wire-field rename (`origin_inbox_item`) is a breaking
   change to a public inter-component contract (Tomo ↔ Hashi). It requires a documented
-  migration path in Kokoro and a Hashi handoff; backward compatibility during the window is
-  mandatory.
+  migration path in Kokoro and a Hashi handoff. The chosen path is a hard cutover (no alias)
+  made safe by the `schema_version` 1→2 bump + lockstep deploy — L2 is satisfied by the
+  documented migration procedure, not by runtime backward compatibility.
 - **Constitution L1 (Testing):** Every filesystem/vault-mutation path and every keep/delete
   decision must be covered by tests proving *both* the delete and the keep (reject) outcome.
 - **Tomo near-MVP:** Hot paths take additive changes where possible; avoid gratuitous breakage.
@@ -279,16 +281,16 @@ instruction-render telemetry (no analytics, per constitution).
   transcript's `source:` frontmatter, written by the voice pipeline and read during analysis);
   no new audio re-scan is required. *(Mechanism is an SDD concern; the PRD assumes the linkage
   exists.)*
-- A bounded migration window is acceptable: both old and new field names are honored on apply
-  for a defined period, after which the old name is retired in a follow-up.
+- A hard cutover is acceptable: only the new field name is accepted on apply; any pending
+  instruction sets are applied before the lockstep upgrade. No alias is retained.
 - The single-user pre-launch scope means no large back-catalog of in-flight instruction docs —
-  the compat window can be short.
+  "apply pending first" is a trivial, short step.
 
 ## Risks and Mitigations
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| Breaking wire rename strands in-flight instruction docs | High | Medium | Accept BOTH old and new field names on apply during a defined window; document migration in Kokoro; coordinate Hashi via handoff |
+| Breaking wire rename strands in-flight instruction docs | High | Medium | Apply pending instruction sets BEFORE upgrade; `schema_version` 1→2 makes any stale doc fail loud; document the procedure in a Kokoro ADR; coordinate Hashi via handoff |
 | Audio peer not actually available to the renderer | High | Medium | Confirmed in research that the link exists in the transcript's `source:` frontmatter; SDD defines the plumbing analyst→confirmed-item→renderer; fail safe = behave as single-file source if peer absent |
 | Over-deletion (audio removed when user wanted to keep) | High | Low | Keep source = atomic opt-out for the whole set; tests prove the keep path suppresses BOTH files |
 | Rename sweep misses a consumer → silent drift | Medium | Medium | Repo-wide `rg` sweep of every `origin`/`keep_origin`/`origin_inbox_item` consumer; schema `additionalProperties:false` surfaces stragglers |

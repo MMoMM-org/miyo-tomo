@@ -86,7 +86,7 @@ breaking wire rename (cross-repo, last).
 
 - [x] [Phase 1: Internal keep_origin→keep_source rename](phase-1.md)
 - [x] [Phase 2: Two-box decision-block UX](phase-2.md)
-- [ ] [Phase 3: Audio-peer plumbing & source-set deletion](phase-3.md)
+- [x] [Phase 3: Audio-peer plumbing & source-set deletion](phase-3.md)
 - [ ] [Phase 4: Breaking wire rename, schema_version bump & cross-repo handoff](phase-4.md)
 
 ---

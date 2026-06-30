@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Audio-peer plumbing & source-set deletion"
-status: pending
+status: completed
 version: "1.1"
 phase: 3
 ---
@@ -34,7 +34,7 @@ phase: 3
 Delivers the behavioral core: confirming a voice item proposes deletion of BOTH the transcript and
 the audio; keeping the source keeps both; no orphaned audio.
 
-- [ ] **T3.1 Analyst emits audio_peer** `[activity: backend]`
+- [x] **T3.1 Analyst emits audio_peer** `[activity: backend]`
 
   1. Prime: Read `inbox-analyst.md` voice detection (`transcribed:`) and confirm the transcript
      frontmatter carries `source:` (written by `voice_render.py`); the analyst does NOT extract
@@ -59,7 +59,7 @@ the audio; keeping the source keeps both; no orphaned audio.
   4. Validate: move_note build tests pass; the `.m4a` extension is preserved.
   5. Success: audio_peer reaches `_build_delete_source_actions` inputs `[ref: SDD/ADR-1]`.
 
-- [ ] **T3.3 Source-set deletion in _build_delete_source_actions** `[activity: backend]`
+- [x] **T3.3 Source-set deletion in _build_delete_source_actions** `[activity: backend]`
 
   1. Prime: Read source (3) move_note-origin block `[ref: SDD/Code Context; instruction-render.py; lines: 1066-1094]`
      and the completion gate `[ref: SDD/Glossary; Completion gate]`.
@@ -84,7 +84,7 @@ the audio; keeping the source keeps both; no orphaned audio.
   4. Validate: versions bumped; counterparts updated.
   5. Success: managed artifacts versioned + documented `[ref: SDD/CON-5]`.
 
-- [ ] **T3.5 Phase Validation** `[activity: validate]`
+- [x] **T3.5 Phase Validation** `[activity: validate]`
 
   - Run full suite. Add an end-to-end test: a confirmed voice item (keep_source unchecked) yields
     two `delete_source` actions (transcript + audio) and zero Tomo-side deletes — assert no

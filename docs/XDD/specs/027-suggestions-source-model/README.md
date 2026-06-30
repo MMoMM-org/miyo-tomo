@@ -1,0 +1,45 @@
+# Specification: 027-suggestions-source-model
+
+## Status
+
+| Field | Value |
+|-------|-------|
+| **Created** | 2026-06-30 |
+| **Current Phase** | PRD |
+| **Last Updated** | 2026-06-30 |
+
+## Documents
+
+| Document | Status | Notes |
+|----------|--------|-------|
+| requirements.md | in_progress | issue #33 (F-42) Phase 1; 4 sub-pieces |
+| solution.md | pending | |
+| plan/ | pending | |
+
+**Status values**: `pending` | `in_progress` | `completed` | `skipped`
+
+## Decisions Log
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-06-30 | Spec created on branch `feat/suggestions-ux-pass` | Issue #33 (F-42) Phase 1 = source-model unification; chosen full scope incl. breaking wire rename |
+| 2026-06-30 | Scope split into 4 sub-pieces (a) UX unify (b) internal `keep_origin`→`keep_source` (c) BREAKING wire `origin_inbox_item` rename (d) audio-peer `.m4a` delete plumbing | Different risk tiers; (c)/(d) are cross-repo (Hashi) + constitution-gated |
+
+## Context
+
+Unify the `origin`/`source` dual naming in the `/inbox` suggestions review surface into
+one **source** concept with a single keep/delete decision, and make the voice-item source
+the `{audio .m4a + transcript .md}` set so one "Keep/Delete source" governs both files.
+
+Locked product decisions (issue #33, 2026-06-03): (1) terminology `origin`→`source`
+everywhere; (2) source = input file set, voice source = `{m4a + transcript}`; (3) reverse
+the peer-pair exclusion so the `.m4a` joins the paired `delete_source` unless kept; (4) one
+source = a single keep/delete decision, not two ambiguous per-file checkboxes. **Tomo never
+deletes — it only proposes `delete_source` instructions** for Hashi/the user to apply.
+
+Cross-repo: the wire-field rename (`origin_inbox_item`) is a constitution-L2 breaking change
+needing a Kokoro migration note + Hashi coordination; the unified `{m4a+transcript}` delete
+apply-side is tracked in `miyo-tomo-hashi#41`.
+
+---
+*This file is managed by the xdd-meta skill.*

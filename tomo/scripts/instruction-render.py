@@ -761,7 +761,7 @@ def _build_move_note_actions(
         # audio_peer is the companion audio file for voice transcripts.
         # Join a bare basename with inbox_path exactly as we do for origin,
         # but do NOT apply _ensure_md_extension — the .m4a must be preserved.
-        audio_peer = m.get("audio_peer") or None
+        audio_peer = m.get("audio_peer")
         if audio_peer and "/" not in audio_peer:
             audio_peer = _inbox_join(inbox_path, audio_peer)
         out.append({

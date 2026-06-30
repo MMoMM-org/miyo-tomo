@@ -15,7 +15,6 @@ Tests are RED against the current file (no audio_peer) and GREEN after T3.1.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import jsonschema

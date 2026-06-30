@@ -157,3 +157,29 @@ resolve subflow rebuilds the full atomic from source, identical to the
 daily-log_entry path. The section pass runs AFTER the daily loop so `already_in` /
 `seen_pending` de-dup, and the stem is dropped from `skipped_items` (it is being
 force-atomic'd, not skipped).
+
+## audio_peer: second-wikilink extraction from the Source set line (spec 027, v0.20.0)
+
+WHY `audio_peer` is extracted by finding the SECOND wikilink in the `**Source:**`
+value via `RE_WIKILINK.findall(val)` rather than a dedicated regex or a separate
+field: the reducer renders the voice source set as `[[transcript-stem]] + [[audio.m4a]]`
+— two wikilinks in one `**Source:** ` line. `RE_WIKILINK` (already defined) is the
+canonical wikilink extractor used throughout the parser. `findall` gives all
+matches; index 0 is the transcript stem (existing `source_path` behaviour,
+unchanged), index 1 is the audio peer basename. A dedicated regex would duplicate
+`RE_WIKILINK`'s semantics for no gain.
+
+WHY the audio peer is stored as the BASENAME (e.g. `"recording.m4a"`) and not the
+full vault-relative path: the rendered wikilink contains only the basename — the
+reducer intentionally strips the directory when building the `[[wikilink]]` (rsplit
+path). The parser cannot reconstruct the directory from the suggestions doc alone
+(the inbox path is known only at render time, not parse time). The basename is
+sufficient because `_build_move_note_actions` inbox-joins it to a full path before
+the action is emitted — the same join logic used for `origin_inbox_item`.
+
+WHY `audio_peer` must be included in the explicit `confirmed_items` projection dict
+(the `{...}` literal at the `confirmed_items.append(...)` call): the parser's
+`result` dict is NOT passed through directly — the projection dict enumerates every
+field that reaches the output JSON. Any new field on `result` that is omitted from
+the projection is silently dropped. `audio_peer` was added to both `result` defaults
+and the projection to ensure it survives to `instruction-render.py` as intended.

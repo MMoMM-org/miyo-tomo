@@ -155,3 +155,40 @@ the Phase 4 interpreter's authoritative decision about what kind of anchor was
 found. Routing on its `type` field is the single source of truth — the same
 condition that triggered block-anchor resolution in Phase 4 is what selects
 the no-prepend path here, making the two phases symmetric and easy to trace.
+
+## audio_peer: manifest threading + paired source-set deletion (spec 027, v0.35.5)
+
+WHY `audio_peer` flows from confirmed item → manifest entry → move_note action
+(not derived at render time): the analyst emits the full vault-relative path
+(`"100 Inbox/recording.m4a"`) which the reducer uses ONLY for display
+(rsplit to basename → `[[recording.m4a]]` in the Source set line). The parser
+then extracts the second wikilink from that rendered line — a basename — and
+attaches it to the confirmed item. From there it is carried verbatim into the
+manifest entry and into the move_note action, where `_build_move_note_actions`
+inbox-joins a bare basename to a full path (same pattern as `origin_inbox_item`)
+but WITHOUT `_ensure_md_extension` — the `.m4a` extension must be preserved
+because it refers to an audio file, not a note.
+
+WHY `_build_delete_source_actions` uses a set for audio peers rather than
+taking `moves[0].get("audio_peer")`: the set-based dedup
+(`{mn.get("audio_peer") for mn in moves if mn.get("audio_peer")}`) handles the
+multi-atomic case (two atomics from one transcript both carry the same peer path
+— the set collapses them to one) while also cleanly expressing the empty-set
+fail-safe (no peer present → empty set → no audio delete emitted). The
+`next(..., None)` alternative would be equivalent for 0/1 peers but silently
+takes an arbitrary peer when two move_notes disagree — not the desired semantics.
+
+WHY the audio peer delete is placed INSIDE the `for origin_stem, moves in
+moves_by_origin.items():` loop, AFTER the existing transcript delete, and does
+NOT have its own keep/gate guards: the `continue` at the top of the loop for
+`keep_source_stems` and the gate `len(moves) < expected` ALREADY protect the
+entire block. Placing the audio delete inside that block means keep_source=True
+suppresses both, gate-not-satisfied defers both, and no-peer produces one delete
+— all without duplicating the guard logic.
+
+WHY the reason string is "Audio peer of consumed origin." (not "Voice recording"
+or similar): the word "peer" captures the relationship precisely (the audio file
+is a companion artifact of the same origin, not itself a source note), and
+"consumed origin" aligns with the existing transcript reason string ("Origin
+consumed by N atomic(s)"), making the two deletes read as a matched pair in the
+instruction set.

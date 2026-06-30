@@ -1268,7 +1268,7 @@ def main() -> None:
     test_paired_delete_default_emits_for_each_origin()
     test_keep_source_suppresses_paired_delete()
     test_skipped_delete_source_still_works()
-    test_audio_peer_is_not_paired_deleted_via_origin()
+    test_audio_peer_is_not_paired_deleted_via_source()
     test_moc_structure_parse_headings_agrees_with_render_fallback()
     test_ec2_template_heading_fit_resolves_via_shared_parser()
     print("\nAll tests passed.")

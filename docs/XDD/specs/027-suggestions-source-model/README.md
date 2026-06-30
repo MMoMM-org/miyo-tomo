@@ -5,15 +5,15 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-06-30 |
-| **Current Phase** | PRD |
+| **Current Phase** | SDD |
 | **Last Updated** | 2026-06-30 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | in_progress | issue #33 (F-42) Phase 1; 4 sub-pieces |
-| solution.md | pending | |
+| requirements.md | completed | 5 Must-Have features, Gherkin ACs; F4 reconciled to hard-cutover |
+| solution.md | completed | 5 ADRs; ADR-1/3/4 user-confirmed |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -24,6 +24,10 @@
 |------|----------|-----------|
 | 2026-06-30 | Spec created on branch `feat/suggestions-ux-pass` | Issue #33 (F-42) Phase 1 = source-model unification; chosen full scope incl. breaking wire rename |
 | 2026-06-30 | Scope split into 4 sub-pieces (a) UX unify (b) internal `keep_origin`→`keep_source` (c) BREAKING wire `origin_inbox_item` rename (d) audio-peer `.m4a` delete plumbing | Different risk tiers; (c)/(d) are cross-repo (Hashi) + constitution-gated |
+| 2026-06-30 | PRD completed — 5 Must-Have features with Gherkin ACs | Locked decisions from issue #33 (2026-06-03); failure/denial cases per constitution L1 |
+| 2026-06-30 | ADR-1 = additive `audio_peer` companion (not full `source_files[]` list) | Additive on hot path; `source_path` has 20+ consumers; voice is the only multi-file source |
+| 2026-06-30 | ADR-3 = HARD CUTOVER (no dual-accept window); Tomo+Hashi deploy in lockstep | User: "Hashi will be in sync" — single operator deploys both. Supersedes PRD F4 backward-compat; migration = apply-pending-then-upgrade-both + Kokoro ADR + Hashi#41 handoff |
+| 2026-06-30 | ADR-4 = two-box decision block (Approve + Keep source files); drop redundant "Skip" | User feedback: un-approve IS skip; "keep in inbox/don't delete" is the real secondary intent |
 
 ## Context
 

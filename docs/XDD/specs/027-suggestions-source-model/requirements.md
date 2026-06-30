@@ -153,18 +153,24 @@ persona — captured under Constraints and the migration requirement, not as a r
   - [ ] Given a voice item, When Tomo renders the source, Then the source is displayed as the
     file *set* (transcript + audio), not a single ambiguous path.
 
-#### Feature 4: Backward-compatible wire-field migration
+#### Feature 4: Wire-field rename with a lockstep migration path
 
-- **User Story:** As the executor of instruction sets, I want previously generated instruction
-  documents to keep applying, so that the field rename does not strand in-flight work.
+> **Decision (2026-06-30, ADR-3):** hard cutover, not a backward-compat shim. The single
+> operator deploys Tomo + Hashi together ("Hashi will be in sync"). The documented migration
+> path is **apply pending instruction sets, then upgrade both repos together** — there is no
+> dual-accept window.
+
+- **User Story:** As the operator, I want the rename to be clean (no alias debt) given that I
+  deploy Tomo and Hashi together, with a documented procedure so no in-flight work is stranded.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] Given an instruction document generated *before* this change (using the old field
-    name), When it is applied during the migration window, Then it applies without error
-    (the old field name is still accepted).
   - [ ] Given an instruction document generated *after* this change, When it is validated
-    against the schema, Then it uses the new `source`-concept field name and passes.
-  - [ ] Given the wire contract change, When the migration is documented, Then a migration note
-    exists in Kokoro and a handoff is recorded to `miyo-tomo-hashi` (the apply side).
+    against the schema, Then it uses `source_inbox_item` and passes; `origin_inbox_item` is no
+    longer an accepted property.
+  - [ ] Given the wire contract change, When the migration is documented, Then a Kokoro ADR
+    records the breaking rename + the "apply-pending-then-upgrade-both" procedure, and a handoff
+    is recorded to `miyo-tomo-hashi` (Hashi#41, apply side) to land in the same deploy.
+  - [ ] Given Tomo emits `source_inbox_item` and Hashi accepts only `source_inbox_item`, When
+    both are deployed together, Then move_note cleanup applies end-to-end.
 
 #### Feature 5: Propose-only invariant preserved
 
@@ -290,11 +296,11 @@ instruction-render telemetry (no analytics, per constitution).
 
 ## Open Questions
 
-- [ ] Migration window policy: how long are both field names honored before the old name is
-  retired? (Proposed: short, single follow-up issue, given single-user pre-launch scope —
-  confirm in SDD.)
-- [ ] Final new field name: `source_inbox_item` (proposed) vs another `source_*` form —
-  finalize in SDD alongside the schema change.
+- [x] ~~Migration window policy~~ — RESOLVED (ADR-3): hard cutover, no window; lockstep deploy +
+  "apply pending first" procedure.
+- [x] ~~Final new field name~~ — RESOLVED: `source_inbox_item`.
+- [ ] Minor: remove the per-atomic "Delete source" box (junk delete-only stays in the
+  skipped-items flow)? — confirm during SDD finalize.
 
 ---
 

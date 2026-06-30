@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.35.3
+# version: 0.35.4
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -990,12 +990,12 @@ def _build_delete_source_actions(
        but have no matching confirmed_item (content fully captured in the
        daily note, no atomic note will be created).
     3. move_note origins — for every move_note action whose corresponding
-       confirmed item did NOT opt out via "Keep origin", emit a paired
+       confirmed item did NOT opt out via "Keep source files", emit a paired
        delete_source for the origin inbox item. Audio + transcript peer
        pairs are NOT included here (they're independent upstream artifacts);
        only the origin from which Tomo derived the rendered atomic note.
     4. Tag-handler group sources — for every APPROVED group not opted out via
-       "Keep origin", one delete_source per `source_path`. The group's
+       "Keep source files", one delete_source per `source_path`. The group's
        insert_under_marker (emitted earlier) copies the captures into the
        target note, so the inbox sources are now redundant. Parity with (3),
        but keyed by group_id rather than origin stem.
@@ -1094,7 +1094,7 @@ def _build_delete_source_actions(
         })
 
     # (4) Tag-handler group sources — one delete per source_path of each
-    # APPROVED group, unless the group opted out via "Keep origin".
+    # APPROVED group, unless the group opted out via "Keep source files".
     approved_groups = set(approved_tag_handler_group_ids or [])
     kept_groups = set(keep_source_group_ids or [])
     emitted: set[str] = {a["source_path"] for a in out}
@@ -2397,7 +2397,7 @@ def main() -> int:
     approved_tag_handler_group_ids = suggestions.get(
         "approved_tag_handler_group_ids", []
     )
-    # Group ids the user opted out of source-deletion via "Keep origin".
+    # Group ids the user opted out of source-deletion via "Keep source files".
     tag_handler_keep_source_group_ids = suggestions.get(
         "tag_handler_keep_source_group_ids", []
     )

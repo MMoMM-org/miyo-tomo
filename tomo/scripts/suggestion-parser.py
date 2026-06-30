@@ -1753,7 +1753,7 @@ def main() -> int:
     if approved_tag_handler_group_ids:
         print(
             f"tag_handler_groups: {len(approved_tag_handler_group_ids)} approved, "
-            f"{len(tag_handler_keep_source_group_ids)} keep-origin",
+            f"{len(tag_handler_keep_source_group_ids)} keep-source",
             file=sys.stderr,
         )
 

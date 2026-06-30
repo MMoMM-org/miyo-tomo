@@ -62,17 +62,27 @@ def _action(worthiness: float | None = 0.8) -> dict:
 
 
 def _decision_block_lines(md: str) -> list[str]:
-    """Extract lines from the **Decision (atomic note):** block."""
+    """Extract lines from the **Decision (atomic note):** block.
+
+    The block is terminal — no section follows it in the atomic render, so there
+    is no closing **bold header** to rely on.  We end the block on either:
+      - a new **bold header** line (defensive, in case layout changes), or
+      - a blank line that appears after at least one checkbox has been seen.
+    """
     in_block = False
+    saw_checkbox = False
     block_lines: list[str] = []
     for line in md.splitlines():
         if line.strip() == "**Decision (atomic note):**":
             in_block = True
             continue
         if in_block:
-            # Next **bold header** or empty-after-block ends the block.
             if line.startswith("**") and line.endswith("**"):
                 break
+            if line.strip() == "" and saw_checkbox:
+                break
+            if line.startswith("- ["):
+                saw_checkbox = True
             block_lines.append(line)
     return block_lines
 

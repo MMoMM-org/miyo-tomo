@@ -144,7 +144,7 @@ def test_no_audio_peer_renders_single_source():
     """Without audio_peer, Source line is the plain [[stem]] wikilink (unchanged)."""
     md = render_create_atomic_note(_action(audio_peer=None), "my-note")
     assert "**Source:** [[my-note]]" in md, "Expected single-source line without peer"
-    assert "+" not in md.splitlines()[0], "No '+' in source line when no peer"
+    assert "**Source:** [[my-note]] + " not in md, "No peer set in source line when no peer"
 
 
 # ── T2.3: atomic parser label round-trip ─────────────────────────────────────
@@ -178,8 +178,8 @@ def test_keep_source_unchecked_gives_keep_source_false(tmp_path):
     confirmed = out.get("confirmed_items", [])
     assert len(confirmed) == 1, f"Expected 1 confirmed item; got {confirmed!r}"
     keep = confirmed[0].get("keep_source")
-    assert keep is False or keep is None, (
-        f"Expected keep_source False/None when unchecked; got {keep!r}"
+    assert keep is False, (
+        f"Expected keep_source=False when unchecked (checkbox present but unticked); got {keep!r}"
     )
 
 

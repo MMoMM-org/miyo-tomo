@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version: 0.9.1
+# version: 0.9.2
 # tomo-statusline.sh — Tomo status line for Claude Code.
 #
 # Shows: Model | 友 instance-name | Context bar | Kado connectivity + tag access | Hashi IDE Bridge
@@ -109,16 +109,16 @@ CTX_PCT="${CTX_PCT:-0}"
 # ── Context bar ──────────────────────────────────────────
 
 ctx_bar() {
-  # pct -> an 8-cell block bar "████░░░░". The pill color conveys the state
-  # (ok/warn/crit); the bar conveys the fill level. Block glyphs render in any
-  # font, so this stays readable with or without a Nerd Font.
+  # pct -> a slim 8-cell progress bar "▰▰▱▱▱▱▱▱". The pill color conveys the
+  # state (ok/warn/crit); the bar conveys the fill level. Parallelogram glyphs
+  # read as a thin gauge (not chunky blocks) and render in common fonts.
   local pct="${1:-0}" filled empty bar="" i
   filled=$(( (pct + 6) / 13 ))
   [[ $filled -lt 0 ]] && filled=0
   [[ $filled -gt 8 ]] && filled=8
   empty=$(( 8 - filled ))
-  for (( i=0; i<filled; i++ )); do bar+="█"; done
-  for (( i=0; i<empty;  i++ )); do bar+="░"; done
+  for (( i=0; i<filled; i++ )); do bar+="▰"; done
+  for (( i=0; i<empty;  i++ )); do bar+="▱"; done
   echo -n "$bar"
 }
 

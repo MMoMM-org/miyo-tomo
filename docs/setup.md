@@ -96,6 +96,8 @@ The instance is **not** git-initialised by the installer — it is bind-mounted 
 
 Sets up `<parent>/<name>/home/` as the Docker `/home/coder` mount, including Claude Code auth from your host (if available) and the `.gitconfig` from step 5. Then renders `scripts/lib/begin-tomo.sh.template` into `<parent>/<name>/begin-tomo.sh` with all paths baked in — this is the launcher you run to start sessions for this instance.
 
+Tomo's branded Claude Code themes (`tomo/dot_claude/themes/tomo-*.json`) are also seeded into the home at `~/.claude/themes/`. Inside a session, select one with `/theme` (Tomo Ai 藍, Tomo Murasaki 紫, Tomo Cha 茶). They are home-level only — they never touch your host `~/.claude/`, and you can tweak any `.json` live (hot-reload) or drop in your own.
+
 ### 8. Registry Update
 
 Finally, the installer records the instance in `~/.tomo/instances.json` (name → path → source repo → version) so future install/update runs can find it. The registry is a rebuildable index: if it's lost, your instances still launch via their own `begin-tomo.sh`, and the next install re-creates the entry. A registry write failure does not abort an otherwise successful install.

@@ -16,3 +16,9 @@ When a new field flows through the Pass-2 pipeline, every transformation stage m
 ## `docs/instructions-json.md` tracker examples — multiple inconsistencies — Status: open
 
 (2026-04-29 review) (a) `update_tracker.syntax / inline_field` example shows duplicate `- Sport:: true` line. (b) `callout_body` syntax is missing the `> - Temperature:: 4.8` example variant. (c) Doc implies trackers are at the start of a line; trackers can also appear inline elsewhere in the line — never assume position. (d) Missing tracker syntax variant: `- For Me::` (label-style, no value following the `::`). Touch points: `docs/instructions-json.md` § Tracker Conventions; verify renderer + parser handle each variant before updating the doc.
+
+<!-- 2026-07-01 -->
+
+## `/inbox` self-triggered via model-improvised `ScheduleWakeup` — Status: resolved (#110)
+
+`ScheduleWakeup` is a built-in Claude Code harness tool (it appears NOWHERE in the Tomo runtime — verified by grep). During a container `/inbox` run the model improvised `ScheduleWakeup(prompt:"inbox")` as a "fallback heartbeat while synthesis-conductor runs"; when it fired the `prompt:"inbox"` re-ran the **whole** `/inbox` command → re-triage → re-ingested Pass-2 rendered staging notes (`source_items 4 → 9`). It was NOT the `/loop` skill (that idled correctly with `<<autonomous-loop-dynamic>>`) and NOT a Tomo instruction — every `/inbox` route already ends in `Exit`. Fix: PreToolUse hook `dot_claude/hooks/block-inbox-selfschedule.sh` (matcher `ScheduleWakeup`) denies any wakeup whose `prompt` references `inbox` with a message that `/inbox` runs only on explicit user invocation; generic loop heartbeats pass through. Hooks load at **session start** — restart the container session after syncing. General lesson: when a plain `Exit`/imperative is observed failing against model improvisation of a built-in tool, a hard PreToolUse hook beats another soft prompt directive.

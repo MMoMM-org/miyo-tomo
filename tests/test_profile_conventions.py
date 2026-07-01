@@ -25,7 +25,12 @@ SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib import profile_conventions  # noqa: E402
-from lib.profile_conventions import Conventions, resolve_conventions  # noqa: E402
+from lib.profile_conventions import (  # noqa: E402
+    Conventions,
+    ensure_suffix,
+    resolve_conventions,
+    strip_suffix,
+)
 
 BUNDLED_PROFILES_DIR = SCRIPTS_DIR.parent / "profiles"
 
@@ -179,6 +184,42 @@ def test_bundled_lyt_suffix() -> None:
         profiles_dir=BUNDLED_PROFILES_DIR, profile_override="lyt"
     )
     assert conv.moc_suffix == ""
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Phase 2 — shared suffix apply-once / strip rules (F-55)
+# SDD/Implementation Examples: ensure_suffix / strip_suffix.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_ensure_suffix_appends_miyo() -> None:
+    assert ensure_suffix("Shell", " (MOC)") == "Shell (MOC)"
+
+
+def test_ensure_suffix_apply_once_no_double() -> None:
+    # Already ends with the suffix -> never double-apply.
+    assert ensure_suffix("Shell (MOC)", " (MOC)") == "Shell (MOC)"
+
+
+def test_ensure_suffix_empty_is_noop() -> None:
+    assert ensure_suffix("Shell", "") == "Shell"
+
+
+def test_strip_suffix_removes_miyo() -> None:
+    assert strip_suffix("Shell (MOC)", " (MOC)") == "Shell"
+
+
+def test_strip_suffix_case_insensitive() -> None:
+    # Parity with the legacy case-insensitive regexes.
+    assert strip_suffix("Shell (moc)", " (MOC)") == "Shell"
+
+
+def test_strip_suffix_empty_is_noop() -> None:
+    assert strip_suffix("Shell (MOC)", "") == "Shell (MOC)"
+
+
+def test_strip_suffix_non_matching_left_intact() -> None:
+    assert strip_suffix("Shell", " (MOC)") == "Shell"
 
 
 def test_bundled_profiles_versions_bumped() -> None:

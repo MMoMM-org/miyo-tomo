@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.6.0
+# version: 1.7.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -45,6 +45,10 @@ try:
 except ImportError:
     KadoClient = None  # type: ignore
     KadoError = Exception  # type: ignore
+
+# spec 028 T2.4: placeholder-MOC detection derives its regex from the active
+# profile's MOC suffix. sys.path already carries SCRIPT_DIR/lib (inserted above).
+from profile_conventions import resolve_conventions  # type: ignore  # noqa: E402
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -254,19 +258,43 @@ def build_mocs(cache: dict) -> list[dict]:
 
 # A placeholder link is a missing MOC only when its target follows the vault's
 # MOC naming convention: a trailing `(MOC)` parenthetical OR a trailing ` MOC`
-# word. Condition C offers MOC *creation*, so a placeholder link to a missing
-# regular note (no MOC marker) must not reach it — that was the bulk of the
-# unfiltered list (158 of 196 on the real vault, 2026-06-09). `\bMOC` keeps the
-# match on a word boundary so mid-word "...MOC" never matches.
-_MOC_NAME_RE = re.compile(r"(\(MOC\)|\bMOC)\s*$", re.IGNORECASE)
+# word (case-insensitive, word-boundary so mid-word "...MOC" never matches).
+# spec 028 T2.4: the marker word is derived from the active profile's suffix
+# (miyo " (MOC)" → "MOC"); an empty suffix (lyt) detects nothing. Condition C
+# offers MOC *creation*, so a placeholder link to a missing regular note (no MOC
+# marker) must not reach it — that was the bulk of the unfiltered list (158 of
+# 196 on the real vault, 2026-06-09).
+_DEFAULT_MARKER_WORD = "MOC"
 
 
-def _is_missing_moc_target(target: str) -> bool:
-    """True if a placeholder target names a MOC (the user's `(MOC)`/` MOC` convention)."""
-    return bool(_MOC_NAME_RE.search(target))
+def _moc_name_re(suffix: str):
+    """Build the placeholder-MOC detection regex from a profile suffix.
+
+    Matches the parenthesised `(MOC)` form OR the bare word ` MOC` at end of
+    string (case-insensitive), keyed off the suffix's alphanumeric core. An
+    empty suffix yields ``None`` — detect nothing.
+    """
+    word = re.sub(r"\W", "", suffix or "")
+    if not word:
+        return None
+    return re.compile(
+        rf"(\({re.escape(word)}\)|\b{re.escape(word)})\s*$", re.IGNORECASE
+    )
 
 
-def build_placeholder_links(cache: dict) -> list[dict]:
+# Legacy default (miyo) used when no profile suffix is threaded (standalone
+# smoke test / older callers). The active pipeline passes the resolved regex.
+_MOC_NAME_RE = _moc_name_re(_DEFAULT_MARKER_WORD)
+
+
+def _is_missing_moc_target(target: str, moc_re=_MOC_NAME_RE) -> bool:
+    """True if a placeholder target names a MOC (the profile's `(MOC)`/` MOC` convention)."""
+    if moc_re is None:
+        return False
+    return bool(moc_re.search(target))
+
+
+def build_placeholder_links(cache: dict, moc_re=_MOC_NAME_RE) -> list[dict]:
     """Filter cache.placeholder_links[] to the ones that name a missing MOC.
 
     Source: `moc-tree-builder.py` detects every dead wikilink in MOC bodies and
@@ -295,7 +323,7 @@ def build_placeholder_links(cache: dict) -> list[dict]:
         referenced_by = (entry.get("referenced_by") or "").strip()
         if not (target and referenced_by):
             continue
-        if not _is_missing_moc_target(target):
+        if not _is_missing_moc_target(target, moc_re):
             continue
         out.append({"target": target, "referenced_by": referenced_by})
     return out
@@ -745,11 +773,15 @@ def main() -> int:
                 file=sys.stderr,
             )
 
+    conventions = resolve_conventions(
+        profile_dict=profile, profiles_dir=profiles_dir
+    )
+
     mocs = build_mocs(cache)
     tag_prefixes = build_tag_prefixes(cache, vault_cfg)
     classification_keywords = build_classification_keywords(profile)
     daily_notes = build_daily_notes(vault_cfg)
-    placeholder_links = build_placeholder_links(cache)
+    placeholder_links = build_placeholder_links(cache, _moc_name_re(conventions.moc_suffix))
 
     ctx: dict = {
         "schema_version": "1",

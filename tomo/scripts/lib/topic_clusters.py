@@ -1,5 +1,5 @@
 # topic_clusters.py — Pure clustering helper for atomic-note → Proposed MOC.
-# version: 0.3.0
+# version: 0.4.0
 """Group atomic-note candidates into Proposed MOC clusters.
 
 Why this lives in a module of its own:
@@ -25,11 +25,28 @@ import re
 from dataclasses import dataclass, field
 from typing import TypedDict
 
-# Matches a trailing MOC marker that is preceded by whitespace ("X MOC")
-# or wrapped in parentheses ("X (MOC)" / "X(MOC)").
-# Requires an explicit word boundary before "moc" — bare suffix like "biomoc"
-# or "Thermoc" does NOT match and is left unchanged.
-_MOC_MARKER_RE = re.compile(r"(\s*\(\s*moc\s*\)|\s+moc)\s*$", re.IGNORECASE)
+# The MOC-marker strip regex is built from the active profile's suffix (F-55 /
+# spec 028 T2.2), not hardcoded — its core word is the alphanumeric part of the
+# suffix (miyo " (MOC)" → "MOC"). The matched forms mirror the legacy pattern:
+# a trailing marker preceded by whitespace ("X MOC") or wrapped in parentheses
+# ("X (MOC)" / "X(MOC)"). A word boundary before the core word keeps mid-word
+# endings like "biomoc" / "Thermoc" unchanged. Empty suffix → no marker → no-op.
+_DEFAULT_MARKER_WORD = "MOC"
+
+
+def _marker_word(suffix: str) -> str:
+    """Alphanumeric core of a MOC suffix, e.g. ' (MOC)' → 'MOC'; '' → ''."""
+    return re.sub(r"\W", "", suffix or "")
+
+
+def _moc_marker_re(word: str) -> "re.Pattern[str] | None":
+    """Compile the trailing-marker strip regex for a marker word; empty → None."""
+    if not word:
+        return None
+    return re.compile(
+        rf"(\s*\(\s*{re.escape(word)}\s*\)|\s+{re.escape(word)})\s*$",
+        re.IGNORECASE,
+    )
 
 
 # ── Public types ─────────────────────────────────────────────────────────────
@@ -75,26 +92,33 @@ class Cluster(TypedDict):
 # ── Public helpers ───────────────────────────────────────────────────────────
 
 
-def strip_moc_marker(topic: str) -> str:
+def strip_moc_marker(topic: str, suffix: str | None = None) -> str:
     """Remove trailing MOC marker(s) from a topic phrase, returning the bare form.
 
-    Handles: "X MOC", "X (MOC)", "X(MOC)" — case-insensitive, whitespace-tolerant.
-    Iterates until stable so double-suffixed forms ("X (MOC) (MOC)") are fully
-    stripped in a single call.
+    The marker is derived from `suffix` (the active profile's MOC suffix):
+      - `suffix=None`  → legacy default (miyo's "(MOC)" / " MOC").
+      - `suffix=""`    → no-op (lyt): nothing is stripped.
+      - otherwise      → strip the suffix's core word in both the parenthesised
+                         ("X (MOC)", "X(MOC)") and whitespace ("X MOC") forms.
 
-    Word-boundary rule: "moc" is only stripped when preceded by whitespace
-    (the space-separated form "X MOC") or a parenthesised block ("(MOC)").
-    Mid-word endings such as "biomoc" or "Thermoc" are left unchanged.
+    Case-insensitive, whitespace-tolerant. Iterates until stable so double-
+    suffixed forms ("X (MOC) (MOC)") are fully stripped in a single call.
+
+    Word-boundary rule: the marker word is only stripped when preceded by
+    whitespace or a parenthesised block. Mid-word endings such as "biomoc" or
+    "Thermoc" are left unchanged.
 
     Guard: if stripping would empty the entire string (e.g. bare "MOC" or
-    "(MOC)"), the original string is returned unchanged.
-
-    Only trailing markers are removed — leading or mid-string occurrences
-    (e.g. "MOC Design Patterns", "Using MOC Patterns") are kept.
+    "(MOC)"), the original string is returned unchanged. Only trailing markers
+    are removed — leading/mid-string occurrences are kept.
     """
+    word = _DEFAULT_MARKER_WORD if suffix is None else _marker_word(suffix)
+    marker_re = _moc_marker_re(word)
     t = topic.strip()
+    if marker_re is None:
+        return t
     while True:
-        stripped = _MOC_MARKER_RE.sub("", t).strip()
+        stripped = marker_re.sub("", t).strip()
         if stripped == t or not stripped:
             break
         t = stripped
@@ -182,7 +206,7 @@ def _compute_moc_tags(items_tags: list[list[str]]) -> list[str]:
 
 
 def build_topic_clusters(
-    items: list[ClusterCandidate], threshold: int
+    items: list[ClusterCandidate], threshold: int, suffix: str | None = None
 ) -> list[Cluster]:
     """Group candidates into Proposed-MOC clusters.
 
@@ -192,6 +216,8 @@ def build_topic_clusters(
             parent classification, and optional leaf tags.
         threshold: Minimum cluster size for emission. Clusters with fewer
             than `threshold` candidates are dropped.
+        suffix: The active profile's MOC suffix, threaded to `strip_moc_marker`
+            for topic normalisation. `None` → legacy default; `""` → no strip.
 
     Returns:
         A new list of `Cluster` dicts in insertion order of first occurrence.
@@ -200,7 +226,7 @@ def build_topic_clusters(
     """
     grouped: dict[str, list[tuple[str, str, str, list[str]]]] = {}
     for candidate in items:
-        topic_raw = strip_moc_marker((candidate.topic or "").strip())
+        topic_raw = strip_moc_marker((candidate.topic or "").strip(), suffix)
         if not topic_raw:
             continue
         norm = normalise_topic(topic_raw)

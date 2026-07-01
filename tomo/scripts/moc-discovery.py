@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.17.0
+# version: 0.18.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -59,6 +59,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from lib.moc_cache_loader import load_moc_cache  # noqa: E402
 from lib.moc_tags import EXCLUDE_NOTE_TAG  # noqa: E402
 from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
+from lib.profile_conventions import ensure_suffix, resolve_conventions  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
 from lib.up_parse import parse_up_from_content  # noqa: E402
 from lib.squelch import (  # noqa: E402
@@ -816,9 +817,12 @@ def phase2_extract_topics(
 
 
 def phase3_cluster(
-    candidates_with_topics: list[Candidate], config
+    candidates_with_topics: list[Candidate], config, moc_suffix: str | None = None
 ) -> list[dict]:
     """Group candidates by normalised topic — thin wrapper around T1.5.
+
+    `moc_suffix` is the active profile's MOC suffix, threaded into
+    `build_topic_clusters` for topic normalisation (F-55 / spec 028 T2.2).
 
     Each candidate from Phase 2 carries `topics: list[str]` (one or more).
     The reducer's existing algorithm operates on one `ClusterCandidate` per
@@ -872,23 +876,12 @@ def phase3_cluster(
             )
 
     threshold = getattr(config, "min_notes", 3)
-    return build_topic_clusters(items, threshold=threshold)
+    return build_topic_clusters(items, threshold=threshold, suffix=moc_suffix)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Phase 4 — Title generation (per-profile suffix + mode override)
 # ──────────────────────────────────────────────────────────────────────────────
-
-
-# Profile name → MOC-title suffix appended after the topic. Empty string =
-# plain title (LYT-style). Both profiles use a hardcoded suffix for now;
-# tier-3/lyt-moc/new-moc-proposal.md §7 documents a future "(MOC)" form
-# stored on the profile, but per the spec the canonical TopicTitle for the
-# proposed-MOC pipeline is the plain "<Topic> MOC" / "<Topic>" pair.
-_PROFILE_TITLE_SUFFIX: dict[str, str] = {
-    "miyo": " (MOC)",
-    "lyt": "",
-}
 
 
 def _topic_title(cluster: dict) -> str:
@@ -918,9 +911,9 @@ def phase4_title(
 
     Args:
         cluster: A Phase-3 `Cluster` dict (`{topic, items, parent, tags}`).
-        profile: The active profile dict (post-`yaml.safe_load`). Only the
-            top-level `name` field is consulted — title-suffix policy is keyed
-            off the canonical profile name (`"MiYo"` / `"LYT (...)"`).
+        profile: The active profile dict (post-`yaml.safe_load`). The MOC-title
+            suffix is read from its `concept_defaults.map_note.name_suffix`
+            (via `resolve_conventions`), not a name-keyed hardcoded table.
         mode: The /moc-propose run mode (`tag` / `folder` / `class` / `title`
             / `free-text` / `scan`).
         trigger_arg: The mode's argument; used verbatim when `mode == "title"`.
@@ -930,7 +923,7 @@ def phase4_title(
 
     Behaviour:
       - `mode == "title"` → user input wins regardless of profile.
-      - Otherwise: TitleCase(cluster.topic) + profile suffix.
+      - Otherwise: TitleCase(cluster.topic) + profile suffix (apply-once).
 
     Pure: input dicts are not mutated.
     """
@@ -939,14 +932,14 @@ def phase4_title(
         return trigger_arg
 
     topic_title = _topic_title(cluster)
-    profile_name = (profile.get("name") or "").strip()
-    short = profile_name.split()[0].lower() if profile_name else "miyo"
-    suffix = _PROFILE_TITLE_SUFFIX.get(short, "")
+    suffix = resolve_conventions(
+        profile_dict=profile, profiles_dir=DEFAULT_PROFILES_DIR
+    ).moc_suffix
     if suffix and topic_title.endswith(" MOC"):
         topic_title = topic_title[:-4]
     if topic_title.strip().upper() == "MOC":
         return topic_title
-    return f"{topic_title}{suffix}"
+    return ensure_suffix(topic_title, suffix)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1764,7 +1757,10 @@ def _run_pipeline(
     _log(f"phase2: {len(candidates_with_topics)} candidate(s) with topics")
 
     # Phase 3 — Cluster detection
-    raw_clusters = phase3_cluster(candidates_with_topics, moc_config)
+    _moc_suffix = resolve_conventions(
+        profile_dict=profile_dict, profiles_dir=DEFAULT_PROFILES_DIR
+    ).moc_suffix
+    raw_clusters = phase3_cluster(candidates_with_topics, moc_config, _moc_suffix)
     _log(f"phase3: {len(raw_clusters)} raw cluster(s) (threshold={moc_config.min_notes})")
 
     # Phase 4+5 — Enrich clusters (title, parents, metadata)

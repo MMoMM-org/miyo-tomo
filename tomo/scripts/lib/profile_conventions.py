@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """profile_conventions.py — single resolver for profile-agnostic vault conventions.
 
 Threads a profile's relationship markers and MOC-title suffix into the pipeline
@@ -32,6 +32,26 @@ class Conventions:
     parent_marker: str  # e.g. "up::"
     peer_marker: str  # e.g. "related::"
     moc_suffix: str  # e.g. " (MOC)" or ""
+
+
+def ensure_suffix(title: str, suffix: str) -> str:
+    """Append `suffix` to `title` once. Empty suffix is a no-op; never double-apply."""
+    if not suffix:
+        return title
+    return title if title.endswith(suffix) else f"{title}{suffix}"
+
+
+def strip_suffix(title: str, suffix: str) -> str:
+    """Remove a trailing `suffix` from `title`.
+
+    Empty suffix strips nothing. Case-insensitive to match the legacy
+    topic_clusters / shared-ctx regexes (parity, not new behaviour).
+    """
+    if not suffix:
+        return title
+    if title.lower().endswith(suffix.lower()):
+        return title[: -len(suffix)]
+    return title
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:

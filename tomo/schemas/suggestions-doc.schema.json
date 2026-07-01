@@ -17,6 +17,17 @@
       "enum": ["primary", "fan-resolve"],
       "description": "Document variant — primary (normal inbox run) or fan-resolve (XDD 012 force-atomic resolve doc)."
     },
+    "conventions": {
+      "type": "object",
+      "description": "Active profile's resolved vault conventions (spec 028). Additive; suggestion-parser reads markers here, falling back to defaults when absent.",
+      "required": ["parent_marker", "peer_marker", "moc_suffix"],
+      "additionalProperties": false,
+      "properties": {
+        "parent_marker": {"type": "string"},
+        "peer_marker": {"type": "string"},
+        "moc_suffix": {"type": "string"}
+      }
+    },
     "sections": {
       "type": "array",
       "items": {

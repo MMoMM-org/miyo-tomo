@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.21.0
+# version: 1.22.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -51,6 +51,7 @@ from lib.topic_clusters import (  # noqa: E402, F401
 )
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
+from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -480,18 +481,21 @@ def render_link_to_moc(action: dict, stem: str) -> str:
     )
 
 
-_MOC_SUFFIX = " (MOC)"
+def _ensure_moc_suffix(title: str, suffix: str) -> str:
+    """Ensure title ends with the profile's MOC suffix (apply-once).
 
-
-def _ensure_moc_suffix(title: str) -> str:
-    """Ensure title ends with ' (MOC)', converting trailing ' MOC' if present."""
+    Converts a trailing ' MOC' word form to the suffix; empty suffix (lyt) is a
+    no-op. F-55 / spec 028 T2.3 — the suffix is resolved from the active profile.
+    """
+    if not suffix:
+        return title
     if not title or title.strip() == "MOC":
         return title
-    if title.endswith(_MOC_SUFFIX):
+    if title.endswith(suffix):
         return title
     if title.endswith(" MOC"):
-        return title[:-4] + _MOC_SUFFIX
-    return title + _MOC_SUFFIX
+        return title[: -len(" MOC")] + suffix
+    return title + suffix
 
 
 def _atomic_id(section_id: str, atomic_idx: int) -> str:
@@ -508,10 +512,11 @@ def _atomic_id(section_id: str, atomic_idx: int) -> str:
 def _enrich_proposed_mocs(
     proposed_mocs: list[dict],
     section_titles: dict[str, str],
+    moc_suffix: str,
 ) -> None:
     """Mutate each proposed_moc in-place: add name, note_titles, reason fields."""
     for pm in proposed_mocs:
-        pm["name"] = _ensure_moc_suffix(pm["topic"])
+        pm["name"] = _ensure_moc_suffix(pm["topic"], moc_suffix)
         items: list[str] = pm.get("items") or []
         pm["note_titles"] = [
             section_titles.get(sid, sid) for sid in items
@@ -524,8 +529,8 @@ def _enrich_proposed_mocs(
         )
 
 
-def render_create_moc(action: dict, stem: str) -> str:
-    moc_title = _ensure_moc_suffix(action.get("moc_title", ""))
+def render_create_moc(action: dict, stem: str, moc_suffix: str) -> str:
+    moc_title = _ensure_moc_suffix(action.get("moc_title", ""), moc_suffix)
     parent = action.get("parent_moc", "")
     return (
         f"**Source:** [[{stem}]]\n"
@@ -1424,6 +1429,15 @@ def main() -> int:
     out_path = Path(args.output)
     load_field_sections(Path(args.shared_ctx))
 
+    # spec 028 T2.3: resolve the active profile's vault conventions once. The
+    # MOC suffix drives title enrichment; the full block is written into the
+    # output doc so suggestion-parser can read markers from it.
+    _profiles_dir = Path(__file__).resolve().parent.parent / "profiles"
+    conventions = resolve_conventions(
+        profile_override=args.profile, profiles_dir=_profiles_dir
+    )
+    moc_suffix = conventions.moc_suffix
+
     state = last_state_per_stem(state_path)
     done_stems = sorted(s for s, e in state.items() if e.get("status") == "done")
     failed_entries = sorted(
@@ -1591,7 +1605,10 @@ def main() -> int:
                 # instead of the full atomic-note proposal.
                 rendered = render_suppressed_atomic(action, stem)
             else:
-                rendered = renderer(action, stem)
+                if kind == "create_moc":
+                    rendered = render_create_moc(action, stem, moc_suffix)
+                else:
+                    rendered = renderer(action, stem)
             if rendered is not None:
                 rendered_action: dict = {"kind": kind, "rendered_md": rendered}
                 # F-41 T1: assign a flat global suggestion_id to each rendered
@@ -1673,7 +1690,7 @@ def main() -> int:
     )
 
     # Post-process: add name, note_titles, reason fields.
-    _enrich_proposed_mocs(proposed_mocs, section_titles)
+    _enrich_proposed_mocs(proposed_mocs, section_titles, moc_suffix)
 
     needs_attention: list[dict] = []
     for stem, entry in failed_entries:
@@ -1749,6 +1766,13 @@ def main() -> int:
         "generated": now_iso(),
         "run_id": args.run_id,
         "profile": args.profile,
+        # spec 028 T2.3: additive — the parser reads markers from here, falling
+        # back to defaults when the block is absent (older artifacts).
+        "conventions": {
+            "parent_marker": conventions.parent_marker,
+            "peer_marker": conventions.peer_marker,
+            "moc_suffix": conventions.moc_suffix,
+        },
         "doc_variant": doc_variant,  # XDD 012 — primary | fan-resolve
         "source_items": len(done_stems) + len(failed_entries),
         "sections": sections,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.17.1
+# version: 0.18.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -170,11 +170,17 @@ def discover_files(client, inbox_path: str) -> tuple[list[dict], list[dict], lis
 
 def query_frontmatter(
     client, inbox_path: str,
-) -> tuple[list[dict], list[dict], list[dict], list[dict], list[dict], list[dict]]:
-    """Six byFrontmatter calls for all known tomo states.
+) -> tuple[
+    list[dict], list[dict], list[dict], list[dict], list[dict], list[dict], list[dict]
+]:
+    """Seven byFrontmatter calls for all known tomo states.
 
     Returns (pending_approval, pending_accept, captured, instructions,
-             approved, accepted).
+             approved, accepted, rendered).
+
+    ``rendered`` (tomo.state=pending-move) are the Pass-2 staging notes/MOCs
+    awaiting Hashi apply. They must be excluded from fresh-source discovery so a
+    re-run of /inbox before apply does not re-ingest them (#108).
     """
     pending_approval = client.search_by_frontmatter(
         "tomo.state=pending-approval", path_prefix=inbox_path,
@@ -194,7 +200,13 @@ def query_frontmatter(
     accepted = client.search_by_frontmatter(
         "tomo.state=accepted", path_prefix=inbox_path,
     )
-    return pending_approval, pending_accept, captured, instructions, approved, accepted
+    rendered = client.search_by_frontmatter(
+        "tomo.state=pending-move", path_prefix=inbox_path,
+    )
+    return (
+        pending_approval, pending_accept, captured, instructions,
+        approved, accepted, rendered,
+    )
 
 
 def enrich_instructions_frontmatter(
@@ -241,11 +253,17 @@ def compute_new_sources(
     instructions: list[dict],
     approved: list[dict] | None = None,
     accepted: list[dict] | None = None,
+    rendered: list[dict] | None = None,
 ) -> list[dict]:
-    """Files not in any frontmatter bucket are new sources."""
+    """Files not in any frontmatter bucket are new sources.
+
+    ``rendered`` (tomo.state=pending-move) are Pass-2 staging notes/MOCs awaiting
+    Hashi apply; excluding them stops a pre-apply /inbox re-run from re-ingesting
+    Tomo's own rendered output as fresh sources (#108).
+    """
     known_paths = set()
     for bucket in (pending_approval, pending_accept, captured, instructions,
-                   approved or [], accepted or []):
+                   approved or [], accepted or [], rendered or []):
         for hit in bucket:
             known_paths.add(hit["path"])
 
@@ -649,7 +667,7 @@ def discover(
 
     # Step 3: query frontmatter
     (pending_approval_hits, pending_accept_hits, captured_hits,
-     instructions_hits, approved_hits, accepted_hits) = (
+     instructions_hits, approved_hits, accepted_hits, rendered_hits) = (
         query_frontmatter(client, inbox_path)
     )
 
@@ -661,6 +679,7 @@ def discover(
     new_sources = compute_new_sources(
         md_files, pending_approval_hits, pending_accept_hits,
         captured_hits, instructions_hits, approved_hits, accepted_hits,
+        rendered=rendered_hits,
     )
     # --force re-suggests already-captured items too (Pass 1 redo): fold them
     # into new_sources so determine_action routes to "suggest" (#78). Skip when

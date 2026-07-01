@@ -1188,6 +1188,42 @@ class TestActionDetermination:
         )
         assert cap not in {s["path"] for s in state.new_sources}
 
+    def test_rendered_note_excluded_from_new_sources(self, tmp_path):
+        """A Pass-2 staging note (tomo.state=pending-move) is NOT re-ingested as a
+        fresh source when /inbox re-runs before Hashi applies it (#108). A genuine
+        new note alongside it still surfaces."""
+        mod = _load_module()
+        rendered = INBOX_PATH + "2026-07-01_0948_my-note.md"
+        fresh = INBOX_PATH + "brand-new.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(rendered), _listdir_item(fresh)],
+            frontmatter_responses={
+                "tomo.state=pending-approval": [],
+                "tomo.state=pending-accept": [],
+                "tomo.state=captured": [],
+                "tomo.doc_type=instructions": [],
+                "tomo.state=approved": [],
+                "tomo.state=accepted": [],
+                "tomo.state=pending-move": [{"path": rendered, "modified": 0}],
+            },
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        paths = {s["path"] for s in state.new_sources}
+        assert rendered not in paths, "rendered staging note leaked as fresh source"
+        assert fresh in paths, "genuine new note must still surface"
+
+    def test_compute_new_sources_excludes_rendered_bucket(self):
+        """compute_new_sources drops paths in the rendered (pending-move) bucket."""
+        mod = _load_module()
+        rendered = INBOX_PATH + "staged.md"
+        fresh = INBOX_PATH + "new.md"
+        md_files = [{"path": rendered}, {"path": fresh}]
+        result = mod.compute_new_sources(
+            md_files, [], [], [], [], [], [],
+            rendered=[{"path": rendered}],
+        )
+        assert {s["path"] for s in result} == {fresh}
+
     def test_transcribe(self):
         """has_audio=True → 'transcribe'."""
         mod = _load_module()

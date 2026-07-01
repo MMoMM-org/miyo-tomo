@@ -14,7 +14,7 @@
       "properties": {
         "doc_type": {
           "type": "string",
-          "enum": ["source", "suggestions", "suggestions-fan", "moc-proposal", "instructions"],
+          "enum": ["source", "suggestions", "suggestions-fan", "moc-proposal", "instructions", "rendered-note"],
           "description": "Type of Tomo-produced doc. Determines which state values are valid."
         },
         "state": {
@@ -85,6 +85,13 @@
           "properties": {
             "doc_type": {"const": "instructions"},
             "state": {"enum": ["pending-apply", "applied"]}
+          }
+        },
+        {
+          "description": "rendered-note — Pass-2 rendered atomic note or MOC staged in the inbox, pending move_note/create_moc apply by Hashi (which strips this block). Marks the note so triage skips it as a fresh source.",
+          "properties": {
+            "doc_type": {"const": "rendered-note"},
+            "state": {"enum": ["pending-move"]}
           }
         }
       ]

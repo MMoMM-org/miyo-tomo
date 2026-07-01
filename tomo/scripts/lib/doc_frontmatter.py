@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.5.0
 """doc_frontmatter.py — Producer helper for the 'tomo:' frontmatter block.
 
 Every Tomo-produced doc (suggestions, suggestions-fan, moc-proposal,
@@ -40,9 +40,30 @@ except ImportError:
     jsonschema = None  # type: ignore
     _HAVE_JSONSCHEMA = False
 
+# PyYAML is required by merge_tomo_block_into_markdown() to serialise the block.
+# Guarded like jsonschema so importing the module never hard-fails on a minimal
+# env; the merge helper raises FrontmatterMergeError when yaml is unavailable so
+# the caller falls back to writing the note unstamped.
+try:
+    import yaml  # type: ignore
+
+    _HAVE_YAML = True
+except ImportError:
+    yaml = None  # type: ignore
+    _HAVE_YAML = False
+
 
 class SchemaValidationError(Exception):
     """Raised in dev mode when a tomo: block fails schema validation."""
+
+
+class FrontmatterMergeError(Exception):
+    """Raised when a tomo: block cannot be merged into a markdown string.
+
+    The caller is expected to catch this, log the affected note, and write the
+    note unstamped — the worst case is that triage re-ingests it (pre-fix
+    behaviour), never a corrupted note.
+    """
 
 
 # Schema file is at tomo/schemas/doc-frontmatter.schema.json relative to
@@ -146,6 +167,72 @@ def body_after_frontmatter(text: str) -> str:
         if lines[i].strip() == "---":
             return "".join(lines[i + 1:])
     return text
+
+
+def merge_tomo_block_into_markdown(text: str, tomo_block: dict) -> str:
+    """Insert a ``tomo:`` block into a markdown doc's leading frontmatter.
+
+    The block is inserted immediately after the opening ``---`` fence, leaving
+    every existing frontmatter line byte-identical — no full YAML round-trip, so
+    inline arrays, Templater tokens, key order, and quoting in the note's own
+    frontmatter are preserved. When the doc has no leading frontmatter, a fresh
+    fenced block is created.
+
+    Parameters
+    ----------
+    text:
+        The rendered markdown document.
+    tomo_block:
+        The inner tomo block dict (as returned by build_tomo_block).
+
+    Returns
+    -------
+    str
+        The document with the ``tomo:`` block present in its frontmatter.
+
+    Raises
+    ------
+    FrontmatterMergeError
+        When PyYAML is unavailable, the leading fence is unclosed, or the
+        frontmatter already carries a top-level ``tomo:`` key (rendered notes
+        never do — this guards against silently producing a duplicate key).
+    """
+    if not _HAVE_YAML:
+        raise FrontmatterMergeError(
+            "PyYAML is not installed; cannot serialise the tomo: block."
+        )
+
+    tomo_yaml = yaml.dump(
+        {"tomo": tomo_block},
+        sort_keys=False,
+        allow_unicode=True,
+        default_flow_style=False,
+    ).rstrip("\n")
+
+    lines = text.splitlines(keepends=True)
+
+    # No leading frontmatter → create a fresh fenced block.
+    if not lines or lines[0].strip() != "---":
+        return f"---\n{tomo_yaml}\n---\n{text}"
+
+    # Locate the closing fence.
+    close_idx = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            close_idx = i
+            break
+    if close_idx is None:
+        raise FrontmatterMergeError("Leading frontmatter fence is unclosed.")
+
+    existing_fm = lines[1:close_idx]
+    if any(ln.startswith("tomo:") for ln in existing_fm):
+        raise FrontmatterMergeError(
+            "Frontmatter already carries a top-level 'tomo:' key."
+        )
+
+    # Insert the block right after the opening fence; existing lines untouched.
+    merged = [lines[0], tomo_yaml + "\n", *existing_fm, *lines[close_idx:]]
+    return "".join(merged)
 
 
 # ---------------------------------------------------------------------------

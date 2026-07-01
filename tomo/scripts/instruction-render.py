@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.36.1
+# version: 0.37.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -39,7 +39,12 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block  # noqa: E402
+from lib.doc_frontmatter import (  # noqa: E402
+    FrontmatterMergeError,
+    body_after_frontmatter,
+    build_tomo_block,
+    merge_tomo_block_into_markdown,
+)
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 import lib.moc_structure as moc_structure  # noqa: E402
@@ -2554,6 +2559,23 @@ def main() -> int:
         if rendered is None:
             errors += 1
             continue
+
+        # 4b. Stamp the tomo: lifecycle block so triage skips this staged note as
+        # a fresh source until Hashi applies move_note/create_moc (which strips
+        # the block). Fail-safe: a note whose frontmatter cannot take the block
+        # is written unstamped — worst case is pre-fix re-ingestion, never a
+        # corrupted note.
+        try:
+            rendered = merge_tomo_block_into_markdown(
+                rendered,
+                build_tomo_block("rendered-note", "pending-move", args.run_id),
+            )
+        except FrontmatterMergeError as exc:
+            print(
+                f"  [{item_id}] WARNING: tomo: block not stamped ({exc}); "
+                "note may be re-ingested by triage before apply",
+                file=sys.stderr,
+            )
 
         # 5. Write rendered file — guard against same-slug collision (C5, ADR-7)
         slug = slugify(title)

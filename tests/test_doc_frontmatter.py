@@ -26,8 +26,10 @@ sys.path.insert(0, str(LIB_DIR.parent))  # so `import lib.doc_frontmatter` works
 import pytest  # noqa: E402
 
 from lib.doc_frontmatter import (  # noqa: E402
+    FrontmatterMergeError,
     SchemaValidationError,
     build_tomo_block,
+    merge_tomo_block_into_markdown,
     parse_tomo_block,
 )
 
@@ -296,3 +298,88 @@ def test_build_tomo_block_sources_none_omits_field(monkeypatch):
         sources=None,
     )
     assert "sources" not in block
+
+
+# ---------------------------------------------------------------------------
+# rendered-note doc_type — #108 triage-skip marker
+# ---------------------------------------------------------------------------
+
+
+def test_rendered_note_doc_type_validates(monkeypatch):
+    """doc_type=rendered-note with state=pending-move passes strict validation."""
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    block = build_tomo_block("rendered-note", "pending-move", "r1")
+    assert block["doc_type"] == "rendered-note"
+    assert block["state"] == "pending-move"
+
+
+def test_rendered_note_rejects_foreign_state(monkeypatch):
+    """A rendered-note may only be pending-move — other states are rejected."""
+    monkeypatch.setenv("TOMO_SCHEMA_STRICT", "1")
+    with pytest.raises(SchemaValidationError):
+        build_tomo_block("rendered-note", "applied", "r1")
+
+
+# ---------------------------------------------------------------------------
+# merge_tomo_block_into_markdown — #108 stamping helper
+# ---------------------------------------------------------------------------
+
+_RENDERED_BLOCK = {
+    "doc_type": "rendered-note",
+    "state": "pending-move",
+    "run_id": "r1",
+    "updated_at": "2026-07-01T00:00:00Z",
+}
+
+
+def test_merge_preserves_existing_frontmatter_byte_for_byte():
+    """The note's own frontmatter lines survive verbatim — no YAML round-trip."""
+    note = (
+        "---\n"
+        "tags: [topic/a, topic/b]\n"
+        'up: "[[Some MOC]]"\n'
+        "---\n"
+        "# Title\n\n"
+        '<% await tp.file.include("[[x]]") %>\n'
+    )
+    out = merge_tomo_block_into_markdown(note, _RENDERED_BLOCK)
+    # existing lines untouched (inline array + quoting + templater body)
+    assert "tags: [topic/a, topic/b]" in out
+    assert 'up: "[[Some MOC]]"' in out
+    assert '<% await tp.file.include("[[x]]") %>' in out
+    # tomo block present, inserted inside the single frontmatter fence
+    assert "doc_type: rendered-note" in out
+    assert "state: pending-move" in out
+    assert out.count("\n---\n") == 1  # still exactly one fenced block
+
+
+def test_merge_creates_frontmatter_when_absent():
+    """A note with no leading frontmatter gets a fresh fenced tomo: block."""
+    out = merge_tomo_block_into_markdown("# Title\nbody\n", _RENDERED_BLOCK)
+    assert out.startswith("---\ntomo:\n")
+    assert out.endswith("# Title\nbody\n")
+
+
+def test_merged_frontmatter_is_parseable_yaml():
+    """The result still loads as YAML with both the tomo block and note keys."""
+    yaml = pytest.importorskip("yaml")
+    note = "---\ntags: [a, b]\n---\nbody\n"
+    out = merge_tomo_block_into_markdown(note, _RENDERED_BLOCK)
+    fm_text = out.split("---\n", 2)[1]
+    data = yaml.safe_load(fm_text)
+    assert data["tomo"]["state"] == "pending-move"
+    assert data["tags"] == ["a", "b"]
+
+
+def test_merge_rejects_preexisting_tomo_block():
+    """Never produce a duplicate top-level tomo: key — raise instead."""
+    note = "---\ntomo:\n  doc_type: source\n---\nbody\n"
+    with pytest.raises(FrontmatterMergeError):
+        merge_tomo_block_into_markdown(note, _RENDERED_BLOCK)
+
+
+def test_merge_rejects_unclosed_fence():
+    """An unclosed leading fence is ambiguous — raise, do not corrupt the doc."""
+    note = "---\ntags: x\nno closing fence\n"
+    with pytest.raises(FrontmatterMergeError):
+        merge_tomo_block_into_markdown(note, _RENDERED_BLOCK)

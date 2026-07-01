@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.0
+# version: 0.9.1
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -23,6 +23,7 @@ import argparse
 import yaml
 
 from lib.doc_frontmatter import build_tomo_block
+from lib.profile_conventions import ensure_suffix
 
 
 def render_frontmatter(d: dict) -> list[str]:
@@ -141,10 +142,11 @@ def render_proposed_mocs(d: dict) -> list[str]:
     mocs = d.get("proposed_mocs") or []
     if not mocs:
         return []
+    moc_suffix = (d.get("conventions") or {}).get("moc_suffix", "")
     lines = ["## Proposed MOCs", ""]
     for pm in mocs:
         topic = pm.get("topic", "")
-        name = pm.get("name") or f"{topic} (MOC)"
+        name = pm.get("name") or ensure_suffix(topic, moc_suffix)
         note_titles = pm.get("note_titles")
         if note_titles:
             supporting = ", ".join(note_titles)

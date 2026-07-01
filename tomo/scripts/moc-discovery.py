@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.0
+# version: 0.19.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a
@@ -40,7 +40,6 @@ import argparse
 import json
 import math
 import os
-import re
 import sys
 import uuid
 from dataclasses import dataclass, field
@@ -61,7 +60,7 @@ from lib.moc_tags import EXCLUDE_NOTE_TAG  # noqa: E402
 from lib.orphan_link import emit_orphan_suggestions  # noqa: E402
 from lib.profile_conventions import ensure_suffix, resolve_conventions  # noqa: E402
 from lib.slugify import slugify  # noqa: E402, F401
-from lib.up_parse import parse_up_from_content  # noqa: E402
+from lib.up_parse import parse_up_from_content, up_marker_re  # noqa: E402
 from lib.squelch import (  # noqa: E402
     decrement_all as _squelch_decrement_all,
     load_registry as _squelch_load_registry,
@@ -1394,13 +1393,13 @@ def _dedupe_overlapping_clusters(
 # Phase 6.5 — Existing-`up::` validation per candidate
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Match a single inline ``up::`` relationship line whose target is a wikilink.
-# T2.2: target RESOLUTION now goes through lib/up_parse.parse_up_from_content
-# (dual-up: inline + frontmatter). This regex is retained ONLY to count inline
-# markers for the multi-`up::` malformed-note warning — it no longer resolves
-# the target. (Mirrors up_parse._INLINE_UP so the warning matches what up_parse
-# would have picked as the inline candidate.)
-_UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
+# Match a single inline parent-marker relationship line whose target is a
+# wikilink. T2.2: target RESOLUTION goes through lib/up_parse.parse_up_from_content
+# (dual-up: inline + frontmatter). The inline-count regex is retained ONLY to
+# count inline markers for the multi-marker malformed-note warning — it no longer
+# resolves the target. The marker literal is injected from the active profile
+# (spec 028 T3.3) via lib.up_parse.up_marker_re, so the warning matches what
+# up_parse would pick as the inline candidate.
 
 
 def _moc_stems_from_cache(cache: dict) -> set[str]:
@@ -1432,6 +1431,7 @@ def phase65_validate_existing_up(
     candidates: list[Candidate],
     kado_client,
     cache: dict,
+    parent_marker: str = "up::",
 ) -> list[dict]:
     """Decorate each cluster's children with their existing-`up::` state.
 
@@ -1478,6 +1478,7 @@ def phase65_validate_existing_up(
     """
     stem_to_path: dict[str, str] = {c.stem: c.path for c in candidates if c.stem}
     moc_stems = _moc_stems_from_cache(cache)
+    inline_marker_re = up_marker_re(parent_marker)
 
     multi_up_count = 0
 
@@ -1527,11 +1528,11 @@ def phase65_validate_existing_up(
             # warning is inline-specific — a single frontmatter `up:` plus one
             # inline `up::` is the normal conflict case, resolved by inline-wins,
             # not a malformed multi-marker note.)
-            inline_targets = _UP_MARKER_RE.findall(content)
+            inline_targets = inline_marker_re.findall(content)
             if len(inline_targets) > 1:
                 multi_up_count += 1
                 _log(
-                    f"WARN: multiple up:: markers in {path}; using first "
+                    f"WARN: multiple {parent_marker} markers in {path}; using first "
                     f"({inline_targets[0]!r}, dropped {len(inline_targets) - 1} more)"
                 )
 
@@ -1539,7 +1540,7 @@ def phase65_validate_existing_up(
             # read_note content via the up_parse SSoT — recognises both inline
             # `up:: [[X]]` and frontmatter `up:` (inline wins on conflict),
             # splitting the frontmatter block locally with no extra Kado call.
-            target = parse_up_from_content(content).target
+            target = parse_up_from_content(content, parent_marker).target
             if target is None:
                 state: str = "absent"
             elif target in moc_stems:
@@ -1757,9 +1758,10 @@ def _run_pipeline(
     _log(f"phase2: {len(candidates_with_topics)} candidate(s) with topics")
 
     # Phase 3 — Cluster detection
-    _moc_suffix = resolve_conventions(
+    _conventions = resolve_conventions(
         profile_dict=profile_dict, profiles_dir=DEFAULT_PROFILES_DIR
-    ).moc_suffix
+    )
+    _moc_suffix = _conventions.moc_suffix
     raw_clusters = phase3_cluster(candidates_with_topics, moc_config, _moc_suffix)
     _log(f"phase3: {len(raw_clusters)} raw cluster(s) (threshold={moc_config.min_notes})")
 
@@ -1792,7 +1794,8 @@ def _run_pipeline(
 
     # Phase 6.5 — Existing up:: validation
     kept_clusters = phase65_validate_existing_up(
-        kept_clusters, candidates_with_topics, kado_client, cache
+        kept_clusters, candidates_with_topics, kado_client, cache,
+        parent_marker=_conventions.parent_marker,
     )
     _log(f"phase6.5: existing_up:: decorated {len(kept_clusters)} cluster(s)")
 

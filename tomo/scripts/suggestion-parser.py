@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.0
+# version: 0.21.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -204,7 +204,7 @@ def _parse_tags(value: str) -> list[str]:
     return tags
 
 
-def _normalise_action(text: str) -> str:
+def _normalise_action(text: str, parent_marker: str = "up::") -> str:
     """
     Convert a human-readable action line to a snake_case action key.
     Examples:
@@ -228,7 +228,7 @@ def _normalise_action(text: str) -> str:
         return "update_daily_note"
     if "use classification" in low:
         return "use_classification_moc"
-    if "bestehende up::" in low and "behalten" in low:
+    if f"bestehende {parent_marker.lower()}" in low and "behalten" in low:
         return "override_preserve_existing_up"
     # Fallback: snake_case the first few words
     words = re.split(r"\s+", re.sub(r"[^a-z0-9\s]", "", low))
@@ -624,6 +624,21 @@ def _load_json_doc(path: str) -> dict:
         return d if isinstance(d, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def _parent_marker_from_doc(path: str) -> str:
+    """Resolve the active profile's parent marker from a suggestions-doc JSON.
+
+    The reducer writes an additive ``conventions`` block (spec 028 T2.3). Older
+    artifacts without that block — and any read/parse error — fall back to the
+    default ``up::`` (spec 028 ADR-3), keeping byte-identical behaviour.
+    """
+    conv = _load_json_doc(path).get("conventions")
+    if isinstance(conv, dict):
+        marker = conv.get("parent_marker")
+        if isinstance(marker, str) and marker:
+            return marker
+    return "up::"
 
 
 def _topic_member_stems(doc: dict) -> dict[str, list[str]]:
@@ -1081,7 +1096,9 @@ def enumerate_moc_sections_split(
     return ticked, unticked
 
 
-def parse_moc_proposal_doc(content: str, filename: str = "") -> list[dict]:
+def parse_moc_proposal_doc(
+    content: str, filename: str = "", parent_marker: str = "up::"
+) -> list[dict]:
     """Parse a MOC proposal-doc and return a list of ConfirmedMOCProposal dicts.
 
     Each accepted cluster (``- [x] Accept``) produces one entry:
@@ -1203,12 +1220,15 @@ def parse_moc_proposal_doc(content: str, filename: str = "") -> list[dict]:
                 children_lines.append(bl)
         children = _parse_children_list("\n".join(children_lines))
 
-        # ── Override toggle (#### up::-Handling Override) ─────────────────────
+        # ── Override toggle (#### <parent_marker>-Handling Override) ──────────
         override_preserve = False
         in_override_section = False
+        _override_header_re = re.compile(
+            rf"^####\s+{re.escape(parent_marker)}.*Override", re.IGNORECASE
+        )
         for bl in block_lines:
             stripped = bl.strip()
-            if re.match(r"^####\s+up::.*Override", stripped, re.IGNORECASE):
+            if _override_header_re.match(stripped):
                 in_override_section = True
                 continue
             if in_override_section and stripped.startswith("####"):
@@ -1591,7 +1611,14 @@ def main() -> int:
     # ── Pre-parse dispatch: MOC proposal-doc (F-43 T4.1) ─────────
     filename = args.file or ""
     if _is_moc_proposal_doc(text, filename=filename):
-        proposals = parse_moc_proposal_doc(text, filename=filename)
+        # spec 028 T3.4: the override-header marker follows the active profile's
+        # parent marker, carried in the suggestions-doc conventions block; absent
+        # block → default up::.
+        _doc_path = args.suggestions_doc or _default_doc_path(filename)
+        _parent_marker = _parent_marker_from_doc(_doc_path)
+        proposals = parse_moc_proposal_doc(
+            text, filename=filename, parent_marker=_parent_marker
+        )
         print(json.dumps(proposals, ensure_ascii=False, indent=2))
         return 0
 

@@ -105,6 +105,17 @@
           }
         ]
       }
+    ],
+    "MessageDisplay": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/wikilink-highlight.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

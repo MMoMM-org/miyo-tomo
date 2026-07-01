@@ -14,11 +14,11 @@ Tests:
      2 confirmed atomics but only 1 move_note → NO delete (gate defers; OQ6)
   3. test_two_atomics_one_daily_delete_after_all_threads_present
      2 atomics + 1 daily + 2 move_notes → exactly 1 delete (combined reason)
-  4. test_keep_origin_any_true_skips_delete
-     keep_origin=True on first confirmed item, False on second → no delete
+  4. test_keep_source_any_true_skips_delete
+     keep_source=True on first confirmed item, False on second → no delete
      (current last-wins dict would read False → emit delete = BUG)
-  5. test_keep_origin_all_false_emits_delete
-     keep_origin=False on all confirmed items → delete IS emitted (not suppressed)
+  5. test_keep_source_all_false_emits_delete
+     keep_source=False on all confirmed items → delete IS emitted (not suppressed)
   6. test_single_atomic_regression
      single atomic + single move_note → exactly 1 delete (CON-2)
 
@@ -50,13 +50,13 @@ _spec.loader.exec_module(ir)
 INBOX = "100 Inbox"
 
 
-def _make_confirmed(source_basename: str, keep_origin: bool = False) -> dict:
+def _make_confirmed(source_basename: str, keep_source: bool = False) -> dict:
     """Return a minimal confirmed item pointing to an inbox source file."""
     return {
         "id": f"item-{source_basename}",
         "action": "create_note",
         "source_path": source_basename,
-        "keep_origin": keep_origin,
+        "keep_source": keep_source,
     }
 
 
@@ -65,7 +65,7 @@ def _make_move_note(origin_full_path: str, note_id: str = "A01") -> dict:
     return {
         "id": note_id,
         "action": "move_note",
-        "origin_inbox_item": origin_full_path,
+        "source_inbox_item": origin_full_path,
         "source": f"{INBOX}/rendered-{note_id}.md",
         "destination": "200 Notes/Some Topic.md",
         "title": "Some Topic",
@@ -195,21 +195,21 @@ def test_two_atomics_one_daily_delete_after_all_threads_present():
     assert deletes[0]["source_path"] == origin_full
 
 
-def test_keep_origin_any_true_skips_delete():
-    """keep_origin=True on the FIRST confirmed item, False on the second.
+def test_keep_source_any_true_skips_delete():
+    """keep_source=True on the FIRST confirmed item, False on the second.
 
-    SDD/C6: if ANY confirmed item for the stem has keep_origin truthy, treat
+    SDD/C6: if ANY confirmed item for the stem has keep_source truthy, treat
     the origin as kept → no delete_source.
     The CURRENT implementation uses last-wins (overwrites), so if the second
-    item has keep_origin=False it reads False and emits a delete — this test
+    item has keep_source=False it reads False and emits a delete — this test
     should FAIL until the any-keeps guard is implemented.
     """
     source_basename = "keep-first.md"
     origin_full = f"{INBOX}/{source_basename}"
 
     confirmed = [
-        _make_confirmed(source_basename, keep_origin=True),   # first: keep
-        _make_confirmed(source_basename, keep_origin=False),  # second: delete
+        _make_confirmed(source_basename, keep_source=True),   # first: keep
+        _make_confirmed(source_basename, keep_source=False),  # second: delete
     ]
     move_notes = [
         _make_move_note(origin_full, "D01"),
@@ -222,23 +222,23 @@ def test_keep_origin_any_true_skips_delete():
     )
 
     assert len(deletes) == 0, (
-        f"expected 0 delete_source when any confirmed item has keep_origin=True, "
+        f"expected 0 delete_source when any confirmed item has keep_source=True, "
         f"got {len(deletes)}: {deletes}"
     )
 
 
-def test_keep_origin_all_false_emits_delete():
-    """keep_origin=False on all confirmed items → delete IS emitted.
+def test_keep_source_all_false_emits_delete():
+    """keep_source=False on all confirmed items → delete IS emitted.
 
-    Ensures that keep_origin=False (the default) still produces a delete.
+    Ensures that keep_source=False (the default) still produces a delete.
     Both confirmed items opt in to deletion → gate passes → 1 delete.
     """
     source_basename = "delete-me.md"
     origin_full = f"{INBOX}/{source_basename}"
 
     confirmed = [
-        _make_confirmed(source_basename, keep_origin=False),
-        _make_confirmed(source_basename, keep_origin=False),
+        _make_confirmed(source_basename, keep_source=False),
+        _make_confirmed(source_basename, keep_source=False),
     ]
     move_notes = [
         _make_move_note(origin_full, "E01"),
@@ -251,7 +251,7 @@ def test_keep_origin_all_false_emits_delete():
     )
 
     assert len(deletes) == 1, (
-        f"expected 1 delete_source when keep_origin=False, got {len(deletes)}: {deletes}"
+        f"expected 1 delete_source when keep_source=False, got {len(deletes)}: {deletes}"
     )
     assert deletes[0]["source_path"] == origin_full
 

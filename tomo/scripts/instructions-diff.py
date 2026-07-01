@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.2
+# version: 0.5.6
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -269,8 +269,8 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
     #   1. explicit skipped[] disposition=delete_source
     #   2. daily-only inferences (source_stem in daily_updates but not confirmed)
     #   3. paired with move_note: confirmed atomic notes default to deleting
-    #      their inbox origin unless the user opted out via "Keep origin".
-    #   4. tag-handler group sources: each APPROVED group (not "Keep origin")
+    #      their inbox origin unless the user opted out via "Keep source files".
+    #   4. tag-handler group sources: each APPROVED group (not "Keep source files")
     #      deletes every consolidated inbox source (instruction-render branch 4).
     confirmed_stems = {_stem(it.get("source_path")) for it in confirmed if it.get("source_path")}
     expected_deletions: list[str] = []
@@ -289,26 +289,35 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                     daily_only_seen.add(stem)
                     expected_deletions.append(stem)
     # Paired with move_note: every confirmed atomic note with a source_path
-    # AND keep_origin=False expects a paired delete on its origin.
+    # AND keep_source=False expects a paired delete on its origin.
     paired_origins_seen: set[str] = set()
+    audio_peers_seen: set[str] = set()
     for item in confirmed:
         if item.get("action") == "create_moc":
             continue
-        if item.get("keep_origin"):
+        if item.get("keep_source"):
             continue
         sp = item.get("source_path")
         if not sp:
             continue
         stem = _stem(sp)
-        if stem in paired_origins_seen:
-            continue
-        paired_origins_seen.add(stem)
-        expected_deletions.append(stem)
+        if stem not in paired_origins_seen:
+            paired_origins_seen.add(stem)
+            expected_deletions.append(stem)
+        # Voice source set (spec 027 ADR-1): a confirmed non-kept item with an
+        # audio_peer expects a SECOND paired delete for the audio file. The
+        # renderer emits one audio delete_source per origin stem group; mirror it
+        # here (deduped per peer) so the coverage count reconciles instead of
+        # flagging a false mismatch on every voice item.
+        peer = item.get("audio_peer")
+        if peer and peer not in audio_peers_seen:
+            audio_peers_seen.add(peer)
+            expected_deletions.append(peer)
     # (4) tag-handler group sources — one expected delete per source_path of
     # each approved, non-kept group. Keyed by the same group_id the renderer
     # uses; deduped against sources 1-3 to mirror the renderer's emit dedup.
     approved_groups = set(parsed.get("approved_tag_handler_group_ids") or [])
-    kept_groups = set(parsed.get("tag_handler_keep_origin_group_ids") or [])
+    kept_groups = set(parsed.get("tag_handler_keep_source_group_ids") or [])
     th_seen = set(expected_deletions)
     for group in (tag_handler_groups or []):
         gid = group_id(group)
@@ -363,9 +372,9 @@ def summarize_actual(instrs: dict) -> dict:
     for a in actions:
         kind = a["action"]
         if kind == "move_note":
-            # Match by the stem of origin_inbox_item (traceability field);
-            # falls back to the rendered_file stem if origin wasn't captured.
-            stem = _stem(a.get("origin_inbox_item")) or _stem(a.get("rendered_file"))
+            # Match by the stem of source_inbox_item (traceability field);
+            # falls back to the rendered_file stem if source wasn't captured.
+            stem = _stem(a.get("source_inbox_item")) or _stem(a.get("rendered_file"))
             move_by_stem[stem] = a
         elif kind == "create_moc":
             create_mocs.append(a)

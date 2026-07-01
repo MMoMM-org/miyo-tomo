@@ -176,21 +176,54 @@ target note must exist before this update can be applied": the old phrasing
 named Hashi (an executor internal). The new phrasing is executor-neutral and
 states the constraint directly without naming the mechanism.
 
-## Tag-handler "Keep origin" checkbox (v1.19.0)
+## Tag-handler "Keep source files" checkbox (v1.19.0 → renamed v1.21.0)
 
 WHY the tag-handler decision block gained a third option: approving a group now
 deletes its consolidated inbox captures by default (instruction-render branch
-4). The new `- [ ] Keep origin` box lets the user retain the source notes when
-they want them to stay in the inbox — the per-group analogue of the atomic-note
-Keep-origin option. It sits between Approve and Skip and defaults unchecked
-(delete is the default).
+4). The `- [ ] Keep source files` box lets the user retain the source notes when
+they want them to stay in the inbox. It sits between Approve and Skip and
+defaults unchecked (delete is the default).
 
 WHY the wording avoids executor internals: the line reads "leave the captured
 inbox notes in place after consolidating" — a user-visible effect — not
 "suppress the delete_source action". Naming the action type or the executor
-would leak internals into user-facing text (the same rule as the
-target_missing rewording above). The parser keys the opt-out on the block's
-`group_id`.
+would leak internals into user-facing text. The parser keys the opt-out on the
+block's `group_id`.
+
+WHY renamed from "Keep origin" to "Keep source files" (spec 027 / ADR-4,
+v1.21.0): "origin" was internal pipeline vocabulary; "source files" matches the
+user-facing language used in the per-atomic block, making the vault consistent.
+
+## Two-box atomic decision block (spec 027 / ADR-4, v1.21.0)
+
+WHY the per-atomic block was reduced from four controls (Approve, Keep origin,
+Skip, Delete source) to two (Approve + Keep source files): "Skip" is redundant
+— un-approving IS skipping, and having both confused users into thinking they
+served different purposes. "Delete source" as a per-atomic option was equally
+redundant — the source is deleted by default on approval; the only meaningful
+extra intent is KEEPING it. The new two-box layout makes that intent explicit
+without offering choices that don't add information.
+
+WHY "Keep source files" not "Keep origin": aligns with the terminology the user
+already sees in the section heading and tag-handler block; avoids leaking the
+internal "source_inbox_item" wire-field name into user-facing text.
+
+## Voice source rendered as a file set (spec 027 / ADR-1, v1.21.0)
+
+WHY render_create_atomic_note checks action.get("audio_peer"): voice notes
+produce two artefacts — the transcript (.md) and the recording (.m4a). Showing
+only [[transcript-stem]] would hide the audio file the user may want to keep or
+link. The set form [[stem]] + [[peer.m4a]] makes both visible in the review UI.
+
+WHY peer_name uses rsplit("/", 1)[-1] (basename only): the audio file lives in
+the same vault-relative directory; a wikilink needs only the filename, not the
+full path. The extension (.m4a) is intentionally preserved — coercing it to .md
+would generate a broken wikilink to a non-existent note.
+
+WHY the audio_peer field is additive and optional: non-voice items have no peer;
+the renderer defaults to the existing `[[stem]]` line. Phase 3 plumbs the
+audio_peer value from the analyst; Phase 2 only renders the shape, tolerant of
+None.
 
 
 ## Sub-0.5 atomic suppression — kept in inbox (#88, v1.20.0)

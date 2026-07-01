@@ -203,7 +203,7 @@ def test_action_building():
     #   - 1 daily-only: Sport source_stem (in daily_updates, not in confirmed)
     #   - 3 skipped disposition=delete_source: B1 .md, B3 .m4a, B4 dotted
     #   - 2 paired with move_note origins: A1 (Asahikawa) + A2 (Furano)
-    #     (both confirmed atomic notes default to delete origin; no keep_origin set)
+    #     (both confirmed atomic notes default to delete origin; no keep_source set)
     # Total: 6.
     _must(counts.get("delete_source") == 6, f"expected 6 delete_source, got {counts}")
     # B2 .md skip + B5 .m4a skip = 2.
@@ -223,15 +223,15 @@ def test_action_building():
     _must(_first_idx("link_to_moc") < _first_idx("update_tracker"),
           f"link_to_moc must come before daily updates, got kinds={kinds}")
 
-    # move_note now carries source + destination full paths + origin_inbox_item
+    # move_note now carries source + destination full paths + source_inbox_item
     moves = [a for a in actions if a["action"] == "move_note"]
     a1_move = next(m for m in moves if m["title"] == "Asahikawa — Snow city notes")
     _must(a1_move["source"] == "100 Inbox/2026-04-21_1200_asahikawa-snow-city-notes.md",
           f"move_note.source mismatch: {a1_move['source']}")
     _must(a1_move["destination"] == "Atlas/202 Notes/Asahikawa — Snow city notes.md",
           f"move_note.destination mismatch: {a1_move['destination']}")
-    _must(a1_move["origin_inbox_item"] == "100 Inbox/Asahikawa.md",
-          f"move_note.origin_inbox_item mismatch: {a1_move['origin_inbox_item']}")
+    _must(a1_move["source_inbox_item"] == "100 Inbox/Asahikawa.md",
+          f"move_note.source_inbox_item mismatch: {a1_move['source_inbox_item']}")
     # delete_source boolean must not leak into move_note
     _must("delete_source" not in a1_move, "move_note must not carry a delete_source boolean")
     # source_path (old field) must be gone
@@ -321,7 +321,7 @@ def test_schema_validity(actions):
     schema = json.loads(schema_path.read_text())
 
     doc = {
-        "schema_version": "1",
+        "schema_version": "2",
         "type": "tomo-instructions",
         "source_suggestions": "test.json",
         "generated": "2026-04-21T12:00:00Z",

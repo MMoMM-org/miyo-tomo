@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.35.2
+# version: 0.36.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -384,7 +384,7 @@ def _aggregate_related_actions(
 # names additionally permitted nullable path fields so the validator skips
 # them when null/missing but still validates non-null values.
 _OPTIONAL_PATH_FIELDS = {
-    "move_note": ("origin_inbox_item",),
+    "move_note": ("source_inbox_item",),
     "link_to_moc": ("target_moc_path",),
     "skip": ("source_path",),
 }
@@ -758,6 +758,12 @@ def _build_move_note_actions(
         # Append .md only for bare/dotted note names; preserve real
         # extensions (e.g. `.m4a` for audio sources kept as origin reference).
         origin = _ensure_md_extension(origin)
+        # audio_peer is the companion audio file for voice transcripts.
+        # Join a bare basename with inbox_path exactly as we do for origin,
+        # but do NOT apply _ensure_md_extension — the .m4a must be preserved.
+        audio_peer = m.get("audio_peer")
+        if audio_peer and "/" not in audio_peer:
+            audio_peer = _inbox_join(inbox_path, audio_peer)
         out.append({
             "id": _next_id(counter),
             "action": "move_note",
@@ -765,7 +771,8 @@ def _build_move_note_actions(
             "destination": _dest_join(m.get("destination", ""), title),
             "title": title,
             "rendered_file": rendered,
-            "origin_inbox_item": origin,
+            "source_inbox_item": origin,
+            "audio_peer": audio_peer,
             "parent_mocs": [_moc_stem(x) for x in (m.get("parent_mocs") or []) if x],
             "tags": m.get("tags", []) or [],
         })
@@ -980,7 +987,7 @@ def _build_delete_source_actions(
     counter: list[int],
     tag_handler_groups: list[dict] | None = None,
     approved_tag_handler_group_ids: list[str] | None = None,
-    keep_origin_group_ids: list[str] | None = None,
+    keep_source_group_ids: list[str] | None = None,
 ) -> list[dict]:
     """Emit delete_source actions from four sources:
 
@@ -990,12 +997,12 @@ def _build_delete_source_actions(
        but have no matching confirmed_item (content fully captured in the
        daily note, no atomic note will be created).
     3. move_note origins — for every move_note action whose corresponding
-       confirmed item did NOT opt out via "Keep origin", emit a paired
+       confirmed item did NOT opt out via "Keep source files", emit a paired
        delete_source for the origin inbox item. Audio + transcript peer
        pairs are NOT included here (they're independent upstream artifacts);
        only the origin from which Tomo derived the rendered atomic note.
     4. Tag-handler group sources — for every APPROVED group not opted out via
-       "Keep origin", one delete_source per `source_path`. The group's
+       "Keep source files", one delete_source per `source_path`. The group's
        insert_under_marker (emitted earlier) copies the captures into the
        target note, so the inbox sources are now redundant. Parity with (3),
        but keyed by group_id rather than origin stem.
@@ -1004,16 +1011,16 @@ def _build_delete_source_actions(
     confirmed_stems: set[str] = set()
     # expected_by_stem: count of approved atomics per origin stem (gate denominator).
     expected_by_stem: dict[str, int] = {}
-    # keep_origin_stems: stems where ANY confirmed item opts out of deletion.
-    keep_origin_stems: set[str] = set()
+    # keep_source_stems: stems where ANY confirmed item opts out of deletion.
+    keep_source_stems: set[str] = set()
     for item in confirmed:
         sp = item.get("source_path")
         if sp:
             stem = _stem(sp)
             confirmed_stems.add(stem)
             expected_by_stem[stem] = expected_by_stem.get(stem, 0) + 1
-            if item.get("keep_origin"):
-                keep_origin_stems.add(stem)
+            if item.get("keep_source"):
+                keep_source_stems.add(stem)
 
     inbox = inbox_path.rstrip("/") + "/"
 
@@ -1068,7 +1075,7 @@ def _build_delete_source_actions(
     for mn in move_notes:
         if mn.get("action") != "move_note":
             continue
-        origin = mn.get("origin_inbox_item")
+        origin = mn.get("source_inbox_item")
         if not origin:
             continue
         origin_stem = _stem(origin)
@@ -1076,12 +1083,12 @@ def _build_delete_source_actions(
         bucket_list.append(mn)
 
     for origin_stem, moves in moves_by_origin.items():
-        if origin_stem in keep_origin_stems:
+        if origin_stem in keep_source_stems:
             continue
         expected = expected_by_stem.get(origin_stem, 1)
         if len(moves) < expected:
             continue  # not all atomics rendered yet — defer (OQ6)
-        origin_path = moves[0].get("origin_inbox_item", "")
+        origin_path = moves[0].get("source_inbox_item", "")
         n = len(moves)
         has_daily = origin_stem in daily_stems
         daily_suffix = " + daily" if has_daily else ""
@@ -1092,11 +1099,24 @@ def _build_delete_source_actions(
             "source_path": origin_path,
             "reason": reason,
         })
+        # Paired audio peer delete — one delete per unique audio peer for this
+        # origin stem. Normally 0 or 1 peer; set deduplicates the multi-atomic
+        # case (two atomics from one transcript share the same peer path).
+        # keep_source_stems and the gate both apply above, so arriving here
+        # means both deletes are appropriate. Empty set → no audio delete (fail-safe).
+        audio_peers = {mn.get("audio_peer") for mn in moves if mn.get("audio_peer")}
+        for ap in sorted(audio_peers):
+            out.append({
+                "id": _next_id(counter),
+                "action": "delete_source",
+                "source_path": ap,
+                "reason": "Audio peer of consumed origin.",
+            })
 
     # (4) Tag-handler group sources — one delete per source_path of each
-    # APPROVED group, unless the group opted out via "Keep origin".
+    # APPROVED group, unless the group opted out via "Keep source files".
     approved_groups = set(approved_tag_handler_group_ids or [])
-    kept_groups = set(keep_origin_group_ids or [])
+    kept_groups = set(keep_source_group_ids or [])
     emitted: set[str] = {a["source_path"] for a in out}
     for group in (tag_handler_groups or []):
         gid = group_id(group)
@@ -1309,7 +1329,7 @@ def build_actions(
     kado_client=None,
     tag_handler_groups: list[dict] | None = None,
     approved_tag_handler_group_ids: list[str] | None = None,
-    tag_handler_keep_origin_group_ids: list[str] | None = None,
+    tag_handler_keep_source_group_ids: list[str] | None = None,
 ) -> list[dict]:
     """Assemble the full ordered action list.
 
@@ -1344,7 +1364,7 @@ def build_actions(
         confirmed, move_notes, daily_updates, skipped, inbox_path, counter,
         tag_handler_groups=tag_handler_groups or [],
         approved_tag_handler_group_ids=approved_tag_handler_group_ids or [],
-        keep_origin_group_ids=tag_handler_keep_origin_group_ids or [],
+        keep_source_group_ids=tag_handler_keep_source_group_ids or [],
     ))
     out.extend(_build_skip_actions(skipped, inbox_path, counter))
     # Aggregate related:: actions per target note: read existing related::,
@@ -1408,8 +1428,8 @@ def _render_action_md(action: dict, cfg: dict) -> str:
             lines.append(f"- **From:** `{action['source']}`")
         if action.get("destination"):
             lines.append(f"- **To:** `{action['destination']}`")
-        if action.get("origin_inbox_item"):
-            lines.append(f"- **Origin (reference):** [[{_stem(action['origin_inbox_item'])}]]")
+        if action.get("source_inbox_item"):
+            lines.append(f"- **Source (reference):** [[{_stem(action['source_inbox_item'])}]]")
         lines.append("- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P")
         return "\n".join(lines)
 
@@ -2136,8 +2156,12 @@ def _rewrite_existing_section_anchors(actions: list[dict], client) -> int:
 
 
 def _strip_internal_link_fields(actions: list[dict]) -> int:
-    """Remove Tomo-internal fields from link_to_moc actions before the wire (#68/#64).
+    """Remove Tomo-internal fields from link_to_moc AND move_note actions before the wire (#68/#64).
 
+    move_note.audio_peer (spec 027) is Tomo-internal: _build_move_note_actions
+    attaches it so _build_delete_source_actions can emit the paired audio
+    delete_source; it is absent from Hashi's move_note schema
+    (additionalProperties:false) and must be stripped here (see the move_note branch).
     new_section is baked into line_to_add by _serialize_new_sections and
     fit_confidence is consumed by telemetry; both are Tomo-internal and absent
     from Hashi's link_to_moc schema (additionalProperties:false). Leaving them on
@@ -2149,7 +2173,16 @@ def _strip_internal_link_fields(actions: list[dict]) -> int:
     """
     stripped = 0
     for a in actions:
-        if a.get("action") != "link_to_moc":
+        kind = a.get("action")
+        if kind == "move_note":
+            # audio_peer is consumed by _build_delete_source_actions during the
+            # render pass (spec 027 paired audio delete); it must never reach the
+            # wire — Hashi's move_note schema is additionalProperties:false.
+            if "audio_peer" in a:
+                del a["audio_peer"]
+                stripped += 1
+            continue
+        if kind != "link_to_moc":
             continue
         # alt_headings is a defense-in-depth guard: it does not reach the
         # action level today, but the Hashi anchor schema is
@@ -2397,9 +2430,9 @@ def main() -> int:
     approved_tag_handler_group_ids = suggestions.get(
         "approved_tag_handler_group_ids", []
     )
-    # Group ids the user opted out of source-deletion via "Keep origin".
-    tag_handler_keep_origin_group_ids = suggestions.get(
-        "tag_handler_keep_origin_group_ids", []
+    # Group ids the user opted out of source-deletion via "Keep source files".
+    tag_handler_keep_source_group_ids = suggestions.get(
+        "tag_handler_keep_source_group_ids", []
     )
     tag_handler_groups = _load_tag_handler_groups(args.tag_handler_groups_dir)
 
@@ -2444,6 +2477,7 @@ def main() -> int:
             continue
         title = item.get("title") or item.get("source_path", "untitled")
         source_path = item.get("source_path", "")
+        audio_peer = item.get("audio_peer")
         template_ref = item.get("template", "")
         tags = item.get("tags", [])
         parent_moc = item.get("parent_moc", "")
@@ -2539,6 +2573,7 @@ def main() -> int:
             "action": item.get("action", "create_note"),
             "title": title,
             "source_path": source_path,
+            "audio_peer": audio_peer,
             "template": template_ref,
             "rendered_file": filename,
             "rendered_path": str(rendered_path),
@@ -2576,7 +2611,7 @@ def main() -> int:
         manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,
         tag_handler_groups=tag_handler_groups,
         approved_tag_handler_group_ids=approved_tag_handler_group_ids,
-        tag_handler_keep_origin_group_ids=tag_handler_keep_origin_group_ids,
+        tag_handler_keep_source_group_ids=tag_handler_keep_source_group_ids,
     )
 
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────
@@ -2704,7 +2739,7 @@ def main() -> int:
         "run_id": args.run_id,
     })
     instructions_doc = {
-        "schema_version": "1",
+        "schema_version": "2",
         "type": "tomo-instructions",
         "source_suggestions": source_suggestions,
         "generated": generated_iso,

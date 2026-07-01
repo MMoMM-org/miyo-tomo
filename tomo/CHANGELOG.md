@@ -31,7 +31,7 @@ Classify the change before bumping anything:
 | Change a field's type or shape                          | **Breaking**   | bump             |
 | Change the canonical execution order of action kinds    | **Breaking**   | bump             |
 
-`schema_version` is a string `const` in the schema (currently `"1"`).
+`schema_version` is a string `const` in the schema (currently `"2"`).
 Bumping = update the `const` value and ship a coordinated Hashi release.
 
 ## Coordination rule for breaking changes
@@ -58,6 +58,7 @@ Most-recent first. Format:
 
 | Date       | Tomo commit / version       | Classification | Schema version  | Summary | Notes |
 |------------|-----------------------------|----------------|-----------------|---------|-------|
+| 2026-06-30 | 618c881 / render 0.36.0     | **Breaking**   | `"1"` → `"2"`  | Renamed `move_note.origin_inbox_item` → `source_inbox_item` in both schemas (instructions + hashi-instructions). `additionalProperties: false` actively rejects the old key. `schema_version` const bumped from `"1"` to `"2"`. `instructions-diff.py` indexing key updated to match. | Tomo+Hashi lockstep deploy required — apply all pending instruction sets before upgrading. Hashi handoff: `_outbox/for-hashi/2026-06-30_tomo-to-hashi_source-inbox-item-schema-v2.md` (T4.5). |
 | 2026-04-26 | `feat/hashi-path-contract-and-changelog` | Process | v1 (unchanged) | Documented Path Shape Contract in `docs/instructions-json.md`; added renderer-side `_validate_action_paths` guard in `instruction-render.py` v0.7.1 (aborts Pass-2 with exit 2 on non-conforming path emission). Codified the schema-change discipline this file embodies. | No schema field change; defensive guard only. Hashi handoffs `path-emission-contract` + `schema-changelog-discipline`. |
 | 2026-04-25 | `f3ad49d` / v0.7.0          | Additive       | v1 (unchanged) | Added optional `applied: boolean` (default `false`) to every action kind via `$defs/applied_field`. Hashi flips `false → true` after a successful apply; monotonic. | Consumers can ignore until they want partial-resume. Missing field tolerated as `false` for v0.5.x backwards-compat. Handoff: `_outbox/for-tomo/2026-04-25_hashi-to-tomo_applied-field.md`. |
 | 2026-04-23 | `bb99b36` / v0.6.0+         | Additive       | v1 (unchanged) | Added optional top-level `md_peer` field — explicit stem of the companion human-readable markdown sibling. Replaces convention-based discovery. | Always populated by `instruction-render.py` v0.6.0+; older v0.5.x artefacts may lack it. Per Kokoro 2026-04-23 review. |

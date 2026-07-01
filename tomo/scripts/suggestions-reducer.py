@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.20.1
+# version: 1.21.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -22,7 +22,7 @@ Rendering rules (replicated from the retired suggestion-builder format):
   - `**New tags to add:** <csv>` (omitted when empty)
   - `**Link to MOC:**` with pre-checked boxes
   - `**Why:**` 1-2 sentences (from classification signals)
-  - `**Decision:**` tri-state Approve | Skip | Delete source (per action)
+  - `**Decision:**` two-box Approve | Keep source files (per atomic action)
   - Multi-action items emit each action's block under the same section
 """
 
@@ -309,7 +309,13 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
 def render_create_atomic_note(action: dict, stem: str) -> str:
     lines: list[str] = []
     title = (action.get("suggested_title") or "").strip() or stem
-    lines.append(f"**Source:** [[{stem}]]")
+    audio_peer = action.get("audio_peer")
+    if audio_peer:
+        # Basename only; preserve extension (.m4a etc) — never coerce to .md (ADR-1).
+        peer_name = audio_peer.rsplit("/", 1)[-1]
+        lines.append(f"**Source:** [[{stem}]] + [[{peer_name}]]")
+    else:
+        lines.append(f"**Source:** [[{stem}]]")
     lines.append(f"**Suggested name:** {title}")
     template = action.get("template")
     if template:
@@ -371,9 +377,8 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
     worthiness = action.get("atomic_note_worthiness")
     approve_mark = "[x]" if (worthiness is not None and worthiness >= 0.5) else "[ ]"
     lines.append(f"- {approve_mark} Approve")
-    lines.append("- [ ] Keep origin (skip the implicit delete of the inbox source after move_note)")
-    lines.append("- [ ] Skip (keep in inbox)")
-    lines.append("- [ ] Delete source")
+    lines.append("- [ ] Keep source files")
+    lines.append("      (don't delete the original(s) after the note is created — you may still need them)")
     return "\n".join(lines)
 
 
@@ -785,7 +790,7 @@ def render_tag_handler_group(group: dict) -> str:
 
     lines.append("**Decision (tag-handler update):**")
     lines.append("- [x] Approve")
-    lines.append("- [ ] Keep origin (leave the captured inbox notes in place after consolidating)")
+    lines.append("- [ ] Keep source files (leave the captured inbox notes in place after consolidating)")
     lines.append("- [ ] Skip")
     return "\n".join(lines)
 

@@ -56,7 +56,7 @@ def _doc_header() -> list[str]:
     ]
 
 
-def _atomic_block(title: str, *, accept: bool, skip: bool = False) -> list[str]:
+def _atomic_block(title: str, *, accept: bool) -> list[str]:
     """One atomic block as the reducer/renderer emit it — starts at **Source:**."""
     return [
         "**Source:** [[memo]]",
@@ -67,18 +67,17 @@ def _atomic_block(title: str, *, accept: bool, skip: bool = False) -> list[str]:
         "",
         "**Decision (atomic note):**",
         f"- [{'x' if accept else ' '}] Approve",
-        "- [ ] Keep in inbox",
-        f"- [{'x' if skip else ' '}] Skip (keep in inbox)",
-        "- [ ] Delete source",
+        "- [ ] Keep source files",
+        "      (don't delete the original(s) after the note is created — you may still need them)",
         "",
     ]
 
 
-def _two_atomic_doc(*, b1_accept: bool, b2_accept: bool, b2_skip: bool = False) -> str:
+def _two_atomic_doc(*, b1_accept: bool, b2_accept: bool) -> str:
     parts = _doc_header()
     parts += ["## Suggestions", "", "### S01 — Memo split", ""]
     parts += _atomic_block("First Topic", accept=b1_accept)
-    parts += _atomic_block("Second Topic", accept=b2_accept, skip=b2_skip)
+    parts += _atomic_block("Second Topic", accept=b2_accept)
     return "\n".join(parts)
 
 
@@ -134,9 +133,8 @@ def _two_atomic_doc_with_indented_source_in_body() -> str:
         "",
         "**Decision (atomic note):**",
         "- [x] Approve",
-        "- [ ] Keep in inbox",
-        "- [ ] Skip (keep in inbox)",
-        "- [ ] Delete source",
+        "- [ ] Keep source files",
+        "      (don't delete the original(s) after the note is created — you may still need them)",
         "",
     ]
     # Block 2: flush-left **Source:** — the real boundary
@@ -203,7 +201,7 @@ def test_two_atomic_blocks_both_approved_yield_two_items(tmp_path):
 
 def test_mixed_approval_in_one_section_splits_confirmed_and_skipped(tmp_path):
     primary = tmp_path / "suggestions.md"
-    primary.write_text(_two_atomic_doc(b1_accept=True, b2_accept=False, b2_skip=True))
+    primary.write_text(_two_atomic_doc(b1_accept=True, b2_accept=False))
 
     out = _run_parser(primary)
 

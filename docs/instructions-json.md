@@ -44,7 +44,7 @@ re-run.
 
 ```json
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "type": "tomo-instructions",
   "source_suggestions": "2026-04-21_0918_suggestions",
   "generated": "2026-04-21T11:13:18Z",
@@ -58,7 +58,7 @@ re-run.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `schema_version` | `"1"` (const) | Bumps when the structure becomes incompatible. Reject with a clear error if you see a version you don't understand. |
+| `schema_version` | `"2"` (const) | Bumps when the structure becomes incompatible. Reject with a clear error if you see a version you don't understand. |
 | `type` | `"tomo-instructions"` (const) | Discriminator in case multiple JSON artefacts share the inbox folder. |
 | `source_suggestions` | string \| null | Stem(s) of the suggestions doc(s) this set was derived from — traceability only. A normal Pass-2 run produces a single stem. An XDD-012 Force-Atomic reconciliation run (primary doc + companion `*_suggestions-fan.md`) produces a comma-separated list: `"2026-04-21_0918_suggestions, 2026-04-21_1330_suggestions-fan"`. Tomo Hashi SHOULD treat this as opaque text; it's for human trace only and does not affect execution. |
 | `generated` | ISO-8601 UTC | Use this (not file mtime) when comparing action sets. |
@@ -545,7 +545,7 @@ Every emitted path string is:
 
 The complete list of path-typed fields, by action kind. Required fields
 must be non-empty strings; nullable fields may be `null` (or absent on the
-optional-but-not-required `move_note.origin_inbox_item`) but must conform
+optional-but-not-required `move_note.source_inbox_item`) but must conform
 to the contract when set.
 
 | Action kind         | Field                  | Required? | Notes |
@@ -554,7 +554,7 @@ to the contract when set.
 | `create_moc`        | `destination`          | Required  | Vault path of the final MOC location (under `Atlas/200 Maps/` by convention). |
 | `move_note`         | `source`               | Required  | Vault path of the rendered atomic note in the inbox. |
 | `move_note`         | `destination`          | Required  | Vault path of the final atomic-note location (under `Atlas/202 Notes/` by convention). |
-| `move_note`         | `origin_inbox_item`    | Optional, nullable | Path of the original inbox item this note was derived from — informational. Cleanup is via `delete_source`, not this field. |
+| `move_note`         | `source_inbox_item`    | Optional, nullable | Path of the original inbox item this note was derived from — informational. Cleanup is via `delete_source`, not this field. |
 | `link_to_moc`       | `target_moc_path`      | Optional, nullable | Resolved vault path of the MOC. `null` is legitimate when the target doesn't exist yet (sibling `create_moc`) or Kado was unreachable at render time. Hashi falls back to `target_moc` (a stem, **not** a path). |
 | `add_relationship`  | `target_moc_path`      | Required  | Resolved vault path of the target MOC. No `target_moc` fallback — Tomo must resolve before emission. |
 | `update_tracker`    | `daily_note_path`      | Required  | Vault path of the daily note. Tomo resolves the date-to-path mapping; Hashi receives the resolved value. |
@@ -707,7 +707,7 @@ section per kind with fields, execution semantics, and idempotency.
   "destination": "Atlas/202 Notes/Asahikawa — zweitgrößte Stadt Hokkaidos.md",
   "title": "Asahikawa — zweitgrößte Stadt Hokkaidos",
   "rendered_file": "2026-04-21_1113_asahikawa-zweitgroesste-stadt-hokkaidos.md",
-  "origin_inbox_item": "100 Inbox/Asahikawa.md",
+  "source_inbox_item": "100 Inbox/Asahikawa.md",
   "parent_mocs": ["Japan (MOC)"],
   "tags": ["topic/japan/city", "topic/japan/hokkaido"]
 }
@@ -719,7 +719,7 @@ section per kind with fields, execution semantics, and idempotency.
 | `destination` | string | Target full path including filename (`.md`). Usually under `Atlas/202 Notes/`. |
 | `title` | string | Final note title — also the stem of `destination`. |
 | `rendered_file` | string | Basename of `source`. |
-| `origin_inbox_item` | string \| null | Path of the original inbox item this note was derived from. **Cleanup is handled by the separate `delete_source` action** — do NOT delete this file as a side-effect of `move_note`. By default the renderer emits a paired `delete_source` for this origin (see § `delete_source`); the user opts out via the suggestions doc's "Keep origin" checkbox. |
+| `source_inbox_item` | string \| null | Path of the original inbox item this note was derived from. **Cleanup is handled by the separate `delete_source` action** — do NOT delete this file as a side-effect of `move_note`. By default the renderer emits a paired `delete_source` for this source (see § `delete_source`); the user opts out via the suggestions doc's "Keep source" checkbox. |
 | `parent_mocs` | string[] | MOCs this note up-links to. Each is emitted as a separate `link_to_moc` action; these are metadata for display. |
 | `tags` | string[] | Tags in the rendered note body — already present, not something to apply. |
 
@@ -1109,8 +1109,8 @@ section for the canonical line shapes. All other fields mirror
    between the suggestions doc's confirmed items and daily-update items.
 3. **Paired with `move_note`** (post-2026-04-30): for every confirmed
    atomic note that emits a `move_note` action, the renderer emits a
-   paired `delete_source` for its `origin_inbox_item` UNLESS the user
-   opted out via the suggestions doc's "Keep origin" checkbox. The
+   paired `delete_source` for its `source_inbox_item` UNLESS the user
+   opted out via the suggestions doc's "Keep source" checkbox. The
    reason field reads `"Origin consumed by move_note <id>."`. This
    removes the inbox source after Tomo has transformed its content into
    the rendered atomic note — without the user having to tick "Delete
@@ -1170,7 +1170,7 @@ A Pass-2 run with 9 confirmed items (8 atomic + 1 new MOC), 2 daily updates,
 
 ```json
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "type": "tomo-instructions",
   "source_suggestions": "2026-04-21_0918_suggestions",
   "generated": "2026-04-21T11:13:18Z",
@@ -1256,8 +1256,9 @@ python3 tests/test-instructions-diff.py
 
 ## Schema and version evolution
 
-- `schema_version` is a monotonically increasing string. v1 is the current
-  contract.
+- `schema_version` is a monotonically increasing string. v2 is the current
+  contract (renamed `origin_inbox_item` → `source_inbox_item` in v2; v1
+  docs no longer accepted — see `tomo/CHANGELOG.md` for the history).
 - Breaking changes (field removal, type change, new required field) bump
   the version. Tomo Hashi **must** reject unknown versions explicitly.
 - Additive changes (new optional field, new action kind) are v1-compatible;

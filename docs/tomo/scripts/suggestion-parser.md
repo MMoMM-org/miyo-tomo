@@ -109,20 +109,37 @@ WHY: Bumped for the spec 022/023 placement-anchor threading (`candidate_mocs`
 on confirmed items, `parse_placement_line`, `load_doc_anchor_map`,
 `--suggestions-doc`). `update-tomo.sh` skips unchanged versions silently.
 
-## Tag-handler Keep-origin extraction (v0.17.0)
+## Tag-handler Keep-source extraction (v0.17.0 → label updated v0.19.0)
 
 WHY a second extractor instead of a tuple return: `parse_tag_handler_groups`
 already has many callers (production + tests) that depend on its `list[str]`
 contract. Rather than churn them all, the section is walked once by a shared
 private `_walk_tag_handler_decisions` that yields `(group_id, approved,
-keep_origin)` per block; the existing `parse_tag_handler_groups` and the new
-`parse_tag_handler_keep_origin` are thin filters over it. Additive, no contract
+keep_source)` per block; the existing `parse_tag_handler_groups` and the new
+`parse_tag_handler_keep_source` are thin filters over it. Additive, no contract
 break (the project is near-MVP — additive-only on hot paths).
 
-WHY keep_origin is reported independent of approval: only an approved group has a
-paired `delete_source` to suppress, so a stray keep-origin tick on a skipped
-group is harmless downstream. The output key `tag_handler_keep_origin_group_ids`
+WHY keep_source is reported independent of approval: only an approved group has a
+paired `delete_source` to suppress, so a stray keep-source tick on a skipped
+group is harmless downstream. The output key `tag_handler_keep_source_group_ids`
 feeds instruction-render's delete branch 4.
+
+WHY the label match changed from `"keep origin"` to `"keep source"` (v0.19.0,
+spec 027 / ADR-4): the rendered checkbox label was renamed from "Keep origin" to
+"Keep source files" for vocabulary consistency. The matcher uses substring match
+(`"keep source" in label.lower()`) so "Keep source files" resolves correctly.
+Both the atomic and tag-handler parsers now use the same substring.
+
+## Atomic keep_source label update (spec 027 / ADR-4, v0.19.0)
+
+WHY the atomic checkbox matcher (parse_section line ~410) was updated from
+`"keep origin" in text_lower` to `"keep source" in text_lower`: the rendered
+per-atomic decision block now emits "- [ ] Keep source files" instead of
+"- [ ] Keep origin". The old match silently produced keep_source=False for any
+checked "Keep source files" box, which would have deleted sources the user
+explicitly asked to keep — a silent data-loss bug. The "Delete source" branch
+(line ~412) is intentionally unchanged; the skipped-items delete_source flow is
+separate and still round-trips.
 
 ## Per-item Force Atomic on suppressed light blocks (#88, v0.18.0)
 
@@ -140,3 +157,29 @@ resolve subflow rebuilds the full atomic from source, identical to the
 daily-log_entry path. The section pass runs AFTER the daily loop so `already_in` /
 `seen_pending` de-dup, and the stem is dropped from `skipped_items` (it is being
 force-atomic'd, not skipped).
+
+## audio_peer: second-wikilink extraction from the Source set line (spec 027, v0.20.0)
+
+WHY `audio_peer` is extracted by finding the SECOND wikilink in the `**Source:**`
+value via `RE_WIKILINK.findall(val)` rather than a dedicated regex or a separate
+field: the reducer renders the voice source set as `[[transcript-stem]] + [[audio.m4a]]`
+— two wikilinks in one `**Source:** ` line. `RE_WIKILINK` (already defined) is the
+canonical wikilink extractor used throughout the parser. `findall` gives all
+matches; index 0 is the transcript stem (existing `source_path` behaviour,
+unchanged), index 1 is the audio peer basename. A dedicated regex would duplicate
+`RE_WIKILINK`'s semantics for no gain.
+
+WHY the audio peer is stored as the BASENAME (e.g. `"recording.m4a"`) and not the
+full vault-relative path: the rendered wikilink contains only the basename — the
+reducer intentionally strips the directory when building the `[[wikilink]]` (rsplit
+path). The parser cannot reconstruct the directory from the suggestions doc alone
+(the inbox path is known only at render time, not parse time). The basename is
+sufficient because `_build_move_note_actions` inbox-joins it to a full path before
+the action is emitted — the same join logic used for `source_inbox_item`.
+
+WHY `audio_peer` must be included in the explicit `confirmed_items` projection dict
+(the `{...}` literal at the `confirmed_items.append(...)` call): the parser's
+`result` dict is NOT passed through directly — the projection dict enumerates every
+field that reaches the output JSON. Any new field on `result` that is omitted from
+the projection is silently dropped. `audio_peer` was added to both `result` defaults
+and the projection to ensure it survives to `instruction-render.py` as intended.

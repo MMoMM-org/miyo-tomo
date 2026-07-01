@@ -250,3 +250,37 @@ create_atomic_note" — which the LLM resolved by emitting a full proposal (#88)
 The spec now says plainly: emit the sub-0.5 atomic with its worthiness; do not
 approve/promote it or push it to alternatives; the reducer owns suppression and
 the Force-Atomic opt-in. See docs/tomo/scripts/suggestions-reducer.md.
+
+## audio_peer: voice transcript companion field (spec 027, v0.20.0)
+
+WHY the analyst emits `audio_peer` as a vault-relative path (e.g.
+`"100 Inbox/recording.m4a"`) rather than a bare basename: the analyst loads the
+transcript's full frontmatter including `source:` (written by `voice_render.py`
+as the bare basename, e.g. `"recording.m4a"`). The analyst knows the note's
+directory (`100 Inbox/` — the directory part of the item path loaded via Kado),
+so it can assemble the vault-relative path in Step 7. A bare basename would be
+ambiguous — audio files could live in a subdirectory of Inbox — while the
+vault-relative path is unambiguous and matches how Kado and Hashi address files.
+
+WHY `audio_peer` is derived from `source:` frontmatter (ADR-2) rather than
+filename heuristics or a separate Kado read: `voice_render.py` already writes
+`source: <audio_basename>` into every transcript's frontmatter at capture time.
+The analyst loads the full frontmatter in Step 2 (existing Kado read — no new
+call). Extracting `source:` is therefore a zero-cost extraction, not a new
+dependency. Filename heuristics (e.g. "find an `.m4a` with the same stem")
+would be fragile and expensive.
+
+WHY `audio_peer` on `create_atomic_note` output is distinct from `source_path`:
+`source_path` is the transcript note being processed (what Tomo will delete if
+approved); `audio_peer` is the companion audio file that ALSO needs deleting
+when the transcript is consumed. Keeping them separate lets downstream consumers
+(reducer, parser, delete builder) handle each independently — the reducer uses
+`audio_peer` only for display (the source set wikilinks), while the delete
+builder uses `source_path` for the origin delete and `audio_peer` for the paired
+peer delete.
+
+WHY `audio_peer` is omitted (null) when `source:` is absent: a missing `source:`
+key means voice_render.py did not write it (e.g. the file was created manually or
+is an older transcript). Emitting a null/absent peer signals "no audio file to
+delete" — the delete builder's empty-set guard then produces no audio delete,
+preventing an accidental deletion of a non-existent file.

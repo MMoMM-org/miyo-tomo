@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.0
+# version: 0.20.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -335,10 +335,11 @@ def parse_section(
     result: dict = {
         "id": section_id,
         "source_path": None,
+        "audio_peer": None,
         "type": None,
         "approved": False,
         "delete_source": False,
-        "keep_origin": False,
+        "keep_source": False,
         "action": None,
         "title": None,
         "tags": [],
@@ -401,14 +402,14 @@ def parse_section(
                     pending_moc = wl
                 continue
 
-            # Decision checkboxes (force-atomic/approve/skip/delete/keep-origin)
+            # Decision checkboxes (force-atomic/approve/skip/delete/keep-source)
             text_lower = text.lower()
             if "force atomic" in text_lower:
                 result["force_atomic"] = bool(cb_checked)
             elif "accept" in text_lower or "approve" in text_lower:
                 result["approved"] = bool(cb_checked)
-            elif "keep origin" in text_lower:
-                result["keep_origin"] = bool(cb_checked)
+            elif "keep source" in text_lower:
+                result["keep_source"] = bool(cb_checked)
             elif "delete source" in text_lower or text_lower.startswith("delete"):
                 result["delete_source"] = bool(cb_checked)
             # "Skip" is the implicit inverse of Accept — no extra handling needed
@@ -452,8 +453,12 @@ def parse_section(
             if src:
                 result["source_path"] = src.group(1) or src.group(2)
             else:
-                wl = _extract_wikilink(val)
-                result["source_path"] = wl or val
+                # Voice source set: "[[stem]] + [[audio.m4a]]" → stem + peer.
+                # RE_WIKILINK.findall captures ALL wikilinks; index 0 is the
+                # transcript stem, index 1 (when present) is the audio peer basename.
+                wikilinks = RE_WIKILINK.findall(val)
+                result["source_path"] = wikilinks[0].strip() if wikilinks else val
+                result["audio_peer"] = wikilinks[1].strip() if len(wikilinks) >= 2 else None
 
         elif key == "type":
             # "#type/note/normal" or "fleeting_note (confidence: 0.85)"
@@ -1437,12 +1442,12 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
     The reducer renders one block per (handler, target_path) group, each carrying
     a ``**Group:** `<group_id>` `` field line and the decision:
         - [x] Approve
-        - [ ] Keep origin (leave the captured inbox notes in place)
+        - [ ] Keep source files (leave the captured inbox notes in place)
         - [ ] Skip
     Group blocks are delimited by the ``**Group:**`` line — a new id starts a new
     block, and the most recent checkbox state seen after that line decides it.
 
-    Returns ``[(group_id, approved, keep_origin), ...]`` in document order. Empty
+    Returns ``[(group_id, approved, keep_source), ...]`` in document order. Empty
     when the section is absent. Shared by the two public extractors below so the
     section is parsed identically for both decisions.
     """
@@ -1451,15 +1456,15 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
     records: list[tuple[str, bool, bool]] = []
     current_id: str | None = None
     current_approved: bool = False
-    current_keep_origin: bool = False
+    current_keep_source: bool = False
 
     def _flush() -> None:
-        nonlocal current_id, current_approved, current_keep_origin
+        nonlocal current_id, current_approved, current_keep_source
         if current_id is not None:
-            records.append((current_id, current_approved, current_keep_origin))
+            records.append((current_id, current_approved, current_keep_source))
         current_id = None
         current_approved = False
-        current_keep_origin = False
+        current_keep_source = False
 
     for line in lines:
         stripped = line.strip()
@@ -1484,13 +1489,13 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
         if current_id is None:
             continue
 
-        # Decision checkboxes: Approve toggles inclusion; Keep origin suppresses
+        # Decision checkboxes: Approve toggles inclusion; Keep source files suppresses
         # source deletion; Skip leaves the group out.
         cb = RE_CHECKED.match(stripped)
         if cb:
             label = cb.group(1).lower()
-            if "keep origin" in label:
-                current_keep_origin = True
+            if "keep source" in label:
+                current_keep_source = True
                 continue
             if "approve" in label:
                 current_approved = True
@@ -1498,8 +1503,8 @@ def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
         cb_un = RE_UNCHECKED.match(stripped)
         if cb_un:
             label = cb_un.group(1).lower()
-            if "keep origin" in label:
-                current_keep_origin = False
+            if "keep source" in label:
+                current_keep_source = False
                 continue
             if "approve" in label:
                 current_approved = False
@@ -1519,13 +1524,13 @@ def parse_tag_handler_groups(text: str) -> list[str]:
     return [gid for gid, approved, _ in _walk_tag_handler_decisions(text) if approved]
 
 
-def parse_tag_handler_keep_origin(text: str) -> list[str]:
-    """Return the group ids whose "Keep origin" box is checked.
+def parse_tag_handler_keep_source(text: str) -> list[str]:
+    """Return the group ids whose "Keep source files" box is checked.
 
-    A checked Keep-origin box opts the group out of having its consolidated
+    A checked Keep source files box opts the group out of having its consolidated
     inbox sources deleted (instruction-render suppresses the paired
     delete_source). Reported independently of approval — only an approved group
-    has a delete to suppress, so a stray keep-origin on a skipped group is
+    has a delete to suppress, so a stray keep-source on a skipped group is
     harmless downstream. Returns ids in document order.
     """
     return [gid for gid, _, keep in _walk_tag_handler_decisions(text) if keep]
@@ -1659,10 +1664,11 @@ def main() -> int:
             confirmed_items.append({
                 "id": item["id"],
                 "source_path": item["source_path"],
+                "audio_peer": item.get("audio_peer"),
                 "type": item["type"],
                 "approved": item["approved"],
                 "delete_source": item["delete_source"],
-                "keep_origin": item["keep_origin"],
+                "keep_source": item["keep_source"],
                 "action": item["action"],
                 "title": item["title"],
                 "tags": item["tags"],
@@ -1749,11 +1755,11 @@ def main() -> int:
 
     # ── Parse Tag-Handler Updates (spec 024 T4.1) ─────────────
     approved_tag_handler_group_ids = parse_tag_handler_groups(text)
-    tag_handler_keep_origin_group_ids = parse_tag_handler_keep_origin(text)
+    tag_handler_keep_source_group_ids = parse_tag_handler_keep_source(text)
     if approved_tag_handler_group_ids:
         print(
             f"tag_handler_groups: {len(approved_tag_handler_group_ids)} approved, "
-            f"{len(tag_handler_keep_origin_group_ids)} keep-origin",
+            f"{len(tag_handler_keep_source_group_ids)} keep-source",
             file=sys.stderr,
         )
 
@@ -1850,7 +1856,7 @@ def main() -> int:
             "type": sec["type"],
             "approved": True,
             "delete_source": False,
-            "keep_origin": bool(sec.get("keep_origin", False)),
+            "keep_source": bool(sec.get("keep_source", False)),
             "action": sec.get("action"),
             "title": sec["title"],
             "tags": sec["tags"],
@@ -2006,9 +2012,9 @@ def main() -> int:
         # instruction-render maps each to its group-result JSON and emits one
         # insert_under_marker. Empty list when no group approved.
         "approved_tag_handler_group_ids": approved_tag_handler_group_ids,
-        # Group ids the user opted out of source-deletion via "Keep origin".
+        # Group ids the user opted out of source-deletion via "Keep source files".
         # instruction-render suppresses the paired delete_source for these.
-        "tag_handler_keep_origin_group_ids": tag_handler_keep_origin_group_ids,
+        "tag_handler_keep_source_group_ids": tag_handler_keep_source_group_ids,
         "total_sections": total_sections,
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),

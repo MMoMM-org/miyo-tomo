@@ -46,7 +46,7 @@ def producer_schema() -> dict:
 def _make_instructions(actions: list) -> dict:
     """Return a minimal valid instruction-set envelope wrapping the given actions."""
     return {
-        "schema_version": "1",
+        "schema_version": "2",
         "type": "tomo-instructions",
         "generated": "2026-06-23T14:00:00Z",
         "profile": "miyo",

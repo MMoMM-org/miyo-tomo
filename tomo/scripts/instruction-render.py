@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.36.0
+# version: 0.36.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -2156,8 +2156,12 @@ def _rewrite_existing_section_anchors(actions: list[dict], client) -> int:
 
 
 def _strip_internal_link_fields(actions: list[dict]) -> int:
-    """Remove Tomo-internal fields from link_to_moc actions before the wire (#68/#64).
+    """Remove Tomo-internal fields from link_to_moc AND move_note actions before the wire (#68/#64).
 
+    move_note.audio_peer (spec 027) is Tomo-internal: _build_move_note_actions
+    attaches it so _build_delete_source_actions can emit the paired audio
+    delete_source; it is absent from Hashi's move_note schema
+    (additionalProperties:false) and must be stripped here (see the move_note branch).
     new_section is baked into line_to_add by _serialize_new_sections and
     fit_confidence is consumed by telemetry; both are Tomo-internal and absent
     from Hashi's link_to_moc schema (additionalProperties:false). Leaving them on
@@ -2169,7 +2173,16 @@ def _strip_internal_link_fields(actions: list[dict]) -> int:
     """
     stripped = 0
     for a in actions:
-        if a.get("action") != "link_to_moc":
+        kind = a.get("action")
+        if kind == "move_note":
+            # audio_peer is consumed by _build_delete_source_actions during the
+            # render pass (spec 027 paired audio delete); it must never reach the
+            # wire — Hashi's move_note schema is additionalProperties:false.
+            if "audio_peer" in a:
+                del a["audio_peer"]
+                stripped += 1
+            continue
+        if kind != "link_to_moc":
             continue
         # alt_headings is a defense-in-depth guard: it does not reach the
         # action level today, but the Hashi anchor schema is

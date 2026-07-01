@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 from contextlib import redirect_stdout
 from pathlib import Path
+
+import jsonschema
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "tomo" / "scripts"
 
@@ -123,3 +126,43 @@ def test_keep_source_voice_item_reconciles_with_zero_deletes():
     parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
     rc, out = _run(parsed, _instrs(actions))
     assert rc == 0, f"kept voice item must reconcile at 0 deletes, got rc={rc}\n{out}"
+
+
+def test_audio_peer_stripped_from_move_note_before_wire():
+    """Wire hygiene: the internal audio_peer must be stripped from move_note before
+    serialization, else Hashi rejects it (additionalProperties:false → "/actions/N
+    must NOT have additional properties"). The strip runs AFTER the delete builder
+    consumed it, so the paired audio delete_source survives. Regression for the live
+    Hashi validation failure on 2026-07-01.
+    """
+    confirmed = [_voice_item()]
+    actions = ir.build_actions([_voice_manifest()], confirmed, [], [], CFG)
+    # Pre-strip: build_actions already ran the delete builder → audio delete exists.
+    assert any(
+        a["action"] == "delete_source" and a["source_path"].endswith(".m4a")
+        for a in actions
+    ), "audio delete_source must exist before the strip"
+
+    ir._strip_internal_link_fields(actions)
+
+    move = next(a for a in actions if a["action"] == "move_note")
+    assert "audio_peer" not in move, "audio_peer must be stripped from move_note before the wire"
+    # The paired audio delete_source is a separate action and must survive the strip.
+    assert any(
+        a["action"] == "delete_source" and a["source_path"].endswith(".m4a")
+        for a in actions
+    ), "audio delete_source must survive the strip"
+
+    # Strongest guard: the full doc validates against the real wire schema
+    # (this is exactly what Hashi does — additionalProperties:false).
+    schema = json.loads(
+        (Path(__file__).resolve().parents[1] / "tomo" / "schemas" / "instructions.schema.json").read_text()
+    )
+    doc = {
+        "schema_version": "2",
+        "type": "tomo-instructions",
+        "generated": "2026-07-01T00:00:00Z",
+        "profile": "miyo",
+        "actions": actions,
+    }
+    jsonschema.validate(doc, schema)

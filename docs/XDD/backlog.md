@@ -228,3 +228,18 @@ The `kado_calls` metric therefore undercounts on active-registry `/inbox` runs. 
 (AC-5) is unaffected** — the empty-registry path makes zero handler reads, so a no-registry run
 is byte-identical and its count is correct. Surfaced during T2.1 code review (2026-06-23).
 Follow-up: thread a handler-read counter through `TriageState` and add it to the metric.
+
+## Pass-2 rendered staging notes re-ingested by `/inbox` before apply → [#108](https://github.com/MMoMM-org/miyo-tomo/issues/108)
+
+Re-running `/inbox` (manually or via a `/loop` wakeup) **before Pass-2 output is applied** makes
+Tomo re-ingest its own rendered staging notes as fresh inbox items. Root cause: the renderer
+stamps a `tomo:` block only on the instructions doc, not on the rendered atomic notes/MOCs it
+writes into the inbox — so triage (which skips `tomo.doc_type`/`tomo.state` artifacts) treats them
+as new content. Propose-only means they linger in the inbox until `move_note` applies. Pre-existing;
+surfaced during spec-027 live testing when a container `/loop` auto-ran `/inbox` (`source_items`
+4 → 9). No data loss — noise + token cost that grows each wakeup.
+Design options (see #108): **(A)** stamp `tomo.state=rendered` + triage skip — but Hashi `move_note`
+must strip the marker so it doesn't pollute the moved note (cross-repo handoff); **(B)** registry-based
+skip from the last run's `manifest.json` (no note pollution, self-contained in Tomo — preferred if
+robust). Also consider gating `/loop`-driven `/inbox` while a prior run is `pending-apply`.
+Mitigation: pause the container `/loop`.

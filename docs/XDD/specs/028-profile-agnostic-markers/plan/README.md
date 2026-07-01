@@ -80,7 +80,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 - [x] [Phase 1: Foundation — Conventions resolver + profile keys](phase-1.md)
 - [x] [Phase 2: Suffix seams (F-55)](phase-2.md)
-- [ ] [Phase 3: Marker seams (F-16)](phase-3.md)
+- [x] [Phase 3: Marker seams (F-16)](phase-3.md)
 - [ ] [Phase 4: Wire-in, verify, single live-test](phase-4.md)
 
 **Dependency graph**: P1 blocks all. P2 and P3 both depend on P1 but are independent of each other (can run in parallel). P4 depends on P2 + P3.

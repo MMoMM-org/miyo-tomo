@@ -79,7 +79,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
 - [x] [Phase 1: Foundation — Conventions resolver + profile keys](phase-1.md)
-- [ ] [Phase 2: Suffix seams (F-55)](phase-2.md)
+- [x] [Phase 2: Suffix seams (F-55)](phase-2.md)
 - [ ] [Phase 3: Marker seams (F-16)](phase-3.md)
 - [ ] [Phase 4: Wire-in, verify, single live-test](phase-4.md)
 

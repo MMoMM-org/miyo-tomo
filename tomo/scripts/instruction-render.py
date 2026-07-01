@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.39.0
+# version: 0.39.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -254,7 +254,7 @@ def main() -> int:
     inbox_path = cfg["concepts.inbox"]
     profile_name = cfg["profile"]
     conventions = resolve_conventions(
-        config_path=Path(args.config), profiles_dir=DEFAULT_PROFILES_DIR
+        profile_override=profile_name, profiles_dir=DEFAULT_PROFILES_DIR
     )
 
     # No confirmed items AND no daily updates AND no skipped items AND no

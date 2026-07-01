@@ -26,7 +26,7 @@ phase: 4
 
 Wires the two `--config` scripts into the resolver, runs full verification, and performs the single end-to-end live check.
 
-- [ ] **T4.1 instruction-render wire-in** `[activity: backend]`
+- [x] **T4.1 instruction-render wire-in** `[activity: backend]`
 
   1. Prime: Read `instruction-render.py` `--config` handling (190-225) + its calls into `render_actions`.
   2. Test (RED): with `--config` pointing at a miyo test config, rendered actions match baseline; markers flow from the resolved profile.
@@ -34,7 +34,7 @@ Wires the two `--config` scripts into the resolver, runs full verification, and 
   4. Validate: pytest + ruff; miyo end-to-end render byte-identical.
   5. Success: [ ] render honors profile markers via `--config` `[ref: SDD/ADR-1]`
 
-- [ ] **T4.2 moc-tree-builder wire-in** `[activity: backend]` `[parallel: true]`
+- [x] **T4.2 moc-tree-builder wire-in** `[activity: backend]` `[parallel: true]`
 
   1. Prime: Read `moc-tree-builder.py` `--config` handling (611-632) + `up_parse` usage.
   2. Test (RED): tree build parses relationship links using the profile's `parent_marker` via `--config`; miyo unchanged.
@@ -42,13 +42,13 @@ Wires the two `--config` scripts into the resolver, runs full verification, and 
   4. Validate: pytest + ruff.
   5. Success: [ ] tree build honors profile marker `[ref: SDD/ADR-1]`
 
-- [ ] **T4.3 Full offline suite + seam grep** `[activity: validate]`
+- [x] **T4.3 Full offline suite + seam grep** `[activity: validate]`
 
   1. Run `./venv/bin/python -m pytest tests/` (whole suite, not just new tests) + `./venv/bin/ruff check tomo/scripts/`.
   2. Grep-verify **zero** hardcoded `up::` / `related::` / `" (MOC)"` literals remain in the 10 in-scope seams (defaults inside `profile_conventions.py` excepted).
   3. Success: [ ] full suite green; [ ] seam grep clean `[ref: SDD/Quality Requirements]`
 
-- [ ] **T4.4 WHY docs + version verification** `[activity: documentation]`
+- [x] **T4.4 WHY docs + version verification** `[activity: documentation]`
 
   1. Update `docs/tomo/scripts/*.md` WHY counterparts for changed runtime files (why the resolver, why per-script channel, ADR-2 path constraint) per repo docs rule.
   2. Confirm both profile `# version:` bumps landed (T1.2).

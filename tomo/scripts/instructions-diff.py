@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.5
+# version: 0.5.6
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -291,6 +291,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
     # Paired with move_note: every confirmed atomic note with a source_path
     # AND keep_source=False expects a paired delete on its origin.
     paired_origins_seen: set[str] = set()
+    audio_peers_seen: set[str] = set()
     for item in confirmed:
         if item.get("action") == "create_moc":
             continue
@@ -300,10 +301,18 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
         if not sp:
             continue
         stem = _stem(sp)
-        if stem in paired_origins_seen:
-            continue
-        paired_origins_seen.add(stem)
-        expected_deletions.append(stem)
+        if stem not in paired_origins_seen:
+            paired_origins_seen.add(stem)
+            expected_deletions.append(stem)
+        # Voice source set (spec 027 ADR-1): a confirmed non-kept item with an
+        # audio_peer expects a SECOND paired delete for the audio file. The
+        # renderer emits one audio delete_source per origin stem group; mirror it
+        # here (deduped per peer) so the coverage count reconciles instead of
+        # flagging a false mismatch on every voice item.
+        peer = item.get("audio_peer")
+        if peer and peer not in audio_peers_seen:
+            audio_peers_seen.add(peer)
+            expected_deletions.append(peer)
     # (4) tag-handler group sources — one expected delete per source_path of
     # each approved, non-kept group. Keyed by the same group_id the renderer
     # uses; deduped against sources 1-3 to mirror the renderer's emit dedup.

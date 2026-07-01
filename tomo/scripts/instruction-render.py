@@ -48,6 +48,7 @@ from lib.doc_frontmatter import (  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 import lib.moc_structure as moc_structure  # noqa: E402
+from lib.render_helpers import _moc_stem, _stem  # noqa: E402,F401
 from lib.supporting_items import (  # noqa: E402
     parse_supporting_items as _parse_supporting_items,
     union_supporting_items as _union_supporting_items,
@@ -213,21 +214,6 @@ def render_via_script(template_path: str, tokens_path: str, config_path: str) ->
 # ──────────────────────────────────────────────────────────────────────────────
 # Action building (T1.1)
 # ──────────────────────────────────────────────────────────────────────────────
-
-def _stem(path: str | None) -> str:
-    """Extract the bare note stem from a path (no folder, no .md)."""
-    if not path:
-        return ""
-    p = path.rsplit("/", 1)[-1]
-    if p.endswith(".md"):
-        p = p[:-3]
-    return p
-
-
-def _moc_stem(name: str | None) -> str:
-    """Normalise a MOC reference to its bare stem."""
-    return _stem(name)
-
 
 def _next_id(counter: list[int]) -> str:
     counter[0] += 1

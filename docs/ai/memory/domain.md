@@ -24,3 +24,16 @@ resolve to real daily notes that live outside the MOC `scope_paths`, so they
 leak as dead links unless excluded. `lib/placeholder_detect._is_periodic_note_target`
 drops them at detection (021 T4.3). Year-themed MOCs with a suffix (`2024 Goals`)
 are unaffected (regex is hyphen-anchored).
+
+<!-- 2026-07-01 -->
+
+## Rendered staging notes carry `tomo.state=pending-move` (doc_type `rendered-note`)
+Pass-2 rendered atomic notes AND MOCs are stamped with a `tomo:` block
+`{doc_type: rendered-note, state: pending-move}` by `instruction-render.py` before
+upload, so inbox triage skips them as fresh sources until they are applied (#108).
+Triage excludes them via a 7th `byFrontmatter` bucket (`tomo.state=pending-move`)
+folded into `compute_new_sources`. The marker is transient: Hashi's
+`stripTomoFrontmatter` (miyo-tomo-hashi `895c0ac`) removes the entire `tomo:` block
+on `move_note`/`create_moc` apply, so the final moved note stays clean — stamping
+staging notes costs nothing cross-repo. `pending-move` is the only valid state for
+`rendered-note` in `doc-frontmatter.schema.json`.

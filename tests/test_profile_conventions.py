@@ -68,6 +68,18 @@ def test_resolve_from_profile_override_miyo() -> None:
     assert conv.peer_marker == "related::"
 
 
+def test_profile_dict_wins_over_profile_override(tmp_path: Path) -> None:
+    # S1: resolution priority — an explicit profile_dict must take precedence
+    # over profile_override; an accidental swap would surface as "top::" here.
+    profile = {"relationship_defaults": {"parent": {"marker": "dict::"}}}
+    conv = resolve_conventions(
+        profiles_dir=BUNDLED_PROFILES_DIR,
+        profile_dict=profile,
+        profile_override="miyo",
+    )
+    assert conv.parent_marker == "dict::"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # (c) resolve from a config_path carrying a top-level `profile:` key
 # ──────────────────────────────────────────────────────────────────────────────
@@ -117,6 +129,21 @@ def test_partial_markers_fall_back_per_key(tmp_path: Path) -> None:
 
 def test_missing_suffix_defaults_to_empty(tmp_path: Path) -> None:
     conv = resolve_conventions(profiles_dir=tmp_path, profile_dict={})
+    assert conv.moc_suffix == ""
+
+
+def test_null_suffix_defaults_to_empty(tmp_path: Path) -> None:
+    # W2: YAML `name_suffix: null` -> {"name_suffix": None}; None must fall back
+    # to the default, not leak into the str-typed field.
+    profile = {"concept_defaults": {"map_note": {"name_suffix": None}}}
+    conv = resolve_conventions(profiles_dir=tmp_path, profile_dict=profile)
+    assert conv.moc_suffix == ""
+
+
+def test_empty_string_suffix_is_preserved(tmp_path: Path) -> None:
+    # A present empty string is a valid suffix (lyt) and must be kept as-is.
+    profile = {"concept_defaults": {"map_note": {"name_suffix": ""}}}
+    conv = resolve_conventions(profiles_dir=tmp_path, profile_dict=profile)
     assert conv.moc_suffix == ""
 
 

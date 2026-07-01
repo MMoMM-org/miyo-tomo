@@ -49,10 +49,12 @@ def _from_dict(profile: dict[str, Any]) -> Conventions:
     parent = rel.get("parent") or {}
     peer = rel.get("peer") or {}
     map_note = (profile.get("concept_defaults") or {}).get("map_note") or {}
+    _raw_suffix = map_note.get("name_suffix")
+    moc_suffix = _DEFAULT_MOC_SUFFIX if _raw_suffix is None else _raw_suffix
     return Conventions(
         parent_marker=parent.get("marker") or _DEFAULT_PARENT_MARKER,
         peer_marker=peer.get("marker") or _DEFAULT_PEER_MARKER,
-        moc_suffix=map_note.get("name_suffix", _DEFAULT_MOC_SUFFIX),
+        moc_suffix=moc_suffix,
     )
 
 

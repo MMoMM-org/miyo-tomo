@@ -29,6 +29,7 @@ transition between these states, or new content arriving with no state at all.
 | `suggestions` / `suggestions-fan` | `pending-approval` → `approved` | `approved` |
 | `moc-proposal` | `pending-accept` → `accepted` | `accepted` |
 | `instructions` | `pending-apply` → `applied` | `applied` |
+| `rendered-note` (Pass-2 staging note/MOC) | `pending-move` | — (Hashi strips the block on apply) |
 
 ```mermaid
 stateDiagram-v2
@@ -55,9 +56,11 @@ matters — drift is computed before coverage so a drifted source is not counted
 covered.
 
 1. **Discover files** — list the inbox (`.md` + audio).
-2. **Query frontmatter** — six `byFrontmatter` calls, one per known `tomo.state`,
+2. **Query frontmatter** — seven `byFrontmatter` calls, one per known `tomo.state`,
    bucketing every doc (pending-approval, pending-accept, captured, instructions,
-   approved, accepted). *Kado returns empty `frontmatter:{}` on these hits.*
+   approved, accepted, and `pending-move` — the Pass-2 rendered staging notes/MOCs
+   awaiting Hashi apply, excluded so a pre-apply re-run does not re-ingest them, #108).
+   *Kado returns empty `frontmatter:{}` on these hits.*
 3. **Enrich instructions** — `read_frontmatter` each instructions doc to recover its
    real `tomo.sources` (byFrontmatter can't supply it) — without this, coverage is
    blind (#74).

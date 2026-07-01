@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.2.1
 """up_parse.py — SSoT for "does this note declare a parent?"
 
 Parses both inline `up::` (Dataview-style) and frontmatter `up:` values
@@ -61,9 +61,6 @@ def up_marker_re(parent_marker: str) -> re.Pattern:
     """Compile the inline parent-marker regex for `parent_marker` (cached)."""
     return re.compile(rf"^[\s>\-]*{re.escape(parent_marker)}\s*\[\[(.+?)\]\]", re.MULTILINE)
 
-
-# Back-compat alias for the default `up::` pattern (referenced by moc-discovery).
-_INLINE_UP = up_marker_re("up::")
 
 # Frontmatter delimiter (replicates moc-tree-builder.py FRONTMATTER_RE).
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.21.0
+# version: 0.21.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -202,37 +202,6 @@ def _parse_tags(value: str) -> list[str]:
     # Remove leading # and empty strings
     tags = [p.lstrip("#") for p in parts if p and p != "#"]
     return tags
-
-
-def _normalise_action(text: str, parent_marker: str = "up::") -> str:
-    """
-    Convert a human-readable action line to a snake_case action key.
-    Examples:
-      'Create atomic note "Some Topic" in Atlas/202 Notes/'  → 'create_atomic_note'
-      'Link to existing [[Related Note]] instead'            → 'link_to_existing'
-      'File as quote under [[Quotes]]'                       → 'file_as_quote'
-      'Skip atomic note creation, only update daily note'    → 'skip'
-    """
-    low = text.lower()
-    if "create atomic" in low or "create note" in low:
-        return "create_atomic_note"
-    if "create" in low and "moc" in low:
-        return "create_moc"
-    if "link to existing" in low:
-        return "link_to_existing"
-    if "file as quote" in low or "file as" in low:
-        return "file_as_quote"
-    if "skip" in low:
-        return "skip"
-    if "update daily" in low:
-        return "update_daily_note"
-    if "use classification" in low:
-        return "use_classification_moc"
-    if f"bestehende {parent_marker.lower()}" in low and "behalten" in low:
-        return "override_preserve_existing_up"
-    # Fallback: snake_case the first few words
-    words = re.split(r"\s+", re.sub(r"[^a-z0-9\s]", "", low))
-    return "_".join(w for w in words[:4] if w)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1121,6 +1090,12 @@ def parse_moc_proposal_doc(
     # ── Split into ### MOCxx sections ────────────────────────────────────────
     moc_blocks = _split_moc_blocks(lines)
 
+    # parent_marker is constant for the call — compile the override header regex
+    # once here rather than per block.
+    _override_header_re = re.compile(
+        rf"^####\s+{re.escape(parent_marker)}.*Override", re.IGNORECASE
+    )
+
     # ── Parse each block ────────────────────────────────────────────────────
     for moc_id, heading_title, block_lines in moc_blocks:
         # ── Accept gate ──────────────────────────────────────────────────────
@@ -1223,9 +1198,6 @@ def parse_moc_proposal_doc(
         # ── Override toggle (#### <parent_marker>-Handling Override) ──────────
         override_preserve = False
         in_override_section = False
-        _override_header_re = re.compile(
-            rf"^####\s+{re.escape(parent_marker)}.*Override", re.IGNORECASE
-        )
         for bl in block_lines:
             stripped = bl.strip()
             if _override_header_re.match(stripped):

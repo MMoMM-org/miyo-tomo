@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.2.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -20,6 +20,7 @@ from pathlib import Path
 from lib.kado_client import KadoError
 from lib.obsidian_filename import sanitize_stem
 from lib.render_helpers import _moc_stem, _stem
+from lib.up_parse import up_marker_re as _up_marker_re
 from lib.supporting_items import (
     parse_supporting_items as _parse_supporting_items,
     union_supporting_items as _union_supporting_items,
@@ -105,16 +106,11 @@ def _ensure_md_extension(path: str | None) -> str | None:
 # emit time produces actionable Tomo-side diagnostics instead.
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
-# Matches the first ``<parent_marker> [[Target]]`` line in a note body (Rule 4.x).
-# MULTILINE so ``^`` anchors to each line start.  Non-greedy ``(.+?)`` stops
-# at the first ``]]`` to avoid over-matching when the target contains brackets.
-# The marker literal is injected from the active profile (spec 028 T3.2); the
-# default builders below preserve the historical ``up::``/``related::`` patterns.
-@functools.lru_cache(maxsize=None)
-def _up_marker_re(parent_marker: str) -> re.Pattern:
-    return re.compile(rf"^[\s>\-]*{re.escape(parent_marker)}\s*\[\[(.+?)\]\]", re.MULTILINE)
-
-
+# Matches the first ``<peer_marker>`` line in a note body (Rule 4.x). MULTILINE
+# so ``^`` anchors to each line start. The marker literal is injected from the
+# active profile (spec 028 T3.2); the default builders below preserve the
+# historical ``related::`` pattern. The ``<parent_marker> [[Target]]`` counterpart
+# is imported as ``_up_marker_re`` from lib.up_parse (SSoT).
 @functools.lru_cache(maxsize=None)
 def _related_marker_re(peer_marker: str) -> re.Pattern:
     return re.compile(rf"^[\s>\-]*{re.escape(peer_marker)}\s*(.*)", re.MULTILINE)

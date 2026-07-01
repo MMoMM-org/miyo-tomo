@@ -215,3 +215,47 @@ def test_miyo_suffix_still_strips_moc_marker(tmp_path: Path) -> None:
     doc = _run_with_moc_topic(tmp_path, "miyo", "Board Games MOC")
     topics = [pm["topic"] for pm in doc.get("proposed_mocs", [])]
     assert topics == ["Board Games"], f"miyo should strip the marker; got {topics!r}"
+
+
+# ── F-55 W1: render_create_atomic_note inline **Note:** text threads the suffix ─
+#
+# The per-item inline "**Note:** ... (topic: *<topic>*)" line calls
+# strip_moc_marker on proposed_moc_topic. It must use the RESOLVED profile
+# suffix, not the hardcoded default. Under lyt (moc_suffix="") the inline text
+# must preserve a topic ending in "MOC"; under miyo it still strips — matching
+# the Proposed MOCs section so the two never disagree.
+
+
+def _atomic_rendered_md(doc: dict) -> str:
+    """Return the rendered_md of the first create_atomic_note action in the doc."""
+    for section in doc.get("sections", []):
+        for action in section.get("actions", []):
+            if action.get("kind") == "create_atomic_note":
+                return action.get("rendered_md", "")
+    return ""
+
+
+def test_lyt_inline_moc_note_preserves_marker(tmp_path: Path) -> None:
+    """lyt (moc_suffix="") → the inline **Note:** topic keeps its "MOC" word.
+
+    RED against the un-threaded call (strip_moc_marker without suffix): the
+    default "MOC" marker strips it to "Board Games" in the inline text while the
+    Proposed MOCs section preserves it — a visible inconsistency. GREEN once the
+    resolved "" suffix is threaded and the strip becomes a no-op.
+    """
+    doc = _run_with_moc_topic(tmp_path, "lyt", "Board Games MOC")
+    md = _atomic_rendered_md(doc)
+    assert "topic: *Board Games MOC*" in md, (
+        f"lyt inline note must preserve the marker; got rendered_md:\n{md}"
+    )
+    assert "topic: *Board Games*" not in md
+
+
+def test_miyo_inline_moc_note_strips_marker(tmp_path: Path) -> None:
+    """miyo (moc_suffix=' (MOC)') → the inline **Note:** topic still strips."""
+    doc = _run_with_moc_topic(tmp_path, "miyo", "Board Games MOC")
+    md = _atomic_rendered_md(doc)
+    assert "topic: *Board Games*" in md, (
+        f"miyo inline note must strip the marker; got rendered_md:\n{md}"
+    )
+    assert "topic: *Board Games MOC*" not in md

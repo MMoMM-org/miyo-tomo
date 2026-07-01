@@ -84,7 +84,7 @@ def make_sections_with_two_atomics(stem: str = "source-note") -> list[dict]:
     ]
     rendered_actions: list[dict] = []
     for action in actions:
-        rendered_md = render_create_atomic_note(action, stem)
+        rendered_md = render_create_atomic_note(action, stem, " (MOC)")
         rendered_actions.append({"kind": "create_atomic_note", "rendered_md": rendered_md})
 
     return [
@@ -169,7 +169,7 @@ def test_single_atomic_produces_exactly_one_block():
     """Single create_atomic_note → exactly one block (no duplication)."""
     stem = "solo-note"
     action = make_atomic_action(title="Solo Topic")
-    rendered_md = render_create_atomic_note(action, stem)
+    rendered_md = render_create_atomic_note(action, stem, " (MOC)")
     doc = make_minimal_doc([
         {
             "id": "S01",

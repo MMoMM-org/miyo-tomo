@@ -244,7 +244,9 @@ class TestAtomicNoteLine:
             "tags_to_add": [],
             "candidate_mocs": [],
         }
-        result = render_create_atomic_note(action, "inbox-item")
+        # F-55 W1: the resolved profile suffix is now threaded in. miyo's
+        # " (MOC)" still strips the marker for the inline text.
+        result = render_create_atomic_note(action, "inbox-item", " (MOC)")
         # The **Note:** line must contain bare "Board Games" but not "(MOC)"
         note_line = next(
             (line for line in result.split("\n") if "No good thematic MOC" in line),

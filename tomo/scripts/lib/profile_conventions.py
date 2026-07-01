@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """profile_conventions.py — single resolver for profile-agnostic vault conventions.
 
 Threads a profile's relationship markers and MOC-title suffix into the pipeline
@@ -13,6 +13,7 @@ of its own beyond the documented backward-compatibility defaults (ADR-3).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,15 @@ class Conventions:
     parent_marker: str  # e.g. "up::"
     peer_marker: str  # e.g. "related::"
     moc_suffix: str  # e.g. " (MOC)" or ""
+
+
+def marker_word(suffix: str) -> str:
+    """Alphanumeric core (the "marker word") of a MOC suffix.
+
+    ' (MOC)' → 'MOC'; '' → ''. Shared by the MOC-marker regexes in
+    lib.topic_clusters and shared-ctx-builder so the two never drift (F-55 S1).
+    """
+    return re.sub(r"\W", "", suffix or "")
 
 
 def ensure_suffix(title: str, suffix: str) -> str:

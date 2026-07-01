@@ -1,5 +1,5 @@
 # topic_clusters.py — Pure clustering helper for atomic-note → Proposed MOC.
-# version: 0.4.0
+# version: 0.5.0
 """Group atomic-note candidates into Proposed MOC clusters.
 
 Why this lives in a module of its own:
@@ -11,8 +11,9 @@ slice). Both need the *same* normalisation + threshold + parent-vote +
 shared-tag-fold semantics, so we extract to a pure function rather than
 duplicating the loop.
 
-Pure: stdlib only, no I/O, no globals; output is a fresh list per call and
-inputs are not mutated.
+Pure: no I/O, no globals; output is a fresh list per call and inputs are not
+mutated. The only non-stdlib dependency is the shared `marker_word` helper from
+`profile_conventions` (F-55 S1), which is itself pure.
 
 Public surface:
     ClusterCandidate    — dataclass; one per item being considered for a MOC.
@@ -25,6 +26,11 @@ import re
 from dataclasses import dataclass, field
 from typing import TypedDict
 
+try:
+    from .profile_conventions import marker_word
+except ImportError:  # loaded with the lib dir directly on sys.path
+    from profile_conventions import marker_word  # type: ignore
+
 # The MOC-marker strip regex is built from the active profile's suffix (F-55 /
 # spec 028 T2.2), not hardcoded — its core word is the alphanumeric part of the
 # suffix (miyo " (MOC)" → "MOC"). The matched forms mirror the legacy pattern:
@@ -32,11 +38,6 @@ from typing import TypedDict
 # ("X (MOC)" / "X(MOC)"). A word boundary before the core word keeps mid-word
 # endings like "biomoc" / "Thermoc" unchanged. Empty suffix → no marker → no-op.
 _DEFAULT_MARKER_WORD = "MOC"
-
-
-def _marker_word(suffix: str) -> str:
-    """Alphanumeric core of a MOC suffix, e.g. ' (MOC)' → 'MOC'; '' → ''."""
-    return re.sub(r"\W", "", suffix or "")
 
 
 def _moc_marker_re(word: str) -> "re.Pattern[str] | None":
@@ -112,7 +113,7 @@ def strip_moc_marker(topic: str, suffix: str | None = None) -> str:
     "(MOC)"), the original string is returned unchanged. Only trailing markers
     are removed — leading/mid-string occurrences are kept.
     """
-    word = _DEFAULT_MARKER_WORD if suffix is None else _marker_word(suffix)
+    word = _DEFAULT_MARKER_WORD if suffix is None else marker_word(suffix)
     marker_re = _moc_marker_re(word)
     t = topic.strip()
     if marker_re is None:

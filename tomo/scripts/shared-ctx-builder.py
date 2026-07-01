@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.7.0
+# version: 1.8.0
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -48,7 +48,7 @@ except ImportError:
 
 # spec 028 T2.4: placeholder-MOC detection derives its regex from the active
 # profile's MOC suffix. sys.path already carries SCRIPT_DIR/lib (inserted above).
-from profile_conventions import resolve_conventions  # type: ignore  # noqa: E402
+from profile_conventions import marker_word, resolve_conventions  # type: ignore  # noqa: E402
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -264,17 +264,17 @@ def build_mocs(cache: dict) -> list[dict]:
 # offers MOC *creation*, so a placeholder link to a missing regular note (no MOC
 # marker) must not reach it — that was the bulk of the unfiltered list (158 of
 # 196 on the real vault, 2026-06-09).
-_DEFAULT_MARKER_WORD = "MOC"
+_DEFAULT_SUFFIX = " (MOC)"
 
 
 def _moc_name_re(suffix: str):
     """Build the placeholder-MOC detection regex from a profile suffix.
 
     Matches the parenthesised `(MOC)` form OR the bare word ` MOC` at end of
-    string (case-insensitive), keyed off the suffix's alphanumeric core. An
-    empty suffix yields ``None`` — detect nothing.
+    string (case-insensitive), keyed off the suffix's alphanumeric core
+    (`marker_word`, F-55 S1). An empty suffix yields ``None`` — detect nothing.
     """
-    word = re.sub(r"\W", "", suffix or "")
+    word = marker_word(suffix)
     if not word:
         return None
     return re.compile(
@@ -282,9 +282,9 @@ def _moc_name_re(suffix: str):
     )
 
 
-# Legacy default (miyo) used when no profile suffix is threaded (standalone
+# Legacy default (miyo) suffix used when no profile suffix is threaded (standalone
 # smoke test / older callers). The active pipeline passes the resolved regex.
-_MOC_NAME_RE = _moc_name_re(_DEFAULT_MARKER_WORD)
+_MOC_NAME_RE = _moc_name_re(_DEFAULT_SUFFIX)
 
 
 def _is_missing_moc_target(target: str, moc_re=_MOC_NAME_RE) -> bool:

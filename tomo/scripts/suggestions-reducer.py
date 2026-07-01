@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.23.0
+# version: 1.24.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -307,7 +307,7 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     return actions
 
 
-def render_create_atomic_note(action: dict, stem: str) -> str:
+def render_create_atomic_note(action: dict, stem: str, moc_suffix: str) -> str:
     lines: list[str] = []
     title = (action.get("suggested_title") or "").strip() or stem
     audio_peer = action.get("audio_peer")
@@ -333,7 +333,7 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
             lines.append(moc_link_line(moc))
 
     if action.get("needs_new_moc"):
-        topic = strip_moc_marker(action.get("proposed_moc_topic") or "")
+        topic = strip_moc_marker(action.get("proposed_moc_topic") or "", moc_suffix)
         if topic:
             lines.append("")
             lines.append(
@@ -656,11 +656,13 @@ def render_log_link_mirror(log_links_for_stem: list[dict]) -> str:
     return "\n".join(lines)
 
 
+# Renderers with a uniform (action, stem) contract, dispatched by kind in the
+# main loop. `create_atomic_note` and `create_moc` are NOT in this map: both need
+# the profile-resolved `moc_suffix`, so they are dispatched explicitly (W1/W2,
+# F-55) rather than special-casing a 3-arg callable inside a 2-arg dict.
 RENDERERS = {
-    "create_atomic_note": render_create_atomic_note,
     "update_daily": render_update_daily,
     "link_to_moc": render_link_to_moc,
-    "create_moc": render_create_moc,
     "modify_note": render_modify_note,
 }
 
@@ -1528,10 +1530,20 @@ def main() -> int:
                 title_to_suggestion_id[_pre_title] = f"S{_pre_counter:02d}"
         for action in actions:
             kind = action.get("kind")
-            renderer = RENDERERS.get(kind)
-            if not renderer:
-                continue
-            if kind == "update_daily":
+            # W1/W2 (F-55): create_atomic_note and create_moc need the
+            # profile-resolved moc_suffix, so they are dispatched explicitly.
+            # Every other kind flows through the uniform (action, stem) RENDERERS
+            # map; unknown kinds are skipped.
+            if kind == "create_atomic_note":
+                if action.get("suppressed"):
+                    # #88: sub-0.5 atomic — render a light "kept in inbox" block
+                    # instead of the full atomic-note proposal.
+                    rendered = render_suppressed_atomic(action, stem)
+                else:
+                    rendered = render_create_atomic_note(action, stem, moc_suffix)
+            elif kind == "create_moc":
+                rendered = render_create_moc(action, stem, moc_suffix)
+            elif kind == "update_daily":
                 # Do NOT render the per-item `**Daily update:**` /
                 # `**Decision (daily update):**` block — the aggregated
                 # ## Daily Notes Updates block at the top already captures
@@ -1600,15 +1612,11 @@ def main() -> int:
                                 "time": u.get("time"),
                                 "reason": u.get("reason", ""),
                             })
-            elif kind == "create_atomic_note" and action.get("suppressed"):
-                # #88: sub-0.5 atomic — render a light "kept in inbox" block
-                # instead of the full atomic-note proposal.
-                rendered = render_suppressed_atomic(action, stem)
             else:
-                if kind == "create_moc":
-                    rendered = render_create_moc(action, stem, moc_suffix)
-                else:
-                    rendered = renderer(action, stem)
+                renderer = RENDERERS.get(kind)
+                if not renderer:
+                    continue
+                rendered = renderer(action, stem)
             if rendered is not None:
                 rendered_action: dict = {"kind": kind, "rendered_md": rendered}
                 # F-41 T1: assign a flat global suggestion_id to each rendered

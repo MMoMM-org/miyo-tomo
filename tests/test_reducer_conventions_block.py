@@ -110,3 +110,108 @@ def test_existing_wire_fields_unchanged(tmp_path: Path) -> None:
         assert key in doc
     assert doc["profile"] == "miyo"
     assert doc["schema_version"] == "1"
+
+
+# ── F-55: resolved suffix is threaded into build_topic_clusters ───────────────
+#
+# The reducer resolves `moc_suffix` from the active profile and must thread it
+# into `build_topic_clusters` so `strip_moc_marker` uses the profile marker —
+# NOT the hardcoded default "MOC".  Under a no-suffix profile (lyt,
+# moc_suffix=""), a proposed-MOC topic that happens to contain the word "MOC"
+# must be left intact (empty suffix → strip is a no-op).  If the suffix is not
+# threaded, the helper falls back to the default marker and wrongly strips
+# "MOC" from the topic.
+
+
+def _run_with_moc_topic(tmp_path: Path, profile: str, topic: str) -> dict:
+    """Run the reducer end-to-end with a single needs_new_moc atomic whose
+    proposed_moc_topic is `topic`, and return the emitted doc."""
+    items = tmp_path / "items"
+    items.mkdir()
+    stem = "board-games"
+    state = tmp_path / "state.jsonl"
+    state.write_text(
+        json.dumps({
+            "stem": stem,
+            "path": f"100 Inbox/{stem}.md",
+            "status": "done",
+            "run_id": "test-run",
+            "ts": "2026-07-01T10:00:00Z",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    (items / f"{stem}.result.json").write_text(
+        json.dumps({
+            "schema_version": "1",
+            "stem": stem,
+            "path": f"100 Inbox/{stem}.md",
+            "type": "fleeting_note",
+            "type_confidence": 0.9,
+            "force_atomic": False,
+            "actions": [{
+                "kind": "create_atomic_note",
+                "suggested_title": "Board Games Note",
+                "atomic_note_worthiness": 0.8,
+                "template": "t_note_tomo",
+                "location": "Atlas/202 Notes/",
+                "candidate_mocs": [],
+                "needs_new_moc": True,
+                "proposed_moc_topic": topic,
+                "tags_to_add": [],
+                "classification": {"category": "100 Philosophy", "confidence": 0.9},
+                "alternatives": [],
+            }],
+            "candidate_mocs": [],
+            "classification": {"category": "100 Philosophy", "confidence": 0.9},
+            "needs_new_moc": True,
+            "proposed_moc_topic": topic,
+            "tags_to_add": [],
+            "atomic_note_worthiness": 0.8,
+            "alternatives": [],
+            "issues": [],
+            "duration_ms": 0,
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    out = tmp_path / f"doc-{profile}.json"
+    result = subprocess.run(
+        [
+            "python3", str(SCRIPT_PATH),
+            "--state", str(state),
+            "--items-dir", str(items),
+            "--run-id", "test-run",
+            "--profile", profile,
+            "--output", str(out),
+            "--shared-ctx", str(tmp_path / "nope.json"),
+            "--no-kado",
+        ],
+        capture_output=True,
+    )
+    assert result.returncode == 0, (
+        f"reducer failed ({profile}): {result.stderr.decode()}"
+    )
+    return json.loads(out.read_text(encoding="utf-8"))
+
+
+def test_lyt_empty_suffix_does_not_strip_moc_from_topic(tmp_path: Path) -> None:
+    """lyt profile (moc_suffix="") → a topic ending in "MOC" is NOT stripped.
+
+    RED against the un-threaded call (build_topic_clusters without suffix):
+    strip_moc_marker falls back to the default "MOC" marker and yields
+    "Board Games". GREEN once the resolved suffix ("" for lyt) is threaded:
+    the empty marker makes the strip a no-op and the topic survives verbatim.
+    """
+    doc = _run_with_moc_topic(tmp_path, "lyt", "Board Games MOC")
+    topics = [pm["topic"] for pm in doc.get("proposed_mocs", [])]
+    assert topics == ["Board Games MOC"], (
+        f"lyt empty suffix must be a no-op; got {topics!r} "
+        "(the default 'MOC' marker was wrongly applied)"
+    )
+
+
+def test_miyo_suffix_still_strips_moc_marker(tmp_path: Path) -> None:
+    """miyo profile (moc_suffix=' (MOC)') still strips the trailing marker so
+    the bare topic is clustered — proves the threaded suffix keeps parity."""
+    doc = _run_with_moc_topic(tmp_path, "miyo", "Board Games MOC")
+    topics = [pm["topic"] for pm in doc.get("proposed_mocs", [])]
+    assert topics == ["Board Games"], f"miyo should strip the marker; got {topics!r}"

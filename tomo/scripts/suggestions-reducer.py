@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.22.0
+# version: 1.23.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1686,7 +1686,7 @@ def main() -> int:
     # The helper is also called by `moc-discovery.py` (Phase 2) so the two
     # call sites cannot drift in normalisation or tag-fold semantics.
     proposed_mocs: list[dict] = list(
-        build_topic_clusters(cluster_candidates, args.threshold)
+        build_topic_clusters(cluster_candidates, args.threshold, suffix=moc_suffix)
     )
 
     # Post-process: add name, note_titles, reason fields.

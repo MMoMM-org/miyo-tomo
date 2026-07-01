@@ -128,3 +128,17 @@ template vault) leaked into the cache through a scan bug. Because the scan never
 lets a leak through end-to-end, the counter is unit-tested against hand-built
 entries rather than through the seam. Prefix matching normalises a trailing `/`
 so `X` and `X/` both mean "the X folder" while `Xenon/` is not a false match.
+
+## WHY resolve `Conventions` from `--config` and thread `parent_marker` into `up_parse` (spec 028 T4.2)
+
+WHY: `up_parse.parse_up_from_content` used to hardcode the `up::` inline marker.
+The builder already carries the parsed vault-config dict down to `build_entries`,
+so it resolves the active profile's `Conventions` there
+(`resolve_conventions(profiles_dir=DEFAULT_PROFILES_DIR, profile_override=config.get("profile"))`)
+and passes `conventions.parent_marker` into every `parse_up_from_content` call.
+`parent_marker` defaults to `up::` in the lib, so `miyo` parses exactly as before
+(CON-2). `DEFAULT_PROFILES_DIR` is `SCRIPT_DIR.parent / "profiles"` — caller-
+supplied from this script's own dir so the flattened instance layout resolves
+(ADR-2 / CON-4). `FOOTER_CALLOUTS` is deliberately NOT touched — it is a separate
+concern explicitly out of scope for spec 028. See
+`docs/tomo/scripts/lib/profile_conventions.md` for the resolver rationale.

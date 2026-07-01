@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.8.0
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -39,6 +39,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 import yaml
 
@@ -48,6 +49,11 @@ sys.path.insert(0, _SCRIPT_DIR)
 
 from lib import moc_scan, moc_structure, placeholder_detect, up_parse  # noqa: E402
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402
+from lib.profile_conventions import resolve_conventions  # noqa: E402
+
+# ADR-2: caller-supplied profiles dir — mirrors moc-discovery.py so the flattened
+# instance layout resolves correctly (never derived inside profile_conventions).
+DEFAULT_PROFILES_DIR = Path(_SCRIPT_DIR).parent / "profiles"
 
 # Footer-marker callouts: content sections live BEFORE the first of these.
 # Mirrors instruction-render.py:FOOTER_CALLOUTS exactly (spec 022 / #35 / F-55 —
@@ -344,6 +350,12 @@ def build_entries(
     # footer_set is hardcoded to match instruction-render.py (F-55 boundary).
     editable_set = _editable_set_from_config(config or {})
 
+    # spec 028 T4.2: resolve the active profile's parent marker from --config.
+    conventions = resolve_conventions(
+        profiles_dir=DEFAULT_PROFILES_DIR,
+        profile_override=(config or {}).get("profile"),
+    )
+
     entries: list[dict] = []
     for path in sorted(moc_paths | note_paths):
         content = raw_by_path[path]
@@ -351,7 +363,7 @@ def build_entries(
         body = get_body(content)
         kind = "moc" if path in moc_paths else "note"
 
-        up = up_parse.parse_up_from_content(content)
+        up = up_parse.parse_up_from_content(content, conventions.parent_marker)
         up_state = _resolve_up_state(up.target, moc_stem_set)
 
         title = extract_title(fm, body, path)

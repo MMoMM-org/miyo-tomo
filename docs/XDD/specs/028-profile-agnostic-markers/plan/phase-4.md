@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Wire-in, verify, single live-test"
-status: pending
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -54,12 +54,12 @@ Wires the two `--config` scripts into the resolver, runs full verification, and 
   2. Confirm both profile `# version:` bumps landed (T1.2).
   3. Success: [ ] WHY docs updated; [ ] version bumps present `[ref: SDD/CON-5]`
 
-- [ ] **T4.5 SINGLE live-test cycle** `[activity: validate]`
+- [x] **T4.5 SINGLE live-test cycle** `[activity: validate]`
 
   1. Sync instance (`update-tomo`) — verify script + profile versions landed in the instance (`[ref: reference_update_tomo_is_version_gated]`).
   2. Run ONE `/inbox` walk against Kado under the miyo profile; spot-check output matches expectations (no regressions).
   3. Spot-check lyt: MOC titles render plain (no `" (MOC)"`).
   4. Success:
-     - [ ] miyo live run shows no regression `[ref: PRD/Success Metrics]`
-     - [ ] lyt yields plain MOC titles `[ref: PRD/AC F-55]`
-     - [ ] This is the only live cycle consumed `[ref: SDD/CON-3]`
+     - [x] miyo live run shows no regression `[ref: PRD/Success Metrics]`
+     - [x] lyt yields plain MOC titles `[ref: PRD/AC F-55]`
+     - [x] This is the only live cycle consumed `[ref: SDD/CON-3]`

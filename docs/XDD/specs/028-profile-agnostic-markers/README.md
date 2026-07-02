@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-07-01 |
-| **Current Phase** | Ready |
-| **Last Updated** | 2026-07-01 |
+| **Current Phase** | Implemented |
+| **Last Updated** | 2026-07-02 |
 
 ## Documents
 
@@ -27,6 +27,7 @@
 | 2026-07-01 | Delivery channel = per-script resolution + suggestions-doc conventions block (ADR-1); NOT shared-ctx | shared-ctx has no non-reducer Python consumer for these values (YAGNI) |
 | 2026-07-01 | No shared-ctx.schema.json bump | shared-ctx is not the marker channel; builder only reads suffix internally |
 | 2026-07-01 | PLAN complete — 4 phases, 18 tasks, ready to implement | PRD+SDD+PLAN all approved; ADRs confirmed |
+| 2026-07-02 | Implementation complete — all 4 phases shipped + both review gates passed | 1933 tests green; miyo byte-identity guard-tested; verified on genuine live item (Meine PKM-Prinzipien). Live run also exposed unrelated bug #116 (stale cross-run state) — not a 028 regression |
 | 2026-07-01 | Seam-map miss found in Phase 4 grep: two literals outside the SDD's 10 seams | `suggestions-render.py:147` (`f"{topic} (MOC)"`) + `moc-proposal-parser.py:132` (`if "up::" in cb_text`) |
 | 2026-07-01 | DEVIATION: fixed `suggestions-render.py` in-scope (cheap, reads conventions block); DEFERRED `moc-proposal-parser.py` | Renderer is user-facing F-55 path. Parser is pure future-proofing (both profiles use up:: → zero today-impact) and needs its own delivery-channel design (no --config/--profile); deferred to backlog to avoid new scope pre-live-test |
 

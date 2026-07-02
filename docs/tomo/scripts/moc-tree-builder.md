@@ -60,8 +60,9 @@ WHY: Each cache entry carries its note's real `tags` list (extracted from the
 frontmatter that is already read during `read_note_raw()`). No extra per-note
 round-trip is needed: `parse_frontmatter(content)` yields the tags from the
 same content string that supplies title, wikilinks, and the raw text for
-`up_parse`. The `extract_tags(fm)` helper normalises both list-form and
-scalar-form tags; a note with no frontmatter tags produces `[]`, never `None`.
+`up_parse`. The `extract_tags(fm, body)` helper normalises both list-form and
+scalar-form frontmatter tags AND merges inline `#tags` from the body (#50); a
+note with no tags produces `[]`, never `None`.
 
 The concrete reason tags are stored here and not computed on demand:
 **ADR-13 introduces two exclude-tag filters** (`MiYo/Tomo/exclude/moc` and
@@ -75,16 +76,19 @@ filters operate directly on the pre-loaded entry without any vault I/O.
 
 Spec: 021 Phase 7 T7.1, PRD Feature 8 AC7.
 
-WHY frontmatter-only (and the inconsistency): `extract_tags` reads
-`frontmatter.get("tags")` ONLY — it does not parse inline `#tags` from the note
-body. So the ADR-13 exclude tags (`MiYo/Tomo/exclude/moc` / `.../exclude/note`)
-take effect **only** when placed in YAML frontmatter `tags:`; an inline
-`#MiYo/Tomo/exclude/moc` is silently ignored. This is inconsistent with MOC
-*discovery*, which uses Kado `search_by_tag(#type/others/moc)` and matches inline
-+ frontmatter both. The asymmetry is deliberate-for-now (the cache stores one
-tag source, read once per note from the same content round-trip) but surprising;
-tracked as a follow-up to optionally parse inline tags. Documented in
-`lib/moc_tags.py` and the F8 section of `LIVE-VALIDATION-RUNBOOK.md`.
+WHY frontmatter AND inline (#50): `extract_tags(fm, body)` merges the YAML
+frontmatter `tags:` list with inline `#tags` parsed from the note body (code
+blocks/spans skipped, leading `#` stripped, first-seen order). So the ADR-13
+exclude tags (`MiYo/Tomo/exclude/moc` / `.../exclude/note`) now take effect in
+EITHER form — matching MOC *discovery*, which uses Kado
+`search_by_tag(#type/others/moc)` and matches inline + frontmatter both. This
+resolves the earlier frontmatter-only asymmetry (surprising for users who tag
+inline, the Obsidian default). Both tag sources are still read from the SAME
+single content round-trip (`read_note_raw`), so the single-read-per-note
+contract (C1) is preserved — no extra Kado I/O. The exclude filters
+(`lib/orphan_link.emit_orphan_suggestions`, `moc-discovery._handle_scan`) do an
+exact-membership check, so surfacing inline tags in the entry `tags` list is
+safe. Inline-tag parsing lives in `moc-tree-builder.parse_inline_tags`.
 
 ## `up_state` Resolved by Caller, Not by `up_parse` (M1)
 

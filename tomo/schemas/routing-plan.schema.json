@@ -118,7 +118,7 @@
         "additionalProperties": false,
         "properties": {
           "path": {"type": "string"},
-          "type": {"type": "string", "enum": ["checksum_mismatch", "orphaned_state", "missing_source"]},
+          "type": {"type": "string", "enum": ["checksum_mismatch", "orphaned_state", "missing_source", "stale_cache"]},
           "detail": {"type": "string"}
         }
       },

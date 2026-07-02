@@ -34,3 +34,26 @@ the flag).
 
 Note: this is a pre-021 latent bug, fixed during 021 validation because that is
 when a clean-vault re-process surfaced it.
+
+## Discovery-Cache Staleness Warning (#36 / F-21)
+
+WHY: The discovery cache (`config/discovery-cache.yaml`) is rebuilt by
+`/explore-vault`, never by `/inbox`. So an `/inbox` run can silently rely on a
+months-old vault map (MOC list, tag prefixes, structure) without the user
+knowing. Step 8c reads the cache's `last_scan` and, when it is older than
+`--stale-cache-days` (default 7), appends a `stale_cache` drift_indicator — the
+same user-facing, non-blocking channel the conductors already surface ("surface
+each warning but continue"). The message points the user at `/explore-vault`.
+
+WHY a drift_indicator (not the statusline): the drift channel fires at the exact
+moment the user is about to act on the cached map, is already surfaced by every
+conductor, and is deterministically testable. It required one additive enum
+value (`stale_cache`) in `routing-plan.schema.json` — backward-compatible, so
+existing plans still validate.
+
+WHY fail-open (missing / malformed / timestamp-less / future-dated → no
+warning): a fresh install mid-setup has no cache yet and must not be nagged, and
+a corrupt cache must never crash triage. Only a genuinely old, parseable
+`last_scan` surfaces a warning. A `last_scan` in the future (clock skew) is
+treated as fresh. The staleness check is `discovery_cache_staleness_drift`;
+coverage in `tests/test_triage_cache_staleness.py`.

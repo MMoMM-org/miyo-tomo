@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.0
+# version: 0.19.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -1068,6 +1068,60 @@ def build_routing_plan(
 
 
 # ---------------------------------------------------------------------------
+# Discovery-cache staleness (#36 / F-21)
+# ---------------------------------------------------------------------------
+
+# The discovery cache (config/discovery-cache.yaml) is rebuilt by /explore-vault,
+# never by /inbox — so an /inbox run can silently rely on a months-old vault map.
+DISCOVERY_CACHE_STALE_DAYS = 7
+
+
+def discovery_cache_staleness_drift(
+    cache_path: Path,
+    stale_days: int = DISCOVERY_CACHE_STALE_DAYS,
+    now: "datetime.datetime | None" = None,
+) -> "dict | None":
+    """Return a `stale_cache` drift indicator when the discovery cache's
+    `last_scan` is older than `stale_days`, else None.
+
+    Fail-open: a missing, unreadable, malformed, timestamp-less, or future-dated
+    cache yields NO warning. A fresh install mid-setup (no cache yet) must not be
+    nagged; only a genuinely old scan is surfaced. The conductors already surface
+    drift_indicators to the user ("surface each warning but continue").
+    """
+    try:
+        raw = cache_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        import yaml
+        data = yaml.safe_load(raw)
+    except Exception:  # noqa: BLE001 — malformed cache: no warning, never crash
+        return None
+    ts = data.get("last_scan") if isinstance(data, dict) else None
+    if not isinstance(ts, str):
+        return None
+    try:
+        scanned = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if scanned.tzinfo is None:
+        scanned = scanned.replace(tzinfo=datetime.timezone.utc)
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    age_days = (now - scanned).total_seconds() / 86400
+    if age_days <= stale_days:  # fresh, or future-dated (clock skew) → no warning
+        return None
+    return {
+        "path": str(cache_path),
+        "type": "stale_cache",
+        "detail": (
+            f"Vault discovery map is {int(age_days)} days old "
+            f"(last scan {ts}); run /explore-vault to refresh it."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1106,6 +1160,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Tag-handler registry directory (default: cwd-relative "
              "config/tag-handlers, correct for the instance runtime; override "
              "for host/test runs)",
+    )
+    p.add_argument(
+        "--discovery-cache", default="config/discovery-cache.yaml",
+        help="Discovery-cache path for the staleness warning (#36; cwd-relative "
+             "default, correct for the instance runtime).",
+    )
+    p.add_argument(
+        "--stale-cache-days", type=int, default=DISCOVERY_CACHE_STALE_DAYS,
+        help=f"Warn when the discovery cache is older than N days "
+             f"(default {DISCOVERY_CACHE_STALE_DAYS}).",
     )
     return p
 
@@ -1174,6 +1238,13 @@ def main(
     new_drift = detect_drift(state, state.manifest, cache_dir)
     # Step 8b: orphaned-state consistency check (reuses already-fetched buckets)
     all_drift = state.drift_indicators + new_drift + detect_orphaned_state(state)
+    # Step 8c: discovery-cache staleness (#36) — warn once per run when the vault
+    # map is old. Fail-open (no cache / malformed → no warning).
+    stale_drift = discovery_cache_staleness_drift(
+        Path(args.discovery_cache), args.stale_cache_days
+    )
+    if stale_drift is not None:
+        all_drift = all_drift + [stale_drift]
     drifted_paths = {
         d["path"] for d in all_drift if d.get("type") == "checksum_mismatch"
     }

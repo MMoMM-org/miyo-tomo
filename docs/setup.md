@@ -252,10 +252,19 @@ The installer still writes a `.gitignore` at the instance so that if you choose 
 For a clean re-run (useful during testing or after config mistakes):
 
 ```bash
-bash scripts/cleanup-tomo.sh              # interactive with confirmation
+bash scripts/cleanup-tomo.sh              # repo-root dev instance, interactive
 bash scripts/cleanup-tomo.sh --force      # skip confirmation
 bash scripts/cleanup-tomo.sh --dry-run    # preview what would be removed
 bash scripts/cleanup-tomo.sh --keep-home  # preserve Claude auth credentials
+```
+
+To remove a **registered** instance (which may live outside the repo since
+spec 020), target it by name:
+
+```bash
+bash scripts/cleanup-tomo.sh --list                       # list instances
+bash scripts/cleanup-tomo.sh --instance <name>            # outside-repo → dry run
+bash scripts/cleanup-tomo.sh --instance <name> --force    # actually delete + deregister
 ```
 
 The cleanup script removes `tomo-instance/`, `tomo-home/`, and `tomo-install.json`. It refuses to delete anything outside the repo root as a safety check.

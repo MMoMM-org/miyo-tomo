@@ -16,8 +16,13 @@ Contents:
   existing instance.
 - `backup-tomo.sh` — tars the instance to `tomo-backups/`.
 - `restore-tomo.sh` — restores an instance from a backup archive.
-- `cleanup-tomo.sh` — removes an installation (interactive `y/N`
-  prompt, refuses paths outside the repo).
+- `cleanup-tomo.sh` — removes one installation. Default targets the
+  repo-root dev instance (interactive `y/N`). `--instance <name>`
+  targets a registered instance from `~/.tomo/instances.json` (which
+  since spec 020 may live outside the repo); an outside-repo target is a
+  dry run unless `--force`, and is deregistered after deletion. A
+  hardened guard still refuses `/`, `$HOME`, the repo root, and shallow
+  paths. `--list` shows registered instances.
 - `download-whisper-model.sh` — fetches a faster-whisper model dir.
 - `lib/configure-voice.sh` — sourced by install/update for the voice
   wizard.

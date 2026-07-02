@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.39.1
+# version: 0.40.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -86,6 +86,7 @@ from lib.render_resolve import (  # noqa: E402,F401
     _serialize_new_sections,
     _strip_internal_link_fields,
     filter_missing_daily_notes,
+    filter_missing_source_notes,
     filter_unappliable_relationships,
     resolve_section_names,
     resolve_target_moc_paths,
@@ -271,6 +272,24 @@ def main() -> int:
         except KadoError as exc:
             print(f"FATAL: Cannot connect to Kado: {exc}", file=sys.stderr)
             return 2
+
+    # #116: drop confirmed items whose source note is gone BEFORE anything
+    # consumes the list — otherwise the renderer fabricates an empty stub and
+    # build_actions emits a link_to_moc pointing at a note that never existed.
+    confirmed, dropped_missing_source = filter_missing_source_notes(
+        confirmed, client, inbox_path
+    )
+    if dropped_missing_source:
+        print(
+            f"  [skip] {len(dropped_missing_source)} confirmed item(s) skipped — "
+            "source note missing, not fabricating a stub:",
+            file=sys.stderr,
+        )
+        for item in dropped_missing_source:
+            print(
+                f"    • {item.get('id', '?')} → {item.get('source_path', '')}",
+                file=sys.stderr,
+            )
 
     # Back-fill parent_mocs on supporting items of create_moc items — BEFORE
     # the rendering loop reads parent_moc to compute {{up}}. Ensures atomic

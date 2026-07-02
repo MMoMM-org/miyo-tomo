@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.24.0
+# version: 1.24.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1441,9 +1441,21 @@ def main() -> int:
     moc_suffix = conventions.moc_suffix
 
     state = last_state_per_stem(state_path)
-    done_stems = sorted(s for s, e in state.items() if e.get("status") == "done")
+    # #116: inbox-state.jsonl is append-only and never truncated between runs,
+    # so scope the work-list to THIS run's entries. Without the run_id filter a
+    # new run re-reads every done/failed stem the file ever accumulated and
+    # re-emits stale proposals for source notes that no longer exist.
+    done_stems = sorted(
+        s
+        for s, e in state.items()
+        if e.get("status") == "done" and e.get("run_id") == args.run_id
+    )
     failed_entries = sorted(
-        ((s, e) for s, e in state.items() if e.get("status") == "failed"),
+        (
+            (s, e)
+            for s, e in state.items()
+            if e.get("status") == "failed" and e.get("run_id") == args.run_id
+        ),
         key=lambda kv: kv[0],
     )
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 1.0.2
+# version: 1.0.3
 """mark-captured.py — Mark processed inbox source items with tomo.state=captured.
 
 Reads the state-file, finds all items with status=done, and writes a
@@ -106,7 +106,14 @@ def main() -> int:
         return 2
 
     state = last_state_per_stem(state_path)
-    done_stems = [s for s, e in state.items() if e.get("status") == "done"]
+    # #116: scope to THIS run's entries. inbox-state.jsonl is append-only and
+    # never truncated, so an unfiltered done-list re-stamps prior-run stems
+    # (source/captured) even when their source notes are gone.
+    done_stems = [
+        s
+        for s, e in state.items()
+        if e.get("status") == "done" and e.get("run_id") == args.run_id
+    ]
 
     if not done_stems:
         print("mark-captured: no done items to mark", file=sys.stderr)

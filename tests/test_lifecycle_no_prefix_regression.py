@@ -389,7 +389,9 @@ def test_end_to_end_lifecycle_all_stages_use_frontmatter(done_state_file, monkey
     monkeypatch.setattr(mc_mod, "KadoClient", lambda: mc_client)
     monkeypatch.setattr(
         sys, "argv",
-        ["mark-captured.py", "--state", str(done_state_file), "--run-id", "run-e2e"],
+        # #116: mark-captured now filters state by run_id, so the invocation
+        # run_id must match the run_id stamped in the state file (run-t44).
+        ["mark-captured.py", "--state", str(done_state_file), "--run-id", "run-t44"],
     )
     rc = mc_mod.main()
     assert rc == 0, "mark-captured failed"
@@ -407,7 +409,7 @@ def test_end_to_end_lifecycle_all_stages_use_frontmatter(done_state_file, monkey
                 return [{"path": NOTE_PATH, "modified": 2,
                          "frontmatter": {"tomo": {"doc_type": "source",
                                                    "state": "captured",
-                                                   "run_id": "run-e2e"}}}]
+                                                   "run_id": "run-t44"}}}]
             return []
 
         def read_note(self, path):

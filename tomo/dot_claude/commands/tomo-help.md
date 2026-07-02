@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.13
+# version: 0.2.14
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -231,6 +231,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
 
 - **cleanup / reset / reinstall / start over / clean slate** →
   - Outside the container: `bash scripts/cleanup-tomo.sh` (interactive) or `--force`
+  - A registered instance (may be outside the repo): `--instance <name>` (outside-repo → dry run unless `--force`; deregistered after). `--list` shows instances.
   - Flags: `--keep-home` (preserve Claude auth), `--keep-instance`, `--dry-run`
   - Then `bash scripts/install-tomo.sh` for a fresh setup
 

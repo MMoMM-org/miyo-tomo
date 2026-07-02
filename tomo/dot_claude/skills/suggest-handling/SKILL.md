@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.2.0
+# version: 0.3.0
 
 ## When to Activate
 
@@ -27,6 +27,7 @@ If `drift_indicators` is non-empty, surface each warning but continue.
 # STRICT — run ALL commands below before dispatching ANY subagent.
 
 ```bash
+rm -rf tomo-tmp/items tomo-tmp/inbox-state.jsonl
 mkdir -p tomo-tmp/items
 ```
 

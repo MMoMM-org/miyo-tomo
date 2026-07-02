@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """render_resolve.py — post-build resolution + filtering passes for the action list.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). These passes
@@ -626,6 +626,62 @@ def filter_missing_daily_notes(
             continue
         kept.append(a)
     return kept, skipped
+
+
+def filter_missing_source_notes(
+    confirmed: list[dict], client, inbox_path: str,
+) -> tuple[list[dict], list[dict]]:
+    """Drop confirmed items whose source note no longer exists (#116).
+
+    An item that carries both a `template` and a `source_path` renders a new
+    note FROM that source. If the source note is gone (e.g. a stale suggestion
+    re-processed after the source was deleted or already moved), reading it
+    fail-opens to an empty body and the renderer would fabricate an empty stub
+    note. Worse, the item stays in `confirmed`, so build_actions would still
+    emit a link_to_moc pointing at a note that was never created.
+
+    Dropping the whole item here — before the render loop and before
+    build_actions — keeps every downstream action (move_note, link_to_moc,
+    delete_source) consistent: none reference the missing source.
+
+    Items without a `template` (instruction-only: link_to_moc, update_daily) or
+    without a `source_path` (synthesized MOC proposals) are always kept — this
+    filter targets note-fabrication only.
+
+    Returns (kept, dropped). Fail-open: if `client` is None or a Kado read fails
+    for any reason other than a definitive not-found, the item is kept — never
+    drop on a transient error.
+    """
+    if client is None:
+        return confirmed, []
+    exists_cache: dict[str, bool] = {}
+
+    def _exists(path: str) -> bool:
+        if path in exists_cache:
+            return exists_cache[path]
+        ok = True  # fail-open default
+        try:
+            ok = client.note_exists(path)
+        except Exception:  # noqa: BLE001 — transient/other error: keep the item
+            ok = True
+        exists_cache[path] = ok
+        return ok
+
+    kept: list[dict] = []
+    dropped: list[dict] = []
+    for item in confirmed:
+        source_path = item.get("source_path", "")
+        if item.get("template") and source_path:
+            full_path = source_path
+            if "/" not in full_path:
+                full_path = f"{inbox_path.rstrip('/')}/{full_path}"
+            if not full_path.endswith(".md"):
+                full_path += ".md"
+            if not _exists(full_path):
+                dropped.append(item)
+                continue
+        kept.append(item)
+    return kept, dropped
 
 
 def filter_unappliable_relationships(

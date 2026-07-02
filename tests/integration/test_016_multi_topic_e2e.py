@@ -146,6 +146,9 @@ def _write_state(tmp_path: Path, stems: list[str]) -> Path:
         lines.append(json.dumps({
             "stem": stem,
             "status": "done",
+            # #116: the reducer filters state by run_id, so seed the same run_id
+            # the pipeline runners invoke it with (_run_reducer --run-id).
+            "run_id": "e2e-test-run",
             "started_at": "2026-06-11T09:00:00Z",
             "finished_at": "2026-06-11T09:00:01Z",
         }))

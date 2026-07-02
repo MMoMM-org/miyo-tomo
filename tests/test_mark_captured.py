@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_mark_captured.py — Behavioural tests for mark-captured.py.
 
 Verifies that mark-captured.py:
@@ -151,7 +151,7 @@ def test_writes_tomo_state_captured(state_file, monkeypatch):
 
     monkeypatch.setattr(
         sys, "argv",
-        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-t1"],
+        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-fixture"],
     )
     rc = mod.main()
 
@@ -189,7 +189,7 @@ def test_writes_multiple_items_in_one_invocation(two_md_state_file, monkeypatch)
     monkeypatch.setattr(mod, "KadoClient", lambda: fake_client)
     monkeypatch.setattr(
         sys, "argv",
-        ["mark-captured.py", "--state", str(two_md_state_file), "--run-id", "run-multi"],
+        ["mark-captured.py", "--state", str(two_md_state_file), "--run-id", "run-fixture"],
     )
     rc = mod.main()
 
@@ -227,13 +227,15 @@ def test_idempotent_on_already_captured(state_file, monkeypatch):
 
     monkeypatch.setattr(mod, "KadoClient", lambda: fake_client)
 
-    for run in ("run-first", "run-second"):
+    # Re-run the SAME run_id twice (the realistic idempotency case: a re-run
+    # after a partial failure). Both must match the fixture's run_id (#116).
+    for attempt in ("first", "second"):
         monkeypatch.setattr(
             sys, "argv",
-            ["mark-captured.py", "--state", str(state_file), "--run-id", run],
+            ["mark-captured.py", "--state", str(state_file), "--run-id", "run-fixture"],
         )
         rc = mod.main()
-        assert rc == 0, f"run {run}: expected exit 0, got {rc}"
+        assert rc == 0, f"attempt {attempt}: expected exit 0, got {rc}"
 
     # Each run issues one call; two runs = two calls, no exceptions raised
     assert fake_client.write_frontmatter.call_count == 2
@@ -260,7 +262,7 @@ def test_no_legacy_tag_written(state_file, monkeypatch):
     monkeypatch.setattr(mod, "KadoClient", lambda: fake_client)
     monkeypatch.setattr(
         sys, "argv",
-        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-t3"],
+        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-fixture"],
     )
     mod.main()
 
@@ -288,11 +290,23 @@ def test_no_legacy_tag_written(state_file, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_run_id_propagated_from_argv(state_file, monkeypatch):
-    """The run_id passed via --run-id appears in the tomo block's run_id field."""
+def test_run_id_propagated_from_argv(tmp_path, monkeypatch):
+    """The run_id passed via --run-id appears in the tomo block's run_id field.
+
+    Uses a dedicated state file seeded with the same unique run_id so the item
+    survives the #116 run_id filter — otherwise there would be nothing to mark.
+    """
     mod = _load_script_module()
 
     unique_run_id = "run-unique-abc123"
+    state_file = tmp_path / "inbox-state.jsonl"
+    state_file.write_text(json.dumps({
+        "stem": "Asahikawa",
+        "path": "100 Inbox/Asahikawa.md",
+        "status": "done",
+        "run_id": unique_run_id,
+    }) + "\n")
+
     captured_tomo_blocks = []
 
     def fake_write_frontmatter(path, frontmatter, mode="merge", expected_modified=None):
@@ -352,7 +366,7 @@ def test_non_md_paths_are_skipped(state_file, monkeypatch, capsys):
     monkeypatch.setattr(mod, "KadoClient", lambda: fake_client)
     monkeypatch.setattr(
         sys, "argv",
-        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-t6"],
+        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-fixture"],
     )
     rc = mod.main()
 
@@ -383,7 +397,7 @@ def test_write_failure_returns_exit_code_1(state_file, monkeypatch, capsys):
     monkeypatch.setattr(mod, "KadoClient", lambda: fake_client)
     monkeypatch.setattr(
         sys, "argv",
-        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-t7"],
+        ["mark-captured.py", "--state", str(state_file), "--run-id", "run-fixture"],
     )
     rc = mod.main()
 
@@ -449,6 +463,65 @@ def test_kado_connection_failure_returns_exit_code_2(state_file, monkeypatch, ca
 
     captured = capsys.readouterr()
     assert "FATAL" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# T10 — stale prior-run done stems are NOT re-stamped (#116)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def mixed_run_state_file(tmp_path):
+    """State-file with two done .md items from DIFFERENT runs.
+
+    inbox-state.jsonl is append-only and never truncated, so a fresh run sees
+    prior-run entries too. mark-captured must only re-stamp the current run's
+    stems — otherwise it re-marks source notes that may no longer exist.
+    """
+    path = tmp_path / "inbox-state.jsonl"
+    entries = [
+        {
+            "stem": "StaleNote",
+            "path": "100 Inbox/StaleNote.md",
+            "status": "done",
+            "run_id": "run-OLD",
+        },
+        {
+            "stem": "FreshNote",
+            "path": "100 Inbox/FreshNote.md",
+            "status": "done",
+            "run_id": "run-NEW",
+        },
+    ]
+    path.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+    return path
+
+
+def test_stale_run_stems_are_not_marked(mixed_run_state_file, monkeypatch):
+    """Invoked with --run-id run-NEW, only FreshNote is stamped; StaleNote is
+    skipped because its entry carries a different run_id (#116)."""
+    mod = _load_script_module()
+
+    marked_paths = []
+
+    def fake_write_frontmatter(path, frontmatter, mode="merge", expected_modified=None):
+        marked_paths.append(path)
+        return {"path": path, "modified": 1}
+
+    fake_client = MagicMock()
+    fake_client.write_frontmatter.side_effect = fake_write_frontmatter
+
+    monkeypatch.setattr(mod, "KadoClient", lambda: fake_client)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["mark-captured.py", "--state", str(mixed_run_state_file), "--run-id", "run-NEW"],
+    )
+    rc = mod.main()
+
+    assert rc == 0, f"expected exit 0, got {rc}"
+    assert marked_paths == ["100 Inbox/FreshNote.md"], (
+        f"expected only the current-run stem to be marked; got {marked_paths}"
+    )
 
 
 if __name__ == "__main__":

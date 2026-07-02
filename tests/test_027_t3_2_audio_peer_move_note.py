@@ -203,6 +203,7 @@ def test_parser_extracts_audio_peer_from_source_set_line(tmp_path):
     rendered = render_create_atomic_note(
         _audio_action("Inbox/2026-04-08_1430_interview.m4a"),
         "interview-transcript",
+        " (MOC)",
     )
     # Verify the rendered source line has the set format
     assert "[[interview-transcript]] + [[2026-04-08_1430_interview.m4a]]" in rendered
@@ -230,7 +231,7 @@ def test_parser_no_audio_peer_when_single_source(tmp_path):
         "classification": {},
         "alternatives": [],
     }
-    rendered = render_create_atomic_note(action, "plain-note")
+    rendered = render_create_atomic_note(action, "plain-note", " (MOC)")
     assert "+" not in rendered.split("**Source:**")[1].split("\n")[0], (
         "Single-source render must not contain '+'"
     )

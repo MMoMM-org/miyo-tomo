@@ -120,6 +120,45 @@ class TestStripMocMarker:
         """'Board Games (MOC) (MOC)' must yield 'Board Games' (iterative strip)."""
         assert strip_moc_marker("Board Games (MOC) (MOC)") == "Board Games"
 
+    # ── Phase 2 (F-55 / spec 028 T2.2): suffix is a parameter ────────────────
+    def test_explicit_miyo_suffix_parity_parens(self):
+        """Passing the miyo suffix reproduces the legacy '(MOC)' strip."""
+        assert strip_moc_marker("Board Games (MOC)", " (MOC)") == "Board Games"
+
+    def test_explicit_miyo_suffix_parity_space_form(self):
+        """The bare ' MOC' word form is still stripped when suffix is ' (MOC)'."""
+        assert strip_moc_marker("Board Games MOC", " (MOC)") == "Board Games"
+
+    def test_explicit_miyo_suffix_case_insensitive(self):
+        assert strip_moc_marker("board games (moc)", " (MOC)") == "board games"
+
+    def test_empty_suffix_is_noop(self):
+        """Empty suffix (lyt) strips nothing — the marker is preserved verbatim."""
+        assert strip_moc_marker("Board Games (MOC)", "") == "Board Games (MOC)"
+        assert strip_moc_marker("Board Games MOC", "") == "Board Games MOC"
+
+    def test_build_topic_clusters_empty_suffix_keeps_marker(self):
+        """With suffix='' the marker is not stripped, so marked/bare topics do
+        NOT merge and the display topic keeps its marker."""
+        items = [
+            _candidate("S01", "Board Games (MOC)"),
+            _candidate("S02", "Board Games (MOC)"),
+        ]
+        clusters = build_topic_clusters(items, threshold=2, suffix="")
+        assert clusters[0]["topic"] == "Board Games (MOC)", (
+            f"empty suffix must keep marker; got {clusters[0]['topic']!r}"
+        )
+
+    def test_build_topic_clusters_miyo_suffix_strips(self):
+        """With the miyo suffix the marker is stripped (parity with default)."""
+        items = [
+            _candidate("S01", "Board Games (MOC)"),
+            _candidate("S02", "Board Games"),
+        ]
+        clusters = build_topic_clusters(items, threshold=2, suffix=" (MOC)")
+        assert clusters[0]["topic"] == "Board Games"
+        assert clusters[0]["items"] == ["S01", "S02"]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Clustering merges mixed-form topics into one cluster
@@ -175,13 +214,13 @@ class TestProposedMocEnrichment:
     def test_moc_name_has_suffix_once(self):
         """_enrich_proposed_mocs must yield 'X (MOC)' not 'X (MOC) (MOC)'."""
         pm = self._make_proposed_moc("Board Games", ["S01", "S02"])
-        _enrich_proposed_mocs([pm], {"S01": "Catan", "S02": "Wingspan"})
+        _enrich_proposed_mocs([pm], {"S01": "Catan", "S02": "Wingspan"}, " (MOC)")
         assert pm["name"] == "Board Games (MOC)", f"Got: {pm['name']}"
 
     def test_reason_shows_bare_topic(self):
         """reason must show bare topic, not 'Board Games (MOC)'."""
         pm = self._make_proposed_moc("Board Games", ["S01", "S02"])
-        _enrich_proposed_mocs([pm], {"S01": "Catan", "S02": "Wingspan"})
+        _enrich_proposed_mocs([pm], {"S01": "Catan", "S02": "Wingspan"}, " (MOC)")
         assert "Board Games (MOC)" not in pm["reason"], (
             f"reason must not contain the MOC-suffixed form; got: {pm['reason']}"
         )
@@ -205,7 +244,9 @@ class TestAtomicNoteLine:
             "tags_to_add": [],
             "candidate_mocs": [],
         }
-        result = render_create_atomic_note(action, "inbox-item")
+        # F-55 W1: the resolved profile suffix is now threaded in. miyo's
+        # " (MOC)" still strips the marker for the inline text.
+        result = render_create_atomic_note(action, "inbox-item", " (MOC)")
         # The **Note:** line must contain bare "Board Games" but not "(MOC)"
         note_line = next(
             (line for line in result.split("\n") if "No good thematic MOC" in line),
@@ -244,6 +285,6 @@ class TestRealCaseRegression:
         # Enrich and verify final MOC name
         section_titles = {"S01": "Catan", "S02": "Wingspan", "S03": "Gloomhaven"}
         pm = {"topic": cluster["topic"], "items": cluster["items"], "parent": "", "tags": []}
-        _enrich_proposed_mocs([pm], section_titles)
+        _enrich_proposed_mocs([pm], section_titles, " (MOC)")
         assert pm["name"] == "Board Games (MOC)", f"Final MOC name: {pm['name']}"
         assert pm["note_titles"] == ["Catan", "Wingspan", "Gloomhaven"]

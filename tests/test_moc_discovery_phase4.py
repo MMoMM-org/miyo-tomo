@@ -114,6 +114,50 @@ def test_title_mode_uses_user_input_verbatim():
         )
 
 
+def test_title_suffix_comes_from_profile_not_hardcoded():
+    """Suffix is read from the profile's map_note.name_suffix, not a name-keyed
+    hardcoded dict. A fabricated profile with a custom suffix must be honoured.
+
+    F-55 / spec 028 T2.1: this fails while the suffix is a hardcoded
+    `_PROFILE_TITLE_SUFFIX` dict keyed on the profile name.
+    """
+    profile = {"concept_defaults": {"map_note": {"name_suffix": " ~Map~"}}}
+    cluster = _cluster("shell", ["zsh", "bash", "fish"])
+
+    title = moc_discovery.phase4_title(cluster, profile, mode="scan", trigger_arg="")
+
+    assert title == "Shell ~Map~", (
+        f"suffix must come from profile map_note.name_suffix; got {title!r}"
+    )
+
+
+def test_title_apply_once_no_double_suffix():
+    """A profile whose suffix already terminates the derived title must not be
+    double-applied (apply-once rule)."""
+    # Suffix chosen so str.title() does not alter it (all-caps/word-boundary safe).
+    profile = {"concept_defaults": {"map_note": {"name_suffix": " Map"}}}
+    cluster = _cluster("shell map", ["zsh", "bash"])
+
+    title = moc_discovery.phase4_title(cluster, profile, mode="scan", trigger_arg="")
+
+    assert title == "Shell Map", f"apply-once violated; got {title!r}"
+
+
+def test_miyo_title_byte_identical_regression():
+    """Byte-identical miyo regression: a spread of topics all end in ' (MOC)'."""
+    profile = _load_profile("miyo")
+    cases = {
+        "shell": "Shell (MOC)",
+        "knowledge management": "Knowledge Management (MOC)",
+        "vcs": "Vcs (MOC)",
+    }
+    for topic, expected in cases.items():
+        got = moc_discovery.phase4_title(
+            _cluster(topic, ["a", "b", "c"]), profile, mode="scan", trigger_arg=""
+        )
+        assert got == expected, f"miyo byte-identity broke for {topic!r}: {got!r}"
+
+
 def test_scan_multi_cluster_one_title_per_cluster():
     """mode == 'scan' with N clusters → N distinct titles, one per cluster."""
     profile = _load_profile("miyo")

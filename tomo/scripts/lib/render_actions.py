@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -11,6 +11,7 @@ resolution (that lives in render_resolve).
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 import sys
@@ -19,6 +20,7 @@ from pathlib import Path
 from lib.kado_client import KadoError
 from lib.obsidian_filename import sanitize_stem
 from lib.render_helpers import _moc_stem, _stem
+from lib.up_parse import up_marker_re as _up_marker_re
 from lib.supporting_items import (
     parse_supporting_items as _parse_supporting_items,
     union_supporting_items as _union_supporting_items,
@@ -104,38 +106,43 @@ def _ensure_md_extension(path: str | None) -> str | None:
 # emit time produces actionable Tomo-side diagnostics instead.
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
-# Matches the first ``up:: [[Target]]`` line in a note body (Rule 4.x).
-# MULTILINE so ``^`` anchors to each line start.  Non-greedy ``(.+?)`` stops
-# at the first ``]]`` to avoid over-matching when the target contains brackets.
-_UP_MARKER_RE = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
-_RELATED_MARKER_RE = re.compile(r"^[\s>\-]*related::\s*(.*)", re.MULTILINE)
+# Matches the first ``<peer_marker>`` line in a note body (Rule 4.x). MULTILINE
+# so ``^`` anchors to each line start. The marker literal is injected from the
+# active profile (spec 028 T3.2); the default builders below preserve the
+# historical ``related::`` pattern. The ``<parent_marker> [[Target]]`` counterpart
+# is imported as ``_up_marker_re`` from lib.up_parse (SSoT).
+@functools.lru_cache(maxsize=None)
+def _related_marker_re(peer_marker: str) -> re.Pattern:
+    return re.compile(rf"^[\s>\-]*{re.escape(peer_marker)}\s*(.*)", re.MULTILINE)
+
+
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
 
-def _extract_existing_related(content: str) -> list[str]:
-    """Extract existing related:: wikilink targets from note content."""
-    m = _RELATED_MARKER_RE.search(content)
+def _extract_existing_related(content: str, peer_marker: str = "related::") -> list[str]:
+    """Extract existing peer-marker wikilink targets from note content."""
+    m = _related_marker_re(peer_marker).search(content)
     if not m:
         return []
     return [wl.group(1).strip() for wl in _WIKILINK_RE.finditer(m.group(1))]
 
 
 def _aggregate_related_actions(
-    actions: list[dict], kado_client,
+    actions: list[dict], kado_client, peer_marker: str = "related::",
 ) -> list[dict]:
-    """Merge related:: actions per target note with existing vault values.
+    """Merge peer-marker actions per target note with existing vault values.
 
     Per contract (docs/instructions-json.md §882-886), Tomo reads the
-    existing related:: line and emits one combined action per target.
+    existing peer-marker line and emits one combined action per target.
     """
     if kado_client is None:
         return actions
 
-    # Collect related:: actions grouped by target_moc_path
+    # Collect peer-marker actions grouped by target_moc_path
     related_by_target: dict[str, list[dict]] = {}
     non_related: list[dict] = []
     for a in actions:
-        if a.get("action") == "add_relationship" and a.get("marker") == "related::":
+        if a.get("action") == "add_relationship" and a.get("marker") == peer_marker:
             path = a["target_moc_path"]
             related_by_target.setdefault(path, []).append(a)
         else:
@@ -146,11 +153,11 @@ def _aggregate_related_actions(
 
     merged: list[dict] = []
     for path, rel_actions in related_by_target.items():
-        # Read existing related:: from vault
+        # Read existing peer-marker line from vault
         try:
             note = kado_client.read_note(path)
             content = note.get("content", "") if isinstance(note, dict) else ""
-            existing = _extract_existing_related(content)
+            existing = _extract_existing_related(content, peer_marker)
         except Exception:
             existing = []
 
@@ -166,7 +173,7 @@ def _aggregate_related_actions(
         if not all_stems:
             continue
 
-        combined_line = "related:: " + ", ".join(f"[[{s}]]" for s in all_stems)
+        combined_line = f"{peer_marker} " + ", ".join(f"[[{s}]]" for s in all_stems)
         # Keep the first action as template, update line
         merged_action = dict(rel_actions[0])
         merged_action["line"] = combined_line
@@ -176,7 +183,7 @@ def _aggregate_related_actions(
     result = []
     seen_targets: set[str] = set()
     for a in actions:
-        if a.get("action") == "add_relationship" and a.get("marker") == "related::":
+        if a.get("action") == "add_relationship" and a.get("marker") == peer_marker:
             path = a["target_moc_path"]
             if path not in seen_targets:
                 seen_targets.add(path)
@@ -217,8 +224,8 @@ _REQUIRED_PATH_FIELDS = {
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def extract_first_up_marker(content: str) -> str | None:
-    """Return the first ``up:: [[Target]]`` target from note content, or None.
+def extract_first_up_marker(content: str, parent_marker: str = "up::") -> str | None:
+    """Return the first ``<parent_marker> [[Target]]`` target from note content, or None.
 
     Searches the note body (frontmatter stripped) for the first line that
     matches the up:: wikilink pattern.  Frontmatter is excluded to prevent
@@ -247,7 +254,7 @@ def extract_first_up_marker(content: str) -> str | None:
         closing = content.find("\n---", 4)
         if closing != -1:
             body = content[closing + 4:]  # skip past closing ---\n
-    match = _UP_MARKER_RE.search(body)
+    match = _up_marker_re(parent_marker).search(body)
     if not match:
         return None
     target = match.group(1).strip()
@@ -283,6 +290,8 @@ def emit_up_preservation_actions(
     override_flag: bool,
     kado_client,
     counter: list[int],
+    parent_marker: str = "up::",
+    peer_marker: str = "related::",
 ) -> list[dict]:
     """For one child, emit 1 or 2 add_relationship actions per Rule 4.x.
 
@@ -316,8 +325,8 @@ def emit_up_preservation_actions(
             "id": _next_id(counter),
             "action": "add_relationship",
             "target_moc_path": child_stem,
-            "marker": "up::",
-            "line": f"up:: [[{new_moc_stem}]]",
+            "marker": parent_marker,
+            "line": f"{parent_marker} [[{new_moc_stem}]]",
             "applied": False,
             "error": "child-missing",
         }]
@@ -331,42 +340,42 @@ def emit_up_preservation_actions(
             "id": _next_id(counter),
             "action": "add_relationship",
             "target_moc_path": child_path,
-            "marker": "up::",
-            "line": f"up:: [[{new_moc_stem}]]",
+            "marker": parent_marker,
+            "line": f"{parent_marker} [[{new_moc_stem}]]",
             "applied": False,
             "error": "non-markdown-asset",
         }]
 
     note = kado_client.read_note(child_path)
     content = note.get("content", "") if isinstance(note, dict) else ""
-    existing_up_target = extract_first_up_marker(content)
+    existing_up_target = extract_first_up_marker(content, parent_marker)
 
     actions: list[dict] = []
 
     if existing_up_target is None:
         if override_flag:
-            # Override checked + no existing up:: → related:: (user chose related for this MOC)
-            actions.append(_make_add_rel(counter, child_path, "related::", new_moc_stem))
+            # Override checked + no existing parent link → peer marker (user chose peer for this MOC)
+            actions.append(_make_add_rel(counter, child_path, peer_marker, new_moc_stem))
         else:
-            # No existing up:: + no override → up:: (new MOC becomes primary parent)
-            actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+            # No existing parent link + no override → parent marker (new MOC becomes primary parent)
+            actions.append(_make_add_rel(counter, child_path, parent_marker, new_moc_stem))
     elif existing_up_target == new_moc_stem:
-        # Self-link guard: existing up:: already points to the new MOC → no-op
+        # Self-link guard: existing parent link already points to the new MOC → no-op
         pass
     else:
         # existing_up_target is a stem — resolve to verify it exists
         old_target_path = kado_client.resolve_stem_to_path(existing_up_target)
         if old_target_path:
             if override_flag:
-                # Rule 4.5 — keep existing up::, new MOC becomes related::
-                actions.append(_make_add_rel(counter, child_path, "related::", new_moc_stem))
+                # Rule 4.5 — keep existing parent link, new MOC becomes peer
+                actions.append(_make_add_rel(counter, child_path, peer_marker, new_moc_stem))
             else:
-                # Rule 4.2 — new MOC becomes up::, existing target moves to related::
-                actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
-                actions.append(_make_add_rel(counter, child_path, "related::", existing_up_target))
+                # Rule 4.2 — new MOC becomes parent, existing target moves to peer
+                actions.append(_make_add_rel(counter, child_path, parent_marker, new_moc_stem))
+                actions.append(_make_add_rel(counter, child_path, peer_marker, existing_up_target))
         else:
-            # Rule 4.3 — broken existing up:: (target not found); just set new up::
-            actions.append(_make_add_rel(counter, child_path, "up::", new_moc_stem))
+            # Rule 4.3 — broken existing parent link (target not found); just set new parent
+            actions.append(_make_add_rel(counter, child_path, parent_marker, new_moc_stem))
 
     return actions
 
@@ -1093,6 +1102,8 @@ def _build_up_preservation_actions(
     manifest: list[dict],
     kado_client,
     counter: list[int],
+    parent_marker: str = "up::",
+    peer_marker: str = "related::",
 ) -> list[dict]:
     """Emit add_relationship actions for existing-up:: preservation on MOC children.
 
@@ -1126,6 +1137,7 @@ def _build_up_preservation_actions(
             out.extend(
                 emit_up_preservation_actions(
                     child_stem, new_moc_stem, override_flag, kado_client, counter,
+                    parent_marker=parent_marker, peer_marker=peer_marker,
                 )
             )
     return out
@@ -1141,6 +1153,8 @@ def build_actions(
     tag_handler_groups: list[dict] | None = None,
     approved_tag_handler_group_ids: list[str] | None = None,
     tag_handler_keep_source_group_ids: list[str] | None = None,
+    parent_marker: str = "up::",
+    peer_marker: str = "related::",
 ) -> list[dict]:
     """Assemble the full ordered action list.
 
@@ -1163,7 +1177,10 @@ def build_actions(
     inbox_path = cfg["concepts.inbox"]
     out: list[dict] = []
     out.extend(_build_create_moc_actions(manifest, inbox_path, counter))
-    out.extend(_build_up_preservation_actions(manifest, kado_client, counter))
+    out.extend(_build_up_preservation_actions(
+        manifest, kado_client, counter,
+        parent_marker=parent_marker, peer_marker=peer_marker,
+    ))
     move_notes = _build_move_note_actions(manifest, inbox_path, counter)
     out.extend(move_notes)
     out.extend(_build_link_to_moc_actions(confirmed, counter))
@@ -1182,7 +1199,7 @@ def build_actions(
     # merge with all new related:: links, emit one action per target with
     # the combined line. Per contract (docs/instructions-json.md §882-886),
     # multi-link aggregation is done Tomo-side before emission.
-    out = _aggregate_related_actions(out, kado_client)
+    out = _aggregate_related_actions(out, kado_client, peer_marker)
 
     # Stamp the per-action applied flag. Tomo Hashi (the consumer) flips this
     # to true on successful execution; Tomo only ever emits false. See

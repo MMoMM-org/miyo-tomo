@@ -285,7 +285,7 @@ def _build_clusters_like_loop(atomics_per_section: dict[str, list[dict]]):
             atomic_idx += 1
 
     proposed_mocs = list(build_topic_clusters(cluster_candidates, threshold=1))
-    _enrich_proposed_mocs(proposed_mocs, section_titles)
+    _enrich_proposed_mocs(proposed_mocs, section_titles, " (MOC)")
     return proposed_mocs
 
 

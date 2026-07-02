@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.1
 """up_parse.py — SSoT for "does this note declare a parent?"
 
 Parses both inline `up::` (Dataview-style) and frontmatter `up:` values
@@ -26,9 +26,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Optional
 
 import yaml
+
+from lib.profile_conventions import marker_word
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -48,11 +51,16 @@ class UpParseResult:
 # Internal regex
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Match `up:: [[Target]]` lines; allows leading whitespace or callout prefix.
-# Replicates the pattern from moc-discovery.py _UP_MARKER_RE but scoped to
-# wikilink-only matches (bare text after up:: is intentionally NOT matched —
-# a bare `up::` without [[...]] is treated as absent per SDD Rule).
-_INLINE_UP = re.compile(r"^[\s>\-]*up::\s*\[\[(.+?)\]\]", re.MULTILINE)
+# Match `<parent_marker> [[Target]]` lines; allows leading whitespace or callout
+# prefix. Scoped to wikilink-only matches (bare text after the marker is
+# intentionally NOT matched — a bare marker without [[...]] is treated as absent
+# per SDD Rule). The marker literal is injected from the active profile
+# (spec 028 T3.1); the default preserves the historical `up::` pattern exactly.
+@lru_cache(maxsize=None)
+def up_marker_re(parent_marker: str) -> re.Pattern:
+    """Compile the inline parent-marker regex for `parent_marker` (cached)."""
+    return re.compile(rf"^[\s>\-]*{re.escape(parent_marker)}\s*\[\[(.+?)\]\]", re.MULTILINE)
+
 
 # Frontmatter delimiter (replicates moc-tree-builder.py FRONTMATTER_RE).
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
@@ -151,28 +159,35 @@ def _first_wikilink(up_value: object) -> Optional[str]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def parse_up_from_content(raw_content: str) -> UpParseResult:
+def parse_up_from_content(
+    raw_content: str, parent_marker: str = "up::"
+) -> UpParseResult:
     """Parse the `up` parent relationship from raw note content.
 
     Takes the RAW note content from a single read_note() call and splits the
     frontmatter block locally — no extra Kado round-trip needed (C1, SDD).
 
+    `parent_marker` is the active profile's parent relationship marker
+    (spec 028 T3.1); its marker word (alphanumeric core) is the frontmatter key.
+    The default preserves the historical `up::` inline marker / `up:` frontmatter
+    key behaviour byte-for-byte.
+
     Resolution order (ADR-2):
-      1. inline `up:: [[X]]` in body → target=X, source="inline"
-      2. frontmatter `up:` non-empty list/scalar → target=first, source="frontmatter"
-      3. missing / [] / null / `up::` without wikilink → target=None, source=None
+      1. inline `<marker> [[X]]` in body → target=X, source="inline"
+      2. frontmatter `<key>:` non-empty list/scalar → target=first, source="frontmatter"
+      3. missing / [] / null / marker without wikilink → target=None, source=None
     """
     frontmatter, body = _split_frontmatter(raw_content or "")
 
     # 1. Inline wins
-    m = _INLINE_UP.search(body)
+    m = up_marker_re(parent_marker).search(body)
     if m:
         raw_target = m.group(1).strip()
         if raw_target:
             return UpParseResult(target=_clean_target(raw_target), source="inline")
 
     # 2. Frontmatter fallback
-    target = _first_wikilink(frontmatter.get("up"))
+    target = _first_wikilink(frontmatter.get(marker_word(parent_marker)))
     if target:
         return UpParseResult(target=target, source="frontmatter")
 

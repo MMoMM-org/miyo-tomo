@@ -110,7 +110,7 @@ def _run_parser(md: str, tmp_path: Path) -> dict:
 def test_audio_peer_renders_source_as_set():
     """When action has audio_peer, Source line is [[stem]] + [[peer_basename]] (F3)."""
     md = render_create_atomic_note(
-        _action(audio_peer="Inbox/Recordings/interview-2026.m4a"), "my-note"
+        _action(audio_peer="Inbox/Recordings/interview-2026.m4a"), "my-note", " (MOC)"
     )
     assert "**Source:** [[my-note]] + [[interview-2026.m4a]]" in md, (
         f"Expected audio-peer set source line; got:\n{md}"
@@ -120,7 +120,7 @@ def test_audio_peer_renders_source_as_set():
 def test_audio_peer_preserves_extension():
     """audio_peer display must keep the .m4a extension — never coerce to .md (ADR-1)."""
     md = render_create_atomic_note(
-        _action(audio_peer="Inbox/Recordings/podcast.m4a"), "transcript"
+        _action(audio_peer="Inbox/Recordings/podcast.m4a"), "transcript", " (MOC)"
     )
     assert "[[podcast.m4a]]" in md, (
         "Expected .m4a extension preserved in audio peer wikilink"
@@ -133,7 +133,7 @@ def test_audio_peer_preserves_extension():
 def test_audio_peer_uses_basename_only():
     """Only the filename (not full path) is used in the wikilink (F3)."""
     md = render_create_atomic_note(
-        _action(audio_peer="Deep/Nested/Path/voice.m4a"), "note-stem"
+        _action(audio_peer="Deep/Nested/Path/voice.m4a"), "note-stem", " (MOC)"
     )
     assert "[[voice.m4a]]" in md, "Expected basename-only wikilink for audio peer"
     assert "Deep/Nested/Path" not in md, "Path prefix must not appear in wikilink"
@@ -141,7 +141,7 @@ def test_audio_peer_uses_basename_only():
 
 def test_no_audio_peer_renders_single_source():
     """Without audio_peer, Source line is the plain [[stem]] wikilink (unchanged)."""
-    md = render_create_atomic_note(_action(audio_peer=None), "my-note")
+    md = render_create_atomic_note(_action(audio_peer=None), "my-note", " (MOC)")
     assert "**Source:** [[my-note]]" in md, "Expected single-source line without peer"
     assert "**Source:** [[my-note]] + " not in md, "No peer set in source line when no peer"
 
@@ -151,7 +151,7 @@ def test_no_audio_peer_renders_single_source():
 
 def test_keep_source_checked_sets_keep_source_true(tmp_path):
     """Parse a block with [x] Keep source files → confirmed item has keep_source=True."""
-    rendered = render_create_atomic_note(_action(), "my-note")
+    rendered = render_create_atomic_note(_action(), "my-note", " (MOC)")
     # Flip the Keep source files checkbox to checked.
     rendered_checked = rendered.replace(
         "- [ ] Keep source files", "- [x] Keep source files", 1
@@ -169,7 +169,7 @@ def test_keep_source_checked_sets_keep_source_true(tmp_path):
 
 def test_keep_source_unchecked_gives_keep_source_false(tmp_path):
     """Parse a block with [ ] Keep source files → confirmed item has keep_source=False."""
-    rendered = render_create_atomic_note(_action(), "my-note")
+    rendered = render_create_atomic_note(_action(), "my-note", " (MOC)")
     # Default rendered block has the checkbox unchecked.
     doc_md = _minimal_doc_md(rendered)
     out = _run_parser(doc_md, tmp_path)
@@ -184,7 +184,7 @@ def test_keep_source_unchecked_gives_keep_source_false(tmp_path):
 
 def test_unapproved_item_becomes_skipped(tmp_path):
     """Un-approved atomic block ([ ] Approve) → item ends up in skipped_items (ADR-4)."""
-    rendered = render_create_atomic_note(_action(worthiness=0.3), "my-note")
+    rendered = render_create_atomic_note(_action(worthiness=0.3), "my-note", " (MOC)")
     # Ensure Approve is unchecked (low worthiness → already [ ])
     assert "- [ ] Approve" in rendered
     doc_md = _minimal_doc_md(rendered)

@@ -1,9 +1,9 @@
-# version: 1.0
+# version: 1.1
 # MiYo framework profile — Marcus Breiden's personal LYT-derived vault conventions
 # Managed file — do not edit manually. Update via tomo/profiles/miyo.yaml in repo.
 
 name: "MiYo"
-version: "1.0"
+version: "1.1"
 description: "Marcus Breiden's personal LYT-derived vault conventions"
 base_structure: "ACE-modified"  # Atlas, Calendar, Efforts + X support folder
 
@@ -39,6 +39,7 @@ concept_defaults:
       - "Atlas/200 Maps/"
     tags:
       - "type/others/moc"
+    name_suffix: " (MOC)"
 
   calendar:
     base_path: "Calendar/"

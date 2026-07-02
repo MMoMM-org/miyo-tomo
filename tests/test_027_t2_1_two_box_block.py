@@ -103,7 +103,7 @@ def test_decision_block_has_exactly_two_checkbox_lines():
 
     Approve + Keep source files — no Skip, no Delete source.
     """
-    md = render_create_atomic_note(_action(), "my-note")
+    md = render_create_atomic_note(_action(), "my-note", " (MOC)")
     boxes = _checkbox_lines(md)
     assert len(boxes) == 2, (
         f"Expected 2 checkbox lines in the decision block, got {len(boxes)}: {boxes!r}\n"
@@ -113,7 +113,7 @@ def test_decision_block_has_exactly_two_checkbox_lines():
 
 def test_decision_block_has_approve_line():
     """Decision block contains the Approve checkbox."""
-    md = render_create_atomic_note(_action(), "my-note")
+    md = render_create_atomic_note(_action(), "my-note", " (MOC)")
     boxes = _checkbox_lines(md)
     approve_lines = [line for line in boxes if "Approve" in line]
     assert len(approve_lines) == 1, (
@@ -123,7 +123,7 @@ def test_decision_block_has_approve_line():
 
 def test_decision_block_has_keep_source_files_line():
     """Decision block contains 'Keep source files' — not 'Keep origin' (PRD F1)."""
-    md = render_create_atomic_note(_action(), "my-note")
+    md = render_create_atomic_note(_action(), "my-note", " (MOC)")
     boxes = _checkbox_lines(md)
     keep_lines = [line for line in boxes if "Keep source files" in line]
     assert len(keep_lines) == 1, (
@@ -133,7 +133,7 @@ def test_decision_block_has_keep_source_files_line():
 
 def test_decision_block_no_origin_wording():
     """Decision block must not use 'origin' in the keep control — uses 'source' (PRD F1)."""
-    md = render_create_atomic_note(_action(), "my-note")
+    md = render_create_atomic_note(_action(), "my-note", " (MOC)")
     block_lines = _decision_block_lines(md)
     origin_in_control = [
         line for line in block_lines
@@ -146,7 +146,7 @@ def test_decision_block_no_origin_wording():
 
 def test_decision_block_no_skip_checkbox():
     """Decision block must NOT have a Skip checkbox (not-approving IS skipping, ADR-4)."""
-    md = render_create_atomic_note(_action(), "my-note")
+    md = render_create_atomic_note(_action(), "my-note", " (MOC)")
     boxes = _checkbox_lines(md)
     skip_lines = [line for line in boxes if re.search(r"\bSkip\b", line)]
     assert skip_lines == [], (
@@ -159,7 +159,7 @@ def test_decision_block_no_per_atomic_delete_source():
 
     Junk delete-only flow lives in the skipped-items path, not here.
     """
-    md = render_create_atomic_note(_action(), "my-note")
+    md = render_create_atomic_note(_action(), "my-note", " (MOC)")
     boxes = _checkbox_lines(md)
     delete_lines = [line for line in boxes if "Delete source" in line]
     assert delete_lines == [], (
@@ -169,7 +169,7 @@ def test_decision_block_no_per_atomic_delete_source():
 
 def test_high_worthiness_pre_approves():
     """Worthiness >= 0.5 → Approve is pre-ticked [x]."""
-    md = render_create_atomic_note(_action(worthiness=0.8), "my-note")
+    md = render_create_atomic_note(_action(worthiness=0.8), "my-note", " (MOC)")
     assert "- [x] Approve" in md, (
         "Expected '- [x] Approve' for high-worthiness action"
     )
@@ -177,7 +177,7 @@ def test_high_worthiness_pre_approves():
 
 def test_low_worthiness_leaves_approve_unticked():
     """Worthiness < 0.5 → Approve starts unchecked [ ]."""
-    md = render_create_atomic_note(_action(worthiness=0.3), "my-note")
+    md = render_create_atomic_note(_action(worthiness=0.3), "my-note", " (MOC)")
     assert "- [ ] Approve" in md, (
         "Expected '- [ ] Approve' for low-worthiness action"
     )
@@ -185,7 +185,7 @@ def test_low_worthiness_leaves_approve_unticked():
 
 def test_keep_source_files_continuation_text_present():
     """The parenthetical explanation for 'Keep source files' must be present."""
-    md = render_create_atomic_note(_action(), "my-note")
+    md = render_create_atomic_note(_action(), "my-note", " (MOC)")
     assert "don't delete the original(s) after the note is created" in md, (
         "Expected the 'Keep source files' explanation text in the rendered block"
     )

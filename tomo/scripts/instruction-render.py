@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.38.0
+# version: 0.39.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -38,11 +38,16 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# ADR-2: caller-supplied profiles dir — mirrors moc-discovery.py so the flattened
+# instance layout resolves correctly (never derived inside profile_conventions).
+DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
+
 from lib.doc_frontmatter import (  # noqa: E402
     FrontmatterMergeError,
     build_tomo_block,
     merge_tomo_block_into_markdown,
 )
+from lib.profile_conventions import resolve_conventions  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402,F401
 from lib.render_actions import (  # noqa: E402,F401
     _build_create_moc_actions,
@@ -248,6 +253,9 @@ def main() -> int:
     cfg = load_config(args.config)
     inbox_path = cfg["concepts.inbox"]
     profile_name = cfg["profile"]
+    conventions = resolve_conventions(
+        profile_override=profile_name, profiles_dir=DEFAULT_PROFILES_DIR
+    )
 
     # No confirmed items AND no daily updates AND no skipped items AND no
     # approved tag-handler groups → nothing to do.
@@ -438,6 +446,8 @@ def main() -> int:
         tag_handler_groups=tag_handler_groups,
         approved_tag_handler_group_ids=approved_tag_handler_group_ids,
         tag_handler_keep_source_group_ids=tag_handler_keep_source_group_ids,
+        parent_marker=conventions.parent_marker,
+        peer_marker=conventions.peer_marker,
     )
 
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────

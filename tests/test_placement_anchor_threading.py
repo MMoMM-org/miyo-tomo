@@ -168,7 +168,7 @@ class TestReducerPersistsAnchor:
 
 def _render_section_md(action: dict, stem: str) -> str:
     """Live-render the per-item markdown block (no invented fixtures)."""
-    return _reducer.render_create_atomic_note(action, stem)
+    return _reducer.render_create_atomic_note(action, stem, " (MOC)")
 
 
 def _doc_anchor_map_for(action: dict) -> dict[str, dict]:

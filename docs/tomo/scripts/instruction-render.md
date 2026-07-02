@@ -192,3 +192,18 @@ is a companion artifact of the same origin, not itself a source note), and
 "consumed origin" aligns with the existing transcript reason string ("Origin
 consumed by N atomic(s)"), making the two deletes read as a matched pair in the
 instruction set.
+
+## WHY resolve `Conventions` from `--config` and thread markers into `build_actions` (spec 028 T4.1)
+
+WHY: the relationship markers `up::` / `related::` were hardcoded inside
+`render_actions`. instruction-render is the render-time entry point that owns
+`--config`, so it resolves the active profile's `Conventions` once
+(`resolve_conventions(config_path=Path(args.config), profiles_dir=DEFAULT_PROFILES_DIR)`)
+and threads `parent_marker` / `peer_marker` into the `build_actions(...)` call.
+The library keeps `up::` / `related::` only as backward-compat default parameter
+values, so a profile that omits the keys still renders today's output; `miyo`
+resolves to exactly those defaults, keeping its rendered actions byte-identical
+(CON-2). Per-script resolution (not shared-ctx) is ADR-1; `DEFAULT_PROFILES_DIR`
+is caller-supplied from this script's own `SCRIPT_DIR` because the flattened
+instance layout breaks deep default path resolution (ADR-2 / CON-4). See
+`docs/tomo/scripts/lib/profile_conventions.md` for the resolver rationale.

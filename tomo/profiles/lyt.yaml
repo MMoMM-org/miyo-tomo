@@ -1,4 +1,4 @@
-# version: 1
+# version: 1.1
 # LYT framework profile — LYT 15 curriculum / Ideaverse Pro 2.5
 # Managed file: do not edit manually; update via tomo/profiles/lyt.yaml in miyo-tomo
 
@@ -31,6 +31,7 @@ concept_defaults:
       - "Atlas/Maps/"
     tags:
       - "moc"                   # standard Ideaverse tag
+    name_suffix: ""
 
   calendar:
     base_path: "Calendar/"

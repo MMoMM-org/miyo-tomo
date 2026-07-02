@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.21.0
+# version: 1.24.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -51,6 +51,7 @@ from lib.topic_clusters import (  # noqa: E402, F401
 )
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
+from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -306,7 +307,7 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     return actions
 
 
-def render_create_atomic_note(action: dict, stem: str) -> str:
+def render_create_atomic_note(action: dict, stem: str, moc_suffix: str) -> str:
     lines: list[str] = []
     title = (action.get("suggested_title") or "").strip() or stem
     audio_peer = action.get("audio_peer")
@@ -332,7 +333,7 @@ def render_create_atomic_note(action: dict, stem: str) -> str:
             lines.append(moc_link_line(moc))
 
     if action.get("needs_new_moc"):
-        topic = strip_moc_marker(action.get("proposed_moc_topic") or "")
+        topic = strip_moc_marker(action.get("proposed_moc_topic") or "", moc_suffix)
         if topic:
             lines.append("")
             lines.append(
@@ -480,18 +481,21 @@ def render_link_to_moc(action: dict, stem: str) -> str:
     )
 
 
-_MOC_SUFFIX = " (MOC)"
+def _ensure_moc_suffix(title: str, suffix: str) -> str:
+    """Ensure title ends with the profile's MOC suffix (apply-once).
 
-
-def _ensure_moc_suffix(title: str) -> str:
-    """Ensure title ends with ' (MOC)', converting trailing ' MOC' if present."""
+    Converts a trailing ' MOC' word form to the suffix; empty suffix (lyt) is a
+    no-op. F-55 / spec 028 T2.3 — the suffix is resolved from the active profile.
+    """
+    if not suffix:
+        return title
     if not title or title.strip() == "MOC":
         return title
-    if title.endswith(_MOC_SUFFIX):
+    if title.endswith(suffix):
         return title
     if title.endswith(" MOC"):
-        return title[:-4] + _MOC_SUFFIX
-    return title + _MOC_SUFFIX
+        return title[: -len(" MOC")] + suffix
+    return title + suffix
 
 
 def _atomic_id(section_id: str, atomic_idx: int) -> str:
@@ -508,10 +512,11 @@ def _atomic_id(section_id: str, atomic_idx: int) -> str:
 def _enrich_proposed_mocs(
     proposed_mocs: list[dict],
     section_titles: dict[str, str],
+    moc_suffix: str,
 ) -> None:
     """Mutate each proposed_moc in-place: add name, note_titles, reason fields."""
     for pm in proposed_mocs:
-        pm["name"] = _ensure_moc_suffix(pm["topic"])
+        pm["name"] = _ensure_moc_suffix(pm["topic"], moc_suffix)
         items: list[str] = pm.get("items") or []
         pm["note_titles"] = [
             section_titles.get(sid, sid) for sid in items
@@ -524,8 +529,8 @@ def _enrich_proposed_mocs(
         )
 
 
-def render_create_moc(action: dict, stem: str) -> str:
-    moc_title = _ensure_moc_suffix(action.get("moc_title", ""))
+def render_create_moc(action: dict, stem: str, moc_suffix: str) -> str:
+    moc_title = _ensure_moc_suffix(action.get("moc_title", ""), moc_suffix)
     parent = action.get("parent_moc", "")
     return (
         f"**Source:** [[{stem}]]\n"
@@ -651,11 +656,13 @@ def render_log_link_mirror(log_links_for_stem: list[dict]) -> str:
     return "\n".join(lines)
 
 
+# Renderers with a uniform (action, stem) contract, dispatched by kind in the
+# main loop. `create_atomic_note` and `create_moc` are NOT in this map: both need
+# the profile-resolved `moc_suffix`, so they are dispatched explicitly (W1/W2,
+# F-55) rather than special-casing a 3-arg callable inside a 2-arg dict.
 RENDERERS = {
-    "create_atomic_note": render_create_atomic_note,
     "update_daily": render_update_daily,
     "link_to_moc": render_link_to_moc,
-    "create_moc": render_create_moc,
     "modify_note": render_modify_note,
 }
 
@@ -1424,6 +1431,15 @@ def main() -> int:
     out_path = Path(args.output)
     load_field_sections(Path(args.shared_ctx))
 
+    # spec 028 T2.3: resolve the active profile's vault conventions once. The
+    # MOC suffix drives title enrichment; the full block is written into the
+    # output doc so suggestion-parser can read markers from it.
+    _profiles_dir = Path(__file__).resolve().parent.parent / "profiles"
+    conventions = resolve_conventions(
+        profile_override=args.profile, profiles_dir=_profiles_dir
+    )
+    moc_suffix = conventions.moc_suffix
+
     state = last_state_per_stem(state_path)
     done_stems = sorted(s for s, e in state.items() if e.get("status") == "done")
     failed_entries = sorted(
@@ -1514,10 +1530,20 @@ def main() -> int:
                 title_to_suggestion_id[_pre_title] = f"S{_pre_counter:02d}"
         for action in actions:
             kind = action.get("kind")
-            renderer = RENDERERS.get(kind)
-            if not renderer:
-                continue
-            if kind == "update_daily":
+            # W1/W2 (F-55): create_atomic_note and create_moc need the
+            # profile-resolved moc_suffix, so they are dispatched explicitly.
+            # Every other kind flows through the uniform (action, stem) RENDERERS
+            # map; unknown kinds are skipped.
+            if kind == "create_atomic_note":
+                if action.get("suppressed"):
+                    # #88: sub-0.5 atomic — render a light "kept in inbox" block
+                    # instead of the full atomic-note proposal.
+                    rendered = render_suppressed_atomic(action, stem)
+                else:
+                    rendered = render_create_atomic_note(action, stem, moc_suffix)
+            elif kind == "create_moc":
+                rendered = render_create_moc(action, stem, moc_suffix)
+            elif kind == "update_daily":
                 # Do NOT render the per-item `**Daily update:**` /
                 # `**Decision (daily update):**` block — the aggregated
                 # ## Daily Notes Updates block at the top already captures
@@ -1586,11 +1612,10 @@ def main() -> int:
                                 "time": u.get("time"),
                                 "reason": u.get("reason", ""),
                             })
-            elif kind == "create_atomic_note" and action.get("suppressed"):
-                # #88: sub-0.5 atomic — render a light "kept in inbox" block
-                # instead of the full atomic-note proposal.
-                rendered = render_suppressed_atomic(action, stem)
             else:
+                renderer = RENDERERS.get(kind)
+                if not renderer:
+                    continue
                 rendered = renderer(action, stem)
             if rendered is not None:
                 rendered_action: dict = {"kind": kind, "rendered_md": rendered}
@@ -1669,11 +1694,11 @@ def main() -> int:
     # The helper is also called by `moc-discovery.py` (Phase 2) so the two
     # call sites cannot drift in normalisation or tag-fold semantics.
     proposed_mocs: list[dict] = list(
-        build_topic_clusters(cluster_candidates, args.threshold)
+        build_topic_clusters(cluster_candidates, args.threshold, suffix=moc_suffix)
     )
 
     # Post-process: add name, note_titles, reason fields.
-    _enrich_proposed_mocs(proposed_mocs, section_titles)
+    _enrich_proposed_mocs(proposed_mocs, section_titles, moc_suffix)
 
     needs_attention: list[dict] = []
     for stem, entry in failed_entries:
@@ -1749,6 +1774,13 @@ def main() -> int:
         "generated": now_iso(),
         "run_id": args.run_id,
         "profile": args.profile,
+        # spec 028 T2.3: additive — the parser reads markers from here, falling
+        # back to defaults when the block is absent (older artifacts).
+        "conventions": {
+            "parent_marker": conventions.parent_marker,
+            "peer_marker": conventions.peer_marker,
+            "moc_suffix": conventions.moc_suffix,
+        },
         "doc_variant": doc_variant,  # XDD 012 — primary | fan-resolve
         "source_items": len(done_stems) + len(failed_entries),
         "sections": sections,

@@ -247,3 +247,13 @@ excludes it from fresh sources (`inbox-triage.py::compute_new_sources`); Hashi's
 (895c0ac) already wipes the block on `move_note`/`create_moc` apply, so the moved note stays clean —
 no cross-repo change. Fail-safe: a note whose frontmatter can't take the block is written unstamped
 (worst case = pre-fix re-ingestion, never a corrupted note).
+
+## OPEN — F-16 follow-up: `moc-proposal-parser.py` parent-checkbox marker hardcoded
+
+Spec 028 (F-16) de-hardcoded relationship markers across the pipeline, but a Phase-4 seam grep
+found `moc-proposal-parser.py:132` (`if "up::" in cb_text`) parsing an approved MOC proposal's
+parent checkbox with a hardcoded `up::`. Deferred from 028 because it is **pure future-proofing**
+(both bundled profiles use `up::`, so zero behavioral impact today) and the script has **no
+`--config`/`--profile` channel** — threading it needs a delivery-channel design like the one
+`suggestion-parser` got (read the marker from an upstream artifact's `conventions` block, or add a
+flag). Pick up if/when a non-`up::` profile ships. Related: spec 028, epic #20.

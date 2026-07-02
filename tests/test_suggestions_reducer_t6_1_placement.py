@@ -404,7 +404,7 @@ class TestRenderCreateAtomicNotePlacement:
             "placement": "inside",
             "new_section": None,
         })])
-        md = render_create_atomic_note(action, "source-note")
+        md = render_create_atomic_note(action, "source-note", " (MOC)")
         assert "**Placement:** under `## Frameworks and Methodologies`    ← edit the heading to move the link" in md
 
     def test_no_bare_hash_anchor_in_full_render(self):
@@ -415,7 +415,7 @@ class TestRenderCreateAtomicNotePlacement:
             "placement": "inside",
             "new_section": None,
         })])
-        md = render_create_atomic_note(action, "source-note")
+        md = render_create_atomic_note(action, "source-note", " (MOC)")
         # AC-11: bare [[Target#]] or [[Target#]] pattern must not appear
         assert not re.search(r"\[\[[^\]]*#[^\]]*\]\]", md), (
             f"Found bare [[Target#]] anchor in rendered output (AC-11 violation):\n{md}"
@@ -431,13 +431,13 @@ class TestRenderCreateAtomicNotePlacement:
                 "type": "line", "value": "any", "placement": "after", "new_section": None,
             }),
         ])
-        md = render_create_atomic_note(action, "source-note")
+        md = render_create_atomic_note(action, "source-note", " (MOC)")
         assert md.count("**Placement:**") == 2
 
     def test_moc_without_anchor_no_placement_line(self):
         """candidate_moc without anchor key → no **Placement:** line (back-compat)."""
         action = make_action(mocs=[make_moc("Atlas/200 Maps/Philosophy MOC.md")])
-        md = render_create_atomic_note(action, "source-note")
+        md = render_create_atomic_note(action, "source-note", " (MOC)")
         assert "**Placement:**" not in md
 
 

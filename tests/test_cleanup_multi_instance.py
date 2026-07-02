@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_cleanup_multi_instance.py — registry-aware cleanup-tomo.sh (#39 / D-11).
 
-Post-spec-020 instances live OUTSIDE the repo. cleanup-tomo.sh v0.2 targets a
-registered instance by name (~/.tomo/instances.json), defaults an outside-repo
-target to a DRY RUN, deletes only with --force, and deregisters after.
+v0.3 separates two operations:
+  registry-only  — deregister from ~/.tomo/instances.json; never touch files.
+  delete-disk    — also remove files; needs --force to skip the confirm.
+Non-interactive runs default to the SAFE registry-only action. Interactive runs
+(a TTY) get an r/d/N menu — not exercised here (subprocess has no TTY, so these
+tests deterministically hit the non-interactive branch).
 
 SAFETY: every test drives the script in --instance mode against a FAKE instance
 built under the test's tmp_path, with the registry isolated via
@@ -27,11 +30,6 @@ REGISTRY_LIB = REPO_ROOT / "scripts" / "lib" / "instance-registry.sh"
 
 
 def _make_instance(tmp_path: Path, name: str = "tomo-privat") -> dict:
-    """Build a self-contained fake outside-repo instance under tmp_path.
-
-    Layout mirrors a real post-020 install: <root>/{instance,home,begin-tomo.sh,
-    tomo-install.json}. Returns the key paths.
-    """
     root = tmp_path / name
     inst = root / "instance"
     home = root / "home"
@@ -77,86 +75,117 @@ def _run(registry_file: Path, args: list[str], home: str | None = None):
     )
 
 
-# ── dry-run is the default for an outside-repo instance ──────────────────────
+# ── registry-only: deregister, never touch files ────────────────────────────
 
 
-def test_outside_repo_defaults_to_dry_run(tmp_path):
+def test_registry_only_deregisters_keeps_files(tmp_path):
+    reg = tmp_path / "reg.json"
+    p = _make_instance(tmp_path)
+    _seed_registry(reg, "tomo-privat", str(p["instance"]))
+
+    res = _run(reg, ["--instance", "tomo-privat", "--registry-only"])
+    assert res.returncode == 0, res.stderr
+    # Files untouched; entry gone; user told to delete manually.
+    assert p["instance"].exists() and p["home"].exists() and p["config"].exists()
+    assert _resolve(reg, "tomo-privat").returncode != 0
+    assert "Delete these yourself" in res.stdout
+    assert str(p["instance"]) in res.stdout
+
+
+def test_noninteractive_default_is_registry_only(tmp_path):
+    """No action flag + no TTY (subprocess) → safe registry-only, files kept."""
     reg = tmp_path / "reg.json"
     p = _make_instance(tmp_path)
     _seed_registry(reg, "tomo-privat", str(p["instance"]))
 
     res = _run(reg, ["--instance", "tomo-privat"])
     assert res.returncode == 0, res.stderr
-    assert "--force" in res.stdout  # tells the user how to actually delete
-    # Nothing deleted; registry entry intact.
     assert p["instance"].exists()
-    assert p["home"].exists()
-    assert p["config"].exists()
-    assert _resolve(reg, "tomo-privat").returncode == 0
+    assert _resolve(reg, "tomo-privat").returncode != 0
+    assert "registry-only" in res.stdout
 
 
-def test_explicit_dry_run_deletes_nothing(tmp_path):
+# ── delete-disk: only with --force (non-interactive) ─────────────────────────
+
+
+def test_delete_disk_force_removes_and_deregisters(tmp_path):
     reg = tmp_path / "reg.json"
     p = _make_instance(tmp_path)
     _seed_registry(reg, "tomo-privat", str(p["instance"]))
 
-    res = _run(reg, ["--instance", "tomo-privat", "--dry-run"])
-    assert res.returncode == 0, res.stderr
-    assert p["instance"].exists()
-
-
-# ── --force actually deletes + deregisters ───────────────────────────────────
-
-
-def test_force_deletes_and_deregisters(tmp_path):
-    reg = tmp_path / "reg.json"
-    p = _make_instance(tmp_path)
-    _seed_registry(reg, "tomo-privat", str(p["instance"]))
-
-    res = _run(reg, ["--instance", "tomo-privat", "--force"])
+    res = _run(reg, ["--instance", "tomo-privat", "--delete-disk", "--force"])
     assert res.returncode == 0, res.stderr
     assert not p["instance"].exists()
     assert not p["home"].exists()
     assert not p["launcher"].exists()
     assert not p["config"].exists()
-    # Deregistered.
     assert _resolve(reg, "tomo-privat").returncode != 0
 
 
-def test_keep_home_preserves_credentials(tmp_path):
+def test_delete_disk_without_force_noninteractive_errors(tmp_path):
+    """--delete-disk with no --force and no TTY must refuse and change nothing."""
     reg = tmp_path / "reg.json"
     p = _make_instance(tmp_path)
     _seed_registry(reg, "tomo-privat", str(p["instance"]))
 
-    res = _run(reg, ["--instance", "tomo-privat", "--force", "--keep-home"])
+    res = _run(reg, ["--instance", "tomo-privat", "--delete-disk"])
+    assert res.returncode == 1
+    assert "without --force" in res.stderr
+    assert p["instance"].exists()                       # nothing deleted
+    assert _resolve(reg, "tomo-privat").returncode == 0  # still registered
+
+
+def test_keep_home_with_delete_disk(tmp_path):
+    reg = tmp_path / "reg.json"
+    p = _make_instance(tmp_path)
+    _seed_registry(reg, "tomo-privat", str(p["instance"]))
+
+    res = _run(reg, ["--instance", "tomo-privat", "--delete-disk", "--force", "--keep-home"])
     assert res.returncode == 0, res.stderr
     assert not p["instance"].exists()
-    assert p["home"].exists()  # credentials preserved
+    assert p["home"].exists()
 
 
 # ── guard rails ──────────────────────────────────────────────────────────────
 
 
-def test_unknown_instance_errors(tmp_path):
-    reg = tmp_path / "reg.json"
-    reg.write_text('{"schema_version":1,"instances":[]}', encoding="utf-8")
-    res = _run(reg, ["--instance", "ghost"])
-    assert res.returncode == 1
-    assert "Unknown instance" in res.stderr
-
-
 def test_protected_path_refused(tmp_path):
-    """If a target resolves to $HOME, the guard refuses and deletes nothing —
-    exercised by pointing HOME at the instance dir (--force would otherwise
-    delete it)."""
     reg = tmp_path / "reg.json"
     p = _make_instance(tmp_path)
     _seed_registry(reg, "tomo-privat", str(p["instance"]))
 
-    res = _run(reg, ["--instance", "tomo-privat", "--force"], home=str(p["instance"]))
+    res = _run(reg, ["--instance", "tomo-privat", "--delete-disk", "--force"],
+               home=str(p["instance"]))
     assert res.returncode == 1
     assert "protected path" in res.stderr
-    assert p["instance"].exists()  # nothing deleted
+    assert p["instance"].exists()
+
+
+def test_mutually_exclusive_flags(tmp_path):
+    reg = tmp_path / "reg.json"
+    p = _make_instance(tmp_path)
+    _seed_registry(reg, "tomo-privat", str(p["instance"]))
+    res = _run(reg, ["--instance", "tomo-privat", "--registry-only", "--delete-disk"])
+    assert res.returncode == 1
+    assert "mutually exclusive" in res.stderr
+
+
+def test_unknown_instance_errors(tmp_path):
+    reg = tmp_path / "reg.json"
+    reg.write_text('{"schema_version":1,"instances":[]}', encoding="utf-8")
+    res = _run(reg, ["--instance", "ghost", "--registry-only"])
+    assert res.returncode == 1
+    assert "Unknown instance" in res.stderr
+
+
+def test_dry_run_changes_nothing(tmp_path):
+    reg = tmp_path / "reg.json"
+    p = _make_instance(tmp_path)
+    _seed_registry(reg, "tomo-privat", str(p["instance"]))
+    res = _run(reg, ["--instance", "tomo-privat", "--delete-disk", "--force", "--dry-run"])
+    assert res.returncode == 0, res.stderr
+    assert p["instance"].exists()
+    assert _resolve(reg, "tomo-privat").returncode == 0  # not deregistered either
 
 
 def test_list_shows_registered_instance(tmp_path):
@@ -168,13 +197,11 @@ def test_list_shows_registered_instance(tmp_path):
     assert "tomo-privat" in res.stdout
 
 
-def test_missing_files_still_deregisters(tmp_path):
-    """A registered instance whose files are already gone still gets
-    deregistered (no stale registry entry)."""
+def test_missing_files_registry_only_deregisters(tmp_path):
     reg = tmp_path / "reg.json"
-    ghost_path = tmp_path / "gone" / "instance"
-    _seed_registry(reg, "tomo-privat", str(ghost_path))  # path never created
-    res = _run(reg, ["--instance", "tomo-privat", "--force"])
+    ghost = tmp_path / "gone" / "instance"
+    _seed_registry(reg, "tomo-privat", str(ghost))
+    res = _run(reg, ["--instance", "tomo-privat", "--registry-only"])
     assert res.returncode == 0, res.stderr
     assert _resolve(reg, "tomo-privat").returncode != 0
 

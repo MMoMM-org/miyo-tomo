@@ -251,20 +251,22 @@ The installer still writes a `.gitignore` at the instance so that if you choose 
 
 For a clean re-run (useful during testing or after config mistakes):
 
-```bash
-bash scripts/cleanup-tomo.sh              # repo-root dev instance, interactive
-bash scripts/cleanup-tomo.sh --force      # skip confirmation
-bash scripts/cleanup-tomo.sh --dry-run    # preview what would be removed
-bash scripts/cleanup-tomo.sh --keep-home  # preserve Claude auth credentials
-```
-
-To remove a **registered** instance (which may live outside the repo since
-spec 020), target it by name:
+Cleanup is two separate operations. **registry-only** just drops the instance
+from the registry (`~/.tomo/instances.json`) and prints the folder path for you
+to delete yourself — it never touches your files. **delete-disk** also removes
+the files. Interactive runs are asked which one; non-interactive runs default to
+the safe registry-only action.
 
 ```bash
-bash scripts/cleanup-tomo.sh --list                       # list instances
-bash scripts/cleanup-tomo.sh --instance <name>            # outside-repo → dry run
-bash scripts/cleanup-tomo.sh --instance <name> --force    # actually delete + deregister
+bash scripts/cleanup-tomo.sh --list                        # list registered instances
+bash scripts/cleanup-tomo.sh --instance <name>             # ask r/d/N (registry-only if piped)
+bash scripts/cleanup-tomo.sh --instance <name> --registry-only   # deregister; you delete the folder
+bash scripts/cleanup-tomo.sh --instance <name> --delete-disk --force  # deregister AND delete files
+bash scripts/cleanup-tomo.sh --instance <name> --dry-run   # preview; change nothing
 ```
+
+`--keep-home` / `--keep-instance` preserve those dirs during a `--delete-disk`
+run (e.g. keep Claude auth credentials). Omitting `--instance` targets the
+repo-root dev instance.
 
 The cleanup script removes `tomo-instance/`, `tomo-home/`, and `tomo-install.json`. It refuses to delete anything outside the repo root as a safety check.

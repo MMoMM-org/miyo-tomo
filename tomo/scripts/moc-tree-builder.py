@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.0
+# version: 0.9.0
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -164,14 +164,58 @@ def extract_title(frontmatter: dict, body: str, path: str) -> str:
     return basename_no_ext(path)
 
 
-def extract_tags(frontmatter: dict) -> list[str]:
-    """Normalise the frontmatter `tags` value to a list of strings."""
+# Inline Obsidian tag: `#` (not preceded by a tag-continuation char, so `##`
+# headings and mid-word `word#x` don't match), then a tag containing at least
+# one letter or `_` (pure-numeric `#123` is not a tag). `/` allows nesting.
+_INLINE_TAG_RE = re.compile(r"(?<![\w/#-])#([A-Za-z0-9_/-]*[A-Za-z_][A-Za-z0-9_/-]*)")
+
+
+def _strip_code_regions(text: str) -> str:
+    """Blank out fenced code blocks and inline code so `#tag`-looking tokens
+    inside code are not read as tags."""
+    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    text = re.sub(r"~~~.*?~~~", " ", text, flags=re.DOTALL)
+    text = re.sub(r"`[^`]*`", " ", text)
+    return text
+
+
+def parse_inline_tags(body: str | None) -> list[str]:
+    """Extract inline `#tags` from a note body, first-seen order, `#` stripped.
+
+    Code blocks/spans are skipped. Returned tags have no leading `#`, matching
+    the frontmatter tag form (so `#MiYo/Tomo/exclude/moc` → the same string a
+    YAML `tags:` entry would carry).
+    """
+    if not body:
+        return []
+    cleaned = _strip_code_regions(body)
+    out: list[str] = []
+    for match in _INLINE_TAG_RE.findall(cleaned):
+        tag = match.rstrip("/-")
+        if tag and tag not in out:
+            out.append(tag)
+    return out
+
+
+def extract_tags(frontmatter: dict, body: str | None = None) -> list[str]:
+    """Normalise the frontmatter `tags` value to a list of strings.
+
+    When `body` is supplied, inline `#tags` from the note body are merged in
+    (#50) so frontmatter and inline tags are equivalent — matching MOC
+    discovery, which treats both the same via Kado `search_by_tag`. Without
+    this, an inline `#MiYo/Tomo/exclude/moc` was silently ignored.
+    """
     raw = frontmatter.get("tags")
     if isinstance(raw, list):
-        return [str(t).strip() for t in raw if t is not None and str(t).strip()]
-    if isinstance(raw, str) and raw.strip():
-        return [raw.strip()]
-    return []
+        tags = [str(t).strip() for t in raw if t is not None and str(t).strip()]
+    elif isinstance(raw, str) and raw.strip():
+        tags = [raw.strip()]
+    else:
+        tags = []
+    for tag in parse_inline_tags(body):
+        if tag not in tags:
+            tags.append(tag)
+    return tags
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -377,7 +421,7 @@ def build_entries(
             "up_state": up_state,
             "up_target": up.target,
             "up_source": up.source,
-            "tags": extract_tags(fm),
+            "tags": extract_tags(fm, body),
         }
 
         if kind == "moc":

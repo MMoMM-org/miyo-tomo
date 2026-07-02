@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.14
+# version: 0.2.15
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -230,8 +230,9 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - Never touches user files (vault-config, kado-config)
 
 - **cleanup / reset / reinstall / start over / clean slate** →
-  - Outside the container: `bash scripts/cleanup-tomo.sh` (interactive) or `--force`
-  - A registered instance (may be outside the repo): `--instance <name>` (outside-repo → dry run unless `--force`; deregistered after). `--list` shows instances.
+  - Outside the container: `bash scripts/cleanup-tomo.sh` — asks `r` (registry-only, you delete the folder) / `d` (also delete files) / `N`.
+  - Target a registered instance (may be outside the repo): `--instance <name>`. `--list` shows instances.
+  - `--registry-only` deregisters only; `--delete-disk --force` also removes files. Non-interactive defaults to registry-only.
   - Flags: `--keep-home` (preserve Claude auth), `--keep-instance`, `--dry-run`
   - Then `bash scripts/install-tomo.sh` for a fresh setup
 

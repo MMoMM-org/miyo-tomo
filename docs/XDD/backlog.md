@@ -68,7 +68,7 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 | D-07 | **#42** | `instruction-render.py` 1870 LOC refactor |
 | D-08 | ☐ #25 | `suggestion-parser.py` 1397 LOC refactor |
 | D-10 | **#41** | Documentation refresh (docs/ tree, coverage, screenshots) |
-| D-11 | ~~#39~~ | **Done (2026-07-02)** — `cleanup-tomo.sh` v0.2 registry-aware (`--instance`/`--list`, outside-repo dry-run-default, deregister). |
+| D-11 | ~~#39~~ | **Done (2026-07-02)** — `cleanup-tomo.sh` v0.3 registry-aware: `registry-only` (deregister, you delete the folder) vs `--delete-disk --force`; interactive r/d/N; non-interactive defaults to registry-only; `--instance`/`--list`; hardened path guard. |
 | D-12 | ☐ #23 | `move-tomo.sh` / instance-relocate helper |
 
 **Operational follow-ups (from `docs/ai/memory/context.md`), also migrated:**

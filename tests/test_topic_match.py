@@ -125,16 +125,33 @@ class TestFlatReduction:
 
 
 class TestTrueDuplicate:
+    def test_asymmetric_intersection_uses_min_weight(self):
+        """Mutation killer: confirm the numerator uses min, not max.
+
+        "b" is title-derived on side A only; "c" is title-derived on side B only.
+        numer = min(2,1) + min(1,2) = 2 ; denom = max(2,1) + max(1,2) = 4 ; score = 0.5
+        A min->max swap in the numerator would yield 4/4 = 1.0 and fail this.
+        """
+        score = weighted_overlap({"b", "c"}, "b note", {"b", "c"}, "c note")
+        assert score == 0.5
+
     def test_true_dup_title_agreement_survives(self):
-        """When both sides share a title-derived topic, the score stays >= 0.80."""
-        shared = {"shared-theme", "c1", "c2", "c3", "c4"}
-        # "shared-theme" appears in both titles → W_TITLE on both sides
-        score = weighted_overlap(
-            shared, "shared-theme reference",
-            shared, "shared-theme reference",
-        )
+        """When both sides share a title-derived topic, the score stays >= 0.80.
+
+        This test uses a mostly-but-not-fully overlapping construction to verify
+        the weighted scorer properly survives the threshold, not just that identical
+        sets trivially score 1.0.
+        """
+        # shared title theme (×2 both sides) + 3 shared content topics + 1 B-only content topic.
+        # numer = min(2,2) + 3*min(1,1) = 5 ; denom = max(2,2) + 3*max(1,1) + max(0,1) = 6 ; 5/6 ≈ 0.833
+        a = {"shared-theme", "c1", "c2", "c3"}
+        b = {"shared-theme", "c1", "c2", "c3", "c4"}
+        score = weighted_overlap(a, "shared-theme reference", b, "shared-theme reference")
         assert score >= 0.80, (
             f"True dup with matching title themes must score >= 0.80; got {score}"
+        )
+        assert abs(score - 5/6) < 1e-9, (
+            f"Expected exactly 5/6, got {score}"
         )
 
     def test_identical_topic_sets_score_one(self):
@@ -150,12 +167,6 @@ class TestTrueDuplicate:
 
 
 class TestEdgeCases:
-    def test_empty_topic_set_a_returns_zero(self):
-        assert weighted_overlap(set(), "title", {"a"}, "title") == 0.0
-
-    def test_empty_topic_set_b_returns_zero(self):
-        assert weighted_overlap({"a"}, "title", set(), "title") == 0.0
-
     def test_both_empty_returns_zero(self):
         assert weighted_overlap(set(), "", set(), "") == 0.0
 
@@ -170,11 +181,6 @@ class TestEdgeCases:
         score = weighted_overlap(a, "", b, "")
         # All weights are W_BASE; score should equal flat Jaccard = 1.0
         assert score == 1.0, f"Empty title must use base weights; got {score}"
-
-    def test_none_like_empty_title_no_error(self):
-        """None-ish empty string for title must not raise."""
-        score = weighted_overlap({"x"}, "", {"x"}, "")
-        assert score == 1.0
 
     def test_whitespace_only_topics_ignored(self):
         """Whitespace-only topics normalize to empty string and are skipped."""

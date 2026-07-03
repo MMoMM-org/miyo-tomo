@@ -116,7 +116,8 @@ Apply heuristics (confidence scoring). First match above 0.7 wins.
 For each MOC in `shared_ctx.mocs`:
 - Extract item topics by tokenising body + tags, lowercase, strip stopwords
 - Assign each topic ONE weight: W_TITLE=2 if its normalized form is a substring of
-  the item's OR the MOC's normalized title; W_BASE=1 otherwise
+  the item's OR the MOC's title (lowercased, stripped, whitespace-collapsed);
+  W_BASE=1 otherwise
 - Compute weighted_shared = Σ weight(t) for t in (item_topics ∩ moc_topics)
 - Compute weighted_union  = Σ weight(t) for t in (item_topics ∪ moc_topics)
 - overlap_ratio = weighted_shared / weighted_union

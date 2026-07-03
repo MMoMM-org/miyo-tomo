@@ -29,7 +29,7 @@ Must/Should items are standalone issues; **☐ #N** means the item is a Could-ch
 | F-01 | **#26** | Must — Hashi executor epic (cross-repo, primary work in `miyo-tomo-hashi`) |
 | F-02 | ☐ #16 | Periodic-notes infra (config present, rendering open) |
 | F-04 | ☐ #23 | Profile switching post-install |
-| F-05 | ☐ #17 | Topic weighting in MOC matching |
+| F-05 | **#124** | Topic weighting in MOC matching (promoted to sub-issue 2026-07-03; spec 029) |
 | F-07 | ☐ #20 | Configurable classification threshold |
 | F-09 | ☐ #21 | Incremental cache refresh |
 | F-10 | ☐ #22 | Automated applied-action detection |
@@ -91,6 +91,9 @@ Deferred-by-nature Could items kept in the backlog as an idea store; promote to 
 | F-22 | Document splitting for large batches | Could | Soft limit 30 items; no splitting logic. Batches are typically <10. |
 | F-23 | Archive subdirectory for processed items | Could | Optional move to `+/archive/YYYY-MM/`. Tags-only suffices for MVP. |
 | F-24 | Delete auxiliary files after cleanup | Could | Rendered notes/diffs stay in inbox after cleanup. Safer to leave for now. |
+| F-05a | Typed-topic provenance at extraction (approach A) | Could | F-05 (#124) follow-on. Store extraction-time provenance in the cache instead of the title-token proxy. Only if #124's proxy proves insufficient. Heavy: cache schema bump + squelch-signature risk. |
+| F-05b | Topic-match threshold re-derivation | Could | F-05 (#124) follow-on. Standalone data-driven re-tune of `JACCARD_DUP_THRESHOLD` / analyst keep-gate beyond #124's in-scope validation. Only if #124's placement-confidence check shows misseparation. |
+| F-05c | Replay archived inbox as F-05 golden fixture | Could | F-05 (#124) follow-on. Recover the archived inbox that produced the original mis-match to build a real (not synthetic) regression fixture. Contingent on data recovery. |
 
 ## Done (historical record)
 

@@ -284,3 +284,31 @@ key means voice_render.py did not write it (e.g. the file was created manually o
 is an older transcript). Emitting a null/absent peer signals "no audio file to
 delete" — the delete builder's empty-set guard then produces no audio delete,
 preventing an accidental deletion of a non-existent file.
+
+## Step 4 MOC-Match Topic Weighting — F-05 (spec 029, 2026-07-03)
+
+WHY this change (ADR-6, named constants): incidental content-keyword overlap was
+letting thematically-unrelated MOCs rank as matches — worse, near the 0.80 dedupe
+threshold at Site 1 as false duplicates. The fix weights a topic ×2 when it is
+"title-derived" (its normalized form is a substring of the note's normalized
+title). This raises shared TITLE THEME above shared incidental content keywords,
+so title-agreeing matches rank above content noise.
+
+WHAT changed: Step 4's overlap scoring now uses `overlap_ratio = weighted_shared /
+weighted_union`, where `W_TITLE=2` and `W_BASE=1`. Title-derived topics count
+double on EITHER the item or MOC side. Constants are named constants so they can
+be tuned via a prompt edit + version bump without code changes.
+
+WHY Site 2 option (ADR-4, two substrates): this is the analyst LLM recipe
+substrate, using simplified Option A ("count double if title-derived on EITHER
+side") which is decision-equivalent to Site 1's Ruzicka Σmin/Σmax formula
+(`moc-discovery.py._find_jaccard_match` in `lib.topic_match.weighted_overlap`)
+but NOT numerically identical. Near-threshold partial-title cases the two sites
+can differ in exact value while agreeing on ranking direction. LLMs execute a
+simple weighted ratio more reliably than min/max bookkeeping.
+
+Preserved invariants: the `≥ 0.15` keep-gate, `top 3` cap, `+0.1` non-classification
+depth bonus, and Classification Guard are unchanged.
+
+References: spec `docs/XDD/specs/029-topic-weighting-moc-matching/`, issue #124,
+ADR-4 (two substrates), ADR-6 (named constants).

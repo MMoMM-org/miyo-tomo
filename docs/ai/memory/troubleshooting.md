@@ -1,5 +1,5 @@
 # Troubleshooting — Tomo
-<!-- Known issues and proven fixes. Updated: 2026-06-29 -->
+<!-- Known issues and proven fixes. Updated: 2026-07-03 -->
 <!-- Format: ## [Issue title] — Status: open/resolved — [fix description] -->
 <!-- Resolved entries are archived by /memory-cleanup, not deleted. See archive/YYYY-MM/ -->
 
@@ -22,3 +22,9 @@ When a new field flows through the Pass-2 pipeline, every transformation stage m
 ## `/inbox` self-triggered via model-improvised `ScheduleWakeup` — Status: resolved (#110)
 
 `ScheduleWakeup` is a built-in Claude Code harness tool (it appears NOWHERE in the Tomo runtime — verified by grep). During a container `/inbox` run the model improvised `ScheduleWakeup(prompt:"inbox")` as a "fallback heartbeat while synthesis-conductor runs"; when it fired the `prompt:"inbox"` re-ran the **whole** `/inbox` command → re-triage → re-ingested Pass-2 rendered staging notes (`source_items 4 → 9`). It was NOT the `/loop` skill (that idled correctly with `<<autonomous-loop-dynamic>>`) and NOT a Tomo instruction — every `/inbox` route already ends in `Exit`. Fix: PreToolUse hook `dot_claude/hooks/block-inbox-selfschedule.sh` (matcher `ScheduleWakeup`) denies any wakeup whose `prompt` references `inbox` with a message that `/inbox` runs only on explicit user invocation; generic loop heartbeats pass through. Hooks load at **session start** — restart the container session after syncing. General lesson: when a plain `Exit`/imperative is observed failing against model improvisation of a built-in tool, a hard PreToolUse hook beats another soft prompt directive.
+
+<!-- 2026-07-03 -->
+
+## Empty stub notes generated from an approved suggestion doc with missing source notes — Status: open (needs repro)
+
+Observed (2026-07-02): Tomo generated empty stub notes. Suspected trigger is an **approved suggestion document whose source notes are missing** — possibly a leftover temp state, or a suggestion doc that was approved without a matching instruction document. Root cause not yet confirmed. Desired behavior: Tomo must NOT emit empty stubs just because an approved suggestion doc exists while the source notes are absent — it should detect the missing sources and skip/flag rather than render empty placeholders. Action: recreate the exact conditions (approved suggestion doc + absent sources, ± instruction doc) to determine why the empty render fired, then add a guard + regression fixture. Related: Phase 0b stale-state detection (#37/F-51), stale-run re-ingestion fixes.

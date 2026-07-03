@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Core Weighted-Overlap Scorer"
-status: pending
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -29,7 +29,7 @@ phase: 1
 
 Establishes the standalone, pure weighted-overlap scorer that both match sites will use.
 
-- [ ] **T1.1 `topic_match` scorer + unit suite** `[activity: domain-modeling]`
+- [x] **T1.1 `topic_match` scorer + unit suite** `[activity: domain-modeling]`
 
   1. Prime: Read the reference implementation and traced walkthrough `[ref: SDD/Implementation Examples — weighted_overlap]`; confirm `normalize()` matches the topic normalization in `moc-discovery.py` (`.strip().lower()` + whitespace-collapse) `[ref: SDD/Constraints CON-1]`.
   2. Test (RED) — write `tests/test_topic_match.py` first, all failing. **At least one assertion MUST falsify a flat no-op implementation** (a scorer that ignores titles and returns plain Jaccard must FAIL the suite) `[ref: SDD/Test Examples as Interface Documentation]`:
@@ -44,10 +44,10 @@ Establishes the standalone, pure weighted-overlap scorer that both match sites w
   3. Implement (GREEN): Create `tomo/scripts/lib/topic_match.py` with `weighted_overlap()`, `title_tokens()`, `_weight()`, `W_TITLE=2`, `W_BASE=1`. Stdlib only. Missing-side weight = 0 in both Σmin (numerator over ∩) and Σmax (denominator over ∪).
   4. Validate (REFACTOR): `./venv/bin/python -m pytest tests/test_topic_match.py -q` green; `./venv/bin/ruff check tomo/scripts` clean; function stays pure/total.
   5. Success:
-     - [ ] All tests pass, INCLUDING the discriminating `test_dedupe_misfire_crosses_threshold` (flat ≥ 0.80 AND weighted < 0.80) — a flat no-op impl provably fails the suite `[ref: PRD/Feature 1 + Edge Cases]`
-     - [ ] Exact flat-reduction property holds in the degenerate case `[ref: SDD/ADR-3]`
-     - [ ] No new dependencies; stdlib only `[ref: SDD/CON-1]`
+     - [x] All tests pass, INCLUDING the discriminating `test_dedupe_misfire_crosses_threshold` (flat ≥ 0.80 AND weighted < 0.80) — a flat no-op impl provably fails the suite `[ref: PRD/Feature 1 + Edge Cases]`
+     - [x] Exact flat-reduction property holds in the degenerate case `[ref: SDD/ADR-3]`
+     - [x] No new dependencies; stdlib only `[ref: SDD/CON-1]`
 
-- [ ] **T1.2 Phase Validation** `[activity: validate]`
+- [x] **T1.2 Phase Validation** `[activity: validate]`
 
   - Run `./venv/bin/python -m pytest tests/test_topic_match.py -q` and `./venv/bin/ruff check tomo/scripts`. Verify the scorer matches the SDD traced walkthrough (misfire case scores 0.20 vs flat 0.33). Confirm `lib/topic_signature.py` was NOT modified.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.19.0
+# version: 0.20.0
 """moc-discovery.py — Discover MOC candidates and emit a DiscoveryReport.
 
 Backs the `/moc-propose` skill (F-43, spec 013-moc-creation-skill). Accepts a

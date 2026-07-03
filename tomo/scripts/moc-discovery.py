@@ -1095,18 +1095,6 @@ def phase5_resolve_parents(
 JACCARD_DUP_THRESHOLD = 0.80
 
 
-def _jaccard(a: set[str], b: set[str]) -> float:
-    """Set-similarity score: ``len(a ∩ b) / len(a ∪ b)``.
-
-    Returns 0.0 when either side is empty — an empty input cannot meaningfully
-    overlap with anything, and the SDD's Example 3 explicitly skips empty
-    `moc.topics` rather than letting them score 1.0 by accident.
-    """
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
-
-
 def _cluster_topic_set(cluster: dict) -> set[str]:
     """Normalised topic bag for Jaccard comparison.
 

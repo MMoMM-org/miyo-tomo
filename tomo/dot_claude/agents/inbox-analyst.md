@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.20.0
+# version: 0.21.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -114,8 +114,12 @@ Apply heuristics (confidence scoring). First match above 0.7 wins.
 ### Step 4 — Match MOCs
 
 For each MOC in `shared_ctx.mocs`:
-- Compute topic-overlap ratio against item topics (extract topics by tokenising
-  body + tags, lowercase, strip stopwords)
+- Extract item topics by tokenising body + tags, lowercase, strip stopwords
+- Assign each topic ONE weight: W_TITLE=2 if its normalized form is a substring of
+  the item's OR the MOC's normalized title; W_BASE=1 otherwise
+- Compute weighted_shared = Σ weight(t) for t in (item_topics ∩ moc_topics)
+- Compute weighted_union  = Σ weight(t) for t in (item_topics ∪ moc_topics)
+- overlap_ratio = weighted_shared / weighted_union
 - Score = overlap_ratio + (0 if `is_classification` else 0.1 depth_bonus)
 - Keep top 3 with score ≥ 0.15
 

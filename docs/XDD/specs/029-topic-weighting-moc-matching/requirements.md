@@ -192,20 +192,20 @@ state.
 **Description:** Wherever Tomo compares two topic sets to make a placement decision, a topic that
 reflects a note's **title theme** carries more weight than a topic that is merely an incidental
 content keyword. The comparison still produces a single overlap score in the same 0–1 range and
-is still compared against the same thresholds; only the relative influence of title-themed topics
+is still compared against the same thresholds; only the relative influence of title-derived topics
 increases.
 
 **User Flow:**
 1. User runs /inbox.
 2. System extracts topics for each item/cluster and for candidate MOCs (unchanged).
-3. System scores overlap, now giving title-themed topics greater influence than content
+3. System scores overlap, now giving title-derived topics greater influence than content
    keywords, at both the duplicate-detection site and the link-selection site.
 4. System presents suggestions in which title-theme agreement outranks incidental overlap.
 
 **Business Rules:**
-- Rule 1: A topic counts as title-themed for a note when it corresponds to that note's title;
+- Rule 1: A topic counts as title-derived for a note when it corresponds to that note's title;
   otherwise it is a content keyword. (The exact correspondence test is an SDD decision.)
-- Rule 2: When neither note contributes any title-themed topic, the score equals the pre-F-05
+- Rule 2: When neither note contributes any title-derived topic, the score equals the pre-F-05
   flat-overlap score exactly (safe reduction).
 - Rule 3: Both match sites apply the same weighting rule; they may differ in numeric precision
   (the deterministic site is exact; the analyst recipe is a simplified but directionally
@@ -215,8 +215,9 @@ increases.
 **Edge Cases:**
 - Empty/missing title on either side → that note contributes only content-keyword weight; scored
   without error. → Expected: graceful reduction toward flat behavior.
-- Very long title (many title-themed topics on one side) → Expected: score stays bounded and
-  sensible; no single note dominates purely by title length.
+- Very long title (many title-derived topics on one side) → Expected: per-topic weight never
+  exceeds `W_TITLE` regardless of title length, so the score cannot be distorted beyond the
+  `W_TITLE:W_BASE` ratio (no domination purely by title length).
 - Empty topic set on either side → Expected: no match (unchanged from today).
 - Both sides have *different* title themes but share a content keyword → Expected: score is
   lower than flat overlap (this is the intended discrimination that fixes the misfire).
@@ -272,7 +273,7 @@ increases.
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| Weighting lowers scores enough to drop a *true* duplicate below threshold | Medium | Low | Feature 4 threshold validation on real vault data before finalizing; true dups share title themes and are protected by Rule 2/3 |
+| Weighting lowers scores enough to drop a *true* duplicate below threshold | Medium | Low | Feature 4 threshold validation on real vault data before finalizing; true dups share their title-derived topics, which are weighted W_TITLE on BOTH sides → high shared weight (Σmin) keeps the score high |
 | The two match sites diverge in behavior (deterministic vs analyst recipe) | Medium | Medium | Same rule and constants at both; acceptance criteria assert decision-direction agreement; analyst recipe audited |
 | Title-theme correspondence test misclassifies a content keyword that also appears in the title | Low | Medium | Acceptable/desirable (a keyword that is also in the title is plausibly thematic); bounded by fixed max weight |
 | Suppression churn if weighting accidentally touches key computation | High | Low | Feature 3 byte-identical squelch-key test; keys remain decoupled from weighting |

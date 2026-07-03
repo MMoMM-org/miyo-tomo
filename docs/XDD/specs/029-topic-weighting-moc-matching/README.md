@@ -29,6 +29,7 @@
 | 2026-07-03 | PRD approved; continue to SDD | requirements.md completed; 5 parking-lot items tracked (issues #125/#126 + backlog F-05a/b/c). |
 | 2026-07-03 | SDD written; 7 ADRs (all confirmed in brainstorm) | New `lib/topic_match.py`; `_find_jaccard_match(+cluster_title)`; analyst Step 4 recipe via agent-author; squelch signature frozen; threshold validated in-scope. No repo CONSTITUTION.md — MiYo constitution aligned inline. |
 | 2026-07-03 | PLAN written; spec Ready | 3 phases (core scorer → both-site integration [parallel] → validation & tuning). Alignment check: all code refs match current source, no drift. |
+| 2026-07-03 | /validate pass (4 perspectives); HIGH+MED+LOW fixes applied | Fixed non-discriminating tests (now assert flat≥0.80 ∧ weighted<0.80 so a flat no-op fails); added threshold-crossing worked example; reworked T3.1 (analyze-placement-confidence.py measures tier-1 heading fit, NOT dedupe — measure dedupe pairs directly, quantified criterion); fixed dangling ref; unified title-derived terminology; +5 LOW cleanups. Alignment confirmed Site 2 feasible (per-MOC title in shared_ctx.mocs). |
 
 ## Context
 

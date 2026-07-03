@@ -31,12 +31,12 @@ Confirms the fix works end-to-end on real data and that the threshold still sepa
 
 - [ ] **T3.1 Threshold separation validation** `[activity: validate]`
 
-  1. Prime: Read `scripts/analyze-placement-confidence.py --help` and `[ref: SDD/ADR-5]`.
-  2. Test: run the analyzer against the personal vault; inspect the score distribution around `0.80` under weighting.
-  3. Implement: if the data shows `0.80` still separates true dups from incidental overlap → keep it and record the evidence. If it does NOT separate → re-tune `JACCARD_DUP_THRESHOLD` to a data-supported value and note the deviation `[ref: SDD/Deviation Protocol]`.
-  4. Validate: decision (keep vs re-tune) recorded in the spec README decisions log.
+  1. Prime: `[ref: SDD/ADR-5]`. **Caveat (from validation):** `scripts/analyze-placement-confidence.py` measures spec-023 tier-1 heading `fit_confidence`, NOT dedupe-Jaccard separation — it does **not** directly validate the 0.80 dedupe cutoff. Use it only as a distribution-analysis pattern; the dedupe threshold must be measured on actual dedupe-candidate pairs.
+  2. Test (measure): collect the weighted dedupe scores for cluster×existing-MOC candidate pairs from a real vault sample — either instrument `phase6_dedupe` to log each pair's `weighted_overlap`, or compute `weighted_overlap` offline over the discovery cache's `map_notes`. Hand-label each surfaced pair as **true-dup** or **incidental-overlap** (feasible on the single-user vault).
+  3. Implement (decide): apply the **quantified criterion** — keep `JACCARD_DUP_THRESHOLD = 0.80` iff on the sample `max(incidental-pair score) < 0.80 ≤ min(true-dup-pair score)` (the 0.80 line cleanly separates the two classes). If that inequality is violated → re-tune the threshold to a value that satisfies it and record the deviation `[ref: plan/README — Deviation Protocol]`.
+  4. Validate: decision (keep vs re-tune) + the separating evidence (min/max scores per class) recorded in the spec README decisions log.
   5. Success:
-     - [ ] Threshold separation confirmed (or re-tuned with evidence) `[ref: PRD/Feature 4]`
+     - [ ] Quantified separation confirmed (`max incidental < 0.80 ≤ min true-dup`) or threshold re-tuned to satisfy it, with evidence `[ref: PRD/Feature 4]`
 
 - [ ] **T3.2 Live `/inbox` end-to-end run** `[activity: validate]`
 

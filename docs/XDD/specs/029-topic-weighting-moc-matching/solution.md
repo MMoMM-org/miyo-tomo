@@ -73,7 +73,7 @@ version: "1.0"
 ```yaml
 - file: tomo/scripts/moc-discovery.py
   relevance: CRITICAL
-  why: "Site 1. _find_jaccard_match (~1174), _moc_topic_set (~1118), _cluster_topic_set (~1109), call site in phase6_dedupe (~1264-1290), _compute_topic_signature (~1293)"
+  why: "Site 1. _find_jaccard_match (~1174), _moc_topic_set (~1118), _cluster_topic_set (~1109), call site in phase6_dedupe (~1264-1290), _compute_topic_signature (def ~1139, call ~1293), JACCARD_DUP_THRESHOLD (~1094)"
 - file: tomo/scripts/lib/topic_signature.py
   relevance: CRITICAL
   why: "cluster_topic_set + compute_topic_signature; MUST stay flat (squelch key). New scorer is a SIBLING module, not an edit here."
@@ -81,8 +81,8 @@ version: "1.0"
   relevance: CRITICAL
   why: "Site 2. Step 4 'Match MOCs' recipe (lines ~114-120); shared_ctx.mocs[] carries .title and .topics"
 - file: scripts/analyze-placement-confidence.py
-  relevance: HIGH
-  why: "Threshold validation tool (PRD Feature 4)"
+  relevance: MEDIUM
+  why: "Distribution-analysis PATTERN reference for PRD Feature 4. NOTE: it measures spec-023 tier-1 heading fit_confidence, NOT dedupe-Jaccard separation — the dedupe threshold must be measured on real dedupe-candidate pairs (see PLAN T3.1)."
 - file: tomo/scripts/topic-extract.py
   relevance: MEDIUM
   why: "Confirms provenance: title/H1 + wikilinks + tags are deterministic topics; H2 dropped; content topics are agent-side"
@@ -116,8 +116,10 @@ in-process Python plus one agent-prompt edit. (Constitution: no new network surf
 # Discovered from repo (venv-based per project memory)
 Test:  ./venv/bin/python -m pytest tests/ -q
 Lint:  ./venv/bin/ruff check tomo/scripts scripts
-# Threshold validation (PRD Feature 4)
-Validate: ./venv/bin/python scripts/analyze-placement-confidence.py   # run against personal vault
+# Threshold validation (PRD Feature 4) — measure dedupe-candidate pair scores directly;
+# analyze-placement-confidence.py is a PATTERN reference only (it measures tier-1 heading fit,
+# not dedupe-Jaccard separation). See PLAN T3.1.
+Validate: ./venv/bin/python scripts/analyze-placement-confidence.py   # pattern ref, not the dedupe measure
 # Deploy to running instance (managed-file sync; bump `# version` first)
 Sync:  scripts/update-tomo.sh
 ```
@@ -281,8 +283,25 @@ def weighted_overlap(topics_a, title_a, topics_b, title_b) -> float:
 | y | A only | 1 | 0 | — | max(1,0)=1 |
 | z | B only | 0 | 2 | — | max(0,2)=2 |
 
-`score = 1 / (2+1+2) = 1/5 = 0.20` vs flat Jaccard `1/3 ≈ 0.33`. The incidental-overlap-with-
-title-disagreement case scores lower → below the 0.80 dup threshold → the misfire is fixed.
+`score = 1 / (2+1+2) = 1/5 = 0.20` vs flat Jaccard `1/3 ≈ 0.33`. This shows the **discrimination
+mechanism** (weighted < flat when title themes disagree) — it drives Site-2 re-ranking. Note it is
+NOT itself a threshold crossing: flat 0.33 was already below 0.80, so this pair was never a false
+dedupe dup. For the *primary* Site-1 misfire (a false dup being fixed) see the next example.
+
+**Traced walkthrough 2 — a true Site-1 dedupe misfire being fixed** (flat ≥ 0.80 → weighted < 0.80):
+`A = {c1..c8, ta}`, title_a themes → `ta`; `B = {c1..c8, tb}`, title_b themes → `tb`. The eight
+`c*` are shared content topics (title-derived on neither side); `ta`/`tb` are each side's distinct
+title theme.
+
+- Shared `= {c1..c8}` (8); union `= {c1..c8, ta, tb}` (10).
+- **Flat Jaccard = 8/10 = 0.80** → triggers a duplicate under the current code (false positive,
+  since the titles disagree thematically).
+- Weighted: numerator `= Σ min(1,1)` over the 8 content topics `= 8`; denominator `= 8·max(1,1) +
+  max(2,0)[ta] + max(0,2)[tb] = 8 + 2 + 2 = 12`.
+- **Weighted = 8/12 ≈ 0.667 < 0.80** → NOT flagged as a duplicate. The misfire is fixed.
+
+This is the case the flagship test must assert (flat ≥ 0.80 AND weighted < 0.80) so a no-op flat
+implementation cannot pass.
 
 **Edge cases mapped to code**:
 - Empty `topics_a` or `topics_b` → early `return 0.0` (no match; unchanged behavior).
@@ -290,27 +309,53 @@ title-disagreement case scores lower → below the 0.80 dup threshold → the mi
   contributes flat weights (graceful degradation, PRD Feature 1 AC).
 - No title-derived topic anywhere → all weights `W_BASE` → `min/max` collapse to
   `|A∩B| / |A∪B|` == flat Jaccard exactly (the ONLY exact-reduction case; ADR-3).
+- Long title (many title-derived topics on one side) → bounded: per-topic weight never exceeds
+  `W_TITLE` regardless of title length (a topic is title-derived or not — it cannot accrue extra
+  weight from a longer title), so score cannot be distorted beyond the `W_TITLE:W_BASE` ratio.
 
 #### Test Examples as Interface Documentation
 
 ```python
 # tests/test_topic_match.py (contract sketch)
+# NB: at least one assertion MUST falsify a flat no-op implementation (see
+# test_dedupe_misfire_crosses_threshold + test_weighting_strictly_below_flat).
+
 def test_reduces_to_flat_when_no_title_topic():
     # neither title shares a topic → exact flat Jaccard
     assert weighted_overlap({"a","b"}, "zz", {"b","c"}, "zz") == 1/3
 
-def test_misfire_incidental_overlap_rejected():
-    s = weighted_overlap({"x","y"}, "x-note", {"x","z"}, "z-note")
-    assert s < 0.80            # was a false dup under flat scoring at threshold
+def test_dedupe_misfire_crosses_threshold():
+    # THE discriminating test: flat ≥ 0.80 (a false dup today) but weighted < 0.80.
+    # A flat no-op implementation FAILS this. Uses the Traced-walkthrough-2 construction.
+    content = {f"c{i}" for i in range(8)}
+    a, b = content | {"ta"}, content | {"tb"}
+    assert flat_jaccard(a, b) >= 0.80                          # 8/10 = 0.80
+    assert weighted_overlap(a, "ta note", b, "tb note") < 0.80  # 8/12 ≈ 0.667
+
+def test_weighting_strictly_below_flat_on_title_disagreement():
+    # shared topic title-derived on NEITHER side, distinct title themes differ
+    s = weighted_overlap({"x","y"}, "y note", {"x","z"}, "z note")  # x shared, content-only
+    assert s < flat_jaccard({"x","y"}, {"x","z"})
 
 def test_true_dup_title_agreement_survives():
     s = weighted_overlap({"x","y"}, "x y", {"x","y"}, "x y")
     assert s >= 0.80
 
+def test_empty_or_missing_title_uses_base_weights():
+    # missing title → base weights → equals flat (no crash)
+    assert weighted_overlap({"a","b"}, "", {"b","c"}, "") == 1/3
+
+def test_empty_topic_set_returns_zero():
+    assert weighted_overlap(set(), "t", {"a"}, "t") == 0.0
+
 def test_squelch_signature_unchanged():
-    # golden hash locked — compute_topic_signature is untouched by F-05
+    # GOLDEN_HASH captured from compute_topic_signature on pre-F-05 main — proves
+    # byte-identity to prior behavior, not mere self-consistency.
     assert compute_topic_signature(CLUSTER) == GOLDEN_HASH
 ```
+
+`flat_jaccard(a, b) = |a∩b| / |a∪b|` — a test helper (or the pre-F-05 reference) used only to
+prove the weighted scorer diverges from flat where it must.
 
 ## Runtime View
 
@@ -488,7 +533,8 @@ squelch key.
 
 ### Implementation Gotchas
 - `_find_jaccard_match` has one other consideration: it early-returns on the FIRST entry ≥
-  threshold (SDD Example 3 semantics) — preserve that; do not switch to argmax.
+  threshold (see Interface Specifications — `_find_jaccard_match` Body) — preserve that; do not
+  switch to argmax.
 - zsh `!` history-expansion trap when writing inline test snippets with `!=`/`!r` — write test
   files with the editor, not inline `python3 -c` (project memory).
 - `inbox-analyst.md` edit MUST bump `# version` or `update-tomo.sh` ships nothing (version-gated,

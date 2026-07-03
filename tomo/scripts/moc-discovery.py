@@ -71,6 +71,7 @@ from lib.topic_signature import (  # noqa: E402
     cluster_topic_set as _lib_cluster_topic_set,
     compute_topic_signature as _lib_compute_topic_signature,
 )
+from lib.topic_match import weighted_overlap  # noqa: E402
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1172,12 +1173,18 @@ def _find_exact_title_match(
 
 
 def _find_jaccard_match(
-    cluster_topics: set[str], map_notes: list[dict]
+    cluster_topics: set[str], cluster_title: str, map_notes: list[dict]
 ) -> tuple[str | None, float]:
-    """Scan map_notes for the first MOC whose topics overlap ≥ 0.80.
+    """Scan map_notes for the first MOC whose weighted topic overlap ≥ 0.80.
 
-    Returns (existing_moc_label, jaccard) — `(None, 0.0)` when no MOC clears
-    the threshold. Stops on the first hit so the report names a single
+    Uses Ruzicka-style weighted overlap (via lib.topic_match.weighted_overlap)
+    so that a topic appearing in a title receives W_TITLE weight (×2).
+    A cluster whose flat Jaccard would clear 0.80 but whose title theme
+    disagrees with the MOC's title theme may score below the threshold and
+    will NOT be flagged as a duplicate (spec-029 SDD Runtime View Flow A).
+
+    Returns (existing_moc_label, weighted_score) — `(None, 0.0)` when no MOC
+    clears the threshold. Stops on the first hit so the report names a single
     "winning" duplicate (matches SDD Example 3's early-return).
     """
     if not cluster_topics:
@@ -1188,7 +1195,12 @@ def _find_jaccard_match(
         moc_topics = _moc_topic_set(entry)
         if not moc_topics:
             continue
-        score = _jaccard(cluster_topics, moc_topics)
+        score = weighted_overlap(
+            cluster_topics,
+            cluster_title,
+            moc_topics,
+            entry.get("title") or "",
+        )
         if score >= JACCARD_DUP_THRESHOLD:
             label = (
                 str(entry.get("title")
@@ -1276,7 +1288,9 @@ def phase6_dedupe(
 
         # ── 2. Jaccard overlap ≥ 0.80 ──────────────────────────────────────
         cluster_topics = _cluster_topic_set(cluster)
-        match_label, score = _find_jaccard_match(cluster_topics, map_notes)
+        match_label, score = _find_jaccard_match(
+            cluster_topics, cluster.get("title") or "", map_notes
+        )
         if match_label is not None:
             duplicates_skipped.append({
                 "cluster_id": cluster_id,
@@ -1285,7 +1299,7 @@ def phase6_dedupe(
             })
             _log(
                 f"phase6: cluster {cluster_id!r} topic-set overlaps "
-                f"{match_label!r} (jaccard={score:.2f}) — skipping"
+                f"{match_label!r} (weighted={score:.2f}) — skipping"
             )
             continue
 

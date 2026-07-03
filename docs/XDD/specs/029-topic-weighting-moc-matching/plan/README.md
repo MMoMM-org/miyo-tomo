@@ -95,7 +95,7 @@ scripts/update-tomo.sh
 Each phase is defined in a separate file. Tasks follow red-green-refactor: **Prime** → **Test** (red) → **Implement** (green) → **Validate** (refactor + verify).
 
 - [x] [Phase 1: Core Weighted-Overlap Scorer](phase-1.md)
-- [ ] [Phase 2: Both-Site Integration](phase-2.md)
+- [x] [Phase 2: Both-Site Integration](phase-2.md)
 - [ ] [Phase 3: Validation & Threshold Tuning](phase-3.md)
 
 ---

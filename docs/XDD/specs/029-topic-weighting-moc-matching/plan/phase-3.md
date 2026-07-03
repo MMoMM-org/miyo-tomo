@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Validation & Threshold Tuning"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -38,15 +38,15 @@ Confirms the fix works end-to-end on real data and that the threshold still sepa
   5. Success:
      - [x] Quantified separation confirmed (`max incidental < 0.80 ≤ min true-dup`) or threshold re-tuned to satisfy it, with evidence `[ref: PRD/Feature 4]`
 
-- [ ] **T3.2 Live `/inbox` end-to-end run** `[activity: validate]`
+- [x] **T3.2 Live `/inbox` end-to-end run** `[activity: validate]`
 
   1. Prime: sync the edited managed files into the instance (`scripts/update-tomo.sh`); confirm the analyst `# version` bumped and the new `lib/topic_match.py` shipped `[ref: SDD/Deployment View; project memory: sync-before-live-walk]`.
   2. Test: run one `/inbox` pass on the personal vault.
   3. Implement: observe dedupe outcomes and MOC-link rankings; confirm no incidental-overlap misfire and no regression on real matches; confirm no squelch churn.
   4. Validate: capture the run outcome; add an entry to `docs/evolution/inbox-cost-log.md` if a cost delta is measured `[ref: project memory: inbox cost log]`.
   5. Success:
-     - [ ] Zero incidental-overlap misfires; no regression; no squelch churn `[ref: PRD/Success Metrics]`
+     - [x] Zero incidental-overlap misfires; no regression; no squelch churn `[ref: PRD/Success Metrics]`
 
-- [ ] **T3.3 Final gates & spec closeout** `[activity: validate]`
+- [x] **T3.3 Final gates & spec closeout** `[activity: validate]`
 
   - Run full `./venv/bin/python -m pytest tests/ -q` and `./venv/bin/ruff check tomo/scripts scripts` — all green. Tick the plan/README phase checklist. Update `docs/XDD/specs/029-topic-weighting-moc-matching/README.md` to `Implemented`, reference the PR, and close issue #124. Update epic #17 checkbox for F-05 (#124).

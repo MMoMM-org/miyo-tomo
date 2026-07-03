@@ -159,6 +159,10 @@ class TestEdgeCases:
     def test_both_empty_returns_zero(self):
         assert weighted_overlap(set(), "", set(), "") == 0.0
 
+    def test_empty_topic_set_returns_zero(self):
+        assert weighted_overlap(set(), "t", {"a"}, "t") == 0.0
+        assert weighted_overlap({"a"}, "t", set(), "t") == 0.0
+
     def test_empty_or_missing_title_uses_base_weights(self):
         """Empty title falls back to W_BASE; no error raised."""
         a = {"topic"}

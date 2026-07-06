@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.8.2
+# version: 0.9.0
 
 **Active agent: synthesis-conductor**
 
@@ -78,6 +78,8 @@ variables once and use them in every sub-step:
 | `approved_moc_proposals` | `moc-proposal` | `pending-accept` | `accepted` |
 
 Each entry has `path` (= `VAULT_PATH`), `cache_path` (= `CACHE_PATH`), and `modified` (= `MODIFIED`).
+A `suggestions` entry may also carry `wire_cache_path` (= `WIRE_CACHE_PATH`) — the cached
+`_suggestions.json` sibling (ADR-026). It is absent for older docs; thread it only when present.
 
 Process in order: suggestions first, then fan companions, then moc-proposals.
 Run steps 3a–3e for EACH entry before moving to the next.
@@ -100,6 +102,7 @@ For `DOC_TYPE` = `suggestions` without a fan companion (`approved_fan` is empty)
 ```bash
 python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" --suggestions-doc tomo-tmp/suggestions-doc.json > tomo-tmp/parsed-suggestions.json
 ```
+When the entry has `wire_cache_path`, append `--suggestions-json "<WIRE_CACHE_PATH>"` before the `>` redirect.
 
 For `DOC_TYPE` = `suggestions` with a fan companion (`approved_fan` is non-empty):
 ```bash

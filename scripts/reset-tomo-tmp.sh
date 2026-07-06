@@ -1,6 +1,6 @@
 #!/bin/bash
 # reset-tomo-tmp.sh — Reset the tomo-tmp/ working directory in an instance.
-# version: 0.2.0
+# version: 0.2.1
 #
 # tomo-tmp/ accumulates state across /inbox phases. This script resets
 # to a clean state before a specific phase, so you can re-run from that
@@ -170,6 +170,7 @@ reset_pass1() {
     remove "$INSTANCE_TMP/suggestions.md"
     remove "$INSTANCE_TMP/suggestions-doc.json"
     remove "$INSTANCE_TMP/suggestions-rendered.md"
+    remove "$INSTANCE_TMP/suggestions-wire.json"
 
     # Fan-resolve docs
     remove "$INSTANCE_TMP/suggestions-fan.md"

@@ -56,3 +56,30 @@ the user's call, out of scope for a synthesis run. The actual coverage gap was
 fixed separately by teaching `instructions-diff.py` the fourth delete_source
 source (tag-handler group sources), keyed by the same `group_id` the renderer
 uses; the conductor also now passes `--groups-dir tomo-tmp/tag-handler-groups`.
+
+## Pass-2 JSON-only precedence for `_suggestions.json` (ADR-026)
+
+WHY (Marcus's rule): "if Hashi edited the JSON, use ONLY the JSON; otherwise ONLY
+the markdown — never a mix." So Step 3a always parses the `.md`, but when the
+entry carries a `wire_cache_path` and that JSON was edited (its embedded
+`emit_digest` no longer matches a recomputation over the editable payload), the
+parser discards the markdown result and rebuilds its ENTIRE output from the wire
+alone (`build_from_wire`) — confirmed notes, skips, proposed MOCs, daily updates,
+tag-handler approvals, fan-resolutions. There is no field-level merge/override;
+an unchanged / absent / unparseable / unknown-version JSON ⇒ the markdown path is
+byte-for-byte unchanged (the no-Hashi guarantee). This is why the wire must be a
+COMPLETE mirror — a partial JSON would drop whatever it omitted.
+
+WHY the two paths provably agree on the default case: a golden test asserts
+`build_from_wire(unedited wire) == parse(markdown)` for the same doc (including
+daily + tag-handler). The wire's daily/tag-handler sections are mirrored by
+parsing our own rendered markdown, so they are the parser's own output shape.
+
+WHY the conductor reads a cached sibling instead of Kado directly: the conductor
+has only the Bash tool and reads pre-cached bodies. `inbox-triage.py` fetches the
+`_suggestions.json` sibling via the Kado file op (`read_file_bytes` — the note op
+is `.md`-only) and caches it next to the `.md`, exposing `wire_cache_path` on the
+approved-suggestions entry. A missing sibling (older doc / no Hashi) simply omits
+the field, and the parser uses the markdown path. The JSON-only path is gated to
+the primary flow (`--fan-resolve-file` absent) so the XDD-012 fan-resolve path is
+untouched.

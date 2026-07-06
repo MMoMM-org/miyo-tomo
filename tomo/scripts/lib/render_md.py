@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.1.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -220,6 +220,25 @@ def _compute_sha256(file_path: str) -> str | None:
         return None
     body = body_after_frontmatter(content)
     return "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def compute_payload_digest(payload: dict) -> str:
+    """Return 'sha256:<hex>' over the canonical serialization of an editable payload.
+
+    Change signal for the suggestions wire (ADR-026). The digest excludes the
+    'emit_digest' key and uses a canonical form (sorted keys, no incidental
+    whitespace) so it is invariant to re-serialization order — only semantic
+    content changes move it. A consumer recomputes the digest and compares it
+    against the stored value: a mismatch means the payload was edited.
+    """
+    import hashlib
+    import json
+
+    editable = {k: v for k, v in payload.items() if k != "emit_digest"}
+    canonical = json.dumps(
+        editable, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:

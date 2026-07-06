@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.21.1
+# version: 0.23.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # noqa: E402
 from lib.supporting_items import (  # noqa: E402
     union_supporting_items as _union_supporting_items,
 )
+from lib.render_md import compute_payload_digest  # noqa: E402
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -177,6 +178,243 @@ def _bind_candidate_anchor(
     if anchor is None:
         return
     result["candidate_mocs"].append({"path": moc_ref, "anchor": anchor})
+
+
+# ── Suggestions wire precedence (ADR-026) ─────────────────────────────────
+# The vault-published _suggestions.json sibling carries the editable review
+# surface. When it was edited — its embedded emit_digest no longer matches a
+# recomputation over the editable payload — the JSON is authoritative for the
+# fields it carries (per-note MOC selection/anchors, proposed-MOC
+# rename/reparent/decision) and is applied as an override on top of the
+# markdown parse. Unchanged / absent / unparseable / unknown-version ⇒ the
+# markdown path is used byte-for-byte (Tomo never assumes Hashi is installed).
+
+def load_changed_wire(path: str | None) -> dict | None:
+    """Return the wire payload iff present, parseable, v1, AND edited.
+
+    Edited = the recomputed digest differs from the embedded emit_digest.
+    Returns None otherwise, so the caller falls back to the markdown parse.
+    """
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            wire = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(
+            f"warning: suggestions-json ignored ({exc}); using markdown",
+            file=sys.stderr,
+        )
+        return None
+    if not isinstance(wire, dict):
+        return None
+    version = wire.get("schema_version")
+    if version != "1":
+        print(
+            f"warning: suggestions-json schema_version {version} != 1 — "
+            "ignored, using markdown",
+            file=sys.stderr,
+        )
+        return None
+    stored = wire.get("emit_digest")
+    if stored and compute_payload_digest(wire) == stored:
+        return None  # unchanged — markdown stays authoritative
+    return wire
+
+
+def _wire_moc_ref(path: str) -> str:
+    """Wire candidate path (vault path, possibly .md) → parser wikilink ref."""
+    return path[:-3] if path.endswith(".md") else path
+
+
+def _norm_anchor(anchor: dict) -> dict:
+    """Normalise a wire anchor to the shape parse_placement_line yields.
+
+    The markdown path recovers a candidate anchor by reverse-parsing the rendered
+    **Placement:** line, which keeps only `{type, value, placement}` (+ `new_section`
+    for new-section placements). Normalising here keeps the JSON-only output equal
+    to the markdown path; the dropped fields (`alt_headings`, `fit_confidence`) are
+    advisory and stripped downstream anyway.
+    """
+    out = {
+        "type": anchor.get("type"),
+        "value": anchor.get("value"),
+        "placement": anchor.get("placement"),
+    }
+    if anchor.get("new_section"):
+        out["new_section"] = anchor.get("new_section")
+    return out
+
+
+def _stem_lower(src: str | None) -> str:
+    """Lowercase bare stem of a source path/wikilink for member-id binding."""
+    if not src:
+        return ""
+    bare = src.rsplit("/", 1)[-1]
+    if bare.endswith(".md"):
+        bare = bare[:-3]
+    return bare.strip().lower()
+
+
+def build_from_wire(wire: dict, moc_template: str) -> dict:
+    """Build the complete parsed-suggestions output from an edited wire alone.
+
+    ADR-026 JSON-only path: when `load_changed_wire` returns a wire (the user
+    edited it), Pass-2 reconstructs its ENTIRE output from the wire and never
+    re-reads the markdown. Output shape matches `suggestion-parser`'s markdown
+    path (verified by the golden test against parse(render(doc))).
+    """
+    confirmed_items: list[dict] = []
+    skipped_items: list[dict] = []
+    pending_fan_resolutions: list[dict] = []
+    id_to_stem: dict[str, str] = {}
+
+    for w in wire.get("suggestions", []):
+        stem = w.get("stem")
+        id_to_stem[w.get("id")] = stem
+        # Suppressed light block promoted via Force Atomic → resolve subflow (#88).
+        # Mirror the section-level pending_fan_resolutions shape (stem is the
+        # lowercased source stem; Pass 2 verifies via kado-search).
+        if w.get("suppressed") and w.get("force_atomic"):
+            summary = (w.get("title") or "").strip()
+            if len(summary) > 140:
+                summary = summary[:137] + "…"
+            pending_fan_resolutions.append({
+                "stem": (stem or "").lower(),
+                "source_path": stem or "",
+                "log_entry_summary": summary,
+            })
+            continue
+        if w.get("decision") == "approve":
+            parent_mocs: list[str] = []
+            candidate_mocs: list[dict] = []
+            for c in w.get("candidate_mocs", []):
+                if not c.get("selected"):
+                    continue
+                ref = _wire_moc_ref(c.get("path", ""))
+                if not ref:
+                    continue
+                parent_mocs.append(ref)
+                anchor = c.get("anchor")
+                if anchor:
+                    candidate_mocs.append({"path": ref, "anchor": _norm_anchor(anchor)})
+            template = w.get("template") or ""
+            if template.endswith(".md"):
+                template = template[:-3]
+            confirmed_items.append({
+                "id": w.get("id"),
+                "source_path": stem,
+                "audio_peer": w.get("audio_peer"),
+                "type": None,
+                "approved": True,
+                "delete_source": bool(w.get("delete_source")),
+                "keep_source": bool(w.get("keep_source")),
+                "action": None,
+                "title": w.get("title"),
+                "tags": list(w.get("tags") or []),
+                "parent_moc": parent_mocs[0] if parent_mocs else None,
+                "parent_mocs": parent_mocs,
+                "candidate_mocs": candidate_mocs,
+                "destination": w.get("location"),
+                "template": template,
+                "summary": None,
+                "classification": None,
+            })
+        else:
+            skipped_items.append({
+                "id": w.get("id"),
+                "source_path": stem,
+                "disposition": "delete_source" if w.get("delete_source") else "skip",
+            })
+
+    total_sections = len(wire.get("suggestions", []))
+
+    # Proposed MOCs (approve) → create_moc confirmed items; member_ids resolve to
+    # source stems via id_to_stem, then to confirmed ids in the binding pass below.
+    wire_mocs: list[dict] = []
+    for idx, pm in enumerate(wire.get("proposed_mocs", []), start=1):
+        if pm.get("decision") != "approve":
+            continue
+        name = (pm.get("name") or "").strip()
+        if not name:
+            continue
+        parent = pm.get("parent", "")
+        member_stems = [
+            id_to_stem[mid] for mid in pm.get("member_ids", []) if mid in id_to_stem
+        ]
+        wire_mocs.append({
+            "id": f"MOC{idx:02d}",
+            "source_path": None,
+            "type": "moc",
+            "approved": True,
+            "delete_source": False,
+            "action": "create_moc",
+            "title": name,
+            "tags": list(pm.get("tags") or []),
+            "parent_moc": parent,
+            "parent_mocs": [parent] if parent else [],
+            "destination": "Atlas/200 Maps/",
+            "template": moc_template,
+            "summary": None,
+            "classification": None,
+            "supporting_items": "",
+            "topic": pm.get("topic", ""),
+            "member_stems": member_stems,
+        })
+    confirmed_items.extend(_merge_proposed_mocs_by_name(wire_mocs))
+
+    # Bind member_stems → supporting_items ids (mirrors the markdown path's final
+    # pass), then strip the internal helper fields.
+    stem_to_id = {
+        _stem_lower(c.get("source_path")): c.get("id")
+        for c in confirmed_items
+        if c.get("source_path") and c.get("id")
+    }
+    for c in confirmed_items:
+        if c.get("action") == "create_moc":
+            ids = [
+                stem_to_id[_stem_lower(s)]
+                for s in (c.get("member_stems") or [])
+                if _stem_lower(s) in stem_to_id
+            ]
+            if ids:
+                c["supporting_items"] = ", ".join(ids)
+        c.pop("member_stems", None)
+        c.pop("topic", None)
+
+    tag_groups = wire.get("tag_handler_groups", [])
+    return {
+        "confirmed_items": confirmed_items,
+        # Daily updates are carried in the wire in the parser's own output shape
+        # (mirrored at emit), so they pass through verbatim.
+        "daily_updates": wire.get("daily_updates", []),
+        "skipped": skipped_items,
+        "pending_fan_resolutions": pending_fan_resolutions,
+        "approved_tag_handler_group_ids": [
+            g["group_id"] for g in tag_groups if g.get("approved")
+        ],
+        "tag_handler_keep_source_group_ids": [
+            g["group_id"] for g in tag_groups if g.get("keep_source")
+        ],
+        "total_sections": total_sections,
+        "total_approved": len(confirmed_items),
+        "total_skipped": len(skipped_items),
+    }
+
+
+def _load_moc_template() -> str:
+    """MOC template path from config/vault-config.yaml (empty on any error)."""
+    import os
+    try:
+        config_path = os.path.join(os.getcwd(), "config", "vault-config.yaml")
+        if not os.path.isfile(config_path):
+            return ""
+        import yaml
+        with open(config_path, encoding="utf-8") as cf:
+            cfg = yaml.safe_load(cf) or {}
+        return cfg.get("templates", {}).get("mapping", {}).get("map_note", "")
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _parse_tags(value: str) -> list[str]:
@@ -1563,6 +1801,16 @@ def main() -> int:
             "tomo-tmp/suggestions-doc.json; absent → Placement-line parsing only."
         ),
     )
+    parser.add_argument(
+        "--suggestions-json",
+        metavar="PATH",
+        help=(
+            "Optional vault-published _suggestions.json sibling (ADR-026). When "
+            "edited (embedded emit_digest no longer matches), the JSON is "
+            "authoritative for MOC selection/anchors and proposed-MOC "
+            "rename/decision; otherwise the markdown path is used unchanged."
+        ),
+    )
     args = parser.parse_args()
 
     # ── Read input ────────────────────────────────────────────────
@@ -1593,6 +1841,24 @@ def main() -> int:
         )
         print(json.dumps(proposals, ensure_ascii=False, indent=2))
         return 0
+
+    # ── ADR-026: JSON-only precedence ─────────────────────────────
+    # When the vault _suggestions.json sibling was edited (its emit_digest no
+    # longer matches a recomputation), it is the SOLE authoritative source:
+    # rebuild the entire output from the wire and never read the markdown. No
+    # mixing. Primary flow only — the fan-resolve flow keeps the markdown path.
+    if not args.fan_resolve_file:
+        _wire = load_changed_wire(args.suggestions_json)
+        if _wire is not None:
+            print(json.dumps(
+                build_from_wire(_wire, _load_moc_template()),
+                indent=2, ensure_ascii=False,
+            ))
+            print(
+                "suggestions-json: edited wire is authoritative (JSON-only path)",
+                file=sys.stderr,
+            )
+            return 0
 
     # ── Split and parse ───────────────────────────────────────────
     raw_sections = split_into_sections(text)
@@ -1688,22 +1954,7 @@ def main() -> int:
             })
 
     # ── Parse Proposed MOCs ────────────────────────────────────
-    # Load MOC template path from vault-config if available
-    moc_template = ""
-    try:
-        import os
-        config_path = os.path.join(os.getcwd(), "config", "vault-config.yaml")
-        if os.path.isfile(config_path):
-            try:
-                import yaml
-                with open(config_path, encoding="utf-8") as cf:
-                    cfg = yaml.safe_load(cf) or {}
-                moc_template = (cfg.get("templates", {}).get("mapping", {})
-                                .get("map_note", ""))
-            except Exception:
-                pass
-    except Exception:
-        pass
+    moc_template = _load_moc_template()
 
     # Read the companion fan-resolve doc up-front (if any) so its proposed
     # MOCs merge by-name with the primary's: a fanned force-atomic item can

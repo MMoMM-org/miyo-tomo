@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/suggestions-wire.schema.json",
+  "title": "Suggestions Wire (Vault-published editor surface)",
+  "description": "Complete, structured mirror of the review surface, published to the vault every Pass 1 (ADR-026). The Hashi Suggestions Editor reads and edits it; Tomo owns it. emit_digest is the tool-agnostic change signal: when it no longer matches a recomputation over the editable payload, Pass-2 rebuilds its ENTIRE output from this JSON alone (build_from_wire) — never re-reading the markdown. So every editable decision the markdown offers is carried here.",
+  "type": "object",
+  "required": ["schema_version", "generated", "run_id", "profile", "source_items", "emit_digest", "suggestions", "proposed_mocs", "daily_updates", "tag_handler_groups"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1"},
+    "generated": {"type": "string"},
+    "run_id": {"type": "string"},
+    "profile": {"type": "string"},
+    "source_items": {"type": "integer", "minimum": 0},
+    "emit_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 over the canonical editable payload (this object with emit_digest absent). Recomputed and compared in Pass 2 to detect edits."
+    },
+    "suggestions": {
+      "type": "array",
+      "description": "One entry per atomic note suggestion, keyed by its stable S## id. Carries the full editable per-note surface.",
+      "items": {
+        "type": "object",
+        "required": ["id", "stem", "title", "template", "location", "tags", "decision", "keep_source", "delete_source", "force_atomic", "suppressed", "candidate_mocs"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^S[0-9]{2,}(#[0-9]+)?$"},
+          "stem": {"type": "string", "description": "Source note stem (read-only)."},
+          "title": {"type": "string", "description": "Editable — the note name; the filename derives from it."},
+          "template": {"type": "string", "description": "Editable — template wikilink target."},
+          "location": {"type": "string", "description": "Editable — destination folder."},
+          "tags": {"type": "array", "items": {"type": "string"}, "description": "Editable — tags to add."},
+          "audio_peer": {"type": ["string", "null"], "description": "Read-only — audio peer basename, when the source is an audio+transcript pair."},
+          "decision": {"type": "string", "enum": ["approve", "skip"], "description": "Editable — create the note (approve) or not (skip). Default mirrors the Approve pre-check (approve when worthiness >= 0.5)."},
+          "keep_source": {"type": "boolean", "description": "Editable — when approved, keep the origin inbox note instead of deleting it. Default false (origin is consumed)."},
+          "delete_source": {"type": "boolean", "description": "Editable — explicitly delete the origin. Default false."},
+          "force_atomic": {"type": "boolean", "description": "Editable — promote a suppressed (sub-worthy) atomic. Default from the light-block opt-in."},
+          "suppressed": {"type": "boolean", "description": "Read-only render hint — Tomo kept this in the inbox as a light block; force_atomic promotes it."},
+          "worthiness": {"type": ["number", "null"], "description": "Read-only — atomic-note worthiness 0..1."},
+          "candidate_mocs": {
+            "type": "array",
+            "description": "Candidate MOCs. selected mirrors the pre-checked state; the editor toggles it and may add entries with source='user'.",
+            "items": {
+              "type": "object",
+              "required": ["path", "selected"],
+              "additionalProperties": false,
+              "properties": {
+                "path": {"type": "string", "description": "Vault-relative MOC path (the stable key for an existing MOC)."},
+                "selected": {"type": "boolean", "description": "True ⇒ link this MOC."},
+                "source": {"type": "string", "enum": ["tomo", "user"], "description": "tomo = Tomo-proposed; user = added in the editor. Pass-2 honours both identically."},
+                "anchor": {
+                  "type": ["object", "null"],
+                  "description": "Resolved placement anchor (spec 022/023 shape). Null when none was resolved. `inside` never appears on a heading/line anchor (executor constraint).",
+                  "required": ["type", "placement"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {"type": "string", "enum": ["heading", "callout", "line"]},
+                    "value": {"type": ["string", "null"]},
+                    "placement": {"type": "string", "enum": ["before", "after", "inside"]},
+                    "new_section": {"type": ["string", "null"]},
+                    "alt_headings": {"type": "array", "items": {"type": "string", "pattern": "^[^\\n\\r]+$"}},
+                    "fit_confidence": {"type": ["number", "null"]}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "proposed_mocs": {
+      "type": "array",
+      "description": "Proposed new MOCs, keyed by a stable M## id so the editor can merge/rename them as a graph op. member_ids link notes by their S## id.",
+      "items": {
+        "type": "object",
+        "required": ["id", "topic", "name", "parent", "member_ids", "decision"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^M[0-9]{2,}$"},
+          "topic": {"type": "string"},
+          "name": {"type": "string", "description": "Editable — rename here."},
+          "parent": {"type": "string", "description": "Editable — reparent here."},
+          "member_ids": {"type": "array", "items": {"type": "string", "pattern": "^S[0-9]{2,}(#[0-9]+)?$"}},
+          "tags": {"type": "array", "items": {"type": "string"}, "description": "Editable."},
+          "reason": {"type": "string"},
+          "decision": {"type": "string", "enum": ["approve", "skip"], "description": "Editable — create the MOC (approve) or not (skip). Default skip."}
+        }
+      }
+    },
+    "daily_updates": {
+      "type": "array",
+      "description": "Daily-note updates (ADR-026 full mirror), carried in the parser's own output shape (date + trackers/log_entries/log_links, each with an editable `accepted` flag). Mirrored verbatim so the JSON-only path reproduces them; preserve-only in v1 (Hashi round-trips, editing UI deferred).",
+      "items": {"type": "object"}
+    },
+    "tag_handler_groups": {
+      "type": "array",
+      "description": "Tag-handler group approvals (ADR-026 full mirror). Preserve-only in v1.",
+      "items": {
+        "type": "object",
+        "required": ["group_id", "approved", "keep_source"],
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {"type": "string"},
+          "approved": {"type": "boolean", "description": "Editable — include this group's capture."},
+          "keep_source": {"type": "boolean", "description": "Editable — leave the captured inbox notes in place."},
+          "handler": {"type": "string", "description": "Read-only display — the tag-handler that claimed the items."},
+          "target_path": {"type": ["string", "null"], "description": "Read-only display — the note the capture is written to."},
+          "marker": {"type": "string", "description": "Read-only display — the anchor/marker in the target note."},
+          "source_paths": {"type": "array", "items": {"type": "string"}, "description": "Read-only display — the inbox notes captured into this group."},
+          "preview": {"type": "string", "description": "Read-only display — the composed block that will be inserted."}
+        }
+      }
+    }
+  }
+}

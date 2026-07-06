@@ -52,6 +52,22 @@
                   "pattern": "^S[0-9]{2,}$",
                   "description": "Flat global per-atomic suggestion number (F-41 T1). Present only on create_atomic_note actions."
                 },
+                "item": {
+                  "type": "object",
+                  "description": "Full structured per-note item (ADR-026). Present on create_atomic_note actions. The suggestions-wire is a complete mirror projected from this; the JSON-only Pass-2 path rebuilds confirmed_items from it without re-reading the markdown.",
+                  "required": ["title", "template", "location", "tags", "suppressed", "force_atomic"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "title": {"type": "string"},
+                    "template": {"type": "string"},
+                    "location": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "audio_peer": {"type": ["string", "null"]},
+                    "worthiness": {"type": ["number", "null"]},
+                    "suppressed": {"type": "boolean", "description": "Sub-worthiness atomic rendered as a light 'kept in inbox' block (#88)."},
+                    "force_atomic": {"type": "boolean", "description": "Default state of the Force Atomic Note opt-in."}
+                  }
+                },
                 "candidate_mocs": {
                   "type": "array",
                   "description": "Structured Pass-1 placement anchors per candidate MOC (spec 022/023). Threaded to Pass-2 so suggestion-parser.py can use the LLM-resolved anchor as the apply-time default. Present only on create_atomic_note actions that carry MOC candidates.",
@@ -61,9 +77,11 @@
                     "additionalProperties": false,
                     "properties": {
                       "path": {"type": "string", "description": "Vault-relative MOC path."},
+                      "pre_check": {"type": "boolean", "description": "Pre-checked markdown state for this candidate (ADR-026). Persisted so the suggestions-wire projector can compute selection without re-parsing markdown."},
+                      "score": {"type": "number", "description": "Match score (0..1). Fallback selection signal when pre_check is absent (checked when score ≥ 0.5)."},
                       "anchor": {
-                        "type": "object",
-                        "description": "Resolved Pass-1 placement anchor (spec 022/023 item-result anchor shape).",
+                        "type": ["object", "null"],
+                        "description": "Resolved Pass-1 placement anchor (spec 022/023 item-result anchor shape). Null for a matched-but-unresolved candidate (ADR-026 Hashi flag 1).",
                         "required": ["type", "placement"],
                         "additionalProperties": false,
                         "properties": {

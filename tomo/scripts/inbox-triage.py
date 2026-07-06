@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.19.0
+# version: 0.20.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -453,6 +453,26 @@ def _filename_from_path(vault_path: str) -> str:
     return Path(vault_path).name
 
 
+def _cache_wire_sibling(client, vault_path: str, cache_dir: Path) -> str | None:
+    """Fetch + cache the _suggestions.json sibling of an approved doc (ADR-026).
+
+    The sibling is a non-markdown file → read via the Kado file op (base64), not
+    read_note. Returns the local cache path, or None when there is no sibling
+    (older doc, or the user has no Hashi editor) — the parser then falls back to
+    the markdown path.
+    """
+    if not vault_path.endswith(".md"):
+        return None
+    wire_vault_path = vault_path[:-3] + ".json"
+    try:
+        data = client.read_file_bytes(wire_vault_path)
+    except KadoError:
+        return None
+    wire_path = cache_dir / _filename_from_path(wire_vault_path)
+    wire_path.write_bytes(data)
+    return str(wire_path)
+
+
 def read_approval_state(
     client,
     pending_approval_hits: list[dict],
@@ -551,6 +571,9 @@ def read_approval_state(
                 "cache_path": cache_path_str,
             }
             if doc_type == "suggestions":
+                wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+                if wire_cache:
+                    entry["wire_cache_path"] = wire_cache
                 approved_suggestions.append(entry)
             elif doc_type == "suggestions-fan":
                 approved_fan.append(entry)
@@ -606,6 +629,9 @@ def read_approval_state(
                 "cache_path": str(cache_path),
             }
             if doc_type == "suggestions":
+                wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+                if wire_cache:
+                    entry["wire_cache_path"] = wire_cache
                 approved_suggestions.append(entry)
             elif doc_type == "suggestions-fan":
                 approved_fan.append(entry)

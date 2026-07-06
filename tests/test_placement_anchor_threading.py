@@ -117,15 +117,23 @@ def _beppu_action() -> dict:
 
 class TestReducerPersistsAnchor:
     def test_persist_candidate_anchors_returns_slim_path_anchor(self):
+        # ADR-026: pre_check/score are persisted alongside path/anchor so the
+        # suggestions-wire projector computes selection without re-parsing markdown.
         out = _reducer.persist_candidate_anchors(_fpt_action())
-        assert out == [{"path": FPT_MOC, "anchor": FPT_ANCHOR}]
+        assert out == [
+            {"path": FPT_MOC, "pre_check": True, "score": 0.33, "anchor": FPT_ANCHOR}
+        ]
 
-    def test_persist_skips_candidate_without_anchor(self):
+    def test_persist_includes_anchorless_candidate(self):
+        # ADR-026 (Hashi flag 1): every candidate is persisted so the wire can
+        # surface Tomo's MOC suggestions; anchor is null until a spot is resolved.
         action = {
             "kind": "create_atomic_note",
             "candidate_mocs": [{"path": "Atlas/200 Maps/X (MOC).md", "score": 0.6}],
         }
-        assert _reducer.persist_candidate_anchors(action) == []
+        assert _reducer.persist_candidate_anchors(action) == [
+            {"path": "Atlas/200 Maps/X (MOC).md", "anchor": None, "score": 0.6}
+        ]
 
     def test_persist_empty_when_no_candidates(self):
         assert _reducer.persist_candidate_anchors({"kind": "create_atomic_note"}) == []

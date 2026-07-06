@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.3.0
+# version: 0.4.0
 
 ## When to Activate
 
@@ -105,7 +105,7 @@ python3 scripts/suggestions-reducer.py --run-id <RUN_ID> --profile <PROFILE> --o
 ### 5. Render
 
 ```bash
-python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md
+python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --output tomo-tmp/suggestions-rendered.md --json-output tomo-tmp/suggestions-wire.json
 ```
 
 ### 6. Write to vault + tag sources
@@ -113,6 +113,12 @@ python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-doc.json --ou
 1. Read `tomo-tmp/suggestions-rendered.md` via the `Read` tool.
 2. Write via `mcp__kado__kado-write` with `operation: "note"` at
    `<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions.md`.
+3. Publish the structured sibling (a JSON file, not a markdown note — the note op
+   would reject it), reusing the SAME `<YYYY-MM-DD_HHMM>` stem as the `.md`:
+
+```bash
+python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-wire.json --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions.json"
+```
 
 # STRICT — mark-captured runs immediately after vault write succeeds. Do NOT skip or defer.
 

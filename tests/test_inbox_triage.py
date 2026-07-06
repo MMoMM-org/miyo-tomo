@@ -38,6 +38,7 @@ class FakeKadoClient:
         read_note_errors: dict[str, Exception] | None = None,
         read_frontmatter_responses: dict[str, dict] | None = None,
         read_frontmatter_errors: dict[str, Exception] | None = None,
+        read_file_responses: dict[str, bytes] | None = None,
     ):
         self._listdir_items = listdir_items or []
         self._frontmatter_responses = frontmatter_responses or {}
@@ -45,6 +46,7 @@ class FakeKadoClient:
         self._read_note_errors = read_note_errors or {}
         self._read_frontmatter_responses = read_frontmatter_responses or {}
         self._read_frontmatter_errors = read_frontmatter_errors or {}
+        self._read_file_responses = read_file_responses or {}
         self.calls: list[tuple[str, dict]] = []
 
     def list_dir(self, path: str, *, depth: int = None, limit: int = 500) -> list:
@@ -70,6 +72,16 @@ class FakeKadoClient:
             raise self._read_frontmatter_errors[path]
         # Mirror KadoClient.read_frontmatter: {content: <parsed fm dict>, ...}.
         return self._read_frontmatter_responses.get(path, {"content": {}})
+
+    def read_file_bytes(self, path: str) -> bytes:
+        # ADR-026: the _suggestions.json sibling fetch. Unconfigured path ⇒
+        # KadoError, mimicking a missing sibling (older doc / no Hashi editor).
+        self.calls.append(("read_file_bytes", {"path": path}))
+        if path in self._read_file_responses:
+            return self._read_file_responses[path]
+        from lib.kado_client import KadoError
+
+        raise KadoError(f"not found: {path}")
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.24.1
+# version: 1.27.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -203,22 +203,32 @@ def moc_link_line(moc: dict) -> str:
 
 
 def persist_candidate_anchors(action: dict) -> list[dict]:
-    """Return slim ``[{path, anchor}]`` for each candidate MOC carrying an anchor.
+    """Return ``[{path, anchor, pre_check?, score?}]`` for EVERY candidate MOC.
 
     Threads the Pass-1 LLM-resolved placement anchor (spec 022/023) into the
     suggestions-doc JSON so suggestion-parser.py can use it as the apply-time
-    default. Every candidate with a structured anchor is persisted regardless of
-    checkbox state — the anchor is the load-bearing field; which MOCs are
-    actually checked is re-read from the markdown at Pass-2 (a user may
-    tick/untick), where the anchor is bound only to checked MOCs.
+    default. ADR-026 (Hashi flag 1): persist every candidate, not just the
+    anchored ones — the markdown renders all candidates as a "Link to MOC" list,
+    so the wire must surface them too (with ``anchor: null`` until a spot is
+    resolved) or the editor can't offer Tomo's MOC suggestions under JSON-only.
+    load_doc_anchor_map still filters to anchored entries, so the Pass-2 markdown
+    anchor default is unchanged; ``selected`` is derived from pre_check/score.
     """
     out: list[dict] = []
     for moc in action.get("candidate_mocs") or []:
-        anchor = moc.get("anchor")
         path = moc.get("path")
-        if not anchor or not path:
+        if not path:
             continue
-        out.append({"path": path, "anchor": copy.deepcopy(anchor)})
+        anchor = moc.get("anchor")
+        entry: dict = {
+            "path": path,
+            "anchor": copy.deepcopy(anchor) if anchor else None,
+        }
+        if "pre_check" in moc:
+            entry["pre_check"] = bool(moc.get("pre_check"))
+        if moc.get("score") is not None:
+            entry["score"] = moc.get("score")
+        out.append(entry)
     return out
 
 
@@ -1646,6 +1656,21 @@ def main() -> int:
                         cand_anchors = persist_candidate_anchors(action)
                         if cand_anchors:
                             rendered_action["candidate_mocs"] = cand_anchors
+                    # ADR-026: persist the full structured per-note item so the
+                    # suggestions-wire is a complete mirror of the review surface
+                    # (the JSON-only Pass-2 path rebuilds confirmed_items from it,
+                    # never re-reading the markdown). rendered_md stays the
+                    # markdown projection; `item` is the structured projection.
+                    rendered_action["item"] = {
+                        "title": (action.get("suggested_title") or "").strip() or stem,
+                        "template": action.get("template") or "",
+                        "location": action.get("location") or "",
+                        "tags": [t for t in (action.get("tags_to_add") or []) if t],
+                        "audio_peer": action.get("audio_peer"),
+                        "worthiness": action.get("atomic_note_worthiness"),
+                        "suppressed": bool(action.get("suppressed")),
+                        "force_atomic": bool(action.get("force_atomic")),
+                    }
                 rendered_actions.append(rendered_action)
 
             # Collect Proposed-MOC candidates from atomic-note actions; the

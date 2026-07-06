@@ -87,6 +87,12 @@ class FakeKadoClient:
         # empty result is non-destructive (enrich only overwrites on non-empty).
         return self._read_frontmatter_responses.get(path, {"content": {}})
 
+    def read_file_bytes(self, path: str) -> bytes:
+        # ADR-026: _suggestions.json sibling fetch — no sibling in these fixtures.
+        from lib.kado_client import KadoError
+
+        raise KadoError(f"not found: {path}")
+
 
 # ---------------------------------------------------------------------------
 # Fixture builders

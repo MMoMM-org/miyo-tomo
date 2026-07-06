@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.1
+# version: 0.12.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -24,6 +24,7 @@ import yaml
 
 from lib.doc_frontmatter import build_tomo_block
 from lib.profile_conventions import ensure_suffix
+from lib.render_md import compute_payload_digest
 
 
 def render_frontmatter(d: dict) -> list[str]:
@@ -191,12 +192,205 @@ def render_needs_attention(d: dict) -> list[str]:
     return lines
 
 
+# ── Suggestions wire (ADR-026) ───────────────────────────────────────────
+# A structured, vault-published sibling of _suggestions.md that the Hashi
+# Suggestions Editor reads/edits. Projected from the same suggestions-doc.json
+# the markdown is rendered from; render-intermediate fields (rendered_md, …) are
+# dropped. Conforms to schemas/suggestions-wire.schema.json.
+
+
+def _wire_selected(moc: dict) -> bool:
+    """Pre-checked state for a candidate MOC — mirrors reducer.moc_link_line."""
+    if "pre_check" in moc:
+        return bool(moc.get("pre_check"))
+    return (moc.get("score") or 0) >= 0.5
+
+
+def _wire_anchor(anchor: dict | None) -> dict | None:
+    """Project a suggestions-doc anchor to the wire anchor shape (same keys).
+
+    Guard (ADR-026): `inside` is executable only on callout anchors — the
+    executor hard-fails `inside` on heading/line. Coerce it to `after` here so
+    the wire can never carry an unexecutable placement.
+    """
+    if not anchor:
+        return None
+    placement = anchor.get("placement")
+    if placement == "inside" and anchor.get("type") != "callout":
+        placement = "after"
+    return {
+        "type": anchor.get("type"),
+        "value": anchor.get("value"),
+        "placement": placement,
+        "new_section": anchor.get("new_section"),
+        "alt_headings": [h for h in (anchor.get("alt_headings") or []) if h],
+        "fit_confidence": anchor.get("fit_confidence"),
+    }
+
+
+_PARSER_MOD = None
+_THG_MOD = None
+
+
+def _group_id_fn():
+    """Lazily load the tag-handler-group module's stable group_id() (ADR-026
+    Hashi flag 3) so the wire can join descriptive fields to each group by id."""
+    global _THG_MOD
+    if _THG_MOD is None:
+        import importlib.util
+        import pathlib
+
+        path = pathlib.Path(__file__).resolve().parent / "tag-handler-group.py"
+        spec = importlib.util.spec_from_file_location("_thg_for_wire", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _THG_MOD = mod
+    return _THG_MOD.group_id
+
+
+def _parser_mod():
+    """Lazily load suggestion-parser.py to reuse its section parsers.
+
+    The daily-note and tag-handler sections are mirrored into the wire by parsing
+    our OWN freshly-rendered markdown with the parser's own functions — so the
+    wire carries the exact parse-output shape and build_from_wire reproduces it
+    (parity by construction). Reusing the parser avoids a second, divergent
+    implementation of those intricate sub-parsers.
+    """
+    global _PARSER_MOD
+    if _PARSER_MOD is None:
+        import importlib.util
+        import pathlib
+
+        path = pathlib.Path(__file__).resolve().parent / "suggestion-parser.py"
+        spec = importlib.util.spec_from_file_location("_suggestion_parser_for_wire", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _PARSER_MOD = mod
+    return _PARSER_MOD
+
+
+def _wire_note(section: dict, action: dict) -> dict:
+    """Project one create_atomic_note action to a full-mirror wire suggestion."""
+    item = action.get("item") or {}
+    sid = action.get("suggestion_id") or section["id"]
+    worthiness = item.get("worthiness")
+    # Mirror the Approve pre-check: checked (⇒ approve) when worthiness >= 0.5.
+    decision = "approve" if (worthiness is not None and worthiness >= 0.5) else "skip"
+    candidate_mocs = [
+        {
+            "path": moc["path"],
+            "selected": _wire_selected(moc),
+            "anchor": _wire_anchor(moc.get("anchor")),
+            "source": "tomo",
+        }
+        for moc in (action.get("candidate_mocs") or [])
+        if moc.get("path")
+    ]
+    return {
+        "id": sid,
+        "stem": section["stem"],
+        "title": item.get("title") or section["stem"],
+        "template": item.get("template", ""),
+        "location": item.get("location", ""),
+        "tags": list(item.get("tags") or []),
+        "audio_peer": item.get("audio_peer"),
+        "decision": decision,
+        "keep_source": False,
+        "delete_source": False,
+        "force_atomic": bool(item.get("force_atomic")),
+        "suppressed": bool(item.get("suppressed")),
+        "worthiness": worthiness,
+        "candidate_mocs": candidate_mocs,
+    }
+
+
+def build_wire_payload(d: dict) -> dict:
+    """Project suggestions-doc.json to the full-mirror suggestions-wire + emit_digest.
+
+    ADR-026: the wire is a complete, structured serialization of the review
+    surface. When Hashi edits it, Pass-2 rebuilds its entire output from the wire
+    alone (build_from_wire) — never re-reading the markdown — so every editable
+    decision the markdown offers is carried here.
+    """
+    moc_suffix = (d.get("conventions") or {}).get("moc_suffix", "")
+
+    suggestions = [
+        _wire_note(s, a)
+        for s in d.get("sections", [])
+        for a in s.get("actions", [])
+        if a.get("kind") == "create_atomic_note"
+    ]
+
+    proposed_mocs: list[dict] = []
+    for i, pm in enumerate(d.get("proposed_mocs") or [], start=1):
+        topic = pm.get("topic", "")
+        proposed_mocs.append(
+            {
+                "id": f"M{i:02d}",
+                "topic": topic,
+                "name": pm.get("name") or ensure_suffix(topic, moc_suffix),
+                "parent": pm.get("parent", ""),
+                "member_ids": list(pm.get("items") or []),
+                "tags": list(pm.get("tags") or []),
+                "reason": pm.get("reason", ""),
+                # Mirror the markdown default (neither Approve nor Skip ticked ⇒
+                # not created). Hashi flips this to "approve" to create the MOC.
+                "decision": "skip",
+            }
+        )
+
+    # Daily + tag-handler: mirror the exact parse-output by parsing our own
+    # rendered markdown, so build_from_wire reproduces them verbatim (parity).
+    pm = _parser_mod()
+    daily_updates = pm.parse_daily_updates(d.get("rendered_daily_updates_md") or "")
+    # Tag-handler: decisions (approved/keep_source) come from parsing our own
+    # rendered markdown; descriptive context (Hashi flag 3) is joined from the
+    # doc's tag_handler_updates by the stable group_id so the editor card can
+    # show what's being approved, not a bare id.
+    gid_fn = _group_id_fn()
+    doc_groups = {gid_fn(g): g for g in (d.get("tag_handler_updates") or [])}
+    tag_handler_groups = []
+    for gid, approved, keep_source in pm._walk_tag_handler_decisions(
+        d.get("rendered_tag_handler_updates_md") or ""
+    ):
+        g = doc_groups.get(gid, {})
+        tag_handler_groups.append({
+            "group_id": gid,
+            "approved": approved,
+            "keep_source": keep_source,
+            "handler": g.get("handler", ""),
+            "target_path": g.get("target_path"),
+            "marker": g.get("marker", ""),
+            "source_paths": list(g.get("source_paths") or []),
+            "preview": g.get("composed_block", ""),
+        })
+
+    payload = {
+        "schema_version": "1",
+        "generated": d["generated"],
+        "run_id": d["run_id"],
+        "profile": d["profile"],
+        "source_items": d["source_items"],
+        "suggestions": suggestions,
+        "proposed_mocs": proposed_mocs,
+        "daily_updates": daily_updates,
+        "tag_handler_groups": tag_handler_groups,
+    }
+    payload["emit_digest"] = compute_payload_digest(payload)
+    return payload
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description="Render suggestions-doc.json to final markdown."
     )
     p.add_argument("--input", required=True, help="Path to suggestions-doc.json")
     p.add_argument("--output", required=True, help="Output markdown file path")
+    p.add_argument(
+        "--json-output",
+        help="Optional path for the structured suggestions-wire JSON (ADR-026).",
+    )
     args = p.parse_args()
 
     with open(args.input, encoding="utf-8") as f:
@@ -216,6 +410,11 @@ def main() -> int:
 
     with open(args.output, "w", encoding="utf-8") as f:
         f.write(content)
+
+    if args.json_output:
+        wire = build_wire_payload(d)
+        with open(args.json_output, "w", encoding="utf-8") as f:
+            json.dump(wire, f, ensure_ascii=False, indent=2)
 
     section_count = len(d.get("sections", []))
     daily_count = len(d.get("daily_notes_updates") or [])

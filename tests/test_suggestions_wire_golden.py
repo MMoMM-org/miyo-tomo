@@ -236,6 +236,44 @@ def test_flag1_anchorless_candidate_surfaced_but_filtered():
     assert item["parent_mocs"] == ["Atlas/200 Maps/A (MOC)"]  # only the selected one links
 
 
+def test_edited_daily_reaches_the_update_log_entry_action():
+    # Hashi daily-editing v1: an edit to a log_entry's content/position/time must
+    # survive build_from_wire (JSON-only) AND reach the rendered daily note.
+    render_actions = _load("render_actions_daily", "lib/render_actions.py")
+    wire = _wire()
+    wire["daily_updates"] = [{
+        "date": "2026-07-06", "trackers": [], "log_links": [],
+        "log_entries": [{
+            "time": "09:15", "position": "at_time", "content": "original text",
+            "reason": "journal", "source_stem": "memo", "accepted": True,
+            "force_atomic_note": False,
+        }],
+    }]
+    # Hashi edits content + moves it off a fixed time.
+    le = wire["daily_updates"][0]["log_entries"][0]
+    le["content"] = "EDITED reflection"
+    le["position"] = "after_last_line"
+    le["time"] = None
+
+    out = parser.build_from_wire(wire, "")
+    # 1) build_from_wire passes the edit through verbatim.
+    got = out["daily_updates"][0]["log_entries"][0]
+    assert got["content"] == "EDITED reflection"
+    assert got["position"] == "after_last_line"
+    assert got["time"] is None
+
+    # 2) the edit reaches the update_log_entry action (→ rendered daily note).
+    cfg = {
+        "concepts.calendar.granularities.daily.path": "Calendar/301 Daily/",
+        "daily_log.heading": "Log", "daily_log.heading_level": 2,
+    }
+    actions = render_actions._build_daily_update_actions(out["daily_updates"], cfg, [0])
+    le_action = next(a for a in actions if a["action"] == "update_log_entry")
+    assert le_action["content"] == "EDITED reflection"
+    assert le_action["position"] == "after_last_line"
+    assert le_action["time"] is None
+
+
 def test_flag3_tag_handler_context_in_wire():
     wire = render.build_wire_payload(_doc_with_sections())
     g = wire["tag_handler_groups"][0]

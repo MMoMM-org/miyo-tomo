@@ -90,8 +90,62 @@
     },
     "daily_updates": {
       "type": "array",
-      "description": "Daily-note updates (ADR-026 full mirror), carried in the parser's own output shape (date + trackers/log_entries/log_links, each with an editable `accepted` flag). Mirrored verbatim so the JSON-only path reproduces them; preserve-only in v1 (Hashi round-trips, editing UI deferred).",
-      "items": {"type": "object"}
+      "description": "Daily-note updates (ADR-026 full mirror), carried in the parser's own output shape. Under JSON-only, build_from_wire passes these through verbatim and instruction-render reads content/position/time straight from each entry — so edits flow to the rendered daily note. Own-the-whole-document: preserve every field and sibling entry you don't edit.",
+      "items": {
+        "type": "object",
+        "required": ["date", "trackers", "log_entries", "log_links"],
+        "additionalProperties": false,
+        "properties": {
+          "date": {"type": "string", "description": "Read-only — daily-note date stem (e.g. 2026-07-06)."},
+          "trackers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["field", "value", "reason", "source_stem", "accepted"],
+              "additionalProperties": false,
+              "properties": {
+                "field": {"type": "string", "description": "Read-only."},
+                "value": {"type": "string", "description": "Read-only."},
+                "reason": {"type": "string", "description": "Read-only."},
+                "source_stem": {"type": "string", "description": "Read-only — origin note."},
+                "accepted": {"type": "boolean", "description": "Editable — accept toggle."}
+              }
+            }
+          },
+          "log_entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["time", "position", "content", "reason", "source_stem", "accepted", "force_atomic_note"],
+              "additionalProperties": false,
+              "properties": {
+                "time": {"type": ["string", "null"], "description": "Editable — HH:MM, only meaningful when position == at_time; null otherwise."},
+                "position": {"type": "string", "enum": ["at_time", "after_last_line", "before_first_line"], "description": "Editable — placement in the daily log."},
+                "content": {"type": "string", "description": "Editable — the log-entry text."},
+                "reason": {"type": "string", "description": "Read-only."},
+                "source_stem": {"type": "string", "description": "Read-only — origin note."},
+                "accepted": {"type": "boolean", "description": "Editable — accept toggle."},
+                "force_atomic_note": {"type": "boolean", "description": "Editable — kept in sync per source-stem with suggestions[].force_atomic."}
+              }
+            }
+          },
+          "log_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["target_stem", "time", "position", "reason", "accepted"],
+              "additionalProperties": false,
+              "properties": {
+                "target_stem": {"type": "string", "description": "Read-only — the atomic note the log links to."},
+                "time": {"type": ["string", "null"], "description": "Read-only."},
+                "position": {"type": "string", "enum": ["at_time", "after_last_line", "before_first_line"], "description": "Read-only."},
+                "reason": {"type": "string", "description": "Read-only."},
+                "accepted": {"type": "boolean", "description": "Editable — accept toggle."}
+              }
+            }
+          }
+        }
+      }
     },
     "tag_handler_groups": {
       "type": "array",

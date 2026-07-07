@@ -59,6 +59,8 @@
           "description": "The inbox item's filename stem (without extension). Groups N atomics back to one source. Required for ALL items — not just multi-thread — for downstream uniformity (ADR-4)."
         },
         "suggested_title": {"type": "string", "minLength": 1},
+        "summary": {"type": "string", "minLength": 1,
+                    "description": "One-sentence gist of THIS thread's content, for display only (never used for scoring). Lets the user/editor see what the note is about without opening it. Optional — absent on legacy results."},
         "template": {"type": "string", "minLength": 1,
                      "description": "Obsidian template file name (e.g. 'Atomic Note.md') or concept key (e.g. 'atomic_note') — whichever the user's templates.mapping exposes."},
         "location": {"type": "string", "minLength": 1,

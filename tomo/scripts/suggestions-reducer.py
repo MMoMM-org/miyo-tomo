@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.28.0
+# version: 1.29.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -328,6 +328,9 @@ def render_create_atomic_note(action: dict, stem: str, moc_suffix: str) -> str:
     else:
         lines.append(f"**Source:** [[{stem}]]")
     lines.append(f"**Suggested name:** {title}")
+    summary = (action.get("summary") or "").strip()
+    if summary:
+        lines.append(f"**Summary:** {summary}")
     template = action.get("template")
     if template:
         lines.append(f"**Template:** {_template_link(template)}    ← change if you want a different template")
@@ -405,9 +408,14 @@ def render_suppressed_atomic(action: dict, stem: str) -> str:
     title = (action.get("suggested_title") or "").strip() or stem
     worthiness = action.get("atomic_note_worthiness")
     pct = f"{int(worthiness * 100)}%" if worthiness is not None else "below 50%"
+    summary = (action.get("summary") or "").strip()
     lines = [
         f"**Source:** [[{stem}]]",
         f"**Suggested name:** {title}",
+    ]
+    if summary:
+        lines.append(f"**Summary:** {summary}")
+    lines += [
         f"**Atomic-worthiness:** {pct} — below the 0.5 threshold; kept in inbox.",
         "",
         "Tomo did not promote this to an atomic note. Tick **Force Atomic Note** "
@@ -1661,6 +1669,7 @@ def main() -> int:
                     # markdown projection; `item` is the structured projection.
                     rendered_action["item"] = {
                         "title": (action.get("suggested_title") or "").strip() or stem,
+                        "summary": (action.get("summary") or "").strip() or None,
                         "template": action.get("template") or "",
                         "location": action.get("location") or "",
                         "tags": [t for t in (action.get("tags_to_add") or []) if t],

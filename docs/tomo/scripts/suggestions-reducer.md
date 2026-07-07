@@ -270,3 +270,17 @@ ACTION, but the FAN / fan-resolve flow sets `force_atomic` on the ITEM (the acti
 may carry neither). Without propagation, removing the early-return suppressed
 force-resolved atomics and dropped their proposed MOCs. The reducer now copies the
 item's `force_atomic` onto each create_atomic_note action first.
+
+## Content preview — `**Summary:**` line (b, content-preview gap)
+
+WHY atomic suggestion sections gained a `**Summary:**` line (reducer v1.29.0):
+sub-worthy / kept-in-inbox items rendered only Source + Suggested name + worthiness,
+so the user could not tell what a note was *about* without opening it — a real gap
+once the inbox held concept notes that are neither daily-log entries nor promoted
+atomics. `render_create_atomic_note` and `render_suppressed_atomic` now render an
+optional `**Summary:**` (a one-sentence gist) directly under Suggested name. The
+gist is authored by the analyst (`inbox-analyst`), not the reducer — the reducer is
+deterministic and never had the note content. Threaded through the structured `item`
+so `suggestions-render._wire_note` mirrors it into the wire (`summary`), giving the
+Hashi editor the same preview. Optional field — legacy items without it render and
+validate unchanged (schema_version stays "1").

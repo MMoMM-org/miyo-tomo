@@ -59,6 +59,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "title": {"type": "string"},
+                    "summary": {"type": ["string", "null"], "description": "One-sentence gist of the note (analyst-authored, display only). Null when the analyst emitted none."},
                     "template": {"type": "string"},
                     "location": {"type": "string"},
                     "tags": {"type": "array", "items": {"type": "string"}},

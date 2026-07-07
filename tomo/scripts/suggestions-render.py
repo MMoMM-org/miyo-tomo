@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.0
+# version: 0.13.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -171,7 +171,6 @@ def render_proposed_mocs(d: dict) -> list[str]:
         entry.extend([
             "- **Decision:**",
             "  - [ ] Approve (create this MOC with the Name above)",
-            "  - [ ] Skip \u2014 don't create, items stay with their individual MOC matches",
             "",
         ])
         lines.extend(entry)
@@ -334,8 +333,8 @@ def build_wire_payload(d: dict) -> dict:
                 "member_ids": list(pm.get("items") or []),
                 "tags": list(pm.get("tags") or []),
                 "reason": pm.get("reason", ""),
-                # Mirror the markdown default (neither Approve nor Skip ticked ⇒
-                # not created). Hashi flips this to "approve" to create the MOC.
+                # Mirror the markdown default (Approve un-ticked ⇒ not created;
+                # un-approving IS skipping). Hashi flips this to "approve" to create.
                 "decision": "skip",
             }
         )

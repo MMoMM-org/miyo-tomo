@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """test_suggestions_reducer_tag_handler_groups.py — T3.3 (spec 024) + T6.1/T6.2 (spec 025).
 
 Covers the tag-handler group-result render path in suggestions-reducer and
@@ -149,6 +149,55 @@ def test_one_group_renders_one_suggestion() -> None:
     assert g["marker"] in rendered, "marker must appear"
     assert "Approve" in rendered, "Approve checkbox must be present"
     assert "- [" in rendered, "must contain a checkbox"
+
+
+def test_tag_handler_block_drops_redundant_skip_box() -> None:
+    """spec-027/ADR-4 'Skip is redundant': the tag-handler decision block renders
+    Approve + Keep source only — no decorative Skip box (parser reads only Approve;
+    un-approving IS skipping). Falsifies a re-added Skip line."""
+    rendered = render_tag_handler_group(_group())
+
+    assert "- [x] Approve" in rendered, "Approve must be pre-checked"
+    assert "Keep source files" in rendered, "Keep-source opt-out must remain"
+    assert "Skip" not in rendered, (
+        "redundant Skip box must be gone — un-approving is skipping\n"
+        f"---\n{rendered}\n---"
+    )
+
+
+def test_per_source_decision_blocks_drop_redundant_skip() -> None:
+    """The per-source decision blocks (link_to_moc / create_moc / modify_note) and
+    the aggregated Proposed-MOCs render carry Approve only — no Skip box."""
+    blocks = [
+        _reducer_mod.render_link_to_moc(
+            {"target_moc": "Atlas/200 Maps/Frameworks (MOC).md"}, "src"
+        ),
+        _reducer_mod.render_create_moc(
+            {"moc_title": "New Topic", "parent_moc": "Atlas/200 Maps/Home (MOC).md"},
+            "src",
+            "",
+        ),
+        _reducer_mod.render_modify_note(
+            {"target_path": "Atlas/202 Notes/Target.md", "diff_description": "append"},
+            "src",
+        ),
+    ]
+    for b in blocks:
+        assert "- [x] Approve" in b, f"Approve must be present:\n{b}"
+        assert "Skip" not in b, f"redundant Skip box must be gone:\n{b}"
+
+    # Aggregated ## Proposed MOCs section (suggestions-render.py) — Approve un-ticked
+    # (default skip) with no Skip box.
+    doc = {
+        "conventions": {"moc_suffix": " (MOC)"},
+        "proposed_mocs": [
+            {"topic": "Board Games", "name": "Board Games (MOC)",
+             "parent": "Atlas/200 Maps/Home (MOC)", "items": [], "note_titles": ["Catan"]}
+        ],
+    }
+    proposed_md = "\n".join(_render_mod.render_proposed_mocs(doc))
+    assert "- [ ] Approve" in proposed_md, "Approve opt-in must be present (default skip)"
+    assert "Skip" not in proposed_md, f"redundant Skip box must be gone:\n{proposed_md}"
 
 
 # ── T3.3-2: N source_paths → composed_block appears ONCE (AC-3) ──────────────

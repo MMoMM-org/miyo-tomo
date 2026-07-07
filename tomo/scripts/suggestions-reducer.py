@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.27.0
+# version: 1.28.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -475,7 +475,6 @@ def render_update_daily(action: dict, stem: str, field_sections: dict[str, str] 
     lines.append("")
     lines.append("**Decision (daily update):**")
     lines.append("- [x] Approve")
-    lines.append("- [ ] Skip")
     return "\n".join(lines)
 
 
@@ -487,7 +486,7 @@ def render_link_to_moc(action: dict, stem: str) -> str:
     return (
         f"**Source:** [[{stem}]]\n"
         f"**Link to existing MOC:** [[{target}]]\n"
-        "\n**Decision (link to MOC):**\n- [x] Approve\n- [ ] Skip"
+        "\n**Decision (link to MOC):**\n- [x] Approve"
     )
 
 
@@ -546,7 +545,7 @@ def render_create_moc(action: dict, stem: str, moc_suffix: str) -> str:
         f"**Source:** [[{stem}]]\n"
         f"**Create new MOC:** {moc_title}\n"
         f"**Parent MOC:** [[{parent}]]\n"
-        "\n**Decision (create MOC):**\n- [x] Approve\n- [ ] Skip"
+        "\n**Decision (create MOC):**\n- [x] Approve"
     )
 
 
@@ -558,7 +557,7 @@ def render_modify_note(action: dict, stem: str) -> str:
         f"**Source:** [[{stem}]]\n"
         f"**Modify note:** [[{link}]]\n"
         f"**Change:** {desc}\n"
-        "\n**Decision (modify note):**\n- [x] Approve\n- [ ] Skip"
+        "\n**Decision (modify note):**\n- [x] Approve"
     )
 
 
@@ -808,7 +807,6 @@ def render_tag_handler_group(group: dict) -> str:
     lines.append("**Decision (tag-handler update):**")
     lines.append("- [x] Approve")
     lines.append("- [ ] Keep source files (leave the captured inbox notes in place after consolidating)")
-    lines.append("- [ ] Skip")
     return "\n".join(lines)
 
 

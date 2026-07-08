@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.0
+# version: 0.21.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -34,6 +34,7 @@ from lib.audio_constants import AUDIO_EXTS  # noqa: E402
 from lib.doc_frontmatter import body_after_frontmatter  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
+from lib.render_md import compute_payload_digest  # noqa: E402 — ADR-026 wire-edit check
 
 # tag-handler-resolve.py is hyphenated — load it as a module via importlib so its
 # load_registry/resolve_item are importable (house pattern for hyphenated scripts).
@@ -448,6 +449,53 @@ def _extract_fan_items(body: str, source_path: str) -> list[dict]:
     return items
 
 
+def _load_edited_wire(wire_cache_path: str) -> "dict | None":
+    """Return the cached _suggestions.json wire iff it was EDITED (ADR-026 D1).
+
+    Edited = present, schema_version "1", and the recomputed digest no longer matches
+    the embedded emit_digest. Returns None when absent / unparseable / unedited — in
+    which case the markdown stays authoritative. Mirrors suggestion-parser.load_changed_wire
+    so triage and Pass-2 agree on whether the JSON drives this doc.
+    """
+    try:
+        wire = json.loads(Path(wire_cache_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(wire, dict) or wire.get("schema_version") != "1":
+        return None
+    stored = wire.get("emit_digest")
+    if not stored or compute_payload_digest(wire) == stored:
+        return None
+    return wire
+
+
+def _extract_fan_items_from_wire(wire: dict, source_path: str) -> list[dict]:
+    """Force-atomic items from an EDITED wire (ADR-026 JSON-only authority).
+
+    The JSON mirror of `_extract_fan_items`: when the wire was edited the markdown body
+    is Hashi's minimal envelope (no Force-Atomic checkboxes), so the force-atomic
+    decisions live only in the JSON — a suppressed suggestion with `force_atomic: true`,
+    or a daily `log_entries[]` with `force_atomic_note: true`. Deduplicated by stem (a
+    source can be both a suppressed suggestion and a daily entry, e.g. a travel note).
+    """
+    items: list[dict] = []
+    seen: set[str] = set()
+
+    def _add(stem: "str | None") -> None:
+        if stem and stem not in seen:
+            seen.add(stem)
+            items.append({"stem": stem, "source_path": source_path})
+
+    for s in wire.get("suggestions") or []:
+        if s.get("suppressed") and s.get("force_atomic"):
+            _add(s.get("stem"))
+    for d in wire.get("daily_updates") or []:
+        for le in d.get("log_entries") or []:
+            if le.get("force_atomic_note"):
+                _add(le.get("source_stem"))
+    return items
+
+
 def _filename_from_path(vault_path: str) -> str:
     """Extract filename from vault path."""
     return Path(vault_path).name
@@ -557,10 +605,6 @@ def read_approval_state(
         approved = False
         if doc_type in ("suggestions", "suggestions-fan"):
             approved = bool(_RE_APPROVED.search(body))
-            if approved:
-                # Scan for FAN items
-                fan_items = _extract_fan_items(body, vault_path)
-                force_atomic_items.extend(fan_items)
         elif doc_type == "moc-proposal":
             approved = bool(_RE_ACCEPT.search(body))
 
@@ -572,10 +616,22 @@ def read_approval_state(
             }
             if doc_type == "suggestions":
                 wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+                edited_wire = None
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
+                    edited_wire = _load_edited_wire(wire_cache)
+                # ADR-026 D1: an edited wire is authoritative — extract force-atomic
+                # items from the JSON and IGNORE the markdown body (Hashi's minimal
+                # envelope has no Force-Atomic checkboxes). Unedited/absent → markdown.
+                if edited_wire is not None:
+                    force_atomic_items.extend(
+                        _extract_fan_items_from_wire(edited_wire, vault_path)
+                    )
+                else:
+                    force_atomic_items.extend(_extract_fan_items(body, vault_path))
                 approved_suggestions.append(entry)
             elif doc_type == "suggestions-fan":
+                force_atomic_items.extend(_extract_fan_items(body, vault_path))
                 approved_fan.append(entry)
             elif doc_type == "moc-proposal":
                 approved_moc_proposals.append(entry)

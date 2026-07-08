@@ -57,3 +57,30 @@ a corrupt cache must never crash triage. Only a genuinely old, parseable
 `last_scan` surfaces a warning. A `last_scan` in the future (clock skew) is
 treated as fresh. The staleness check is `discovery_cache_staleness_drift`;
 coverage in `tests/test_triage_cache_staleness.py`.
+
+## Fan-resolve trigger reads the edited wire (ADR-026 JSON-only)
+
+WHY triage extracts force-atomic items from the wire, not just the markdown
+(v0.21.0): the fan-resolve routing (determine_action branch 5) fires on
+`force_atomic_items`, which `_extract_fan_items` scraped from `- [x] Force Atomic
+Note` checkboxes in the markdown body. Under ADR-026 JSON-only, Hashi edits the
+`_suggestions.json` and writes a MINIMAL markdown envelope (frontmatter + `- [x]
+Approved` only) — the force-atomic decisions live solely in the JSON. So the
+markdown scrape found nothing, `force_atomic_items` was empty, and an approved doc
+with force-atomic'd items routed to `synthesize` instead of `fan-resolve` — the
+items surfaced in `build_from_wire`'s `pending_fan_resolutions` but nothing
+consumed them, so they were silently dropped (neither created nor resolved).
+
+`_load_edited_wire` mirrors `suggestion-parser.load_changed_wire` (present +
+schema_version "1" + digest mismatch) so triage and Pass-2 agree on whether the
+JSON is authoritative. When edited, `_extract_fan_items_from_wire` reads the
+force-atomic set from the JSON (suppressed `force_atomic` suggestions + daily
+`force_atomic_note` log entries, deduped by stem) and the markdown body is ignored
+entirely — the JSON flow behaves exactly like the markdown flow. Unedited/absent
+wire → the markdown scrape stays authoritative (byte-identical to prior behaviour).
+
+NOTE (downstream, not yet done): the fan-resolve render
+(`force-atomic-handling/SKILL.md`) emits the suggestions-fan doc WITHOUT a
+`--json-output` wire, so the 2nd (fan) round is markdown-only — Hashi cannot yet
+resolve it in JSON. Full Hashi parity needs the fan doc to emit + publish its own
+wire, mirroring suggest-handling.

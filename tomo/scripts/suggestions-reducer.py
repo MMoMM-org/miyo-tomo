@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.29.0
+# version: 1.30.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1334,6 +1334,54 @@ def annotate_tag_handler_group_guards(
     return tally
 
 
+def filter_stale_tag_handler_groups(groups: list[dict], client) -> tuple[list[dict], int]:
+    """Drop groups whose `source_paths` are ALL missing — unappliable stale groups.
+
+    A tag-handler group consolidates inbox source notes into a target. Groups are
+    per-run staging that carries no run_id, so a group whose sources were consumed
+    by an earlier run (and whose staging was never cleared) leaks into the next
+    suggestions doc even though there is nothing left to consolidate. If EVERY
+    source is gone, the group is stale — drop it so it never renders.
+
+    Fail-open: a None client (offline/`--no-kado`/test) keeps every group; a source
+    is treated as missing ONLY on a definitive NOT_FOUND (`path_exists` → False).
+    Any other error (transient/anomalous) counts the source as present, so a Kado
+    hiccup never drops a live group. A group that declares no sources is kept.
+    Returns (kept_groups, dropped_count); dropped groups are logged to stderr.
+    """
+    if client is None:
+        return groups, 0
+    kept: list[dict] = []
+    dropped = 0
+    exist_cache: dict[str, bool] = {}
+    for group in groups:
+        sources = group.get("source_paths") or []
+        if not sources:
+            kept.append(group)
+            continue
+        any_present = False
+        for sp in sources:
+            if sp not in exist_cache:
+                read_path = sp if sp.endswith(".md") else f"{sp}.md"
+                try:
+                    exist_cache[sp] = client.path_exists(read_path)
+                except Exception:  # noqa: BLE001 — transient/other: count as present
+                    exist_cache[sp] = True
+            if exist_cache[sp]:
+                any_present = True
+                break
+        if any_present:
+            kept.append(group)
+        else:
+            dropped += 1
+            print(
+                f"[reducer] dropped stale tag-handler group — all sources missing: "
+                f"{sources}",
+                file=sys.stderr,
+            )
+    return kept, dropped
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Reduce per-item result JSONs into a single suggestions-doc JSON."
@@ -1776,6 +1824,11 @@ def main() -> int:
         Path(args.tag_handler_groups_dir) if args.tag_handler_groups_dir else None
     )
     tag_handler_updates = collect_tag_handler_groups(tag_handler_groups_dir)
+    # Defense-in-depth against stale staging: drop any group whose sources are
+    # all gone (unappliable leftover from a prior run — groups carry no run_id).
+    tag_handler_updates, stale_dropped = filter_stale_tag_handler_groups(
+        tag_handler_updates, kado_client
+    )
     # spec 024 T4.2: guard each group — target_missing (FR-11) / marker_missing
     # (FR-12) render without an Approve box, so Pass-2 emits no instruction.
     # Fail-open via the shared kado_client; --no-kado / fan-resolve → all "ok".
@@ -1850,6 +1903,7 @@ def main() -> int:
         f"sections={len(sections)} daily_notes_updates={len(daily_notes_updates)} "
         f"daily_notes_missing={missing_daily} "
         f"tag_handler_updates={len(tag_handler_updates)} "
+        f"tag_handler_stale_dropped={stale_dropped} "
         f"tag_handler_guards=ok:{guard_tally['ok']}/"
         f"target_missing:{guard_tally['target_missing']}/"
         f"marker_missing:{guard_tally['marker_missing']} "

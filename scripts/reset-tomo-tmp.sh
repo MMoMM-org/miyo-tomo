@@ -1,6 +1,6 @@
 #!/bin/bash
 # reset-tomo-tmp.sh — Reset the tomo-tmp/ working directory in an instance.
-# version: 0.2.1
+# version: 0.3.0
 #
 # tomo-tmp/ accumulates state across /inbox phases. This script resets
 # to a clean state before a specific phase, so you can re-run from that
@@ -17,8 +17,8 @@
 #
 #   --pass1        Reset to before Pass 1 (suggest action). Clears triage
 #                  output, routing plan, items, shared-ctx, state file,
-#                  inbox-cache, and any orphaned result files.
-#                  Keeps voice/ so transcription doesn't re-run.
+#                  inbox-cache, tag-handler staging, and any orphaned result
+#                  files. Keeps voice/ so transcription doesn't re-run.
 #
 #   --fan-resolve  Reset fan-resolve outputs only. Clears fan-specific
 #                  items and suggestions-fan files. Keeps the parent
@@ -165,6 +165,11 @@ reset_pass1() {
     # Pass 1 results
     remove "$INSTANCE_TMP/items"
     remove_glob "$INSTANCE_TMP/item-*.result.json"
+
+    # Tag-handler staging (per-run; carries no run_id, so stale groups from a
+    # prior run would otherwise leak into the next suggestions doc)
+    remove "$INSTANCE_TMP/tag-handler-groups"
+    remove "$INSTANCE_TMP/tag-handler-group-stubs.json"
 
     # Suggestions docs (local copies)
     remove "$INSTANCE_TMP/suggestions.md"

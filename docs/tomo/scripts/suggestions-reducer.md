@@ -284,3 +284,23 @@ deterministic and never had the note content. Threaded through the structured `i
 so `suggestions-render._wire_note` mirrors it into the wire (`summary`), giving the
 Hashi editor the same preview. Optional field — legacy items without it render and
 validate unchanged (schema_version stays "1").
+
+## Stale tag-handler group drop — `filter_stale_tag_handler_groups` (B)
+
+WHY the reducer drops tag-handler groups whose `source_paths` are ALL missing
+(v1.30.0): `tomo-tmp/tag-handler-groups/` is per-run staging, but — unlike `items/`,
+which the reducer filters by `run_id` (#116) — a group-result JSON carries NO run_id.
+The LLM interpreter step (suggest-handling SKILL 3b) is gated on `handled[]` being
+non-empty, so a run with no tag-handler-tagged inbox notes never overwrites the dir,
+and `tag-handler-writer` never clears it. Result: a group whose sources were consumed
+by an earlier run leaked into the next suggestions doc and rendered a live Approve box
+(the existing `annotate_tag_handler_group_guards` only checks the TARGET note, not the
+sources — so a stale group with a still-present target passed the guard). A group with
+no live sources has nothing to consolidate, so it is unappliable — dropped before the
+guard pass. Fail-open mirrors the daily-existence check: None client (`--no-kado`/test)
+keeps everything; a source counts as missing ONLY on a definitive `path_exists → False`
+(NOT_FOUND); any propagated error counts it present, so a Kado hiccup never drops a live
+group. Drops are logged (`tag_handler_stale_dropped=N` + per-group stderr line) — no
+silent truncation. Paired with the primary fix: `reset-tomo-tmp --pass1` now also clears
+the staging dir + `tag-handler-group-stubs.json` (v0.3.0), so the leak is closed at both
+the reset path and defensively at render time.

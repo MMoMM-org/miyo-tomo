@@ -84,3 +84,16 @@ NOTE (downstream, not yet done): the fan-resolve render
 `--json-output` wire, so the 2nd (fan) round is markdown-only — Hashi cannot yet
 resolve it in JSON. Full Hashi parity needs the fan doc to emit + publish its own
 wire, mirroring suggest-handling.
+
+## Fan-doc wire caching (ADR-026 Piece 2)
+
+WHY triage also caches the `_suggestions-fan.json` wire sibling and sets
+`wire_cache_path` on the `approved_fan` entry (v0.22.0): for the JSON flow to work
+exactly like the markdown flow, the SECOND (fan) round must be Hashi-editable too.
+The fan-resolve render now emits + publishes a fan wire (force-atomic-handling
+SKILL); triage caches it like the primary, and the synthesis-conductor threads
+`--suggestions-json` for the standalone-fan path so a Hashi-edited fan resolves
+JSON-only (build_from_wire). Fan docs carry no force-atomic re-opt-in, so the fan's
+own force-atomic extraction stays markdown. LIMITATION: the fan-COMPANION merge
+(primary + fan in one run) still parses the fan markdown — it is not the Hashi
+standalone-fan path (primary already applied → fan approved in a later run).

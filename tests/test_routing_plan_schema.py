@@ -283,6 +283,26 @@ def test_approved_suggestions_wire_cache_path_passes(schema):
     )
 
 
+def test_approved_fan_wire_cache_path_passes(schema):
+    """ADR-026 fan-doc wire: approved_fan entries also carry wire_cache_path so a
+    Hashi-edited fan doc resolves JSON-only in the standalone-fan path."""
+    validate(
+        instance={
+            "action": "synthesize",
+            "timestamp": "2026-07-08T12:00:00Z",
+            "inbox_path": "100 Inbox",
+            "approved_fan": [
+                {
+                    "path": "100 Inbox/x_suggestions-fan.md",
+                    "cache_path": ".cache/x_suggestions-fan.md",
+                    "wire_cache_path": ".cache/x_suggestions-fan.json",
+                }
+            ],
+        },
+        schema=schema,
+    )
+
+
 # ---------------------------------------------------------------------------
 # force_atomic_items — requires stem + source_path
 # ---------------------------------------------------------------------------

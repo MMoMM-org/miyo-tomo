@@ -104,8 +104,29 @@ def _doc() -> dict:
     }
 
 
+def _fan_doc() -> dict:
+    """A fan-resolve doc: same section/action shape as the primary (fan-resolve only
+    filters items + un-suppresses force-atomic ones + wipes daily), so the wire must
+    emit and validate identically. Locks the Hashi fan-doc-wire path (ADR-026)."""
+    d = _doc()
+    d["doc_variant"] = "fan-resolve"
+    # a resolved force-atomic item: promoted (not suppressed) with the opt-in flag
+    d["sections"][0]["actions"][0]["item"]["suppressed"] = False
+    d["sections"][0]["actions"][0]["item"]["force_atomic"] = True
+    d["daily_notes_updates"] = []
+    d["rendered_daily_updates_md"] = ""
+    return d
+
+
 def test_wire_conforms_to_schema():
     jsonschema.validate(_MOD.build_wire_payload(_doc()), _SCHEMA)
+
+
+def test_fan_doc_wire_conforms_to_schema():
+    wire = _MOD.build_wire_payload(_fan_doc())
+    jsonschema.validate(wire, _SCHEMA)
+    assert wire["suggestions"][0]["force_atomic"] is True
+    assert wire["daily_updates"] == [] and wire["tag_handler_groups"] == []
 
 
 def test_ids_are_reference_based():

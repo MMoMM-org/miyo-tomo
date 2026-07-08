@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.9.0
+# version: 0.10.0
 
 **Active agent: synthesis-conductor**
 
@@ -113,6 +113,8 @@ For `DOC_TYPE` = `suggestions-fan` (standalone — `approved_suggestions` is emp
 ```bash
 python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
 ```
+When the `approved_fan` entry has `wire_cache_path`, append `--suggestions-json "<WIRE_CACHE_PATH>"` before the `>` redirect — a Hashi-edited fan wire then resolves JSON-only (build_from_wire), exactly like the primary. (ADR-026. The fan-COMPANION merge above stays markdown-only for now — it is not the Hashi standalone-fan path.)
+
 If `tomo-tmp/suggestions-doc.json` is absent (standalone-fan or force-pass2 flow), omit `--suggestions-doc` — the parser falls back to Placement-line parsing only.
 
 For `DOC_TYPE` = `moc-proposal`:

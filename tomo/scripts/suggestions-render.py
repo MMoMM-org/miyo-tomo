@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.0
+# version: 0.14.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -290,6 +290,7 @@ def _wire_note(section: dict, action: dict) -> dict:
         "id": sid,
         "stem": section["stem"],
         "title": item.get("title") or section["stem"],
+        "summary": item.get("summary"),
         "template": item.get("template", ""),
         "location": item.get("location", ""),
         "tags": list(item.get("tags") or []),

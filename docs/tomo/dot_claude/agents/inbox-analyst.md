@@ -312,3 +312,14 @@ depth bonus, and Classification Guard are unchanged.
 
 References: spec `docs/XDD/specs/029-topic-weighting-moc-matching/`, issue #124,
 ADR-4 (two substrates), ADR-6 (named constants).
+
+## WHY the analyst emits a display-only `summary`
+
+The analyst is told repeatedly to score the FULL original content and NEVER its own
+summary (Steps 7 / 7.5). The Step-9 `summary` field is a *different* artifact: a
+one-sentence gist emitted purely for DISPLAY in the suggestions doc + wire, so the
+user/Hashi editor sees what a note is about without opening it (closes the
+content-preview gap for sub-worthy items that show no content otherwise). The STRICT
+one-liner on that bullet exists precisely because the surrounding "never your own
+summary" scoring rule would otherwise read as forbidding this field — the guard keeps
+the two concerns separate: score from the original text, display from the gist.

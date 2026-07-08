@@ -28,6 +28,7 @@
           "id": {"type": "string", "pattern": "^S[0-9]{2,}(#[0-9]+)?$"},
           "stem": {"type": "string", "description": "Source note stem (read-only)."},
           "title": {"type": "string", "description": "Editable — the note name; the filename derives from it."},
+          "summary": {"type": ["string", "null"], "description": "Read-only — one-sentence gist of the note's content (analyst-authored, display only). Lets the editor show what the note is about without opening it. Null/absent on legacy items."},
           "template": {"type": "string", "description": "Editable — template wikilink target."},
           "location": {"type": "string", "description": "Editable — destination folder."},
           "tags": {"type": "array", "items": {"type": "string"}, "description": "Editable — tags to add."},

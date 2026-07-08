@@ -260,6 +260,29 @@ def test_approved_suggestions_path_only_passes(schema):
     )
 
 
+def test_approved_suggestions_wire_cache_path_passes(schema):
+    """ADR-026: inbox-triage writes wire_cache_path onto an approved_suggestions
+    entry when the _suggestions.json sibling was cached. The schema MUST allow it —
+    otherwise triage's own output-validation fails and the Pass-2 run falls back to
+    a stale routing plan (observed: Pass-1 re-runs instead of synthesizing)."""
+    validate(
+        instance={
+            "action": "synthesize",
+            "timestamp": "2026-07-08T12:00:00Z",
+            "inbox_path": "100 Inbox",
+            "approved_suggestions": [
+                {
+                    "path": "100 Inbox/x_suggestions.md",
+                    "modified": "2026-07-08T12:00:00Z",
+                    "cache_path": ".cache/x_suggestions.md",
+                    "wire_cache_path": ".cache/x_suggestions.json",
+                }
+            ],
+        },
+        schema=schema,
+    )
+
+
 # ---------------------------------------------------------------------------
 # force_atomic_items — requires stem + source_path
 # ---------------------------------------------------------------------------

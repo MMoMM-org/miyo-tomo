@@ -178,11 +178,24 @@ states the constraint directly without naming the mechanism.
 
 ## Tag-handler "Keep source files" checkbox (v1.19.0 → renamed v1.21.0)
 
-WHY the tag-handler decision block gained a third option: approving a group now
-deletes its consolidated inbox captures by default (instruction-render branch
-4). The `- [ ] Keep source files` box lets the user retain the source notes when
-they want them to stay in the inbox. It sits between Approve and Skip and
+WHY the tag-handler decision block carries a Keep-source option: approving a
+group now deletes its consolidated inbox captures by default (instruction-render
+branch 4). The `- [ ] Keep source files` box lets the user retain the source
+notes when they want them to stay in the inbox. It sits under Approve and
 defaults unchecked (delete is the default).
+
+WHY the redundant `- [ ] Skip` line was dropped from every decision block
+(v1.28.0 reducer / v0.13.0 render): the spec-027/ADR-4 "Skip is redundant —
+un-approving IS skipping" ruling (see the two-box atomic section below) was only
+applied to the atomic block at the time. The tag-handler, per-source
+link_to_moc / create_moc / modify_note / update_daily blocks, and the aggregated
+`## Proposed MOCs` section still rendered a decorative Skip box. Every parser
+site reads ONLY the Approve/Accept checkbox — `_walk_tag_handler_decisions`,
+`parse_section` ("Skip is the implicit inverse of Accept"), and
+`parse_proposed_mocs` ("only the checked one matters") never inspect a Skip box —
+so removing it changes no behaviour on either the markdown-parse or JSON-only
+(wire) path. The change makes the whole document consistent with the atomic
+model: Approve is the sole decision control.
 
 WHY the wording avoids executor internals: the line reads "leave the captured
 inbox notes in place after consolidating" — a user-visible effect — not

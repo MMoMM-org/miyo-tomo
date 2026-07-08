@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.23.0
+# version: 0.24.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -17,6 +17,7 @@ Usage:
 """
 
 import argparse
+import copy
 import itertools
 import json
 import os
@@ -400,6 +401,49 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
         "total_approved": len(confirmed_items),
         "total_skipped": len(skipped_items),
     }
+
+
+def build_from_wire_companion(
+    primary_wire: dict, fan_wire: dict, moc_template: str
+) -> dict:
+    """Companion merge from two EDITED wires (ADR-026 JSON-only), no markdown.
+
+    The markdown companion defers the primary's force-atomic'd items and resolves
+    them in a fan doc, then merges both. Under JSON-only we do the same by COMBINING
+    the two wires into one and running build_from_wire once — so all of its member
+    binding + proposed-MOC same-name merge logic is reused over the union, with no
+    id collisions or cross-wire membership gaps:
+
+    - The fan's ids are re-namespaced (S## → F-S##, M## → F-M##; member_ids fixed)
+      so they never clash with the primary's.
+    - The primary's deferred suggestions (the force-atomic'd stems the fan resolves)
+      are DROPPED and replaced by the fan's resolved (un-suppressed) versions — so
+      there are no leftover pending_fan_resolutions.
+    - proposed_mocs are concatenated (build_from_wire merges same-name across both);
+      daily_updates + tag_handler_groups come from the primary (the fan has none).
+    """
+    fan = copy.deepcopy(fan_wire)
+    id_map: dict[str, str] = {}
+    for s in fan.get("suggestions") or []:
+        old = s.get("id")
+        if old:
+            id_map[old] = f"F-{old}"
+            s["id"] = id_map[old]
+    for pm in fan.get("proposed_mocs") or []:
+        if pm.get("id"):
+            pm["id"] = f"F-{pm['id']}"
+        pm["member_ids"] = [id_map.get(m, m) for m in (pm.get("member_ids") or [])]
+
+    fan_stems = {s.get("stem") for s in (fan.get("suggestions") or [])}
+    combined = copy.deepcopy(primary_wire)
+    combined["suggestions"] = [
+        s for s in (combined.get("suggestions") or [])
+        if s.get("stem") not in fan_stems
+    ] + (fan.get("suggestions") or [])
+    combined["proposed_mocs"] = (
+        (combined.get("proposed_mocs") or []) + (fan.get("proposed_mocs") or [])
+    )
+    return build_from_wire(combined, moc_template)
 
 
 def _load_moc_template() -> str:
@@ -1792,6 +1836,16 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--fan-resolve-json",
+        metavar="PATH",
+        help=(
+            "Optional vault-published _suggestions-fan.json wire sibling (ADR-026). "
+            "When BOTH this and --suggestions-json are edited, the companion merge "
+            "is done entirely from the two wires (build_from_wire), never the "
+            "markdown — the JSON flow behaves exactly like the markdown companion."
+        ),
+    )
+    parser.add_argument(
         "--suggestions-doc",
         metavar="PATH",
         help=(
@@ -1846,8 +1900,9 @@ def main() -> int:
     # When the vault _suggestions.json sibling was edited (its emit_digest no
     # longer matches a recomputation), it is the SOLE authoritative source:
     # rebuild the entire output from the wire and never read the markdown. No
-    # mixing. Primary flow only — the fan-resolve flow keeps the markdown path.
+    # mixing.
     if not args.fan_resolve_file:
+        # Primary flow (no companion): edited primary wire → JSON-only.
         _wire = load_changed_wire(args.suggestions_json)
         if _wire is not None:
             print(json.dumps(
@@ -1859,6 +1914,28 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 0
+    else:
+        # Companion flow: when BOTH the primary and the fan wire were edited, the
+        # merge is done entirely from the two wires — the fan-resolve flow now has
+        # JSON-only parity with the primary. Mixed/neither edited → markdown below.
+        _p = load_changed_wire(args.suggestions_json)
+        _f = load_changed_wire(args.fan_resolve_json)
+        if _p is not None and _f is not None:
+            print(json.dumps(
+                build_from_wire_companion(_p, _f, _load_moc_template()),
+                indent=2, ensure_ascii=False,
+            ))
+            print(
+                "companion: both wires edited — JSON-only merge (build_from_wire_companion)",
+                file=sys.stderr,
+            )
+            return 0
+        if _p is not None or _f is not None:
+            print(
+                "warning: companion has only ONE edited wire — falling back to the "
+                "markdown merge (mixed markdown/JSON authority is not supported)",
+                file=sys.stderr,
+            )
 
     # ── Split and parse ───────────────────────────────────────────
     raw_sections = split_into_sections(text)

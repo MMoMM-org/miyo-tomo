@@ -183,3 +183,23 @@ WHY `audio_peer` must be included in the explicit `confirmed_items` projection d
 field that reaches the output JSON. Any new field on `result` that is omitted from
 the projection is silently dropped. `audio_peer` was added to both `result` defaults
 and the projection to ensure it survives to `instruction-render.py` as intended.
+
+## Companion merge from two wires — build_from_wire_companion (ADR-026)
+
+WHY the companion merge got a JSON-only path (parser v0.24.0): the markdown companion
+defers the primary's force-atomic'd items to a fan doc and merges both by parsing the
+fan MARKDOWN (`--fan-resolve-file`). Under Hashi the fan is resolved in the WIRE and the
+fan markdown is a minimal envelope, so the markdown merge read nothing and silently
+dropped every fan resolution — the primary synthesized alone while its force-atomic'd
+items stayed stranded as `pending_fan_resolutions`. `build_from_wire_companion` closes
+this by COMBINING the two edited wires and running `build_from_wire` once: the fan's ids
+are re-namespaced (`F-` prefix, member_ids fixed) so they never collide with the
+primary's; the primary's deferred (suppressed+force_atomic) suggestions are dropped and
+replaced by the fan's resolved (un-suppressed) versions, so no `pending_fan_resolutions`
+survive; proposed MOCs are concatenated (build_from_wire merges same-name across both);
+daily_updates + tag_handler_groups come from the primary (the fan has none). Reusing the
+single build_from_wire over the union gets member-stem→id binding and cross-wire MOC
+membership for free. The parser fires this only when BOTH `--suggestions-json` and
+`--fan-resolve-json` are edited wires; a single edited wire warns and falls back to the
+markdown merge (mixed markdown/JSON authority across the two docs is unsupported).
+Verified on the real Hashi wires: 22 confirmed (21 atomic + 1 MOC), 0 stranded.

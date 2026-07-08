@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.10.0
+# version: 0.11.0
 
 **Active agent: synthesis-conductor**
 
@@ -108,6 +108,7 @@ For `DOC_TYPE` = `suggestions` with a fan companion (`approved_fan` is non-empty
 ```bash
 python3 scripts/suggestion-parser.py --file "<CACHE_PATH>" --fan-resolve-file "<approved_fan[0].cache_path>" --suggestions-doc tomo-tmp/suggestions-doc.json > tomo-tmp/parsed-suggestions.json
 ```
+When BOTH the suggestions entry AND the `approved_fan[0]` entry carry `wire_cache_path`, ALSO append `--suggestions-json "<WIRE_CACHE_PATH>" --fan-resolve-json "<approved_fan[0].wire_cache_path>"` before the `>` redirect — both wires edited ⇒ the merge is done JSON-only from the two wires (Hashi parity; the fan markdown is not read). Thread `--fan-resolve-file` regardless (it is the fallback when a wire is unedited).
 
 For `DOC_TYPE` = `suggestions-fan` (standalone — `approved_suggestions` is empty, so there is no primary to merge into):
 ```bash

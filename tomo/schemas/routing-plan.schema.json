@@ -59,7 +59,8 @@
         "properties": {
           "path": {"type": "string"},
           "modified": {"type": "string"},
-          "cache_path": {"type": "string"}
+          "cache_path": {"type": "string"},
+          "wire_cache_path": {"type": "string", "description": "ADR-026: local cache path of the _suggestions-fan.json wire sibling, when present. Threaded to the conductor so a Hashi-edited fan doc resolves JSON-only (build_from_wire) in the standalone-fan path."}
         }
       },
       "description": "Suggestions-fan docs with [x] Approved ticked"

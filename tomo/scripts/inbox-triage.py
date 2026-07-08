@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.21.0
+# version: 0.22.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -631,6 +631,12 @@ def read_approval_state(
                     force_atomic_items.extend(_extract_fan_items(body, vault_path))
                 approved_suggestions.append(entry)
             elif doc_type == "suggestions-fan":
+                # ADR-026: cache the fan wire sibling too, so a Hashi-edited fan doc
+                # resolves JSON-only in Pass-2 (standalone-fan path). Fan docs carry
+                # no force-atomic re-opt-in, so extraction stays markdown here.
+                wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+                if wire_cache:
+                    entry["wire_cache_path"] = wire_cache
                 force_atomic_items.extend(_extract_fan_items(body, vault_path))
                 approved_fan.append(entry)
             elif doc_type == "moc-proposal":

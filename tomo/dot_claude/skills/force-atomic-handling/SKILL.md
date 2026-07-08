@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.3.0
+# version: 0.4.0
 
 ## When to Activate
 
@@ -89,16 +89,23 @@ python3 scripts/suggestions-reducer.py --state tomo-tmp/inbox-state.jsonl --item
 ### 5. Render
 
 ```bash
-python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-fan-doc.json --output tomo-tmp/suggestions-fan-rendered.md
+python3 scripts/suggestions-render.py --input tomo-tmp/suggestions-fan-doc.json --output tomo-tmp/suggestions-fan-rendered.md --json-output tomo-tmp/suggestions-fan-wire.json
 ```
 
 ### 6. Write to vault
 
+Publish BOTH siblings at the same stem so the ADR-026 editor + Pass-2 pair them:
+
 1. Read `tomo-tmp/suggestions-fan-rendered.md` via the `Read` tool.
 2. Write via `mcp__kado__kado-write` with `operation: "note"` at
    `<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.md`.
+3. Publish the wire sibling (JSON needs the file op, not note):
+
+```bash
+python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-fan-wire.json --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.json"
+```
 
 ### 7. Report
 
 > "FAN resolve complete — {N} items expanded into suggestions-fan doc.
-> Review in Obsidian, check the **Approved** box, then re-run `/inbox`."
+> Review + resolve in Hashi (or Obsidian), check the **Approved** box, then re-run `/inbox`."

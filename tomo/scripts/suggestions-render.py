@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.14.0
+# version: 0.15.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -322,6 +322,24 @@ def build_wire_payload(d: dict) -> dict:
         if a.get("kind") == "create_atomic_note"
     ]
 
+    # proposed_mocs.items are keyed in the reducer's per-SOURCE section_id space
+    # (atomic_key = section_id, or section_id#idx for F-41 multi-atomic sources),
+    # but each wire suggestion is keyed by its flat per-ATOMIC suggestion_id. The
+    # two spaces diverge whenever a daily-only source sits between atomics (its
+    # source index is consumed but it emits no atomic), so copying items verbatim
+    # made member_ids point at the wrong suggestion. Map atomic_key → the flat id
+    # (mirroring the reducer's `_atomic_id` keying) and remap below so member_ids
+    # reference the wire's own suggestions.
+    atomic_key_to_sid: dict[str, str] = {}
+    for s in d.get("sections", []):
+        atom_idx = 0
+        for a in s.get("actions", []):
+            if a.get("kind") != "create_atomic_note":
+                continue
+            key = s["id"] if atom_idx == 0 else f"{s['id']}#{atom_idx}"
+            atomic_key_to_sid[key] = a.get("suggestion_id") or s["id"]
+            atom_idx += 1
+
     proposed_mocs: list[dict] = []
     for i, pm in enumerate(d.get("proposed_mocs") or [], start=1):
         topic = pm.get("topic", "")
@@ -331,7 +349,9 @@ def build_wire_payload(d: dict) -> dict:
                 "topic": topic,
                 "name": pm.get("name") or ensure_suffix(topic, moc_suffix),
                 "parent": pm.get("parent", ""),
-                "member_ids": list(pm.get("items") or []),
+                "member_ids": [
+                    atomic_key_to_sid.get(it, it) for it in (pm.get("items") or [])
+                ],
                 "tags": list(pm.get("tags") or []),
                 "reason": pm.get("reason", ""),
                 # Mirror the markdown default (Approve un-ticked ⇒ not created;

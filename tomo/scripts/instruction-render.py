@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.40.0
+# version: 0.41.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -606,6 +606,24 @@ def main() -> int:
     }
     if instructions_tomo_block is not None:
         instructions_doc["tomo"] = instructions_tomo_block
+    # Record daily-note actions dropped as unappliable (target daily note
+    # missing) so instructions-diff can reconcile expected vs actual instead of
+    # reading a legitimate drop as a coverage gap. Metadata only (Constitution
+    # L2): action/date/path, never content. Nested under the permissive `tomo`
+    # block — Tomo-owned, Hashi ignores it.
+    if skipped_daily:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["skipped_daily"] = [
+            {
+                "action": a.get("action"),
+                "date": a.get("date"),
+                "daily_note_path": a.get("daily_note_path"),
+            }
+            for a in skipped_daily
+        ]
     instructions_json_path = out_dir / "instructions.json"
     instructions_json_path.write_text(
         json.dumps(instructions_doc, ensure_ascii=False, indent=2), encoding="utf-8"

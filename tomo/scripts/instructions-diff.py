@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.6
+# version: 0.6.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -429,6 +429,34 @@ ACTION_ORDER = [
 ]
 
 
+def _subtract_skipped_daily(expected: dict, skipped_daily: list[dict]) -> int:
+    """Remove renderer-dropped daily-note actions from the expected tallies.
+
+    The renderer skips update_tracker/update_log_entry/update_log_link actions
+    whose target daily note does not exist (Hashi cannot create daily notes) and
+    records them in instructions.tomo.skipped_daily. Those are legitimate drops,
+    not coverage gaps — subtract them from expected["counts"] and prune one
+    matching entry per kind from expected["expected_daily"] so BOTH the count
+    table and the daily-coverage section reconcile. Returns the number removed.
+    """
+    daily_kinds = {"update_tracker", "update_log_entry", "update_log_link"}
+    removed = 0
+    for entry in skipped_daily or []:
+        kind = entry.get("action")
+        if kind not in daily_kinds or expected["counts"].get(kind, 0) <= 0:
+            continue
+        # Prune one expected_daily entry of this kind; only then decrement the
+        # count, so counts and expected_daily stay consistent and never go
+        # negative if skipped_daily lists more than were expected.
+        for i, e in enumerate(expected["expected_daily"]):
+            if e.get("kind") == kind:
+                expected["expected_daily"].pop(i)
+                expected["counts"][kind] -= 1
+                removed += 1
+                break
+    return removed
+
+
 def run_diff(
     parsed: dict, instrs: dict, tag_handler_groups: list[dict] | None = None
 ) -> tuple[int, list[str]]:
@@ -438,6 +466,11 @@ def run_diff(
     """
     expected = derive_expected(parsed, tag_handler_groups)
     actual = summarize_actual(instrs)
+
+    # Reconcile daily-note actions the renderer legitimately dropped (missing
+    # target daily note) before comparing — see _subtract_skipped_daily.
+    skipped_daily = (instrs.get("tomo") or {}).get("skipped_daily") or []
+    n_daily_skipped = _subtract_skipped_daily(expected, skipped_daily)
 
     lines: list[str] = []
     observations: list[str] = []
@@ -520,6 +553,15 @@ def run_diff(
             lines.append(
                 f"    {kind:<20s} expected={len(exp_items)} actual={len(act_items)} {mark}"
             )
+
+    if n_daily_skipped:
+        note = (
+            f"{n_daily_skipped} daily-note update(s) skipped — target daily note "
+            "missing (Hashi cannot create it); excluded from expected coverage"
+        )
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
 
     # Delete / skip coverage
     lines.append("")

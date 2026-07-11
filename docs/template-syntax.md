@@ -113,6 +113,85 @@ Templater expressions. The user runs `Templater: Replace Templates in Active Fil
 | `> [!callout]` | Yes | Obsidian callouts |
 | `\{\{` (escaped) | → literal `{{` | For documenting token syntax |
 
+> **Careful with `<% ... include("[[x_frontmatter]]") ... %>`:** an include is
+> preserved fine, but it must not be the thing that supplies your template's
+> *opening* `---` fence. See [Frontmatter: a complete `---` block is required](#frontmatter-a-complete----block-is-required).
+
+## Frontmatter: a complete `---` block is required
+
+Tomo stamps a `tomo:` provenance block into every rendered note, and it does so by
+inserting that block into the note's **leading `---` frontmatter**. Two rules follow
+— both are load-bearing.
+
+### Rule 1 — the template must open with a literal `---` fence
+
+The first line of the template must be a literal `---`, and the frontmatter must be a
+complete, self-contained block (opening `---` … closing `---`) with your keys inside:
+
+```markdown
+---
+UUID: <% tp.date.now("YYYYMMDDHHmmss") %>
+title: "{{title}}"
+tags: [type/others/moc, {{tags}}]
+aliases: [<% await tp.file.include("[[i_alias]]")-%>]
+---
+```
+
+**Do not delegate the opening fence to a Templater include.** Tomo does not run
+Templater at render time (see Rule 2), so a template that *starts* with an include
+meant to supply the fence has, from Tomo's point of view, no opening `---` at all:
+
+```markdown
+<%await tp.file.include("[[x_frontmatter]]")-%>   ← ✗ x_frontmatter emits the opening ---
+title: "{{title}}"                                 ←   only at Templater-time; Tomo never runs it
+tags: [type/others/moc, {{tags}}]
+---
+```
+
+Seeing no leading `---`, Tomo prepends its own `---\ntomo: …\n---` block, and
+**everything below becomes note body** — `title`, `tags`, `aliases`, `banner`, … end
+up as plain text after the frontmatter instead of as frontmatter keys. Fix: inline
+the shared frontmatter with a literal `---` (the `x_yaml_*` sub-includes can still
+live *inside* the block, exactly as the atomic-note template does).
+
+### Rule 2 — Templater runs *after* Tomo
+
+Order of operations for a rendered note:
+
+1. Tomo resolves `{{tokens}}`.
+2. Tomo inserts the `tomo:` block into the leading `---` frontmatter.
+3. The note is written to the inbox; you move it to its destination.
+4. **Then** you run `Templater: Replace Templates in Active File`, which resolves the
+   `<% tp.* %>` expressions.
+
+So Tomo always sees the raw `<% … %>` (never their results), and your frontmatter must
+already be *structurally valid before Templater runs* — i.e. the `---` fences must be
+literal. Put Templater expressions **inside** the block as values
+(`UUID: <% tp.date.now() %>`), never as the construct that produces the fence itself.
+
+### What Tomo adds to the frontmatter
+
+Immediately after the opening `---`, Tomo inserts a `tomo:` block:
+
+```yaml
+tomo:
+  doc_type: rendered-note
+  state: pending-move
+  run_id: 2026-07-10T13-24-36Z-6af113
+  updated_at: '2026-07-10T13:25:08Z'
+```
+
+- Inserted **once**, right after the opening fence. Every existing frontmatter line is
+  preserved **byte-for-byte** — no YAML round-trip, so inline arrays, key order,
+  quoting, and your `<% … %>` expressions are untouched.
+- Fail-safe: if the leading fence is unclosed, or a top-level `tomo:` key is already
+  present, Tomo writes the note **unstamped** rather than risk a corrupt frontmatter
+  (worst case: triage re-ingests the note later — never a corrupted note).
+
+`state: pending-move` marks the note as staged in the inbox awaiting apply; Tomo/Hashi
+flip it as the note moves to its destination. You never author the `tomo:` block
+yourself — leave it out of your template.
+
 ## Dataview Code Blocks
 
 Tokens inside fenced code blocks are NOT resolved. This prevents breaking

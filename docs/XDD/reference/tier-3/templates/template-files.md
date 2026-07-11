@@ -49,6 +49,15 @@ A template file is a normal Obsidian markdown file with `{{token}}` placeholders
 └─────────────────────────────┘
 ```
 
+**The opening `---` must be literal.** Tomo stamps its `tomo:` block by merging into the
+note's leading `---` frontmatter (`lib/doc_frontmatter.merge_tomo_block_into_markdown`) and
+does not execute Templater, so a template whose opening fence is delegated to a Templater
+include (e.g. `<% tp.file.include("[[x_frontmatter]]") %>` as line 1, where `x_frontmatter`
+emits the `---`) has no leading fence at render time — Tomo then prepends its own block and
+the template's frontmatter keys land in the body. Inline the fence like the atomic template
+does. Full rationale + order-of-operations:
+[`docs/template-syntax.md` → *Frontmatter: a complete `---` block is required*](../../../../template-syntax.md#frontmatter-a-complete----block-is-required).
+
 ## 4. Reference Templates (MiYo Profile)
 
 ### 4.1 Atomic Note Template

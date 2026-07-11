@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.15
+# version: 0.2.16
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -189,6 +189,12 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - Config: `config/tag-handlers/<feature>.json` (user-owned; `update-tomo` preserves your edits). Key fields: `target.map` (captured segment → target note path), `placement` (`after` = top/newest-first · `inside` = end · `before`), `marker` (the heading anchor)
   - Modify-only: the target note must already exist and contain the `marker` heading
   - Point at: `.claude/skills/tomo-tag-handler-wizard/SKILL.md`, `config/tag-handlers/tsukai.json`
+
+- **template / note template / template broke / frontmatter in body / tomo-compatible template / audit template / convert template / scaffold template / make my template work with tomo** →
+  - Tomo renders templates statically (it does NOT run Templater) and stamps a `tomo:` block into the leading `---` frontmatter; a template whose opening fence is delegated to a Templater include (e.g. `<% tp.file.include("[[x_frontmatter]]") %>` as line 1) has no literal `---` at render time, so its keys strand in the note body
+  - Use the **tomo-template** wizard (say "check my template" / "convert my template", or run `/tomo-template`): `audit` (static check), `validate` (real dry-render, catches stranded frontmatter), `convert` (inline the fence → inbox), `scaffold` (minimal correct starting point → inbox)
+  - Backed by `scripts/template-doctor.py` (audit / dry-render / scaffold); converted + scaffolded output lands in the inbox for review — the wizard never overwrites your live templates
+  - Point at: `.claude/skills/tomo-template/SKILL.md`
 
 ### Troubleshooting
 

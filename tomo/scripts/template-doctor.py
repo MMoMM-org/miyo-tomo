@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.3.0
 """template-doctor.py — Audit, dry-render, and scaffold Tomo note templates.
 
 Checks whether an Obsidian note template renders correctly through Tomo's static
@@ -72,9 +72,12 @@ KNOWN_TOKENS = {
     "source_path", "source_link", "classification", "classification_number",
 }
 
-# token-render.py enforces these as required; a template missing them will fail
-# at Pass 2 unless the value is hardcoded.
-REQUIRED_TOKENS = {"uuid", "datestamp", "title"}
+# The only universally-required token: a note needs a name. uuid/datestamp are
+# MiYo-profile frontmatter properties, not universal — and token-render only errors
+# on a required token that is USED but unresolvable, never on one merely absent, so
+# a profile-agnostic template needs neither. They stay in KNOWN_TOKENS (recognised
+# when present) but are not asserted as required here.
+REQUIRED_TOKENS = {"title"}
 
 # Representative token values so dry-render exercises the real renderer. tags is
 # a list so token-render emits its indented-YAML-sequence form, matching live.
@@ -197,7 +200,9 @@ def static_audit(text):
         findings.append(_finding(
             "leading_fence", "FAIL",
             f"First content line is a Templater expression ({first!r}); Tomo "
-            "does not run Templater, so there is no leading `---` at render time.",
+            "does not run Templater, so there is no literal opening `---` at "
+            "render time (any closing `---` below belongs to the delegated "
+            "frontmatter — Tomo never sees its opening).",
             "Inline the frontmatter with a literal opening `---` fence (the "
             "x_yaml_* sub-includes can stay inside the block). See "
             "docs/template-syntax.md → 'Frontmatter: a complete `---` block "
@@ -212,12 +217,12 @@ def static_audit(text):
 
     block = _leading_block_lines(text)
     if block is None:
-        findings.append(_finding(
-            "frontmatter_closed", "FAIL",
-            "No leading `---` frontmatter block to close.",
-            "Add a complete `---` … `---` frontmatter block at the top.",
-        ))
-    elif block == [] and first == "---":
+        # No literal opening fence — `leading_fence` already FAILs and carries the
+        # actionable fix. A "nothing to close" finding here would be misleading:
+        # the template may well have a closing `---` (from a delegated fence) that
+        # Tomo simply never opens. So emit no separate frontmatter_closed finding.
+        pass
+    elif block == []:
         findings.append(_finding(
             "frontmatter_closed", "FAIL",
             "Opening `---` fence is never closed.",
@@ -261,15 +266,15 @@ def static_audit(text):
     if missing_required:
         findings.append(_finding(
             "required_tokens", "WARN",
-            "Missing required token(s): "
+            "Missing "
             + ", ".join(f"{{{{{t}}}}}" for t in missing_required)
-            + ". Pass 2 needs these unless the value is hardcoded.",
-            "Add the missing token(s) to the frontmatter.",
+            + " — Pass 2 names the note from it.",
+            "Add the missing token to the template.",
         ))
     else:
         findings.append(_finding(
             "required_tokens", "PASS",
-            "All required tokens ({{uuid}}, {{datestamp}}, {{title}}) present.",
+            "The {{title}} token is present.",
         ))
 
     return findings

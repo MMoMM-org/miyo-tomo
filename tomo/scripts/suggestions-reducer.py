@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.30.0
+# version: 1.31.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1846,6 +1846,15 @@ def main() -> int:
         daily_notes_updates = []
         rendered_daily_updates_md = ""
         needs_attention = []
+        # Tag-handler consolidation groups belong to the PRIMARY doc. The
+        # tag-handler-groups/ dir persists across the primary Pass-1 and this
+        # fan-resolve run, so collect_tag_handler_groups re-reads the same
+        # groups here — leaving them in the fan doc double-applies each group
+        # (the source note appears in both the suggestions doc and the fan doc).
+        # The fan-resolve doc is force-atomic-only, so drop them (mirrors the
+        # daily/needs_attention clears above).
+        tag_handler_updates = []
+        rendered_tag_handler_updates_md = ""
         precedence_note = (
             "This is a **Force-Atomic Resolve** doc. Tomo noticed you ticked "
             "**Force Atomic Note** on log entries whose inbox items had no "

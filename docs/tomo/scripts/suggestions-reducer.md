@@ -304,3 +304,20 @@ group. Drops are logged (`tag_handler_stale_dropped=N` + per-group stderr line) 
 silent truncation. Paired with the primary fix: `reset-tomo-tmp --pass1` now also clears
 the staging dir + `tag-handler-group-stubs.json` (v0.3.0), so the leak is closed at both
 the reset path and defensively at render time.
+
+## WHY the `--fan-resolve` branch clears `tag_handler_updates` (v1.31.0)
+
+WHY: the fan-resolve doc is **force-atomic-only** — it resolves the atomics the
+user ticked *Force Atomic Note* on, and nothing else. The `if args.fan_resolve:`
+branch already blanks `daily_notes_updates`, `rendered_daily_updates_md`, and
+`needs_attention` for exactly this reason, but originally forgot
+`tag_handler_updates`. Those are collected from the persistent
+`tomo-tmp/tag-handler-groups/` staging dir (`collect_tag_handler_groups`), which
+survives from the primary Pass-1 run into the fan-resolve run — so the fan
+reducer re-read the *same* groups and wrote them into the fan doc too. Result:
+a tag-handler-consolidated source (e.g. a Tsukai capture routed to a Dev Log via
+its tag handler) appeared in **both** the suggestions doc and the fan doc, and
+would be applied twice. The fix blanks `tag_handler_updates` +
+`rendered_tag_handler_updates_md` in the fan-resolve branch, mirroring the
+sibling clears. Tag-handler groups are owned by the primary doc; the companion
+merge at Pass 2 pulls the primary's groups, never the fan's.

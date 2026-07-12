@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """test_suggestions_reducer_tag_handler_groups.py — T3.3 (spec 024) + T6.1/T6.2 (spec 025).
 
 Covers the tag-handler group-result render path in suggestions-reducer and
@@ -103,7 +103,9 @@ def _minimal_state(state_path: Path, stems: list[str]) -> None:
     state_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _run_reducer_main(tmp: Path, *, groups_dir: Path | None = None) -> dict:
+def _run_reducer_main(
+    tmp: Path, *, groups_dir: Path | None = None, fan_resolve: bool = False
+) -> dict:
     """Invoke the reducer main() with a minimal stub inbox and return the doc JSON."""
     state_path = tmp / "state.jsonl"
     items_dir = tmp / "items"
@@ -123,6 +125,8 @@ def _run_reducer_main(tmp: Path, *, groups_dir: Path | None = None) -> dict:
     ]
     if groups_dir is not None:
         argv += ["--tag-handler-groups-dir", str(groups_dir)]
+    if fan_resolve:
+        argv += ["--fan-resolve"]
 
     old_argv = sys.argv
     sys.argv = argv
@@ -289,6 +293,35 @@ def test_no_groups_dir_unchanged() -> None:
     assert "rendered_tag_handler_updates_md" not in doc, (
         "rendered_tag_handler_updates_md must be absent when no groups dir is passed"
     )
+
+
+def test_fan_resolve_excludes_tag_handler_groups() -> None:
+    """Fan-resolve doc is force-atomic-only; tag-handler groups belong to the
+    PRIMARY doc. The tag-handler-groups/ dir persists across the primary Pass-1
+    and the fan-resolve run, so the same groups are re-read — leaving them in the
+    fan doc double-applies each group (the source shows up in BOTH the suggestions
+    doc and the fan doc). The fan-resolve run must drop them.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        groups_dir = tmp / "tag-handler-groups"
+        groups_dir.mkdir()
+        _write_group(groups_dir, "g1.json", _group())
+
+        # Regression guard: the PRIMARY run over the same dir DOES include it.
+        primary = _run_reducer_main(tmp / "p", groups_dir=groups_dir)
+        assert primary.get("tag_handler_updates"), \
+            "primary doc must carry the tag-handler group"
+
+        # The FAN-RESOLVE run over the SAME dir must exclude it.
+        fan = _run_reducer_main(tmp / "f", groups_dir=groups_dir, fan_resolve=True)
+
+    assert fan.get("doc_variant") == "fan-resolve"
+    assert "tag_handler_updates" not in fan, (
+        "fan-resolve doc must not carry tag-handler groups (they belong to the "
+        f"primary) — found: {fan.get('tag_handler_updates')}"
+    )
+    assert "rendered_tag_handler_updates_md" not in fan
 
 
 # ── T3.3-5: rendered items present in the doc JSON structure ─────────────────

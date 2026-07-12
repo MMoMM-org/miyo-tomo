@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """Tests for template-doctor.py — audit + dry-render of Tomo note templates.
 
 The load-bearing behaviour: a template must open with a literal ``---`` fence, or
@@ -115,7 +115,29 @@ def test_audit_delegated_fence_fails(tmp_path):
     assert rc == 1
     assert report["ok"] is False
     assert _status(report, "leading_fence") == "FAIL"
-    assert _status(report, "frontmatter_closed") == "FAIL"
+    # A delegated fence has no literal *opening* — but it does have a closing `---`.
+    # The doctor must NOT claim "nothing to close"; frontmatter_closed is suppressed.
+    assert _status(report, "frontmatter_closed") is None
+
+
+def test_audit_no_required_warn_for_missing_uuid_datestamp(tmp_path):
+    """uuid/datestamp are MiYo-profile properties, not universally required —
+    a template with {{title}} but no {{uuid}}/{{datestamp}} must not WARN."""
+    tmpl = "\n".join([
+        "---", "title: {{title}}", "tags:{{tags}}", "---", "", "# [[{{title}}]]",
+    ]) + "\n"
+    rc, report = _run("audit", _write(tmp_path, "no_uuid.md", tmpl))
+    assert rc == 0
+    assert _status(report, "required_tokens") == "PASS"
+
+
+def test_audit_missing_title_warns(tmp_path):
+    tmpl = "\n".join([
+        "---", "UUID: {{uuid}}", "created: static", "---", "", "# Static Heading",
+    ]) + "\n"
+    rc, report = _run("audit", _write(tmp_path, "no_title.md", tmpl))
+    assert rc == 0  # WARN does not fail
+    assert _status(report, "required_tokens") == "WARN"
 
 
 def test_audit_unclosed_fence_fails(tmp_path):

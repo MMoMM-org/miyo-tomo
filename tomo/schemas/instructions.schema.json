@@ -47,6 +47,18 @@
               "checksum": {"type": "string"}
             }
           }
+        },
+        "skipped_daily": {
+          "type": "array",
+          "description": "Daily-note update actions the renderer dropped because their target daily note does not exist (Hashi cannot create daily notes). Metadata only — no note content. Consumed by instructions-diff to reconcile expected vs actual coverage; Hashi ignores it.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {"type": "string"},
+              "date": {"type": ["string", "null"]},
+              "daily_note_path": {"type": ["string", "null"]}
+            }
+          }
         }
       }
     },

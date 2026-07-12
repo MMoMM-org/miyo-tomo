@@ -207,3 +207,27 @@ resolves to exactly those defaults, keeping its rendered actions byte-identical
 is caller-supplied from this script's own `SCRIPT_DIR` because the flattened
 instance layout breaks deep default path resolution (ADR-2 / CON-4). See
 `docs/tomo/scripts/lib/profile_conventions.md` for the resolver rationale.
+
+## WHY emit `tomo.skipped_daily` into instructions.json (coverage-audit reconciliation)
+
+WHY: `filter_missing_daily_notes` legitimately drops `update_tracker` /
+`update_log_entry` / `update_log_link` actions whose target daily note does not
+exist — Hashi *modifies* daily notes, it never *creates* them (#37/I38). Those
+drops were surfaced only in `instructions.md` (human "Skipped" section) and on
+stderr, never in the machine `instructions.json`. `instructions-diff` (the Pass-2
+coverage audit, conductor step 3e) derives `expected` from the parsed suggestions
+— which still count every accepted daily entry — so it saw `expected=N` vs
+`actual=N-dropped` and failed with a **false** coverage mismatch. Per the
+synthesis-conductor contract a mismatch = STOP, so any run with a missing daily
+note stalled the whole Pass 2.
+
+Fix: instruction-render now records the dropped actions under the permissive,
+Tomo-owned `instructions.tomo.skipped_daily` block (metadata only —
+`action`/`date`/`daily_note_path`, never note content, Constitution L2). Nesting
+under `tomo` needs no schema round-trip and Hashi ignores it (its schema leaves
+`tomo` open — `additionalProperties` unset). `instructions-diff` reads the block
+and subtracts each recorded drop from both `expected["counts"]` and
+`expected["expected_daily"]`, then surfaces a non-blocking observation. An
+UNrecorded missing daily action still fails — the audit stays honest. This makes
+instructions-diff a paired consumer of instruction-render for daily-note skips,
+mirroring the delete_source paired-source contract.

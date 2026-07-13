@@ -224,7 +224,17 @@ The install script extracts auth from `~/.claude.json` and `~/.claude/.credentia
 
 ## Updating an Instance
 
-Update a single instance by name; the path is resolved through the registry:
+The quickest way is the **`update-tomo.sh` shim** that install renders into each instance directory, beside `begin-tomo.sh`. From the instance directory just run:
+
+```bash
+./update-tomo.sh              # update this instance
+./update-tomo.sh --dry-run    # show the plan, write nothing
+./update-tomo.sh --yolo       # keep voice settings + skip the confirm
+```
+
+The shim delegates to the source repo's `scripts/update-tomo.sh` for this instance (it bakes in the repo path and its own `tomo-install.json`), so all the flags below work through it. It is regenerated on every install/update, like `begin-tomo.sh`.
+
+Equivalently, from the source repo you can target a single instance by name; the path is resolved through the registry:
 
 ```bash
 bash scripts/update-tomo.sh --instance <name>   # update the named instance

@@ -4,7 +4,7 @@
 # Sets up tomo-home/ as the Docker /home/coder mount.
 # Runs the Phase 1 setup wizard: vault path, profile selection, concept mapping,
 # voice transcription, and vault-config.yaml generation.
-# version: 0.5.5
+# version: 0.6.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1425,6 +1425,17 @@ fi
 # leaving the instance dir without a launcher — acceptable; no orphan risk.
 render_launcher "$LAUNCHER_TEMPLATE" "$LAUNCHER_PATH" "$INSTANCE_NAME" "$INSTANCE_PATH" "$HOME_DIR" "$REPO_ROOT" "9999"
 print_ok "begin-tomo.sh → $LAUNCHER_PATH"
+
+# update-tomo.sh convenience shim, rendered beside begin-tomo.sh so the instance
+# can be updated with `./update-tomo.sh` instead of the full source-repo path.
+UPDATER_TEMPLATE="$REPO_ROOT/scripts/lib/update-tomo.sh.launcher.template"
+UPDATER_PATH="$INSTANCE_ROOT/update-tomo.sh"
+if [ -f "$UPDATER_TEMPLATE" ]; then
+    render_launcher "$UPDATER_TEMPLATE" "$UPDATER_PATH" "$INSTANCE_NAME" "$INSTANCE_PATH" "$HOME_DIR" "$REPO_ROOT" "9999"
+    print_ok "update-tomo.sh → $UPDATER_PATH"
+else
+    print_warn "update-tomo.sh shim template missing: $UPDATER_TEMPLATE"
+fi
 
 # ── Save config ───────────────────────────────────────────
 

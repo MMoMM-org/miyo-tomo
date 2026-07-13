@@ -18,6 +18,10 @@ tomo-install.json
 # Generated launcher (rendered by install-tomo.sh from scripts/begin-tomo.sh.template)
 begin-tomo.sh
 
+# Generated updater shim (rendered from scripts/lib/update-tomo.sh.launcher.template).
+# Anchored to repo root so it never matches the real scripts/update-tomo.sh.
+/update-tomo.sh
+
 # Claude Code session files
 .claude.json
 .credentials.json

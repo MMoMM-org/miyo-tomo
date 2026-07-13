@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.8.1
+# version: 0.9.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -591,6 +591,23 @@ else
         "${launcher_result%%|*}" "${launcher_result#*|}" "launcher"
 fi
 
+# update-tomo.sh convenience shim (rendered, version-gated). Delivered beside
+# begin-tomo.sh so the instance updates via `./update-tomo.sh`. Dual-delivered
+# with install-tomo.sh — kept in sync here for existing instances. Uses the same
+# render_launcher path (kind "launcher"); its path is derived from the launcher's.
+UPDATER_TEMPLATE="$REPO_ROOT/scripts/lib/update-tomo.sh.launcher.template"
+UPDATER_PATH=""
+[ -n "$LAUNCHER_PATH" ] && UPDATER_PATH="$(dirname "$LAUNCHER_PATH")/update-tomo.sh"
+if [ ! -f "$UPDATER_TEMPLATE" ]; then
+    add_plan "launcher" "$UPDATER_TEMPLATE" "$UPDATER_PATH" "update-tomo.sh" "problem" "template missing: $UPDATER_TEMPLATE" "updater"
+elif [ -z "$UPDATER_PATH" ]; then
+    add_plan "launcher" "$UPDATER_TEMPLATE" "$UPDATER_PATH" "update-tomo.sh" "problem" "cannot derive path (no launcherPath in config)" "updater"
+else
+    updater_result=$(scan_versioned "$UPDATER_TEMPLATE" "$UPDATER_PATH")
+    add_plan "launcher" "$UPDATER_TEMPLATE" "$UPDATER_PATH" "update-tomo.sh" \
+        "${updater_result%%|*}" "${updater_result#*|}" "updater"
+fi
+
 # ── Print plan grouped by section ─────────────────────────
 
 print_section_plan() {
@@ -624,6 +641,7 @@ print_section_plan "settings"        "Settings.json"
 print_section_plan "container-home"  "Container home (entrypoint)"
 print_section_plan "themes"          "Container home (themes)"
 print_section_plan "launcher"        "Launcher (begin-tomo.sh)"
+print_section_plan "updater"         "Updater shim (update-tomo.sh)"
 
 # Plan summary tally
 plan_count_status() {
@@ -902,6 +920,7 @@ execute_section "settings"        "Settings.json"
 execute_section "container-home"  "Container home (entrypoint)"
 execute_section "themes"          "Container home (themes)"
 execute_section "launcher"        "Launcher (begin-tomo.sh)"
+execute_section "updater"         "Updater shim (update-tomo.sh)"
 
 # tomo-tmp scratch dirs (idempotent, no plan entry)
 ensure_dir "$INSTANCE_PATH/tomo-tmp/items"

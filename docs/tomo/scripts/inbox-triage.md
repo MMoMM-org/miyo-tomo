@@ -97,3 +97,28 @@ JSON-only (build_from_wire). Fan docs carry no force-atomic re-opt-in, so the fa
 own force-atomic extraction stays markdown. LIMITATION: the fan-COMPANION merge
 (primary + fan in one run) still parses the fan markdown — it is not the Hashi
 standalone-fan path (primary already applied → fan approved in a later run).
+
+## `.base`/`.canvas` inbox files are deliberately NOT triaged (#93, won't-do-yet 2026-07-18)
+
+WHY `discover_files` partitions only `.md` + audio and drops everything else,
+including `.base` / `.canvas`: these are **terminal artifacts**, not raw material
+for the 2-pass pipeline. The companion authoring path (`inbox-author` skill,
+spec 026, shipped) can compose `.base`/`.canvas` and write them into the inbox for
+the user's direct use — dashboards, canvases — finished products, not notes to be
+triaged, linked, or moved.
+
+The lifecycle is 100% frontmatter-driven: every managed doc carries a `tomo:` block
+(`lib/doc_frontmatter.py`) whose `state` field drives the state machine
+(`captured` → `pending-approval` → `approved` → …). `.base` is YAML and `.canvas`
+is JSON — neither carries (nor should carry) a `tomo.state`. So they structurally
+cannot enter the state machine without a sidecar-metadata scheme, which would be a
+large change contradicting the "terminal artifact" stance.
+
+**Decision (2026-07-18, issue #93):** keep them parked. The producer is shipped but
+opt-in and not yet writing artifacts at scale, so no documented trigger has fired.
+Rather than surface them, the deliberate skip is now DOCUMENTED at the code site and
+PINNED by a test (`test_inbox_triage.py::test_mixed_file_types_partitioned_correctly`
+asserts `.base`/`.canvas` are excluded) so a future reader never mistakes it for a
+silent bug. **Revive** (surface them informationally, or design a metadata scheme)
+only when `.base`/`.canvas` genuinely land in inboxes at scale and users need `/inbox`
+to acknowledge them.

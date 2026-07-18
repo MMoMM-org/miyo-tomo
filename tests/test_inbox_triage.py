@@ -186,6 +186,12 @@ class TestPartitionAudioAndMd:
             _listdir_item(INBOX_PATH + "clip.ogg"),
             _listdir_item(INBOX_PATH + "video.mp4"),
             _listdir_item(INBOX_PATH + "other.json"),
+            # #93 (won't-do-yet): .base/.canvas are terminal artifacts left in
+            # the inbox for direct use — deliberately NOT partitioned. This test
+            # pins that decision so a future change to discover_files surfaces as
+            # an intentional decision, never a silent behavior drift.
+            _listdir_item(INBOX_PATH + "dashboard.base"),
+            _listdir_item(INBOX_PATH + "graph.canvas"),
             _listdir_item(INBOX_PATH + "subfolder", "folder"),
         ]
 
@@ -210,10 +216,13 @@ class TestPartitionAudioAndMd:
             INBOX_PATH + "clip.ogg",
             INBOX_PATH + "video.mp4",
         }
-        # Folders and .json excluded from both
+        # Folders, .json, and .base/.canvas terminal artifacts excluded from both
+        # (the latter two are the #93 won't-do-yet contract).
         all_paths = md_paths | audio_paths
         assert INBOX_PATH + "subfolder" not in all_paths
         assert INBOX_PATH + "other.json" not in all_paths
+        assert INBOX_PATH + "dashboard.base" not in all_paths
+        assert INBOX_PATH + "graph.canvas" not in all_paths
 
 
 # ---------------------------------------------------------------------------

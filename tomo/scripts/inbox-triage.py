@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.22.0
+# version: 0.22.1
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -161,6 +161,13 @@ def discover_files(client, inbox_path: str) -> tuple[list[dict], list[dict], lis
             audio_files.append(item)
         elif suffix == ".md":
             md_files.append(item)
+        # Any other suffix (.base, .canvas, .json, images, PDFs, ...) is
+        # DELIBERATELY not partitioned — a terminal artifact left in the inbox
+        # for direct use, outside the frontmatter-driven lifecycle. Design
+        # decision, not an oversight (#93, won't-do-yet 2026-07-18): these files
+        # carry no `tomo.state` frontmatter, so they cannot enter the 2-pass
+        # state machine. Revisit only if `.base`/`.canvas` land in inboxes at
+        # scale. See docs/tomo/scripts/inbox-triage.md.
 
     return all_files, audio_files, md_files
 

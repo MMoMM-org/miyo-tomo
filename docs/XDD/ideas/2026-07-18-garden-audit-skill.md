@@ -27,9 +27,9 @@ Two distinct concepts that the existing `orphan_link.py` naming conflated:
 | # | Check | Meaning | Data source | Fix action | Type |
 |---|-------|---------|-------------|-----------|------|
 | 1 | **Unparented** | has links, no `up::` | discovery cache (`orphan_link.py`, reuse) | `link_to_moc` (add `up::`) | 🔧 actionable |
-| 2 | **Orphan** | no links at all | **new Kado bulk op** | `link_to_moc` or flag | 🔧 actionable |
+| 2 | **Orphan** | no links at all | `kado-graph-audit` `orphans[]` | `link_to_moc` or flag | 🔧 actionable |
 | 3 | **Broken `up::`** | `up::` targets a non-existent MOC | cache / graph | fix or remove `up::` (modify) | 🔧 actionable |
-| 4 | **Dead wikilink** | `[[X]]` target missing | **new Kado bulk op** | fix or remove link (modify) | 🔧 actionable |
+| 4 | **Dead wikilink** | `[[X]]` target missing | `kado-graph-audit` `deadLinks[]` | fix or remove link (modify) | 🔧 actionable |
 | 5 | **Duplicate stems** | ≥2 notes share a filename stem | discovery cache (enumerate) | — (rename/merge needs human) | 📋 advisory |
 | 6 | **Stale MOC** | MOC not edited > N months | `listDir` `modified` timestamps | — (review flag) | 📋 advisory |
 
@@ -44,21 +44,51 @@ Three sources, chosen by cost:
   `stem, path, kind (note/moc), up_state, topics, tags, title`. Covers checks 1, 3, 5.
 - **`listDir` `modified` timestamps** — one call over the MOC folder(s). Covers check 6
   (stale MOCs). Cheap; no per-note read.
-- **New Kado bulk graph operation** — covers checks 2, 4. See below.
+- **`kado-graph-audit`** (Kado v1.2.0, shipped) — one vault-wide call returning all orphans +
+  all dead wikilinks. Covers checks 2, 4. See below.
 
-### Link graph — new Kado bulk operation (cross-repo)
+### Link graph — `kado-graph-audit` (SHIPPED, Kado v1.2.0)
 
-`kado-graph` today is **per-note** (`path` required): a whole-vault audit would be O(N) Kado
-calls (429 risk on large vaults). Obsidian's `metadataCache` already holds `resolvedLinks` +
-`unresolvedLinks` for the **whole vault in memory**, so Kado can expose a vault-wide operation
-returning all unresolved links (dead wikilinks) and all orphans (no resolved links in/out) in
-**one call** — O(N)→O(1).
+`kado-graph` is **per-note** (`path` required): a whole-vault audit would be O(N) Kado calls
+(429 risk on large vaults). We requested a vault-wide bulk operation; **Kado shipped it** as a
+dedicated read-only tool **`kado-graph-audit`** in **v1.2.0** (Kado #98/PR #99), answered from
+Obsidian's in-memory `metadataCache` (`resolvedLinks`/`unresolvedLinks`) — O(N)→O(1), no
+per-note disk reads. The dependency is **satisfied** — garden-audit builds against the real tool.
 
-**Decision:** request this bulk operation from Kado via the MiYo handoff protocol
-(`_outbox/for-kado/`). Related to Kado issue #82 ("Adopt kado-graph"). The garden-audit spec
-depends on it; the handoff is written as part of this work so the dependency lands quickly.
-Key-scoping caveat: nodes outside the audit key's ACL are silently omitted (mirrors the
-per-note `kado-graph` behaviour) — the audit reports only what the key can see.
+**Input:** `{ include?: ("orphans"|"deadLinks")[], limit?, cursor? }` — both arrays in one call
+by default; `include` narrows to one axis; `limit`/`cursor` paginate.
+
+**Response contract (final, as shipped):**
+
+```json
+{
+  "operation": "audit-graph",
+  "orphans":    [ { "path": "Notes/Foo.md" } ],
+  "deadLinks":  [ { "source": "Notes/Bar.md", "target": "Missing Note", "count": 2 } ],
+  "total":      { "orphans": 12, "deadLinks": 47 },
+  "cursor":     null,
+  "truncated":  false
+}
+```
+
+- `orphans[].path` — note with zero resolved links in AND out (= our **orphan**, check 2).
+- `deadLinks[].source` — note containing the unresolved link; `.target` — raw unresolved link
+  **text** (not a path, mirrors per-note `dangling`); `.count` — occurrences in that source
+  (= our **dead wikilink**, check 4).
+- `total` — post-ACL counts before pagination (denominator / progress).
+- `cursor`/`truncated` — pagination; orphans emitted first then deadLinks; concatenate pages
+  until `cursor` is `null`. A no-`limit` call returns everything in one page (normal vaults).
+
+**ACL:** orphans gated on their own path, deadLinks on their `source` path; `total` is post-ACL.
+Nodes outside the key's ACL are silently omitted — the audit reports only what the key can see.
+
+**Index-lag caveat (inherited, by design):** the tool reads Obsidian's in-memory link maps, so
+right after an Obsidian restart or a large *external* (outside-Obsidian) bulk change, a note may
+transiently read as orphaned or a just-fixed link as still dead until reindex settles. No data
+risk; steady-state in-Obsidian edits reflect promptly. Garden-audit should surface this as a
+"results reflect the current index" note rather than treat a single run as ground truth.
+
+Full schema + examples: Kado `docs/api-reference.md` → "Tool: kado-graph-audit".
 
 ## Output — two artifacts (ADR-026 parity)
 
@@ -86,13 +116,15 @@ advisory (stale MOC, duplicate stems).
 - `garden-auditor.md` — agent; classifies/prioritises findings, applies LLM judgment on
   ambiguous cases (e.g. which MOC an orphan should link to — reuse `orphan_link.py` scoring).
 - `/garden-audit` — command shim (mirrors `/moc-propose`), on-demand, whole-vault.
-- **Kado handoff** (`_outbox/for-kado/`) — request the bulk graph operation.
-- Reuse: `orphan_link.py`, `instruction-render`, the Hashi wire, `moc_cache_loader`.
+- Reuse: `orphan_link.py`, `instruction-render`, the Hashi wire, `moc_cache_loader`,
+  **`kado-graph-audit`** (Kado v1.2.0).
 
 ## Sequencing / dependency
 
-v1 = all six checks in one release, **blocking on the Kado bulk op** (cross-repo). The handoff
-is authored alongside this spec so the new Kado version lands quickly (Marcus owns Kado too).
+v1 = all six checks in one release. The one cross-repo dependency (a vault-wide link-graph op)
+is **already satisfied**: the `_outbox/for-kado/` handoff was authored alongside this spec, Kado
+confirmed the contract and **shipped `kado-graph-audit` in v1.2.0** the same day (Kado #98/#99).
+Nothing blocks the build — garden-audit calls the real tool.
 
 ## Approaches considered
 
@@ -106,10 +138,12 @@ is authored alongside this spec so the new Kado version lands quickly (Marcus ow
 
 ## Notes for the PLAN phase (from spec review)
 
-- **Bulk-op response contract is an early, blocking task.** Checks 2 (orphan) and 4 (dead
-  wikilink) both block on the new Kado operation, so PLAN must define its JSON response shape
-  (field names / schema for the dead-links and orphans arrays) up front — inside the
-  `_outbox/for-kado/` handoff artifact — before the consuming garden-audit code is written.
+- **Bulk-op contract is DEFINED (no longer blocking).** Checks 2 (orphan) and 4 (dead wikilink)
+  consume `kado-graph-audit` (Kado v1.2.0, shipped). The response shape is final — see the
+  "Link graph" section above and Kado `docs/api-reference.md`. PLAN should add an early
+  integration task to write a thin `kado_client` wrapper for the tool + fixtures from a real
+  response, but there is no contract negotiation left. Watch the camelCase `deadLinks` field and
+  the cursor-pagination (orphans-first-then-deadLinks) ordering.
 - **Pin the check-3 modify action.** Check 3 (broken `up::`) fixes via a Hashi *modify* action,
   but the exact existing action is not yet named (check 1 names `link_to_moc` explicitly). PLAN
   should pin which shipped Hashi modify action carries "fix or remove a broken `up::`", the same
@@ -121,7 +155,8 @@ is authored alongside this spec so the new Kado version lands quickly (Marcus ow
   MOCs. Needs new Hashi action types + human-judgment UX. Revisit post-v1.
 - **Periodic/scheduled invocation** — v1 is on-demand `/garden-audit` only. A scheduled
   cadence (weekly vault-health) can layer on later.
-- **Per-note `kado-graph` fallback** — YAGNI given the bulk op is being requested and lands fast.
+- **Per-note `kado-graph` fallback** — YAGNI: the bulk `kado-graph-audit` shipped (Kado v1.2.0),
+  so no O(N) per-note fallback is needed.
 - **Incremental audit** (`filter.modifiedAfter`, F-48) — cheaper repeat-runs; separate epic-#16
   Could item.
 - **Configurable stale threshold** (N months) — start with a sensible hardcoded default;

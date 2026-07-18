@@ -321,3 +321,41 @@ would be applied twice. The fix blanks `tag_handler_updates` +
 `rendered_tag_handler_updates_md` in the fan-resolve branch, mirroring the
 sibling clears. Tag-handler groups are owned by the primary doc; the companion
 merge at Pass 2 pulls the primary's groups, never the fan's.
+
+## Structural-heading gate backstop — `demote_structural_anchors` (#71, spec 023 ADR-6, v1.32.0)
+
+WHY: Spec 023's confidence gate keeps content notes off structural/template
+headings (`## Content`, `## Structure`, …) by routing low-confidence heading fits
+to a new section. But the gate is a *pure LLM instruction* in `inbox-analyst.md` —
+no code enforces the `fit_confidence >= 0.6` comparison. A live run (2026-06-17,
+"Asakusa Senso-ji") let the LLM score "Content" ≥0.6 and slip the gate, landing the
+note under `## Content` — the exact anti-pattern 023 targets. An LLM compliance slip
+has no floor without a deterministic net.
+
+`demote_structural_anchors(action, stem)` is that net. Called once per
+`create_atomic_note` action, it walks `candidate_mocs[].anchor` and rewrites any
+tier-1 heading anchor whose heading is in `lib/structural_headings.py` to a tier-2
+anchor: `{type: callout, value: null, placement: before, new_section: <note topic>,
+alt_headings: [<rejected heading>, …]}`. `new_section` is the note's own topic
+(`suggested_title`, else `stem`); the rejected structural heading is prepended to
+`alt_headings` so the user keeps a one-click override (ADR-3).
+
+WHY it runs in the reducer (Pass-1), not at Pass-2 apply: the suggestions doc is the
+review surface. If the gate slips, the user must SEE "new section `## <topic>`" at
+review time — not approve "under `## Content`" and have it silently land elsewhere.
+Demoting at apply would violate the review contract.
+
+WHY no Pass-2 change is needed: the demoted anchor is shape-identical to a genuine
+analyst tier-2. It is mutated in place on `action["candidate_mocs"]` BEFORE both
+consumers read it — `render_create_atomic_note` (the `**Placement:**` markdown) and
+`persist_candidate_anchors` (the wire) — so both surfaces agree. Downstream, the
+Pass-2 markdown reverse-parser (`suggestion-parser.parse_placement_line`) and the
+JSON-only wire path both recover the same tier-2 anchor a real tier-2 would produce;
+`render_resolve` then resolves the actual insert spot from the live MOC. The
+round-trip is pinned by `test_demoted_anchor_roundtrips_as_tier2`.
+
+The structural list is the SSoT in `lib/structural_headings.py`, shared with the
+offline tuning aid `scripts/analyze-placement-confidence.py` (which still reads the
+RAW analyst `fit_confidence`, so a persistent flag there stays the #64 tuning signal
+for the 0.6 threshold). A metadata-only stderr line reports the demotion count per
+run — never note content or heading text.

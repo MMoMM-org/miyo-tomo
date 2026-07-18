@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """analyze-placement-confidence.py — offline tuning aid for the spec-023
 MOC-placement confidence gate.
 
@@ -20,9 +20,16 @@ WHY this exists (#71 / #64):
 
     The suggestions-doc.json (Pass-1, before wire-stripping) carries BOTH the
     heading text and the fit_confidence. This tool reads it OFFLINE to give the
-    evidence needed to tune the 0.6 threshold — WITHOUT changing the gate. The
-    structural-heading heuristic lives here, in an analysis tool, not in the
-    decision path, so 023's no-blocklist non-goal is respected.
+    evidence needed to tune the 0.6 threshold.
+
+    Since 2026-07 a deterministic runtime BACKSTOP (spec 023 ADR-6,
+    suggestions-reducer.demote_structural_anchors) also demotes structural-heading
+    tier-1 anchors to a new section, so a live run no longer lands notes under
+    them. This tool still flags them for threshold-tuning evidence: it reads the
+    raw analyst fit_confidence BEFORE the backstop's rewrite, so a persistent
+    high-confidence flag here means the LLM keeps mis-scoring that heading — the
+    signal for tuning the 0.6 gate. The shared list (DEFAULT_STRUCTURAL_HEADINGS)
+    is imported from the runtime lib so the two can never drift.
 
 This is a host-side developer/tuning tool (user-invoked), not part of the
 runtime pipeline — it is not synced into a Tomo instance.
@@ -35,17 +42,11 @@ import statistics
 import sys
 from pathlib import Path
 
-# Default structural / scaffolding headings (the #71 list). These organize a
-# MOC itself rather than name a topic, so a content note landing under them is
-# the anti-pattern 023 targets. Extend at the CLI with --structural-heading.
-DEFAULT_STRUCTURAL_HEADINGS = [
-    "Content",
-    "Contents",
-    "Structure",
-    "Link MOC",
-    "Primer Questions",
-    "Processes",
-]
+# Single source of truth for the #71 structural-heading list — shared with the
+# runtime demotion backstop in tomo/scripts/suggestions-reducer.py so this tuning
+# aid and the runtime can never drift on which headings count as structural.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tomo" / "scripts"))
+from lib.structural_headings import DEFAULT_STRUCTURAL_HEADINGS  # noqa: E402
 
 # The spec-023 gate threshold (ADR-4). A structural heading at/above this scored
 # high enough to be chosen as a tier-1 anchor — i.e. it slipped the gate.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.31.0
+# version: 1.32.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -52,6 +52,7 @@ from lib.topic_clusters import (  # noqa: E402, F401
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
+from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -230,6 +231,55 @@ def persist_candidate_anchors(action: dict) -> list[dict]:
             entry["score"] = moc.get("score")
         out.append(entry)
     return out
+
+
+# #71 (spec 023 backstop, ADR-6): the 023 confidence gate is LLM self-assessed
+# and uncalibrated — a live run let the structural heading "Content" pass at
+# fit_confidence >= 0.6, the exact anti-pattern 023 targets. This deterministic
+# backstop demotes any tier-1 heading anchor whose heading is a KNOWN structural
+# scaffolding heading to a tier-2 new-section anchor, regardless of the score.
+# The confidence gate stays the primary tier-1/tier-2 decision; this only catches
+# the known-structural slip. The demoted anchor is shape-identical to a genuine
+# analyst tier-2 (callout/before + new_section), so every downstream stage (the
+# suggestions-doc **Placement:** render and BOTH Pass-2 reverse-parse paths)
+# treats it identically — no Pass-2 change is needed.
+_STRUCTURAL_HEADINGS = structural_set()
+
+
+def demote_structural_anchors(action: dict, stem: str) -> int:
+    """Demote structural-heading tier-1 anchors on an action's candidate_mocs.
+
+    Mutates ``action["candidate_mocs"][*]["anchor"]`` in place. For each anchor
+    that is a tier-1 heading (type=="heading", non-empty value) whose value
+    matches a known structural heading, rewrites it to the analyst's tier-2
+    "new section before the footer" shape, naming the section after the note's
+    own topic (``suggested_title``, else ``stem``). The rejected heading is
+    preserved at the front of ``alt_headings`` so the user still sees it as a
+    one-click override (ADR-3). Returns the count demoted (for telemetry).
+    """
+    section_topic = (action.get("suggested_title") or "").strip() or stem
+    demoted = 0
+    for moc in action.get("candidate_mocs") or []:
+        anchor = moc.get("anchor")
+        if not isinstance(anchor, dict) or anchor.get("type") != "heading":
+            continue
+        heading = (anchor.get("value") or "").strip()
+        if not heading or heading.casefold() not in _STRUCTURAL_HEADINGS:
+            continue
+        # Prepend the rejected structural heading to alt_headings (deduped,
+        # order-stable) so it stays available as an override.
+        alt = [heading] + [
+            h for h in (anchor.get("alt_headings") or []) if h and h != heading
+        ]
+        moc["anchor"] = {
+            "type": "callout",
+            "value": None,
+            "placement": "before",
+            "new_section": section_topic,
+            "alt_headings": alt,
+        }
+        demoted += 1
+    return demoted
 
 
 def _template_link(template: str) -> str:
@@ -1562,6 +1612,9 @@ def main() -> int:
     # title -> flat suggestion_id; populated as atomics are rendered so that
     # log_link.source_section can reference the correct suggestion_id.
     title_to_suggestion_id: dict[str, str] = {}
+    # #71: count structural-heading tier-1 anchors demoted to tier-2 this run
+    # (metadata-only telemetry — a count, never note content).
+    structural_demotions: int = 0
 
     for idx, stem in enumerate(done_stems, start=1):
         result_path = items_dir / f"{stem}.result.json"
@@ -1616,6 +1669,9 @@ def main() -> int:
                     # instead of the full atomic-note proposal.
                     rendered = render_suppressed_atomic(action, stem)
                 else:
+                    # #71 gate backstop: demote structural-heading tier-1 anchors
+                    # in place BEFORE render + persist (both read candidate_mocs).
+                    structural_demotions += demote_structural_anchors(action, stem)
                     rendered = render_create_atomic_note(action, stem, moc_suffix)
             elif kind == "create_moc":
                 rendered = render_create_moc(action, stem, moc_suffix)
@@ -1781,6 +1837,15 @@ def main() -> int:
                 "stem": stem,
                 "actions": rendered_actions,
             })
+
+    # #71: report how many structural-heading tier-1 anchors the backstop demoted
+    # (metadata-only — a count, no note content or heading text).
+    if structural_demotions:
+        print(
+            f"[suggestions-reducer] structural-heading gate backstop — "
+            f"demoted {structural_demotions} tier-1 anchor(s) to new-section (#71)",
+            file=sys.stderr,
+        )
 
     # F-43 T1.5: clustering algorithm extracted; same input, same output.
     # The helper is also called by `moc-discovery.py` (Phase 2) so the two

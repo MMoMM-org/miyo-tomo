@@ -6,7 +6,7 @@
 |-------|-------|
 | **Created** | 2026-06-15 |
 | **Current Phase** | Implemented |
-| **Last Updated** | 2026-06-16 |
+| **Last Updated** | 2026-07-18 |
 
 ## Documents
 
@@ -30,6 +30,7 @@
 | 2026-06-16 | Phase 1 shipped (schema `fit_confidence`); commit 1a01faf | RED→GREEN, 31/31 tests, spec-compliance + code-quality PASS. |
 | 2026-06-16 | DEVIATION: AC-9 resolves at Pass-2, not Pass-1; + `has_footer` inventory (ADR-2 corrected, ADR-5 added) | Tracing the code revealed the Pass-1 analyst inventory has NO MOC body — so the SDD's "analyst emits `<last body line>`" is unimplementable. Corrected: analyst emits a truthful null-value anchor (`callout/before` vs `line/after`, chosen via a new cheap `has_footer` flag), the render resolver fills the exact line/footer-text at Pass-2. User also added a transparency requirement (AC-13): the suggestions doc must show WHERE a tier-2 section lands (`(before the footer)` / `(at the end of the MOC)`) — which forces footer-awareness at Pass-1 (the doc is a Pass-1 artifact). PRD +AC-9a/AC-13 (14 ACs); SDD ADR-2/ADR-5 + directory map (+moc-tree-builder, +shared-ctx-builder); PLAN 4→5 phases. User confirmed design + conceptual-wording 2026-06-16. |
 | 2026-06-16 | Implementation complete | Branch feat/moc-insertion-llm-resolution (not yet merged), commits e6c95d6..1724e9b. Shipped: fit_confidence on item-result anchor + 0.6 Pass-1 gate (inbox-analyst v0.18.0), has_footer cache flag (moc-tree-builder v0.6.1, shared-ctx-builder v1.5.1), confidence-% + tier-2 destination on placement line (suggestions-reducer v1.10.8), no-footer line resolution + confidence telemetry (instruction-render v0.24.10). Full suite 1256 passed; live walk validated tier-1 confidence % + the 022 Japan/Content regression fix; AC-9 no-footer on unit coverage. Deferred: #64 (per-value telemetry), #65 (callout title in tier-3 placement line). |
+| 2026-07-18 | ADR-6 added — deterministic structural-heading BACKSTOP (#71) | Live run (2026-06-17 "Asakusa Senso-ji") let the LLM score "Content" ≥0.6 and slip the gate — the exact 023 anti-pattern. Root cause: the gate is a pure LLM instruction (no code floor). Fix: a demote-only backstop (`suggestions-reducer.demote_structural_anchors` v1.32.0) rewrites tier-1 structural-heading anchors to tier-2, shape-identical to a genuine tier-2 (no Pass-2 change). Structural list is SSoT in `lib/structural_headings.py` (v0.1.0), imported by the tuning aid `analyze-placement-confidence.py` (v0.2.0). Partially revisits the no-blocklist non-goal (bounded net, not the primary gate). 2120 tests pass. User confirmed 2026-07-18. |
 
 ## Context
 

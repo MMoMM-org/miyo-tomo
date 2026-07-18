@@ -129,7 +129,7 @@ None.
 
 ### Won't Have (This Phase)
 - **Config-driven threshold.** The threshold is hardcoded in `inbox-analyst.md` (matching the existing 0.7/0.5/0.15 hardcoded thresholds). Lifting it to config is a future option, not this phase.
-- **Structural-heading blocklist.** No machine-readable list of "bad" heading names; confidence scoring replaces the need for one.
+- **Structural-heading blocklist.** No machine-readable list of "bad" heading names; confidence scoring replaces the need for one. *(Partially revisited 2026-07-18 by ADR-6 / #71: after a live run proved the LLM can mis-score a known scaffolding heading past the gate, a small demote-only BACKSTOP list was added as a safety net. Confidence stays the primary decision; see solution.md ADR-6.)*
 - **Changes to MOC-selection scoring (which MOC).** This spec is insertion-point only (like 022). It does not touch `candidate_mocs[].score`, `needs_new_moc`, or the choice of which MOC a note belongs to.
 - **New Hashi wire shapes.** The no-footer fallback reuses the existing `line` anchor + `after` placement.
 

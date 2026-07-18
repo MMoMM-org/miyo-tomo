@@ -1,0 +1,42 @@
+# Specification: 030-garden-audit
+
+## Status
+
+| Field | Value |
+|-------|-------|
+| **Created** | 2026-07-18 |
+| **Current Phase** | SDD |
+| **Last Updated** | 2026-07-18 |
+
+## Documents
+
+| Document | Status | Notes |
+|----------|--------|-------|
+| requirements.md | completed | 4 Must features, 14 Gherkin ACs, MoSCoW + edge cases + risks. No clarification markers. |
+| solution.md | pending | |
+| plan/ | pending | |
+
+**Status values**: `pending` | `in_progress` | `completed` | `skipped`
+
+## Decisions Log
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-07-18 | Spec scaffolded from brainstorm design | Source: `docs/XDD/ideas/2026-07-18-garden-audit-skill.md` (validated + spec-reviewer approved). GitHub #30 / F-44, roadmap item 2. |
+| 2026-07-18 | Cross-repo dependency pre-resolved before PRD | The vault-wide link-graph op (`kado-graph-audit`) was requested, contract-confirmed, AND shipped by Kado (v1.2.0, #98/#99) during the brainstorm — so the spec plans against a real, live tool, not a pending dependency. |
+| 2026-07-18 | Research correction: check 3 (broken `up::`) is cache-only | `up_state=="broken"` + `up_target` are already computed in the discovery cache (`moc-tree-builder.py:280-289,422`). Check 3 needs NO `kado-graph-audit` call — corrects the brainstorm's "cache / graph". |
+| 2026-07-18 | Research correction: check 1/2 fix = two actions | Filing an unparented/orphan note needs BOTH `link_to_moc` (MOC-side bullet) AND `add_relationship marker="up::"` (the note's own `up::` line). The brainstorm named only `link_to_moc` (half). Both builders exist (`_build_link_to_moc_actions` + `emit_up_preservation_actions`). |
+| 2026-07-18 | Hashi gap handled example-driven (user decision) | No shipped Hashi action edits/removes a free-text body `[[link]]` or removes a broken `up::` line. Decision: Tomo BUILDS the full feature and emits a COMPLETE JSON wire encoding the fix intent for checks 4 + 3-remove as a NEW body-edit action Tomo defines. When Tomo is done, the real complete JSON example IS the Hashi handoff — Hashi builds its editor + the new action against a concrete example ("ohne ein Beispiel wird das nichts"), not a spec string. Producer-defines-contract-by-example, same posture as ADR-026. Advisory-only stays for checks 5+6 (need human judgment). |
+| 2026-07-18 | PRD completed | `requirements.md`: 4 Must features (6-check scan, report+wire, approve-and-apply, trustworthy scan), 14 Gherkin ACs, MoSCoW + edge cases + risks. Grounded in 2 research passes + spec-reviewer. Ready for SDD. |
+
+## Context
+
+Knowledge-Garden Audit skill: a user-invoked, whole-vault health scan surfacing six checks
+(unparented, orphan, broken `up::`, dead wikilink, duplicate stems, stale MOC) into a prioritised
+review document + JSON wire (ADR-026), with the fixable subset applied through the existing 2-pass
+/ Hashi machinery. Roadmap item 2 (`docs/XDD/roadmap-obsidian-power.md`), predecessor MOC-creation
+track shipped. Full brainstorm design + approaches + parking lot:
+`docs/XDD/ideas/2026-07-18-garden-audit-skill.md`.
+
+---
+*This file is managed by the xdd-meta skill.*

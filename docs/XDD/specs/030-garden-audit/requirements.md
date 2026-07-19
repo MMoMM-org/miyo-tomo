@@ -177,12 +177,46 @@ no links at all; **unparented** = a note with links but no `up::` parent.
     When the report renders, Then it carries a note that results reflect the current index and a
     single run is a snapshot, not ground truth.
 
+#### Feature 5: Scoped exclusions (permanent + temporary push-back)
+
+Without exclusions the audit is unusable: a folder like `Calendar/` holds thousands of daily
+notes that will never have an `up::`, so an unfiltered run would be dominated by thousands of
+false-positive findings. **Permanent exclusion is therefore a v1 Must; temporary push-back is a
+Should within the same mechanism.**
+
+- **User Story:** As the vault owner, I want to exclude specific notes, paths, or tags from the
+  audit — permanently for structurally-exempt areas, or temporarily while I'm actively fixing an
+  area — so that the report stays focused on what I actually need to weed.
+- **Exclusion model:**
+  - **Targets:** a note, a path/folder, or a tag.
+  - **Scope:** per-check (e.g. exclude `Calendar/` from unparented + orphan + broken-`up::` but
+    still check its dead links) OR complete (all checks).
+  - **Type:** *permanent* (structurally exempt — e.g. `Calendar/`) or *temporary push-back*
+    (auto-expires after a window, default ~90 days; the finding reappears when it lapses).
+  - **Home:** a skill-owned config file in the instance (`config/garden-audit-exclusions.yaml`),
+    separate from `vault-config.yaml` — exclusions are the skill's concern, not general vault
+    config. Managed entirely inside the skill run, NEVER through the `/inbox` apply path.
+- **Acceptance Criteria (Gherkin Format):**
+  - [ ] Given a note/path/tag is permanently excluded for a check, When `/garden-audit` runs, Then
+    no finding of that check is reported for matching notes.
+  - [ ] Given a path is excluded per-check (not "complete"), When `/garden-audit` runs, Then the
+    excluded checks are suppressed for it but the non-excluded checks still report.
+  - [ ] Given a temporary push-back has not yet expired, When `/garden-audit` runs, Then matching
+    findings are suppressed; Given it has expired, When the audit runs, Then those findings reappear
+    and the report notes that the push-back lapsed.
+  - [ ] Given the user manages exclusions, When they do so, Then it happens inside the skill (first-
+    run wizard, `--configure` mode, or an inline push-back offered during a run) and writes the
+    skill config directly — the `/inbox` apply path is never involved in exclusion management.
+
 ### Should Have Features
 
 - **Pre-selected best fix.** For unparented/orphan findings, the highest-scoring candidate MOC is
   pre-checked (reusing `orphan_link.py` overlap scoring), so the common case is one-click approve.
 - **Overflow disclosure.** When a category is truncated for readability, the report shows the total
   count as a denominator so the user knows coverage (e.g. "N more not shown").
+- **Temporary push-back (part of Feature 5).** Beyond permanent exclusion (Must), the auto-expiring
+  ~90-day push-back for areas under active work is a Should — it keeps a high-issue note/path from
+  hogging the report while a fix is in progress, without permanently hiding it.
 
 ### Could Have Features
 
@@ -196,11 +230,40 @@ None promoted for v1. All nice-to-haves are explicitly parked below to keep this
 - **Per-note `kado-graph` fallback** — YAGNI; the bulk `kado-graph-audit` shipped (Kado v1.2.0).
 - **Incremental audit** (`filter.modifiedAfter`, F-48) — separate epic-#16 item.
 - **Configurable stale threshold** — start with a hardcoded default (N months); config deferred.
-- **Removing a broken `up::` line as a v1 apply action** — v1's fixable path for broken `up::` is
-  *repoint to a valid MOC* (a shipped action); *removal* is encoded in the wire but applied only
-  once Hashi ships the body-edit action.
+
+_Broken `up::` **removal** IS in v1 (moved out of Won't-Have per user decision): Tomo emits the
+full fix intent — both "repoint to a valid MOC" (shipped `add_relationship`) and "remove the broken
+`up::`" (new body-edit action) — in the JSON wire now. The user can act on the report manually
+meanwhile, and Hashi implements the new action against Tomo's real wire right after v1 ships, so we
+never revisit Tomo for it. Same example-driven posture as the dead-wikilink fix._
 
 ## Detailed Feature Specifications
+
+### Feature: exclusion config & first-run wizard
+
+Exclusion management lives **entirely inside the skill run** (never the `/inbox` apply path), so
+managing which areas the audit ignores is a skill concern, not a vault-mutation. Three entry points:
+
+**First-run wizard (no config yet):**
+1. Scan the whole vault.
+2. Surface *abnormality clusters* — paths/notes/tags carrying a disproportionate share of findings
+   (e.g. `Calendar/` with thousands of unparented notes).
+3. Ask the user which clusters to exclude **permanently** (structurally exempt — the `Calendar/`
+   case), per-check or complete.
+4. Ask the user which *remaining* high-issue areas (not covered by step 3) to **push back
+   temporarily** (default ~90 days), per-check or complete.
+5. Write the skill-owned config (`config/garden-audit-exclusions.yaml`).
+6. Produce the filtered report.
+
+**Subsequent runs:** read the config, filter findings, auto-expire lapsed temporary push-backs
+(and note in the report which ones reappeared).
+
+**Re-invocation / management (resolves the user's open question):** exclusions are NOT managed
+through `/inbox`. Bulk/path/tag exclusion is done via a skill mode (`/garden-audit --configure`)
+that re-runs the wizard to add/remove/adjust; a single-finding "push back / exclude" can also be
+offered inline **during an audit run** and written straight to the skill config — but never marked
+in the review doc for `/inbox` to interpret (which would break down for a path with 1000 findings).
+This keeps the `/inbox` apply path exclusively about FIX actions.
 
 ### Feature: `/garden-audit` end-to-end
 
@@ -208,6 +271,16 @@ None promoted for v1. All nice-to-haves are explicitly parked below to keep this
 track. It scans via the discovery cache + the bulk `kado-graph-audit` tool + directory
 modification times, classifies and prioritises findings, writes a review report and a JSON wire
 into the vault inbox, and — on approval via `/inbox` — applies the fixable subset through Hashi.
+
+**/inbox burden — analysed, no concern.** Routing garden-audit through `/inbox` adds **zero
+Pass-1 LLM cost**. `/moc-propose` already does exactly this: its proposal doc is written with
+`tomo.state=pending-accept` + `tomo_skip_inbox_analysis: true`, so triage lands it in the
+`pending_accept` bucket and *structurally excludes* it from `fresh_sources` — it never reaches the
+expensive `inbox-analyst` (Pass-1). It is picked up only in its `accepted` state and routed to a
+parser → `instruction-render` → Hashi. `/inbox`'s expensive path is Pass-1 analysis of *fresh
+source notes*; skip-flagged upstream docs are fenced out of it. There are already three such
+upstream types (`suggestions`, `moc-proposal`, `suggestions-fan`); garden-audit joins as the
+cheap 4th peer (one frontmatter bucket + one `_get_doc_type` branch + one parser). No burden.
 
 **User Flow:**
 1. User runs `/garden-audit`.
@@ -225,6 +298,12 @@ into the vault inbox, and — on approval via `/inbox` — applies the fixable s
   fixable findings, including those whose Hashi action does not exist yet.
 - Rule 4: Filing an unparented/orphan note writes both the MOC-side bullet and the note's `up::`.
 - Rule 5: Broken `up::` is detected from the discovery cache alone (no graph call needed).
+- Rule 6: Exclusions (target = note/path/tag; scope = per-check or complete; type = permanent or
+  temporary-with-expiry) are applied as a filter *before* findings are rendered. They are read from
+  and written to the skill-owned instance config only — never surfaced to or mutated by `/inbox`.
+- Rule 7: Broken-`up::` fix intent in the wire carries BOTH options — repoint (shipped
+  `add_relationship`) and remove (new body-edit action) — even though the remove action is
+  Hashi-side pending (example-driven).
 
 **Edge Cases:**
 - Empty vault → Report renders with a "no notes found — is Tomo configured?" line; no wire actions.
@@ -304,6 +383,12 @@ _(Tracking is metadata-only per Constitution L2 — never note bodies or heading
 - [ ] Whether orphan findings default to "link to best MOC" or "flag only" when no candidate MOC
   clears the overlap threshold — resolve in SDD (reuse `orphan_link.py` create-new vs link-existing
   behaviour).
+- [ ] Durability of the skill-owned exclusion config across instance rebuild/reinstall — does
+  `config/garden-audit-exclusions.yaml` get seeded (create-only, never overwritten) and preserved
+  the way `vault-config.yaml` is by install/update-tomo? Confirm in SDD so permanent exclusions
+  are not silently lost.
+- [ ] First-run "abnormality cluster" heuristic — what makes a path/tag a cluster worth offering
+  for exclusion (finding-count threshold, share-of-total, per-check)? Define in SDD.
 
 ---
 

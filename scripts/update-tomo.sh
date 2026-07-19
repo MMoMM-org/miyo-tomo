@@ -511,6 +511,14 @@ for f in "$TOMO_SOURCE/config/tag-handlers/"*.json; do
     add_seed "$f" "$INSTANCE_PATH/config/tag-handlers/$name" "config/tag-handlers/$name" "tag-handlers"
 done
 
+# Garden-audit exclusion config (seed/create-only, CON-4 / spec 030).
+# User manages permanent exclusions here; update-tomo never overwrites their edits.
+add_seed \
+    "$TOMO_SOURCE/config/garden-audit-exclusions.yaml" \
+    "$INSTANCE_PATH/config/garden-audit-exclusions.yaml" \
+    "config/garden-audit-exclusions.yaml" \
+    "tag-handlers"
+
 # Templates — regenerated from schemas; check if regen would change anything.
 # We compute the expected content into a tmp file and cmp.
 TEMPLATE_TMP="$(mktemp -p "${TMPDIR:-/tmp}")"

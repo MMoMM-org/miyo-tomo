@@ -289,6 +289,67 @@ def test_unique_stems_no_duplicate_finding():
     assert not any(f["check"] == "duplicate_stem" for f in doc["findings"])
 
 
+def test_duplicate_stem_exclusion_of_one_path_leaves_remaining_pair():
+    """W1: excluding one of three duplicate paths still emits a finding for the other two."""
+    from lib.garden_exclusions import GardenExclusions
+
+    excl_config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "note", "value": "Archive/Dup.md"},
+                "checks": ["duplicate_stem"],
+                "mode": "permanent",
+                "reason": "archived copy is exempt",
+                "created": "2026-07-19",
+            }
+        ],
+    }
+    excl = GardenExclusions.from_dict(excl_config, today=date(2026, 7, 19))
+
+    entries = [
+        _moc("PKM"),
+        _entry("Dup", path="Notes/Dup.md", up_state="valid"),
+        _entry("Dup", path="Archive/Dup.md", up_state="valid"),   # excluded
+        _entry("Dup", path="Projects/Dup.md", up_state="valid"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir, exclusions=excl)
+    dupes = [f for f in doc["findings"] if f["check"] == "duplicate_stem"]
+    assert len(dupes) == 1, f"one finding expected for the two non-excluded paths; got {len(dupes)}"
+    remaining = dupes[0]["detail"]["dupes"]
+    assert "Archive/Dup.md" not in remaining, "excluded path must be filtered from finding"
+    assert len(remaining) == 2, f"two non-excluded paths must remain; got {remaining}"
+
+
+def test_duplicate_stem_exclusion_reducing_to_one_path_emits_no_finding():
+    """W1: excluding paths down to fewer than 2 remaining → no duplicate_stem finding."""
+    from lib.garden_exclusions import GardenExclusions
+
+    excl_config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "path", "value": "Archive/"},
+                "checks": ["duplicate_stem"],
+                "mode": "permanent",
+                "reason": "archive exempt",
+                "created": "2026-07-19",
+            }
+        ],
+    }
+    excl = GardenExclusions.from_dict(excl_config, today=date(2026, 7, 19))
+
+    entries = [
+        _moc("PKM"),
+        _entry("Dup", path="Notes/Dup.md", up_state="valid"),
+        _entry("Dup", path="Archive/Dup.md", up_state="valid"),  # excluded
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir, exclusions=excl)
+    assert not any(f["check"] == "duplicate_stem" for f in doc["findings"]), (
+        "only one non-excluded path remains → no duplicate_stem finding"
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Stale_moc check (listDir modified older than threshold)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -345,6 +406,30 @@ def test_recent_moc_not_stale():
         today=run_today,
     )
     assert not any(f["check"] == "stale_moc" for f in doc["findings"])
+
+
+def test_list_dir_unavailable_marks_stale_moc_skipped():
+    """W2: when list_dir_fn raises, stale_moc is added to skipped_checks and no crash occurs."""
+    entries = [_moc("Some MOC", up_state="valid")]
+
+    def failing_list_dir(path=None, **kwargs):
+        raise RuntimeError("listDir unavailable")
+
+    doc = run_scan(
+        entries,
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=failing_list_dir,
+    )
+    assert not any(f["check"] == "stale_moc" for f in doc["findings"]), (
+        "no stale_moc findings when listDir is unavailable"
+    )
+    assert "stale_moc" in doc["skipped_checks"], (
+        "stale_moc must appear in skipped_checks when listDir raises"
+    )
+    reason = doc.get("skipped_checks_reason", "")
+    assert "listdir" in reason.lower() or "unavailable" in reason.lower() or "not run" in reason.lower(), (
+        f"skipped reason must mention listDir/unavailable; got: {reason!r}"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────

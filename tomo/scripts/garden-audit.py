@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
 Runs six checks over the MOC-structure cache, kado-graph-audit results, and
@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import sys
 import uuid
+from collections import defaultdict
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -49,8 +50,6 @@ _TIER: dict[str, str] = {
     "duplicate_stem": "advisory",
     "stale_moc":      "advisory",
 }
-
-_TIER_ORDER = {"integrity": 0, "structure": 1, "advisory": 2}
 
 _FIXABLE: frozenset[str] = frozenset(["unparented", "orphan", "broken_up", "dead_link"])
 
@@ -161,27 +160,44 @@ def _check_orphan(
 ) -> list[dict]:
     """Check 2: orphan notes (from graph_audit orphans[]).
 
-    Builds a path→entry index from cache entries for exclusion matching.
+    Builds fake absent-note entries for each graph orphan, then calls
+    emit_orphan_suggestions ONCE over the augmented entry list (S1: batch,
+    not per-orphan — avoids O(N_orphans × N_entries) work on large vaults).
     """
     path_to_entry = {e.get("path", ""): e for e in entries if isinstance(e, dict)}
 
-    findings = []
+    # Collect non-excluded orphan paths and their augmented entries
+    orphan_items = []
     for item in graph_result.get("orphans") or []:
         path = item.get("path", "")
         stem = Path(path).stem if path else None
         entry = path_to_entry.get(path) or {"path": path, "stem": stem, "tags": []}
         if exclusions and exclusions.is_excluded(entry, "orphan"):
             continue
-        # Use orphan_link scoring on the full entries set to suggest candidate MOCs
         fake_entry = dict(entry)
         fake_entry.setdefault("up_state", "absent")
         fake_entry.setdefault("kind", "note")
         fake_entry.setdefault("topics", [])
-        all_with_orphan = [e for e in entries if e.get("path") != path] + [fake_entry]
-        suggestions = emit_orphan_suggestions(all_with_orphan, kinds=("note",))
-        matched = next((s for s in suggestions if s["path"] == path), None)
-        candidates = matched.get("candidates", []) if matched else []
+        fake_entry["path"] = path  # ensure path is set even for cache-miss entries
+        orphan_items.append((path, stem, fake_entry))
 
+    if not orphan_items:
+        return []
+
+    # Build augmented entry list: base entries (excluding any that share a path
+    # with an orphan item so we don't double-count) + one fake entry per orphan
+    orphan_paths = {path for path, _, _ in orphan_items}
+    base_entries = [e for e in entries if e.get("path") not in orphan_paths]
+    augmented = base_entries + [fake for _, _, fake in orphan_items]
+
+    # Single emit_orphan_suggestions call for all orphans (batch pattern)
+    suggestions = emit_orphan_suggestions(augmented, kinds=("note",))
+    by_path = {s["path"]: s for s in suggestions}
+
+    findings = []
+    for path, stem, _ in orphan_items:
+        matched = by_path.get(path)
+        candidates = matched.get("candidates", []) if matched else []
         findings.append(_finding(
             _make_id(counter),
             "orphan",
@@ -225,8 +241,14 @@ def _check_duplicate_stem(
     exclusions,
     counter: list[int],
 ) -> list[dict]:
-    """Check 5: duplicate stems (group entries[] by stem) — advisory."""
-    from collections import defaultdict
+    """Check 5: duplicate stems (group entries[] by stem) — advisory.
+
+    Exclusion is applied per-path: any path for which is_excluded returns True
+    is dropped from the group first. A finding is only emitted when ≥2
+    non-excluded paths remain; the first remaining path is the finding target.
+    """
+    # Build path→entry index for exclusion checks
+    path_to_entry: dict[str, dict] = {}
     groups: dict[str, list[str]] = defaultdict(list)
     for entry in entries:
         if not isinstance(entry, dict):
@@ -235,22 +257,31 @@ def _check_duplicate_stem(
         path = entry.get("path", "")
         if stem:
             groups[stem].append(path)
+            path_to_entry[path] = entry
 
     findings = []
     for stem, paths in groups.items():
         if len(paths) < 2:
             continue
-        # Use first path as the finding target; check exclusion against each path
-        primary_path = paths[0]
-        primary_entry = {"path": primary_path, "stem": stem, "tags": []}
-        if exclusions and exclusions.is_excluded(primary_entry, "duplicate_stem"):
+        # Filter out any path whose entry is excluded for duplicate_stem
+        if exclusions:
+            remaining = [
+                p for p in paths
+                if not exclusions.is_excluded(
+                    path_to_entry.get(p) or {"path": p, "stem": stem, "tags": []},
+                    "duplicate_stem",
+                )
+            ]
+        else:
+            remaining = paths
+        if len(remaining) < 2:
             continue
         findings.append(_finding(
             _make_id(counter),
             "duplicate_stem",
-            primary_path,
+            remaining[0],
             stem,
-            {"dupes": paths},
+            {"dupes": remaining},
         ))
     return findings
 
@@ -262,21 +293,26 @@ def _check_stale_moc(
     counter: list[int],
     stale_moc_days: int,
     today: date,
-) -> list[dict]:
-    """Check 6: stale MOCs (listDir modified older than stale_moc_days) — advisory."""
+) -> tuple[list[dict], list[str], str]:
+    """Check 6: stale MOCs (listDir modified older than stale_moc_days) — advisory.
+
+    Returns (findings, skipped_checks, skipped_reason).
+    When list_dir_fn raises, degrades gracefully: returns ([], ["stale_moc"], reason)
+    mirroring the graph-unavailable pattern (SDD Error Handling).
+    """
     moc_paths = {
         e.get("path", ""): e
         for e in entries
         if isinstance(e, dict) and e.get("kind") == "moc"
     }
     if not moc_paths:
-        return []
+        return [], [], ""
 
     # Fetch all items from the root; filter to MOC paths
     try:
         items = list_dir_fn(path="/") or []
-    except Exception:  # noqa: BLE001
-        return []
+    except Exception as exc:  # noqa: BLE001 — graceful partial per SDD Error Handling
+        return [], ["stale_moc"], f"not run (listDir unavailable): {exc}"
 
     cutoff_dt = datetime(
         today.year, today.month, today.day, tzinfo=timezone.utc
@@ -312,7 +348,7 @@ def _check_stale_moc(
             stem,
             {"mtime": mtime_str},
         ))
-    return findings
+    return findings, [], ""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -380,12 +416,14 @@ def run_scan(
         skipped_reason = f"not run (graph unavailable): {exc}"
 
     # ── listDir check ──
-    stale_findings = _check_stale_moc(
+    stale_findings, stale_skipped, stale_reason = _check_stale_moc(
         entries, list_dir_fn, exclusions, counter, stale_moc_days, effective_today
     )
+    if stale_skipped:
+        skipped_checks.extend(stale_skipped)
+        skipped_reason = "; ".join(filter(None, [skipped_reason, stale_reason]))
 
-    # ── Assemble and severity-sort ──
-    # Collect in tier order: integrity={broken_up,dead_link}, structure={unparented,orphan}, advisory
+    # ── Assemble in severity order: integrity > structure > advisory (SDD tier ordering) ──
     integrity_findings = broken_findings + [f for f in graph_findings if f["check"] == "dead_link"]
     structure_findings = unparented_findings + [f for f in graph_findings if f["check"] == "orphan"]
     advisory_findings  = dup_findings + stale_findings

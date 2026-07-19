@@ -389,3 +389,106 @@ class TestReportWireParity:
         idx_integrity = next(i for i, t in enumerate(tiers) if t == "integrity")
         idx_structure = next(i for i, t in enumerate(tiers) if t == "structure")
         assert idx_integrity < idx_structure
+
+
+# ---------------------------------------------------------------------------
+# FIX 1 regression: doc_type=garden-audit must be valid in doc-frontmatter schema
+# ---------------------------------------------------------------------------
+
+class TestFrontmatterSchemaValidation:
+    """Stamped frontmatter must be schema-valid (ADR-1 registers garden-audit as 4th peer)."""
+
+    def _load_fm_schema(self) -> dict:
+        schema_path = _ROOT / "tomo" / "schemas" / "doc-frontmatter.schema.json"
+        with schema_path.open() as f:
+            return json.load(f)
+
+    def test_garden_audit_doc_type_in_enum(self):
+        # The doc_type enum in doc-frontmatter.schema.json must include "garden-audit".
+        # This test fails before the enum is extended.
+        schema = self._load_fm_schema()
+        enum_values = schema["properties"]["tomo"]["properties"]["doc_type"]["enum"]
+        assert "garden-audit" in enum_values, f"garden-audit not in enum: {enum_values}"
+
+    def test_build_tomo_block_garden_audit_does_not_raise(self):
+        # Under TOMO_SCHEMA_STRICT=1 build_tomo_block raises SchemaValidationError when
+        # doc_type is absent from the schema. This test drives the enum + oneOf fix.
+        import os
+        env = os.environ.copy()
+        env["TOMO_SCHEMA_STRICT"] = "1"
+
+        # Reload doc_frontmatter with TOMO_SCHEMA_STRICT=1 in effect
+        import sys as _sys
+
+        # Temporarily set the env var and force a fresh import of doc_frontmatter
+        old = os.environ.get("TOMO_SCHEMA_STRICT")
+        os.environ["TOMO_SCHEMA_STRICT"] = "1"
+        try:
+            # Remove cached module so it reloads with strict flag active
+            mod_name = "lib.doc_frontmatter"
+            if mod_name in _sys.modules:
+                del _sys.modules[mod_name]
+            from lib.doc_frontmatter import build_tomo_block as _btb
+            # Must not raise
+            block = _btb(doc_type="garden-audit", state="pending-accept", run_id="r-test")
+            assert block["doc_type"] == "garden-audit"
+            assert block["state"] == "pending-accept"
+        finally:
+            if old is None:
+                os.environ.pop("TOMO_SCHEMA_STRICT", None)
+            else:
+                os.environ["TOMO_SCHEMA_STRICT"] = old
+            # Restore module cache
+            if mod_name in _sys.modules:
+                del _sys.modules[mod_name]
+
+    def test_stamped_frontmatter_validates_against_fm_schema(self):
+        # The full frontmatter dict emitted by render_frontmatter must validate.
+        d = _make_doc()
+        fm_lines = gar.render_frontmatter(d)
+        # Parse the YAML between the --- fences
+        fm_text = "\n".join(fm_lines[1:-1])  # strip leading/trailing ---
+        import yaml as _yaml
+        fm_dict = _yaml.safe_load(fm_text)
+        schema = self._load_fm_schema()
+        jsonschema.validate({"tomo": fm_dict["tomo"]}, schema)  # raises on failure
+
+
+# ---------------------------------------------------------------------------
+# FIX 2 regression: all-advisory run summary message
+# ---------------------------------------------------------------------------
+
+class TestAllAdvisoryRun:
+    """All-advisory run → Summary states 'no fixable findings'; no checkbox affordance."""
+
+    def test_all_advisory_summary_message(self):
+        findings = [
+            _make_duplicate_stem_finding("F01"),
+            _make_stale_moc_finding("F02"),
+        ]
+        d = _make_doc(findings=findings)
+        report = _render_report(d)
+        # Must contain an explicit "no fixable" message
+        assert "no fixable" in report.lower() or "advisory" in report.lower()
+
+    def test_all_advisory_no_checkbox_in_report(self):
+        findings = [
+            _make_duplicate_stem_finding("F01"),
+            _make_stale_moc_finding("F02"),
+        ]
+        d = _make_doc(findings=findings)
+        report = _render_report(d)
+        assert "- [" not in report
+
+    def test_all_advisory_summary_says_no_fixable_findings(self):
+        # The summary section must contain an EXPLICIT "no fixable findings" phrase.
+        # "Advisory: 2" alone does not satisfy the PRD requirement.
+        findings = [_make_duplicate_stem_finding("F01")]
+        d = _make_doc(findings=findings)
+        report = _render_report(d)
+        summary_start = report.find("## Summary")
+        assert summary_start != -1
+        summary_block = report[summary_start:summary_start + 500]
+        assert "no fixable" in summary_block.lower(), (
+            f"Summary should say 'no fixable findings'; got:\n{summary_block}"
+        )

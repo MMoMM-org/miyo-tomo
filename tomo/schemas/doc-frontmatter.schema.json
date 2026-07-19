@@ -14,7 +14,7 @@
       "properties": {
         "doc_type": {
           "type": "string",
-          "enum": ["source", "suggestions", "suggestions-fan", "moc-proposal", "instructions", "rendered-note"],
+          "enum": ["source", "suggestions", "suggestions-fan", "moc-proposal", "instructions", "rendered-note", "garden-audit"],
           "description": "Type of Tomo-produced doc. Determines which state values are valid."
         },
         "state": {
@@ -92,6 +92,13 @@
           "properties": {
             "doc_type": {"const": "rendered-note"},
             "state": {"enum": ["pending-move"]}
+          }
+        },
+        {
+          "description": "garden-audit — /garden-audit scan output; the 4th peer upstream doc-type (ADR-1). Accepted after the user approves fixable findings and runs /inbox.",
+          "properties": {
+            "doc_type": {"const": "garden-audit"},
+            "state": {"enum": ["pending-accept", "accepted"]}
           }
         }
       ]

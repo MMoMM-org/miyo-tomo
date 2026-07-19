@@ -135,6 +135,8 @@ def _render_summary(findings: list[dict]) -> list[str]:
         counts[f["tier"]] = counts.get(f["tier"], 0) + 1
 
     total = sum(counts.values())
+    fixable_count = sum(1 for f in findings if f.get("fixable"))
+
     lines.append(f"Total findings: {total}")
     lines.append("")
     for tier in ("integrity", "structure", "advisory"):
@@ -142,6 +144,15 @@ def _render_summary(findings: list[dict]) -> list[str]:
         if n:
             lines.append(f"- {_TIER_LABEL[tier]}: {n}")
     lines.append("")
+
+    # All-advisory run: no fixable findings — user must handle manually (PRD Feature 2).
+    if fixable_count == 0:
+        lines += [
+            "No fixable findings — all findings are advisory; review the sections"
+            " below and handle manually.",
+            "",
+        ]
+
     return lines
 
 

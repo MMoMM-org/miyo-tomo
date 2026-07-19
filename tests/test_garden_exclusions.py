@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_garden_exclusions.py — Behavioural tests for lib.garden_exclusions (spec 030 T1.2).
 
 Tests cover:
@@ -206,7 +206,8 @@ def test_temporary_excludes_before_until():
             }
         ],
     }
-    cfg = GardenExclusions.from_dict(config)
+    # W1: pin construction date so the rule is always active at build time
+    cfg = GardenExclusions.from_dict(config, today=date(2026, 7, 19))
     note = _note("Projects/Draft.md")
     # today before until → excluded
     assert cfg.is_excluded(note, "orphan", today=date(2026, 7, 19)) is True
@@ -228,7 +229,9 @@ def test_temporary_does_not_exclude_on_or_after_until():
             }
         ],
     }
-    cfg = GardenExclusions.from_dict(config)
+    # W2: pin construction date before until so the rule enters _active at build time;
+    # the per-call today then exercises the inline re-check path intentionally
+    cfg = GardenExclusions.from_dict(config, today=date(2026, 7, 19))
     note = _note("Projects/Draft.md")
     # today == until → expired, not excluded
     assert cfg.is_excluded(note, "orphan", today=date(2026, 10, 17)) is False
@@ -504,3 +507,61 @@ def test_multiple_exclusions_any_match_excludes():
     tagged_note = _note("Projects/Tagged.md", tags=["skip-audit"])
     assert cfg.is_excluded(tagged_note, "orphan") is True
     assert cfg.is_excluded(tagged_note, "unparented") is False  # not in second rule's checks
+
+
+def test_temporary_without_until_is_conservative_never_expires():
+    """W3: temporary rule with no `until` field is treated as never-expiring (conservative).
+
+    Built via from_dict to bypass the schema's if/then requirement for `until`.
+    Contracts: is_excluded returns True for a matching note AND reappeared_exclusions() returns [].
+    Locks the is_active ~line 91 conservative branch.
+    """
+    config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "note", "value": "Projects/NoUntil.md"},
+                "checks": ["orphan"],
+                "mode": "temporary",
+                # deliberately no `until` field
+                "reason": "push-back with no deadline",
+                "created": "2026-07-19",
+            }
+        ],
+    }
+    # Construct at a far-future date to confirm it still behaves as active
+    cfg = GardenExclusions.from_dict(config, today=date(2099, 1, 1))
+    note = _note("Projects/NoUntil.md")
+    assert cfg.is_excluded(note, "orphan") is True, (
+        "temporary with no until must still exclude (conservative never-expires)"
+    )
+    assert cfg.reappeared_exclusions() == [], (
+        "temporary with no until must NOT appear in reappeared"
+    )
+
+
+def test_unrecognised_checks_shape_does_not_exclude():
+    """W4: a rule whose checks is an unrecognised shape (e.g. integer 42) is silently no-oped.
+
+    _normalize_checks returns frozenset() for unknown shapes; _parse_rule treats it as
+    a zero-check rule that never matches any check name.
+    """
+    config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "note", "value": "Projects/Draft.md"},
+                "checks": 42,  # unrecognised — not "all" and not a list
+                "mode": "permanent",
+                "reason": "bad checks value",
+                "created": "2026-07-19",
+            }
+        ],
+    }
+    # Must not crash
+    cfg = GardenExclusions.from_dict(config)
+    note = _note("Projects/Draft.md")
+    # The rule's normalised checks is empty → never matches any check name
+    assert cfg.is_excluded(note, "orphan") is False, (
+        "unrecognised checks shape must not exclude anything"
+    )

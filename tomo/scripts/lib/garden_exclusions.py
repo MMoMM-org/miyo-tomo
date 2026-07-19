@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """garden_exclusions.py — Load and apply the garden-audit exclusion config (spec 030 T1.2).
 
 Loads config/garden-audit-exclusions.yaml, separates expired temporaries
@@ -36,7 +36,7 @@ def _parse_date(value: str | None) -> date | None:
         return None
 
 
-def _normalise_checks(checks: Any) -> frozenset[str]:
+def _normalize_checks(checks: Any) -> frozenset[str]:
     """Return the effective set of check names from a checks value.
 
     Accepts the string "all" or a list of check name strings.
@@ -102,7 +102,7 @@ def _parse_rule(raw: dict) -> _ExclusionRule | None:
         target = raw["target"]
         if not isinstance(target, dict) or "type" not in target or "value" not in target:
             return None
-        checks = _normalise_checks(raw["checks"])
+        checks = _normalize_checks(raw["checks"])
         mode = raw["mode"]
         if mode not in ("permanent", "temporary"):
             return None
@@ -189,4 +189,5 @@ class GardenExclusions:
         except Exception as exc:  # noqa: BLE001
             logger.warning("garden_exclusions: could not load %s: %s", path, exc)
             return cls([], effective_today)
-        return cls.from_dict(data, today=today)
+        # C1: pass effective_today (already resolved) so both calls share the same date
+        return cls.from_dict(data, today=effective_today)

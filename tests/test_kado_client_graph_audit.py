@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_kado_client_graph_audit.py — Unit tests for KadoClient.graph_audit().
 
 Covers the cursor-paginated vault-wide link audit wrapper.
@@ -209,8 +209,9 @@ def test_limit_none_omitted_from_args():
 def test_cursor_forwarded_on_subsequent_pages():
     """On page 2+, cursor is included in args alongside include and limit."""
     client = _make_client()
+    # page1 must have at least one item so the secondary guard doesn't exit early
     page1 = _audit_response(
-        orphans=[], dead_links=[], total={}, cursor="tok123", truncated=True
+        orphans=[{"path": "Notes/X.md"}], dead_links=[], total={}, cursor="tok123", truncated=True
     )
     page2 = _audit_response(orphans=[], dead_links=[], total={}, cursor=None)
 
@@ -251,21 +252,29 @@ def test_camelcase_dead_links_read_correctly():
     assert result["deadLinks"] == [{"source": "X.md", "target": "Y", "count": 5}]
 
 
-def test_result_key_is_camelcase_deadlinks():
-    """The returned dict key is 'deadLinks', matching the Kado wire format."""
-    client = _make_client()
-    page = _audit_response(
-        orphans=[],
-        dead_links=[{"source": "A.md", "target": "B", "count": 1}],
-        total={},
-        cursor=None,
-    )
+# ---------------------------------------------------------------------------
+# Infinite-loop guard — exit when both arrays empty despite non-null cursor
+# ---------------------------------------------------------------------------
 
-    with patch.object(client, "_call_tool", return_value=page):
+
+def test_loop_exits_when_both_arrays_empty_despite_cursor():
+    """Loop must terminate when a page returns empty orphans AND empty deadLinks,
+    even if the server returns a non-null cursor (server-bug / partial-failure guard).
+    Mirrors the _search_all `or not page_items` secondary break condition."""
+    client = _make_client()
+
+    # Both pages carry a non-None cursor but yield no items — without the
+    # secondary guard the loop would spin forever.
+    page1 = _audit_response(orphans=[], dead_links=[], total={}, cursor="cursor-evil", truncated=True)
+    page2 = _audit_response(orphans=[], dead_links=[], total={}, cursor="cursor-evil2", truncated=True)
+
+    with patch.object(client, "_call_tool", side_effect=[page1, page2]) as mock_call:
         result = client.graph_audit()
 
-    assert "deadLinks" in result
-    assert "dead_links" not in result
+    # Must have stopped after the first empty page (call_count == 1)
+    assert mock_call.call_count == 1
+    assert result["orphans"] == []
+    assert result["deadLinks"] == []
 
 
 # ---------------------------------------------------------------------------

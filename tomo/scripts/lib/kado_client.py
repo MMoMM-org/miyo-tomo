@@ -1,4 +1,4 @@
-# version: 0.11.0
+# version: 0.11.1
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -440,7 +440,7 @@ class KadoClient:
                 raise KadoConcurrencyError(msg) from exc
             raise
 
-    def graph_audit(self, *, include=None, limit=None) -> dict:
+    def graph_audit(self, *, include: list | None = None, limit: int | None = None) -> dict:
         """Vault-wide link audit → {"orphans":[{path}], "deadLinks":[{source,target,count}], "total":{...}}.
 
         Concatenates orphans-first-then-deadLinks across cursor pages; retry/backoff
@@ -464,13 +464,21 @@ class KadoClient:
         """
         orphans, dead_links, total, cursor = [], [], None, None
         while True:
-            args = {k: v for k, v in (("include", include), ("limit", limit), ("cursor", cursor)) if v is not None}
+            args: dict = {}
+            if include is not None:
+                args["include"] = include
+            if limit is not None:
+                args["limit"] = limit
+            if cursor is not None:
+                args["cursor"] = cursor
             res = self._call_tool("kado-graph-audit", args)
-            orphans.extend(res.get("orphans", []))
-            dead_links.extend(res.get("deadLinks", []))   # NB: camelCase
+            page_orphans = res.get("orphans", [])
+            page_dead_links = res.get("deadLinks", [])   # NB: camelCase
+            orphans.extend(page_orphans)
+            dead_links.extend(page_dead_links)
             total = res.get("total", total)
             cursor = res.get("cursor")
-            if not cursor:
+            if not cursor or (not page_orphans and not page_dead_links):
                 break
         return {"orphans": orphans, "deadLinks": dead_links, "total": total}
 

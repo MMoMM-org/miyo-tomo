@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/garden-audit-wire.schema.json",
+  "title": "Garden-Audit Wire",
+  "description": "Complete mirror of the garden-audit review surface (ADR-4 / ADR-026). Emitted alongside the markdown report by garden-audit-render.py; consumed by garden-audit-parser.py in Pass-2 to rebuild confirmed fixes from JSON alone. emit_digest is the change signal: when it no longer matches a recomputation over the editable payload (findings[].decision fields, with emit_digest absent), Pass-2 rebuilds from this JSON. Both artifacts are projected from the same garden-audit-doc.json (no drift by construction).",
+  "type": "object",
+  "required": ["schema_version", "generated", "run_id", "profile", "emit_digest", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Schema version — always '1' for this iteration."
+    },
+    "generated": {
+      "type": "string",
+      "description": "ISO-8601 timestamp when this wire was produced."
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Stable run identifier joining the report and wire."
+    },
+    "profile": {
+      "type": ["string", "null"],
+      "description": "Vault profile in use (miyo, lyt, …)."
+    },
+    "emit_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 over the canonical editable payload (this object with emit_digest absent). Recomputed and compared in Pass-2 to detect user edits."
+    },
+    "findings": {
+      "type": "array",
+      "description": "All findings, severity-ordered (integrity → structure → advisory). Each fixable finding carries a 'decision' block the user can edit; advisory findings omit 'decision'.",
+      "items": {
+        "type": "object",
+        "required": ["id", "check", "tier", "fixable", "target", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable finding identifier (e.g. F01). Joins the markdown report to the wire."
+          },
+          "check": {
+            "type": "string",
+            "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"],
+            "description": "Which check produced this finding."
+          },
+          "tier": {
+            "type": "string",
+            "enum": ["integrity", "structure", "advisory"],
+            "description": "Severity tier. integrity={broken_up,dead_link}; structure={unparented,orphan}; advisory={duplicate_stem,stale_moc}."
+          },
+          "fixable": {
+            "type": "boolean",
+            "description": "True for checks 1-4 (unparented,orphan,broken_up,dead_link). False for advisory checks 5-6."
+          },
+          "target": {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "description": "The primary note this finding targets.",
+            "properties": {
+              "path": {"type": "string"},
+              "stem": {"type": ["string", "null"]}
+            }
+          },
+          "detail": {
+            "type": "object",
+            "description": "Per-check detail. Fields vary by check type (read-only in the wire).",
+            "additionalProperties": true,
+            "properties": {
+              "candidate_mocs": {
+                "type": "array",
+                "description": "unparented/orphan: scored MOC candidates from orphan_link.",
+                "items": {
+                  "type": "object",
+                  "required": ["target_moc", "score"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "target_moc": {"type": "string"},
+                    "score": {"type": "number"}
+                  }
+                }
+              },
+              "up_target": {
+                "type": ["string", "null"],
+                "description": "broken_up: the broken up:: target stem."
+              },
+              "dead_target": {
+                "type": "string",
+                "description": "dead_link: the unresolved wikilink target text."
+              },
+              "count": {
+                "type": "integer",
+                "description": "dead_link: how many times the dead link appears."
+              },
+              "dupes": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "duplicate_stem: list of paths sharing the stem."
+              },
+              "mtime": {
+                "type": "string",
+                "description": "stale_moc: last-modified ISO timestamp from listDir."
+              }
+            }
+          },
+          "decision": {
+            "type": "object",
+            "description": "Editable block — present ONLY on fixable findings (fixable=true). Absent for advisory. The user edits 'selected' to accept or skip the fix; Pass-2 reads this field alone.",
+            "required": ["selected", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "selected": {
+                "type": "boolean",
+                "description": "Editable — true to apply the fix. Pre-set from finding.decision.selected in the doc."
+              },
+              "action": {
+                "type": ["string", "null"],
+                "description": "Proposed action name (e.g. link_to_moc, edit_note_text, add_relationship). Null when not yet determined."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

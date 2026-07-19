@@ -1248,7 +1248,7 @@ def main() -> None:
     test_no_template_no_fallback_stays_null()
     test_no_in_set_create_moc_stays_null()
     test_pre_set_anchor_value_is_preserved()
-    test_heading_anchor_skipped_by_resolver()
+    test_heading_anchor_skipped_line_anchor_resolved()
     test_heading_fallback_when_no_editable_callout()
     test_editable_callout_wins_over_heading()
     test_new_section_before_footer_when_nothing_else_fits()

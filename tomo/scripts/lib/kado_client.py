@@ -1,4 +1,4 @@
-# version: 0.10.0
+# version: 0.11.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -439,6 +439,40 @@ class KadoClient:
             if "expectedModified" in msg and "mismatch" in msg:
                 raise KadoConcurrencyError(msg) from exc
             raise
+
+    def graph_audit(self, *, include=None, limit=None) -> dict:
+        """Vault-wide link audit → {"orphans":[{path}], "deadLinks":[{source,target,count}], "total":{...}}.
+
+        Concatenates orphans-first-then-deadLinks across cursor pages; retry/backoff
+        inherited from _call_tool.
+
+        Parameters
+        ----------
+        include:
+            Optional list of result categories to return, e.g. ``["orphans"]``.
+            Omitted from the request when ``None``.
+        limit:
+            Optional page size for cursor-based pagination.
+            Omitted from the request when ``None``.
+
+        Returns
+        -------
+        dict with keys:
+            orphans   — list of {path} dicts, concatenated across all pages
+            deadLinks — list of {source, target, count} dicts, concatenated across all pages
+            total     — summary counts from the final page
+        """
+        orphans, dead_links, total, cursor = [], [], None, None
+        while True:
+            args = {k: v for k, v in (("include", include), ("limit", limit), ("cursor", cursor)) if v is not None}
+            res = self._call_tool("kado-graph-audit", args)
+            orphans.extend(res.get("orphans", []))
+            dead_links.extend(res.get("deadLinks", []))   # NB: camelCase
+            total = res.get("total", total)
+            cursor = res.get("cursor")
+            if not cursor:
+                break
+        return {"orphans": orphans, "deadLinks": dead_links, "total": total}
 
     def search_by_frontmatter(
         self,

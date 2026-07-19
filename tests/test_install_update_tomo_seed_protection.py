@@ -25,7 +25,6 @@ from pathlib import Path
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 UPDATER = REPO_ROOT / "scripts" / "update-tomo.sh"
-REGISTRY_LIB = REPO_ROOT / "scripts" / "lib" / "instance-registry.sh"
 
 SEED_DEST_REL = "config/garden-audit-exclusions.yaml"
 SEED_SOURCE = REPO_ROOT / "tomo" / "config" / "garden-audit-exclusions.yaml"

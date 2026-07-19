@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Scan Orchestrator"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -27,7 +27,7 @@ phase: 2
 
 Produces the classified, prioritised, exclusion-filtered findings as `garden-audit-doc.json`.
 
-- [ ] **T2.1 `garden-audit.py` scan orchestrator** `[activity: backend]`
+- [x] **T2.1 `garden-audit.py` scan orchestrator** `[activity: backend]`
 
   1. Prime: Read orphan_link (`emit_orphan_suggestions`), moc_cache_loader (`cache.entries` fields), moc-tree-builder (`up_state`/`up_target`), and `[ref: SDD/ADR-5]`.
   2. Test (per check, with fake cache + fake graph_audit + fake listDir):
@@ -43,6 +43,6 @@ Produces the classified, prioritised, exclusion-filtered findings as `garden-aud
   4. Validate: `pytest tests/test_garden_audit_scan.py`; schema-valid output; ruff clean.
   - Success: all six checks produced + filtered + severity-ordered `[ref: PRD/Feature 1 ACs]`; broken-`up::` uses zero graph calls `[ref: SDD/ADR-5]`; graceful partial on graph-unavailable `[ref: SDD/Error Handling]`.
 
-- [ ] **T2.2 Phase Validation** `[activity: validate]`
+- [x] **T2.2 Phase Validation** `[activity: validate]`
 
   - Run all Phase 2 tests; ruff clean. Verify `garden-audit-doc.json` conforms to its schema and covers every PRD Feature-1 check.

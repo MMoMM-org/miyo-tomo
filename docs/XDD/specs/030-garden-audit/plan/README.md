@@ -70,7 +70,7 @@ Each phase is a separate file. Tasks follow red-green-refactor: **Prime** → **
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the method, not separate tracked items.
 
 - [x] [Phase 1: Data & Config Foundations](phase-1.md)
-- [ ] [Phase 2: Scan Orchestrator](phase-2.md)
+- [x] [Phase 2: Scan Orchestrator](phase-2.md)
 - [ ] [Phase 3: Render — Report + Wire](phase-3.md)
 - [ ] [Phase 4: Apply Integration (2-pass + edit_note_text)](phase-4.md)
 - [ ] [Phase 5: Agent, Command, Wizard, Docs](phase-5.md)

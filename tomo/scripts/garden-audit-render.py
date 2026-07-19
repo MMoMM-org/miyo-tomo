@@ -132,7 +132,7 @@ def _render_summary(findings: list[dict]) -> list[str]:
 
     counts: dict[str, int] = {"integrity": 0, "structure": 0, "advisory": 0}
     for f in findings:
-        counts[f["tier"]] = counts.get(f["tier"], 0) + 1
+        counts[f["tier"]] += 1
 
     total = sum(counts.values())
     fixable_count = sum(1 for f in findings if f.get("fixable"))
@@ -173,11 +173,7 @@ def _render_finding(f: dict) -> list[str]:
     lines = [f"### {fid} — {label}: `{stem}`", ""]
 
     # Detail lines per check type
-    if check == "unparented":
-        mocs = detail.get("candidate_mocs") or []
-        if mocs:
-            lines.append(f"Candidate MOC: `{mocs[0]['target_moc']}` (score: {mocs[0]['score']:.2f})")
-    elif check == "orphan":
+    if check in ("unparented", "orphan"):
         mocs = detail.get("candidate_mocs") or []
         if mocs:
             lines.append(f"Candidate MOC: `{mocs[0]['target_moc']}` (score: {mocs[0]['score']:.2f})")
@@ -211,12 +207,19 @@ def _render_finding(f: dict) -> list[str]:
             f"- [{check_mark}] Apply `{action}` — tick to confirm, untick to skip",
             "",
         ]
-    # Advisory → no checkbox, just a note
     elif f.get("tier") == "advisory":
+        # Advisory → read-only note, no checkbox
         lines += [
             "_Advisory — no automated fix. Review and handle manually._",
             "",
         ]
+    else:
+        # Fixable finding without a decision block is a contract violation from the
+        # producer. Fail loudly — a silent skip would produce an incomplete render.
+        raise ValueError(
+            f"fixable finding {fid!r} missing decision block — "
+            "garden-audit.py must always emit a decision on fixable findings"
+        )
 
     return lines
 

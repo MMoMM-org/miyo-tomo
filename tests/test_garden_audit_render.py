@@ -24,6 +24,7 @@ import re
 import sys
 
 import jsonschema
+import pytest
 
 # ---------------------------------------------------------------------------
 # Load the hyphen-named module under test
@@ -414,8 +415,6 @@ class TestFrontmatterSchemaValidation:
         # Under TOMO_SCHEMA_STRICT=1 build_tomo_block raises SchemaValidationError when
         # doc_type is absent from the schema. This test drives the enum + oneOf fix.
         import os
-        env = os.environ.copy()
-        env["TOMO_SCHEMA_STRICT"] = "1"
 
         # Reload doc_frontmatter with TOMO_SCHEMA_STRICT=1 in effect
         import sys as _sys
@@ -492,3 +491,27 @@ class TestAllAdvisoryRun:
         assert "no fixable" in summary_block.lower(), (
             f"Summary should say 'no fixable findings'; got:\n{summary_block}"
         )
+
+
+# ---------------------------------------------------------------------------
+# W1 regression: fixable finding with missing decision block → ValueError
+# ---------------------------------------------------------------------------
+
+class TestMalformedFindingGuard:
+    """A fixable (non-advisory) finding without a decision block is a contract
+    violation — _render_finding must raise ValueError, not silently skip."""
+
+    def test_fixable_finding_missing_decision_raises(self):
+        # Build a fixable finding that lacks the 'decision' key entirely.
+        malformed = {
+            "id": "F01",
+            "check": "broken_up",
+            "tier": "integrity",
+            "fixable": True,
+            "target": {"path": "Notes/Broken.md", "stem": "Broken"},
+            "detail": {"up_target": "Deleted MOC"},
+            # deliberately NO 'decision' key
+        }
+        d = _make_doc(findings=[malformed])
+        with pytest.raises(ValueError, match="F01"):
+            _render_report(d)

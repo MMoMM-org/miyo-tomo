@@ -1,0 +1,713 @@
+#!/usr/bin/env python3
+# version: 0.1.0
+"""test_garden_audit_scan.py — Behavioural tests for garden-audit.py scan orchestrator (spec 030 T2.1).
+
+Uses fake cache entries, a fake graph_audit callable, and a fake listDir callable — no Kado/network.
+
+Domain facts locked in:
+  Checks: unparented, orphan, broken_up, dead_link, duplicate_stem, stale_moc
+  Tiers: integrity={broken_up, dead_link}; structure={unparented, orphan}; advisory={duplicate_stem, stale_moc}
+  Data-source split (ADR-5):
+    cache       → unparented, broken_up, duplicate_stem
+    graph_audit → orphan, dead_link
+    listDir     → stale_moc
+  broken_up is CACHE-ONLY — must not trigger any graph_audit call.
+  Fixable: unparented, orphan, broken_up, dead_link (checks 1-4). Advisory=5-6, never fixable.
+  Severity order: integrity > structure > advisory.
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+from datetime import date
+from pathlib import Path
+
+SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
+SCHEMAS_DIR = Path(__file__).parent.parent / "tomo" / "schemas"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Load the module under test (hyphen-named — use importlib)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _load_garden_audit():
+    path = SCRIPTS_DIR / "garden-audit.py"
+    spec = importlib.util.spec_from_file_location("garden_audit", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+garden_audit = _load_garden_audit()
+run_scan = garden_audit.run_scan
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Fixtures
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _entry(
+    stem: str,
+    *,
+    kind: str = "note",
+    up_state: str = "valid",
+    up_target: str | None = None,
+    topics: list[str] | None = None,
+    tags: list[str] | None = None,
+    path: str | None = None,
+) -> dict:
+    return {
+        "path": path or f"Notes/{stem}.md",
+        "stem": stem,
+        "kind": kind,
+        "title": stem,
+        "up_state": up_state,
+        "up_target": up_target,
+        "topics": topics or [],
+        "tags": tags or [],
+    }
+
+
+def _moc(stem: str, *, topics: list[str] | None = None, up_state: str = "valid") -> dict:
+    return _entry(
+        stem, kind="moc", up_state=up_state, topics=topics or [],
+        path=f"Maps/{stem}.md",
+    )
+
+
+def _no_graph_audit(*args, **kwargs) -> dict:
+    """Fake that returns empty graph results — no graph calls expected."""
+    return {"orphans": [], "deadLinks": [], "total": {}}
+
+
+def _graph_unavailable(*args, **kwargs):
+    raise RuntimeError("graph tool unavailable")
+
+
+def _no_list_dir(path=None, **kwargs) -> list:
+    return []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# run_scan signature:
+#   run_scan(entries, *, graph_audit_fn, list_dir_fn, exclusions=None,
+#            stale_moc_days=90, run_id=None, profile=None, generated=None,
+#            today=None) -> dict
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Unparented check (cache: up_state=="absent")
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_unparented_note_produces_structure_finding():
+    """A note with up_state==absent produces an unparented finding (tier=structure)."""
+    entries = [
+        _moc("PKM", topics=["pkm", "notes"]),
+        _entry("Orphan Note", up_state="absent", topics=["pkm", "notes"]),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    findings = doc["findings"]
+    unparented = [f for f in findings if f["check"] == "unparented"]
+    assert len(unparented) == 1
+    f = unparented[0]
+    assert f["tier"] == "structure"
+    assert f["fixable"] is True
+    assert f["target"]["stem"] == "Orphan Note"
+
+
+def test_unparented_carries_candidate_mocs_from_orphan_link_scoring():
+    """Unparented finding carries candidate_mocs scored by orphan_link."""
+    entries = [
+        _moc("PKM", topics=["pkm", "notes", "linking"]),
+        _entry("My Note", up_state="absent", topics=["pkm", "notes", "linking"]),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    f = next(x for x in doc["findings"] if x["check"] == "unparented")
+    # orphan_link scoring should propose PKM as candidate
+    cands = f["detail"]["candidate_mocs"]
+    assert len(cands) >= 1
+    assert cands[0]["target_moc"] == "PKM"
+
+
+def test_note_with_valid_up_state_not_unparented():
+    """Notes with up_state==valid do NOT produce an unparented finding."""
+    entries = [
+        _moc("PKM"),
+        _entry("Filed Note", up_state="valid"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    assert not any(f["check"] == "unparented" for f in doc["findings"])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Broken_up check (cache: up_state=="broken" + up_target) — CACHE-ONLY
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_broken_up_note_produces_integrity_finding():
+    """A note with up_state==broken produces a broken_up finding (tier=integrity)."""
+    graph_calls = []
+
+    def tracked_graph(**kwargs) -> dict:
+        graph_calls.append(kwargs)
+        return {"orphans": [], "deadLinks": [], "total": {}}
+
+    entries = [
+        _moc("PKM"),
+        _entry("Broken Note", up_state="broken", up_target="Deleted MOC"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=tracked_graph, list_dir_fn=_no_list_dir)
+    broken = [f for f in doc["findings"] if f["check"] == "broken_up"]
+    assert len(broken) == 1
+    f = broken[0]
+    assert f["tier"] == "integrity"
+    assert f["fixable"] is True
+    assert f["detail"]["up_target"] == "Deleted MOC"
+
+
+def test_broken_up_is_cache_only_zero_graph_audit_calls():
+    """CRITICAL: broken_up is cache-only — must not trigger any graph_audit call.
+
+    We add ONLY broken_up notes (no graph-only checks) and assert graph_audit_fn
+    is never invoked for them — the call count attributable to broken_up is zero.
+    We do this by running once with only broken_up entries and counting graph calls.
+    """
+    graph_calls = []
+
+    def tracking_graph(**kwargs) -> dict:
+        graph_calls.append(1)
+        return {"orphans": [], "deadLinks": [], "total": {}}
+
+    # Entries that only trigger broken_up (no unparented/orphan notes)
+    entries = [
+        _moc("PKM", up_state="valid"),
+        _entry("Broken Note", up_state="broken", up_target="Deleted MOC"),
+    ]
+    run_scan(entries, graph_audit_fn=tracking_graph, list_dir_fn=_no_list_dir)
+
+    # The scan may legitimately call graph_audit for orphan/dead_link checks
+    # but broken_up itself must NOT cause additional calls. With only a broken
+    # note and no absent notes/dead links, the scan STILL calls graph_audit once
+    # (for orphan+dead_link checks). What we assert is that it's called AT MOST
+    # the expected baseline count (≤1 per check round), not triggered per broken entry.
+    # Specifically: adding more broken entries must not scale the call count.
+    graph_calls_one_broken = len(graph_calls)
+
+    graph_calls.clear()
+    entries_many = [_moc("PKM", up_state="valid")] + [
+        _entry(f"Broken{i}", up_state="broken", up_target="Deleted MOC")
+        for i in range(5)
+    ]
+    run_scan(entries_many, graph_audit_fn=tracking_graph, list_dir_fn=_no_list_dir)
+    # Call count must NOT scale with broken_up count
+    assert len(graph_calls) == graph_calls_one_broken, (
+        f"graph_audit call count must not scale with broken_up entries; "
+        f"1 entry={graph_calls_one_broken}, 5 entries={len(graph_calls)}"
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Orphan check (graph_audit orphans[])
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_orphan_from_graph_audit_produces_structure_finding():
+    """An entry in graph_audit orphans[] produces an orphan finding (tier=structure)."""
+    entries = [
+        _moc("PKM", topics=["pkm"]),
+        _entry("Floating Note", up_state="valid"),  # not unparented in cache
+    ]
+
+    def fake_graph(**kwargs) -> dict:
+        return {
+            "orphans": [{"path": "Notes/Floating Note.md"}],
+            "deadLinks": [],
+            "total": {},
+        }
+
+    doc = run_scan(entries, graph_audit_fn=fake_graph, list_dir_fn=_no_list_dir)
+    orphans = [f for f in doc["findings"] if f["check"] == "orphan"]
+    assert len(orphans) == 1
+    f = orphans[0]
+    assert f["tier"] == "structure"
+    assert f["fixable"] is True
+    assert f["target"]["path"] == "Notes/Floating Note.md"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Dead_link check (graph_audit deadLinks[])
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_dead_link_from_graph_audit_produces_integrity_finding():
+    """deadLinks[] items produce dead_link findings (tier=integrity, fixable=True)."""
+    entries = [_moc("PKM"), _entry("Source Note", up_state="valid")]
+
+    def fake_graph(**kwargs) -> dict:
+        return {
+            "orphans": [],
+            "deadLinks": [
+                {"source": "Notes/Source Note.md", "target": "[[Missing]]", "count": 2}
+            ],
+            "total": {},
+        }
+
+    doc = run_scan(entries, graph_audit_fn=fake_graph, list_dir_fn=_no_list_dir)
+    dead = [f for f in doc["findings"] if f["check"] == "dead_link"]
+    assert len(dead) == 1
+    f = dead[0]
+    assert f["tier"] == "integrity"
+    assert f["fixable"] is True
+    assert f["detail"]["dead_target"] == "[[Missing]]"
+    assert f["detail"]["count"] == 2
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Duplicate_stem check (cache: group by stem)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_duplicate_stems_produce_advisory_finding():
+    """Multiple entries sharing a stem produce a duplicate_stem finding (advisory, not fixable)."""
+    entries = [
+        _moc("PKM"),
+        _entry("Shared Idea", path="Notes/Shared Idea.md", up_state="valid"),
+        _entry("Shared Idea", path="Archive/Shared Idea.md", up_state="valid"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    dupes = [f for f in doc["findings"] if f["check"] == "duplicate_stem"]
+    assert len(dupes) == 1
+    f = dupes[0]
+    assert f["tier"] == "advisory"
+    assert f["fixable"] is False
+    assert "decision" not in f
+    dupes_paths = f["detail"]["dupes"]
+    assert len(dupes_paths) == 2
+
+
+def test_unique_stems_no_duplicate_finding():
+    """No duplicate_stem finding when all stems are unique."""
+    entries = [_moc("PKM"), _entry("Note A"), _entry("Note B")]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    assert not any(f["check"] == "duplicate_stem" for f in doc["findings"])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Stale_moc check (listDir modified older than threshold)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_stale_moc_from_list_dir_produces_advisory_finding():
+    """A MOC whose listDir modified time is older than stale_moc_days is advisory."""
+    # Use a fixed run date well past the modified time
+    run_today = date(2026, 7, 19)
+    # mtime 200 days before run_today
+    old_mtime = "2026-01-01T00:00:00Z"
+
+    entries = [_moc("Old MOC", up_state="valid")]
+
+    def fake_list_dir(path=None, **kwargs) -> list:
+        return [
+            {
+                "type": "file",
+                "path": "Maps/Old MOC.md",
+                "modified": old_mtime,
+            }
+        ]
+
+    doc = run_scan(
+        entries,
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=fake_list_dir,
+        stale_moc_days=90,
+        today=run_today,
+    )
+    stale = [f for f in doc["findings"] if f["check"] == "stale_moc"]
+    assert len(stale) == 1
+    f = stale[0]
+    assert f["tier"] == "advisory"
+    assert f["fixable"] is False
+    assert "decision" not in f
+    assert f["detail"]["mtime"] == old_mtime
+
+
+def test_recent_moc_not_stale():
+    """A MOC modified recently is not flagged as stale."""
+    run_today = date(2026, 7, 19)
+    recent_mtime = "2026-07-10T00:00:00Z"  # 9 days ago, well within 90-day threshold
+
+    entries = [_moc("Recent MOC", up_state="valid")]
+
+    def fake_list_dir(path=None, **kwargs) -> list:
+        return [{"type": "file", "path": "Maps/Recent MOC.md", "modified": recent_mtime}]
+
+    doc = run_scan(
+        entries,
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=fake_list_dir,
+        stale_moc_days=90,
+        today=run_today,
+    )
+    assert not any(f["check"] == "stale_moc" for f in doc["findings"])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Exclusions applied
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_exclusion_suppresses_per_check_finding():
+    """A per-check exclusion suppresses that check for matched entries."""
+    from lib.garden_exclusions import GardenExclusions
+
+    excl_config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "path", "value": "Calendar/"},
+                "checks": ["unparented"],
+                "mode": "permanent",
+                "reason": "daily notes",
+                "created": "2026-07-19",
+            }
+        ],
+    }
+    excl = GardenExclusions.from_dict(excl_config, today=date(2026, 7, 19))
+
+    entries = [
+        _moc("PKM"),
+        _entry("Daily", path="Calendar/2026-07-19.md", up_state="absent"),
+    ]
+    doc = run_scan(
+        entries,
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=_no_list_dir,
+        exclusions=excl,
+    )
+    assert not any(f["check"] == "unparented" for f in doc["findings"]), (
+        "excluded path must not appear in unparented findings"
+    )
+
+
+def test_exclusion_complete_scope_suppresses_all_checks():
+    """A complete (checks: all) exclusion suppresses every check for matched entries."""
+    from lib.garden_exclusions import GardenExclusions
+
+    excl_config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "note", "value": "Notes/Big Refactor.md"},
+                "checks": "all",
+                "mode": "permanent",
+                "reason": "in progress",
+                "created": "2026-07-19",
+            }
+        ],
+    }
+    excl = GardenExclusions.from_dict(excl_config, today=date(2026, 7, 19))
+
+    entries = [
+        _moc("PKM"),
+        _entry("Big Refactor", path="Notes/Big Refactor.md", up_state="broken", up_target="Deleted"),
+    ]
+    doc = run_scan(
+        entries,
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=_no_list_dir,
+        exclusions=excl,
+    )
+    assert doc["findings"] == [], "all checks suppressed for excluded note"
+
+
+def test_exclusion_non_matching_note_still_reported():
+    """An exclusion for one note does not suppress findings for a different note."""
+    from lib.garden_exclusions import GardenExclusions
+
+    excl_config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "note", "value": "Notes/Exempt.md"},
+                "checks": "all",
+                "mode": "permanent",
+                "reason": "exempt",
+                "created": "2026-07-19",
+            }
+        ],
+    }
+    excl = GardenExclusions.from_dict(excl_config, today=date(2026, 7, 19))
+
+    entries = [
+        _moc("PKM"),
+        _entry("Other Note", path="Notes/Other Note.md", up_state="absent"),
+    ]
+    doc = run_scan(
+        entries,
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=_no_list_dir,
+        exclusions=excl,
+    )
+    unparented = [f for f in doc["findings"] if f["check"] == "unparented"]
+    assert len(unparented) == 1
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Severity ordering: integrity > structure > advisory
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_severity_order_integrity_before_structure_before_advisory():
+    """Findings are severity-ordered: integrity > structure > advisory."""
+    run_today = date(2026, 7, 19)
+    old_mtime = "2026-01-01T00:00:00Z"
+
+    entries = [
+        _moc("PKM", topics=["pkm"]),
+        _entry("Orphan Note", up_state="absent", topics=["pkm"]),
+        _entry("Broken Note", up_state="broken", up_target="Deleted MOC"),
+        # Two notes with same stem for duplicate_stem
+        _entry("Dup", path="Notes/Dup.md", up_state="valid"),
+        _entry("Dup", path="Archive/Dup.md", up_state="valid"),
+    ]
+
+    def fake_list_dir(path=None, **kwargs) -> list:
+        return [{"type": "file", "path": "Maps/PKM.md", "modified": old_mtime}]
+
+    doc = run_scan(
+        entries,
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=fake_list_dir,
+        stale_moc_days=90,
+        today=run_today,
+    )
+
+    tier_order = {"integrity": 0, "structure": 1, "advisory": 2}
+    tiers = [tier_order[f["tier"]] for f in doc["findings"]]
+    assert tiers == sorted(tiers), (
+        f"findings must be severity-ordered; got tiers: {[f['tier'] for f in doc['findings']]}"
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Advisory findings have no decision block
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_advisory_findings_have_no_decision_block():
+    """Advisory findings (duplicate_stem, stale_moc) must not carry a decision block."""
+    entries = [
+        _moc("PKM"),
+        _entry("Dup", path="A/Dup.md", up_state="valid"),
+        _entry("Dup", path="B/Dup.md", up_state="valid"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    for f in doc["findings"]:
+        if f["tier"] == "advisory":
+            assert "decision" not in f, (
+                f"advisory finding {f['check']!r} must not carry a decision block"
+            )
+
+
+def test_fixable_findings_carry_decision_placeholder():
+    """Fixable findings (unparented, broken_up) carry a decision placeholder."""
+    entries = [
+        _moc("PKM"),
+        _entry("Orphan Note", up_state="absent"),
+        _entry("Broken Note", up_state="broken", up_target="Deleted MOC"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    fixable = [f for f in doc["findings"] if f["fixable"]]
+    assert len(fixable) >= 2
+    for f in fixable:
+        assert "decision" in f, f"fixable finding {f['check']!r} must carry decision block"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Edge case: empty cache
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_empty_entries_produces_zero_findings():
+    """An empty entries list produces no findings, no crash."""
+    doc = run_scan([], graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    assert doc["findings"] == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Edge case: zero findings
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_healthy_vault_zero_findings():
+    """A vault with no issues produces zero findings, no crash."""
+    entries = [
+        _moc("PKM"),
+        _entry("Filed Note", up_state="valid"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    assert doc["findings"] == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Edge case: graph unavailable — partial report, no crash
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_graph_unavailable_skips_orphan_dead_link_but_not_others():
+    """When graph_audit raises, orphan+dead_link are skipped; cache checks still run."""
+    run_today = date(2026, 7, 19)
+    old_mtime = "2026-01-01T00:00:00Z"
+
+    entries = [
+        _moc("PKM"),
+        _entry("Orphan Note", up_state="absent"),    # would be unparented (cache)
+        _entry("Broken Note", up_state="broken", up_target="Deleted MOC"),  # broken_up (cache)
+        _entry("Dup", path="A/Dup.md", up_state="valid"),
+        _entry("Dup", path="B/Dup.md", up_state="valid"),
+    ]
+
+    def fake_list_dir(path=None, **kwargs) -> list:
+        return [{"type": "file", "path": "Maps/PKM.md", "modified": old_mtime}]
+
+    # Must not crash
+    doc = run_scan(
+        entries,
+        graph_audit_fn=_graph_unavailable,
+        list_dir_fn=fake_list_dir,
+        stale_moc_days=90,
+        today=run_today,
+    )
+
+    checks_found = {f["check"] for f in doc["findings"]}
+    # Cache checks must still be present
+    assert "unparented" in checks_found or "broken_up" in checks_found or "duplicate_stem" in checks_found, (
+        "cache-derived checks must still run when graph is unavailable"
+    )
+    # Graph checks must NOT appear as normal findings
+    assert "orphan" not in checks_found
+    assert "dead_link" not in checks_found
+
+    # The skipped checks must be recorded in doc metadata
+    skipped = doc.get("skipped_checks", [])
+    assert "orphan" in skipped, "orphan must be listed as skipped when graph unavailable"
+    assert "dead_link" in skipped, "dead_link must be listed as skipped when graph unavailable"
+
+
+def test_graph_unavailable_skip_message_present():
+    """When graph is unavailable, doc records the reason in skipped_checks_reason."""
+    doc = run_scan(
+        [_moc("PKM")],
+        graph_audit_fn=_graph_unavailable,
+        list_dir_fn=_no_list_dir,
+    )
+    reason = doc.get("skipped_checks_reason", "")
+    assert "graph unavailable" in reason.lower() or "not run" in reason.lower(), (
+        f"expected graph-unavailable reason; got: {reason!r}"
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Reappeared exclusions surfaced in doc
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_reappeared_exclusions_included_in_doc():
+    """Expired temporary exclusions appear in doc['reappeared_exclusions']."""
+    from lib.garden_exclusions import GardenExclusions
+
+    excl_config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "note", "value": "Notes/Old Draft.md"},
+                "checks": "all",
+                "mode": "temporary",
+                "until": "2026-01-01",
+                "reason": "was fixing",
+                "created": "2025-10-01",
+            }
+        ],
+    }
+    excl = GardenExclusions.from_dict(excl_config, today=date(2026, 7, 19))
+
+    doc = run_scan(
+        [_moc("PKM")],
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=_no_list_dir,
+        exclusions=excl,
+    )
+    reappeared = doc.get("reappeared_exclusions", [])
+    assert len(reappeared) == 1
+    assert reappeared[0]["target"]["value"] == "Notes/Old Draft.md"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Doc metadata fields
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_doc_carries_run_metadata():
+    """The output doc carries run_id, generated, and profile fields."""
+    doc = run_scan(
+        [_moc("PKM")],
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=_no_list_dir,
+        run_id="test-run-001",
+        profile="miyo",
+        generated="2026-07-19T10:00:00Z",
+    )
+    assert doc["run_id"] == "test-run-001"
+    assert doc["profile"] == "miyo"
+    assert doc["generated"] == "2026-07-19T10:00:00Z"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Finding ID stability — each finding has a stable id
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_findings_have_unique_ids():
+    """Each finding carries a unique id field."""
+    entries = [
+        _moc("PKM"),
+        _entry("Note A", up_state="absent"),
+        _entry("Note B", up_state="broken", up_target="Deleted"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    ids = [f["id"] for f in doc["findings"]]
+    assert len(ids) == len(set(ids)), f"finding ids must be unique; got: {ids}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Schema validation
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_output_validates_against_doc_schema():
+    """run_scan output validates against garden-audit-doc.schema.json."""
+    import jsonschema
+
+    run_today = date(2026, 7, 19)
+    old_mtime = "2026-01-01T00:00:00Z"
+
+    entries = [
+        _moc("PKM", topics=["pkm"]),
+        _entry("Orphan Note", up_state="absent", topics=["pkm"]),
+        _entry("Broken Note", up_state="broken", up_target="Deleted MOC"),
+        _entry("Dup", path="A/Dup.md", up_state="valid"),
+        _entry("Dup", path="B/Dup.md", up_state="valid"),
+    ]
+
+    def fake_list_dir(path=None, **kwargs) -> list:
+        return [{"type": "file", "path": "Maps/PKM.md", "modified": old_mtime}]
+
+    def fake_graph(**kwargs) -> dict:
+        return {
+            "orphans": [{"path": "Notes/Orphan Note.md"}],
+            "deadLinks": [{"source": "Notes/Orphan Note.md", "target": "[[Missing]]", "count": 1}],
+            "total": {},
+        }
+
+    doc = run_scan(
+        entries,
+        graph_audit_fn=fake_graph,
+        list_dir_fn=fake_list_dir,
+        stale_moc_days=90,
+        today=run_today,
+        run_id="schema-test",
+        profile="miyo",
+        generated="2026-07-19T10:00:00Z",
+    )
+
+    schema_path = SCHEMAS_DIR / "garden-audit-doc.schema.json"
+    assert schema_path.exists(), f"schema not found: {schema_path}"
+    schema = json.loads(schema_path.read_text())
+    # Should not raise
+    jsonschema.validate(instance=doc, schema=schema)

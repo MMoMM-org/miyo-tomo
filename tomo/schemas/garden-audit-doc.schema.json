@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/garden-audit-doc.schema.json",
+  "title": "Garden-Audit Doc",
+  "description": "Intermediate contract produced by garden-audit.py and consumed by garden-audit-render.py. Carries run metadata, per-tier findings, skipped-checks info, and the reappeared-exclusions list for the report preamble.",
+  "type": "object",
+  "required": ["run_id", "generated", "profile", "findings", "reappeared_exclusions"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Unique identifier for this scan run."
+    },
+    "generated": {
+      "type": "string",
+      "description": "ISO-8601 timestamp when the scan was produced."
+    },
+    "profile": {
+      "type": ["string", "null"],
+      "description": "Vault profile name in use (miyo, lyt, …)."
+    },
+    "skipped_checks": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Check names skipped due to external tool unavailability (e.g. graph unavailable).",
+      "default": []
+    },
+    "skipped_checks_reason": {
+      "type": "string",
+      "description": "Human-readable reason why checks were skipped.",
+      "default": ""
+    },
+    "reappeared_exclusions": {
+      "type": "array",
+      "description": "Raw exclusion dicts for expired-temporary exclusions — surfaced in the report preamble.",
+      "items": {"type": "object"}
+    },
+    "findings": {
+      "type": "array",
+      "description": "All findings, severity-ordered (integrity → structure → advisory).",
+      "items": {
+        "type": "object",
+        "required": ["id", "check", "tier", "fixable", "target", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable finding identifier (e.g. F01, F02)."
+          },
+          "check": {
+            "type": "string",
+            "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"],
+            "description": "Which check produced this finding."
+          },
+          "tier": {
+            "type": "string",
+            "enum": ["integrity", "structure", "advisory"],
+            "description": "Severity tier. integrity={broken_up,dead_link}; structure={unparented,orphan}; advisory={duplicate_stem,stale_moc}."
+          },
+          "fixable": {
+            "type": "boolean",
+            "description": "True for checks 1-4 (unparented,orphan,broken_up,dead_link). False for advisory checks 5-6."
+          },
+          "target": {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "description": "The primary note or path this finding targets.",
+            "properties": {
+              "path": {"type": "string"},
+              "stem": {"type": ["string", "null"]}
+            }
+          },
+          "detail": {
+            "type": "object",
+            "description": "Per-check detail. Fields vary by check type.",
+            "additionalProperties": true,
+            "properties": {
+              "candidate_mocs": {
+                "type": "array",
+                "description": "unparented/orphan: scored MOC candidates from orphan_link.",
+                "items": {
+                  "type": "object",
+                  "required": ["target_moc", "score"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "target_moc": {"type": "string"},
+                    "score": {"type": "number"}
+                  }
+                }
+              },
+              "up_target": {
+                "type": ["string", "null"],
+                "description": "broken_up: the broken up:: target stem."
+              },
+              "dead_target": {
+                "type": "string",
+                "description": "dead_link: the unresolved wikilink target text."
+              },
+              "count": {
+                "type": "integer",
+                "description": "dead_link: how many times the dead link appears."
+              },
+              "dupes": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "duplicate_stem: list of paths sharing the stem."
+              },
+              "mtime": {
+                "type": "string",
+                "description": "stale_moc: last-modified ISO timestamp from listDir."
+              }
+            }
+          },
+          "decision": {
+            "type": "object",
+            "description": "Present only on fixable findings. Carries the pre-selected action placeholder for Pass-2.",
+            "required": ["selected", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "selected": {
+                "type": "boolean",
+                "description": "Whether this fix is pre-selected for application."
+              },
+              "action": {
+                "type": ["string", "null"],
+                "description": "Proposed action name or null when no action determined yet."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

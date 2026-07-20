@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_edit_note_text_action.py — Tests for the edit_note_text Hashi action (ADR-3).
 
 Covers:
@@ -262,34 +262,6 @@ def test_builder_shares_counter_with_caller():
 
     assert actions[0]["id"] == "I06"
     assert counter[0] == 6
-
-
-# ---------------------------------------------------------------------------
-# Broken-up REPOINT: stays on add_relationship (NOT edit_note_text)
-# ---------------------------------------------------------------------------
-
-
-def test_broken_up_repoint_emits_add_relationship_not_edit_note_text():
-    """Broken-up REPOINT must use add_relationship (marker-located replace).
-    This test verifies the routing contract: _build_edit_note_text_actions
-    is NOT called for repoints — only for removal + free-text wikilinks."""
-    # Simulate what a repoint action looks like (from _make_add_rel)
-    repoint_action = {
-        "id": "I01",
-        "action": "add_relationship",
-        "target_moc_path": "Notes/Child.md",
-        "marker": "up::",
-        "line": "up:: [[New MOC]]",
-        "source_note_title": None,
-        "applied": False,
-    }
-    # A repoint action must NOT be an edit_note_text action
-    assert repoint_action["action"] == "add_relationship"
-    assert repoint_action["action"] != "edit_note_text"
-    # And the builder itself produces zero edit_note_text actions for empty input
-    # (confirming the builder is never called for repoints)
-    actions = _build_edit_note_text_actions([], _counter())
-    assert all(a["action"] == "edit_note_text" for a in actions)  # vacuously true for empty
 
 
 def test_edit_note_text_builder_never_produces_add_relationship():

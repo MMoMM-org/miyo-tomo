@@ -654,3 +654,19 @@ def test_schema_accepts_config_without_configured():
 
     cfg = {"version": 1, "exclusions": []}
     jsonschema.validate(instance=cfg, schema=schema)  # must not raise
+
+
+def test_schema_rejects_non_boolean_configured():
+    """Schema must reject configured with a non-boolean value (e.g. string 'yes').
+
+    Guards against schema typos (e.g. type:string) that would silently accept
+    the marker with wrong type, bypassing the grep-based agent detection.
+    """
+    import jsonschema
+
+    schema_path = SCHEMAS_DIR / "garden-audit-exclusions.schema.json"
+    schema = json.loads(schema_path.read_text())
+
+    bad_cfg = {"version": 1, "configured": "yes", "exclusions": []}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=bad_cfg, schema=schema)

@@ -73,6 +73,7 @@ Do not proceed to Step 3.
 
 ```bash
 if [ ! -f config/garden-audit-exclusions.yaml ] || ! grep -q "^configured: true" config/garden-audit-exclusions.yaml; then echo "first-run"; else echo "configured"; fi
+# Write tool emits single-space YAML — the exact "^configured: true" match is intentional.
 ```
 
 If the output is `first-run`, the exclusion wizard MUST run before the filtered report

@@ -13,7 +13,7 @@ permissionMode: acceptEdits
 
 **Active agent: garden-auditor**
 
-# version: 0.1.1
+# version: 0.1.2
 # Garden Auditor Agent
 
 You are the **garden auditor**. Your job is to scan the user's vault for structural problems,
@@ -114,22 +114,17 @@ NEVER routes through `/inbox`. After writing, always confirm the write to the us
 
 #### Wizard Step A — Surface abnormality clusters
 
-Read `tomo-tmp/garden-audit-doc.json` with the `Read` tool. Identify paths/notes/tags
-that carry a disproportionate share of findings:
-- Count findings per folder-prefix (top directory level of each finding's target path).
-- A cluster is any prefix accounting for ≥20% of total findings OR ≥10 absolute findings.
-- Sort clusters descending by finding count.
+**STRICT:** Do NOT read `tomo-tmp/garden-audit-doc.json` with the `Read` tool — it can
+exceed 256 KB and the tool will truncate or fail. Always use the script:
 
-Present to the user (plain text, not JSON):
-
+```bash
+python3 scripts/garden-audit-configure.py --summarize \
+  --input tomo-tmp/garden-audit-doc.json
 ```
-Garden-audit found N findings across M notes.
 
-Top finding clusters:
-  - Calendar/  (NNN findings: unparented=NN, orphan=NN, broken_up=NN, dead_link=NN)
-  - Archive/   (NN findings: unparented=NN, orphan=NN)
-  [...]
-```
+The script reads the doc in Python, computes per-folder cluster counts
+(≥10 absolute findings OR ≥20% of total), sorts descending, and writes the
+cluster summary to stdout. Present the stdout verbatim to the user.
 
 #### Wizard Step B — Ask about permanent exclusions
 
@@ -164,35 +159,47 @@ If custom, ask for a number of days.
 
 #### Wizard Step D — Write the exclusion config
 
-Compose the YAML for all exclusions the user confirmed. Replace `<TODAY_ISO>` with
-today's date in YYYY-MM-DD format. Write using the `Write` tool to
-`config/garden-audit-exclusions.yaml`.
+**STRICT:** Do NOT use the `Write` tool or Bash echo/printf — the Write tool requires
+reading the file first (read-before-write trap), and Bash echo mangles YAML nested
+structures. Always use the script:
 
-Always include `configured: true` at the top level — even when the user confirmed
-no exclusions. This prevents the wizard from re-running on subsequent audits.
+Compose a JSON object with the user's confirmed choices (today's ISO date + list of
+exclusion entries), then invoke:
 
-```yaml
-version: 1
-configured: true
-exclusions:
-  - target: { type: path, value: "Calendar/" }
-    checks: [unparented, orphan, broken_up]
-    mode: permanent
-    reason: "daily notes never get up:: or graph links"
-    created: <TODAY_ISO>
+```bash
+python3 scripts/garden-audit-configure.py --write \
+  --choices '<CHOICES_JSON>' \
+  --output config/garden-audit-exclusions.yaml
 ```
 
-If the user confirmed no exclusions, write:
+`<CHOICES_JSON>` shape — always include `configured: true` is automatic; you only
+supply `today` and `exclusions`:
 
-```yaml
-version: 1
-configured: true
-exclusions: []
+```json
+{
+  "today": "YYYY-MM-DD",
+  "exclusions": [
+    {
+      "target": {"type": "path", "value": "Calendar/"},
+      "checks": ["unparented", "orphan"],
+      "mode": "permanent",
+      "reason": "daily notes never get up:: or graph links"
+    },
+    {
+      "target": {"type": "path", "value": "Notes/Big Refactor/"},
+      "checks": "all",
+      "mode": "temporary",
+      "reason": "mid-refactor — revisit in 90 days",
+      "push_back_days": 90
+    }
+  ]
+}
 ```
 
-**STRICT:** Use `Write` tool — not Bash echo/printf. YAML contains nested structures.
+For no exclusions: `{"today": "YYYY-MM-DD", "exclusions": []}`.
 
-Confirm to the user: `Exclusion config written: config/garden-audit-exclusions.yaml (N entries).`
+The script always sets `configured: true`, validates the schema, and writes atomically.
+It prints the confirmation to stderr — relay it to the user verbatim.
 
 #### Wizard Step E — Re-run the scan with the new config
 
@@ -268,7 +275,7 @@ Before emitting the final report:
 **If Mode == configure:** skip checks 2-3 (no report/wire produced in configure mode). Emit `Report: N/A (configure mode)` and `Wire: N/A (configure mode)` in the output block.
 
 **If Mode == audit:**
-1. `tomo-tmp/garden-audit-doc.json` exists (use `Read` to check first char is `{`).
+1. `tomo-tmp/garden-audit-doc.json` exists and is non-empty — use Bash: `test -s tomo-tmp/garden-audit-doc.json && echo ok || echo missing`. Do NOT use the `Read` tool — the doc can exceed 256 KB.
 2. Both local artifacts exist: `$LOCAL_REPORT` and `$LOCAL_WIRE`.
 3. Both transports exited 0.
 

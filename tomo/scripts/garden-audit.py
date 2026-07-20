@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
 Runs six checks over the MOC-structure cache, kado-graph-audit results, and
@@ -329,15 +329,24 @@ def _check_stale_moc(
         path = item.get("path", "")
         if path not in moc_paths:
             continue
-        mtime_str = item.get("modified", "")
-        if not mtime_str:
+        raw_modified = item.get("modified")
+        if not raw_modified:
             continue
+        # Real kado_client.list_dir returns modified as an int epoch-milliseconds
+        # (Obsidian TFile.stat.mtime).  Keep a defensive str branch for any path
+        # that may return ISO strings.  Skip (continue) on any unparseable type so
+        # a bad value never crashes the whole scan.
         try:
-            mtime_dt = datetime.fromisoformat(mtime_str.replace("Z", "+00:00"))
-        except (ValueError, TypeError):
+            if isinstance(raw_modified, (int, float)):
+                mtime_dt = datetime.fromtimestamp(raw_modified / 1000, tz=timezone.utc)
+            elif isinstance(raw_modified, str):
+                mtime_dt = datetime.fromisoformat(raw_modified.replace("Z", "+00:00"))
+                if mtime_dt.tzinfo is None:
+                    mtime_dt = mtime_dt.replace(tzinfo=timezone.utc)
+            else:
+                continue
+        except (ValueError, TypeError, AttributeError, OSError):
             continue
-        if mtime_dt.tzinfo is None:
-            mtime_dt = mtime_dt.replace(tzinfo=timezone.utc)
         age_days = (cutoff_dt - mtime_dt).total_seconds() / 86400
         if age_days < stale_moc_days:
             continue
@@ -350,7 +359,7 @@ def _check_stale_moc(
             "stale_moc",
             path,
             stem,
-            {"mtime": mtime_str},
+            {"mtime": mtime_dt.isoformat()},
         ))
     return findings, [], ""
 

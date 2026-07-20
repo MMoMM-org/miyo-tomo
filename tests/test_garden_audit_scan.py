@@ -357,11 +357,15 @@ def test_duplicate_stem_exclusion_reducing_to_one_path_emits_no_finding():
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_stale_moc_from_list_dir_produces_advisory_finding():
-    """A MOC whose listDir modified time is older than stale_moc_days is advisory."""
-    # Use a fixed run date well past the modified time
+    """A MOC whose listDir modified is an int epoch-ms older than stale_moc_days is advisory.
+
+    Real kado_client.list_dir returns modified as int epoch-milliseconds
+    (Obsidian TFile.stat.mtime).  Previous ISO-string fake was mock-vs-reality mismatch.
+    """
     run_today = date(2026, 7, 19)
-    # mtime 200 days before run_today
-    old_mtime = "2026-01-01T00:00:00Z"
+    # 2026-01-01T00:00:00Z = 1767225600 seconds → epoch-ms 1767225600000
+    # That is 200 days before run_today — well past the 90-day threshold.
+    old_mtime_ms = 1767225600000
 
     entries = [_moc("Old MOC", up_state="valid")]
 
@@ -370,7 +374,9 @@ def test_stale_moc_from_list_dir_produces_advisory_finding():
             {
                 "type": "file",
                 "path": "Maps/Old MOC.md",
-                "modified": old_mtime,
+                "modified": old_mtime_ms,   # int epoch-ms, matching real Kado shape
+                "created": old_mtime_ms,
+                "size": 1024,
             }
         ]
 
@@ -387,18 +393,20 @@ def test_stale_moc_from_list_dir_produces_advisory_finding():
     assert f["tier"] == "advisory"
     assert f["fixable"] is False
     assert "decision" not in f
-    assert f["detail"]["mtime"] == old_mtime
+    # mtime is stored as human-readable ISO, not the raw int
+    assert "2026-01-01" in f["detail"]["mtime"]
 
 
 def test_recent_moc_not_stale():
-    """A MOC modified recently is not flagged as stale."""
+    """A MOC modified recently (int epoch-ms) is not flagged as stale."""
     run_today = date(2026, 7, 19)
-    recent_mtime = "2026-07-10T00:00:00Z"  # 9 days ago, well within 90-day threshold
+    # 2026-07-10T00:00:00Z = 1783641600000 ms — 9 days before run_today, within 90-day threshold
+    recent_mtime_ms = 1783641600000
 
     entries = [_moc("Recent MOC", up_state="valid")]
 
     def fake_list_dir(path=None, **kwargs) -> list:
-        return [{"type": "file", "path": "Maps/Recent MOC.md", "modified": recent_mtime}]
+        return [{"type": "file", "path": "Maps/Recent MOC.md", "modified": recent_mtime_ms}]
 
     doc = run_scan(
         entries,
@@ -408,6 +416,27 @@ def test_recent_moc_not_stale():
         today=run_today,
     )
     assert not any(f["check"] == "stale_moc" for f in doc["findings"])
+
+
+def test_stale_moc_defensive_str_branch():
+    """Defensive: if a list_dir item returns modified as an ISO string, it still works."""
+    run_today = date(2026, 7, 19)
+    old_mtime_str = "2026-01-01T00:00:00Z"
+
+    entries = [_moc("Old MOC", up_state="valid")]
+
+    def fake_list_dir(path=None, **kwargs) -> list:
+        return [{"type": "file", "path": "Maps/Old MOC.md", "modified": old_mtime_str}]
+
+    doc = run_scan(
+        entries,
+        graph_audit_fn=_no_graph_audit,
+        list_dir_fn=fake_list_dir,
+        stale_moc_days=90,
+        today=run_today,
+    )
+    stale = [f for f in doc["findings"] if f["check"] == "stale_moc"]
+    assert len(stale) == 1, "ISO-string modified must still produce a stale_moc finding"
 
 
 def test_list_dir_unavailable_marks_stale_moc_skipped():

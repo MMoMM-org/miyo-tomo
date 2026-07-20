@@ -79,9 +79,35 @@ that limit. Splitting into integrity (broken_up, dead_link, unparented, orphan) 
 advisory (duplicate_stem, stale_moc) groups the checks by the same tier taxonomy the
 report uses, which is cognitively consistent for the user.
 
-## Version 0.1.0
+## Marker-Based First-Run Detection — `configured` Flag (v0.1.1, 2026-07-20)
 
-WHY: Initial spec-030 Phase 5 implementation. The agent was authored against the
+WHY Step 3 changed from pure file-absence (`test -f`) to a `grep -q "^configured:
+true"` pattern: the create-only seed (ADR-2, CON-4) always ships the file at
+`config/garden-audit-exclusions.yaml` with `configured: false`. A fresh or updated
+instance therefore always has the file present, so `test -f` returned `exists` and
+the first-run wizard never triggered. The `configured` boolean marker distinguishes
+"seeded-but-unconfigured" from "user-configured" without requiring the agent to parse
+YAML (which would be fragile LLM-mediated). The grep pattern `^configured: true` is
+line-anchored to avoid false positives from comment text or nested values.
+
+WHY the wizard always writes `configured: true` even when the user confirms no
+exclusions: without it, every subsequent audit re-triggers the wizard (grep finds no
+match → first-run), forcing the user through Q&A every time. Writing `configured:
+true` + `exclusions: []` is the correct "intentionally empty" signal.
+
+WHY the agent uses `grep` instead of parsing the YAML value: the pattern is sufficient
+and robust for a boolean flag. The `GardenExclusions` loader ignores the `configured`
+key (it reads only `exclusions`), so there is no risk of the loader interfering with
+the marker. The schema accepts `configured: boolean` as an optional property (added
+2026-07-20).
+
+## Version 0.1.0 → 0.1.1
+
+WHY 0.1.0: Initial spec-030 Phase 5 implementation. The agent was authored against the
 `moc-architect` STRICT/MUST/NEVER style to ensure runtime-deviation-critical paths
 are guarded. `update-tomo.sh` skips unchanged versions; the agent is in the container's
 `.claude/agents/` and loads at session start.
+
+WHY 0.1.1: Marker-based first-run detection (`configured` flag). Step 3 rewritten
+from `test -f` to `grep -q "^configured: true"` to fix the seed-defeats-wizard bug.
+Wizard Step D updated to always emit `configured: true`.

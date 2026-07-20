@@ -565,3 +565,92 @@ def test_unrecognised_checks_shape_does_not_exclude():
     assert cfg.is_excluded(note, "orphan") is False, (
         "unrecognised checks shape must not exclude anything"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# configured marker — loader must ignore it; schema must accept it
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_loader_ignores_configured_false_marker():
+    """A config with configured:false still loads its exclusions correctly.
+
+    The `configured` key is a first-run marker for the agent wizard; the loader
+    must treat it as opaque metadata and still apply the exclusion rules.
+    """
+    config = {
+        "version": 1,
+        "configured": False,
+        "exclusions": [
+            {
+                "target": {"type": "path", "value": "Calendar/"},
+                "checks": ["unparented"],
+                "mode": "permanent",
+                "reason": "daily notes",
+                "created": "2026-07-20",
+            }
+        ],
+    }
+    cfg = GardenExclusions.from_dict(config)
+    note = _note("Calendar/2026-07-20.md")
+    assert cfg.is_excluded(note, "unparented") is True, (
+        "configured:false must not prevent exclusion rules from loading"
+    )
+
+
+def test_loader_ignores_configured_true_marker():
+    """A config with configured:true also loads its exclusions correctly.
+
+    After the wizard runs it writes configured:true; the loader must continue
+    to evaluate rules regardless of the marker's value.
+    """
+    config = {
+        "version": 1,
+        "configured": True,
+        "exclusions": [
+            {
+                "target": {"type": "path", "value": "Archive/"},
+                "checks": ["orphan"],
+                "mode": "permanent",
+                "reason": "archived notes",
+                "created": "2026-07-20",
+            }
+        ],
+    }
+    cfg = GardenExclusions.from_dict(config)
+    note = _note("Archive/Old.md")
+    assert cfg.is_excluded(note, "orphan") is True, (
+        "configured:true must not prevent exclusion rules from loading"
+    )
+
+
+def test_schema_accepts_configured_false():
+    """Schema must accept a config with configured:false (the seeded value)."""
+    import jsonschema
+
+    schema_path = SCHEMAS_DIR / "garden-audit-exclusions.schema.json"
+    schema = json.loads(schema_path.read_text())
+
+    cfg = {"version": 1, "configured": False, "exclusions": []}
+    jsonschema.validate(instance=cfg, schema=schema)  # must not raise
+
+
+def test_schema_accepts_configured_true():
+    """Schema must accept a config with configured:true (post-wizard value)."""
+    import jsonschema
+
+    schema_path = SCHEMAS_DIR / "garden-audit-exclusions.schema.json"
+    schema = json.loads(schema_path.read_text())
+
+    cfg = {"version": 1, "configured": True, "exclusions": []}
+    jsonschema.validate(instance=cfg, schema=schema)  # must not raise
+
+
+def test_schema_accepts_config_without_configured():
+    """Schema must accept a user config that omits the configured key (not required)."""
+    import jsonschema
+
+    schema_path = SCHEMAS_DIR / "garden-audit-exclusions.schema.json"
+    schema = json.loads(schema_path.read_text())
+
+    cfg = {"version": 1, "exclusions": []}
+    jsonschema.validate(instance=cfg, schema=schema)  # must not raise

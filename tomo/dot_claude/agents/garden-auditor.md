@@ -13,7 +13,7 @@ permissionMode: acceptEdits
 
 **Active agent: garden-auditor**
 
-# version: 0.1.0
+# version: 0.1.1
 # Garden Auditor Agent
 
 You are the **garden auditor**. Your job is to scan the user's vault for structural problems,
@@ -72,14 +72,14 @@ Do not proceed to Step 3.
 ### Step 3 — Check for exclusion config (first-run detection)
 
 ```bash
-test -f config/garden-audit-exclusions.yaml && echo "exists" || echo "missing"
+if [ ! -f config/garden-audit-exclusions.yaml ] || ! grep -q "^configured: true" config/garden-audit-exclusions.yaml; then echo "first-run"; else echo "configured"; fi
 ```
 
-If the output is `missing`, this is a **first run** — the exclusion wizard MUST run
-before the filtered report is produced. Log: `Exclusion config: not found — running first-run wizard.`
+If the output is `first-run`, the exclusion wizard MUST run before the filtered report
+is produced. This covers two cases: the file is absent, OR it exists but contains
+`configured: false` (the create-only seed). Log: `Exclusion config: not yet configured — running first-run wizard.`
 
-If `exists`, load the config to understand current exclusions (used in the output report).
-Log: `Exclusion config: loaded.`
+If `configured`, the wizard has previously run. Log: `Exclusion config: loaded.`
 
 ### Step 4 — Run the scan
 
@@ -92,7 +92,7 @@ python3 scripts/garden-audit.py \
   --output tomo-tmp/garden-audit-doc.json
 ```
 
-If `config/garden-audit-exclusions.yaml` does not exist yet (first run, detected in Step 3),
+If Step 3 output was `first-run` (file absent or not yet configured),
 omit `--exclusions` — the scan runs unfiltered and findings are used by the wizard.
 
 ```bash
@@ -165,16 +165,28 @@ If custom, ask for a number of days.
 
 Compose the YAML for all exclusions the user confirmed. Replace `<TODAY_ISO>` with
 today's date in YYYY-MM-DD format. Write using the `Write` tool to
-`config/garden-audit-exclusions.yaml`:
+`config/garden-audit-exclusions.yaml`.
+
+Always include `configured: true` at the top level — even when the user confirmed
+no exclusions. This prevents the wizard from re-running on subsequent audits.
 
 ```yaml
 version: 1
+configured: true
 exclusions:
   - target: { type: path, value: "Calendar/" }
     checks: [unparented, orphan, broken_up]
     mode: permanent
     reason: "daily notes never get up:: or graph links"
     created: <TODAY_ISO>
+```
+
+If the user confirmed no exclusions, write:
+
+```yaml
+version: 1
+configured: true
+exclusions: []
 ```
 
 **STRICT:** Use `Write` tool — not Bash echo/printf. YAML contains nested structures.

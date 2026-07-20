@@ -2277,6 +2277,20 @@ class TestGardenAuditAsUpstreamType:
         hit = {"path": INBOX_PATH + "2026-07-20_garden-audit.md", "frontmatter": {}}
         assert mod._get_doc_type(hit) == "garden-audit"
 
+    def test_get_doc_type_does_not_promote_misnamed_pending_accept(self, tmp_path):
+        """Naming-convention contract: a pending-accept doc with empty frontmatter
+        and a stem that does NOT end in _garden-audit must NOT be inferred as
+        'garden-audit'. Locks the fallback so a differently-named audit doc is
+        caught rather than silently accepted into the wrong bucket.
+        """
+        mod = _load_module()
+        # Kado byFrontmatter returns frontmatter:{} in practice — empty dict, no tomo key.
+        hit = {"path": INBOX_PATH + "2026-07-20_some-other-doc.md", "frontmatter": {}}
+        result = mod._get_doc_type(hit)
+        assert result != "garden-audit", (
+            "_get_doc_type must not promote non-_garden-audit stems to 'garden-audit'"
+        )
+
     def test_pending_accept_garden_audit_lands_in_approved_bucket(self, tmp_path):
         """A pending-accept garden-audit doc goes to approved_garden_audits."""
         mod = _load_module()

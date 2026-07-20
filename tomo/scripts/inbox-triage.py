@@ -1438,12 +1438,13 @@ def main(
 def _count_kado_calls(state: TriageState) -> int:
     """Estimate Kado call count from state.
 
-    1 listDir + 6 byFrontmatter + N body reads.
+    1 listDir + 7 byFrontmatter + N body reads (one read_note per pending/accepted doc).
     """
     body_reads = (
         len(state.approved_suggestions)
         + len(state.approved_fan)
         + len(state.approved_moc_proposals)
+        + len(state.approved_garden_audits)
         + len(state.pending_approval)
     )
     return 5 + body_reads

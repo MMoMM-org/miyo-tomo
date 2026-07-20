@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.12.0
+# version: 0.13.0
 
 **Active agent: synthesis-conductor**
 
@@ -55,6 +55,7 @@ Collect approved inputs from:
 - `plan["approved_suggestions"]` — each has `path` and `cache_path` 
 - `plan["approved_fan"]` — each has `path` and `cache_path` 
 - `plan["approved_moc_proposals"]` — each has `path` and `cache_path`
+- `plan["approved_garden_audits"]` — each has `path` and `cache_path`
 
 If `plan["drift_indicators"]` is non-empty, surface each warning to the user but continue processing.
 
@@ -82,7 +83,7 @@ Each entry has `path` (= `VAULT_PATH`), `cache_path` (= `CACHE_PATH`), and `modi
 A `suggestions` entry may also carry `wire_cache_path` (= `WIRE_CACHE_PATH`) — the cached
 `_suggestions.json` sibling (ADR-026). It is absent for older docs; thread it only when present.
 
-Process in order: suggestions first, then fan companions, then moc-proposals.
+Process in order: suggestions first, then fan companions, then moc-proposals, then garden-audit docs.
 Run steps 3a–3e for EACH entry before moving to the next.
 
 **Fan-companion merge rule:** if BOTH `approved_suggestions` AND

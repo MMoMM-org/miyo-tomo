@@ -1,4 +1,4 @@
-# version: 0.2.1
+# version: 0.3.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1140,6 +1140,37 @@ def _build_up_preservation_actions(
                     parent_marker=parent_marker, peer_marker=peer_marker,
                 )
             )
+    return out
+
+
+def _build_edit_note_text_actions(
+    items: list[dict],
+    counter: list[int],
+) -> list[dict]:
+    """Emit edit_note_text actions for body-level text edits (ADR-3, spec 030).
+
+    Each item must carry: path (str), match (str), replace (str).
+    occurrence defaults to "first" when absent.
+
+    Covers three fix cases with one primitive:
+      - dead wikilink fix:    match="[[Old]]", replace="[[New]]"
+      - dead wikilink remove: match="[[Old]]", replace=""
+      - broken up:: remove:   match="up:: [[Deleted MOC]]", replace=""
+
+    Broken-up REPOINT stays on add_relationship (marker-located line replace) —
+    this builder is ONLY for removal + free-text wikilink substitution (ADR-5,
+    Rule 7). Never call this builder for repoints.
+    """
+    out: list[dict] = []
+    for item in items:
+        out.append({
+            "id": _next_id(counter),
+            "action": "edit_note_text",
+            "path": item["path"],
+            "match": item["match"],
+            "replace": item["replace"],
+            "occurrence": item.get("occurrence", "first"),
+        })
     return out
 
 

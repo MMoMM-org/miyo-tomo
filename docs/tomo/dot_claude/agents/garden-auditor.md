@@ -1,0 +1,87 @@
+# WHY: garden-auditor agent
+
+> Rationale for decisions in `tomo/dot_claude/agents/garden-auditor.md`.
+> The agent is the `/garden-audit` orchestrator: it routes arguments to `garden-audit.py`
+> (scan), `garden-audit-render.py` (report + wire), and `kado-write-file.py` (transport),
+> and runs the first-run exclusion wizard when no config exists.
+
+## Orchestration Agent, Not Analysis Agent (ADR-6)
+
+WHY the agent description states "You MUST NOT perform vault analysis yourself — the
+scan script handles all Kado access and cache reads": the garden-auditor is a pure
+orchestrator in the same sense as `moc-architect` and `instruction-builder`. An LLM
+performing vault lookups inline would produce non-deterministic analysis, duplicate Kado
+calls already made by the scan script, and potentially generate findings that contradict
+the deterministic scan output. ADR-6 explicitly mirrors the `/moc-propose` track: scan
+→ render → transport, with the LLM responsible only for routing, error surfacing, wizard
+Q&A, and the fixed output report. Every finding in the delivered report originates from
+`garden-audit.py`, not the agent.
+
+## Transport via kado-write-file.py, Not Inline kado-write (STRICT)
+
+WHY the agent is prohibited from reading the report and inlining it into a `kado-write`
+tool call: observed live on the `/moc-propose` track (2026-06-06), a 136 KB proposal-doc
+exhausted the output-token budget when inlined as tool-call args — the content was
+correct on disk but never reached the vault. The garden-audit report can exceed that
+threshold when a large vault has many findings across all six checks. `kado-write-file.py`
+reads the file from disk and pushes it through its own Kado client (`operation=note` for
+`.md`, `operation=file` for `.json`), so the content never routes through the agent's
+token budget. The STRICT comment documents the failure mode in one line per the STRICT
+protocol.
+
+## No stderr Redirect on Script Invocations (STRICT)
+
+WHY Step 4 and Step 6 carry `STRICT: Do NOT append 2>&1`: stderr carries diagnostic
+messages from the scan and render scripts (`[garden-audit] Scan complete.`, per-finding
+counts). Redirecting stderr into stdout would merge these into the captured stdout,
+corrupting any JSON or structured output the agent captures. The garden-audit scripts
+follow the established Tomo convention: structured output on stdout, diagnostics on
+stderr.
+
+## Exclusion Wizard Writes to Skill Config, Never /inbox (STRICT)
+
+WHY the agent is prohibited from routing exclusion decisions through `/inbox`: exclusion
+config (`config/garden-audit-exclusions.yaml`) is skill-side configuration — it is
+created and owned by the garden-auditor agent on behalf of the user's preference, not a
+vault note that Tomo's 2-pass model should process. Routing it through `/inbox` would
+trigger inbox-triage, which would classify it as a new note to process, not a config
+file to write. ADR-2 specifies that exclusion config is "skill-owned instance exclusion
+config (seed, create-only), filter-before-render, managed only in-skill." The wizard
+writes directly with the `Write` tool.
+
+## First-Run Detection Before Scan (Step 3)
+
+WHY the agent checks for `config/garden-audit-exclusions.yaml` before running the scan
+(Step 3) rather than after: on a first run, the scan must run WITHOUT the `--exclusions`
+flag to produce unfiltered findings for the wizard to cluster. If the existence check
+ran after the scan, the agent would have already passed `--exclusions` to the scan (or
+omitted it at the wrong moment), producing a scan result that either fails with a
+missing-file error or silently filters nothing. Detecting first-run before the scan
+means Step 4 can conditionally add or omit `--exclusions` based on a known state.
+
+## Fixed Output Block (STRICT)
+
+WHY the agent MUST end every run with the structured output block rather than
+conversational prose: the fixed output block is the machine-readable receipt for the
+`/inbox` track that follows — vault path of the report, wire path, finding counts,
+error notes. Without a fixed format the team-lead (or a future integration) cannot
+reliably parse the outcome. The STRICT annotation ensures the LLM cannot paraphrase
+or reorder the block even when the model tends toward narrative summaries. The
+`## Output` section doubles as a schema for the fields, matching the `suggestion-conductor`
+fixed-output pattern.
+
+## AskUserQuestion Max-4 Rule in the Wizard
+
+WHY Wizard Step B splits check selection across two `AskUserQuestion` calls (integrity
+checks first, advisory second) when the user picks "Exclude specific checks": the
+Claude Code `AskUserQuestion` tool caps at 4 options per call. Six check names exceed
+that limit. Splitting into integrity (broken_up, dead_link, unparented, orphan) and
+advisory (duplicate_stem, stale_moc) groups the checks by the same tier taxonomy the
+report uses, which is cognitively consistent for the user.
+
+## Version 0.1.0
+
+WHY: Initial spec-030 Phase 5 implementation. The agent was authored against the
+`moc-architect` STRICT/MUST/NEVER style to ensure runtime-deviation-critical paths
+are guarded. `update-tomo.sh` skips unchanged versions; the agent is in the container's
+`.claude/agents/` and loads at session start.

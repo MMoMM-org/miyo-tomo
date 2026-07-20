@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_edit_note_text_action.py — Tests for the edit_note_text Hashi action (ADR-3).
 
 Covers:
@@ -275,3 +275,65 @@ def test_edit_note_text_builder_never_produces_add_relationship():
         assert a["action"] == "edit_note_text", (
             f"Expected edit_note_text only, got: {a['action']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Schema parity: builder output validates against the schema (W1)
+# ---------------------------------------------------------------------------
+
+
+def test_builder_output_validates_against_schema(instructions_schema):
+    """Builder output (with applied stamped by caller) must satisfy the schema.
+
+    Catches any future drift where the builder emits a shape the schema forbids.
+    applied:False is stamped here to replicate what build_actions() / the T4.2
+    caller does before wire emission.
+    """
+    items = [
+        {"path": "Notes/Foo.md", "match": "[[Dead Link]]", "replace": "[[Live Note]]"},
+    ]
+    actions = _build_edit_note_text_actions(items, _counter())
+    # Stamp applied — this is the caller's responsibility (see builder docstring)
+    for a in actions:
+        a["applied"] = False
+
+    doc = _make_minimal_doc(actions)
+    jsonschema.validate(doc, instructions_schema)  # no exception = pass
+
+
+def test_builder_output_with_occurrence_all_validates_against_schema(instructions_schema):
+    """Builder output for occurrence='all' also satisfies the schema."""
+    items = [
+        {"path": "Notes/Bar.md", "match": "[[Old]]", "replace": "", "occurrence": "all"},
+    ]
+    actions = _build_edit_note_text_actions(items, _counter())
+    for a in actions:
+        a["applied"] = False
+    doc = _make_minimal_doc(actions)
+    jsonschema.validate(doc, instructions_schema)
+
+
+# ---------------------------------------------------------------------------
+# Missing required field raises KeyError (S1 — document the contract)
+# ---------------------------------------------------------------------------
+
+
+def test_builder_raises_on_missing_path():
+    """Missing 'path' in an item raises KeyError (bare dict access contract)."""
+    items = [{"match": "[[Old]]", "replace": "[[New]]"}]
+    with pytest.raises(KeyError):
+        _build_edit_note_text_actions(items, _counter())
+
+
+def test_builder_raises_on_missing_match():
+    """Missing 'match' in an item raises KeyError."""
+    items = [{"path": "Notes/Foo.md", "replace": "[[New]]"}]
+    with pytest.raises(KeyError):
+        _build_edit_note_text_actions(items, _counter())
+
+
+def test_builder_raises_on_missing_replace():
+    """Missing 'replace' in an item raises KeyError."""
+    items = [{"path": "Notes/Foo.md", "match": "[[Old]]"}]
+    with pytest.raises(KeyError):
+        _build_edit_note_text_actions(items, _counter())

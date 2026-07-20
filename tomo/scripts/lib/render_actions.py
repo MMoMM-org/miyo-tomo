@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.3.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1160,6 +1160,12 @@ def _build_edit_note_text_actions(
     Broken-up REPOINT stays on add_relationship (marker-located line replace) —
     this builder is ONLY for removal + free-text wikilink substitution (ADR-5,
     Rule 7). Never call this builder for repoints.
+
+    Caller is responsible for stamping ``applied: False`` before wire emission —
+    this builder does not emit ``applied``, matching the convention of _build_*
+    helpers normally stamped centrally by build_actions(). T4.2's garden-audit-
+    parser calls this builder directly via build_from_wire, bypassing build_actions,
+    so the caller must stamp applied explicitly.
     """
     out: list[dict] = []
     for item in items:

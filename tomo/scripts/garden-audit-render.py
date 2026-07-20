@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -49,6 +49,57 @@ _CHECK_LABEL = {
     "duplicate_stem": "Duplicate stem",
     "stale_moc": "Stale MOC",
 }
+
+
+# ── Note-reference rendering ──────────────────────────────────────────────────
+
+def _wikilink(ref) -> str:
+    """Render a note reference as a clickable Obsidian wikilink `[[Stem]]`.
+
+    Accepts a str or a list of stems (cache `up::` is a multi-value list).
+    Strips any pre-existing `[[ ]]`, `.md`, and path prefix so the result is a
+    bare, hover-able stem. Multiple targets render as `[[a]], [[b]]`.
+    Empty / None → `(none)` so nothing renders as a raw `[]` or `None`.
+    """
+    if ref is None or ref == "" or ref == []:
+        return "(none)"
+    if isinstance(ref, (list, tuple)):
+        return ", ".join(_wikilink(r) for r in ref) if ref else "(none)"
+    stem = str(ref).strip()
+    if stem.startswith("[[") and stem.endswith("]]"):
+        stem = stem[2:-2].strip()
+    stem = stem.split("/")[-1]  # drop any folder path
+    if stem.endswith(".md"):
+        stem = stem[:-3]
+    # An aliased link [[target|alias]] — keep the human-facing alias.
+    if "|" in stem:
+        stem = stem.split("|", 1)[1].strip()
+    return f"[[{stem}]]"
+
+
+def _fix_summary(check: str, detail: dict, decision: dict) -> str:
+    """One plain-language line describing what applying the fix will DO to the note.
+
+    The report must let the user decide without reading the wire — spell out the
+    concrete before→after change, not just "Apply fix".
+    """
+    action = (decision or {}).get("action") or ""
+    if check in ("unparented", "orphan"):
+        mocs = detail.get("candidate_mocs") or []
+        moc = _wikilink(mocs[0]["target_moc"]) if mocs else "(no candidate)"
+        return f"Add `up:: {moc}` — files this note under {moc}."
+    if check == "broken_up":
+        up = _wikilink(detail.get("up_target"))
+        if action == "add_relationship":
+            return f"Repoint the broken `up::` (was {up}) to a valid MOC you choose."
+        return f"Remove the broken `up:: {up}` line from the note's frontmatter."
+    if check == "dead_link":
+        dead = _wikilink(detail.get("dead_target"))
+        replace = (decision or {}).get("replace", "")
+        if replace:
+            return f"Replace every {dead} with {_wikilink(replace)} in the note body."
+        return f"Remove every {dead} link from the note body (set a replacement in the wire to repoint instead)."
+    return "Apply the automated fix."
 
 
 # ── Frontmatter ───────────────────────────────────────────────────────────────
@@ -170,26 +221,26 @@ def _render_finding(f: dict) -> list[str]:
     stem = target.get("stem") or Path(path).stem
     detail = f.get("detail", {})
 
-    lines = [f"### {fid} — {label}: `{stem}`", ""]
+    lines = [f"### {fid} — {label}: {_wikilink(stem)}", ""]
 
     # Detail lines per check type
     if check in ("unparented", "orphan"):
         mocs = detail.get("candidate_mocs") or []
         if mocs:
-            lines.append(f"Candidate MOC: `{mocs[0]['target_moc']}` (score: {mocs[0]['score']:.2f})")
+            lines.append(f"Candidate MOC: {_wikilink(mocs[0]['target_moc'])} (score: {mocs[0]['score']:.2f})")
     elif check == "broken_up":
         up_target = detail.get("up_target")
         if up_target:
-            lines.append(f"Broken `up::` → `{up_target}`")
+            lines.append(f"Broken `up::` → {_wikilink(up_target)}")
     elif check == "dead_link":
         dead_target = detail.get("dead_target", "")
         count = detail.get("count", 1)
-        lines.append(f"Dead link: `{dead_target}` ({count}× in `{path}`)")
+        lines.append(f"Dead link: {_wikilink(dead_target)} ({count}× in {_wikilink(stem)})")
     elif check == "duplicate_stem":
         dupes = detail.get("dupes") or []
-        lines.append(f"Paths sharing stem `{stem}`:")
+        lines.append(f"Notes sharing stem {_wikilink(stem)}:")
         for dup in dupes:
-            lines.append(f"  - `{dup}`")
+            lines.append(f"  - `{dup}`")  # full path kept raw — disambiguates the collision
     elif check == "stale_moc":
         mtime = detail.get("mtime", "unknown")
         lines.append(f"Last modified: {mtime}")
@@ -199,12 +250,11 @@ def _render_finding(f: dict) -> list[str]:
     # Fixable → checkbox (pre-selected from decision.selected)
     decision = f.get("decision")
     if decision is not None:
-        action = decision.get("action") or "fix"
         selected = decision.get("selected", True)
         check_mark = "x" if selected else " "
         lines += [
-            "**Fix:**",
-            f"- [{check_mark}] Apply `{action}` — tick to confirm, untick to skip",
+            "**Fix:** " + _fix_summary(check, detail, decision),
+            f"- [{check_mark}] Apply — tick to confirm, untick to skip",
             "",
         ]
     elif f.get("tier") == "advisory":

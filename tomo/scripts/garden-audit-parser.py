@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """Pass-2 rebuild-from-wire for garden-audit (ADR-4 / ADR-026).
 
 Mirrors suggestion-parser.py's wire contract:
@@ -125,6 +125,30 @@ def _filing_actions(finding: dict, counter: list[int]) -> list[dict]:
     return [link_action, rel_action]
 
 
+def _up_stems(up_target) -> list[str]:
+    """Normalize a cache `up::` value (str | list of stems) to bare stems.
+
+    The graph cache stores `up::` as a multi-value list, so up_target arrives as
+    e.g. ['020 Active MOC']. Reduce to clean stems (strip [[ ]], whitespace, empties)
+    so match/line strings reconstruct the real frontmatter line, not a list repr.
+    """
+    raw = up_target if isinstance(up_target, (list, tuple)) else [up_target]
+    stems = []
+    for t in raw:
+        s = str(t or "").strip()
+        if s.startswith("[[") and s.endswith("]]"):
+            s = s[2:-2].strip()
+        if s:
+            stems.append(s)
+    return stems
+
+
+def _up_line(up_target) -> str:
+    """Render an up:: value as the exact frontmatter line: `up:: [[a]], [[b]]`."""
+    stems = _up_stems(up_target)
+    return "up:: " + ", ".join(f"[[{s}]]" for s in stems)
+
+
 def _broken_up_repoint_action(finding: dict, counter: list[int]) -> list[dict]:
     """Emit add_relationship up:: for a broken-up repoint (action=add_relationship).
 
@@ -138,16 +162,18 @@ def _broken_up_repoint_action(finding: dict, counter: list[int]) -> list[dict]:
     target = finding["target"]
     path = target["path"]
     up_target = finding.get("detail", {}).get("up_target", "")
+    stems = _up_stems(up_target)
+    old_stem = stems[0] if stems else ""
     # Emit the repair line — the user has selected this, so we set up:: to the
     # target as specified in detail.up_target (the broken old target that needs
     # repointing; the conductor/agent replaces with the correct MOC stem before apply).
     return [{
         "id": _next_id(counter),
         "action": "add_relationship",
-        "target_moc": up_target,
+        "target_moc": old_stem,
         "target_moc_path": path,
         "marker": "up::",
-        "line": f"up:: [[{up_target}]]",
+        "line": _up_line(up_target),
         "source_note_title": None,
         "applied": False,
     }]
@@ -166,7 +192,7 @@ def _broken_up_removal_action(finding: dict, counter: list[int]) -> list[dict]:
         "id": _next_id(counter),
         "action": "edit_note_text",
         "path": path,
-        "match": f"up:: [[{up_target}]]",
+        "match": _up_line(up_target),
         "replace": "",
         "occurrence": "first",
         "applied": False,

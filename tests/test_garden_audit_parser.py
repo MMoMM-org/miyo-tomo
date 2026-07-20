@@ -458,3 +458,44 @@ class TestAppliedStamping:
         result = build_from_wire(wire)
         for a in result["actions"]:
             assert a["applied"] is not None, f"action {a['id']} has applied=None — must be False"
+
+
+class TestBrokenUpListTarget:
+    """Regression: cache up:: is a multi-value list, so up_target arrives as e.g.
+    ['020 Active MOC']. The match/line must reconstruct the real frontmatter line
+    (up:: [[020 Active MOC]]), never embed a list repr (up:: [[['020 Active MOC']]])."""
+
+    def _list_removal(self, fid="F01"):
+        return _wire_finding(
+            fid, "broken_up", "integrity", True,
+            "Notes/Broken.md", "Broken",
+            {"up_target": ["020 Active MOC"]},
+            decision={"selected": True, "action": "edit_note_text"},
+        )
+
+    def _list_repoint(self, fid="F01"):
+        return _wire_finding(
+            fid, "broken_up", "integrity", True,
+            "Notes/Broken.md", "Broken",
+            {"up_target": ["020 Active MOC"]},
+            decision={"selected": True, "action": "add_relationship"},
+        )
+
+    def test_removal_match_reconstructs_frontmatter_line(self):
+        result = build_from_wire(_make_wire([self._list_removal()]))
+        a = result["actions"][0]
+        assert a["match"] == "up:: [[020 Active MOC]]"
+        assert "['" not in a["match"] and "[[[" not in a["match"]
+
+    def test_repoint_line_and_target_moc_are_not_lists(self):
+        result = build_from_wire(_make_wire([self._list_repoint()]))
+        a = result["actions"][0]
+        assert a["line"] == "up:: [[020 Active MOC]]"
+        assert a["target_moc"] == "020 Active MOC"
+        assert not isinstance(a["target_moc"], list)
+
+    def test_multi_target_up_list_joins_all(self):
+        f = self._list_removal()
+        f["detail"]["up_target"] = ["020 Active MOC", "030 Reference MOC"]
+        result = build_from_wire(_make_wire([f]))
+        assert result["actions"][0]["match"] == "up:: [[020 Active MOC]], [[030 Reference MOC]]"

@@ -563,3 +563,55 @@ class TestMalformedFindingGuard:
         d = _make_doc(findings=[malformed])
         with pytest.raises(ValueError, match="F01"):
             _render_report(d)
+
+
+class TestClickableLinksAndFixSummary:
+    """Regression: report note-refs must be [[wikilinks]] (clickable/hover-able in
+    Obsidian), never `backticks`; and each fix must describe WHAT it does. Live-E2E
+    surfaced `Deleted MOC` (dead) + a leaked Python list repr ['020 Active MOC']."""
+
+    def test_broken_up_stem_renders_as_wikilink_not_backtick(self):
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        assert "[[Broken Note]]" in report
+        assert "`Broken Note`" not in report
+
+    def test_broken_up_target_renders_as_wikilink(self):
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        assert "[[Deleted MOC]]" in report
+
+    def test_up_target_list_does_not_leak_python_repr(self):
+        # Cache stores up:: as a multi-value list — must render [[020 Active MOC]],
+        # never the raw list repr ['020 Active MOC'].
+        f = _make_broken_up_finding()
+        f["detail"]["up_target"] = ["020 Active MOC"]
+        report = _render_report(_make_doc(findings=[f]))
+        assert "[[020 Active MOC]]" in report
+        assert "['020 Active MOC']" not in report
+        assert "[020 Active MOC]" not in report.replace("[[020 Active MOC]]", "")
+
+    def test_broken_up_removal_fix_describes_removal(self):
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        assert "Remove" in report and "frontmatter" in report
+
+    def test_broken_up_repoint_fix_describes_repoint(self):
+        f = _make_broken_up_finding()
+        f["decision"]["action"] = "add_relationship"
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Repoint" in report
+
+    def test_unparented_fix_names_candidate_moc(self):
+        report = _render_report(_make_doc(findings=[_make_unparented_finding()]))
+        # candidate target_moc "MOCs/Writing MOC.md" → wikilink stem, path dropped
+        assert "[[Writing MOC]]" in report
+        assert "up::" in report
+
+    def test_dead_link_fix_mentions_replacement(self):
+        f = _make_dead_link_finding()
+        f["decision"] = {"selected": True, "action": "edit_note_text", "replace": "[[New Target]]"}
+        report = _render_report(_make_doc(findings=[f]))
+        assert "[[New Target]]" in report
+        assert "Replace" in report
+
+    def test_fix_line_no_longer_says_apply_backtick_action(self):
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        assert "Apply `edit_note_text`" not in report

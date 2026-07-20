@@ -34,14 +34,25 @@ the user verbatim. Writing to a file would add an extra Read step and risk the 2
 cap again on the cluster summary itself (though in practice the summary is always small).
 Stdout is the natural pipe contract: Bash → agent variable → user message.
 
-## Why `--write` Takes `--choices` as a JSON String (Not a File)
+## Why `--write` Takes `--choices` as a File Path (Not an Inline JSON String)
 
-The choices are assembled by the agent from the user's AskUserQuestion answers — a
-transient in-memory composition. Writing choices to a file and passing the file path
-would require the agent to create a temp file, pass its path, and clean it up. JSON
-string on the command line is simpler for agent invocation and avoids temp-file lifecycle.
-The JSON string is short (one entry per exclusion rule); shell quoting is handled by the
-agent embedding it in single quotes.
+The agent assembles choices from the user's AskUserQuestion answers and writes them to a
+**new** temp file (`tomo-tmp/garden-audit-choices.json`) via the `Write` tool, then passes
+the file path to `--choices`. Two reasons favour the file-path approach over inline JSON:
+
+1. **Shell quoting fragility on large JSON**: Passing a multi-entry JSON object as a
+   shell argument requires the agent to produce correctly quoted JSON inside a Bash
+   heredoc or single-quoted string. A single unescaped `'` or newline in a reason field
+   breaks the shell parse. File I/O eliminates the quoting surface entirely.
+
+2. **New-file Write has no read-before-write guard**: The Write tool enforces
+   read-before-write on *existing* files. `tomo-tmp/garden-audit-choices.json` is a new
+   file — the agent creates it fresh each wizard run, so no read is needed. This cleanly
+   avoids the same trap as Bug B (see above) while keeping the choices data off the shell
+   command line.
+
+The choices file is transient (tomo-tmp/ is not versioned) and is overwritten on each
+wizard run. No cleanup step is needed.
 
 ## Why `configured: true` is Always Written by the Script
 

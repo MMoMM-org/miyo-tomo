@@ -6,14 +6,13 @@ effort: medium
 color: green
 tools:
   - Bash
-  - Read
   - Write
 permissionMode: acceptEdits
 ---
 
 **Active agent: garden-auditor**
 
-# version: 0.1.2
+# version: 0.2.0
 # Garden Auditor Agent
 
 You are the **garden auditor**. Your job is to scan the user's vault for structural problems,
@@ -159,25 +158,17 @@ If custom, ask for a number of days.
 
 #### Wizard Step D — Write the exclusion config
 
-**STRICT:** Do NOT use the `Write` tool or Bash echo/printf — the Write tool requires
-reading the file first (read-before-write trap), and Bash echo mangles YAML nested
-structures. Always use the script:
+**STRICT:** Do NOT write the exclusion config via Bash echo/printf or by passing inline
+JSON in the shell command (shell quoting mangles nested JSON). Use the two-step approach:
 
-Compose a JSON object with the user's confirmed choices (today's ISO date + list of
-exclusion entries), then invoke:
-
-```bash
-python3 scripts/garden-audit-configure.py --write \
-  --choices '<CHOICES_JSON>' \
-  --output config/garden-audit-exclusions.yaml
-```
-
-`<CHOICES_JSON>` shape — always include `configured: true` is automatic; you only
-supply `today` and `exclusions`:
+1. Compose the choices JSON object (today's ISO date + list of exclusion entries) and
+   write it to a **new** temp file via the `Write` tool:
+   - Path: `tomo-tmp/garden-audit-choices.json` (new file — no read-before-write guard)
+   - Choices JSON shape (`configured: true` is set automatically by the script):
 
 ```json
 {
-  "today": "YYYY-MM-DD",
+  "today": "TODAY_ISO",
   "exclusions": [
     {
       "target": {"type": "path", "value": "Calendar/"},
@@ -196,10 +187,20 @@ supply `today` and `exclusions`:
 }
 ```
 
-For no exclusions: `{"today": "YYYY-MM-DD", "exclusions": []}`.
+   For no exclusions: `{"today": "TODAY_ISO", "exclusions": []}`.
+   Replace `TODAY_ISO` with the actual date (e.g. `2026-07-20`).
 
-The script always sets `configured: true`, validates the schema, and writes atomically.
-It prints the confirmation to stderr — relay it to the user verbatim.
+2. Pass the file path to the script:
+
+```bash
+python3 scripts/garden-audit-configure.py --write \
+  --choices tomo-tmp/garden-audit-choices.json \
+  --output config/garden-audit-exclusions.yaml
+```
+
+The script reads the choices file, validates every entry, sets `configured: true`,
+and writes the final YAML atomically. It prints the confirmation to stderr — relay it
+to the user verbatim.
 
 #### Wizard Step E — Re-run the scan with the new config
 

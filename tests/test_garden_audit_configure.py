@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_garden_audit_configure.py — Tests for garden-audit-configure.py wizard helper (spec 030).
 
 Covers both modes:
@@ -74,8 +74,13 @@ def _write_doc(tmp_path: Path, findings: list[dict]) -> str:
     return str(doc_path)
 
 
-def _simple_choices(exclusions: list[dict], today: str = "2026-07-20") -> str:
-    return json.dumps({"today": today, "exclusions": exclusions})
+def _simple_choices(tmp_path: Path, exclusions: list[dict], today: str = "2026-07-20") -> str:
+    """Write choices JSON to a temp file and return the file path string."""
+    choices_file = tmp_path / "garden-audit-choices.json"
+    choices_file.write_text(
+        json.dumps({"today": today, "exclusions": exclusions}), encoding="utf-8"
+    )
+    return str(choices_file)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -165,7 +170,7 @@ class TestSummarize:
 class TestWriteConfig:
     def test_empty_exclusions_writes_schema_valid_yaml(self, tmp_path):
         out_path = tmp_path / "excl.yaml"
-        rc = write_config(_simple_choices([]), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, []), str(out_path))
         assert rc == 0
         assert out_path.exists()
         data = yaml.safe_load(out_path.read_text())
@@ -179,7 +184,7 @@ class TestWriteConfig:
     def test_configured_is_always_true(self, tmp_path):
         """configured: true must be present regardless of exclusions count."""
         out_path = tmp_path / "excl.yaml"
-        write_config(_simple_choices([]), str(out_path))
+        write_config(_simple_choices(tmp_path, []), str(out_path))
         data = yaml.safe_load(out_path.read_text())
         assert data["configured"] is True
 
@@ -191,7 +196,7 @@ class TestWriteConfig:
             "mode": "permanent",
             "reason": "daily notes never get up::",
         }]
-        rc = write_config(_simple_choices(excl), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, excl), str(out_path))
         assert rc == 0
         data = yaml.safe_load(out_path.read_text())
         schema = _load_exclusions_schema()
@@ -212,7 +217,7 @@ class TestWriteConfig:
             "reason": "mid-refactor",
             "push_back_days": 90,
         }]
-        rc = write_config(_simple_choices(excl, today="2026-07-20"), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, excl, today="2026-07-20"), str(out_path))
         assert rc == 0
         data = yaml.safe_load(out_path.read_text())
         schema = _load_exclusions_schema()
@@ -232,7 +237,7 @@ class TestWriteConfig:
             "reason": "work in progress",
             # no push_back_days
         }]
-        rc = write_config(_simple_choices(excl, today="2026-07-20"), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, excl, today="2026-07-20"), str(out_path))
         assert rc == 0
         data = yaml.safe_load(out_path.read_text())
         e = data["exclusions"][0]
@@ -246,7 +251,7 @@ class TestWriteConfig:
             "mode": "permanent",
             "reason": "archived content",
         }]
-        rc = write_config(_simple_choices(excl), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, excl), str(out_path))
         assert rc == 0
         data = yaml.safe_load(out_path.read_text())
         schema = _load_exclusions_schema()
@@ -261,7 +266,7 @@ class TestWriteConfig:
             "mode": "permanent",
             "reason": "test",
         }]
-        rc = write_config(_simple_choices(excl), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, excl), str(out_path))
         assert rc != 0
         assert not out_path.exists()
 
@@ -273,7 +278,7 @@ class TestWriteConfig:
             "mode": "forever",  # invalid
             "reason": "test",
         }]
-        rc = write_config(_simple_choices(excl), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, excl), str(out_path))
         assert rc != 0
 
     def test_missing_reason_exits_nonzero(self, tmp_path):
@@ -284,12 +289,21 @@ class TestWriteConfig:
             "mode": "permanent",
             # no reason
         }]
-        rc = write_config(_simple_choices(excl), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, excl), str(out_path))
         assert rc != 0
 
     def test_invalid_choices_json_exits_nonzero(self, tmp_path):
+        """Choices file containing invalid JSON must cause nonzero exit."""
         out_path = tmp_path / "excl.yaml"
-        rc = write_config("not-valid-json{{", str(out_path))
+        bad_choices = tmp_path / "bad-choices.json"
+        bad_choices.write_text("not-valid-json{{", encoding="utf-8")
+        rc = write_config(str(bad_choices), str(out_path))
+        assert rc != 0
+
+    def test_missing_choices_file_exits_nonzero(self, tmp_path):
+        """A choices file path that does not exist must cause nonzero exit."""
+        out_path = tmp_path / "excl.yaml"
+        rc = write_config(str(tmp_path / "nonexistent-choices.json"), str(out_path))
         assert rc != 0
 
     def test_multiple_exclusions_all_written(self, tmp_path):
@@ -298,7 +312,7 @@ class TestWriteConfig:
             {"target": {"type": "path", "value": "Calendar/"}, "checks": ["unparented"], "mode": "permanent", "reason": "daily notes"},
             {"target": {"type": "path", "value": "Archive/"}, "checks": "all", "mode": "permanent", "reason": "archived"},
         ]
-        rc = write_config(_simple_choices(excl), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, excl), str(out_path))
         assert rc == 0
         data = yaml.safe_load(out_path.read_text())
         schema = _load_exclusions_schema()
@@ -307,6 +321,6 @@ class TestWriteConfig:
 
     def test_output_dir_created_if_missing(self, tmp_path):
         out_path = tmp_path / "nested" / "deep" / "excl.yaml"
-        rc = write_config(_simple_choices([]), str(out_path))
+        rc = write_config(_simple_choices(tmp_path, []), str(out_path))
         assert rc == 0
         assert out_path.exists()

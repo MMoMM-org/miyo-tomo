@@ -1,4 +1,4 @@
-# version: 0.1.1
+# version: 0.1.2
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the

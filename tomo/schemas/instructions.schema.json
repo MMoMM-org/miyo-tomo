@@ -75,7 +75,8 @@
           {"$ref": "#/$defs/create_moc"},
           {"$ref": "#/$defs/delete_source"},
           {"$ref": "#/$defs/skip"},
-          {"$ref": "#/$defs/insert_under_marker"}
+          {"$ref": "#/$defs/insert_under_marker"},
+          {"$ref": "#/$defs/edit_note_text"}
         ]
       }
     }
@@ -270,6 +271,26 @@
         "content": {
           "type": "string",
           "description": "Multi-line markdown block to insert verbatim. May contain embedded newlines. Hashi inserts as-is without transformation."
+        },
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "edit_note_text": {
+      "type": "object",
+      "required": ["id", "action", "path", "match", "replace"],
+      "additionalProperties": false,
+      "description": "Edit note body by exact literal string match and replacement. One primitive covers dead-wikilink fix (replace='[[New]]'), dead-wikilink remove (replace=''), and broken up:: removal (whole-line match, replace=''). Hashi skips and reports on no-match — no error, no partial write. Broken-up REPOINT uses add_relationship (marker-located line replace), not this action. Introduced by spec 030-garden-audit ADR-3 (example-driven: Tomo emits this now; Hashi implements against our real example in Phase 6 handoff).",
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "edit_note_text"},
+        "path": {"type": "string", "description": "Vault-relative path of the note to edit (.md)."},
+        "match": {"type": "string", "description": "Exact literal text to locate in the note body, e.g. '[[Missing Note]]' or 'up:: [[Old MOC]]'."},
+        "replace": {"type": "string", "description": "Replacement text. Empty string removes the matched text (and the now-empty line when match covers a whole line)."},
+        "occurrence": {
+          "type": "string",
+          "enum": ["first", "all"],
+          "default": "first",
+          "description": "Which occurrence(s) to replace. 'first' (default) replaces only the first match; 'all' replaces every occurrence."
         },
         "applied": {"$ref": "#/$defs/applied_field"}
       }

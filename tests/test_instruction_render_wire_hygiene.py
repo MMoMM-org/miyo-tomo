@@ -64,6 +64,20 @@ _HASHI_UPSTREAM_URL = (
     "src/schema/instructions.schema.json"
 )
 
+# Actions that Tomo's snapshot intentionally carries ahead of the live upstream Hashi
+# schema. Each entry is a pending cross-repo handoff — the action is example-driven:
+# Tomo emits it now; Hashi implements against our wire example in the Phase 6 handoff.
+# Remove an action from this set once the upstream Hashi schema ships the definition.
+#
+# Format: action-def-name → reason string (cited in assertion message).
+SNAPSHOT_AHEAD_OF_UPSTREAM: dict[str, str] = {
+    "edit_note_text": (
+        "ADR-3 (spec 030-garden-audit): example-driven handoff — Tomo emits "
+        "edit_note_text for dead-link fix/remove and up:: removal; Hashi implements "
+        "against this example in Phase 6. Remove once miyo-tomo-hashi ships the def."
+    ),
+}
+
 
 @pytest.fixture(scope="module")
 def instructions_schema() -> dict:
@@ -287,14 +301,20 @@ class TestHashiSchemaParity:
 
         snap_defs = _action_defs(hashi_snapshot)
         live_defs = _action_defs(live)
-        only_in_snap = snap_defs - live_defs
+        # Strip intentional pending-handoff actions before comparing action sets.
+        # These are example-driven: Tomo carries them in the snapshot ahead of Hashi;
+        # Hashi will implement against Tomo's wire example in the Phase 6 handoff.
+        # Entries are documented in SNAPSHOT_AHEAD_OF_UPSTREAM above.
+        known_ahead = set(SNAPSHOT_AHEAD_OF_UPSTREAM)
+        only_in_snap = (snap_defs - live_defs) - known_ahead
         only_in_live = live_defs - snap_defs
 
         assert not only_in_snap and not only_in_live, (
             "Action set differs between snapshot and upstream Hashi.\n"
-            f"  Only in snapshot: {sorted(only_in_snap)}\n"
-            f"  Only in upstream: {sorted(only_in_live)}\n"
-            "Fix: refresh tomo/schemas/hashi-instructions.schema.json from upstream Hashi."
+            f"  Only in snapshot (unexpected): {sorted(only_in_snap)}\n"
+            f"  Only in upstream:              {sorted(only_in_live)}\n"
+            "Fix: refresh tomo/schemas/hashi-instructions.schema.json from upstream Hashi,\n"
+            "or add to SNAPSHOT_AHEAD_OF_UPSTREAM if this is an intentional pending handoff."
         )
 
         mismatches: list[str] = []

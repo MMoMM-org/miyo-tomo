@@ -80,13 +80,16 @@ def _make_broken_up_finding(fid: str = "F02") -> dict:
 
 
 def _make_dead_link_finding(fid: str = "F03") -> dict:
+    # dead_target is the raw wikilink stem from graph_audit.deadLinks[].target —
+    # no brackets. The render displays it for context; the parser wraps it as
+    # [[dead_target]] when building the edit_note_text match field.
     return {
         "id": fid,
         "check": "dead_link",
         "tier": "integrity",
         "fixable": True,
         "target": {"path": "Notes/Source Note.md", "stem": "Source Note"},
-        "detail": {"dead_target": "[[Missing Note]]", "count": 2},
+        "detail": {"dead_target": "Missing Note", "count": 2},
         "decision": {"selected": True, "action": "edit_note_text"},
     }
 
@@ -414,21 +417,20 @@ class TestFrontmatterSchemaValidation:
     def test_build_tomo_block_garden_audit_does_not_raise(self):
         # Under TOMO_SCHEMA_STRICT=1 build_tomo_block raises SchemaValidationError when
         # doc_type is absent from the schema. This test drives the enum + oneOf fix.
+        #
+        # IMPORTANT: do NOT delete lib.doc_frontmatter from sys.modules — doing so
+        # creates a second class object for SchemaValidationError that breaks
+        # pytest.raises(SchemaValidationError) checks in other test files that hold
+        # a reference to the original class (identity mismatch → uncaught raise).
+        # Instead, call build_tomo_block directly with TOMO_SCHEMA_STRICT active;
+        # the env var governs whether _validate() runs, not the module identity.
         import os
 
-        # Reload doc_frontmatter with TOMO_SCHEMA_STRICT=1 in effect
-        import sys as _sys
-
-        # Temporarily set the env var and force a fresh import of doc_frontmatter
         old = os.environ.get("TOMO_SCHEMA_STRICT")
         os.environ["TOMO_SCHEMA_STRICT"] = "1"
         try:
-            # Remove cached module so it reloads with strict flag active
-            mod_name = "lib.doc_frontmatter"
-            if mod_name in _sys.modules:
-                del _sys.modules[mod_name]
             from lib.doc_frontmatter import build_tomo_block as _btb
-            # Must not raise
+            # Must not raise — garden-audit is now in the schema enum + oneOf
             block = _btb(doc_type="garden-audit", state="pending-accept", run_id="r-test")
             assert block["doc_type"] == "garden-audit"
             assert block["state"] == "pending-accept"
@@ -437,9 +439,6 @@ class TestFrontmatterSchemaValidation:
                 os.environ.pop("TOMO_SCHEMA_STRICT", None)
             else:
                 os.environ["TOMO_SCHEMA_STRICT"] = old
-            # Restore module cache
-            if mod_name in _sys.modules:
-                del _sys.modules[mod_name]
 
     def test_stamped_frontmatter_validates_against_fm_schema(self):
         # The full frontmatter dict emitted by render_frontmatter must validate.

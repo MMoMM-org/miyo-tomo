@@ -245,6 +245,22 @@ class TestBuildFromWireUnparented:
         result = build_from_wire(wire)
         assert result["actions"] == []
 
+    def test_selected_unparented_no_candidate_mocs_emits_no_action(self):
+        # When orphan_link found no MOC above threshold, candidate_mocs=[] —
+        # we cannot file the note, so skip+warn rather than emit a broken action.
+        finding = _wire_finding(
+            "F01", "unparented", "structure", True,
+            "Notes/Orphan.md", "Orphan",
+            {"candidate_mocs": []},
+            decision={"selected": True, "action": "link_to_moc"},
+        )
+        wire = _make_wire([finding])
+        result = build_from_wire(wire)
+        assert result["actions"] == [], (
+            "empty candidate_mocs must produce no actions (skip+warn), "
+            "not a broken link_to_moc with target_moc=''"
+        )
+
 
 class TestBuildFromWireOrphan:
     def test_selected_orphan_emits_link_to_moc_and_add_rel(self):
@@ -256,6 +272,18 @@ class TestBuildFromWireOrphan:
 
     def test_unselected_orphan_emits_no_action(self):
         wire = _make_wire([_orphan(selected=False)])
+        result = build_from_wire(wire)
+        assert result["actions"] == []
+
+    def test_selected_orphan_no_candidate_mocs_emits_no_action(self):
+        # Same skip+warn logic as unparented with empty candidate_mocs.
+        finding = _wire_finding(
+            "F01", "orphan", "structure", True,
+            "Notes/Orphan2.md", "Orphan2",
+            {"candidate_mocs": []},
+            decision={"selected": True, "action": "link_to_moc"},
+        )
+        wire = _make_wire([finding])
         result = build_from_wire(wire)
         assert result["actions"] == []
 

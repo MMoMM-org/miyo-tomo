@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """Pass-2 rebuild-from-wire for garden-audit (ADR-4 / ADR-026).
 
 Mirrors suggestion-parser.py's wire contract:
@@ -76,14 +76,29 @@ def _filing_actions(finding: dict, counter: list[int]) -> list[dict]:
     Filing = placing a note under a MOC: one bullet in the MOC (link_to_moc)
     and one up:: line in the note (add_relationship). ADR-5: both actions are
     required together; mirrors emit_up_preservation_actions pattern.
+
+    Returns [] (skip + warn) when candidate_mocs is empty — orphan_link found no
+    MOC above threshold, so there is no valid filing target (v1: skip, not error).
     """
     target = finding["target"]
     path = target["path"]
     stem = target.get("stem") or path.rsplit("/", 1)[-1].removesuffix(".md")
     detail = finding.get("detail", {})
     mocs = detail.get("candidate_mocs") or []
-    # Use best candidate (highest score); fall back to empty string if none present.
-    best_moc_path = mocs[0]["target_moc"] if mocs else ""
+
+    # ADR-5 gate: no candidate MOCs → cannot file; emit nothing rather than a
+    # broken action with target_moc="" that would fail on apply.
+    if not mocs:
+        fid = finding.get("id", "?")
+        print(
+            f"warning: garden-audit-parser: finding {fid!r} ({path!r}) selected "
+            "for filing but has no candidate_mocs — skipping (no MOC target resolved)",
+            file=sys.stderr,
+        )
+        return []
+
+    # Use best candidate (highest score — orphan_link returns them pre-sorted).
+    best_moc_path = mocs[0]["target_moc"]
     best_moc_stem = best_moc_path.rsplit("/", 1)[-1].removesuffix(".md") if best_moc_path else ""
 
     link_action = {
@@ -204,7 +219,8 @@ def build_from_wire(wire: dict) -> dict:
     actions: list[dict] = []
 
     for finding in wire.get("findings") or []:
-        # Advisory findings (fixable=False) never produce actions.
+        # ADR-5 semantic gate: advisory checks (duplicate_stem, stale_moc) have
+        # fixable=False and never produce Hashi actions regardless of decision.
         if not finding.get("fixable"):
             continue
 

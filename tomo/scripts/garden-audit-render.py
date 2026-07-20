@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -282,10 +282,16 @@ def build_wire_payload(d: dict) -> dict:
         # decision block present ONLY on fixable findings
         decision = f.get("decision")
         if decision is not None:
-            wf["decision"] = {
+            wire_decision: dict = {
                 "selected": decision.get("selected", True),
                 "action": decision.get("action"),
             }
+            # dead_link: add editable replace slot (empty = remove intent).
+            # The user fills this in the wire to specify a replacement target;
+            # garden-audit-parser reads decision.replace (not detail.dead_target).
+            if f.get("check") == "dead_link":
+                wire_decision["replace"] = ""
+            wf["decision"] = wire_decision
         wire_findings.append(wf)
 
     payload: dict = {

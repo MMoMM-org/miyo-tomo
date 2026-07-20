@@ -118,6 +118,10 @@
               "action": {
                 "type": ["string", "null"],
                 "description": "Proposed action name (e.g. link_to_moc, edit_note_text, add_relationship). Null when not yet determined."
+              },
+              "replace": {
+                "type": "string",
+                "description": "dead_link only — editable replacement target (e.g. '[[New Note]]'). Empty string = remove intent. Absent on all other check types."
               }
             }
           }

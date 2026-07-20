@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """Pass-2 rebuild-from-wire for garden-audit (ADR-4 / ADR-026).
 
 Mirrors suggestion-parser.py's wire contract:
@@ -95,7 +95,7 @@ def _filing_actions(finding: dict, counter: list[int]) -> list[dict]:
         "placement": "after",
         "line_to_add": f"- [[{stem}]]",
         "source_note_title": stem,
-        "applied": None,
+        "applied": False,
     }
     rel_action = {
         "id": _next_id(counter),
@@ -105,7 +105,7 @@ def _filing_actions(finding: dict, counter: list[int]) -> list[dict]:
         "marker": "up::",
         "line": f"up:: [[{best_moc_stem}]]",
         "source_note_title": None,
-        "applied": None,
+        "applied": False,
     }
     return [link_action, rel_action]
 
@@ -134,7 +134,7 @@ def _broken_up_repoint_action(finding: dict, counter: list[int]) -> list[dict]:
         "marker": "up::",
         "line": f"up:: [[{up_target}]]",
         "source_note_title": None,
-        "applied": None,
+        "applied": False,
     }]
 
 
@@ -154,31 +154,33 @@ def _broken_up_removal_action(finding: dict, counter: list[int]) -> list[dict]:
         "match": f"up:: [[{up_target}]]",
         "replace": "",
         "occurrence": "first",
-        "applied": None,
+        "applied": False,
     }]
 
 
 def _dead_link_action(finding: dict, counter: list[int]) -> list[dict]:
     """Emit edit_note_text for a dead wikilink (fix or remove). ADR-3.
 
-    match = the dead_target from detail (the unresolved wikilink text);
-    replace="" by default (remove). A user-specified replacement target
-    would be carried in the wire as detail.replace_target if set by the
-    garden-audit-render; for v1 we always emit remove intent.
+    match = [[dead_target]] — dead_target is the raw wikilink stem from graph_audit;
+    we wrap it in [[ ]] to match the wikilink as it appears in the note body.
+    replace = decision.get("replace", "") — the user sets this in the wire to
+    specify a replacement target (e.g. "[[New Note]]"). Empty string = remove intent.
+    occurrence = "all" removes every instance (dead links are typically repeated).
     """
     target = finding["target"]
     path = target["path"]
     detail = finding.get("detail", {})
+    decision = finding.get("decision", {})
     dead_target = detail.get("dead_target", "")
-    replace_target = detail.get("replace_target", "")
+    replace_target = decision.get("replace", "")
     return [{
         "id": _next_id(counter),
         "action": "edit_note_text",
         "path": path,
-        "match": dead_target,
+        "match": f"[[{dead_target}]]",
         "replace": replace_target,
-        "occurrence": "first",
-        "applied": None,
+        "occurrence": "all",
+        "applied": False,
     }]
 
 

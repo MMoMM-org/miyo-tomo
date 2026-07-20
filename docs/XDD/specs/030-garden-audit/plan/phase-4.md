@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Apply Integration (2-pass + edit_note_text)"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -27,7 +27,7 @@ phase: 4
 
 Wires the approved wire into the shipped 2-pass apply path and adds the one new Hashi action.
 
-- [ ] **T4.1 `edit_note_text` Hashi action + builder** `[activity: backend]` `[parallel: true]`
+- [x] **T4.1 `edit_note_text` Hashi action + builder** `[activity: backend]` `[parallel: true]`
 
   1. Prime: Read hashi-instructions.schema.json action `oneOf`, and render_actions builders + `_strip_internal_link_fields`.
   2. Test: schema accepts `{path, match, replace, occurrence}` and rejects extras (additionalProperties:false); builder emits it for dead-link fix (`match="[[Old]]" replace="[[New]]"`), dead-link remove (`replace=""`), and `up::` removal (whole-line match, `replace=""`); occurrence defaults `first`; broken-`up::` **repoint** still emits `add_relationship` (not `edit_note_text`).

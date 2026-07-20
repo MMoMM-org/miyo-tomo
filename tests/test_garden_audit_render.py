@@ -494,6 +494,55 @@ class TestAllAdvisoryRun:
 
 
 # ---------------------------------------------------------------------------
+# FIX 1 regression: dead_link wire finding must carry decision.replace=""
+# (editable by the user to specify a replacement target; empty = remove intent)
+# ---------------------------------------------------------------------------
+
+class TestDeadLinkWireReplace:
+    """build_wire_payload must populate decision.replace='' on dead_link findings.
+
+    The replace field is the editable slot the user fills in the wire to specify
+    a replacement target for the dead wikilink. An empty string signals remove intent.
+    garden-audit-parser.py reads decision.replace (not detail.replace_target).
+    """
+
+    def test_dead_link_wire_finding_has_decision_replace_field(self):
+        findings = [_make_dead_link_finding("F01")]
+        d = _make_doc(findings=findings)
+        wire = _build_wire(d)
+        f = next(f for f in wire["findings"] if f["id"] == "F01")
+        assert "decision" in f
+        assert "replace" in f["decision"], "decision.replace field missing from dead_link wire finding"
+
+    def test_dead_link_wire_decision_replace_defaults_to_empty_string(self):
+        findings = [_make_dead_link_finding("F01")]
+        d = _make_doc(findings=findings)
+        wire = _build_wire(d)
+        f = next(f for f in wire["findings"] if f["id"] == "F01")
+        assert f["decision"]["replace"] == "", (
+            f"decision.replace should default to '' (remove intent), got {f['decision']['replace']!r}"
+        )
+
+    def test_non_dead_link_fixable_finding_has_no_replace_in_decision(self):
+        # Other fixable checks (broken_up, unparented) must NOT get decision.replace
+        findings = [_make_broken_up_finding("F01")]
+        d = _make_doc(findings=findings)
+        wire = _build_wire(d)
+        f = next(f for f in wire["findings"] if f["id"] == "F01")
+        assert "replace" not in f["decision"], (
+            "decision.replace should only appear on dead_link findings"
+        )
+
+    def test_dead_link_wire_schema_valid_with_replace_field(self):
+        schema = _load_wire_schema()
+        findings = [_make_dead_link_finding("F01")]
+        d = _make_doc(findings=findings)
+        wire = _build_wire(d)
+        # After adding replace to schema, this must validate without error
+        jsonschema.validate(wire, schema)
+
+
+# ---------------------------------------------------------------------------
 # W1 regression: fixable finding with missing decision block → ValueError
 # ---------------------------------------------------------------------------
 

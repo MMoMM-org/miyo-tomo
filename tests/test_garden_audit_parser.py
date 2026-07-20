@@ -127,12 +127,22 @@ def _broken_up_removal(fid="F01", selected=True):
     )
 
 
-def _dead_link(fid="F01", selected=True):
+def _dead_link(fid="F01", selected=True, replace=None):
+    """Build a dead_link wire finding.
+
+    dead_target is the raw wikilink stem (no brackets) — the scan orchestrator
+    stores the graph_audit target verbatim. The parser wraps it as [[stem]] when
+    building the edit_note_text match field. decision.replace carries the optional
+    replacement target (editable by the user in the wire); absent/empty = remove.
+    """
+    decision = {"selected": selected, "action": "edit_note_text"}
+    if replace is not None:
+        decision["replace"] = replace
     return _wire_finding(
         fid, "dead_link", "integrity", True,
         "Notes/Source.md", "Source",
-        {"dead_target": "[[Missing Note]]", "count": 1},
-        decision={"selected": selected, "action": "edit_note_text"},
+        {"dead_target": "Missing Note", "count": 1},
+        decision=decision,
     )
 
 
@@ -285,14 +295,45 @@ class TestBuildFromWireDeadLink:
         a = actions[0]
         assert a["action"] == "edit_note_text"
         assert a["path"] == "Notes/Source.md"
+        # match wraps dead_target in [[ ]] — dead_target is raw stem from graph_audit
         assert a["match"] == "[[Missing Note]]"
-        # default replace="" (remove); caller may set a replacement target later
-        assert "replace" in a
+        # default replace="" (remove when decision.replace absent or empty)
+        assert a["replace"] == ""
 
     def test_unselected_dead_link_emits_no_action(self):
         wire = _make_wire([_dead_link(selected=False)])
         result = build_from_wire(wire)
         assert result["actions"] == []
+
+    def test_dead_link_match_wraps_dead_target_in_brackets(self):
+        # dead_target is raw stem; parser must wrap in [[]] for wikilink match
+        wire = _make_wire([_dead_link(selected=True)])
+        result = build_from_wire(wire)
+        a = result["actions"][0]
+        assert a["match"].startswith("[[") and a["match"].endswith("]]")
+
+    def test_dead_link_occurrence_is_all(self):
+        # occurrence="all" removes every instance of the dead wikilink
+        wire = _make_wire([_dead_link(selected=True)])
+        result = build_from_wire(wire)
+        a = result["actions"][0]
+        assert a["occurrence"] == "all"
+
+    def test_dead_link_with_replace_target_uses_replace_from_decision(self):
+        # User sets decision.replace="[[New Note]]" → fix replaces the dead link
+        finding = _dead_link(selected=True, replace="[[New Note]]")
+        wire = _make_wire([finding])
+        result = build_from_wire(wire)
+        a = result["actions"][0]
+        assert a["replace"] == "[[New Note]]"
+
+    def test_dead_link_with_empty_replace_removes_link(self):
+        # decision.replace="" → replace="" in action (remove intent)
+        finding = _dead_link(selected=True, replace="")
+        wire = _make_wire([finding])
+        result = build_from_wire(wire)
+        a = result["actions"][0]
+        assert a["replace"] == ""
 
 
 class TestBuildFromWireAdvisory:
@@ -337,3 +378,55 @@ class TestBuildFromWireMixed:
         # IDs must be distinct and monotonically increasing
         assert len(ids) == len(set(ids))
         assert ids == sorted(ids)
+
+
+class TestAppliedStamping:
+    """All action builders must emit applied=False, not None.
+
+    garden-audit-parser bypasses instruction-render's build_actions() which
+    stamps applied=False as its final step. The parser must therefore stamp
+    applied=False itself on every action it emits (ADR-4 / ADR-026 contract).
+    """
+
+    def test_filing_actions_have_applied_false(self):
+        wire = _make_wire([_unparented(selected=True)])
+        result = build_from_wire(wire)
+        for a in result["actions"]:
+            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
+
+    def test_broken_up_repoint_has_applied_false(self):
+        wire = _make_wire([_broken_up_repoint(selected=True)])
+        result = build_from_wire(wire)
+        for a in result["actions"]:
+            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
+
+    def test_broken_up_removal_has_applied_false(self):
+        wire = _make_wire([_broken_up_removal(selected=True)])
+        result = build_from_wire(wire)
+        for a in result["actions"]:
+            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
+
+    def test_dead_link_action_has_applied_false(self):
+        wire = _make_wire([_dead_link(selected=True)])
+        result = build_from_wire(wire)
+        for a in result["actions"]:
+            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
+
+    def test_all_actions_in_mixed_wire_have_applied_false(self):
+        findings = [
+            _unparented("F01", selected=True),
+            _broken_up_removal("F02", selected=True),
+            _dead_link("F03", selected=True),
+        ]
+        wire = _make_wire(findings)
+        result = build_from_wire(wire)
+        assert len(result["actions"]) > 0
+        for a in result["actions"]:
+            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
+
+    def test_applied_is_not_none(self):
+        # Explicit regression: applied=None is wrong (None is falsy but not False)
+        wire = _make_wire([_unparented(selected=True)])
+        result = build_from_wire(wire)
+        for a in result["actions"]:
+            assert a["applied"] is not None, f"action {a['id']} has applied=None — must be False"

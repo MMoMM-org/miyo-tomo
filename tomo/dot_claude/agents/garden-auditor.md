@@ -1,7 +1,8 @@
 ---
 name: garden-auditor
-description: "Use PROACTIVELY when the user types /garden-audit, when a whole-vault structural scan is requested, when the user wants to find orphan notes, dead links, broken up:: relations, unparented notes, duplicate stems, or stale MOCs, or when managing garden-audit exclusions (--configure). Scans the vault, produces a severity-ordered report + wire, and transports them to the inbox. <example>User types: /garden-audit</example> <example>User types: /garden-audit --configure</example>"
+description: "Use PROACTIVELY when the user types /garden-audit, when a whole-vault structural scan is requested, when the user wants to find orphan notes, dead links, broken up:: relations, unparented notes, duplicate stems, or stale MOCs, or when managing garden-audit exclusions (--configure). Scans the vault, produces a severity-ordered report + wire, and transports them to the inbox. <example>User types: /garden-audit\nassistant: I'll run the garden-auditor agent to scan your vault for structural issues.</example> <example>User types: /garden-audit --configure\nassistant: I'll run the garden-auditor agent in configure mode to update exclusions.</example> <example>User: find all orphan notes and dead links in my vault\nassistant: I'll run the garden-auditor agent to detect orphans, dead links, and other structural problems.</example> <example>User: my vault has a lot of broken up:: links — can you scan for them?\nassistant: I'll invoke the garden-auditor agent to scan for broken up:: relations and other integrity issues.</example>"
 model: sonnet
+effort: medium
 color: green
 tools:
   - Bash
@@ -142,10 +143,13 @@ Sample question (adapt per cluster):
 > `Calendar/` has NNN findings, mostly unparented and orphan. Daily notes typically never
 > get an `up::` parent or graph links — exclude this folder permanently?
 
-Options: `Exclude all checks permanently` | `Exclude specific checks` | `Keep in audit`
+Options: `Exclude all checks permanently` | `Exclude specific checks` | `Keep in audit` | `Decide later`
 
-If the user picks `Exclude specific checks`, ask which checks to exclude for that cluster
-(multi-select from: unparented, orphan, broken_up, dead_link, duplicate_stem, stale_moc).
+If the user picks `Exclude specific checks`, ask which checks to exclude. Split across two
+`AskUserQuestion` calls (max 4 options each, `multiSelect: true`):
+
+- Call 1 (integrity): `broken_up` | `dead_link` | `unparented` | `orphan`
+- Call 2 (advisory): `duplicate_stem` | `stale_moc`
 
 #### Wizard Step C — Ask about temporary push-backs
 
@@ -159,8 +163,9 @@ If custom, ask for a number of days.
 
 #### Wizard Step D — Write the exclusion config
 
-Compose the YAML for all exclusions the user confirmed. Write it using the `Write` tool
-to `config/garden-audit-exclusions.yaml`:
+Compose the YAML for all exclusions the user confirmed. Replace `<TODAY_ISO>` with
+today's date in YYYY-MM-DD format. Write using the `Write` tool to
+`config/garden-audit-exclusions.yaml`:
 
 ```yaml
 version: 1
@@ -210,10 +215,10 @@ Log: `Report rendered.`
 
 ### Step 7 — Transport report and wire to vault inbox
 
-**STRICT (Why: a large report inlined into a kado-write tool call exceeds the token budget — mirrors moc-architect Step 7 rationale):**
+**STRICT (Why: large report inlined into kado-write exceeds the output-token budget and the call fails):**
 - Transport ONLY via `scripts/kado-write-file.py`. NEVER read the report and inline it into a `kado-write` tool call.
 - Both artifacts are transported: the report `.md` first, then the wire `.json`.
-- Join `<INBOX_PATH>` (already ends in `/`) with the basename of each local file.
+- Join `<INBOX_PATH>` (already ends in `/`) with the basename of each local file. Do NOT hard-code `"100 Inbox/"` — always use the resolved `INBOX_PATH`.
 
 Transport the report:
 
@@ -245,7 +250,11 @@ No prose after it.
 
 ## Verification
 
-Before emitting the final report, verify:
+Before emitting the final report:
+
+**If Mode == configure:** skip checks 2-3 (no report/wire produced in configure mode). Emit `Report: N/A (configure mode)` and `Wire: N/A (configure mode)` in the output block.
+
+**If Mode == audit:**
 1. `tomo-tmp/garden-audit-doc.json` exists (use `Read` to check first char is `{`).
 2. Both local artifacts exist: `$LOCAL_REPORT` and `$LOCAL_WIRE`.
 3. Both transports exited 0.

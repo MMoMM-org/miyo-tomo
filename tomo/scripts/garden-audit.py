@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
 Runs six checks over the MOC-structure cache, kado-graph-audit results, and
@@ -23,10 +23,14 @@ Public entry point for callers and tests:
            stale_moc_days=90, run_id=None, profile=None, generated=None,
            today=None) -> dict
 
+CLI entry point (garden-auditor.md agent invokes this):
+  python3 scripts/garden-audit.py --config <path> [--exclusions <path>] --output <path>
+
 Design notes: docs/tomo/scripts/garden-audit.md
 """
 from __future__ import annotations
 
+import json
 import sys
 import uuid
 from collections import defaultdict
@@ -446,3 +450,113 @@ def run_scan(
         "findings": all_findings,
     }
     return doc
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLI entry point (invoked by garden-auditor.md agent)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def main() -> int:
+    """CLI for the garden-auditor agent.
+
+    Loads the MOC-structure cache, builds a KadoClient, wires graph_audit and
+    list_dir as injected callables, runs run_scan(), and writes the result JSON
+    to --output.  Mirrors the pattern used by moc-tree-builder.py main().
+    """
+    import argparse
+
+    import yaml
+
+    from lib.garden_exclusions import GardenExclusions
+    from lib.kado_client import KadoClient
+
+    p = argparse.ArgumentParser(
+        prog="garden-audit.py",
+        description="Run garden-audit checks and emit garden-audit-doc.json.",
+    )
+    p.add_argument("--config", required=True, help="Path to vault-config.yaml")
+    p.add_argument(
+        "--exclusions",
+        default=None,
+        help="Path to garden-audit-exclusions.yaml (omit for first-run / no exclusions)",
+    )
+    p.add_argument("--output", required=True, help="Output path for garden-audit-doc.json")
+    args = p.parse_args()
+
+    # ── Load config ──────────────────────────────────────────────────────────
+    config_path = Path(args.config)
+    print(f"[garden-audit] Loading config: {config_path!r}", file=sys.stderr)
+    try:
+        with open(config_path, encoding="utf-8") as fh:
+            config = yaml.safe_load(fh) or {}
+    except FileNotFoundError:
+        print(f"[error] Config file not found: {config_path}", file=sys.stderr)
+        return 1
+    except yaml.YAMLError as exc:
+        print(f"[error] Failed to parse config: {exc}", file=sys.stderr)
+        return 1
+
+    profile: str | None = config.get("profile")
+
+    # ── Load MOC-structure cache ──────────────────────────────────────────────
+    cache_path = config_path.parent / "moc-structure-cache.yaml"
+    print(f"[garden-audit] Loading MOC-structure cache: {cache_path!r}", file=sys.stderr)
+    try:
+        with open(cache_path, encoding="utf-8") as fh:
+            cache = yaml.safe_load(fh) or {}
+    except FileNotFoundError:
+        print(
+            f"[error] MOC-structure cache not found: {cache_path} — run /explore-vault first.",
+            file=sys.stderr,
+        )
+        return 1
+    except yaml.YAMLError as exc:
+        print(f"[error] Failed to parse MOC-structure cache: {exc}", file=sys.stderr)
+        return 1
+
+    entries: list[dict] = cache.get("entries") or []
+    print(f"[garden-audit] Cache loaded: {len(entries)} entries", file=sys.stderr)
+
+    # ── Load exclusions ───────────────────────────────────────────────────────
+    exclusions: GardenExclusions | None = None
+    if args.exclusions:
+        exclusions = GardenExclusions.from_path(Path(args.exclusions))
+        rule_count = len(exclusions._rules) if hasattr(exclusions, "_rules") else "?"
+        print(f"[garden-audit] Exclusions loaded from: {args.exclusions!r} ({rule_count} rules)", file=sys.stderr)
+    else:
+        print("[garden-audit] No exclusions file — scan is unfiltered.", file=sys.stderr)
+
+    # ── Connect to Kado ───────────────────────────────────────────────────────
+    print("[garden-audit] Connecting to Kado...", file=sys.stderr)
+    try:
+        client = KadoClient()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[error] Failed to initialise KadoClient: {exc}", file=sys.stderr)
+        return 1
+
+    # ── Run scan ──────────────────────────────────────────────────────────────
+    print("[garden-audit] Running scan...", file=sys.stderr)
+    doc = run_scan(
+        entries,
+        graph_audit_fn=client.graph_audit,
+        list_dir_fn=client.list_dir,
+        exclusions=exclusions,
+        profile=profile,
+    )
+
+    # ── Write output ──────────────────────────────────────────────────────────
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, ensure_ascii=False, indent=2)
+
+    finding_count = len(doc.get("findings") or [])
+    print(
+        f"[garden-audit] Done: {finding_count} finding(s) → {args.output}",
+        file=sys.stderr,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

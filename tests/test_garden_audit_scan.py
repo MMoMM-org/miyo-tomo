@@ -23,6 +23,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import jsonschema
+
 SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
 SCHEMAS_DIR = Path(__file__).parent.parent / "tomo" / "schemas"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -796,3 +798,143 @@ def test_output_validates_against_doc_schema():
     schema = json.loads(schema_path.read_text())
     # Should not raise
     jsonschema.validate(instance=doc, schema=schema)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLI (main()) tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestMainCLI:
+    """Verify the garden-audit.py CLI (main()) writes schema-valid JSON to --output.
+
+    Uses a fake KadoClient injected via monkeypatch — no Kado/network required.
+    Validates the output against garden-audit-doc.schema.json.
+    """
+
+    def _write_config(self, tmp_path: Path, profile: str = "miyo") -> Path:
+        import yaml
+
+        config = {"profile": profile, "concepts": {"inbox": "100 Inbox/"}}
+        config_path = tmp_path / "vault-config.yaml"
+        config_path.write_text(yaml.dump(config), encoding="utf-8")
+        return config_path
+
+    def _write_cache(self, tmp_path: Path, entries: list) -> Path:
+        import yaml
+
+        cache = {"entries": entries, "last_scan": "2026-07-20T00:00:00+00:00"}
+        cache_path = tmp_path / "moc-structure-cache.yaml"
+        cache_path.write_text(yaml.dump(cache), encoding="utf-8")
+        return cache_path
+
+    def test_main_writes_schema_valid_output(self, tmp_path, monkeypatch):
+        """main() with a fake KadoClient produces a schema-valid garden-audit-doc.json."""
+        import sys
+        import types
+
+        # Minimal cache: one unparented note, one MOC
+        entries = [
+            {"path": "Notes/Loose.md", "stem": "Loose", "kind": "note",
+             "up_state": "absent", "topics": [], "tags": []},
+            {"path": "MOCs/Ideas.md", "stem": "Ideas", "kind": "moc",
+             "up_state": "valid", "topics": ["ideas"], "tags": []},
+        ]
+        config_path = self._write_config(tmp_path)
+        self._write_cache(tmp_path, entries)
+
+        output_path = tmp_path / "output" / "garden-audit-doc.json"
+
+        # Fake KadoClient: graph_audit returns empty result; list_dir returns []
+        class _FakeClient:
+            def graph_audit(self, **kwargs):
+                return {"orphans": [], "deadLinks": [], "total": {}}
+
+            def list_dir(self, path="/", **kwargs):
+                return []
+
+        # Inject fake KadoClient into the garden_audit module's lib.kado_client
+        fake_kado_mod = types.ModuleType("lib.kado_client")
+        fake_kado_mod.KadoClient = _FakeClient
+        monkeypatch.setitem(sys.modules, "lib.kado_client", fake_kado_mod)
+
+        args = [
+            "--config", str(config_path),
+            "--output", str(output_path),
+        ]
+        monkeypatch.setattr(sys, "argv", ["garden-audit.py"] + args)
+
+        exit_code = garden_audit.main()
+
+        assert exit_code == 0, "main() must exit 0 on success"
+        assert output_path.exists(), "--output file must be written"
+
+        doc = json.loads(output_path.read_text(encoding="utf-8"))
+
+        # Schema validation
+        schema_path = SCHEMAS_DIR / "garden-audit-doc.schema.json"
+        schema = json.loads(schema_path.read_text())
+        jsonschema.validate(instance=doc, schema=schema)
+
+        # At least one finding (the unparented note)
+        findings = doc.get("findings") or []
+        unparented = [f for f in findings if f["check"] == "unparented"]
+        assert unparented, "unparented finding expected for Loose.md"
+
+        # Profile from config propagated
+        assert doc.get("profile") == "miyo"
+
+    def test_main_missing_config_exits_nonzero(self, tmp_path, monkeypatch):
+        """main() exits 1 when --config file does not exist."""
+        import sys
+
+        output_path = tmp_path / "out.json"
+        monkeypatch.setattr(sys, "argv", [
+            "garden-audit.py",
+            "--config", str(tmp_path / "missing.yaml"),
+            "--output", str(output_path),
+        ])
+
+        exit_code = garden_audit.main()
+        assert exit_code != 0, "must exit non-zero when config is missing"
+        assert not output_path.exists(), "output must not be written on failure"
+
+    def test_main_exclusions_flag_accepted(self, tmp_path, monkeypatch):
+        """main() accepts --exclusions and loads the file without error."""
+        import sys
+        import types
+        import yaml
+
+        entries = [
+            {"path": "Notes/Loose.md", "stem": "Loose", "kind": "note",
+             "up_state": "absent", "topics": [], "tags": []},
+        ]
+        config_path = self._write_config(tmp_path)
+        self._write_cache(tmp_path, entries)
+
+        excl_path = tmp_path / "garden-audit-exclusions.yaml"
+        excl_path.write_text(
+            yaml.dump({"version": 1, "exclusions": []}), encoding="utf-8"
+        )
+        output_path = tmp_path / "out.json"
+
+        class _FakeClient:
+            def graph_audit(self, **kwargs):
+                return {"orphans": [], "deadLinks": [], "total": {}}
+
+            def list_dir(self, path="/", **kwargs):
+                return []
+
+        fake_kado_mod = types.ModuleType("lib.kado_client")
+        fake_kado_mod.KadoClient = _FakeClient
+        monkeypatch.setitem(sys.modules, "lib.kado_client", fake_kado_mod)
+
+        monkeypatch.setattr(sys, "argv", [
+            "garden-audit.py",
+            "--config", str(config_path),
+            "--exclusions", str(excl_path),
+            "--output", str(output_path),
+        ])
+
+        exit_code = garden_audit.main()
+        assert exit_code == 0
+        assert output_path.exists()

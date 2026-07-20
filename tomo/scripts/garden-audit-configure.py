@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """garden-audit-configure.py — Wizard-support helper for the garden-auditor agent.
 
 Two modes, invoked by garden-auditor.md during the exclusion wizard:
@@ -43,7 +43,10 @@ from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
+import jsonschema  # noqa: E402 (installed in venv)
+
 SCRIPTS_DIR = Path(__file__).resolve().parent
+SCHEMAS_DIR = SCRIPTS_DIR.parent / "schemas"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import yaml  # noqa: E402
@@ -92,14 +95,14 @@ def summarize(doc_path: str) -> int:
         by_folder[folder][check] += 1
 
     # Filter to abnormality clusters: >= absolute threshold OR >= pct threshold.
-    # A folder qualifies when it crosses EITHER bar.
-    pct_floor = int(total * _CLUSTER_PCT_THRESHOLD)
+    # Use float division per-folder to avoid int-truncation on small vaults
+    # (e.g. int(6*0.20)=1 would wrongly qualify every folder with >=1 finding).
     clusters = [
         (folder, dict(counts))
         for folder, counts in by_folder.items()
         if (
             sum(counts.values()) >= _CLUSTER_ABS_THRESHOLD
-            or sum(counts.values()) >= pct_floor
+            or (sum(counts.values()) / total) >= _CLUSTER_PCT_THRESHOLD
         )
     ]
     clusters.sort(key=lambda x: sum(x[1].values()), reverse=True)
@@ -192,7 +195,14 @@ def write_config(choices_path: str, output_path: str) -> int:
         print(f"[error] Failed to parse choices file {choices_path!r}: {exc}", file=sys.stderr)
         return 1
 
-    today_str = choices.get("today") or date.today().isoformat()
+    raw_today = choices.get("today") or date.today().isoformat()
+    try:
+        date.fromisoformat(raw_today)  # validate format before use
+    except ValueError:
+        print(f"[error] invalid today date: {raw_today!r} — expected YYYY-MM-DD", file=sys.stderr)
+        return 1
+    today_str = raw_today
+
     raw_exclusions = choices.get("exclusions") or []
 
     if not isinstance(raw_exclusions, list):
@@ -241,6 +251,20 @@ def write_config(choices_path: str, output_path: str) -> int:
         "configured": True,
         "exclusions": exclusion_entries,
     }
+
+    # Validate against the authoritative schema before writing.
+    # Inline field checks above give friendlier per-field messages;
+    # this is the final gate that catches any gap between them and the schema.
+    _schema_path = SCHEMAS_DIR / "garden-audit-exclusions.schema.json"
+    try:
+        _schema = json.loads(_schema_path.read_text(encoding="utf-8"))
+        jsonschema.validate(instance=config, schema=_schema)
+    except jsonschema.ValidationError as exc:
+        print(f"[error] config failed schema validation: {exc.message}", file=sys.stderr)
+        return 1
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[error] could not load exclusions schema: {exc}", file=sys.stderr)
+        return 1
 
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

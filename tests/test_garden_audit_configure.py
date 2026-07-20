@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_garden_audit_configure.py — Tests for garden-audit-configure.py wizard helper (spec 030).
 
 Covers both modes:
@@ -162,6 +162,47 @@ class TestSummarize:
         calendar_pos = out.find("Calendar/")
         assert archive_pos < calendar_pos, "Archive (15) must appear before Calendar (10)"
 
+    def test_large_vault_summary_is_compact(self, tmp_path, capsys):
+        """T1: 600+ findings across 40+ folders produces < 20 output lines."""
+        # 3 clusters (12 findings each) + 37 non-cluster folders (2 each = 74 total)
+        # Total = 36 + 74 = 110 findings; each cluster folder = 32.7% > 20% AND >= 10 abs
+        findings = []
+        for cluster_idx in range(3):
+            for i in range(12):
+                findings.append(_finding("unparented", f"Cluster{cluster_idx}/Note{i}.md"))
+        for folder_idx in range(37):
+            for i in range(2):
+                findings.append(_finding("orphan", f"Other{folder_idx}/Note{i}.md"))
+        # Scale up to 600+ by replicating non-cluster findings across more folders
+        for folder_idx in range(37, 250):
+            for i in range(2):
+                findings.append(_finding("orphan", f"Other{folder_idx}/Note{i}.md"))
+        doc_path = _write_doc(tmp_path, findings)
+        rc = summarize(doc_path)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert len(out.splitlines()) < 20, (
+            f"Summary must be compact (< 20 lines), got {len(out.splitlines())}: {out[:500]}"
+        )
+
+    def test_pct_threshold_boundary_does_not_overfire(self, tmp_path, capsys):
+        """T2: C1 fix — total=6, 1 finding in FolderA + 5 in FolderB.
+
+        FolderA has 1/6 = 16.7% < 20% AND < 10 abs → must NOT appear in clusters.
+        FolderB has 5/6 = 83.3% > 20% → must appear.
+        The old int(6*0.20)=1 bug would have qualified FolderA (1 >= 1).
+        """
+        findings = (
+            [_finding("orphan", "FolderA/Note0.md")]
+            + [_finding("orphan", f"FolderB/Note{i}.md") for i in range(5)]
+        )
+        doc_path = _write_doc(tmp_path, findings)
+        rc = summarize(doc_path)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "FolderB/" in out, "FolderB (83%) must be a cluster"
+        assert "FolderA/" not in out, "FolderA (16.7%) must NOT be a cluster (C1 fix)"
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # --write tests
@@ -280,6 +321,7 @@ class TestWriteConfig:
         }]
         rc = write_config(_simple_choices(tmp_path, excl), str(out_path))
         assert rc != 0
+        assert not out_path.exists()  # T3: no partial write on validation failure
 
     def test_missing_reason_exits_nonzero(self, tmp_path):
         out_path = tmp_path / "excl.yaml"
@@ -291,6 +333,18 @@ class TestWriteConfig:
         }]
         rc = write_config(_simple_choices(tmp_path, excl), str(out_path))
         assert rc != 0
+        assert not out_path.exists()  # T3: no partial write on validation failure
+
+    def test_invalid_today_date_exits_nonzero(self, tmp_path):
+        """Malformed today date must cause clean nonzero exit (C2 fix)."""
+        out_path = tmp_path / "excl.yaml"
+        choices_file = tmp_path / "choices.json"
+        choices_file.write_text(
+            json.dumps({"today": "not-a-date", "exclusions": []}), encoding="utf-8"
+        )
+        rc = write_config(str(choices_file), str(out_path))
+        assert rc != 0
+        assert not out_path.exists()
 
     def test_invalid_choices_json_exits_nonzero(self, tmp_path):
         """Choices file containing invalid JSON must cause nonzero exit."""

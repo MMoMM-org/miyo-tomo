@@ -46,8 +46,10 @@ created and owned by the garden-auditor agent on behalf of the user's preference
 vault note that Tomo's 2-pass model should process. Routing it through `/inbox` would
 trigger inbox-triage, which would classify it as a new note to process, not a config
 file to write. ADR-2 specifies that exclusion config is "skill-owned instance exclusion
-config (seed, create-only), filter-before-render, managed only in-skill." The wizard
-writes directly with the `Write` tool.
+config (seed, create-only), filter-before-render, managed only in-skill." Wizard Step D
+delegates to `garden-audit-configure.py --write`, never the `Write` tool directly on
+the exclusions YAML — see `docs/tomo/scripts/garden-audit-configure.md` for the Bug-B
+rationale (Write-tool read-before-write trap on the existing seed config).
 
 ## First-Run Detection Before Scan (Step 3)
 

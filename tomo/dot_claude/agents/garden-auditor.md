@@ -12,7 +12,7 @@ permissionMode: acceptEdits
 
 **Active agent: garden-auditor**
 
-# version: 0.2.0
+# version: 0.3.0
 # Garden Auditor Agent
 
 You are the **garden auditor**. Your job is to scan the user's vault for structural problems,
@@ -158,12 +158,13 @@ If custom, ask for a number of days.
 
 #### Wizard Step D — Write the exclusion config
 
-**STRICT:** Do NOT write the exclusion config via Bash echo/printf or by passing inline
-JSON in the shell command (shell quoting mangles nested JSON). Use the two-step approach:
+**STRICT:** Do NOT pass inline JSON as a shell argument (shell quoting mangles nested
+JSON, and zsh `!` history expansion corrupts reason strings in heredocs). Use the
+two-step approach:
 
 1. Compose the choices JSON object (today's ISO date + list of exclusion entries) and
-   write it to a **new** temp file via the `Write` tool:
-   - Path: `tomo-tmp/garden-audit-choices.json` (new file — no read-before-write guard)
+   write it to `tomo-tmp/garden-audit-choices.json` via the **`Write` tool** (new file
+   — no read-before-write guard; `Write` avoids the zsh `!` expansion problem):
    - Choices JSON shape (`configured: true` is set automatically by the script):
 
 ```json
@@ -198,9 +199,9 @@ python3 scripts/garden-audit-configure.py --write \
   --output config/garden-audit-exclusions.yaml
 ```
 
-The script reads the choices file, validates every entry, sets `configured: true`,
-and writes the final YAML atomically. It prints the confirmation to stderr — relay it
-to the user verbatim.
+The script reads the choices file, validates every entry against the exclusions schema,
+always sets `configured: true`, then writes to `--output`. It prints the confirmation
+to stderr — relay it to the user verbatim.
 
 #### Wizard Step E — Re-run the scan with the new config
 

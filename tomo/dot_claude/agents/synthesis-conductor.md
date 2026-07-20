@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.11.0
+# version: 0.12.0
 
 **Active agent: synthesis-conductor**
 
@@ -76,6 +76,7 @@ variables once and use them in every sub-step:
 | `approved_suggestions` | `suggestions` | `pending-approval` | `approved` |
 | `approved_fan` | `suggestions-fan` | `pending-approval` | `approved` |
 | `approved_moc_proposals` | `moc-proposal` | `pending-accept` | `accepted` |
+| `approved_garden_audits` | `garden-audit` | `pending-accept` | `accepted` |
 
 Each entry has `path` (= `VAULT_PATH`), `cache_path` (= `CACHE_PATH`), and `modified` (= `MODIFIED`).
 A `suggestions` entry may also carry `wire_cache_path` (= `WIRE_CACHE_PATH`) — the cached
@@ -122,6 +123,12 @@ For `DOC_TYPE` = `moc-proposal`:
 ```bash
 python3 scripts/moc-proposal-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
 ```
+
+For `DOC_TYPE` = `garden-audit`:
+```bash
+python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
+```
+When the entry has `wire_cache_path`, append `--wire "<WIRE_CACHE_PATH>"` before the `>` redirect — the parser uses the edited wire (ADR-4 / ADR-026) to reconstruct confirmed fix actions.
 
 #### 3b — Render instructions
 

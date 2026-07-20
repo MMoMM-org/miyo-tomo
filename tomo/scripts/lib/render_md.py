@@ -200,7 +200,7 @@ def _render_action_md(action: dict, cfg: dict) -> str:
 
 # Known upstream doc types for the --upstream-type CLI flag.
 # T1.3 (XDD-018): source_* kwargs replaced by sources list in build_tomo_block.
-_UPSTREAM_TYPES: list[str] = ["suggestions", "moc-proposal", "suggestions-fan"]
+_UPSTREAM_TYPES: list[str] = ["suggestions", "moc-proposal", "suggestions-fan", "garden-audit"]
 
 
 def _compute_sha256(file_path: str) -> str | None:

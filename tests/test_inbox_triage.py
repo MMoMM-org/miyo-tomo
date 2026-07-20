@@ -2204,3 +2204,160 @@ class TestTagHandlerResolution:
         assert entry["target_path"] is None
         fresh_paths = {s["path"] for s in plan["fresh_sources"]}
         assert tagged not in fresh_paths
+
+
+# ---------------------------------------------------------------------------
+# Test: garden-audit as 4th upstream type (T4.3 / spec 030 ADR-1, CON-5)
+# ---------------------------------------------------------------------------
+
+def _garden_audit_body() -> str:
+    """Minimal garden-audit markdown body (pending-accept doc)."""
+    return "\n".join([
+        "---",
+        "tomo:",
+        "  doc_type: garden-audit",
+        "  state: pending-accept",
+        "  run_id: run-ga-001",
+        "tomo_skip_inbox_analysis: true",
+        "---",
+        "",
+        "# Knowledge-Garden Audit -- 2026-07-20",
+        "",
+        "## Summary",
+        "",
+        "Integrity: 1 | Structure: 0 | Advisory: 0",
+        "",
+        "## Integrity",
+        "",
+        "### F01 -- Dead link: `Source Note`",
+        "",
+        "Dead link: `Missing Note` (1x in `Notes/Source Note.md`)",
+        "",
+        "**Fix:**",
+        "- [x] Apply `edit_note_text` -- tick to confirm, untick to skip",
+        "",
+    ])
+
+
+def _fm_hit_ga(path: str) -> dict:
+    """Frontmatter search hit for a pending-accept garden-audit doc."""
+    return _fm_hit(path, "garden-audit", "pending-accept")
+
+
+class TestGardenAuditAsUpstreamType:
+    """garden-audit docs (tomo.state=pending-accept, doc_type=garden-audit)
+    are routed as the 4th upstream type -- ADR-1 / CON-5.
+
+    Key behaviours:
+    1. _get_doc_type infers 'garden-audit' from filename stem *_garden-audit.md
+    2. A pending-accept garden-audit doc lands in approved_garden_audits (no
+       separate checkbox check -- acceptance is via wire digest mismatch)
+    3. The doc is excluded from fresh_sources (CON-5 zero Pass-1 cost)
+    4. An /inbox run with no garden-audit doc is byte-neutral (approved_garden_audits=[])
+    5. The routing plan carries approved_garden_audits[] and triggers action=synthesize
+    """
+
+    def _base_frontmatter_responses(self, ga_path: str | None = None) -> dict:
+        """Default empty frontmatter responses with optional garden-audit entry."""
+        return {
+            "tomo.state=pending-approval": [],
+            "tomo.state=pending-accept": (
+                [_fm_hit_ga(ga_path)] if ga_path else []
+            ),
+            "tomo.state=captured": [],
+            "tomo.doc_type=instructions": [],
+            "tomo.state=approved": [],
+            "tomo.state=accepted": [],
+            "tomo.state=pending-move": [],
+        }
+
+    def test_get_doc_type_infers_garden_audit_from_filename(self, tmp_path):
+        """_get_doc_type returns 'garden-audit' for *_garden-audit.md stems."""
+        mod = _load_module()
+        hit = {"path": INBOX_PATH + "2026-07-20_garden-audit.md", "frontmatter": {}}
+        assert mod._get_doc_type(hit) == "garden-audit"
+
+    def test_pending_accept_garden_audit_lands_in_approved_bucket(self, tmp_path):
+        """A pending-accept garden-audit doc goes to approved_garden_audits."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body(), "modified": 0},
+            },
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
+        assert state.approved_garden_audits[0]["path"] == ga_path
+
+    def test_garden_audit_excluded_from_fresh_sources(self, tmp_path):
+        """The garden-audit doc must NOT appear in fresh_sources (CON-5)."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body(), "modified": 0},
+            },
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        fresh_paths = {s["path"] for s in state.new_sources}
+        assert ga_path not in fresh_paths, (
+            "garden-audit doc must be excluded from fresh_sources (zero Pass-1 cost)"
+        )
+
+    def test_no_garden_audit_run_is_byte_neutral(self, tmp_path):
+        """A run with no garden-audit doc leaves approved_garden_audits empty."""
+        mod = _load_module()
+        plain_path = INBOX_PATH + "normal-note.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(plain_path)],
+            frontmatter_responses=self._base_frontmatter_responses(),
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert state.approved_garden_audits == []
+        fresh_paths = {s["path"] for s in state.new_sources}
+        assert plain_path in fresh_paths
+
+    def test_routing_plan_carries_approved_garden_audits(self, tmp_path):
+        """build_routing_plan includes approved_garden_audits in the plan dict."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body(), "modified": 0},
+            },
+        )
+        rc = mod.main(
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            client_factory=lambda: client,
+        )
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        assert "approved_garden_audits" in plan
+        assert len(plan["approved_garden_audits"]) == 1
+        assert plan["approved_garden_audits"][0]["path"] == ga_path
+
+    def test_approved_garden_audit_triggers_synthesize_action(self, tmp_path):
+        """An approved garden-audit doc triggers action=synthesize."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body(), "modified": 0},
+            },
+        )
+        rc = mod.main(
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            client_factory=lambda: client,
+        )
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        assert plan["action"] == "synthesize"

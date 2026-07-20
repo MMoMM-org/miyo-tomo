@@ -79,6 +79,21 @@
       },
       "description": "MOC-proposal docs with [x] Accept ticked"
     },
+    "approved_garden_audits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "modified": {"type": "string"},
+          "cache_path": {"type": "string"},
+          "wire_cache_path": {"type": "string", "description": "ADR-4 / ADR-026: local cache path of the garden-audit-wire.json sibling, when present. Threaded to garden-audit-parser for wire-digest-based acceptance."}
+        }
+      },
+      "description": "Garden-audit docs in pending-accept state (ADR-1, spec 030); accepted unconditionally."
+    },
     "force_atomic_items": {
       "type": "array",
       "items": {

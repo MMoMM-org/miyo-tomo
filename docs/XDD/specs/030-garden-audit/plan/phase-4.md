@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Apply Integration (2-pass + edit_note_text)"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -35,7 +35,7 @@ Wires the approved wire into the shipped 2-pass apply path and adds the one new 
   4. Validate: `pytest tests/test_edit_note_text_action.py`; schema tests pass; ruff clean.
   - Success: one primitive covers all three body-edits; repoint unchanged `[ref: SDD/ADR-3, ADR-5 Rule 7]`.
 
-- [ ] **T4.2 `garden-audit-parser.py` (Pass-2 rebuild-from-wire)** `[activity: backend]`
+- [x] **T4.2 `garden-audit-parser.py` (Pass-2 rebuild-from-wire)** `[activity: backend]`
 
   1. Prime: Read suggestion-parser (`load_changed_wire`, `build_from_wire`) and instruction-render’s upstream-type flow.
   2. Test: `load_changed_wire` returns the wire iff present + `schema_version=="1"` + edited (digest mismatch), else None; `build_from_wire` reconstructs confirmed fixes → actions (`link_to_moc`+`add_relationship` for filing, `add_relationship` for repoint, `edit_note_text` for dead-link/removal); advisory findings emit NO action; unchanged wire → markdown authoritative.
@@ -43,7 +43,7 @@ Wires the approved wire into the shipped 2-pass apply path and adds the one new 
   4. Validate: `pytest tests/test_garden_audit_parser.py`; ruff clean.
   - Success: approved fixables render into the instruction set; filing writes MOC bullet + `up::` `[ref: PRD/Feature 3 ACs]` `[ref: SDD/ADR-5]`.
 
-- [ ] **T4.3 `/inbox` integration as 4th upstream type** `[activity: backend]`
+- [x] **T4.3 `/inbox` integration as 4th upstream type** `[activity: backend]`
 
   1. Prime: Read `[ref: SDD/Interface Specifications — /inbox integration]`, inbox-triage buckets + `compute_new_sources`, `_UPSTREAM_TYPES`, conductor routing.
   2. Test: an accepted garden-audit doc is picked up (bucket + `_get_doc_type` branch) and routed to `garden-audit-parser` → `instruction-render`; it is EXCLUDED from `fresh_sources` (zero Pass-1 cost — assert no inbox-analyst dispatch); a no-garden-audit `/inbox` run is byte-neutral.
@@ -51,6 +51,6 @@ Wires the approved wire into the shipped 2-pass apply path and adds the one new 
   4. Validate: `pytest tests/test_inbox_triage*.py` (extend); byte-neutrality test; ruff clean.
   - Success: no new apply path, zero Pass-1 cost `[ref: PRD/Feature 3 AC]` `[ref: SDD/ADR-1, CON-5]`.
 
-- [ ] **T4.4 Phase Validation** `[activity: validate]`
+- [x] **T4.4 Phase Validation** `[activity: validate]`
 
   - Run all Phase 4 tests; ruff clean. Trace one fixable finding wire → parser → instruction-render → Hashi action shape for each fix type.

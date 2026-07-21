@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -30,7 +30,12 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import build_tomo_block
-from lib.render_md import bare_stem, compute_payload_digest, up_line
+from lib.render_md import (
+    bare_stem,
+    compute_payload_digest,
+    unwrap_list_repr,
+    up_line,
+)
 
 # ── Tier ordering ────────────────────────────────────────────────────────────
 _TIER_ORDER = {"integrity": 0, "structure": 1, "advisory": 2}
@@ -61,6 +66,10 @@ def _wikilink(ref) -> str:
     bare, hover-able stem. Multiple targets render as `[[a]], [[b]]`.
     Empty / None → `(none)` so nothing renders as a raw `[]` or `None`.
     """
+    # DEFENSIVE: a dirty cache may store a list as its str repr ("['020 …']").
+    # Unwrap to the real list before formatting so it renders [[020 …]], not
+    # [[['020 …']]]. Bare stems / [[wikilinks]] pass through unchanged.
+    ref = unwrap_list_repr(ref)
     if ref is None or ref == "" or ref == []:
         return "(none)"
     if isinstance(ref, (list, tuple)):
@@ -83,16 +92,16 @@ def _fix_summary(check: str, detail: dict, decision: dict) -> str:
     The report must let the user decide without reading the wire — spell out the
     concrete before→after change, not just "Apply fix".
     """
-    action = (decision or {}).get("action") or ""
     if check in ("unparented", "orphan"):
         mocs = detail.get("candidate_mocs") or []
         moc = _wikilink(mocs[0]["target_moc"]) if mocs else "(no candidate)"
         return f"Add `up:: {moc}` — files this note under {moc}."
     if check == "broken_up":
         up = _wikilink(detail.get("up_target"))
-        if action == "add_relationship":
-            return f"Repoint the broken `up::` (was {up}) to a valid MOC you choose."
-        return f"Remove the broken `up:: {up}` line from the note's frontmatter."
+        return (
+            f"The broken `up::` (was {up}) — repoint it to a MOC you enter below, "
+            "or leave empty to remove the broken line."
+        )
     if check == "dead_link":
         dead = _wikilink(detail.get("dead_target"))
         replace = (decision or {}).get("replace", "")
@@ -309,10 +318,13 @@ def _render_finding(f: dict) -> list[str]:
                 "- **Replace with:** [[]]    ← fill a target to repoint, "
                 "or leave empty to remove"
             )
-        elif check == "broken_up" and (decision or {}).get("action") == "add_relationship":
+        elif check == "broken_up":
+            # Every broken_up offers repoint OR remove — the user chooses by
+            # filling (repoint) or leaving empty (remove). The parser reads this
+            # field for all broken_up findings, not just pre-marked repoints.
             lines.append(
-                "- **Repoint to:** [[]]    ← enter the correct MOC "
-                "(leave empty to remove the broken link instead)"
+                "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
+                "up::, or leave empty to remove"
             )
         lines.append("")
     elif f.get("tier") == "advisory":
@@ -354,6 +366,12 @@ def render_report(d: dict) -> str:
         "Review the fixes below. Untick any you want to skip; fill in "
         "**Replace with:** / **Repoint to:** where offered. Then run `/inbox` to "
         "apply them via Hashi. Advisory findings are read-only.",
+        "",
+        # Top-level approve gate (ADR-1 revised): garden-audit now mirrors the
+        # suggestions doc — the doc is only picked up by /inbox once this box is
+        # ticked. Matches suggestions-render.py's Approved box shape.
+        "- [ ] Approved — check this box when you've finished reviewing, then "
+        "run `/inbox` to apply the ticked fixes.",
         "",
     ]
     parts += _render_caveats()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """state-promoter.py — Detect approval ticks and flip tomo.state via Kado.
 
 Two public functions:
@@ -54,6 +54,8 @@ def check_tick(body: str, doc_type: str) -> bool:
     """Detect whether the user has ticked the approval/accept box.
 
     - suggestions, suggestions-fan: looks for "- [x] Approved" line.
+    - garden-audit: looks for the top-level "- [x] Approved" line (ADR-1 revised —
+      garden-audit now gates on an explicit approve box like suggestions).
     - moc-proposal: looks for ANY "- [x] Accept" line.
 
     Returns False (not True) on empty body with a warning on stderr.
@@ -66,7 +68,7 @@ def check_tick(body: str, doc_type: str) -> bool:
         )
         return False
 
-    if doc_type in ("suggestions", "suggestions-fan"):
+    if doc_type in ("suggestions", "suggestions-fan", "garden-audit"):
         return bool(_RE_APPROVED.search(body))
     if doc_type == "moc-proposal":
         return bool(_RE_ACCEPT.search(body))

@@ -16,7 +16,7 @@ Coverage:
   - reappeared_exclusions: shown in preamble when present
   - skipped_checks: shown in preamble when present
 """
-# version: 0.1.0
+# version: 0.2.0
 import importlib.util
 import json
 import pathlib
@@ -266,8 +266,10 @@ class TestReportStructure:
         findings = [_make_duplicate_stem_finding()]
         d = _make_doc(findings=findings)
         report = _render_report(d)
-        # Advisory findings carry no checkbox
-        assert "- [" not in report
+        # Advisory findings carry no per-finding Apply checkbox. (The top-level
+        # "- [ ] Approved" gate is always present and is not a per-finding box.)
+        assert "] Apply" not in report
+        assert "- [x]" not in report
 
     def test_reappeared_exclusions_in_preamble(self):
         reappeared = [
@@ -476,7 +478,10 @@ class TestAllAdvisoryRun:
         ]
         d = _make_doc(findings=findings)
         report = _render_report(d)
-        assert "- [" not in report
+        # No per-finding Apply box for an all-advisory run. The top-level
+        # "- [ ] Approved" gate is still present (it is not a fixable box).
+        assert "] Apply" not in report
+        assert "- [x]" not in report
 
     def test_all_advisory_summary_says_no_fixable_findings(self):
         # The summary section must contain an EXPLICIT "no fixable findings" phrase.
@@ -589,15 +594,23 @@ class TestClickableLinksAndFixSummary:
         assert "['020 Active MOC']" not in report
         assert "[020 Active MOC]" not in report.replace("[[020 Active MOC]]", "")
 
-    def test_broken_up_removal_fix_describes_removal(self):
+    def test_broken_up_fix_describes_both_repoint_and_remove(self):
+        # FIX 3: every broken_up now offers repoint OR remove (not removal-only).
         report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
-        assert "Remove" in report and "frontmatter" in report
+        assert "repoint" in report.lower()
+        assert "remove" in report.lower()
 
-    def test_broken_up_repoint_fix_describes_repoint(self):
+    def test_broken_up_offers_repoint_field_for_every_finding(self):
+        # FIX 3: the editable Repoint field renders for a plain broken_up removal
+        # finding (action=edit_note_text), not just pre-marked repoints.
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        assert "**Repoint to:**" in report
+
+    def test_broken_up_repoint_action_also_offers_repoint_field(self):
         f = _make_broken_up_finding()
         f["decision"]["action"] = "add_relationship"
         report = _render_report(_make_doc(findings=[f]))
-        assert "Repoint" in report
+        assert "**Repoint to:**" in report
 
     def test_unparented_fix_names_candidate_moc(self):
         report = _render_report(_make_doc(findings=[_make_unparented_finding()]))
@@ -615,3 +628,62 @@ class TestClickableLinksAndFixSummary:
     def test_fix_line_no_longer_says_apply_backtick_action(self):
         report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
         assert "Apply `edit_note_text`" not in report
+
+
+# ---------------------------------------------------------------------------
+# FIX 1: top-level Approved gate (ADR-1 revised — mirrors suggestions)
+# ---------------------------------------------------------------------------
+
+class TestTopLevelApproveGate:
+    def test_approved_box_present_with_findings(self):
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        assert "- [ ] Approved" in report
+
+    def test_approved_box_present_on_zero_findings(self):
+        # The gate renders even for a healthy vault (nothing to apply, but the
+        # doc still flows through the pending-accept → accepted lifecycle).
+        report = _render_report(_make_doc(findings=[]))
+        assert "- [ ] Approved" in report
+
+    def test_approved_box_unticked_by_default(self):
+        report = _render_report(_make_doc(findings=[_make_dead_link_finding()]))
+        assert "- [x] Approved" not in report
+
+    def test_approved_box_mentions_inbox(self):
+        report = _render_report(_make_doc(findings=[_make_dead_link_finding()]))
+        # Must tell the user to run /inbox after ticking.
+        approved_line = next(
+            ln for ln in report.splitlines() if "Approved" in ln
+        )
+        assert "/inbox" in approved_line
+
+
+# ---------------------------------------------------------------------------
+# FIX 2 (defensive render): a dirty cache storing a list as its str repr must
+# still render clean [[stems]], never [[['…']]].
+# ---------------------------------------------------------------------------
+
+class TestDirtyListReprRender:
+    def test_broken_up_stringified_list_renders_clean_wikilink(self):
+        f = _make_broken_up_finding()
+        f["detail"]["up_target"] = "['020 Active MOC']"  # dirty cache str-repr
+        report = _render_report(_make_doc(findings=[f]))
+        assert "[[020 Active MOC]]" in report
+        assert "['020 Active MOC']" not in report
+        assert "[[['" not in report
+
+    def test_broken_up_stringified_multi_list_renders_all(self):
+        f = _make_broken_up_finding()
+        f["detail"]["up_target"] = "['020 Active MOC', '030 Reference MOC']"
+        report = _render_report(_make_doc(findings=[f]))
+        assert "[[020 Active MOC]]" in report
+        assert "[[030 Reference MOC]]" in report
+        assert "['020 Active MOC'" not in report
+
+    def test_structural_comment_match_unwraps_dirty_list(self):
+        # The round-trip comment's `match` must be the real up:: line so the
+        # parser reconstructs a matching removal target.
+        f = _make_broken_up_finding()
+        f["detail"]["up_target"] = "['020 Active MOC']"
+        report = _render_report(_make_doc(findings=[f]))
+        assert 'match="up:: [[020 Active MOC]]"' in report

@@ -327,7 +327,8 @@ def graph_audit(self, *, include=None, limit=None):
   bucket (or reuse pending-accept + distinguish by doc_type). Its paths join known_paths so
   compute_new_sources excludes the audit doc from fresh_sources (zero Pass-1 cost, CON-5).
 - _get_doc_type: add a branch → "garden-audit" (tomo.doc_type, filename fallback _garden-audit).
-- approval scan: accepted audit → approved_garden_audits[] → action="synthesize".
+- approval scan: audit with a ticked top-level "- [x] Approved" box (ADR-1 revised 2026-07-21) →
+  approved_garden_audits[] → action="synthesize". Unticked → stays pending-accept.
 # render_md.py: _UPSTREAM_TYPES += "garden-audit".
 # synthesis-conductor.md: DOC_TYPE table row → garden-audit-parser.py.
 ```
@@ -404,6 +405,12 @@ never route through `/inbox`.
   - Rationale: proven 3× (suggestions/moc-proposal/fan); burden analysis confirmed zero Pass-1 cost.
   - Trade-offs: one more upstream type to maintain; acceptable — the seam is uniform.
   - User confirmed: **Yes (2026-07-19)**
+  - **Revised 2026-07-21 (live retest):** garden-audit now uses an **explicit top-level
+    `- [x] Approved` gate** (mirroring suggestions), NOT unconditional pickup. `inbox-triage.py`
+    only routes the doc into `approved_garden_audits[]` when `_RE_APPROVED` matches the body;
+    `state-promoter.check_tick` treats garden-audit like suggestions. The per-finding Apply ticks +
+    the wire digest still decide WHICH fixes apply; the top-level box decides WHETHER the doc is
+    picked up at all. Rationale: the user wanted a document-level review gate before any fix lands.
 
 - [x] **ADR-2 Skill-owned instance exclusion config**: `config/garden-audit-exclusions.yaml`,
   seed-pattern (create-only), filter-before-render, managed only inside the skill (wizard +

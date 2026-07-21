@@ -50,3 +50,18 @@ parser's concerns with the discovery context. M1 (SDD spec 021 Phase 1 T1.1)
 explicitly states: "parse_up_from_content does NOT emit up_state; the caller
 derives it." Keeping the return shape to `{target, source}` preserves that
 contract and makes unit-testing the parser trivial.
+
+## Stringified list-repr in `up:` frontmatter (spec 030 FIX 2, 2026-07-21)
+
+WHY `_first_wikilink` yaml.safe_loads a `raw` that starts with `[` but is not a
+`[[wikilink]]`: empirically, some moc-structure caches persisted a frontmatter
+`up:` list as its Python str repr — e.g. the literal string `"['020 Active MOC']"`
+— for a non-trivial fraction of notes (32/339 in the live vault). Treated as a
+bare stem, that string became a garbage target AND falsely flagged the note as
+`broken_up` (its "parent" resolved to a stem no MOC has). The guard is narrow —
+`raw.startswith("[")` and NOT matched by `_WIKILINK_RE` (handled above) — so real
+wikilinks and bare stems are untouched; only a bracketed non-wikilink string is
+parsed back to a list and recursed on (first non-empty element). A parse failure
+falls through to the old bare-stem path, so nothing regresses. This is the ROOT
+fix (fresh caches are clean after re-explore); the renderers additionally unwrap
+defensively so a still-dirty cache renders clean until re-explored.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.23.0
+# version: 0.24.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -92,9 +92,9 @@ class TriageState:
     approved_suggestions: list[dict] = field(default_factory=list)
     approved_fan: list[dict] = field(default_factory=list)
     approved_moc_proposals: list[dict] = field(default_factory=list)
-    # ADR-1 (spec 030): garden-audit is the 4th upstream type; all pending-accept
-    # garden-audit docs are accepted unconditionally (no checkbox — the wire digest
-    # mismatch is the actual user-edit signal, handled by garden-audit-parser).
+    # ADR-1 (spec 030, revised): garden-audit is the 4th upstream type; a
+    # pending-accept garden-audit doc is accepted only when its top-level
+    # "- [x] Approved" box is ticked (mirrors suggestions). Untick → left pending.
     approved_garden_audits: list[dict] = field(default_factory=list)
     force_atomic_items: list[dict] = field(default_factory=list)
     pending_approval: list[dict] = field(default_factory=list)
@@ -623,10 +623,11 @@ def read_approval_state(
         elif doc_type == "moc-proposal":
             approved = bool(_RE_ACCEPT.search(body))
         elif doc_type == "garden-audit":
-            # ADR-1 (spec 030): all pending-accept garden-audit docs are accepted
-            # unconditionally. The wire digest mismatch is the real acceptance
-            # signal (handled by garden-audit-parser in Pass-2) — no checkbox here.
-            approved = True
+            # ADR-1 (spec 030, revised): garden-audit gates on an explicit
+            # top-level "- [x] Approved" box, like suggestions. Untick → stays
+            # pending-accept, not picked up. Per-finding Apply ticks + the wire
+            # digest still drive WHICH fixes apply (garden-audit-parser, Pass-2).
+            approved = bool(_RE_APPROVED.search(body))
 
         if approved:
             entry = {

@@ -122,3 +122,15 @@ asserts `.base`/`.canvas` are excluded) so a future reader never mistakes it for
 silent bug. **Revive** (surface them informationally, or design a metadata scheme)
 only when `.base`/`.canvas` genuinely land in inboxes at scale and users need `/inbox`
 to acknowledge them.
+
+## garden-audit gates on a top-level Approved box (ADR-1 revised, 2026-07-21)
+
+WHY the garden-audit approval branch is `approved = bool(_RE_APPROVED.search(body))`
+rather than an unconditional `True`: ADR-1 originally accepted every pending-accept
+garden-audit doc unconditionally (the wire digest was the only edit signal). The live
+retest reversed that — the user wanted a document-level review gate, like suggestions.
+garden-audit now reuses the exact same `_RE_APPROVED` top-level `- [x] Approved` pattern
+as suggestions/suggestions-fan; an unticked doc stays `pending-accept` and is never routed
+to `approved_garden_audits[]`. Per-finding Apply ticks + the wire still choose WHICH fixes
+apply (garden-audit-parser, Pass-2); this branch only decides WHETHER the doc is picked up.
+Pinned by `test_inbox_triage.py::TestGardenAuditAsUpstreamType::test_unticked_garden_audit_stays_pending`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_state_promoter.py — T3.2 (F-47 Phase 3): state-promoter.py check_tick + flip_state.
 
 Covers:
@@ -165,6 +165,35 @@ tomo:
 **Title:** `Shell & Terminal (MOC)`
 """
 
+# garden-audit gates on a top-level [x] Approved box (ADR-1 revised).
+GARDEN_AUDIT_BODY_APPROVED = """\
+---
+tomo:
+  doc_type: garden-audit
+  state: pending-accept
+---
+
+# Knowledge-Garden Audit — 2026-07-21
+
+- [x] Approved — check this box when you've finished reviewing, then run `/inbox` to apply the ticked fixes.
+
+## Summary
+"""
+
+GARDEN_AUDIT_BODY_UNCHECKED = """\
+---
+tomo:
+  doc_type: garden-audit
+  state: pending-accept
+---
+
+# Knowledge-Garden Audit — 2026-07-21
+
+- [ ] Approved — check this box when you've finished reviewing, then run `/inbox` to apply the ticked fixes.
+
+## Summary
+"""
+
 
 # ---------------------------------------------------------------------------
 # check_tick tests
@@ -203,9 +232,17 @@ class TestCheckTick:
         result = check_tick("\x00\x01\x02binary garbage", "suggestions")
         assert result is False
 
+    def test_garden_audit_finds_header_approved(self):
+        """garden-audit uses the same [x] Approved pattern (ADR-1 revised)."""
+        assert check_tick(GARDEN_AUDIT_BODY_APPROVED, "garden-audit") is True
+
+    def test_garden_audit_unchecked_returns_false(self):
+        """Unticked garden-audit Approved box → False (stays pending-accept)."""
+        assert check_tick(GARDEN_AUDIT_BODY_UNCHECKED, "garden-audit") is False
+
     def test_unknown_doc_type_returns_false_and_logs(self, capsys):
         """Unknown doc_type → False; warning on stderr containing 'unknown doc_type'."""
-        result = check_tick(SUGGESTIONS_BODY_APPROVED, "garden-audit")
+        result = check_tick(SUGGESTIONS_BODY_APPROVED, "totally-unknown-type")
         assert result is False
         captured = capsys.readouterr()
         assert "unknown doc_type" in captured.err

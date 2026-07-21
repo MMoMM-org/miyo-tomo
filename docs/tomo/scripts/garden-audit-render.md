@@ -101,12 +101,48 @@ surface; the user must know that unticking skips, that Replace/Repoint fields ar
 and that `/inbox` applies the kept fixes via Hashi — without reading the skill docs. Advisory
 findings are called out as read-only so the user does not look for a missing checkbox.
 
-## Version 0.3.1
+## Top-level Approved gate (ADR-1 revised, 2026-07-21)
 
-WHY: 0.3.1 addressed the code-quality review — extracted the duplicated `up_line()` /
-`bare_stem()` helpers to `lib/render_md.py` (shared with the parser; parity now enforced
-by a single home). 0.3.0 was the spec-030 Feature 3 vertical fix — added the per-finding
-structural HTML comment (parser round-trip), editable `Replace with:` / `Repoint to:`
-fields, and the top-level how-to-apply banner. Earlier: 0.1.0 initial, 0.1.1 dead-link
-`replace` slot, 0.2.0 clickable wikilinks + fix summaries. `update-tomo.sh` skips
-unchanged versions.
+WHY the report renders a single top-level `- [ ] Approved` box under the how-to-apply
+banner (mirroring `suggestions-render.py`): the user wanted a document-level review gate
+before any fix lands. ADR-1 originally picked garden-audit up unconditionally (the wire
+digest was the only signal); the live retest reversed that. Now `inbox-triage.py` routes
+the doc to `approved_garden_audits[]` only when `_RE_APPROVED` matches, and
+`state-promoter.check_tick` treats garden-audit like suggestions. The per-finding Apply
+ticks + the wire still decide WHICH fixes apply; the top-level box decides WHETHER the doc
+is picked up at all. The box wording/shape is copied from suggestions so the two docs read
+identically to the user.
+
+## Repoint offered for every broken_up (FIX 3, 2026-07-21)
+
+WHY the editable `- **Repoint to:** [[]]` field renders for EVERY fixable `broken_up`
+finding, not just ones pre-marked `action=add_relationship`: the user asked how to set the
+`up::` correctly rather than only removing it ("nicht nur remove"). A broken `up::` has two
+legitimate resolutions — repoint to a real MOC, or remove the dangling line — and only the
+user knows the right MOC. Rendering the field for all broken_up (and the `_fix_summary`
+describing both options) lets the parser's existing discriminator do its job: a non-empty
+Repoint value ⇒ `add_relationship` (up_line from it), an empty `[[]]` ⇒ `edit_note_text`
+removal. The parser already read the field for all broken_up blocks; only the renderer was
+withholding it for removals.
+
+## Defensive list-repr unwrap (FIX 2, 2026-07-21)
+
+WHY `_wikilink` (and the shared `up_line`/`bare_stem` in `render_md.py`) unwrap a
+stringified list-repr like `"['020 Active MOC']"` before formatting: the ROOT fix is in
+`up_parse.py` (fresh caches are clean), but existing caches stay dirty until re-explored,
+so a stale `up_target` would otherwise render as `[[['020 Active MOC']]]`. The renderers
+yaml.safe_load a bracketed non-wikilink string to its list and take the first element,
+guaranteeing a clean `[[020 Active MOC]]` even off a dirty cache. Guarded to strings that
+start with `[` but not `[[`, so wikilinks and bare stems pass through untouched.
+
+## Version 0.4.0
+
+WHY: 0.4.0 (spec 030 live-retest fixes 2026-07-21) — top-level `- [ ] Approved` gate
+(ADR-1 revised), `Repoint to:` field for every broken_up (FIX 3), and defensive list-repr
+unwrap in `_wikilink` (FIX 2). 0.3.1 addressed the code-quality review — extracted the
+duplicated `up_line()` / `bare_stem()` helpers to `lib/render_md.py` (shared with the
+parser; parity now enforced by a single home). 0.3.0 was the spec-030 Feature 3 vertical
+fix — added the per-finding structural HTML comment (parser round-trip), editable
+`Replace with:` / `Repoint to:` fields, and the top-level how-to-apply banner. Earlier:
+0.1.0 initial, 0.1.1 dead-link `replace` slot, 0.2.0 clickable wikilinks + fix summaries.
+`update-tomo.sh` skips unchanged versions.

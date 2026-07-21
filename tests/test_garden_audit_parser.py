@@ -15,7 +15,7 @@ Covers:
   end-to-end        — approved markdown → build_from_markdown →
                       build_garden_audit_actions → correct Hashi actions.
 """
-# version: 0.3.0
+# version: 0.4.0
 import importlib.util
 import json
 import pathlib
@@ -475,6 +475,25 @@ class TestMarkdownRoundTrip:
         assert c["match"] == "up:: [[Old MOC]]"
         assert c["replace"] == ""
 
+    def test_removal_finding_offers_repoint_field_and_fills_to_add_rel(self):
+        # FIX 3: a broken_up finding with action=edit_note_text (a "removal"
+        # finding) now ALSO renders the Repoint field; filling it makes the fix
+        # a repoint (add_relationship), not just a removal.
+        md = _full_report(_make_doc([_doc_finding_broken_up_removal("F02")]))
+        assert "**Repoint to:**" in md  # field rendered for a removal finding
+        md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[New Home MOC]]")
+        c = build_from_markdown(md)["confirmed_items"][0]
+        assert c["garden_action"] == "add_relationship"
+        assert c["up_line"] == "up:: [[New Home MOC]]"
+
+    def test_removal_finding_empty_repoint_stays_removal(self):
+        # Same removal finding, user leaves the Repoint field empty → removal.
+        md = _full_report(_make_doc([_doc_finding_broken_up_removal("F02")]))
+        c = build_from_markdown(md)["confirmed_items"][0]
+        assert c["garden_action"] == "edit_note_text"
+        assert c["match"] == "up:: [[Deleted MOC]]"
+        assert c["replace"] == ""
+
 
 # ---------------------------------------------------------------------------
 # END-TO-END (F6 fix): approved markdown → confirmed_items → actions
@@ -496,9 +515,14 @@ class TestEndToEndApprovedReportToActions:
             _doc_finding_duplicate("F05"),          # advisory → nothing
         ])
         md = _full_report(doc)
-        # User fills the repoint target so F03 becomes a repoint.
-        md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[Correct MOC]]")
-        return md
+        # Every broken_up now renders a Repoint field (FIX 3). The user fills
+        # ONLY F03's field → F03 repoints; F02 stays a removal. Split on the F03
+        # header so the fill is scoped to that block, not a global replace.
+        head, _, f03_onward = md.partition("### F03")
+        f03_onward = f03_onward.replace(
+            "**Repoint to:** [[]]", "**Repoint to:** [[Correct MOC]]", 1
+        )
+        return head + "### F03" + f03_onward
 
     def test_confirmed_items_cover_every_fixable_finding(self):
         items = build_from_markdown(self._approved_md())["confirmed_items"]

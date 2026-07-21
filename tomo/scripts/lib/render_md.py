@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.2.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+
+import yaml
 
 from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block
 from lib.render_helpers import _moc_stem, _stem
@@ -241,13 +243,40 @@ def compute_payload_digest(payload: dict) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def unwrap_list_repr(value):
+    """Unwrap a stringified list-repr `"['a', 'b']"` → the Python list `['a','b']`.
+
+    DEFENSIVE against dirty caches: some moc-structure caches persist a
+    frontmatter `up:` list as its Python str repr (e.g. "['020 Active MOC']").
+    Rendered naively this leaks `[[['020 Active MOC']]]`. The real fix is upstream
+    in up_parse (so freshly-explored caches are clean), but existing caches stay
+    dirty until re-explored — so the renderers unwrap here too. Non-list-repr
+    strings (bare stems, `[[wikilinks]]`) pass through unchanged.
+    """
+    if isinstance(value, str):
+        s = value.strip()
+        # A [[wikilink]] also starts with "[" — never treat it as a list-repr.
+        if s.startswith("[") and not s.startswith("[["):
+            try:
+                parsed = yaml.safe_load(s)
+            except yaml.YAMLError:
+                parsed = None
+            if isinstance(parsed, list):
+                return parsed
+    return value
+
+
 def bare_stem(ref) -> str:
     """Bare stem of a note/MOC ref: strip [[ ]], a folder prefix, and .md.
 
     Shared by garden-audit-render (structural comment) and garden-audit-parser
     (confirmed_item reconstruction). Load-bearing round-trip contract: both sides
     must derive the same stem from a given ref, so it lives here (single home).
+    Defensively unwraps a stringified list-repr (dirty cache) to its first element.
     """
+    ref = unwrap_list_repr(ref)
+    if isinstance(ref, (list, tuple)):
+        ref = next((r for r in ref if r is not None and str(r).strip()), "")
     s = str(ref or "").strip()
     if s.startswith("[[") and s.endswith("]]"):
         s = s[2:-2].strip()
@@ -263,12 +292,14 @@ def up_line(up_target) -> str:
     The graph cache stores up:: as a multi-value list, so up_target may arrive as
     e.g. ['020 Active MOC']. Reduces to clean stems (strip [[ ]], whitespace,
     empties) so the reconstructed frontmatter line is exact — never a list repr.
+    Also defensively unwraps a stringified list-repr (dirty cache) before formatting.
 
     Shared by garden-audit-render (structural comment `match`) and
     garden-audit-parser (edit_note_text removal `match`). Parity-locked: if the
     two sides diverge, the comment's match no longer matches what the parser
     reconstructs and the fix silently no-ops. Single home enforces parity.
     """
+    up_target = unwrap_list_repr(up_target)
     raw = up_target if isinstance(up_target, (list, tuple)) else [up_target]
     stems = []
     for t in raw:

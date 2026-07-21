@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
 T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
@@ -2210,8 +2210,14 @@ class TestTagHandlerResolution:
 # Test: garden-audit as 4th upstream type (T4.3 / spec 030 ADR-1, CON-5)
 # ---------------------------------------------------------------------------
 
-def _garden_audit_body() -> str:
-    """Minimal garden-audit markdown body (pending-accept doc)."""
+def _garden_audit_body(approved: bool = True) -> str:
+    """Minimal garden-audit markdown body (pending-accept doc).
+
+    ADR-1 revised: garden-audit gates on a top-level "- [x] Approved" box.
+    ``approved=True`` ticks it (doc is picked up); ``approved=False`` leaves it
+    unticked (doc stays pending-accept).
+    """
+    tick = "x" if approved else " "
     return "\n".join([
         "---",
         "tomo:",
@@ -2222,6 +2228,9 @@ def _garden_audit_body() -> str:
         "---",
         "",
         "# Knowledge-Garden Audit -- 2026-07-20",
+        "",
+        f"- [{tick}] Approved -- check this box when you've finished reviewing, "
+        "then run `/inbox` to apply the ticked fixes.",
         "",
         "## Summary",
         "",
@@ -2234,7 +2243,7 @@ def _garden_audit_body() -> str:
         "Dead link: `Missing Note` (1x in `Notes/Source Note.md`)",
         "",
         "**Fix:**",
-        "- [x] Apply `edit_note_text` -- tick to confirm, untick to skip",
+        "- [x] Apply -- untick to skip",
         "",
     ])
 
@@ -2250,8 +2259,9 @@ class TestGardenAuditAsUpstreamType:
 
     Key behaviours:
     1. _get_doc_type infers 'garden-audit' from filename stem *_garden-audit.md
-    2. A pending-accept garden-audit doc lands in approved_garden_audits (no
-       separate checkbox check -- acceptance is via wire digest mismatch)
+    2. A pending-accept garden-audit doc lands in approved_garden_audits ONLY when
+       its top-level "- [x] Approved" box is ticked (ADR-1 revised); an unticked
+       doc stays pending-accept (not picked up).
     3. The doc is excluded from fresh_sources (CON-5 zero Pass-1 cost)
     4. An /inbox run with no garden-audit doc is byte-neutral (approved_garden_audits=[])
     5. The routing plan carries approved_garden_audits[] and triggers action=synthesize
@@ -2305,6 +2315,25 @@ class TestGardenAuditAsUpstreamType:
         state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
         assert len(state.approved_garden_audits) == 1
         assert state.approved_garden_audits[0]["path"] == ga_path
+
+    def test_unticked_garden_audit_stays_pending(self, tmp_path):
+        """ADR-1 revised: an UNticked garden-audit Approved box → the doc is NOT
+        picked up. It stays in pending_approval; approved_garden_audits is empty."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body(approved=False), "modified": 0},
+            },
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert state.approved_garden_audits == [], (
+            "an unticked garden-audit Approved box must not be picked up"
+        )
+        pending_paths = {p["path"] for p in state.pending_approval}
+        assert ga_path in pending_paths
 
     def test_garden_audit_excluded_from_fresh_sources(self, tmp_path):
         """The garden-audit doc must NOT appear in fresh_sources (CON-5)."""

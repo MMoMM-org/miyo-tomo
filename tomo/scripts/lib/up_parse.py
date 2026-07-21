@@ -1,4 +1,4 @@
-# version: 0.2.1
+# version: 0.2.2
 """up_parse.py — SSoT for "does this note declare a parent?"
 
 Parses both inline `up::` (Dataview-style) and frontmatter `up:` values
@@ -146,6 +146,21 @@ def _first_wikilink(up_value: object) -> Optional[str]:
     m = _WIKILINK_RE.match(raw)
     if m:
         inner = m.group(1)
+    elif raw.startswith("["):
+        # A frontmatter `up:` scalar that is a stringified Python list-repr, e.g.
+        # "['020 Active MOC']" or '["a", "b"]'. Some caches persist the list this
+        # way; treated as a bare stem it becomes garbage (and FALSELY marks the
+        # note broken_up). Parse it back and take the first non-empty element.
+        # Guarded to raw.startswith("[") and NOT a [[wikilink]] (handled above),
+        # so normal stems/wikilinks are untouched.
+        try:
+            parsed = yaml.safe_load(raw)
+        except yaml.YAMLError:
+            parsed = None
+        if isinstance(parsed, list):
+            return _first_wikilink(parsed)  # recurse: first non-empty element
+        # Not a real list (e.g. "[not yaml") — fall through as a bare stem.
+        inner = raw
     else:
         # Plain stem (no wikilink brackets) — accepted directly
         inner = raw

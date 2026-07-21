@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_up_parse.py — Tests for lib/up_parse.parse_up_from_content.
 
 Covers the dual-up SSoT (spec 021, Phase 1, T1.1):
@@ -143,6 +143,50 @@ def test_frontmatter_list_first_wins():
     content = _fm(["[[FirstParent]]", "[[SecondParent]]"])
     result = up_parse.parse_up_from_content(content)
     assert result.target == "FirstParent"
+    assert result.source == "frontmatter"
+
+
+# ── stringified list-repr (dirty cache) — FIX 2 root cause ───────────────────
+# Some caches persist a frontmatter `up:` list as its Python str repr, e.g.
+# "['020 Active MOC']". Treated as a bare stem it becomes garbage (and FALSELY
+# marks the note broken_up). _first_wikilink must yaml.safe_load such a string
+# and take the first non-empty element.
+
+
+def test_frontmatter_stringified_single_element_list():
+    content = _fm("['020 Active MOC']")
+    result = up_parse.parse_up_from_content(content)
+    assert result.target == "020 Active MOC"
+    assert result.source == "frontmatter"
+
+
+def test_frontmatter_stringified_multi_element_list_first_wins():
+    content = _fm("['a', 'b']")
+    result = up_parse.parse_up_from_content(content)
+    assert result.target == "a"
+    assert result.source == "frontmatter"
+
+
+def test_frontmatter_stringified_double_quoted_list():
+    content = _fm('["x"]')
+    result = up_parse.parse_up_from_content(content)
+    assert result.target == "x"
+    assert result.source == "frontmatter"
+
+
+def test_genuine_wikilink_unchanged_by_list_repr_fix():
+    """A real [[020 Active MOC]] must still parse to the bare stem, untouched."""
+    content = _fm("[[020 Active MOC]]")
+    result = up_parse.parse_up_from_content(content)
+    assert result.target == "020 Active MOC"
+    assert result.source == "frontmatter"
+
+
+def test_genuine_bare_stem_unchanged_by_list_repr_fix():
+    """A plain bare stem (no brackets) must still parse unchanged."""
+    content = _fm("020 Active MOC")
+    result = up_parse.parse_up_from_content(content)
+    assert result.target == "020 Active MOC"
     assert result.source == "frontmatter"
 
 

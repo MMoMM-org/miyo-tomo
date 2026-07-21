@@ -153,11 +153,19 @@ no links at all; **unparented** = a note with links but no `up::` parent.
   through the flow I already use, so that I don't learn a new apply surface.
 - **Acceptance Criteria (Gherkin Format):**
   - [ ] Given fixable findings (unparented, orphan, broken `up::`, dead wikilink), When the report
-    renders, Then each carries a checkbox with a sensible default pre-selected; advisory findings
-    (duplicate stems, stale MOC) render read-only with no checkbox.
-  - [ ] Given the user approves fixable findings and runs `/inbox`, When triage picks up the
-    approved audit, Then the approved fixes render into the existing instruction-set format and
-    apply through Hashi — no new apply path.
+    renders, Then each carries a per-finding Apply checkbox with a sensible default pre-selected;
+    advisory findings (duplicate stems, stale MOC) render read-only with no checkbox.
+  - [ ] Given the report renders, When the user opens it, Then a single top-level `- [ ] Approved`
+    gate appears near the top (mirroring suggestions). (ADR-1 revised 2026-07-21 — garden-audit is
+    NOT picked up unconditionally; it is picked up only once this box is ticked.)
+  - [ ] Given the user has NOT ticked the top-level `- [x] Approved` box, When `/inbox` runs, Then
+    the audit doc is left `pending-accept` and no fixes are applied.
+  - [ ] Given the user ticks the top-level `- [x] Approved` box (and the per-finding Apply ticks
+    they want) and runs `/inbox`, When triage picks up the approved audit, Then the approved fixes
+    render into the existing instruction-set format and apply through Hashi — no new apply path.
+  - [ ] Given a broken `up::` finding, When the report renders, Then it offers an editable
+    `- **Repoint to:** [[]]` field so the user can repoint `up::` to a chosen MOC, or leave it
+    empty to remove the broken line (repoint is not removal-only).
   - [ ] Given an unparented or orphan finding is approved with a chosen MOC, When it applies, Then
     both the MOC-side child bullet AND the note's own `up::` line are written.
   - [ ] Given a fix has no shipped Hashi action yet (dead-wikilink edit, `up::` removal), When the

@@ -1,81 +1,81 @@
 # WHY: garden-audit-parser.py
 
 > Rationale for decisions in `tomo/scripts/garden-audit-parser.py`.
-> The script is the Pass-2 rebuild-from-wire for the garden-audit skill (spec 030 Phase 4).
-> It mirrors `suggestion-parser.py`'s wire contract (ADR-4 / ADR-026): `load_changed_wire`
-> gates on edit, `build_from_wire` reconstructs confirmed-fix Hashi actions from the
-> edited wire without re-reading the markdown report.
+> The script is the Pass-2 READER for the garden-audit skill (spec 030 Phase 4).
+> It mirrors `suggestion-parser.py`'s CLI + wire contract (ADR-4 / ADR-026):
+> `--file <md>` is byte-authoritative, `--wire <json>` is an optional edited-wire
+> override, and the result is a `{"confirmed_items": [...]}` envelope printed to STDOUT.
 
-## JSON-Only Path — No Markdown Re-Parse (ADR-4)
+## Parser Emits confirmed_items, Not Actions (spec 030 SDD)
 
-WHY Pass-2 reads only the wire JSON and never re-parses the markdown report: the wire
-is the complete, structured serialization of all review decisions (ADR-4). After the user
-edits checkboxes and fills `replace` slots in the wire, the wire is the authoritative
-source of what was approved. Re-parsing the markdown would require a second round-trip
-through the report format (which varies by finding type, tier, and rendering version) and
-would produce inconsistencies if the user edited the wire but left the report unchanged.
-The ADR-026 digest pattern enforces this: `load_changed_wire` returns `None` for an
-unedited wire, which signals the markdown path is authoritative. When the wire is edited,
-the JSON-only path is always taken.
+WHY the parser is a pure reader that emits SEMANTIC items (`garden_check` /
+`garden_action`) instead of pre-built Hashi actions: the SDD mandates "no new apply
+path… mirror /moc-propose". The suggestions and moc-proposal flows both hand
+`confirmed_items` to `instruction-render.py`, which assembles actions via
+`render_actions`. Garden-audit does the same. The action assembler lives in
+`render_actions.build_garden_audit_actions`, which reuses the shared
+`_build_edit_note_text_actions` builder (previously dead code) — wiring the fix
+primitive into the one live builder path. An earlier design where the parser emitted
+`{"actions": [...]}` directly was end-to-end broken: `instruction-render` reads
+`confirmed_items`, so the actions were silently dropped and nothing rendered.
 
-## Advisory Findings Never Produce Actions (ADR-5 Semantic Gate)
+## Markdown Authoritative, Wire Overrides (ADR-026)
 
-WHY `build_from_wire` gates on `fixable=False` as an absolute skip before checking
-`selected`: `duplicate_stem` and `stale_moc` are advisory — they surface information
-for the user to act on manually, not automated Hashi actions. Even if the wire
-mistakenly includes a `selected=True` decision on an advisory finding (e.g. from a
-schema-invalid user edit), the `fixable=False` gate prevents a broken action from
-reaching the instruction set. This matches the producer's intent (`garden-audit.py`
-never sets `decision` on advisory findings) and prevents forward-compat hazards if new
-advisory checks are added that look fixable to a version-skewed parser.
+WHY `main()` reads `--file` → `build_from_markdown` by default and only takes the wire
+path when `load_changed_wire` returns a non-None (edited) wire: Tomo never assumes Hashi
+is installed, so the human-reviewed markdown report is the byte-authoritative source of
+what the user approved. The vault-published wire sibling is an OPTIONAL override that only
+wins when the user actually edited it (its embedded `emit_digest` no longer matches a
+recomputation over the editable payload). Unchanged / absent / unreadable / unknown-version
+→ the markdown path is used. This mirrors `suggestion-parser.py` exactly.
+
+## Structural HTML Comment Round-Trip
+
+WHY `build_from_markdown` reads a `<!-- garden-audit ... -->` comment per `### Fxx` block
+rather than re-parsing the visible prose: the visible report is written for a human reading
+in Obsidian (wikilinks, plain-language fix summaries) and hides the machine data (exact
+`match` string, `occurrence`, resolved `target_moc_path`). The renderer emits an invisible
+structural comment (invisible in Obsidian reading view) carrying exactly that data, so the
+parser reconstructs the `confirmed_item` deterministically without brittle prose parsing.
+The visible affordances the parser DOES read — the `- [x] Apply` checkbox and the
+`**Replace with:**` / `**Repoint to:**` fields — are the user's decision surface; everything
+else comes from the comment. Advisory findings carry NO comment, so they never produce an item.
+
+## Regexes Use re.MULTILINE
+
+WHY `RE_APPLY_*` / `RE_REPLACE_FIELD` / `RE_REPOINT_FIELD` compile with `re.MULTILINE`:
+they are `.search()`-ed against a whole multi-line finding block. Without `re.MULTILINE`
+the `^` anchor only matches the start of the entire block string, so every field line
+except the first would be missed (observed: repoint/replace values silently read as empty,
+collapsing every fix to a removal).
+
+## broken_up Discriminator: Repoint Value Present ⇒ add_relationship
+
+WHY a `broken_up` block renders a `**Repoint to:**` field only for the repoint variant,
+and the parser branches on whether the user typed a target: a non-empty Repoint value means
+"repair the `up::` to this MOC" (`garden_action=add_relationship`, `up_line` built from it);
+an empty / untouched `[[]]` placeholder means "remove the broken line"
+(`garden_action=edit_note_text`, `replace=""`). This keeps the two legitimate resolutions
+(repoint vs remove) behind one clean discriminator the user controls by typing or not typing.
 
 ## Dead-Link Match Uses `[[target]]` Wrapping (ADR-3)
 
-WHY `_dead_link_action` wraps `dead_target` in `[[` and `]]` before passing it as the
-`edit_note_text` match: `dead_target` from `kado-graph-audit` is the bare wikilink
-stem (e.g. `"Missing Note"`), not the markup. The `edit_note_text` action performs a
-literal string match against the note body, where dead links appear as `[[Missing Note]]`.
-Passing the bare stem would fail to match (or worse, match unintended occurrences in
-regular prose). The wrapper is applied exclusively in the parser — not in the scan or
-render — because the wire stores the raw target for use in the `replace` slot too (the
-user writes `[[New Name]]`, not `New Name`).
+WHY the `dead_link` structural comment stores `match="[[<dead_target>]]"` (wrapped) while
+the scan stores the bare stem: `edit_note_text` does a literal string match against the note
+body, where dead links appear as `[[Missing Note]]`. The renderer wraps once when emitting
+the comment, so the parser reads the ready-to-match string. `occurrence="all"` because a dead
+wikilink is typically repeated; broken-`up::` removal uses `first` (one `up::` line per note).
 
-## Dead-Link Occurrence is Always "all" (ADR-3)
+## Filing Warns and Skips on No Candidate MOC
 
-WHY `_dead_link_action` always uses `occurrence: "all"` while the `edit_note_text`
-default is `first`: a dead wikilink is typically repeated throughout a note (every
-occurrence resolves to the same broken target). Replacing only the first would leave
-subsequent occurrences broken — the note would still fail a graph-audit re-run for the
-same finding. Broken `up::` removal uses `first` (there is at most one `up::` line per
-note by design). The asymmetry is intentional and the source is this file's
-`_dead_link_action` builder, not the schema default.
+WHY a filing item is skipped (with a stderr warning) when no `target_moc` is present: a
+filing action with an empty MOC stem would fail at apply time (Hashi cannot resolve or create
+a MOC with an empty stem). An empty candidate list is a genuine "no good MOC found" signal,
+not a parser error — the user handles the note manually.
 
-## broken_up Splits into Two Action Paths (ADR-3, ADR-5 Rule 7)
+## Version 0.2.0
 
-WHY `broken_up` findings dispatch on `decision.action` (either `add_relationship` or
-`edit_note_text`) rather than having a single fixed action: the user's choice at review
-time determines whether to repoint the broken `up::` to a valid MOC (`add_relationship`)
-or simply remove the dangling line (`edit_note_text` with `replace=""`). Both are
-legitimate resolutions; the user signals their intent in the wire by setting
-`decision.action`. The parser does NOT interpret the choice — it executes the action
-named. An unknown `action` value is silently skipped (forward-compat: a future action
-type should not crash an older parser). The repoint path (`_broken_up_repoint_action`)
-uses `add_relationship` because the marker-located replace semantics handle the structural
-`up::` line correctly; the `edit_note_text` path would be fragile for repoint because
-the match string would have to include the old broken target exactly.
-
-## Filing Actions Warn and Skip on No Candidate MOCs
-
-WHY `_filing_actions` emits `[]` and a stderr warning rather than a broken action when
-`candidate_mocs` is empty: a filing action with `target_moc=""` would fail at apply
-time (Hashi cannot find or create a MOC with an empty stem). The `orphan_link` scorer
-may return an empty candidate list when the note has no thematic neighbours above the
-scoring threshold — this is not an error in the parser, it is a genuine "no good MOC
-found" signal. Skipping with a warning lets the user know to handle the note manually
-rather than generating an action that silently fails on apply.
-
-## Version 0.1.2
-
-WHY: Bumped from 0.1.0 (initial) for the dead-link fix path correction (0.1.1: replace
-read from `decision.replace`, not `detail.dead_target`) and the `applied: False` stamp
-added to all emitted actions (0.1.2). `update-tomo.sh` skips unchanged versions.
+WHY: Bumped from 0.1.3 for the vertical fix (spec 030 Feature 3). The parser was rewritten
+from a wire-only action-emitter into a markdown-authoritative reader that emits
+`confirmed_items`; action assembly moved to `render_actions.build_garden_audit_actions`.
+`update-tomo.sh` skips unchanged versions.

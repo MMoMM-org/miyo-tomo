@@ -149,9 +149,15 @@ def test_is_pending_edge_cases():
 # ---------------------------------------------------------------------------
 
 
-def test_state_machine_has_all_five_doc_types():
-    """STATE_MACHINE must include all 5 doc-types required by the spec."""
-    required = {"source", "suggestions", "suggestions-fan", "moc-proposal", "instructions"}
+def test_state_machine_has_all_doc_types():
+    """STATE_MACHINE must include every Tomo-produced doc-type.
+
+    garden-audit (spec 030) is the sixth peer, alongside the original five.
+    """
+    required = {
+        "source", "suggestions", "suggestions-fan", "moc-proposal",
+        "instructions", "garden-audit",
+    }
     assert required == set(STATE_MACHINE.keys())
 
 

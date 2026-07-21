@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.41.0
+# version: 0.42.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -62,6 +62,7 @@ from lib.render_actions import (  # noqa: E402,F401
     _validate_action_paths,
     _wikilink,
     build_actions,
+    build_garden_audit_actions,
     emit_up_preservation_actions,
     extract_first_up_marker,
     group_id,
@@ -460,14 +461,21 @@ def main() -> int:
     )
 
     # ── Build the unified action list (T1.1) ─────────────────────────────
-    actions = build_actions(
-        manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,
-        tag_handler_groups=tag_handler_groups,
-        approved_tag_handler_group_ids=approved_tag_handler_group_ids,
-        tag_handler_keep_source_group_ids=tag_handler_keep_source_group_ids,
-        parent_marker=conventions.parent_marker,
-        peer_marker=conventions.peer_marker,
-    )
+    # garden-audit confirmed_items are semantic fix items (garden_check /
+    # garden_action), NOT the suggestions manifest shape — assemble them with
+    # the isolated builder so the suggestions/moc-proposal hot path stays
+    # untouched (spec 030 SDD: "no new apply path… mirror /moc-propose").
+    if args.upstream_type == "garden-audit":
+        actions = build_garden_audit_actions(confirmed)
+    else:
+        actions = build_actions(
+            manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,
+            tag_handler_groups=tag_handler_groups,
+            approved_tag_handler_group_ids=approved_tag_handler_group_ids,
+            tag_handler_keep_source_group_ids=tag_handler_keep_source_group_ids,
+            parent_marker=conventions.parent_marker,
+            peer_marker=conventions.peer_marker,
+        )
 
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────
     # Best-effort; actions stay with `target_moc_path: null` if Kado is

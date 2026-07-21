@@ -69,8 +69,40 @@ when no findings exist for the tier, so the main `render_report` loop produces n
 for it. The Summary block shows per-tier counts, so the user sees the tally regardless
 of whether the tier section appears.
 
-## Version 0.1.1
+## Structural HTML Comment Per Fixable Finding (round-trip)
 
-WHY: Initial spec-030 Phase 3 implementation (0.1.0) plus a `replace` slot fix on the
-dead-link wire decision block added during T4.1 follow-up (0.1.1). `update-tomo.sh`
-skips unchanged versions.
+WHY each fixable finding block now emits an invisible `<!-- garden-audit ... -->`
+comment carrying `id/check/path/stem` plus the machine data the visible prose hides
+(`match`, `occurrence`, resolved `target_moc`/`target_moc_path`): the report is the
+authoritative Pass-2 input (Tomo never assumes Hashi is installed), and
+`garden-audit-parser.build_from_markdown` reconstructs the `confirmed_item` from this
+comment instead of re-parsing human-facing prose. The comment is invisible in Obsidian
+reading view, so it does not clutter the user's review. Advisory findings emit NO comment
+(they never produce a fix), which is exactly how the parser distinguishes fixable from
+advisory blocks. The renderer's `_up_line` / `match` wrapping must stay byte-identical to
+the parser's reconstruction, or the round-trip breaks — they are parity-locked.
+
+## Editable Replace with: / Repoint to: Fields
+
+WHY dead_link blocks render a `**Replace with:** [[]]` field and broken_up-repoint blocks
+render a `**Repoint to:** [[]]` field: these are the user's decision surface for a fix that
+needs a target the scan cannot supply (which note to repoint to). The parser reads the value
+back — a non-empty target repoints, an empty/untouched `[[]]` placeholder removes. The `←`
+hint text after the placeholder is stripped by the parser, so it is safe to keep it inline
+as guidance. Removal-only fixes (broken_up removal, unparented/orphan filing v1) get no
+editable field — only the Apply tick.
+
+## Top-Level How-to-Apply Banner
+
+WHY one instruction line renders directly under the H1: the report is a standalone review
+surface; the user must know that unticking skips, that Replace/Repoint fields are fillable,
+and that `/inbox` applies the kept fixes via Hashi — without reading the skill docs. Advisory
+findings are called out as read-only so the user does not look for a missing checkbox.
+
+## Version 0.3.0
+
+WHY: Bumped from 0.2.0 for spec-030 Feature 3 vertical fix — added the per-finding
+structural HTML comment (parser round-trip), editable `Replace with:` / `Repoint to:`
+fields, and the top-level how-to-apply banner. Earlier: 0.1.0 initial, 0.1.1 dead-link
+`replace` slot, 0.2.0 clickable wikilinks + fix summaries. `update-tomo.sh` skips
+unchanged versions.

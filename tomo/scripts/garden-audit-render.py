@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -98,7 +98,7 @@ def _fix_summary(check: str, detail: dict, decision: dict) -> str:
         replace = (decision or {}).get("replace", "")
         if replace:
             return f"Replace every {dead} with {_wikilink(replace)} in the note body."
-        return f"Remove every {dead} link from the note body (set a replacement in the wire to repoint instead)."
+        return f"Remove every {dead} link from the note body (fill **Replace with:** below to repoint instead)."
     return "Apply the automated fix."
 
 
@@ -207,11 +207,82 @@ def _render_summary(findings: list[dict]) -> list[str]:
     return lines
 
 
+def _bare_stem(ref) -> str:
+    """Bare stem of a MOC path/wikilink (strip [[ ]], folder prefix, .md)."""
+    s = str(ref or "").strip()
+    if s.startswith("[[") and s.endswith("]]"):
+        s = s[2:-2].strip()
+    s = s.rsplit("/", 1)[-1]
+    if s.endswith(".md"):
+        s = s[:-3]
+    return s.strip()
+
+
+def _esc_attr(value) -> str:
+    """Escape a value for an HTML-comment attribute (double quotes → \\")."""
+    return str(value or "").replace('"', '\\"')
+
+
+def _structural_comment(f: dict) -> str | None:
+    """Build the invisible ``<!-- garden-audit ... -->`` round-trip comment.
+
+    Carries what the visible report hides so garden-audit-parser can reconstruct
+    the confirmed_item. Returns None for advisory findings (no fix → no comment).
+    Invisible in Obsidian reading view; only the parser reads it.
+    """
+    check = f["check"]
+    if check not in ("dead_link", "broken_up", "unparented", "orphan"):
+        return None
+    target = f["target"]
+    path = target.get("path", "")
+    stem = target.get("stem") or Path(path).stem
+    detail = f.get("detail", {})
+    attrs: list[tuple[str, str]] = [
+        ("id", f["id"]),
+        ("check", check),
+        ("path", path),
+        ("stem", stem),
+    ]
+    if check == "dead_link":
+        attrs.append(("match", f"[[{detail.get('dead_target', '')}]]"))
+        attrs.append(("occurrence", "all"))
+    elif check == "broken_up":
+        attrs.append(("match", _up_line(detail.get("up_target"))))
+        attrs.append(("occurrence", "first"))
+    elif check in ("unparented", "orphan"):
+        mocs = detail.get("candidate_mocs") or []
+        if mocs:
+            best = mocs[0].get("target_moc", "")
+            attrs.append(("target_moc", _bare_stem(best)))
+            attrs.append(("target_moc_path", best))
+    rendered = " ".join(f'{k}="{_esc_attr(v)}"' for k, v in attrs)
+    return f"<!-- garden-audit {rendered} -->"
+
+
+def _up_line(up_target) -> str:
+    """Render an up:: value as the frontmatter line `up:: [[a]], [[b]]`.
+
+    Mirrors garden-audit-parser._up_line so the structural comment's `match`
+    round-trips to the same removal target the parser reconstructs.
+    """
+    raw = up_target if isinstance(up_target, (list, tuple)) else [up_target]
+    stems = []
+    for t in raw:
+        s = str(t or "").strip()
+        if s.startswith("[[") and s.endswith("]]"):
+            s = s[2:-2].strip()
+        if s:
+            stems.append(s)
+    return "up:: " + ", ".join(f"[[{s}]]" for s in stems)
+
+
 def _render_finding(f: dict) -> list[str]:
     """Render one finding as a report block.
 
-    Fixable findings get a pre-selected (or deselected) checkbox.
-    Advisory findings are read-only — no checkbox.
+    Fixable findings get a pre-selected (or deselected) checkbox, an invisible
+    structural comment (round-trip data for the parser), and — where a target is
+    editable — a Replace with: / Repoint to: field.
+    Advisory findings are read-only — no comment, no checkbox.
     """
     fid = f["id"]
     check = f["check"]
@@ -222,6 +293,10 @@ def _render_finding(f: dict) -> list[str]:
     detail = f.get("detail", {})
 
     lines = [f"### {fid} — {label}: {_wikilink(stem)}", ""]
+
+    comment = _structural_comment(f)
+    if comment is not None:
+        lines += [comment, ""]
 
     # Detail lines per check type
     if check in ("unparented", "orphan"):
@@ -254,9 +329,20 @@ def _render_finding(f: dict) -> list[str]:
         check_mark = "x" if selected else " "
         lines += [
             "**Fix:** " + _fix_summary(check, detail, decision),
-            f"- [{check_mark}] Apply — tick to confirm, untick to skip",
-            "",
+            f"- [{check_mark}] Apply — untick to skip",
         ]
+        # Editable target field — the parser reads it back to decide the fix.
+        if check == "dead_link":
+            lines.append(
+                "- **Replace with:** [[]]    ← fill a target to repoint, "
+                "or leave empty to remove"
+            )
+        elif check == "broken_up" and (decision or {}).get("action") == "add_relationship":
+            lines.append(
+                "- **Repoint to:** [[]]    ← enter the correct MOC "
+                "(leave empty to remove the broken link instead)"
+            )
+        lines.append("")
     elif f.get("tier") == "advisory":
         # Advisory → read-only note, no checkbox
         lines += [
@@ -292,6 +378,12 @@ def render_report(d: dict) -> str:
 
     parts: list[str] = []
     parts += ["", f"# Knowledge-Garden Audit — {date}", ""]
+    parts += [
+        "Review the fixes below. Untick any you want to skip; fill in "
+        "**Replace with:** / **Repoint to:** where offered. Then run `/inbox` to "
+        "apply them via Hashi. Advisory findings are read-only.",
+        "",
+    ]
     parts += _render_caveats()
     parts += _render_preamble(d)
     parts += _render_summary(findings)

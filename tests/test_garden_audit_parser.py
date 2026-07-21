@@ -1,47 +1,53 @@
-"""Tests for garden-audit-parser.py — Pass-2 rebuild-from-wire.
+"""Tests for garden-audit-parser.py — Pass-2 reader (markdown authoritative + wire override).
+
+The parser is a pure reader: markdown report (+ optional edited wire) → a
+{"confirmed_items": [...]} envelope of SEMANTIC items (garden_check /
+garden_action), NOT pre-built actions. render_actions.build_garden_audit_actions
+turns confirmed_items into Hashi actions.
 
 Covers:
-  load_changed_wire:
-    - absent path → None
-    - file not found → None (warn)
-    - invalid JSON → None (warn)
-    - schema_version != "1" → None (warn)
-    - unchanged wire (digest matches) → None (markdown authoritative)
-    - edited wire (digest mismatch) → returns wire dict
-
-  build_from_wire:
-    - unparented/orphan (selected=True) → link_to_moc + add_relationship up::
-    - broken_up action="add_relationship" (repoint, selected=True) → add_relationship
-    - broken_up action="edit_note_text" (removal, selected=True) → edit_note_text
-    - dead_link (selected=True) → edit_note_text
-    - advisory finding (duplicate_stem, stale_moc) → NO action
-    - selected=False → no action (skipped)
-    - mixed: only selected fixable findings produce actions
-    - action ID counter increments across multiple findings
-    - empty findings → empty actions list
+  load_changed_wire — absent / bad / wrong-version / unchanged → None; edited → wire.
+  build_from_wire   — confirmed_items per fixable+selected finding; advisory /
+                      deselected → none.
+  build_from_markdown — parse the rendered report's structural comments +
+                      checkboxes + Replace/Repoint fields → confirmed_items.
+  round-trip        — render(doc) → build_from_markdown → confirmed_items match.
+  end-to-end        — approved markdown → build_from_markdown →
+                      build_garden_audit_actions → correct Hashi actions.
 """
-# version: 0.1.0
+# version: 0.2.0
 import importlib.util
 import json
 import pathlib
 import sys
 
 # ---------------------------------------------------------------------------
-# Load the hyphen-named module under test
+# Load the hyphen-named modules under test
 # ---------------------------------------------------------------------------
 _HERE = pathlib.Path(__file__).resolve().parent
 _ROOT = _HERE.parent
 _SCRIPTS_DIR = _ROOT / "tomo" / "scripts"
-_SCRIPT = _SCRIPTS_DIR / "garden-audit-parser.py"
+_PARSER = _SCRIPTS_DIR / "garden-audit-parser.py"
+_RENDER = _SCRIPTS_DIR / "garden-audit-render.py"
 
 sys.path.insert(0, str(_SCRIPTS_DIR))
 
-spec = importlib.util.spec_from_file_location("garden_audit_parser", _SCRIPT)
-gap = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(gap)
+
+def _load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+gap = _load("garden_audit_parser", _PARSER)
+gar = _load("garden_audit_render", _RENDER)
+
+from lib.render_actions import build_garden_audit_actions  # noqa: E402
 
 load_changed_wire = gap.load_changed_wire
 build_from_wire = gap.build_from_wire
+build_from_markdown = gap.build_from_markdown
 
 # ---------------------------------------------------------------------------
 # Helpers to build minimal valid wire payloads
@@ -70,7 +76,7 @@ def _make_wire(findings, schema_version="1", run_id="run-test-001",
         "generated": generated,
         "profile": profile,
         "findings": findings,
-        "emit_digest": "sha256:" + "a" * 64,  # placeholder — tests override for digest tests
+        "emit_digest": "sha256:" + "a" * 64,  # placeholder — overridden for digest tests
     }
 
 
@@ -128,13 +134,6 @@ def _broken_up_removal(fid="F01", selected=True):
 
 
 def _dead_link(fid="F01", selected=True, replace=None):
-    """Build a dead_link wire finding.
-
-    dead_target is the raw wikilink stem (no brackets) — the scan orchestrator
-    stores the graph_audit target verbatim. The parser wraps it as [[stem]] when
-    building the edit_note_text match field. decision.replace carries the optional
-    replacement target (editable by the user in the wire); absent/empty = remove.
-    """
     decision = {"selected": selected, "action": "edit_note_text"}
     if replace is not None:
         decision["replace"] = replace
@@ -187,16 +186,13 @@ class TestLoadChangedWire:
         assert load_changed_wire(str(p)) is None
 
     def test_unchanged_wire_returns_none(self, tmp_path):
-        # Digest matches → markdown is authoritative → None
         wire = _make_real_wire([])
         p = tmp_path / "wire.json"
         _write_wire(p, wire)
         assert load_changed_wire(str(p)) is None
 
     def test_edited_wire_returns_wire(self, tmp_path):
-        # Digest mismatch → user edited → return wire
         wire = _make_real_wire([_unparented()])
-        # Simulate user edit: flip selected without updating digest
         wire["findings"][0]["decision"]["selected"] = False
         p = tmp_path / "wire.json"
         _write_wire(p, wire)
@@ -206,264 +202,115 @@ class TestLoadChangedWire:
 
 
 # ---------------------------------------------------------------------------
-# build_from_wire tests
+# build_from_wire tests (now emits confirmed_items)
 # ---------------------------------------------------------------------------
 
 class TestBuildFromWireEmptyFindings:
-    def test_empty_findings_empty_actions(self):
-        wire = _make_wire([])
-        result = build_from_wire(wire)
-        assert result["actions"] == []
+    def test_empty_findings_empty_items(self):
+        assert build_from_wire(_make_wire([]))["confirmed_items"] == []
 
     def test_returns_run_metadata(self):
-        wire = _make_wire([])
-        result = build_from_wire(wire)
+        result = build_from_wire(_make_wire([]))
         assert result["run_id"] == "run-test-001"
         assert result["generated"] == "2026-07-20T10:00:00Z"
 
 
 class TestBuildFromWireUnparented:
-    def test_selected_unparented_emits_link_to_moc(self):
-        wire = _make_wire([_unparented(selected=True)])
-        result = build_from_wire(wire)
-        actions = result["actions"]
-        link_actions = [a for a in actions if a["action"] == "link_to_moc"]
-        assert len(link_actions) == 1
-        assert "Writing MOC" in link_actions[0]["target_moc"]
+    def test_selected_unparented_emits_file_note(self):
+        items = build_from_wire(_make_wire([_unparented(selected=True)]))["confirmed_items"]
+        assert len(items) == 1
+        c = items[0]
+        assert c["garden_action"] == "file_note"
+        assert c["target_moc"] == "Writing MOC"
+        assert c["target_moc_path"] == "MOCs/Writing MOC.md"
+        assert c["path"] == "Notes/Orphan.md"
 
-    def test_selected_unparented_emits_add_relationship_up(self):
-        wire = _make_wire([_unparented(selected=True)])
-        result = build_from_wire(wire)
-        actions = result["actions"]
-        rel_actions = [a for a in actions if a["action"] == "add_relationship"]
-        assert len(rel_actions) == 1
-        assert rel_actions[0]["marker"] == "up::"
-        assert "Writing MOC" in rel_actions[0]["line"]
+    def test_unselected_unparented_emits_no_item(self):
+        assert build_from_wire(_make_wire([_unparented(selected=False)]))["confirmed_items"] == []
 
-    def test_unselected_unparented_emits_no_action(self):
-        wire = _make_wire([_unparented(selected=False)])
-        result = build_from_wire(wire)
-        assert result["actions"] == []
-
-    def test_selected_unparented_no_candidate_mocs_emits_no_action(self):
-        # When orphan_link found no MOC above threshold, candidate_mocs=[] —
-        # we cannot file the note, so skip+warn rather than emit a broken action.
+    def test_selected_unparented_no_candidate_mocs_emits_no_item(self):
         finding = _wire_finding(
             "F01", "unparented", "structure", True,
             "Notes/Orphan.md", "Orphan",
             {"candidate_mocs": []},
             decision={"selected": True, "action": "link_to_moc"},
         )
-        wire = _make_wire([finding])
-        result = build_from_wire(wire)
-        assert result["actions"] == [], (
-            "empty candidate_mocs must produce no actions (skip+warn), "
-            "not a broken link_to_moc with target_moc=''"
-        )
+        assert build_from_wire(_make_wire([finding]))["confirmed_items"] == []
 
 
 class TestBuildFromWireOrphan:
-    def test_selected_orphan_emits_link_to_moc_and_add_rel(self):
-        wire = _make_wire([_orphan(selected=True)])
-        result = build_from_wire(wire)
-        actions = result["actions"]
-        assert any(a["action"] == "link_to_moc" for a in actions)
-        assert any(a["action"] == "add_relationship" and a["marker"] == "up::" for a in actions)
+    def test_selected_orphan_emits_file_note(self):
+        items = build_from_wire(_make_wire([_orphan(selected=True)]))["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["garden_action"] == "file_note"
 
-    def test_unselected_orphan_emits_no_action(self):
-        wire = _make_wire([_orphan(selected=False)])
-        result = build_from_wire(wire)
-        assert result["actions"] == []
-
-    def test_selected_orphan_no_candidate_mocs_emits_no_action(self):
-        # Same skip+warn logic as unparented with empty candidate_mocs.
-        finding = _wire_finding(
-            "F01", "orphan", "structure", True,
-            "Notes/Orphan2.md", "Orphan2",
-            {"candidate_mocs": []},
-            decision={"selected": True, "action": "link_to_moc"},
-        )
-        wire = _make_wire([finding])
-        result = build_from_wire(wire)
-        assert result["actions"] == []
+    def test_unselected_orphan_emits_no_item(self):
+        assert build_from_wire(_make_wire([_orphan(selected=False)]))["confirmed_items"] == []
 
 
 class TestBuildFromWireBrokenUp:
     def test_selected_broken_up_repoint_emits_add_relationship(self):
-        wire = _make_wire([_broken_up_repoint(selected=True)])
-        result = build_from_wire(wire)
-        actions = result["actions"]
-        assert len(actions) == 1
-        assert actions[0]["action"] == "add_relationship"
-        assert actions[0]["marker"] == "up::"
+        items = build_from_wire(_make_wire([_broken_up_repoint(selected=True)]))["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["garden_action"] == "add_relationship"
+        assert items[0]["up_line"] == "up:: [[Old MOC]]"
 
     def test_selected_broken_up_removal_emits_edit_note_text(self):
-        wire = _make_wire([_broken_up_removal(selected=True)])
-        result = build_from_wire(wire)
-        actions = result["actions"]
-        assert len(actions) == 1
-        assert actions[0]["action"] == "edit_note_text"
-        assert actions[0]["path"] == "Notes/Broken.md"
-        # match should target the up:: line with the broken stem
-        assert "up::" in actions[0]["match"]
-        assert actions[0]["replace"] == ""
+        items = build_from_wire(_make_wire([_broken_up_removal(selected=True)]))["confirmed_items"]
+        assert len(items) == 1
+        c = items[0]
+        assert c["garden_action"] == "edit_note_text"
+        assert c["path"] == "Notes/Broken.md"
+        assert "up::" in c["match"]
+        assert c["replace"] == ""
 
-    def test_unselected_broken_up_emits_no_action(self):
-        wire = _make_wire([_broken_up_removal(selected=False)])
-        result = build_from_wire(wire)
-        assert result["actions"] == []
+    def test_unselected_broken_up_emits_no_item(self):
+        assert build_from_wire(_make_wire([_broken_up_removal(selected=False)]))["confirmed_items"] == []
 
 
 class TestBuildFromWireDeadLink:
     def test_selected_dead_link_emits_edit_note_text(self):
-        wire = _make_wire([_dead_link(selected=True)])
-        result = build_from_wire(wire)
-        actions = result["actions"]
-        assert len(actions) == 1
-        a = actions[0]
-        assert a["action"] == "edit_note_text"
-        assert a["path"] == "Notes/Source.md"
-        # match wraps dead_target in [[ ]] — dead_target is raw stem from graph_audit
-        assert a["match"] == "[[Missing Note]]"
-        # default replace="" (remove when decision.replace absent or empty)
-        assert a["replace"] == ""
+        items = build_from_wire(_make_wire([_dead_link(selected=True)]))["confirmed_items"]
+        assert len(items) == 1
+        c = items[0]
+        assert c["garden_action"] == "edit_note_text"
+        assert c["path"] == "Notes/Source.md"
+        assert c["match"] == "[[Missing Note]]"
+        assert c["replace"] == ""
 
-    def test_unselected_dead_link_emits_no_action(self):
-        wire = _make_wire([_dead_link(selected=False)])
-        result = build_from_wire(wire)
-        assert result["actions"] == []
-
-    def test_dead_link_match_wraps_dead_target_in_brackets(self):
-        # dead_target is raw stem; parser must wrap in [[]] for wikilink match
-        wire = _make_wire([_dead_link(selected=True)])
-        result = build_from_wire(wire)
-        a = result["actions"][0]
-        assert a["match"].startswith("[[") and a["match"].endswith("]]")
+    def test_unselected_dead_link_emits_no_item(self):
+        assert build_from_wire(_make_wire([_dead_link(selected=False)]))["confirmed_items"] == []
 
     def test_dead_link_occurrence_is_all(self):
-        # occurrence="all" removes every instance of the dead wikilink
-        wire = _make_wire([_dead_link(selected=True)])
-        result = build_from_wire(wire)
-        a = result["actions"][0]
-        assert a["occurrence"] == "all"
+        c = build_from_wire(_make_wire([_dead_link(selected=True)]))["confirmed_items"][0]
+        assert c["occurrence"] == "all"
 
     def test_dead_link_with_replace_target_uses_replace_from_decision(self):
-        # User sets decision.replace="[[New Note]]" → fix replaces the dead link
-        finding = _dead_link(selected=True, replace="[[New Note]]")
-        wire = _make_wire([finding])
-        result = build_from_wire(wire)
-        a = result["actions"][0]
-        assert a["replace"] == "[[New Note]]"
-
-    def test_dead_link_with_empty_replace_removes_link(self):
-        # decision.replace="" → replace="" in action (remove intent)
-        finding = _dead_link(selected=True, replace="")
-        wire = _make_wire([finding])
-        result = build_from_wire(wire)
-        a = result["actions"][0]
-        assert a["replace"] == ""
+        c = build_from_wire(_make_wire([_dead_link(selected=True, replace="[[New Note]]")]))["confirmed_items"][0]
+        assert c["replace"] == "[[New Note]]"
 
 
 class TestBuildFromWireAdvisory:
-    def test_duplicate_stem_emits_no_action(self):
-        wire = _make_wire([_duplicate_stem()])
-        result = build_from_wire(wire)
-        assert result["actions"] == []
+    def test_duplicate_stem_emits_no_item(self):
+        assert build_from_wire(_make_wire([_duplicate_stem()]))["confirmed_items"] == []
 
-    def test_stale_moc_emits_no_action(self):
-        wire = _make_wire([_stale_moc()])
-        result = build_from_wire(wire)
-        assert result["actions"] == []
-
-    def test_all_advisory_wire_empty_actions(self):
-        wire = _make_wire([_duplicate_stem("F01"), _stale_moc("F02")])
-        result = build_from_wire(wire)
-        assert result["actions"] == []
+    def test_stale_moc_emits_no_item(self):
+        assert build_from_wire(_make_wire([_stale_moc()]))["confirmed_items"] == []
 
 
 class TestBuildFromWireMixed:
     def test_mixed_selected_and_skipped(self):
         findings = [
             _unparented("F01", selected=True),
-            _dead_link("F02", selected=False),   # skipped by user
-            _duplicate_stem("F03"),               # advisory, no action
+            _dead_link("F02", selected=False),
+            _duplicate_stem("F03"),
         ]
-        wire = _make_wire(findings)
-        result = build_from_wire(wire)
-        actions = result["actions"]
-        # Only F01 produces actions (link_to_moc + add_relationship)
-        assert len(actions) == 2
-        assert not any(a.get("action") == "edit_note_text" for a in actions)
-
-    def test_action_ids_increment(self):
-        findings = [
-            _unparented("F01", selected=True),   # → link_to_moc + add_rel = 2 actions
-            _dead_link("F02", selected=True),     # → edit_note_text = 1 action
-        ]
-        wire = _make_wire(findings)
-        result = build_from_wire(wire)
-        ids = [a["id"] for a in result["actions"]]
-        # IDs must be distinct and monotonically increasing
-        assert len(ids) == len(set(ids))
-        assert ids == sorted(ids)
-
-
-class TestAppliedStamping:
-    """All action builders must emit applied=False, not None.
-
-    garden-audit-parser bypasses instruction-render's build_actions() which
-    stamps applied=False as its final step. The parser must therefore stamp
-    applied=False itself on every action it emits (ADR-4 / ADR-026 contract).
-    """
-
-    def test_filing_actions_have_applied_false(self):
-        wire = _make_wire([_unparented(selected=True)])
-        result = build_from_wire(wire)
-        for a in result["actions"]:
-            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
-
-    def test_broken_up_repoint_has_applied_false(self):
-        wire = _make_wire([_broken_up_repoint(selected=True)])
-        result = build_from_wire(wire)
-        for a in result["actions"]:
-            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
-
-    def test_broken_up_removal_has_applied_false(self):
-        wire = _make_wire([_broken_up_removal(selected=True)])
-        result = build_from_wire(wire)
-        for a in result["actions"]:
-            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
-
-    def test_dead_link_action_has_applied_false(self):
-        wire = _make_wire([_dead_link(selected=True)])
-        result = build_from_wire(wire)
-        for a in result["actions"]:
-            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
-
-    def test_all_actions_in_mixed_wire_have_applied_false(self):
-        findings = [
-            _unparented("F01", selected=True),
-            _broken_up_removal("F02", selected=True),
-            _dead_link("F03", selected=True),
-        ]
-        wire = _make_wire(findings)
-        result = build_from_wire(wire)
-        assert len(result["actions"]) > 0
-        for a in result["actions"]:
-            assert a["applied"] is False, f"action {a['id']} has applied={a['applied']!r}, expected False"
-
-    def test_applied_is_not_none(self):
-        # Explicit regression: applied=None is wrong (None is falsy but not False)
-        wire = _make_wire([_unparented(selected=True)])
-        result = build_from_wire(wire)
-        for a in result["actions"]:
-            assert a["applied"] is not None, f"action {a['id']} has applied=None — must be False"
+        items = build_from_wire(_make_wire(findings))["confirmed_items"]
+        assert [c["id"] for c in items] == ["F01"]
 
 
 class TestBrokenUpListTarget:
-    """Regression: cache up:: is a multi-value list, so up_target arrives as e.g.
-    ['020 Active MOC']. The match/line must reconstruct the real frontmatter line
-    (up:: [[020 Active MOC]]), never embed a list repr (up:: [[['020 Active MOC']]])."""
+    """Cache up:: is a multi-value list — must reconstruct the real line."""
 
     def _list_removal(self, fid="F01"):
         return _wire_finding(
@@ -473,29 +320,224 @@ class TestBrokenUpListTarget:
             decision={"selected": True, "action": "edit_note_text"},
         )
 
-    def _list_repoint(self, fid="F01"):
-        return _wire_finding(
-            fid, "broken_up", "integrity", True,
-            "Notes/Broken.md", "Broken",
-            {"up_target": ["020 Active MOC"]},
-            decision={"selected": True, "action": "add_relationship"},
-        )
-
     def test_removal_match_reconstructs_frontmatter_line(self):
-        result = build_from_wire(_make_wire([self._list_removal()]))
-        a = result["actions"][0]
-        assert a["match"] == "up:: [[020 Active MOC]]"
-        assert "['" not in a["match"] and "[[[" not in a["match"]
-
-    def test_repoint_line_and_target_moc_are_not_lists(self):
-        result = build_from_wire(_make_wire([self._list_repoint()]))
-        a = result["actions"][0]
-        assert a["line"] == "up:: [[020 Active MOC]]"
-        assert a["target_moc"] == "020 Active MOC"
-        assert not isinstance(a["target_moc"], list)
+        c = build_from_wire(_make_wire([self._list_removal()]))["confirmed_items"][0]
+        assert c["match"] == "up:: [[020 Active MOC]]"
+        assert "[[[" not in c["match"]
 
     def test_multi_target_up_list_joins_all(self):
         f = self._list_removal()
         f["detail"]["up_target"] = ["020 Active MOC", "030 Reference MOC"]
-        result = build_from_wire(_make_wire([f]))
-        assert result["actions"][0]["match"] == "up:: [[020 Active MOC]], [[030 Reference MOC]]"
+        c = build_from_wire(_make_wire([f]))["confirmed_items"][0]
+        assert c["match"] == "up:: [[020 Active MOC]], [[030 Reference MOC]]"
+
+
+# ---------------------------------------------------------------------------
+# Markdown render-doc fixtures (drives render → parse round-trip)
+# ---------------------------------------------------------------------------
+
+def _doc_finding_unparented(fid="F01"):
+    return {
+        "id": fid, "check": "unparented", "tier": "structure", "fixable": True,
+        "target": {"path": "Notes/Orphan Note.md", "stem": "Orphan Note"},
+        "detail": {"candidate_mocs": [{"target_moc": "MOCs/Writing MOC.md", "score": 0.8}]},
+        "decision": {"selected": True, "action": "link_to_moc"},
+    }
+
+
+def _doc_finding_broken_up_removal(fid="F02"):
+    return {
+        "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
+        "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
+        "detail": {"up_target": "Deleted MOC"},
+        "decision": {"selected": True, "action": "edit_note_text"},
+    }
+
+
+def _doc_finding_broken_up_repoint(fid="F03"):
+    return {
+        "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
+        "target": {"path": "Notes/Repoint Note.md", "stem": "Repoint Note"},
+        "detail": {"up_target": "Old MOC"},
+        "decision": {"selected": True, "action": "add_relationship"},
+    }
+
+
+def _doc_finding_dead_link(fid="F04"):
+    return {
+        "id": fid, "check": "dead_link", "tier": "integrity", "fixable": True,
+        "target": {"path": "Notes/Source Note.md", "stem": "Source Note"},
+        "detail": {"dead_target": "Missing Note", "count": 2},
+        "decision": {"selected": True, "action": "edit_note_text"},
+    }
+
+
+def _doc_finding_duplicate(fid="F05"):
+    return {
+        "id": fid, "check": "duplicate_stem", "tier": "advisory", "fixable": False,
+        "target": {"path": "Notes/Dup.md", "stem": "Dup"},
+        "detail": {"dupes": ["Notes/Dup.md", "Archive/Dup.md"]},
+    }
+
+
+def _make_doc(findings):
+    return {
+        "run_id": "run-rt-001", "generated": "2026-07-20T12:00:00Z", "profile": "miyo",
+        "findings": findings, "skipped_checks": [], "skipped_checks_reason": "",
+        "reappeared_exclusions": [],
+    }
+
+
+def _full_report(doc):
+    """Render the full markdown report (frontmatter + body) as one string."""
+    return "\n".join(gar.render_frontmatter(doc)) + "\n" + gar.render_report(doc)
+
+
+# ---------------------------------------------------------------------------
+# Round-trip: render(doc) → build_from_markdown → confirmed_items
+# ---------------------------------------------------------------------------
+
+class TestMarkdownRoundTrip:
+    def test_unparented_round_trips_to_file_note(self):
+        md = _full_report(_make_doc([_doc_finding_unparented("F01")]))
+        items = build_from_markdown(md)["confirmed_items"]
+        assert len(items) == 1
+        c = items[0]
+        assert c["id"] == "F01"
+        assert c["garden_action"] == "file_note"
+        assert c["path"] == "Notes/Orphan Note.md"
+        assert c["stem"] == "Orphan Note"
+        assert c["target_moc"] == "Writing MOC"
+        assert c["target_moc_path"] == "MOCs/Writing MOC.md"
+
+    def test_broken_up_removal_round_trips(self):
+        md = _full_report(_make_doc([_doc_finding_broken_up_removal("F02")]))
+        c = build_from_markdown(md)["confirmed_items"][0]
+        assert c["garden_action"] == "edit_note_text"
+        assert c["path"] == "Notes/Broken Note.md"
+        assert c["match"] == "up:: [[Deleted MOC]]"
+        assert c["replace"] == ""
+        assert c["occurrence"] == "first"
+
+    def test_dead_link_removal_round_trips_empty_replace(self):
+        # User leaves Replace with: [[]] empty → remove.
+        md = _full_report(_make_doc([_doc_finding_dead_link("F04")]))
+        c = build_from_markdown(md)["confirmed_items"][0]
+        assert c["garden_action"] == "edit_note_text"
+        assert c["match"] == "[[Missing Note]]"
+        assert c["replace"] == ""
+        assert c["occurrence"] == "all"
+
+    def test_advisory_finding_produces_no_item(self):
+        md = _full_report(_make_doc([_doc_finding_duplicate("F05")]))
+        assert build_from_markdown(md)["confirmed_items"] == []
+
+    def test_frontmatter_run_id_recovered(self):
+        md = _full_report(_make_doc([_doc_finding_unparented("F01")]))
+        assert build_from_markdown(md)["run_id"] == "run-rt-001"
+
+    def test_unticked_apply_skips_item(self):
+        # Simulate the user unticking Apply on a rendered dead_link block.
+        md = _full_report(_make_doc([_doc_finding_dead_link("F04")]))
+        md = md.replace("- [x] Apply", "- [ ] Apply")
+        assert build_from_markdown(md)["confirmed_items"] == []
+
+    def test_user_fills_replace_target_repoints(self):
+        md = _full_report(_make_doc([_doc_finding_dead_link("F04")]))
+        md = md.replace("**Replace with:** [[]]", "**Replace with:** [[New Target]]")
+        c = build_from_markdown(md)["confirmed_items"][0]
+        assert c["replace"] == "[[New Target]]"
+
+    def test_user_fills_repoint_target_adds_relationship(self):
+        md = _full_report(_make_doc([_doc_finding_broken_up_repoint("F03")]))
+        md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[Chosen MOC]]")
+        c = build_from_markdown(md)["confirmed_items"][0]
+        assert c["garden_action"] == "add_relationship"
+        assert c["up_line"] == "up:: [[Chosen MOC]]"
+
+    def test_empty_repoint_falls_back_to_removal(self):
+        # Repoint block, user leaves [[]] empty → removal (edit_note_text).
+        md = _full_report(_make_doc([_doc_finding_broken_up_repoint("F03")]))
+        c = build_from_markdown(md)["confirmed_items"][0]
+        assert c["garden_action"] == "edit_note_text"
+        assert c["match"] == "up:: [[Old MOC]]"
+        assert c["replace"] == ""
+
+
+# ---------------------------------------------------------------------------
+# END-TO-END (F6 fix): approved markdown → confirmed_items → actions
+# ---------------------------------------------------------------------------
+
+class TestEndToEndApprovedReportToActions:
+    """The full vertical: an approved report renders into Hashi actions.
+
+    This MUST fail against a no-op/empty build_from_markdown or a
+    build_garden_audit_actions that drops item kinds.
+    """
+
+    def _approved_md(self):
+        doc = _make_doc([
+            _doc_finding_dead_link("F01"),         # → edit_note_text (remove)
+            _doc_finding_broken_up_removal("F02"),  # → edit_note_text (up:: remove)
+            _doc_finding_broken_up_repoint("F03"),  # → add_relationship (repoint)
+            _doc_finding_unparented("F04"),         # → link_to_moc + add_relationship
+            _doc_finding_duplicate("F05"),          # advisory → nothing
+        ])
+        md = _full_report(doc)
+        # User fills the repoint target so F03 becomes a repoint.
+        md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[Correct MOC]]")
+        return md
+
+    def test_confirmed_items_cover_every_fixable_finding(self):
+        items = build_from_markdown(self._approved_md())["confirmed_items"]
+        ids = {c["id"] for c in items}
+        assert ids == {"F01", "F02", "F03", "F04"}  # F05 advisory excluded
+
+    def test_actions_contain_edit_note_text_for_dead_link_and_broken_up(self):
+        items = build_from_markdown(self._approved_md())["confirmed_items"]
+        actions = build_garden_audit_actions(items)
+        edits = [a for a in actions if a["action"] == "edit_note_text"]
+        # dead_link removal + broken_up removal = 2 edit_note_text
+        assert len(edits) == 2
+        matches = {a["match"] for a in edits}
+        assert "[[Missing Note]]" in matches
+        assert "up:: [[Deleted MOC]]" in matches
+        for a in edits:
+            assert a["replace"] == ""
+
+    def test_actions_contain_add_relationship_for_repoint_and_filing(self):
+        items = build_from_markdown(self._approved_md())["confirmed_items"]
+        actions = build_garden_audit_actions(items)
+        rels = [a for a in actions if a["action"] == "add_relationship"]
+        # repoint (F03) + filing up:: (F04) = 2 add_relationship
+        assert len(rels) == 2
+        lines = {a["line"] for a in rels}
+        assert "up:: [[Correct MOC]]" in lines
+        assert "up:: [[Writing MOC]]" in lines
+        for a in rels:
+            assert a["marker"] == "up::"
+
+    def test_actions_contain_link_to_moc_for_filing(self):
+        items = build_from_markdown(self._approved_md())["confirmed_items"]
+        actions = build_garden_audit_actions(items)
+        links = [a for a in actions if a["action"] == "link_to_moc"]
+        assert len(links) == 1
+        assert links[0]["target_moc"] == "Writing MOC"
+        assert links[0]["line_to_add"] == "- [[Orphan Note]]"
+
+    def test_all_actions_stamped_applied_false(self):
+        items = build_from_markdown(self._approved_md())["confirmed_items"]
+        actions = build_garden_audit_actions(items)
+        assert len(actions) > 0
+        for a in actions:
+            assert a["applied"] is False
+
+    def test_edit_note_text_path_is_the_note_path(self):
+        items = build_from_markdown(self._approved_md())["confirmed_items"]
+        actions = build_garden_audit_actions(items)
+        paths = {a["path"] for a in actions if a["action"] == "edit_note_text"}
+        assert paths == {"Notes/Source Note.md", "Notes/Broken Note.md"}
+
+    def test_empty_confirmed_items_yields_no_actions(self):
+        # Falsifies a no-op impl that always returns actions.
+        assert build_garden_audit_actions([]) == []

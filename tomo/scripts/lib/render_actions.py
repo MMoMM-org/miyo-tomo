@@ -1,4 +1,4 @@
-# version: 0.3.1
+# version: 0.4.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1177,6 +1177,76 @@ def _build_edit_note_text_actions(
             "replace": item["replace"],
             "occurrence": item.get("occurrence", "first"),
         })
+    return out
+
+
+def build_garden_audit_actions(
+    confirmed: list[dict],
+    counter: list[int] | None = None,
+) -> list[dict]:
+    """Assemble Hashi actions from garden-audit confirmed_items (spec 030).
+
+    Isolated from build_actions — garden-audit's confirmed_items are semantic
+    fix items (garden_check / garden_action), NOT the suggestions manifest shape.
+    Keeping a separate assembler leaves the suggestions/moc-proposal hot path in
+    build_actions untouched (ADR: "no new apply path… mirror /moc-propose").
+
+    garden_action → actions:
+      - edit_note_text  → one edit_note_text (dead_link fix/remove, broken_up
+        removal). Built via the SHARED _build_edit_note_text_actions builder,
+        wiring the previously-dead helper into the live path.
+      - add_relationship→ one add_relationship up:: (broken_up repoint).
+      - file_note       → link_to_moc (bullet on the MOC) + add_relationship up::
+        (up-link on the note). Files an unparented/orphan note under a MOC.
+
+    Every action is stamped applied=False (build_actions does this centrally; this
+    assembler bypasses it, so it stamps here).
+    """
+    counter = counter or [0]
+    out: list[dict] = []
+
+    # Reuse the shared builder for every edit_note_text item (wires in dead code).
+    out.extend(_build_edit_note_text_actions(
+        [c for c in confirmed if c.get("garden_action") == "edit_note_text"],
+        counter,
+    ))
+
+    for c in confirmed:
+        ga = c.get("garden_action")
+        if ga == "add_relationship":
+            out.append({
+                "id": _next_id(counter),
+                "action": "add_relationship",
+                "target_moc": None,
+                "target_moc_path": c["path"],
+                "marker": "up::",
+                "line": c["up_line"],
+                "source_note_title": None,
+            })
+        elif ga == "file_note":
+            target_moc = c.get("target_moc", "")
+            out.append({
+                "id": _next_id(counter),
+                "action": "link_to_moc",
+                "target_moc": target_moc,
+                "target_moc_path": c.get("target_moc_path"),
+                "anchor": {"type": "callout", "value": None},
+                "placement": "after",
+                "line_to_add": f"- [[{c['stem']}]]",
+                "source_note_title": c["stem"],
+            })
+            out.append({
+                "id": _next_id(counter),
+                "action": "add_relationship",
+                "target_moc": target_moc,
+                "target_moc_path": c["path"],
+                "marker": "up::",
+                "line": f"up:: [[{target_moc}]]",
+                "source_note_title": None,
+            })
+
+    for a in out:
+        a["applied"] = False
     return out
 
 

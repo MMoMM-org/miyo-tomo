@@ -5,7 +5,7 @@
 
 ## Files
 - [general.md](general.md) — conventions, style, naming [updated: 2026-07-20]
-- [tools.md](tools.md) — CI, build, local dev [updated: 2026-07-01]
+- [tools.md](tools.md) — CI, build, local dev [updated: 2026-07-20]
 - [domain.md](domain.md) — business rules, data models [updated: 2026-07-01]
 - [decisions.md](decisions.md) — architecture choices [updated: 2026-06-24]
 - [context.md](context.md) — current focus [updated: 2026-06-30]

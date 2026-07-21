@@ -75,6 +75,7 @@ Each phase is a separate file. Tasks follow red-green-refactor: **Prime** → **
 - [x] [Phase 4: Apply Integration (2-pass + edit_note_text)](phase-4.md)
 - [x] [Phase 5: Agent, Command, Wizard, Docs](phase-5.md)
 - [ ] [Phase 6: Cross-Repo Handoffs & Integration/E2E](phase-6.md)
+- [ ] [Phase 7: Target Suggestions (second-pass opt-in) for dead_link + broken_up](phase-7.md)
 
 ---
 

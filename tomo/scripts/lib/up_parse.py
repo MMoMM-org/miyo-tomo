@@ -1,4 +1,4 @@
-# version: 0.2.2
+# version: 0.2.3
 """up_parse.py — SSoT for "does this note declare a parent?"
 
 Parses both inline `up::` (Dataview-style) and frontmatter `up:` values
@@ -153,6 +153,10 @@ def _first_wikilink(up_value: object) -> Optional[str]:
         # note broken_up). Parse it back and take the first non-empty element.
         # Guarded to raw.startswith("[") and NOT a [[wikilink]] (handled above),
         # so normal stems/wikilinks are untouched.
+        # NOTE: render_md.unwrap_list_repr covers the same dirty-cache case for the
+        # renderers; it is INTENTIONALLY not imported here — up_parse stays free of
+        # render_md/renderer deps (it is a low-level shared parser). The small
+        # duplication is deliberate to preserve that dependency boundary.
         try:
             parsed = yaml.safe_load(raw)
         except yaml.YAMLError:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """Pass-2 reader for garden-audit (ADR-4 / ADR-026).
 
 Pure reader: markdown report (authoritative) + optional wire override → a
@@ -323,13 +323,18 @@ def build_from_wire(wire: dict) -> dict:
             action_name = decision.get("action")
             up_target = detail.get("up_target", "")
             if action_name == "add_relationship":
+                # Wire parity with the markdown "Repoint to:" field: a non-empty
+                # decision.repoint is the user's chosen MOC — point up:: there,
+                # NOT at the broken original. Empty → fall back to up_target.
+                repoint = decision.get("repoint", "")
+                target = repoint if repoint else up_target
                 confirmed.append({
                     "id": fid,
                     "garden_check": check,
                     "garden_action": "add_relationship",
                     "path": path,
                     "stem": stem,
-                    "up_line": up_line(up_target),
+                    "up_line": up_line(target),
                 })
             elif action_name == "edit_note_text":
                 confirmed.append({

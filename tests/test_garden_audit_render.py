@@ -16,7 +16,7 @@ Coverage:
   - reappeared_exclusions: shown in preamble when present
   - skipped_checks: shown in preamble when present
 """
-# version: 0.2.0
+# version: 0.2.1
 import importlib.util
 import json
 import pathlib
@@ -546,6 +546,41 @@ class TestDeadLinkWireReplace:
         jsonschema.validate(wire, schema)
 
 
+class TestBrokenUpWireRepoint:
+    """build_wire_payload must populate decision.repoint='' on broken_up findings.
+
+    W1: the WIRE path needs a repoint slot mirroring the markdown "Repoint to:"
+    field, so a wire-edited repoint points up:: at the user's chosen MOC rather
+    than the broken original. Empty string = remove intent (parser falls back).
+    """
+
+    def test_broken_up_wire_finding_has_decision_repoint_field(self):
+        findings = [_make_broken_up_finding("F01")]
+        wire = _build_wire(_make_doc(findings=findings))
+        f = next(f for f in wire["findings"] if f["id"] == "F01")
+        assert "repoint" in f["decision"], "decision.repoint missing on broken_up"
+
+    def test_broken_up_wire_decision_repoint_defaults_to_empty_string(self):
+        findings = [_make_broken_up_finding("F01")]
+        wire = _build_wire(_make_doc(findings=findings))
+        f = next(f for f in wire["findings"] if f["id"] == "F01")
+        assert f["decision"]["repoint"] == ""
+
+    def test_non_broken_up_fixable_finding_has_no_repoint_in_decision(self):
+        findings = [_make_dead_link_finding("F01")]
+        wire = _build_wire(_make_doc(findings=findings))
+        f = next(f for f in wire["findings"] if f["id"] == "F01")
+        assert "repoint" not in f["decision"], (
+            "decision.repoint should only appear on broken_up findings"
+        )
+
+    def test_broken_up_wire_schema_valid_with_repoint_field(self):
+        schema = _load_wire_schema()
+        findings = [_make_broken_up_finding("F01")]
+        wire = _build_wire(_make_doc(findings=findings))
+        jsonschema.validate(wire, schema)
+
+
 # ---------------------------------------------------------------------------
 # W1 regression: fixable finding with missing decision block → ValueError
 # ---------------------------------------------------------------------------
@@ -647,6 +682,8 @@ class TestTopLevelApproveGate:
 
     def test_approved_box_unticked_by_default(self):
         report = _render_report(_make_doc(findings=[_make_dead_link_finding()]))
+        # Present AND unticked — an omitted gate would fail the first assert.
+        assert "- [ ] Approved" in report
         assert "- [x] Approved" not in report
 
     def test_approved_box_mentions_inbox(self):

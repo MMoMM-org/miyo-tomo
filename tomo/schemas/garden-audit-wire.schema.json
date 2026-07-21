@@ -122,6 +122,10 @@
               "replace": {
                 "type": "string",
                 "description": "dead_link only — editable replacement target (e.g. '[[New Note]]'). Empty string = remove intent. Absent on all other check types."
+              },
+              "repoint": {
+                "type": "string",
+                "description": "broken_up only — editable repoint target (e.g. '[[Correct MOC]]'). Non-empty repoints up:: to the chosen MOC (add_relationship); empty string = remove the broken line. Absent on all other check types."
               }
             }
           }

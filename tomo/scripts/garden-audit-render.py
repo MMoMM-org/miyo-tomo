@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -423,6 +423,12 @@ def build_wire_payload(d: dict) -> dict:
             # garden-audit-parser reads decision.replace (not detail.dead_target).
             if f.get("check") == "dead_link":
                 wire_decision["replace"] = ""
+            # broken_up: add editable repoint slot (empty = remove intent). Wire
+            # parity with the markdown path's "Repoint to:" field — a non-empty
+            # value repoints up:: to the user's chosen MOC (add_relationship),
+            # empty removes the broken line. Parser reads decision.repoint.
+            if f.get("check") == "broken_up":
+                wire_decision["repoint"] = ""
             wf["decision"] = wire_decision
         wire_findings.append(wf)
 

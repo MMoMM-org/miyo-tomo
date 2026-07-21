@@ -15,7 +15,7 @@ Covers:
   end-to-end        — approved markdown → build_from_markdown →
                       build_garden_audit_actions → correct Hashi actions.
 """
-# version: 0.4.0
+# version: 0.4.1
 import importlib.util
 import json
 import pathlib
@@ -266,6 +266,30 @@ class TestBuildFromWireBrokenUp:
 
     def test_unselected_broken_up_emits_no_item(self):
         assert build_from_wire(_make_wire([_broken_up_removal(selected=False)]))["confirmed_items"] == []
+
+    def test_wire_repoint_targets_user_chosen_moc_not_original(self):
+        # W1: a wire-edited decision.repoint must point up:: at the user's chosen
+        # MOC, NOT the broken original up_target ("Old MOC").
+        f = _broken_up_repoint(selected=True)
+        f["decision"]["repoint"] = "Custom MOC"
+        c = build_from_wire(_make_wire([f]))["confirmed_items"][0]
+        assert c["garden_action"] == "add_relationship"
+        assert c["up_line"] == "up:: [[Custom MOC]]"
+        assert "Old MOC" not in c["up_line"]
+
+    def test_wire_empty_repoint_falls_back_to_up_target(self):
+        # Empty repoint slot → up_line falls back to the original up_target.
+        f = _broken_up_repoint(selected=True)
+        f["decision"]["repoint"] = ""
+        c = build_from_wire(_make_wire([f]))["confirmed_items"][0]
+        assert c["up_line"] == "up:: [[Old MOC]]"
+
+    def test_wire_repoint_wikilinked_value_normalizes(self):
+        # A wire repoint value wrapped in [[ ]] normalizes to a clean up:: line.
+        f = _broken_up_repoint(selected=True)
+        f["decision"]["repoint"] = "[[Custom MOC]]"
+        c = build_from_wire(_make_wire([f]))["confirmed_items"][0]
+        assert c["up_line"] == "up:: [[Custom MOC]]"
 
 
 class TestBuildFromWireDeadLink:

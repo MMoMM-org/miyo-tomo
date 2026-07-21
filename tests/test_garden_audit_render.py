@@ -16,7 +16,7 @@ Coverage:
   - reappeared_exclusions: shown in preamble when present
   - skipped_checks: shown in preamble when present
 """
-# version: 0.3.0
+# version: 0.4.0
 import importlib.util
 import json
 import pathlib
@@ -740,3 +740,112 @@ class TestDirtyListReprRender:
         report = _render_report(_make_doc(findings=[f]))
         assert "<!-- garden-audit" not in report
         assert "Broken `up::` → [[020 Active MOC]]" in report
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 (T7.2): Suggest opt-in render + --suggest enrichment
+# ---------------------------------------------------------------------------
+
+def _full_report(d: dict) -> str:
+    """Frontmatter + body — the artifact --suggest enrichment operates on."""
+    return "\n".join(gar.render_frontmatter(d)) + "\n" + gar.render_report(d)
+
+
+class TestSuggestOptInRender:
+    def test_dead_link_has_suggest_box(self):
+        report = _render_report(_make_doc(findings=[_make_dead_link_finding("F01")]))
+        assert "- [ ] Suggest targets" in report
+
+    def test_broken_up_has_suggest_box(self):
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding("F01")]))
+        assert "- [ ] Suggest targets" in report
+
+    def test_unparented_has_no_suggest_box(self):
+        # unparented/orphan already carry candidate MOCs — no Suggest opt-in.
+        report = _render_report(_make_doc(findings=[_make_unparented_finding("F01")]))
+        assert "Suggest targets" not in report
+
+    def test_advisory_has_no_suggest_box(self):
+        report = _render_report(_make_doc(findings=[_make_duplicate_stem_finding("F01")]))
+        assert "Suggest targets" not in report
+
+    def test_suggest_box_unticked_by_default(self):
+        report = _render_report(_make_doc(findings=[_make_dead_link_finding("F01")]))
+        assert "- [x] Suggest targets" not in report
+
+
+class TestSuggestEnrichment:
+    """--suggest reads report + wire + cache, computes candidates for
+    Suggest-ticked findings, and rewrites ONLY those blocks with a pick list."""
+
+    def _dead_link_cache(self):
+        # Cache note stems including a near-miss of the dead target "Missing Note".
+        return [
+            {"stem": "Missing Notes", "kind": "note", "path": "N/Missing Notes.md", "topics": []},
+            {"stem": "Unrelated Thing", "kind": "note", "path": "N/Unrelated Thing.md", "topics": []},
+        ]
+
+    def _broken_up_cache(self):
+        return [
+            {"stem": "Writing MOC", "kind": "moc", "path": "MOCs/Writing MOC.md", "topics": ["writing"]},
+            {"stem": "Cooking MOC", "kind": "moc", "path": "MOCs/Cooking MOC.md", "topics": ["cooking"]},
+        ]
+
+    def test_ticked_dead_link_gets_pick_list(self):
+        doc = _make_doc(findings=[_make_dead_link_finding("F01")])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        out = gar.enrich_report_with_suggestions(report, wire, self._dead_link_cache())
+        assert "[[Missing Notes]]" in out
+        assert "Pick one" in out
+
+    def test_unticked_dead_link_untouched(self):
+        doc = _make_doc(findings=[_make_dead_link_finding("F01")])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        out = gar.enrich_report_with_suggestions(report, wire, self._dead_link_cache())
+        # No Suggest tick → block unchanged, no pick list.
+        assert out == report
+        assert "Pick one" not in out
+
+    def test_ticked_broken_up_gets_moc_pick_list(self):
+        f = _make_broken_up_finding("F01")
+        f["detail"]["up_target"] = "Writng MOC"  # typo of "Writing MOC"
+        doc = _make_doc(findings=[f])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        out = gar.enrich_report_with_suggestions(report, wire, self._broken_up_cache())
+        assert "[[Writing MOC]]" in out
+
+    def test_approved_gate_and_other_findings_preserved(self):
+        findings = [_make_dead_link_finding("F01"), _make_duplicate_stem_finding("F02")]
+        doc = _make_doc(findings=findings)
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        out = gar.enrich_report_with_suggestions(report, wire, self._dead_link_cache())
+        # Approved gate intact.
+        assert "- [ ] Approved" in out
+        # Advisory F02 block (no fix) is byte-for-byte present.
+        assert "### F02 — Duplicate stem" in out
+
+    def test_enrichment_is_idempotent(self):
+        doc = _make_doc(findings=[_make_dead_link_finding("F01")])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        once = gar.enrich_report_with_suggestions(report, wire, self._dead_link_cache())
+        twice = gar.enrich_report_with_suggestions(once, wire, self._dead_link_cache())
+        assert once == twice
+
+    def test_no_candidates_leaves_no_stray_pick_header(self):
+        doc = _make_doc(findings=[_make_dead_link_finding("F01")])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        # Cache with only unrelated stems → no candidates above cutoff.
+        cache = [{"stem": "Zzz Qqq", "kind": "note", "path": "N/z.md", "topics": []}]
+        out = gar.enrich_report_with_suggestions(report, wire, cache)
+        assert "Pick one" not in out

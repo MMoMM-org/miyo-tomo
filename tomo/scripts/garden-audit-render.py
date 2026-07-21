@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -30,6 +30,7 @@ Section order (strict):
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -37,6 +38,7 @@ import yaml
 
 from lib.doc_frontmatter import build_tomo_block
 from lib.render_md import compute_payload_digest, unwrap_list_repr
+from lib.target_suggest import suggest_dead_link_targets, suggest_repoint_mocs
 
 # ── Tier ordering ────────────────────────────────────────────────────────────
 _TIER_ORDER = {"integrity": 0, "structure": 1, "advisory": 2}
@@ -284,6 +286,14 @@ def _render_finding(f: dict) -> list[str]:
                 "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
                 "up::, or leave empty to remove"
             )
+        # Suggest opt-in (Phase 7, D1): a SEPARATE box, decoupled from Apply.
+        # Pass-1 renders only this static checkbox — no per-finding computation.
+        # Ticking it and running `/garden-audit --suggest` fills a pick list.
+        if check in ("dead_link", "broken_up"):
+            lines.append(
+                "- [ ] Suggest targets — tick, then run `/garden-audit --suggest` "
+                "to get candidate picks here"
+            )
         lines.append("")
     elif f.get("tier") == "advisory":
         # Advisory → read-only note, no checkbox
@@ -339,6 +349,140 @@ def render_report(d: dict) -> str:
         parts += _render_tier_section(tier, findings)
 
     return "\n".join(parts)
+
+
+# ── --suggest enrichment (Phase 7, T7.2) ──────────────────────────────────────
+# Second-pass, on-demand: rewrite ONLY Suggest-ticked dead_link/broken_up blocks
+# with a candidate pick list. Everything else (Approved gate, other findings,
+# un-ticked blocks) is preserved byte-for-byte.
+
+_RE_FINDING_HEADER = re.compile(r"^###\s+(F\d+)\b")
+_RE_SUGGEST_TICKED = re.compile(r"^\s*-\s+\[x\]\s+Suggest targets\b", re.IGNORECASE)
+_RE_REPLACE_OR_REPOINT = re.compile(
+    r"^\s*-\s+\*\*(Replace with|Repoint to):\*\*", re.IGNORECASE
+)
+# A pick sub-checkbox line inserted by a prior --suggest run (for idempotency).
+_RE_PICK_LINE = re.compile(r"^\s*-\s+\[[ x]\]\s+\[\[.*\]\]\s*\(\d")
+_PICK_HEADER = "  Pick one (tick a candidate, or type your own above):"
+
+
+def _split_report_blocks(report_md: str) -> list[list[str]]:
+    """Split the report into blocks: the preamble, then one per `### F<id>`.
+
+    Block 0 is everything before the first finding heading (frontmatter, banner,
+    Approved gate, summary, tier headings). Each subsequent block starts at a
+    `### F<id>` heading and runs until the next one (or EOF).
+    """
+    blocks: list[list[str]] = [[]]
+    for line in report_md.splitlines():
+        if _RE_FINDING_HEADER.match(line):
+            blocks.append([line])
+        else:
+            blocks[-1].append(line)
+    return blocks
+
+
+def _strip_existing_pick_list(block: list[str]) -> list[str]:
+    """Remove a pick header + its pick sub-checkbox lines from a block (idempotent)."""
+    out: list[str] = []
+    for line in block:
+        if line.rstrip() == _PICK_HEADER.rstrip() or _RE_PICK_LINE.match(line):
+            continue
+        out.append(line)
+    return out
+
+
+def _candidates_for_block(finding: dict, note_stems: list[str],
+                          moc_entries: list[dict]) -> list[dict]:
+    """Compute candidate picks for one fixable finding from the wire + cache."""
+    check = finding.get("check")
+    detail = finding.get("detail") or {}
+    if check == "dead_link":
+        dead_target = detail.get("dead_target", "")
+        return suggest_dead_link_targets(dead_target, note_stems)
+    if check == "broken_up":
+        target = finding.get("target") or {}
+        note_entry = {
+            "stem": target.get("stem", ""),
+            "path": target.get("path", ""),
+            "topics": detail.get("topics") or [],
+        }
+        broken = unwrap_list_repr(detail.get("up_target", ""))
+        if isinstance(broken, (list, tuple)):
+            broken = broken[0] if broken else ""
+        return suggest_repoint_mocs(note_entry, moc_entries, str(broken))
+    return []
+
+
+def _enrich_block(block: list[str], finding: dict, note_stems: list[str],
+                  moc_entries: list[dict]) -> list[str]:
+    """Insert a pick list after the Replace/Repoint field for a Suggest-ticked block."""
+    block = _strip_existing_pick_list(block)
+    if not any(_RE_SUGGEST_TICKED.match(ln) for ln in block):
+        return block  # not opted in — untouched
+
+    candidates = _candidates_for_block(finding, note_stems, moc_entries)
+    if not candidates:
+        return block  # nothing to offer — no stray header
+
+    pick_lines = [_PICK_HEADER]
+    pick_lines += [
+        f"  - [ ] [[{c['target']}]] ({c['score']:.2f})" for c in candidates
+    ]
+
+    out: list[str] = []
+    inserted = False
+    for line in block:
+        out.append(line)
+        if not inserted and _RE_REPLACE_OR_REPOINT.match(line):
+            out.extend(pick_lines)
+            inserted = True
+    if not inserted:
+        # No editable field found (shouldn't happen for dead_link/broken_up) —
+        # append at the block end rather than dropping the picks.
+        out.extend(pick_lines)
+    return out
+
+
+def enrich_report_with_suggestions(
+    report_md: str, wire: dict, entries: list[dict]
+) -> str:
+    """Rewrite Suggest-ticked dead_link/broken_up blocks with a candidate pick list.
+
+    STRUCTURE comes from ``wire`` (joined by F-id) and the note/MOC stems come from
+    the cache ``entries``. Only Suggest-ticked fixable blocks are rewritten; every
+    other line — the preamble, the Approved gate, un-ticked and advisory blocks —
+    is preserved byte-for-byte. Idempotent: a prior run's pick list is stripped
+    before a fresh one is inserted.
+    """
+    findings_by_id = {
+        f.get("id"): f for f in (wire or {}).get("findings") or [] if f.get("id")
+    }
+    note_stems = [
+        str(e.get("stem")) for e in entries
+        if isinstance(e, dict) and e.get("kind") == "note" and e.get("stem")
+    ]
+    moc_entries = [
+        e for e in entries if isinstance(e, dict) and e.get("kind") == "moc"
+    ]
+
+    blocks = _split_report_blocks(report_md)
+    out_blocks: list[list[str]] = [blocks[0]]  # preamble untouched
+    for block in blocks[1:]:
+        m = _RE_FINDING_HEADER.match(block[0])
+        fid = m.group(1) if m else None
+        finding = findings_by_id.get(fid)
+        if finding and finding.get("check") in ("dead_link", "broken_up"):
+            out_blocks.append(_enrich_block(block, finding, note_stems, moc_entries))
+        else:
+            out_blocks.append(block)
+
+    result = "\n".join("\n".join(b) for b in out_blocks)
+    # splitlines() drops a trailing newline — restore it so an un-enriched report
+    # round-trips byte-for-byte.
+    if report_md.endswith("\n") and not result.endswith("\n"):
+        result += "\n"
+    return result
 
 
 # ── Wire (ADR-4 / ADR-026) ───────────────────────────────────────────────────

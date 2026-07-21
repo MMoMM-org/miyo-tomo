@@ -65,7 +65,7 @@ only a static checkbox — no per-finding computation in Pass 1).
   4. Validate: unit tests green; deterministic ordering (stable ties).
   - Success: both functions return `[{target, score}]` sorted DESC, capped, threshold-gated.
 
-- [ ] **T7.2 Suggest opt-in render + `--suggest` enrichment** `[activity: backend]`
+- [x] **T7.2 Suggest opt-in render + `--suggest` enrichment** `[activity: backend]`
       `[ref: garden-audit-render.py]`
 
   1. Prime: read the current per-finding render + the `--configure` re-invocation pattern.

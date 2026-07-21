@@ -70,8 +70,22 @@ suppress the entire duplicate group as soon as any member is excluded — silent
 the remaining conflict. Per-path exclusion preserves the finding for non-excluded members;
 the finding is only suppressed when fewer than two non-excluded paths remain.
 
-## Version 0.2.0
+## cwd-relative defaults + --no-exclusions (spec 030, 2026-07-21)
 
-WHY: Bumped from 0.1.0 for the batch-orphan fix (S1) and the per-path duplicate-stem
-exclusion. 0.1.0 was the initial spec-030 implementation (six checks, injected callables,
-severity ordering, graceful partial). `update-tomo.sh` skips unchanged versions.
+WHY `--config`, `--exclusions`, `--output` all default to instance-cwd-relative paths
+(`config/vault-config.yaml`, `config/garden-audit-exclusions.yaml`, `tomo-tmp/garden-audit-doc.json`)
+and `--no-exclusions` (store_true) replaced the old "omit --exclusions" idiom: the standing
+Tomo standard (docs/ai/memory/general.md 2026-06-24) is that runtime scripts use
+instance-correct cwd-relative DEFAULTS so the agent calls bare `scripts/garden-audit.py` — no
+constant paths stuffed into the agent on every call; switches are host/test overrides only.
+argparse defaults never override an explicitly-passed value, so host runs and tests that pass
+paths keep working. A defaulted-but-absent exclusions file runs unfiltered (not an error); an
+explicit `--no-exclusions` forces the wizard first-run unfiltered scan. Only an explicit
+`--config`/`--exclusions` pointing at a missing file is still an error.
+
+## Version 0.3.0
+
+WHY: 0.3.0 (spec 030) — cwd-relative defaults for `--config`/`--exclusions`/`--output` +
+`--no-exclusions` (agent calls bare). 0.2.0 was the batch-orphan fix (S1) + per-path
+duplicate-stem exclusion; 0.1.0 initial spec-030 implementation. `update-tomo.sh` skips
+unchanged versions.

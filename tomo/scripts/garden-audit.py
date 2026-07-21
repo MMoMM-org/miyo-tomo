@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
 Runs six checks over the MOC-structure cache, kado-graph-audit results, and
@@ -23,8 +23,10 @@ Public entry point for callers and tests:
            stale_moc_days=90, run_id=None, profile=None, generated=None,
            today=None) -> dict
 
-CLI entry point (garden-auditor.md agent invokes this):
-  python3 scripts/garden-audit.py --config <path> [--exclusions <path>] --output <path>
+CLI entry point (garden-auditor.md agent invokes this bare from the instance cwd):
+  python3 scripts/garden-audit.py                 # instance-relative defaults
+  python3 scripts/garden-audit.py --no-exclusions # wizard first-run unfiltered scan
+Switches (--config / --exclusions / --output) are host/test overrides only.
 
 Design notes: docs/tomo/scripts/garden-audit.md
 """
@@ -483,13 +485,26 @@ def main() -> int:
         prog="garden-audit.py",
         description="Run garden-audit checks and emit garden-audit-doc.json.",
     )
-    p.add_argument("--config", required=True, help="Path to vault-config.yaml")
+    # Instance-relative defaults (spec 030): the agent calls this bare from the
+    # instance cwd (config/ + tomo-tmp/ present); switches are for host/test only.
+    p.add_argument(
+        "--config", default="config/vault-config.yaml", help="Path to vault-config.yaml"
+    )
     p.add_argument(
         "--exclusions",
-        default=None,
-        help="Path to garden-audit-exclusions.yaml (omit for first-run / no exclusions)",
+        default="config/garden-audit-exclusions.yaml",
+        help="Path to garden-audit-exclusions.yaml",
     )
-    p.add_argument("--output", required=True, help="Output path for garden-audit-doc.json")
+    p.add_argument(
+        "--no-exclusions",
+        action="store_true",
+        help="Skip loading exclusions — the wizard first-run unfiltered scan.",
+    )
+    p.add_argument(
+        "--output",
+        default="tomo-tmp/garden-audit-doc.json",
+        help="Output path for garden-audit-doc.json",
+    )
     args = p.parse_args()
 
     # ── Load config ──────────────────────────────────────────────────────────
@@ -527,13 +542,20 @@ def main() -> int:
     print(f"[garden-audit] Cache loaded: {len(entries)} entries", file=sys.stderr)
 
     # ── Load exclusions ───────────────────────────────────────────────────────
+    # --no-exclusions (wizard first-run) or a genuinely-absent default file → run
+    # unfiltered; an explicit --exclusions path that is missing is still an error.
     exclusions: GardenExclusions | None = None
-    if args.exclusions:
+    if args.no_exclusions:
+        print("[garden-audit] --no-exclusions — scan is unfiltered.", file=sys.stderr)
+    elif not Path(args.exclusions).is_file():
+        print(
+            f"[garden-audit] No exclusions file at {args.exclusions!r} — scan is unfiltered.",
+            file=sys.stderr,
+        )
+    else:
         exclusions = GardenExclusions.from_path(Path(args.exclusions))
         rule_count = len(exclusions._rules) if hasattr(exclusions, "_rules") else "?"
         print(f"[garden-audit] Exclusions loaded from: {args.exclusions!r} ({rule_count} rules)", file=sys.stderr)
-    else:
-        print("[garden-audit] No exclusions file — scan is unfiltered.", file=sys.stderr)
 
     # ── Connect to Kado ───────────────────────────────────────────────────────
     print("[garden-audit] Connecting to Kado...", file=sys.stderr)

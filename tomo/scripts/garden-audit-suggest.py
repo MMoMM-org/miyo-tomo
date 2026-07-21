@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """garden-audit-suggest.py — `--suggest` second-pass helper (spec 030 T7.4).
 
 The garden-auditor agent invokes this when the user has ticked
@@ -15,10 +15,9 @@ garden-audit report and re-runs `/garden-audit --suggest`. It:
 Mirrors garden-audit-configure.py as a deterministic mode-support helper: no LLM,
 no Kado access here (the agent fetches the report/wire; the cache is local).
 
-CLI:
-  python3 scripts/garden-audit-suggest.py \
-    --report <report.md> --wire <wire.json> --cache <moc-structure-cache.yaml> \
-    --output <enriched.md>
+CLI (agent calls bare from the instance cwd; --output defaults to --report in-place):
+  python3 scripts/garden-audit-suggest.py             # instance-relative defaults
+Switches (--report / --wire / --cache / --output) are host/test overrides only.
 
 Degrades gracefully: an unreadable wire/cache yields no candidates (the report is
 returned intact) rather than crashing — the agent still re-uploads a valid report.
@@ -85,10 +84,25 @@ def main() -> int:
             "Enrich Suggest-ticked garden-audit findings with candidate picks."
         )
     )
-    p.add_argument("--report", required=True, help="Path to the published report .md")
-    p.add_argument("--wire", required=True, help="Path to the report's wire .json")
-    p.add_argument("--cache", required=True, help="Path to moc-structure-cache.yaml")
-    p.add_argument("--output", required=True, help="Output path for the enriched report .md")
+    # Instance-relative defaults (spec 030): the agent calls this bare after
+    # fetching the published report + wire into tomo-tmp; --output defaults to
+    # --report (in-place enrichment). Switches are host/test overrides only.
+    p.add_argument(
+        "--report", default="tomo-tmp/suggest-report.md",
+        help="Path to the published report .md",
+    )
+    p.add_argument(
+        "--wire", default="tomo-tmp/suggest-wire.json",
+        help="Path to the report's wire .json",
+    )
+    p.add_argument(
+        "--cache", default="config/moc-structure-cache.yaml",
+        help="Path to moc-structure-cache.yaml",
+    )
+    p.add_argument(
+        "--output", default=None,
+        help="Output path for the enriched report .md (defaults to --report, in-place).",
+    )
     args = p.parse_args()
 
     try:
@@ -97,13 +111,14 @@ def main() -> int:
         print(f"error: garden-audit-suggest: cannot read report: {exc}", file=sys.stderr)
         return 1
 
-    out_path = Path(args.output)
+    output = args.output or args.report  # in-place by default
+    out_path = Path(output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(enriched, encoding="utf-8")
 
     n_picks = enriched.count("Pick one")
     print(
-        f"garden-audit-suggest: enriched {n_picks} finding(s) → {args.output}",
+        f"garden-audit-suggest: enriched {n_picks} finding(s) → {output}",
         file=sys.stderr,
     )
     return 0

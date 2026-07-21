@@ -501,6 +501,22 @@ On-demand candidate suggestions for the two typeable fixable checks (`dead_link`
   discrimination as a typed value.
   - No new external surface; no change to the suggestions `build_actions` hot path.
 
+### Surface refinements (user feedback, 2026-07-21)
+
+- [x] **cwd-relative script defaults.** All agent-invoked garden-audit scripts (`garden-audit.py`,
+  `garden-audit-render.py`, `garden-audit-suggest.py`, `garden-audit-configure.py`) default their
+  CONSTANT paths to instance-cwd-relative values (`config/...`, `tomo-tmp/...`) so `garden-auditor.md`
+  calls them bare. Switches remain only for genuine variants (`--no-exclusions` wizard scan,
+  `--choices` configure write) + the `kado-read-file`/`kado-write-file` `--vault`/`--local` paths +
+  host/test overrides. Follows the standing Tomo default-path standard (memory 2026-06-24). The render
+  RUN_ID moved off the local output (stable name) onto the vault filename at upload only.
+- [x] **Mode tokens + inference.** `/garden-audit` accepts bare mode tokens `configure` / `suggest` /
+  `audit` (legacy `--configure`/`--suggest` flags still aliased). With no token, the agent's Step 1
+  resolves by numbered precedence (first match): (1) explicit token; (2) exclusions not configured →
+  configure wizard; (3) a recent published report has a ticked `- [x] Suggest targets` → ASK
+  (enrich vs fresh scan); (4) otherwise → audit. Suggest stays in-place (re-uploads to the same
+  vault path). User chose BOTH explicit tokens AND inference.
+
 ## Quality Requirements
 
 - **Performance:** the link graph is fetched in O(1) Kado calls (cursor-paginated `kado-graph-audit`),

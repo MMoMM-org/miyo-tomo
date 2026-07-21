@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """garden-audit-configure.py — Wizard-support helper for the garden-auditor agent.
 
 Two modes, invoked by garden-auditor.md during the exclusion wizard:
@@ -318,8 +318,11 @@ def main() -> int:
         action="store_true",
         help="Write schema-valid garden-audit-exclusions.yaml from wizard choices JSON",
     )
+    # Instance-relative defaults (spec 030): the agent calls this bare; --choices
+    # varies (agent writes a fresh temp file), so it stays required for --write.
     p.add_argument(
         "--input",
+        default="tomo-tmp/garden-audit-doc.json",
         help="(--summarize) Path to garden-audit-doc.json",
     )
     p.add_argument(
@@ -328,23 +331,18 @@ def main() -> int:
     )
     p.add_argument(
         "--output",
+        default="config/garden-audit-exclusions.yaml",
         help="(--write) Output path for the YAML config",
     )
 
     args = p.parse_args()
 
     if args.summarize:
-        if not args.input:
-            print("[error] --summarize requires --input", file=sys.stderr)
-            return 2
         return summarize(args.input)
 
     # --write path
     if not args.choices:
         print("[error] --write requires --choices", file=sys.stderr)
-        return 2
-    if not args.output:
-        print("[error] --write requires --output", file=sys.stderr)
         return 2
     return write_config(args.choices, args.output)
 

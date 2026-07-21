@@ -153,6 +153,22 @@ from the wire by F-id, stems from the cache), and rejoins. It is idempotent (str
 pick list before inserting a fresh one) and emits no stray `Pick one:` header when there are no
 candidates. STRUCTURE comes from the wire, never re-derived — consistent with the two-artifact split.
 
+## cwd-relative STABLE defaults (spec 030, 2026-07-21)
+
+WHY `main()` defaults `--input` (`tomo-tmp/garden-audit-doc.json`), `--output`
+(`tomo-tmp/garden-audit-report.md`), `--json-output` (`tomo-tmp/garden-audit-wire.json`) to
+STABLE cwd-relative names and ALWAYS writes the wire: the agent calls the renderer bare (Tomo
+default-path standard). The RUN_ID that distinguishes runs belongs on the VAULT filename (set by
+`kado-write-file --vault` at upload), NOT on the local render output — so the render output name
+is stable and the agent stamps RUN_ID only in the transport step. The wire is the always-read
+STRUCTURE source (two-artifact split), so it is written unconditionally, not gated behind an
+optional `--json-output`.
+
+## Version 0.7.0
+
+WHY: 0.7.0 (spec 030) — cwd-relative STABLE defaults for `--input`/`--output`/`--json-output`;
+the wire is always written (agent calls bare, stamps RUN_ID only on the vault target).
+
 ## Version 0.6.0
 
 WHY: 0.6.0 (spec 030 Phase 7 T7.2) — added the `- [ ] Suggest targets` opt-in box for fixable

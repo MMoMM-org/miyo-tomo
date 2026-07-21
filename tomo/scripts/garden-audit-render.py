@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.7.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -551,9 +551,21 @@ def main() -> int:
     p = argparse.ArgumentParser(
         description="Render garden-audit-doc.json to markdown report + wire JSON."
     )
-    p.add_argument("--input", required=True, help="Path to garden-audit-doc.json")
-    p.add_argument("--output", required=True, help="Output markdown file path")
-    p.add_argument("--json-output", help="Optional path for garden-audit-wire.json (ADR-4)")
+    # Instance-relative STABLE defaults (spec 030): the agent calls this bare and
+    # stamps the RUN_ID only on the kado-write-file --vault target, not here.
+    p.add_argument(
+        "--input", default="tomo-tmp/garden-audit-doc.json",
+        help="Path to garden-audit-doc.json",
+    )
+    p.add_argument(
+        "--output", default="tomo-tmp/garden-audit-report.md",
+        help="Output markdown file path",
+    )
+    p.add_argument(
+        "--json-output", default="tomo-tmp/garden-audit-wire.json",
+        help="Output path for garden-audit-wire.json (ADR-4). The wire is the "
+             "STRUCTURE source and is always written.",
+    )
     args = p.parse_args()
 
     with open(args.input, encoding="utf-8") as f:
@@ -566,14 +578,16 @@ def main() -> int:
     with open(args.output, "w", encoding="utf-8") as f:
         f.write(content)
 
-    if args.json_output:
-        wire = build_wire_payload(d)
-        with open(args.json_output, "w", encoding="utf-8") as f:
-            json.dump(wire, f, ensure_ascii=False, indent=2)
+    # The wire is the always-read STRUCTURE source (two-artifact split) — always
+    # write it alongside the report.
+    wire = build_wire_payload(d)
+    with open(args.json_output, "w", encoding="utf-8") as f:
+        json.dump(wire, f, ensure_ascii=False, indent=2)
 
     finding_count = len(d.get("findings") or [])
     print(
-        f"garden-audit-render: findings={finding_count} out={args.output}",
+        f"garden-audit-render: findings={finding_count} out={args.output} "
+        f"wire={args.json_output}",
         file=sys.stderr,
     )
     return 0

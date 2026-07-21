@@ -82,3 +82,17 @@ composition — LLM paraphrasing of user choices can produce subtly wrong YAML. 
 validates each field and exits non-zero on violation, surfacing the error before writing.
 This follows the same pattern as `garden-audit.py` (validates via the KadoClient
 contract) and `garden-audit-parser.py` (validates via schema check before emitting actions).
+
+## cwd-relative defaults (spec 030, 2026-07-21)
+
+WHY `--input` defaults to `tomo-tmp/garden-audit-doc.json` and `--output` to
+`config/garden-audit-exclusions.yaml`: the agent calls `--summarize` / `--write` bare from the
+instance cwd (Tomo default-path standard — docs/ai/memory/general.md 2026-06-24). `--choices`
+stays without a default (the agent writes a fresh temp choices file per run, so its path varies).
+Because `--input`/`--output` now always resolve to a value, the old "requires --input" /
+"requires --output" guards were removed; only `--write` without `--choices` remains an error.
+
+## Version 0.4.0
+
+WHY: 0.4.0 (spec 030) — cwd-relative defaults for `--input`/`--output` (agent calls bare);
+`--choices` stays required for `--write`. `update-tomo.sh` skips unchanged versions.

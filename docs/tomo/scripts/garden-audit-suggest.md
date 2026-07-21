@@ -41,6 +41,17 @@ the agent still needs a valid report to re-upload. A missing wire means "no stru
 report is returned intact — the user simply gets no suggestions, not a broken run. Only an
 unreadable REPORT is a hard error (exit 1) — there is nothing to enrich or re-upload.
 
-## Version 0.1.0
+## cwd-relative defaults; --output defaults to --report in-place (spec 030, 2026-07-21)
 
-WHY: Initial spec-030 Phase 7 (T7.4) implementation. `update-tomo.sh` skips unchanged versions.
+WHY `--report`/`--wire`/`--cache` default to `tomo-tmp/suggest-report.md` /
+`tomo-tmp/suggest-wire.json` / `config/moc-structure-cache.yaml` and `--output` defaults to the
+resolved `--report` (in-place enrichment): the agent fetches the published report + wire into
+those exact `tomo-tmp/suggest-*` paths (via `kado-read-file`), then calls this script bare (Tomo
+default-path standard). Enriching in place means the same file the agent re-uploads is the one it
+just enriched — no fourth path to thread. `--output` defaults to `None` and resolves to
+`args.report` in `main()` because argparse can't reference another arg's value at declaration.
+
+## Version 0.2.0
+
+WHY: 0.2.0 (spec 030) — cwd-relative defaults; `--output` defaults to `--report` (in-place).
+0.1.0 initial Phase 7 (T7.4). `update-tomo.sh` skips unchanged versions.

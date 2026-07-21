@@ -1,10 +1,10 @@
 ---
 name: garden-audit
-description: Audit the knowledge garden for staleness, broken links, orphaned notes, and missing connections. On first run surfaces permanent exclusions to configure; re-run with --configure to update them, or --suggest to compute candidate targets for findings you ticked.
-argument-hint: "optional: --configure | --suggest"
+description: Audit the knowledge garden for staleness, broken links, orphaned notes, and missing connections. Bare /garden-audit infers the mode; add a token — configure to manage exclusions, or suggest to compute candidate targets for findings you ticked.
+argument-hint: "optional: configure | suggest"
 ---
 # /garden-audit
-# version: 0.2.0
+# version: 0.3.0
 
 Audit the knowledge garden for staleness, broken links, orphaned notes, and
 missing connections. Produces a reviewable audit report in your inbox folder.
@@ -20,11 +20,14 @@ Authoritative spec: `.claude/agents/garden-auditor.md`.
 ## Usage
 
 ```
-/garden-audit              # full audit run; first-run triggers exclusion wizard
-/garden-audit --configure  # re-run the exclusion wizard without a full audit
-/garden-audit --suggest    # compute candidate targets for findings you ticked "Suggest targets"
+/garden-audit            # infers mode: first-run → wizard; a report with ticked Suggest boxes → asks; else fresh scan
+/garden-audit audit      # force a fresh scan (skip inference)
+/garden-audit configure  # manage exclusions (the exclusion wizard)
+/garden-audit suggest    # compute candidate targets for findings you ticked "Suggest targets"
 ```
 
-Pass `--configure` / `--suggest` through to the `garden-auditor` agent as-is.
+Bare `/garden-audit` infers the mode (see the agent's Step 1 precedence). Pass the invocation
+tokens through to the `garden-auditor` agent as-is; the legacy `--configure` / `--suggest`
+flags are still accepted as aliases.
 
 # STRICT — IMPERSONATE, never dispatch. Why: dispatched subagents cannot use the Agent tool.

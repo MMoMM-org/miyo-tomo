@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.16
+# version: 0.2.17
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -29,30 +29,31 @@ The user just wants the menu. Show this (keep formatting tight):
     3. /explore-vault — scan your vault, build discovery cache
     4. /inbox — process inbox items (2-pass workflow)
     5. /moc-propose — propose a new MOC for a topic, folder, classification, or whole-vault scan
+    6. /garden-audit — audit the vault for orphans, dead links, broken up::, stale MOCs (+ --configure/--suggest)
 
   Concepts
-    6. Lifecycle state machine (`tomo.state` frontmatter)
-    7. 2-pass suggestion/instruction model
-    8. Knowledge Stack (profile → config → cache)
-    9. Framework profiles (miyo, lyt, custom)
+    7. Lifecycle state machine (`tomo.state` frontmatter)
+    8. 2-pass suggestion/instruction model
+    9. Knowledge Stack (profile → config → cache)
+   10. Framework profiles (miyo, lyt, custom)
 
   Configuration
-   10. vault-config.yaml — concept paths, frontmatter, templates
-   11. User rules — vault-specific behavioral conventions
-   12. Kado MCP — connection, bearer token, .mcp.json
-   13. Git user identity
+   11. vault-config.yaml — concept paths, frontmatter, templates
+   12. User rules — vault-specific behavioral conventions
+   13. Kado MCP — connection, bearer token, .mcp.json
+   14. Git user identity
 
   Troubleshooting
-   14. Kado not connected / tools missing
-   15. /explore-vault fails or finds nothing
-   16. Docker / image / container issues
-   17. OAuth / re-auth (outside the container)
-   18. First-run setup issues
+   15. Kado not connected / tools missing
+   16. /explore-vault fails or finds nothing
+   17. Docker / image / container issues
+   18. OAuth / re-auth (outside the container)
+   19. First-run setup issues
 
   Operations
-   19. Update Tomo to a newer source version
-   20. Cleanup & re-install (testing)
-   21. Debug shell in the container
+   20. Update Tomo to a newer source version
+   21. Cleanup & re-install (testing)
+   22. Debug shell in the container
 ```
 
 Then ask: `Which topic? Enter a number or describe what you need.`
@@ -106,6 +107,12 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
     - instructions: `pending-apply → applied` (Hashi flips after `[x] Applied`)
   - MOC detection freshness: new-MOC discovery lives in `/moc-propose` (a live vault-wide scan), not `/inbox`. Run `/moc-propose` when you want to surface clusters of notes that lack a dedicated MOC.
   - Point at: `.claude/commands/inbox.md`, `tomo/scripts/lib/tomo_lifecycle.py`
+
+- **garden audit / vault audit / orphan / unparented / dead link / broken up / stale MOC / duplicate stem / suggest targets / exclusion** →
+  - `/garden-audit` — audit the whole vault for six structural problems (unparented notes, orphans, broken `up::`, dead wikilinks, duplicate stems, stale MOCs); produces a severity-ordered review report in your inbox that you approve (tick `[x] Approved` + per-finding `[x] Apply`), then apply via `/inbox` — a peer upstream doc-type alongside suggestions and moc-proposals
+  - `/garden-audit --configure` — the first-run/edit exclusion wizard: scope out folders / notes / tags per check (e.g. never audit `Calendar/` for `unparented`)
+  - `/garden-audit --suggest` — after ticking `[ ] Suggest targets` on dead-link/broken-`up::` findings, computes candidate replace/repoint targets and rewrites those findings with a `Pick one:` list (tick a pick, or type your own — typed wins)
+  - Point at: `.claude/agents/garden-auditor.md`, `.claude/commands/garden-audit.md`
 
 ### Concepts
 

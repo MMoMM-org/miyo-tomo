@@ -166,6 +166,18 @@ no links at all; **unparented** = a note with links but no `up::` parent.
   - [ ] Given a broken `up::` finding, When the report renders, Then it offers an editable
     `- **Repoint to:** [[]]` field so the user can repoint `up::` to a chosen MOC, or leave it
     empty to remove the broken line (repoint is not removal-only).
+  - [ ] Given a fixable `dead_link` or `broken_up` finding, When the report renders, Then it also
+    carries a SEPARATE `- [ ] Suggest targets` opt-in box, decoupled from Apply (Phase 7, D1);
+    Pass-1 does zero per-finding candidate computation — the box is static (D2).
+  - [ ] Given the user ticks `- [x] Suggest targets` on one or more findings and runs
+    `/garden-audit --suggest`, When enrichment runs, Then ONLY those findings' blocks are rewritten
+    with a `Pick one:` candidate list (`- [ ] [[Candidate]] (0.92)`) and everything else is
+    preserved byte-for-byte. Candidate sources (D3): `dead_link` = difflib stem fuzzy-match of the
+    dead target against cache note stems; `broken_up` = `orphan_link` topic overlap MERGED with
+    stem-similarity of the broken up-target against MOC stems.
+  - [ ] Given a suggestion pick list, When the user ticks a `- [x] [[Candidate]]` sub-checkbox,
+    Then the parser reads it as the Replace/Repoint value; a value TYPED into the field OVERRIDES a
+    ticked pick (D4 precedence: typed > ticked pick > empty removal).
   - [ ] Given an unparented or orphan finding is approved with a chosen MOC, When it applies, Then
     both the MOC-side child bullet AND the note's own `up::` line are written.
   - [ ] Given a fix has no shipped Hashi action yet (dead-wikilink edit, `up::` removal), When the
@@ -228,7 +240,11 @@ Should within the same mechanism.**
 
 ### Could Have Features
 
-None promoted for v1. All nice-to-haves are explicitly parked below to keep this a single release.
+None promoted for the v1 scan/apply release. **On-demand target suggestions** for `dead_link`
+(Replace) and `broken_up` (Repoint) shipped as **Phase 7** (a second-pass opt-in — see Feature 3's
+Suggest criteria and SDD D1-D4): the report renders a static `- [ ] Suggest targets` box per fixable
+dead_link/broken_up finding, and `/garden-audit --suggest` computes candidates only for ticked
+findings, so it scales to the hundreds of findings a real scan produces without bloating Pass-1.
 
 ### Won't Have (This Phase)
 

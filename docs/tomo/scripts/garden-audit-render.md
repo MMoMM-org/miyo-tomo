@@ -134,6 +134,31 @@ yaml.safe_load a bracketed non-wikilink string to its list and take the first el
 guaranteeing a clean `[[020 Active MOC]]` even off a dirty cache. Guarded to strings that
 start with `[` but not `[[`, so wikilinks and bare stems pass through untouched.
 
+## Suggest opt-in box + --suggest enrichment (Phase 7, T7.2)
+
+WHY every fixable `dead_link`/`broken_up` block renders a `- [ ] Suggest targets` box, but
+NOT advisory findings and NOT unparented/orphan: unparented/orphan already carry candidate
+MOCs from the scan (`candidate_mocs`), and advisory findings have no fix. Only the two typeable
+checks (Replace / Repoint) benefit from on-demand candidates. Per D1 the box is SEPARATE from
+Apply (ticking Apply must not trigger computation), and per D2 Pass-1 renders ONLY the static
+box — zero per-finding candidate computation, because a real scan has hundreds of findings and
+fuzzy-matching every one against the vault on every scan violates the perf constitution.
+
+WHY `enrich_report_with_suggestions(report_md, wire, entries)` operates on the FULL report text
+and rewrites blocks in place rather than re-rendering from the doc: the `--suggest` pass runs on
+the ALREADY-published report (the doc.json is long gone), so it must preserve the user's edits
+(Apply ticks, typed values) and the Approved gate byte-for-byte. It splits the report at
+`### F<id>` boundaries, rewrites ONLY Suggest-ticked dead_link/broken_up blocks (structure joined
+from the wire by F-id, stems from the cache), and rejoins. It is idempotent (strips a prior run's
+pick list before inserting a fresh one) and emits no stray `Pick one:` header when there are no
+candidates. STRUCTURE comes from the wire, never re-derived — consistent with the two-artifact split.
+
+## Version 0.6.0
+
+WHY: 0.6.0 (spec 030 Phase 7 T7.2) — added the `- [ ] Suggest targets` opt-in box for fixable
+dead_link/broken_up and the `enrich_report_with_suggestions` `--suggest` second-pass path (pick
+lists computed via `lib/target_suggest.py`, Suggest-ticked blocks only, byte-for-byte otherwise).
+
 ## Version 0.5.0
 
 WHY: 0.5.0 (spec 030 two-artifact split 2026-07-21) — removed the per-finding

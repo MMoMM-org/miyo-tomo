@@ -472,6 +472,35 @@ never route through `/inbox`.
   - Trade-offs: several new files; each mirrors an existing one, so cost is low.
   - User confirmed: **Yes (2026-07-19)**
 
+### Phase 7 — Target Suggestions (D1-D4, user-confirmed 2026-07-20)
+
+On-demand candidate suggestions for the two typeable fixable checks (`dead_link` Replace,
+`broken_up` Repoint), added as a second-pass opt-in on top of the shipped apply path.
+
+- [x] **D1 — Suggest is a SEPARATE per-finding opt-in, decoupled from Apply.** Each fixable
+  `dead_link`/`broken_up` block renders `- [ ] Suggest targets` independent of `- [x] Apply`.
+  Apply = "I'll type the target"; Suggest = "compute candidates for me". Ticking Apply does NOT
+  trigger computation.
+  - Rationale: the two intents are orthogonal; coupling them would compute for findings the user
+    already knows how to fix.
+- [x] **D2 — candidates computed ONLY on a `/garden-audit --suggest` re-invocation, only for
+  Suggest-ticked findings.** Pass-1 renders just the static box (zero per-finding cost — perf
+  constitution; a real scan has hundreds of findings). `--suggest` (mirrors `--configure`) reads
+  the published report + wire + cache and rewrites only the opted-in blocks.
+  - Implementation: `garden-audit-suggest.py` (deterministic helper) →
+    `garden-audit-render.enrich_report_with_suggestions`; agent Step S fetches via
+    `kado-read-file.py`, re-uploads via `kado-write-file.py`.
+- [x] **D3 — candidate sources.** `dead_link` → `difflib` (stdlib, no new dep) stem fuzzy-match of
+  the dead target against cache note stems, top-3 above cutoff. `broken_up` →
+  `orphan_link._score_against_mocs` (note as pseudo-orphan, topic overlap) MERGED with difflib
+  stem-similarity of the broken up-target against MOC stems (mistyped MOC), deduped, top-3.
+  - Home: `lib/target_suggest.py` (`suggest_dead_link_targets`, `suggest_repoint_mocs`).
+- [x] **D4 — pick via sub-checkboxes.** `- [ ] [[Candidate]] (0.92)` under the Replace/Repoint
+  field, mirroring moc-proposal MOC selection. Parser precedence: a value TYPED into the field >
+  a ticked pick sub-checkbox > empty (removal). The resolved value feeds the same `garden_action`
+  discrimination as a typed value.
+  - No new external surface; no change to the suggestions `build_actions` hot path.
+
 ## Quality Requirements
 
 - **Performance:** the link graph is fetched in O(1) Kado calls (cursor-paginated `kado-graph-audit`),

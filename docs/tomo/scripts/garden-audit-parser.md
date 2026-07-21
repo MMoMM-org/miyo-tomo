@@ -89,6 +89,29 @@ filing action with an empty MOC stem would fail at apply time (Hashi cannot reso
 a MOC with an empty stem). An empty candidate list is a genuine "no good MOC found" signal,
 not a parser error — the user handles the note manually.
 
+## Suggest opt-in + ticked pick, typed-wins precedence (Phase 7, T7.3)
+
+WHY `parse_decision_map` now also reads a `suggest` flag and a ticked `- [x] [[Candidate]]`
+pick sub-checkbox: the two-artifact split means the markdown is the decision surface, and the
+Suggest opt-in + the user's pick are decisions. `suggest` tells `--suggest` which findings to
+enrich (it is read here so there is one decision-parsing home). The ticked pick becomes the
+Replace/Repoint value.
+
+WHY the precedence is typed field > ticked pick > empty (D4), resolved INSIDE `parse_decision_map`
+rather than downstream: `_confirmed_item_from_wire_finding` already consumes the resolved
+`repoint`/`replace` value and feeds it into the garden_action discrimination (non-empty →
+add_relationship/replace, empty → removal). By resolving typed-or-pick in the decision map, that
+downstream builder needs NO change — a ticked pick flows through exactly like a typed value. The
+typed value winning matters because a user who both ticked a suggestion AND then typed a different
+target clearly meant the typed one; the pick is only a convenience default.
+
+## Version 0.4.0
+
+WHY: 0.4.0 (spec 030 Phase 7 T7.3) — `parse_decision_map` reads the `- [x] Suggest targets`
+opt-in (`suggest`) and a ticked `- [x] [[Candidate]] (score)` pick sub-checkbox, resolving
+`repoint`/`replace` with D4 precedence (typed field > ticked pick > empty removal). No change to
+`_confirmed_item_from_wire_finding` — the pick flows through as a resolved value.
+
 ## Version 0.3.1
 
 WHY: 0.3.1 (code-quality review) — `main()` now routes on `_is_wire_edited(raw_wire)` (the

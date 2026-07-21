@@ -1,6 +1,6 @@
 ---
 title: "Phase 7: Target Suggestions (second-pass opt-in) for dead_link + broken_up"
-status: pending
+status: implemented (live pick-validation deferred to release)
 version: "1.0"
 phase: 7
 ---
@@ -104,11 +104,13 @@ only a static checkbox — no per-finding computation in Pass 1).
   - Success: user flow = Pass-1 report → tick Suggest → `/garden-audit --suggest` → pick → tick
     Apply + Approved → `/inbox`.
 
-- [ ] **T7.5 Requirements delta + docs + live validation** `[activity: docs]`
+- [x] **T7.5 Requirements delta + docs** `[activity: docs]` (live validation: deferred — no live
+      Kado in this build environment; run on the test vault before release)
 
-  1. Update `requirements.md` (Feature 3 — add the Suggest opt-in + candidate sources; move dead_link/
-     broken_up suggestions out of Won't-Have if listed there) and `solution.md` (D1-D4).
-  2. `docs/tomo/` mirrors for the new lib + render/parser branches.
-  3. Live-validate on the test vault: a real mistyped dead link surfaces its correct target as the top
-     pick.
-  - Success: spec reflects the shipped feature; one real dead link repointed via a suggested pick.
+  1. [x] Updated `requirements.md` (Feature 3 — Suggest opt-in + candidate sources + pick precedence;
+     Could-Have preamble notes Phase 7 shipped) and `solution.md` (D1-D4 decision block).
+  2. [x] `docs/tomo/` mirrors: `lib/target_suggest.md`, `garden-audit-suggest.md`, `kado-read-file.md`;
+     Suggest/pick branches added to `garden-audit-render.md` + `garden-audit-parser.md`.
+  3. [ ] Live-validate on the test vault: a real mistyped dead link surfaces its correct target as the
+     top pick. **Deferred** — requires a live Kado + populated cache; run at release.
+  - Success: spec reflects the shipped feature (done); live pick validation pending at release.

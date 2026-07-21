@@ -114,3 +114,23 @@ only a static checkbox — no per-finding computation in Pass 1).
   3. [ ] Live-validate on the test vault: a real mistyped dead link surfaces its correct target as the
      top pick. **Deferred** — requires a live Kado + populated cache; run at release.
   - Success: spec reflects the shipped feature (done); live pick validation pending at release.
+
+---
+
+## Phase 7 extension — live-report refinements (user feedback, 2026-07-21)
+
+Three refinements from a live garden-audit report, extending Phase 7:
+
+- [x] **Integrity "in:" headers.** `broken_up`/`dead_link` headers read `<label> in: [[note]]` (the
+  note is the container); structure/advisory keep `<label>: [[note]]`. `_render_finding` branches on
+  `tier == "integrity"`.
+- [x] **Structure Suggest + "File under:" field.** unparented/orphan render the `- [ ] Suggest targets`
+  opt-in and an editable `- **File under:** [[]]` field. New `target_suggest.suggest_file_under_mocs`
+  computes topic-overlap MOC candidates surfacing top-N even BELOW the scan's `LINK_THRESHOLD`. Parser
+  `RE_FILEUNDER_FIELD` → `parse_decision_map.file_under`; `file_note` target precedence typed File-under
+  > ticked pick > scan candidate > skip, threaded into link_to_moc + add_relationship.
+- [x] **"No suggestions found" note.** A Suggest-ticked finding with zero candidates gets an explicit
+  note instead of an unchanged block (the F08 case), for every check type; idempotent.
+
+Edited: `lib/target_suggest.py` (0.3.0), `garden-audit-render.py` (0.8.0), `garden-audit-parser.py`
+(0.5.0) + tests + docs/tomo mirrors + requirements.md/solution.md.

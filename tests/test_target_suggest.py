@@ -23,6 +23,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.target_suggest import (  # noqa: E402
     suggest_dead_link_targets,
+    suggest_file_under_mocs,
     suggest_repoint_mocs,
 )
 
@@ -171,3 +172,75 @@ class TestRepointMocs:
         first = suggest_repoint_mocs(note, mocs, "Aab")
         second = suggest_repoint_mocs(note, mocs, "Aab")
         assert first == second
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# suggest_file_under_mocs — topic-overlap MOC suggestions for an orphan/unparented
+# note, surfacing top-N even BELOW the scan's LINK_THRESHOLD (the whole point:
+# suggest exactly where the scan returned "(no candidate)"). No broken-target stem.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestFileUnderMocs:
+    def test_below_threshold_moc_still_surfaced(self):
+        # Note shares only 1 of 3 topics with the MOC → overlap 0.33, BELOW the
+        # scan's LINK_THRESHOLD (0.5), so the scan gave "(no candidate)". The
+        # suggester must still surface it (weak-but-plausible) with its score.
+        note = {"stem": "Orphan", "path": "N/Orphan.md",
+                "topics": ["writing", "misc", "notes"]}
+        mocs = [_moc("Writing MOC", topics=["writing"])]
+        out = suggest_file_under_mocs(note, mocs)
+        assert out, "a below-threshold MOC must still be surfaced as a suggestion"
+        assert out[0]["target"] == "Writing MOC"
+        assert 0.0 < out[0]["score"] < 0.5  # weak — below the scan threshold
+
+    def test_zero_overlap_returns_empty(self):
+        note = {"stem": "Orphan", "path": "N/Orphan.md", "topics": ["cooking"]}
+        mocs = [_moc("Writing MOC", topics=["writing"])]
+        assert suggest_file_under_mocs(note, mocs) == []
+
+    def test_no_topics_returns_empty(self):
+        note = {"stem": "Orphan", "path": "N/Orphan.md", "topics": []}
+        mocs = [_moc("Writing MOC", topics=["writing"])]
+        assert suggest_file_under_mocs(note, mocs) == []
+
+    def test_empty_on_no_mocs(self):
+        note = {"stem": "Orphan", "path": "N/Orphan.md", "topics": ["writing"]}
+        assert suggest_file_under_mocs(note, []) == []
+
+    def test_sorted_desc_and_capped(self):
+        note = {"stem": "N", "path": "N/N.md", "topics": ["a", "b", "c", "d"]}
+        mocs = [
+            _moc("Strong", topics=["a", "b", "c"]),
+            _moc("Medium", topics=["a", "b"]),
+            _moc("Weak", topics=["a"]),
+            _moc("Weakest", topics=["d"]),
+        ]
+        out = suggest_file_under_mocs(note, mocs, top_n=3)
+        assert len(out) == 3  # capped
+        scores = [c["score"] for c in out]
+        assert scores == sorted(scores, reverse=True)
+        assert out[0]["target"] == "Strong"
+
+    def test_result_shape_is_target_score(self):
+        note = {"stem": "N", "path": "N/N.md", "topics": ["writing"]}
+        mocs = [_moc("Writing MOC", topics=["writing"])]
+        out = suggest_file_under_mocs(note, mocs)
+        assert out
+        for c in out:
+            assert set(c.keys()) == {"target", "score"}
+            assert isinstance(c["target"], str)
+            assert 0.0 <= c["score"] <= 1.0
+
+    def test_excludes_self(self):
+        # An orphan MOC must not suggest itself.
+        note = {"stem": "Writing MOC", "path": "MOCs/Writing MOC.md",
+                "topics": ["writing"]}
+        mocs = [_moc("Writing MOC", topics=["writing"], path="MOCs/Writing MOC.md")]
+        assert suggest_file_under_mocs(note, mocs) == []
+
+    def test_deterministic_tie_break(self):
+        note = {"stem": "N", "path": "N/N.md", "topics": ["a"]}
+        mocs = [_moc("Bbb", topics=["a"]), _moc("Aaa", topics=["a"])]
+        out = suggest_file_under_mocs(note, mocs)
+        # Equal scores → target ASC.
+        assert [c["target"] for c in out] == ["Aaa", "Bbb"]

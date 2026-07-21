@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -118,6 +118,11 @@ RE_REPLACE_FIELD = re.compile(
 RE_REPOINT_FIELD = re.compile(
     r"^\s*-?\s*\*\*Repoint to:\*\*\s*(.*)", re.IGNORECASE | re.MULTILINE
 )
+# Structure (unparented/orphan) filing target (Change 2). Semantically distinct
+# from Repoint to: — "File under:" reads as filing an orphan under a MOC.
+RE_FILEUNDER_FIELD = re.compile(
+    r"^\s*-?\s*\*\*File under:\*\*\s*(.*)", re.IGNORECASE | re.MULTILINE
+)
 # Suggest opt-in (Phase 7): a per-finding box, decoupled from Apply. When ticked,
 # `--suggest` computes candidate picks and rewrites the block with a pick list.
 RE_SUGGEST_TICKED = re.compile(
@@ -203,9 +208,11 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
         ``**Replace with:**`` > a ticked ``- [x] [[Candidate]]`` pick sub-checkbox
         > empty (removal). The parser feeds this into the same garden_action
         discrimination as a typed value.
+      - file_under: the RESOLVED MOC for an unparented/orphan filing fix. Same
+        precedence (typed **File under:** > ticked pick > empty).
       - suggest: True iff the ``- [x] Suggest targets`` opt-in is ticked (so
         ``--suggest`` knows which findings to enrich).
-    Findings with no editable field carry apply + empty repoint/replace + suggest.
+    Findings with no editable field carry apply + empty fields + suggest.
     """
     out: dict[str, dict] = {}
     for fid, lines in _split_finding_blocks(md_text):
@@ -216,9 +223,11 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
         )
         repoint_raw = _field_value(block, RE_REPOINT_FIELD)
         replace_raw = _field_value(block, RE_REPLACE_FIELD)
+        fileunder_raw = _field_value(block, RE_FILEUNDER_FIELD)
         typed_repoint = _wikilink_target(repoint_raw) if repoint_raw is not None else ""
         typed_replace = _wikilink_target(replace_raw) if replace_raw is not None else ""
-        # D4 precedence: typed field value wins; else a ticked pick sub-checkbox.
+        typed_fileunder = _wikilink_target(fileunder_raw) if fileunder_raw is not None else ""
+        # Precedence: typed field value wins; else a ticked pick sub-checkbox.
         # "Pick one" is the contract — if the user ticked more than one candidate,
         # use the first and warn (the extras are silently dropped otherwise).
         picks = RE_PICK_TICKED.findall(block)
@@ -234,6 +243,7 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
             "apply": apply,
             "repoint": typed_repoint or pick,
             "replace": typed_replace or pick,
+            "file_under": typed_fileunder or pick,
             "suggest": bool(RE_SUGGEST_TICKED.search(block)),
         }
     return out
@@ -293,23 +303,36 @@ def _confirmed_item_from_wire_finding(finding: dict, decision_md: dict) -> dict 
         }
 
     if check in ("unparented", "orphan"):
+        # file_note target precedence (Change 2): the user's chosen MOC (a typed
+        # **File under:** value OR a ticked pick — both resolve into decision
+        # file_under) > the scan's candidate_mocs[0] > none (skip + warn). The
+        # resolved stem threads into BOTH the link_to_moc bullet and the up:: line
+        # in build_garden_audit_actions.
+        user_moc = decision_md.get("file_under", "")
         mocs = detail.get("candidate_mocs") or []
-        if not mocs:
+        scan_moc_path = mocs[0].get("target_moc", "") if mocs else ""
+        if user_moc:
+            target_moc = user_moc
+            target_moc_path = None  # user-chosen stem; resolver fills the path
+        elif scan_moc_path:
+            target_moc = bare_stem(scan_moc_path)
+            target_moc_path = scan_moc_path
+        else:
             print(
                 f"warning: garden-audit-parser: finding {fid!r} ({path!r}) is a "
-                "filing fix but has no candidate_mocs — skipping (no MOC resolved)",
+                "filing fix but no MOC resolved (no File-under value, no pick, no "
+                "scan candidate) — skipping",
                 file=sys.stderr,
             )
             return None
-        best = mocs[0].get("target_moc", "")
         return {
             "id": fid,
             "garden_check": check,
             "garden_action": "file_note",
             "path": path,
             "stem": stem,
-            "target_moc": bare_stem(best),
-            "target_moc_path": best or None,
+            "target_moc": target_moc,
+            "target_moc_path": target_moc_path,
         }
 
     return None  # unknown check — forward-compatible skip

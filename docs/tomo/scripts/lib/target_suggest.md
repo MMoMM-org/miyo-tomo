@@ -65,9 +65,22 @@ by definition unresolved. If a note stem exactly matched the link, the link woul
 — it would not be a dead-link finding. Suggesting the exact string would be a no-op fix. A case
 variant (differs only by case) is still a distinct, high-scoring candidate and is kept.
 
-## Version 0.2.0
+## suggest_file_under_mocs surfaces MOCs BELOW the scan threshold (structure)
 
-WHY: 0.2.0 (code-quality review W1) — added `stem_cutoff=0.6` to `suggest_repoint_mocs`, gating the
-stem-similarity signal so unrelated MOCs sharing only the `` MOC`` suffix no longer fill the pick
-list (worst with a no-topics note). 0.1.0 initial Phase 7 (T7.1). `update-tomo.sh` skips unchanged
-versions.
+WHY `suggest_file_under_mocs` deliberately does NOT apply `orphan_link.LINK_THRESHOLD` while
+`_score_against_mocs` (the scan's filing scorer) does: the whole point of the structure Suggest
+mode is to help exactly where the scan already gave up. The scan renders "(no candidate)" precisely
+when NO MOC clears `LINK_THRESHOLD` (0.5); if the suggester re-applied that gate it would return the
+same empty set and be useless. So it computes topic-overlap for every MOC and surfaces the top-N
+weak-but-plausible candidates WITH their score (e.g. `PKM MOC (0.33)`), letting the USER judge a
+below-threshold match rather than the scan silently discarding it. A `> 0.0` floor keeps zero-overlap
+MOCs out. It is topic-overlap ONLY — an orphan has no "broken target" stem, so the stem-similarity
+signal (used by `suggest_repoint_mocs`) is N/A here. Excludes the note itself (an orphan MOC must
+not suggest filing under itself).
+
+## Version 0.3.0
+
+WHY: 0.3.0 (spec 030 structure suggestions) — added `suggest_file_under_mocs` for unparented/orphan
+notes: topic-overlap only, surfacing top-N MOCs even BELOW the scan's `LINK_THRESHOLD` (suggest where
+the scan returned "(no candidate)"). 0.2.0 added `stem_cutoff=0.6` to `suggest_repoint_mocs`. 0.1.0
+initial Phase 7 (T7.1). `update-tomo.sh` skips unchanged versions.

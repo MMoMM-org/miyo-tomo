@@ -178,8 +178,21 @@ no links at all; **unparented** = a note with links but no `up::` parent.
   - [ ] Given a suggestion pick list, When the user ticks a `- [x] [[Candidate]]` sub-checkbox,
     Then the parser reads it as the Replace/Repoint value; a value TYPED into the field OVERRIDES a
     ticked pick (D4 precedence: typed > ticked pick > empty removal).
-  - [ ] Given an unparented or orphan finding is approved with a chosen MOC, When it applies, Then
-    both the MOC-side child bullet AND the note's own `up::` line are written.
+  - [ ] Given an integrity finding (`broken_up`/`dead_link`), When the report renders, Then the
+    header reads `<label> in: [[note]]` (the note is the container); structure/advisory keep
+    `<label>: [[note]]` (Phase 7 extension — live-report clarity).
+  - [ ] Given an unparented/orphan finding, When the report renders, Then it ALSO carries the
+    `- [ ] Suggest targets` opt-in AND an editable `- **File under:** [[]]` field; when the scan
+    found no candidate the fix summary points at both (no "(no candidate)" phrasing).
+  - [ ] Given an unparented/orphan finding with no scan candidate, When the user runs
+    `/garden-audit suggest`, Then MOC candidates are surfaced by topic overlap even BELOW the scan's
+    link threshold (suggest exactly where the scan gave "(no candidate)"), each with its score.
+  - [ ] Given an unparented/orphan filing, When it applies, Then `target_moc` is resolved with
+    precedence typed `File under:` > ticked pick > scan `candidate_mocs[0]` > skip; the resolved MOC
+    threads into both the MOC-side child bullet AND the note's own `up::` line.
+  - [ ] Given a Suggest-ticked finding (any check type) with ZERO candidates clearing the cutoff,
+    When enrichment runs, Then the block gets an explicit `_No suggestions found …_` note (never
+    silently unchanged) so the user always gets feedback.
   - [ ] Given a fix has no shipped Hashi action yet (dead-wikilink edit, `up::` removal), When the
     wire is emitted, Then the fix intent is still fully encoded in the JSON wire as the contract
     Hashi's editor + new action will be built against (example-driven handoff).

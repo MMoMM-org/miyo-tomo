@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.8.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -38,7 +38,11 @@ import yaml
 
 from lib.doc_frontmatter import build_tomo_block
 from lib.render_md import compute_payload_digest, unwrap_list_repr
-from lib.target_suggest import suggest_dead_link_targets, suggest_repoint_mocs
+from lib.target_suggest import (
+    suggest_dead_link_targets,
+    suggest_file_under_mocs,
+    suggest_repoint_mocs,
+)
 
 # ── Tier ordering ────────────────────────────────────────────────────────────
 _TIER_ORDER = {"integrity": 0, "structure": 1, "advisory": 2}
@@ -97,8 +101,13 @@ def _fix_summary(check: str, detail: dict, decision: dict) -> str:
     """
     if check in ("unparented", "orphan"):
         mocs = detail.get("candidate_mocs") or []
-        moc = _wikilink(mocs[0]["target_moc"]) if mocs else "(no candidate)"
-        return f"Add `up:: {moc}` — files this note under {moc}."
+        if mocs:
+            moc = _wikilink(mocs[0]["target_moc"])
+            return f"Add `up:: {moc}` — files this note under {moc}."
+        return (
+            "No candidate MOC found — tick **Suggest targets** and run "
+            "`/garden-audit suggest`, or set one in **File under:** below."
+        )
     if check == "broken_up":
         up = _wikilink(detail.get("up_target"))
         return (
@@ -237,7 +246,11 @@ def _render_finding(f: dict) -> list[str]:
     stem = target.get("stem") or Path(path).stem
     detail = f.get("detail", {})
 
-    lines = [f"### {fid} — {label}: {_wikilink(stem)}", ""]
+    # Integrity checks (broken_up, dead_link) live INSIDE the note — say "in:" so
+    # the note reads as the container, not the broken link itself. Structure +
+    # advisory checks: the note IS the subject — a plain colon (Change 1).
+    joiner = " in" if f.get("tier") == "integrity" else ""
+    lines = [f"### {fid} — {label}{joiner}: {_wikilink(stem)}", ""]
 
     # Detail lines per check type
     if check in ("unparented", "orphan"):
@@ -286,10 +299,19 @@ def _render_finding(f: dict) -> list[str]:
                 "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
                 "up::, or leave empty to remove"
             )
+        elif check in ("unparented", "orphan"):
+            # File under: the MOC to file this orphan under. Semantically clearer
+            # than "Repoint to:" for filing (Change 2). Typed value / picked
+            # suggestion / scan candidate feed the file_note target (parser).
+            lines.append(
+                "- **File under:** [[]]    ← enter a MOC to file this note under, "
+                "or pick a suggestion below"
+            )
         # Suggest opt-in (Phase 7, D1): a SEPARATE box, decoupled from Apply.
         # Pass-1 renders only this static checkbox — no per-finding computation.
         # Ticking it and running `/garden-audit --suggest` fills a pick list.
-        if check in ("dead_link", "broken_up"):
+        # Change 2: structure findings (unparented/orphan) also get the opt-in.
+        if check in ("dead_link", "broken_up", "unparented", "orphan"):
             lines.append(
                 "- [ ] Suggest targets — tick, then run `/garden-audit --suggest` "
                 "to get candidate picks here"
@@ -358,12 +380,18 @@ def render_report(d: dict) -> str:
 
 _RE_FINDING_HEADER = re.compile(r"^###\s+(F\d+)\b")
 _RE_SUGGEST_TICKED = re.compile(r"^\s*-\s+\[x\]\s+Suggest targets\b", re.IGNORECASE)
-_RE_REPLACE_OR_REPOINT = re.compile(
-    r"^\s*-\s+\*\*(Replace with|Repoint to):\*\*", re.IGNORECASE
+# The editable field line a pick list / no-suggestions note is inserted after.
+_RE_EDITABLE_FIELD = re.compile(
+    r"^\s*-\s+\*\*(Replace with|Repoint to|File under):\*\*", re.IGNORECASE
 )
 # A pick sub-checkbox line inserted by a prior --suggest run (for idempotency).
 _RE_PICK_LINE = re.compile(r"^\s*-\s+\[[ x]\]\s+\[\[.*\]\]\s*\(\d")
 _PICK_HEADER = "  Pick one (tick a candidate, or type your own above):"
+# Explicit feedback when no candidate cleared the cutoff (Change 3).
+_NO_SUGGESTIONS_NOTE = (
+    "  _No suggestions found — nothing cleared the similarity cutoff. "
+    "Type a target manually above._"
+)
 
 
 def _split_report_blocks(report_md: str) -> list[list[str]]:
@@ -383,10 +411,14 @@ def _split_report_blocks(report_md: str) -> list[list[str]]:
 
 
 def _strip_existing_pick_list(block: list[str]) -> list[str]:
-    """Remove a pick header + its pick sub-checkbox lines from a block (idempotent)."""
+    """Remove a prior run's pick header + pick lines + no-suggestions note from a
+    block, so re-running --suggest replaces rather than duplicates (idempotent)."""
     out: list[str] = []
     for line in block:
-        if line.rstrip() == _PICK_HEADER.rstrip() or _RE_PICK_LINE.match(line):
+        r = line.rstrip()
+        if r == _PICK_HEADER.rstrip() or r == _NO_SUGGESTIONS_NOTE.rstrip():
+            continue
+        if _RE_PICK_LINE.match(line):
             continue
         out.append(line)
     return out
@@ -411,36 +443,46 @@ def _candidates_for_block(finding: dict, note_stems: list[str],
         if isinstance(broken, (list, tuple)):
             broken = broken[0] if broken else ""
         return suggest_repoint_mocs(note_entry, moc_entries, str(broken))
+    if check in ("unparented", "orphan"):
+        target = finding.get("target") or {}
+        note_entry = {
+            "stem": target.get("stem", ""),
+            "path": target.get("path", ""),
+            "topics": detail.get("topics") or [],
+        }
+        return suggest_file_under_mocs(note_entry, moc_entries)
     return []
 
 
 def _enrich_block(block: list[str], finding: dict, note_stems: list[str],
                   moc_entries: list[dict]) -> list[str]:
-    """Insert a pick list after the Replace/Repoint field for a Suggest-ticked block."""
+    """Rewrite a Suggest-ticked block: insert a pick list after the editable field
+    when candidates exist, else an explicit 'No suggestions found' note (Change 3),
+    so the user always gets feedback. Non-ticked blocks are untouched."""
     block = _strip_existing_pick_list(block)
     if not any(_RE_SUGGEST_TICKED.match(ln) for ln in block):
         return block  # not opted in — untouched
 
     candidates = _candidates_for_block(finding, note_stems, moc_entries)
-    if not candidates:
-        return block  # nothing to offer — no stray header
-
-    pick_lines = [_PICK_HEADER]
-    pick_lines += [
-        f"  - [ ] [[{c['target']}]] ({c['score']:.2f})" for c in candidates
-    ]
+    if candidates:
+        insert_lines = [_PICK_HEADER]
+        insert_lines += [
+            f"  - [ ] [[{c['target']}]] ({c['score']:.2f})" for c in candidates
+        ]
+    else:
+        # Zero candidates cleared the cutoff — an explicit note, never silent.
+        insert_lines = [_NO_SUGGESTIONS_NOTE]
 
     out: list[str] = []
     inserted = False
     for line in block:
         out.append(line)
-        if not inserted and _RE_REPLACE_OR_REPOINT.match(line):
-            out.extend(pick_lines)
+        if not inserted and _RE_EDITABLE_FIELD.match(line):
+            out.extend(insert_lines)
             inserted = True
     if not inserted:
-        # No editable field found (shouldn't happen for dead_link/broken_up) —
-        # append at the block end rather than dropping the picks.
-        out.extend(pick_lines)
+        # No editable field found — append at the block end rather than dropping.
+        out.extend(insert_lines)
     return out
 
 
@@ -472,7 +514,9 @@ def enrich_report_with_suggestions(
         m = _RE_FINDING_HEADER.match(block[0])
         fid = m.group(1) if m else None
         finding = findings_by_id.get(fid)
-        if finding and finding.get("check") in ("dead_link", "broken_up"):
+        if finding and finding.get("check") in (
+            "dead_link", "broken_up", "unparented", "orphan"
+        ):
             out_blocks.append(_enrich_block(block, finding, note_stems, moc_entries))
         else:
             out_blocks.append(block)

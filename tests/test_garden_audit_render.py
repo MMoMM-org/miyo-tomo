@@ -16,7 +16,7 @@ Coverage:
   - reappeared_exclusions: shown in preamble when present
   - skipped_checks: shown in preamble when present
 """
-# version: 0.4.0
+# version: 0.5.0
 import importlib.util
 import json
 import pathlib
@@ -760,18 +760,54 @@ class TestSuggestOptInRender:
         report = _render_report(_make_doc(findings=[_make_broken_up_finding("F01")]))
         assert "- [ ] Suggest targets" in report
 
-    def test_unparented_has_no_suggest_box(self):
-        # unparented/orphan already carry candidate MOCs — no Suggest opt-in.
+    def test_unparented_has_suggest_box(self):
+        # Change 2: structure findings now ALSO get the Suggest opt-in.
         report = _render_report(_make_doc(findings=[_make_unparented_finding("F01")]))
-        assert "Suggest targets" not in report
+        assert "- [ ] Suggest targets" in report
+
+    def test_orphan_has_suggest_box(self):
+        f = _make_unparented_finding("F01")
+        f["check"] = "orphan"
+        report = _render_report(_make_doc(findings=[f]))
+        assert "- [ ] Suggest targets" in report
+
+    def test_unparented_has_file_under_field(self):
+        report = _render_report(_make_doc(findings=[_make_unparented_finding("F01")]))
+        assert "- **File under:**" in report
 
     def test_advisory_has_no_suggest_box(self):
         report = _render_report(_make_doc(findings=[_make_duplicate_stem_finding("F01")]))
         assert "Suggest targets" not in report
 
+    def test_advisory_has_no_file_under_field(self):
+        report = _render_report(_make_doc(findings=[_make_duplicate_stem_finding("F01")]))
+        assert "File under:" not in report
+
     def test_suggest_box_unticked_by_default(self):
         report = _render_report(_make_doc(findings=[_make_dead_link_finding("F01")]))
         assert "- [x] Suggest targets" not in report
+
+
+class TestIntegrityHeaderSaysIn:
+    """Change 1: integrity headers read '<label> in: [[note]]' (the note is the
+    container); structure/advisory stay '<label>: [[note]]' (note is the subject)."""
+
+    def test_broken_up_header_says_in(self):
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding("F01")]))
+        assert "### F01 — Broken up:: link in: [[Broken Note]]" in report
+
+    def test_dead_link_header_says_in(self):
+        report = _render_report(_make_doc(findings=[_make_dead_link_finding("F01")]))
+        assert "### F01 — Dead link in: [[Source Note]]" in report
+
+    def test_unparented_header_uses_colon(self):
+        report = _render_report(_make_doc(findings=[_make_unparented_finding("F01")]))
+        assert "### F01 — Unparented note: [[Orphan Note]]" in report
+        assert " in: " not in report.split("## Structure")[-1].split("\n\n")[0]
+
+    def test_advisory_header_uses_colon(self):
+        report = _render_report(_make_doc(findings=[_make_duplicate_stem_finding("F01")]))
+        assert "### F01 — Duplicate stem: [[Dup]]" in report
 
 
 class TestSuggestEnrichment:
@@ -840,12 +876,67 @@ class TestSuggestEnrichment:
         twice = gar.enrich_report_with_suggestions(once, wire, self._dead_link_cache())
         assert once == twice
 
-    def test_no_candidates_leaves_no_stray_pick_header(self):
+    def _unparented_cache(self):
+        # A MOC with weak (below-scan-threshold) topic overlap to the orphan note.
+        return [
+            {"stem": "Writing MOC", "kind": "moc", "path": "MOCs/Writing MOC.md",
+             "topics": ["writing"]},
+        ]
+
+    def test_ticked_unparented_gets_moc_pick_list(self):
+        # Change 2: a Suggest-ticked orphan/unparented gets MOC candidates even
+        # below the scan threshold (the note had weak overlap).
+        f = _make_unparented_finding("F01")
+        f["detail"] = {"candidate_mocs": [], "topics": ["writing", "misc", "notes"]}
+        doc = _make_doc(findings=[f])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        out = gar.enrich_report_with_suggestions(report, wire, self._unparented_cache())
+        assert "[[Writing MOC]]" in out
+        assert "Pick one" in out
+
+    def test_no_candidates_renders_no_suggestions_note(self):
+        # Change 3: a Suggest-ticked finding with ZERO candidates gets an explicit
+        # note (not silently unchanged — the user always gets feedback).
         doc = _make_doc(findings=[_make_dead_link_finding("F01")])
         report = _full_report(doc)
         wire = _build_wire(doc)
         report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
-        # Cache with only unrelated stems → no candidates above cutoff.
         cache = [{"stem": "Zzz Qqq", "kind": "note", "path": "N/z.md", "topics": []}]
         out = gar.enrich_report_with_suggestions(report, wire, cache)
         assert "Pick one" not in out
+        assert "No suggestions found" in out
+
+    def test_no_suggestions_note_for_unparented(self):
+        # Change 3 covers structure too: a ticked orphan with zero topic overlap.
+        f = _make_unparented_finding("F01")
+        f["detail"] = {"candidate_mocs": [], "topics": ["cooking"]}
+        doc = _make_doc(findings=[f])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        cache = [{"stem": "Writing MOC", "kind": "moc", "path": "MOCs/Writing MOC.md",
+                  "topics": ["writing"]}]
+        out = gar.enrich_report_with_suggestions(report, wire, cache)
+        assert "No suggestions found" in out
+
+    def test_no_suggestions_note_is_idempotent(self):
+        doc = _make_doc(findings=[_make_dead_link_finding("F01")])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        cache = [{"stem": "Zzz Qqq", "kind": "note", "path": "N/z.md", "topics": []}]
+        once = gar.enrich_report_with_suggestions(report, wire, cache)
+        twice = gar.enrich_report_with_suggestions(once, wire, cache)
+        assert once == twice
+        assert twice.count("No suggestions found") == 1
+
+    def test_unticked_finding_gets_no_suggestions_note(self):
+        # The no-suggestions note is only for Suggest-TICKED findings.
+        doc = _make_doc(findings=[_make_dead_link_finding("F01")])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        cache = [{"stem": "Zzz Qqq", "kind": "note", "path": "N/z.md", "topics": []}]
+        out = gar.enrich_report_with_suggestions(report, wire, cache)
+        assert "No suggestions found" not in out

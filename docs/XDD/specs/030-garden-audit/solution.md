@@ -539,6 +539,27 @@ On-demand candidate suggestions for the two typeable fixable checks (`dead_link`
   conventions as the rest of garden-audit: cwd-relative defaults, `--exclusions` None-sentinel
   (defaulted-absent → "none configured" exit 0; explicit-missing → exit 1), deterministic renderer.
 
+### Live-report refinements (Phase 7 extension, user feedback 2026-07-21)
+
+- [x] **Integrity headers say "in:".** A `broken_up`/`dead_link` finding lives INSIDE the note, so the
+  header reads `<label> in: [[note]]` ("Broken up:: link in: [[021 Fleeting MOC]]") — the note is the
+  container, not the broken link. Structure (unparented/orphan) + advisory keep `<label>: [[note]]`
+  (the note IS the subject). Branch on `tier == "integrity"` in `_render_finding`.
+- [x] **Structure gets Suggest + a "File under:" MOC field.** unparented/orphan now render the
+  `- [ ] Suggest targets` opt-in AND an editable `- **File under:** [[]]` field. `_fix_summary` for a
+  no-candidate orphan points at both affordances (drops the old "Add `up:: (no candidate)`"). Parser:
+  `RE_FILEUNDER_FIELD` → `parse_decision_map.file_under`; the `file_note` branch resolves `target_moc`
+  with precedence **typed File-under > ticked pick > scan `candidate_mocs[0]` > skip (+warn)**, and the
+  resolved MOC threads into BOTH the `link_to_moc` bullet and the `add_relationship up::` line.
+  Candidate computation: `target_suggest.suggest_file_under_mocs` — topic-overlap only, surfacing the
+  top-N closest MOCs even BELOW the scan's `LINK_THRESHOLD` (suggest exactly where the scan returned
+  "(no candidate)").
+- [x] **Explicit "No suggestions found" note.** When a Suggest-ticked finding (any check type) has
+  ZERO candidates clearing the cutoff, `enrich_report_with_suggestions` renders
+  `_No suggestions found — nothing cleared the similarity cutoff. Type a target manually above._`
+  instead of leaving the block unchanged (which looked broken — the real F08 case). Idempotent
+  (the note is stripped before a re-run).
+
 ## Quality Requirements
 
 - **Performance:** the link graph is fetched in O(1) Kado calls (cursor-paginated `kado-graph-audit`),

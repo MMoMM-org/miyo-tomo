@@ -105,10 +105,28 @@ downstream builder needs NO change — a ticked pick flows through exactly like 
 typed value winning matters because a user who both ticked a suggestion AND then typed a different
 target clearly meant the typed one; the pick is only a convenience default.
 
-## Version 0.4.1
+## file_note target precedence: File-under > pick > scan candidate > skip (Change 2)
 
-WHY: 0.4.1 (code-quality review S1) — `parse_decision_map` uses `RE_PICK_TICKED.findall` and warns
-to stderr when >1 pick sub-checkbox is ticked ("Pick one" is the contract), still using the first.
+WHY the unparented/orphan `file_note` branch resolves `target_moc` as typed **File under:** >
+ticked pick > scan `candidate_mocs[0]` > none (skip + warn), rather than always taking the scan
+candidate: the scan often finds no candidate (or a weak/wrong one), so the user must be able to
+override. `parse_decision_map` folds the typed-`File under:`-value and the ticked-pick into one
+`file_under` field (typed wins over pick, same as repoint/replace), so the builder just checks
+`decision.file_under` first, then the scan candidate, then skips. When the user chose a MOC by stem,
+`target_moc_path` is left None — the resolved stem is what `build_garden_audit_actions` threads into
+BOTH the `link_to_moc` bullet and the `up:: [[MOC]]` line, and instruction-render's
+`resolve_target_moc_paths` fills the path via Kado. Skipping (not filing with an empty MOC) matches
+the pre-existing "no candidate → skip" contract — a file_note with `target_moc=""` would fail at
+apply time.
+
+## Version 0.5.0
+
+WHY: 0.5.0 (spec 030 structure suggestions) — `parse_decision_map` reads a `**File under:**` field
+(`RE_FILEUNDER_FIELD`) into `file_under` (typed > pick precedence); the `file_note` branch resolves
+`target_moc` as File-under > pick > scan candidate > skip, so a user-chosen MOC threads into both the
+link_to_moc bullet and the up:: line. 0.4.1 (code-quality S1) — `parse_decision_map` uses
+`RE_PICK_TICKED.findall` and warns to stderr when >1 pick sub-checkbox is ticked ("Pick one"), still
+using the first.
 
 ## Version 0.4.0
 

@@ -164,9 +164,33 @@ is stable and the agent stamps RUN_ID only in the transport step. The wire is th
 STRUCTURE source (two-artifact split), so it is written unconditionally, not gated behind an
 optional `--json-output`.
 
-## Version 0.7.0
+## Integrity headers say "in:"; structure gets File-under + Suggest; no-suggestions note
 
-WHY: 0.7.0 (spec 030) — cwd-relative STABLE defaults for `--input`/`--output`/`--json-output`;
+WHY integrity finding headers (broken_up, dead_link) read `<label> in: [[note]]` while structure /
+advisory read `<label>: [[note]]`: for an integrity check the broken link lives INSIDE the note, so
+`Broken up:: link: [[021 Fleeting MOC]]` misreads as if the MOC IS the broken link. `... in: [[...]]`
+makes the note the container. For structure/advisory the note IS the subject (an orphan note, a
+duplicate stem), so a plain colon is correct. The join is decided by `f["tier"] == "integrity"`.
+
+WHY unparented/orphan now render a `- [ ] Suggest targets` box AND an editable `- **File under:**`
+field (Change 2): the scan supplies at most one candidate MOC and often "(no candidate)" — the user
+needs a way to file the note under a MOC of their choosing. "File under:" is a distinct label from
+"Repoint to:" because filing an orphan (add up:: + MOC bullet) is a different intent than repointing
+a broken up::. The `_fix_summary` for a no-candidate orphan points the user at both affordances
+instead of the old ugly "Add `up:: (no candidate)`".
+
+WHY `enrich_report_with_suggestions` renders an explicit `_No suggestions found …_` note when zero
+candidates clear the cutoff (Change 3), rather than leaving the Suggest-ticked block unchanged: an
+untouched block looks broken — the user ticked Suggest and ran `--suggest` and apparently nothing
+happened (the real F08 report). The note gives feedback for EVERY ticked finding (all check types).
+`_strip_existing_pick_list` strips the note too, so re-running stays idempotent.
+
+## Version 0.8.0
+
+WHY: 0.8.0 (spec 030 live-report refinements) — integrity `in:` headers; structure (unparented/orphan)
+Suggest box + `File under:` field + candidate suggestions (below-threshold, via
+`target_suggest.suggest_file_under_mocs`); explicit "No suggestions found" note when nothing clears
+the cutoff (Change 3). 0.7.0 cwd-relative STABLE defaults for `--input`/`--output`/`--json-output`;
 the wire is always written (agent calls bare, stamps RUN_ID only on the vault target).
 
 ## Version 0.6.0

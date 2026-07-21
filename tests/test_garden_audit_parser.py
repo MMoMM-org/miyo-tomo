@@ -19,7 +19,7 @@ Covers:
   CLI main()        — argv dispatch: missing-wire degrade + edited/unedited routing.
   _is_wire_edited   — single-load digest gate (no second file read).
 """
-# version: 0.9.0
+# version: 0.10.0
 import importlib.util
 import json
 import pathlib
@@ -586,6 +586,97 @@ class TestBuildFromReportWithPick:
         c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["garden_action"] == "edit_note_text"
         assert c["replace"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Change 2: structure File-under field + file_note target precedence
+# ---------------------------------------------------------------------------
+
+def _doc_finding_unparented_no_candidate(fid="F01"):
+    """An unparented finding the scan found NO candidate MOC for (topics only)."""
+    return {
+        "id": fid, "check": "unparented", "tier": "structure", "fixable": True,
+        "target": {"path": "Notes/Orphan Note.md", "stem": "Orphan Note"},
+        "detail": {"candidate_mocs": [], "topics": ["writing", "misc", "notes"]},
+        "decision": {"selected": True, "action": "link_to_moc"},
+    }
+
+
+def _enriched_unparented_report(fid="F01"):
+    """Render an unparented (no scan candidate) report, opt into Suggest, enrich."""
+    doc = _make_doc([_doc_finding_unparented_no_candidate(fid)])
+    md = _full_report(doc)
+    wire = _wire(doc)
+    md = md.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+    cache = [{"stem": "Writing MOC", "kind": "moc", "path": "MOCs/Writing MOC.md",
+              "topics": ["writing"]}]
+    return gar.enrich_report_with_suggestions(md, wire, cache), wire
+
+
+class TestParseDecisionMapFileUnder:
+    def test_file_under_field_read(self):
+        md = _full_report(_make_doc([_doc_finding_unparented("F01")]))
+        md = md.replace("**File under:** [[]]", "**File under:** [[Chosen MOC]]")
+        assert parse_decision_map(md)["F01"]["file_under"] == "Chosen MOC"
+
+    def test_file_under_empty_by_default(self):
+        md = _full_report(_make_doc([_doc_finding_unparented("F01")]))
+        assert parse_decision_map(md)["F01"]["file_under"] == ""
+
+    def test_ticked_pick_becomes_file_under(self):
+        md, _ = _enriched_unparented_report("F01")
+        md = md.replace("- [ ] [[Writing MOC]]", "- [x] [[Writing MOC]]", 1)
+        assert parse_decision_map(md)["F01"]["file_under"] == "Writing MOC"
+
+
+class TestFileNotePrecedence:
+    """file_note target precedence: typed File-under > ticked pick > scan
+    candidate_mocs[0] > none (skip). The resolved MOC threads into link_to_moc +
+    add_relationship via build_garden_audit_actions."""
+
+    def test_scan_candidate_used_when_no_user_input(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_unparented("F01")]))
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["garden_action"] == "file_note"
+        assert c["target_moc"] == "Writing MOC"  # scan candidate
+
+    def test_typed_file_under_wins_over_scan_candidate(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_unparented("F01")]))
+        md = md.replace("**File under:** [[]]", "**File under:** [[User MOC]]")
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["target_moc"] == "User MOC"
+
+    def test_ticked_pick_wins_over_scan_candidate(self):
+        md, wire = _enriched_unparented_report("F01")
+        md = md.replace("- [ ] [[Writing MOC]]", "- [x] [[Writing MOC]]", 1)
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["garden_action"] == "file_note"
+        assert c["target_moc"] == "Writing MOC"
+
+    def test_typed_wins_over_ticked_pick(self):
+        md, wire = _enriched_unparented_report("F01")
+        md = md.replace("- [ ] [[Writing MOC]]", "- [x] [[Writing MOC]]", 1)
+        md = md.replace("**File under:** [[]]", "**File under:** [[Typed MOC]]")
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["target_moc"] == "Typed MOC"
+
+    def test_no_candidate_no_input_skips_item(self, capsys):
+        # No scan candidate, no typed value, no pick → can't file → skip + warn.
+        md, wire = _report_and_wire(_make_doc([_doc_finding_unparented_no_candidate("F01")]))
+        items = build_from_report(md, wire)["confirmed_items"]
+        assert items == []
+        err = capsys.readouterr().err.lower()  # single read — capsys clears each call
+        assert "skipping" in err and "no moc" in err
+
+    def test_resolved_moc_flows_into_link_and_relationship(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_unparented("F01")]))
+        md = md.replace("**File under:** [[]]", "**File under:** [[User MOC]]")
+        items = build_from_report(md, wire)["confirmed_items"]
+        actions = build_garden_audit_actions(items)
+        link = next(a for a in actions if a["action"] == "link_to_moc")
+        rel = next(a for a in actions if a["action"] == "add_relationship")
+        assert link["target_moc"] == "User MOC"
+        assert rel["line"] == "up:: [[User MOC]]"
 
 
 # ---------------------------------------------------------------------------

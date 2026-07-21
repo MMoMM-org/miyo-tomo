@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_inbox_author_pipeline.py — Pipeline integration tests for inbox-author.
 
 Spec 026, T4.2 (Companion Mode P1 — inbox-author format dispatch + collision).
@@ -28,6 +28,7 @@ READ_CONFIG_FIELD = REPO_ROOT / "tomo" / "scripts" / "read-config-field.py"
 LIB_DIR = REPO_ROOT / "tomo" / "scripts" / "lib"
 
 sys.path.insert(0, str(LIB_DIR.parent))
+from lib.kado_client import KadoNotFoundError  # noqa: E402
 
 
 def _load_kwf():
@@ -93,7 +94,10 @@ def test_md_write_lands_in_inbox(tmp_path: Path, monkeypatch) -> None:
         def __init__(self):
             pass
 
-        def write_note(self, path: str, content: str) -> dict:
+        def read_note(self, path: str) -> dict:
+            raise KadoNotFoundError("not found")  # new file → no guard
+
+        def write_note(self, path: str, content: str, expected_modified=None) -> dict:
             write_calls.append(path)
             return {"path": path, "modified": 1}
 
@@ -228,7 +232,10 @@ def test_collision_no_overwrite_absent_path_writes_normally(
         def path_exists(self, path: str) -> bool:
             return False
 
-        def write_note(self, path: str, content: str) -> dict:
+        def read_note(self, path: str) -> dict:
+            raise KadoNotFoundError("not found")  # new file → no guard
+
+        def write_note(self, path: str, content: str, expected_modified=None) -> dict:
             write_calls.append(path)
             return {"path": path, "modified": 1}
 
@@ -302,7 +309,10 @@ def test_write_targets_exact_vault_path_unmodified(tmp_path: Path, monkeypatch) 
         def __init__(self):
             pass
 
-        def write_note(self, path: str, content: str) -> dict:
+        def read_note(self, path: str) -> dict:
+            raise KadoNotFoundError("not found")  # new file → no guard
+
+        def write_note(self, path: str, content: str, expected_modified=None) -> dict:
             write_calls.append(path)
             return {"path": path, "modified": 1}
 

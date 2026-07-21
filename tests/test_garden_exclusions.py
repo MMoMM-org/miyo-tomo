@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """test_garden_exclusions.py — Behavioural tests for lib.garden_exclusions (spec 030 T1.2).
 
 Tests cover:
@@ -670,3 +670,56 @@ def test_schema_rejects_non_boolean_configured():
     bad_cfg = {"version": 1, "configured": "yes", "exclusions": []}
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(instance=bad_cfg, schema=schema)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# active_rules / pushback_rules — read views for the stats overview (spec 030)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_active_rules_returns_permanent_and_unexpired_temporary():
+    cfg = GardenExclusions.from_dict(SAMPLE_CONFIG, today=date(2026, 8, 1))
+    rules = cfg.active_rules(date(2026, 8, 1))
+    assert len(rules) == 2
+    modes = sorted(r["mode"] for r in rules)
+    assert modes == ["permanent", "temporary"]
+
+
+def test_active_rules_checks_are_sorted_lists():
+    cfg = GardenExclusions.from_dict(SAMPLE_CONFIG, today=date(2026, 8, 1))
+    perm = next(r for r in cfg.active_rules(date(2026, 8, 1)) if r["mode"] == "permanent")
+    assert perm["checks"] == sorted(perm["checks"])
+    assert perm["target"] == {"type": "path", "value": "Calendar/"}
+
+
+def test_active_rules_all_expands_to_every_check_sorted():
+    cfg = GardenExclusions.from_dict(SAMPLE_CONFIG, today=date(2026, 8, 1))
+    temp = next(r for r in cfg.active_rules(date(2026, 8, 1)) if r["mode"] == "temporary")
+    # checks:"all" → the six check names, sorted.
+    assert temp["checks"] == sorted(
+        ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"]
+    )
+
+
+def test_active_rules_excludes_expired_temporary():
+    # Past the until date → the temporary is expired, not active.
+    cfg = GardenExclusions.from_dict(SAMPLE_CONFIG, today=date(2026, 11, 1))
+    rules = cfg.active_rules(date(2026, 11, 1))
+    assert [r["mode"] for r in rules] == ["permanent"]
+
+
+def test_active_rules_empty_when_no_config():
+    cfg = GardenExclusions.from_dict(None)
+    assert cfg.active_rules(date(2026, 8, 1)) == []
+
+
+def test_pushback_rules_returns_only_active_temporaries():
+    cfg = GardenExclusions.from_dict(SAMPLE_CONFIG, today=date(2026, 8, 1))
+    pushback = cfg.pushback_rules(date(2026, 8, 1))
+    assert len(pushback) == 1
+    assert pushback[0]["mode"] == "temporary"
+    assert pushback[0]["until"] == "2026-10-17"
+
+
+def test_pushback_rules_empty_when_temporary_expired():
+    cfg = GardenExclusions.from_dict(SAMPLE_CONFIG, today=date(2026, 11, 1))
+    assert cfg.pushback_rules(date(2026, 11, 1)) == []

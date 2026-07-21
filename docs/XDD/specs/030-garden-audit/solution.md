@@ -511,11 +511,23 @@ On-demand candidate suggestions for the two typeable fixable checks (`dead_link`
   host/test overrides. Follows the standing Tomo default-path standard (memory 2026-06-24). The render
   RUN_ID moved off the local output (stable name) onto the vault filename at upload only.
 - [x] **Mode tokens + inference.** `/garden-audit` accepts bare mode tokens `configure` / `suggest` /
-  `audit` (legacy `--configure`/`--suggest` flags still aliased). With no token, the agent's Step 1
-  resolves by numbered precedence (first match): (1) explicit token; (2) exclusions not configured →
-  configure wizard; (3) a recent published report has a ticked `- [x] Suggest targets` → ASK
-  (enrich vs fresh scan); (4) otherwise → audit. Suggest stays in-place (re-uploads to the same
+  `stats` / `audit` (legacy `--configure`/`--suggest` flags still aliased). With no token, the agent's
+  Step 1 resolves by numbered precedence (first match): (1) explicit token; (2) exclusions not
+  configured → configure wizard; (3) a recent published report has a ticked `- [x] Suggest targets` →
+  ASK (enrich vs fresh scan); (4) otherwise → audit. Suggest stays in-place (re-uploads to the same
   vault path). User chose BOTH explicit tokens AND inference.
+
+- [x] **Stats overview mode (`/garden-audit stats`).** A read-only overview relayed to the chat — NO
+  vault write, re-runnable anytime. The agent runs a fresh scan (reusing `garden-audit.py`, same
+  `garden-audit-doc.json`) then `garden-audit-stats.py` AGGREGATES the doc + reads the exclusion
+  config and prints a compact markdown overview: (1) open findings by AREA (first path segment;
+  root → `(root)`) × CHECK, top-N areas + explicit "others" row (no silent truncation); (2) totals
+  per check + per tier + surfaced `skipped_checks`; (3) active exclusions; (4) temporaries on pushback
+  with `until` + days remaining (soonest-first); (5) reappeared (expired) exclusions from the doc.
+  `GardenExclusions` gained pure read views `active_rules(today)` / `pushback_rules(today)` for
+  sections 3-4. `today` is injectable (threaded, not `date.today()` at multiple sites). Same
+  conventions as the rest of garden-audit: cwd-relative defaults, `--exclusions` None-sentinel
+  (defaulted-absent → "none configured" exit 0; explicit-missing → exit 1), deterministic renderer.
 
 ## Quality Requirements
 

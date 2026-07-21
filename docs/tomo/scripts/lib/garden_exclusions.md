@@ -70,9 +70,21 @@ surfaces them at the top of the report as a prompt to review. The raw dict (not 
 parsed rule) is stored in `_reappeared` so the render has access to the original `until`
 date and `target` without reconstructing it from the `_ExclusionRule`.
 
-## Version 0.1.1
+## active_rules / pushback_rules — pure read views for the stats overview
 
-WHY: Bumped from 0.1.0 (initial spec-030 T1.2) for the `today` parameter thread-through
-fix on `from_path` → `from_dict` → `__init__` (C1: both factory calls must share the same
-resolved date to avoid active/expired split inconsistency at test-boundary dates).
-`update-tomo.sh` skips unchanged versions.
+WHY the `stats` mode gets dedicated `active_rules(today)` / `pushback_rules(today)` accessors
+rather than reusing `is_excluded` or reading `_active` directly: the stats overview needs to
+DISPLAY the active rules (target · checks · mode · until), which `is_excluded` (a boolean gate)
+cannot provide, and `_active` holds private `_ExclusionRule` objects. The accessors return a
+plain dict view (`{target, checks (sorted list), mode, until}`) — a stable, testable shape that
+does not leak internals or change `is_excluded` logic. `pushback_rules` is just `active_rules`
+filtered to `mode == "temporary"` (the time-boxed set the overview lists with days-remaining).
+`today` re-checks activity inline so a caller pinning a different date sees a consistent set; the
+active/expired split is still made at construction, so this only ever narrows the active set.
+
+## Version 0.2.0
+
+WHY: 0.2.0 (spec 030 stats mode) — added `active_rules(today)` / `pushback_rules(today)` pure
+read views for the overview. 0.1.1 was the `today` thread-through fix on `from_path` →
+`from_dict` → `__init__` (C1). 0.1.0 initial spec-030 T1.2. `update-tomo.sh` skips unchanged
+versions.

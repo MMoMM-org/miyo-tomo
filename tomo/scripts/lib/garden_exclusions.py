@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.2.0
 """garden_exclusions.py — Load and apply the garden-audit exclusion config (spec 030 T1.2).
 
 Loads config/garden-audit-exclusions.yaml, separates expired temporaries
@@ -118,6 +118,8 @@ class GardenExclusions:
     Provides:
       is_excluded(note_entry, check_name, *, today=None) -> bool
       reappeared_exclusions() -> list[dict]   # expired temporary rules
+      active_rules(today=None) -> list[dict]  # active rules (stats read view)
+      pushback_rules(today=None) -> list[dict]  # active temporaries only
     """
 
     def __init__(self, rules: list[_ExclusionRule], today: date) -> None:
@@ -152,6 +154,36 @@ class GardenExclusions:
     def reappeared_exclusions(self) -> list[dict]:
         """Return raw dicts for expired-temporary exclusions that have re-surfaced."""
         return list(self._reappeared)
+
+    def active_rules(self, today: date | None = None) -> list[dict]:
+        """Return a read view of the ACTIVE exclusion rules (spec 030 stats).
+
+        Each entry: ``{target, checks (sorted list), mode, until}`` — a pure view
+        for the stats overview; does not affect is_excluded. ``today`` re-checks
+        activity inline so a caller that pinned a different date sees the same set
+        (the active/expired split is made at construction, so this only ever
+        narrows the already-active set). ``until`` is the ISO string or None.
+        """
+        effective_today = today or date.today()
+        out: list[dict] = []
+        for rule in self._active:
+            if not rule.is_active(effective_today):
+                continue
+            out.append({
+                "target": dict(rule.target),
+                "checks": sorted(rule.checks),
+                "mode": rule.mode,
+                "until": rule.until.isoformat() if rule.until else None,
+            })
+        return out
+
+    def pushback_rules(self, today: date | None = None) -> list[dict]:
+        """Return active TEMPORARY rules only (spec 030 stats — on-pushback view).
+
+        Same shape as active_rules but filtered to ``mode == "temporary"``; these
+        are the time-boxed push-backs the stats view lists with days-remaining.
+        """
+        return [r for r in self.active_rules(today) if r["mode"] == "temporary"]
 
     # ------------------------------------------------------------------
     # Factory methods

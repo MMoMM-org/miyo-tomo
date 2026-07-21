@@ -1,10 +1,10 @@
 ---
 name: garden-audit
-description: Audit the knowledge garden for staleness, broken links, orphaned notes, and missing connections. Bare /garden-audit infers the mode; add a token — configure to manage exclusions, or suggest to compute candidate targets for findings you ticked.
-argument-hint: "optional: configure | suggest"
+description: Audit the knowledge garden for staleness, broken links, orphaned notes, and missing connections. Bare /garden-audit infers the mode; add a token — configure to manage exclusions, suggest to compute candidate targets for findings you ticked, or stats for a read-only overview.
+argument-hint: "optional: configure | suggest | stats"
 ---
 # /garden-audit
-# version: 0.3.0
+# version: 0.4.0
 
 Audit the knowledge garden for staleness, broken links, orphaned notes, and
 missing connections. Produces a reviewable audit report in your inbox folder.
@@ -24,6 +24,7 @@ Authoritative spec: `.claude/agents/garden-auditor.md`.
 /garden-audit audit      # force a fresh scan (skip inference)
 /garden-audit configure  # manage exclusions (the exclusion wizard)
 /garden-audit suggest    # compute candidate targets for findings you ticked "Suggest targets"
+/garden-audit stats      # read-only overview: what's open, excluded, on pushback (relayed to chat, no vault write)
 ```
 
 Bare `/garden-audit` infers the mode (see the agent's Step 1 precedence). Pass the invocation

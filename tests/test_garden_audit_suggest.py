@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_garden_audit_suggest.py — Tests for garden-audit-suggest.py CLI (spec 030 T7.4).
 
 The `--suggest` second-pass helper: reads the in-vault report + wire + MOC-structure
@@ -87,6 +87,14 @@ class TestSuggestHelperFunction:
         rp, wp, _ = _write_inputs(tmp_path, doc, _DEAD_CACHE)
         out = gas.run_suggest(str(rp), str(wp), str(tmp_path / "nope.yaml"))
         # No cache → no candidates, but the report is returned intact (no crash).
+        assert "### F01 — Dead link" in out
+        assert "Pick one" not in out
+
+    def test_missing_wire_degrades_to_input_report(self, tmp_path):
+        # _load_wire returns {} → no findings to join → all blocks preserved.
+        doc = _doc([_dead_link_finding("F01")])
+        rp, _, cp = _write_inputs(tmp_path, doc, _DEAD_CACHE)
+        out = gas.run_suggest(str(rp), str(tmp_path / "nope.json"), str(cp))
         assert "### F01 — Dead link" in out
         assert "Pick one" not in out
 

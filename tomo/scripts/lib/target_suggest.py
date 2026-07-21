@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """target_suggest.py — on-demand target candidates for garden-audit (spec 030 Phase 7).
 
 Two second-pass suggesters, computed ONLY on a `/garden-audit --suggest`
@@ -63,14 +63,19 @@ def suggest_repoint_mocs(
     broken_target: str,
     *,
     top_n: int = TOP_N,
+    stem_cutoff: float = 0.6,
 ) -> list[dict]:
     """Suggest repoint MOCs for a broken ``up::`` (D3).
 
     Merges two signals, deduped by MOC stem (keeping the higher score):
       1. topic overlap — the note scored against every MOC via the shared
-         ``orphan_link._score_against_mocs`` (the note as a pseudo-orphan).
+         ``orphan_link._score_against_mocs`` (the note as a pseudo-orphan);
+         gated by orphan_link's own ``LINK_THRESHOLD``.
       2. stem similarity — difflib ratio of the broken up-target against each
-         MOC stem (catches a mistyped MOC name with no topic overlap).
+         MOC stem (catches a mistyped MOC name with no topic overlap); gated by
+         ``stem_cutoff`` so unrelated MOCs sharing only the common `` MOC``
+         suffix (e.g. ``Writing MOC`` vs ``Cooking MOC`` ≈ 0.64) don't fill the
+         pick list as confident-looking-but-wrong candidates.
 
     Returns up to ``top_n`` ``{"target", "score"}`` entries, sorted by score
     DESC then target ASC (deterministic ties).
@@ -89,7 +94,8 @@ def suggest_repoint_mocs(
         if stem:
             best[stem] = max(best.get(stem, 0.0), float(cand.get("score", 0.0)))
 
-    # Signal 2: stem similarity of the broken up-target against MOC stems.
+    # Signal 2: stem similarity of the broken up-target against MOC stems,
+    # gated by stem_cutoff (parallels suggest_dead_link_targets' cutoff).
     broken = (broken_target or "").strip()
     if broken:
         for moc in moc_entries:
@@ -97,7 +103,8 @@ def suggest_repoint_mocs(
             if not stem:
                 continue
             score = round(_similarity(broken, stem), 4)
-            best[stem] = max(best.get(stem, 0.0), score)
+            if score >= stem_cutoff:
+                best[stem] = max(best.get(stem, 0.0), score)
 
     merged = [{"target": stem, "score": score} for stem, score in best.items()]
     merged.sort(key=lambda c: (-c["score"], c["target"]))

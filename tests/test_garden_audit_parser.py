@@ -19,7 +19,7 @@ Covers:
   CLI main()        — argv dispatch: missing-wire degrade + edited/unedited routing.
   _is_wire_edited   — single-load digest gate (no second file read).
 """
-# version: 0.8.0
+# version: 0.9.0
 import importlib.util
 import json
 import pathlib
@@ -540,6 +540,30 @@ class TestParseDecisionMapSuggest:
         md, _ = _enriched_dead_link_report("F01")
         # Picks present but none ticked, field empty → removal (empty replace).
         assert parse_decision_map(md)["F01"]["replace"] == ""
+
+    def test_multiple_ticked_picks_uses_first_and_warns(self, capsys):
+        # S1: "Pick one" is the contract. If the user ticks two candidates, the
+        # first is used and a warning is emitted (the extras are dropped).
+        doc = _make_doc([_doc_finding_dead_link("F01")])
+        md = _full_report(doc)
+        wire = _wire(doc)
+        md = md.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        # Two candidates both clear the cutoff vs "Missing Note".
+        cache = [
+            {"stem": "Missing Notes", "kind": "note", "path": "N/a.md", "topics": []},
+            {"stem": "Missing Noted", "kind": "note", "path": "N/b.md", "topics": []},
+        ]
+        md = gar.enrich_report_with_suggestions(md, wire, cache)
+        assert "- [ ] [[Missing Notes]]" in md and "- [ ] [[Missing Noted]]" in md
+        # The FIRST candidate line in the block (both score 0.96; ties sort by
+        # target ASC → "Missing Noted" renders before "Missing Notes").
+        import re as _re
+        first_pick = _re.search(r"- \[ \] \[\[([^\]]+)\]\]", md).group(1)
+        md = md.replace("- [ ] [[Missing Notes]]", "- [x] [[Missing Notes]]", 1)
+        md = md.replace("- [ ] [[Missing Noted]]", "- [x] [[Missing Noted]]", 1)
+        dm = parse_decision_map(md)
+        assert dm["F01"]["replace"] == first_pick  # the first ticked pick wins
+        assert "ticked pick" in capsys.readouterr().err
 
 
 class TestBuildFromReportWithPick:

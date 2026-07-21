@@ -40,6 +40,17 @@ topic overlap AND by stem similarity (e.g. "Writing MOC" when the note is about 
 broken target was "Writng MOC"). Emitting it twice would waste a pick slot and confuse the user.
 Taking the higher of the two signals surfaces the MOC once at its best score.
 
+## Both signals are cutoff-gated (`stem_cutoff`, parallels the dead_link cutoff)
+
+WHY signal 2 (stem similarity) has its own `stem_cutoff=0.6` and is NOT ungated: difflib's ratio
+is inflated by the shared `` MOC`` suffix every MOC stem carries — `Writing MOC` vs `Cooking MOC`
+≈ 0.64, `Writing MOC` vs `Running MOC` ≈ 0.73 — so an ungated stem signal made every unrelated MOC
+a "candidate". The failure mode is worst when the note has NO topics: signal 1
+(`_score_against_mocs`) returns `[]`, so the ungated stem signal alone fills all top-N slots with
+confident-looking-but-wrong MOCs. Gating signal 2 at 0.6 (the same cutoff `suggest_dead_link_targets`
+already uses) drops the suffix-only matches; a genuine mistyped MOC (`Writng MOC` vs `Writing MOC`
+≈ 0.9) still clears it. The topic signal stays gated by orphan_link's own `LINK_THRESHOLD`.
+
 ## Deterministic tie-break (score DESC, then target ASC)
 
 WHY both functions sort by `(-score, target)`: a suggestion pick list that reorders between two
@@ -54,6 +65,9 @@ by definition unresolved. If a note stem exactly matched the link, the link woul
 — it would not be a dead-link finding. Suggesting the exact string would be a no-op fix. A case
 variant (differs only by case) is still a distinct, high-scoring candidate and is kept.
 
-## Version 0.1.0
+## Version 0.2.0
 
-WHY: Initial spec-030 Phase 7 (T7.1) implementation. `update-tomo.sh` skips unchanged versions.
+WHY: 0.2.0 (code-quality review W1) — added `stem_cutoff=0.6` to `suggest_repoint_mocs`, gating the
+stem-similarity signal so unrelated MOCs sharing only the `` MOC`` suffix no longer fill the pick
+list (worst with a no-topics note). 0.1.0 initial Phase 7 (T7.1). `update-tomo.sh` skips unchanged
+versions.

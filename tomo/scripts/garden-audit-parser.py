@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -219,8 +219,17 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
         typed_repoint = _wikilink_target(repoint_raw) if repoint_raw is not None else ""
         typed_replace = _wikilink_target(replace_raw) if replace_raw is not None else ""
         # D4 precedence: typed field value wins; else a ticked pick sub-checkbox.
-        pick_m = RE_PICK_TICKED.search(block)
-        pick = pick_m.group(1).strip() if pick_m else ""
+        # "Pick one" is the contract — if the user ticked more than one candidate,
+        # use the first and warn (the extras are silently dropped otherwise).
+        picks = RE_PICK_TICKED.findall(block)
+        if len(picks) > 1:
+            print(
+                f"warning: garden-audit-parser: finding {fid!r} has "
+                f"{len(picks)} ticked pick sub-checkboxes — 'Pick one' expected; "
+                f"using the first ({picks[0].strip()!r}), ignoring the rest",
+                file=sys.stderr,
+            )
+        pick = picks[0].strip() if picks else ""
         out[fid] = {
             "apply": apply,
             "repoint": typed_repoint or pick,

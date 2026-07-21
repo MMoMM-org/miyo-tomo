@@ -105,6 +105,11 @@ downstream builder needs NO change — a ticked pick flows through exactly like 
 typed value winning matters because a user who both ticked a suggestion AND then typed a different
 target clearly meant the typed one; the pick is only a convenience default.
 
+## Version 0.4.1
+
+WHY: 0.4.1 (code-quality review S1) — `parse_decision_map` uses `RE_PICK_TICKED.findall` and warns
+to stderr when >1 pick sub-checkbox is ticked ("Pick one" is the contract), still using the first.
+
 ## Version 0.4.0
 
 WHY: 0.4.0 (spec 030 Phase 7 T7.3) — `parse_decision_map` reads the `- [x] Suggest targets`

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_target_suggest.py — Behavioural tests for lib.target_suggest (spec 030 T7.1).
 
 On-demand candidate suggestions for two fixable garden-audit checks (Phase 7, D3):
@@ -115,6 +115,17 @@ class TestRepointMocs:
         out = suggest_repoint_mocs(note, mocs, "No Match Broken Target")
         targets = [c["target"] for c in out]
         assert "ZZZ" in targets
+
+    def test_no_topics_unrelated_mocs_excluded_by_stem_cutoff(self):
+        # W1 regression: a note with NO topics (signal 1 → []) and a broken target
+        # that shares only the common " MOC" suffix with the MOC stems (each ≈ 0.4,
+        # below the 0.6 stem_cutoff) must yield NO candidates — without the cutoff,
+        # every unrelated MOC would fill the pick list as a confident-looking-but-
+        # wrong candidate. FAILS without W1's gate, passes with it.
+        note = {"stem": "Some Note", "path": "N/Some Note.md", "topics": []}
+        mocs = [_moc("Writing MOC"), _moc("Cooking MOC"), _moc("Fitness MOC")]
+        out = suggest_repoint_mocs(note, mocs, "Zqxjv MOC")
+        assert out == [], f"unrelated MOCs must not appear, got {out!r}"
 
     def test_merged_deduped_by_moc_stem(self):
         # A MOC that matches BOTH by stem similarity AND topic overlap appears once.

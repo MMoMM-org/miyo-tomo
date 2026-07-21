@@ -510,6 +510,16 @@ On-demand candidate suggestions for the two typeable fixable checks (`dead_link`
   `--choices` configure write) + the `kado-read-file`/`kado-write-file` `--vault`/`--local` paths +
   host/test overrides. Follows the standing Tomo default-path standard (memory 2026-06-24). The render
   RUN_ID moved off the local output (stable name) onto the vault filename at upload only.
+- [x] **Dated inbox-convention vault filenames + wire-sibling pairing.** The vault filenames now use
+  the canonical inbox timestamp `RUN_ID=date +%Y-%m-%d_%H%M`: report `<ts>_garden-audit.md`, wire
+  `<ts>_garden-audit.json` (the report's `.json` SIBLING — the `-wire-<epoch>` infix is dropped). This
+  matches `upload-rendered.py`'s inbox format and fixes two latent bugs the old `garden-audit-<epoch>`
+  naming caused: (1) `inbox-triage._get_doc_type`'s filename fallback requires a `_garden-audit` suffix,
+  which the epoch name did not satisfy; (2) `_cache_wire_sibling` derives the wire as
+  `report[:-3]+".json"`, which never matched `garden-audit-wire-<epoch>.json`, so the wire (the parser's
+  REQUIRED structure source) was never found → empty confirmed_items → the apply path silently did
+  nothing. The internal `run_id` field (correlation + emit_digest) is unchanged; only the vault filename
+  timestamp changed. `_cache_wire_sibling` was NOT modified — the rename aligns to what it already expects.
 - [x] **Mode tokens + inference.** `/garden-audit` accepts bare mode tokens `configure` / `suggest` /
   `stats` / `audit` (legacy `--configure`/`--suggest` flags still aliased). With no token, the agent's
   Step 1 resolves by numbered precedence (first match): (1) explicit token; (2) exclusions not

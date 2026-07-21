@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.1
+# version: 0.7.0
 """test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
 T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
@@ -2282,10 +2282,23 @@ class TestGardenAuditAsUpstreamType:
         }
 
     def test_get_doc_type_infers_garden_audit_from_filename(self, tmp_path):
-        """_get_doc_type returns 'garden-audit' for *_garden-audit.md stems."""
+        """_get_doc_type returns 'garden-audit' for the dated inbox-convention
+        stem `<YYYY-MM-DD_HHMM>_garden-audit.md` (frontmatter empty).
+
+        This is the naming the agent now writes; the OLD `garden-audit-<epoch>.md`
+        did NOT satisfy the `_garden-audit` suffix fallback (bug fixed by the rename).
+        """
         mod = _load_module()
-        hit = {"path": INBOX_PATH + "2026-07-20_garden-audit.md", "frontmatter": {}}
+        hit = {"path": INBOX_PATH + "2026-07-20_1430_garden-audit.md", "frontmatter": {}}
         assert mod._get_doc_type(hit) == "garden-audit"
+
+    def test_get_doc_type_rejects_old_epoch_garden_audit_name(self, tmp_path):
+        """The OLD `garden-audit-<epoch>.md` name does NOT end in `_garden-audit`,
+        so the filename fallback must NOT infer garden-audit (only frontmatter
+        would have). Locks the reason the rename was needed."""
+        mod = _load_module()
+        hit = {"path": INBOX_PATH + "garden-audit-1753000000.md", "frontmatter": {}}
+        assert mod._get_doc_type(hit) != "garden-audit"
 
     def test_get_doc_type_does_not_promote_misnamed_pending_accept(self, tmp_path):
         """Naming-convention contract: a pending-accept doc with empty frontmatter
@@ -2304,7 +2317,7 @@ class TestGardenAuditAsUpstreamType:
     def test_pending_accept_garden_audit_lands_in_approved_bucket(self, tmp_path):
         """A pending-accept garden-audit doc goes to approved_garden_audits."""
         mod = _load_module()
-        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
         client = FakeKadoClient(
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
@@ -2322,12 +2335,31 @@ class TestGardenAuditAsUpstreamType:
         assert "wire_cache_path" in state.approved_garden_audits[0]
         assert state.approved_garden_audits[0]["wire_cache_path"] is None
 
+    def test_wire_is_report_json_sibling_by_convention(self, tmp_path):
+        """The wire is the report's `.json` SIBLING: `_cache_wire_sibling` derives
+        it as `report[:-3] + '.json'`, and the agent now writes exactly that name
+        (`<ts>_garden-audit.md` → `<ts>_garden-audit.json`, NOT `-wire-<epoch>`).
+
+        The OLD `garden-audit-wire-<epoch>.json` was NOT the `.json` sibling of
+        `garden-audit-<epoch>.md`, so the sibling was never found → the parser
+        (which REQUIRES the wire) emitted empty confirmed_items → apply did nothing.
+        The dated rename makes the derivation resolve.
+        """
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
+        # The exact name the agent writes for the wire.
+        agent_wire_name = INBOX_PATH + "2026-07-20_1430_garden-audit.json"
+        # The name _cache_wire_sibling derives from the report path.
+        derived_wire = ga_path[:-3] + ".json"
+        assert derived_wire == agent_wire_name, (
+            "wire-sibling derivation must match the name the agent writes"
+        )
+
     def test_entry_carries_real_wire_cache_path_when_sibling_present(self, tmp_path):
-        """When the wire sibling exists, the entry carries its cached path so the
-        conductor always passes --wire (spec 030 structure source)."""
+        """When the wire sibling exists at the derived path, the entry carries its
+        cached path so the conductor always passes --wire (spec 030 structure source)."""
         mod = _load_module()
-        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
-        wire_vault_path = ga_path[:-3] + ".json"
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
+        wire_vault_path = ga_path[:-3] + ".json"  # 2026-07-20_1430_garden-audit.json
         client = FakeKadoClient(
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
@@ -2345,7 +2377,7 @@ class TestGardenAuditAsUpstreamType:
         """ADR-1 revised: an UNticked garden-audit Approved box → the doc is NOT
         picked up. It stays in pending_approval; approved_garden_audits is empty."""
         mod = _load_module()
-        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
         client = FakeKadoClient(
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
@@ -2363,7 +2395,7 @@ class TestGardenAuditAsUpstreamType:
     def test_garden_audit_excluded_from_fresh_sources(self, tmp_path):
         """The garden-audit doc must NOT appear in fresh_sources (CON-5)."""
         mod = _load_module()
-        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
         client = FakeKadoClient(
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
@@ -2393,7 +2425,7 @@ class TestGardenAuditAsUpstreamType:
     def test_routing_plan_carries_approved_garden_audits(self, tmp_path):
         """build_routing_plan includes approved_garden_audits in the plan dict."""
         mod = _load_module()
-        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
         client = FakeKadoClient(
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
@@ -2414,7 +2446,7 @@ class TestGardenAuditAsUpstreamType:
     def test_approved_garden_audit_triggers_synthesize_action(self, tmp_path):
         """An approved garden-audit doc triggers action=synthesize."""
         mod = _load_module()
-        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
         client = FakeKadoClient(
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),

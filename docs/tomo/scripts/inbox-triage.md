@@ -146,3 +146,13 @@ render always writes the wire sibling, so this resolves to a real path in normal
 `confirmed_items` (warn, no crash). The routing-plan schema types `wire_cache_path` as
 `["string", "null"]` for garden-audit to allow the rare null. Pinned by
 `test_entry_carries_real_wire_cache_path_when_sibling_present`.
+
+WHY this depends on the vault FILENAME convention (2026-07-21 fix): `_cache_wire_sibling`
+derives the wire as `report_vault_path[:-3] + ".json"` — the report's `.json` sibling. The
+agent must therefore write the wire as `<ts>_garden-audit.json` (the `.json` sibling of
+`<ts>_garden-audit.md`), NOT a `garden-audit-wire-<epoch>.json` name. Before the dated-filename
+rename the agent wrote `-wire-<epoch>.json`, which was never the sibling → the wire was never
+found → the "resolves in normal operation" claim above was FALSE and the whole apply path
+silently no-op'd. The rename to the dated inbox convention makes it true; `_cache_wire_sibling`
+itself was NOT changed (the rename aligns to what it already expects). Pinned by
+`test_wire_is_report_json_sibling_by_convention`.

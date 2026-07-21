@@ -12,7 +12,7 @@ permissionMode: acceptEdits
 
 **Active agent: garden-auditor**
 
-# version: 0.6.0
+# version: 0.6.1
 # Garden Auditor Agent
 
 You are the **garden auditor**. Your job is to scan the user's vault for structural problems,
@@ -232,9 +232,10 @@ the report + wire from the vault via Kado; read the cache from the local instanc
 
 #### S.1 — Locate the report + wire
 
-Ask the user which report to enrich if not obvious, then resolve two vault paths:
-`REPORT_VAULT` (the `.md`) and `WIRE_VAULT` (its sibling `garden-audit-wire-*.json`). The
-wire basename mirrors the report's `RUN_ID`.
+Ask the user which report to enrich if not obvious, then set `REPORT_VAULT` to its vault path
+(`<ts>_garden-audit.md`). The wire is the report's `.json` SIBLING — same basename, `.md`→`.json`:
+`WIRE_VAULT` = `REPORT_VAULT` with the trailing `.md` replaced by `.json` (so
+`<ts>_garden-audit.md` → `<ts>_garden-audit.json`).
 
 #### S.2 — Fetch the report + wire into the instance
 
@@ -311,10 +312,11 @@ python3 scripts/garden-audit-render.py
 
 **STRICT:** Do NOT redirect stderr. Exit non-zero → surface stderr and stop.
 
-Set the RUN_ID for the vault filenames and remember the local rendered paths:
+Set the RUN_ID (a human-readable timestamp, the canonical inbox convention) for the vault
+filenames and remember the local rendered paths:
 
 ```bash
-RUN_ID=$(date +%s)
+RUN_ID=$(date +%Y-%m-%d_%H%M)
 LOCAL_REPORT="tomo-tmp/garden-audit-report.md"
 LOCAL_WIRE="tomo-tmp/garden-audit-wire.json"
 ```
@@ -326,7 +328,8 @@ Log: `Report rendered.`
 **STRICT (Why: large report inlined into kado-write exceeds the output-token budget and the call fails):**
 - Transport ONLY via `scripts/kado-write-file.py`. NEVER read the report and inline it into a `kado-write` tool call.
 - Both artifacts are transported: the report `.md` first, then the wire `.json`.
-- The local files have STABLE names; the RUN_ID is stamped only on the vault filenames so each run lands as a distinct inbox doc. The wire basename mirrors the report's RUN_ID (the parser pairs them by that name).
+- The local files have STABLE names; the RUN_ID timestamp is stamped only on the vault filenames so each run lands as a distinct inbox doc, dated like the rest of the inbox (`<ts>_garden-audit.md`).
+- The wire is the report's `.json` SIBLING — SAME basename, `.md`→`.json` (`<ts>_garden-audit.json`, NOT a `-wire-` name). Triage pairs them by that sibling rule.
 - Join `<INBOX_PATH>` (already ends in `/`) with the run-stamped filename. Do NOT hard-code `"100 Inbox/"` — always use the resolved `INBOX_PATH`.
 
 Transport the report:
@@ -334,23 +337,23 @@ Transport the report:
 ```bash
 python3 scripts/kado-write-file.py \
   --local "$LOCAL_REPORT" \
-  --vault "${INBOX_PATH}garden-audit-${RUN_ID}.md"
+  --vault "${INBOX_PATH}${RUN_ID}_garden-audit.md"
 ```
 
-Transport the wire:
+Transport the wire (the report's `.json` sibling):
 
 ```bash
 python3 scripts/kado-write-file.py \
   --local "$LOCAL_WIRE" \
-  --vault "${INBOX_PATH}garden-audit-wire-${RUN_ID}.json"
+  --vault "${INBOX_PATH}${RUN_ID}_garden-audit.json"
 ```
 
 For each transport: exit 0 = success; non-zero = surface stderr and report
 `Transport failed (local copy retained: <path>)` so the user can retry.
 
 Log on success:
-`Report → ${INBOX_PATH}garden-audit-${RUN_ID}.md`
-`Wire → ${INBOX_PATH}garden-audit-wire-${RUN_ID}.json`
+`Report → ${INBOX_PATH}${RUN_ID}_garden-audit.md`
+`Wire → ${INBOX_PATH}${RUN_ID}_garden-audit.json`
 
 ### Step 7 — Emit fixed output report
 
@@ -407,8 +410,8 @@ Mode: audit
 Profile: miyo
 Findings: vault healthy (0 findings)
 Exclusions: 2 permanent, 1 temporary active
-Report: 100 Inbox/garden-audit-1753000000.md
-Wire: 100 Inbox/garden-audit-wire-1753000000.json
+Report: 100 Inbox/2026-07-20_1430_garden-audit.md
+Wire: 100 Inbox/2026-07-20_1430_garden-audit.json
 Errors/notes: none
 ```
 
@@ -418,8 +421,8 @@ Mode: audit
 Profile: miyo
 Findings: 14 total — integrity:4 structure:6 advisory:4
 Exclusions: 2 permanent, 0 temporary active
-Report: 100 Inbox/garden-audit-1753000000.md
-Wire: 100 Inbox/garden-audit-wire-1753000000.json
+Report: 100 Inbox/2026-07-20_1430_garden-audit.md
+Wire: 100 Inbox/2026-07-20_1430_garden-audit.json
 Errors/notes:
   - kado-graph-audit unavailable — dead_link and orphan checks skipped (cache-only checks ran)
 ```

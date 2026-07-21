@@ -16,7 +16,7 @@ Coverage:
   - reappeared_exclusions: shown in preamble when present
   - skipped_checks: shown in preamble when present
 """
-# version: 0.5.0
+# version: 0.6.0
 import importlib.util
 import json
 import pathlib
@@ -940,3 +940,35 @@ class TestSuggestEnrichment:
         cache = [{"stem": "Zzz Qqq", "kind": "note", "path": "N/z.md", "topics": []}]
         out = gar.enrich_report_with_suggestions(report, wire, cache)
         assert "No suggestions found" not in out
+
+    def test_no_suggestions_note_for_broken_up(self):
+        # Change 3 on the broken_up repoint path: the note has NO topics and the
+        # cache MOC stem is dissimilar to the up-target "Deleted MOC" → neither
+        # the topic nor the stem signal produces a candidate.
+        f = _make_broken_up_finding("F01")
+        f["detail"] = {"up_target": "Deleted MOC", "topics": []}
+        doc = _make_doc(findings=[f])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        cache = [{"stem": "Zzz Qqq MOC", "kind": "moc", "path": "MOCs/Zzz Qqq MOC.md",
+                  "topics": ["quantum"]}]
+        out = gar.enrich_report_with_suggestions(report, wire, cache)
+        assert "No suggestions found" in out
+        assert "Pick one" not in out
+
+    def test_no_suggestions_note_for_orphan(self):
+        # Change 3 on the orphan file-under path: zero topic overlap with the
+        # cache MOC → suggest_file_under_mocs returns nothing.
+        f = _make_unparented_finding("F01")
+        f["check"] = "orphan"
+        f["detail"] = {"candidate_mocs": [], "topics": ["cooking"]}
+        doc = _make_doc(findings=[f])
+        report = _full_report(doc)
+        wire = _build_wire(doc)
+        report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+        cache = [{"stem": "Writing MOC", "kind": "moc", "path": "MOCs/Writing MOC.md",
+                  "topics": ["writing"]}]
+        out = gar.enrich_report_with_suggestions(report, wire, cache)
+        assert "No suggestions found" in out
+        assert "Pick one" not in out

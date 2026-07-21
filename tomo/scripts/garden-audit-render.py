@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -30,7 +30,7 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import build_tomo_block
-from lib.render_md import compute_payload_digest
+from lib.render_md import bare_stem, compute_payload_digest, up_line
 
 # ── Tier ordering ────────────────────────────────────────────────────────────
 _TIER_ORDER = {"integrity": 0, "structure": 1, "advisory": 2}
@@ -207,17 +207,6 @@ def _render_summary(findings: list[dict]) -> list[str]:
     return lines
 
 
-def _bare_stem(ref) -> str:
-    """Bare stem of a MOC path/wikilink (strip [[ ]], folder prefix, .md)."""
-    s = str(ref or "").strip()
-    if s.startswith("[[") and s.endswith("]]"):
-        s = s[2:-2].strip()
-    s = s.rsplit("/", 1)[-1]
-    if s.endswith(".md"):
-        s = s[:-3]
-    return s.strip()
-
-
 def _esc_attr(value) -> str:
     """Escape a value for an HTML-comment attribute (double quotes → \\")."""
     return str(value or "").replace('"', '\\"')
@@ -247,33 +236,16 @@ def _structural_comment(f: dict) -> str | None:
         attrs.append(("match", f"[[{detail.get('dead_target', '')}]]"))
         attrs.append(("occurrence", "all"))
     elif check == "broken_up":
-        attrs.append(("match", _up_line(detail.get("up_target"))))
+        attrs.append(("match", up_line(detail.get("up_target"))))
         attrs.append(("occurrence", "first"))
     elif check in ("unparented", "orphan"):
         mocs = detail.get("candidate_mocs") or []
         if mocs:
             best = mocs[0].get("target_moc", "")
-            attrs.append(("target_moc", _bare_stem(best)))
+            attrs.append(("target_moc", bare_stem(best)))
             attrs.append(("target_moc_path", best))
     rendered = " ".join(f'{k}="{_esc_attr(v)}"' for k, v in attrs)
     return f"<!-- garden-audit {rendered} -->"
-
-
-def _up_line(up_target) -> str:
-    """Render an up:: value as the frontmatter line `up:: [[a]], [[b]]`.
-
-    Mirrors garden-audit-parser._up_line so the structural comment's `match`
-    round-trips to the same removal target the parser reconstructs.
-    """
-    raw = up_target if isinstance(up_target, (list, tuple)) else [up_target]
-    stems = []
-    for t in raw:
-        s = str(t or "").strip()
-        if s.startswith("[[") and s.endswith("]]"):
-            s = s[2:-2].strip()
-        if s:
-            stems.append(s)
-    return "up:: " + ", ".join(f"[[{s}]]" for s in stems)
 
 
 def _render_finding(f: dict) -> list[str]:

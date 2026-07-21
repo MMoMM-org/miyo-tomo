@@ -73,9 +73,12 @@ filing action with an empty MOC stem would fail at apply time (Hashi cannot reso
 a MOC with an empty stem). An empty candidate list is a genuine "no good MOC found" signal,
 not a parser error — the user handles the note manually.
 
-## Version 0.2.0
+## Version 0.2.1
 
-WHY: Bumped from 0.1.3 for the vertical fix (spec 030 Feature 3). The parser was rewritten
-from a wire-only action-emitter into a markdown-authoritative reader that emits
-`confirmed_items`; action assembly moved to `render_actions.build_garden_audit_actions`.
-`update-tomo.sh` skips unchanged versions.
+WHY: 0.2.1 addressed the code-quality review — `up_line()` / `bare_stem()` moved to
+`lib/render_md.py` (shared with the renderer; parity now enforced by a single home),
+`RE_GA_ATTR` renamed to `RE_GA_COMMENT_ATTR` to pair with `RE_GA_COMMENT`. 0.2.0 was the
+vertical fix (spec 030 Feature 3): the parser was rewritten from a wire-only
+action-emitter into a markdown-authoritative reader that emits `confirmed_items`; action
+assembly moved to `render_actions.build_garden_audit_actions`. `update-tomo.sh` skips
+unchanged versions.

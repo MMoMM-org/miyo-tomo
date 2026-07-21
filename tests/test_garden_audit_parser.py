@@ -15,7 +15,7 @@ Covers:
   end-to-end        — approved markdown → build_from_markdown →
                       build_garden_audit_actions → correct Hashi actions.
 """
-# version: 0.2.0
+# version: 0.3.0
 import importlib.util
 import json
 import pathlib
@@ -419,6 +419,18 @@ class TestMarkdownRoundTrip:
         assert c["replace"] == ""
         assert c["occurrence"] == "first"
 
+    def test_broken_up_removal_list_up_target_round_trips(self):
+        # Cache up:: is a multi-value list — the markdown path (render → parse)
+        # must reconstruct the exact multi-target frontmatter line, never a list
+        # repr. Previously only build_from_wire covered the list case.
+        f = _doc_finding_broken_up_removal("F02")
+        f["detail"]["up_target"] = ["020 Active MOC", "030 Reference MOC"]
+        md = _full_report(_make_doc([f]))
+        c = build_from_markdown(md)["confirmed_items"][0]
+        assert c["garden_action"] == "edit_note_text"
+        assert c["match"] == "up:: [[020 Active MOC]], [[030 Reference MOC]]"
+        assert "[[[" not in c["match"] and "['" not in c["match"]
+
     def test_dead_link_removal_round_trips_empty_replace(self):
         # User leaves Replace with: [[]] empty → remove.
         md = _full_report(_make_doc([_doc_finding_dead_link("F04")]))
@@ -528,7 +540,9 @@ class TestEndToEndApprovedReportToActions:
     def test_all_actions_stamped_applied_false(self):
         items = build_from_markdown(self._approved_md())["confirmed_items"]
         actions = build_garden_audit_actions(items)
-        assert len(actions) > 0
+        # F01 edit + F02 edit + F03 add_rel + F04 (link_to_moc + add_rel) = 5.
+        # Exact count keeps the applied-flag loop reachable-by-contract.
+        assert len(actions) == 5
         for a in actions:
             assert a["applied"] is False
 
@@ -541,3 +555,37 @@ class TestEndToEndApprovedReportToActions:
     def test_empty_confirmed_items_yields_no_actions(self):
         # Falsifies a no-op impl that always returns actions.
         assert build_garden_audit_actions([]) == []
+
+
+# ---------------------------------------------------------------------------
+# W1: build_garden_audit_actions preserves confirmed[] input order
+# ---------------------------------------------------------------------------
+
+class TestActionOrderPreserved:
+    """Action IDs must track confirmed[] input order. A file_note BEFORE an
+    edit_note_text must yield link_to_moc(1), add_relationship(2), edit(3) —
+    ascending IDs matching input order. A two-pass impl (edits first) would
+    reorder and fail this."""
+
+    def test_file_note_before_edit_note_text_keeps_input_order(self):
+        confirmed = [
+            {
+                "id": "F01", "garden_check": "unparented", "garden_action": "file_note",
+                "path": "Notes/Orphan.md", "stem": "Orphan",
+                "target_moc": "Writing MOC", "target_moc_path": "MOCs/Writing MOC.md",
+            },
+            {
+                "id": "F02", "garden_check": "dead_link", "garden_action": "edit_note_text",
+                "path": "Notes/Source.md", "stem": "Source",
+                "match": "[[Missing]]", "replace": "", "occurrence": "all",
+            },
+        ]
+        actions = build_garden_audit_actions(confirmed)
+        kinds = [a["action"] for a in actions]
+        assert kinds == ["link_to_moc", "add_relationship", "edit_note_text"]
+        # IDs ascend in emission order (F01's two actions before F02's edit).
+        ids = [a["id"] for a in actions]
+        assert ids == sorted(ids)
+        # The edit_note_text (F02, last input) carries the highest id.
+        assert actions[-1]["action"] == "edit_note_text"
+        assert actions[-1]["id"] == max(ids)

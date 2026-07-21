@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """Pass-2 reader for garden-audit (ADR-4 / ADR-026).
 
 Pure reader: markdown report (authoritative) + optional wire override → a
@@ -35,7 +35,7 @@ import json
 import re
 import sys
 
-from lib.render_md import compute_payload_digest
+from lib.render_md import bare_stem, compute_payload_digest, up_line
 
 
 # ── Wire load ────────────────────────────────────────────────────────────────
@@ -76,39 +76,8 @@ def load_changed_wire(path: str | None) -> dict | None:
 
 # ── up:: value normalisation (shared by markdown + wire paths) ────────────────
 
-def _up_stems(up_target) -> list[str]:
-    """Normalize a cache `up::` value (str | list of stems) to bare stems.
-
-    The graph cache stores `up::` as a multi-value list, so up_target arrives as
-    e.g. ['020 Active MOC']. Reduce to clean stems (strip [[ ]], whitespace, empties)
-    so match/line strings reconstruct the real frontmatter line, not a list repr.
-    """
-    raw = up_target if isinstance(up_target, (list, tuple)) else [up_target]
-    stems = []
-    for t in raw:
-        s = str(t or "").strip()
-        if s.startswith("[[") and s.endswith("]]"):
-            s = s[2:-2].strip()
-        if s:
-            stems.append(s)
-    return stems
-
-
-def _up_line(up_target) -> str:
-    """Render an up:: value as the exact frontmatter line: `up:: [[a]], [[b]]`."""
-    stems = _up_stems(up_target)
-    return "up:: " + ", ".join(f"[[{s}]]" for s in stems)
-
-
-def _bare_stem(ref: str) -> str:
-    """Strip [[ ]], a folder prefix and .md from a note/MOC ref → bare stem."""
-    s = (ref or "").strip()
-    if s.startswith("[[") and s.endswith("]]"):
-        s = s[2:-2].strip()
-    s = s.rsplit("/", 1)[-1]
-    if s.endswith(".md"):
-        s = s[:-3]
-    return s.strip()
+# up_line() / bare_stem() are the load-bearing round-trip contract shared with
+# garden-audit-render; both import them from lib.render_md so they cannot diverge.
 
 
 # ── Markdown parse (authoritative) ────────────────────────────────────────────
@@ -119,7 +88,7 @@ def _bare_stem(ref: str) -> str:
 #        target_moc_path="MOCs/Writing MOC.md" -->
 RE_FINDING_HEADER = re.compile(r"^###\s+(F\d+)\b")
 RE_GA_COMMENT = re.compile(r"<!--\s*garden-audit\s+(.*?)\s*-->", re.DOTALL)
-RE_GA_ATTR = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
+RE_GA_COMMENT_ATTR = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
 RE_APPLY_CHECKED = re.compile(r"^\s*-\s+\[x\]\s*Apply\b", re.IGNORECASE | re.MULTILINE)
 RE_APPLY_UNCHECKED = re.compile(r"^\s*-\s+\[\s\]\s*Apply\b", re.IGNORECASE | re.MULTILINE)
 RE_REPLACE_FIELD = re.compile(
@@ -138,7 +107,7 @@ def _parse_ga_comment(text: str) -> dict[str, str]:
     m = RE_GA_COMMENT.search(text)
     if not m:
         return {}
-    return {k: v.replace('\\"', '"') for k, v in RE_GA_ATTR.findall(m.group(1))}
+    return {k: v.replace('\\"', '"') for k, v in RE_GA_COMMENT_ATTR.findall(m.group(1))}
 
 
 def _field_value(text: str, regex: re.Pattern) -> str | None:
@@ -217,7 +186,7 @@ def _confirmed_item_from_block(fid: str, block: str) -> dict | None:
 
     check = attrs.get("check", "")
     path = attrs.get("path", "")
-    stem = attrs.get("stem") or _bare_stem(path)
+    stem = attrs.get("stem") or bare_stem(path)
 
     if check == "dead_link":
         replace_raw = _field_value(block, RE_REPLACE_FIELD)
@@ -245,7 +214,7 @@ def _confirmed_item_from_block(fid: str, block: str) -> dict | None:
                 "garden_action": "add_relationship",
                 "path": path,
                 "stem": stem,
-                "up_line": _up_line(repoint),
+                "up_line": up_line(repoint),
             }
         # Empty / absent Repoint → remove the broken up:: line (edit_note_text).
         return {
@@ -327,7 +296,7 @@ def build_from_wire(wire: dict) -> dict:
         fid = finding.get("id", "")
         target = finding.get("target") or {}
         path = target.get("path", "")
-        stem = target.get("stem") or _bare_stem(path)
+        stem = target.get("stem") or bare_stem(path)
         detail = finding.get("detail") or {}
 
         if check in ("unparented", "orphan"):
@@ -346,7 +315,7 @@ def build_from_wire(wire: dict) -> dict:
                 "garden_action": "file_note",
                 "path": path,
                 "stem": stem,
-                "target_moc": _bare_stem(best),
+                "target_moc": bare_stem(best),
                 "target_moc_path": best or None,
             })
 
@@ -360,7 +329,7 @@ def build_from_wire(wire: dict) -> dict:
                     "garden_action": "add_relationship",
                     "path": path,
                     "stem": stem,
-                    "up_line": _up_line(up_target),
+                    "up_line": up_line(up_target),
                 })
             elif action_name == "edit_note_text":
                 confirmed.append({
@@ -369,7 +338,7 @@ def build_from_wire(wire: dict) -> dict:
                     "garden_action": "edit_note_text",
                     "path": path,
                     "stem": stem,
-                    "match": _up_line(up_target),
+                    "match": up_line(up_target),
                     "replace": "",
                     "occurrence": "first",
                 })

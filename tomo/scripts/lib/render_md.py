@@ -1,4 +1,4 @@
-# version: 0.1.2
+# version: 0.2.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -239,6 +239,45 @@ def compute_payload_digest(payload: dict) -> str:
         editable, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     )
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def bare_stem(ref) -> str:
+    """Bare stem of a note/MOC ref: strip [[ ]], a folder prefix, and .md.
+
+    Shared by garden-audit-render (structural comment) and garden-audit-parser
+    (confirmed_item reconstruction). Load-bearing round-trip contract: both sides
+    must derive the same stem from a given ref, so it lives here (single home).
+    """
+    s = str(ref or "").strip()
+    if s.startswith("[[") and s.endswith("]]"):
+        s = s[2:-2].strip()
+    s = s.rsplit("/", 1)[-1]
+    if s.endswith(".md"):
+        s = s[:-3]
+    return s.strip()
+
+
+def up_line(up_target) -> str:
+    """Render an up:: value (str | list of stems) as `up:: [[a]], [[b]]`.
+
+    The graph cache stores up:: as a multi-value list, so up_target may arrive as
+    e.g. ['020 Active MOC']. Reduces to clean stems (strip [[ ]], whitespace,
+    empties) so the reconstructed frontmatter line is exact — never a list repr.
+
+    Shared by garden-audit-render (structural comment `match`) and
+    garden-audit-parser (edit_note_text removal `match`). Parity-locked: if the
+    two sides diverge, the comment's match no longer matches what the parser
+    reconstructs and the fix silently no-ops. Single home enforces parity.
+    """
+    raw = up_target if isinstance(up_target, (list, tuple)) else [up_target]
+    stems = []
+    for t in raw:
+        s = str(t or "").strip()
+        if s.startswith("[[") and s.endswith("]]"):
+            s = s[2:-2].strip()
+        if s:
+            stems.append(s)
+    return "up:: " + ", ".join(f"[[{s}]]" for s in stems)
 
 
 def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:

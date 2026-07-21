@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.4.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1193,27 +1193,27 @@ def build_garden_audit_actions(
 
     garden_action → actions:
       - edit_note_text  → one edit_note_text (dead_link fix/remove, broken_up
-        removal). Built via the SHARED _build_edit_note_text_actions builder,
-        wiring the previously-dead helper into the live path.
+        removal). Built via the SHARED _build_edit_note_text_actions builder on a
+        one-item list, wiring the previously-dead helper into the live path.
       - add_relationship→ one add_relationship up:: (broken_up repoint).
       - file_note       → link_to_moc (bullet on the MOC) + add_relationship up::
         (up-link on the note). Files an unparented/orphan note under a MOC.
 
-    Every action is stamped applied=False (build_actions does this centrally; this
-    assembler bypasses it, so it stamps here).
+    Single loop over ``confirmed`` — action IDs track input order (a file_note
+    before an edit_note_text yields link_to_moc, add_relationship, edit_note_text
+    with ascending IDs). Every action is stamped applied=False (build_actions does
+    this centrally; this assembler bypasses it, so it stamps here).
     """
     counter = counter or [0]
     out: list[dict] = []
 
-    # Reuse the shared builder for every edit_note_text item (wires in dead code).
-    out.extend(_build_edit_note_text_actions(
-        [c for c in confirmed if c.get("garden_action") == "edit_note_text"],
-        counter,
-    ))
-
     for c in confirmed:
         ga = c.get("garden_action")
-        if ga == "add_relationship":
+        if ga == "edit_note_text":
+            # Reuse the shared builder on a one-item list — wires in dead code
+            # while keeping this item's action in input order.
+            out.extend(_build_edit_note_text_actions([c], counter))
+        elif ga == "add_relationship":
             out.append({
                 "id": _next_id(counter),
                 "action": "add_relationship",

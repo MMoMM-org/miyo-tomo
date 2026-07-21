@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.0
+# version: 0.42.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -203,7 +203,7 @@ def main() -> int:
         "--upstream-type",
         choices=_UPSTREAM_TYPES,
         default=None,
-        help="Upstream doc type: suggestions | moc-proposal | suggestions-fan",
+        help="Upstream doc type: suggestions | moc-proposal | suggestions-fan | garden-audit",
     )
     p.add_argument(
         "--upstream-path",

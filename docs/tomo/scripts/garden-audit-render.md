@@ -79,8 +79,10 @@ authoritative Pass-2 input (Tomo never assumes Hashi is installed), and
 comment instead of re-parsing human-facing prose. The comment is invisible in Obsidian
 reading view, so it does not clutter the user's review. Advisory findings emit NO comment
 (they never produce a fix), which is exactly how the parser distinguishes fixable from
-advisory blocks. The renderer's `_up_line` / `match` wrapping must stay byte-identical to
-the parser's reconstruction, or the round-trip breaks — they are parity-locked.
+advisory blocks. The comment's `match` string must stay byte-identical to what the parser
+reconstructs, or the round-trip breaks — so both sides derive it from the SAME helpers
+(`up_line()` / `bare_stem()` in `lib/render_md.py`, imported by renderer and parser alike).
+Extracting them to one home is what enforces parity; a per-file copy could silently diverge.
 
 ## Editable Replace with: / Repoint to: Fields
 
@@ -99,9 +101,11 @@ surface; the user must know that unticking skips, that Replace/Repoint fields ar
 and that `/inbox` applies the kept fixes via Hashi — without reading the skill docs. Advisory
 findings are called out as read-only so the user does not look for a missing checkbox.
 
-## Version 0.3.0
+## Version 0.3.1
 
-WHY: Bumped from 0.2.0 for spec-030 Feature 3 vertical fix — added the per-finding
+WHY: 0.3.1 addressed the code-quality review — extracted the duplicated `up_line()` /
+`bare_stem()` helpers to `lib/render_md.py` (shared with the parser; parity now enforced
+by a single home). 0.3.0 was the spec-030 Feature 3 vertical fix — added the per-finding
 structural HTML comment (parser round-trip), editable `Replace with:` / `Repoint to:`
 fields, and the top-level how-to-apply banner. Earlier: 0.1.0 initial, 0.1.1 dead-link
 `replace` slot, 0.2.0 clickable wikilinks + fix summaries. `update-tomo.sh` skips

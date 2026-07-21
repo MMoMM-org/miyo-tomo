@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_garden_audit_stats.py — garden-audit-stats.py read-only overview (spec 030).
 
 `/garden-audit stats` aggregates a fresh scan doc + the exclusion config into a
@@ -19,6 +19,8 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+
+import pytest
 
 _ROOT = Path(__file__).parent.parent
 _SCRIPTS = _ROOT / "tomo" / "scripts"
@@ -111,6 +113,27 @@ class TestAggregateByArea:
         assert agg["others_area_count"] == 0
         assert agg["others_total"] == 0
 
+    def test_leading_slash_path_is_root_area(self):
+        # S1 edge: a leading slash → empty first segment → "(root)", never blank.
+        assert gas._area_of("/Calendar/note.md") == "(root)"
+        assert gas._area_of("") == "(root)"
+        assert gas._area_of("Loose.md") == "(root)"  # no folder → root
+        assert gas._area_of("Calendar/x.md") == "Calendar"
+
+    def test_leading_slash_finding_aggregates_to_root(self):
+        findings = [_finding("F01", "orphan", "/Weird/note.md", "structure")]
+        agg = gas.aggregate_by_area(findings)
+        assert [r["area"] for r in agg["rows"]] == ["(root)"]
+        # No blank area cell.
+        assert "" not in [r["area"] for r in agg["rows"]]
+
+
+# ── _CHECKS parity with the lib's authoritative set (S2) ──────────────────────
+
+def test_stats_checks_match_lib_all_check_names():
+    from lib.garden_exclusions import ALL_CHECK_NAMES
+    assert set(gas._CHECKS) == set(ALL_CHECK_NAMES)
+
 
 # ── render_stats (full markdown) ──────────────────────────────────────────────
 
@@ -123,11 +146,44 @@ class TestRenderStats:
         assert "## Open findings by area" in out
         assert "Calendar" in out
 
+    def test_zero_findings_renders_no_open_findings(self):
+        out = self._render(_doc([]), None)
+        assert "No open findings." in out
+        # No area table header when there are no findings.
+        assert "| area |" not in out
+        assert "Total findings: 0" in out
+
+    def test_footer_says_all_areas_when_no_truncation(self):
+        # S3: under the cap → "Showing all N areas.", NOT the misleading "top N".
+        out = self._render(_doc(_sample_findings()), None)  # 3 areas < cap
+        assert "Showing all 3 areas." in out
+        assert "top" not in out.lower()
+
+    def test_footer_says_top_n_when_truncated(self):
+        findings = [
+            _finding(f"F{i:02d}", "orphan", f"Area{i:02d}/n.md", "structure")
+            for i in range(20)
+        ]
+        doc = _doc(findings)
+        out = gas.render_stats(doc, None, effective_today=date(2026, 8, 1), top_n=15)
+        assert "Showing the top 15 areas by finding count." in out
+        assert "… 5 more areas" in out
+
     def test_totals_section_counts_per_check_and_tier(self):
         out = self._render(_doc(_sample_findings()), None)
         assert "## Totals" in out
-        # 2 unparented, 1 orphan → structure tier = 3
-        assert "unparented" in out and "structure" in out
+        # _sample_findings: 2 unparented, 1 orphan, 1 dead_link, 1 broken_up,
+        # 1 duplicate_stem → tiers: structure=3, integrity=2, advisory=1.
+        assert "Total findings: 6" in out
+        assert "- unparented: 2" in out
+        assert "- orphan: 1" in out
+        assert "- dead_link: 1" in out
+        assert "- broken_up: 1" in out
+        assert "- duplicate_stem: 1" in out
+        assert "- stale_moc: 0" in out
+        assert "- structure: 3" in out
+        assert "- integrity: 2" in out
+        assert "- advisory: 1" in out
 
     def test_skipped_checks_surfaced_with_reason(self):
         doc = _doc(
@@ -208,9 +264,19 @@ class TestRunStatsExclusionsSentinel:
 
     def test_explicit_missing_exclusions_raises(self, tmp_path):
         doc = self._write_doc(tmp_path)
-        with __import__("pytest").raises(FileNotFoundError):
+        with pytest.raises(FileNotFoundError):
             gas.run_stats(
                 str(doc), str(tmp_path / "nope.yaml"), explicit_exclusions=True,
+                effective_today=date(2026, 8, 1),
+            )
+
+    def test_inconsistent_path_without_explicit_flag_raises(self, tmp_path):
+        # S4: a path passed with explicit_exclusions=False would be silently
+        # ignored — the guard makes that inconsistent intent fail loudly.
+        doc = self._write_doc(tmp_path)
+        with pytest.raises(AssertionError):
+            gas.run_stats(
+                str(doc), str(tmp_path / "some.yaml"), explicit_exclusions=False,
                 effective_today=date(2026, 8, 1),
             )
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """garden-audit-stats.py — read-only overview mode for garden-audit (spec 030).
 
 `/garden-audit stats` runs a fresh scan (reusing garden-audit.py, same doc.json)
@@ -36,15 +36,20 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.garden_exclusions import GardenExclusions  # noqa: E402
+from lib.garden_exclusions import ALL_CHECK_NAMES, GardenExclusions  # noqa: E402
 
 # Effective default exclusions path (instance-cwd-relative). Mirrors
 # garden-audit.py's _DEFAULT_EXCL_PATH — the stats view reads the same config.
 _DEFAULT_EXCL_PATH = "config/garden-audit-exclusions.yaml"
 _DEFAULT_INPUT = "tomo-tmp/garden-audit-doc.json"
 
-# Check + tier ordering (matches garden-audit.py's tables).
+# Column ORDER is a display decision owned here; MEMBERSHIP is derived from the
+# lib's authoritative ALL_CHECK_NAMES so a 7th check can't silently drift out of
+# the table (a parity test locks _CHECKS == ALL_CHECK_NAMES as a set).
 _CHECKS = ("dead_link", "orphan", "unparented", "broken_up", "duplicate_stem", "stale_moc")
+assert set(_CHECKS) == set(ALL_CHECK_NAMES), (
+    "stats._CHECKS drifted from garden_exclusions.ALL_CHECK_NAMES"
+)
 _TIER = {
     "broken_up": "integrity", "dead_link": "integrity",
     "unparented": "structure", "orphan": "structure",
@@ -62,10 +67,16 @@ _COL_LABEL = {
 
 
 def _area_of(path: str) -> str:
-    """First path segment as the AREA; a root-level note → '(root)'."""
+    """First path segment as the AREA; a root-level note → '(root)'.
+
+    A note with no folder ('Loose.md'), an empty path, or a leading slash
+    ('/Calendar/…' — empty first segment) all yield '(root)' so a blank area
+    cell never appears; only a real folder segment becomes an area.
+    """
     p = (path or "").strip()
     if "/" in p:
-        return p.split("/", 1)[0]
+        seg = p.split("/", 1)[0]
+        return seg if seg else "(root)"
     return "(root)"
 
 
@@ -120,7 +131,11 @@ def _render_area_table(agg: dict, top_n: int) -> list[str]:
             + f" | {agg['others_total']} |"
         )
     lines.append("")
-    lines.append(f"Showing the top {top_n} areas by finding count.")
+    if agg["others_area_count"]:
+        # Truncation actually happened — state the cap explicitly.
+        lines.append(f"Showing the top {top_n} areas by finding count.")
+    else:
+        lines.append(f"Showing all {len(agg['rows'])} areas.")
     return lines
 
 
@@ -248,6 +263,12 @@ def run_stats(
     """Read doc + exclusions → the overview string. Raises FileNotFoundError when
     an EXPLICITLY-passed exclusions path is missing (a defaulted-absent path is a
     'none configured' section, not an error). Raises on an unreadable doc."""
+    # An exclusions_path is only honoured when explicit_exclusions is True; a
+    # caller passing a path with explicit_exclusions=False has an inconsistent
+    # intent (the path would be silently ignored) — fail loudly.
+    assert exclusions_path is None or explicit_exclusions, (
+        "exclusions_path is set but explicit_exclusions=False — the path would be ignored"
+    )
     with open(input_path, encoding="utf-8") as fh:
         doc = json.load(fh)
 

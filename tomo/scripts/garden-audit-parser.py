@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -118,6 +118,16 @@ RE_REPLACE_FIELD = re.compile(
 RE_REPOINT_FIELD = re.compile(
     r"^\s*-?\s*\*\*Repoint to:\*\*\s*(.*)", re.IGNORECASE | re.MULTILINE
 )
+# Suggest opt-in (Phase 7): a per-finding box, decoupled from Apply. When ticked,
+# `--suggest` computes candidate picks and rewrites the block with a pick list.
+RE_SUGGEST_TICKED = re.compile(
+    r"^\s*-\s+\[x\]\s+Suggest targets\b", re.IGNORECASE | re.MULTILINE
+)
+# A ticked pick sub-checkbox: `  - [x] [[Candidate]] (0.92)`. The wikilink stem
+# is the chosen Replace/Repoint value (unless the user typed one, which wins).
+RE_PICK_TICKED = re.compile(
+    r"^\s*-\s+\[x\]\s+\[\[([^\]]*)\]\]\s*\(", re.IGNORECASE | re.MULTILINE
+)
 
 # Frontmatter (flat key: value) for run_id / generated / profile.
 RE_FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -183,14 +193,19 @@ def _split_finding_blocks(md_text: str) -> list[tuple[str, list[str]]]:
 
 
 def parse_decision_map(md_text: str) -> dict[str, dict]:
-    """Parse the markdown report into ``{F-id → {apply, repoint, replace}}``.
+    """Parse the markdown report into ``{F-id → {apply, repoint, replace, suggest}}``.
 
     The markdown carries DECISIONS only, keyed by the F-id in each ``### F<id>``
     heading (spec 030 two-artifact split). For each block:
       - apply:   True unless a ``- [ ] Apply`` box is present AND unticked.
-      - repoint: the bare stem typed into ``**Repoint to:**`` ("" if empty).
-      - replace: the bare stem typed into ``**Replace with:**`` ("" if empty).
-    Findings with no editable field simply carry apply + empty repoint/replace.
+      - repoint / replace: the RESOLVED target for broken_up / dead_link.
+        Precedence (Phase 7, D4): a value TYPED into ``**Repoint to:**`` /
+        ``**Replace with:**`` > a ticked ``- [x] [[Candidate]]`` pick sub-checkbox
+        > empty (removal). The parser feeds this into the same garden_action
+        discrimination as a typed value.
+      - suggest: True iff the ``- [x] Suggest targets`` opt-in is ticked (so
+        ``--suggest`` knows which findings to enrich).
+    Findings with no editable field carry apply + empty repoint/replace + suggest.
     """
     out: dict[str, dict] = {}
     for fid, lines in _split_finding_blocks(md_text):
@@ -201,10 +216,16 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
         )
         repoint_raw = _field_value(block, RE_REPOINT_FIELD)
         replace_raw = _field_value(block, RE_REPLACE_FIELD)
+        typed_repoint = _wikilink_target(repoint_raw) if repoint_raw is not None else ""
+        typed_replace = _wikilink_target(replace_raw) if replace_raw is not None else ""
+        # D4 precedence: typed field value wins; else a ticked pick sub-checkbox.
+        pick_m = RE_PICK_TICKED.search(block)
+        pick = pick_m.group(1).strip() if pick_m else ""
         out[fid] = {
             "apply": apply,
-            "repoint": _wikilink_target(repoint_raw) if repoint_raw is not None else "",
-            "replace": _wikilink_target(replace_raw) if replace_raw is not None else "",
+            "repoint": typed_repoint or pick,
+            "replace": typed_replace or pick,
+            "suggest": bool(RE_SUGGEST_TICKED.search(block)),
         }
     return out
 

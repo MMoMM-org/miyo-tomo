@@ -80,7 +80,7 @@ only a static checkbox — no per-finding computation in Pass 1).
   4. Validate: round-trips with T7.3.
   - Success: Pass-1 cost unchanged (static box only); enrichment touches only opted-in findings.
 
-- [ ] **T7.3 Parser: read Suggest opt-in + ticked pick** `[activity: backend]`
+- [x] **T7.3 Parser: read Suggest opt-in + ticked pick** `[activity: backend]`
       `[ref: garden-audit-parser.py]`
 
   1. Prime: read `parse_decision_map` + the Repoint/Replace field parse.

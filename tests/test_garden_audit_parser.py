@@ -19,7 +19,7 @@ Covers:
   CLI main()        — argv dispatch: missing-wire degrade + edited/unedited routing.
   _is_wire_edited   — single-load digest gate (no second file read).
 """
-# version: 0.7.0
+# version: 0.8.0
 import importlib.util
 import json
 import pathlib
@@ -473,6 +473,95 @@ class TestParseDecisionMap:
         md = _full_report(_make_doc([_doc_finding_dead_link("F01")]))
         md = md.replace("**Replace with:** [[]]", "**Replace with:** [[New Target]]")
         assert parse_decision_map(md)["F01"]["replace"] == "New Target"
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 (T7.3): Suggest opt-in + ticked pick sub-checkbox
+# ---------------------------------------------------------------------------
+
+def _dead_link_cache():
+    return [
+        {"stem": "Missing Notes", "kind": "note", "path": "N/Missing Notes.md", "topics": []},
+    ]
+
+
+def _broken_up_cache():
+    return [
+        {"stem": "Writing MOC", "kind": "moc", "path": "MOCs/Writing MOC.md", "topics": ["writing"]},
+    ]
+
+
+def _enriched_dead_link_report(fid="F01"):
+    """Render a dead_link report, opt into Suggest, run --suggest enrichment."""
+    doc = _make_doc([_doc_finding_dead_link(fid)])
+    md = _full_report(doc)
+    wire = _wire(doc)
+    md = md.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+    return gar.enrich_report_with_suggestions(md, wire, _dead_link_cache()), wire
+
+
+def _enriched_broken_up_report(fid="F01"):
+    f = _doc_finding_broken_up_repoint(fid)
+    f["detail"]["up_target"] = "Writng MOC"  # typo → "Writing MOC" candidate
+    doc = _make_doc([f])
+    md = _full_report(doc)
+    wire = _wire(doc)
+    md = md.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
+    return gar.enrich_report_with_suggestions(md, wire, _broken_up_cache()), wire
+
+
+class TestParseDecisionMapSuggest:
+    def test_suggest_opt_in_read(self):
+        md, _ = _enriched_dead_link_report("F01")
+        assert parse_decision_map(md)["F01"]["suggest"] is True
+
+    def test_suggest_unticked_is_false(self):
+        md = _full_report(_make_doc([_doc_finding_dead_link("F01")]))
+        assert parse_decision_map(md)["F01"]["suggest"] is False
+
+    def test_ticked_pick_becomes_replace_value(self):
+        md, _ = _enriched_dead_link_report("F01")
+        md = md.replace("- [ ] [[Missing Notes]]", "- [x] [[Missing Notes]]", 1)
+        assert parse_decision_map(md)["F01"]["replace"] == "Missing Notes"
+
+    def test_ticked_pick_becomes_repoint_value(self):
+        md, _ = _enriched_broken_up_report("F01")
+        md = md.replace("- [ ] [[Writing MOC]]", "- [x] [[Writing MOC]]", 1)
+        assert parse_decision_map(md)["F01"]["repoint"] == "Writing MOC"
+
+    def test_typed_value_wins_over_ticked_pick(self):
+        # D4 precedence: a value typed into the field OVERRIDES a ticked pick.
+        md, _ = _enriched_dead_link_report("F01")
+        md = md.replace("- [ ] [[Missing Notes]]", "- [x] [[Missing Notes]]", 1)
+        md = md.replace("**Replace with:** [[]]", "**Replace with:** [[Typed Wins]]")
+        assert parse_decision_map(md)["F01"]["replace"] == "Typed Wins"
+
+    def test_no_tick_no_type_is_empty(self):
+        md, _ = _enriched_dead_link_report("F01")
+        # Picks present but none ticked, field empty → removal (empty replace).
+        assert parse_decision_map(md)["F01"]["replace"] == ""
+
+
+class TestBuildFromReportWithPick:
+    def test_ticked_dead_link_pick_flows_to_confirmed_item(self):
+        md, wire = _enriched_dead_link_report("F01")
+        md = md.replace("- [ ] [[Missing Notes]]", "- [x] [[Missing Notes]]", 1)
+        items = build_from_report(md, wire)["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["replace"] == "[[Missing Notes]]"
+
+    def test_ticked_broken_up_pick_becomes_add_relationship(self):
+        md, wire = _enriched_broken_up_report("F01")
+        md = md.replace("- [ ] [[Writing MOC]]", "- [x] [[Writing MOC]]", 1)
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["garden_action"] == "add_relationship"
+        assert c["up_line"] == "up:: [[Writing MOC]]"
+
+    def test_no_pick_no_type_broken_up_is_removal(self):
+        md, wire = _enriched_broken_up_report("F01")
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["garden_action"] == "edit_note_text"
+        assert c["replace"] == ""
 
 
 # ---------------------------------------------------------------------------

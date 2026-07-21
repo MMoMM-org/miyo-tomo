@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_kado_write_file_no_overwrite.py — Tests for kado-write-file.py --no-overwrite.
 
 Spec 026, T1.2 (Companion Mode P1 — Deterministic Safety Scripts).
@@ -65,7 +65,7 @@ def test_no_overwrite_existing_path_exits_3(tmp_path, monkeypatch, capsys):
         def path_exists(self, path: str) -> bool:
             return True
 
-        def write_note(self, path, content):
+        def write_note(self, path, content, expected_modified=None):
             raise AssertionError("must not write when path already exists")
 
     rc = _run(monkeypatch, ["--no-overwrite", "--vault", vault, "--local", str(local)], FakeClient)
@@ -85,7 +85,7 @@ def test_no_overwrite_existing_path_prints_exists_signal(tmp_path, monkeypatch, 
         def path_exists(self, path: str) -> bool:
             return True
 
-        def write_note(self, path, content):
+        def write_note(self, path, content, expected_modified=None):
             raise AssertionError("must not write")
 
     _run(monkeypatch, ["--no-overwrite", "--vault", vault, "--local", str(local)], FakeClient)
@@ -178,7 +178,7 @@ def test_no_overwrite_path_check_kado_error_exits_1(tmp_path, monkeypatch, capsy
         def path_exists(self, path: str) -> bool:
             raise KadoError("connection refused")
 
-        def write_note(self, path, content):
+        def write_note(self, path, content, expected_modified=None):
             raise AssertionError("must not reach write when path_exists fails")
 
     rc = _run(monkeypatch, ["--no-overwrite", "--vault", vault, "--local", str(local)], FakeClient)

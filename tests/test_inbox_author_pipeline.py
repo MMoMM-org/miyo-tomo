@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_inbox_author_pipeline.py — Pipeline integration tests for inbox-author.
 
 Spec 026, T4.2 (Companion Mode P1 — inbox-author format dispatch + collision).
@@ -203,7 +203,7 @@ def test_collision_no_overwrite_exits_3_with_exists_signal(
         def path_exists(self, path: str) -> bool:
             return True
 
-        def write_note(self, path: str, content: str) -> dict:
+        def write_note(self, path: str, content: str, expected_modified=None) -> dict:
             raise AssertionError("must not write on collision — warn branch should stop execution")
 
     rc = _run_kwf(

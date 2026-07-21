@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
 Runs six checks over the MOC-structure cache, kado-graph-audit results, and
@@ -492,8 +492,9 @@ def main() -> int:
     )
     p.add_argument(
         "--exclusions",
-        default="config/garden-audit-exclusions.yaml",
-        help="Path to garden-audit-exclusions.yaml",
+        default=None,
+        help="Path to garden-audit-exclusions.yaml (default: "
+             "config/garden-audit-exclusions.yaml, applied only if it exists).",
     )
     p.add_argument(
         "--no-exclusions",
@@ -542,20 +543,27 @@ def main() -> int:
     print(f"[garden-audit] Cache loaded: {len(entries)} entries", file=sys.stderr)
 
     # ── Load exclusions ───────────────────────────────────────────────────────
-    # --no-exclusions (wizard first-run) or a genuinely-absent default file → run
-    # unfiltered; an explicit --exclusions path that is missing is still an error.
+    # None sentinel distinguishes a user-passed --exclusions from the default:
+    #   --no-exclusions            → skip entirely (wizard first-run unfiltered).
+    #   explicit --exclusions path → missing file is an ERROR (exit 1).
+    #   defaulted (None) path      → missing file runs unfiltered (exit 0).
     exclusions: GardenExclusions | None = None
+    explicit = args.exclusions is not None
+    excl_path = Path(args.exclusions) if explicit else Path("config/garden-audit-exclusions.yaml")
     if args.no_exclusions:
         print("[garden-audit] --no-exclusions — scan is unfiltered.", file=sys.stderr)
-    elif not Path(args.exclusions).is_file():
+    elif not excl_path.is_file():
+        if explicit:
+            print(f"[error] Exclusions file not found: {excl_path}", file=sys.stderr)
+            return 1
         print(
-            f"[garden-audit] No exclusions file at {args.exclusions!r} — scan is unfiltered.",
+            f"[garden-audit] No exclusions file at {excl_path} — scan is unfiltered.",
             file=sys.stderr,
         )
     else:
-        exclusions = GardenExclusions.from_path(Path(args.exclusions))
+        exclusions = GardenExclusions.from_path(excl_path)
         rule_count = len(exclusions._rules) if hasattr(exclusions, "_rules") else "?"
-        print(f"[garden-audit] Exclusions loaded from: {args.exclusions!r} ({rule_count} rules)", file=sys.stderr)
+        print(f"[garden-audit] Exclusions loaded from: {excl_path} ({rule_count} rules)", file=sys.stderr)
 
     # ── Connect to Kado ───────────────────────────────────────────────────────
     print("[garden-audit] Connecting to Kado...", file=sys.stderr)

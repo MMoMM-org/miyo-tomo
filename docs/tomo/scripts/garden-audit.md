@@ -72,20 +72,27 @@ the finding is only suppressed when fewer than two non-excluded paths remain.
 
 ## cwd-relative defaults + --no-exclusions (spec 030, 2026-07-21)
 
-WHY `--config`, `--exclusions`, `--output` all default to instance-cwd-relative paths
-(`config/vault-config.yaml`, `config/garden-audit-exclusions.yaml`, `tomo-tmp/garden-audit-doc.json`)
-and `--no-exclusions` (store_true) replaced the old "omit --exclusions" idiom: the standing
-Tomo standard (docs/ai/memory/general.md 2026-06-24) is that runtime scripts use
-instance-correct cwd-relative DEFAULTS so the agent calls bare `scripts/garden-audit.py` — no
-constant paths stuffed into the agent on every call; switches are host/test overrides only.
-argparse defaults never override an explicitly-passed value, so host runs and tests that pass
-paths keep working. A defaulted-but-absent exclusions file runs unfiltered (not an error); an
-explicit `--no-exclusions` forces the wizard first-run unfiltered scan. Only an explicit
-`--config`/`--exclusions` pointing at a missing file is still an error.
+WHY `--config`, `--output` default to instance-cwd-relative paths
+(`config/vault-config.yaml`, `tomo-tmp/garden-audit-doc.json`) and `--no-exclusions`
+(store_true) replaced the old "omit --exclusions" idiom: the standing Tomo standard
+(docs/ai/memory/general.md 2026-06-24) is that runtime scripts use instance-correct
+cwd-relative DEFAULTS so the agent calls bare `scripts/garden-audit.py` — no constant paths
+stuffed into the agent on every call; switches are host/test overrides only. argparse defaults
+never override an explicitly-passed value, so host runs and tests that pass paths keep working.
 
-## Version 0.3.0
+WHY `--exclusions` uses a `None` sentinel (defaults to `None`, not the path string) even
+though its effective default is `config/garden-audit-exclusions.yaml`: the spec requires
+distinguishing "the default file is just absent" from "the user pointed at a file that
+doesn't exist". A string default cannot tell those apart — both would look identical. With the
+sentinel, `main()` computes `explicit = args.exclusions is not None`: an explicit missing path
+is a hard ERROR (exit 1); a defaulted-but-absent path runs UNFILTERED (exit 0, warn). A
+present file at either path is loaded normally; `--no-exclusions` skips loading entirely
+(the wizard first-run unfiltered scan).
 
-WHY: 0.3.0 (spec 030) — cwd-relative defaults for `--config`/`--exclusions`/`--output` +
-`--no-exclusions` (agent calls bare). 0.2.0 was the batch-orphan fix (S1) + per-path
-duplicate-stem exclusion; 0.1.0 initial spec-030 implementation. `update-tomo.sh` skips
-unchanged versions.
+## Version 0.3.1
+
+WHY: 0.3.1 (spec 030) — `--exclusions` uses a `None` sentinel so an explicitly-passed missing
+path errors (exit 1) while a defaulted-absent one runs unfiltered (exit 0). 0.3.0 added
+cwd-relative defaults for `--config`/`--exclusions`/`--output` + `--no-exclusions` (agent calls
+bare). 0.2.0 was the batch-orphan fix (S1) + per-path duplicate-stem exclusion; 0.1.0 initial
+spec-030 implementation. `update-tomo.sh` skips unchanged versions.

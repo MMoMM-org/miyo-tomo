@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_garden_audit_cli_defaults.py — cwd-relative default resolution (spec 030).
 
 Standard (docs/ai/memory/general.md 2026-06-24): runtime scripts use instance-
@@ -202,3 +202,39 @@ class TestNoExclusions:
     def test_default_run_loads_existing_exclusions(self, tmp_path, monkeypatch):
         captured = self._drive(tmp_path, monkeypatch, "gascan_withex", [])
         assert captured["exclusions"] is not None
+
+
+class TestExclusionsExplicitVsDefault:
+    """None-sentinel: a DEFAULTED-but-absent exclusions file runs unfiltered
+    (exit 0); an EXPLICITLY-passed missing path is an error (exit 1)."""
+
+    def _stub_run_scan(self, mod, monkeypatch, captured):
+        def _fake_run_scan(entries, **kwargs):
+            captured["exclusions"] = kwargs.get("exclusions")
+            return {"run_id": "r", "generated": "g", "profile": "miyo", "findings": []}
+        monkeypatch.setattr(mod, "run_scan", _fake_run_scan)
+
+    def test_defaulted_absent_exclusions_runs_unfiltered_exit_0(self, tmp_path, monkeypatch):
+        # No --exclusions passed AND no file at the default path → unfiltered, exit 0.
+        mod = _load_scan_with_fake_kado(monkeypatch, "gascan_default_absent")
+        inst = _scan_instance(tmp_path, exclusions_configured=False)  # no exclusions file
+        captured = {}
+        self._stub_run_scan(mod, monkeypatch, captured)
+        monkeypatch.chdir(inst)
+        monkeypatch.setattr(sys, "argv", ["garden-audit.py"])  # bare — defaulted
+        assert mod.main() == 0
+        assert captured["exclusions"] is None  # unfiltered, not an error
+
+    def test_explicit_missing_exclusions_is_error_exit_1(self, tmp_path, monkeypatch):
+        # An explicitly-passed missing --exclusions path is a hard error (exit 1),
+        # and run_scan is never reached.
+        mod = _load_scan_with_fake_kado(monkeypatch, "gascan_explicit_missing")
+        inst = _scan_instance(tmp_path, exclusions_configured=False)
+        captured = {}
+        self._stub_run_scan(mod, monkeypatch, captured)
+        monkeypatch.chdir(inst)
+        monkeypatch.setattr(sys, "argv", [
+            "garden-audit.py", "--exclusions", str(inst / "nope" / "missing.yaml"),
+        ])
+        assert mod.main() == 1
+        assert "exclusions" not in captured  # run_scan never called

@@ -16,8 +16,9 @@ Covers:
   end-to-end        — approved report + wire → build_from_report →
                       build_garden_audit_actions → correct Hashi actions.
   NO HTML comment   — the rendered report contains no `<!-- garden-audit` string.
+  CLI main()        — argv dispatch: missing-wire degrade + edited-wire routing.
 """
-# version: 0.5.0
+# version: 0.6.0
 import importlib.util
 import json
 import pathlib
@@ -699,3 +700,65 @@ class TestActionOrderPreserved:
         # The edit_note_text (F02, last input) carries the highest id.
         assert actions[-1]["action"] == "edit_note_text"
         assert actions[-1]["id"] == max(ids)
+
+
+# ---------------------------------------------------------------------------
+# CLI main() dispatch — the real entry point the conductor invokes. Unit tests
+# exercise build_from_report / build_from_wire directly; these drive main()'s
+# argv → _load_raw_wire → routing so the degrade + edited-wire branches are
+# covered (mock at the orchestrator, not the helper).
+# ---------------------------------------------------------------------------
+
+class TestCliMainDispatch:
+    def test_missing_wire_degrades_to_empty(self, tmp_path, monkeypatch, capsys):
+        # TEST 1: --wire points at a nonexistent file → _load_raw_wire returns
+        # None → main() prints the degrade envelope and exits 0 (no crash). This
+        # covers the empty-output branch, not the build_from_report(md, {}) unit.
+        report = _full_report(_make_doc([_doc_finding_dead_link("F01")]))
+        report_path = tmp_path / "report.md"
+        report_path.write_text(report, encoding="utf-8")
+        missing_wire = tmp_path / "does-not-exist.json"
+
+        monkeypatch.setattr(sys, "argv", [
+            "garden-audit-parser.py",
+            "--file", str(report_path),
+            "--wire", str(missing_wire),
+        ])
+        rc = gap.main()
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["confirmed_items"] == []
+
+    def test_edited_wire_routes_to_build_from_wire(self, tmp_path, monkeypatch, capsys):
+        # TEST 2: a real wire with a DIGEST MISMATCH (a fixable finding flipped
+        # to selected=False after the digest was computed) → main() must route to
+        # build_from_wire (wire fully authoritative), NOT build_from_report. With
+        # the item deselected in the wire, the output is empty — proving main()
+        # honoured the wire's decision, not the markdown's Apply tick.
+        wire = _make_real_wire([_unparented(selected=True)])
+        # Simulate a Hashi edit: deselect the finding without recomputing the
+        # digest → load_changed_wire sees the mismatch and treats it as edited.
+        wire["findings"][0]["decision"]["selected"] = False
+        wire_path = tmp_path / "wire.json"
+        _write_wire(wire_path, wire)
+
+        # The markdown, by contrast, has the finding present-and-ticked. If main()
+        # wrongly used build_from_report it would emit a confirmed_item; the wire
+        # path must win and emit none.
+        doc = _make_doc([_doc_finding_unparented("F01")])
+        report_path = tmp_path / "report.md"
+        report_path.write_text(_full_report(doc), encoding="utf-8")
+
+        monkeypatch.setattr(sys, "argv", [
+            "garden-audit-parser.py",
+            "--file", str(report_path),
+            "--wire", str(wire_path),
+        ])
+        rc = gap.main()
+        assert rc == 0
+        captured = capsys.readouterr()  # single read — capsys clears on each call
+        out = json.loads(captured.out)
+        # Wire is authoritative and the item is deselected → no confirmed items.
+        assert out["confirmed_items"] == []
+        # stderr announces the JSON-only path (build_from_wire routing).
+        assert "edited wire is authoritative" in captured.err

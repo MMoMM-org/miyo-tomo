@@ -93,7 +93,7 @@ only a static checkbox — no per-finding computation in Pass 1).
   4. Validate: round-trip render→parse for both check types.
   - Success: pick selection flows into the same `garden_action` discrimination as a typed value.
 
-- [ ] **T7.4 CLI + agent wiring** `[activity: integration]` `[ref: garden-auditor.md]`
+- [x] **T7.4 CLI + agent wiring** `[activity: integration]` `[ref: garden-auditor.md]`
 
   1. Prime: read the `--configure` wizard wiring in `garden-auditor.md` + `garden-audit.py` argparse.
   2. Test: `/garden-audit --suggest` (or the agent's `suggest` mode) reads the in-vault report + wire,

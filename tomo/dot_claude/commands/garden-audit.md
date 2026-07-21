@@ -1,10 +1,10 @@
 ---
 name: garden-audit
-description: Audit the knowledge garden for staleness, broken links, orphaned notes, and missing connections. On first run surfaces permanent exclusions to configure; re-run with --configure to update them.
-argument-hint: "optional: --configure"
+description: Audit the knowledge garden for staleness, broken links, orphaned notes, and missing connections. On first run surfaces permanent exclusions to configure; re-run with --configure to update them, or --suggest to compute candidate targets for findings you ticked.
+argument-hint: "optional: --configure | --suggest"
 ---
 # /garden-audit
-# version: 0.1.0
+# version: 0.2.0
 
 Audit the knowledge garden for staleness, broken links, orphaned notes, and
 missing connections. Produces a reviewable audit report in your inbox folder.
@@ -22,8 +22,9 @@ Authoritative spec: `.claude/agents/garden-auditor.md`.
 ```
 /garden-audit              # full audit run; first-run triggers exclusion wizard
 /garden-audit --configure  # re-run the exclusion wizard without a full audit
+/garden-audit --suggest    # compute candidate targets for findings you ticked "Suggest targets"
 ```
 
-Pass `--configure` through to the `garden-auditor` agent as-is.
+Pass `--configure` / `--suggest` through to the `garden-auditor` agent as-is.
 
 # STRICT — IMPERSONATE, never dispatch. Why: dispatched subagents cannot use the Agent tool.

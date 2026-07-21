@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -47,12 +47,28 @@ from lib.render_md import bare_stem, compute_payload_digest, up_line
 
 # ── Wire load ────────────────────────────────────────────────────────────────
 
+def _is_wire_edited(wire: dict) -> bool:
+    """True iff an already-loaded wire dict is schema-v1 AND Hashi-edited.
+
+    Edited = the recomputed digest over the editable payload differs from the
+    stored emit_digest (or there is no stored digest). Operates on a dict already
+    in memory — no file read — so main() can decide routing from the single
+    _load_raw_wire result without a second open() (TOCTOU-free). Unknown schema
+    version → not edited (unedited wire supplies structure via build_from_report).
+    """
+    if wire.get("schema_version") != "1":
+        return False
+    stored = wire.get("emit_digest")
+    return not (stored and compute_payload_digest(wire) == stored)
+
+
 def load_changed_wire(path: str | None) -> dict | None:
     """Return the garden-audit wire iff present, parseable, schema_version=="1", AND edited.
 
     Edited = the recomputed digest over the editable payload differs from the
     stored emit_digest. Unchanged / absent / unreadable / unknown-version → None.
-    Mirrors suggestion-parser.load_changed_wire (ADR-026).
+    Mirrors suggestion-parser.load_changed_wire (ADR-026). Thin file-loading
+    wrapper over _is_wire_edited for callers that only have a path.
     """
     if not path:
         return None
@@ -61,23 +77,22 @@ def load_changed_wire(path: str | None) -> dict | None:
             wire = json.load(fh)
     except (OSError, json.JSONDecodeError) as exc:
         print(
-            f"warning: garden-audit-wire ignored ({exc}); using markdown",
+            f"warning: garden-audit-wire ignored ({exc}); "
+            "routing to build_from_report (wire+markdown join)",
             file=sys.stderr,
         )
         return None
     if not isinstance(wire, dict):
         return None
-    version = wire.get("schema_version")
-    if version != "1":
+    if wire.get("schema_version") != "1":
         print(
-            f"warning: garden-audit-wire schema_version {version!r} != '1' — "
-            "ignored, using markdown",
+            f"warning: garden-audit-wire schema_version {wire.get('schema_version')!r} "
+            "!= '1' — routing to build_from_report (wire+markdown join)",
             file=sys.stderr,
         )
         return None
-    stored = wire.get("emit_digest")
-    if stored and compute_payload_digest(wire) == stored:
-        return None  # unchanged — markdown stays authoritative
+    if not _is_wire_edited(wire):
+        return None  # unchanged — build_from_report joins wire structure + markdown
     return wire
 
 
@@ -467,9 +482,10 @@ def main() -> int:
         }, ensure_ascii=False, indent=2))
         return 0
 
-    # Digest check: an edited wire is the Hashi-authored path — wire fully
-    # authoritative. An unedited wire supplies structure to the markdown decisions.
-    if load_changed_wire(args.wire) is not None:
+    # Digest check on the ALREADY-LOADED wire (no second file read — TOCTOU-free):
+    # an edited wire is the Hashi-authored path (wire fully authoritative); an
+    # unedited wire supplies structure to the markdown decisions.
+    if _is_wire_edited(raw_wire):
         result = build_from_wire(raw_wire)
         print(
             "garden-audit-parser: edited wire is authoritative (JSON-only path)",

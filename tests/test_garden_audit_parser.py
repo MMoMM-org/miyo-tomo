@@ -16,9 +16,10 @@ Covers:
   end-to-end        — approved report + wire → build_from_report →
                       build_garden_audit_actions → correct Hashi actions.
   NO HTML comment   — the rendered report contains no `<!-- garden-audit` string.
-  CLI main()        — argv dispatch: missing-wire degrade + edited-wire routing.
+  CLI main()        — argv dispatch: missing-wire degrade + edited/unedited routing.
+  _is_wire_edited   — single-load digest gate (no second file read).
 """
-# version: 0.6.0
+# version: 0.7.0
 import importlib.util
 import json
 import pathlib
@@ -567,8 +568,10 @@ class TestBuildFromReport:
         assert c["garden_action"] == "add_relationship"
         assert c["up_line"] == "up:: [[New Home MOC]]"
 
-    def test_missing_wire_degrades_to_empty(self):
-        # No structure source → no confirmed items (graceful, no crash).
+    def test_empty_wire_dict_produces_no_items(self):
+        # An empty wire dict (no findings) → no confirmed items (graceful). This
+        # is the unit-level empty-dict case; the file-not-found CLI degrade is
+        # covered by TestCliMainDispatch.test_missing_wire_degrades_to_empty.
         md = _full_report(_make_doc([_doc_finding_dead_link("F01")]))
         assert build_from_report(md, {})["confirmed_items"] == []
 
@@ -737,7 +740,7 @@ class TestCliMainDispatch:
         # honoured the wire's decision, not the markdown's Apply tick.
         wire = _make_real_wire([_unparented(selected=True)])
         # Simulate a Hashi edit: deselect the finding without recomputing the
-        # digest → load_changed_wire sees the mismatch and treats it as edited.
+        # digest → _is_wire_edited sees the mismatch on the single-loaded dict.
         wire["findings"][0]["decision"]["selected"] = False
         wire_path = tmp_path / "wire.json"
         _write_wire(wire_path, wire)
@@ -762,3 +765,57 @@ class TestCliMainDispatch:
         assert out["confirmed_items"] == []
         # stderr announces the JSON-only path (build_from_wire routing).
         assert "edited wire is authoritative" in captured.err
+
+    def test_unedited_wire_routes_to_build_from_report(self, tmp_path, monkeypatch, capsys):
+        # W1 complement: a DIGEST-MATCHING wire (unedited) → main() must route to
+        # build_from_report (wire structure + markdown decisions), NOT
+        # build_from_wire. The markdown ticks Apply on F01 → the joined result
+        # has a confirmed_item, proving the unedited/report path was taken.
+        doc = _make_doc([_doc_finding_unparented("F01")])
+        wire = _wire(doc)  # build_wire_payload → correct emit_digest (unedited)
+        wire_path = tmp_path / "wire.json"
+        _write_wire(wire_path, wire)
+        report_path = tmp_path / "report.md"
+        report_path.write_text(_full_report(doc), encoding="utf-8")
+
+        monkeypatch.setattr(sys, "argv", [
+            "garden-audit-parser.py",
+            "--file", str(report_path),
+            "--wire", str(wire_path),
+        ])
+        rc = gap.main()
+        assert rc == 0
+        captured = capsys.readouterr()
+        out = json.loads(captured.out)
+        # build_from_report joined wire structure + the ticked markdown decision.
+        assert [c["id"] for c in out["confirmed_items"]] == ["F01"]
+        assert out["confirmed_items"][0]["garden_action"] == "file_note"
+        # The build_from_wire announcement must NOT appear (report path taken).
+        assert "edited wire is authoritative" not in captured.err
+
+
+# ---------------------------------------------------------------------------
+# _is_wire_edited — the single-load digest gate main() routes on (W1). No file
+# read; operates on an already-loaded dict.
+# ---------------------------------------------------------------------------
+
+class TestIsWireEdited:
+    def test_digest_matching_wire_is_not_edited(self):
+        wire = _make_real_wire([_unparented(selected=True)])  # correct digest
+        assert gap._is_wire_edited(wire) is False
+
+    def test_digest_mismatch_is_edited(self):
+        wire = _make_real_wire([_unparented(selected=True)])
+        wire["findings"][0]["decision"]["selected"] = False  # digest now stale
+        assert gap._is_wire_edited(wire) is True
+
+    def test_wrong_schema_version_is_not_edited(self):
+        wire = _make_real_wire([_unparented(selected=True)])
+        wire["schema_version"] = "2"
+        assert gap._is_wire_edited(wire) is False
+
+    def test_missing_digest_is_edited(self):
+        # No stored emit_digest → treat as edited (cannot prove unchanged).
+        wire = _make_wire([_unparented(selected=True)])
+        wire.pop("emit_digest", None)
+        assert gap._is_wire_edited(wire) is True

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.6.1
 """test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
 T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
@@ -2316,8 +2316,11 @@ class TestGardenAuditAsUpstreamType:
         assert len(state.approved_garden_audits) == 1
         assert state.approved_garden_audits[0]["path"] == ga_path
         # Spec 030: the entry always carries wire_cache_path (structure source),
-        # even when the sibling is absent (then null → parser degrades).
+        # even when the sibling is absent — then its VALUE is None (parser
+        # degrades). This client has no read_file_responses → no sibling. Asserting
+        # None (not just key-present) catches a regression back to conditional-set.
         assert "wire_cache_path" in state.approved_garden_audits[0]
+        assert state.approved_garden_audits[0]["wire_cache_path"] is None
 
     def test_entry_carries_real_wire_cache_path_when_sibling_present(self, tmp_path):
         """When the wire sibling exists, the entry carries its cached path so the

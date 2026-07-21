@@ -37,12 +37,17 @@ machine payload to keep in parity with the parser — the wire IS the machine pa
 
 WHY `--wire` is required (not optional) and read regardless of digest: structure now always
 comes from the wire, so without it there is nothing to build. `main()` loads the raw wire
-(`_load_raw_wire`, digest-independent) and then decides the path with `load_changed_wire`:
-an EDITED wire (digest mismatch) is the Hashi-authored path → `build_from_wire` (wire fully
-authoritative, markdown decisions ignored); an unedited wire supplies structure to the
-markdown decisions → `build_from_report`. A missing/unreadable wire degrades gracefully to
-empty `confirmed_items` (warn to stderr, never crash) — Tomo still does not assume Hashi is
-installed, it just needs the always-generated wire sibling that the renderer produces.
+ONCE (`_load_raw_wire`, digest-independent) and then decides the path with `_is_wire_edited`
+on that already-loaded dict — NO second file read. This is deliberate: on the Docker
+bind-mount the file could change between two reads, so routing on read-1's dict while building
+from read-2's would be a TOCTOU bug (and a redundant parse). `_is_wire_edited` returns True for
+an EDITED wire (schema-v1 + digest mismatch) → the Hashi-authored path `build_from_wire` (wire
+fully authoritative, markdown decisions ignored); an unedited / unknown-schema wire supplies
+structure to the markdown decisions → `build_from_report`. A missing/unreadable wire degrades
+gracefully to empty `confirmed_items` (warn to stderr, never crash) — Tomo still does not assume
+Hashi is installed, it just needs the always-generated wire sibling the renderer produces.
+(`load_changed_wire` is kept as a thin path-loading wrapper over `_is_wire_edited` for callers
+that only have a path, but `main()` no longer uses it.)
 
 ## Advisory / Unticked / Missing-id → Skipped
 
@@ -84,9 +89,12 @@ filing action with an empty MOC stem would fail at apply time (Hashi cannot reso
 a MOC with an empty stem). An empty candidate list is a genuine "no good MOC found" signal,
 not a parser error — the user handles the note manually.
 
-## Version 0.3.0
+## Version 0.3.1
 
-WHY: 0.3.0 (spec 030 two-artifact split) — `build_from_markdown` replaced by
+WHY: 0.3.1 (code-quality review) — `main()` now routes on `_is_wire_edited(raw_wire)` (the
+already-loaded dict) instead of re-opening the path via `load_changed_wire` — removes a
+TOCTOU window + redundant parse. `load_changed_wire`'s warning strings updated ("routing to
+build_from_report" not "using markdown"). 0.3.0 (spec 030 two-artifact split) — `build_from_markdown` replaced by
 `build_from_report(md, wire)`: markdown = decisions, wire = structure (always read),
 joined by F-id. The `<!-- garden-audit ... -->` round-trip comment is gone; structure is
 sourced from the wire. `--wire` is now REQUIRED; a missing wire degrades to empty

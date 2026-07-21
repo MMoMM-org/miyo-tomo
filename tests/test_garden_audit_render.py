@@ -16,7 +16,7 @@ Coverage:
   - reappeared_exclusions: shown in preamble when present
   - skipped_checks: shown in preamble when present
 """
-# version: 0.2.1
+# version: 0.3.0
 import importlib.util
 import json
 import pathlib
@@ -189,6 +189,20 @@ class TestRenderFrontmatter:
 # ---------------------------------------------------------------------------
 
 class TestReportStructure:
+    def test_report_has_no_html_comment(self):
+        # Spec 030 two-artifact split: the markdown is human-facing DECISIONS
+        # only — NO structural `<!-- garden-audit ... -->` comment. Structure
+        # lives in the wire, joined by F-id.
+        findings = [
+            _make_broken_up_finding("F01"),
+            _make_dead_link_finding("F02"),
+            _make_unparented_finding("F03"),
+            _make_duplicate_stem_finding("F04"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "<!-- garden-audit" not in report
+        assert "<!--" not in report
+
     def test_caveats_present_index_lag(self):
         d = _make_doc()
         report = _render_report(d)
@@ -717,10 +731,12 @@ class TestDirtyListReprRender:
         assert "[[030 Reference MOC]]" in report
         assert "['020 Active MOC'" not in report
 
-    def test_structural_comment_match_unwraps_dirty_list(self):
-        # The round-trip comment's `match` must be the real up:: line so the
-        # parser reconstructs a matching removal target.
+    def test_dirty_list_visible_line_has_no_html_comment(self):
+        # Spec 030 two-artifact split: the report is human-facing only — no
+        # structural HTML comment. The dirty list is unwrapped in the VISIBLE
+        # detail line; the parser reconstructs match from the wire's up_target.
         f = _make_broken_up_finding()
         f["detail"]["up_target"] = "['020 Active MOC']"
         report = _render_report(_make_doc(findings=[f]))
-        assert 'match="up:: [[020 Active MOC]]"' in report
+        assert "<!-- garden-audit" not in report
+        assert "Broken `up::` → [[020 Active MOC]]" in report

@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.13.0
+# version: 0.14.0
 
 **Active agent: synthesis-conductor**
 
@@ -127,9 +127,9 @@ python3 scripts/moc-proposal-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-s
 
 For `DOC_TYPE` = `garden-audit`:
 ```bash
-python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" --wire "<WIRE_CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
 ```
-When the entry has `wire_cache_path`, append `--wire "<WIRE_CACHE_PATH>"` before the `>` redirect — the parser uses the edited wire (ADR-4 / ADR-026) to reconstruct confirmed fix actions.
+ALWAYS pass BOTH `--file` and `--wire` — the wire is the STRUCTURE source (spec 030 two-artifact split), joined to the markdown decisions by F-id. `<WIRE_CACHE_PATH>` is the entry's `wire_cache_path` (inbox-triage caches the wire sibling for every garden-audit doc). If a Hashi editor edited the wire (digest mismatch), the parser treats the wire as fully authoritative; otherwise it joins wire structure to the report's Apply ticks + Repoint/Replace values.
 
 #### 3b — Render instructions
 

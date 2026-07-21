@@ -1,21 +1,23 @@
-"""Tests for garden-audit-parser.py — Pass-2 reader (markdown authoritative + wire override).
+"""Tests for garden-audit-parser.py — Pass-2 reader (two-artifact split, spec 030).
 
-The parser is a pure reader: markdown report (+ optional edited wire) → a
-{"confirmed_items": [...]} envelope of SEMANTIC items (garden_check /
-garden_action), NOT pre-built actions. render_actions.build_garden_audit_actions
-turns confirmed_items into Hashi actions.
+The parser joins the markdown report's DECISIONS to the wire's STRUCTURE by F-id
+→ a {"confirmed_items": [...]} envelope of SEMANTIC items (garden_check /
+garden_action). render_actions.build_garden_audit_actions turns confirmed_items
+into Hashi actions.
 
 Covers:
   load_changed_wire — absent / bad / wrong-version / unchanged → None; edited → wire.
-  build_from_wire   — confirmed_items per fixable+selected finding; advisory /
-                      deselected → none.
-  build_from_markdown — parse the rendered report's structural comments +
-                      checkboxes + Replace/Repoint fields → confirmed_items.
-  round-trip        — render(doc) → build_from_markdown → confirmed_items match.
-  end-to-end        — approved markdown → build_from_markdown →
+  build_from_wire   — confirmed_items per fixable+selected finding (Hashi-edited
+                      path); advisory / deselected → none.
+  build_from_report — join wire structure (path/detail/candidate_mocs) to markdown
+                      decisions (Apply ticks + Repoint/Replace) by F-id.
+  round-trip        — render(doc)+build_wire_payload(doc) → build_from_report →
+                      confirmed_items have wire PATH + markdown decisions.
+  end-to-end        — approved report + wire → build_from_report →
                       build_garden_audit_actions → correct Hashi actions.
+  NO HTML comment   — the rendered report contains no `<!-- garden-audit` string.
 """
-# version: 0.4.1
+# version: 0.5.0
 import importlib.util
 import json
 import pathlib
@@ -47,7 +49,8 @@ from lib.render_actions import build_garden_audit_actions  # noqa: E402
 
 load_changed_wire = gap.load_changed_wire
 build_from_wire = gap.build_from_wire
-build_from_markdown = gap.build_from_markdown
+build_from_report = gap.build_from_report
+parse_decision_map = gap.parse_decision_map
 
 # ---------------------------------------------------------------------------
 # Helpers to build minimal valid wire payloads
@@ -417,120 +420,171 @@ def _full_report(doc):
     return "\n".join(gar.render_frontmatter(doc)) + "\n" + gar.render_report(doc)
 
 
+def _wire(doc):
+    """Build the wire payload (STRUCTURE source) for a doc."""
+    return gar.build_wire_payload(doc)
+
+
+def _report_and_wire(doc):
+    """Render BOTH artifacts from one doc — the two-artifact split."""
+    return _full_report(doc), _wire(doc)
+
+
 # ---------------------------------------------------------------------------
-# Round-trip: render(doc) → build_from_markdown → confirmed_items
+# No HTML comment in the rendered report (spec 030 two-artifact split)
 # ---------------------------------------------------------------------------
 
-class TestMarkdownRoundTrip:
-    def test_unparented_round_trips_to_file_note(self):
-        md = _full_report(_make_doc([_doc_finding_unparented("F01")]))
-        items = build_from_markdown(md)["confirmed_items"]
+class TestNoHtmlComment:
+    def test_report_contains_no_garden_audit_comment(self):
+        doc = _make_doc([
+            _doc_finding_dead_link("F01"),
+            _doc_finding_broken_up_removal("F02"),
+            _doc_finding_unparented("F03"),
+            _doc_finding_duplicate("F04"),
+        ])
+        report = _full_report(doc)
+        assert "<!-- garden-audit" not in report
+        assert "<!--" not in report  # no HTML comment of any kind
+
+
+# ---------------------------------------------------------------------------
+# parse_decision_map: markdown → {F-id → {apply, repoint, replace}}
+# ---------------------------------------------------------------------------
+
+class TestParseDecisionMap:
+    def test_ticked_apply_maps_to_apply_true(self):
+        md = _full_report(_make_doc([_doc_finding_dead_link("F01")]))
+        dm = parse_decision_map(md)
+        assert dm["F01"]["apply"] is True
+
+    def test_unticked_apply_maps_to_apply_false(self):
+        md = _full_report(_make_doc([_doc_finding_dead_link("F01")]))
+        md = md.replace("- [x] Apply", "- [ ] Apply")
+        assert parse_decision_map(md)["F01"]["apply"] is False
+
+    def test_typed_repoint_captured(self):
+        md = _full_report(_make_doc([_doc_finding_broken_up_repoint("F01")]))
+        md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[Chosen MOC]]")
+        assert parse_decision_map(md)["F01"]["repoint"] == "Chosen MOC"
+
+    def test_typed_replace_captured(self):
+        md = _full_report(_make_doc([_doc_finding_dead_link("F01")]))
+        md = md.replace("**Replace with:** [[]]", "**Replace with:** [[New Target]]")
+        assert parse_decision_map(md)["F01"]["replace"] == "New Target"
+
+
+# ---------------------------------------------------------------------------
+# build_from_report: join wire STRUCTURE + markdown DECISIONS by F-id
+# ---------------------------------------------------------------------------
+
+class TestBuildFromReport:
+    def test_unparented_uses_wire_path_and_candidate_moc(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_unparented("F01")]))
+        items = build_from_report(md, wire)["confirmed_items"]
         assert len(items) == 1
         c = items[0]
         assert c["id"] == "F01"
         assert c["garden_action"] == "file_note"
-        assert c["path"] == "Notes/Orphan Note.md"
-        assert c["stem"] == "Orphan Note"
-        assert c["target_moc"] == "Writing MOC"
+        assert c["path"] == "Notes/Orphan Note.md"     # from wire
+        assert c["stem"] == "Orphan Note"              # from wire
+        assert c["target_moc"] == "Writing MOC"         # from wire candidate_mocs
         assert c["target_moc_path"] == "MOCs/Writing MOC.md"
 
-    def test_broken_up_removal_round_trips(self):
-        md = _full_report(_make_doc([_doc_finding_broken_up_removal("F02")]))
-        c = build_from_markdown(md)["confirmed_items"][0]
+    def test_broken_up_removal_match_from_wire_up_target(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_removal("F02")]))
+        c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["garden_action"] == "edit_note_text"
-        assert c["path"] == "Notes/Broken Note.md"
-        assert c["match"] == "up:: [[Deleted MOC]]"
+        assert c["path"] == "Notes/Broken Note.md"      # from wire
+        assert c["match"] == "up:: [[Deleted MOC]]"     # from wire up_target
         assert c["replace"] == ""
         assert c["occurrence"] == "first"
 
-    def test_broken_up_removal_list_up_target_round_trips(self):
-        # Cache up:: is a multi-value list — the markdown path (render → parse)
-        # must reconstruct the exact multi-target frontmatter line, never a list
-        # repr. Previously only build_from_wire covered the list case.
+    def test_broken_up_list_up_target_from_wire(self):
         f = _doc_finding_broken_up_removal("F02")
         f["detail"]["up_target"] = ["020 Active MOC", "030 Reference MOC"]
-        md = _full_report(_make_doc([f]))
-        c = build_from_markdown(md)["confirmed_items"][0]
-        assert c["garden_action"] == "edit_note_text"
+        md, wire = _report_and_wire(_make_doc([f]))
+        c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["match"] == "up:: [[020 Active MOC]], [[030 Reference MOC]]"
         assert "[[[" not in c["match"] and "['" not in c["match"]
 
-    def test_dead_link_removal_round_trips_empty_replace(self):
-        # User leaves Replace with: [[]] empty → remove.
-        md = _full_report(_make_doc([_doc_finding_dead_link("F04")]))
-        c = build_from_markdown(md)["confirmed_items"][0]
+    def test_dead_link_match_from_wire_empty_replace(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_dead_link("F04")]))
+        c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["garden_action"] == "edit_note_text"
-        assert c["match"] == "[[Missing Note]]"
+        assert c["match"] == "[[Missing Note]]"          # from wire dead_target
         assert c["replace"] == ""
         assert c["occurrence"] == "all"
 
     def test_advisory_finding_produces_no_item(self):
-        md = _full_report(_make_doc([_doc_finding_duplicate("F05")]))
-        assert build_from_markdown(md)["confirmed_items"] == []
+        md, wire = _report_and_wire(_make_doc([_doc_finding_duplicate("F05")]))
+        assert build_from_report(md, wire)["confirmed_items"] == []
 
-    def test_frontmatter_run_id_recovered(self):
-        md = _full_report(_make_doc([_doc_finding_unparented("F01")]))
-        assert build_from_markdown(md)["run_id"] == "run-rt-001"
+    def test_run_id_from_wire(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_unparented("F01")]))
+        assert build_from_report(md, wire)["run_id"] == "run-rt-001"
 
     def test_unticked_apply_skips_item(self):
-        # Simulate the user unticking Apply on a rendered dead_link block.
-        md = _full_report(_make_doc([_doc_finding_dead_link("F04")]))
+        md, wire = _report_and_wire(_make_doc([_doc_finding_dead_link("F04")]))
         md = md.replace("- [x] Apply", "- [ ] Apply")
-        assert build_from_markdown(md)["confirmed_items"] == []
+        assert build_from_report(md, wire)["confirmed_items"] == []
 
-    def test_user_fills_replace_target_repoints(self):
-        md = _full_report(_make_doc([_doc_finding_dead_link("F04")]))
+    def test_id_in_wire_but_absent_from_markdown_is_skipped(self):
+        # The wire carries F01; the markdown decision map does not (no ### F01
+        # heading) → the finding is not confirmed. Join key is the F-id.
+        md, wire = _report_and_wire(_make_doc([_doc_finding_dead_link("F01")]))
+        # Strip the whole finding block from the markdown (remove its heading).
+        md_no_f01 = md.replace("### F01", "### ZZ99")
+        assert build_from_report(md_no_f01, wire)["confirmed_items"] == []
+
+    def test_user_fills_replace_target(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_dead_link("F04")]))
         md = md.replace("**Replace with:** [[]]", "**Replace with:** [[New Target]]")
-        c = build_from_markdown(md)["confirmed_items"][0]
+        c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["replace"] == "[[New Target]]"
 
     def test_user_fills_repoint_target_adds_relationship(self):
-        md = _full_report(_make_doc([_doc_finding_broken_up_repoint("F03")]))
+        md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_repoint("F03")]))
         md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[Chosen MOC]]")
-        c = build_from_markdown(md)["confirmed_items"][0]
+        c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["garden_action"] == "add_relationship"
         assert c["up_line"] == "up:: [[Chosen MOC]]"
 
     def test_empty_repoint_falls_back_to_removal(self):
-        # Repoint block, user leaves [[]] empty → removal (edit_note_text).
-        md = _full_report(_make_doc([_doc_finding_broken_up_repoint("F03")]))
-        c = build_from_markdown(md)["confirmed_items"][0]
+        md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_repoint("F03")]))
+        c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["garden_action"] == "edit_note_text"
-        assert c["match"] == "up:: [[Old MOC]]"
+        assert c["match"] == "up:: [[Old MOC]]"          # from wire up_target
         assert c["replace"] == ""
 
     def test_removal_finding_offers_repoint_field_and_fills_to_add_rel(self):
-        # FIX 3: a broken_up finding with action=edit_note_text (a "removal"
-        # finding) now ALSO renders the Repoint field; filling it makes the fix
-        # a repoint (add_relationship), not just a removal.
-        md = _full_report(_make_doc([_doc_finding_broken_up_removal("F02")]))
-        assert "**Repoint to:**" in md  # field rendered for a removal finding
+        # A broken_up finding (action=edit_note_text) renders the Repoint field;
+        # filling it makes the fix a repoint (add_relationship), not a removal.
+        md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_removal("F02")]))
+        assert "**Repoint to:**" in md
         md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[New Home MOC]]")
-        c = build_from_markdown(md)["confirmed_items"][0]
+        c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["garden_action"] == "add_relationship"
         assert c["up_line"] == "up:: [[New Home MOC]]"
 
-    def test_removal_finding_empty_repoint_stays_removal(self):
-        # Same removal finding, user leaves the Repoint field empty → removal.
-        md = _full_report(_make_doc([_doc_finding_broken_up_removal("F02")]))
-        c = build_from_markdown(md)["confirmed_items"][0]
-        assert c["garden_action"] == "edit_note_text"
-        assert c["match"] == "up:: [[Deleted MOC]]"
-        assert c["replace"] == ""
+    def test_missing_wire_degrades_to_empty(self):
+        # No structure source → no confirmed items (graceful, no crash).
+        md = _full_report(_make_doc([_doc_finding_dead_link("F01")]))
+        assert build_from_report(md, {})["confirmed_items"] == []
 
 
 # ---------------------------------------------------------------------------
-# END-TO-END (F6 fix): approved markdown → confirmed_items → actions
+# END-TO-END: approved report + wire → confirmed_items → Hashi actions
 # ---------------------------------------------------------------------------
 
 class TestEndToEndApprovedReportToActions:
-    """The full vertical: an approved report renders into Hashi actions.
+    """The full vertical: an approved report + its wire render into Hashi actions.
 
-    This MUST fail against a no-op/empty build_from_markdown or a
+    Structure comes from the wire, decisions from the markdown, joined by F-id.
+    This MUST fail against a no-op/empty build_from_report or a
     build_garden_audit_actions that drops item kinds.
     """
 
-    def _approved_md(self):
+    def _approved(self):
         doc = _make_doc([
             _doc_finding_dead_link("F01"),         # → edit_note_text (remove)
             _doc_finding_broken_up_removal("F02"),  # → edit_note_text (up:: remove)
@@ -539,25 +593,25 @@ class TestEndToEndApprovedReportToActions:
             _doc_finding_duplicate("F05"),          # advisory → nothing
         ])
         md = _full_report(doc)
-        # Every broken_up now renders a Repoint field (FIX 3). The user fills
-        # ONLY F03's field → F03 repoints; F02 stays a removal. Split on the F03
-        # header so the fill is scoped to that block, not a global replace.
+        # The user fills ONLY F03's Repoint field → F03 repoints; F02 stays a
+        # removal. Scope the fill to F03's block (split on its heading).
         head, _, f03_onward = md.partition("### F03")
         f03_onward = f03_onward.replace(
             "**Repoint to:** [[]]", "**Repoint to:** [[Correct MOC]]", 1
         )
-        return head + "### F03" + f03_onward
+        return head + "### F03" + f03_onward, _wire(doc)
+
+    def _items(self):
+        md, wire = self._approved()
+        return build_from_report(md, wire)["confirmed_items"]
 
     def test_confirmed_items_cover_every_fixable_finding(self):
-        items = build_from_markdown(self._approved_md())["confirmed_items"]
-        ids = {c["id"] for c in items}
+        ids = {c["id"] for c in self._items()}
         assert ids == {"F01", "F02", "F03", "F04"}  # F05 advisory excluded
 
     def test_actions_contain_edit_note_text_for_dead_link_and_broken_up(self):
-        items = build_from_markdown(self._approved_md())["confirmed_items"]
-        actions = build_garden_audit_actions(items)
+        actions = build_garden_audit_actions(self._items())
         edits = [a for a in actions if a["action"] == "edit_note_text"]
-        # dead_link removal + broken_up removal = 2 edit_note_text
         assert len(edits) == 2
         matches = {a["match"] for a in edits}
         assert "[[Missing Note]]" in matches
@@ -566,10 +620,8 @@ class TestEndToEndApprovedReportToActions:
             assert a["replace"] == ""
 
     def test_actions_contain_add_relationship_for_repoint_and_filing(self):
-        items = build_from_markdown(self._approved_md())["confirmed_items"]
-        actions = build_garden_audit_actions(items)
+        actions = build_garden_audit_actions(self._items())
         rels = [a for a in actions if a["action"] == "add_relationship"]
-        # repoint (F03) + filing up:: (F04) = 2 add_relationship
         assert len(rels) == 2
         lines = {a["line"] for a in rels}
         assert "up:: [[Correct MOC]]" in lines
@@ -578,31 +630,41 @@ class TestEndToEndApprovedReportToActions:
             assert a["marker"] == "up::"
 
     def test_actions_contain_link_to_moc_for_filing(self):
-        items = build_from_markdown(self._approved_md())["confirmed_items"]
-        actions = build_garden_audit_actions(items)
+        actions = build_garden_audit_actions(self._items())
         links = [a for a in actions if a["action"] == "link_to_moc"]
         assert len(links) == 1
         assert links[0]["target_moc"] == "Writing MOC"
         assert links[0]["line_to_add"] == "- [[Orphan Note]]"
 
     def test_all_actions_stamped_applied_false(self):
-        items = build_from_markdown(self._approved_md())["confirmed_items"]
-        actions = build_garden_audit_actions(items)
-        # F01 edit + F02 edit + F03 add_rel + F04 (link_to_moc + add_rel) = 5.
-        # Exact count keeps the applied-flag loop reachable-by-contract.
+        actions = build_garden_audit_actions(self._items())
         assert len(actions) == 5
         for a in actions:
             assert a["applied"] is False
 
     def test_edit_note_text_path_is_the_note_path(self):
-        items = build_from_markdown(self._approved_md())["confirmed_items"]
-        actions = build_garden_audit_actions(items)
+        actions = build_garden_audit_actions(self._items())
         paths = {a["path"] for a in actions if a["action"] == "edit_note_text"}
         assert paths == {"Notes/Source Note.md", "Notes/Broken Note.md"}
 
     def test_empty_confirmed_items_yields_no_actions(self):
-        # Falsifies a no-op impl that always returns actions.
         assert build_garden_audit_actions([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Hashi-edited-wire path still works (digest mismatch → build_from_wire)
+# ---------------------------------------------------------------------------
+
+class TestEditedWirePathStillWorks:
+    """When the wire is Hashi-edited (digest mismatch), the wire is fully
+    authoritative — build_from_wire runs, markdown decisions are not consulted."""
+
+    def test_edited_wire_repoint_authoritative(self):
+        f = _broken_up_repoint(selected=True)
+        f["decision"]["repoint"] = "Custom MOC"
+        c = build_from_wire(_make_wire([f]))["confirmed_items"][0]
+        assert c["garden_action"] == "add_relationship"
+        assert c["up_line"] == "up:: [[Custom MOC]]"
 
 
 # ---------------------------------------------------------------------------

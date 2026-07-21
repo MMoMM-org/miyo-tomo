@@ -1,10 +1,10 @@
 # WHY: garden-audit-parser.py
 
 > Rationale for decisions in `tomo/scripts/garden-audit-parser.py`.
-> The script is the Pass-2 READER for the garden-audit skill (spec 030 Phase 4).
-> It mirrors `suggestion-parser.py`'s CLI + wire contract (ADR-4 / ADR-026):
-> `--file <md>` is byte-authoritative, `--wire <json>` is an optional edited-wire
-> override, and the result is a `{"confirmed_items": [...]}` envelope printed to STDOUT.
+> The script is the Pass-2 READER for the garden-audit skill (spec 030).
+> Two-artifact split: `--file <md>` carries human DECISIONS, `--wire <json>` carries
+> machine STRUCTURE (always read), joined by the F-id in each `### F<id>` heading.
+> The result is a `{"confirmed_items": [...]}` envelope printed to STDOUT.
 
 ## Parser Emits confirmed_items, Not Actions (spec 030 SDD)
 
@@ -19,27 +19,38 @@ primitive into the one live builder path. An earlier design where the parser emi
 `{"actions": [...]}` directly was end-to-end broken: `instruction-render` reads
 `confirmed_items`, so the actions were silently dropped and nothing rendered.
 
-## Markdown Authoritative, Wire Overrides (ADR-026)
+## Two Artifacts, Joined by F-id (spec 030)
 
-WHY `main()` reads `--file` → `build_from_markdown` by default and only takes the wire
-path when `load_changed_wire` returns a non-None (edited) wire: Tomo never assumes Hashi
-is installed, so the human-reviewed markdown report is the byte-authoritative source of
-what the user approved. The vault-published wire sibling is an OPTIONAL override that only
-wins when the user actually edited it (its embedded `emit_digest` no longer matches a
-recomputation over the editable payload). Unchanged / absent / unreadable / unknown-version
-→ the markdown path is used. This mirrors `suggestion-parser.py` exactly.
+WHY the parser reads BOTH `--file` (markdown) and `--wire` (JSON) and joins them by the
+F-id in each `### F<id>` heading, rather than reading everything from one artifact: the
+user approved a cleaner split where the markdown report is PURELY human-facing (Apply ticks
++ typed `Repoint to:` / `Replace with:` values) and the wire — the machine artifact that is
+always generated and cached — is the STRUCTURE source (id, check, tier, target.path,
+detail with dead_target / up_target / candidate_mocs). `build_from_report(md, wire)` parses
+the markdown into a per-F-id decision map (`parse_decision_map`), then for each fixable wire
+finding whose id is present-and-ticked in the map, builds the confirmed_item from the WIRE's
+structure + the markdown's typed decision. This removed the fragile round-trip HTML comment:
+the report no longer carries `<!-- garden-audit ... -->` at all, so there is no invisible
+machine payload to keep in parity with the parser — the wire IS the machine payload.
 
-## Structural HTML Comment Round-Trip
+## `--wire` is REQUIRED; wire ALWAYS read for structure
 
-WHY `build_from_markdown` reads a `<!-- garden-audit ... -->` comment per `### Fxx` block
-rather than re-parsing the visible prose: the visible report is written for a human reading
-in Obsidian (wikilinks, plain-language fix summaries) and hides the machine data (exact
-`match` string, `occurrence`, resolved `target_moc_path`). The renderer emits an invisible
-structural comment (invisible in Obsidian reading view) carrying exactly that data, so the
-parser reconstructs the `confirmed_item` deterministically without brittle prose parsing.
-The visible affordances the parser DOES read — the `- [x] Apply` checkbox and the
-`**Replace with:**` / `**Repoint to:**` fields — are the user's decision surface; everything
-else comes from the comment. Advisory findings carry NO comment, so they never produce an item.
+WHY `--wire` is required (not optional) and read regardless of digest: structure now always
+comes from the wire, so without it there is nothing to build. `main()` loads the raw wire
+(`_load_raw_wire`, digest-independent) and then decides the path with `load_changed_wire`:
+an EDITED wire (digest mismatch) is the Hashi-authored path → `build_from_wire` (wire fully
+authoritative, markdown decisions ignored); an unedited wire supplies structure to the
+markdown decisions → `build_from_report`. A missing/unreadable wire degrades gracefully to
+empty `confirmed_items` (warn to stderr, never crash) — Tomo still does not assume Hashi is
+installed, it just needs the always-generated wire sibling that the renderer produces.
+
+## Advisory / Unticked / Missing-id → Skipped
+
+WHY three independent skip gates in `build_from_report`: (1) `fixable=False` wire findings
+(duplicate_stem, stale_moc) never produce a fix — advisory only; (2) a finding whose F-id is
+absent from the markdown decision map (no `### F<id>` heading — e.g. the user deleted the
+block) is skipped, since the join key is missing; (3) a present-but-unticked `- [ ] Apply`
+box means the user opted out. Only fixable + present + ticked findings become confirmed_items.
 
 ## Regexes Use re.MULTILINE
 
@@ -51,19 +62,19 @@ collapsing every fix to a removal).
 
 ## broken_up Discriminator: Repoint Value Present ⇒ add_relationship
 
-WHY a `broken_up` block renders a `**Repoint to:**` field only for the repoint variant,
-and the parser branches on whether the user typed a target: a non-empty Repoint value means
-"repair the `up::` to this MOC" (`garden_action=add_relationship`, `up_line` built from it);
-an empty / untouched `[[]]` placeholder means "remove the broken line"
-(`garden_action=edit_note_text`, `replace=""`). This keeps the two legitimate resolutions
+WHY every `broken_up` block renders a `**Repoint to:**` field, and the parser branches on
+whether the user typed a target: a non-empty Repoint value means "repair the `up::` to this
+MOC" (`garden_action=add_relationship`, `up_line` built from it); an empty / untouched `[[]]`
+placeholder means "remove the broken line" (`garden_action=edit_note_text`, `replace=""`,
+`match` reconstructed from the WIRE's `up_target`). This keeps the two legitimate resolutions
 (repoint vs remove) behind one clean discriminator the user controls by typing or not typing.
 
 ## Dead-Link Match Uses `[[target]]` Wrapping (ADR-3)
 
-WHY the `dead_link` structural comment stores `match="[[<dead_target>]]"` (wrapped) while
-the scan stores the bare stem: `edit_note_text` does a literal string match against the note
-body, where dead links appear as `[[Missing Note]]`. The renderer wraps once when emitting
-the comment, so the parser reads the ready-to-match string. `occurrence="all"` because a dead
+WHY the parser wraps the wire's bare `dead_target` in `[[ ]]` when building `match`:
+`edit_note_text` does a literal string match against the note body, where dead links appear
+as `[[Missing Note]]`. The wire's `detail.dead_target` is the bare stem (from graph_audit);
+the parser wraps it once when building the confirmed_item. `occurrence="all"` because a dead
 wikilink is typically repeated; broken-`up::` removal uses `first` (one `up::` line per note).
 
 ## Filing Warns and Skips on No Candidate MOC
@@ -73,12 +84,13 @@ filing action with an empty MOC stem would fail at apply time (Hashi cannot reso
 a MOC with an empty stem). An empty candidate list is a genuine "no good MOC found" signal,
 not a parser error — the user handles the note manually.
 
-## Version 0.2.1
+## Version 0.3.0
 
-WHY: 0.2.1 addressed the code-quality review — `up_line()` / `bare_stem()` moved to
-`lib/render_md.py` (shared with the renderer; parity now enforced by a single home),
-`RE_GA_ATTR` renamed to `RE_GA_COMMENT_ATTR` to pair with `RE_GA_COMMENT`. 0.2.0 was the
-vertical fix (spec 030 Feature 3): the parser was rewritten from a wire-only
-action-emitter into a markdown-authoritative reader that emits `confirmed_items`; action
-assembly moved to `render_actions.build_garden_audit_actions`. `update-tomo.sh` skips
+WHY: 0.3.0 (spec 030 two-artifact split) — `build_from_markdown` replaced by
+`build_from_report(md, wire)`: markdown = decisions, wire = structure (always read),
+joined by F-id. The `<!-- garden-audit ... -->` round-trip comment is gone; structure is
+sourced from the wire. `--wire` is now REQUIRED; a missing wire degrades to empty
+confirmed_items. Earlier: 0.2.1 code-quality review (shared `up_line`/`bare_stem`,
+`RE_GA_ATTR`→`RE_GA_COMMENT_ATTR`); 0.2.0 vertical fix (parser → confirmed_items,
+action assembly in `render_actions.build_garden_audit_actions`). `update-tomo.sh` skips
 unchanged versions.

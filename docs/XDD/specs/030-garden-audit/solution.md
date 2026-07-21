@@ -295,10 +295,23 @@ findings:
     decision: { selected: bool, action: <proposed action(s)> }   # fixable only; absent for advisory
 ```
 Producer `garden-audit-render.py` emits report `.md` + `garden-audit-wire.json` from one doc dict
-(no drift by construction; `emit_digest` = change signal). Pass-2 `garden-audit-parser.py` provides
-`load_changed_wire` (returns the wire iff present + `schema_version=="1"` + edited) and
-`build_from_wire` (reconstructs confirmed fixes from JSON alone). Reuses `inbox-triage.py` wire-cache
-helpers (`_load_edited_wire`, `_cache_wire_sibling`) for edit detection.
+(no drift by construction; `emit_digest` = change signal).
+
+**Two-artifact split (revised 2026-07-21, user-approved).** The report `.md` is now PURELY
+human-facing — per `### F<id>` block it carries only the `- [x] Apply` tick and the typed
+`Repoint to:` / `Replace with:` values. There is NO `<!-- garden-audit ... -->` structural
+comment. The wire `.json` is the STRUCTURE source and is ALWAYS read (not just a Hashi
+override): id, check, tier, target.path/stem, detail (dead_target / up_target / candidate_mocs),
+decision defaults. The two artifacts are joined by the F-id in each heading.
+Pass-2 `garden-audit-parser.py`:
+- `--file <md>` + `--wire <json>` are BOTH required; the conductor always passes both.
+- `load_changed_wire` (wire iff present + `schema_version=="1"` + edited) still gates the
+  Hashi-authored path → `build_from_wire` (wire fully authoritative).
+- otherwise `build_from_report(md, wire)` joins wire structure to the markdown decision map
+  (`parse_decision_map`) by F-id — fixable + present + ticked → confirmed_item.
+- a missing/unreadable wire degrades to empty `confirmed_items` (warn, no crash).
+Reuses `inbox-triage.py` wire-cache helpers (`_cache_wire_sibling`); `inbox-triage` sets
+`wire_cache_path` UNCONDITIONALLY on every garden-audit entry so the conductor always has it.
 
 #### kado_client.graph_audit() (ADR-5)
 
@@ -434,6 +447,15 @@ never route through `/inbox`.
   - Rationale: parity with the shipped suggestions/fan wire; Hashi editor gets a familiar shape.
   - Trade-offs: a second wire schema to maintain; justified by the ADR-026 editor requirement.
   - User confirmed: **Yes (2026-07-19)**
+  - **Revised 2026-07-21 (user-approved cleaner split):** the report `.md` is now PURELY
+    human-facing (Apply ticks + typed Repoint/Replace values) — the per-finding
+    `<!-- garden-audit ... -->` comment is REMOVED. The wire is the always-read STRUCTURE
+    source (not just a Hashi override), joined to the markdown by the F-id in each `### F<id>`
+    heading. `garden-audit-parser` gains `build_from_report(md, wire)` (join structure +
+    decisions); `--wire` is now required; a Hashi-edited wire (digest mismatch) still routes to
+    `build_from_wire` (fully authoritative). `inbox-triage` sets `wire_cache_path` unconditionally
+    and the conductor always passes `--wire`. Rationale: one machine artifact (the wire) instead
+    of two parallel machine payloads (wire + invisible comment) removes the parity hazard.
 
 - [x] **ADR-5 Check→action mapping + data-source split**: cache (unparented/broken-`up::`/duplicate-
   stems), `kado-graph-audit` (orphan/dead-link), `listDir` modified (stale-MOC). Fixes: unparented/

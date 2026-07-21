@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-# version: 0.2.2
-"""Pass-2 reader for garden-audit (ADR-4 / ADR-026).
+# version: 0.3.0
+"""Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
-Pure reader: markdown report (authoritative) + optional wire override → a
-``{"confirmed_items": [...]}`` envelope of SEMANTIC items (not pre-built
-actions). instruction-render.py turns confirmed_items into the action list via
-render_actions.build_garden_audit_actions (which reuses the shared
-_build_edit_note_text_actions builder). This mirrors suggestion-parser.py.
+Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
+(machine STRUCTURE, always read) → a ``{"confirmed_items": [...]}`` envelope of
+SEMANTIC items (not pre-built actions). instruction-render.py turns confirmed_items
+into the action list via render_actions.build_garden_audit_actions (which reuses
+the shared _build_edit_note_text_actions builder).
 
-CLI (mirrors suggestion-parser.py):
-  --file <md>   REQUIRED — the human-reviewed markdown report (byte-authoritative)
-  --wire <json> OPTIONAL — vault-published wire sibling; when present AND edited
-                (embedded emit_digest no longer matches), it overrides the
-                markdown decisions (build_from_wire). Unchanged/absent/unreadable
-                → markdown stays authoritative.
-  result JSON → STDOUT.
+Two artifacts, joined by the F-id in each ``### F<id>`` heading:
+  - MARKDOWN = decisions only: per block, the ``- [x] Apply`` tick and the typed
+    ``Repoint to:`` / ``Replace with:`` values. NO HTML comment.
+  - WIRE = complete structure per finding: id, check, tier, target.path,
+    target.stem, detail (dead_target / up_target / candidate_mocs), decision.
+
+CLI:
+  --file <md>   REQUIRED — the human-reviewed markdown report (decisions).
+  --wire <json> REQUIRED — the structure source, always read.
+                • wire EDITED (digest mismatch) → build_from_wire (Hashi path,
+                  wire fully authoritative).
+                • wire unedited → build_from_report (wire structure + markdown
+                  decisions, joined by F-id).
+  result JSON → STDOUT. Wire missing/unreadable → empty confirmed_items (no crash).
 
 confirmed_item shape (per fixable finding the user kept):
   {
@@ -74,21 +81,20 @@ def load_changed_wire(path: str | None) -> dict | None:
     return wire
 
 
-# ── up:: value normalisation (shared by markdown + wire paths) ────────────────
+# ── up:: value normalisation (from lib.render_md) ─────────────────────────────
 
-# up_line() / bare_stem() are the load-bearing round-trip contract shared with
-# garden-audit-render; both import them from lib.render_md so they cannot diverge.
+# up_line() reconstructs the `up:: [[a]], [[b]]` frontmatter line from the wire's
+# `up_target` (str | list | dirty list-repr); bare_stem() strips a MOC path to its
+# stem. Both live in lib.render_md (shared home). The parser reconstructs `match`
+# from the wire, so the report no longer needs them (no round-trip comment).
 
 
-# ── Markdown parse (authoritative) ────────────────────────────────────────────
+# ── Markdown parse (decisions only) ───────────────────────────────────────────
+# The markdown report is human-facing DECISIONS only. STRUCTURE comes from the
+# wire, joined by the F-id in each `### F<id>` heading (spec 030 two-artifact
+# split). There is NO HTML comment.
 
-# Per-finding structural comment the renderer emits, e.g.:
-#   <!-- garden-audit id="F01" check="dead_link" path="Notes/N.md"
-#        match="[[Old]]" occurrence="all" target_moc="Writing MOC"
-#        target_moc_path="MOCs/Writing MOC.md" -->
 RE_FINDING_HEADER = re.compile(r"^###\s+(F\d+)\b")
-RE_GA_COMMENT = re.compile(r"<!--\s*garden-audit\s+(.*?)\s*-->", re.DOTALL)
-RE_GA_COMMENT_ATTR = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
 RE_APPLY_CHECKED = re.compile(r"^\s*-\s+\[x\]\s*Apply\b", re.IGNORECASE | re.MULTILINE)
 RE_APPLY_UNCHECKED = re.compile(r"^\s*-\s+\[\s\]\s*Apply\b", re.IGNORECASE | re.MULTILINE)
 RE_REPLACE_FIELD = re.compile(
@@ -100,14 +106,6 @@ RE_REPOINT_FIELD = re.compile(
 
 # Frontmatter (flat key: value) for run_id / generated / profile.
 RE_FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
-
-
-def _parse_ga_comment(text: str) -> dict[str, str]:
-    """Extract the ``garden-audit`` structural comment attributes from a block."""
-    m = RE_GA_COMMENT.search(text)
-    if not m:
-        return {}
-    return {k: v.replace('\\"', '"') for k, v in RE_GA_COMMENT_ATTR.findall(m.group(1))}
 
 
 def _field_value(text: str, regex: re.Pattern) -> str | None:
@@ -169,43 +167,64 @@ def _split_finding_blocks(md_text: str) -> list[tuple[str, list[str]]]:
     return blocks
 
 
-def _confirmed_item_from_block(fid: str, block: str) -> dict | None:
-    """Build one confirmed_item from a `### Fxx` block, or None to skip.
+def parse_decision_map(md_text: str) -> dict[str, dict]:
+    """Parse the markdown report into ``{F-id → {apply, repoint, replace}}``.
 
-    Skips when: no structural comment (advisory / non-fixable finding), or the
-    Apply checkbox is unticked (user opted out).
+    The markdown carries DECISIONS only, keyed by the F-id in each ``### F<id>``
+    heading (spec 030 two-artifact split). For each block:
+      - apply:   True unless a ``- [ ] Apply`` box is present AND unticked.
+      - repoint: the bare stem typed into ``**Repoint to:**`` ("" if empty).
+      - replace: the bare stem typed into ``**Replace with:**`` ("" if empty).
+    Findings with no editable field simply carry apply + empty repoint/replace.
     """
-    attrs = _parse_ga_comment(block)
-    if not attrs:
-        return None  # advisory / read-only finding — no fix
+    out: dict[str, dict] = {}
+    for fid, lines in _split_finding_blocks(md_text):
+        block = "\n".join(lines)
+        # Apply gate: a present-but-unticked box → skip; ticked / absent → apply.
+        apply = not (
+            RE_APPLY_UNCHECKED.search(block) and not RE_APPLY_CHECKED.search(block)
+        )
+        repoint_raw = _field_value(block, RE_REPOINT_FIELD)
+        replace_raw = _field_value(block, RE_REPLACE_FIELD)
+        out[fid] = {
+            "apply": apply,
+            "repoint": _wikilink_target(repoint_raw) if repoint_raw is not None else "",
+            "replace": _wikilink_target(replace_raw) if replace_raw is not None else "",
+        }
+    return out
 
-    # Apply gate: ticked → include, unticked → skip. A finding with a structural
-    # comment but no Apply line at all defaults to included (fixable + present).
-    if RE_APPLY_UNCHECKED.search(block) and not RE_APPLY_CHECKED.search(block):
-        return None
 
-    check = attrs.get("check", "")
-    path = attrs.get("path", "")
-    stem = attrs.get("stem") or bare_stem(path)
+def _confirmed_item_from_wire_finding(finding: dict, decision_md: dict) -> dict | None:
+    """Build one confirmed_item from a wire finding + the markdown decision.
+
+    STRUCTURE (id, check, path, stem, detail) comes from the wire finding;
+    DECISIONS (repoint / replace typed values) come from ``decision_md`` (from
+    parse_decision_map). Advisory / non-fixable / unresolvable → None.
+    """
+    check = finding.get("check", "")
+    fid = finding.get("id", "")
+    target = finding.get("target") or {}
+    path = target.get("path", "")
+    stem = target.get("stem") or bare_stem(path)
+    detail = finding.get("detail") or {}
 
     if check == "dead_link":
-        replace_raw = _field_value(block, RE_REPLACE_FIELD)
-        target = _wikilink_target(replace_raw) if replace_raw is not None else ""
-        replace = f"[[{target}]]" if target else ""
+        replace_target = decision_md.get("replace", "")
+        replace = f"[[{replace_target}]]" if replace_target else ""
+        dead_target = detail.get("dead_target", "")
         return {
             "id": fid,
             "garden_check": check,
             "garden_action": "edit_note_text",
             "path": path,
             "stem": stem,
-            "match": attrs.get("match", ""),
+            "match": f"[[{dead_target}]]",
             "replace": replace,
-            "occurrence": attrs.get("occurrence", "all"),
+            "occurrence": "all",
         }
 
     if check == "broken_up":
-        repoint_raw = _field_value(block, RE_REPOINT_FIELD)
-        repoint = _wikilink_target(repoint_raw) if repoint_raw is not None else ""
+        repoint = decision_md.get("repoint", "")
         if repoint:
             # Non-empty Repoint target → repair the up:: to the chosen MOC.
             return {
@@ -223,52 +242,63 @@ def _confirmed_item_from_block(fid: str, block: str) -> dict | None:
             "garden_action": "edit_note_text",
             "path": path,
             "stem": stem,
-            "match": attrs.get("match", ""),
+            "match": up_line(detail.get("up_target", "")),
             "replace": "",
-            "occurrence": attrs.get("occurrence", "first"),
+            "occurrence": "first",
         }
 
     if check in ("unparented", "orphan"):
-        target_moc = attrs.get("target_moc", "")
-        target_moc_path = attrs.get("target_moc_path") or None
-        if not target_moc:
+        mocs = detail.get("candidate_mocs") or []
+        if not mocs:
             print(
                 f"warning: garden-audit-parser: finding {fid!r} ({path!r}) is a "
-                "filing fix but carries no target_moc — skipping (no MOC resolved)",
+                "filing fix but has no candidate_mocs — skipping (no MOC resolved)",
                 file=sys.stderr,
             )
             return None
+        best = mocs[0].get("target_moc", "")
         return {
             "id": fid,
             "garden_check": check,
             "garden_action": "file_note",
             "path": path,
             "stem": stem,
-            "target_moc": target_moc,
-            "target_moc_path": target_moc_path,
+            "target_moc": bare_stem(best),
+            "target_moc_path": best or None,
         }
 
     return None  # unknown check — forward-compatible skip
 
 
-def build_from_markdown(md_text: str) -> dict:
-    """Read the human-reviewed markdown report → confirmed_items envelope.
+def build_from_report(md_text: str, wire: dict) -> dict:
+    """Join markdown DECISIONS to wire STRUCTURE → confirmed_items envelope.
 
-    Markdown is byte-authoritative (Tomo never assumes Hashi is installed). Each
-    ``### Fxx`` block carries a structural HTML comment (invisible in Obsidian
-    reading view) describing the fix; the visible checkbox + Replace/Repoint
-    fields carry the user's decision. Advisory findings have no comment → no item.
+    The report is human-facing (Apply ticks + typed Repoint/Replace values); the
+    wire is the always-read structure source (path, detail, candidate_mocs). They
+    are joined by the F-id in each ``### F<id>`` heading (spec 030 two-artifact
+    split). For each wire finding that is fixable AND present-and-ticked in the
+    markdown decision map, a confirmed_item is built from the wire's structure +
+    the markdown's typed decision. Advisory / unticked / missing → skipped.
     """
     fm = _extract_frontmatter(md_text)
+    decision_map = parse_decision_map(md_text)
     confirmed: list[dict] = []
-    for fid, lines in _split_finding_blocks(md_text):
-        item = _confirmed_item_from_block(fid, "\n".join(lines))
+
+    for finding in (wire or {}).get("findings") or []:
+        if not finding.get("fixable"):
+            continue  # advisory findings never produce a fix
+        fid = finding.get("id", "")
+        md_decision = decision_map.get(fid)
+        if md_decision is None or not md_decision.get("apply"):
+            continue  # id absent from the report, or the user unticked Apply
+        item = _confirmed_item_from_wire_finding(finding, md_decision)
         if item is not None:
             confirmed.append(item)
+
     return {
-        "run_id": fm.get("run_id", ""),
-        "generated": fm.get("generated", ""),
-        "profile": fm.get("profile") or None,
+        "run_id": (wire or {}).get("run_id") or fm.get("run_id", ""),
+        "generated": (wire or {}).get("generated") or fm.get("generated", ""),
+        "profile": (wire or {}).get("profile") or fm.get("profile") or None,
         "confirmed_items": confirmed,
     }
 
@@ -278,9 +308,9 @@ def build_from_markdown(md_text: str) -> dict:
 def build_from_wire(wire: dict) -> dict:
     """Reconstruct confirmed_items from an edited garden-audit wire alone.
 
-    ADR-4 JSON-only path: when load_changed_wire returns a wire, Pass-2 builds
-    the confirmed_items list from the wire without re-reading the markdown. Same
-    envelope shape as build_from_markdown.
+    ADR-4 JSON-only path: when load_changed_wire returns a wire (Hashi-edited),
+    Pass-2 builds the confirmed_items list from the wire alone — the markdown
+    decisions are not consulted. Same envelope shape as build_from_report.
     """
     confirmed: list[dict] = []
 
@@ -374,22 +404,51 @@ def build_from_wire(wire: dict) -> dict:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def _load_raw_wire(path: str) -> dict | None:
+    """Load the wire JSON regardless of digest, or None (+warn) on any failure.
+
+    Used for the STRUCTURE source (build_from_report always reads the wire). The
+    digest-gated edit check is a separate concern handled by load_changed_wire.
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            wire = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(
+            f"warning: garden-audit-parser: wire unreadable ({exc}) — "
+            "emitting empty confirmed_items",
+            file=sys.stderr,
+        )
+        return None
+    if not isinstance(wire, dict):
+        print(
+            "warning: garden-audit-parser: wire is not an object — "
+            "emitting empty confirmed_items",
+            file=sys.stderr,
+        )
+        return None
+    return wire
+
+
 def main() -> int:
     import argparse
 
     p = argparse.ArgumentParser(
         description=(
-            "Read an approved garden-audit report → confirmed_items JSON (stdout)."
+            "Join a garden-audit report's DECISIONS to the wire's STRUCTURE → "
+            "confirmed_items JSON (stdout)."
         )
     )
     p.add_argument(
         "--file", required=True, metavar="PATH",
-        help="Path to the garden-audit markdown report (authoritative).",
+        help="Path to the garden-audit markdown report (human-facing decisions).",
     )
     p.add_argument(
-        "--wire", metavar="PATH",
-        help="Optional garden-audit-wire.json sibling. When edited, overrides "
-             "the markdown decisions (ADR-4 / ADR-026 JSON-only path).",
+        "--wire", required=True, metavar="PATH",
+        help="Path to garden-audit-wire.json — the STRUCTURE source, always read. "
+             "When it is Hashi-edited (digest mismatch), it is fully authoritative "
+             "(build_from_wire); otherwise its structure is joined to the markdown "
+             "decisions by F-id (build_from_report).",
     )
     args = p.parse_args()
 
@@ -400,15 +459,24 @@ def main() -> int:
         print(f"error: cannot read report: {exc}", file=sys.stderr)
         return 1
 
-    wire = load_changed_wire(args.wire)
-    if wire is not None:
-        result = build_from_wire(wire)
+    raw_wire = _load_raw_wire(args.wire)
+    if raw_wire is None:
+        # Degrade gracefully — no structure source means no fixes to emit.
+        print(json.dumps({
+            "run_id": "", "generated": "", "profile": None, "confirmed_items": [],
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    # Digest check: an edited wire is the Hashi-authored path — wire fully
+    # authoritative. An unedited wire supplies structure to the markdown decisions.
+    if load_changed_wire(args.wire) is not None:
+        result = build_from_wire(raw_wire)
         print(
             "garden-audit-parser: edited wire is authoritative (JSON-only path)",
             file=sys.stderr,
         )
     else:
-        result = build_from_markdown(md_text)
+        result = build_from_report(md_text, raw_wire)
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
     print(

@@ -134,3 +134,15 @@ as suggestions/suggestions-fan; an unticked doc stays `pending-accept` and is ne
 to `approved_garden_audits[]`. Per-finding Apply ticks + the wire still choose WHICH fixes
 apply (garden-audit-parser, Pass-2); this branch only decides WHETHER the doc is picked up.
 Pinned by `test_inbox_triage.py::TestGardenAuditAsUpstreamType::test_unticked_garden_audit_stays_pending`.
+
+## wire_cache_path is set unconditionally (spec 030 two-artifact split, 2026-07-21)
+
+WHY the garden-audit branch sets `entry["wire_cache_path"]` UNCONDITIONALLY (to the cached
+path, or `null` when the sibling is genuinely absent) rather than only when the sibling
+exists: the wire is now the STRUCTURE source, always read by `garden-audit-parser` and joined
+to the markdown decisions by F-id — so the synthesis-conductor must ALWAYS pass `--wire`. The
+render always writes the wire sibling, so this resolves to a real path in normal operation; a
+`null` only occurs for a malformed doc with no sibling, and the parser then degrades to empty
+`confirmed_items` (warn, no crash). The routing-plan schema types `wire_cache_path` as
+`["string", "null"]` for garden-audit to allow the rare null. Pinned by
+`test_entry_carries_real_wire_cache_path_when_sibling_present`.

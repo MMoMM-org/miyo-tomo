@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-# version: 0.4.1
+# version: 0.5.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
 and writes both artifacts to the vault inbox via kado-write-file.py.
 
 Input:  garden-audit-doc.json (from garden-audit.py)
-Output: Report .md (severity-ordered, caveats, fixable checkboxes, advisory read-only)
-        garden-audit-wire.json (complete mirror, emit_digest, ADR-4 / ADR-026)
+Output: Report .md (human-facing DECISIONS only — Apply ticks + Repoint/Replace
+                    fields; joined to the wire by the F-id in each ### F<id> heading)
+        garden-audit-wire.json (complete STRUCTURE mirror + emit_digest, ADR-4)
+
+Two-artifact split (spec 030): the markdown is purely human-facing (no HTML
+comment); ALL machine structure (path, detail, candidate_mocs, decision defaults)
+lives in the wire, which garden-audit-parser ALWAYS reads for structure and joins
+to the markdown decisions by F-id.
 
 ADR-4: both artifacts are projected from the same doc dict — no drift by construction.
 emit_digest is the SHA-256 change signal for Pass-2 (garden-audit-parser.py).
@@ -30,12 +36,7 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import build_tomo_block
-from lib.render_md import (
-    bare_stem,
-    compute_payload_digest,
-    unwrap_list_repr,
-    up_line,
-)
+from lib.render_md import compute_payload_digest, unwrap_list_repr
 
 # ── Tier ordering ────────────────────────────────────────────────────────────
 _TIER_ORDER = {"integrity": 0, "structure": 1, "advisory": 2}
@@ -216,54 +217,15 @@ def _render_summary(findings: list[dict]) -> list[str]:
     return lines
 
 
-def _esc_attr(value) -> str:
-    """Escape a value for an HTML-comment attribute (double quotes → \\")."""
-    return str(value or "").replace('"', '\\"')
-
-
-def _structural_comment(f: dict) -> str | None:
-    """Build the invisible ``<!-- garden-audit ... -->`` round-trip comment.
-
-    Carries what the visible report hides so garden-audit-parser can reconstruct
-    the confirmed_item. Returns None for advisory findings (no fix → no comment).
-    Invisible in Obsidian reading view; only the parser reads it.
-    """
-    check = f["check"]
-    if check not in ("dead_link", "broken_up", "unparented", "orphan"):
-        return None
-    target = f["target"]
-    path = target.get("path", "")
-    stem = target.get("stem") or Path(path).stem
-    detail = f.get("detail", {})
-    attrs: list[tuple[str, str]] = [
-        ("id", f["id"]),
-        ("check", check),
-        ("path", path),
-        ("stem", stem),
-    ]
-    if check == "dead_link":
-        attrs.append(("match", f"[[{detail.get('dead_target', '')}]]"))
-        attrs.append(("occurrence", "all"))
-    elif check == "broken_up":
-        attrs.append(("match", up_line(detail.get("up_target"))))
-        attrs.append(("occurrence", "first"))
-    elif check in ("unparented", "orphan"):
-        mocs = detail.get("candidate_mocs") or []
-        if mocs:
-            best = mocs[0].get("target_moc", "")
-            attrs.append(("target_moc", bare_stem(best)))
-            attrs.append(("target_moc_path", best))
-    rendered = " ".join(f'{k}="{_esc_attr(v)}"' for k, v in attrs)
-    return f"<!-- garden-audit {rendered} -->"
-
-
 def _render_finding(f: dict) -> list[str]:
-    """Render one finding as a report block.
+    """Render one finding as a human-facing report block.
 
-    Fixable findings get a pre-selected (or deselected) checkbox, an invisible
-    structural comment (round-trip data for the parser), and — where a target is
-    editable — a Replace with: / Repoint to: field.
-    Advisory findings are read-only — no comment, no checkbox.
+    The report carries the user's DECISIONS only, joined to the machine wire by
+    the F-id in the ``### F<id>`` heading (spec 030 two-artifact split). Fixable
+    findings get a pre-selected (or deselected) Apply checkbox and — where a
+    target is editable — a Replace with: / Repoint to: field. Advisory findings
+    are read-only. All STRUCTURE (path, detail, candidate_mocs) lives in the wire,
+    not in the markdown — there is no HTML comment.
     """
     fid = f["id"]
     check = f["check"]
@@ -274,10 +236,6 @@ def _render_finding(f: dict) -> list[str]:
     detail = f.get("detail", {})
 
     lines = [f"### {fid} — {label}: {_wikilink(stem)}", ""]
-
-    comment = _structural_comment(f)
-    if comment is not None:
-        lines += [comment, ""]
 
     # Detail lines per check type
     if check in ("unparented", "orphan"):

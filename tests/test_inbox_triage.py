@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
 T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
@@ -2315,6 +2315,28 @@ class TestGardenAuditAsUpstreamType:
         state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
         assert len(state.approved_garden_audits) == 1
         assert state.approved_garden_audits[0]["path"] == ga_path
+        # Spec 030: the entry always carries wire_cache_path (structure source),
+        # even when the sibling is absent (then null → parser degrades).
+        assert "wire_cache_path" in state.approved_garden_audits[0]
+
+    def test_entry_carries_real_wire_cache_path_when_sibling_present(self, tmp_path):
+        """When the wire sibling exists, the entry carries its cached path so the
+        conductor always passes --wire (spec 030 structure source)."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_garden-audit.md"
+        wire_vault_path = ga_path[:-3] + ".json"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body(), "modified": 0},
+            },
+            read_file_responses={wire_vault_path: b'{"schema_version": "1"}'},
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        entry = state.approved_garden_audits[0]
+        assert entry["wire_cache_path"] is not None
+        assert entry["wire_cache_path"].endswith(".json")
 
     def test_unticked_garden_audit_stays_pending(self, tmp_path):
         """ADR-1 revised: an UNticked garden-audit Approved box → the doc is NOT

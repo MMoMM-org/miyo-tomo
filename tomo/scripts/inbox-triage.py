@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.0
+# version: 0.25.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -663,11 +663,19 @@ def read_approval_state(
             elif doc_type == "moc-proposal":
                 approved_moc_proposals.append(entry)
             elif doc_type == "garden-audit":
-                # Cache the wire sibling so garden-audit-parser can read the
-                # user-edited wire (ADR-4 / ADR-026 pattern).
+                # The wire is the STRUCTURE source (spec 030 two-artifact split) —
+                # garden-audit-parser ALWAYS reads it, joined to the markdown
+                # decisions by F-id. Cache the sibling and set wire_cache_path
+                # UNCONDITIONALLY so the conductor always passes --wire; the render
+                # always writes the sibling, so this resolves in normal operation.
                 wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
-                if wire_cache:
-                    entry["wire_cache_path"] = wire_cache
+                if not wire_cache:
+                    print(
+                        f"warning: garden-audit doc {vault_path!r} has no wire "
+                        "sibling — parser will emit empty confirmed_items",
+                        file=sys.stderr,
+                    )
+                entry["wire_cache_path"] = wire_cache
                 approved_garden_audits.append(entry)
         else:
             pending_approval.append({

@@ -69,30 +69,29 @@ when no findings exist for the tier, so the main `render_report` loop produces n
 for it. The Summary block shows per-tier counts, so the user sees the tally regardless
 of whether the tier section appears.
 
-## Structural HTML Comment Per Fixable Finding (round-trip)
+## Report is Human-Facing Only — Structure Lives in the Wire (spec 030)
 
-WHY each fixable finding block now emits an invisible `<!-- garden-audit ... -->`
-comment carrying `id/check/path/stem` plus the machine data the visible prose hides
-(`match`, `occurrence`, resolved `target_moc`/`target_moc_path`): the report is the
-authoritative Pass-2 input (Tomo never assumes Hashi is installed), and
-`garden-audit-parser.build_from_markdown` reconstructs the `confirmed_item` from this
-comment instead of re-parsing human-facing prose. The comment is invisible in Obsidian
-reading view, so it does not clutter the user's review. Advisory findings emit NO comment
-(they never produce a fix), which is exactly how the parser distinguishes fixable from
-advisory blocks. The comment's `match` string must stay byte-identical to what the parser
-reconstructs, or the round-trip breaks — so both sides derive it from the SAME helpers
-(`up_line()` / `bare_stem()` in `lib/render_md.py`, imported by renderer and parser alike).
-Extracting them to one home is what enforces parity; a per-file copy could silently diverge.
+WHY the markdown report carries NO `<!-- garden-audit ... -->` comment (the earlier
+round-trip payload was removed): the user approved a cleaner two-artifact split. The report
+is purely human-facing — heading (with the F-id), the detail line, the Fix summary, the
+`- [x] Apply` tick, and the `Repoint to:` / `Replace with:` fields. ALL machine STRUCTURE
+(path, detail, candidate_mocs, decision defaults) lives in the wire (`build_wire_payload`),
+which is always generated + cached and which `garden-audit-parser` ALWAYS reads. The two
+artifacts are joined by the F-id in each `### F<id>` heading — the wire finding with the same
+id supplies the structure, the markdown block supplies the decision. This removes the parity
+hazard entirely: there is no invisible machine payload in the markdown to keep byte-identical
+with the parser, so the renderer no longer needs `up_line()` / `bare_stem()` at all (the
+parser reconstructs `match` from the wire's `up_target` / `dead_target`).
 
 ## Editable Replace with: / Repoint to: Fields
 
-WHY dead_link blocks render a `**Replace with:** [[]]` field and broken_up-repoint blocks
-render a `**Repoint to:** [[]]` field: these are the user's decision surface for a fix that
-needs a target the scan cannot supply (which note to repoint to). The parser reads the value
-back — a non-empty target repoints, an empty/untouched `[[]]` placeholder removes. The `←`
-hint text after the placeholder is stripped by the parser, so it is safe to keep it inline
-as guidance. Removal-only fixes (broken_up removal, unparented/orphan filing v1) get no
-editable field — only the Apply tick.
+WHY dead_link blocks render a `**Replace with:** [[]]` field and EVERY broken_up block renders
+a `**Repoint to:** [[]]` field: these are the user's decision surface for a fix that needs a
+target the scan cannot supply (which MOC to repoint to, which note to substitute). The parser
+reads the typed value back — a non-empty target repoints/substitutes, an empty/untouched `[[]]`
+placeholder removes. The `←` hint text after the placeholder is stripped by the parser, so it
+is safe to keep it inline as guidance. Filing findings (unparented/orphan) get no editable
+field in v1 — only the Apply tick; their MOC comes from the wire's `candidate_mocs[0]`.
 
 ## Top-Level How-to-Apply Banner
 
@@ -135,9 +134,13 @@ yaml.safe_load a bracketed non-wikilink string to its list and take the first el
 guaranteeing a clean `[[020 Active MOC]]` even off a dirty cache. Guarded to strings that
 start with `[` but not `[[`, so wikilinks and bare stems pass through untouched.
 
-## Version 0.4.0
+## Version 0.5.0
 
-WHY: 0.4.0 (spec 030 live-retest fixes 2026-07-21) — top-level `- [ ] Approved` gate
+WHY: 0.5.0 (spec 030 two-artifact split 2026-07-21) — removed the per-finding
+`<!-- garden-audit ... -->` structural comment entirely (`_structural_comment` deleted).
+The report is now purely human-facing; ALL structure lives in the wire, joined to the
+markdown by F-id. The renderer no longer imports `up_line` / `bare_stem` (only the parser
+reconstructs `match`). 0.4.0 (spec 030 live-retest fixes) — top-level `- [ ] Approved` gate
 (ADR-1 revised), `Repoint to:` field for every broken_up (FIX 3), and defensive list-repr
 unwrap in `_wikilink` (FIX 2). 0.3.1 addressed the code-quality review — extracted the
 duplicated `up_line()` / `bare_stem()` helpers to `lib/render_md.py` (shared with the

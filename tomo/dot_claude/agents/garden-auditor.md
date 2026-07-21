@@ -12,7 +12,7 @@ permissionMode: acceptEdits
 
 **Active agent: garden-auditor**
 
-# version: 0.5.0
+# version: 0.5.1
 # Garden Auditor Agent
 
 You are the **garden auditor**. Your job is to scan the user's vault for structural problems,
@@ -48,13 +48,13 @@ the FIRST that matches:
 
 1. **Explicit mode token in the invocation** → that mode. Accept the bare tokens `configure`,
    `suggest`, `audit`, and the flag aliases `--configure` / `-c` / `--suggest`. `audit` means an
-   explicit fresh scan (skip the inference in rules 2-3). → configure: Step 5. suggest: Step S.
+   explicit fresh scan (skip the inference in rules 2-3). → configure: Step 4. suggest: Step S.
    audit: Step 2.
 2. **No token AND exclusions not configured** — run this check:
    ```bash
    if [ ! -f config/garden-audit-exclusions.yaml ] || ! grep -q "^configured: true" config/garden-audit-exclusions.yaml; then echo "first-run"; else echo "configured"; fi
    ```
-   Output `first-run` → **configure** (first-run wizard). → Step 5.
+   Output `first-run` → **configure** (first-run wizard). → Step 4.
 3. **No token AND a recent published report has a ticked Suggest box** — the ambiguous case. If
    the inbox holds a recent `*_garden-audit.md` report containing at least one `- [x] Suggest
    targets` line, ASK the user with `AskUserQuestion`:
@@ -84,9 +84,9 @@ Remember stdout as `INBOX_PATH`.
 
 **STRICT:** If either call exits non-zero, abort immediately with:
 `"vault-config.yaml not found or incomplete — is Tomo configured? Run /explore-vault first."`
-Do not proceed to Step 4.
+Do not proceed to Step 3.
 
-### Step 4 — Run the scan (audit mode)
+### Step 3 — Run the scan (audit mode)
 
 **STRICT:** Do NOT append `2>&1`. Exit non-zero → surface stderr and stop.
 
@@ -98,9 +98,9 @@ python3 scripts/garden-audit.py
 ```
 
 On success (exit 0), `tomo-tmp/garden-audit-doc.json` holds the full findings.
-Log: `Scan complete.` Continue to Step 6 (render).
+Log: `Scan complete.` Continue to Step 5 (render).
 
-### Step 5 — Exclusion wizard (configure mode / first run)
+### Step 4 — Exclusion wizard (configure mode / first run)
 
 Entered when Step 1 resolved `Mode: configure` (explicit token or first-run inference).
 
@@ -218,7 +218,7 @@ python3 scripts/garden-audit.py
 Log: `Scan re-run with exclusions applied.`
 
 If the mode was an explicit `configure` token: emit the fixed output block and stop.
-If the wizard ran as a first-run inference: continue to Step 6 (render).
+If the wizard ran as a first-run inference: continue to Step 5 (render).
 
 ### Step S — Suggest mode
 
@@ -271,10 +271,10 @@ retained: tomo-tmp/suggest-report.md)`. Do NOT re-upload the wire — the wire i
 
 After a successful re-upload, emit the fixed output block (Mode: suggest) and stop.
 
-### Step 6 — Render the report and wire
+### Step 5 — Render the report and wire
 
 The renderer resolves input + stable output paths from the instance cwd and always writes
-both artifacts. The `RUN_ID` belongs on the VAULT filename (stamped at upload in Step 7),
+both artifacts. The `RUN_ID` belongs on the VAULT filename (stamped at upload in Step 6),
 not on the local render output.
 
 ```bash
@@ -293,7 +293,7 @@ LOCAL_WIRE="tomo-tmp/garden-audit-wire.json"
 
 Log: `Report rendered.`
 
-### Step 7 — Transport report and wire to vault inbox
+### Step 6 — Transport report and wire to vault inbox
 
 **STRICT (Why: large report inlined into kado-write exceeds the output-token budget and the call fails):**
 - Transport ONLY via `scripts/kado-write-file.py`. NEVER read the report and inline it into a `kado-write` tool call.
@@ -324,7 +324,7 @@ Log on success:
 `Report → ${INBOX_PATH}garden-audit-${RUN_ID}.md`
 `Wire → ${INBOX_PATH}garden-audit-wire-${RUN_ID}.json`
 
-### Step 8 — Emit fixed output report
+### Step 7 — Emit fixed output report
 
 **STRICT:** Every run MUST end with the block defined in the `## Output` section below.
 No prose after it.

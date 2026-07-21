@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
 Runs six checks over the MOC-structure cache, kado-graph-audit results, and
@@ -61,6 +61,10 @@ _FIXABLE: frozenset[str] = frozenset(["unparented", "orphan", "broken_up", "dead
 
 # Default stale-MOC threshold in days
 _DEFAULT_STALE_MOC_DAYS = 90
+
+# Effective default exclusions path (instance-cwd-relative). Referenced by both
+# the --exclusions help string and the None-sentinel resolution in main().
+_DEFAULT_EXCL_PATH = "config/garden-audit-exclusions.yaml"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -493,8 +497,8 @@ def main() -> int:
     p.add_argument(
         "--exclusions",
         default=None,
-        help="Path to garden-audit-exclusions.yaml (default: "
-             "config/garden-audit-exclusions.yaml, applied only if it exists).",
+        help=f"Path to garden-audit-exclusions.yaml (default: "
+             f"{_DEFAULT_EXCL_PATH}, applied only if it exists).",
     )
     p.add_argument(
         "--no-exclusions",
@@ -549,7 +553,7 @@ def main() -> int:
     #   defaulted (None) path      → missing file runs unfiltered (exit 0).
     exclusions: GardenExclusions | None = None
     explicit = args.exclusions is not None
-    excl_path = Path(args.exclusions) if explicit else Path("config/garden-audit-exclusions.yaml")
+    excl_path = Path(args.exclusions) if explicit else Path(_DEFAULT_EXCL_PATH)
     if args.no_exclusions:
         print("[garden-audit] --no-exclusions — scan is unfiltered.", file=sys.stderr)
     elif not excl_path.is_file():

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_garden_audit_cli_defaults.py — cwd-relative default resolution (spec 030).
 
 Standard (docs/ai/memory/general.md 2026-06-24): runtime scripts use instance-
@@ -8,11 +8,12 @@ no path switches; switches exist only for host/test overrides.
 
 These tests run each agent-invoked garden-audit script from a tmp cwd laid out
 like the instance (config/ + tomo-tmp/) and assert it resolves its defaults with
-NO path args. garden-audit.py needs a live Kado for a full run, so its defaults
-are asserted via --help (no required path args → no argparse exit 2).
+NO path args. garden-audit.py needs a live Kado for a full run, so its main() is
+driven with the KadoClient + run_scan stubbed.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -22,6 +23,25 @@ import yaml
 
 _ROOT = Path(__file__).parent.parent
 _SCRIPTS = _ROOT / "tomo" / "scripts"
+
+
+def _ensure_scripts_on_path() -> None:
+    """Add the scripts dir to sys.path ONCE (so `lib.*` imports resolve).
+
+    Guarded so repeated module loads across test variants don't accumulate stale
+    duplicate entries.
+    """
+    if str(_SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(_SCRIPTS))
+
+
+def _load_script(name: str, filename: str):
+    """Load a hyphen-named script module via importlib (scripts dir on path)."""
+    _ensure_scripts_on_path()
+    spec = importlib.util.spec_from_file_location(name, _SCRIPTS / filename)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def _run(script: str, args: list[str], cwd: Path):
@@ -76,13 +96,7 @@ class TestSuggestDefaults:
         inst = _instance_layout(tmp_path)
         # Render a report + wire into the default suggest-* paths.
         doc = _doc()
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "gar_defaults", _SCRIPTS / "garden-audit-render.py"
-        )
-        gar = importlib.util.module_from_spec(spec)
-        sys.path.insert(0, str(_SCRIPTS))
-        spec.loader.exec_module(gar)
+        gar = _load_script("gar_defaults", "garden-audit-render.py")
         report = "\n".join(gar.render_frontmatter(doc)) + "\n" + gar.render_report(doc)
         report = report.replace("- [ ] Suggest targets", "- [x] Suggest targets", 1)
         (inst / "tomo-tmp" / "suggest-report.md").write_text(report, encoding="utf-8")
@@ -112,16 +126,29 @@ class TestConfigureDefaults:
         rc = _run("garden-audit-configure.py", ["--summarize"], inst)
         assert rc.returncode == 0, rc.stderr
 
+    def test_write_bare_resolves_output_default(self, tmp_path):
+        # --write with NO --output resolves the default config path.
+        inst = _instance_layout(tmp_path)
+        (inst / "tomo-tmp" / "garden-audit-choices.json").write_text(
+            json.dumps({"today": "2026-07-21", "exclusions": []}), encoding="utf-8"
+        )
+        rc = _run(
+            "garden-audit-configure.py",
+            ["--write", "--choices", "tomo-tmp/garden-audit-choices.json"],
+            inst,
+        )
+        assert rc.returncode == 0, rc.stderr
+        # Default --output → config/garden-audit-exclusions.yaml was written.
+        written = inst / "config" / "garden-audit-exclusions.yaml"
+        assert written.is_file()
+        assert "configured: true" in written.read_text(encoding="utf-8")
+
 
 # ── garden-audit.py (bare run resolves cwd-relative defaults; Kado stubbed) ────
 
 def _load_scan_with_fake_kado(monkeypatch, name):
     """Load garden-audit.py with lib.kado_client.KadoClient + run_scan stubbed."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(name, _SCRIPTS / "garden-audit.py")
-    mod = importlib.util.module_from_spec(spec)
-    sys.path.insert(0, str(_SCRIPTS))
-    spec.loader.exec_module(mod)
+    mod = _load_script(name, "garden-audit.py")
 
     class _FakeKado:
         def graph_audit(self, *a, **k):

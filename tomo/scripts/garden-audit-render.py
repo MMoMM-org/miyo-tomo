@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.1
+# version: 0.9.2
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -119,7 +119,10 @@ def _fix_summary(check: str, detail: dict, decision: dict) -> str:
         replace = (decision or {}).get("replace", "")
         if replace:
             return f"Replace every {dead} with {_wikilink(replace)} in the note body."
-        return f"Remove every {dead} link from the note body (fill **Replace with:** below to repoint instead)."
+        return (
+            f"Unlink every {dead} (removes the [[ ]] brackets, keeps the text); "
+            "fill **Replace with:** to repoint to a different note instead."
+        )
     return "Apply the automated fix."
 
 
@@ -289,7 +292,7 @@ def _render_finding(f: dict) -> list[str]:
         if check == "dead_link":
             lines.append(
                 "- **Replace with:** [[]]    ← fill a target to repoint, "
-                "or leave empty to remove"
+                "or leave empty to unlink (keeps the text, drops the [[ ]])"
             )
         elif check == "broken_up":
             # Every broken_up offers repoint OR remove — the user chooses by

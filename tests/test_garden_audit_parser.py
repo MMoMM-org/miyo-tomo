@@ -19,7 +19,7 @@ Covers:
   CLI main()        — argv dispatch: missing-wire degrade + edited/unedited routing.
   _is_wire_edited   — single-load digest gate (no second file read).
 """
-# version: 0.10.0
+# version: 0.11.0
 import importlib.util
 import json
 import pathlib
@@ -305,7 +305,9 @@ class TestBuildFromWireDeadLink:
         assert c["garden_action"] == "edit_note_text"
         assert c["path"] == "Notes/Source.md"
         assert c["match"] == "[[Missing Note]]"
-        assert c["replace"] == ""
+        # Empty replace = remove intent → UNLINK (keep the text, drop the [[ ]]),
+        # NOT a full deletion. replace is the dead_target inner text.
+        assert c["replace"] == "Missing Note"
 
     def test_unselected_dead_link_emits_no_item(self):
         assert build_from_wire(_make_wire([_dead_link(selected=False)]))["confirmed_items"] == []
@@ -317,6 +319,14 @@ class TestBuildFromWireDeadLink:
     def test_dead_link_with_replace_target_uses_replace_from_decision(self):
         c = build_from_wire(_make_wire([_dead_link(selected=True, replace="[[New Note]]")]))["confirmed_items"][0]
         assert c["replace"] == "[[New Note]]"
+
+    def test_dead_link_empty_replace_unlinks_keeps_text(self):
+        # Remove intent (empty replace) → UNLINK: `[[Missing Note]]` → `Missing
+        # Note` (keep the word, drop the brackets), NOT a full deletion.
+        c = build_from_wire(_make_wire([_dead_link(selected=True, replace="")]))["confirmed_items"][0]
+        assert c["match"] == "[[Missing Note]]"
+        assert c["replace"] == "Missing Note"
+        assert c["occurrence"] == "all"
 
 
 class TestBuildFromWireAdvisory:
@@ -718,7 +728,17 @@ class TestBuildFromReport:
         c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["garden_action"] == "edit_note_text"
         assert c["match"] == "[[Missing Note]]"          # from wire dead_target
-        assert c["replace"] == ""
+        # Empty replace (remove intent) → UNLINK: keep the text, drop the [[ ]].
+        assert c["replace"] == "Missing Note"
+        assert c["occurrence"] == "all"
+
+    def test_dead_link_typed_replace_repoints(self):
+        # A typed Replace target → repoint to the new wikilink (UNCHANGED).
+        md, wire = _report_and_wire(_make_doc([_doc_finding_dead_link("F04")]))
+        md = md.replace("**Replace with:** [[]]", "**Replace with:** [[New Target]]")
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["match"] == "[[Missing Note]]"
+        assert c["replace"] == "[[New Target]]"
         assert c["occurrence"] == "all"
 
     def test_advisory_finding_produces_no_item(self):
@@ -821,11 +841,13 @@ class TestEndToEndApprovedReportToActions:
         actions = build_garden_audit_actions(self._items())
         edits = [a for a in actions if a["action"] == "edit_note_text"]
         assert len(edits) == 2
-        matches = {a["match"] for a in edits}
-        assert "[[Missing Note]]" in matches
-        assert "up:: [[Deleted MOC]]" in matches
-        for a in edits:
-            assert a["replace"] == ""
+        by_match = {a["match"]: a for a in edits}
+        assert "[[Missing Note]]" in by_match
+        assert "up:: [[Deleted MOC]]" in by_match
+        # dead_link removal UNLINKS: keep the text, drop the [[ ]] → replace=text.
+        assert by_match["[[Missing Note]]"]["replace"] == "Missing Note"
+        # broken_up removal deletes the WHOLE up:: line → replace="" (unchanged).
+        assert by_match["up:: [[Deleted MOC]]"]["replace"] == ""
 
     def test_actions_contain_add_relationship_for_repoint_and_filing(self):
         actions = build_garden_audit_actions(self._items())

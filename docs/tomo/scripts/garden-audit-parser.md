@@ -6,6 +6,21 @@
 > machine STRUCTURE (always read), joined by the F-id in each `### F<id>` heading.
 > The result is a `{"confirmed_items": [...]}` envelope printed to STDOUT.
 
+## Version 0.7.0 — dead_link removal UNLINKS instead of deleting (2026-07-22, user-confirmed)
+
+WHY both dead_link → edit_note_text sites (`_confirmed_item_from_wire_finding` and `build_from_wire`)
+now emit `replace = dead_target` (the inner text) when the resolved replace target is EMPTY, instead
+of `replace = ""`: a dead-link "removal" should DE-LINK — drop the `[[ ]]` brackets but keep the word
+(`[[Ohne Tippfehler]]` → `Ohne Tippfehler`) — not delete the link text entirely. A non-empty target
+still repoints (`replace = "[[<new>]]"`). The wire convention is UNCHANGED (`decision.replace: ""` =
+remove intent); only the parser's TRANSLATION of empty-replace into the action changed, so no schema
+change. broken_up removal (`match = "up:: [[X]]"`, `replace = ""`) is intentionally UNCHANGED —
+deleting the whole broken `up::` line is correct there. Hashi's edit_note_text executor needs no
+change (still a literal match/replace). Pinned by `test_garden_audit_parser.py`
+(`test_dead_link_empty_replace_unlinks_keeps_text`, `test_dead_link_match_from_wire_empty_replace`,
+`test_dead_link_typed_replace_repoints`) + the broken_up-removal guard
+(`test_broken_up_removal_match_from_wire_up_target`).
+
 ## Version 0.6.0 — Tomo-Editor JSON channel (spec 030 extension, 2026-07-22)
 
 WHY `_is_wire_edited` now uses `compute_garden_audit_digest` and additionally returns True when the

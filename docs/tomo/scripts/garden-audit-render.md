@@ -5,6 +5,16 @@
 > It takes `garden-audit-doc.json` (from `garden-audit.py`) and emits two artifacts:
 > a severity-ordered markdown review report and `garden-audit-wire.json`.
 
+## Version 0.9.2 — dead_link remove wording = UNLINK (2026-07-22, user-confirmed)
+
+WHY `_fix_summary` and the dead_link `**Replace with:**` field hint now say "Unlink every [[X]]
+(removes the [[ ]] brackets, keeps the text)" / "leave empty to unlink (keeps the text, drops the
+[[ ]])" instead of "Remove every [[X]] link": the parser now DE-LINKS on empty-replace (keeps the
+word, drops the brackets) rather than deleting the whole link, so the report must describe the same
+user-visible effect. The repoint wording ("fill Replace with: to repoint to a different note") is
+unchanged. No wire/schema change — this is display copy only. (0.9.1: `_split_cache_entries` DRY
+extraction, no behaviour change.)
+
 ## Version 0.9.0 — Tomo-Editor wire channel (spec 030 extension, 2026-07-22)
 
 WHY the wire's `decision` now carries `file_under` (unparented/orphan filing target, parallel to

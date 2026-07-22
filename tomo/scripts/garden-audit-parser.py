@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.7.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -287,8 +287,11 @@ def _confirmed_item_from_wire_finding(finding: dict, decision_md: dict) -> dict 
 
     if check == "dead_link":
         replace_target = decision_md.get("replace", "")
-        replace = f"[[{replace_target}]]" if replace_target else ""
         dead_target = detail.get("dead_target", "")
+        # Non-empty target → repoint to the new wikilink. Empty (remove intent) →
+        # UNLINK: drop the [[ ]] brackets but KEEP the text (`[[X]]` → `X`), not a
+        # full deletion of link+text. dead_target is the inner text of the match.
+        replace = f"[[{replace_target}]]" if replace_target else dead_target
         return {
             "id": fid,
             "garden_check": check,
@@ -485,6 +488,10 @@ def build_from_wire(wire: dict) -> dict:
         elif check == "dead_link":
             dead_target = detail.get("dead_target", "")
             replace_target = decision.get("replace", "")
+            # Non-empty (repoint) → the wikilink the editor wrote (e.g. '[[New]]').
+            # Empty (remove intent) → UNLINK: drop the [[ ]] but KEEP the text
+            # (`[[X]]` → `X`), NOT a full deletion. Same rule as build_from_report.
+            replace = replace_target if replace_target else dead_target
             confirmed.append({
                 "id": fid,
                 "garden_check": check,
@@ -492,7 +499,7 @@ def build_from_wire(wire: dict) -> dict:
                 "path": path,
                 "stem": stem,
                 "match": f"[[{dead_target}]]",
-                "replace": replace_target,
+                "replace": replace,
                 "occurrence": "all",
             })
         # duplicate_stem / stale_moc and anything else → advisory, no item

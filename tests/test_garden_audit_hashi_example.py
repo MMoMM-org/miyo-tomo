@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_garden_audit_hashi_example.py — pin the Phase-6 Hashi handoff example.
 
 The handoff doc (_outbox/for-hashi/…garden-audit-edit-note-text.md) embeds a REAL
@@ -74,19 +74,19 @@ def test_example_covers_all_three_action_kinds():
 
 def test_edit_note_text_semantics():
     actions = _build_instructions()["actions"]
-    edits = [a for a in actions if a["action"] == "edit_note_text"]
-    # dead-link FIX: match [[Old]], replace [[New]], occurrence all.
-    fix = next(a for a in edits if a["replace"])
-    assert fix["match"] == "[[023 Sparks MOC]]"
+    edits = {a["match"]: a for a in actions if a["action"] == "edit_note_text"}
+    # dead-link FIX (repoint): match [[Old]], replace [[New]] wikilink, occurrence all.
+    fix = edits["[[023 Sparks MOC]]"]
     assert fix["replace"] == "[[023 Sparks (MOC)]]"
     assert fix["occurrence"] == "all"
-    # dead-link REMOVE: replace "" (occurrence all).
-    dead_remove = next(a for a in edits if a["match"].startswith("[[") and not a["replace"])
-    assert dead_remove["replace"] == ""
+    # dead-link REMOVE (unlink): keep the text, drop the [[ ]] → replace is the
+    # inner text, NOT "". occurrence all.
+    dead_remove = edits["[[024 Thinking About MOC]]"]
+    assert dead_remove["replace"] == "024 Thinking About MOC"
     assert dead_remove["occurrence"] == "all"
-    # broken-up up:: REMOVAL: whole-line match, replace "", occurrence first.
-    up_remove = next(a for a in edits if a["match"].startswith("up:: "))
-    assert up_remove["match"] == "up:: [[021 Fleeting MOC]]"
+    # broken-up up:: REMOVAL: whole-line match, replace "" (delete the line),
+    # occurrence first — UNCHANGED by the de-link semantics.
+    up_remove = edits["up:: [[021 Fleeting MOC]]"]
     assert up_remove["replace"] == ""
     assert up_remove["occurrence"] == "first"
 

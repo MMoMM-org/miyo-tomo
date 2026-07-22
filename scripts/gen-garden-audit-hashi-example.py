@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """gen-garden-audit-hashi-example.py — generate + validate the real garden-audit
 edit_note_text instruction-set example for the Phase-6 Hashi handoff (spec 030).
 
@@ -98,7 +98,8 @@ def _make_decisions(report: str) -> str:
     """Simulate the user's markdown edits: tick Approved, fill some targets."""
     # F04 dead_link — Replace filled. F05 — left empty (removal).
     report = report.replace(
-        "**Replace with:** [[]]    ← fill a target to repoint, or leave empty to remove",
+        "**Replace with:** [[]]    ← fill a target to repoint, "
+        "or leave empty to unlink (keeps the text, drops the [[ ]])",
         "**Replace with:** [[023 Sparks (MOC)]]",
         1,  # only the FIRST dead_link (F04)
     )

@@ -123,6 +123,18 @@ silent bug. **Revive** (surface them informationally, or design a metadata schem
 only when `.base`/`.canvas` genuinely land in inboxes at scale and users need `/inbox`
 to acknowledge them.
 
+## garden-audit gates on markdown Approved OR wire approved:true (Tomo-Editor Q1, 2026-07-22)
+
+WHY the garden-audit branch now caches the wire sibling FIRST (into `garden_wire_cache`), then gates
+`approved = bool(_RE_APPROVED.search(body)) or _wire_approved(garden_wire_cache)`: the Tomo-Editor
+works from the JSON (Hashi's channel), so it flips a top-level `approved: true` in the wire instead
+of ticking the markdown box. Reading only the markdown would leave an editor-approved doc stuck in
+`pending`. `_wire_approved` reads the cached wire's top-level flag; absent/unreadable → False, so
+`.md`-only users are unaffected (back-compat). The sibling is cached once and REUSED in the approved
+branch (no double fetch). Pinned by `test_inbox_triage.py::TestGardenAuditApprovalGate` (markdown-only,
+wire-only, neither). NOTE: this supersedes the markdown-only gate below for the WHETHER-picked-up
+decision — the `approved:true`-forces-JSON-path routing itself lives in `garden-audit-parser`.
+
 ## garden-audit gates on a top-level Approved box (ADR-1 revised, 2026-07-21)
 
 WHY the garden-audit approval branch is `approved = bool(_RE_APPROVED.search(body))`

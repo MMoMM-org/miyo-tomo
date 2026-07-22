@@ -87,9 +87,9 @@ def _make_wire(findings, schema_version="1", run_id="run-test-001",
 
 def _make_real_wire(findings, **kwargs):
     """Build a wire with a correct emit_digest (for digest-based tests)."""
-    from lib.render_md import compute_payload_digest
+    from lib.render_md import compute_garden_audit_digest
     wire = _make_wire(findings, **kwargs)
-    wire["emit_digest"] = compute_payload_digest(wire)
+    wire["emit_digest"] = compute_garden_audit_digest(wire)
     return wire
 
 

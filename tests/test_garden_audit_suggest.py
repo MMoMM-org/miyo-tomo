@@ -78,14 +78,14 @@ class TestSuggestHelperFunction:
     def test_enrich_function_inserts_pick_list(self, tmp_path):
         doc = _doc([_dead_link_finding("F01")])
         rp, wp, cp = _write_inputs(tmp_path, doc, _DEAD_CACHE)
-        out = gas.run_suggest(str(rp), str(wp), str(cp))
+        out, _wire = gas.run_suggest(str(rp), str(wp), str(cp))
         assert "[[Missing Notes]]" in out
         assert "Pick one" in out
 
     def test_missing_cache_degrades_to_input_report(self, tmp_path):
         doc = _doc([_dead_link_finding("F01")])
         rp, wp, _ = _write_inputs(tmp_path, doc, _DEAD_CACHE)
-        out = gas.run_suggest(str(rp), str(wp), str(tmp_path / "nope.yaml"))
+        out, _wire = gas.run_suggest(str(rp), str(wp), str(tmp_path / "nope.yaml"))
         # No cache → no candidates, but the report is returned intact (no crash).
         assert "### F01 — Dead link" in out
         assert "Pick one" not in out
@@ -94,9 +94,10 @@ class TestSuggestHelperFunction:
         # _load_wire returns {} → no findings to join → all blocks preserved.
         doc = _doc([_dead_link_finding("F01")])
         rp, _, cp = _write_inputs(tmp_path, doc, _DEAD_CACHE)
-        out = gas.run_suggest(str(rp), str(tmp_path / "nope.json"), str(cp))
+        out, wire = gas.run_suggest(str(rp), str(tmp_path / "nope.json"), str(cp))
         assert "### F01 — Dead link" in out
         assert "Pick one" not in out
+        assert wire is None  # unreadable wire → no enriched wire emitted
 
 
 class TestSuggestCli:

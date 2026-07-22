@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.25.0
+# version: 0.26.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -482,6 +482,23 @@ def _load_edited_wire(wire_cache_path: str) -> "dict | None":
     return wire
 
 
+def _wire_approved(wire_cache_path: str | None) -> bool:
+    """True iff a cached garden-audit wire carries top-level ``approved: true`` (Q1).
+
+    The Tomo-Editor works from the JSON, so it flips a JSON-side approve gate
+    instead of (or in addition to) the markdown ``- [x] Approved`` box. Triage
+    reads it here so garden-audit docs approved only via the editor are still
+    picked up. Absent / unreadable / not a v1 wire → False (markdown gate stands).
+    """
+    if not wire_cache_path:
+        return False
+    try:
+        wire = json.loads(Path(wire_cache_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(wire, dict) and bool(wire.get("approved"))
+
+
 def _extract_fan_items_from_wire(wire: dict, source_path: str) -> list[dict]:
     """Force-atomic items from an EDITED wire (ADR-026 JSON-only authority).
 
@@ -618,16 +635,23 @@ def read_approval_state(
 
         # Check approval
         approved = False
+        garden_wire_cache: str | None = None
         if doc_type in ("suggestions", "suggestions-fan"):
             approved = bool(_RE_APPROVED.search(body))
         elif doc_type == "moc-proposal":
             approved = bool(_RE_ACCEPT.search(body))
         elif doc_type == "garden-audit":
-            # ADR-1 (spec 030, revised): garden-audit gates on an explicit
-            # top-level "- [x] Approved" box, like suggestions. Untick → stays
-            # pending-accept, not picked up. Per-finding Apply ticks + the wire
+            # ADR-1 (spec 030, revised) + Q1 (Tomo-Editor): garden-audit is picked
+            # up when EITHER the markdown "- [x] Approved" box is ticked (human
+            # channel, .md-only users) OR the wire carries top-level
+            # "approved: true" (the Tomo-Editor's JSON-side gate). Cache the wire
+            # sibling first so we can read its approve flag, then reuse the cached
+            # path in the approved branch. Per-finding Apply ticks + the wire
             # digest still drive WHICH fixes apply (garden-audit-parser, Pass-2).
-            approved = bool(_RE_APPROVED.search(body))
+            garden_wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+            approved = bool(_RE_APPROVED.search(body)) or _wire_approved(
+                garden_wire_cache
+            )
 
         if approved:
             entry = {
@@ -665,17 +689,17 @@ def read_approval_state(
             elif doc_type == "garden-audit":
                 # The wire is the STRUCTURE source (spec 030 two-artifact split) —
                 # garden-audit-parser ALWAYS reads it, joined to the markdown
-                # decisions by F-id. Cache the sibling and set wire_cache_path
+                # decisions by F-id. The sibling was cached above (for the wire
+                # approve-gate); reuse that path and set wire_cache_path
                 # UNCONDITIONALLY so the conductor always passes --wire; the render
                 # always writes the sibling, so this resolves in normal operation.
-                wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
-                if not wire_cache:
+                if not garden_wire_cache:
                     print(
                         f"warning: garden-audit doc {vault_path!r} has no wire "
                         "sibling — parser will emit empty confirmed_items",
                         file=sys.stderr,
                     )
-                entry["wire_cache_path"] = wire_cache
+                entry["wire_cache_path"] = garden_wire_cache
                 approved_garden_audits.append(entry)
         else:
             pending_approval.append({

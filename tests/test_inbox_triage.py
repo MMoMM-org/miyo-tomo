@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.8.0
 """test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
 T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
@@ -389,6 +389,97 @@ class TestApprovalScanMocProposalAccepted:
         assert len(state.approved_moc_proposals) == 1
         assert state.approved_moc_proposals[0]["path"] == moc_path
         assert len(state.pending_approval) == 0
+
+
+# ---------------------------------------------------------------------------
+# Test 6b: garden-audit approval gate — markdown Approved OR wire approved:true
+# (spec 030 Tomo-Editor Q1). Either channel picks the doc up; neither → pending.
+# ---------------------------------------------------------------------------
+
+def _garden_audit_body(approved: bool) -> str:
+    mark = "[x]" if approved else "[ ]"
+    return "\n".join([
+        "---",
+        "tomo:",
+        "  doc_type: garden-audit",
+        "  state: pending-accept",
+        "---",
+        "",
+        "# Knowledge-Garden Audit — 2026-07-22",
+        "",
+        f"- {mark} Approved — check this box when you've finished reviewing.",
+        "",
+        "### F01 — Dead link in: [[Src]]",
+        "",
+        "- [x] Apply — untick to skip",
+        "- **Replace with:** [[]]",
+        "",
+    ])
+
+
+def _garden_audit_wire(approved: bool) -> bytes:
+    wire = {
+        "schema_version": "1",
+        "generated": "2026-07-22T12:00:00Z",
+        "run_id": "test-run",
+        "profile": "miyo",
+        "approved": approved,
+        "findings": [{
+            "id": "F01", "check": "dead_link", "tier": "integrity", "fixable": True,
+            "target": {"path": "Notes/Src.md", "stem": "Src"},
+            "detail": {"dead_target": "Missing", "count": 1},
+            "decision": {
+                "selected": True, "action": "edit_note_text", "replace": "",
+                "candidates": [], "suggest_requested": False,
+            },
+        }],
+        "emit_digest": "sha256:" + "0" * 64,  # value irrelevant to the approve gate
+    }
+    return json.dumps(wire).encode("utf-8")
+
+
+def _garden_audit_client(md_approved: bool, wire_approved: bool):
+    md_path = INBOX_PATH + "2026-07-22_1200_garden-audit.md"
+    json_path = INBOX_PATH + "2026-07-22_1200_garden-audit.json"
+    client = FakeKadoClient(
+        listdir_items=[_listdir_item(md_path)],
+        frontmatter_responses={
+            "tomo.state=pending-approval": [],
+            "tomo.state=pending-accept": [_fm_hit(md_path, "garden-audit", "pending-accept")],
+            "tomo.state=captured": [],
+            "tomo.doc_type=instructions": [],
+        },
+        read_note_responses={
+            md_path: {"content": _garden_audit_body(md_approved), "modified": 0},
+        },
+        read_file_responses={json_path: _garden_audit_wire(wire_approved)},
+    )
+    return client, md_path
+
+
+class TestGardenAuditApprovalGate:
+    def test_markdown_approved_detected(self, tmp_path):
+        mod = _load_module()
+        client, md_path = _garden_audit_client(md_approved=True, wire_approved=False)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
+        assert state.approved_garden_audits[0]["path"] == md_path
+        assert state.approved_garden_audits[0]["wire_cache_path"]  # sibling cached
+
+    def test_wire_approved_only_detected(self, tmp_path):
+        # Markdown NOT ticked — only the JSON approve gate is set (editor channel).
+        mod = _load_module()
+        client, md_path = _garden_audit_client(md_approved=False, wire_approved=True)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
+        assert state.approved_garden_audits[0]["path"] == md_path
+
+    def test_neither_approved_goes_pending(self, tmp_path):
+        mod = _load_module()
+        client, md_path = _garden_audit_client(md_approved=False, wire_approved=False)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 0
+        assert any(d["path"] == md_path for d in state.pending_approval)
 
 
 # ---------------------------------------------------------------------------

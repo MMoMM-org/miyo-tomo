@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.0
+# version: 0.9.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -37,7 +37,7 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import build_tomo_block
-from lib.render_md import compute_payload_digest, unwrap_list_repr
+from lib.render_md import compute_garden_audit_digest, unwrap_list_repr
 from lib.target_suggest import (
     suggest_dead_link_targets,
     suggest_file_under_mocs,
@@ -529,6 +529,68 @@ def enrich_report_with_suggestions(
     return result
 
 
+# ── --suggest wire enrichment (spec 030 Tomo-Editor channel) ──────────────────
+# The Tomo-Editor reads the JSON (Hashi's channel), so --suggest must write the
+# scored candidates into decision.candidates there too — not only into the
+# markdown pick lists. Candidate computation is SSoT'd via _candidates_for_block.
+
+def _suggest_requested_ids(report_md: str, wire: dict) -> set[str]:
+    """F-ids that want LLM candidates: markdown Suggest-ticked OR wire suggest_requested.
+
+    Two channels select findings for enrichment: the human channel (a
+    ``- [x] Suggest targets`` tick in the markdown block, existing) and the
+    Tomo-Editor channel (``decision.suggest_requested: true`` in the wire, new).
+    Union of both — either opts a finding in.
+    """
+    ids: set[str] = set()
+    # Markdown channel: a Suggest-ticked block.
+    for block in _split_report_blocks(report_md)[1:]:
+        m = _RE_FINDING_HEADER.match(block[0])
+        if not m:
+            continue
+        if any(_RE_SUGGEST_TICKED.match(ln) for ln in block):
+            ids.add(m.group(1))
+    # Wire channel: decision.suggest_requested.
+    for f in (wire or {}).get("findings") or []:
+        decision = f.get("decision") or {}
+        if decision.get("suggest_requested") and f.get("id"):
+            ids.add(f["id"])
+    return ids
+
+
+def enrich_wire_with_candidates(
+    wire: dict, entries: list[dict], requested_ids: set[str]
+) -> dict:
+    """Write decision.candidates=[{stem,score}] into the wire for requested findings.
+
+    Mutates and returns ``wire``. For each fixable finding whose id is in
+    ``requested_ids``, decision.candidates is set to the scored candidates
+    (SSoT via _candidates_for_block, mapped {target,score}→{stem,score}); every
+    other finding's candidates is cleared to [] so a re-run is idempotent. The
+    caller re-stamps emit_digest via compute_garden_audit_digest (candidates are
+    excluded from that digest, so this does NOT make the wire read as user-edited).
+    """
+    note_stems = [
+        str(e.get("stem")) for e in entries
+        if isinstance(e, dict) and e.get("kind") == "note" and e.get("stem")
+    ]
+    moc_entries = [
+        e for e in entries if isinstance(e, dict) and e.get("kind") == "moc"
+    ]
+    for finding in (wire or {}).get("findings") or []:
+        decision = finding.get("decision")
+        if not isinstance(decision, dict):
+            continue  # advisory finding — no decision block
+        if finding.get("id") in requested_ids:
+            cands = _candidates_for_block(finding, note_stems, moc_entries)
+            decision["candidates"] = [
+                {"stem": c["target"], "score": c["score"]} for c in cands
+            ]
+        else:
+            decision["candidates"] = []
+    return wire
+
+
 # ── Wire (ADR-4 / ADR-026) ───────────────────────────────────────────────────
 
 def build_wire_payload(d: dict) -> dict:
@@ -560,6 +622,7 @@ def build_wire_payload(d: dict) -> dict:
         # decision block present ONLY on fixable findings
         decision = f.get("decision")
         if decision is not None:
+            check = f.get("check")
             wire_decision: dict = {
                 "selected": decision.get("selected", True),
                 "action": decision.get("action"),
@@ -567,14 +630,27 @@ def build_wire_payload(d: dict) -> dict:
             # dead_link: add editable replace slot (empty = remove intent).
             # The user fills this in the wire to specify a replacement target;
             # garden-audit-parser reads decision.replace (not detail.dead_target).
-            if f.get("check") == "dead_link":
+            if check == "dead_link":
                 wire_decision["replace"] = ""
             # broken_up: add editable repoint slot (empty = remove intent). Wire
             # parity with the markdown path's "Repoint to:" field — a non-empty
             # value repoints up:: to the user's chosen MOC (add_relationship),
             # empty removes the broken line. Parser reads decision.repoint.
-            if f.get("check") == "broken_up":
+            if check == "broken_up":
                 wire_decision["repoint"] = ""
+            # unparented/orphan: add editable file_under slot (empty = no target)
+            # — the Tomo-Editor's filing target, parallel to repoint/replace.
+            # Parser's file_note branch reads decision.file_under.
+            if check in ("unparented", "orphan"):
+                wire_decision["file_under"] = ""
+            # Tomo-Editor channel fields (spec 030). candidates: display-only LLM
+            # picks the editor renders — empty at first render, populated by
+            # --suggest. suggest_requested: the editor's flag marking findings that
+            # want LLM candidates (drives --suggest selection). Both are EXCLUDED
+            # from the change-detection digest (compute_garden_audit_digest) so
+            # Tomo-written candidates never read as a user edit.
+            wire_decision["candidates"] = []
+            wire_decision["suggest_requested"] = False
             wf["decision"] = wire_decision
         wire_findings.append(wf)
 
@@ -583,9 +659,14 @@ def build_wire_payload(d: dict) -> dict:
         "generated": d["generated"],
         "run_id": d["run_id"],
         "profile": d.get("profile"),
+        # Top-level JSON-side approve gate (Q1): the Tomo-Editor works from the
+        # JSON, so it sets this true on "ready for /inbox". The markdown "- [x]
+        # Approved" box still works for .md-only users. Excluded from the
+        # change-detection digest.
+        "approved": bool(d.get("approved", False)),
         "findings": wire_findings,
     }
-    payload["emit_digest"] = compute_payload_digest(payload)
+    payload["emit_digest"] = compute_garden_audit_digest(payload)
     return payload
 
 

@@ -1,4 +1,4 @@
-# version: 0.2.1
+# version: 0.3.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -239,6 +239,45 @@ def compute_payload_digest(payload: dict) -> str:
     editable = {k: v for k, v in payload.items() if k != "emit_digest"}
     canonical = json.dumps(
         editable, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+# garden-audit: the apply-decision fields a USER edits (spec 030 Tomo-Editor).
+# The change-detection digest is computed over ONLY these per-finding decision
+# keys, so Tomo-generated fields (candidates), the editor's request flag
+# (suggest_requested), the top-level approve gate (approved) and read-only
+# structure (detail) never make the wire look "user-edited".
+_GARDEN_APPLY_DECISION_KEYS = ("selected", "repoint", "replace", "file_under")
+
+
+def compute_garden_audit_digest(payload: dict) -> str:
+    """Return 'sha256:<hex>' over the garden-audit APPLY-decision fields only.
+
+    Distinct from compute_payload_digest (which hashes the whole editable payload):
+    the garden-audit wire carries Tomo-generated data (decision.candidates) and
+    editor-signal fields (decision.suggest_requested, top-level approved) that must
+    NOT flip the change signal — only a user changing an apply decision
+    (selected / repoint / replace / file_under) counts as "edited". This projects
+    each finding to (id, apply-decision-keys-that-are-present) and hashes that
+    canonical form. The suggestions wire is unaffected — it uses its own function.
+    """
+    import hashlib
+    import json
+
+    projection: list[dict] = []
+    for finding in payload.get("findings") or []:
+        decision = finding.get("decision")
+        entry: dict = {"id": finding.get("id")}
+        if isinstance(decision, dict):
+            entry["decision"] = {
+                k: decision[k]
+                for k in _GARDEN_APPLY_DECISION_KEYS
+                if k in decision
+            }
+        projection.append(entry)
+    canonical = json.dumps(
+        projection, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     )
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

@@ -5,6 +5,28 @@
 > It takes `garden-audit-doc.json` (from `garden-audit.py`) and emits two artifacts:
 > a severity-ordered markdown review report and `garden-audit-wire.json`.
 
+## Version 0.9.0 — Tomo-Editor wire channel (spec 030 extension, 2026-07-22)
+
+WHY the wire's `decision` now carries `file_under` (unparented/orphan filing target, parallel to
+`repoint`/`replace`), `candidates: []` (display-only scored LLM picks the Tomo-Editor renders —
+empty at first render, populated by `--suggest`), and `suggest_requested: false` (the editor's flag
+marking findings that want candidates), plus a top-level `approved: false`: the Tomo-Editor works
+from the JSON (Hashi's channel), so those decisions must live in the wire, not only the markdown.
+
+WHY `build_wire_payload` computes `emit_digest` via `compute_garden_audit_digest` (not
+`compute_payload_digest`): the change signal must reflect ONLY user apply-decisions
+(`selected`/`repoint`/`replace`/`file_under`). Hashing the whole payload would flip the digest when
+`--suggest` writes Tomo-generated `candidates`, falsely marking the wire "user-edited". The
+garden-audit digest projects each finding to `id` + the four apply-decision keys and excludes
+`candidates`, `suggest_requested`, `action`, `detail`, and the top-level `approved`. The suggestions
+wire is byte-for-byte unaffected — it still uses `compute_payload_digest`.
+
+WHY `enrich_wire_with_candidates` + `_suggest_requested_ids` live here (alongside
+`enrich_report_with_suggestions`): candidate computation is SSoT'd via `_candidates_for_block`, so
+the markdown pick lists and the wire `candidates` are always derived from the same scoring. Findings
+are selected for enrichment from the UNION of markdown Suggest ticks and wire `suggest_requested`.
+`{target,score}` from the suggest helpers is mapped to the wire's `{stem,score}` shape.
+
 ## Both Artifacts from One Dict — No Drift by Construction (ADR-4)
 
 WHY the report and the wire are both projected from the same in-memory `d` dict without

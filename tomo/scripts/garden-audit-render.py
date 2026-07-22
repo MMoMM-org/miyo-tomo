@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.0
+# version: 0.9.1
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -424,6 +424,23 @@ def _strip_existing_pick_list(block: list[str]) -> list[str]:
     return out
 
 
+def _split_cache_entries(entries: list[dict]) -> tuple[list[str], list[dict]]:
+    """Split MOC-structure cache entries into (note_stems, moc_entries).
+
+    Shared by the markdown (enrich_report_with_suggestions) and wire
+    (enrich_wire_with_candidates) enrichment paths so the candidate-scoring inputs
+    are derived identically in both.
+    """
+    note_stems = [
+        str(e.get("stem")) for e in entries
+        if isinstance(e, dict) and e.get("kind") == "note" and e.get("stem")
+    ]
+    moc_entries = [
+        e for e in entries if isinstance(e, dict) and e.get("kind") == "moc"
+    ]
+    return note_stems, moc_entries
+
+
 def _candidates_for_block(finding: dict, note_stems: list[str],
                           moc_entries: list[dict]) -> list[dict]:
     """Compute candidate picks for one fixable finding from the wire + cache."""
@@ -500,13 +517,7 @@ def enrich_report_with_suggestions(
     findings_by_id = {
         f.get("id"): f for f in (wire or {}).get("findings") or [] if f.get("id")
     }
-    note_stems = [
-        str(e.get("stem")) for e in entries
-        if isinstance(e, dict) and e.get("kind") == "note" and e.get("stem")
-    ]
-    moc_entries = [
-        e for e in entries if isinstance(e, dict) and e.get("kind") == "moc"
-    ]
+    note_stems, moc_entries = _split_cache_entries(entries)
 
     blocks = _split_report_blocks(report_md)
     out_blocks: list[list[str]] = [blocks[0]]  # preamble untouched
@@ -567,16 +578,11 @@ def enrich_wire_with_candidates(
     ``requested_ids``, decision.candidates is set to the scored candidates
     (SSoT via _candidates_for_block, mapped {target,score}→{stem,score}); every
     other finding's candidates is cleared to [] so a re-run is idempotent. The
-    caller re-stamps emit_digest via compute_garden_audit_digest (candidates are
-    excluded from that digest, so this does NOT make the wire read as user-edited).
+    caller MUST NOT re-stamp emit_digest — candidates are excluded from
+    compute_garden_audit_digest, so the original baseline stays correct (and
+    re-stamping would clobber a pre-existing user apply-edit).
     """
-    note_stems = [
-        str(e.get("stem")) for e in entries
-        if isinstance(e, dict) and e.get("kind") == "note" and e.get("stem")
-    ]
-    moc_entries = [
-        e for e in entries if isinstance(e, dict) and e.get("kind") == "moc"
-    ]
+    note_stems, moc_entries = _split_cache_entries(entries)
     for finding in (wire or {}).get("findings") or []:
         decision = finding.get("decision")
         if not isinstance(decision, dict):

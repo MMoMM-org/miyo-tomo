@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_garden_audit_tomo_editor.py — spec 030 Tomo-Editor wire channel.
 
 Covers the additive wire decision fields (file_under, candidates, suggest_requested),
@@ -278,9 +278,41 @@ class TestSuggestWritesWireCandidates:
         )
         rp.write_text(md, encoding="utf-8")
         _report, wire = gas.run_suggest(str(rp), str(wp), str(cp))
-        # Re-stamped digest matches → not edited (candidates excluded).
+        # Baseline emit_digest is preserved (candidates excluded) → not edited.
         assert gap._is_wire_edited(wire) is False
         assert wire["emit_digest"] == compute_garden_audit_digest(wire)
+
+    def test_pre_edited_wire_survives_suggest(self, tmp_path):
+        # Regression (C-1): a user edits an apply-decision (file_under) in the
+        # editor BEFORE running --suggest. --suggest must NOT re-stamp emit_digest
+        # to the edited state, which would make _is_wire_edited read False and
+        # SILENTLY DISCARD the user's decision. The pre-edit must survive.
+        doc = _doc([_orphan("F01", candidate=True)])
+        report = "\n".join(gar.render_frontmatter(doc)) + "\n" + gar.render_report(doc)
+        wire = gar.build_wire_payload(doc)
+        # User apply-edit committed into the wire (Hashi's channel).
+        wire["findings"][0]["decision"]["file_under"] = "[[My MOC]]"
+        rp = tmp_path / "report.md"
+        wp = tmp_path / "report.json"
+        cp = tmp_path / "cache.yaml"
+        # Tick Suggest in the markdown so --suggest runs the enrichment path.
+        rp.write_text(
+            report.replace("- [ ] Suggest targets", "- [x] Suggest targets"),
+            encoding="utf-8",
+        )
+        wp.write_text(json.dumps(wire), encoding="utf-8")
+        import yaml
+        cp.write_text(yaml.safe_dump(_CACHE), encoding="utf-8")
+
+        _report, out_wire = gas.run_suggest(str(rp), str(wp), str(cp))
+
+        # (a) the wire still reads as edited (baseline digest mismatch preserved),
+        assert gap._is_wire_edited(out_wire) is True
+        # (b) the user's file_under value is intact,
+        assert out_wire["findings"][0]["decision"]["file_under"] == "[[My MOC]]"
+        # (c) build_from_wire honours the user's chosen MOC.
+        result = gap.build_from_wire(out_wire)
+        assert result["confirmed_items"][0]["target_moc"] == "My MOC"
 
     def test_unrequested_finding_candidates_stay_empty(self, tmp_path):
         doc = _doc([_dead_link("F01"), _dead_link("F02")])

@@ -51,6 +51,19 @@ default-path standard). Enriching in place means the same file the agent re-uplo
 just enriched — no fourth path to thread. `--output` defaults to `None` and resolves to
 `args.report` in `main()` because argparse can't reference another arg's value at declaration.
 
+## Version 0.3.1 — do NOT re-stamp emit_digest (preserve user apply-edits, 2026-07-22)
+
+WHY `run_suggest` leaves the wire's `emit_digest` UNTOUCHED (0.3.0 wrongly re-stamped it): candidates
+are already EXCLUDED from `compute_garden_audit_digest`, so writing them never changes the digest —
+re-stamping is unnecessary. Worse, it is HARMFUL: if the user edited an apply-decision (e.g.
+`decision.file_under`) in the editor BEFORE running `--suggest`, re-stamping overwrites the Tomo
+baseline with the edited state; a later `_is_wire_edited` recomputes the same value, reads
+`stored == recomputed` → False → Pass-2 routes to `build_from_report` (empty markdown) and SILENTLY
+DISCARDS the user's decision. Removing the re-stamp keeps the baseline correct in both cases (unedited
+→ matches → not edited; pre-edited → mismatches → edited). Regression-pinned by
+`test_garden_audit_tomo_editor.py::TestSuggestWritesWireCandidates::test_pre_edited_wire_survives_suggest`
+(fails against the 0.3.0 re-stamp).
+
 ## Version 0.3.0 — writes candidates into the wire (spec 030 extension, 2026-07-22)
 
 WHY `run_suggest` now returns `(report, wire)` and also enriches the WIRE (not only the markdown):
@@ -58,12 +71,10 @@ the Tomo-Editor reads the JSON (Hashi's channel), so `--suggest` must populate
 `decision.candidates=[{stem,score}]` there for the editor to render. Findings are selected from the
 UNION of markdown Suggest ticks and wire `decision.suggest_requested` (`_suggest_requested_ids`).
 Candidate computation is SSoT'd via `garden-audit-render.enrich_wire_with_candidates` +
-`_candidates_for_block` — the markdown pick list and the wire candidates never diverge.
-
-WHY the enriched wire's `emit_digest` is re-stamped via `compute_garden_audit_digest` (apply-decision
-fields only): the Tomo-written `candidates` must NOT make the wire read as user-edited in Pass-2.
-`--wire-output` defaults to `--wire` (in-place), mirroring `--output`→`--report`. An unreadable wire
-yields `wire=None` (report still returned + written) — the agent re-uploads a valid report.
+`_split_cache_entries` + `_candidates_for_block` — the markdown pick list and the wire candidates
+never diverge. `--wire-output` defaults to `--wire` (in-place), mirroring `--output`→`--report`. An
+unreadable wire yields `wire=None` (report still returned + written) — the agent re-uploads a valid
+report.
 
 ## Version 0.2.0
 

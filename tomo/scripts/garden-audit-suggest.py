@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """garden-audit-suggest.py — `--suggest` second-pass helper (spec 030 T7.4).
 
 The garden-auditor agent invokes this when the user has requested LLM candidates
@@ -11,8 +11,9 @@ Tomo-Editor's wire `decision.suggest_requested: true` — and re-runs
   2. enriches the requested blocks with a candidate `Pick one:` list in the MARKDOWN
      (human channel) AND writes decision.candidates=[{stem,score}] into the WIRE
      (Hashi's channel) — both SSoT'd via garden-audit-render helpers,
-  3. re-stamps the wire's emit_digest over the apply-decision fields only (so the
-     Tomo-generated candidates do NOT make the wire read as user-edited),
+  3. leaves the wire's emit_digest UNTOUCHED — candidates are excluded from the
+     change-detection digest, so the original Tomo baseline stays correct and a
+     pre-existing user apply-edit is never clobbered,
   4. writes the enriched report AND wire for the agent to re-upload via
      kado-write-file (no new external surface — the agent owns transport).
 
@@ -49,8 +50,6 @@ _spec = importlib.util.spec_from_file_location(
 _render = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_render)
 
-from lib.render_md import compute_garden_audit_digest  # noqa: E402
-
 
 def _load_wire(path: str) -> dict:
     """Load the wire JSON, or {} (+warn) on any failure — no candidates then."""
@@ -81,10 +80,11 @@ def run_suggest(
     """Read report + wire + cache → (enriched report string, enriched wire | None).
 
     The enriched report carries the markdown pick lists (human channel); the
-    enriched wire carries decision.candidates (Hashi's channel) with emit_digest
-    re-stamped over the apply-decision fields only, so the Tomo-generated
-    candidates never read as a user edit. Findings are selected for enrichment
-    from EITHER the markdown Suggest ticks OR the wire's decision.suggest_requested.
+    enriched wire carries decision.candidates (Hashi's channel). Findings are
+    selected for enrichment from EITHER the markdown Suggest ticks OR the wire's
+    decision.suggest_requested. The wire's emit_digest is left UNTOUCHED — the
+    original Tomo baseline is preserved (candidates are excluded from the digest,
+    so re-stamping is both unnecessary and would clobber a pre-existing user edit).
     Returns wire=None when the wire was unreadable (report still returned).
     """
     with open(report_path, encoding="utf-8") as fh:
@@ -99,10 +99,13 @@ def run_suggest(
 
     requested = _render._suggest_requested_ids(report_md, wire)
     wire = _render.enrich_wire_with_candidates(wire, entries, requested)
-    # Re-stamp emit_digest over the apply-decision fields only (candidates and
-    # suggest_requested are excluded — Tomo-written candidates are not a user edit).
-    wire.pop("emit_digest", None)
-    wire["emit_digest"] = compute_garden_audit_digest(wire)
+    # Do NOT re-stamp emit_digest. candidates are already EXCLUDED from
+    # compute_garden_audit_digest, so writing them never changes the digest. The
+    # original Tomo baseline stays correct: an unedited wire still matches (not
+    # edited); a pre-edited wire (user changed an apply-decision before --suggest)
+    # still mismatches (edited). Re-stamping would overwrite the baseline with the
+    # edited state, so _is_wire_edited would later read False and SILENTLY DISCARD
+    # the user's apply-edit (routing Pass-2 to the empty markdown).
     return enriched_report, wire
 
 

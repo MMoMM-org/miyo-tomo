@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """garden-audit-suggest.py — `--suggest` second-pass helper (spec 030 T7.4).
 
-The garden-auditor agent invokes this when the user has ticked
-`- [ ] Suggest targets` on one or more dead_link/broken_up findings in a published
-garden-audit report and re-runs `/garden-audit --suggest`. It:
+The garden-auditor agent invokes this when the user has requested LLM candidates
+on one or more findings — via a markdown `- [x] Suggest targets` tick OR the
+Tomo-Editor's wire `decision.suggest_requested: true` — and re-runs
+`/garden-audit --suggest`. It:
 
   1. reads the in-vault report `.md`, its wire `.json`, and the MOC-structure cache,
-  2. enriches ONLY the Suggest-ticked blocks with a candidate `Pick one:` list
-     (via garden-audit-render.enrich_report_with_suggestions — the SSoT),
-  3. writes the enriched report to --output for the agent to re-upload via
+  2. enriches the requested blocks with a candidate `Pick one:` list in the MARKDOWN
+     (human channel) AND writes decision.candidates=[{stem,score}] into the WIRE
+     (Hashi's channel) — both SSoT'd via garden-audit-render helpers,
+  3. re-stamps the wire's emit_digest over the apply-decision fields only (so the
+     Tomo-generated candidates do NOT make the wire read as user-edited),
+  4. writes the enriched report AND wire for the agent to re-upload via
      kado-write-file (no new external surface — the agent owns transport).
 
 Mirrors garden-audit-configure.py as a deterministic mode-support helper: no LLM,
@@ -45,6 +49,8 @@ _spec = importlib.util.spec_from_file_location(
 _render = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_render)
 
+from lib.render_md import compute_garden_audit_digest  # noqa: E402
+
 
 def _load_wire(path: str) -> dict:
     """Load the wire JSON, or {} (+warn) on any failure — no candidates then."""
@@ -69,13 +75,35 @@ def _load_cache_entries(path: str) -> list[dict]:
     return entries or []
 
 
-def run_suggest(report_path: str, wire_path: str, cache_path: str) -> str:
-    """Read report + wire + cache → enriched report string (raises on report I/O)."""
+def run_suggest(
+    report_path: str, wire_path: str, cache_path: str
+) -> tuple[str, dict | None]:
+    """Read report + wire + cache → (enriched report string, enriched wire | None).
+
+    The enriched report carries the markdown pick lists (human channel); the
+    enriched wire carries decision.candidates (Hashi's channel) with emit_digest
+    re-stamped over the apply-decision fields only, so the Tomo-generated
+    candidates never read as a user edit. Findings are selected for enrichment
+    from EITHER the markdown Suggest ticks OR the wire's decision.suggest_requested.
+    Returns wire=None when the wire was unreadable (report still returned).
+    """
     with open(report_path, encoding="utf-8") as fh:
         report_md = fh.read()
     wire = _load_wire(wire_path)
     entries = _load_cache_entries(cache_path)
-    return _render.enrich_report_with_suggestions(report_md, wire, entries)
+
+    enriched_report = _render.enrich_report_with_suggestions(report_md, wire, entries)
+
+    if not wire:
+        return enriched_report, None
+
+    requested = _render._suggest_requested_ids(report_md, wire)
+    wire = _render.enrich_wire_with_candidates(wire, entries, requested)
+    # Re-stamp emit_digest over the apply-decision fields only (candidates and
+    # suggest_requested are excluded — Tomo-written candidates are not a user edit).
+    wire.pop("emit_digest", None)
+    wire["emit_digest"] = compute_garden_audit_digest(wire)
+    return enriched_report, wire
 
 
 def main() -> int:
@@ -103,10 +131,14 @@ def main() -> int:
         "--output", default=None,
         help="Output path for the enriched report .md (defaults to --report, in-place).",
     )
+    p.add_argument(
+        "--wire-output", default=None,
+        help="Output path for the enriched wire .json (defaults to --wire, in-place).",
+    )
     args = p.parse_args()
 
     try:
-        enriched = run_suggest(args.report, args.wire, args.cache)
+        enriched, enriched_wire = run_suggest(args.report, args.wire, args.cache)
     except OSError as exc:
         print(f"error: garden-audit-suggest: cannot read report: {exc}", file=sys.stderr)
         return 1
@@ -115,6 +147,16 @@ def main() -> int:
     out_path = Path(output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(enriched, encoding="utf-8")
+
+    # Write the enriched wire alongside (Hashi's channel) — the editor reads
+    # decision.candidates from here. Skipped only when the wire was unreadable.
+    if enriched_wire is not None:
+        wire_output = args.wire_output or args.wire  # in-place by default
+        wire_out_path = Path(wire_output)
+        wire_out_path.parent.mkdir(parents=True, exist_ok=True)
+        wire_out_path.write_text(
+            json.dumps(enriched_wire, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
     n_picks = enriched.count("Pick one")
     print(

@@ -6,6 +6,23 @@
 > machine STRUCTURE (always read), joined by the F-id in each `### F<id>` heading.
 > The result is a `{"confirmed_items": [...]}` envelope printed to STDOUT.
 
+## Version 0.6.0 — Tomo-Editor JSON channel (spec 030 extension, 2026-07-22)
+
+WHY `_is_wire_edited` now uses `compute_garden_audit_digest` and additionally returns True when the
+wire carries top-level `approved: true` (via `_wire_is_json_approved`): the digest reflects only user
+apply-decisions (`selected`/`repoint`/`replace`/`file_under`), so `--suggest` writing display-only
+`candidates` never routes to the JSON path falsely. The approved gate forces the JSON path
+REGARDLESS of digest — the edge case is a user who approves via the editor but changed NO decision
+(all defaults): the digest still matches emit, and without the override Pass-2 would route to
+`build_from_report` and read an empty markdown, applying nothing. `approved: true` makes the JSON
+channel authoritative so an all-default editor approval still applies the scan-candidate fixes.
+
+WHY `build_from_wire`'s `file_note` branch now reads `decision.file_under` with precedence
+`file_under > candidate_mocs[0] > skip` (mirroring the markdown `build_from_report` path): the
+Tomo-Editor commits the filing target into `file_under`, and an explicit value must always win. The
+wire's `decision.candidates` is DISPLAY-ONLY and is NEVER auto-applied — only the value the editor
+commits into `file_under`/`repoint`/`replace` is read. `_wikilink_target` normalises `[[X]]`/`X`.
+
 ## Parser Emits confirmed_items, Not Actions (spec 030 SDD)
 
 WHY the parser is a pure reader that emits SEMANTIC items (`garden_check` /

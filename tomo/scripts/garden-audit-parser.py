@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -42,33 +42,55 @@ import json
 import re
 import sys
 
-from lib.render_md import bare_stem, compute_payload_digest, up_line
+from lib.render_md import bare_stem, compute_garden_audit_digest, up_line
 
 
 # ── Wire load ────────────────────────────────────────────────────────────────
 
-def _is_wire_edited(wire: dict) -> bool:
-    """True iff an already-loaded wire dict is schema-v1 AND Hashi-edited.
+def _wire_is_json_approved(wire: dict) -> bool:
+    """True iff the wire carries the top-level JSON-side approve gate (Q1).
 
-    Edited = the recomputed digest over the editable payload differs from the
-    stored emit_digest (or there is no stored digest). Operates on a dict already
-    in memory — no file read — so main() can decide routing from the single
-    _load_raw_wire result without a second open() (TOCTOU-free). Unknown schema
-    version → not edited (unedited wire supplies structure via build_from_report).
+    The Tomo-Editor works from the JSON, so it flips a top-level ``approved: true``
+    on "ready for /inbox" (parallel to the markdown ``- [x] Approved`` box). When
+    set, the JSON channel is authoritative and Pass-2 routes to build_from_wire
+    regardless of digest — otherwise an editor-approved run that changed NO apply
+    decision (digest still matches emit) would route to build_from_report and read
+    an empty markdown, applying nothing (spec 030 edge case).
+    """
+    return bool(wire.get("approved"))
+
+
+def _is_wire_edited(wire: dict) -> bool:
+    """True iff an already-loaded wire dict is schema-v1 AND the JSON is authoritative.
+
+    Authoritative = the user changed an apply decision (the recomputed garden-audit
+    digest over selected/repoint/replace/file_under differs from the stored
+    emit_digest, or there is no stored digest) OR the wire is JSON-approved
+    (top-level ``approved: true``). Tomo-generated fields (decision.candidates),
+    the editor's suggest_requested flag, and the approved gate itself are EXCLUDED
+    from the digest — only a real apply-decision change flips it (spec 030). The
+    approved gate additionally forces the JSON path so an all-default editor
+    approval still applies fixes. Operates on a dict already in memory — no file
+    read — so main() decides routing from the single _load_raw_wire result without
+    a second open() (TOCTOU-free). Unknown schema version → not authoritative
+    (unedited wire supplies structure via build_from_report).
     """
     if wire.get("schema_version") != "1":
         return False
+    if _wire_is_json_approved(wire):
+        return True
     stored = wire.get("emit_digest")
-    return not (stored and compute_payload_digest(wire) == stored)
+    return not (stored and compute_garden_audit_digest(wire) == stored)
 
 
 def load_changed_wire(path: str | None) -> dict | None:
-    """Return the garden-audit wire iff present, parseable, schema_version=="1", AND edited.
+    """Return the garden-audit wire iff present, parseable, schema_version=="1", AND authoritative.
 
-    Edited = the recomputed digest over the editable payload differs from the
-    stored emit_digest. Unchanged / absent / unreadable / unknown-version → None.
-    Mirrors suggestion-parser.load_changed_wire (ADR-026). Thin file-loading
-    wrapper over _is_wire_edited for callers that only have a path.
+    Authoritative = an apply decision changed (garden-audit digest mismatch over
+    selected/repoint/replace/file_under) OR the wire is JSON-approved. Unchanged /
+    absent / unreadable / unknown-version → None. Mirrors
+    suggestion-parser.load_changed_wire (ADR-026). Thin file-loading wrapper over
+    _is_wire_edited for callers that only have a path.
     """
     if not path:
         return None
@@ -398,23 +420,36 @@ def build_from_wire(wire: dict) -> dict:
         detail = finding.get("detail") or {}
 
         if check in ("unparented", "orphan"):
+            # file_note target precedence (Q2): an explicit decision.file_under
+            # value ALWAYS wins > the scan's candidate_mocs[0] > skip. The wire's
+            # decision.candidates is DISPLAY-ONLY (the editor renders it for the
+            # user to pick from) and is NEVER auto-applied — only the value the
+            # editor commits into file_under is read here.
+            user_moc = _wikilink_target(decision.get("file_under", ""))
             mocs = detail.get("candidate_mocs") or []
-            if not mocs:
+            scan_moc_path = mocs[0].get("target_moc", "") if mocs else ""
+            if user_moc:
+                target_moc = user_moc
+                target_moc_path = None  # user-chosen stem; resolver fills the path
+            elif scan_moc_path:
+                target_moc = bare_stem(scan_moc_path)
+                target_moc_path = scan_moc_path
+            else:
                 print(
                     f"warning: garden-audit-parser: finding {fid!r} ({path!r}) "
-                    "selected for filing but has no candidate_mocs — skipping",
+                    "selected for filing but has no file_under value and no "
+                    "candidate_mocs — skipping",
                     file=sys.stderr,
                 )
                 continue
-            best = mocs[0].get("target_moc", "")
             confirmed.append({
                 "id": fid,
                 "garden_check": check,
                 "garden_action": "file_note",
                 "path": path,
                 "stem": stem,
-                "target_moc": bare_stem(best),
-                "target_moc_path": best or None,
+                "target_moc": target_moc,
+                "target_moc_path": target_moc_path,
             })
 
         elif check == "broken_up":

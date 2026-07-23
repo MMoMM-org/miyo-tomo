@@ -260,14 +260,16 @@ class TestBuildFromWireBrokenUp:
         assert items[0]["garden_action"] == "add_relationship"
         assert items[0]["up_line"] == "up:: [[Old MOC]]"
 
-    def test_selected_broken_up_removal_emits_edit_note_text(self):
+    def test_selected_broken_up_removal_emits_remove_up_link(self):
+        # Link-only removal (user decision 2026-07-23): the broken link is
+        # removed from the up:: line — no whole-line literal match anymore.
         items = build_from_wire(_make_wire([_broken_up_removal(selected=True)]))["confirmed_items"]
         assert len(items) == 1
         c = items[0]
-        assert c["garden_action"] == "edit_note_text"
+        assert c["garden_action"] == "remove_up_link"
         assert c["path"] == "Notes/Broken.md"
-        assert "up::" in c["match"]
-        assert c["replace"] == ""
+        assert c["link"] == "Deleted MOC"
+        assert "match" not in c and "replace" not in c
 
     def test_unselected_broken_up_emits_no_item(self):
         assert build_from_wire(_make_wire([_broken_up_removal(selected=False)]))["confirmed_items"] == []
@@ -359,16 +361,21 @@ class TestBrokenUpListTarget:
             decision={"selected": True, "action": "edit_note_text"},
         )
 
-    def test_removal_match_reconstructs_frontmatter_line(self):
+    def test_removal_link_from_list_up_target(self):
+        # Legacy list-shaped up_target → bare first stem, never a list-repr.
         c = build_from_wire(_make_wire([self._list_removal()]))["confirmed_items"][0]
-        assert c["match"] == "up:: [[020 Active MOC]]"
-        assert "[[[" not in c["match"]
+        assert c["garden_action"] == "remove_up_link"
+        assert c["link"] == "020 Active MOC"
+        assert "[" not in c["link"]
 
-    def test_multi_target_up_list_joins_all(self):
+    def test_multi_target_up_list_takes_first(self):
+        # Defensive: a multi-value up_target list yields the FIRST stem as the
+        # link to remove (the scan emits singular broken stems; list shape is a
+        # legacy-cache artifact).
         f = self._list_removal()
         f["detail"]["up_target"] = ["020 Active MOC", "030 Reference MOC"]
         c = build_from_wire(_make_wire([f]))["confirmed_items"][0]
-        assert c["match"] == "up:: [[020 Active MOC]], [[030 Reference MOC]]"
+        assert c["link"] == "020 Active MOC"
 
 
 # ---------------------------------------------------------------------------
@@ -594,8 +601,8 @@ class TestBuildFromReportWithPick:
     def test_no_pick_no_type_broken_up_is_removal(self):
         md, wire = _enriched_broken_up_report("F01")
         c = build_from_report(md, wire)["confirmed_items"][0]
-        assert c["garden_action"] == "edit_note_text"
-        assert c["replace"] == ""
+        assert c["garden_action"] == "remove_up_link"
+        assert c["link"]
 
 
 # ---------------------------------------------------------------------------
@@ -706,22 +713,21 @@ class TestBuildFromReport:
         assert c["target_moc"] == "Writing MOC"         # from wire candidate_mocs
         assert c["target_moc_path"] == "MOCs/Writing MOC.md"
 
-    def test_broken_up_removal_match_from_wire_up_target(self):
+    def test_broken_up_removal_link_from_wire_up_target(self):
         md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_removal("F02")]))
         c = build_from_report(md, wire)["confirmed_items"][0]
-        assert c["garden_action"] == "edit_note_text"
+        assert c["garden_action"] == "remove_up_link"
         assert c["path"] == "Notes/Broken Note.md"      # from wire
-        assert c["match"] == "up:: [[Deleted MOC]]"     # from wire up_target
-        assert c["replace"] == ""
-        assert c["occurrence"] == "first"
+        assert c["link"] == "Deleted MOC"               # from wire up_target
+        assert "match" not in c and "replace" not in c
 
     def test_broken_up_list_up_target_from_wire(self):
         f = _doc_finding_broken_up_removal("F02")
         f["detail"]["up_target"] = ["020 Active MOC", "030 Reference MOC"]
         md, wire = _report_and_wire(_make_doc([f]))
         c = build_from_report(md, wire)["confirmed_items"][0]
-        assert c["match"] == "up:: [[020 Active MOC]], [[030 Reference MOC]]"
-        assert "[[[" not in c["match"] and "['" not in c["match"]
+        assert c["link"] == "020 Active MOC"            # first stem, bare
+        assert "[" not in c["link"] and "'" not in c["link"]
 
     def test_dead_link_match_from_wire_empty_replace(self):
         md, wire = _report_and_wire(_make_doc([_doc_finding_dead_link("F04")]))
@@ -778,9 +784,8 @@ class TestBuildFromReport:
     def test_empty_repoint_falls_back_to_removal(self):
         md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_repoint("F03")]))
         c = build_from_report(md, wire)["confirmed_items"][0]
-        assert c["garden_action"] == "edit_note_text"
-        assert c["match"] == "up:: [[Old MOC]]"          # from wire up_target
-        assert c["replace"] == ""
+        assert c["garden_action"] == "remove_up_link"
+        assert c["link"] == "Old MOC"                    # from wire up_target
 
     def test_removal_finding_offers_repoint_field_and_fills_to_add_rel(self):
         # A broken_up finding (action=edit_note_text) renders the Repoint field;
@@ -837,17 +842,19 @@ class TestEndToEndApprovedReportToActions:
         ids = {c["id"] for c in self._items()}
         assert ids == {"F01", "F02", "F03", "F04"}  # F05 advisory excluded
 
-    def test_actions_contain_edit_note_text_for_dead_link_and_broken_up(self):
+    def test_actions_for_dead_link_and_broken_up_removals(self):
         actions = build_garden_audit_actions(self._items())
         edits = [a for a in actions if a["action"] == "edit_note_text"]
-        assert len(edits) == 2
-        by_match = {a["match"]: a for a in edits}
-        assert "[[Missing Note]]" in by_match
-        assert "up:: [[Deleted MOC]]" in by_match
+        assert len(edits) == 1
         # dead_link removal UNLINKS: keep the text, drop the [[ ]] → replace=text.
-        assert by_match["[[Missing Note]]"]["replace"] == "Missing Note"
-        # broken_up removal deletes the WHOLE up:: line → replace="" (unchanged).
-        assert by_match["up:: [[Deleted MOC]]"]["replace"] == ""
+        assert edits[0]["match"] == "[[Missing Note]]"
+        assert edits[0]["replace"] == "Missing Note"
+        # broken_up removal is now LINK-ONLY: a remove_up_link action, not a
+        # whole-line edit_note_text (which silently no-opped on multi-link lines).
+        removes = [a for a in actions if a["action"] == "remove_up_link"]
+        assert len(removes) == 1
+        assert removes[0]["link"] == "Deleted MOC"
+        assert removes[0]["path"] == "Notes/Broken Note.md"
 
     def test_actions_contain_add_relationship_for_repoint_and_filing(self):
         actions = build_garden_audit_actions(self._items())
@@ -872,9 +879,12 @@ class TestEndToEndApprovedReportToActions:
         for a in actions:
             assert a["applied"] is False
 
-    def test_edit_note_text_path_is_the_note_path(self):
+    def test_edit_actions_carry_the_note_path(self):
         actions = build_garden_audit_actions(self._items())
-        paths = {a["path"] for a in actions if a["action"] == "edit_note_text"}
+        paths = {
+            a["path"] for a in actions
+            if a["action"] in ("edit_note_text", "remove_up_link")
+        }
         assert paths == {"Notes/Source Note.md", "Notes/Broken Note.md"}
 
     def test_empty_confirmed_items_yields_no_actions(self):

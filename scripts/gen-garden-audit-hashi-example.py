@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """gen-garden-audit-hashi-example.py — generate + validate the real garden-audit
-edit_note_text instruction-set example for the Phase-6 Hashi handoff (spec 030).
+instruction-set example (edit_note_text + remove_up_link + add_relationship +
+link_to_moc) for the Hashi handoffs (spec 030).
 
 Example-driven, no hand-authored JSON: builds a representative garden-audit doc
 covering every fixable ACTION path, renders BOTH artifacts (report .md + wire
@@ -76,7 +77,7 @@ def _representative_doc() -> dict:
             _finding("F01", "broken_up", "integrity", "021 Fleeting MOC.md",
                      "021 Fleeting MOC", {"up_target": "['020 Active MOC']"},
                      "edit_note_text"),
-            # broken_up — user leaves Repoint empty (→ edit_note_text up:: removal).
+            # broken_up — user leaves Repoint empty (→ remove_up_link, link-only).
             _finding("F02", "broken_up", "integrity", "022 Placeholders MOC.md",
                      "022 Placeholders MOC", {"up_target": "['021 Fleeting MOC']"},
                      "edit_note_text"),

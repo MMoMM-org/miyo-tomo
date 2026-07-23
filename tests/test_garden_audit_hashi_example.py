@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_garden_audit_hashi_example.py — pin the Phase-6 Hashi handoff example.
 
 The handoff doc (_outbox/for-hashi/…garden-audit-edit-note-text.md) embeds a REAL
@@ -8,8 +8,8 @@ hashi-instructions.schema.json. This test locks the generator (scripts/gen-garde
 hashi-example.py) so the doc's example can't silently drift from the shipped code:
   - it runs the real render → build_from_report → build_garden_audit_actions path,
   - the resulting instruction-set VALIDATES against the shipped Hashi schema,
-  - it covers all three garden-audit action kinds (edit_note_text, add_relationship,
-    link_to_moc) with the exact edit_note_text semantics the doc describes.
+  - it covers all four garden-audit action kinds (edit_note_text, remove_up_link,
+    add_relationship, link_to_moc) with the exact semantics the doc describes.
 """
 from __future__ import annotations
 
@@ -66,10 +66,12 @@ def test_example_validates_against_hashi_schema():
     jsonschema.validate(instance=_build_instructions(), schema=schema)  # raises on failure
 
 
-def test_example_covers_all_three_action_kinds():
+def test_example_covers_all_four_action_kinds():
     actions = _build_instructions()["actions"]
     kinds = {a["action"] for a in actions}
-    assert kinds == {"edit_note_text", "add_relationship", "link_to_moc"}
+    assert kinds == {
+        "edit_note_text", "remove_up_link", "add_relationship", "link_to_moc",
+    }
 
 
 def test_edit_note_text_semantics():
@@ -84,11 +86,18 @@ def test_edit_note_text_semantics():
     dead_remove = edits["[[024 Thinking About MOC]]"]
     assert dead_remove["replace"] == "024 Thinking About MOC"
     assert dead_remove["occurrence"] == "all"
-    # broken-up up:: REMOVAL: whole-line match, replace "" (delete the line),
-    # occurrence first — UNCHANGED by the de-link semantics.
-    up_remove = edits["up:: [[021 Fleeting MOC]]"]
-    assert up_remove["replace"] == ""
-    assert up_remove["occurrence"] == "first"
+
+
+def test_remove_up_link_semantics():
+    # broken-up empty=remove is LINK-ONLY (user decision 2026-07-23): a
+    # remove_up_link action carrying the bare broken stem — Hashi removes the
+    # link (+ dangling separator) from the up:: line, drops the line only when
+    # it was the last link.
+    actions = _build_instructions()["actions"]
+    removes = [a for a in actions if a["action"] == "remove_up_link"]
+    assert len(removes) == 1
+    assert removes[0]["path"] == "022 Placeholders MOC.md"
+    assert removes[0]["link"] == "021 Fleeting MOC"
 
 
 def test_repoint_is_add_relationship_not_edit():

@@ -168,7 +168,11 @@ no links at all; **unparented** = a note with links but no `up::` parent.
     render into the existing instruction-set format and apply through Hashi — no new apply path.
   - [ ] Given a broken `up::` finding, When the report renders, Then it offers an editable
     `- **Repoint to:** [[]]` field so the user can repoint `up::` to a chosen MOC, or leave it
-    empty to remove the broken line (repoint is not removal-only).
+    empty to remove ONLY the broken link from the `up::` line (revised 2026-07-23 from
+    whole-line removal, user decision via Tomo-Editor QA: the line is dropped only when the
+    removed link was the last one — healthy links sharing the line survive, and the whole-line
+    literal match that silently no-opped on multi-link lines is gone; emitted as the
+    `remove_up_link` action).
   - [ ] Given a fixable `dead_link` or `broken_up` finding, When the report renders, Then it also
     carries a SEPARATE `- [ ] Suggest targets` opt-in box, decoupled from Apply (Phase 7, D1);
     Pass-1 does zero per-finding candidate computation — the box is static (D2).

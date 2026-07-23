@@ -1161,6 +1161,60 @@ review. Hashi MUST treat them independently:
 **Execution:** nothing. Tomo Hashi may still surface it in the UI as
 "skipped" for transparency, but it's not an executable action.
 
+### `edit_note_text` — literal match/replace in a note body
+
+Introduced by spec 030 (garden-audit, ADR-3). Emitted for dead-link fixes and
+removals.
+
+```json
+{
+  "id": "I11",
+  "action": "edit_note_text",
+  "path": "020 Active MOC.md",
+  "match": "[[023 Sparks MOC]]",
+  "replace": "[[023 Sparks (MOC)]]",
+  "occurrence": "all"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `path` | string | Vault-relative note to edit (`.md`). |
+| `match` | string | Exact literal text to locate in the body. |
+| `replace` | string | Replacement. Empty string removes the matched text (and the now-empty line when the match covered a whole line). |
+| `occurrence` | `"first"` \| `"all"` | Default `"first"`. |
+
+**Execution:** literal string replace — no regex, no normalization. On
+no-match: skip and report (no error, no partial write). Semantics per case:
+dead-link FIX carries a wikilink `replace`; dead-link REMOVE carries the inner
+text as `replace` (unlink: keeps the word, drops the `[[ ]]`).
+
+### `remove_up_link` — remove one link from the up:: line
+
+Introduced 2026-07-23 (link-only removal, user decision — replaces the earlier
+whole-line `edit_note_text` construction for broken_up empty=remove, which
+silently no-opped on multi-link `up::` lines).
+
+```json
+{
+  "id": "I12",
+  "action": "remove_up_link",
+  "path": "022 Placeholders MOC.md",
+  "link": "021 Fleeting MOC"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `path` | string | Vault-relative note whose `up::` line is edited (`.md`). |
+| `link` | string | Bare stem of the link to remove — no `[[ ]]`. |
+
+**Execution:** locate the `up::` line with the same marker regex used by
+`add_relationship`; remove the `[[link]]` occurrence on that line INCLUDING a
+dangling separator (`up:: [[A]], [[X]]` → `up:: [[A]]`); delete the whole line
+ONLY when no links remain (`up:: [[X]]` → line removed). On no-match (no `up::`
+line, or the link is not on it): skip and report — no error, no partial write.
+
 ---
 
 ## Worked example (abridged)

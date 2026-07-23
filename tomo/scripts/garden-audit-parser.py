@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.0
+# version: 0.9.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -34,22 +34,47 @@ confirmed_item shape (per fixable finding the user kept):
   {
     "id", "garden_check", "garden_action",
     "path", "stem",
-    # edit_note_text (dead_link fix/remove, broken_up removal):
+    # edit_note_text (dead_link fix/remove):
     "match", "replace", "occurrence",
+    # remove_up_link (broken_up empty=remove — link-only removal):
+    "link",
     # add_relationship (broken_up repoint, filing up::):
     "up_line",
     # file_note (unparented/orphan filing):
     "target_moc", "target_moc_path",
   }
 
-garden_action ∈ {edit_note_text, add_relationship, file_note}.
-Advisory findings (duplicate_stem, stale_moc) never produce a confirmed_item.
+garden_action ∈ {edit_note_text, remove_up_link, add_relationship, file_note}.
+Advisory findings (duplicate_stem, stale_moc) never produce a confirmed_item
+(but acknowledged ones land in acked_advisories).
 """
 import json
 import re
 import sys
 
-from lib.render_md import bare_stem, compute_garden_audit_digest, up_line
+from lib.render_md import (
+    bare_stem,
+    compute_garden_audit_digest,
+    unwrap_list_repr,
+    up_line,
+)
+
+
+def _up_link_stem(up_target) -> str:
+    """Bare stem of the broken up:: target (str | list | dirty list-repr).
+
+    The wire schema declares up_target as the broken stem (string), but the
+    graph cache historically stores up:: as a multi-value list and dirty caches
+    carry stringified list-reprs — normalize all shapes to one bare stem for
+    the remove_up_link `link` field (no [[ ]]).
+    """
+    value = unwrap_list_repr(up_target)
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    s = str(value or "").strip()
+    if s.startswith("[[") and s.endswith("]]"):
+        s = s[2:-2].strip()
+    return s
 
 
 # ── Wire load ────────────────────────────────────────────────────────────────
@@ -330,16 +355,17 @@ def _confirmed_item_from_wire_finding(finding: dict, decision_md: dict) -> dict 
                 "stem": stem,
                 "up_line": up_line(repoint),
             }
-        # Empty / absent Repoint → remove the broken up:: line (edit_note_text).
+        # Empty / absent Repoint → remove ONLY the broken link from the up:: line
+        # (remove_up_link, link-only semantics — user decision 2026-07-23). The
+        # earlier whole-line edit_note_text match silently no-opped on multi-link
+        # up:: lines; Hashi edits the real line with body access instead.
         return {
             "id": fid,
             "garden_check": check,
-            "garden_action": "edit_note_text",
+            "garden_action": "remove_up_link",
             "path": path,
             "stem": stem,
-            "match": up_line(detail.get("up_target", "")),
-            "replace": "",
-            "occurrence": "first",
+            "link": _up_link_stem(detail.get("up_target", "")),
         }
 
     if check in ("unparented", "orphan"):
@@ -508,15 +534,16 @@ def build_from_wire(wire: dict) -> dict:
                     "up_line": up_line(target),
                 })
             elif action_name == "edit_note_text":
+                # Wire remove intent (decision.action stays "edit_note_text" —
+                # Hashi contract unchanged) → link-only removal, same semantics
+                # as the report path.
                 confirmed.append({
                     "id": fid,
                     "garden_check": check,
-                    "garden_action": "edit_note_text",
+                    "garden_action": "remove_up_link",
                     "path": path,
                     "stem": stem,
-                    "match": up_line(up_target),
-                    "replace": "",
-                    "occurrence": "first",
+                    "link": _up_link_stem(up_target),
                 })
             # Unknown action name → skip (forward-compat)
 

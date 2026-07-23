@@ -196,3 +196,21 @@ read-only paths (tests, diffs, dry parses) — writing a ledger there would push
 the user never applied. Only the synthesis-conductor's Pass-2 apply invocation passes the flag.
 Window days come from `--exclusions` settings (`advisory_pushback_days`, default 30); the ledger
 write itself is `garden_exclusions.stamp_pushback` (upsert + prune — single owner of the format).
+
+## Version 0.9.0 — broken_up empty=remove is link-only (remove_up_link, 2026-07-23)
+
+WHY both broken_up remove branches now emit `{garden_action: "remove_up_link", link: <stem>}`
+instead of the whole-line `edit_note_text` match/replace triple: the constructed match
+(`up_line(up_target)` → `up:: [[Broken]]`) never literal-matched a real MULTI-link up:: line
+(`up:: [[A]], [[Broken]]`) — Hashi's executor found no match and the fix silently no-opped
+(Hashi handoff 2026-07-23). And even with matching, whole-line removal would have deleted
+healthy links sharing the line. User decision (Tomo-Editor QA): remove ONLY the broken link;
+the line is dropped only when it was the last one. The parser cannot construct that edit
+literally (it never sees the note body) — so the semantic is delegated to Hashi via the new
+`remove_up_link` action (path + bare link stem), executed with body access: marker-regex line
+location (same as add_relationship), separator-safe link removal, delete-line-when-empty,
+skip-and-report on no-match. `_up_link_stem` normalizes the wire's up_target defensively
+(str | legacy list | dirty list-repr → first bare stem). The wire's `decision.action` value
+stays "edit_note_text" — Hashi's editor contract is unchanged; only Tomo's Pass-2 output moved.
+The former up_line renderer-parity concern is void — the two-artifact split removed the
+structural comment, and now the remove path no longer uses up_line at all (docstring fixed).

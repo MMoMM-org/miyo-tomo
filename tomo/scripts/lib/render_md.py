@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.5.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -31,7 +31,7 @@ def _md_section_for(action: dict) -> str:
     kind = action["action"]
     if kind in ("move_note", "create_moc"):
         return "new_files"
-    if kind in ("link_to_moc", "add_relationship"):
+    if kind in ("link_to_moc", "add_relationship", "edit_note_text", "remove_up_link"):
         return "moc_links"
     if kind in ("update_tracker", "update_log_entry", "update_log_link"):
         return "daily_updates"
@@ -196,6 +196,31 @@ def _render_action_md(action: dict, cfg: dict) -> str:
             lines.append(f"  > {content_line}")
         return "\n".join(lines)
 
+    if kind == "edit_note_text":
+        target = action.get("path", "")
+        occurrence = action.get("occurrence", "first")
+        replace = action.get("replace", "")
+        verb = "Replace" if replace else "Remove"
+        lines = [f"{heading_prefix}{verb} text in [[{_stem(target)}]]", "- [ ] Applied"]
+        lines.append(f"- **Note:** [[{_stem(target)}]]")
+        lines.append(f"- **Match:** `{action.get('match', '')}` ({occurrence} occurrence)")
+        if replace:
+            lines.append(f"- **Replace with:** `{replace}`")
+        else:
+            lines.append("- **Replace with:** (removed)")
+        return "\n".join(lines)
+
+    if kind == "remove_up_link":
+        target = action.get("path", "")
+        link = action.get("link", "")
+        lines = [
+            f"{heading_prefix}Remove broken up:: link [[{link}]] from [[{_stem(target)}]]",
+            "- [ ] Applied",
+        ]
+        lines.append(f"- **Note:** [[{_stem(target)}]]")
+        lines.append(f"- **Link to remove:** `[[{link}]]` (up:: line only; line is dropped when it was the last link)")
+        return "\n".join(lines)
+
     # Fallback — unknown action type
     return f"{heading_prefix}(unknown action: {kind})\n- [ ] Applied"
 
@@ -341,10 +366,11 @@ def up_line(up_target) -> str:
     empties) so the reconstructed frontmatter line is exact — never a list repr.
     Also defensively unwraps a stringified list-repr (dirty cache) before formatting.
 
-    Shared by garden-audit-render (structural comment `match`) and
-    garden-audit-parser (edit_note_text removal `match`). Parity-locked: if the
-    two sides diverge, the comment's match no longer matches what the parser
-    reconstructs and the fix silently no-ops. Single home enforces parity.
+    Consumers: garden-audit-parser's add_relationship paths (broken_up repoint +
+    filing) — it reconstructs the full replacement up:: line for Hashi's
+    marker-located line replace. (The former renderer structural-comment parity
+    ended with the spec-030 two-artifact split; broken_up empty=remove no longer
+    uses up_line either — it emits a link-only remove_up_link action.)
     """
     up_target = unwrap_list_repr(up_target)
     raw = up_target if isinstance(up_target, (list, tuple)) else [up_target]

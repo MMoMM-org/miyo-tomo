@@ -65,7 +65,8 @@
           {"$ref": "#/$defs/create_moc"},
           {"$ref": "#/$defs/delete_source"},
           {"$ref": "#/$defs/skip"},
-          {"$ref": "#/$defs/edit_note_text"}
+          {"$ref": "#/$defs/edit_note_text"},
+          {"$ref": "#/$defs/remove_up_link"}
         ]
       }
     }
@@ -294,6 +295,19 @@
           "default": "first",
           "description": "Which occurrence(s) to replace. 'first' (default) replaces only the first match; 'all' replaces every occurrence."
         },
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "remove_up_link": {
+      "type": "object",
+      "required": ["id", "action", "path", "link"],
+      "additionalProperties": false,
+      "description": "Remove ONE link from the note's up:: line (broken_up empty=remove, link-only semantics — user decision 2026-07-23). Hashi locates the up:: line with the same marker regex as add_relationship, removes the [[link]] occurrence on that line INCLUDING a dangling separator (e.g. 'up:: [[A]], [[X]]' → 'up:: [[A]]'), and deletes the whole line ONLY when no links remain ('up:: [[X]]' → line removed). Skip-and-report on no-match (no up:: line, or link not on it) — no error, no partial write. Replaces the earlier whole-line edit_note_text construction, which silently no-opped on multi-link up:: lines.",
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "remove_up_link"},
+        "path": {"type": "string", "description": "Vault-relative path of the note whose up:: line is edited (.md)."},
+        "link": {"type": "string", "description": "Bare stem of the link to remove from the up:: line, e.g. 'Deleted MOC' (no [[ ]])."},
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     }

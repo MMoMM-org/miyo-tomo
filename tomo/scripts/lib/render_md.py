@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.3.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -245,9 +245,10 @@ def compute_payload_digest(payload: dict) -> str:
 
 # garden-audit: the apply-decision fields a USER edits (spec 030 Tomo-Editor).
 # The change-detection digest is computed over ONLY these per-finding decision
-# keys, so Tomo-generated fields (candidates), the editor's request flag
-# (suggest_requested), the top-level approve gate (approved) and read-only
-# structure (detail) never make the wire look "user-edited".
+# keys, so Tomo-generated fields (candidates, the suggested ran-marker), the
+# editor's request flag (suggest_requested), the top-level approve gate
+# (approved) and read-only structure (detail) never make the wire look
+# "user-edited".
 _GARDEN_APPLY_DECISION_KEYS = ("selected", "repoint", "replace", "file_under")
 
 
@@ -255,8 +256,9 @@ def compute_garden_audit_digest(payload: dict) -> str:
     """Return 'sha256:<hex>' over the garden-audit APPLY-decision fields only.
 
     Distinct from compute_payload_digest (which hashes the whole editable payload):
-    the garden-audit wire carries Tomo-generated data (decision.candidates) and
-    editor-signal fields (decision.suggest_requested, top-level approved) that must
+    the garden-audit wire carries Tomo-generated data (decision.candidates,
+    decision.suggested) and editor-signal fields (decision.suggest_requested,
+    top-level approved) that must
     NOT flip the change signal — only a user changing an apply decision
     (selected / repoint / replace / file_under) counts as "edited". This projects
     each finding to (id, apply-decision-keys-that-are-present) and hashes that

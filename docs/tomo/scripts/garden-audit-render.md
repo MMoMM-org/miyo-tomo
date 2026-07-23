@@ -37,6 +37,18 @@ the markdown pick lists and the wire `candidates` are always derived from the sa
 are selected for enrichment from the UNION of markdown Suggest ticks and wire `suggest_requested`.
 `{target,score}` from the suggest helpers is mapped to the wire's `{stem,score}` shape.
 
+WHY `enrich_wire_with_candidates` also stamps `decision.suggested: true` and returns
+`(wire, processed)` (0.10.0, 2026-07-23 Hashi handoff): without a ran-marker, a finding awaiting a
+suggest run and one whose run returned empty were wire-identical
+(`{suggest_requested: true, candidates: []}`) — the Tomo-Editor could not render its
+"no suggestions found" state (Hashi spec-005 T5.4). The marker is stamped on every processed
+finding regardless of candidate count and CLEARED (`pop`) on findings not requested in the latest
+run — mirroring the candidates-clearing so un-ticking restores the default state on re-run.
+`suggested` is excluded from `compute_garden_audit_digest` by construction (apply-decision
+allowlist), so stamping never makes the wire read user-edited. The `processed` count feeds
+`garden-audit-suggest.py`'s honest enriched-count contract (a zero-candidate run still changed
+both artifacts and must be re-uploaded — see docs/tomo/scripts/garden-audit-suggest.md 0.4.0).
+
 ## Both Artifacts from One Dict — No Drift by Construction (ADR-4)
 
 WHY the report and the wire are both projected from the same in-memory `d` dict without

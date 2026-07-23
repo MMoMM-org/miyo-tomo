@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.4.0
 """garden-audit-suggest.py — `--suggest` second-pass helper (spec 030 T7.4).
 
 The garden-auditor agent invokes this when the user has requested LLM candidates
@@ -9,12 +9,13 @@ Tomo-Editor's wire `decision.suggest_requested: true` — and re-runs
 
   1. reads the in-vault report `.md`, its wire `.json`, and the MOC-structure cache,
   2. enriches the requested blocks with a candidate `Pick one:` list in the MARKDOWN
-     (human channel) AND writes decision.candidates=[{stem,score}] into the WIRE
-     (Hashi's channel) — both SSoT'd via garden-audit-render helpers,
-  3. leaves the wire's emit_digest UNTOUCHED — candidates are excluded from the
-     change-detection digest, so the original Tomo baseline stays correct and a
-     pre-existing user apply-edit is never clobbered,
-  4. writes the enriched report AND wire for the agent to re-upload via
+     (human channel) AND writes decision.candidates=[{stem,score}] plus the
+     decision.suggested ran-marker into the WIRE (Hashi's channel) — both SSoT'd
+     via garden-audit-render helpers,
+  3. leaves the wire's emit_digest UNTOUCHED — candidates/suggested are excluded
+     from the change-detection digest, so the original Tomo baseline stays correct
+     and a pre-existing user apply-edit is never clobbered,
+  4. writes the enriched report AND wire for the agent to re-upload BOTH via
      kado-write-file (no new external surface — the agent owns transport).
 
 Mirrors garden-audit-configure.py as a deterministic mode-support helper: no LLM,
@@ -76,16 +77,22 @@ def _load_cache_entries(path: str) -> list[dict]:
 
 def run_suggest(
     report_path: str, wire_path: str, cache_path: str
-) -> tuple[str, dict | None]:
-    """Read report + wire + cache → (enriched report string, enriched wire | None).
+) -> tuple[str, dict | None, int, int]:
+    """Read report + wire + cache → (report, wire | None, processed, with_candidates).
 
     The enriched report carries the markdown pick lists (human channel); the
-    enriched wire carries decision.candidates (Hashi's channel). Findings are
-    selected for enrichment from EITHER the markdown Suggest ticks OR the wire's
-    decision.suggest_requested. The wire's emit_digest is left UNTOUCHED — the
-    original Tomo baseline is preserved (candidates are excluded from the digest,
-    so re-stamping is both unnecessary and would clobber a pre-existing user edit).
-    Returns wire=None when the wire was unreadable (report still returned).
+    enriched wire carries decision.candidates + the decision.suggested ran-marker
+    (Hashi's channel). Findings are selected for enrichment from EITHER the
+    markdown Suggest ticks OR the wire's decision.suggest_requested.
+    ``processed`` counts the findings enriched this run — INCLUDING those whose
+    candidate list came back empty (they get the marker + a markdown
+    no-suggestions note, so both artifacts still change and must be re-uploaded).
+    ``with_candidates`` counts the processed findings that got ≥1 candidate.
+    The wire's emit_digest is left UNTOUCHED — the original Tomo baseline is
+    preserved (candidates/suggested are excluded from the digest, so re-stamping
+    is both unnecessary and would clobber a pre-existing user edit).
+    Returns wire=None when the wire was unreadable (report still returned;
+    counts then fall back to the markdown pick-list count).
     """
     with open(report_path, encoding="utf-8") as fh:
         report_md = fh.read()
@@ -95,10 +102,12 @@ def run_suggest(
     enriched_report = _render.enrich_report_with_suggestions(report_md, wire, entries)
 
     if not wire:
-        return enriched_report, None
+        # Degraded mode: no wire to stamp — approximate from the markdown channel.
+        n_picks = enriched_report.count("Pick one")
+        return enriched_report, None, n_picks, n_picks
 
     requested = _render._suggest_requested_ids(report_md, wire)
-    wire = _render.enrich_wire_with_candidates(wire, entries, requested)
+    wire, processed = _render.enrich_wire_with_candidates(wire, entries, requested)
     # Do NOT re-stamp emit_digest. candidates are already EXCLUDED from
     # compute_garden_audit_digest, so writing them never changes the digest. The
     # original Tomo baseline stays correct: an unedited wire still matches (not
@@ -106,7 +115,14 @@ def run_suggest(
     # still mismatches (edited). Re-stamping would overwrite the baseline with the
     # edited state, so _is_wire_edited would later read False and SILENTLY DISCARD
     # the user's apply-edit (routing Pass-2 to the empty markdown).
-    return enriched_report, wire
+    with_candidates = sum(
+        1
+        for f in wire.get("findings") or []
+        if isinstance(f.get("decision"), dict)
+        and f["decision"].get("suggested")
+        and f["decision"].get("candidates")
+    )
+    return enriched_report, wire, processed, with_candidates
 
 
 def main() -> int:
@@ -141,7 +157,9 @@ def main() -> int:
     args = p.parse_args()
 
     try:
-        enriched, enriched_wire = run_suggest(args.report, args.wire, args.cache)
+        enriched, enriched_wire, processed, with_candidates = run_suggest(
+            args.report, args.wire, args.cache
+        )
     except OSError as exc:
         print(f"error: garden-audit-suggest: cannot read report: {exc}", file=sys.stderr)
         return 1
@@ -161,9 +179,14 @@ def main() -> int:
             json.dumps(enriched_wire, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-    n_picks = enriched.count("Pick one")
+    # Count PROCESSED findings, not markdown pick lists: a requested finding with
+    # zero candidates still changed both artifacts (no-suggestions note + suggested
+    # marker) and must be re-uploaded — reporting it as 0 would make the agent
+    # stop and silently drop the enrichment.
     print(
-        f"garden-audit-suggest: enriched {n_picks} finding(s) → {output}",
+        f"garden-audit-suggest: enriched {processed} finding(s) "
+        f"({with_candidates} with candidates, {processed - with_candidates} without) "
+        f"→ {output}",
         file=sys.stderr,
     )
     return 0

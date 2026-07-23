@@ -27,11 +27,12 @@ package name.
 
 ## run_suggest() is pure file I/O for testability
 
-WHY the core is `run_suggest(report_path, wire_path, cache_path) -> str` (returns the enriched
-report, does not write): it lets tests exercise the join + enrichment without a subprocess or a
-Kado client. `main()` is the thin CLI shell that writes the result and prints the
+WHY the core is `run_suggest(report_path, wire_path, cache_path)` returning values (not
+writing): it lets tests exercise the join + enrichment without a subprocess or a
+Kado client. `main()` is the thin CLI shell that writes the results and prints the
 `enriched N finding(s)` count. This mirrors the mock-at-orchestrator testing posture used across
-the garden-audit scripts.
+the garden-audit scripts. (Return shape evolved: `str` → 0.3.0 `(report, wire)` → 0.4.0
+`(report, wire, processed, with_candidates)` — see the version sections below.)
 
 ## Graceful degrade on unreadable wire/cache
 
@@ -50,6 +51,34 @@ those exact `tomo-tmp/suggest-*` paths (via `kado-read-file`), then calls this s
 default-path standard). Enriching in place means the same file the agent re-uploads is the one it
 just enriched — no fourth path to thread. `--output` defaults to `None` and resolves to
 `args.report` in `main()` because argparse can't reference another arg's value at declaration.
+
+## Version 0.4.0 — suggested ran-marker + processed-count contract (2026-07-23 Hashi handoff)
+
+WHY `run_suggest` now returns `(report, wire, processed, with_candidates)` and the stderr line
+became `enriched N finding(s) (M with candidates, K without)`: two gaps surfaced by Hashi
+building the suggest-card states (spec-005 T5.4).
+
+**Ran-vs-pending was wire-identical (Gap A).** A finding *awaiting* a suggest run and one whose
+run *returned empty* both read `{suggest_requested: true, candidates: []}` — the editor could
+not render the PRD-required "no suggestions found" state. Fix: `enrich_wire_with_candidates`
+stamps `decision.suggested: true` on every finding it processed (whatever the candidate count)
+and clears the marker on findings not requested in the latest run (idempotency, mirroring the
+existing candidates-clearing). `suggest_requested` stays untouched — Hashi renders
+`suggest_requested && !suggested` → pending, `suggested && candidates==[]` → "no suggestions
+found", `candidates.length > 0` → chips. Reset-only (clearing `suggest_requested` post-run) was
+rejected as ambiguous against the initial state — Hashi's own analysis. `suggested` is excluded
+from `compute_garden_audit_digest` automatically (the digest projects only the apply-decision
+allowlist), so enrichment never reads as a user edit.
+
+**"Pick one"-counting suppressed zero-candidate uploads (Gap C, found during verification).**
+0.3.x reported `enriched N` by counting `"Pick one"` occurrences in the markdown; the agent
+stops on `N=0`. But a requested finding with zero candidates writes a no-suggestions note
+(markdown) and the `suggested` marker (wire) — both artifacts changed, yet N read 0, so the
+agent stopped and neither channel was ever uploaded. Fix: N counts PROCESSED findings
+(returned by `enrich_wire_with_candidates`); the `(M with candidates, K without)` split keeps
+the relayed message honest. Degraded mode (unreadable wire) falls back to the markdown
+pick-list count. Regression-pinned by
+`test_garden_audit_suggest.py::TestSuggestCli::test_cli_zero_candidate_run_still_counts_as_processed`.
 
 ## Version 0.3.1 — do NOT re-stamp emit_digest (preserve user apply-edits, 2026-07-22)
 

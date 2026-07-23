@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.2
+# version: 0.10.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -574,18 +574,24 @@ def _suggest_requested_ids(report_md: str, wire: dict) -> set[str]:
 
 def enrich_wire_with_candidates(
     wire: dict, entries: list[dict], requested_ids: set[str]
-) -> dict:
-    """Write decision.candidates=[{stem,score}] into the wire for requested findings.
+) -> tuple[dict, int]:
+    """Write decision.candidates=[{stem,score}] + the suggested ran-marker into the wire.
 
-    Mutates and returns ``wire``. For each fixable finding whose id is in
+    Mutates ``wire`` and returns ``(wire, processed)`` where ``processed`` counts
+    the findings enriched this run. For each fixable finding whose id is in
     ``requested_ids``, decision.candidates is set to the scored candidates
-    (SSoT via _candidates_for_block, mapped {target,score}→{stem,score}); every
-    other finding's candidates is cleared to [] so a re-run is idempotent. The
-    caller MUST NOT re-stamp emit_digest — candidates are excluded from
-    compute_garden_audit_digest, so the original baseline stays correct (and
-    re-stamping would clobber a pre-existing user apply-edit).
+    (SSoT via _candidates_for_block, mapped {target,score}→{stem,score}) AND
+    decision.suggested is stamped True — whatever the candidate count — so a
+    ran-and-empty finding (suggested:true, candidates:[]) is distinguishable
+    from one still awaiting a run (suggest_requested:true, no suggested).
+    Every other finding's candidates is cleared to [] and its suggested marker
+    removed so a re-run is idempotent (un-ticking returns the default state).
+    The caller MUST NOT re-stamp emit_digest — candidates and suggested are
+    excluded from compute_garden_audit_digest, so the original baseline stays
+    correct (and re-stamping would clobber a pre-existing user apply-edit).
     """
     note_stems, moc_entries = _split_cache_entries(entries)
+    processed = 0
     for finding in (wire or {}).get("findings") or []:
         decision = finding.get("decision")
         if not isinstance(decision, dict):
@@ -595,9 +601,12 @@ def enrich_wire_with_candidates(
             decision["candidates"] = [
                 {"stem": c["target"], "score": c["score"]} for c in cands
             ]
+            decision["suggested"] = True
+            processed += 1
         else:
             decision["candidates"] = []
-    return wire
+            decision.pop("suggested", None)
+    return wire, processed
 
 
 # ── Wire (ADR-4 / ADR-026) ───────────────────────────────────────────────────

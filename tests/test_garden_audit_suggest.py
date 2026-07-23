@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_garden_audit_suggest.py — Tests for garden-audit-suggest.py CLI (spec 030 T7.4).
 
 The `--suggest` second-pass helper: reads the in-vault report + wire + MOC-structure
@@ -78,14 +78,14 @@ class TestSuggestHelperFunction:
     def test_enrich_function_inserts_pick_list(self, tmp_path):
         doc = _doc([_dead_link_finding("F01")])
         rp, wp, cp = _write_inputs(tmp_path, doc, _DEAD_CACHE)
-        out, _wire = gas.run_suggest(str(rp), str(wp), str(cp))
+        out, _wire, _n, _m = gas.run_suggest(str(rp), str(wp), str(cp))
         assert "[[Missing Notes]]" in out
         assert "Pick one" in out
 
     def test_missing_cache_degrades_to_input_report(self, tmp_path):
         doc = _doc([_dead_link_finding("F01")])
         rp, wp, _ = _write_inputs(tmp_path, doc, _DEAD_CACHE)
-        out, _wire = gas.run_suggest(str(rp), str(wp), str(tmp_path / "nope.yaml"))
+        out, _wire, _n, _m = gas.run_suggest(str(rp), str(wp), str(tmp_path / "nope.yaml"))
         # No cache → no candidates, but the report is returned intact (no crash).
         assert "### F01 — Dead link" in out
         assert "Pick one" not in out
@@ -94,7 +94,7 @@ class TestSuggestHelperFunction:
         # _load_wire returns {} → no findings to join → all blocks preserved.
         doc = _doc([_dead_link_finding("F01")])
         rp, _, cp = _write_inputs(tmp_path, doc, _DEAD_CACHE)
-        out, wire = gas.run_suggest(str(rp), str(tmp_path / "nope.json"), str(cp))
+        out, wire, _n, _m = gas.run_suggest(str(rp), str(tmp_path / "nope.json"), str(cp))
         assert "### F01 — Dead link" in out
         assert "Pick one" not in out
         assert wire is None  # unreadable wire → no enriched wire emitted
@@ -114,6 +114,39 @@ class TestSuggestCli:
         assert rc.returncode == 0, rc.stderr
         enriched = out_path.read_text(encoding="utf-8")
         assert "[[Missing Notes]]" in enriched
+
+    def test_cli_reports_with_candidates_split(self, tmp_path):
+        doc = _doc([_dead_link_finding("F01")])
+        rp, wp, cp = _write_inputs(tmp_path, doc, _DEAD_CACHE)
+        rc = subprocess.run(
+            [sys.executable, str(_SCRIPTS_DIR / "garden-audit-suggest.py"),
+             "--report", str(rp), "--wire", str(wp), "--cache", str(cp),
+             "--output", str(tmp_path / "o.md")],
+            capture_output=True, text=True,
+        )
+        assert rc.returncode == 0, rc.stderr
+        assert "enriched 1 finding(s) (1 with candidates, 0 without)" in rc.stderr
+
+    def test_cli_zero_candidate_run_still_counts_as_processed(self, tmp_path):
+        # Gap C regression: a requested finding with zero candidates changed both
+        # artifacts (no-suggestions note + suggested marker) — it must be
+        # reported as processed (N=1), NOT as 0, or the agent stops and never
+        # uploads either channel.
+        doc = _doc([_dead_link_finding("F01")])
+        rp, wp, cp = _write_inputs(tmp_path, doc, [])  # empty cache → no candidates
+        wire_out = tmp_path / "wire-out.json"
+        rc = subprocess.run(
+            [sys.executable, str(_SCRIPTS_DIR / "garden-audit-suggest.py"),
+             "--report", str(rp), "--wire", str(wp), "--cache", str(cp),
+             "--output", str(tmp_path / "o.md"), "--wire-output", str(wire_out)],
+            capture_output=True, text=True,
+        )
+        assert rc.returncode == 0, rc.stderr
+        assert "enriched 1 finding(s) (0 with candidates, 1 without)" in rc.stderr
+        wire = json.loads(wire_out.read_text(encoding="utf-8"))
+        dec = wire["findings"][0]["decision"]
+        assert dec["suggested"] is True
+        assert dec["candidates"] == []
 
     def test_cli_missing_report_exits_nonzero(self, tmp_path):
         rc = subprocess.run(

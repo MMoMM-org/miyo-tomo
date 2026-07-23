@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_garden_audit_tomo_editor.py — spec 030 Tomo-Editor wire channel.
 
 Covers the additive wire decision fields (file_under, candidates, suggest_requested),
@@ -9,7 +9,9 @@ candidates into the wire and reading suggest_requested, build_from_wire reading
 file_under, inbox-triage gating on wire.approved OR markdown Approved, the
 approved-forces-JSON-path edge, and schema validation of the real fixture.
 
-Deliverables A–F of the 2026-07-22 Hashi handoff-back.
+Deliverables A–F of the 2026-07-22 Hashi handoff-back, plus Deliverable G
+(2026-07-23 handoff): the decision.suggested ran-marker — pending vs ran-and-empty
+distinguishable, idempotent clearing, digest exclusion, schema validation.
 """
 from __future__ import annotations
 
@@ -253,7 +255,7 @@ class TestSuggestWritesWireCandidates:
             "- [ ] Suggest targets", "- [x] Suggest targets"
         )
         rp.write_text(md, encoding="utf-8")
-        _report, wire = gas.run_suggest(str(rp), str(wp), str(cp))
+        _report, wire, _n, _m = gas.run_suggest(str(rp), str(wp), str(cp))
         cands = wire["findings"][0]["decision"]["candidates"]
         assert cands, "expected candidates written into the wire"
         assert all(set(c) == {"stem", "score"} for c in cands)
@@ -266,7 +268,7 @@ class TestSuggestWritesWireCandidates:
         wire_in = json.loads(wp.read_text(encoding="utf-8"))
         wire_in["findings"][0]["decision"]["suggest_requested"] = True
         wp.write_text(json.dumps(wire_in), encoding="utf-8")
-        _report, wire = gas.run_suggest(str(rp), str(wp), str(cp))
+        _report, wire, _n, _m = gas.run_suggest(str(rp), str(wp), str(cp))
         cands = wire["findings"][0]["decision"]["candidates"]
         assert cands, "wire suggest_requested must drive enrichment"
 
@@ -277,7 +279,7 @@ class TestSuggestWritesWireCandidates:
             "- [ ] Suggest targets", "- [x] Suggest targets"
         )
         rp.write_text(md, encoding="utf-8")
-        _report, wire = gas.run_suggest(str(rp), str(wp), str(cp))
+        _report, wire, _n, _m = gas.run_suggest(str(rp), str(wp), str(cp))
         # Baseline emit_digest is preserved (candidates excluded) → not edited.
         assert gap._is_wire_edited(wire) is False
         assert wire["emit_digest"] == compute_garden_audit_digest(wire)
@@ -304,7 +306,7 @@ class TestSuggestWritesWireCandidates:
         import yaml
         cp.write_text(yaml.safe_dump(_CACHE), encoding="utf-8")
 
-        _report, out_wire = gas.run_suggest(str(rp), str(wp), str(cp))
+        _report, out_wire, _n, _m = gas.run_suggest(str(rp), str(wp), str(cp))
 
         # (a) the wire still reads as edited (baseline digest mismatch preserved),
         assert gap._is_wire_edited(out_wire) is True
@@ -329,10 +331,86 @@ class TestSuggestWritesWireCandidates:
                 ln = ln.replace("- [ ] Suggest targets", "- [x] Suggest targets")
             out.append(ln)
         rp.write_text("\n".join(out), encoding="utf-8")
-        _report, wire = gas.run_suggest(str(rp), str(wp), str(cp))
+        _report, wire, _n, _m = gas.run_suggest(str(rp), str(wp), str(cp))
         by_id = {f["id"]: f for f in wire["findings"]}
         assert by_id["F01"]["decision"]["candidates"]
         assert by_id["F02"]["decision"]["candidates"] == []
+
+
+# ── Deliverable G (2026-07-23 Hashi handoff): suggested ran-marker ────────────
+
+class TestSuggestedMarker:
+    def test_markdown_tick_stamps_suggested(self, tmp_path):
+        doc = _doc([_dead_link("F01")])
+        rp, wp, cp = _write_pair(tmp_path, doc)
+        md = rp.read_text(encoding="utf-8").replace(
+            "- [ ] Suggest targets", "- [x] Suggest targets"
+        )
+        rp.write_text(md, encoding="utf-8")
+        _report, wire, n, m = gas.run_suggest(str(rp), str(wp), str(cp))
+        assert wire["findings"][0]["decision"]["suggested"] is True
+        assert (n, m) == (1, 1)
+
+    def test_wire_suggest_requested_stamps_suggested(self, tmp_path):
+        doc = _doc([_dead_link("F01")])
+        rp, wp, cp = _write_pair(tmp_path, doc)
+        wire_in = json.loads(wp.read_text(encoding="utf-8"))
+        wire_in["findings"][0]["decision"]["suggest_requested"] = True
+        wp.write_text(json.dumps(wire_in), encoding="utf-8")
+        _report, wire, n, _m = gas.run_suggest(str(rp), str(wp), str(cp))
+        assert wire["findings"][0]["decision"]["suggested"] is True
+        assert n == 1
+
+    def test_ran_and_empty_distinguishable_from_pending(self, tmp_path):
+        # THE Hashi Gap-A case: a requested finding whose run returned zero
+        # candidates must NOT be wire-identical to one still awaiting a run.
+        doc = _doc([_dead_link("F01")])
+        rp, wp, cp = _write_pair(tmp_path, doc)
+        cp.write_text("entries: []\n", encoding="utf-8")  # nothing clears the cutoff
+        wire_in = json.loads(wp.read_text(encoding="utf-8"))
+        wire_in["findings"][0]["decision"]["suggest_requested"] = True
+        wp.write_text(json.dumps(wire_in), encoding="utf-8")
+        _report, wire, n, m = gas.run_suggest(str(rp), str(wp), str(cp))
+        dec = wire["findings"][0]["decision"]
+        assert dec["suggested"] is True  # ran…
+        assert dec["candidates"] == []   # …and came back empty
+        assert dec["suggest_requested"] is True  # request flag untouched
+        assert (n, m) == (1, 0)  # processed, zero with candidates — still a run
+
+    def test_unrequested_rerun_clears_suggested(self, tmp_path):
+        # Round 1: F01 ticked → suggested stamped. Round 2: tick removed →
+        # suggested cleared + candidates emptied (default state restored).
+        doc = _doc([_dead_link("F01")])
+        rp, wp, cp = _write_pair(tmp_path, doc)
+        plain_md = rp.read_text(encoding="utf-8")
+        rp.write_text(
+            plain_md.replace("- [ ] Suggest targets", "- [x] Suggest targets"),
+            encoding="utf-8",
+        )
+        _r1, wire1, n1, _m1 = gas.run_suggest(str(rp), str(wp), str(cp))
+        assert wire1["findings"][0]["decision"]["suggested"] is True
+        assert n1 == 1
+        # Round 2 on round-1's wire, with the tick removed.
+        rp.write_text(plain_md, encoding="utf-8")
+        wp.write_text(json.dumps(wire1), encoding="utf-8")
+        _r2, wire2, n2, _m2 = gas.run_suggest(str(rp), str(wp), str(cp))
+        dec = wire2["findings"][0]["decision"]
+        assert "suggested" not in dec
+        assert dec["candidates"] == []
+        assert n2 == 0
+
+    def test_suggested_excluded_from_digest(self):
+        wire = gar.build_wire_payload(_doc([_orphan()]))
+        base = wire["emit_digest"]
+        wire["findings"][0]["decision"]["suggested"] = True
+        assert compute_garden_audit_digest(wire) == base
+        assert gap._is_wire_edited(wire) is False
+
+    def test_wire_with_suggested_validates_against_schema(self):
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        wire = gar.build_wire_payload(_doc([_dead_link("F01")]))
+        wire["findings"][0]["decision"]["suggested"] = True
+        jsonschema.validate(instance=wire, schema=schema)
 
 
 # ── Deliverable D: build_from_wire reads file_under + precedence ───────────────
@@ -423,7 +501,7 @@ class TestSchemaValidation:
             "- [ ] Suggest targets", "- [x] Suggest targets"
         )
         rp.write_text(md, encoding="utf-8")
-        _report, wire = gas.run_suggest(str(rp), str(wp), str(cp))
+        _report, wire, _n, _m = gas.run_suggest(str(rp), str(wp), str(cp))
         jsonschema.validate(instance=wire, schema=schema)
 
     def test_real_fixture_validates(self):

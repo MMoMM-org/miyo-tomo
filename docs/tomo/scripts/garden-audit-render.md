@@ -273,3 +273,14 @@ ack channel needs a markdown surface for .md-only users, parallel to the wire's 
 `ack: false`. The wire emits `ack` ONLY on advisory findings (fixable findings have the decision
 block instead), and ack is INCLUDED in emit_digest — acknowledging is a user decision that must
 route Pass-2 to the JSON path when done in the editor.
+
+## Version 0.12.0 — advisory pushback is auto-on-approve, not per-finding ack (2026-07-23, same-day revision)
+
+WHY the `- [ ] Acknowledge` checkbox and the wire `ack` field (both added in 0.11.0 hours
+earlier) were REMOVED: the user rejected per-finding acknowledgement — "der user will doch nicht
+30 mal sagen, ja schieb das auf". Advisories now render read-only under a single section note
+("_Approving this report pauses the advisories below for N days…_"); the pause is automatic when
+the report is approved (Pass-2 stamps every advisory). No wire `ack` field means the advisory
+digest projection reverts too (nothing advisory is user-editable, so it never flips the change
+signal). `advisory_pushback_days` still threads into the preamble + section note for the window
+label; the per-finding `ack_days` param on `_render_finding` is gone.

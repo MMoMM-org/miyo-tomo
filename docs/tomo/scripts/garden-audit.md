@@ -116,3 +116,11 @@ first-run preview must show the unfiltered truth, including ledgered advisories.
 WHY the doc carries `advisory_pushback_days`: the renderer labels the Acknowledge checkbox with
 the window ("pause this advisory for N days") and must stay a pure doc→artifact projection — the
 scan injects the value so the renderer never loads config.
+
+## Advisory pushback trigger note (2026-07-23 same-day revision)
+
+WHY nothing in the SCAN changed for the ack→auto-on-approve revision: the scan only CONSUMES the
+pushback ledger (merged via GardenExclusions.from_paths) — it never writes it. The trigger for
+WHAT lands in the ledger moved from per-finding acknowledgement to "every advisory in an approved
+report" (see garden-audit-parser.md 0.10.0), which is entirely a Pass-2 parser concern. The scan
+still passes `advisory_pushback_days` into the doc for the renderer's pause-window label.

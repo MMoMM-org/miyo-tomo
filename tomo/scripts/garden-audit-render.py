@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.11.0
+# version: 0.12.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -231,7 +231,7 @@ def _render_summary(findings: list[dict]) -> list[str]:
     return lines
 
 
-def _render_finding(f: dict, ack_days: int = 30) -> list[str]:
+def _render_finding(f: dict) -> list[str]:
     """Render one finding as a human-facing report block.
 
     The report carries the user's DECISIONS only, joined to the machine wire by
@@ -321,12 +321,11 @@ def _render_finding(f: dict, ack_days: int = 30) -> list[str]:
             )
         lines.append("")
     elif f.get("tier") == "advisory":
-        # Advisory → no automated fix, but an Acknowledge box: ticking it pauses
-        # the finding for the pushback window (parser stamps the ledger).
+        # Advisory → read-only note, no checkbox. Auto-pushback (2026-07-23):
+        # approving the report pauses ALL advisories for the window — no
+        # per-finding tick (the preamble states this once).
         lines += [
             "_Advisory — no automated fix. Review and handle manually._",
-            f"- [ ] Acknowledge — reviewed; pause this advisory for "
-            f"{ack_days} days",
             "",
         ]
     else:
@@ -347,8 +346,16 @@ def _render_tier_section(tier: str, findings: list[dict],
     if not tier_findings:
         return []
     lines = [f"## {_TIER_LABEL[tier]}", ""]
+    if tier == "advisory":
+        # Auto-pushback note (2026-07-23): approving the report pauses every
+        # advisory below for the window — no per-finding action needed.
+        lines += [
+            f"_Approving this report pauses the advisories below for "
+            f"{ack_days} days — they reappear afterwards if still unresolved._",
+            "",
+        ]
     for f in tier_findings:
-        lines.extend(_render_finding(f, ack_days))
+        lines.extend(_render_finding(f))
     return lines
 
 
@@ -362,9 +369,9 @@ def render_report(d: dict) -> str:
     parts += ["", f"# Knowledge-Garden Audit — {date}", ""]
     parts += [
         "Review the findings below. Tick **Apply** on the fixes you want; fill in "
-        "**Replace with:** / **Repoint to:** where offered. Tick **Acknowledge** "
-        "on advisories you've reviewed to pause them. Then run `/inbox` to "
-        "apply via Hashi.",
+        "**Replace with:** / **Repoint to:** where offered. Then run `/inbox` to "
+        "apply via Hashi. Advisory findings are read-only — approving this report "
+        f"pauses them for {ack_days} days (they reappear if still unresolved).",
         "",
         # Top-level approve gate (ADR-1 revised): garden-audit now mirrors the
         # suggestions doc — the doc is only picked up by /inbox once this box is
@@ -643,12 +650,6 @@ def build_wire_payload(d: dict) -> dict:
             },
             "detail": f.get("detail", {}),
         }
-        # Advisory findings: ack channel (user decision 2026-07-23). The editor
-        # sets ack:true = "reviewed, pause via pushback ledger". INCLUDED in the
-        # change-detection digest — acknowledging IS a user decision that must
-        # route Pass-2 to the JSON path.
-        if f.get("tier") == "advisory":
-            wf["ack"] = False
         # decision block present ONLY on fixable findings
         decision = f.get("decision")
         if decision is not None:

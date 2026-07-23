@@ -14,8 +14,8 @@ of `replace = ""`: a dead-link "removal" should DE-LINK — drop the `[[ ]]` bra
 (`[[Ohne Tippfehler]]` → `Ohne Tippfehler`) — not delete the link text entirely. A non-empty target
 still repoints (`replace = "[[<new>]]"`). The wire convention is UNCHANGED (`decision.replace: ""` =
 remove intent); only the parser's TRANSLATION of empty-replace into the action changed, so no schema
-change. broken_up removal (`match = "up:: [[X]]"`, `replace = ""`) is intentionally UNCHANGED —
-deleting the whole broken `up::` line is correct there. Hashi's edit_note_text executor needs no
+change. (broken_up removal's whole-line claim here is SUPERSEDED — see 0.9.0 below: it became the
+link-only `remove_up_link` action on 2026-07-23.) Hashi's edit_note_text executor needs no
 change (still a literal match/replace). Pinned by `test_garden_audit_parser.py`
 (`test_dead_link_empty_replace_unlinks_keeps_text`, `test_dead_link_match_from_wire_empty_replace`,
 `test_dead_link_typed_replace_repoints`) + the broken_up-removal guard
@@ -102,9 +102,10 @@ collapsing every fix to a removal).
 WHY every `broken_up` block renders a `**Repoint to:**` field, and the parser branches on
 whether the user typed a target: a non-empty Repoint value means "repair the `up::` to this
 MOC" (`garden_action=add_relationship`, `up_line` built from it); an empty / untouched `[[]]`
-placeholder means "remove the broken line" (`garden_action=edit_note_text`, `replace=""`,
-`match` reconstructed from the WIRE's `up_target`). This keeps the two legitimate resolutions
-(repoint vs remove) behind one clean discriminator the user controls by typing or not typing.
+placeholder means "remove only the broken link" (`garden_action=remove_up_link`, `link` =
+bare broken stem from the WIRE's `up_target` — see 0.9.0/0.10.0 below; the earlier whole-line
+`edit_note_text` removal is superseded). This keeps the two legitimate resolutions (repoint vs
+remove) behind one clean discriminator the user controls by typing or not typing.
 
 ## Dead-Link Match Uses `[[target]]` Wrapping (ADR-3)
 
@@ -208,9 +209,22 @@ healthy links sharing the line. User decision (Tomo-Editor QA): remove ONLY the 
 the line is dropped only when it was the last one. The parser cannot construct that edit
 literally (it never sees the note body) — so the semantic is delegated to Hashi via the new
 `remove_up_link` action (path + bare link stem), executed with body access: marker-regex line
-location (same as add_relationship), separator-safe link removal, delete-line-when-empty,
-skip-and-report on no-match. `_up_link_stem` normalizes the wire's up_target defensively
+location (same as add_relationship), separator-safe link removal, and — CRITICAL, Hashi's exact
+question — the up:: FIELD is PRESERVED when the removed link was the last one (`up:: [[X]]` →
+`up:: ` emptied, never the line deleted; up:: is a required structural field and the emptied note
+correctly resurfaces as unparented), skip-and-report on no-match. `_up_link_stem` normalizes the wire's up_target defensively
 (str | legacy list | dirty list-repr → first bare stem). The wire's `decision.action` value
 stays "edit_note_text" — Hashi's editor contract is unchanged; only Tomo's Pass-2 output moved.
 The former up_line renderer-parity concern is void — the two-artifact split removed the
 structural comment, and now the remove path no longer uses up_line at all (docstring fixed).
+
+## Version 0.10.0 — advisory pushback is auto-on-approve (2026-07-23, same-day revision)
+
+WHY `acked_advisories` now collects EVERY advisory in the doc instead of only ticked/`ack:true`
+ones (0.8.0's per-finding channel, reverted the same day): the user rejected per-finding
+acknowledgement. Approving a report = "I've seen these" for ALL its advisories. Safe because
+triage only routes APPROVED garden-audit docs to Pass-2, and `--stamp-pushback` is passed only
+by the conductor's apply invocation — so "all advisories" only ever get stamped post-approval.
+`RE_ACK_TICKED` and the markdown/wire ack reads are gone; `_acked_advisory` and the ledger write
+path are unchanged. A zero-fixable report the user approves just to dismiss advisories still
+stamps them (the apply path runs on approval regardless of fixable count).

@@ -1211,9 +1211,12 @@ silently no-opped on multi-link `up::` lines).
 
 **Execution:** locate the `up::` line with the same marker regex used by
 `add_relationship`; remove the `[[link]]` occurrence on that line INCLUDING a
-dangling separator (`up:: [[A]], [[X]]` → `up:: [[A]]`); delete the whole line
-ONLY when no links remain (`up:: [[X]]` → line removed). On no-match (no `up::`
-line, or the link is not on it): skip and report — no error, no partial write.
+dangling separator (`up:: [[A]], [[X]]` → `up:: [[A]]`). The `up::` **field is
+preserved** — when the removed link was the only one, the line becomes an empty
+`up:: ` (`up:: [[X]]` → `up:: `), it is **not** deleted (`up::` is a required
+structural field; an emptied `up::` correctly resurfaces the note as unparented
+on the next scan). On no-match (no `up::` line, or the link is not on it): skip
+and report — no error, no partial write.
 
 ---
 

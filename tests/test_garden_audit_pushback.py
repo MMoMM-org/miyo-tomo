@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_garden_audit_pushback.py — ack-driven advisory pushback + opt-in Apply.
+# version: 0.2.0
+"""test_garden_audit_pushback.py — auto-on-approve advisory pushback + opt-in Apply.
 
 User decisions 2026-07-23:
   1. decision.selected defaults FALSE everywhere (opt-in ticking).
-  2. Advisories (stale_moc, duplicate_stem) get an Acknowledge channel —
-     markdown `- [x] Acknowledge` tick OR wire finding-level `ack: true`.
-     Pass-2 (--stamp-pushback) stamps the pushback ledger; the next scan
-     suppresses the acked advisory until the window lapses.
+  2. Advisory pushback is AUTOMATIC on approve (revised same day from the
+     per-finding Acknowledge checkbox): approving a garden-audit report pauses
+     EVERY advisory it lists for advisory_pushback_days. No wire ack field, no
+     per-finding tick. Pass-2 (--stamp-pushback, approval-gated by triage)
+     stamps the ledger; the next scan suppresses those advisories until lapse.
   3. settings block in the exclusions YAML: stale_moc_days (default 90),
      advisory_pushback_days (default 30). The configure wizard preserves it.
 """
@@ -20,7 +21,6 @@ import sys
 from datetime import date
 from pathlib import Path
 
-import jsonschema
 import yaml
 
 REPO = Path(__file__).resolve().parent.parent
@@ -229,13 +229,15 @@ class TestScan:
         assert not any(f["check"] == "stale_moc" for f in doc["findings"])
 
 
-# ── Render: Acknowledge line + opt-in preamble + wire ack ─────────────────────
+# ── Render: auto-pushback note + opt-in preamble, NO ack checkbox/field ────────
 
 class TestRender:
-    def test_advisory_block_has_acknowledge_line_with_days(self):
+    def test_advisory_section_has_auto_pushback_note(self):
         doc = _doc([_stale_moc()], advisory_pushback_days=14)
         report = gar.render_report(doc)
-        assert "- [ ] Acknowledge — reviewed; pause this advisory for 14 days" in report
+        assert "pauses the advisories below for 14 days" in report
+        # No per-finding Acknowledge checkbox (auto-on-approve).
+        assert "Acknowledge" not in report
 
     def test_preamble_is_opt_in_and_apply_unticked(self):
         doc = _doc([_dead_link()])
@@ -244,31 +246,20 @@ class TestRender:
         assert "- [ ] Apply — tick to apply this fix" in report
         assert "- [x] Apply" not in report
 
-    def test_wire_advisory_carries_ack_false_fixable_does_not(self):
+    def test_wire_carries_no_ack_field(self):
+        # The ack channel was withdrawn 2026-07-23 (auto-on-approve): no
+        # finding-level ack anywhere in the wire.
         wire = gar.build_wire_payload(_doc([_stale_moc(), _dup_stem(), _dead_link()]))
-        by_check = {f["check"]: f for f in wire["findings"]}
-        assert by_check["stale_moc"]["ack"] is False
-        assert by_check["duplicate_stem"]["ack"] is False
-        assert "ack" not in by_check["dead_link"]
+        assert all("ack" not in f for f in wire["findings"])
 
-    def test_ack_flips_digest(self):
-        wire = gar.build_wire_payload(_doc([_stale_moc()]))
-        base = wire["emit_digest"]
-        wire["findings"][0]["ack"] = True
-        assert compute_garden_audit_digest(wire) != base
-        assert gap._is_wire_edited(wire) is True
-
-    def test_wire_with_ack_validates_against_schema(self):
-        schema = json.loads(
-            (SCHEMAS / "garden-audit-wire.schema.json").read_text(encoding="utf-8")
-        )
+    def test_advisory_does_not_flip_digest(self):
+        # Nothing about an advisory is user-editable now → digest is stable.
         wire = gar.build_wire_payload(_doc([_stale_moc(), _dead_link()]))
-        jsonschema.validate(instance=wire, schema=schema)
-        wire["findings"][0]["ack"] = True
-        jsonschema.validate(instance=wire, schema=schema)
+        assert gap._is_wire_edited(wire) is False
+        assert compute_garden_audit_digest(wire) == wire["emit_digest"]
 
 
-# ── Parser: ack via both channels + --stamp-pushback CLI ──────────────────────
+# ── Parser: auto-pushback (all advisories) + --stamp-pushback CLI ─────────────
 
 def _render_pair(doc):
     report = "\n".join(gar.render_frontmatter(doc)) + "\n" + gar.render_report(doc)
@@ -276,29 +267,27 @@ def _render_pair(doc):
     return report, wire
 
 
-class TestParserAck:
-    def test_markdown_ack_tick_yields_acked_advisories(self):
+class TestParserAutoPushback:
+    def test_report_path_acks_every_advisory(self):
         doc = _doc([_stale_moc("F01"), _dup_stem("F02")], advisory_pushback_days=30)
         report, wire = _render_pair(doc)
-        report = report.replace(
-            "- [ ] Acknowledge", "- [x] Acknowledge", 1
-        )  # tick ONLY F01
         result = gap.build_from_report(report, wire)
-        assert result["acked_advisories"] == [
-            {"id": "F01", "path": "Maps/Old MOC.md", "check": "stale_moc"}
-        ]
+        acked = {(a["id"], a["check"]) for a in result["acked_advisories"]}
+        assert acked == {("F01", "stale_moc"), ("F02", "duplicate_stem")}
 
-    def test_unticked_ack_yields_nothing(self):
-        doc = _doc([_stale_moc("F01")], advisory_pushback_days=30)
+    def test_report_path_no_advisories_yields_empty(self):
+        doc = _doc([_dead_link("F01")])
         report, wire = _render_pair(doc)
-        result = gap.build_from_report(report, wire)
-        assert result["acked_advisories"] == []
+        assert gap.build_from_report(report, wire)["acked_advisories"] == []
 
-    def test_wire_ack_routes_json_path_and_yields_acked(self):
-        doc = _doc([_stale_moc("F01")])
+    def test_wire_path_acks_every_advisory(self):
+        doc = _doc([_stale_moc("F01"), _dead_link("F02")])
         _report, wire = _render_pair(doc)
-        wire["findings"][0]["ack"] = True
-        # ack flips the digest → the edited wire is authoritative (JSON path).
+        # Force the JSON path via an apply edit on the fixable finding (wire is
+        # severity-sorted, so index is not the doc order — look it up by check).
+        dl = next(f for f in wire["findings"] if f["check"] == "dead_link")
+        dl["decision"]["selected"] = True
+        dl["decision"]["replace"] = "[[X]]"
         assert gap._is_wire_edited(wire) is True
         result = gap.build_from_wire(wire)
         assert result["acked_advisories"] == [
@@ -308,7 +297,6 @@ class TestParserAck:
     def test_cli_stamp_pushback_writes_ledger(self, tmp_path):
         doc = _doc([_stale_moc("F01")], advisory_pushback_days=30)
         report, wire = _render_pair(doc)
-        report = report.replace("- [ ] Acknowledge", "- [x] Acknowledge", 1)
         rp = tmp_path / "report.md"
         wp = tmp_path / "wire.json"
         ledger = tmp_path / "ledger.yaml"
@@ -331,7 +319,6 @@ class TestParserAck:
     def test_cli_without_flag_does_not_write_ledger(self, tmp_path):
         doc = _doc([_stale_moc("F01")], advisory_pushback_days=30)
         report, wire = _render_pair(doc)
-        report = report.replace("- [ ] Acknowledge", "- [x] Acknowledge", 1)
         rp = tmp_path / "report.md"
         wp = tmp_path / "wire.json"
         ledger = tmp_path / "ledger.yaml"

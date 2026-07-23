@@ -300,7 +300,7 @@
       "type": "object",
       "required": ["id", "action", "path", "link"],
       "additionalProperties": false,
-      "description": "Remove ONE link from the note's up:: line (broken_up empty=remove, link-only semantics — user decision 2026-07-23). Hashi locates the up:: line with the same marker regex as add_relationship, removes the [[link]] occurrence on that line INCLUDING a dangling separator (e.g. 'up:: [[A]], [[X]]' → 'up:: [[A]]'), and deletes the whole line ONLY when no links remain ('up:: [[X]]' → line removed). Skip-and-report on no-match (no up:: line, or link not on it) — no error, no partial write. Replaces the earlier whole-line edit_note_text construction, which silently no-opped on multi-link up:: lines.",
+      "description": "Remove ONE link from the note's up:: line (broken_up empty=remove, link-only semantics — user decision 2026-07-23). Hashi locates the up:: line with the same marker regex as add_relationship and removes the [[link]] occurrence on that line INCLUDING a dangling separator (e.g. 'up:: [[A]], [[X]]' → 'up:: [[A]]'). CRITICAL: the up:: FIELD is preserved — when the removed link was the only one, the line becomes an empty 'up::' ('up:: [[X]]' → 'up:: '), it is NOT deleted. up:: is a required structural field; an emptied up:: correctly resurfaces the note as unparented next scan. Skip-and-report on no-match (no up:: line, or link not on it) — no error, no partial write. Replaces the earlier whole-line edit_note_text construction, which silently no-opped on multi-link up:: lines.",
       "properties": {
         "id": {"$ref": "#/$defs/action_id"},
         "action": {"const": "remove_up_link"},

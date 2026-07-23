@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.0
+# version: 0.10.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -7,10 +7,12 @@ Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
 "acked_advisories": [...]}`` envelope of SEMANTIC items (not pre-built actions).
 instruction-render.py turns confirmed_items into the action list via
 render_actions.build_garden_audit_actions (which reuses the shared
-_build_edit_note_text_actions builder). acked_advisories ({id, path, check} per
-acknowledged advisory — markdown ``- [x] Acknowledge`` tick OR wire finding-level
-``ack: true``) is consumed by ``--stamp-pushback``, which writes the pushback
-ledger so the next scan rests those advisories for the configured window.
+_build_edit_note_text_actions builder). acked_advisories ({id, path, check} for
+EVERY advisory in the doc — auto-pushback 2026-07-23: approving the report pauses
+them all, no per-finding tick) is consumed by ``--stamp-pushback``, which writes
+the pushback ledger so the next scan rests those advisories for the configured
+window. Triage only routes approved garden-audit docs to Pass-2, so the parser
+never stamps an unapproved report.
 
 Two artifacts, joined by the F-id in each ``### F<id>`` heading:
   - MARKDOWN = decisions only: per block, the ``- [x] Apply`` tick and the typed
@@ -182,11 +184,6 @@ RE_FILEUNDER_FIELD = re.compile(
 RE_SUGGEST_TICKED = re.compile(
     r"^\s*-\s+\[x\]\s+Suggest targets\b", re.IGNORECASE | re.MULTILINE
 )
-# Advisory acknowledge box: ticked = "reviewed, pause this advisory" — the
-# finding is stamped into the pushback ledger (--stamp-pushback) and rests.
-RE_ACK_TICKED = re.compile(
-    r"^\s*-\s+\[x\]\s+Acknowledge\b", re.IGNORECASE | re.MULTILINE
-)
 # A ticked pick sub-checkbox: `  - [x] [[Candidate]] (0.92)`. The wikilink stem
 # is the chosen Replace/Repoint value (unless the user typed one, which wins).
 RE_PICK_TICKED = re.compile(
@@ -271,9 +268,7 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
         precedence (typed **File under:** > ticked pick > empty).
       - suggest: True iff the ``- [x] Suggest targets`` opt-in is ticked (so
         ``--suggest`` knows which findings to enrich).
-      - ack: True iff the advisory ``- [x] Acknowledge`` box is ticked (pause
-        the advisory via the pushback ledger).
-    Findings with no editable field carry apply + empty fields + suggest + ack.
+    Findings with no editable field carry apply + empty fields + suggest.
     """
     out: dict[str, dict] = {}
     for fid, lines in _split_finding_blocks(md_text):
@@ -306,7 +301,6 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
             "replace": typed_replace or pick,
             "file_under": typed_fileunder or pick,
             "suggest": bool(RE_SUGGEST_TICKED.search(block)),
-            "ack": bool(RE_ACK_TICKED.search(block)),
         }
     return out
 
@@ -433,10 +427,11 @@ def build_from_report(md_text: str, wire: dict) -> dict:
         fid = finding.get("id", "")
         md_decision = decision_map.get(fid)
         if not finding.get("fixable"):
-            # Advisory findings never produce a fix — but a ticked Acknowledge
-            # box pauses them via the pushback ledger (--stamp-pushback).
-            if md_decision is not None and md_decision.get("ack"):
-                acked.append(_acked_advisory(finding))
+            # Advisory findings never produce a fix. Auto-pushback (2026-07-23):
+            # approving the report pauses EVERY advisory it lists — no per-finding
+            # tick. --stamp-pushback (Pass-2 apply, approval-gated by triage) writes
+            # them; a non-stamp parse just carries the list harmlessly.
+            acked.append(_acked_advisory(finding))
             continue
         if md_decision is None or not md_decision.get("apply"):
             continue  # id absent from the report, or the user left Apply unticked
@@ -466,11 +461,11 @@ def build_from_wire(wire: dict) -> dict:
     acked: list[dict] = []
 
     for finding in wire.get("findings") or []:
-        # Advisory checks (duplicate_stem, stale_moc) never produce a fix — but
-        # a finding-level ack:true (Tomo-Editor) pauses them via the ledger.
+        # Advisory checks (duplicate_stem, stale_moc) never produce a fix. Auto-
+        # pushback (2026-07-23): an approved/edited wire pauses every advisory it
+        # lists (the wire is only authoritative post-approval).
         if not finding.get("fixable"):
-            if finding.get("ack"):
-                acked.append(_acked_advisory(finding))
+            acked.append(_acked_advisory(finding))
             continue
         decision = finding.get("decision") or {}
         if not decision.get("selected"):

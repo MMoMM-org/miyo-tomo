@@ -169,10 +169,12 @@ no links at all; **unparented** = a note with links but no `up::` parent.
   - [ ] Given a broken `up::` finding, When the report renders, Then it offers an editable
     `- **Repoint to:** [[]]` field so the user can repoint `up::` to a chosen MOC, or leave it
     empty to remove ONLY the broken link from the `up::` line (revised 2026-07-23 from
-    whole-line removal, user decision via Tomo-Editor QA: the line is dropped only when the
-    removed link was the last one — healthy links sharing the line survive, and the whole-line
-    literal match that silently no-opped on multi-link lines is gone; emitted as the
-    `remove_up_link` action).
+    whole-line removal, user decision via Tomo-Editor QA). Healthy links sharing the line
+    survive (`up:: [[A]], [[X]]` → `up:: [[A]]`), and the `up::` FIELD is preserved even when
+    the removed link was the only one (`up:: [[X]]` → `up:: ` emptied, NOT deleted — `up::`
+    is a required structural field, and the emptied note correctly resurfaces as unparented).
+    The whole-line literal match that silently no-opped on multi-link lines is gone; emitted
+    as the `remove_up_link` action.
   - [ ] Given a fixable `dead_link` or `broken_up` finding, When the report renders, Then it also
     carries a SEPARATE `- [ ] Suggest targets` opt-in box, decoupled from Apply (Phase 7, D1);
     Pass-1 does zero per-finding candidate computation — the box is static (D2).
@@ -248,36 +250,40 @@ Should within the same mechanism.**
     run wizard, `--configure` mode, or an inline push-back offered during a run) and writes the
     skill config directly — the `/inbox` apply path is never involved in exclusion management.
 
-#### Feature 5a: Acknowledge-driven advisory push-back (added 2026-07-23)
+#### Feature 5a: Auto-on-approve advisory push-back (added 2026-07-23)
 
 Advisories (stale MOC, duplicate stem) re-nag on every run: a MOC reviewed and judged "fine as
 it is" is flagged again three days later because its mtime has not changed. One review should
 buy a rest window.
 
-- **User Story:** As the vault owner, I want to acknowledge an advisory I have reviewed so that
-  it stops appearing for a configurable window (default 30 days) instead of nagging on every run.
-- **Mechanism:** each advisory finding renders with an `- [ ] Acknowledge` checkbox (markdown)
-  and carries a finding-level `ack: false` in the wire (Tomo-Editor channel; INCLUDED in
-  `emit_digest` — acknowledging is a user decision). On the Pass-2 apply path,
-  `garden-audit-parser --stamp-pushback` writes acked advisories into the auto-managed pushback
-  ledger (`config/garden-audit-pushback.yaml`, separate from the wizard-owned exclusions file so
-  a wizard rewrite can never clobber automatic state). The scan merges ledger entries into the
+_Trigger revised same day: an initial per-finding `- [ ] Acknowledge` checkbox (with a wire
+`ack` field) was rejected — the user does not want to tick "pause" on every advisory, every
+run. The pause is now AUTOMATIC on approval._
+
+- **User Story:** As the vault owner, I want the advisories in a report I've approved to stop
+  appearing for a configurable window (default 30 days) — without ticking anything per finding —
+  so they don't nag on every run.
+- **Mechanism:** advisory findings render read-only under a section note stating the pause
+  window; there is NO per-finding checkbox and NO wire `ack` field. On the Pass-2 apply path
+  (triage only routes APPROVED garden-audit docs there), `garden-audit-parser --stamp-pushback`
+  writes EVERY advisory the doc lists into the auto-managed pushback ledger
+  (`config/garden-audit-pushback.yaml`, separate from the wizard-owned exclusions file so a
+  wizard rewrite can never clobber automatic state). The scan merges ledger entries into the
   exclusion rule set as temporary note-scoped rules.
 - **Settings:** optional `settings:` block in `config/garden-audit-exclusions.yaml` —
   `advisory_pushback_days` (default 30) and `stale_moc_days` (default 90; supersedes the
   "config deferred" Won't-Have note). Manually editable; the configure wizard preserves the
   block verbatim on rewrite.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] Given an advisory finding, When the report renders, Then it carries an unticked
-    Acknowledge checkbox labelled with the configured rest window.
-  - [ ] Given the user ticks Acknowledge (markdown) or the editor sets `ack: true` (wire), When
-    Pass-2 runs with `--stamp-pushback`, Then the advisory is written to the pushback ledger with
+  - [ ] Given advisory findings, When the report renders, Then they render read-only under a note
+    stating that approving the report pauses them for the configured window — no per-finding
+    checkbox.
+  - [ ] Given the user approves the report and runs `/inbox`, When Pass-2 runs with
+    `--stamp-pushback`, Then EVERY advisory in the doc is written to the pushback ledger with
     `until = today + advisory_pushback_days`.
   - [ ] Given a ledgered advisory whose window has not lapsed, When `/garden-audit` runs, Then no
     finding of that check is reported for that note; Given the window has lapsed, Then the
-    finding reappears.
-  - [ ] Given the wire, When an `ack` flag is toggled, Then `emit_digest` mismatches and Pass-2
-    treats the JSON as authoritative.
+    finding reappears (and is paused again if the next report is approved).
 
 ### Should Have Features
 

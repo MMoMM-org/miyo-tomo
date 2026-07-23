@@ -9,7 +9,7 @@
   "properties": {
     "schema_version": {
       "const": "1",
-      "description": "Schema version — always '1'. All Tomo-Editor fields (decision.file_under, decision.candidates, decision.suggest_requested, decision.suggested, top-level approved) are additive."
+      "description": "Schema version — always '1'. All Tomo-Editor fields (decision.file_under, decision.candidates, decision.suggest_requested, decision.suggested, finding-level ack, top-level approved) are additive."
     },
     "approved": {
       "type": "boolean",
@@ -30,7 +30,7 @@
     "emit_digest": {
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$",
-      "description": "SHA-256 over the APPLY-decision fields only (per finding: id + decision.{selected,repoint,replace,file_under}). Recomputed and compared in Pass-2 to detect USER apply edits. Tomo-generated candidates, the suggested ran-marker, suggest_requested, approved, and read-only detail are EXCLUDED — so --suggest writing candidates never flips this. Hashi carries emit_digest back VERBATIM; a mismatch (or approved:true) means the JSON is authoritative."
+      "description": "SHA-256 over the USER-decision fields only (per finding: id + decision.{selected,repoint,replace,file_under} + finding-level ack when present). Recomputed and compared in Pass-2 to detect USER edits. Tomo-generated candidates, the suggested ran-marker, suggest_requested, approved, and read-only detail are EXCLUDED — so --suggest writing candidates never flips this. Hashi carries emit_digest back VERBATIM; a mismatch (or approved:true) means the JSON is authoritative."
     },
     "findings": {
       "type": "array",
@@ -67,6 +67,10 @@
               "path": {"type": "string"},
               "stem": {"type": ["string", "null"]}
             }
+          },
+          "ack": {
+            "type": "boolean",
+            "description": "Advisory findings only (duplicate_stem, stale_moc) — the acknowledge channel. The Tomo-Editor (or a markdown Acknowledge tick) sets this true = 'reviewed, pause this advisory'; Pass-2 stamps the pushback ledger and the finding rests for advisory_pushback_days (default 30). INCLUDED in emit_digest (acknowledging is a user decision). Absent on fixable findings and on pre-ack wires."
           },
           "detail": {
             "type": "object",

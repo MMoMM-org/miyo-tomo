@@ -180,3 +180,19 @@ confirmed_items. Earlier: 0.2.1 code-quality review (shared `up_line`/`bare_stem
 `RE_GA_ATTR`→`RE_GA_COMMENT_ATTR`); 0.2.0 vertical fix (parser → confirmed_items,
 action assembly in `render_actions.build_garden_audit_actions`). `update-tomo.sh` skips
 unchanged versions.
+
+## Version 0.8.0 — advisory ack channel + --stamp-pushback (2026-07-23)
+
+WHY advisories now produce `acked_advisories` ({id, path, check}) from BOTH channels (markdown
+`- [x] Acknowledge` tick in build_from_report, finding-level `ack: true` in build_from_wire):
+spec 030 Feature 5a — one review buys a rest window. The ack flag is INCLUDED in emit_digest
+(render_md projection) because acknowledging IS a user decision: an editor that ticks ack on an
+otherwise-untouched wire must flip the digest, or Pass-2 would route to the markdown path and
+drop the ack. Envelope key is additive — all downstream consumers read `confirmed_items` via
+`.get()` and ignore unknown keys.
+
+WHY stamping is behind `--stamp-pushback` instead of always-on: the parser is also invoked on
+read-only paths (tests, diffs, dry parses) — writing a ledger there would push back advisories
+the user never applied. Only the synthesis-conductor's Pass-2 apply invocation passes the flag.
+Window days come from `--exclusions` settings (`advisory_pushback_days`, default 30); the ledger
+write itself is `garden_exclusions.stamp_pushback` (upsert + prune — single owner of the format).

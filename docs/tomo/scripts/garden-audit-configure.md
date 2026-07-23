@@ -96,3 +96,12 @@ Because `--input`/`--output` now always resolve to a value, the old "requires --
 
 WHY: 0.4.0 (spec 030) — cwd-relative defaults for `--input`/`--output` (agent calls bare);
 `--choices` stays required for `--write`. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.5.0 — settings round-trip (2026-07-23)
+
+WHY write_config re-reads the existing output file and carries its `settings` block over: the
+wizard regenerates the whole YAML from the choices JSON, and settings (stale_moc_days,
+advisory_pushback_days) are manually maintained knobs the wizard never asks about — without the
+round-trip a reconfigure would silently reset the user's thresholds to defaults. The header
+comment now distinguishes wizard-owned exclusions ("do not edit") from the manually-editable
+settings block.

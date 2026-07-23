@@ -35,6 +35,11 @@
       "description": "Raw exclusion dicts for expired-temporary exclusions — surfaced in the report preamble.",
       "items": {"type": "object"}
     },
+    "advisory_pushback_days": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Rest window in days for an acknowledged advisory (from exclusions settings, default 30). Carried in the doc so the renderer can label the Acknowledge checkbox without loading config."
+    },
     "findings": {
       "type": "array",
       "description": "All findings, severity-ordered (integrity → structure → advisory).",

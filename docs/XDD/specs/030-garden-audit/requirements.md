@@ -153,8 +153,11 @@ no links at all; **unparented** = a note with links but no `up::` parent.
   through the flow I already use, so that I don't learn a new apply surface.
 - **Acceptance Criteria (Gherkin Format):**
   - [ ] Given fixable findings (unparented, orphan, broken `up::`, dead wikilink), When the report
-    renders, Then each carries a per-finding Apply checkbox with a sensible default pre-selected;
-    advisory findings (duplicate stems, stale MOC) render read-only with no checkbox.
+    renders, Then each carries a per-finding Apply checkbox that starts UNTICKED — applying is
+    opt-in per finding (revised 2026-07-23; originally "sensible default pre-selected", changed
+    by user decision: pre-ticked Apply on a no-candidate orphan was a no-op trap, and opt-out
+    review pressure was the wrong default). Advisory findings (duplicate stems, stale MOC) render
+    with no Apply checkbox but DO carry an Acknowledge checkbox (see Feature 5a).
   - [ ] Given the report renders, When the user opens it, Then a single top-level `- [ ] Approved`
     gate appears near the top (mirroring suggestions). (ADR-1 revised 2026-07-21 — garden-audit is
     NOT picked up unconditionally; it is picked up only once this box is ticked.)
@@ -241,10 +244,42 @@ Should within the same mechanism.**
     run wizard, `--configure` mode, or an inline push-back offered during a run) and writes the
     skill config directly — the `/inbox` apply path is never involved in exclusion management.
 
+#### Feature 5a: Acknowledge-driven advisory push-back (added 2026-07-23)
+
+Advisories (stale MOC, duplicate stem) re-nag on every run: a MOC reviewed and judged "fine as
+it is" is flagged again three days later because its mtime has not changed. One review should
+buy a rest window.
+
+- **User Story:** As the vault owner, I want to acknowledge an advisory I have reviewed so that
+  it stops appearing for a configurable window (default 30 days) instead of nagging on every run.
+- **Mechanism:** each advisory finding renders with an `- [ ] Acknowledge` checkbox (markdown)
+  and carries a finding-level `ack: false` in the wire (Tomo-Editor channel; INCLUDED in
+  `emit_digest` — acknowledging is a user decision). On the Pass-2 apply path,
+  `garden-audit-parser --stamp-pushback` writes acked advisories into the auto-managed pushback
+  ledger (`config/garden-audit-pushback.yaml`, separate from the wizard-owned exclusions file so
+  a wizard rewrite can never clobber automatic state). The scan merges ledger entries into the
+  exclusion rule set as temporary note-scoped rules.
+- **Settings:** optional `settings:` block in `config/garden-audit-exclusions.yaml` —
+  `advisory_pushback_days` (default 30) and `stale_moc_days` (default 90; supersedes the
+  "config deferred" Won't-Have note). Manually editable; the configure wizard preserves the
+  block verbatim on rewrite.
+- **Acceptance Criteria (Gherkin Format):**
+  - [ ] Given an advisory finding, When the report renders, Then it carries an unticked
+    Acknowledge checkbox labelled with the configured rest window.
+  - [ ] Given the user ticks Acknowledge (markdown) or the editor sets `ack: true` (wire), When
+    Pass-2 runs with `--stamp-pushback`, Then the advisory is written to the pushback ledger with
+    `until = today + advisory_pushback_days`.
+  - [ ] Given a ledgered advisory whose window has not lapsed, When `/garden-audit` runs, Then no
+    finding of that check is reported for that note; Given the window has lapsed, Then the
+    finding reappears.
+  - [ ] Given the wire, When an `ack` flag is toggled, Then `emit_digest` mismatches and Pass-2
+    treats the JSON as authoritative.
+
 ### Should Have Features
 
-- **Pre-selected best fix.** For unparented/orphan findings, the highest-scoring candidate MOC is
-  pre-checked (reusing `orphan_link.py` overlap scoring), so the common case is one-click approve.
+- ~~**Pre-selected best fix.**~~ RETIRED 2026-07-23 (user decision: opt-in ticking everywhere —
+  see Feature 3). The highest-scoring candidate MOC remains the FALLBACK TARGET when the user
+  ticks Apply without filling **File under:**; only the pre-ticking was dropped.
 - **Overflow disclosure.** When a category is truncated for readability, the report shows the total
   count as a denominator so the user knows coverage (e.g. "N more not shown").
 - **Temporary push-back (part of Feature 5).** Beyond permanent exclusion (Must), the auto-expiring
@@ -266,7 +301,8 @@ findings, so it scales to the hundreds of findings a real scan produces without 
 - **Scheduled/periodic invocation** — v1 is on-demand `/garden-audit` only.
 - **Per-note `kado-graph` fallback** — YAGNI; the bulk `kado-graph-audit` shipped (Kado v1.2.0).
 - **Incremental audit** (`filter.modifiedAfter`, F-48) — separate epic-#16 item.
-- **Configurable stale threshold** — start with a hardcoded default (N months); config deferred.
+- ~~**Configurable stale threshold** — start with a hardcoded default (N months); config deferred.~~
+  SHIPPED 2026-07-23 as `settings.stale_moc_days` (Feature 5a).
 
 _Broken `up::` **removal** IS in v1 (moved out of Won't-Have per user decision): Tomo emits the
 full fix intent — both "repoint to a valid MOC" (shipped `add_relationship`) and "remove the broken

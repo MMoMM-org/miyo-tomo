@@ -88,3 +88,21 @@ WHY: 0.2.0 (spec 030 stats mode) — added `active_rules(today)` / `pushback_rul
 read views for the overview. 0.1.1 was the `today` thread-through fix on `from_path` →
 `from_dict` → `__init__` (C1). 0.1.0 initial spec-030 T1.2. `update-tomo.sh` skips unchanged
 versions.
+
+## Version 0.3.0 — settings + advisory-pushback ledger (2026-07-23)
+
+WHY the two tuning knobs (`settings.stale_moc_days`, `settings.advisory_pushback_days`) live in
+the exclusions YAML rather than vault-config.yaml or a new file: exclusions ARE the garden-audit
+tuning surface (ADR-2 skill-owned config), and one file keeps every knob discoverable. The
+settings block is manually editable; `garden-audit-configure.py` preserves it verbatim on wizard
+rewrite (the wizard regenerates the whole file from choices — without preservation a reconfigure
+would silently reset thresholds). Fail-open accessors (`_settings_int`) return defaults on any
+malformed value — a typo in the YAML must never crash a scan.
+
+WHY the pushback ledger (`config/garden-audit-pushback.yaml`) is a SEPARATE auto-managed file and
+not entries in the exclusions YAML: the wizard rewrites the exclusions file wholesale, so
+automatic state stored there would be clobbered on every reconfigure. The ledger is stamped only
+by `garden-audit-parser --stamp-pushback` (Pass-2 apply path) and merged at load time
+(`from_paths`) into the SAME `_ExclusionRule` machinery as wizard temporaries — acked advisories
+get is_excluded suppression, is_active expiry, and stats' pushback view for free, with zero new
+matching logic. Expired entries are pruned on the next stamp-write, not on read (reads stay pure).

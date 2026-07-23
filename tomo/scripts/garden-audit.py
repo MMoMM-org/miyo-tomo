@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.2
+# version: 0.4.0
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
 Runs six checks over the MOC-structure cache, kado-graph-audit results, and
@@ -62,9 +62,16 @@ _FIXABLE: frozenset[str] = frozenset(["unparented", "orphan", "broken_up", "dead
 # Default stale-MOC threshold in days
 _DEFAULT_STALE_MOC_DAYS = 90
 
+# Default advisory-pushback window in days (Acknowledge → rest)
+_DEFAULT_ADVISORY_PUSHBACK_DAYS = 30
+
 # Effective default exclusions path (instance-cwd-relative). Referenced by both
 # the --exclusions help string and the None-sentinel resolution in main().
 _DEFAULT_EXCL_PATH = "config/garden-audit-exclusions.yaml"
+
+# Auto-managed advisory-pushback ledger (written by garden-audit-parser
+# --stamp-pushback; merged into the exclusions rule set on load).
+_DEFAULT_PUSHBACK_LEDGER = "config/garden-audit-pushback.yaml"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -89,7 +96,8 @@ def _finding(fid: str, check: str, path: str, stem: str | None, detail: dict) ->
         "detail": detail,
     }
     if fixable:
-        f["decision"] = {"selected": True, "action": None}
+        # Opt-in ticking (user decision 2026-07-23): every fix starts unselected.
+        f["decision"] = {"selected": False, "action": None}
     return f
 
 
@@ -381,6 +389,7 @@ def run_scan(
     list_dir_fn,
     exclusions=None,
     stale_moc_days: int = _DEFAULT_STALE_MOC_DAYS,
+    advisory_pushback_days: int = _DEFAULT_ADVISORY_PUSHBACK_DAYS,
     run_id: str | None = None,
     profile: str | None = None,
     generated: str | None = None,
@@ -402,6 +411,9 @@ def run_scan(
         Optional GardenExclusions instance. None means nothing is excluded.
     stale_moc_days:
         Age threshold for stale-MOC detection.
+    advisory_pushback_days:
+        Rest window for an acknowledged advisory — carried into the doc so the
+        renderer can label the Acknowledge checkbox.
     run_id, profile, generated:
         Run metadata; auto-generated when absent.
     today:
@@ -462,6 +474,7 @@ def run_scan(
         "skipped_checks": skipped_checks,
         "skipped_checks_reason": skipped_reason,
         "reappeared_exclusions": reappeared,
+        "advisory_pushback_days": advisory_pushback_days,
         "findings": all_findings,
     }
     return doc
@@ -503,7 +516,13 @@ def main() -> int:
     p.add_argument(
         "--no-exclusions",
         action="store_true",
-        help="Skip loading exclusions — the wizard first-run unfiltered scan.",
+        help="Skip loading exclusions AND the pushback ledger — the wizard "
+             "first-run unfiltered scan.",
+    )
+    p.add_argument(
+        "--pushback-ledger",
+        default=_DEFAULT_PUSHBACK_LEDGER,
+        help="Path to the advisory-pushback ledger (missing file = no ledger rules).",
     )
     p.add_argument(
         "--output",
@@ -546,28 +565,28 @@ def main() -> int:
     entries: list[dict] = cache.get("entries") or []
     print(f"[garden-audit] Cache loaded: {len(entries)} entries", file=sys.stderr)
 
-    # ── Load exclusions ───────────────────────────────────────────────────────
+    # ── Load exclusions + pushback ledger ─────────────────────────────────────
     # None sentinel distinguishes a user-passed --exclusions from the default:
     #   --no-exclusions            → skip entirely (wizard first-run unfiltered).
     #   explicit --exclusions path → missing file is an ERROR (exit 1).
-    #   defaulted (None) path      → missing file runs unfiltered (exit 0).
+    #   defaulted (None) path      → missing file still merges the ledger and
+    #                                falls back to default settings (fail-open).
     exclusions: GardenExclusions | None = None
     explicit = args.exclusions is not None
     excl_path = Path(args.exclusions) if explicit else Path(_DEFAULT_EXCL_PATH)
     if args.no_exclusions:
         print("[garden-audit] --no-exclusions — scan is unfiltered.", file=sys.stderr)
-    elif not excl_path.is_file():
-        if explicit:
+    else:
+        if explicit and not excl_path.is_file():
             print(f"[error] Exclusions file not found: {excl_path}", file=sys.stderr)
             return 1
+        exclusions = GardenExclusions.from_paths(excl_path, Path(args.pushback_ledger))
+        rule_count = len(exclusions.active_rules())
         print(
-            f"[garden-audit] No exclusions file at {excl_path} — scan is unfiltered.",
+            f"[garden-audit] Exclusions loaded from: {excl_path} + ledger "
+            f"{args.pushback_ledger} ({rule_count} active rules)",
             file=sys.stderr,
         )
-    else:
-        exclusions = GardenExclusions.from_path(excl_path)
-        rule_count = len(exclusions._rules) if hasattr(exclusions, "_rules") else "?"
-        print(f"[garden-audit] Exclusions loaded from: {excl_path} ({rule_count} rules)", file=sys.stderr)
 
     # ── Connect to Kado ───────────────────────────────────────────────────────
     print("[garden-audit] Connecting to Kado...", file=sys.stderr)
@@ -584,6 +603,13 @@ def main() -> int:
         graph_audit_fn=client.graph_audit,
         list_dir_fn=client.list_dir,
         exclusions=exclusions,
+        stale_moc_days=(
+            exclusions.stale_moc_days if exclusions else _DEFAULT_STALE_MOC_DAYS
+        ),
+        advisory_pushback_days=(
+            exclusions.advisory_pushback_days
+            if exclusions else _DEFAULT_ADVISORY_PUSHBACK_DAYS
+        ),
         profile=profile,
     )
 

@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """garden_exclusions.py — Load and apply the garden-audit exclusion config (spec 030 T1.2).
 
 Loads config/garden-audit-exclusions.yaml, separates expired temporaries
 (reporting which reappeared), and exposes is_excluded(note_entry, check_name) -> bool
 applied as a filter before findings render.
 
-Fail-open: missing or malformed config returns an empty GardenExclusions instance
-(nothing excluded, no crash).
+Also owns the two garden-audit tuning knobs (optional top-level ``settings:`` in the
+exclusions YAML — ``stale_moc_days``, ``advisory_pushback_days``) and the auto-managed
+advisory-pushback ledger (config/garden-audit-pushback.yaml): acknowledged advisories
+are stamped there by garden-audit-parser --stamp-pushback and merged into the active
+rule set on load (from_paths), so a fresh scan suppresses them until their date lapses.
+
+Fail-open: missing or malformed config/ledger returns an empty GardenExclusions
+instance (nothing excluded, no crash) and default settings.
 
 Design notes: docs/tomo/scripts/lib/garden_exclusions.md
 """
@@ -24,6 +30,20 @@ logger = logging.getLogger(__name__)
 ALL_CHECK_NAMES = frozenset(
     ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"]
 )
+
+# Tuning defaults — used when the exclusions YAML has no settings block (fail-open).
+DEFAULT_STALE_MOC_DAYS = 90
+DEFAULT_ADVISORY_PUSHBACK_DAYS = 30
+
+
+def _settings_int(settings: dict, key: str, default: int) -> int:
+    """Read a positive-int setting; fall back to default on any bad value."""
+    value = settings.get(key, default)
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -122,9 +142,27 @@ class GardenExclusions:
       pushback_rules(today=None) -> list[dict]  # active temporaries only
     """
 
-    def __init__(self, rules: list[_ExclusionRule], today: date) -> None:
+    def __init__(self, rules: list[_ExclusionRule], today: date,
+                 settings: dict | None = None) -> None:
         self._active: list[_ExclusionRule] = [r for r in rules if r.is_active(today)]
         self._reappeared: list[dict] = [r.raw for r in rules if r.is_expired(today)]
+        self._settings: dict = settings if isinstance(settings, dict) else {}
+
+    # ------------------------------------------------------------------
+    # Settings (optional top-level `settings:` block in the exclusions YAML)
+    # ------------------------------------------------------------------
+
+    @property
+    def stale_moc_days(self) -> int:
+        """Staleness threshold for the stale_moc check (days; default 90)."""
+        return _settings_int(self._settings, "stale_moc_days", DEFAULT_STALE_MOC_DAYS)
+
+    @property
+    def advisory_pushback_days(self) -> int:
+        """Rest window for an acknowledged advisory (days; default 30)."""
+        return _settings_int(
+            self._settings, "advisory_pushback_days", DEFAULT_ADVISORY_PUSHBACK_DAYS
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -190,14 +228,21 @@ class GardenExclusions:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_dict(cls, data: Any, *, today: date | None = None) -> "GardenExclusions":
-        """Build from a parsed config dict. Returns empty on None or malformed input."""
+    def from_dict(cls, data: Any, *, today: date | None = None,
+                  ledger_entries: list[dict] | None = None) -> "GardenExclusions":
+        """Build from a parsed config dict. Returns empty on None or malformed input.
+
+        ``ledger_entries`` (parsed pushback-ledger entries) are appended as
+        temporary note-target rules — same active/expired lifecycle as
+        wizard-written temporaries.
+        """
         effective_today = today or date.today()
         if not isinstance(data, dict):
-            return cls([], effective_today)
+            data = {}
+        settings = data.get("settings")
         raw_exclusions = data.get("exclusions") or []
         if not isinstance(raw_exclusions, list):
-            return cls([], effective_today)
+            raw_exclusions = []
         rules: list[_ExclusionRule] = []
         for raw in raw_exclusions:
             if not isinstance(raw, dict):
@@ -207,19 +252,114 @@ class GardenExclusions:
                 logger.debug("garden_exclusions: skipping malformed entry: %r", raw)
                 continue
             rules.append(rule)
-        return cls(rules, effective_today)
+        for entry in ledger_entries or []:
+            rule = _parse_rule(_ledger_entry_to_rule(entry))
+            if rule is None:
+                logger.debug("garden_exclusions: skipping malformed ledger entry: %r", entry)
+                continue
+            rules.append(rule)
+        return cls(rules, effective_today, settings=settings)
 
     @classmethod
     def from_path(cls, path: Path, *, today: date | None = None) -> "GardenExclusions":
         """Load from a YAML file path. Returns empty on missing file or parse error."""
         effective_today = today or date.today()
-        if not path.exists():
-            return cls([], effective_today)
-        try:
-            import yaml  # defer import — only needed for file loading
-            data = yaml.safe_load(path.read_text(encoding="utf-8"))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("garden_exclusions: could not load %s: %s", path, exc)
-            return cls([], effective_today)
+        data = _load_yaml_dict(path)
         # C1: pass effective_today (already resolved) so both calls share the same date
         return cls.from_dict(data, today=effective_today)
+
+    @classmethod
+    def from_paths(cls, config_path: Path, ledger_path: Path, *,
+                   today: date | None = None) -> "GardenExclusions":
+        """Load the exclusions config AND the advisory-pushback ledger, merged.
+
+        Ledger entries become temporary note-target rules, so acknowledged
+        advisories are suppressed by the same is_excluded path as wizard
+        push-backs until their date lapses. Either file may be missing (fail-open).
+        """
+        effective_today = today or date.today()
+        return cls.from_dict(
+            _load_yaml_dict(config_path),
+            today=effective_today,
+            ledger_entries=load_pushback_ledger(ledger_path),
+        )
+
+
+# ----------------------------------------------------------------------
+# Advisory-pushback ledger (config/garden-audit-pushback.yaml)
+# ----------------------------------------------------------------------
+# Auto-managed by garden-audit-parser --stamp-pushback: one entry per
+# acknowledged advisory finding {path, check, created, until}. Never edited
+# by the configure wizard — kept separate so a wizard rewrite of the
+# exclusions YAML can never clobber automatic state.
+
+def _load_yaml_dict(path: Path) -> dict:
+    """Read a YAML file into a dict; {} on missing file or any parse error."""
+    if not path.exists():
+        return {}
+    try:
+        import yaml  # defer import — only needed for file loading
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("garden_exclusions: could not load %s: %s", path, exc)
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _ledger_entry_to_rule(entry: dict) -> dict:
+    """Project a ledger entry to the exclusion-rule shape _parse_rule accepts."""
+    if not isinstance(entry, dict):
+        return {}
+    return {
+        "target": {"type": "note", "value": entry.get("path", "")},
+        "checks": [entry.get("check", "")],
+        "mode": "temporary",
+        "until": entry.get("until"),
+    }
+
+
+def load_pushback_ledger(path: Path) -> list[dict]:
+    """Return the ledger's entries list; [] on missing/malformed file."""
+    entries = _load_yaml_dict(path).get("entries")
+    return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+
+
+def stamp_pushback(path: Path, items: list[dict], days: int, *,
+                   today: date | None = None) -> list[dict]:
+    """Upsert acknowledged advisories into the ledger; prune expired entries.
+
+    ``items``: [{path, check}] — each gets created=today, until=today+days.
+    Existing entries are kept unless expired (until <= today) or re-stamped
+    (same path+check → the new until wins). Writes the whole ledger YAML and
+    returns the entries written.
+    """
+    from datetime import timedelta
+
+    import yaml
+
+    effective_today = today or date.today()
+    kept: list[dict] = []
+    stamped_keys = {(i.get("path"), i.get("check")) for i in items}
+    for entry in load_pushback_ledger(path):
+        until = _parse_date(entry.get("until"))
+        if until is None or until <= effective_today:
+            continue  # expired (or dateless) — prune
+        if (entry.get("path"), entry.get("check")) in stamped_keys:
+            continue  # re-acknowledged — replaced by the new stamp below
+        kept.append(entry)
+    until_str = (effective_today + timedelta(days=days)).isoformat()
+    for item in items:
+        kept.append({
+            "path": item.get("path", ""),
+            "check": item.get("check", ""),
+            "created": effective_today.isoformat(),
+            "until": until_str,
+        })
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "# Managed by garden-audit-parser --stamp-pushback. Do not edit manually.\n"
+        + yaml.safe_dump({"version": 1, "entries": kept}, sort_keys=False,
+                         allow_unicode=True),
+        encoding="utf-8",
+    )
+    return kept

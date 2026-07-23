@@ -1,4 +1,4 @@
-# version: 0.3.1
+# version: 0.4.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -260,8 +260,9 @@ def compute_garden_audit_digest(payload: dict) -> str:
     decision.suggested) and editor-signal fields (decision.suggest_requested,
     top-level approved) that must
     NOT flip the change signal — only a user changing an apply decision
-    (selected / repoint / replace / file_under) counts as "edited". This projects
-    each finding to (id, apply-decision-keys-that-are-present) and hashes that
+    (selected / repoint / replace / file_under) or acknowledging an advisory
+    (finding-level ack) counts as "edited". This projects each finding to
+    (id, apply-decision-keys-that-are-present, ack-when-present) and hashes that
     canonical form. The suggestions wire is unaffected — it uses its own function.
     """
     import hashlib
@@ -277,6 +278,11 @@ def compute_garden_audit_digest(payload: dict) -> str:
                 for k in _GARDEN_APPLY_DECISION_KEYS
                 if k in decision
             }
+        # Advisory ack IS a user decision — include when present so an editor
+        # tick flips the digest and routes Pass-2 to the JSON path. Older wires
+        # lack the key entirely, so their digests are unchanged.
+        if "ack" in finding:
+            entry["ack"] = finding["ack"]
         projection.append(entry)
     canonical = json.dumps(
         projection, sort_keys=True, ensure_ascii=False, separators=(",", ":")

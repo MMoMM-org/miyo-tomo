@@ -83,3 +83,13 @@ approved-suggestions entry. A missing sibling (older doc / no Hashi) simply omit
 the field, and the parser uses the markdown path. The JSON-only path is gated to
 the primary flow (`--fan-resolve-file` absent) so the XDD-012 fan-resolve path is
 untouched.
+
+## garden-audit parser call passes --stamp-pushback (v0.16.0, 2026-07-23)
+
+WHY the conductor's garden-audit invocation (and only this invocation) carries
+`--stamp-pushback`: the conductor's parse IS the Pass-2 apply path — the one place where a
+ticked Acknowledge is a user-confirmed decision. Read-only parser invocations (tests, diffs)
+must not write the ledger, so the flag is opt-in at the call site rather than default-on in the
+script. The relay instruction for the `stamped N acknowledged advisory(ies)` stderr line exists
+because the stamp is otherwise invisible to the user — the confirmation belongs in the /inbox
+summary.

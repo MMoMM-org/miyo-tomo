@@ -96,3 +96,23 @@ path errors (exit 1) while a defaulted-absent one runs unfiltered (exit 0). 0.3.
 cwd-relative defaults for `--config`/`--exclusions`/`--output` + `--no-exclusions` (agent calls
 bare). 0.2.0 was the batch-orphan fix (S1) + per-path duplicate-stem exclusion; 0.1.0 initial
 spec-030 implementation. `update-tomo.sh` skips unchanged versions.
+
+## Version 0.4.0 — opt-in Apply + settings wiring + ledger merge (2026-07-23)
+
+WHY `_finding` now emits `selected: False` (was True): user decision 2026-07-23 — Apply is
+opt-in everywhere. Pre-ticked Apply on a no-candidate orphan was a no-op trap (parser skips it
+with a warning), and opt-out review pressure was the wrong default for destructive-ish fixes.
+Spec 030 Feature 3 AC revised accordingly; the "Pre-selected best fix" Should-Have is retired
+(the scan candidate remains the fallback TARGET, only the pre-ticking was dropped).
+
+WHY main() now always builds `GardenExclusions.from_paths(exclusions, ledger)` even when the
+exclusions file is absent (previously `None` → unfiltered): the pushback ledger and the settings
+defaults must work without a wizard-written exclusions file. An empty instance preserves the
+unfiltered semantics (no rules) while carrying `stale_moc_days` / `advisory_pushback_days` into
+`run_scan` — this also finally WIRES the `stale_moc_days` param main() never passed (the spec's
+"config deferred" note is superseded). `--no-exclusions` still skips both files: the wizard
+first-run preview must show the unfiltered truth, including ledgered advisories.
+
+WHY the doc carries `advisory_pushback_days`: the renderer labels the Acknowledge checkbox with
+the window ("pause this advisory for N days") and must stay a pure doc→artifact projection — the
+scan injects the value so the renderer never loads config.

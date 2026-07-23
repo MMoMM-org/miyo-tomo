@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.15.0
+# version: 0.16.0
 
 **Active agent: synthesis-conductor**
 
@@ -127,13 +127,13 @@ python3 scripts/moc-proposal-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-s
 
 For `DOC_TYPE` = `garden-audit`:
 ```bash
-python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" --wire "<WIRE_CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
+python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" --wire "<WIRE_CACHE_PATH>" --stamp-pushback > tomo-tmp/parsed-suggestions.json
 ```
-ALWAYS pass BOTH `--file` and `--wire` — the wire is the STRUCTURE source (spec 030 two-artifact split), joined to the markdown decisions by F-id. `<WIRE_CACHE_PATH>` is the entry's `wire_cache_path` (inbox-triage caches the wire sibling for every garden-audit doc). If a Hashi editor edited the wire (digest mismatch), the parser treats the wire as fully authoritative; otherwise it joins wire structure to the report's Apply ticks + Repoint/Replace values.
+ALWAYS pass BOTH `--file` and `--wire` — the wire is the STRUCTURE source (spec 030 two-artifact split), joined to the markdown decisions by F-id. `<WIRE_CACHE_PATH>` is the entry's `wire_cache_path` (inbox-triage caches the wire sibling for every garden-audit doc). If a Hashi editor edited the wire (digest mismatch), the parser treats the wire as fully authoritative; otherwise it joins wire structure to the report's Apply ticks + Repoint/Replace values. `--stamp-pushback` records acknowledged advisories in the pushback ledger — relay the parser's `stamped N acknowledged advisory(ies)` stderr line when it appears.
 
 STRICT: `--wire` is required. If the entry's `wire_cache_path` is `null` (the sibling was genuinely absent), do NOT omit `--wire` — substitute a nonexistent path literal, e.g. `--wire "null"`:
 ```bash
-python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" --wire "null" > tomo-tmp/parsed-suggestions.json
+python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" --wire "null" --stamp-pushback > tomo-tmp/parsed-suggestions.json
 ```
 Why: omitting `--wire` makes argparse exit 2 (hard crash). Passing a nonexistent path makes the parser warn and emit empty `confirmed_items` — a graceful no-op.
 

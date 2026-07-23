@@ -15,6 +15,23 @@
       "type": "boolean",
       "description": "First-run marker. False (or absent) = wizard has not yet run; true = user has completed the wizard at least once. Written by the garden-auditor agent wizard (Wizard Step D). The loader ignores this field — it is metadata for the agent, not a rule."
     },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional tuning knobs. May be edited manually — the configure wizard preserves this block verbatim on rewrite. Absent keys fall back to their defaults.",
+      "properties": {
+        "stale_moc_days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Staleness threshold for the stale_moc check in days (default 90): a MOC unmodified for at least this long is flagged."
+        },
+        "advisory_pushback_days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rest window in days (default 30) for an acknowledged advisory (stale_moc, duplicate_stem): after the user ticks Acknowledge and applies, the finding is suppressed via the pushback ledger until the window lapses."
+        }
+      }
+    },
     "exclusions": {
       "type": "array",
       "description": "Ordered list of exclusion rules. A finding is suppressed when ANY rule matches its target and check.",

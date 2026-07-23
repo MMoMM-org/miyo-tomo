@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """garden-audit-configure.py — Wizard-support helper for the garden-auditor agent.
 
 Two modes, invoked by garden-auditor.md during the exclusion wizard:
@@ -252,6 +252,17 @@ def write_config(choices_path: str, output_path: str) -> int:
         "exclusions": exclusion_entries,
     }
 
+    # Preserve an existing settings block verbatim (stale_moc_days,
+    # advisory_pushback_days): the wizard rewrites the whole file from choices,
+    # and settings are manually maintained tuning knobs — clobbering them would
+    # silently reset the user's thresholds.
+    try:
+        existing = yaml.safe_load(Path(output_path).read_text(encoding="utf-8"))
+        if isinstance(existing, dict) and isinstance(existing.get("settings"), dict):
+            config["settings"] = existing["settings"]
+    except (OSError, yaml.YAMLError):
+        pass  # no existing file / unreadable → nothing to preserve
+
     # Validate against the authoritative schema before writing.
     # Inline field checks above give friendlier per-field messages;
     # this is the final gate that catches any gap between them and the schema.
@@ -271,7 +282,11 @@ def write_config(choices_path: str, output_path: str) -> int:
 
     header_comment = (
         "# Skill-owned exclusion config for /garden-audit (spec 030, ADR-2).\n"
-        "# Managed via /garden-audit --configure. Do not edit manually.\n"
+        "# Exclusions managed via /garden-audit --configure — do not edit them "
+        "manually.\n"
+        "# The optional settings block (stale_moc_days, advisory_pushback_days) "
+        "MAY be\n"
+        "# edited manually; the wizard preserves it on rewrite.\n"
     )
     try:
         with open(out_path, "w", encoding="utf-8") as fh:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_garden_audit_cli_defaults.py — cwd-relative default resolution (spec 030).
 
 Standard (docs/ai/memory/general.md 2026-06-24): runtime scripts use instance-
@@ -242,7 +242,10 @@ class TestExclusionsExplicitVsDefault:
         monkeypatch.setattr(mod, "run_scan", _fake_run_scan)
 
     def test_defaulted_absent_exclusions_runs_unfiltered_exit_0(self, tmp_path, monkeypatch):
-        # No --exclusions passed AND no file at the default path → unfiltered, exit 0.
+        # No --exclusions passed AND no file at the default path → still exit 0 and
+        # effectively unfiltered: an EMPTY GardenExclusions instance (fail-open) is
+        # passed so the pushback ledger + settings defaults keep working even
+        # without a wizard-written exclusions file (2026-07-23 ack-pushback).
         mod = _load_scan_with_fake_kado(monkeypatch, "gascan_default_absent")
         inst = _scan_instance(tmp_path, exclusions_configured=False)  # no exclusions file
         captured = {}
@@ -250,7 +253,10 @@ class TestExclusionsExplicitVsDefault:
         monkeypatch.chdir(inst)
         monkeypatch.setattr(sys, "argv", ["garden-audit.py"])  # bare — defaulted
         assert mod.main() == 0
-        assert captured["exclusions"] is None  # unfiltered, not an error
+        excl = captured["exclusions"]
+        assert excl is not None
+        assert excl.active_rules() == []  # no rules → unfiltered semantics
+        assert excl.stale_moc_days == 90  # settings fall back to defaults
 
     def test_explicit_missing_exclusions_is_error_exit_1(self, tmp_path, monkeypatch):
         # An explicitly-passed missing --exclusions path is a hard error (exit 1),

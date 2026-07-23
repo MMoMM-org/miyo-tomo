@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.8.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
-(machine STRUCTURE, always read) → a ``{"confirmed_items": [...]}`` envelope of
-SEMANTIC items (not pre-built actions). instruction-render.py turns confirmed_items
-into the action list via render_actions.build_garden_audit_actions (which reuses
-the shared _build_edit_note_text_actions builder).
+(machine STRUCTURE, always read) → a ``{"confirmed_items": [...],
+"acked_advisories": [...]}`` envelope of SEMANTIC items (not pre-built actions).
+instruction-render.py turns confirmed_items into the action list via
+render_actions.build_garden_audit_actions (which reuses the shared
+_build_edit_note_text_actions builder). acked_advisories ({id, path, check} per
+acknowledged advisory — markdown ``- [x] Acknowledge`` tick OR wire finding-level
+``ack: true``) is consumed by ``--stamp-pushback``, which writes the pushback
+ledger so the next scan rests those advisories for the configured window.
 
 Two artifacts, joined by the F-id in each ``### F<id>`` heading:
   - MARKDOWN = decisions only: per block, the ``- [x] Apply`` tick and the typed
@@ -21,6 +25,9 @@ CLI:
                   wire fully authoritative).
                 • wire unedited → build_from_report (wire structure + markdown
                   decisions, joined by F-id).
+  --stamp-pushback OPTIONAL — Pass-2 apply path only: write acked advisories
+                into the pushback ledger (--pushback-ledger; window days from
+                --exclusions settings.advisory_pushback_days, default 30).
   result JSON → STDOUT. Wire missing/unreadable → empty confirmed_items (no crash).
 
 confirmed_item shape (per fixable finding the user kept):
@@ -150,6 +157,11 @@ RE_FILEUNDER_FIELD = re.compile(
 RE_SUGGEST_TICKED = re.compile(
     r"^\s*-\s+\[x\]\s+Suggest targets\b", re.IGNORECASE | re.MULTILINE
 )
+# Advisory acknowledge box: ticked = "reviewed, pause this advisory" — the
+# finding is stamped into the pushback ledger (--stamp-pushback) and rests.
+RE_ACK_TICKED = re.compile(
+    r"^\s*-\s+\[x\]\s+Acknowledge\b", re.IGNORECASE | re.MULTILINE
+)
 # A ticked pick sub-checkbox: `  - [x] [[Candidate]] (0.92)`. The wikilink stem
 # is the chosen Replace/Repoint value (unless the user typed one, which wins).
 RE_PICK_TICKED = re.compile(
@@ -234,7 +246,9 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
         precedence (typed **File under:** > ticked pick > empty).
       - suggest: True iff the ``- [x] Suggest targets`` opt-in is ticked (so
         ``--suggest`` knows which findings to enrich).
-    Findings with no editable field carry apply + empty fields + suggest.
+      - ack: True iff the advisory ``- [x] Acknowledge`` box is ticked (pause
+        the advisory via the pushback ledger).
+    Findings with no editable field carry apply + empty fields + suggest + ack.
     """
     out: dict[str, dict] = {}
     for fid, lines in _split_finding_blocks(md_text):
@@ -267,6 +281,7 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
             "replace": typed_replace or pick,
             "file_under": typed_fileunder or pick,
             "suggest": bool(RE_SUGGEST_TICKED.search(block)),
+            "ack": bool(RE_ACK_TICKED.search(block)),
         }
     return out
 
@@ -363,6 +378,16 @@ def _confirmed_item_from_wire_finding(finding: dict, decision_md: dict) -> dict 
     return None  # unknown check — forward-compatible skip
 
 
+def _acked_advisory(finding: dict) -> dict:
+    """Project an acknowledged advisory finding to a pushback-ledger item."""
+    target = finding.get("target") or {}
+    return {
+        "id": finding.get("id", ""),
+        "path": target.get("path", ""),
+        "check": finding.get("check", ""),
+    }
+
+
 def build_from_report(md_text: str, wire: dict) -> dict:
     """Join markdown DECISIONS to wire STRUCTURE → confirmed_items envelope.
 
@@ -376,14 +401,19 @@ def build_from_report(md_text: str, wire: dict) -> dict:
     fm = _extract_frontmatter(md_text)
     decision_map = parse_decision_map(md_text)
     confirmed: list[dict] = []
+    acked: list[dict] = []
 
     for finding in (wire or {}).get("findings") or []:
-        if not finding.get("fixable"):
-            continue  # advisory findings never produce a fix
         fid = finding.get("id", "")
         md_decision = decision_map.get(fid)
+        if not finding.get("fixable"):
+            # Advisory findings never produce a fix — but a ticked Acknowledge
+            # box pauses them via the pushback ledger (--stamp-pushback).
+            if md_decision is not None and md_decision.get("ack"):
+                acked.append(_acked_advisory(finding))
+            continue
         if md_decision is None or not md_decision.get("apply"):
-            continue  # id absent from the report, or the user unticked Apply
+            continue  # id absent from the report, or the user left Apply unticked
         item = _confirmed_item_from_wire_finding(finding, md_decision)
         if item is not None:
             confirmed.append(item)
@@ -393,6 +423,7 @@ def build_from_report(md_text: str, wire: dict) -> dict:
         "generated": (wire or {}).get("generated") or fm.get("generated", ""),
         "profile": (wire or {}).get("profile") or fm.get("profile") or None,
         "confirmed_items": confirmed,
+        "acked_advisories": acked,
     }
 
 
@@ -406,10 +437,14 @@ def build_from_wire(wire: dict) -> dict:
     decisions are not consulted. Same envelope shape as build_from_report.
     """
     confirmed: list[dict] = []
+    acked: list[dict] = []
 
     for finding in wire.get("findings") or []:
-        # Advisory checks (duplicate_stem, stale_moc) never produce a fix.
+        # Advisory checks (duplicate_stem, stale_moc) never produce a fix — but
+        # a finding-level ack:true (Tomo-Editor) pauses them via the ledger.
         if not finding.get("fixable"):
+            if finding.get("ack"):
+                acked.append(_acked_advisory(finding))
             continue
         decision = finding.get("decision") or {}
         if not decision.get("selected"):
@@ -509,6 +544,7 @@ def build_from_wire(wire: dict) -> dict:
         "generated": wire.get("generated", ""),
         "profile": wire.get("profile"),
         "confirmed_items": confirmed,
+        "acked_advisories": acked,
     }
 
 
@@ -560,6 +596,23 @@ def main() -> int:
              "(build_from_wire); otherwise its structure is joined to the markdown "
              "decisions by F-id (build_from_report).",
     )
+    p.add_argument(
+        "--stamp-pushback",
+        action="store_true",
+        help="Write acknowledged advisories into the pushback ledger so the next "
+             "scan suppresses them for the configured rest window. Pass this on "
+             "the Pass-2 apply path only — never on read-only parses.",
+    )
+    p.add_argument(
+        "--pushback-ledger", default="config/garden-audit-pushback.yaml",
+        metavar="PATH", help="Ledger path for --stamp-pushback.",
+    )
+    p.add_argument(
+        "--exclusions", default="config/garden-audit-exclusions.yaml",
+        metavar="PATH",
+        help="Exclusions YAML — read only for settings.advisory_pushback_days "
+             "when stamping (missing file = default window).",
+    )
     args = p.parse_args()
 
     try:
@@ -573,7 +626,8 @@ def main() -> int:
     if raw_wire is None:
         # Degrade gracefully — no structure source means no fixes to emit.
         print(json.dumps({
-            "run_id": "", "generated": "", "profile": None, "confirmed_items": [],
+            "run_id": "", "generated": "", "profile": None,
+            "confirmed_items": [], "acked_advisories": [],
         }, ensure_ascii=False, indent=2))
         return 0
 
@@ -589,9 +643,24 @@ def main() -> int:
     else:
         result = build_from_report(md_text, raw_wire)
 
+    acked = result.get("acked_advisories") or []
+    if args.stamp_pushback and acked:
+        from pathlib import Path
+
+        from lib.garden_exclusions import GardenExclusions, stamp_pushback
+
+        days = GardenExclusions.from_path(Path(args.exclusions)).advisory_pushback_days
+        stamp_pushback(Path(args.pushback_ledger), acked, days)
+        print(
+            f"garden-audit-parser: stamped {len(acked)} acknowledged advisory(ies) "
+            f"into {args.pushback_ledger} (rest {days} days)",
+            file=sys.stderr,
+        )
+
     print(json.dumps(result, ensure_ascii=False, indent=2))
     print(
-        f"garden-audit-parser: {len(result['confirmed_items'])} confirmed item(s)",
+        f"garden-audit-parser: {len(result['confirmed_items'])} confirmed item(s), "
+        f"{len(acked)} acknowledged advisory(ies)",
         file=sys.stderr,
     )
     return 0

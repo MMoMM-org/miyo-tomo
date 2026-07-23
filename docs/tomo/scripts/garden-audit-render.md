@@ -258,3 +258,18 @@ fix — added the per-finding structural HTML comment (parser round-trip), edita
 `Replace with:` / `Repoint to:` fields, and the top-level how-to-apply banner. Earlier:
 0.1.0 initial, 0.1.1 dead-link `replace` slot, 0.2.0 clickable wikilinks + fix summaries.
 `update-tomo.sh` skips unchanged versions.
+
+## Version 0.11.0 — opt-in Apply + advisory Acknowledge channel (2026-07-23)
+
+WHY the Apply checkbox renders unticked with label "tick to apply this fix" (was pre-ticked
+"untick to skip") and the preamble flipped to opt-in wording: user decision 2026-07-23 (spec 030
+Feature 3 revision) — see docs/tomo/scripts/garden-audit.md 0.4.0 for the rationale. The parser's
+`- [x] Apply\b` regex is label-suffix-agnostic, so the wording change is parse-safe; absent-box
+semantics ("no Apply box → apply") are unchanged.
+
+WHY advisory blocks now carry `- [ ] Acknowledge — reviewed; pause this advisory for N days`
+(N = doc's advisory_pushback_days, threaded through _render_tier_section → _render_finding): the
+ack channel needs a markdown surface for .md-only users, parallel to the wire's finding-level
+`ack: false`. The wire emits `ack` ONLY on advisory findings (fixable findings have the decision
+block instead), and ack is INCLUDED in emit_digest — acknowledging is a user decision that must
+route Pass-2 to the JSON path when done in the editor.

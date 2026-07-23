@@ -113,3 +113,25 @@ are guarded. `update-tomo.sh` skips unchanged versions; the agent is in the cont
 WHY 0.1.1: Marker-based first-run detection (`configured` flag). Step 3 rewritten
 from `test -f` to `grep -q "^configured: true"` to fix the seed-defeats-wizard bug.
 Wizard Step D updated to always emit `configured: true`.
+
+## Suggest Mode Re-uploads BOTH Artifacts (v0.7.0, 2026-07-23)
+
+WHY S.4 now re-uploads the wire `.json` alongside the report (superseding the earlier
+"Do NOT re-upload the wire — the wire is unchanged"): that sentence predated
+`garden-audit-suggest.py` 0.3.0, which started writing `decision.candidates` (and, since
+0.4.0, the `decision.suggested` ran-marker) into the wire. With the old rule, the enriched
+wire never reached the vault — the Tomo-Editor's candidate chips and "no suggestions found"
+state (Hashi spec-005 T5.3/T5.4) could never see data in a real `--suggest` round-trip
+(2026-07-23 Hashi handoff, Gap B).
+
+WHY the S.3 stop rule is "`N` = 0 → stop" against the NEW count (processed findings, not
+markdown `Pick one` lists): a requested finding with zero candidates still changes both
+artifacts (no-suggestions note + `suggested` marker) and MUST be uploaded — under the old
+"Pick one"-count, such runs read `N=0`, the agent stopped, and the enrichment was silently
+dropped (Gap C). `N` > 0 with `M` = 0 is explicitly called out as a valid proceed-case in
+the runtime file because an LLM reading "0 with candidates" plausibly reasons "nothing to
+upload" and stops — the imperative pre-empts that deviation.
+
+WHY the Mode:suggest output block emits `Wire: <WIRE_VAULT> (enriched)` (was `(unchanged)`):
+the fixed output block is PRD-locked shape; the annotation now reflects that the wire is a
+first-class enriched artifact of suggest mode.

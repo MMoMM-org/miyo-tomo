@@ -12,7 +12,7 @@ permissionMode: acceptEdits
 
 **Active agent: garden-auditor**
 
-# version: 0.6.1
+# version: 0.7.0
 # Garden Auditor Agent
 
 You are the **garden auditor**. Your job is to scan the user's vault for structural problems,
@@ -256,22 +256,27 @@ python3 scripts/garden-audit-suggest.py
 ```
 
 The script rewrites ONLY Suggest-ticked `dead_link`/`broken_up` blocks with a `Pick one:`
-candidate list; everything else (Approved gate, other findings) is preserved byte-for-byte.
-It prints `enriched N finding(s)` to stderr — relay it. If `N` is 0, tell the user no
-findings were ticked `- [x] Suggest targets` (or no candidates cleared the cutoff) and stop.
+candidate list (or an explicit no-suggestions note) and stamps the wire; everything else
+(Approved gate, other findings) is preserved byte-for-byte. It prints
+`enriched N finding(s) (M with candidates, K without)` to stderr — relay it. If `N` is 0,
+tell the user no findings were ticked `- [x] Suggest targets` (or wire-flagged
+`suggest_requested`) and stop. `N` > 0 with `M` = 0 is a valid result — proceed to S.4.
 
-#### S.4 — Re-upload the enriched report
+#### S.4 — Re-upload the enriched report + wire
 
 ```bash
 python3 scripts/kado-write-file.py \
   --local tomo-tmp/suggest-report.md \
   --vault "$REPORT_VAULT"
+python3 scripts/kado-write-file.py \
+  --local tomo-tmp/suggest-wire.json \
+  --vault "$WIRE_VAULT"
 ```
 
-Exit 0 = success; non-zero = surface stderr and report `Transport failed (local copy
-retained: tomo-tmp/suggest-report.md)`. Do NOT re-upload the wire — the wire is unchanged.
+Both must exit 0; non-zero on either = surface stderr and report `Transport failed (local
+copies retained: tomo-tmp/suggest-report.md, tomo-tmp/suggest-wire.json)`.
 
-After a successful re-upload, emit the fixed output block (Mode: suggest) and stop.
+After both uploads succeed, emit the fixed output block (Mode: suggest) and stop.
 
 ### Step T — Stats mode
 
@@ -366,7 +371,7 @@ Before emitting the final report:
 
 **If Mode == configure:** skip checks 2-3 (no report/wire produced in configure mode). Emit `Report: N/A (configure mode)` and `Wire: N/A (configure mode)` in the output block.
 
-**If Mode == suggest:** skip check 1 (no scan doc produced). Verify the enriched report exists (`test -s tomo-tmp/suggest-report.md`) and the re-upload exited 0. Emit `Report: <REPORT_VAULT> (enriched)` and `Wire: <WIRE_VAULT> (unchanged)`.
+**If Mode == suggest:** skip check 1 (no scan doc produced). Verify the enriched report and wire exist (`test -s tomo-tmp/suggest-report.md && test -s tomo-tmp/suggest-wire.json`) and both re-uploads exited 0. Emit `Report: <REPORT_VAULT> (enriched)` and `Wire: <WIRE_VAULT> (enriched)`.
 
 **If Mode == stats:** verify the scan doc exists (`test -s tomo-tmp/garden-audit-doc.json`) and the stats script exited 0. No vault write — emit `Report: N/A (stats mode — relayed to chat)` and `Wire: N/A (stats mode)`.
 

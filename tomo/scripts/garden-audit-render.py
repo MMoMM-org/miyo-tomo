@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.0
+# version: 0.13.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -619,6 +619,11 @@ def enrich_wire_with_candidates(
         else:
             decision["candidates"] = []
             decision.pop("suggested", None)
+    # Recompute the suggest-before-approve gate: after this run, every requested
+    # finding carries `suggested`, so pending clears (unless a request remains
+    # un-run for some reason). Excluded from emit_digest — no re-stamp needed.
+    if isinstance(wire, dict):
+        wire["suggest_pending"] = _wire_suggest_pending(wire.get("findings") or [])
     return wire, processed
 
 
@@ -696,10 +701,26 @@ def build_wire_payload(d: dict) -> dict:
         # Approved" box still works for .md-only users. Excluded from the
         # change-detection digest.
         "approved": bool(d.get("approved", False)),
+        # Suggest-before-approve gate (2026-07-24): true while any finding
+        # requested candidates but --suggest hasn't run. False at initial render
+        # (nothing requested yet); the editor sets it true on a suggest request,
+        # --suggest recomputes it false. Excluded from emit_digest.
+        "suggest_pending": _wire_suggest_pending(wire_findings),
         "findings": wire_findings,
     }
     payload["emit_digest"] = compute_garden_audit_digest(payload)
     return payload
+
+
+def _wire_suggest_pending(findings: list[dict]) -> bool:
+    """True iff any fixable finding requested suggestions that --suggest hasn't
+    fulfilled yet (decision.suggest_requested and not decision.suggested)."""
+    for f in findings or []:
+        decision = f.get("decision")
+        if isinstance(decision, dict) and decision.get("suggest_requested") \
+                and not decision.get("suggested"):
+            return True
+    return False
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

@@ -191,6 +191,13 @@ no links at all; **unparented** = a note with links but no `up::` parent.
   - [ ] Given a suggestion pick list, When the user ticks a `- [x] [[Candidate]]` sub-checkbox,
     Then the parser reads it as the Replace/Repoint value; a value TYPED into the field OVERRIDES a
     ticked pick (D4 precedence: typed > ticked pick > empty removal).
+  - [ ] Given the user requested suggestions (`- [x] Suggest targets` / editor `suggest_requested`)
+    that `/garden-audit --suggest` has NOT yet fulfilled, When `/inbox` runs, Then the doc is NOT
+    applied even if Approved — applying would silently skip the requested candidates (added
+    2026-07-24). The gate signal is the top-level wire `suggest_pending` (the Tomo-Editor blocks
+    approve while true; Tomo clears it after `--suggest`); triage additionally detects an unfulfilled
+    `- [x] Suggest targets` block in the markdown for `.md`-only users. Once `--suggest` runs,
+    `suggest_pending` clears and the doc applies on the next `/inbox`.
   - [ ] Given an integrity finding (`broken_up`/`dead_link`), When the report renders, Then the
     header reads `<label> in: [[note]]` (the note is the container); structure/advisory keep
     `<label>: [[note]]` (Phase 7 extension — live-report clarity).

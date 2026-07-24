@@ -339,6 +339,45 @@ class TestSuggestWritesWireCandidates:
 
 # ── Deliverable G (2026-07-23 Hashi handoff): suggested ran-marker ────────────
 
+class TestSuggestPendingMarker:
+    """Top-level suggest_pending gate (2026-07-24): Hashi blocks approve while
+    true; Tomo initialises false at render and clears it after --suggest."""
+
+    def test_render_suggest_pending_false(self):
+        wire = gar.build_wire_payload(_doc([_dead_link("F01")]))
+        assert wire["suggest_pending"] is False
+
+    def test_helper_true_when_requested_not_suggested(self):
+        wire = gar.build_wire_payload(_doc([_dead_link("F01")]))
+        # Editor requests candidates (no run yet) → pending.
+        wire["findings"][0]["decision"]["suggest_requested"] = True
+        assert gar._wire_suggest_pending(wire["findings"]) is True
+
+    def test_enrich_clears_suggest_pending(self, tmp_path):
+        doc = _doc([_dead_link("F01")])
+        rp, wp, cp = _write_pair(tmp_path, doc)
+        wire_in = json.loads(wp.read_text(encoding="utf-8"))
+        wire_in["findings"][0]["decision"]["suggest_requested"] = True
+        wire_in["suggest_pending"] = True  # editor set it on the request
+        wp.write_text(json.dumps(wire_in), encoding="utf-8")
+        _report, wire, _n, _m = gas.run_suggest(str(rp), str(wp), str(cp))
+        # --suggest stamped `suggested` → nothing left pending.
+        assert wire["suggest_pending"] is False
+
+    def test_suggest_pending_excluded_from_digest(self):
+        wire = gar.build_wire_payload(_doc([_dead_link("F01")]))
+        base = wire["emit_digest"]
+        wire["suggest_pending"] = True
+        assert compute_garden_audit_digest(wire) == base
+        assert gap._is_wire_edited(wire) is False
+
+    def test_wire_with_suggest_pending_validates(self):
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        wire = gar.build_wire_payload(_doc([_dead_link("F01")]))
+        wire["suggest_pending"] = True
+        jsonschema.validate(instance=wire, schema=schema)
+
+
 class TestSuggestedMarker:
     def test_markdown_tick_stamps_suggested(self, tmp_path):
         doc = _doc([_dead_link("F01")])

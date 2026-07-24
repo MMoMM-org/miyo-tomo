@@ -396,9 +396,9 @@ class TestApprovalScanMocProposalAccepted:
 # (spec 030 Tomo-Editor Q1). Either channel picks the doc up; neither → pending.
 # ---------------------------------------------------------------------------
 
-def _garden_audit_body(approved: bool) -> str:
+def _garden_audit_body(approved: bool, *, md_suggest: str | None = None) -> str:
     mark = "[x]" if approved else "[ ]"
-    return "\n".join([
+    lines = [
         "---",
         "tomo:",
         "  doc_type: garden-audit",
@@ -413,17 +413,27 @@ def _garden_audit_body(approved: bool) -> str:
         "",
         "- [x] Apply — untick to skip",
         "- **Replace with:** [[]]",
-        "",
-    ])
+    ]
+    # md_suggest: None → no Suggest box; "pending" → ticked, not enriched;
+    # "fulfilled" → ticked + a pick list (--suggest already ran).
+    if md_suggest == "pending":
+        lines.append("- [x] Suggest targets — tick, then run `/garden-audit --suggest`")
+    elif md_suggest == "fulfilled":
+        lines.append("- [x] Suggest targets — tick, then run `/garden-audit --suggest`")
+        lines.append("  Pick one (tick a candidate, or type your own above):")
+        lines.append("  - [ ] [[Candidate]] (0.90)")
+    lines.append("")
+    return "\n".join(lines)
 
 
-def _garden_audit_wire(approved: bool) -> bytes:
+def _garden_audit_wire(approved: bool, *, suggest_pending: bool = False) -> bytes:
     wire = {
         "schema_version": "1",
         "generated": "2026-07-22T12:00:00Z",
         "run_id": "test-run",
         "profile": "miyo",
         "approved": approved,
+        "suggest_pending": suggest_pending,
         "findings": [{
             "id": "F01", "check": "dead_link", "tier": "integrity", "fixable": True,
             "target": {"path": "Notes/Src.md", "stem": "Src"},
@@ -438,7 +448,9 @@ def _garden_audit_wire(approved: bool) -> bytes:
     return json.dumps(wire).encode("utf-8")
 
 
-def _garden_audit_client(md_approved: bool, wire_approved: bool):
+def _garden_audit_client(md_approved: bool, wire_approved: bool, *,
+                         wire_suggest_pending: bool = False,
+                         md_suggest: str | None = None):
     md_path = INBOX_PATH + "2026-07-22_1200_garden-audit.md"
     json_path = INBOX_PATH + "2026-07-22_1200_garden-audit.json"
     client = FakeKadoClient(
@@ -450,9 +462,13 @@ def _garden_audit_client(md_approved: bool, wire_approved: bool):
             "tomo.doc_type=instructions": [],
         },
         read_note_responses={
-            md_path: {"content": _garden_audit_body(md_approved), "modified": 0},
+            md_path: {"content": _garden_audit_body(md_approved, md_suggest=md_suggest),
+                      "modified": 0},
         },
-        read_file_responses={json_path: _garden_audit_wire(wire_approved)},
+        read_file_responses={
+            json_path: _garden_audit_wire(wire_approved,
+                                          suggest_pending=wire_suggest_pending),
+        },
     )
     return client, md_path
 
@@ -480,6 +496,47 @@ class TestGardenAuditApprovalGate:
         state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
         assert len(state.approved_garden_audits) == 0
         assert any(d["path"] == md_path for d in state.pending_approval)
+
+
+# ---------------------------------------------------------------------------
+# Test 6c: suggest-before-approve gate (2026-07-24). Approved but suggestions
+# still pending → NOT applied (mainly the .md-only path). Once --suggest ran
+# (wire suggest_pending false / markdown pick list present) → applies.
+# ---------------------------------------------------------------------------
+
+class TestGardenAuditSuggestGate:
+    def test_wire_suggest_pending_blocks_apply(self, tmp_path):
+        # Editor channel: wire approved but suggest_pending=true → not applied.
+        mod = _load_module()
+        client, md_path = _garden_audit_client(
+            md_approved=False, wire_approved=True, wire_suggest_pending=True)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 0
+        assert any(d["path"] == md_path for d in state.pending_approval)
+
+    def test_markdown_unfulfilled_suggest_blocks_apply(self, tmp_path):
+        # .md-only path: Approved ticked AND a Suggest box ticked without a pick
+        # list → --suggest hasn't run → not applied.
+        mod = _load_module()
+        client, md_path = _garden_audit_client(
+            md_approved=True, wire_approved=False, md_suggest="pending")
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 0
+
+    def test_markdown_fulfilled_suggest_applies(self, tmp_path):
+        # Suggest ticked AND enriched (pick list present) → --suggest ran → applies.
+        mod = _load_module()
+        client, md_path = _garden_audit_client(
+            md_approved=True, wire_approved=False, md_suggest="fulfilled")
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
+
+    def test_no_suggest_request_applies(self, tmp_path):
+        # No suggest anywhere + approved → applies (gate is a no-op).
+        mod = _load_module()
+        client, md_path = _garden_audit_client(md_approved=True, wire_approved=True)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -2301,7 +2358,7 @@ class TestTagHandlerResolution:
 # Test: garden-audit as 4th upstream type (T4.3 / spec 030 ADR-1, CON-5)
 # ---------------------------------------------------------------------------
 
-def _garden_audit_body(approved: bool = True) -> str:
+def _garden_audit_body_t43(approved: bool = True) -> str:
     """Minimal garden-audit markdown body (pending-accept doc).
 
     ADR-1 revised: garden-audit gates on a top-level "- [x] Approved" box.
@@ -2413,7 +2470,7 @@ class TestGardenAuditAsUpstreamType:
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
             read_note_responses={
-                ga_path: {"content": _garden_audit_body(), "modified": 0},
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
             },
         )
         state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
@@ -2455,7 +2512,7 @@ class TestGardenAuditAsUpstreamType:
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
             read_note_responses={
-                ga_path: {"content": _garden_audit_body(), "modified": 0},
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
             },
             read_file_responses={wire_vault_path: b'{"schema_version": "1"}'},
         )
@@ -2473,7 +2530,7 @@ class TestGardenAuditAsUpstreamType:
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
             read_note_responses={
-                ga_path: {"content": _garden_audit_body(approved=False), "modified": 0},
+                ga_path: {"content": _garden_audit_body_t43(approved=False), "modified": 0},
             },
         )
         state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
@@ -2491,7 +2548,7 @@ class TestGardenAuditAsUpstreamType:
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
             read_note_responses={
-                ga_path: {"content": _garden_audit_body(), "modified": 0},
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
             },
         )
         state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
@@ -2521,7 +2578,7 @@ class TestGardenAuditAsUpstreamType:
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
             read_note_responses={
-                ga_path: {"content": _garden_audit_body(), "modified": 0},
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
             },
         )
         rc = mod.main(
@@ -2542,7 +2599,7 @@ class TestGardenAuditAsUpstreamType:
             listdir_items=[_listdir_item(ga_path)],
             frontmatter_responses=self._base_frontmatter_responses(ga_path),
             read_note_responses={
-                ga_path: {"content": _garden_audit_body(), "modified": 0},
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
             },
         )
         rc = mod.main(

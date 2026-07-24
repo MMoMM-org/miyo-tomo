@@ -284,3 +284,16 @@ the report is approved (Pass-2 stamps every advisory). No wire `ack` field means
 digest projection reverts too (nothing advisory is user-editable, so it never flips the change
 signal). `advisory_pushback_days` still threads into the preamble + section note for the window
 label; the per-finding `ack_days` param on `_render_finding` is gone.
+
+## Version 0.13.0 — top-level suggest_pending gate (2026-07-24)
+
+WHY `build_wire_payload` emits a top-level `suggest_pending` (and `enrich_wire_with_candidates`
+recomputes it): the user could approve a report before the suggestions they ticked were generated,
+and nothing tied approve/apply to "did --suggest run". `suggest_pending` is the doc-level signal
+Hashi waits for — it blocks approve while true. Tomo owns the CLEAR side: false at render (nothing
+requested yet) and recomputed false after --suggest via `_wire_suggest_pending`
+(`any(decision.suggest_requested and not decision.suggested)`); the editor sets it true on a suggest
+request. Excluded from emit_digest by construction (the digest projects only per-finding apply keys),
+so toggling it never reads as a user apply-edit — same class as top-level `approved`. Pass-2 triage
+ALSO refuses to apply while pending (also from the markdown for .md-only users) — see
+docs/tomo/scripts/inbox-triage.md.

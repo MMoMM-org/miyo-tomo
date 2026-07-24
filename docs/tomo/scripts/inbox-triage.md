@@ -168,3 +168,15 @@ found → the "resolves in normal operation" claim above was FALSE and the whole
 silently no-op'd. The rename to the dated inbox convention makes it true; `_cache_wire_sibling`
 itself was NOT changed (the rename aligns to what it already expects). Pinned by
 `test_wire_is_report_json_sibling_by_convention`.
+
+## Suggest-before-approve gate (garden-audit, 2026-07-24)
+
+WHY the garden-audit branch now clears `approved` when `_garden_suggest_pending(body, wire)` is true:
+a user can tick "Suggest targets" AND approve in the same pass, but applying then silently skips the
+candidates they explicitly asked for. The gate is MAINLY for the .md-only path — a Hashi editor
+blocks approve itself using the top-level wire `suggest_pending`, but a markdown-only user has no
+such block. Two detection channels (either → pending): the wire's top-level `suggest_pending: true`
+(editor), and a markdown `- [x] Suggest targets` block carrying no `Pick one` pick list / no
+`No suggestions found` note (--suggest hasn't enriched it). When pending, triage logs a clear reason
+and leaves the doc in pending-approval; once `--suggest` runs, the signal clears and it applies on the
+next /inbox.

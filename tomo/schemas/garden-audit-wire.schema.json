@@ -9,11 +9,15 @@
   "properties": {
     "schema_version": {
       "const": "1",
-      "description": "Schema version — always '1'. All Tomo-Editor fields (decision.file_under, decision.candidates, decision.suggest_requested, decision.suggested, top-level approved) are additive."
+      "description": "Schema version — always '1'. All Tomo-Editor fields (decision.file_under, decision.candidates, decision.suggest_requested, decision.suggested, top-level approved, top-level suggest_pending) are additive."
     },
     "approved": {
       "type": "boolean",
       "description": "JSON-side approve gate (Q1). The Tomo-Editor sets this true on 'ready for /inbox'; the markdown '- [x] Approved' box still works for .md-only users, and Pass-2 is picked up when EITHER is set. EXCLUDED from emit_digest (approving is not an apply-decision edit), but approved:true forces Pass-2 to the JSON path regardless of digest so an all-default editor approval still applies fixes. Optional — absent is treated as false for back-compat with older wires."
+    },
+    "suggest_pending": {
+      "type": "boolean",
+      "description": "Suggest-before-approve gate (2026-07-24). true = a finding requested LLM candidates (decision.suggest_requested) but '/garden-audit --suggest' has not fulfilled it yet → the Tomo-Editor MUST block approve while true; approve is allowed when false. Ownership: Tomo initialises it false at render and recomputes it false after --suggest (once every suggest_requested finding carries decision.suggested); the Tomo-Editor sets it true when the user requests suggestions. EXCLUDED from emit_digest (an editor/Tomo signal, not an apply edit). Optional — absent is treated as false for back-compat. Pass-2 also refuses to apply a doc while pending (also detected from the markdown for .md-only users)."
     },
     "generated": {
       "type": "string",
@@ -30,7 +34,7 @@
     "emit_digest": {
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$",
-      "description": "SHA-256 over the APPLY-decision fields only (per finding: id + decision.{selected,repoint,replace,file_under}). Recomputed and compared in Pass-2 to detect USER apply edits. Tomo-generated candidates, the suggested ran-marker, suggest_requested, approved, and read-only detail are EXCLUDED — so --suggest writing candidates never flips this. Hashi carries emit_digest back VERBATIM; a mismatch (or approved:true) means the JSON is authoritative."
+      "description": "SHA-256 over the APPLY-decision fields only (per finding: id + decision.{selected,repoint,replace,file_under}). Recomputed and compared in Pass-2 to detect USER apply edits. Tomo-generated candidates, the suggested ran-marker, suggest_requested, top-level approved, top-level suggest_pending, and read-only detail are EXCLUDED — so --suggest writing candidates never flips this. Hashi carries emit_digest back VERBATIM; a mismatch (or approved:true) means the JSON is authoritative."
     },
     "findings": {
       "type": "array",

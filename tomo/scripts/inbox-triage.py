@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.26.0
+# version: 0.27.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -482,6 +482,43 @@ def _load_edited_wire(wire_cache_path: str) -> "dict | None":
     return wire
 
 
+_RE_GARDEN_FINDING = re.compile(r"^###\s+F\d+\b", re.MULTILINE)
+_RE_SUGGEST_TICKED = re.compile(
+    r"^\s*-\s+\[x\]\s+Suggest targets\b", re.MULTILINE | re.IGNORECASE
+)
+
+
+def _garden_suggest_pending(body: str, wire_cache_path: str | None) -> bool:
+    """True iff a garden-audit doc still has UN-RUN suggest requests.
+
+    Two channels (either → pending):
+      - Wire (editor path): top-level ``suggest_pending: true`` — the Tomo-Editor
+        sets it when the user requests candidates, Tomo clears it after --suggest.
+      - Markdown (.md-only path, the main reason this gate exists): a
+        ``- [x] Suggest targets`` block that carries NO pick list (``Pick one``)
+        and NO ``No suggestions found`` note — i.e. --suggest has not enriched it.
+    Applying while pending would skip the candidates the user explicitly asked
+    for, so triage treats such a doc as not-yet-ready even when approved.
+    """
+    # Wire channel.
+    if wire_cache_path:
+        try:
+            wire = json.loads(Path(wire_cache_path).read_text(encoding="utf-8"))
+            if isinstance(wire, dict) and wire.get("suggest_pending"):
+                return True
+        except (OSError, json.JSONDecodeError):
+            pass
+    # Markdown channel: split into `### F` blocks, flag a ticked-Suggest block
+    # that has not been enriched yet.
+    blocks = _RE_GARDEN_FINDING.split(body)
+    for block in blocks:
+        if _RE_SUGGEST_TICKED.search(block) and (
+            "Pick one" not in block and "No suggestions found" not in block
+        ):
+            return True
+    return False
+
+
 def _wire_approved(wire_cache_path: str | None) -> bool:
     """True iff a cached garden-audit wire carries top-level ``approved: true`` (Q1).
 
@@ -652,6 +689,19 @@ def read_approval_state(
             approved = bool(_RE_APPROVED.search(body)) or _wire_approved(
                 garden_wire_cache
             )
+            # Suggest-before-approve gate (2026-07-24): even when approved, do NOT
+            # apply while suggestions the user requested have not been generated —
+            # applying would silently skip those candidates. Mainly protects the
+            # .md-only path (no editor to block the approve). Once --suggest runs,
+            # the pending signal clears and the doc applies on the next /inbox.
+            if approved and _garden_suggest_pending(body, garden_wire_cache):
+                print(
+                    f"[triage] garden-audit {vault_path!r}: approved but "
+                    "suggestions still pending — run `/garden-audit --suggest` "
+                    "first; skipping apply.",
+                    file=sys.stderr,
+                )
+                approved = False
 
         if approved:
             entry = {

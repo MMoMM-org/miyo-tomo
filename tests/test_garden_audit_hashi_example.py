@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_garden_audit_hashi_example.py — pin the Phase-6 Hashi handoff example.
 
 The handoff doc (_outbox/for-hashi/…garden-audit-edit-note-text.md) embeds a REAL
@@ -8,7 +8,7 @@ hashi-instructions.schema.json. This test locks the generator (scripts/gen-garde
 hashi-example.py) so the doc's example can't silently drift from the shipped code:
   - it runs the real render → build_from_report → build_garden_audit_actions path,
   - the resulting instruction-set VALIDATES against the shipped Hashi schema,
-  - it covers all four garden-audit action kinds (edit_note_text, remove_up_link,
+  - it covers all four garden-audit action kinds (resolve_dead_link, remove_up_link,
     add_relationship, link_to_moc) with the exact semantics the doc describes.
 """
 from __future__ import annotations
@@ -70,22 +70,23 @@ def test_example_covers_all_four_action_kinds():
     actions = _build_instructions()["actions"]
     kinds = {a["action"] for a in actions}
     assert kinds == {
-        "edit_note_text", "remove_up_link", "add_relationship", "link_to_moc",
+        "resolve_dead_link", "remove_up_link", "add_relationship", "link_to_moc",
     }
 
 
-def test_edit_note_text_semantics():
+def test_resolve_dead_link_semantics():
+    # dead_link → resolve_dead_link (semantic; Hashi resolves alias/embed +
+    # display). target is the BARE dead-link stem, no literal [[ ]] match.
     actions = _build_instructions()["actions"]
-    edits = {a["match"]: a for a in actions if a["action"] == "edit_note_text"}
-    # dead-link FIX (repoint): match [[Old]], replace [[New]] wikilink, occurrence all.
-    fix = edits["[[023 Sparks MOC]]"]
+    resolves = {a["target"]: a for a in actions if a["action"] == "resolve_dead_link"}
+    # dead-link FIX (repoint): target [[Old]], replace = the [[New]] wikilink.
+    fix = resolves["023 Sparks MOC"]
     assert fix["replace"] == "[[023 Sparks (MOC)]]"
-    assert fix["occurrence"] == "all"
-    # dead-link REMOVE (unlink): keep the text, drop the [[ ]] → replace is the
-    # inner text, NOT "". occurrence all.
-    dead_remove = edits["[[024 Thinking About MOC]]"]
-    assert dead_remove["replace"] == "024 Thinking About MOC"
-    assert dead_remove["occurrence"] == "all"
+    # dead-link REMOVE (unlink): replace = '' (Hashi keeps the display text).
+    dead_remove = resolves["024 Thinking About MOC"]
+    assert dead_remove["replace"] == ""
+    # No literal match field anywhere — that was the aliased-link no-op trap.
+    assert all("match" not in a for a in actions if a["action"] == "resolve_dead_link")
 
 
 def test_remove_up_link_semantics():
@@ -101,7 +102,7 @@ def test_remove_up_link_semantics():
 
 
 def test_repoint_is_add_relationship_not_edit():
-    # The broken-up REPOINT (F01) must be add_relationship, not edit_note_text.
+    # The broken-up REPOINT (F01) must be add_relationship.
     actions = _build_instructions()["actions"]
     rels = [a for a in actions if a["action"] == "add_relationship"]
     lines = {a["line"] for a in rels}

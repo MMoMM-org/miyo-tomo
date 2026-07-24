@@ -1,4 +1,4 @@
-# version: 0.5.0
+# version: 0.6.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1192,12 +1192,16 @@ def build_garden_audit_actions(
     build_actions untouched (ADR: "no new apply path… mirror /moc-propose").
 
     garden_action → actions:
-      - edit_note_text  → one edit_note_text (dead_link fix/remove). Built via
-        the SHARED _build_edit_note_text_actions builder on a one-item list,
-        wiring the previously-dead helper into the live path.
+      - resolve_dead_link → one resolve_dead_link (dead_link unlink/repoint —
+        Hashi edits the body with alias/embed awareness; replace='' unlinks
+        keeping the display, '[[New]]' repoints). Supersedes the literal
+        edit_note_text construction, which no-opped on aliased links.
       - remove_up_link  → one remove_up_link (broken_up empty=remove — Hashi
-        removes ONLY the broken link from the up:: line, drops the line when it
-        becomes empty).
+        removes ONLY the broken link from the up:: line, keeps the up:: field
+        (emptied) when it was the last link).
+      - edit_note_text  → forward-compat only: no garden_action emits it now
+        (dead_link moved to resolve_dead_link, broken_up remove to
+        remove_up_link). Kept for the shared builder + Hashi's shipped surface.
       - add_relationship→ one add_relationship up:: (broken_up repoint).
       - file_note       → link_to_moc (bullet on the MOC) + add_relationship up::
         (up-link on the note). Files an unparented/orphan note under a MOC.
@@ -1222,6 +1226,14 @@ def build_garden_audit_actions(
                 "action": "remove_up_link",
                 "path": c["path"],
                 "link": c["link"],
+            })
+        elif ga == "resolve_dead_link":
+            out.append({
+                "id": _next_id(counter),
+                "action": "resolve_dead_link",
+                "path": c["path"],
+                "target": c["target"],
+                "replace": c["replace"],
             })
         elif ga == "add_relationship":
             out.append({

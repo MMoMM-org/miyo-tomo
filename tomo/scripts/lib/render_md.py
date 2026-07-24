@@ -1,4 +1,4 @@
-# version: 0.6.0
+# version: 0.7.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -31,7 +31,8 @@ def _md_section_for(action: dict) -> str:
     kind = action["action"]
     if kind in ("move_note", "create_moc"):
         return "new_files"
-    if kind in ("link_to_moc", "add_relationship", "edit_note_text", "remove_up_link"):
+    if kind in ("link_to_moc", "add_relationship", "edit_note_text",
+                "remove_up_link", "resolve_dead_link"):
         return "moc_links"
     if kind in ("update_tracker", "update_log_entry", "update_log_link"):
         return "daily_updates"
@@ -219,6 +220,19 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         ]
         lines.append(f"- **Note:** [[{_stem(target)}]]")
         lines.append(f"- **Link to remove:** `[[{link}]]` (from the up:: line; the up:: field is kept — emptied if this was the last link)")
+        return "\n".join(lines)
+
+    if kind == "resolve_dead_link":
+        note = action.get("path", "")
+        tgt = action.get("target", "")
+        replace = action.get("replace", "")
+        verb = "Repoint" if replace else "Unlink"
+        lines = [f"{heading_prefix}{verb} dead link [[{tgt}]] in [[{_stem(note)}]]", "- [ ] Applied"]
+        lines.append(f"- **Note:** [[{_stem(note)}]]")
+        if replace:
+            lines.append(f"- **Repoint to:** `{replace}` (display preserved; all forms incl. aliased/embed)")
+        else:
+            lines.append(f"- **Unlink:** drop the `[[ ]]` from `[[{tgt}]]`, keep the display text (all forms incl. aliased/embed)")
         return "\n".join(lines)
 
     # Fallback — unknown action type

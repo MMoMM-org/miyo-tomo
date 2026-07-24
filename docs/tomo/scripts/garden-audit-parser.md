@@ -107,13 +107,14 @@ bare broken stem from the WIRE's `up_target` — see 0.9.0/0.10.0 below; the ear
 `edit_note_text` removal is superseded). This keeps the two legitimate resolutions (repoint vs
 remove) behind one clean discriminator the user controls by typing or not typing.
 
-## Dead-Link Match Uses `[[target]]` Wrapping (ADR-3)
+## Dead-Link Resolution (SUPERSEDED → resolve_dead_link, see 0.11.0)
 
-WHY the parser wraps the wire's bare `dead_target` in `[[ ]]` when building `match`:
-`edit_note_text` does a literal string match against the note body, where dead links appear
-as `[[Missing Note]]`. The wire's `detail.dead_target` is the bare stem (from graph_audit);
-the parser wraps it once when building the confirmed_item. `occurrence="all"` because a dead
-wikilink is typically repeated; broken-`up::` removal uses `first` (one `up::` line per note).
+WHY this section is historical: the parser USED to wrap the wire's bare `dead_target` in `[[ ]]`
+to build a literal `edit_note_text` match. That silently no-opped on ALIASED links
+(`[[target|display]]`) — a real bug hit in the first live round. As of 0.11.0 (2026-07-24) the
+parser emits the semantic `resolve_dead_link` action carrying the BARE target + `replace`; Hashi
+matches all forms (bare / aliased / embed) with body access. No literal match, no occurrence field
+in the emitted item anymore.
 
 ## Filing Warns and Skips on No Candidate MOC
 
@@ -228,3 +229,20 @@ by the conductor's apply invocation — so "all advisories" only ever get stampe
 `RE_ACK_TICKED` and the markdown/wire ack reads are gone; `_acked_advisory` and the ledger write
 path are unchanged. A zero-fixable report the user approves just to dismiss advisories still
 stamps them (the apply path runs on approval regardless of fixable count).
+
+## Version 0.11.0 — dead_link → resolve_dead_link (alias-aware, 2026-07-24)
+
+WHY both dead_link branches now emit `{garden_action:"resolve_dead_link", target, replace}` instead
+of `edit_note_text` with a literal `match="[[dead_target]]"`: the first live garden-audit round hit a
+note whose dead link was ALIASED — `[[X/…/SM - Passages Saved From iOS|SM - Passages Saved From iOS]]`
+— and the bare `[[target]]` match is not a substring of the aliased form, so Hashi's literal
+edit_note_text found no match → the unlink SILENTLY no-opped (same literal-match fragility class as the
+broken_up multi-link bug). Even on a match, unlinking a path-based link would leave the ugly full path
+as text instead of the display. The parser never sees the note body / display text, so — exactly like
+`remove_up_link` — the resolution is delegated to Hashi: the action carries the BARE target + a
+normalised `replace` (`''` = unlink, `'[[New]]'` = repoint), and Hashi handles bare / aliased / embed
+forms, keeps the display on unlink, and preserves it on repoint. Both channels normalise `replace` via
+`_wikilink_target` so report-path (bare stem) and wire-path (`[[New]]`) emit an identical shape.
+`edit_note_text` now has no garden emitter (broken_up remove → remove_up_link, dead_link →
+resolve_dead_link); it stays in the schema for Hashi's shipped surface. Pinned by the updated
+`TestBuildFromWireDeadLink` / `TestBuildFromReport` dead_link tests + the hashi-example.

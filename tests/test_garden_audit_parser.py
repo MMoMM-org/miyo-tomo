@@ -300,35 +300,34 @@ class TestBuildFromWireBrokenUp:
 
 
 class TestBuildFromWireDeadLink:
-    def test_selected_dead_link_emits_edit_note_text(self):
+    def test_selected_dead_link_emits_resolve_dead_link(self):
+        # Semantic resolution (2026-07-24): dead_link → resolve_dead_link with the
+        # BARE target (Hashi resolves alias/embed + display). No literal match.
         items = build_from_wire(_make_wire([_dead_link(selected=True)]))["confirmed_items"]
         assert len(items) == 1
         c = items[0]
-        assert c["garden_action"] == "edit_note_text"
+        assert c["garden_action"] == "resolve_dead_link"
         assert c["path"] == "Notes/Source.md"
-        assert c["match"] == "[[Missing Note]]"
-        # Empty replace = remove intent → UNLINK (keep the text, drop the [[ ]]),
-        # NOT a full deletion. replace is the dead_target inner text.
-        assert c["replace"] == "Missing Note"
+        assert c["target"] == "Missing Note"
+        # Empty replace = unlink intent (Hashi keeps the display text).
+        assert c["replace"] == ""
+        assert "match" not in c and "occurrence" not in c
 
     def test_unselected_dead_link_emits_no_item(self):
         assert build_from_wire(_make_wire([_dead_link(selected=False)]))["confirmed_items"] == []
 
-    def test_dead_link_occurrence_is_all(self):
-        c = build_from_wire(_make_wire([_dead_link(selected=True)]))["confirmed_items"][0]
-        assert c["occurrence"] == "all"
-
-    def test_dead_link_with_replace_target_uses_replace_from_decision(self):
+    def test_dead_link_with_replace_target_repoints(self):
+        # Wire decision.replace is a '[[New]]' wikilink → normalised repoint.
         c = build_from_wire(_make_wire([_dead_link(selected=True, replace="[[New Note]]")]))["confirmed_items"][0]
+        assert c["garden_action"] == "resolve_dead_link"
         assert c["replace"] == "[[New Note]]"
 
-    def test_dead_link_empty_replace_unlinks_keeps_text(self):
-        # Remove intent (empty replace) → UNLINK: `[[Missing Note]]` → `Missing
-        # Note` (keep the word, drop the brackets), NOT a full deletion.
+    def test_dead_link_empty_replace_is_unlink(self):
+        # Remove intent (empty replace) → unlink: the parser passes replace='';
+        # Hashi drops the [[ ]] keeping the display (not Tomo's concern anymore).
         c = build_from_wire(_make_wire([_dead_link(selected=True, replace="")]))["confirmed_items"][0]
-        assert c["match"] == "[[Missing Note]]"
-        assert c["replace"] == "Missing Note"
-        assert c["occurrence"] == "all"
+        assert c["target"] == "Missing Note"
+        assert c["replace"] == ""
 
 
 class TestBuildFromWireAdvisory:
@@ -729,23 +728,22 @@ class TestBuildFromReport:
         assert c["link"] == "020 Active MOC"            # first stem, bare
         assert "[" not in c["link"] and "'" not in c["link"]
 
-    def test_dead_link_match_from_wire_empty_replace(self):
+    def test_dead_link_target_from_wire_empty_replace(self):
         md, wire = _report_and_wire(_make_doc([_doc_finding_dead_link("F04")]))
         c = build_from_report(md, wire)["confirmed_items"][0]
-        assert c["garden_action"] == "edit_note_text"
-        assert c["match"] == "[[Missing Note]]"          # from wire dead_target
-        # Empty replace (remove intent) → UNLINK: keep the text, drop the [[ ]].
-        assert c["replace"] == "Missing Note"
-        assert c["occurrence"] == "all"
+        assert c["garden_action"] == "resolve_dead_link"
+        assert c["target"] == "Missing Note"             # from wire dead_target
+        assert c["replace"] == ""                        # unlink intent
+        assert "match" not in c
 
     def test_dead_link_typed_replace_repoints(self):
-        # A typed Replace target → repoint to the new wikilink (UNCHANGED).
+        # A typed Replace target → repoint to the new wikilink.
         md, wire = _report_and_wire(_make_doc([_doc_finding_dead_link("F04")]))
         md = md.replace("**Replace with:** [[]]", "**Replace with:** [[New Target]]")
         c = build_from_report(md, wire)["confirmed_items"][0]
-        assert c["match"] == "[[Missing Note]]"
+        assert c["garden_action"] == "resolve_dead_link"
+        assert c["target"] == "Missing Note"
         assert c["replace"] == "[[New Target]]"
-        assert c["occurrence"] == "all"
 
     def test_advisory_finding_produces_no_item(self):
         md, wire = _report_and_wire(_make_doc([_doc_finding_duplicate("F05")]))
@@ -844,13 +842,13 @@ class TestEndToEndApprovedReportToActions:
 
     def test_actions_for_dead_link_and_broken_up_removals(self):
         actions = build_garden_audit_actions(self._items())
-        edits = [a for a in actions if a["action"] == "edit_note_text"]
-        assert len(edits) == 1
-        # dead_link removal UNLINKS: keep the text, drop the [[ ]] → replace=text.
-        assert edits[0]["match"] == "[[Missing Note]]"
-        assert edits[0]["replace"] == "Missing Note"
-        # broken_up removal is now LINK-ONLY: a remove_up_link action, not a
-        # whole-line edit_note_text (which silently no-opped on multi-link lines).
+        # dead_link → resolve_dead_link (semantic; Hashi handles alias/embed).
+        resolves = [a for a in actions if a["action"] == "resolve_dead_link"]
+        assert len(resolves) == 1
+        assert resolves[0]["target"] == "Missing Note"
+        assert resolves[0]["replace"] == ""              # unlink intent
+        assert resolves[0]["path"] == "Notes/Source Note.md"
+        # broken_up removal is LINK-ONLY: a remove_up_link action.
         removes = [a for a in actions if a["action"] == "remove_up_link"]
         assert len(removes) == 1
         assert removes[0]["link"] == "Deleted MOC"
@@ -883,7 +881,7 @@ class TestEndToEndApprovedReportToActions:
         actions = build_garden_audit_actions(self._items())
         paths = {
             a["path"] for a in actions
-            if a["action"] in ("edit_note_text", "remove_up_link")
+            if a["action"] in ("resolve_dead_link", "remove_up_link")
         }
         assert paths == {"Notes/Source Note.md", "Notes/Broken Note.md"}
 

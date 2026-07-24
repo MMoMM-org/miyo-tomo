@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.0
+# version: 0.11.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -36,8 +36,8 @@ confirmed_item shape (per fixable finding the user kept):
   {
     "id", "garden_check", "garden_action",
     "path", "stem",
-    # edit_note_text (dead_link fix/remove):
-    "match", "replace", "occurrence",
+    # resolve_dead_link (dead_link unlink/repoint — Hashi resolves alias/embed):
+    "target", "replace",
     # remove_up_link (broken_up empty=remove — link-only removal):
     "link",
     # add_relationship (broken_up repoint, filing up::):
@@ -46,7 +46,7 @@ confirmed_item shape (per fixable finding the user kept):
     "target_moc", "target_moc_path",
   }
 
-garden_action ∈ {edit_note_text, remove_up_link, add_relationship, file_note}.
+garden_action ∈ {resolve_dead_link, remove_up_link, add_relationship, file_note}.
 Advisory findings (duplicate_stem, stale_moc) never produce a confirmed_item
 (but acknowledged ones land in acked_advisories).
 """
@@ -322,19 +322,19 @@ def _confirmed_item_from_wire_finding(finding: dict, decision_md: dict) -> dict 
     if check == "dead_link":
         replace_target = decision_md.get("replace", "")
         dead_target = detail.get("dead_target", "")
-        # Non-empty target → repoint to the new wikilink. Empty (remove intent) →
-        # UNLINK: drop the [[ ]] brackets but KEEP the text (`[[X]]` → `X`), not a
-        # full deletion of link+text. dead_target is the inner text of the match.
-        replace = f"[[{replace_target}]]" if replace_target else dead_target
+        # Semantic resolution (resolve_dead_link) — Hashi edits the body with
+        # alias/embed awareness. A literal edit_note_text match ([[dead_target]])
+        # silently no-opped on ALIASED links ([[target|display]]) and could not
+        # keep the display text on unlink. Empty replace = unlink (Hashi keeps the
+        # display); a non-empty target = repoint to [[<new>]].
         return {
             "id": fid,
             "garden_check": check,
-            "garden_action": "edit_note_text",
+            "garden_action": "resolve_dead_link",
             "path": path,
             "stem": stem,
-            "match": f"[[{dead_target}]]",
-            "replace": replace,
-            "occurrence": "all",
+            "target": dead_target,
+            "replace": f"[[{replace_target}]]" if replace_target else "",
         }
 
     if check == "broken_up":
@@ -544,20 +544,20 @@ def build_from_wire(wire: dict) -> dict:
 
         elif check == "dead_link":
             dead_target = detail.get("dead_target", "")
-            replace_target = decision.get("replace", "")
-            # Non-empty (repoint) → the wikilink the editor wrote (e.g. '[[New]]').
-            # Empty (remove intent) → UNLINK: drop the [[ ]] but KEEP the text
-            # (`[[X]]` → `X`), NOT a full deletion. Same rule as build_from_report.
-            replace = replace_target if replace_target else dead_target
+            # Semantic resolution (resolve_dead_link) — same as build_from_report:
+            # Hashi edits the body with alias/embed awareness. The wire's
+            # decision.replace is a '[[New]]' wikilink (repoint) or '' (unlink);
+            # normalise via _wikilink_target so both channels emit an identical
+            # replace ('[[<new>]]' or '').
+            new_target = _wikilink_target(decision.get("replace", ""))
             confirmed.append({
                 "id": fid,
                 "garden_check": check,
-                "garden_action": "edit_note_text",
+                "garden_action": "resolve_dead_link",
                 "path": path,
                 "stem": stem,
-                "match": f"[[{dead_target}]]",
-                "replace": replace,
-                "occurrence": "all",
+                "target": dead_target,
+                "replace": f"[[{new_target}]]" if new_target else "",
             })
         # duplicate_stem / stale_moc and anything else → advisory, no item
 

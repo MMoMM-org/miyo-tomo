@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """gen-garden-audit-hashi-example.py — generate + validate the real garden-audit
-instruction-set example (edit_note_text + remove_up_link + add_relationship +
+instruction-set example (resolve_dead_link + remove_up_link + add_relationship +
 link_to_moc) for the Hashi handoffs (spec 030).
 
 Example-driven, no hand-authored JSON: builds a representative garden-audit doc
@@ -65,11 +65,11 @@ def _representative_doc() -> dict:
         "skipped_checks": [], "skipped_checks_reason": "",
         "reappeared_exclusions": [],
         "findings": [
-            # dead_link — user will fill Replace (→ edit_note_text replace).
+            # dead_link — user will fill Replace (→ resolve_dead_link repoint).
             _finding("F04", "dead_link", "integrity", "020 Active MOC.md",
                      "020 Active MOC", {"dead_target": "023 Sparks MOC", "count": 1},
                      "edit_note_text"),
-            # dead_link — user leaves Replace empty (→ edit_note_text remove).
+            # dead_link — user leaves Replace empty (→ resolve_dead_link unlink).
             _finding("F05", "dead_link", "integrity", "020 Active MOC.md",
                      "020 Active MOC", {"dead_target": "024 Thinking About MOC", "count": 1},
                      "edit_note_text"),

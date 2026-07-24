@@ -43,9 +43,8 @@ def _parsed_garden() -> dict:
         "run_id": "run-diff-garden", "generated": "g", "profile": "miyo",
         "confirmed_items": [
             {"id": "F01", "garden_check": "dead_link",
-             "garden_action": "edit_note_text", "path": "Notes/Src.md",
-             "stem": "Src", "match": "[[Missing]]", "replace": "Missing",
-             "occurrence": "all"},
+             "garden_action": "resolve_dead_link", "path": "Notes/Src.md",
+             "stem": "Src", "target": "Missing", "replace": ""},
             {"id": "F02", "garden_check": "broken_up",
              "garden_action": "remove_up_link", "path": "Notes/Broken.md",
              "stem": "Broken", "link": "Deleted MOC"},

@@ -1185,9 +1185,45 @@ removals.
 | `occurrence` | `"first"` \| `"all"` | Default `"first"`. |
 
 **Execution:** literal string replace — no regex, no normalization. On
-no-match: skip and report (no error, no partial write). Semantics per case:
-dead-link FIX carries a wikilink `replace`; dead-link REMOVE carries the inner
-text as `replace` (unlink: keeps the word, drops the `[[ ]]`).
+no-match: skip and report (no error, no partial write).
+
+> **Note (2026-07-24):** garden-audit no longer emits `edit_note_text` — dead
+> links moved to the semantic `resolve_dead_link` (below), broken `up::` removal
+> to `remove_up_link`. `edit_note_text` stays in the schema for the shipped Hashi
+> surface but has no Tomo emitter.
+
+### `resolve_dead_link` — unlink or repoint a dead wikilink (alias-aware)
+
+Introduced 2026-07-24 (semantic, user decision). Supersedes the literal
+`edit_note_text` construction for dead links, which built `match = "[[target]]"`
+and **silently no-opped on aliased links** `[[target|display]]` (and could not
+keep the display text on unlink). Tomo can't express this as a literal string
+(it never sees the note body / display), so Hashi resolves it.
+
+```json
+{
+  "id": "I11",
+  "action": "resolve_dead_link",
+  "path": "030 Readwise (Kanban).md",
+  "target": "X/600 Ressourcen/691 Readwise/Articles/SM - Passages Saved From iOS",
+  "replace": ""
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `path` | string | Vault-relative note whose body is edited (`.md`). |
+| `target` | string | Bare dead-link target to find — no `[[ ]]`, no alias. |
+| `replace` | string | `""` = unlink; `"[[New]]"` = repoint. |
+
+**Execution:** locate every occurrence of the target wikilink in ALL forms —
+bare `[[target]]`, aliased `[[target|display]]`, embed `![[target]]` — and:
+- `replace = ""` → **unlink**: drop the `[[ ]]`, keep the DISPLAY text
+  (`[[t|Nice]]` → `Nice`, `[[t]]` → `t`).
+- `replace = "[[New]]"` → **repoint**, preserving any display
+  (`[[t|Nice]]` → `[[New|Nice]]`, `[[t]]` → `[[New]]`).
+
+Replaces every occurrence. On no-match: skip and report — no error, no partial write.
 
 ### `remove_up_link` — remove one link from the up:: line
 

@@ -77,7 +77,8 @@
           {"$ref": "#/$defs/skip"},
           {"$ref": "#/$defs/insert_under_marker"},
           {"$ref": "#/$defs/edit_note_text"},
-          {"$ref": "#/$defs/remove_up_link"}
+          {"$ref": "#/$defs/remove_up_link"},
+          {"$ref": "#/$defs/resolve_dead_link"}
         ]
       }
     }
@@ -306,6 +307,20 @@
         "action": {"const": "remove_up_link"},
         "path": {"type": "string", "description": "Vault-relative path of the note whose up:: line is edited (.md)."},
         "link": {"type": "string", "description": "Bare stem of the link to remove from the up:: line, e.g. 'Deleted MOC' (no [[ ]])."},
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "resolve_dead_link": {
+      "type": "object",
+      "required": ["id", "action", "path", "target", "replace"],
+      "additionalProperties": false,
+      "description": "Resolve a dead wikilink in a note BODY — unlink or repoint (dead_link fix, semantic — supersedes the literal edit_note_text construction, which silently no-opped on ALIASED links). Hashi locates every occurrence of the target wikilink in ALL its forms — bare '[[target]]', aliased '[[target|display]]', and embed '![[target]]' — and: with replace='' UNLINKS (drops the [[ ]], keeps the DISPLAY text: '[[t|Nice]]' → 'Nice', '[[t]]' → 't'); with replace='[[New]]' REPOINTS to the new target, PRESERVING any display ('[[t|Nice]]' → '[[New|Nice]]', '[[t]]' → '[[New]]'). Replaces every occurrence. Skip-and-report on no-match — no error, no partial write. Tomo cannot build these edits as literal strings (it never sees the note body / display text), so the resolution is delegated to Hashi.",
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "resolve_dead_link"},
+        "path": {"type": "string", "description": "Vault-relative path of the note whose body is edited (.md)."},
+        "target": {"type": "string", "description": "Bare dead-link target to find, e.g. '023 Sparks MOC' or a full path (no [[ ]], no alias)."},
+        "replace": {"type": "string", "description": "Empty string = unlink (keep display text). A '[[New]]' wikilink = repoint to New (display preserved)."},
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     }

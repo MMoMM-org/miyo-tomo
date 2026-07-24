@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.8.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -22,7 +22,7 @@ cross-checks the two JSONs item-by-item and surfaces:
     no confirmed items linking up to it.
   - Garden-audit docs (confirmed_items carrying garden_action) route to a
     dedicated mode: expected instruction counts per garden_action
-    (edit_note_text / remove_up_link / add_relationship / file_note →
+    (resolve_dead_link / remove_up_link / add_relationship / file_note →
     link_to_moc + add_relationship) plus path-anchored per-item coverage.
 
 Usage:
@@ -439,13 +439,13 @@ ACTION_ORDER = [
 # ANY garden-audit doc (pre-existing gap, fixed 2026-07-23).
 
 GARDEN_ACTION_ORDER = [
-    "edit_note_text", "remove_up_link", "link_to_moc", "add_relationship",
+    "resolve_dead_link", "remove_up_link", "link_to_moc", "add_relationship",
 ]
 
 # garden_action → instruction kinds it must produce (mirrors
 # render_actions.build_garden_audit_actions).
 _GARDEN_EXPECTED_KINDS: dict[str, tuple[str, ...]] = {
-    "edit_note_text": ("edit_note_text",),
+    "resolve_dead_link": ("resolve_dead_link",),
     "remove_up_link": ("remove_up_link",),
     "add_relationship": ("add_relationship",),
     "file_note": ("link_to_moc", "add_relationship"),
@@ -465,8 +465,12 @@ def _garden_item_covered(item: dict, actions: list[dict]) -> bool:
     path = item.get("path", "")
     stem = item.get("stem", "")
     for kind in _GARDEN_EXPECTED_KINDS.get(ga, ()):
-        if kind == "edit_note_text":
-            ok = any(a["action"] == kind and a.get("path") == path for a in actions)
+        if kind == "resolve_dead_link":
+            ok = any(
+                a["action"] == kind and a.get("path") == path
+                and a.get("target") == item.get("target")
+                for a in actions
+            )
         elif kind == "remove_up_link":
             ok = any(
                 a["action"] == kind and a.get("path") == path

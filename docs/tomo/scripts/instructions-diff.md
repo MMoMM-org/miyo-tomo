@@ -19,3 +19,11 @@ link_to_moc + add_relationship) plus path-anchored per-item coverage;
 acked_advisories are displayed but expect no actions (they stamp the pushback
 ledger, not instructions). Detection is shape-based (all items carry
 garden_action) rather than a CLI flag so the conductor invocation stays unchanged.
+
+## Version 0.8.0 — resolve_dead_link in the garden count math (2026-07-24)
+
+WHY `_GARDEN_EXPECTED_KINDS` maps `resolve_dead_link → ("resolve_dead_link",)` (replacing the
+`edit_note_text` entry) and `_garden_item_covered` anchors it on path + target: garden-audit's
+dead_link fix moved from `edit_note_text` to the semantic `resolve_dead_link` action (see
+garden-audit-parser.md 0.11.0), so the coverage audit must expect+match the new kind or every
+dead-link fix would read as an uncovered item.

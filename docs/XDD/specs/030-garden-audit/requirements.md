@@ -123,7 +123,11 @@ no links at all; **unparented** = a note with links but no `up::` parent.
     is reported as a **broken `up::`** finding offering to repoint it to a valid MOC.
   - [ ] Given a note contains a `[[wikilink]]` whose target does not resolve, When `/garden-audit`
     runs, Then it is reported as a **dead wikilink** finding naming the source note, the unresolved
-    target text, and its occurrence count.
+    target text, and its occurrence count. When applied, the fix is the semantic `resolve_dead_link`
+    action (revised 2026-07-24 from the literal `edit_note_text` construction, which silently
+    no-opped on **aliased** links `[[target|display]]` and could not keep the display on unlink):
+    unlink drops the `[[ ]]` keeping the display text; repoint swaps the target preserving the
+    display; Hashi resolves bare / aliased / embed forms with body access.
   - [ ] Given two or more notes share a filename stem, When `/garden-audit` runs, Then they are
     reported together as a **duplicate-stems** advisory finding.
   - [ ] Given a MOC has not been modified within the stale threshold, When `/garden-audit` runs,

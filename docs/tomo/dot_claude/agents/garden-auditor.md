@@ -135,3 +135,15 @@ upload" and stops — the imperative pre-empts that deviation.
 WHY the Mode:suggest output block emits `Wire: <WIRE_VAULT> (enriched)` (was `(unchanged)`):
 the fixed output block is PRD-locked shape; the annotation now reflects that the wire is a
 first-class enriched artifact of suggest mode.
+
+## Silent verification + no-preamble output block (v0.8.0, 2026-07-25)
+
+WHY Step 7 + the `## Verification` intro now forbid ANY prose before the output block and mark
+the verification checks as silent: a live run narrated "All verification checks passed. Here is
+the fixed output block:" — the LLM echoed the internal step name (`## Verification`) and the
+internal term "fixed output block" as a user-facing preamble. The old spec only said "no prose
+AFTER it", leaving a lead-in sentence unguarded, and used "fixed output block/report" as an
+imperative the model parroted. Fix: the final message is EXACTLY the block, no lead-in, never
+announce verification or name the block; the mode-step imperatives dropped "fixed" ("emit the
+output block") to lower parrot risk. The observed bad string is quoted in the STRICT `Why:` so the
+guard's failure mode is self-documenting (guardrails: STRICT blocks carry the one-line why).

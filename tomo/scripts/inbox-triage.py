@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.22.1
+# version: 0.27.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -92,6 +92,10 @@ class TriageState:
     approved_suggestions: list[dict] = field(default_factory=list)
     approved_fan: list[dict] = field(default_factory=list)
     approved_moc_proposals: list[dict] = field(default_factory=list)
+    # ADR-1 (spec 030, revised): garden-audit is the 4th upstream type; a
+    # pending-accept garden-audit doc is accepted only when its top-level
+    # "- [x] Approved" box is ticked (mirrors suggestions). Untick → left pending.
+    approved_garden_audits: list[dict] = field(default_factory=list)
     force_atomic_items: list[dict] = field(default_factory=list)
     pending_approval: list[dict] = field(default_factory=list)
     drift_indicators: list[dict] = field(default_factory=list)
@@ -408,6 +412,8 @@ def _get_doc_type(hit: dict) -> str:
         return "suggestions"
     if "_moc-proposal" in stem:
         return "moc-proposal"
+    if stem.endswith("_garden-audit"):
+        return "garden-audit"
     if stem.endswith("_instructions"):
         return "instructions"
     return ""
@@ -476,6 +482,60 @@ def _load_edited_wire(wire_cache_path: str) -> "dict | None":
     return wire
 
 
+_RE_GARDEN_FINDING = re.compile(r"^###\s+F\d+\b", re.MULTILINE)
+_RE_SUGGEST_TICKED = re.compile(
+    r"^\s*-\s+\[x\]\s+Suggest targets\b", re.MULTILINE | re.IGNORECASE
+)
+
+
+def _garden_suggest_pending(body: str, wire_cache_path: str | None) -> bool:
+    """True iff a garden-audit doc still has UN-RUN suggest requests.
+
+    Two channels (either → pending):
+      - Wire (editor path): top-level ``suggest_pending: true`` — the Tomo-Editor
+        sets it when the user requests candidates, Tomo clears it after --suggest.
+      - Markdown (.md-only path, the main reason this gate exists): a
+        ``- [x] Suggest targets`` block that carries NO pick list (``Pick one``)
+        and NO ``No suggestions found`` note — i.e. --suggest has not enriched it.
+    Applying while pending would skip the candidates the user explicitly asked
+    for, so triage treats such a doc as not-yet-ready even when approved.
+    """
+    # Wire channel.
+    if wire_cache_path:
+        try:
+            wire = json.loads(Path(wire_cache_path).read_text(encoding="utf-8"))
+            if isinstance(wire, dict) and wire.get("suggest_pending"):
+                return True
+        except (OSError, json.JSONDecodeError):
+            pass
+    # Markdown channel: split into `### F` blocks, flag a ticked-Suggest block
+    # that has not been enriched yet.
+    blocks = _RE_GARDEN_FINDING.split(body)
+    for block in blocks:
+        if _RE_SUGGEST_TICKED.search(block) and (
+            "Pick one" not in block and "No suggestions found" not in block
+        ):
+            return True
+    return False
+
+
+def _wire_approved(wire_cache_path: str | None) -> bool:
+    """True iff a cached garden-audit wire carries top-level ``approved: true`` (Q1).
+
+    The Tomo-Editor works from the JSON, so it flips a JSON-side approve gate
+    instead of (or in addition to) the markdown ``- [x] Approved`` box. Triage
+    reads it here so garden-audit docs approved only via the editor are still
+    picked up. Absent / unreadable / not a v1 wire → False (markdown gate stands).
+    """
+    if not wire_cache_path:
+        return False
+    try:
+        wire = json.loads(Path(wire_cache_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(wire, dict) and bool(wire.get("approved"))
+
+
 def _extract_fan_items_from_wire(wire: dict, source_path: str) -> list[dict]:
     """Force-atomic items from an EDITED wire (ADR-026 JSON-only authority).
 
@@ -537,7 +597,7 @@ def read_approval_state(
     terminal_approved_hits: list[dict] | None = None,
     force_pass2: bool = False,
 ) -> tuple[
-    list[dict], list[dict], list[dict],
+    list[dict], list[dict], list[dict], list[dict],
     list[dict], list[dict], list[dict], dict,
 ]:
     """Read full bodies for pending docs, scan approvals, cache bodies.
@@ -546,11 +606,13 @@ def read_approval_state(
     (tomo.state=approved) so they can be included in the synthesize work-list.
 
     Returns (approved_suggestions, approved_fan, approved_moc_proposals,
+             approved_garden_audits,
              force_atomic_items, pending_approval, drift_indicators, manifest).
     """
     approved_suggestions = []
     approved_fan = []
     approved_moc_proposals = []
+    approved_garden_audits = []
     force_atomic_items = []
     pending_approval = []
     drift_indicators = []
@@ -610,10 +672,36 @@ def read_approval_state(
 
         # Check approval
         approved = False
+        garden_wire_cache: str | None = None
         if doc_type in ("suggestions", "suggestions-fan"):
             approved = bool(_RE_APPROVED.search(body))
         elif doc_type == "moc-proposal":
             approved = bool(_RE_ACCEPT.search(body))
+        elif doc_type == "garden-audit":
+            # ADR-1 (spec 030, revised) + Q1 (Tomo-Editor): garden-audit is picked
+            # up when EITHER the markdown "- [x] Approved" box is ticked (human
+            # channel, .md-only users) OR the wire carries top-level
+            # "approved: true" (the Tomo-Editor's JSON-side gate). Cache the wire
+            # sibling first so we can read its approve flag, then reuse the cached
+            # path in the approved branch. Per-finding Apply ticks + the wire
+            # digest still drive WHICH fixes apply (garden-audit-parser, Pass-2).
+            garden_wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+            approved = bool(_RE_APPROVED.search(body)) or _wire_approved(
+                garden_wire_cache
+            )
+            # Suggest-before-approve gate (2026-07-24): even when approved, do NOT
+            # apply while suggestions the user requested have not been generated —
+            # applying would silently skip those candidates. Mainly protects the
+            # .md-only path (no editor to block the approve). Once --suggest runs,
+            # the pending signal clears and the doc applies on the next /inbox.
+            if approved and _garden_suggest_pending(body, garden_wire_cache):
+                print(
+                    f"[triage] garden-audit {vault_path!r}: approved but "
+                    "suggestions still pending — run `/garden-audit --suggest` "
+                    "first; skipping apply.",
+                    file=sys.stderr,
+                )
+                approved = False
 
         if approved:
             entry = {
@@ -648,6 +736,21 @@ def read_approval_state(
                 approved_fan.append(entry)
             elif doc_type == "moc-proposal":
                 approved_moc_proposals.append(entry)
+            elif doc_type == "garden-audit":
+                # The wire is the STRUCTURE source (spec 030 two-artifact split) —
+                # garden-audit-parser ALWAYS reads it, joined to the markdown
+                # decisions by F-id. The sibling was cached above (for the wire
+                # approve-gate); reuse that path and set wire_cache_path
+                # UNCONDITIONALLY so the conductor always passes --wire; the render
+                # always writes the sibling, so this resolves in normal operation.
+                if not garden_wire_cache:
+                    print(
+                        f"warning: garden-audit doc {vault_path!r} has no wire "
+                        "sibling — parser will emit empty confirmed_items",
+                        file=sys.stderr,
+                    )
+                entry["wire_cache_path"] = garden_wire_cache
+                approved_garden_audits.append(entry)
         else:
             pending_approval.append({
                 "path": vault_path,
@@ -716,6 +819,7 @@ def read_approval_state(
         approved_suggestions,
         approved_fan,
         approved_moc_proposals,
+        approved_garden_audits,
         force_atomic_items,
         pending_approval,
         drift_indicators,
@@ -819,6 +923,7 @@ def discover(
         approved_suggestions,
         approved_fan,
         approved_moc_proposals,
+        approved_garden_audits,
         force_atomic_items,
         pending_approval,
         drift_indicators,
@@ -843,6 +948,7 @@ def discover(
         approved_suggestions=approved_suggestions,
         approved_fan=approved_fan,
         approved_moc_proposals=approved_moc_proposals,
+        approved_garden_audits=approved_garden_audits,
         force_atomic_items=force_atomic_items,
         pending_approval=pending_approval,
         drift_indicators=drift_indicators,
@@ -886,6 +992,7 @@ def compute_coverage(
         state.approved_suggestions,
         state.approved_fan,
         state.approved_moc_proposals,
+        state.approved_garden_audits,
     ):
         for doc in bucket:
             approved_paths.add(doc["path"])
@@ -910,6 +1017,9 @@ def _filter_approved_to_work(state: TriageState, to_process: set[str]) -> None:
     ]
     state.approved_moc_proposals = [
         d for d in state.approved_moc_proposals if d.get("path") in to_process
+    ]
+    state.approved_garden_audits = [
+        d for d in state.approved_garden_audits if d.get("path") in to_process
     ]
 
 
@@ -992,6 +1102,7 @@ def detect_orphaned_state(state: TriageState) -> list[dict]:
         + state.approved_suggestions
         + state.approved_fan
         + state.approved_moc_proposals
+        + state.approved_garden_audits
         + state.instructions_hits
         + state.terminal_approved_hits
     )
@@ -1054,6 +1165,7 @@ def determine_action(
             state.approved_suggestions
             or state.approved_fan
             or state.approved_moc_proposals
+            or state.approved_garden_audits
         ):
             return "synthesize", []
 
@@ -1148,6 +1260,7 @@ def build_routing_plan(
         "approved_suggestions": state.approved_suggestions,
         "approved_fan": state.approved_fan,
         "approved_moc_proposals": state.approved_moc_proposals,
+        "approved_garden_audits": state.approved_garden_audits,
         "force_atomic_items": state.force_atomic_items,
         "pending_approval": state.pending_approval,
         "idle_reasons": idle_reasons,
@@ -1408,12 +1521,13 @@ def main(
 def _count_kado_calls(state: TriageState) -> int:
     """Estimate Kado call count from state.
 
-    1 listDir + 6 byFrontmatter + N body reads.
+    1 listDir + 7 byFrontmatter + N body reads (one read_note per pending/accepted doc).
     """
     body_reads = (
         len(state.approved_suggestions)
         + len(state.approved_fan)
         + len(state.approved_moc_proposals)
+        + len(state.approved_garden_audits)
         + len(state.pending_approval)
     )
     return 5 + body_reads

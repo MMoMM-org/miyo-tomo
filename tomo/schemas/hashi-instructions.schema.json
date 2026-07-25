@@ -64,7 +64,10 @@
           {"$ref": "#/$defs/update_log_link"},
           {"$ref": "#/$defs/create_moc"},
           {"$ref": "#/$defs/delete_source"},
-          {"$ref": "#/$defs/skip"}
+          {"$ref": "#/$defs/skip"},
+          {"$ref": "#/$defs/edit_note_text"},
+          {"$ref": "#/$defs/remove_up_link"},
+          {"$ref": "#/$defs/resolve_dead_link"}
         ]
       }
     }
@@ -273,6 +276,53 @@
         "target_path": {"type": "string", "description": "Vault-relative full path of ANY existing note to modify (not a MOC stem). Hashi modifies only; Tomo guarantees the note exists before emitting."},
         "anchor": {"$ref": "#/$defs/anchor", "description": "Marker locating the section to overwrite. Heading-scoped for v1: anchor.type must be heading; the section body (line after the heading down to the next heading of same-or-higher level, or EOF) is replaced and the heading line preserved. A non-heading anchor type fails gracefully."},
         "content": {"type": "string", "description": "Multi-line markdown block that REPLACES the heading section body. MAY contain embedded \\n (blank lines preserved). Unlike insert_under_marker, replace_section overwrites — the prior section body is discarded. Anchor-not-found / missing target → graceful no-op, never a blind write."},
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "edit_note_text": {
+      "type": "object",
+      "required": ["id", "action", "path", "match", "replace"],
+      "additionalProperties": false,
+      "description": "Edit note body by exact literal string match and replacement. One primitive covers dead-wikilink fix (replace='[[New]]'), dead-wikilink remove (replace=''), and broken up:: removal (whole-line match, replace=''). Hashi skips and reports on no-match — no error, no partial write. Broken-up REPOINT uses add_relationship (marker-located line replace), not this action. Introduced by spec 030-garden-audit ADR-3.",
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "edit_note_text"},
+        "path": {"type": "string", "description": "Vault-relative path of the note to edit (.md)."},
+        "match": {"type": "string", "description": "Exact literal text to locate in the note body, e.g. '[[Missing Note]]' or 'up:: [[Old MOC]]'."},
+        "replace": {"type": "string", "description": "Replacement text. Empty string removes the matched text (and the now-empty line when match covers a whole line)."},
+        "occurrence": {
+          "type": "string",
+          "enum": ["first", "all"],
+          "default": "first",
+          "description": "Which occurrence(s) to replace. 'first' (default) replaces only the first match; 'all' replaces every occurrence."
+        },
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "remove_up_link": {
+      "type": "object",
+      "required": ["id", "action", "path", "link"],
+      "additionalProperties": false,
+      "description": "Remove ONE link from the note's up:: line (broken_up empty=remove, link-only semantics — user decision 2026-07-23). Hashi locates the up:: line with the same marker regex as add_relationship and removes the [[link]] occurrence on that line INCLUDING a dangling separator (e.g. 'up:: [[A]], [[X]]' → 'up:: [[A]]'). CRITICAL: the up:: FIELD is preserved — when the removed link was the only one, the line becomes an empty 'up::' ('up:: [[X]]' → 'up:: '), it is NOT deleted. up:: is a required structural field; an emptied up:: correctly resurfaces the note as unparented next scan. Skip-and-report on no-match (no up:: line, or link not on it) — no error, no partial write. Replaces the earlier whole-line edit_note_text construction, which silently no-opped on multi-link up:: lines.",
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "remove_up_link"},
+        "path": {"type": "string", "description": "Vault-relative path of the note whose up:: line is edited (.md)."},
+        "link": {"type": "string", "description": "Bare stem of the link to remove from the up:: line, e.g. 'Deleted MOC' (no [[ ]])."},
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "resolve_dead_link": {
+      "type": "object",
+      "required": ["id", "action", "path", "target", "replace"],
+      "additionalProperties": false,
+      "description": "Resolve a dead wikilink in a note BODY — unlink or repoint (dead_link fix, semantic — supersedes the literal edit_note_text construction, which silently no-opped on ALIASED links). Hashi locates every occurrence of the target wikilink in ALL its forms — bare '[[target]]', aliased '[[target|display]]', and embed '![[target]]' — and: with replace='' UNLINKS (drops the [[ ]], keeps the DISPLAY text: '[[t|Nice]]' → 'Nice', '[[t]]' → 't'); with replace='[[New]]' REPOINTS to the new target, PRESERVING any display ('[[t|Nice]]' → '[[New|Nice]]', '[[t]]' → '[[New]]'). Replaces every occurrence. Skip-and-report on no-match — no error, no partial write. Tomo cannot build these edits as literal strings (it never sees the note body / display text), so the resolution is delegated to Hashi.",
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "resolve_dead_link"},
+        "path": {"type": "string", "description": "Vault-relative path of the note whose body is edited (.md)."},
+        "target": {"type": "string", "description": "Bare dead-link target to find, e.g. '023 Sparks MOC' or a full path (no [[ ]], no alias)."},
+        "replace": {"type": "string", "description": "Empty string = unlink (keep display text). A '[[New]]' wikilink = repoint to New (display preserved)."},
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     }

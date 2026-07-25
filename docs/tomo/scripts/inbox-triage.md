@@ -122,3 +122,61 @@ asserts `.base`/`.canvas` are excluded) so a future reader never mistakes it for
 silent bug. **Revive** (surface them informationally, or design a metadata scheme)
 only when `.base`/`.canvas` genuinely land in inboxes at scale and users need `/inbox`
 to acknowledge them.
+
+## garden-audit gates on markdown Approved OR wire approved:true (Tomo-Editor Q1, 2026-07-22)
+
+WHY the garden-audit branch now caches the wire sibling FIRST (into `garden_wire_cache`), then gates
+`approved = bool(_RE_APPROVED.search(body)) or _wire_approved(garden_wire_cache)`: the Tomo-Editor
+works from the JSON (Hashi's channel), so it flips a top-level `approved: true` in the wire instead
+of ticking the markdown box. Reading only the markdown would leave an editor-approved doc stuck in
+`pending`. `_wire_approved` reads the cached wire's top-level flag; absent/unreadable → False, so
+`.md`-only users are unaffected (back-compat). The sibling is cached once and REUSED in the approved
+branch (no double fetch). Pinned by `test_inbox_triage.py::TestGardenAuditApprovalGate` (markdown-only,
+wire-only, neither). NOTE: this supersedes the markdown-only gate below for the WHETHER-picked-up
+decision — the `approved:true`-forces-JSON-path routing itself lives in `garden-audit-parser`.
+
+## garden-audit gates on a top-level Approved box (ADR-1 revised, 2026-07-21)
+
+WHY the garden-audit approval branch is `approved = bool(_RE_APPROVED.search(body))`
+rather than an unconditional `True`: ADR-1 originally accepted every pending-accept
+garden-audit doc unconditionally (the wire digest was the only edit signal). The live
+retest reversed that — the user wanted a document-level review gate, like suggestions.
+garden-audit now reuses the exact same `_RE_APPROVED` top-level `- [x] Approved` pattern
+as suggestions/suggestions-fan; an unticked doc stays `pending-accept` and is never routed
+to `approved_garden_audits[]`. Per-finding Apply ticks + the wire still choose WHICH fixes
+apply (garden-audit-parser, Pass-2); this branch only decides WHETHER the doc is picked up.
+Pinned by `test_inbox_triage.py::TestGardenAuditAsUpstreamType::test_unticked_garden_audit_stays_pending`.
+
+## wire_cache_path is set unconditionally (spec 030 two-artifact split, 2026-07-21)
+
+WHY the garden-audit branch sets `entry["wire_cache_path"]` UNCONDITIONALLY (to the cached
+path, or `null` when the sibling is genuinely absent) rather than only when the sibling
+exists: the wire is now the STRUCTURE source, always read by `garden-audit-parser` and joined
+to the markdown decisions by F-id — so the synthesis-conductor must ALWAYS pass `--wire`. The
+render always writes the wire sibling, so this resolves to a real path in normal operation; a
+`null` only occurs for a malformed doc with no sibling, and the parser then degrades to empty
+`confirmed_items` (warn, no crash). The routing-plan schema types `wire_cache_path` as
+`["string", "null"]` for garden-audit to allow the rare null. Pinned by
+`test_entry_carries_real_wire_cache_path_when_sibling_present`.
+
+WHY this depends on the vault FILENAME convention (2026-07-21 fix): `_cache_wire_sibling`
+derives the wire as `report_vault_path[:-3] + ".json"` — the report's `.json` sibling. The
+agent must therefore write the wire as `<ts>_garden-audit.json` (the `.json` sibling of
+`<ts>_garden-audit.md`), NOT a `garden-audit-wire-<epoch>.json` name. Before the dated-filename
+rename the agent wrote `-wire-<epoch>.json`, which was never the sibling → the wire was never
+found → the "resolves in normal operation" claim above was FALSE and the whole apply path
+silently no-op'd. The rename to the dated inbox convention makes it true; `_cache_wire_sibling`
+itself was NOT changed (the rename aligns to what it already expects). Pinned by
+`test_wire_is_report_json_sibling_by_convention`.
+
+## Suggest-before-approve gate (garden-audit, 2026-07-24)
+
+WHY the garden-audit branch now clears `approved` when `_garden_suggest_pending(body, wire)` is true:
+a user can tick "Suggest targets" AND approve in the same pass, but applying then silently skips the
+candidates they explicitly asked for. The gate is MAINLY for the .md-only path — a Hashi editor
+blocks approve itself using the top-level wire `suggest_pending`, but a markdown-only user has no
+such block. Two detection channels (either → pending): the wire's top-level `suggest_pending: true`
+(editor), and a markdown `- [x] Suggest targets` block carrying no `Pick one` pick list / no
+`No suggestions found` note (--suggest hasn't enriched it). When pending, triage logs a clear reason
+and leaves the doc in pending-approval; once `--suggest` runs, the signal clears and it applies on the
+next /inbox.

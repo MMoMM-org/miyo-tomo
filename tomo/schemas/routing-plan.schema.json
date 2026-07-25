@@ -79,6 +79,21 @@
       },
       "description": "MOC-proposal docs with [x] Accept ticked"
     },
+    "approved_garden_audits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string"},
+          "modified": {"type": "string"},
+          "cache_path": {"type": "string"},
+          "wire_cache_path": {"type": ["string", "null"], "description": "Spec 030 two-artifact split: local cache path of the garden-audit-wire.json sibling — the STRUCTURE source, always read by garden-audit-parser and joined to the markdown decisions by F-id. Set unconditionally so the conductor always passes --wire; null only when the sibling is genuinely absent (then the parser emits empty confirmed_items)."}
+        }
+      },
+      "description": "Garden-audit docs approved via the top-level [x] Approved gate (ADR-1 revised, spec 030). Each entry carries wire_cache_path (structure source)."
+    },
     "force_atomic_items": {
       "type": "array",
       "items": {

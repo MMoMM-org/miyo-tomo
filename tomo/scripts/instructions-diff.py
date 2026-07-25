@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.8.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -20,6 +20,10 @@ cross-checks the two JSONs item-by-item and surfaces:
     delete inferences reconciled.
   - Observations (soft, non-blocking): e.g. approved `create_moc` with
     no confirmed items linking up to it.
+  - Garden-audit docs (confirmed_items carrying garden_action) route to a
+    dedicated mode: expected instruction counts per garden_action
+    (resolve_dead_link / remove_up_link / add_relationship / file_note →
+    link_to_moc + add_relationship) plus path-anchored per-item coverage.
 
 Usage:
   python3 scripts/instructions-diff.py \\
@@ -428,6 +432,143 @@ ACTION_ORDER = [
     "delete_source", "skip",
 ]
 
+# ── Garden-audit mode (spec 030) ──────────────────────────────────────────────
+# Garden confirmed_items are semantic fix items keyed by garden_action, not the
+# suggestions manifest shape — without this mode every garden item was
+# miscounted as an expected move_note and the coverage audit hard-failed on
+# ANY garden-audit doc (pre-existing gap, fixed 2026-07-23).
+
+GARDEN_ACTION_ORDER = [
+    "resolve_dead_link", "remove_up_link", "link_to_moc", "add_relationship",
+]
+
+# garden_action → instruction kinds it must produce (mirrors
+# render_actions.build_garden_audit_actions).
+_GARDEN_EXPECTED_KINDS: dict[str, tuple[str, ...]] = {
+    "resolve_dead_link": ("resolve_dead_link",),
+    "remove_up_link": ("remove_up_link",),
+    "add_relationship": ("add_relationship",),
+    "file_note": ("link_to_moc", "add_relationship"),
+}
+
+
+def _is_garden_parsed(parsed: dict) -> bool:
+    """True when the parsed envelope is garden-audit-shaped (garden_action items)."""
+    items = parsed.get("confirmed_items") or []
+    return bool(items) and all("garden_action" in i for i in items)
+
+
+def _garden_item_covered(item: dict, actions: list[dict]) -> bool:
+    """True when every instruction kind this garden item owes exists with a
+    matching path anchor (mirrors build_garden_audit_actions field wiring)."""
+    ga = item.get("garden_action")
+    path = item.get("path", "")
+    stem = item.get("stem", "")
+    for kind in _GARDEN_EXPECTED_KINDS.get(ga, ()):
+        if kind == "resolve_dead_link":
+            ok = any(
+                a["action"] == kind and a.get("path") == path
+                and a.get("target") == item.get("target")
+                for a in actions
+            )
+        elif kind == "remove_up_link":
+            ok = any(
+                a["action"] == kind and a.get("path") == path
+                and a.get("link") == item.get("link")
+                for a in actions
+            )
+        elif kind == "add_relationship":
+            ok = any(
+                a["action"] == kind and a.get("target_moc_path") == path
+                for a in actions
+            )
+        else:  # link_to_moc (file_note bullet on the MOC)
+            ok = any(
+                a["action"] == kind and a.get("source_note_title") == stem
+                for a in actions
+            )
+        if not ok:
+            return False
+    return True
+
+
+def run_diff_garden(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
+    """Garden-audit coverage: expected instruction counts per garden_action vs
+    actual, plus per-item path-anchored coverage. Same envelope as run_diff."""
+    confirmed = parsed.get("confirmed_items") or []
+    actions = instrs.get("actions") or []
+
+    expected_counts: dict[str, int] = {k: 0 for k in GARDEN_ACTION_ORDER}
+    for item in confirmed:
+        for kind in _GARDEN_EXPECTED_KINDS.get(item.get("garden_action"), ()):
+            expected_counts[kind] = expected_counts.get(kind, 0) + 1
+
+    actual_counts: dict[str, int] = {}
+    for a in actions:
+        actual_counts[a["action"]] = actual_counts.get(a["action"], 0) + 1
+
+    lines: list[str] = []
+    observations: list[str] = []
+    hard_fail = False
+
+    acked = parsed.get("acked_advisories") or []
+    lines.append("=" * 72)
+    lines.append("instructions-diff — garden-audit fixes vs instructions coverage")
+    lines.append("=" * 72)
+    lines.append(
+        f"  garden-audit: confirmed={len(confirmed)} acked_advisories={len(acked)}"
+    )
+    lines.append(
+        f"  instructions: action_count="
+        f"{instrs.get('action_count', len(actions))}"
+    )
+    lines.append("")
+    lines.append(f"  {'kind':<20s} {'expected':>9s} {'actual':>9s}  status")
+    lines.append(f"  {'-'*20} {'-'*9} {'-'*9}  {'-'*7}")
+    total_expected = total_actual = 0
+    all_kinds = GARDEN_ACTION_ORDER + [
+        k for k in sorted(actual_counts) if k not in GARDEN_ACTION_ORDER
+    ]
+    for kind in all_kinds:
+        exp = expected_counts.get(kind, 0)
+        act = actual_counts.get(kind, 0)
+        total_expected += exp
+        total_actual += act
+        status = "[OK]" if exp == act else "[DIFF]"
+        if exp != act:
+            hard_fail = True
+        lines.append(f"  {kind:<20s} {exp:>9d} {act:>9d}  {status}")
+    lines.append(f"  {'-'*20} {'-'*9} {'-'*9}  {'-'*7}")
+    total_status = "[OK]" if total_expected == total_actual else "[DIFF]"
+    if total_expected != total_actual:
+        hard_fail = True
+    lines.append(
+        f"  {'TOTAL':<20s} {total_expected:>9d} {total_actual:>9d}  {total_status}"
+    )
+
+    lines.append("")
+    lines.append("  per-item coverage (garden_action → instruction kinds):")
+    for item in confirmed:
+        covered = _garden_item_covered(item, actions)
+        if not covered:
+            hard_fail = True
+        mark = "[OK]" if covered else "[MISSING]"
+        lines.append(
+            f"    {item.get('id', '?'):<6s} {item.get('garden_action', '?'):<17s} "
+            f"{(item.get('stem') or '')[:44]:<46s} {mark}"
+        )
+
+    lines.append("")
+    lines.append("-" * 72)
+    if hard_fail:
+        lines.append("RESULT: FAIL — count or coverage mismatch above.")
+    else:
+        lines.append(
+            f"RESULT: OK — {total_actual}/{total_expected} actions reconciled."
+        )
+    print("\n".join(lines))
+    return (1 if hard_fail else 0), observations
+
 
 def _subtract_skipped_daily(expected: dict, skipped_daily: list[dict]) -> int:
     """Remove renderer-dropped daily-note actions from the expected tallies.
@@ -464,6 +605,11 @@ def run_diff(
 
     Returns (exit_code, observations). exit_code=0 means counts reconcile.
     """
+    # Garden-audit docs carry garden_action items — a different shape with its
+    # own count math. Route them to the dedicated garden mode.
+    if _is_garden_parsed(parsed):
+        return run_diff_garden(parsed, instrs)
+
     expected = derive_expected(parsed, tag_handler_groups)
     actual = summarize_actual(instrs)
 

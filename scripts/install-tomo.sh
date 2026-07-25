@@ -1321,6 +1321,17 @@ if [ -d "$TOMO_SOURCE/config/tag-handlers" ]; then
     print_ok "config/tag-handlers/"
 fi
 
+# Garden-audit exclusion config (seed/create-only, CON-4 / spec 030).
+# User manages permanent exclusions here; install seeds the default once and
+# update-tomo never overwrites their edits thereafter.
+if [ ! -f "$INSTANCE_PATH/config/garden-audit-exclusions.yaml" ]; then
+    cp "$TOMO_SOURCE/config/garden-audit-exclusions.yaml" \
+       "$INSTANCE_PATH/config/garden-audit-exclusions.yaml"
+    print_ok "config/garden-audit-exclusions.yaml (new)"
+else
+    print_warn "config/garden-audit-exclusions.yaml exists — skipped"
+fi
+
 # user-rules README (only if not present — user territory)
 if [ ! -f "$INSTANCE_PATH/config/user-rules/README.md" ]; then
     cp "$TOMO_SOURCE/config/templates/user-rules-README.md" \

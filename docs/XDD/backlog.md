@@ -260,3 +260,20 @@ parent checkbox with a hardcoded `up::`. Deferred from 028 because it is **pure 
 `--config`/`--profile` channel** — threading it needs a delivery-channel design like the one
 `suggestion-parser` got (read the marker from an upstream artifact's `conventions` block, or add a
 flag). Pick up if/when a non-`up::` profile ships. Related: spec 028, epic #20.
+
+## OPEN — Adopt Kado `kado-graph` navigation tool for MOC/related-note features (opportunity)
+
+Kado shipped a read-only `kado-graph` navigation tool (PR #87, ~v0.17.0): per-note `backlinks` /
+`outgoing` / `neighbors` (1-hop union) / `related` (2-hop, each node carries `via`) / `dangling` (a
+source's unresolved link targets + `count`). Params `{operation, path(.md), limit?}` →
+`{source, operation, nodes:[{path, relation, via?, count?}]}`; scope-filtered (resolved neighbours
+outside the key's scope are silently omitted, so Tomo only ever sees paths it could already read).
+**This is a DIFFERENT tool from `kado-graph-audit`** (vault-wide orphans + deadLinks), which Tomo
+already consumes via garden-audit (spec 030). Not adopted — pure **opportunity** for future
+MOC-accumulation / related-note discovery (returns *resolved* paths, vs `listNotes fields:['links']`'s
+*raw unresolved* targets); `dangling` overlaps garden-audit's dead-link check but per-note instead of
+vault-wide. From the same handoff, no action needed: `kado-search byContent` is now full-text ranked
+(additive `score`/`snippets`) — **zero impact on Tomo** (`kado_client.search_by_content()` has no
+callers); `_hints` responses are optional and currently ignored. Source:
+`_inbox/from-kado/2026-06-24_kado-to-tomo_graph-tool-and-search-ranking.md`; Kado ADR-002 (disclosure
+guard) / ADR-003 (`_hints` contract).

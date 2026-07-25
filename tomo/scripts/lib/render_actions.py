@@ -1,4 +1,4 @@
-# version: 0.2.1
+# version: 0.6.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1140,6 +1140,135 @@ def _build_up_preservation_actions(
                     parent_marker=parent_marker, peer_marker=peer_marker,
                 )
             )
+    return out
+
+
+def _build_edit_note_text_actions(
+    items: list[dict],
+    counter: list[int],
+) -> list[dict]:
+    """Emit edit_note_text actions for body-level text edits (ADR-3, spec 030).
+
+    Each item must carry: path (str), match (str), replace (str).
+    occurrence defaults to "first" when absent.
+
+    Covers three fix cases with one primitive:
+      - dead wikilink fix:    match="[[Old]]", replace="[[New]]"
+      - dead wikilink remove: match="[[Old]]", replace=""
+      - broken up:: remove:   match="up:: [[Deleted MOC]]", replace=""
+
+    Broken-up REPOINT stays on add_relationship (marker-located line replace) —
+    this builder is ONLY for removal + free-text wikilink substitution (ADR-5,
+    Rule 7). Never call this builder for repoints.
+
+    Caller is responsible for stamping ``applied: False`` before wire emission —
+    this builder does not emit ``applied``, matching the convention of _build_*
+    helpers normally stamped centrally by build_actions(). T4.2's garden-audit-
+    parser calls this builder directly via build_from_wire, bypassing build_actions,
+    so the caller must stamp applied explicitly.
+    """
+    out: list[dict] = []
+    for item in items:
+        out.append({
+            "id": _next_id(counter),
+            "action": "edit_note_text",
+            "path": item["path"],
+            "match": item["match"],
+            "replace": item["replace"],
+            "occurrence": item.get("occurrence", "first"),
+        })
+    return out
+
+
+def build_garden_audit_actions(
+    confirmed: list[dict],
+    counter: list[int] | None = None,
+) -> list[dict]:
+    """Assemble Hashi actions from garden-audit confirmed_items (spec 030).
+
+    Isolated from build_actions — garden-audit's confirmed_items are semantic
+    fix items (garden_check / garden_action), NOT the suggestions manifest shape.
+    Keeping a separate assembler leaves the suggestions/moc-proposal hot path in
+    build_actions untouched (ADR: "no new apply path… mirror /moc-propose").
+
+    garden_action → actions:
+      - resolve_dead_link → one resolve_dead_link (dead_link unlink/repoint —
+        Hashi edits the body with alias/embed awareness; replace='' unlinks
+        keeping the display, '[[New]]' repoints). Supersedes the literal
+        edit_note_text construction, which no-opped on aliased links.
+      - remove_up_link  → one remove_up_link (broken_up empty=remove — Hashi
+        removes ONLY the broken link from the up:: line, keeps the up:: field
+        (emptied) when it was the last link).
+      - edit_note_text  → forward-compat only: no garden_action emits it now
+        (dead_link moved to resolve_dead_link, broken_up remove to
+        remove_up_link). Kept for the shared builder + Hashi's shipped surface.
+      - add_relationship→ one add_relationship up:: (broken_up repoint).
+      - file_note       → link_to_moc (bullet on the MOC) + add_relationship up::
+        (up-link on the note). Files an unparented/orphan note under a MOC.
+
+    Single loop over ``confirmed`` — action IDs track input order (a file_note
+    before an edit_note_text yields link_to_moc, add_relationship, edit_note_text
+    with ascending IDs). Every action is stamped applied=False (build_actions does
+    this centrally; this assembler bypasses it, so it stamps here).
+    """
+    counter = counter or [0]
+    out: list[dict] = []
+
+    for c in confirmed:
+        ga = c.get("garden_action")
+        if ga == "edit_note_text":
+            # Reuse the shared builder on a one-item list — wires in dead code
+            # while keeping this item's action in input order.
+            out.extend(_build_edit_note_text_actions([c], counter))
+        elif ga == "remove_up_link":
+            out.append({
+                "id": _next_id(counter),
+                "action": "remove_up_link",
+                "path": c["path"],
+                "link": c["link"],
+            })
+        elif ga == "resolve_dead_link":
+            out.append({
+                "id": _next_id(counter),
+                "action": "resolve_dead_link",
+                "path": c["path"],
+                "target": c["target"],
+                "replace": c["replace"],
+            })
+        elif ga == "add_relationship":
+            out.append({
+                "id": _next_id(counter),
+                "action": "add_relationship",
+                "target_moc": None,
+                "target_moc_path": c["path"],
+                "marker": "up::",
+                "line": c["up_line"],
+                "source_note_title": None,
+            })
+        elif ga == "file_note":
+            target_moc = c.get("target_moc", "")
+            out.append({
+                "id": _next_id(counter),
+                "action": "link_to_moc",
+                "target_moc": target_moc,
+                "target_moc_path": c.get("target_moc_path"),
+                "anchor": {"type": "callout", "value": None},
+                "placement": "after",
+                "line_to_add": f"- [[{c['stem']}]]",
+                "source_note_title": c["stem"],
+            })
+            out.append({
+                "id": _next_id(counter),
+                "action": "add_relationship",
+                "target_moc": target_moc,
+                "target_moc_path": c["path"],
+                "marker": "up::",
+                "line": f"up:: [[{target_moc}]]",
+                "source_note_title": None,
+            })
+
+    for a in out:
+        a["applied"] = False
     return out
 
 

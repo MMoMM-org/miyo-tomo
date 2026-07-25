@@ -7,7 +7,7 @@ tools:
 ---
 
 # Synthesis Conductor
-# version: 0.11.0
+# version: 0.16.0
 
 **Active agent: synthesis-conductor**
 
@@ -55,6 +55,7 @@ Collect approved inputs from:
 - `plan["approved_suggestions"]` — each has `path` and `cache_path` 
 - `plan["approved_fan"]` — each has `path` and `cache_path` 
 - `plan["approved_moc_proposals"]` — each has `path` and `cache_path`
+- `plan["approved_garden_audits"]` — each has `path` and `cache_path`
 
 If `plan["drift_indicators"]` is non-empty, surface each warning to the user but continue processing.
 
@@ -76,12 +77,13 @@ variables once and use them in every sub-step:
 | `approved_suggestions` | `suggestions` | `pending-approval` | `approved` |
 | `approved_fan` | `suggestions-fan` | `pending-approval` | `approved` |
 | `approved_moc_proposals` | `moc-proposal` | `pending-accept` | `accepted` |
+| `approved_garden_audits` | `garden-audit` | `pending-accept` | `accepted` |
 
 Each entry has `path` (= `VAULT_PATH`), `cache_path` (= `CACHE_PATH`), and `modified` (= `MODIFIED`).
 A `suggestions` entry may also carry `wire_cache_path` (= `WIRE_CACHE_PATH`) — the cached
 `_suggestions.json` sibling (ADR-026). It is absent for older docs; thread it only when present.
 
-Process in order: suggestions first, then fan companions, then moc-proposals.
+Process in order: suggestions first, then fan companions, then moc-proposals, then garden-audit docs.
 Run steps 3a–3e for EACH entry before moving to the next.
 
 **Fan-companion merge rule:** if BOTH `approved_suggestions` AND
@@ -122,6 +124,18 @@ For `DOC_TYPE` = `moc-proposal`:
 ```bash
 python3 scripts/moc-proposal-parser.py --file "<CACHE_PATH>" > tomo-tmp/parsed-suggestions.json
 ```
+
+For `DOC_TYPE` = `garden-audit`:
+```bash
+python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" --wire "<WIRE_CACHE_PATH>" --stamp-pushback > tomo-tmp/parsed-suggestions.json
+```
+ALWAYS pass BOTH `--file` and `--wire` — the wire is the STRUCTURE source (spec 030 two-artifact split), joined to the markdown decisions by F-id. `<WIRE_CACHE_PATH>` is the entry's `wire_cache_path` (inbox-triage caches the wire sibling for every garden-audit doc). If a Hashi editor edited the wire (digest mismatch), the parser treats the wire as fully authoritative; otherwise it joins wire structure to the report's Apply ticks + Repoint/Replace values. `--stamp-pushback` records acknowledged advisories in the pushback ledger — relay the parser's `stamped N acknowledged advisory(ies)` stderr line when it appears.
+
+STRICT: `--wire` is required. If the entry's `wire_cache_path` is `null` (the sibling was genuinely absent), do NOT omit `--wire` — substitute a nonexistent path literal, e.g. `--wire "null"`:
+```bash
+python3 scripts/garden-audit-parser.py --file "<CACHE_PATH>" --wire "null" --stamp-pushback > tomo-tmp/parsed-suggestions.json
+```
+Why: omitting `--wire` makes argparse exit 2 (hard crash). Passing a nonexistent path makes the parser warn and emit empty `confirmed_items` — a graceful no-op.
 
 #### 3b — Render instructions
 

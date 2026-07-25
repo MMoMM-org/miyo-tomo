@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """tomo_lifecycle.py — Pure-data state machine for all Tomo-produced doc-types.
 
 ADR-1 (SDD §Architecture Decisions): the state machine is a plain dict-of-dicts
@@ -66,6 +66,21 @@ STATE_MACHINE: dict[str, dict[str, Any]] = {
                 "from": "pending-accept",
                 "to": "accepted",
                 "trigger": "state-promoter after MOC Pass-2 success",
+            },
+        ],
+        "terminal": ["accepted"],
+    },
+    "garden-audit": {
+        # spec 030 garden-audit report — same pending-accept → accepted lifecycle
+        # as moc-proposal; accepted after the fixes render into instructions.
+        "initial": None,
+        "states": ["pending-accept", "accepted"],
+        "transitions": [
+            {"from": None, "to": "pending-accept", "trigger": "garden-audit-render write"},
+            {
+                "from": "pending-accept",
+                "to": "accepted",
+                "trigger": "state-promoter after garden-audit Pass-2 success",
             },
         ],
         "terminal": ["accepted"],

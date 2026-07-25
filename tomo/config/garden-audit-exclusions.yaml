@@ -1,0 +1,6 @@
+# version: 1
+# Skill-owned exclusion config for /garden-audit (spec 030, ADR-2).
+# Create-only seed: never overwritten by update-tomo. Managed via /garden-audit --configure.
+version: 1
+configured: false
+exclusions: []

@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/garden-audit-wire.schema.json",
+  "title": "Garden-Audit Wire",
+  "description": "Complete mirror of the garden-audit review surface (ADR-4 / ADR-026) and the Tomo-Editor's write channel (spec 030). Emitted alongside the markdown report by garden-audit-render.py; consumed by garden-audit-parser.py in Pass-2 to rebuild confirmed fixes from JSON alone. emit_digest is the change signal computed over the APPLY-decision fields ONLY (per finding: selected, repoint, replace, file_under) — Tomo-generated candidates, the suggested ran-marker, the suggest_requested flag, and the top-level approved gate are EXCLUDED so they never make the wire read as user-edited. Pass-2 treats the JSON as authoritative when the apply-decision digest mismatches OR approved:true. Both artifacts are projected from the same garden-audit-doc.json (no drift by construction).",
+  "type": "object",
+  "required": ["schema_version", "generated", "run_id", "profile", "emit_digest", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Schema version — always '1'. All Tomo-Editor fields (decision.file_under, decision.candidates, decision.suggest_requested, decision.suggested, top-level approved, top-level suggest_pending) are additive."
+    },
+    "approved": {
+      "type": "boolean",
+      "description": "JSON-side approve gate (Q1). The Tomo-Editor sets this true on 'ready for /inbox'; the markdown '- [x] Approved' box still works for .md-only users, and Pass-2 is picked up when EITHER is set. EXCLUDED from emit_digest (approving is not an apply-decision edit), but approved:true forces Pass-2 to the JSON path regardless of digest so an all-default editor approval still applies fixes. Optional — absent is treated as false for back-compat with older wires."
+    },
+    "suggest_pending": {
+      "type": "boolean",
+      "description": "Suggest-before-approve gate (2026-07-24). true = a finding requested LLM candidates (decision.suggest_requested) but '/garden-audit --suggest' has not fulfilled it yet → the Tomo-Editor MUST block approve while true; approve is allowed when false. Ownership: Tomo initialises it false at render and recomputes it false after --suggest (once every suggest_requested finding carries decision.suggested); the Tomo-Editor sets it true when the user requests suggestions. EXCLUDED from emit_digest (an editor/Tomo signal, not an apply edit). Optional — absent is treated as false for back-compat. Pass-2 also refuses to apply a doc while pending (also detected from the markdown for .md-only users)."
+    },
+    "generated": {
+      "type": "string",
+      "description": "ISO-8601 timestamp when this wire was produced."
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Stable run identifier joining the report and wire."
+    },
+    "profile": {
+      "type": ["string", "null"],
+      "description": "Vault profile in use (miyo, lyt, …)."
+    },
+    "emit_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 over the APPLY-decision fields only (per finding: id + decision.{selected,repoint,replace,file_under}). Recomputed and compared in Pass-2 to detect USER apply edits. Tomo-generated candidates, the suggested ran-marker, suggest_requested, top-level approved, top-level suggest_pending, and read-only detail are EXCLUDED — so --suggest writing candidates never flips this. Hashi carries emit_digest back VERBATIM; a mismatch (or approved:true) means the JSON is authoritative."
+    },
+    "findings": {
+      "type": "array",
+      "description": "All findings, severity-ordered (integrity → structure → advisory). Each fixable finding carries a 'decision' block the user can edit; advisory findings omit 'decision'.",
+      "items": {
+        "type": "object",
+        "required": ["id", "check", "tier", "fixable", "target", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable finding identifier (e.g. F01). Joins the markdown report to the wire."
+          },
+          "check": {
+            "type": "string",
+            "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"],
+            "description": "Which check produced this finding."
+          },
+          "tier": {
+            "type": "string",
+            "enum": ["integrity", "structure", "advisory"],
+            "description": "Severity tier. integrity={broken_up,dead_link}; structure={unparented,orphan}; advisory={duplicate_stem,stale_moc}."
+          },
+          "fixable": {
+            "type": "boolean",
+            "description": "True for checks 1-4 (unparented,orphan,broken_up,dead_link). False for advisory checks 5-6."
+          },
+          "target": {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "description": "The primary note this finding targets.",
+            "properties": {
+              "path": {"type": "string"},
+              "stem": {"type": ["string", "null"]}
+            }
+          },
+          "detail": {
+            "type": "object",
+            "description": "Per-check detail. Fields vary by check type (read-only in the wire).",
+            "additionalProperties": true,
+            "properties": {
+              "candidate_mocs": {
+                "type": "array",
+                "description": "unparented/orphan: scored MOC candidates from orphan_link.",
+                "items": {
+                  "type": "object",
+                  "required": ["target_moc", "score"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "target_moc": {"type": "string"},
+                    "score": {"type": "number"}
+                  }
+                }
+              },
+              "up_target": {
+                "type": ["string", "null"],
+                "description": "broken_up: the broken up:: target stem."
+              },
+              "dead_target": {
+                "type": "string",
+                "description": "dead_link: the unresolved wikilink target text."
+              },
+              "count": {
+                "type": "integer",
+                "description": "dead_link: how many times the dead link appears."
+              },
+              "dupes": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "duplicate_stem: list of paths sharing the stem."
+              },
+              "mtime": {
+                "type": "string",
+                "description": "stale_moc: last-modified ISO timestamp from listDir."
+              }
+            }
+          },
+          "decision": {
+            "type": "object",
+            "description": "Editable block — present ONLY on fixable findings (fixable=true). Absent for advisory. The user edits 'selected' to accept or skip the fix; Pass-2 reads this field alone.",
+            "required": ["selected", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "selected": {
+                "type": "boolean",
+                "description": "Editable — true to apply the fix. Pre-set from finding.decision.selected in the doc."
+              },
+              "action": {
+                "type": ["string", "null"],
+                "description": "Proposed action name (e.g. link_to_moc, edit_note_text, add_relationship). Null when not yet determined."
+              },
+              "replace": {
+                "type": "string",
+                "description": "dead_link only — editable replacement target (e.g. '[[New Note]]'). Empty string = remove intent. Absent on all other check types."
+              },
+              "repoint": {
+                "type": "string",
+                "description": "broken_up only — editable repoint target (e.g. '[[Correct MOC]]'). Non-empty repoints up:: to the chosen MOC (add_relationship); empty string = remove the broken line. Absent on all other check types."
+              },
+              "file_under": {
+                "type": "string",
+                "description": "unparented/orphan only — editable filing target MOC (e.g. '[[000 Home MOC]]' or a bare stem). Parallels repoint/replace. An explicit value ALWAYS wins over detail.candidate_mocs[0]; empty string = fall back to the scan candidate (or skip if none). Absent on all other check types. Included in the apply-decision digest."
+              },
+              "candidates": {
+                "type": "array",
+                "description": "DISPLAY-ONLY scored LLM candidates the Tomo-Editor renders for picking. Empty at first render; populated by '/garden-audit --suggest' for findings selected via a markdown Suggest tick or decision.suggest_requested. NEVER auto-applied — only the value the editor commits into repoint/replace/file_under is read by Pass-2. EXCLUDED from emit_digest (Tomo-generated, not a user edit).",
+                "items": {
+                  "type": "object",
+                  "required": ["stem", "score"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "stem": {"type": "string"},
+                    "score": {"type": "number"}
+                  }
+                }
+              },
+              "suggest_requested": {
+                "type": "boolean",
+                "description": "The Tomo-Editor sets this true to mark a finding that wants LLM candidates; '/garden-audit --suggest' enriches those (union with the markdown Suggest ticks). EXCLUDED from emit_digest (an editor signal, not a user apply edit)."
+              },
+              "suggested": {
+                "type": "boolean",
+                "description": "Set true by '/garden-audit --suggest' on every finding it processed — distinguishes ran-and-empty (suggested:true, candidates:[]) from awaiting-run (suggest_requested:true, no suggested). Cleared on findings not requested in the latest run. EXCLUDED from emit_digest (Tomo-generated, not a user edit). Absent = never ran."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

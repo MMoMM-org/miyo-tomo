@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miyo.tomo/schemas/garden-audit-exclusions.schema.json",
+  "title": "Garden-Audit Exclusion Config",
+  "description": "config/garden-audit-exclusions.yaml — instance-local, skill-owned exclusion list. Permanent entries suppress findings indefinitely; temporary entries auto-expire on their `until` date and surface as reappeared findings.",
+  "type": "object",
+  "required": ["version", "exclusions"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "Schema version — always 1."
+    },
+    "configured": {
+      "type": "boolean",
+      "description": "First-run marker. False (or absent) = wizard has not yet run; true = user has completed the wizard at least once. Written by the garden-auditor agent wizard (Wizard Step D). The loader ignores this field — it is metadata for the agent, not a rule."
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional tuning knobs. May be edited manually — the configure wizard preserves this block verbatim on rewrite. Absent keys fall back to their defaults.",
+      "properties": {
+        "stale_moc_days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Staleness threshold for the stale_moc check in days (default 90): a MOC unmodified for at least this long is flagged."
+        },
+        "advisory_pushback_days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rest window in days (default 30) for an acknowledged advisory (stale_moc, duplicate_stem): after the user ticks Acknowledge and applies, the finding is suppressed via the pushback ledger until the window lapses."
+        }
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "description": "Ordered list of exclusion rules. A finding is suppressed when ANY rule matches its target and check.",
+      "items": {
+        "type": "object",
+        "required": ["target", "checks", "mode", "reason", "created"],
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "object",
+            "required": ["type", "value"],
+            "additionalProperties": false,
+            "description": "What to suppress. path = prefix match; note = exact path; tag = membership in the note's tags.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["path", "note", "tag"],
+                "description": "Match semantics: path prefix, exact note path, or tag membership."
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The path prefix, exact vault-relative path, or tag value to match."
+              }
+            }
+          },
+          "checks": {
+            "description": "Which checks to suppress for the matched target. A list of check names, OR the literal string 'all' to suppress every check.",
+            "oneOf": [
+              {
+                "const": "all",
+                "description": "Suppress all checks for this target."
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"]
+                },
+                "description": "Specific checks to suppress."
+              }
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["permanent", "temporary"],
+            "description": "permanent = never expires; temporary = expires on `until` date."
+          },
+          "until": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "ISO date (YYYY-MM-DD) when the exclusion expires. Required for temporary; absent for permanent."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable explanation of why this exclusion exists."
+          },
+          "created": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "ISO date when this exclusion was created."
+          }
+        },
+        "if": {
+          "properties": {"mode": {"const": "temporary"}}
+        },
+        "then": {
+          "required": ["until"]
+        }
+      }
+    }
+  }
+}

@@ -1161,6 +1161,99 @@ review. Hashi MUST treat them independently:
 **Execution:** nothing. Tomo Hashi may still surface it in the UI as
 "skipped" for transparency, but it's not an executable action.
 
+### `edit_note_text` — literal match/replace in a note body
+
+Introduced by spec 030 (garden-audit, ADR-3). Emitted for dead-link fixes and
+removals.
+
+```json
+{
+  "id": "I11",
+  "action": "edit_note_text",
+  "path": "020 Active MOC.md",
+  "match": "[[023 Sparks MOC]]",
+  "replace": "[[023 Sparks (MOC)]]",
+  "occurrence": "all"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `path` | string | Vault-relative note to edit (`.md`). |
+| `match` | string | Exact literal text to locate in the body. |
+| `replace` | string | Replacement. Empty string removes the matched text (and the now-empty line when the match covered a whole line). |
+| `occurrence` | `"first"` \| `"all"` | Default `"first"`. |
+
+**Execution:** literal string replace — no regex, no normalization. On
+no-match: skip and report (no error, no partial write).
+
+> **Note (2026-07-24):** garden-audit no longer emits `edit_note_text` — dead
+> links moved to the semantic `resolve_dead_link` (below), broken `up::` removal
+> to `remove_up_link`. `edit_note_text` stays in the schema for the shipped Hashi
+> surface but has no Tomo emitter.
+
+### `resolve_dead_link` — unlink or repoint a dead wikilink (alias-aware)
+
+Introduced 2026-07-24 (semantic, user decision). Supersedes the literal
+`edit_note_text` construction for dead links, which built `match = "[[target]]"`
+and **silently no-opped on aliased links** `[[target|display]]` (and could not
+keep the display text on unlink). Tomo can't express this as a literal string
+(it never sees the note body / display), so Hashi resolves it.
+
+```json
+{
+  "id": "I11",
+  "action": "resolve_dead_link",
+  "path": "030 Readwise (Kanban).md",
+  "target": "X/600 Ressourcen/691 Readwise/Articles/SM - Passages Saved From iOS",
+  "replace": ""
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `path` | string | Vault-relative note whose body is edited (`.md`). |
+| `target` | string | Bare dead-link target to find — no `[[ ]]`, no alias. |
+| `replace` | string | `""` = unlink; `"[[New]]"` = repoint. |
+
+**Execution:** locate every occurrence of the target wikilink in ALL forms —
+bare `[[target]]`, aliased `[[target|display]]`, embed `![[target]]` — and:
+- `replace = ""` → **unlink**: drop the `[[ ]]`, keep the DISPLAY text
+  (`[[t|Nice]]` → `Nice`, `[[t]]` → `t`).
+- `replace = "[[New]]"` → **repoint**, preserving any display
+  (`[[t|Nice]]` → `[[New|Nice]]`, `[[t]]` → `[[New]]`).
+
+Replaces every occurrence. On no-match: skip and report — no error, no partial write.
+
+### `remove_up_link` — remove one link from the up:: line
+
+Introduced 2026-07-23 (link-only removal, user decision — replaces the earlier
+whole-line `edit_note_text` construction for broken_up empty=remove, which
+silently no-opped on multi-link `up::` lines).
+
+```json
+{
+  "id": "I12",
+  "action": "remove_up_link",
+  "path": "022 Placeholders MOC.md",
+  "link": "021 Fleeting MOC"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `path` | string | Vault-relative note whose `up::` line is edited (`.md`). |
+| `link` | string | Bare stem of the link to remove — no `[[ ]]`. |
+
+**Execution:** locate the `up::` line with the same marker regex used by
+`add_relationship`; remove the `[[link]]` occurrence on that line INCLUDING a
+dangling separator (`up:: [[A]], [[X]]` → `up:: [[A]]`). The `up::` **field is
+preserved** — when the removed link was the only one, the line becomes an empty
+`up:: ` (`up:: [[X]]` → `up:: `), it is **not** deleted (`up::` is a required
+structural field; an emptied `up::` correctly resurfaces the note as unparented
+on the next scan). On no-match (no `up::` line, or the link is not on it): skip
+and report — no error, no partial write.
+
 ---
 
 ## Worked example (abridged)

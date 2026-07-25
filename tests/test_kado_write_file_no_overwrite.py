@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.1
 """test_kado_write_file_no_overwrite.py — Tests for kado-write-file.py --no-overwrite.
 
 Spec 026, T1.2 (Companion Mode P1 — Deterministic Safety Scripts).
@@ -21,7 +21,7 @@ LIB_DIR = REPO_ROOT / "tomo" / "scripts" / "lib"
 
 # Ensure lib is importable so KadoError is the same class the script uses.
 sys.path.insert(0, str(LIB_DIR.parent))
-from lib.kado_client import KadoError  # noqa: E402
+from lib.kado_client import KadoError, KadoNotFoundError  # noqa: E402
 
 
 def _load_script():
@@ -65,7 +65,7 @@ def test_no_overwrite_existing_path_exits_3(tmp_path, monkeypatch, capsys):
         def path_exists(self, path: str) -> bool:
             return True
 
-        def write_note(self, path, content):
+        def write_note(self, path, content, expected_modified=None):
             raise AssertionError("must not write when path already exists")
 
     rc = _run(monkeypatch, ["--no-overwrite", "--vault", vault, "--local", str(local)], FakeClient)
@@ -85,7 +85,7 @@ def test_no_overwrite_existing_path_prints_exists_signal(tmp_path, monkeypatch, 
         def path_exists(self, path: str) -> bool:
             return True
 
-        def write_note(self, path, content):
+        def write_note(self, path, content, expected_modified=None):
             raise AssertionError("must not write")
 
     _run(monkeypatch, ["--no-overwrite", "--vault", vault, "--local", str(local)], FakeClient)
@@ -112,7 +112,11 @@ def test_no_overwrite_absent_path_writes_and_exits_0(tmp_path, monkeypatch, caps
         def path_exists(self, path: str) -> bool:
             return False
 
-        def write_note(self, path: str, content: str) -> dict:
+        def read_note(self, path: str) -> dict:
+            # Absent target → NOT_FOUND → no concurrency guard on write.
+            raise KadoNotFoundError("not found")
+
+        def write_note(self, path: str, content: str, expected_modified=None) -> dict:
             write_calls.append(path)
             return {"path": path, "modified": 1}
 
@@ -141,11 +145,14 @@ def test_non_md_extension_uses_write_file(tmp_path, monkeypatch, capsys):
         def __init__(self):
             pass
 
-        def write_file(self, path: str, data: bytes) -> dict:
+        def read_file(self, path: str) -> dict:
+            raise KadoNotFoundError("not found")  # new file → no guard
+
+        def write_file(self, path: str, data: bytes, expected_modified=None) -> dict:
             write_calls.append(path)
             return {"path": path, "modified": 1}
 
-        def write_note(self, path, content):
+        def write_note(self, path, content, expected_modified=None):
             raise AssertionError("must not call write_note for a .base file")
 
     rc = _run(monkeypatch, ["--vault", vault, "--local", str(local)], FakeClient)
@@ -171,7 +178,7 @@ def test_no_overwrite_path_check_kado_error_exits_1(tmp_path, monkeypatch, capsy
         def path_exists(self, path: str) -> bool:
             raise KadoError("connection refused")
 
-        def write_note(self, path, content):
+        def write_note(self, path, content, expected_modified=None):
             raise AssertionError("must not reach write when path_exists fails")
 
     rc = _run(monkeypatch, ["--no-overwrite", "--vault", vault, "--local", str(local)], FakeClient)
@@ -196,7 +203,10 @@ def test_write_denial_exits_1(tmp_path, monkeypatch, capsys):
         def path_exists(self, path: str) -> bool:
             return False
 
-        def write_note(self, path: str, content: str) -> dict:
+        def read_note(self, path: str) -> dict:
+            raise KadoNotFoundError("not found")  # new file → no guard
+
+        def write_note(self, path: str, content: str, expected_modified=None) -> dict:
             raise KadoError("path not allowed by ACL")
 
     rc = _run(monkeypatch, ["--vault", vault, "--local", str(local)], FakeClient)

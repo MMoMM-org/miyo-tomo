@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.8.0
 """test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
 T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
@@ -389,6 +389,154 @@ class TestApprovalScanMocProposalAccepted:
         assert len(state.approved_moc_proposals) == 1
         assert state.approved_moc_proposals[0]["path"] == moc_path
         assert len(state.pending_approval) == 0
+
+
+# ---------------------------------------------------------------------------
+# Test 6b: garden-audit approval gate — markdown Approved OR wire approved:true
+# (spec 030 Tomo-Editor Q1). Either channel picks the doc up; neither → pending.
+# ---------------------------------------------------------------------------
+
+def _garden_audit_body(approved: bool, *, md_suggest: str | None = None) -> str:
+    mark = "[x]" if approved else "[ ]"
+    lines = [
+        "---",
+        "tomo:",
+        "  doc_type: garden-audit",
+        "  state: pending-accept",
+        "---",
+        "",
+        "# Knowledge-Garden Audit — 2026-07-22",
+        "",
+        f"- {mark} Approved — check this box when you've finished reviewing.",
+        "",
+        "### F01 — Dead link in: [[Src]]",
+        "",
+        "- [x] Apply — untick to skip",
+        "- **Replace with:** [[]]",
+    ]
+    # md_suggest: None → no Suggest box; "pending" → ticked, not enriched;
+    # "fulfilled" → ticked + a pick list (--suggest already ran).
+    if md_suggest == "pending":
+        lines.append("- [x] Suggest targets — tick, then run `/garden-audit --suggest`")
+    elif md_suggest == "fulfilled":
+        lines.append("- [x] Suggest targets — tick, then run `/garden-audit --suggest`")
+        lines.append("  Pick one (tick a candidate, or type your own above):")
+        lines.append("  - [ ] [[Candidate]] (0.90)")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _garden_audit_wire(approved: bool, *, suggest_pending: bool = False) -> bytes:
+    wire = {
+        "schema_version": "1",
+        "generated": "2026-07-22T12:00:00Z",
+        "run_id": "test-run",
+        "profile": "miyo",
+        "approved": approved,
+        "suggest_pending": suggest_pending,
+        "findings": [{
+            "id": "F01", "check": "dead_link", "tier": "integrity", "fixable": True,
+            "target": {"path": "Notes/Src.md", "stem": "Src"},
+            "detail": {"dead_target": "Missing", "count": 1},
+            "decision": {
+                "selected": True, "action": "edit_note_text", "replace": "",
+                "candidates": [], "suggest_requested": False,
+            },
+        }],
+        "emit_digest": "sha256:" + "0" * 64,  # value irrelevant to the approve gate
+    }
+    return json.dumps(wire).encode("utf-8")
+
+
+def _garden_audit_client(md_approved: bool, wire_approved: bool, *,
+                         wire_suggest_pending: bool = False,
+                         md_suggest: str | None = None):
+    md_path = INBOX_PATH + "2026-07-22_1200_garden-audit.md"
+    json_path = INBOX_PATH + "2026-07-22_1200_garden-audit.json"
+    client = FakeKadoClient(
+        listdir_items=[_listdir_item(md_path)],
+        frontmatter_responses={
+            "tomo.state=pending-approval": [],
+            "tomo.state=pending-accept": [_fm_hit(md_path, "garden-audit", "pending-accept")],
+            "tomo.state=captured": [],
+            "tomo.doc_type=instructions": [],
+        },
+        read_note_responses={
+            md_path: {"content": _garden_audit_body(md_approved, md_suggest=md_suggest),
+                      "modified": 0},
+        },
+        read_file_responses={
+            json_path: _garden_audit_wire(wire_approved,
+                                          suggest_pending=wire_suggest_pending),
+        },
+    )
+    return client, md_path
+
+
+class TestGardenAuditApprovalGate:
+    def test_markdown_approved_detected(self, tmp_path):
+        mod = _load_module()
+        client, md_path = _garden_audit_client(md_approved=True, wire_approved=False)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
+        assert state.approved_garden_audits[0]["path"] == md_path
+        assert state.approved_garden_audits[0]["wire_cache_path"]  # sibling cached
+
+    def test_wire_approved_only_detected(self, tmp_path):
+        # Markdown NOT ticked — only the JSON approve gate is set (editor channel).
+        mod = _load_module()
+        client, md_path = _garden_audit_client(md_approved=False, wire_approved=True)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
+        assert state.approved_garden_audits[0]["path"] == md_path
+
+    def test_neither_approved_goes_pending(self, tmp_path):
+        mod = _load_module()
+        client, md_path = _garden_audit_client(md_approved=False, wire_approved=False)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 0
+        assert any(d["path"] == md_path for d in state.pending_approval)
+
+
+# ---------------------------------------------------------------------------
+# Test 6c: suggest-before-approve gate (2026-07-24). Approved but suggestions
+# still pending → NOT applied (mainly the .md-only path). Once --suggest ran
+# (wire suggest_pending false / markdown pick list present) → applies.
+# ---------------------------------------------------------------------------
+
+class TestGardenAuditSuggestGate:
+    def test_wire_suggest_pending_blocks_apply(self, tmp_path):
+        # Editor channel: wire approved but suggest_pending=true → not applied.
+        mod = _load_module()
+        client, md_path = _garden_audit_client(
+            md_approved=False, wire_approved=True, wire_suggest_pending=True)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 0
+        assert any(d["path"] == md_path for d in state.pending_approval)
+
+    def test_markdown_unfulfilled_suggest_blocks_apply(self, tmp_path):
+        # .md-only path: Approved ticked AND a Suggest box ticked without a pick
+        # list → --suggest hasn't run → not applied.
+        mod = _load_module()
+        client, md_path = _garden_audit_client(
+            md_approved=True, wire_approved=False, md_suggest="pending")
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 0
+
+    def test_markdown_fulfilled_suggest_applies(self, tmp_path):
+        # Suggest ticked AND enriched (pick list present) → --suggest ran → applies.
+        mod = _load_module()
+        client, md_path = _garden_audit_client(
+            md_approved=True, wire_approved=False, md_suggest="fulfilled")
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
+
+    def test_no_suggest_request_applies(self, tmp_path):
+        # No suggest anywhere + approved → applies (gate is a no-op).
+        mod = _load_module()
+        client, md_path = _garden_audit_client(md_approved=True, wire_approved=True)
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -2204,3 +2352,260 @@ class TestTagHandlerResolution:
         assert entry["target_path"] is None
         fresh_paths = {s["path"] for s in plan["fresh_sources"]}
         assert tagged not in fresh_paths
+
+
+# ---------------------------------------------------------------------------
+# Test: garden-audit as 4th upstream type (T4.3 / spec 030 ADR-1, CON-5)
+# ---------------------------------------------------------------------------
+
+def _garden_audit_body_t43(approved: bool = True) -> str:
+    """Minimal garden-audit markdown body (pending-accept doc).
+
+    ADR-1 revised: garden-audit gates on a top-level "- [x] Approved" box.
+    ``approved=True`` ticks it (doc is picked up); ``approved=False`` leaves it
+    unticked (doc stays pending-accept).
+    """
+    tick = "x" if approved else " "
+    return "\n".join([
+        "---",
+        "tomo:",
+        "  doc_type: garden-audit",
+        "  state: pending-accept",
+        "  run_id: run-ga-001",
+        "tomo_skip_inbox_analysis: true",
+        "---",
+        "",
+        "# Knowledge-Garden Audit -- 2026-07-20",
+        "",
+        f"- [{tick}] Approved -- check this box when you've finished reviewing, "
+        "then run `/inbox` to apply the ticked fixes.",
+        "",
+        "## Summary",
+        "",
+        "Integrity: 1 | Structure: 0 | Advisory: 0",
+        "",
+        "## Integrity",
+        "",
+        "### F01 -- Dead link: `Source Note`",
+        "",
+        "Dead link: `Missing Note` (1x in `Notes/Source Note.md`)",
+        "",
+        "**Fix:**",
+        "- [x] Apply -- untick to skip",
+        "",
+    ])
+
+
+def _fm_hit_ga(path: str) -> dict:
+    """Frontmatter search hit for a pending-accept garden-audit doc."""
+    return _fm_hit(path, "garden-audit", "pending-accept")
+
+
+class TestGardenAuditAsUpstreamType:
+    """garden-audit docs (tomo.state=pending-accept, doc_type=garden-audit)
+    are routed as the 4th upstream type -- ADR-1 / CON-5.
+
+    Key behaviours:
+    1. _get_doc_type infers 'garden-audit' from filename stem *_garden-audit.md
+    2. A pending-accept garden-audit doc lands in approved_garden_audits ONLY when
+       its top-level "- [x] Approved" box is ticked (ADR-1 revised); an unticked
+       doc stays pending-accept (not picked up).
+    3. The doc is excluded from fresh_sources (CON-5 zero Pass-1 cost)
+    4. An /inbox run with no garden-audit doc is byte-neutral (approved_garden_audits=[])
+    5. The routing plan carries approved_garden_audits[] and triggers action=synthesize
+    """
+
+    def _base_frontmatter_responses(self, ga_path: str | None = None) -> dict:
+        """Default empty frontmatter responses with optional garden-audit entry."""
+        return {
+            "tomo.state=pending-approval": [],
+            "tomo.state=pending-accept": (
+                [_fm_hit_ga(ga_path)] if ga_path else []
+            ),
+            "tomo.state=captured": [],
+            "tomo.doc_type=instructions": [],
+            "tomo.state=approved": [],
+            "tomo.state=accepted": [],
+            "tomo.state=pending-move": [],
+        }
+
+    def test_get_doc_type_infers_garden_audit_from_filename(self, tmp_path):
+        """_get_doc_type returns 'garden-audit' for the dated inbox-convention
+        stem `<YYYY-MM-DD_HHMM>_garden-audit.md` (frontmatter empty).
+
+        This is the naming the agent now writes; the OLD `garden-audit-<epoch>.md`
+        did NOT satisfy the `_garden-audit` suffix fallback (bug fixed by the rename).
+        """
+        mod = _load_module()
+        hit = {"path": INBOX_PATH + "2026-07-20_1430_garden-audit.md", "frontmatter": {}}
+        assert mod._get_doc_type(hit) == "garden-audit"
+
+    def test_get_doc_type_rejects_old_epoch_garden_audit_name(self, tmp_path):
+        """The OLD `garden-audit-<epoch>.md` name does NOT end in `_garden-audit`,
+        so the filename fallback must NOT infer garden-audit (only frontmatter
+        would have). Locks the reason the rename was needed."""
+        mod = _load_module()
+        hit = {"path": INBOX_PATH + "garden-audit-1753000000.md", "frontmatter": {}}
+        assert mod._get_doc_type(hit) != "garden-audit"
+
+    def test_get_doc_type_does_not_promote_misnamed_pending_accept(self, tmp_path):
+        """Naming-convention contract: a pending-accept doc with empty frontmatter
+        and a stem that does NOT end in _garden-audit must NOT be inferred as
+        'garden-audit'. Locks the fallback so a differently-named audit doc is
+        caught rather than silently accepted into the wrong bucket.
+        """
+        mod = _load_module()
+        # Kado byFrontmatter returns frontmatter:{} in practice — empty dict, no tomo key.
+        hit = {"path": INBOX_PATH + "2026-07-20_some-other-doc.md", "frontmatter": {}}
+        result = mod._get_doc_type(hit)
+        assert result != "garden-audit", (
+            "_get_doc_type must not promote non-_garden-audit stems to 'garden-audit'"
+        )
+
+    def test_pending_accept_garden_audit_lands_in_approved_bucket(self, tmp_path):
+        """A pending-accept garden-audit doc goes to approved_garden_audits."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
+            },
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert len(state.approved_garden_audits) == 1
+        assert state.approved_garden_audits[0]["path"] == ga_path
+        # Spec 030: the entry always carries wire_cache_path (structure source),
+        # even when the sibling is absent — then its VALUE is None (parser
+        # degrades). This client has no read_file_responses → no sibling. Asserting
+        # None (not just key-present) catches a regression back to conditional-set.
+        assert "wire_cache_path" in state.approved_garden_audits[0]
+        assert state.approved_garden_audits[0]["wire_cache_path"] is None
+
+    def test_wire_is_report_json_sibling_by_convention(self, tmp_path):
+        """The wire is the report's `.json` SIBLING: `_cache_wire_sibling` derives
+        it as `report[:-3] + '.json'`, and the agent now writes exactly that name
+        (`<ts>_garden-audit.md` → `<ts>_garden-audit.json`, NOT `-wire-<epoch>`).
+
+        The OLD `garden-audit-wire-<epoch>.json` was NOT the `.json` sibling of
+        `garden-audit-<epoch>.md`, so the sibling was never found → the parser
+        (which REQUIRES the wire) emitted empty confirmed_items → apply did nothing.
+        The dated rename makes the derivation resolve.
+        """
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
+        # The exact name the agent writes for the wire.
+        agent_wire_name = INBOX_PATH + "2026-07-20_1430_garden-audit.json"
+        # The name _cache_wire_sibling derives from the report path.
+        derived_wire = ga_path[:-3] + ".json"
+        assert derived_wire == agent_wire_name, (
+            "wire-sibling derivation must match the name the agent writes"
+        )
+
+    def test_entry_carries_real_wire_cache_path_when_sibling_present(self, tmp_path):
+        """When the wire sibling exists at the derived path, the entry carries its
+        cached path so the conductor always passes --wire (spec 030 structure source)."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
+        wire_vault_path = ga_path[:-3] + ".json"  # 2026-07-20_1430_garden-audit.json
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
+            },
+            read_file_responses={wire_vault_path: b'{"schema_version": "1"}'},
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        entry = state.approved_garden_audits[0]
+        assert entry["wire_cache_path"] is not None
+        assert entry["wire_cache_path"].endswith(".json")
+
+    def test_unticked_garden_audit_stays_pending(self, tmp_path):
+        """ADR-1 revised: an UNticked garden-audit Approved box → the doc is NOT
+        picked up. It stays in pending_approval; approved_garden_audits is empty."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body_t43(approved=False), "modified": 0},
+            },
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert state.approved_garden_audits == [], (
+            "an unticked garden-audit Approved box must not be picked up"
+        )
+        pending_paths = {p["path"] for p in state.pending_approval}
+        assert ga_path in pending_paths
+
+    def test_garden_audit_excluded_from_fresh_sources(self, tmp_path):
+        """The garden-audit doc must NOT appear in fresh_sources (CON-5)."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
+            },
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        fresh_paths = {s["path"] for s in state.new_sources}
+        assert ga_path not in fresh_paths, (
+            "garden-audit doc must be excluded from fresh_sources (zero Pass-1 cost)"
+        )
+
+    def test_no_garden_audit_run_is_byte_neutral(self, tmp_path):
+        """A run with no garden-audit doc leaves approved_garden_audits empty."""
+        mod = _load_module()
+        plain_path = INBOX_PATH + "normal-note.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(plain_path)],
+            frontmatter_responses=self._base_frontmatter_responses(),
+        )
+        state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+        assert state.approved_garden_audits == []
+        fresh_paths = {s["path"] for s in state.new_sources}
+        assert plain_path in fresh_paths
+
+    def test_routing_plan_carries_approved_garden_audits(self, tmp_path):
+        """build_routing_plan includes approved_garden_audits in the plan dict."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
+            },
+        )
+        rc = mod.main(
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            client_factory=lambda: client,
+        )
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        assert "approved_garden_audits" in plan
+        assert len(plan["approved_garden_audits"]) == 1
+        assert plan["approved_garden_audits"][0]["path"] == ga_path
+
+    def test_approved_garden_audit_triggers_synthesize_action(self, tmp_path):
+        """An approved garden-audit doc triggers action=synthesize."""
+        mod = _load_module()
+        ga_path = INBOX_PATH + "2026-07-20_1430_garden-audit.md"
+        client = FakeKadoClient(
+            listdir_items=[_listdir_item(ga_path)],
+            frontmatter_responses=self._base_frontmatter_responses(ga_path),
+            read_note_responses={
+                ga_path: {"content": _garden_audit_body_t43(), "modified": 0},
+            },
+        )
+        rc = mod.main(
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            client_factory=lambda: client,
+        )
+        assert rc == 0
+        plan = json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
+        assert plan["action"] == "synthesize"

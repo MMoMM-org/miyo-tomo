@@ -1,4 +1,4 @@
-# version: 0.1.1
+# version: 0.7.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+
+import yaml
 
 from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block
 from lib.render_helpers import _moc_stem, _stem
@@ -29,7 +31,8 @@ def _md_section_for(action: dict) -> str:
     kind = action["action"]
     if kind in ("move_note", "create_moc"):
         return "new_files"
-    if kind in ("link_to_moc", "add_relationship"):
+    if kind in ("link_to_moc", "add_relationship", "edit_note_text",
+                "remove_up_link", "resolve_dead_link"):
         return "moc_links"
     if kind in ("update_tracker", "update_log_entry", "update_log_link"):
         return "daily_updates"
@@ -194,13 +197,51 @@ def _render_action_md(action: dict, cfg: dict) -> str:
             lines.append(f"  > {content_line}")
         return "\n".join(lines)
 
+    if kind == "edit_note_text":
+        target = action.get("path", "")
+        occurrence = action.get("occurrence", "first")
+        replace = action.get("replace", "")
+        verb = "Replace" if replace else "Remove"
+        lines = [f"{heading_prefix}{verb} text in [[{_stem(target)}]]", "- [ ] Applied"]
+        lines.append(f"- **Note:** [[{_stem(target)}]]")
+        lines.append(f"- **Match:** `{action.get('match', '')}` ({occurrence} occurrence)")
+        if replace:
+            lines.append(f"- **Replace with:** `{replace}`")
+        else:
+            lines.append("- **Replace with:** (removed)")
+        return "\n".join(lines)
+
+    if kind == "remove_up_link":
+        target = action.get("path", "")
+        link = action.get("link", "")
+        lines = [
+            f"{heading_prefix}Remove broken up:: link [[{link}]] from [[{_stem(target)}]]",
+            "- [ ] Applied",
+        ]
+        lines.append(f"- **Note:** [[{_stem(target)}]]")
+        lines.append(f"- **Link to remove:** `[[{link}]]` (from the up:: line; the up:: field is kept — emptied if this was the last link)")
+        return "\n".join(lines)
+
+    if kind == "resolve_dead_link":
+        note = action.get("path", "")
+        tgt = action.get("target", "")
+        replace = action.get("replace", "")
+        verb = "Repoint" if replace else "Unlink"
+        lines = [f"{heading_prefix}{verb} dead link [[{tgt}]] in [[{_stem(note)}]]", "- [ ] Applied"]
+        lines.append(f"- **Note:** [[{_stem(note)}]]")
+        if replace:
+            lines.append(f"- **Repoint to:** `{replace}` (display preserved; all forms incl. aliased/embed)")
+        else:
+            lines.append(f"- **Unlink:** drop the `[[ ]]` from `[[{tgt}]]`, keep the display text (all forms incl. aliased/embed)")
+        return "\n".join(lines)
+
     # Fallback — unknown action type
     return f"{heading_prefix}(unknown action: {kind})\n- [ ] Applied"
 
 
 # Known upstream doc types for the --upstream-type CLI flag.
 # T1.3 (XDD-018): source_* kwargs replaced by sources list in build_tomo_block.
-_UPSTREAM_TYPES: list[str] = ["suggestions", "moc-proposal", "suggestions-fan"]
+_UPSTREAM_TYPES: list[str] = ["suggestions", "moc-proposal", "suggestions-fan", "garden-audit"]
 
 
 def _compute_sha256(file_path: str) -> str | None:
@@ -239,6 +280,116 @@ def compute_payload_digest(payload: dict) -> str:
         editable, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     )
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+# garden-audit: the apply-decision fields a USER edits (spec 030 Tomo-Editor).
+# The change-detection digest is computed over ONLY these per-finding decision
+# keys, so Tomo-generated fields (candidates, the suggested ran-marker), the
+# editor's request flag (suggest_requested), the top-level approve gate
+# (approved) and read-only structure (detail) never make the wire look
+# "user-edited".
+_GARDEN_APPLY_DECISION_KEYS = ("selected", "repoint", "replace", "file_under")
+
+
+def compute_garden_audit_digest(payload: dict) -> str:
+    """Return 'sha256:<hex>' over the garden-audit APPLY-decision fields only.
+
+    Distinct from compute_payload_digest (which hashes the whole editable payload):
+    the garden-audit wire carries Tomo-generated data (decision.candidates,
+    decision.suggested) and editor-signal fields (decision.suggest_requested,
+    top-level approved) that must
+    NOT flip the change signal — only a user changing an apply decision
+    (selected / repoint / replace / file_under) counts as "edited". This projects
+    each finding to (id, apply-decision-keys-that-are-present) and hashes that
+    canonical form. The suggestions wire is unaffected — it uses its own function.
+    """
+    import hashlib
+    import json
+
+    projection: list[dict] = []
+    for finding in payload.get("findings") or []:
+        decision = finding.get("decision")
+        entry: dict = {"id": finding.get("id")}
+        if isinstance(decision, dict):
+            entry["decision"] = {
+                k: decision[k]
+                for k in _GARDEN_APPLY_DECISION_KEYS
+                if k in decision
+            }
+        projection.append(entry)
+    canonical = json.dumps(
+        projection, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def unwrap_list_repr(value):
+    """Unwrap a stringified list-repr `"['a', 'b']"` → the Python list `['a','b']`.
+
+    DEFENSIVE against dirty caches: some moc-structure caches persist a
+    frontmatter `up:` list as its Python str repr (e.g. "['020 Active MOC']").
+    Rendered naively this leaks `[[['020 Active MOC']]]`. The real fix is upstream
+    in up_parse (so freshly-explored caches are clean), but existing caches stay
+    dirty until re-explored — so the renderers unwrap here too. Non-list-repr
+    strings (bare stems, `[[wikilinks]]`) pass through unchanged.
+    """
+    if isinstance(value, str):
+        s = value.strip()
+        # A [[wikilink]] also starts with "[" — never treat it as a list-repr.
+        if s.startswith("[") and not s.startswith("[["):
+            try:
+                parsed = yaml.safe_load(s)
+            except yaml.YAMLError:
+                parsed = None
+            if isinstance(parsed, list):
+                return parsed
+    return value
+
+
+def bare_stem(ref) -> str:
+    """Bare stem of a note/MOC ref: strip [[ ]], a folder prefix, and .md.
+
+    Shared by garden-audit-render (structural comment) and garden-audit-parser
+    (confirmed_item reconstruction). Load-bearing round-trip contract: both sides
+    must derive the same stem from a given ref, so it lives here (single home).
+    Defensively unwraps a stringified list-repr (dirty cache) to its first element.
+    """
+    ref = unwrap_list_repr(ref)
+    if isinstance(ref, (list, tuple)):
+        ref = next((r for r in ref if r is not None and str(r).strip()), "")
+    s = str(ref or "").strip()
+    if s.startswith("[[") and s.endswith("]]"):
+        s = s[2:-2].strip()
+    s = s.rsplit("/", 1)[-1]
+    if s.endswith(".md"):
+        s = s[:-3]
+    return s.strip()
+
+
+def up_line(up_target) -> str:
+    """Render an up:: value (str | list of stems) as `up:: [[a]], [[b]]`.
+
+    The graph cache stores up:: as a multi-value list, so up_target may arrive as
+    e.g. ['020 Active MOC']. Reduces to clean stems (strip [[ ]], whitespace,
+    empties) so the reconstructed frontmatter line is exact — never a list repr.
+    Also defensively unwraps a stringified list-repr (dirty cache) before formatting.
+
+    Consumers: garden-audit-parser's add_relationship paths (broken_up repoint +
+    filing) — it reconstructs the full replacement up:: line for Hashi's
+    marker-located line replace. (The former renderer structural-comment parity
+    ended with the spec-030 two-artifact split; broken_up empty=remove no longer
+    uses up_line either — it emits a link-only remove_up_link action.)
+    """
+    up_target = unwrap_list_repr(up_target)
+    raw = up_target if isinstance(up_target, (list, tuple)) else [up_target]
+    stems = []
+    for t in raw:
+        s = str(t or "").strip()
+        if s.startswith("[[") and s.endswith("]]"):
+            s = s[2:-2].strip()
+        if s:
+            stems.append(s)
+    return "up:: " + ", ".join(f"[[{s}]]" for s in stems)
 
 
 def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:

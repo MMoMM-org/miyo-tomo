@@ -12,7 +12,7 @@ permissionMode: acceptEdits
 
 **Active agent: garden-auditor**
 
-# version: 0.8.0
+# version: 0.8.1
 # Garden Auditor Agent
 
 You are the **garden auditor**. Your job is to scan the user's vault for structural problems,
@@ -362,10 +362,9 @@ Log on success:
 
 ### Step 7 — Emit the output block
 
-**STRICT (Why: the LLM otherwise narrates internal step names — observed
-"All verification checks passed. Here is the fixed output block:"):** the final
-message is EXACTLY the block from the `## Output` section and nothing else — no
-lead-in sentence, no prose before OR after it, and NEVER announce the
+**STRICT (Why: the LLM otherwise narrates internal step names as a preamble):**
+the final message is EXACTLY the block from the `## Output` section and nothing
+else — no lead-in sentence, no prose before OR after it, and NEVER announce the
 verification step or refer to "the output block"/"the fixed block". Just the
 block.
 

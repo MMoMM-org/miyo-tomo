@@ -19,6 +19,7 @@ Tomo runs inside an isolated Docker container. All vault access goes through [Mi
 
 - **`/inbox`** — 2-pass inbox processing: analyses files, proposes actions, generates detailed instructions
 - **`/explore-vault`** — Discovers vault structure, MOC hierarchy, frontmatter patterns, tag taxonomy
+- **`/garden-audit`** — Audits the whole vault for structural problems (unparented notes, orphans, broken `up::`, dead wikilinks, duplicate stems, stale MOCs) and writes a severity-ordered review report to your inbox. You tick the fixes you want, optionally ask Tomo to suggest repoint/filing targets, then apply via `/inbox` — same propose-then-approve model as the inbox
 - **`/hashi-hook`** — Guided authoring of a [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) `before`/`after` hook: drafts the `.cjs`, risk-classifies it, and delivers it plus a handoff doc to your inbox for you to review and place in `.tomo-hashi/hooks/`
 - **Voice memo transcription (optional, local)** — drop audio files (`.m4a`, `.mp3`, `.wav`, …) into the inbox and `/inbox` transcribes them locally via [faster-whisper](https://github.com/SYSTRAN/faster-whisper) before Pass 1. Opt-in via the install wizard; models stay on your machine, no cloud round-trips
 - **IDE Bridge (optional, local)** — gives Claude Code inside the container live editor context from Obsidian (active file, selection, cursor) via the [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) plugin. Opt-in via the install/update wizard; a `socat` proxy forwards a container-localhost port to the host — no exposed ports, host-only (`127.0.0.1`), and vault content still flows solely through Kado
@@ -157,6 +158,7 @@ miyo-tomo/
 | `inbox-analyst` | Pass 1 subagent — classifies ONE item per invocation |
 | `synthesis-conductor` | Pass 2 orchestrator — renders instructions from approved suggestions, writes rendered notes + `instructions.{json,md}` |
 | `moc-architect` | MOC proposal — discovers topic clusters, proposes new MOCs, emits proposal doc to inbox |
+| `garden-auditor` | Garden audit — scans the vault for structural problems, renders the review report + wire, and enriches suggest targets on request |
 
 ## Commands
 
@@ -166,6 +168,7 @@ miyo-tomo/
 | `/explore-vault` | Scan vault and build discovery cache |
 | `/tomo-setup` | Post-install wizard (vault discovery, user rules, templates, trackers, daily log). Sub-sections: `rules`, `templates`, `trackers`, `daily-log`. |
 | `/moc-propose` | Propose a new MOC for a topic, folder, classification, or whole-vault scan. |
+| `/garden-audit` | Audit the vault for structural problems (orphans, dead links, broken `up::`, stale MOCs, …); writes a review report to apply via `/inbox`. Sub-modes: `configure` (exclusion wizard), `suggest` (candidate repoint/filing targets), `stats` (read-only overview). |
 | `/hashi-hook` | Author a [Tomo Hashi](https://github.com/MMoMM-org/miyo-tomo-hashi) `before`/`after` hook; risk-classifies the generated code and delivers it plus a handoff doc to the inbox. |
 | `/tomo-help` | Context-aware help inside the session. Pass a topic keyword (e.g. `inbox`, `kado`, `docker`, `login`) or run with no argument for a topic menu. |
 

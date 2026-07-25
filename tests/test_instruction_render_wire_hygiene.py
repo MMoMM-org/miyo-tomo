@@ -72,9 +72,21 @@ _HASHI_UPSTREAM_URL = (
 # Format: action-def-name → reason string (cited in assertion message).
 SNAPSHOT_AHEAD_OF_UPSTREAM: dict[str, str] = {
     "edit_note_text": (
-        "ADR-3 (spec 030-garden-audit): example-driven handoff — Tomo emits "
-        "edit_note_text for dead-link fix/remove and up:: removal; Hashi implements "
-        "against this example in Phase 6. Remove once miyo-tomo-hashi ships the def."
+        "ADR-3 (spec 030-garden-audit): generic text-edit surface Tomo carries for "
+        "Hashi to implement. No longer garden-emitted — resolve_dead_link and "
+        "remove_up_link superseded it for the dead-link / up:: paths. Remove once "
+        "miyo-tomo-hashi ships the def."
+    ),
+    "resolve_dead_link": (
+        "spec 030-garden-audit: alias/embed-aware dead-link fix (unlink or repoint). "
+        "Pending handoff _outbox/for-hashi/2026-07-24_...resolve-dead-link-alias-aware. "
+        "Remove once miyo-tomo-hashi ships the def."
+    ),
+    "remove_up_link": (
+        "spec 030-garden-audit: broken-up link-only removal — drops the dead link, "
+        "keeps the up:: field. Pending handoff "
+        "_outbox/for-hashi/2026-07-23_...remove-up-link-shipped. "
+        "Remove once miyo-tomo-hashi ships the def."
     ),
 }
 

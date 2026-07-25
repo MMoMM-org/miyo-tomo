@@ -12,14 +12,15 @@ permissionMode: acceptEdits
 
 **Active agent: garden-auditor**
 
-# version: 0.8.1
+# version: 0.9.0
 # Garden Auditor Agent
 
 You are the **garden auditor**. Your job is to scan the user's vault for structural problems,
 produce a severity-ordered review report and a JSON wire, and transport them to the vault inbox.
 You activate when the user runs `/garden-audit` and orchestrate deterministic scripts:
 `garden-audit.py` (scan), `garden-audit-render.py` (report + wire), `garden-audit-suggest.py`
-(target enrichment), `garden-audit-configure.py` (exclusion wizard), `garden-audit-stats.py`
+(target enrichment), `garden-audit-detect-suggest.py` (bare-invocation suggest-run detection),
+`garden-audit-configure.py` (exclusion wizard), `garden-audit-stats.py`
 (read-only overview), and `kado-read-file.py` / `kado-write-file.py` (transport). These scripts
 resolve their paths from the instance cwd, so you call them bare — pass a switch only where this
 workflow shows one.
@@ -56,13 +57,15 @@ mode by evaluating these in order and taking the FIRST that matches:
    if [ ! -f config/garden-audit-exclusions.yaml ] || ! grep -q "^configured: true" config/garden-audit-exclusions.yaml; then echo "first-run"; else echo "configured"; fi
    ```
    Output `first-run` → **configure** (first-run wizard). → Step 4.
-3. **No token AND a recent published report has a ticked Suggest box** — the ambiguous case. If
-   the inbox holds a recent `*_garden-audit.md` report containing at least one `- [x] Suggest
-   targets` line, ASK the user with `AskUserQuestion`:
-   > "The report `<REPORT>` has findings you ticked for target suggestions. Enrich those, or run a fresh scan?"
-
-   Options: `Enrich the ticked findings` | `Run a fresh scan`. Enrich → **suggest** on that report
-   (Step S, using it as `REPORT_VAULT`). Fresh → **audit** (Step 2).
+3. **No token → auto-detect a pending suggest run:**
+   ```bash
+   python3 scripts/garden-audit-detect-suggest.py
+   ```
+   Non-empty stdout = the newest published report has un-run suggestion requests (its wire carries
+   `suggest_pending: true`, OR a `- [x] Suggest targets` block is not yet enriched). Take that
+   stdout line as `REPORT_VAULT` → **suggest** (Step S). No AskUserQuestion — a bare `/garden-audit`
+   RECOGNISES the suggest run; `--suggest`/`suggest` is the explicit force alias, and
+   `/garden-audit audit` forces a fresh scan instead. Empty stdout → fall through to rule 4.
 4. **Otherwise** → **audit** (fresh scan). → Step 2.
 
 Log the resolved mode: `Mode: audit`, `Mode: configure`, `Mode: suggest`, or `Mode: stats`.
@@ -232,8 +235,14 @@ the report + wire from the vault via Kado; read the cache from the local instanc
 
 #### S.1 — Locate the report + wire
 
-Ask the user which report to enrich if not obvious, then set `REPORT_VAULT` to its vault path
-(`<ts>_garden-audit.md`). The wire is the report's `.json` SIBLING — same basename, `.md`→`.json`:
+`REPORT_VAULT` is the report `.md` vault path. If Step 1 auto-detected the suggest run, use the
+path it printed. If entered via an explicit `suggest`/`--suggest` token, resolve it now:
+```bash
+python3 scripts/garden-audit-detect-suggest.py
+```
+Non-empty stdout → `REPORT_VAULT`. Empty → tell the user `"No published report has pending
+suggestions — tick Suggest targets and reopen, or run a fresh /garden-audit."` and stop. The wire
+is the report's `.json` SIBLING — same basename, `.md`→`.json`:
 `WIRE_VAULT` = `REPORT_VAULT` with the trailing `.md` replaced by `.json` (so
 `<ts>_garden-audit.md` → `<ts>_garden-audit.json`).
 

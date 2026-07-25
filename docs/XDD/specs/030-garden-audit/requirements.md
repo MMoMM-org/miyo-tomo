@@ -198,6 +198,12 @@ no links at all; **unparented** = a note with links but no `up::` parent.
     approve while true; Tomo clears it after `--suggest`); triage additionally detects an unfulfilled
     `- [x] Suggest targets` block in the markdown for `.md`-only users. Once `--suggest` runs,
     `suggest_pending` clears and the doc applies on the next `/inbox`.
+  - [ ] Given a published report has un-run suggestion requests, When the user types a BARE
+    `/garden-audit` (no mode token), Then the agent auto-detects it via the wire's `suggest_pending`
+    (or an unfulfilled markdown `- [x] Suggest targets` block) and runs the suggest enrichment on
+    that report — no prompt (added 2026-07-25). `--suggest`/`suggest` is the explicit force alias;
+    `/garden-audit audit` forces a fresh scan instead. Detection is deterministic via
+    `garden-audit-detect-suggest.py` (newest report wins; fail-open to fresh audit).
   - [ ] Given an integrity finding (`broken_up`/`dead_link`), When the report renders, Then the
     header reads `<label> in: [[note]]` (the note is the container); structure/advisory keep
     `<label>: [[note]]` (Phase 7 extension — live-report clarity).

@@ -147,3 +147,15 @@ imperative the model parroted. Fix: the final message is EXACTLY the block, no l
 announce verification or name the block; the mode-step imperatives dropped "fixed" ("emit the
 output block") to lower parrot risk. The observed bad string is quoted in the STRICT `Why:` so the
 guard's failure mode is self-documenting (guardrails: STRICT blocks carry the one-line why).
+
+## Bare /garden-audit auto-detects a suggest run (v0.9.0, 2026-07-25)
+
+WHY Step 1 rule 3 now runs `garden-audit-detect-suggest.py` instead of grepping the markdown for a
+`- [x] Suggest targets` box (and dropped the enrich-vs-fresh AskUserQuestion): the Tomo-Editor
+writes suggest requests to the WIRE (`suggest_pending`), never the markdown box, so the old
+markdown grep missed every editor-driven request and bare `/garden-audit` fell through to a fresh
+scan. Design intent (user, 2026-07-25): bare `/garden-audit` RECOGNISES the suggest run and runs it
+directly (no ask); `--suggest`/`suggest` is the identical force alias; `/garden-audit audit` forces
+a fresh scan. Step S.1 no longer asks the user which report — it uses Step 1's detected path, or
+re-runs the helper for an explicit token. See docs/tomo/scripts/garden-audit-detect-suggest.md for
+the wire-vs-markdown and fail-open rationale.

@@ -6,7 +6,7 @@ model: sonnet
 effort: low
 ---
 # /tomo-help — Context-aware help for Tomo
-# version: 0.2.19
+# version: 0.2.20
 
 You are a help assistant for **MiYo Tomo**. The user just ran `/tomo-help` — possibly with an argument describing what they need.
 
@@ -109,7 +109,7 @@ Use this keyword routing. When a query hits multiple buckets, offer them as alte
   - Point at: `.claude/commands/inbox.md`, `tomo/scripts/lib/tomo_lifecycle.py`
 
 - **garden audit / vault audit / orphan / unparented / dead link / broken up / stale MOC / duplicate stem / suggest targets / exclusion / stats / overview / what's open / excluded / pushback** →
-  - `/garden-audit` — audit the whole vault for six structural problems (unparented notes, orphans, broken `up::`, dead wikilinks, duplicate stems, stale MOCs); produces a severity-ordered review report in your inbox that you approve (tick `[x] Approved` + per-finding `[x] Apply`), then apply via `/inbox` — a peer upstream doc-type alongside suggestions and moc-proposals. Bare `/garden-audit` infers the mode (first-run → wizard; a report with ticked Suggest boxes → asks; else fresh scan); `/garden-audit audit` forces a fresh scan
+  - `/garden-audit` — audit the whole vault for six structural problems (unparented notes, orphans, broken `up::`, dead wikilinks, duplicate stems, stale MOCs); produces a severity-ordered review report in your inbox that you approve (tick `[x] Approved` + per-finding `[x] Apply`), then apply via `/inbox` — a peer upstream doc-type alongside suggestions and moc-proposals. Bare `/garden-audit` infers the mode (first-run → wizard; a published report with pending suggestion requests → runs the suggest enrichment automatically; else fresh scan); `/garden-audit suggest` forces the enrichment and `/garden-audit audit` forces a fresh scan
   - `/garden-audit configure` — the first-run/edit exclusion wizard: scope out folders / notes / tags per check (e.g. never audit `Calendar/` for `unparented`)
   - `/garden-audit suggest` — after ticking `[ ] Suggest targets` on dead-link/broken-`up::` findings, computes candidate replace/repoint targets and rewrites those findings with a `Pick one:` list (tick a pick, or type your own — typed wins)
   - `/garden-audit stats` — read-only overview relayed to chat (no vault write): open findings by area × check, totals per check/tier, active exclusions, temporaries on pushback (with days remaining), and reappeared (expired) exclusions

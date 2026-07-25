@@ -23,6 +23,7 @@
 | 016 | [Multi-Topic Atomic Notes](specs/016-multi-topic-atomic-notes/) | Plan complete | PRD+SDD+Plan (6 phases, 17 tasks) 2026-06-10; ready for /implement. Branch `feat/f-41-multi-topic-atomic-notes` |
 | 018 | [Agent Architecture Cleanup](specs/018-agent-architecture-cleanup/) | Live-validated | Review + live testing complete 2026-05-27. Conductors refactored to pure routers, skills own pipelines, synthesis-conductor dispatched on haiku, moc-proposal-parser added, related:: aggregation Tomo-side, inbox-triage state coverage extended. |
 | 024 | [Tag-Handler Framework](specs/024-tag-handler-framework/) | Phase 5 | Phases 1–4 shipped (detect → compose → render → guards). T5.3 docs complete. |
+| 030 | [Knowledge-Garden Audit (`/garden-audit`)](specs/030-garden-audit/) | Shipped | Suggest/apply pipeline merged 2026-07-25 (#148): two-artifact split, opt-in apply, `resolve_dead_link`/`remove_up_link`/`file_note`, auto-on-approve advisory pushback, wire `suggest_pending` gate + bare-invocation auto-detect. |
 
 ## Architecture Reference
 

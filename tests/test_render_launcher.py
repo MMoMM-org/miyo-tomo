@@ -129,6 +129,39 @@ class TestRenderLauncherBasic:
         assert 'DEV_NOTIFY_PORT="12345"' in content
 
 
+class TestRenderLauncherNotifyBridge:
+    """The launcher must start the vendored arm64-safe notify-bridge, not npx."""
+
+    def _render(self, tmp_path) -> str:
+        dst = tmp_path / "begin-tomo.sh"
+        result = _run(
+            [str(TEMPLATE), str(dst), "inst", "/data/inst",
+             "/home/user", "/opt/repos/Tomo", "9999"],
+            tmp_path,
+        )
+        assert result.returncode == 0, (
+            f"render_launcher failed\nstdout={result.stdout}\nstderr={result.stderr}"
+        )
+        return dst.read_text(encoding="utf-8")
+
+    def test_launches_vendored_node_bridge(self, tmp_path):
+        content = self._render(tmp_path)
+        # Runs the repo-vendored script via node, resolved through TOMO_REPO_ROOT.
+        assert 'node "$TOMO_REPO_ROOT/scripts/notify-bridge.js" --port "$DEV_NOTIFY_PORT"' in content
+        assert 'command -v node' in content
+
+    def test_no_x86_npx_bridge(self, tmp_path):
+        content = self._render(tmp_path)
+        # The x86-only npm package must be fully gone from the launch path.
+        assert "npx dev-notify-bridge" not in content
+        assert "dev-notify-bridge" not in content
+
+    def test_health_probe_uses_fail_flag(self, tmp_path):
+        content = self._render(tmp_path)
+        # curl -sf: the real /health returns 200, so a stale 404 must not read as "running".
+        assert 'curl -sf "http://localhost:${DEV_NOTIFY_PORT}/health"' in content
+
+
 class TestRenderLauncherExecutable:
     def test_output_is_executable(self, tmp_path):
         """Rendered launcher must have execute bit set."""

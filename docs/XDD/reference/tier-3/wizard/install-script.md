@@ -276,7 +276,7 @@ After the install completes, the user runs `begin-tomo.sh` (generated at `$INSTA
 | `{{INSTANCE_NAME}}` | Instance dir basename |
 | `{{HOME_DIR}}` | Path to tomo-home/ |
 | `{{TOMO_REPO_ROOT}}` | Path to this repo (for Docker build + version check) |
-| `{{DEV_NOTIFY_PORT}}` | dev-notify-bridge port (default 9999) |
+| `{{DEV_NOTIFY_PORT}}` | notify-bridge port (default 9999) |
 
 The launcher accepts:
 - `--rebuild-image` — force `docker build` before launch

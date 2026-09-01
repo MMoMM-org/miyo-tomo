@@ -699,6 +699,19 @@ section per kind with fields, execution semantics, and idempotency.
 
 ### `move_note` — move + rename a rendered atomic note
 
+> **Note files only (Hashi ≥ 0.20.1).** `source` **and** `destination` must both end in `.md`,
+> `.canvas` or `.base` — the three extensions Obsidian treats as documents. Anything else returns
+> `failed`, naming the offending path(s) and the allowed set. Attachments (images, PDFs, audio) use
+> the separate **`move_asset`** kind, which Tomo does not emit yet (backlog F-57).
+>
+> This is a guard, not a restriction Tomo has to work around: `move_note.destination` is built by
+> `_dest_join` (`lib/render_actions.py:498`), which hardcodes `.md`, and `source` is always a
+> Tomo-rendered note — no code path can emit an attachment here. Before 0.20.1 an attachment *was*
+> accepted, and `vault.process` round-tripped the bytes through a UTF-8 string, persisting `U+FFFD`
+> for every invalid sequence: a silently destroyed binary reported as `applied`. Hashi now rejects
+> instead of repairing. Frontmatter stripping is also `.md`-only now — a `.base` is YAML and
+> legitimately opens with `---`, which is exactly what the strip keys on.
+
 ```json
 {
   "id": "I02",

@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-01 |
-| **Current Phase** | PRD |
+| **Current Phase** | Ready |
 | **Last Updated** | 2026-09-01 |
 
 ## Documents
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 6 Must features, 27 Gherkin criteria, 10 business rules, 9 edge cases, 4 open questions |
 | solution.md | completed | 6 ADRs (4 user-confirmed, 2 corollaries), traced resolution walkthrough, directory map, 6 gotchas |
-| plan/ | pending | |
+| plan/ | completed | 6 phases, 31 tasks, 141 spec refs, 8 parallel |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -38,6 +38,8 @@
 | 2026-09-01 | Research: `attachments` must NOT ride the `move_note` action | `audio_peer` only rides `move_note` because `_build_delete_source_actions` receives `move_notes` as input (`render_actions.py:1320-1325`). `move_asset` has no such coupling, so a separate `_build_move_asset_actions(manifest, …)` reads the manifest directly. This removes the strip-before-wire step entirely (`render_resolve.py:452-459`) and structurally prevents a moved asset from ever landing in a `delete_source`. |
 | 2026-09-01 | Research: four change sites have **no `audio_peer` precedent** | `_REQUIRED_PATH_FIELDS` (`render_actions.py:204-219`) — else `_validate_action_paths` silently skips the kind; `render_md.py:31-46` + `:239` — else `instructions.md` prints *"(unknown action: move_asset)"*; `instructions-dryrun.py:25-33` — else unknown-type exit 1; `instructions-diff` (above). Plus a `KeyError` risk: `concepts.asset` is absent from the defaults at `instruction-render.py:106`. |
 | 2026-09-01 | Research: two path helpers are traps for non-`.md` files | `_ensure_md_extension("foto.jpg")` appends `.md` — `.jpg` is not in `_KNOWN_FILE_EXTENSIONS` (`render_actions.py:59-68`, audio + md only). `_dest_join` (`:488`) hardcodes `.md` at `:498`. `_disambiguate_filename` (`:448`) asserts `.md` at `:467-469` and cannot be reused for destination collisions as-is. |
+| 2026-09-01 | PLAN completed → spec **Ready** | `plan/`: 6 phases, 31 tasks, 141 `[ref:]` links, 8 parallel. P1 pure detection+resolution core (no Kado import) · P2 emission (`_asset_dest_join`, global dedup, planner slot 3, collision guard) · P3 field threading through BOTH review channels + 4 parser sites · P4 the audit blind spot + dry run · P5 pipeline wiring + the ADR-4 counter fix · P6 integration/regression/cost/live. P2–P4 are mutually independent and may run concurrently after P1 fixes the field shape. TDD throughout; every task carries Prime/Test/Implement/Validate/Success. Ready for /implement. |
+| 2026-09-01 | Alignment verified against source at plan time | `ACTION_ORDER` (`instructions-diff.py:429-433`) lists 8 kinds with no `move_asset` — the blind spot is real, not theoretical. `REQUIRED` (`instructions-dryrun.py:25-33`) lists 9 kinds with no `move_asset` — a dry run would exit 1 today. Both confirmed by reading the source, not inherited from research. |
 | 2026-09-01 | SDD completed — 4 ADRs confirmed by the user | **ADR-1** resolve via a per-run recursive `list_dir` of the inbox + basename index (+1 call, O(1); ambiguity reported not guessed). **ADR-2** detect embeds deterministically, not in the analyst (keeps structured extraction out of the LLM; testable without an agent per Constitution L1). **ADR-3** destination collision → skip + report (`_disambiguate_filename` asserts `.md` at `render_actions.py:467-469` and cannot be reused; renaming stays a Should-have). **ADR-4** fix `_count_kado_calls` here, since this spec's cost metric depends on it. Corollaries: **ADR-5** `attachments` never rides the `move_note` action — a separate `_build_move_asset_actions` reads the manifest, which removes the strip-before-wire step and makes a `delete_source` on an attachment structurally impossible; **ADR-6** an attachment move never implies a deletion (the intent inversion vs `audio_peer`). |
 | 2026-09-01 | Design correction during SDD: the extension classifier is a **two-step** test | `_KNOWN_FILE_EXTENSIONS` (`render_actions.py:59-66`) contains `md` alongside the image set, so a naive membership check would classify `![[Note.md]]` as an attachment and emit a `move_asset` for a note — which Hashi rejects (CON-3). Correct test: in the frozenset AND not in `{md, canvas, base}`. Verified against source. |
 | 2026-09-01 | Verified: `concepts.asset` is absent from `CONFIG_DEFAULTS` | `instruction-render.py:105-111` lists `concepts.inbox`, the daily-note path, log heading/level and profile — no asset entry. `cfg["concepts.asset"]` would raise `KeyError` on a profile omitting it. Adding a default is a named task. |

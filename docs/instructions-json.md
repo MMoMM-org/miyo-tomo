@@ -198,15 +198,16 @@ top-to-bottom by default — a cautious batched applier can re-order within
 each block but MUST NOT move a `link_to_moc` before its `create_moc`.
 
 ```
-1. create_moc        — new MOC files (must exist before link_to_moc hits them)
-2. move_note         — atomic notes (move + rename)
-3. link_to_moc       — insert content lines at MOC anchors (callout/heading/line)
-4. add_relationship  — replace Dataview inline-field lines (up::/related::) on MOCs
-5. update_tracker    — daily note tracker fields
-6. update_log_entry  — daily log prose lines
-7. update_log_link   — daily log wikilink lines
-8. delete_source     — remove leftover inbox items (incl. paired move_note origins)
-9. skip              — informational only, no-op
+ 1. create_moc        — new MOC files (must exist before link_to_moc hits them)
+ 2. move_note         — atomic notes (move + rename); note files only
+ 3. move_asset        — attachments (images, PDFs, audio); never note files
+ 4. link_to_moc       — insert content lines at MOC anchors (callout/heading/line)
+ 5. add_relationship  — replace Dataview inline-field lines (up::/related::) on MOCs
+ 6. update_tracker    — daily note tracker fields
+ 7. update_log_entry  — daily log prose lines
+ 8. update_log_link   — daily log wikilink lines
+ 9. delete_source     — remove leftover inbox items (incl. paired move_note origins)
+10. skip              — informational only, no-op
 ```
 
 Within each block, actions are ordered by assignment (monotonic `I01` … `INN`).
@@ -702,11 +703,12 @@ section per kind with fields, execution semantics, and idempotency.
 > **Note files only (Hashi ≥ 0.20.1).** `source` **and** `destination` must both end in `.md`,
 > `.canvas` or `.base` — the three extensions Obsidian treats as documents. Anything else returns
 > `failed`, naming the offending path(s) and the allowed set. Attachments (images, PDFs, audio) use
-> the separate **`move_asset`** kind, which Tomo does not emit yet (backlog F-57).
+> the separate **[`move_asset`](#move_asset--move--rename-an-attachment)** kind.
 >
-> This is a guard, not a restriction Tomo has to work around: `move_note.destination` is built by
-> `_dest_join` (`lib/render_actions.py:498`), which hardcodes `.md`, and `source` is always a
-> Tomo-rendered note — no code path can emit an attachment here. Before 0.20.1 an attachment *was*
+> The **renderer** cannot trip this guard: `move_note.destination` is built by `_dest_join`
+> (`lib/render_actions.py:498`), which hardcodes `.md`, and `source` is always a Tomo-rendered
+> note. Session-composed instruction sets can — route by extension there, notes to `move_note` and
+> everything else to `move_asset`. Before 0.20.1 an attachment *was*
 > accepted, and `vault.process` round-tripped the bytes through a UTF-8 string, persisting `U+FFFD`
 > for every invalid sequence: a silently destroyed binary reported as `applied`. Hashi now rejects
 > instead of repairing. Frontmatter stripping is also `.md`-only now — a `.base` is YAML and
@@ -748,6 +750,47 @@ Templater blocks that haven't yet resolved. Tomo's convention is that the
 user (or Tomo Hashi) runs Obsidian's *Templater: Replace Templates in Active
 File* after moving. If Tomo Hashi automates this, do it AFTER the move so
 `tp.file.folder` etc. resolve to the correct location.
+
+---
+
+### `move_asset` — move + rename an attachment
+
+Shipped in Hashi **0.20.1** (PR #120). The attachment counterpart to `move_note`: same move, no
+content touched.
+
+```json
+{
+  "id": "I15",
+  "action": "move_asset",
+  "source": "100 Inbox/Images/dresden-sehenswuerdigkeiten-karte.jpg",
+  "destination": "Atlas/290 Assets/295 Attachments/dresden-sehenswuerdigkeiten-karte.jpg",
+  "applied": false
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `source` | string | Vault-relative path of the attachment. **Must not** be `.md`/`.canvas`/`.base`. |
+| `destination` | string | Vault-relative target path including the filename. Parent folder is created if missing. **Must not** be a note file. |
+
+`additionalProperties: false`. The field set is deliberately small — `title`, `parent_mocs`, `tags`
+and `source_inbox_item` are **not** carried, because none of them mean anything for a binary and
+Hashi never reads `source_inbox_item` on any kind. Emitting one is rejected rather than silently
+dropped.
+
+**Execution:** runs through `fileManager.renameFile`, so embeds (`![[foto.png]]`) and links follow
+the file automatically. It never calls `vault.process` — the bytes are never read, which is the
+whole reason this is a separate kind from `move_note`.
+
+**Idempotency:** identical matrix to `move_note` — `src✓dst✗` → applied; `src✗dst✓` →
+`skipped-already`; both present → `failed` (inconsistent state); neither → `failed` (source
+missing). Same illegal-filename-character rejection. Hashi validates and rejects, never repairs.
+
+**Who emits it.** Not the deterministic renderer — `_build_move_note_actions` only ever moves
+Tomo-rendered `.md` notes. `move_asset` comes from **session-composed instruction sets**, e.g. a
+cross-vault import that relocates a folder of notes together with their images. When composing one,
+route by extension: notes → `move_note`, everything else → `move_asset`. Pair a `delete_source` for
+the origin exactly as you would for a note; link and embed integrity does not depend on it.
 
 ---
 

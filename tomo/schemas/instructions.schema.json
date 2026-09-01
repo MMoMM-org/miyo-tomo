@@ -67,6 +67,7 @@
       "items": {
         "oneOf": [
           {"$ref": "#/$defs/move_note"},
+          {"$ref": "#/$defs/move_asset"},
           {"$ref": "#/$defs/link_to_moc"},
           {"$ref": "#/$defs/add_relationship"},
           {"$ref": "#/$defs/update_tracker"},
@@ -108,6 +109,18 @@
         "source_inbox_item": {"type": ["string", "null"], "description": "Optional vault-relative path of the original inbox item this note was derived from. The delete_source action is the operational signal for cleanup; by default the renderer emits a paired delete_source for this source unless the user opts out via the suggestions doc's 'Keep source files' checkbox."},
         "parent_mocs": {"type": "array", "items": {"type": "string"}},
         "tags": {"type": "array", "items": {"type": "string"}},
+        "applied": {"$ref": "#/$defs/applied_field"}
+      }
+    },
+    "move_asset": {
+      "type": "object",
+      "required": ["id", "action", "source", "destination"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "move_asset"},
+        "source": {"type": "string", "description": "Vault-relative path of the attachment to move, e.g. '100 Inbox/foto.png'. MUST NOT be a note file ('.md', '.canvas', '.base') — those belong to move_note."},
+        "destination": {"type": "string", "description": "Vault-relative target path including the final filename, e.g. 'Atlas/900 Assets/foto.png'. Parent folder is created if missing. MUST NOT be a note file."},
         "applied": {"$ref": "#/$defs/applied_field"}
       }
     },

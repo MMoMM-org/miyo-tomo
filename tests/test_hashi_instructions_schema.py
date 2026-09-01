@@ -244,3 +244,73 @@ def test_anchor_block_type_in_tomo_producer_schema(tomo_producer_schema):
     assert "block" in anchor_enum, (
         "anchor.$def.type enum must include 'block' in instructions.schema.json (ADR-7)"
     )
+
+
+# ---------------------------------------------------------------------------
+# move_asset — attachment moves (Hashi 0.20.1, PR #120).
+#
+# Tomo DOES emit this kind. It is not produced by the deterministic renderer
+# (_build_move_note_actions only ever moves Tomo-rendered .md notes), but by
+# session-composed instruction sets — e.g. the cross-vault import that first
+# surfaced the need, which emitted 8 move_asset actions for .jpg/.png files.
+# Both schemas must therefore accept it: the mirror because Hashi executes it,
+# and the producer because Tomo writes it.
+# ---------------------------------------------------------------------------
+
+def _make_move_asset(**overrides) -> dict:
+    """Return a minimal valid move_asset action with all required fields."""
+    base = {
+        "id": "I15",
+        "action": "move_asset",
+        "source": "100 Inbox/Images/karte.jpg",
+        "destination": "Atlas/290 Assets/295 Attachments/karte.jpg",
+        "applied": False,
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.parametrize("schema_name", ["schema", "producer_schema"])
+def test_move_asset_valid_in_both_schemas(request, schema_name):
+    """A well-formed move_asset validates against the mirror AND the producer schema."""
+    target = request.getfixturevalue(schema_name)
+    validate(instance=_make_instructions([_make_move_asset()]), schema=target)
+
+
+@pytest.mark.parametrize("schema_name", ["schema", "producer_schema"])
+@pytest.mark.parametrize("missing", ["source", "destination", "action", "id"])
+def test_move_asset_requires_core_fields(request, schema_name, missing):
+    """Dropping any required field is rejected by both schemas."""
+    target = request.getfixturevalue(schema_name)
+    action = _make_move_asset()
+    del action[missing]
+    with pytest.raises(ValidationError):
+        validate(instance=_make_instructions([action]), schema=target)
+
+
+@pytest.mark.parametrize("schema_name", ["schema", "producer_schema"])
+def test_move_asset_rejects_move_note_only_fields(request, schema_name):
+    """additionalProperties:false — move_note's note-specific fields are not carried.
+
+    Hashi deliberately did not mirror title/parent_mocs/tags/source_inbox_item onto
+    move_asset; emitting one must fail loudly rather than be silently dropped.
+    """
+    target = request.getfixturevalue(schema_name)
+    for extra in ("title", "parent_mocs", "tags", "source_inbox_item"):
+        action = _make_move_asset(**{extra: "x" if extra in ("title", "source_inbox_item") else []})
+        with pytest.raises(ValidationError):
+            validate(instance=_make_instructions([action]), schema=target)
+
+
+def test_move_asset_present_in_producer_schema_oneof(tomo_producer_schema):
+    """move_asset must be reachable from the producer schema's actions.items.oneOf.
+
+    Regression guard: it was initially added to the mirror only, on the incorrect
+    assumption that Tomo had no emitter. A session-composed instruction set then
+    failed validation against the producer schema while applying cleanly in Hashi.
+    """
+    action_refs = {
+        entry.get("$ref", "")[len("#/$defs/"):]
+        for entry in tomo_producer_schema["properties"]["actions"]["items"]["oneOf"]
+    }
+    assert "move_asset" in action_refs

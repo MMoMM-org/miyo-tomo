@@ -87,14 +87,6 @@ MIRROR_ONLY_ACTIONS: dict[str, str] = {
         "(spec 025 ADR-7). Add a Tomo emitter if/when the structured-compose "
         "producer needs to overwrite sections."
     ),
-    "move_asset": (
-        "no Tomo emitter — parity-only mirror of Hashi's shipped wire surface "
-        "(Hashi 0.20.1, PR #120; handoff 2026-09-01). Tomo cannot currently move "
-        "an attachment: move_note's destination is built by _dest_join, which "
-        "hardcodes a '.md' suffix, and its source is always a Tomo-rendered note. "
-        "Add a Tomo emitter when an attachment-move producer is specced (backlog "
-        "F-57)."
-    ),
 }
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

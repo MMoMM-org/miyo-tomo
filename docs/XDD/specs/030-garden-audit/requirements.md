@@ -404,6 +404,8 @@ cheap 4th peer (one frontmatter bucket + one `_get_doc_type` branch + one parser
 - Rule 7: Broken-`up::` fix intent in the wire carries BOTH options — repoint (shipped
   `add_relationship`) and remove (new body-edit action) — even though the remove action is
   Hashi-side pending (example-driven).
+  **Resolved 2026-07-25 (Hashi 0.18.0):** the remove action shipped as `remove_up_link`; it is no
+  longer pending. See the 2026-09-01 decision-log row in `README.md`.
 
 **Edge Cases:**
 - Empty vault → Report renders with a "no notes found — is Tomo configured?" line; no wire actions.
@@ -468,7 +470,7 @@ _(Tracking is metadata-only per Constitution L2 — never note bodies or heading
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| No shipped Hashi action edits/removes a free-text body `[[link]]` or removes a broken `up::` | Medium | High | Encode the fix intent fully in the JSON wire now; deliver the complete real wire as the example-driven handoff so Hashi builds the editor + new action against a concrete contract, not a spec string. Until then those specific fixes are surfaced but not auto-applied. |
+| ~~No shipped Hashi action edits/removes a free-text body `[[link]]` or removes a broken `up::`~~ **RETIRED 2026-07-25** | Medium | High | Encode the fix intent fully in the JSON wire now; deliver the complete real wire as the example-driven handoff so Hashi builds the editor + new action against a concrete contract, not a spec string. Until then those specific fixes are surfaced but not auto-applied. **Mitigation worked as designed:** Hashi 0.18.0 shipped `resolve_dead_link` AND `remove_up_link` against Tomo's real wire. Both fixes now auto-apply; nothing is held back. |
 | Index-lag false positives (a note briefly reads as orphaned / a fixed link as still dead) | Low | Medium | Surface the index-lag caveat in every report; treat a single run as a snapshot; no destructive auto-action on advisory findings. |
 | Large vault → many `kado-graph-audit` pages | Low | Low | Cursor pagination + inherited 429/backoff in the Kado client; show total-count denominator; overflow disclosure in the report. |
 | User over-trusts a run / applies a wrong fix | Medium | Low | Human-in-the-loop review + approval for every fixable finding (2-pass); advisory findings never auto-apply; best-candidate is a default, not a commitment. |
@@ -512,6 +514,7 @@ check→action mapping above. A spec-reviewer pass approved the upstream brainst
 confirmed every reused component exists. Key research findings folded into this PRD: broken `up::`
 is cache-only (no graph call); filing a note needs two actions (MOC bullet + `up::` line); the
 dead-wikilink and `up::`-removal fixes have no shipped Hashi action, handled example-driven.
+(That last finding was true at PRD time only — Hashi 0.18.0 shipped both actions on 2026-07-25.)
 
 ### Market Data
 

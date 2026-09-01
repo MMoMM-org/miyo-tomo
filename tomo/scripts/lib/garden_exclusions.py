@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """garden_exclusions.py — Load and apply the garden-audit exclusion config (spec 030 T1.2).
 
 Loads config/garden-audit-exclusions.yaml, separates expired temporaries
@@ -147,6 +147,10 @@ class GardenExclusions:
         self._active: list[_ExclusionRule] = [r for r in rules if r.is_active(today)]
         self._reappeared: list[dict] = [r.raw for r in rules if r.is_expired(today)]
         self._settings: dict = settings if isinstance(settings, dict) else {}
+        # The date this instance was built against. Every query defaults to it, so a
+        # caller that pinned a date at construction keeps that pin for the whole run
+        # instead of silently falling back to the wall clock mid-scan.
+        self._today: date = today
 
     # ------------------------------------------------------------------
     # Settings (optional top-level `settings:` block in the exclusions YAML)
@@ -171,16 +175,13 @@ class GardenExclusions:
     def is_excluded(self, entry: dict, check_name: str, *, today: date | None = None) -> bool:
         """Return True if entry should be suppressed for check_name.
 
-        `today` is injectable for deterministic tests; defaults to date.today().
-        Note: active/expired split happens at construction time (from_dict/from_path),
-        so the today param here only matters for rules that are active at construction.
-        Active rules are evaluated against their own mode/until logic; for the common
-        usage pattern, today at construction time is what drives active/expired.
-        This parameter is provided for is_excluded-level date pinning when the caller
-        constructs GardenExclusions without a today override and needs per-call pinning.
-        In that scenario we re-evaluate the rule's is_active status inline.
+        `today` is injectable for per-call date pinning; it defaults to the date this
+        instance was constructed with, NOT the wall clock. The active/expired split
+        already happened at construction (from_dict/from_paths), so defaulting to
+        date.today() here would silently override a caller's pin and let a rule that
+        was active at construction read as expired mid-scan.
         """
-        effective_today = today or date.today()
+        effective_today = today if today is not None else self._today
         for rule in self._active:
             # Re-check activity if the caller passed a different date
             if not rule.is_active(effective_today):
@@ -200,9 +201,10 @@ class GardenExclusions:
         for the stats overview; does not affect is_excluded. ``today`` re-checks
         activity inline so a caller that pinned a different date sees the same set
         (the active/expired split is made at construction, so this only ever
-        narrows the already-active set). ``until`` is the ISO string or None.
+        narrows the already-active set); it defaults to the construction date, not
+        the wall clock. ``until`` is the ISO string or None.
         """
-        effective_today = today or date.today()
+        effective_today = today if today is not None else self._today
         out: list[dict] = []
         for rule in self._active:
             if not rule.is_active(effective_today):

@@ -723,3 +723,48 @@ def test_pushback_rules_returns_only_active_temporaries():
 def test_pushback_rules_empty_when_temporary_expired():
     cfg = GardenExclusions.from_dict(SAMPLE_CONFIG, today=date(2026, 11, 1))
     assert cfg.pushback_rules(date(2026, 11, 1)) == []
+
+
+# ---------------------------------------------------------------------------
+# Regression: queries default to the CONSTRUCTION date, not the wall clock.
+#
+# The dates below are deliberately far in the past so `until` is always expired
+# relative to the real date.today(). Before the fix, is_excluded() defaulted to
+# date.today() and re-checked rule activity, so a rule that was active at
+# construction silently read as expired mid-scan and the finding was NOT
+# suppressed. Every pre-existing test passed `today=` explicitly, so none of
+# them exercised the default path.
+# ---------------------------------------------------------------------------
+
+_PINNED_PAST_CONFIG = {
+    "version": 1,
+    "exclusions": [
+        {
+            "target": {"type": "note", "value": "Maps/Old MOC.md"},
+            "checks": ["stale_moc"],
+            "mode": "temporary",
+            "until": "2020-02-01",
+            "reason": "pinned-date regression fixture",
+            "created": "2020-01-01",
+        }
+    ],
+}
+
+
+def test_is_excluded_defaults_to_construction_date_not_wall_clock():
+    """A pin made at construction survives a query that omits `today`."""
+    cfg = GardenExclusions.from_dict(_PINNED_PAST_CONFIG, today=date(2020, 1, 1))
+    note = _note("Maps/Old MOC.md")
+    # No `today` argument — must reuse the construction pin (2020-01-01), under
+    # which the rule is still active, rather than the wall clock (long past until).
+    assert cfg.is_excluded(note, "stale_moc") is True
+    # An explicit `today` still overrides the pin in both directions.
+    assert cfg.is_excluded(note, "stale_moc", today=date(2020, 1, 31)) is True
+    assert cfg.is_excluded(note, "stale_moc", today=date(2020, 2, 1)) is False
+
+
+def test_active_rules_defaults_to_construction_date_not_wall_clock():
+    """active_rules() without `today` uses the construction pin too."""
+    cfg = GardenExclusions.from_dict(_PINNED_PAST_CONFIG, today=date(2020, 1, 1))
+    assert [r["until"] for r in cfg.active_rules()] == ["2020-02-01"]
+    assert cfg.active_rules(date(2020, 2, 1)) == []

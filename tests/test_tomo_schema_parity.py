@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 2.1.0
+# version: 2.2.0
 """test_tomo_schema_parity.py — bidirectional action-contract parity guard between Tomo's two instruction schemas.
 
 tomo/schemas/instructions.schema.json    — Tomo's producer copy (original, from xdd-008).
@@ -86,6 +86,14 @@ MIRROR_ONLY_ACTIONS: dict[str, str] = {
         "no Tomo emitter — parity-only mirror of Hashi's shipped wire surface "
         "(spec 025 ADR-7). Add a Tomo emitter if/when the structured-compose "
         "producer needs to overwrite sections."
+    ),
+    "move_asset": (
+        "no Tomo emitter — parity-only mirror of Hashi's shipped wire surface "
+        "(Hashi 0.20.1, PR #120; handoff 2026-09-01). Tomo cannot currently move "
+        "an attachment: move_note's destination is built by _dest_join, which "
+        "hardcodes a '.md' suffix, and its source is always a Tomo-rendered note. "
+        "Add a Tomo emitter when an attachment-move producer is specced (backlog "
+        "F-57)."
     ),
 }
 

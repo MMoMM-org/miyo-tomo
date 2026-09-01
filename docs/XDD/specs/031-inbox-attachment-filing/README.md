@@ -13,7 +13,7 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | 6 Must features, 27 Gherkin criteria, 10 business rules, 9 edge cases, 4 open questions |
-| solution.md | pending | Must open with the embed-resolution ADR (Open Question 1) |
+| solution.md | completed | 6 ADRs (4 user-confirmed, 2 corollaries), traced resolution walkthrough, directory map, 6 gotchas |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -38,6 +38,9 @@
 | 2026-09-01 | Research: `attachments` must NOT ride the `move_note` action | `audio_peer` only rides `move_note` because `_build_delete_source_actions` receives `move_notes` as input (`render_actions.py:1320-1325`). `move_asset` has no such coupling, so a separate `_build_move_asset_actions(manifest, …)` reads the manifest directly. This removes the strip-before-wire step entirely (`render_resolve.py:452-459`) and structurally prevents a moved asset from ever landing in a `delete_source`. |
 | 2026-09-01 | Research: four change sites have **no `audio_peer` precedent** | `_REQUIRED_PATH_FIELDS` (`render_actions.py:204-219`) — else `_validate_action_paths` silently skips the kind; `render_md.py:31-46` + `:239` — else `instructions.md` prints *"(unknown action: move_asset)"*; `instructions-dryrun.py:25-33` — else unknown-type exit 1; `instructions-diff` (above). Plus a `KeyError` risk: `concepts.asset` is absent from the defaults at `instruction-render.py:106`. |
 | 2026-09-01 | Research: two path helpers are traps for non-`.md` files | `_ensure_md_extension("foto.jpg")` appends `.md` — `.jpg` is not in `_KNOWN_FILE_EXTENSIONS` (`render_actions.py:59-68`, audio + md only). `_dest_join` (`:488`) hardcodes `.md` at `:498`. `_disambiguate_filename` (`:448`) asserts `.md` at `:467-469` and cannot be reused for destination collisions as-is. |
+| 2026-09-01 | SDD completed — 4 ADRs confirmed by the user | **ADR-1** resolve via a per-run recursive `list_dir` of the inbox + basename index (+1 call, O(1); ambiguity reported not guessed). **ADR-2** detect embeds deterministically, not in the analyst (keeps structured extraction out of the LLM; testable without an agent per Constitution L1). **ADR-3** destination collision → skip + report (`_disambiguate_filename` asserts `.md` at `render_actions.py:467-469` and cannot be reused; renaming stays a Should-have). **ADR-4** fix `_count_kado_calls` here, since this spec's cost metric depends on it. Corollaries: **ADR-5** `attachments` never rides the `move_note` action — a separate `_build_move_asset_actions` reads the manifest, which removes the strip-before-wire step and makes a `delete_source` on an attachment structurally impossible; **ADR-6** an attachment move never implies a deletion (the intent inversion vs `audio_peer`). |
+| 2026-09-01 | Design correction during SDD: the extension classifier is a **two-step** test | `_KNOWN_FILE_EXTENSIONS` (`render_actions.py:59-66`) contains `md` alongside the image set, so a naive membership check would classify `![[Note.md]]` as an attachment and emit a `move_asset` for a note — which Hashi rejects (CON-3). Correct test: in the frozenset AND not in `{md, canvas, base}`. Verified against source. |
+| 2026-09-01 | Verified: `concepts.asset` is absent from `CONFIG_DEFAULTS` | `instruction-render.py:105-111` lists `concepts.inbox`, the daily-note path, log heading/level and profile — no asset entry. `cfg["concepts.asset"]` would raise `KeyError` on a profile omitting it. Adding a default is a named task. |
 | 2026-09-01 | PRD completed | `requirements.md`: 6 Must features, 27 Gherkin criteria, 10 business rules, 9 edge cases, MoSCoW with 5 explicit Won't-Haves, 6 tracked metrics, 7 risks. Ready for SDD. |
 
 ## Context

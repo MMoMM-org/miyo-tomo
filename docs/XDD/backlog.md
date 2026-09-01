@@ -261,38 +261,40 @@ parent checkbox with a hardcoded `up::`. Deferred from 028 because it is **pure 
 `suggestion-parser` got (read the marker from an upstream artifact's `conventions` block, or add a
 flag). Pick up if/when a non-`up::` profile ships. Related: spec 028, epic #20.
 
-## OPEN — F-57: emit `move_asset` for attachment moves (Hashi capability, no Tomo producer)
+## RESOLVED — F-57: `move_asset` for attachment moves (shipped 2026-09-01)
 
-Hashi shipped `move_asset` in **0.20.1** (PR #120) so Tomo can move **attachments** (images, PDFs,
-audio) inside the vault: `{id, action:"move_asset", source, destination, applied?}`,
+Hashi shipped `move_asset` in **0.20.1** (PR #120) for moving **attachments** (images, PDFs, audio)
+inside the vault: `{id, action:"move_asset", source, destination, applied?}`,
 `additionalProperties:false`, same idempotency matrix as `move_note`, routed through
 `fileManager.renameFile` so embeds and links follow the file. It never calls `vault.process`, so
-bytes are never read — that is the whole point of the split. Mirrored into
-`tomo/schemas/hashi-instructions.schema.json` and registered in `MIRROR_ONLY_ACTIONS`
-(`tests/test_tomo_schema_parity.py`); **`schema_version` stays `"2"`** — Hashi pins `const: "2"` and
-would reject every instruction set if Tomo bumped it.
+the bytes are never read. **`schema_version` stays `"2"`** — Hashi pins `const: "2"` and would
+reject every instruction set if Tomo bumped it.
 
-**No Tomo emitter, and nothing to route today.** `move_note` is emitted only by
-`_build_move_note_actions` (`lib/render_actions.py:559`) for Tomo-**rendered** atomic notes: `source`
-is the rendered file and `destination` comes from `_dest_join`, which **hardcodes a `.md` suffix**
-(`:498`). No code path can put an attachment into a `move_note`, so the extension-check router Hashi
-suggested would be unreachable. (`move_note.audio_peer` carries a real `.m4a`, but it is Tomo-internal,
-stripped before the wire by `lib/render_resolve.py:438-459`, and the audio file is **deleted** via a
-paired `delete_source` — never moved.)
+**Tomo emits it.** Present in BOTH `tomo/schemas/instructions.schema.json` (producer) and
+`tomo/schemas/hashi-instructions.schema.json` (mirror), covered by
+`tests/test_hashi_instructions_schema.py`.
 
-The capability is therefore **latent, not broken**: what is missing upstream is a producer that
-*wants* to relocate an attachment. Wire it when one is specced — likely candidates are an
-assets/attachment-filing concept (see F-14's `asset` concept) or an inbox item whose payload is a
-binary rather than a note. When that lands: add the `$def` + `oneOf` ref to
-`tomo/schemas/instructions.schema.json`, remove the `MIRROR_ONLY_ACTIONS` entry (the parity test
-enforces both happen together), and pair a `delete_source` for the origin as notes already do —
-`source_inbox_item` is deliberately absent from the kind because Hashi never reads it on any action.
+The producer is **not** the deterministic renderer — `_build_move_note_actions`
+(`lib/render_actions.py:559`) only ever moves Tomo-rendered `.md` notes, and `_dest_join` (`:498`)
+hardcodes a `.md` suffix. `move_asset` comes from **session-composed instruction sets**: the
+cross-vault import that surfaced the need wrote `tomo-tmp/rendered-hashi/instructions.json` by
+hand, with 13 `move_note` + **8 `move_asset`** actions for `.jpg`/`.png` map images, moving
+`100 Inbox/Images/*` → `Atlas/290 Assets/295 Attachments/*`.
 
-Related: Hashi's 0.20.1 also narrowed `move_note` to `.md`/`.canvas`/`.base` on **both** endpoints;
+**Correction — the mistake worth remembering.** PR #152 first added `move_asset` to the mirror
+*only*, registered in `MIRROR_ONLY_ACTIONS` as "no Tomo emitter", on the strength of a
+renderer-only audit. That audit was correct about the renderer and wrong about Tomo: a live
+instruction set was already emitting the kind and failing validation against the producer schema
+while applying cleanly in Hashi. **Auditing the deterministic pipeline is not the same as auditing
+what Tomo emits** — session-composed instruction sets are a first-class producer with no code path
+to grep. `tests/test_hashi_instructions_schema.py::test_move_asset_present_in_producer_schema_oneof`
+is the regression guard.
+
+Related: Hashi 0.20.1 also narrowed `move_note` to `.md`/`.canvas`/`.base` on **both** endpoints;
 anything else now returns `failed` instead of silently corrupting the file via a UTF-8 round trip.
-Tomo is unaffected (see above) but the constraint is now documented in `docs/instructions-json.md`.
+Documented in `docs/instructions-json.md`.
 Source: `_inbox/from-hashi/2026-09-01_hashi-to-tomo_wire-sync-move-asset-and-replace-section.md`;
-Hashi PRs #119 + #120, spec 002 decision log 2026-09-01.
+Hashi PRs #119 + #120, spec 002 decision log 2026-09-01. Tomo PRs #152 (mirror) + the correction.
 
 ## OPEN — Adopt Kado `kado-graph` navigation tool for MOC/related-note features (opportunity)
 

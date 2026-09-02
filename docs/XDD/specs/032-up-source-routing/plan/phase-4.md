@@ -51,7 +51,7 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
   4. **Validate**: schema and parity tests pass. Bytewise sync, no version bump `[ref: CON-8]`.
   5. **Success**: the mirror stays a faithful copy of Hashi's wire surface
 
-- [ ] **T4.2 Coverage audit registration** `[activity: backend-logic]`
+- [x] **T4.2 Coverage audit registration** `[activity: backend-logic]`
 
   > **SCOPE CORRECTION (2026-09-02).** `run_diff` **dispatches on document shape** at
   > `instructions-diff.py:~610`: `if _is_garden_parsed(parsed): return run_diff_garden(...)`.
@@ -122,7 +122,7 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
   4. **Validate**: unit tests pass.
   5. **Success**: expectation and emission share one routing rule `[ref: SDD/Complex Logic]`
 
-- [ ] **T4.4 Dry run and readable output** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T4.4 Dry run and readable output** `[activity: backend-logic]` `[parallel: true]`
 
   1. **Prime**: `instructions-dryrun.py:25-33` `REQUIRED` is a whitelist — an unlisted kind exits 1. `render_md.py:239` falls through to an "unknown action" placeholder.
   2. **Test** (RED):

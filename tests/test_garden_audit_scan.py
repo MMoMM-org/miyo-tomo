@@ -335,6 +335,87 @@ def test_broken_up_up_target_and_other_fields_unchanged():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Doc schema declares up_source/up_value (spec 032 T2.2)
+#
+# detail is additionalProperties:true, so a validation-only assertion here
+# CANNOT go red — the fields already validate as unknown extra properties.
+# These tests assert the DECLARATION itself in the schema JSON.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _load_doc_schema() -> dict:
+    schema_path = SCHEMAS_DIR / "garden-audit-doc.schema.json"
+    return json.loads(schema_path.read_text())
+
+
+def test_doc_schema_declares_up_source_enum():
+    """garden-audit-doc.schema.json declares detail.up_source with an enum
+    admitting 'inline', 'frontmatter' and null. [T2.2]
+    """
+    schema = _load_doc_schema()
+    detail_props = schema["properties"]["findings"]["items"]["properties"]["detail"]["properties"]
+    assert "up_source" in detail_props, "up_source must be declared in detail.properties"
+    assert set(detail_props["up_source"]["enum"]) == {"inline", "frontmatter", None}
+
+
+def test_doc_schema_declares_up_value():
+    """garden-audit-doc.schema.json declares detail.up_value. [T2.2]"""
+    schema = _load_doc_schema()
+    detail_props = schema["properties"]["findings"]["items"]["properties"]["detail"]["properties"]
+    assert "up_value" in detail_props, "up_value must be declared in detail.properties"
+
+
+def test_up_source_up_value_absent_from_required_guard_against_creep():
+    """Guard: up_source/up_value must NOT land in any 'required' array —
+    every pre-change artefact lacks them (CON-7). Passes trivially today;
+    it locks the property against a later 'add to required' regression.
+    """
+    schema = _load_doc_schema()
+    finding_schema = schema["properties"]["findings"]["items"]
+    detail_schema = finding_schema["properties"]["detail"]
+    assert "up_source" not in finding_schema.get("required", [])
+    assert "up_value" not in finding_schema.get("required", [])
+    assert "up_source" not in detail_schema.get("required", [])
+    assert "up_value" not in detail_schema.get("required", [])
+
+
+def test_broken_up_finding_without_up_source_up_value_still_validates_guard_against_required_creep():
+    """Guard: a finding without up_source/up_value still validates against
+    the doc schema — every pre-032 artefact (CON-7). Passes trivially today
+    (additionalProperties:true means the fields are simply absent); this
+    guards against someone later making them required.
+    """
+    entries = [
+        _moc("PKM"),
+        _entry("Broken Note", up_state="broken", up_target="Deleted MOC"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    schema = _load_doc_schema()
+    jsonschema.validate(instance=doc, schema=schema)
+
+
+def test_up_value_has_no_type_constraint_guard_against_creep():
+    """Guard: up_value must stay UNCONSTRAINED — it carries a raw frontmatter
+    property value that may be a list, a string, or null. If someone later
+    adds e.g. "type": "string" to the schema, this test catches it because
+    the list/null artefacts below would then fail validation.
+    """
+    schema = _load_doc_schema()
+    for value in (["Deleted MOC", "Other Ref"], "Deleted MOC", None):
+        entries = [
+            _moc("PKM"),
+            _entry(
+                "Broken Note",
+                up_state="broken",
+                up_target="Deleted MOC",
+                up_source="frontmatter",
+                up_value=value,
+            ),
+        ]
+        doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+        jsonschema.validate(instance=doc, schema=schema)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Orphan check (graph_audit orphans[])
 # ──────────────────────────────────────────────────────────────────────────────
 

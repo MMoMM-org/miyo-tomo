@@ -98,6 +98,13 @@
                 "type": ["string", "null"],
                 "description": "broken_up: the broken up:: target stem."
               },
+              "up_source": {
+                "enum": ["inline", "frontmatter", null],
+                "description": "broken_up: where the up:: declaration was read from. Absent when the cache entry predates spec 032 (ADR-3) — never defaulted."
+              },
+              "up_value": {
+                "description": "broken_up: the raw property value observed for the declaration, copied verbatim — a list, a scalar, or null. Unconstrained by design: a later phase uses it as a byte-exact guard. Absent when the cache entry predates spec 032 (ADR-3) — never defaulted."
+              },
               "dead_target": {
                 "type": "string",
                 "description": "dead_link: the unresolved wikilink target text."

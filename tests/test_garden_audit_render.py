@@ -378,6 +378,73 @@ class TestWirePayload:
 
 
 # ---------------------------------------------------------------------------
+# Wire schema declares up_source/up_value (spec 032 T2.2)
+#
+# detail is additionalProperties:true, so a validation-only assertion CANNOT
+# go red — the fields already validate as unknown extra properties. These
+# tests assert the DECLARATION itself in the schema JSON.
+# ---------------------------------------------------------------------------
+
+class TestWireSchemaUpSourceUpValue:
+    def test_wire_schema_declares_up_source_enum(self):
+        """garden-audit-wire.schema.json declares detail.up_source with an
+        enum admitting 'inline', 'frontmatter' and null. [T2.2]
+        """
+        schema = _load_wire_schema()
+        detail_props = schema["properties"]["findings"]["items"]["properties"]["detail"]["properties"]
+        assert "up_source" in detail_props, "up_source must be declared in detail.properties"
+        assert set(detail_props["up_source"]["enum"]) == {"inline", "frontmatter", None}
+
+    def test_wire_schema_declares_up_value(self):
+        """garden-audit-wire.schema.json declares detail.up_value. [T2.2]"""
+        schema = _load_wire_schema()
+        detail_props = schema["properties"]["findings"]["items"]["properties"]["detail"]["properties"]
+        assert "up_value" in detail_props, "up_value must be declared in detail.properties"
+
+    def test_up_source_up_value_absent_from_required_guard_against_creep(self):
+        """Guard: up_source/up_value must NOT land in any 'required' array —
+        every pre-change artefact lacks them (CON-7). Passes trivially today;
+        it locks the property against a later 'add to required' regression.
+        """
+        schema = _load_wire_schema()
+        finding_schema = schema["properties"]["findings"]["items"]
+        detail_schema = finding_schema["properties"]["detail"]
+        assert "up_source" not in finding_schema.get("required", [])
+        assert "up_value" not in finding_schema.get("required", [])
+        assert "up_source" not in detail_schema.get("required", [])
+        assert "up_value" not in detail_schema.get("required", [])
+
+    def test_finding_without_up_source_up_value_still_validates_guard_against_required_creep(self):
+        """Guard: a finding without up_source/up_value still validates
+        against the wire schema — every pre-032 artefact (CON-7). Passes
+        trivially today (they're simply absent); guards a later regression
+        that makes them required.
+        """
+        schema = _load_wire_schema()
+        d = _make_doc(findings=[_make_broken_up_finding("F01")])
+        wire = _build_wire(d)
+        jsonschema.validate(wire, schema)
+
+    def test_up_value_has_no_type_constraint_guard_against_creep(self):
+        """Guard: up_value must stay UNCONSTRAINED — it carries a raw
+        frontmatter property value that may be a list, a string, or null.
+        If someone later adds e.g. "type": "string" to the schema, this
+        test catches it because the list/null artefacts below would fail.
+        """
+        schema = _load_wire_schema()
+        for value in (["Deleted MOC", "Other Ref"], "Deleted MOC", None):
+            finding = _make_broken_up_finding("F01")
+            finding["detail"] = {
+                "up_target": "Deleted MOC",
+                "up_source": "frontmatter",
+                "up_value": value,
+            }
+            d = _make_doc(findings=[finding])
+            wire = _build_wire(d)
+            jsonschema.validate(wire, schema)
+
+
+# ---------------------------------------------------------------------------
 # Parity test: report finding IDs ↔ wire finding IDs
 # ---------------------------------------------------------------------------
 

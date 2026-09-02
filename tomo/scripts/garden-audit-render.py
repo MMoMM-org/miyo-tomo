@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.14.0
+# version: 0.15.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -67,6 +67,63 @@ _CHECK_LABEL = {
     "duplicate_stem": "Duplicate stem",
     "stale_moc": "Stale MOC",
 }
+
+
+# ── Unroutable broken_up findings (spec 032 T5.2) ──────────────────────────────
+# Sentinel mirroring garden-audit-parser.py's ADR-3 _MISSING — detail.up_value
+# may legitimately be None (a property that exists and holds nothing), so only
+# identity-checking against a sentinel distinguishes that from a cache that
+# never wrote the key at all (a pre-032 cache, CON-1).
+_MISSING = object()
+
+_UNROUTABLE_REMEDY = {
+    # Verbatim (solution.md, User Interface & UX) — DO NOT PARAPHRASE.
+    "stale-cache": [
+        "- **Not fixable this run:** the discovery cache predates property routing.",
+        "  Run `/explore-vault` to refresh it, then re-run the audit.",
+    ],
+    # Not spec-locked: the PRD/SDD only give verbatim wording for stale-cache.
+    # no-declaration-site is documented in garden-audit-parser.py as
+    # "unreachable in practice" (a broken state requires a target, and a
+    # target requires a declared source) with no specified user-facing text.
+    # Reuses the /explore-vault remedy — a cache refresh is the only recovery
+    # lever this system offers — but this wording is proposed, not verbatim.
+    "no-declaration-site": [
+        "- **Not fixable this run:** this note's broken `up::` has no recorded"
+        " declaration site.",
+        "  Run `/explore-vault` to refresh the cache, then re-run the audit.",
+    ],
+}
+
+
+def _broken_up_withhold_reason(f: dict) -> str | None:
+    """Reason a broken_up finding cannot be routed to a fix this run, or None
+    when it is routable.
+
+    Mirrors garden-audit-parser.py's ``_route_broken_up`` reason logic
+    (ADR-3/ADR-5) so the report agrees with Pass-2 about what is (un)routable
+    — without needing the user's remove/repoint choice, since routability
+    doesn't depend on it. Only meaningful for a fixable broken_up finding
+    (decision present); a malformed finding with no decision block at all
+    still falls through to the ValueError guard in ``_render_finding``.
+    """
+    if f.get("check") != "broken_up" or f.get("decision") is None:
+        return None
+    detail = f.get("detail") or {}
+    up_source = detail.get("up_source")
+    up_value = detail.get("up_value", _MISSING)
+    if up_value is _MISSING:
+        return "stale-cache"
+    if up_source in ("frontmatter", "inline"):
+        return None
+    return "no-declaration-site"
+
+
+def _render_withheld_block(reason: str) -> list[str]:
+    """The reason + remedy for one withheld finding — no Apply checkbox and no
+    Suggest opt-in, because there is nothing to approve or suggest a target
+    for until the cache is refreshed (PRD AC-F6.1/F6.2)."""
+    return list(_UNROUTABLE_REMEDY[reason]) + [""]
 
 
 # ── Note-reference rendering ──────────────────────────────────────────────────
@@ -237,6 +294,49 @@ def _render_summary(findings: list[dict]) -> list[str]:
     return lines
 
 
+_UNROUTABLE_REASON_LABEL = {
+    "stale-cache": "stale cache",
+    "no-declaration-site": "no declaration site",
+}
+_UNROUTABLE_SUMMARY_TEXT = {
+    "stale-cache": (
+        "the discovery cache predates property routing. Run `/explore-vault` "
+        "to refresh it, then re-run the audit"
+    ),
+    "no-declaration-site": (
+        "no recorded declaration site for the broken `up::`. Run "
+        "`/explore-vault` to refresh the cache, then re-run the audit"
+    ),
+}
+
+
+def _render_unroutable_summary(findings: list[dict]) -> list[str]:
+    """Once-per-run summary of withheld findings (PRD Should-have: unroutable
+    summary; ADR-4-adjacent observability). In addition to the per-finding
+    reason + remedy blocks, not a replacement for them (SDD render shape) —
+    the measured first-run reality is that EVERY broken_up finding can be
+    withheld at once, and the reader must not have to infer the collective
+    remedy from N identical blocks."""
+    counts: dict[str, int] = {}
+    for f in findings:
+        reason = _broken_up_withhold_reason(f)
+        if reason:
+            counts[reason] = counts.get(reason, 0) + 1
+    if not counts:
+        return []
+
+    total = sum(counts.values())
+    noun = "finding" if total == 1 else "findings"
+    lines = [f"**{total} {noun} withheld this run — not fixable:**", ""]
+    for reason in ("stale-cache", "no-declaration-site"):
+        n = counts.get(reason, 0)
+        if n:
+            label = _UNROUTABLE_REASON_LABEL[reason]
+            lines.append(f"- {n} {label} — {_UNROUTABLE_SUMMARY_TEXT[reason]}.")
+    lines.append("")
+    return lines
+
+
 def _render_property_edit_disclosure(up_property: str) -> list[str]:
     """The property-edit disclosure (spec 032 T5.1) — verbatim per solution.md
     UI & UX, `up_property` derived (ADR-6), never hardcoded to "up".
@@ -302,7 +402,15 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
 
     # Fixable → checkbox (opt-in: decision.selected defaults False since 0.11.0)
     decision = f.get("decision")
-    if decision is not None:
+    # Unroutable broken_up (spec 032 T5.2): checked BEFORE the decision branch
+    # so a withheld finding never reaches the Apply/Suggest affordances below —
+    # there is nothing to approve. A malformed finding with no decision block
+    # at all is unaffected (_broken_up_withhold_reason returns None when
+    # decision is None) and still falls through to the ValueError guard.
+    withhold_reason = _broken_up_withhold_reason(f)
+    if withhold_reason is not None:
+        lines += _render_withheld_block(withhold_reason)
+    elif decision is not None:
         selected = decision.get("selected", False)
         check_mark = "x" if selected else " "
         lines.append("**Fix:** " + _fix_summary(check, detail, decision))
@@ -418,6 +526,7 @@ def render_report(d: dict) -> str:
     parts += _render_caveats()
     parts += _render_preamble(d)
     parts += _render_summary(findings)
+    parts += _render_unroutable_summary(findings)
     for tier in ("integrity", "structure", "advisory"):
         parts += _render_tier_section(tier, findings, up_property, ack_days)
 
@@ -758,6 +867,28 @@ def _wire_suggest_pending(findings: list[dict]) -> bool:
     return False
 
 
+def _log_unroutable_findings(findings: list[dict], stream=None) -> None:
+    """One [garden-audit]-prefixed stderr line per withheld finding (solution.md
+    System-Wide Patterns: "unroutable findings go to stderr with the existing
+    [garden-audit] prefix, naming the note and the reason").
+
+    ``stream`` defaults to ``sys.stderr`` read at CALL time, not def time — a
+    default bound at definition time would capture the stream object current
+    at module import, before a test's capsys redirection ever takes effect.
+    """
+    stream = stream if stream is not None else sys.stderr
+    for f in findings:
+        reason = _broken_up_withhold_reason(f)
+        if reason is None:
+            continue
+        target = f.get("target") or {}
+        note = target.get("stem") or target.get("path") or f.get("id")
+        print(
+            f"[garden-audit] Withheld {f.get('id')} — {note}: not routable ({reason})",
+            file=stream,
+        )
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -796,6 +927,8 @@ def main() -> int:
     wire = build_wire_payload(d)
     with open(args.json_output, "w", encoding="utf-8") as f:
         json.dump(wire, f, ensure_ascii=False, indent=2)
+
+    _log_unroutable_findings(d.get("findings") or [])
 
     finding_count = len(d.get("findings") or [])
     print(

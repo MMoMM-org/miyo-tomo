@@ -281,8 +281,9 @@ class TestReportStructure:
         assert "- [" in report  # checkbox pattern
 
     def test_fixable_finding_preselected_checked(self):
-        # decision.selected=True → pre-checked box
-        findings = [_make_broken_up_finding()]
+        # decision.selected=True → pre-checked box. Routable (T5.2): a
+        # stale-cache/absent-source finding renders no checkbox at all.
+        findings = [_make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")]
         d = _make_doc(findings=findings)
         report = _render_report(d)
         assert "- [x]" in report
@@ -723,18 +724,22 @@ class TestClickableLinksAndFixSummary:
 
     def test_broken_up_fix_describes_both_repoint_and_remove(self):
         # FIX 3: every broken_up now offers repoint OR remove (not removal-only).
-        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        # Routable (T5.2): a withheld finding has no Fix line to describe.
+        f = _make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
         assert "repoint" in report.lower()
         assert "remove" in report.lower()
 
     def test_broken_up_offers_repoint_field_for_every_finding(self):
         # FIX 3: the editable Repoint field renders for a plain broken_up removal
-        # finding (action=edit_note_text), not just pre-marked repoints.
-        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        # finding (action=edit_note_text), not just pre-marked repoints. Routable
+        # (T5.2): a withheld finding renders no editable field.
+        f = _make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
         assert "**Repoint to:**" in report
 
     def test_broken_up_repoint_action_also_offers_repoint_field(self):
-        f = _make_broken_up_finding()
+        f = _make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")
         f["decision"]["action"] = "add_relationship"
         report = _render_report(_make_doc(findings=[f]))
         assert "**Repoint to:**" in report
@@ -835,7 +840,10 @@ class TestSuggestOptInRender:
         assert "- [ ] Suggest targets" in report
 
     def test_broken_up_has_suggest_box(self):
-        report = _render_report(_make_doc(findings=[_make_broken_up_finding("F01")]))
+        # Routable (T5.2): a withheld finding renders no Suggest opt-in either —
+        # there is nothing to suggest a target for until the cache is refreshed.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
         assert "- [ ] Suggest targets" in report
 
     def test_unparented_has_suggest_box(self):
@@ -924,7 +932,8 @@ class TestSuggestEnrichment:
         assert "Pick one" not in out
 
     def test_ticked_broken_up_gets_moc_pick_list(self):
-        f = _make_broken_up_finding("F01")
+        # Routable (T5.2): a withheld finding renders no Suggest box to tick.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Writng MOC]]")
         f["detail"]["up_target"] = "Writng MOC"  # typo of "Writing MOC"
         doc = _make_doc(findings=[f])
         report = _full_report(doc)
@@ -1023,8 +1032,12 @@ class TestSuggestEnrichment:
         # Change 3 on the broken_up repoint path: the note has NO topics and the
         # cache MOC stem is dissimilar to the up-target "Deleted MOC" → neither
         # the topic nor the stem signal produces a candidate.
+        # Routable (T5.2): a withheld finding renders no Suggest box to tick.
         f = _make_broken_up_finding("F01")
-        f["detail"] = {"up_target": "Deleted MOC", "topics": []}
+        f["detail"] = {
+            "up_target": "Deleted MOC", "topics": [],
+            "up_source": "inline", "up_value": "[[Deleted MOC]]",
+        }
         doc = _make_doc(findings=[f])
         report = _full_report(doc)
         wire = _build_wire(doc)
@@ -1126,16 +1139,24 @@ class TestPropertyEditDisclosure:
         assert "Fix target:" not in report
         assert "⚠️" not in report
 
-    def test_inline_resident_rendering_is_byte_identical_to_absent_up_source(self):
-        # CON-7: body-resident (inline) output must be byte-identical to today's
-        # rendering. "Today" is the absent-up_source shape (pre-032 fixtures
-        # never carried up_source at all) — proved by direct string equality,
-        # not by eyeballing or substring checks.
+    def test_inline_resident_rendering_diverges_from_absent_up_source_since_t5_2(self):
+        # Superseded by spec 032 T5.2: at T5.1 landing, "today" meant the
+        # absent-up_source shape (pre-032 fixtures never carried up_source at
+        # all), and it rendered byte-identical to an explicit inline finding —
+        # this test used to assert exactly that equality. T5.2 gives that
+        # absent shape its own meaning: it IS the stale-cache case (ADR-3's
+        # _MISSING sentinel — up_value key absent), withheld with a reason and
+        # remedy rather than an Apply checkbox. So the two are now expected to
+        # DIFFER; see TestUnroutableFindings for the withheld-path coverage,
+        # and test_inline_resident_matches_pinned_golden_broken_up_line below
+        # for this file's CON-7 anchor on the still-routable inline case.
         f_absent = _make_broken_up_finding("F01")
         f_inline = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
         report_absent = _render_report(_make_doc(findings=[f_absent]))
         report_inline = _render_report(_make_doc(findings=[f_inline]))
-        assert report_inline == report_absent
+        assert report_inline != report_absent
+        assert "Apply — tick to apply this fix" in report_inline
+        assert "Not fixable this run" in report_absent
 
     def test_inline_resident_matches_pinned_golden_broken_up_line(self):
         # Pins the exact pre-032 detail line (also exercised in
@@ -1144,3 +1165,127 @@ class TestPropertyEditDisclosure:
         f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
         report = _render_report(_make_doc(findings=[f]))
         assert "Broken `up::` → [[Deleted MOC]]" in report
+
+
+# ---------------------------------------------------------------------------
+# Spec 032 T5.2: unroutable findings render their reason AND remedy
+# ---------------------------------------------------------------------------
+# A broken_up finding garden-audit-parser.py's _route_broken_up (ADR-3/ADR-5)
+# cannot route must not silently render the normal Apply-checkbox flow — the
+# report has to withhold it too, so the human-reviewed report and Pass-2 agree
+# about what is (un)routable. Reason detection mirrors the parser's sentinel
+# logic without needing the user's remove/repoint choice, since routability
+# doesn't depend on it: up_value key absent → "stale-cache" (ADR-3 _MISSING
+# sentinel — this is the pre-032 cache shape, and per the measured first-run
+# reality every _make_broken_up_finding() default fixture IS this shape);
+# up_value present but up_source not in {"inline", "frontmatter"} →
+# "no-declaration-site".
+#
+# no-declaration-site wording: the SDD/PRD only specify verbatim wording for
+# the stale-cache remedy (solution.md UI & UX); no-declaration-site is
+# documented in garden-audit-parser.py as "unreachable in practice" (a broken
+# state requires a target, and a target requires a declared source) with no
+# specified user-facing text. The wording below is proposed, not spec-locked —
+# it reuses the /explore-vault remedy because a cache refresh is the only
+# recovery lever this system offers, but it is not a verbatim string.
+
+_STALE_CACHE_REASON_LINE = (
+    "- **Not fixable this run:** the discovery cache predates property routing."
+)
+_STALE_CACHE_REMEDY_LINE = (
+    "  Run `/explore-vault` to refresh it, then re-run the audit."
+)
+
+
+class TestUnroutableFindings:
+    def test_stale_cache_finding_renders_verbatim_reason_and_remedy(self):
+        # Pre-032 cache shape (up_source/up_value both absent) — the measured,
+        # default first-run reality (346 cache entries, 0 carrying up_value).
+        f = _make_broken_up_finding("F01")
+        report = _render_report(_make_doc(findings=[f]))
+        assert _STALE_CACHE_REASON_LINE in report
+        assert _STALE_CACHE_REMEDY_LINE in report
+
+    def test_stale_cache_finding_renders_no_apply_checkbox(self):
+        f = _make_broken_up_finding("F01")
+        report = _render_report(_make_doc(findings=[f]))
+        # Nothing to approve — no per-finding Apply or Suggest affordance.
+        assert "] Apply" not in report
+        assert "Suggest targets" not in report
+
+    def test_no_declaration_site_finding_renders_reason_and_remedy(self):
+        # up_value present (not stale) but up_source absent on a broken
+        # finding — "unreachable in practice" per garden-audit-parser.py,
+        # still withheld rather than guessed (ADR-5), never a body-oriented
+        # fallback.
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Not fixable this run" in report
+        assert "/explore-vault" in report
+        assert "no-declaration-site" not in report  # internal reason code, stderr-only
+
+    def test_no_declaration_site_finding_renders_no_apply_checkbox(self):
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "] Apply" not in report
+
+    def test_fully_routable_run_has_no_withheld_text_or_summary(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Not fixable this run" not in report
+        assert "withheld" not in report.lower()
+
+    def test_summary_line_names_count_and_reason(self):
+        findings = [
+            _make_broken_up_finding("F01"),  # stale-cache (absent up_value)
+            _make_broken_up_finding("F02"),  # stale-cache
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "2 findings withheld" in report
+        assert "/explore-vault" in report
+
+    def test_summary_omitted_when_nothing_withheld(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "withheld" not in report.lower()
+
+    def test_summary_omitted_on_zero_findings(self):
+        report = _render_report(_make_doc(findings=[]))
+        assert "withheld" not in report.lower()
+
+    def test_stderr_carries_one_prefixed_line_per_withheld_finding(self, capsys):
+        findings = [
+            _make_broken_up_finding("F01"),  # stale-cache — withheld
+            _make_broken_up_finding(
+                "F02", up_source="inline", up_value="[[Alte MOC]]"
+            ),  # routable — no stderr line
+        ]
+        gar._log_unroutable_findings(findings)
+        err = capsys.readouterr().err
+        lines = [ln for ln in err.splitlines() if ln.startswith("[garden-audit]")]
+        assert len(lines) == 1
+        assert "F01" in lines[0]
+        assert "Broken Note" in lines[0]
+        assert "stale-cache" in lines[0]
+
+    def test_routable_finding_rendering_unaffected_con7(self):
+        # CON-7: a routable finding's rendering is unaffected by T5.2 — same
+        # Apply checkbox and Repoint field as the pinned T5.1 golden shape.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Apply — tick to apply this fix" in report
+        assert "**Repoint to:**" in report
+        assert "Not fixable this run" not in report
+
+    def test_realistic_withheld_count_stays_readable(self):
+        # Measured first-run reality: the entire population can be withheld
+        # (346 cache entries, 0 carrying up_value; 29 broken_up findings).
+        findings = [_make_broken_up_finding(f"F{i:02d}") for i in range(1, 30)]
+        report = _render_report(_make_doc(findings=findings))
+        assert report.count("Not fixable this run") == 29
+        assert "29 findings withheld" in report
+        # The collective summary precedes the 29 identical per-finding blocks
+        # — the reader gets the remedy once, up front, not by inference.
+        summary_idx = report.find("29 findings withheld")
+        first_block_idx = report.find("### F01")
+        assert -1 < summary_idx < first_block_idx

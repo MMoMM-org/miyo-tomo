@@ -35,6 +35,20 @@ The behavioural change. Everything before this was plumbing.
 
 - [ ] **T3.1 The routing branch** `[activity: backend-logic]`
 
+  > **STRICT — `up_value` must NEVER be normalised.**
+  > `garden-audit-parser.py:65-79` defines `_up_link_stem(up_target)`, which calls
+  > `unwrap_list_repr` and flattens to a bare stem. It is correct **for `up_target`**, whose job
+  > is to name the broken link for the body-resident `link` field. The new branch lands in the
+  > same function region, so applying the same treatment to `up_value` is the obvious-looking
+  > move — and it is wrong.
+  > `up_value` becomes `expected`, which Hashi compares **deep-equal and order-significant**
+  > against the note's actual property. Normalising it makes the guard disagree with the note, so
+  > Hashi refuses **every** frontmatter action. The failure is silent in testing because
+  > `unwrap_list_repr` passes a real list through unchanged — only dirty list-repr data exposes
+  > it, and no fixture has that shape.
+  > `Why:` the two fields have opposite jobs in the same code block. `up_target` = the broken
+  > stem, normalise freely. `up_value` = the observed vault value, byte-for-byte, never touched.
+
   1. **Prime**: Read the routing-branch example `[ref: SDD/Implementation Examples]` in full, including why `detail.get("up_value")` is the wrong idiom.
   2. **Test** (RED) — the full matrix, both sites × both choices:
      - inline + remove → `remove_up_link`, byte-identical to today `[ref: PRD/AC-F2.3]`

@@ -32,6 +32,18 @@ Makes the routing visible to the person approving it.
 
 - [ ] **T5.1 Property-edit disclosure** `[activity: frontend-ui]`
 
+  > **Verbatim string — DO NOT PARAPHRASE** (`solution.md` UI & UX section):
+  > ```markdown
+  > - **Fix target:** note property `up` — editing YAML properties.
+  >   ⚠️ Comments inside this note's property block will not survive the edit.
+  > ```
+  > The property name is **derived** from the action, not hardcoded to `up` (ADR-6). Assert the
+  > wording exactly, including the ⚠️ character.
+  > **Prerequisite the task text omits:** `tests/test_garden_audit_render.py`'s
+  > `_make_broken_up_finding()` fixture has no `up_source`/`up_value` parameters, so nothing can
+  > currently distinguish a property-resident finding from a body-resident one. Extend the
+  > fixture first, or no test here can go RED.
+
   1. **Prime**: Read the UX section `[ref: SDD/Cross-Cutting Concepts]`. The warning is not decoration — a successful property edit drops YAML comments, and that is irreversible.
   2. **Test** (RED):
      - a property-resident finding renders a line naming the property and stating that the fix edits note properties `[ref: PRD/AC-F4.1]`
@@ -43,6 +55,22 @@ Makes the routing visible to the person approving it.
   5. **Success**: the user learns the cost **before** approving `[ref: PRD/Feature 4]`
 
 - [ ] **T5.2 Unroutable findings and their remedy** `[activity: frontend-ui]`
+
+  > **Verbatim string — DO NOT PARAPHRASE** (`solution.md` UI & UX section):
+  > ```markdown
+  > - **Not fixable this run:** the discovery cache predates property routing.
+  >   Run `/explore-vault` to refresh it, then re-run the audit.
+  > ```
+  > The remedy names a concrete command. A vague "refresh the cache" is a dead end and fails
+  > PRD Feature 6, which requires the user be told **how** to refresh.
+  > **Render shape (SDD, not open to reinterpretation):** the reason + remedy render **per
+  > finding**; stderr also carries **one line per finding**, with the existing `[garden-audit]`
+  > prefix, naming the note and the reason. The summary line is **in addition**, once per run.
+  > **Measured first-run reality:** the live cache holds 346 entries, **0** carry `up_value`, and
+  > 29 findings are `broken_up`. So on the first run after this ships, **every** finding is
+  > withheld as `stale-cache` until `/explore-vault` runs. This is the default first experience,
+  > not a rare degraded case — the summary line must make the collective remedy obvious without
+  > the reader having to infer it from 29 identical blocks.
 
   1. **Prime**: `[ref: PRD/Feature 6]`. A withheld finding is a specified outcome; it must read as one, not as an error.
   2. **Test** (RED):

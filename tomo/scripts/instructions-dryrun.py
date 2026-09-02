@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.2
+# version: 0.2.3
 """instructions-dryrun.py — Validate an instructions.json is Tomo-Hashi-ready.
 
 Reads an instructions.json file and prints a one-line summary of each action
@@ -31,7 +31,23 @@ REQUIRED_FIELDS_BY_KIND = {
     "create_moc": {"id", "action", "source", "destination", "title"},
     "delete_source": {"id", "action", "source_path", "reason"},
     "skip": {"id", "action"},
+    "edit_frontmatter": {"id", "action", "path", "property", "operation"},
 }
+
+
+def _edit_frontmatter_missing(action: dict) -> set[str]:
+    """Extra required-field checks the flat whitelist above can't express.
+
+    The schema states these as conditional (allOf), not flat `required`:
+    operation='set' requires `value`, and exactly one of `expected` /
+    `expected_absent` must be present (the schema's mutual-exclusion guard).
+    """
+    missing: set[str] = set()
+    if action.get("operation") == "set" and "value" not in action:
+        missing.add("value")
+    if "expected" not in action and "expected_absent" not in action:
+        missing.add("expected (or expected_absent)")
+    return missing
 
 
 def describe(action: dict) -> str:
@@ -68,6 +84,14 @@ def describe(action: dict) -> str:
         return f"{aid} delete_source: {action.get('source_path')} ({action.get('reason')})"
     if kind == "skip":
         return f"{aid} skip: {action.get('source_path') or '(unspecified)'}"
+    if kind == "edit_frontmatter":
+        prop = action.get("property")
+        op = action.get("operation")
+        # value/expected may be a scalar, a list, or null — !r reprs whatever
+        # is actually there, never normalises/unwraps/str()s it.
+        change = f"remove {prop!r}" if op == "remove" else f"set {prop!r} = {action.get('value')!r}"
+        guard = "expected_absent=True" if "expected_absent" in action else f"expected={action.get('expected')!r}"
+        return f"{aid} edit_frontmatter: {action.get('path')} {change} ({guard})"
     return f"{aid} UNKNOWN ACTION: {kind}"
 
 
@@ -105,6 +129,8 @@ def main() -> int:
             failures += 1
             continue
         missing = required - set(action)
+        if kind == "edit_frontmatter":
+            missing = missing | _edit_frontmatter_missing(action)
         if missing:
             print(f"  [FAIL] {action.get('id', '?')} ({kind}) missing: {sorted(missing)}", file=sys.stderr)
             failures += 1

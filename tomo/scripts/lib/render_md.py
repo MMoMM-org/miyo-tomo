@@ -1,4 +1,4 @@
-# version: 0.7.0
+# version: 0.7.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -32,7 +32,7 @@ def _md_section_for(action: dict) -> str:
     if kind in ("move_note", "create_moc"):
         return "new_files"
     if kind in ("link_to_moc", "add_relationship", "edit_note_text",
-                "remove_up_link", "resolve_dead_link"):
+                "remove_up_link", "resolve_dead_link", "edit_frontmatter"):
         return "moc_links"
     if kind in ("update_tracker", "update_log_entry", "update_log_link"):
         return "daily_updates"
@@ -233,6 +233,26 @@ def _render_action_md(action: dict, cfg: dict) -> str:
             lines.append(f"- **Repoint to:** `{replace}` (display preserved; all forms incl. aliased/embed)")
         else:
             lines.append(f"- **Unlink:** drop the `[[ ]]` from `[[{tgt}]]`, keep the display text (all forms incl. aliased/embed)")
+        return "\n".join(lines)
+
+    if kind == "edit_frontmatter":
+        target = action.get("path", "")
+        prop = action.get("property", "")
+        op = action.get("operation")
+        # value/expected may be a scalar, a list, or null — !r reprs whatever
+        # is actually there, never normalises/unwraps/str()s it.
+        verb = "Remove" if op == "remove" else "Set"
+        lines = [f"{heading_prefix}{verb} `{prop}` in [[{_stem(target)}]]", "- [ ] Applied"]
+        lines.append(f"- **Note:** [[{_stem(target)}]]")
+        lines.append(f"- **Property:** `{prop}`")
+        if op == "remove":
+            lines.append("- **Change:** remove this property")
+        else:
+            lines.append(f"- **Change:** set to `{action.get('value')!r}`")
+        if "expected_absent" in action:
+            lines.append("- **Guard:** property must currently be absent")
+        else:
+            lines.append(f"- **Guard:** current value must equal `{action.get('expected')!r}`")
         return "\n".join(lines)
 
     # Fallback — unknown action type

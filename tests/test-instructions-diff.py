@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test-instructions-diff.py — Unit tests for instructions-diff.
 
 Covers:
@@ -8,8 +8,13 @@ Covers:
   - Link mismatch: wrong parent_mocs coverage → exit 1
   - Orphan create_moc observation (warning, not fail)
   - Daily-only delete-source inference reconciles on both sides
-  - edit_frontmatter registration (spec 032 T4.2): the kind must be counted
-    in the ACTION_ORDER reconciliation table, not just generically tallied
+  - edit_frontmatter registration (spec 032 T4.2): the kind is counted in the
+    ACTION_ORDER reconciliation table for non-garden run_diff (proven via
+    summarize_actual directly, since run_diff's ACTION_ORDER loop is
+    unreachable for edit_frontmatter — see the module comment below)
+  - run_diff_garden's dynamic all_kinds never silently drops an unregistered
+    action kind — a guard on the path spec 032's garden_action findings
+    actually travel through
 
 Each test builds in-memory dicts, invokes run_diff, and asserts exit code
 + observation count. We capture stdout so test output stays clean.
@@ -385,12 +390,30 @@ def test_batched_link_to_moc_coverage_gap_fails():
 # ──────────────────────────────────────────────────────────────────────────────
 # edit_frontmatter registration (spec 032 T4.2)
 #
-# An unregistered action kind is counted generically by summarize_actual, but
-# skipped by run_diff's ACTION_ORDER reconciliation loop — so the audit exits
-# rc=0 while the kind's actions go completely unreconciled (spec 031 hit the
-# identical trap for move_asset). These tests assert the invariant that must
-# hold once a kind is registered, not the buggy pre-registration behaviour —
-# they are written to stay true forever, not to be inverted after the fix.
+# run_diff dispatches on document shape (line ~610): garden-audit docs
+# (confirmed_items all carrying garden_action) route to run_diff_garden and
+# never reach derive_expected at all; non-garden docs call derive_expected
+# then reconcile against a FIXED ACTION_ORDER list. The two paths have
+# different silent-drop behaviour for a kind absent from their table:
+#
+#   - non-garden run_diff: iterates ACTION_ORDER only, so a kind missing from
+#     that list is silently dropped from both the printed table and the
+#     total — the audit can exit rc=0 while that kind's actions go completely
+#     unreconciled (spec 031 hit this trap for move_asset).
+#   - run_diff_garden: builds its kind list dynamically (GARDEN_ACTION_ORDER
+#     plus whatever unknown kinds show up in actual_counts), so nothing is
+#     silently dropped there. Its gap is different: _GARDEN_EXPECTED_KINDS
+#     does not yet know a frontmatter-routed finding owes an edit_frontmatter
+#     action — that routing rule is T4.3, deliberately held until Phase 3
+#     defines it. Until then a frontmatter-routed finding legitimately shows
+#     as [DIFF], which is correct-but-incomplete, not a bug to paper over.
+#
+# spec 032's broken_up findings are garden_action items, so they travel the
+# run_diff_garden path — never the ACTION_ORDER path below. The tests here
+# split accordingly: the ACTION_ORDER tests exercise summarize_actual
+# directly (proving the registration itself, independent of dispatch), and
+# the garden test guards run_diff_garden's already-correct dynamic-kind
+# behaviour against regressing into the same silent-drop trap.
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _edit_frontmatter_action(n: str, path: str) -> dict:
@@ -439,62 +462,52 @@ def test_edit_frontmatter_contributes_n_to_total():
     print("[PASS] edit_frontmatter: N actions contribute N to TOTAL")
 
 
-def _patched_derive_expected(n: int):
-    """Wrap the real derive_expected to also report an edit_frontmatter
-    count of n. Deriving that count from parsed suggestions is T4.3's job
-    (deliberately held pending Phase 3's routing rule) — this simulates an
-    already-correct expected count so these tests can prove the ACTION_ORDER
-    registration wires the kind into pass/fail, not just into the display."""
-    original = diff.derive_expected
+def test_garden_diff_never_drops_unregistered_kind():
+    """Guard, not regression test: proves run_diff_garden's CURRENT, already
+    correct behaviour — its all_kinds list is built dynamically
+    (GARDEN_ACTION_ORDER plus any kind from actual_counts not already in it),
+    so a kind absent from GARDEN_ACTION_ORDER still appears in the printed
+    table and still contributes to the actual total. It is never silently
+    dropped the way non-garden run_diff drops an unregistered kind.
 
-    def _patched(parsed, tag_handler_groups=None):
-        expected = original(parsed, tag_handler_groups)
-        expected["counts"]["edit_frontmatter"] = n
-        return expected
+    This test passes today and is expected to keep passing — it exists to
+    catch a future refactor of run_diff_garden that reintroduces the
+    ACTION_ORDER-style silent-drop bug for garden mode.
 
-    return original, _patched
+    It deliberately does NOT assert that edit_frontmatter's expected count
+    reconciles with its actual count: making _GARDEN_EXPECTED_KINDS aware
+    that a frontmatter-routed finding owes an edit_frontmatter action is
+    T4.3, held pending Phase 3's routing rule. rc=1 here is the correct,
+    incomplete-but-honest current state, not a bug.
+    """
+    confirmed = [{
+        "id": "G1", "garden_action": "resolve_dead_link",
+        "path": "Atlas/Japan.md", "target": "Old Note.md",
+    }]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
 
-
-def test_edit_frontmatter_expected_matches_actual_passes():
-    """expected N, actual N → pass, and the kind is named in the printed
-    table (not silently absorbed into the TOTAL row alone)."""
     n = 3
-    actions = [_edit_frontmatter_action(str(i), f"Atlas/Note{i}.md") for i in range(n)]
+    actions = [
+        {"id": "g1", "action": "resolve_dead_link",
+         "path": "Atlas/Japan.md", "target": "Old Note.md"},
+    ] + [_edit_frontmatter_action(str(i), f"Atlas/Note{i}.md") for i in range(n)]
     instrs = {"schema_version": "1", "type": "tomo-instructions",
-              "action_count": n, "actions": actions}
-    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+              "action_count": len(actions), "actions": actions}
 
-    original, patched = _patched_derive_expected(n)
-    diff.derive_expected = patched
-    try:
-        rc, _obs, out = _run(parsed, instrs)
-    finally:
-        diff.derive_expected = original
+    rc, _obs, out = _run(parsed, instrs)
 
-    _must(rc == 0, f"expected N == actual N for edit_frontmatter must pass, got rc={rc}\n{out}")
-    _must("edit_frontmatter" in out, "edit_frontmatter must appear in the printed table")
-    print("[PASS] edit_frontmatter: expected N == actual N → pass, kind shown in table")
+    # edit_frontmatter is not in GARDEN_ACTION_ORDER (expected=0) but still
+    # gets its own row with the real actual count — never absorbed or hidden.
+    kind_line = f"  {'edit_frontmatter':<20s} {0:>9d} {n:>9d}  [DIFF]"
+    _must(kind_line in out, f"edit_frontmatter row missing/wrong in output:\n{out}")
 
+    # TOTAL actual must include those n actions: resolve_dead_link (1/1, [OK])
+    # plus edit_frontmatter (0 expected / n actual) = 1 expected, 1+n actual.
+    total_line = f"  {'TOTAL':<20s} {1:>9d} {1 + n:>9d}  [DIFF]"
+    _must(total_line in out, f"TOTAL row does not reflect the unregistered kind:\n{out}")
 
-def test_edit_frontmatter_expected_mismatch_hard_fails():
-    """expected N, actual N-1 → hard fail. An unreconciled edit_frontmatter
-    action must not slip through as green."""
-    n = 3
-    actions = [_edit_frontmatter_action(str(i), f"Atlas/Note{i}.md") for i in range(n - 1)]
-    instrs = {"schema_version": "1", "type": "tomo-instructions",
-              "action_count": n - 1, "actions": actions}
-    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
-
-    original, patched = _patched_derive_expected(n)
-    diff.derive_expected = patched
-    try:
-        rc, _obs, out = _run(parsed, instrs)
-    finally:
-        diff.derive_expected = original
-
-    _must(rc == 1, f"expected N, actual N-1 for edit_frontmatter must hard-fail, got rc={rc}\n{out}")
-    _must("[DIFF]" in out, "mismatch must be marked [DIFF] in the printed table")
-    print("[PASS] edit_frontmatter: expected N, actual N-1 → hard fail")
+    _must(rc == 1, f"expected/actual mismatch on edit_frontmatter must fail today, got rc={rc}")
+    print("[PASS] run_diff_garden: unregistered kind is shown and counted, never dropped")
 
 
 def main() -> int:
@@ -507,8 +520,7 @@ def main() -> int:
     test_batched_link_to_moc_reconciles()
     test_edit_frontmatter_action_count_reconciles_with_total()
     test_edit_frontmatter_contributes_n_to_total()
-    test_edit_frontmatter_expected_matches_actual_passes()
-    test_edit_frontmatter_expected_mismatch_hard_fails()
+    test_garden_diff_never_drops_unregistered_kind()
     print("\n\u2713 All instructions-diff tests passed.")
     return 0
 

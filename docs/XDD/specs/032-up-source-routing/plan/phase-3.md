@@ -33,7 +33,7 @@ phase: 3
 
 The behavioural change. Everything before this was plumbing.
 
-- [ ] **T3.1 The routing branch** `[activity: backend-logic]`
+- [x] **T3.1 The routing branch** `[activity: backend-logic]`
 
   > **STRICT — `up_value` must NEVER be normalised.**
   > `garden-audit-parser.py:65-79` defines `_up_link_stem(up_target)`, which calls

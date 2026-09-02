@@ -67,14 +67,25 @@ def _make_unparented_finding(fid: str = "F01") -> dict:
     }
 
 
-def _make_broken_up_finding(fid: str = "F02") -> dict:
+_UNSET = object()  # sentinel — distinguishes "not passed" from "passed as None"
+
+
+def _make_broken_up_finding(fid: str = "F02", up_source=_UNSET, up_value=_UNSET) -> dict:
+    # up_source/up_value are OMITTED from detail unless explicitly passed (spec
+    # 032 T5.1 prerequisite) — existing callers that don't pass them must keep
+    # getting the pre-032 detail shape, byte-identical (CON-7).
+    detail = {"up_target": "Deleted MOC"}
+    if up_source is not _UNSET:
+        detail["up_source"] = up_source
+    if up_value is not _UNSET:
+        detail["up_value"] = up_value
     return {
         "id": fid,
         "check": "broken_up",
         "tier": "integrity",
         "fixable": True,
         "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
-        "detail": {"up_target": "Deleted MOC"},
+        "detail": detail,
         "decision": {"selected": True, "action": "edit_note_text"},
     }
 
@@ -1039,3 +1050,97 @@ class TestSuggestEnrichment:
         out = gar.enrich_report_with_suggestions(report, wire, cache)
         assert "No suggestions found" in out
         assert "Pick one" not in out
+
+
+# ---------------------------------------------------------------------------
+# Spec 032 T5.1: property-edit disclosure at approval time
+# ---------------------------------------------------------------------------
+# A broken_up finding resident in frontmatter (up_source == "frontmatter") gets
+# fixed via a YAML-property edit, which drops any comments in that property
+# block irreversibly. The report must disclose this BEFORE the user ticks
+# Apply — a post-hoc note is too late by construction. The wording is
+# verbatim-locked (solution.md UI & UX); the property name is derived via
+# marker_word(conventions.parent_marker) (ADR-6), never hardcoded to "up".
+
+_DISCLOSURE_TARGET_LINE = (
+    "- **Fix target:** note property `{prop}` — editing YAML properties."
+)
+_DISCLOSURE_WARNING_LINE = (
+    "  ⚠️ Comments inside this note's property block will not survive the edit."
+)
+
+
+class TestPropertyEditDisclosure:
+    def test_frontmatter_resident_renders_verbatim_disclosure_with_default_property(self):
+        # Default (miyo) profile's parent marker is "up::" → marker_word → "up".
+        f = _make_broken_up_finding(up_source="frontmatter", up_value=["[[Alte MOC]]"])
+        report = _render_report(_make_doc(findings=[f]))
+        assert _DISCLOSURE_TARGET_LINE.format(prop="up") in report
+        assert _DISCLOSURE_WARNING_LINE in report
+
+    def test_frontmatter_resident_disclosure_uses_derived_not_hardcoded_property(
+        self, tmp_path, monkeypatch
+    ):
+        # ADR-6 proof: a profile configured with a DIFFERENT parent marker must
+        # change the disclosed property name. If the renderer hardcoded "up",
+        # this test would still see "up" and fail.
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding(up_source="frontmatter", up_value=["[[Alte MOC]]"])
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        assert _DISCLOSURE_TARGET_LINE.format(prop="parent") in report
+        assert _DISCLOSURE_TARGET_LINE.format(prop="up") not in report
+
+    def test_frontmatter_resident_disclosure_appears_before_apply_checkbox(self):
+        # "At approval time" — the user must read the warning before ticking
+        # Apply, not after.
+        f = _make_broken_up_finding(up_source="frontmatter", up_value=["[[Alte MOC]]"])
+        report = _render_report(_make_doc(findings=[f]))
+        disclosure_idx = report.index(_DISCLOSURE_TARGET_LINE.format(prop="up"))
+        apply_idx = report.index("Apply — tick to apply this fix")
+        assert disclosure_idx < apply_idx
+
+    def test_inline_resident_renders_no_disclosure(self):
+        f = _make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Fix target:" not in report
+        assert "⚠️" not in report
+
+    def test_absent_up_source_renders_no_disclosure(self):
+        # Pre-032 cache shape: up_source/up_value simply absent from detail.
+        f = _make_broken_up_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Fix target:" not in report
+        assert "⚠️" not in report
+
+    def test_non_broken_up_finding_renders_no_disclosure(self):
+        report = _render_report(_make_doc(findings=[_make_unparented_finding()]))
+        assert "Fix target:" not in report
+        assert "⚠️" not in report
+
+    def test_inline_resident_rendering_is_byte_identical_to_absent_up_source(self):
+        # CON-7: body-resident (inline) output must be byte-identical to today's
+        # rendering. "Today" is the absent-up_source shape (pre-032 fixtures
+        # never carried up_source at all) — proved by direct string equality,
+        # not by eyeballing or substring checks.
+        f_absent = _make_broken_up_finding("F01")
+        f_inline = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report_absent = _render_report(_make_doc(findings=[f_absent]))
+        report_inline = _render_report(_make_doc(findings=[f_inline]))
+        assert report_inline == report_absent
+
+    def test_inline_resident_matches_pinned_golden_broken_up_line(self):
+        # Pins the exact pre-032 detail line (also exercised in
+        # TestDirtyListReprRender) so a future change to this block cannot
+        # silently alter body-resident rendering without failing here too.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Broken `up::` → [[Deleted MOC]]" in report

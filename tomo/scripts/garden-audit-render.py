@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.0
+# version: 0.14.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -37,12 +37,18 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import build_tomo_block
+from lib.profile_conventions import marker_word, resolve_conventions
 from lib.render_md import compute_garden_audit_digest, unwrap_list_repr
 from lib.target_suggest import (
     suggest_dead_link_targets,
     suggest_file_under_mocs,
     suggest_repoint_mocs,
 )
+
+# Instance-relative profiles dir (ADR-2, profile_conventions.py): the script
+# supplies profiles_dir, the lib never derives it from its own __file__.
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 
 # ── Tier ordering ────────────────────────────────────────────────────────────
 _TIER_ORDER = {"integrity": 0, "structure": 1, "advisory": 2}
@@ -231,7 +237,22 @@ def _render_summary(findings: list[dict]) -> list[str]:
     return lines
 
 
-def _render_finding(f: dict) -> list[str]:
+def _render_property_edit_disclosure(up_property: str) -> list[str]:
+    """The property-edit disclosure (spec 032 T5.1) — verbatim per solution.md
+    UI & UX, `up_property` derived (ADR-6), never hardcoded to "up".
+
+    Rendered at approval time (before the Apply checkbox): a successful
+    edit_frontmatter fix drops YAML comments in the note's property block
+    irreversibly, so the cost must be visible before the user ticks Apply,
+    not after — a post-hoc note is too late by construction.
+    """
+    return [
+        f"- **Fix target:** note property `{up_property}` — editing YAML properties.",
+        "  ⚠️ Comments inside this note's property block will not survive the edit.",
+    ]
+
+
+def _render_finding(f: dict, up_property: str) -> list[str]:
     """Render one finding as a human-facing report block.
 
     The report carries the user's DECISIONS only, joined to the machine wire by
@@ -284,10 +305,15 @@ def _render_finding(f: dict) -> list[str]:
     if decision is not None:
         selected = decision.get("selected", False)
         check_mark = "x" if selected else " "
-        lines += [
-            "**Fix:** " + _fix_summary(check, detail, decision),
-            f"- [{check_mark}] Apply — tick to apply this fix",
-        ]
+        lines.append("**Fix:** " + _fix_summary(check, detail, decision))
+        # Property-edit disclosure (spec 032 T5.1): only for a broken_up finding
+        # whose up:: lives in frontmatter — an edit_frontmatter fix drops YAML
+        # comments in that property block, and the cost must be visible BEFORE
+        # Apply is ticked. Body-resident (inline/absent up_source) findings are
+        # unaffected — CON-7 byte-identical rendering.
+        if check == "broken_up" and detail.get("up_source") == "frontmatter":
+            lines += _render_property_edit_disclosure(up_property)
+        lines.append(f"- [{check_mark}] Apply — tick to apply this fix")
         # Editable target field — the parser reads it back to decide the fix.
         if check == "dead_link":
             lines.append(
@@ -339,7 +365,7 @@ def _render_finding(f: dict) -> list[str]:
     return lines
 
 
-def _render_tier_section(tier: str, findings: list[dict],
+def _render_tier_section(tier: str, findings: list[dict], up_property: str,
                          ack_days: int = 30) -> list[str]:
     """Render one tier section (e.g. ## Integrity). Returns [] when no findings."""
     tier_findings = [f for f in findings if f["tier"] == tier]
@@ -355,7 +381,7 @@ def _render_tier_section(tier: str, findings: list[dict],
             "",
         ]
     for f in tier_findings:
-        lines.extend(_render_finding(f))
+        lines.extend(_render_finding(f, up_property))
     return lines
 
 
@@ -363,6 +389,15 @@ def render_report(d: dict) -> str:
     """Render the full markdown report body (without frontmatter) as a string."""
     findings = d.get("findings") or []
     date = d["generated"][:10]
+
+    # ADR-6 (spec 032): the property name shown in the T5.1 disclosure is always
+    # derived from the active profile's configured parent marker — never
+    # hardcoded to "up" — via the same marker_word() SSoT the rest of the
+    # pipeline uses.
+    conventions = resolve_conventions(
+        profile_override=d.get("profile"), profiles_dir=DEFAULT_PROFILES_DIR
+    )
+    up_property = marker_word(conventions.parent_marker)
 
     ack_days = d.get("advisory_pushback_days") or 30
     parts: list[str] = []
@@ -384,7 +419,7 @@ def render_report(d: dict) -> str:
     parts += _render_preamble(d)
     parts += _render_summary(findings)
     for tier in ("integrity", "structure", "advisory"):
-        parts += _render_tier_section(tier, findings, ack_days)
+        parts += _render_tier_section(tier, findings, up_property, ack_days)
 
     return "\n".join(parts)
 

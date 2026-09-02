@@ -312,3 +312,32 @@ vault-wide. From the same handoff, no action needed: `kado-search byContent` is 
 callers); `_hints` responses are optional and currently ignored. Source:
 `_inbox/from-kado/2026-06-24_kado-to-tomo_graph-tool-and-search-ranking.md`; Kado ADR-002 (disclosure
 guard) / ADR-003 (`_hints` contract).
+
+## OPEN — `garden-audit-render.py` is 1059 LOC, 2-3.5x over the constitution guideline
+
+Flagged by the Phase 5 constitution check of spec 032-up-source-routing (2026-09-02).
+
+MiYo Constitution, Code Quality L2: *"Files implementing core behaviour … should remain small and
+focused. When a file grows beyond ~300–500 LOC of dense logic, it should be refactored into smaller
+modules along its natural seams."*
+
+Measured: **1059 LOC**. It was already **775 LOC** before spec 032 touched it — so the breach is
+pre-existing, but spec 032 added roughly **+284 LOC**, a material contribution rather than pure
+inheritance. L2 requires rationale on violation rather than a hard block, so this did not gate the
+phase.
+
+Natural seams observed while working in it:
+- the three once-per-run summary renderers (`_render_summary`, `_render_unroutable_summary`,
+  `_render_broken_up_split`) — the last two are structural twins sharing a
+  classify → bucket → suppress-at-zero skeleton
+- the withheld-finding surface: `_broken_up_withhold_reason`, `_render_withheld_block`,
+  `_log_unroutable_findings`, plus the three parallel dicts `_UNROUTABLE_REMEDY`,
+  `_UNROUTABLE_REASON_LABEL`, `_UNROUTABLE_SUMMARY_TEXT`
+
+A code-quality reviewer recommended NOT extracting the twin renderers yet — two instances with
+different render shapes make it a complexity wash — and named the trigger: **a third broken_up-scoped
+summary line is the point to extract the shared skeleton.** Same judgment applies to the three
+parallel dicts: a fourth unroutable reason would be the moment to collapse them into one dict of
+records, since a reason currently needs an entry in all three and nothing enforces completeness.
+
+Not spec-032 scope. Pick up when either trigger fires, or as a standalone refactor.

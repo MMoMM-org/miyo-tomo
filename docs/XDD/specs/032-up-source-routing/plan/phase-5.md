@@ -96,4 +96,17 @@ Makes the routing visible to the person approving it.
 
 - [x] **T5.4 Phase Validation** `[activity: validate]`
 
+  > **What this validation actually caught (2026-09-02).** Every test was green and both gates had
+  > passed T5.1, including a byte-level check of the verbatim string — and reading the rendered
+  > report as prose still exposed a self-contradiction: a property-resident finding described its
+  > fix in body language ("the broken `up::`", "remove the broken line") while stating mid-block
+  > that it edits a YAML property. No test finds that, because no test reads the report.
+  > Corrected in `68c4594`, then completed in `553a399` after a reviewer found a fourth site the
+  > first pass missed — the once-per-run summary line, left saying `up::` while the per-finding
+  > line a few lines below now said `up` property. **Fixing two of three eligible sites made the
+  > document less coherent than leaving all three wrong**, because it traded a uniform error for a
+  > contradiction inside one report.
+  > Recorded here so the audit trail shows this was caught BY DESIGN — the read-it-as-a-user step
+  > is what surfaced it — rather than by luck.
+
   - Full suite green. Render a fixture report containing one body-resident, one property-resident and one withheld finding, and read it as a user would: is it obvious which fix does what, and what to do about the withheld one? `ruff` clean.

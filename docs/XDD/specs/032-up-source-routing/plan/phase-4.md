@@ -111,6 +111,29 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
   > `garden_action = "edit_frontmatter"` **directly on the confirmed_item** — it does not keep
   > `remove_up_link` and vary only the emitted kind. So `_GARDEN_EXPECTED_KINDS` needs a NEW KEY,
   > and `GARDEN_ACTION_ORDER` likely needs the value too.
+  >
+  > **SCOPE SETTLED 2026-09-02 — two parts, and NOT in `derive_expected`.**
+  > The Prime step below says "extend `derive_expected`". That function is **unreachable on the
+  > garden path** — `run_diff` returns from `run_diff_garden` at `:612`, before `derive_expected`
+  > is called at `:614`. Same F-J finding that invalidated T4.2's premise, left standing in the
+  > neighbouring task text. Ignore the `derive_expected` mention.
+  >
+  > **(a)** Add `"edit_frontmatter": ("edit_frontmatter",)` to `_GARDEN_EXPECTED_KINDS`
+  > (`instructions-diff.py:~448-453`).
+  >
+  > **(b) MOOT — do not implement.** I assumed withheld findings had to be excluded from the
+  > expectation, or the audit would hard-fail exactly when the system behaves correctly. They are
+  > never there to exclude: `_confirmed_item_from_wire_finding` returns `None` when the router
+  > withholds (`garden-audit-parser.py:449`), and `build_from_report` appends only non-`None`
+  > results (`:525-527`). Withheld findings live solely in the `unroutable` envelope key, which
+  > `run_diff_garden` never reads. The coverage audit is already correct here — an exclusion would
+  > be code handling a state that cannot occur.
+  >
+  > **(c)** Add the matching `elif` branch to `_garden_item_covered` (`:~462-493`). **This is the
+  > genuine silent bug.** The function iterates `_GARDEN_EXPECTED_KINDS.get(ga, ())`, so a kind
+  > with no entry yields an empty tuple, the loop body never runs, and it returns `True` **having
+  > checked nothing** — per-item coverage prints `[OK]` for an item it never verified. Part (a)
+  > alone does not fix this; the `elif` must exist here too.
 
   1. **Prime**: `derive_expected` predicts per-kind counts from the parsed decisions. The prediction must model the **routing**, not the finding count — a `broken_up` finding produces either kind, never both.
   2. **Test** (RED):

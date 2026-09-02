@@ -66,7 +66,7 @@ The behavioural change. Everything before this was plumbing.
      - [ ] Inline behaviour is untouched `[ref: CON-7]`
      - [ ] The forbidden fallback cannot occur `[ref: PRD/Business rule 6]`
 
-- [ ] **T3.2 `value` and `expected` construction** `[activity: backend-logic]`
+- [x] **T3.2 `value` and `expected` construction** `[activity: backend-logic]`
 
   > **SEAM against T3.3, settled 2026-09-02.** T3.2 is the **pure transform only**:
   > `_construct_edit_frontmatter_fields(up_value, up_target, choice) -> {operation, value, expected}`.

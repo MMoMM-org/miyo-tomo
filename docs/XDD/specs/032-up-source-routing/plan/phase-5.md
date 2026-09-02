@@ -54,7 +54,7 @@ Makes the routing visible to the person approving it.
   4. **Validate**: render tests pass; `ruff` clean; `# version:` bumped.
   5. **Success**: the user learns the cost **before** approving `[ref: PRD/Feature 4]`
 
-- [ ] **T5.2 Unroutable findings and their remedy** `[activity: frontend-ui]`
+- [x] **T5.2 Unroutable findings and their remedy** `[activity: frontend-ui]`
 
   > **Verbatim string — DO NOT PARAPHRASE** (`solution.md` UI & UX section):
   > ```markdown

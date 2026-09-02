@@ -45,7 +45,7 @@ Makes the declaration site visible to everything downstream, without changing an
      - [ ] The declaration site reaches the finding `[ref: PRD/Feature 1]`
      - [ ] A missing `up_value` stays missing — the sentinel test in Phase 3 depends on it `[ref: SDD/Implementation Gotchas]`
 
-- [ ] **T2.2 Schema declarations** `[activity: data-architecture]` `[parallel: true]`
+- [x] **T2.2 Schema declarations** `[activity: data-architecture]` `[parallel: true]`
 
   1. **Prime**: `detail` is **open** in both schemas — `garden-audit-doc.schema.json:82` and
      `garden-audit-wire.schema.json:78` both set `"additionalProperties": true`. A new field

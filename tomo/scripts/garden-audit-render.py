@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.0
+# version: 0.18.1
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -344,20 +344,32 @@ _UNROUTABLE_SUMMARY_TEXT = {
         "no recorded declaration site for the broken `up::`. Run "
         "`/explore-vault` to refresh the cache, then re-run the audit"
     ),
+    # {prop} substituted with the derived property name (ADR-6) at render
+    # time — never hardcoded to "up" — mirrors _UNROUTABLE_REMEDY's
+    # unsupported-shape template above. This reason only ever arises for a
+    # frontmatter-sourced finding, so "property" is the correct noun here,
+    # not the inline-marker "up::" spelling.
     "unsupported-shape": (
-        "a map-shaped `up::` value this fix does not yet support — not a "
-        "stale cache, edit the property by hand"
+        "a map-shaped `{prop}` property value this fix does not yet support "
+        "— not a stale cache, edit the property by hand"
     ),
 }
 
 
-def _render_unroutable_summary(findings: list[dict]) -> list[str]:
+def _render_unroutable_summary(findings: list[dict], up_property: str) -> list[str]:
     """Once-per-run summary of withheld findings (PRD Should-have: unroutable
     summary; ADR-4-adjacent observability). In addition to the per-finding
     reason + remedy blocks, not a replacement for them (SDD render shape) —
     the measured first-run reality is that EVERY broken_up finding can be
     withheld at once, and the reader must not have to infer the collective
-    remedy from N identical blocks."""
+    remedy from N identical blocks.
+
+    ``up_property`` fills the "unsupported-shape" template's ``{prop}`` slot
+    (ADR-6, derived — never hardcoded), the same substitution
+    _render_withheld_block applies to the per-finding remedy for the same
+    reason; the other two reasons have no placeholder, so .format is a no-op
+    for them.
+    """
     counts: dict[str, int] = {}
     for f in findings:
         reason = _broken_up_withhold_reason(f)
@@ -373,7 +385,8 @@ def _render_unroutable_summary(findings: list[dict]) -> list[str]:
         n = counts.get(reason, 0)
         if n:
             label = _UNROUTABLE_REASON_LABEL[reason]
-            lines.append(f"- {n} {label} — {_UNROUTABLE_SUMMARY_TEXT[reason]}.")
+            text = _UNROUTABLE_SUMMARY_TEXT[reason].format(prop=up_property)
+            lines.append(f"- {n} {label} — {text}.")
     lines.append("")
     return lines
 
@@ -629,7 +642,7 @@ def render_report(d: dict) -> str:
     parts += _render_preamble(d)
     parts += _render_summary(findings)
     parts += _render_broken_up_split(findings)
-    parts += _render_unroutable_summary(findings)
+    parts += _render_unroutable_summary(findings, up_property)
     for tier in ("integrity", "structure", "advisory"):
         parts += _render_tier_section(tier, findings, up_property, ack_days)
 

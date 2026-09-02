@@ -1631,3 +1631,141 @@ class TestUnsupportedShapeRemedyLanguage:
         assert "`parent` property has a value shape" in report
         assert "`up::` property" not in report
         assert "`up` property" not in report
+
+
+# ---------------------------------------------------------------------------
+# Fix-b (Phase 5 follow-up to 68c4594): the fourth site. 68c4594 fixed
+# property-language in the **Fix:** line, the **Repoint to:** hint, and
+# _UNROUTABLE_REMEDY["unsupported-shape"] (the per-finding remedy) — but
+# missed _UNROUTABLE_SUMMARY_TEXT["unsupported-shape"] (the once-per-run
+# Summary-section line, _render_unroutable_summary). That line still said
+# "a map-shaped `up::` value" — the SAME self-contradiction 68c4594 fixed
+# elsewhere (inline-marker naming + "edit the property by hand" in one
+# sentence), and now inconsistent with the per-finding remedy a few lines
+# below it in the SAME report.
+#
+# no-declaration-site's Summary text is deliberately UNCHANGED: that reason
+# is not gated to frontmatter (it fires when the declaration site is
+# unknown), so inline-marker naming is correct there and matches its own
+# untouched per-finding remedy. Same for stale-cache (spec-locked verbatim).
+# ---------------------------------------------------------------------------
+
+
+def _line_containing(report: str, needle: str) -> str:
+    for line in report.splitlines():
+        if needle in line:
+            return line
+    raise AssertionError(f"no line containing {needle!r} in report:\n{report}")
+
+
+class TestUnsupportedShapeSummaryLanguage:
+    def test_summary_line_names_property_not_up_marker(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        summary_line = _line_containing(report, "unsupported value shape")
+        assert "`up::`" not in summary_line
+        assert "`up` property" in summary_line
+
+    def test_summary_and_per_finding_remedy_agree_on_noun(self):
+        # This is the assertion that would have caught the miss: both lines
+        # describe the SAME finding and must use the same noun for it.
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        summary_line = _line_containing(report, "unsupported value shape")
+        remedy_line = _line_containing(report, "Not fixable this run")
+        assert "`up` property" in summary_line
+        assert "`up` property" in remedy_line
+
+    def test_summary_line_uses_derived_property_non_default_marker(
+        self, tmp_path, monkeypatch
+    ):
+        # ADR-6 proof — a single-marker test never exposes a hardcoded "up".
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        summary_line = _line_containing(report, "unsupported value shape")
+        assert "`parent` property" in summary_line
+        assert "`up`" not in summary_line
+        assert "`up::`" not in summary_line
+
+    def test_no_declaration_site_summary_text_unchanged_verbatim(self):
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        summary_line = _line_containing(report, "no declaration site")
+        assert summary_line == (
+            "- 1 no declaration site — no recorded declaration site for the "
+            "broken `up::`. Run `/explore-vault` to refresh the cache, then "
+            "re-run the audit."
+        )
+
+    def test_stale_cache_summary_text_unchanged_verbatim(self):
+        f = _make_broken_up_finding("F01")
+        report = _render_report(_make_doc(findings=[f]))
+        summary_line = _line_containing(report, "stale cache")
+        assert summary_line == (
+            "- 1 stale cache — the discovery cache predates property routing. "
+            "Run `/explore-vault` to refresh it, then re-run the audit."
+        )
+
+    def test_mixed_doc_body_resident_output_byte_identical_con7(self):
+        # CON-7: prove the Summary-line fix leaves a body-resident (inline
+        # up_source) finding's report untouched, the way 68c4594 proved it
+        # for the Fix/Repoint lines — load the module as it stood right
+        # before this fix (68c4594) under a DISTINCT module name, render a
+        # MIXED doc (one withheld unsupported-shape finding alongside one
+        # routable inline finding) through both, and assert equality on
+        # everything except the one Summary line this fix intentionally
+        # changes.
+        import subprocess
+        import tempfile
+
+        pre_fix_sha = "68c4594"
+        content = subprocess.run(
+            ["git", "show", f"{pre_fix_sha}:tomo/scripts/garden-audit-render.py"],
+            cwd=_ROOT, capture_output=True, check=True, text=True,
+        ).stdout
+
+        with tempfile.TemporaryDirectory() as td:
+            old_path = pathlib.Path(td) / "garden_audit_render_pre_phase5.py"
+            old_spec = importlib.util.spec_from_file_location(
+                "garden_audit_render_pre_phase5", old_path
+            )
+            old_path.write_text(content, encoding="utf-8")
+            old_gar = importlib.util.module_from_spec(old_spec)
+            old_spec.loader.exec_module(old_gar)
+
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="frontmatter", up_value={"a": 1}
+            ),  # unsupported-shape — withheld, Summary line changes
+            _make_broken_up_finding(
+                "F02", up_source="inline", up_value="[[Alte MOC]]"
+            ),  # routable — untouched by this fix
+        ]
+        doc = _make_doc(findings=findings)
+
+        old_report = old_gar.render_report(doc)
+        new_report = gar.render_report(doc)
+
+        old_lines = old_report.splitlines()
+        new_lines = new_report.splitlines()
+        assert len(old_lines) == len(new_lines)
+        changed = [
+            i for i, (o, n) in enumerate(zip(old_lines, new_lines)) if o != n
+        ]
+        assert len(changed) == 1, (
+            f"expected exactly one changed line, got {changed}:\n"
+            f"old={[old_lines[i] for i in changed]}\n"
+            f"new={[new_lines[i] for i in changed]}"
+        )
+        assert "unsupported value shape" in old_lines[changed[0]]
+        assert "unsupported value shape" in new_lines[changed[0]]

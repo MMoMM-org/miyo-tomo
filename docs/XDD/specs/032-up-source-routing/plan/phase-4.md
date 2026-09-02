@@ -53,6 +53,22 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
 
 - [ ] **T4.2 Coverage audit registration** `[activity: backend-logic]`
 
+  > **SCOPE CORRECTION (2026-09-02).** `run_diff` **dispatches on document shape** at
+  > `instructions-diff.py:~610`: `if _is_garden_parsed(parsed): return run_diff_garden(...)`.
+  > `broken_up` findings are `garden_action` items, so spec 032's documents take the **garden**
+  > branch. `derive_expected` is called at exactly one site — line 614, **after** that return —
+  > so it, the counts initialiser and `ACTION_ORDER` are all **unreachable for this spec's data**.
+  > Furthermore `run_diff_garden:~529-531` already appends unknown kinds dynamically
+  > (`all_kinds = GARDEN_ACTION_ORDER + [k for k in sorted(actual_counts) if k not in ...]`),
+  > so there is **no silent under-count on the garden path** — the premise this task was
+  > written on does not hold here.
+  > **Resolution:** the `ACTION_ORDER` + counts-initialiser registration is KEPT as
+  > forward-compatible hygiene (harmless, correct if a non-garden flow ever emits the kind).
+  > The real coverage-audit gap — `_GARDEN_EXPECTED_KINDS` not knowing that a
+  > frontmatter-routed finding owes `edit_frontmatter` — **moves to T4.3**, which was already
+  > held pending Phase 3's routing rule. That gap fails **loudly** (`[DIFF]` on two rows →
+  > `hard_fail`), not silently.
+
   1. **Prime**: Read `run_diff` at `:645-659`. Test file is `tests/test-instructions-diff.py`
      (hyphenated). Write the tests as **invariants**, not as assertions about the current bug.
      A test that asserts the pre-fix symptom passes before the fix and fails after, so it has to
@@ -72,6 +88,18 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
   5. **Success**: an unaudited property action is impossible `[ref: PRD/Risks; row 1]`
 
 - [ ] **T4.3 Expectation derivation** `[activity: backend-logic]`
+
+  > **SCOPE EXPANDED (2026-09-02)** — absorbs T4.2's real deliverable. The coverage audit for
+  > spec 032 runs through `run_diff_garden`, whose expected side is built from
+  > `_GARDEN_EXPECTED_KINDS` (`instructions-diff.py:~447-452`), **not** from `derive_expected`.
+  > That map currently says `"remove_up_link": ("remove_up_link",)`. After this spec, a
+  > **frontmatter-sourced** finding with the same `garden_action` owes `edit_frontmatter`
+  > instead. So the mapping must become **routing-aware**, branching on the same `up_source`
+  > the parser used — which is exactly why this task waits for Phase 3.
+  > Expectation and emission must share ONE routing rule; two independently-authored rules that
+  > must agree is the divergence this task exists to prevent.
+  > Note `_GARDEN_EXPECTED_KINDS` is keyed by `garden_action` while its values are instruction
+  > kinds — the routing decision changes the VALUE, not the key.
 
   1. **Prime**: `derive_expected` predicts per-kind counts from the parsed decisions. The prediction must model the **routing**, not the finding count — a `broken_up` finding produces either kind, never both.
   2. **Test** (RED):
@@ -105,4 +133,10 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
 
 - [ ] **T4.6 Phase Validation** `[activity: validate]`
 
-  - Full suite green. Walk all five sites and confirm each has a passing test: producer schema, mirror schema, `instructions-diff`, `instructions-dryrun`, `render_md`, `_REQUIRED_PATH_FIELDS`. Confirm the pre-registration blind-spot test now fails for the right reason. `ruff` clean.
+  - Full suite green. Walk every site and confirm each has a passing test that could actually
+    fail: producer schema, mirror schema, `instructions-dryrun`, `render_md`,
+    `_REQUIRED_PATH_FIELDS`, and — for `instructions-diff` — **the garden path specifically**
+    (`run_diff_garden` + `_GARDEN_EXPECTED_KINDS`), which is the branch this spec's documents
+    actually take. Do **not** accept an `ACTION_ORDER`/`derive_expected` test as evidence that
+    the coverage audit is covered: that path is unreachable for garden-audit documents (see the
+    T4.2 scope correction above). `ruff` clean.

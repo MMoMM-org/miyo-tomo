@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
 Runs six checks over the MOC-structure cache, kado-graph-audit results, and
@@ -160,12 +160,22 @@ def _check_broken_up(
         path = entry.get("path", "")
         if exclusions and exclusions.is_excluded(entry, "broken_up"):
             continue
+        # ADR-3: a key's ABSENCE from the cache entry (stale pre-032 cache)
+        # must survive as absence from detail, not collapse into a defaulted
+        # None — copy each key only when the entry actually has it, verbatim,
+        # no transform. up_source has been written for a long time so its
+        # absence is unlikely, but the same reasoning applies regardless.
+        detail: dict = {"up_target": entry.get("up_target")}
+        if "up_source" in entry:
+            detail["up_source"] = entry["up_source"]
+        if "up_value" in entry:
+            detail["up_value"] = entry["up_value"]
         findings.append(_finding(
             _make_id(counter),
             "broken_up",
             path,
             entry.get("stem"),
-            {"up_target": entry.get("up_target")},
+            detail,
         ))
     return findings
 

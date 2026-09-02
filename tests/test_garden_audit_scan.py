@@ -49,17 +49,25 @@ run_scan = garden_audit.run_scan
 # Fixtures
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Sentinel distinguishing "kwarg not passed" (key must be ABSENT from the
+# entry dict, mimicking a stale pre-032 cache) from an explicit None (key
+# present with value None, e.g. an inline up:: declaration).
+_UNSET = object()
+
+
 def _entry(
     stem: str,
     *,
     kind: str = "note",
     up_state: str = "valid",
     up_target: str | None = None,
+    up_source: str | None = _UNSET,
+    up_value=_UNSET,
     topics: list[str] | None = None,
     tags: list[str] | None = None,
     path: str | None = None,
 ) -> dict:
-    return {
+    entry: dict = {
         "path": path or f"Notes/{stem}.md",
         "stem": stem,
         "kind": kind,
@@ -69,6 +77,11 @@ def _entry(
         "topics": topics or [],
         "tags": tags or [],
     }
+    if up_source is not _UNSET:
+        entry["up_source"] = up_source
+    if up_value is not _UNSET:
+        entry["up_value"] = up_value
+    return entry
 
 
 def _moc(stem: str, *, topics: list[str] | None = None, up_state: str = "valid") -> dict:
@@ -206,6 +219,119 @@ def test_broken_up_is_cache_only_zero_graph_audit_calls():
         f"graph_audit call count must not scale with broken_up entries; "
         f"1 entry={graph_calls_one_broken}, 5 entries={len(graph_calls)}"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Broken_up finding detail carries declaration site + value (spec 032 T2.1)
+#
+# up_value has THREE distinguishable cache-entry states (ADR-3) and the
+# finding detail must preserve exactly which one it saw:
+#   present, real value  → detail carries the value verbatim (no transform)
+#   present, None         → detail carries None (inline declaration)
+#   absent entirely        → detail must ALSO lack the key (stale pre-032 cache)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_broken_up_frontmatter_source_carries_source_and_verbatim_value():
+    """Frontmatter-sourced broken entry: detail carries up_source=='frontmatter'
+    and the observed up_value verbatim — no unwrapping/normalising. [ref: PRD/AC-F1.2]
+    """
+    entries = [
+        _moc("PKM"),
+        _entry(
+            "Broken Note",
+            up_state="broken",
+            up_target="Deleted MOC",
+            up_source="frontmatter",
+            up_value=["Deleted MOC", "Other Ref"],
+        ),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    f = next(x for x in doc["findings"] if x["check"] == "broken_up")
+    assert f["detail"]["up_source"] == "frontmatter"
+    # Verbatim passthrough: still a list, same contents, same order — no
+    # unwrap_list_repr, no normalising into/out of a list, no str().
+    assert f["detail"]["up_value"] == ["Deleted MOC", "Other Ref"]
+    assert isinstance(f["detail"]["up_value"], list)
+
+
+def test_broken_up_inline_source_carries_none_up_value():
+    """Inline-sourced broken entry: detail carries up_source=='inline' and
+    up_value is None — the key is PRESENT with value None, distinct from
+    the key being absent. [ref: PRD/AC-F1.1]
+    """
+    entries = [
+        _moc("PKM"),
+        _entry(
+            "Broken Note",
+            up_state="broken",
+            up_target="Deleted MOC",
+            up_source="inline",
+            up_value=None,
+        ),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    f = next(x for x in doc["findings"] if x["check"] == "broken_up")
+    assert f["detail"]["up_source"] == "inline"
+    assert "up_value" in f["detail"]
+    assert f["detail"]["up_value"] is None
+
+
+def test_broken_up_missing_up_value_key_stays_missing():
+    """CRITICAL (ADR-3): a cache entry built before spec 032 lacks the
+    up_value key entirely (stale cache). The finding detail must NOT
+    default it to None — the key's ABSENCE must survive the hop, because
+    Phase 3's sentinel test depends on distinguishing absent from None.
+
+    A defaulting implementation (detail["up_value"] = entry.get("up_value"))
+    would make this assertion fail, since it converts absence into None.
+    """
+    entries = [
+        _moc("PKM"),
+        # No up_source/up_value kwargs passed — _entry() omits both keys.
+        _entry("Broken Note", up_state="broken", up_target="Deleted MOC"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    f = next(x for x in doc["findings"] if x["check"] == "broken_up")
+    assert "up_value" not in f["detail"], (
+        "up_value key must be ABSENT when the cache entry lacks it, not "
+        "defaulted to None — this destroys the stale-cache signal (ADR-3)"
+    )
+
+
+def test_broken_up_no_declaration_produces_no_finding():
+    """A note with no up declaration (up_state != 'broken') produces no
+    broken_up finding — unchanged behaviour. [ref: PRD/AC-F1.3]
+    """
+    entries = [
+        _moc("PKM"),
+        _entry("Unfiled Note", up_state="absent", up_source=None, up_value=None),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    assert not any(f["check"] == "broken_up" for f in doc["findings"])
+
+
+def test_broken_up_up_target_and_other_fields_unchanged():
+    """CON-7: up_target and every other existing finding field are unchanged
+    by the up_source/up_value addition.
+    """
+    entries = [
+        _moc("PKM"),
+        _entry(
+            "Broken Note",
+            up_state="broken",
+            up_target="Deleted MOC",
+            up_source="frontmatter",
+            up_value="Deleted MOC",
+        ),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    f = next(x for x in doc["findings"] if x["check"] == "broken_up")
+    assert f["check"] == "broken_up"
+    assert f["tier"] == "integrity"
+    assert f["fixable"] is True
+    assert f["target"] == {"path": "Notes/Broken Note.md", "stem": "Broken Note"}
+    assert f["detail"]["up_target"] == "Deleted MOC"
+    assert f["decision"] == {"selected": False, "action": None}
 
 
 # ──────────────────────────────────────────────────────────────────────────────

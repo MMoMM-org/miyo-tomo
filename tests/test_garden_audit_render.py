@@ -275,10 +275,10 @@ class TestReportStructure:
         assert "## Structure" not in report
 
     def test_fixable_finding_has_checkbox(self):
-        findings = [_make_broken_up_finding()]
+        findings = [_make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")]
         d = _make_doc(findings=findings)
         report = _render_report(d)
-        assert "- [" in report  # checkbox pattern
+        assert "- [x] Apply" in report
 
     def test_fixable_finding_preselected_checked(self):
         # decision.selected=True → pre-checked box. Routable (T5.2): a

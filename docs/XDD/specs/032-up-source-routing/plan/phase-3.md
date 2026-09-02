@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Route and emit"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -142,7 +142,7 @@ The behavioural change. Everything before this was plumbing.
   4. **Validate**: unit tests pass; `# version:` bumped.
   5. **Success**: the action matches the shipped contract exactly `[ref: CON-1]`
 
-- [ ] **T3.4 Stale-cache withholding** `[activity: backend-logic]`
+- [x] **T3.4 Stale-cache withholding** `[activity: backend-logic]`
 
   1. **Prime**: `[ref: PRD/Feature 6]` and **ADR-5**. Withholding is the *specified* behaviour, not a failure mode.
   2. **Test** (RED):
@@ -154,6 +154,6 @@ The behavioural change. Everything before this was plumbing.
   4. **Validate**: unit tests pass.
   5. **Success**: a stale cache degrades **visibly**, never silently and never wrongly `[ref: ADR-5]`
 
-- [ ] **T3.5 Phase Validation** `[activity: validate]`
+- [x] **T3.5 Phase Validation** `[activity: validate]`
 
   - Full suite green. Walk the SDD's traced walkthrough table and confirm each row has a named test. Confirm by grep that no code path maps a `frontmatter` finding to `remove_up_link` or `add_relationship`. `ruff` clean.

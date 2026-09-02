@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.0
+# version: 0.9.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -169,6 +169,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
         "update_log_link": 0,
         "delete_source": 0,
         "skip": 0,
+        "edit_frontmatter": 0,
     }
 
     by_item: dict[str, dict] = {}
@@ -429,7 +430,7 @@ def summarize_actual(instrs: dict) -> dict:
 ACTION_ORDER = [
     "move_note", "create_moc", "link_to_moc",
     "update_tracker", "update_log_entry", "update_log_link",
-    "delete_source", "skip",
+    "delete_source", "skip", "edit_frontmatter",
 ]
 
 # ── Garden-audit mode (spec 030) ──────────────────────────────────────────────

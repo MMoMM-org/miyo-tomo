@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test-instructions-diff.py — Unit tests for instructions-diff.
 
 Covers:
@@ -8,6 +8,8 @@ Covers:
   - Link mismatch: wrong parent_mocs coverage → exit 1
   - Orphan create_moc observation (warning, not fail)
   - Daily-only delete-source inference reconciles on both sides
+  - edit_frontmatter registration (spec 032 T4.2): the kind must be counted
+    in the ACTION_ORDER reconciliation table, not just generically tallied
 
 Each test builds in-memory dicts, invokes run_diff, and asserts exit code
 + observation count. We capture stdout so test output stays clean.
@@ -380,6 +382,121 @@ def test_batched_link_to_moc_coverage_gap_fails():
     print("[PASS] #70 batched link_to_moc coverage gap (dropped bullet) → rc=1")
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# edit_frontmatter registration (spec 032 T4.2)
+#
+# An unregistered action kind is counted generically by summarize_actual, but
+# skipped by run_diff's ACTION_ORDER reconciliation loop — so the audit exits
+# rc=0 while the kind's actions go completely unreconciled (spec 031 hit the
+# identical trap for move_asset). These tests assert the invariant that must
+# hold once a kind is registered, not the buggy pre-registration behaviour —
+# they are written to stay true forever, not to be inverted after the fix.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _edit_frontmatter_action(n: str, path: str) -> dict:
+    return {
+        "id": f"edit-{n}", "action": "edit_frontmatter",
+        "path": path, "property": "up", "operation": "remove",
+        "expected": "[[Old Parent]]",
+    }
+
+
+def test_edit_frontmatter_action_count_reconciles_with_total():
+    """Primary invariant: for ANY instruction set, the actual count summed
+    over ACTION_ORDER must equal action_count — including a set carrying
+    edit_frontmatter actions."""
+    actions = [
+        _edit_frontmatter_action("1", "Atlas/Japan.md"),
+        _edit_frontmatter_action("2", "Atlas/Sapporo.md"),
+        _edit_frontmatter_action("3", "Atlas/Asahikawa.md"),
+    ]
+    instrs = {"schema_version": "1", "type": "tomo-instructions",
+              "action_count": len(actions), "actions": actions}
+
+    actual = diff.summarize_actual(instrs)
+    total_actual = sum(actual["counts"].get(k, 0) for k in diff.ACTION_ORDER)
+
+    _must(
+        total_actual == instrs["action_count"],
+        f"action_count={instrs['action_count']} but ACTION_ORDER-summed "
+        f"total={total_actual} — edit_frontmatter is uncounted in the table",
+    )
+    print("[PASS] edit_frontmatter: action_count reconciles with ACTION_ORDER total")
+
+
+def test_edit_frontmatter_contributes_n_to_total():
+    """N edit_frontmatter actions contribute exactly N to the ACTION_ORDER
+    total — not zero, and not silently absorbed into another kind."""
+    n = 5
+    actions = [_edit_frontmatter_action(str(i), f"Atlas/Note{i}.md") for i in range(n)]
+    instrs = {"schema_version": "1", "type": "tomo-instructions",
+              "action_count": n, "actions": actions}
+
+    actual = diff.summarize_actual(instrs)
+    total_actual = sum(actual["counts"].get(k, 0) for k in diff.ACTION_ORDER)
+
+    _must(total_actual == n, f"expected {n} edit_frontmatter actions in TOTAL, got {total_actual}")
+    print("[PASS] edit_frontmatter: N actions contribute N to TOTAL")
+
+
+def _patched_derive_expected(n: int):
+    """Wrap the real derive_expected to also report an edit_frontmatter
+    count of n. Deriving that count from parsed suggestions is T4.3's job
+    (deliberately held pending Phase 3's routing rule) — this simulates an
+    already-correct expected count so these tests can prove the ACTION_ORDER
+    registration wires the kind into pass/fail, not just into the display."""
+    original = diff.derive_expected
+
+    def _patched(parsed, tag_handler_groups=None):
+        expected = original(parsed, tag_handler_groups)
+        expected["counts"]["edit_frontmatter"] = n
+        return expected
+
+    return original, _patched
+
+
+def test_edit_frontmatter_expected_matches_actual_passes():
+    """expected N, actual N → pass, and the kind is named in the printed
+    table (not silently absorbed into the TOTAL row alone)."""
+    n = 3
+    actions = [_edit_frontmatter_action(str(i), f"Atlas/Note{i}.md") for i in range(n)]
+    instrs = {"schema_version": "1", "type": "tomo-instructions",
+              "action_count": n, "actions": actions}
+    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+
+    original, patched = _patched_derive_expected(n)
+    diff.derive_expected = patched
+    try:
+        rc, _obs, out = _run(parsed, instrs)
+    finally:
+        diff.derive_expected = original
+
+    _must(rc == 0, f"expected N == actual N for edit_frontmatter must pass, got rc={rc}\n{out}")
+    _must("edit_frontmatter" in out, "edit_frontmatter must appear in the printed table")
+    print("[PASS] edit_frontmatter: expected N == actual N → pass, kind shown in table")
+
+
+def test_edit_frontmatter_expected_mismatch_hard_fails():
+    """expected N, actual N-1 → hard fail. An unreconciled edit_frontmatter
+    action must not slip through as green."""
+    n = 3
+    actions = [_edit_frontmatter_action(str(i), f"Atlas/Note{i}.md") for i in range(n - 1)]
+    instrs = {"schema_version": "1", "type": "tomo-instructions",
+              "action_count": n - 1, "actions": actions}
+    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+
+    original, patched = _patched_derive_expected(n)
+    diff.derive_expected = patched
+    try:
+        rc, _obs, out = _run(parsed, instrs)
+    finally:
+        diff.derive_expected = original
+
+    _must(rc == 1, f"expected N, actual N-1 for edit_frontmatter must hard-fail, got rc={rc}\n{out}")
+    _must("[DIFF]" in out, "mismatch must be marked [DIFF] in the printed table")
+    print("[PASS] edit_frontmatter: expected N, actual N-1 → hard fail")
+
+
 def main() -> int:
     test_happy_path_reconciles()
     test_missing_instruction_fails()
@@ -388,6 +505,10 @@ def main() -> int:
     test_truly_empty_moc_warns()
     test_daily_only_delete_inference_reconciles()
     test_batched_link_to_moc_reconciles()
+    test_edit_frontmatter_action_count_reconciles_with_total()
+    test_edit_frontmatter_contributes_n_to_total()
+    test_edit_frontmatter_expected_matches_actual_passes()
+    test_edit_frontmatter_expected_mismatch_hard_fails()
     print("\n\u2713 All instructions-diff tests passed.")
     return 0
 

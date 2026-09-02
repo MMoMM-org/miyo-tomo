@@ -9,6 +9,7 @@ falling through to the "(unknown action: ...)" placeholder.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -71,14 +72,14 @@ def test_renders_note_property_and_change_for_remove():
 def test_renders_list_value_without_normalisation():
     action = _set_action(value=["A", "B"])
     md = _render_action_md(action, {})
-    # The raw list repr must appear — no flattening/unwrapping/str()-ing.
-    assert repr(["A", "B"]) in md
+    # The raw list, in JSON vocabulary, must appear — no flattening/unwrapping/str()-ing.
+    assert json.dumps(["A", "B"]) in md
 
 
 def test_renders_null_expected_without_normalisation():
     action = _remove_action(expected=None)
     md = _render_action_md(action, {})
-    assert "None" in md
+    assert "null" in md
 
 
 def test_section_routing_is_moc_links():

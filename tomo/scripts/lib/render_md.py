@@ -1,4 +1,4 @@
-# version: 0.7.1
+# version: 0.7.2
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -8,6 +8,7 @@ inputs are the already-built actions, run metadata, and config.
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -239,8 +240,9 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         target = action.get("path", "")
         prop = action.get("property", "")
         op = action.get("operation")
-        # value/expected may be a scalar, a list, or null — !r reprs whatever
-        # is actually there, never normalises/unwraps/str()s it.
+        # value/expected may be a scalar, a list, or null — json.dumps renders
+        # whatever is actually there in the artefact's own vocabulary
+        # (null/[]/"" not None/[]/''), never normalises/unwraps/str()s it.
         verb = "Remove" if op == "remove" else "Set"
         lines = [f"{heading_prefix}{verb} `{prop}` in [[{_stem(target)}]]", "- [ ] Applied"]
         lines.append(f"- **Note:** [[{_stem(target)}]]")
@@ -248,11 +250,11 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         if op == "remove":
             lines.append("- **Change:** remove this property")
         else:
-            lines.append(f"- **Change:** set to `{action.get('value')!r}`")
+            lines.append(f"- **Change:** set to `{json.dumps(action.get('value'))}`")
         if "expected_absent" in action:
             lines.append("- **Guard:** property must currently be absent")
         else:
-            lines.append(f"- **Guard:** current value must equal `{action.get('expected')!r}`")
+            lines.append(f"- **Guard:** current value must equal `{json.dumps(action.get('expected'))}`")
         return "\n".join(lines)
 
     # Fallback — unknown action type

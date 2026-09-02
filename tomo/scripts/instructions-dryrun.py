@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.3
+# version: 0.2.4
 """instructions-dryrun.py — Validate an instructions.json is Tomo-Hashi-ready.
 
 Reads an instructions.json file and prints a one-line summary of each action
@@ -87,10 +87,11 @@ def describe(action: dict) -> str:
     if kind == "edit_frontmatter":
         prop = action.get("property")
         op = action.get("operation")
-        # value/expected may be a scalar, a list, or null — !r reprs whatever
-        # is actually there, never normalises/unwraps/str()s it.
-        change = f"remove {prop!r}" if op == "remove" else f"set {prop!r} = {action.get('value')!r}"
-        guard = "expected_absent=True" if "expected_absent" in action else f"expected={action.get('expected')!r}"
+        # value/expected may be a scalar, a list, or null — json.dumps renders
+        # whatever is actually there in the artefact's own vocabulary
+        # (null/[]/"" not None/[]/''), never normalises/unwraps/str()s it.
+        change = f"remove {prop!r}" if op == "remove" else f"set {prop!r} = {json.dumps(action.get('value'))}"
+        guard = "expected_absent=True" if "expected_absent" in action else f"expected={json.dumps(action.get('expected'))}"
         return f"{aid} edit_frontmatter: {action.get('path')} {change} ({guard})"
     return f"{aid} UNKNOWN ACTION: {kind}"
 

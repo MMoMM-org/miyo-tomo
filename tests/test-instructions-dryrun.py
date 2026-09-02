@@ -20,6 +20,7 @@ instructions-diff.py sibling.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -130,8 +131,8 @@ def test_describe_names_note_property_and_change():
 def test_describe_faithfully_renders_list_expected_no_normalisation():
     action = _remove_action(expected=["Old MOC", "Other MOC"])
     text = dryrun.describe(action)
-    # The raw Python list repr must appear verbatim — no unwrap, no str() flattening.
-    assert repr(["Old MOC", "Other MOC"]) in text
+    # The raw list, in JSON vocabulary, must appear verbatim — no unwrap, no str() flattening.
+    assert json.dumps(["Old MOC", "Other MOC"]) in text
 
 
 def test_describe_faithfully_renders_null_expected():
@@ -139,7 +140,7 @@ def test_describe_faithfully_renders_null_expected():
     del action["expected"]
     action["expected"] = None
     text = dryrun.describe(action)
-    assert "None" in text
+    assert "null" in text
 
 
 def test_edit_frontmatter_registered_in_required_fields():

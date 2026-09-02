@@ -1,4 +1,4 @@
-# version: 0.2.4
+# version: 0.2.5
 """up_parse.py — SSoT for "does this note declare a parent?"
 
 Parses both inline `up::` (Dataview-style) and frontmatter `up:` values
@@ -41,14 +41,18 @@ from lib.profile_conventions import marker_word
 
 @dataclass
 class UpParseResult:
-    """Result of parsing the `up` relationship from a raw note."""
+    """Result of parsing the `up` relationship from a raw note.
+
+    `raw_value` carries the frontmatter property value verbatim, so a caller can
+    guard an edit against what the note actually holds. It is None for an inline
+    declaration (there is no property to guard) and also None when the property is
+    absent or empty — that path falls through to the shared "absent" return rather
+    than the frontmatter return site.
+    """
 
     target: Optional[str]  # parent stem, anchor-stripped; None when absent
     source: Optional[str]  # "inline" | "frontmatter" | None
-    raw_value: Any = None  # frontmatter: the property value AS PARSED (list|scalar).
-    # inline: None — there is no property to guard. Also None when the
-    # frontmatter property is absent/empty, since that path falls through to
-    # the shared "absent" return below rather than the frontmatter return site.
+    raw_value: Any = None  # frontmatter: the property value AS PARSED (list|scalar)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Report surface"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -83,7 +83,7 @@ Makes the routing visible to the person approving it.
   4. **Validate**: render tests pass.
   5. **Success**: a withheld finding is actionable, not merely reported `[ref: ADR-5]`
 
-- [ ] **T5.3 Routing split line** `[activity: frontend-ui]` `[parallel: true]`
+- [x] **T5.3 Routing split line** `[activity: frontend-ui]` `[parallel: true]`
 
   1. **Prime**: `[ref: SDD/ADR-4]`. One line, once per run.
   2. **Test** (RED):
@@ -94,6 +94,6 @@ Makes the routing visible to the person approving it.
   4. **Validate**: render tests pass.
   5. **Success**: the population is visible to the user, not only to an audit `[ref: ADR-4]`
 
-- [ ] **T5.4 Phase Validation** `[activity: validate]`
+- [x] **T5.4 Phase Validation** `[activity: validate]`
 
   - Full suite green. Render a fixture report containing one body-resident, one property-resident and one withheld finding, and read it as a user would: is it obvious which fix does what, and what to do about the withheld one? `ruff` clean.

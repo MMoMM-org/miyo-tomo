@@ -100,7 +100,7 @@ forgotten; spec 031 hit the same trap. P5 is the user-visible surface. P6 proves
 - [x] [Phase 2: Carry it to the finding](phase-2.md)
 - [ ] [Phase 3: Route and emit](phase-3.md)
 - [ ] [Phase 4: Register the new action kind](phase-4.md)
-- [ ] [Phase 5: Report surface](phase-5.md)
+- [x] [Phase 5: Report surface](phase-5.md)
 - [ ] [Phase 6: Integration, regression and documentation](phase-6.md)
 
 ### Dependency graph

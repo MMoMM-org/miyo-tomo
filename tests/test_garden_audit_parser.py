@@ -19,7 +19,7 @@ Covers:
   CLI main()        — argv dispatch: missing-wire degrade + edited/unedited routing.
   _is_wire_edited   — single-load digest gate (no second file read).
 """
-# version: 0.11.0
+# version: 0.12.0
 import importlib.util
 import json
 import pathlib
@@ -121,10 +121,14 @@ def _orphan(fid="F01", selected=True):
 
 
 def _broken_up_repoint(fid="F01", selected=True):
+    # spec 032: up_source/up_value are always present on a fresh (post-032)
+    # cache entry. Inline declarations carry up_value=None (there is no
+    # frontmatter property to read) — this is the routing branch's normal
+    # inline shape, not a stale cache.
     return _wire_finding(
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
-        {"up_target": "Old MOC"},
+        {"up_target": "Old MOC", "up_source": "inline", "up_value": None},
         decision={"selected": selected, "action": "add_relationship"},
     )
 
@@ -133,8 +137,48 @@ def _broken_up_removal(fid="F01", selected=True):
     return _wire_finding(
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
-        {"up_target": "Deleted MOC"},
+        {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None},
         decision={"selected": selected, "action": "edit_note_text"},
+    )
+
+
+def _broken_up_frontmatter_repoint(fid="F01", selected=True):
+    return _wire_finding(
+        fid, "broken_up", "integrity", True,
+        "Notes/Broken.md", "Broken",
+        {"up_target": "Old MOC", "up_source": "frontmatter",
+         "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"]},
+        decision={"selected": selected, "action": "add_relationship"},
+    )
+
+
+def _broken_up_frontmatter_removal(fid="F01", selected=True):
+    return _wire_finding(
+        fid, "broken_up", "integrity", True,
+        "Notes/Broken.md", "Broken",
+        {"up_target": "Deleted MOC", "up_source": "frontmatter",
+         "up_value": ["[[Deleted MOC]]"]},
+        decision={"selected": selected, "action": "edit_note_text"},
+    )
+
+
+def _broken_up_stale_cache(fid="F01", selected=True, action="edit_note_text"):
+    """A broken_up finding whose cache predates spec 032 — up_value key absent."""
+    return _wire_finding(
+        fid, "broken_up", "integrity", True,
+        "Notes/Broken.md", "Broken",
+        {"up_target": "Old MOC", "up_source": "inline"},  # no up_value key at all
+        decision={"selected": selected, "action": action},
+    )
+
+
+def _broken_up_no_declaration_site(fid="F01", selected=True, action="edit_note_text"):
+    """up_source absent/None on a broken finding — the impossible case, unroutable."""
+    return _wire_finding(
+        fid, "broken_up", "integrity", True,
+        "Notes/Broken.md", "Broken",
+        {"up_target": "Old MOC", "up_source": None, "up_value": "[[Old MOC]]"},
+        decision={"selected": selected, "action": action},
     )
 
 
@@ -356,7 +400,7 @@ class TestBrokenUpListTarget:
         return _wire_finding(
             fid, "broken_up", "integrity", True,
             "Notes/Broken.md", "Broken",
-            {"up_target": ["020 Active MOC"]},
+            {"up_target": ["020 Active MOC"], "up_source": "inline", "up_value": None},
             decision={"selected": True, "action": "edit_note_text"},
         )
 
@@ -378,6 +422,93 @@ class TestBrokenUpListTarget:
 
 
 # ---------------------------------------------------------------------------
+# spec 032 T3.1: garden_action depends on WHERE up:: is declared (up_source),
+# not just the user's remove/repoint choice. ADR-5: never a body-oriented
+# fallback for a frontmatter-sourced finding.
+# ---------------------------------------------------------------------------
+
+class TestBuildFromWireBrokenUpRouting:
+    def test_inline_repoint_emits_add_relationship_byte_identical(self):
+        items = build_from_wire(_make_wire([_broken_up_repoint(selected=True)]))["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["garden_action"] == "add_relationship"
+        assert items[0]["up_line"] == "up:: [[Old MOC]]"
+
+    def test_inline_remove_emits_remove_up_link_byte_identical(self):
+        items = build_from_wire(_make_wire([_broken_up_removal(selected=True)]))["confirmed_items"]
+        assert len(items) == 1
+        c = items[0]
+        assert c["garden_action"] == "remove_up_link"
+        assert c["link"] == "Deleted MOC"
+
+    def test_frontmatter_repoint_emits_edit_frontmatter(self):
+        items = build_from_wire(
+            _make_wire([_broken_up_frontmatter_repoint(selected=True)])
+        )["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["garden_action"] == "edit_frontmatter"
+
+    def test_frontmatter_remove_emits_edit_frontmatter(self):
+        items = build_from_wire(
+            _make_wire([_broken_up_frontmatter_removal(selected=True)])
+        )["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["garden_action"] == "edit_frontmatter"
+
+    def test_mixed_batch_routes_each_by_its_own_note(self):
+        findings = [
+            _broken_up_repoint("F01", selected=True),               # inline repoint
+            _broken_up_frontmatter_removal("F02", selected=True),   # frontmatter remove
+        ]
+        items = build_from_wire(_make_wire(findings))["confirmed_items"]
+        by_id = {c["id"]: c["garden_action"] for c in items}
+        assert by_id == {"F01": "add_relationship", "F02": "edit_frontmatter"}
+
+    def test_up_value_key_absent_is_unroutable_stale_cache(self):
+        result = build_from_wire(_make_wire([_broken_up_stale_cache(selected=True)]))
+        assert result["confirmed_items"] == []
+        assert result["unroutable"] == [
+            {"id": "F01", "path": "Notes/Broken.md", "reason": "stale-cache"}
+        ]
+
+    def test_up_value_present_none_is_not_treated_as_stale(self):
+        # Inline sources legitimately carry up_value=None (ADR-3) — the sentinel
+        # must distinguish this from a genuinely absent key.
+        items = build_from_wire(_make_wire([_broken_up_removal(selected=True)]))["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["garden_action"] == "remove_up_link"
+
+    def test_up_source_none_is_unroutable_no_declaration_site(self):
+        result = build_from_wire(
+            _make_wire([_broken_up_no_declaration_site(selected=True)])
+        )
+        assert result["confirmed_items"] == []
+        assert result["unroutable"] == [
+            {"id": "F01", "path": "Notes/Broken.md", "reason": "no-declaration-site"}
+        ]
+
+    def test_no_frontmatter_finding_ever_emits_body_oriented_action(self):
+        # ADR-5: assert directly across the whole emitted set, not by inspection
+        # of a single happy-path case.
+        findings = [
+            _broken_up_frontmatter_repoint("F01", selected=True),
+            _broken_up_frontmatter_removal("F02", selected=True),
+            _broken_up_repoint("F03", selected=True),
+            _broken_up_removal("F04", selected=True),
+        ]
+        items = build_from_wire(_make_wire(findings))["confirmed_items"]
+        assert len(items) == 4
+        frontmatter_ids = {"F01", "F02"}
+        for c in items:
+            if c["id"] in frontmatter_ids:
+                assert c["garden_action"] == "edit_frontmatter"
+            assert not (
+                c["id"] in frontmatter_ids
+                and c["garden_action"] in ("remove_up_link", "add_relationship")
+            )
+
+
+# ---------------------------------------------------------------------------
 # Markdown render-doc fixtures (drives render → parse round-trip)
 # ---------------------------------------------------------------------------
 
@@ -391,10 +522,12 @@ def _doc_finding_unparented(fid="F01"):
 
 
 def _doc_finding_broken_up_removal(fid="F02"):
+    # spec 032: up_source/up_value present, matching a fresh (post-032) cache.
+    # Inline declarations carry up_value=None (no frontmatter property to read).
     return {
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
-        "detail": {"up_target": "Deleted MOC"},
+        "detail": {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None},
         "decision": {"selected": True, "action": "edit_note_text"},
     }
 
@@ -403,8 +536,48 @@ def _doc_finding_broken_up_repoint(fid="F03"):
     return {
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Repoint Note.md", "stem": "Repoint Note"},
-        "detail": {"up_target": "Old MOC"},
+        "detail": {"up_target": "Old MOC", "up_source": "inline", "up_value": None},
         "decision": {"selected": True, "action": "add_relationship"},
+    }
+
+
+def _doc_finding_broken_up_frontmatter_repoint(fid="F03"):
+    return {
+        "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
+        "target": {"path": "Notes/Repoint Note.md", "stem": "Repoint Note"},
+        "detail": {"up_target": "Old MOC", "up_source": "frontmatter",
+                   "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"]},
+        "decision": {"selected": True, "action": "add_relationship"},
+    }
+
+
+def _doc_finding_broken_up_frontmatter_removal(fid="F02"):
+    return {
+        "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
+        "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
+        "detail": {"up_target": "Deleted MOC", "up_source": "frontmatter",
+                   "up_value": ["[[Deleted MOC]]"]},
+        "decision": {"selected": True, "action": "edit_note_text"},
+    }
+
+
+def _doc_finding_broken_up_stale_cache(fid="F02"):
+    """A broken_up finding whose cache predates spec 032 — up_value key absent."""
+    return {
+        "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
+        "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
+        "detail": {"up_target": "Deleted MOC", "up_source": "inline"},
+        "decision": {"selected": True, "action": "edit_note_text"},
+    }
+
+
+def _doc_finding_broken_up_no_declaration_site(fid="F02"):
+    """up_source absent/None on a broken finding — the impossible case, unroutable."""
+    return {
+        "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
+        "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
+        "detail": {"up_target": "Deleted MOC", "up_source": None, "up_value": "[[Deleted MOC]]"},
+        "decision": {"selected": True, "action": "edit_note_text"},
     }
 
 
@@ -801,6 +974,91 @@ class TestBuildFromReport:
         # covered by TestCliMainDispatch.test_missing_wire_degrades_to_empty.
         md = _full_report(_make_doc([_doc_finding_dead_link("F01")]))
         assert build_from_report(md, {})["confirmed_items"] == []
+
+
+# ---------------------------------------------------------------------------
+# spec 032 T3.1: same routing contract as build_from_wire, joined through the
+# markdown decision map instead of the wire's decision block.
+# ---------------------------------------------------------------------------
+
+class TestBuildFromReportBrokenUpRouting:
+    def test_inline_repoint_emits_add_relationship(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_repoint("F03")]))
+        md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[Chosen MOC]]")
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["garden_action"] == "add_relationship"
+
+    def test_inline_remove_emits_remove_up_link(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_removal("F02")]))
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["garden_action"] == "remove_up_link"
+
+    def test_frontmatter_repoint_emits_edit_frontmatter(self):
+        md, wire = _report_and_wire(
+            _make_doc([_doc_finding_broken_up_frontmatter_repoint("F03")])
+        )
+        md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[Chosen MOC]]")
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["garden_action"] == "edit_frontmatter"
+
+    def test_frontmatter_remove_emits_edit_frontmatter(self):
+        md, wire = _report_and_wire(
+            _make_doc([_doc_finding_broken_up_frontmatter_removal("F02")])
+        )
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["garden_action"] == "edit_frontmatter"
+
+    def test_mixed_batch_routes_each_by_its_own_note(self):
+        doc = _make_doc([
+            _doc_finding_broken_up_removal("F02"),                  # inline remove
+            _doc_finding_broken_up_frontmatter_removal("F03"),      # frontmatter remove
+        ])
+        md, wire = _report_and_wire(doc)
+        items = build_from_report(md, wire)["confirmed_items"]
+        by_id = {c["id"]: c["garden_action"] for c in items}
+        assert by_id == {"F02": "remove_up_link", "F03": "edit_frontmatter"}
+
+    def test_up_value_key_absent_is_unroutable_stale_cache(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_stale_cache("F02")]))
+        result = build_from_report(md, wire)
+        assert result["confirmed_items"] == []
+        assert result["unroutable"] == [
+            {"id": "F02", "path": "Notes/Broken Note.md", "reason": "stale-cache"}
+        ]
+
+    def test_up_value_present_none_is_not_treated_as_stale(self):
+        md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_removal("F02")]))
+        c = build_from_report(md, wire)["confirmed_items"][0]
+        assert c["garden_action"] == "remove_up_link"
+
+    def test_up_source_none_is_unroutable_no_declaration_site(self):
+        md, wire = _report_and_wire(
+            _make_doc([_doc_finding_broken_up_no_declaration_site("F02")])
+        )
+        result = build_from_report(md, wire)
+        assert result["confirmed_items"] == []
+        assert result["unroutable"] == [
+            {"id": "F02", "path": "Notes/Broken Note.md", "reason": "no-declaration-site"}
+        ]
+
+    def test_no_frontmatter_finding_ever_emits_body_oriented_action(self):
+        doc = _make_doc([
+            _doc_finding_broken_up_frontmatter_repoint("F01"),
+            _doc_finding_broken_up_frontmatter_removal("F02"),
+            _doc_finding_broken_up_repoint("F03"),
+            _doc_finding_broken_up_removal("F04"),
+        ])
+        md, wire = _report_and_wire(doc)
+        items = build_from_report(md, wire)["confirmed_items"]
+        assert len(items) == 4
+        frontmatter_ids = {"F01", "F02"}
+        for c in items:
+            if c["id"] in frontmatter_ids:
+                assert c["garden_action"] == "edit_frontmatter"
+            assert not (
+                c["id"] in frontmatter_ids
+                and c["garden_action"] in ("remove_up_link", "add_relationship")
+            )
 
 
 # ---------------------------------------------------------------------------

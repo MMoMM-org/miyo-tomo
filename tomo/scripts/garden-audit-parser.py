@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.11.0
+# version: 0.12.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -38,15 +38,22 @@ confirmed_item shape (per fixable finding the user kept):
     "path", "stem",
     # resolve_dead_link (dead_link unlink/repoint — Hashi resolves alias/embed):
     "target", "replace",
-    # remove_up_link (broken_up empty=remove — link-only removal):
+    # remove_up_link (broken_up empty=remove, inline-declared parent):
     "link",
-    # add_relationship (broken_up repoint, filing up::):
+    # add_relationship (broken_up repoint, inline-declared parent; filing up::):
     "up_line",
+    # edit_frontmatter (broken_up, frontmatter-declared parent — spec 032):
+    # routing only here; value/expected construction is a later phase.
     # file_note (unparented/orphan filing):
     "target_moc", "target_moc_path",
   }
 
-garden_action ∈ {resolve_dead_link, remove_up_link, add_relationship, file_note}.
+garden_action ∈ {resolve_dead_link, remove_up_link, add_relationship,
+edit_frontmatter, file_note}. A broken_up finding routes to remove_up_link /
+add_relationship (inline declaration site) or edit_frontmatter (frontmatter
+declaration site) based on detail.up_source (spec 032) — never guessed when
+that data is missing; such findings are withheld into `unroutable` instead
+(reason "stale-cache" | "no-declaration-site"), never a body-oriented fallback.
 Advisory findings (duplicate_stem, stale_moc) never produce a confirmed_item
 (but acknowledged ones land in acked_advisories).
 """
@@ -77,6 +84,47 @@ def _up_link_stem(up_target) -> str:
     if s.startswith("[[") and s.endswith("]]"):
         s = s[2:-2].strip()
     return s
+
+
+# Sentinel for "the cache entry never carried up_value at all" (ADR-3, spec
+# 032). up_value: None is a legitimate observed value (a property that exists
+# and holds nothing) — detail.get("up_value") returning None cannot tell that
+# apart from a pre-032 cache that never wrote the key. Only identity-checking
+# against this sentinel distinguishes the two.
+_MISSING = object()
+
+
+def _route_broken_up(
+    detail: dict, choice: str, fid: str, path: str, unroutable: list[dict],
+) -> str | None:
+    """Route one broken_up finding to a garden_action by its declaration site.
+
+    ``choice`` is the user's remove/repoint decision ("remove" | "repoint"),
+    already resolved by the caller from whichever channel (wire decision.action
+    or markdown Repoint field) it reads. Returns the garden_action to emit, or
+    None when the finding cannot be safely routed — in which case an entry is
+    appended to ``unroutable`` naming the reason (ADR-5: withhold, never fall
+    back to a body-oriented action).
+    """
+    up_source = detail.get("up_source")
+    up_value = detail.get("up_value", _MISSING)
+
+    if up_value is _MISSING:
+        # ADR-3: cache predates spec 032. ADR-5: withhold, never fall back.
+        unroutable.append({"id": fid, "path": path, "reason": "stale-cache"})
+        return None
+
+    if up_source == "frontmatter":
+        return "edit_frontmatter"
+    if up_source == "inline":
+        return "remove_up_link" if choice == "remove" else "add_relationship"
+
+    # up_source None/absent with a broken finding is unreachable in practice (a
+    # broken state requires a target, and a target requires a declared source)
+    # — treated as unroutable rather than assumed, so the impossible case can
+    # never silently pick a branch.
+    unroutable.append({"id": fid, "path": path, "reason": "no-declaration-site"})
+    return None
 
 
 # ── Wire load ────────────────────────────────────────────────────────────────
@@ -305,12 +353,16 @@ def parse_decision_map(md_text: str) -> dict[str, dict]:
     return out
 
 
-def _confirmed_item_from_wire_finding(finding: dict, decision_md: dict) -> dict | None:
+def _confirmed_item_from_wire_finding(
+    finding: dict, decision_md: dict, unroutable: list[dict],
+) -> dict | None:
     """Build one confirmed_item from a wire finding + the markdown decision.
 
     STRUCTURE (id, check, path, stem, detail) comes from the wire finding;
     DECISIONS (repoint / replace typed values) come from ``decision_md`` (from
-    parse_decision_map). Advisory / non-fixable / unresolvable → None.
+    parse_decision_map). Advisory / non-fixable / unresolvable → None. A
+    broken_up finding that cannot be safely routed (spec 032) appends to
+    ``unroutable`` and also returns None.
     """
     check = finding.get("check", "")
     fid = finding.get("id", "")
@@ -339,7 +391,9 @@ def _confirmed_item_from_wire_finding(finding: dict, decision_md: dict) -> dict 
 
     if check == "broken_up":
         repoint = decision_md.get("repoint", "")
-        if repoint:
+        choice = "repoint" if repoint else "remove"
+        ga = _route_broken_up(detail, choice, fid, path, unroutable)
+        if ga == "add_relationship":
             # Non-empty Repoint target → repair the up:: to the chosen MOC.
             return {
                 "id": fid,
@@ -349,18 +403,31 @@ def _confirmed_item_from_wire_finding(finding: dict, decision_md: dict) -> dict 
                 "stem": stem,
                 "up_line": up_line(repoint),
             }
-        # Empty / absent Repoint → remove ONLY the broken link from the up:: line
-        # (remove_up_link, link-only semantics — user decision 2026-07-23). The
-        # earlier whole-line edit_note_text match silently no-opped on multi-link
-        # up:: lines; Hashi edits the real line with body access instead.
-        return {
-            "id": fid,
-            "garden_check": check,
-            "garden_action": "remove_up_link",
-            "path": path,
-            "stem": stem,
-            "link": _up_link_stem(detail.get("up_target", "")),
-        }
+        if ga == "remove_up_link":
+            # Empty / absent Repoint → remove ONLY the broken link from the up::
+            # line (remove_up_link, link-only semantics — user decision
+            # 2026-07-23). The earlier whole-line edit_note_text match silently
+            # no-opped on multi-link up:: lines; Hashi edits the real line with
+            # body access instead.
+            return {
+                "id": fid,
+                "garden_check": check,
+                "garden_action": "remove_up_link",
+                "path": path,
+                "stem": stem,
+                "link": _up_link_stem(detail.get("up_target", "")),
+            }
+        if ga == "edit_frontmatter":
+            # Frontmatter-declared parent (spec 032) — routing only; value/
+            # expected construction is a later phase.
+            return {
+                "id": fid,
+                "garden_check": check,
+                "garden_action": "edit_frontmatter",
+                "path": path,
+                "stem": stem,
+            }
+        return None  # unroutable — already recorded by _route_broken_up
 
     if check in ("unparented", "orphan"):
         # file_note target precedence (Change 2): the user's chosen MOC (a typed
@@ -422,6 +489,7 @@ def build_from_report(md_text: str, wire: dict) -> dict:
     decision_map = parse_decision_map(md_text)
     confirmed: list[dict] = []
     acked: list[dict] = []
+    unroutable: list[dict] = []
 
     for finding in (wire or {}).get("findings") or []:
         fid = finding.get("id", "")
@@ -435,7 +503,7 @@ def build_from_report(md_text: str, wire: dict) -> dict:
             continue
         if md_decision is None or not md_decision.get("apply"):
             continue  # id absent from the report, or the user left Apply unticked
-        item = _confirmed_item_from_wire_finding(finding, md_decision)
+        item = _confirmed_item_from_wire_finding(finding, md_decision, unroutable)
         if item is not None:
             confirmed.append(item)
 
@@ -445,6 +513,7 @@ def build_from_report(md_text: str, wire: dict) -> dict:
         "profile": (wire or {}).get("profile") or fm.get("profile") or None,
         "confirmed_items": confirmed,
         "acked_advisories": acked,
+        "unroutable": unroutable,
     }
 
 
@@ -459,6 +528,7 @@ def build_from_wire(wire: dict) -> dict:
     """
     confirmed: list[dict] = []
     acked: list[dict] = []
+    unroutable: list[dict] = []
 
     for finding in wire.get("findings") or []:
         # Advisory checks (duplicate_stem, stale_moc) never produce a fix. Auto-
@@ -514,32 +584,47 @@ def build_from_wire(wire: dict) -> dict:
         elif check == "broken_up":
             action_name = decision.get("action")
             up_target = detail.get("up_target", "")
-            if action_name == "add_relationship":
-                # Wire parity with the markdown "Repoint to:" field: a non-empty
-                # decision.repoint is the user's chosen MOC — point up:: there,
-                # NOT at the broken original. Empty → fall back to up_target.
-                repoint = decision.get("repoint", "")
-                target = repoint if repoint else up_target
-                confirmed.append({
-                    "id": fid,
-                    "garden_check": check,
-                    "garden_action": "add_relationship",
-                    "path": path,
-                    "stem": stem,
-                    "up_line": up_line(target),
-                })
-            elif action_name == "edit_note_text":
-                # Wire remove intent (decision.action stays "edit_note_text" —
-                # Hashi contract unchanged) → link-only removal, same semantics
-                # as the report path.
-                confirmed.append({
-                    "id": fid,
-                    "garden_check": check,
-                    "garden_action": "remove_up_link",
-                    "path": path,
-                    "stem": stem,
-                    "link": _up_link_stem(up_target),
-                })
+            if action_name in ("add_relationship", "edit_note_text"):
+                choice = "repoint" if action_name == "add_relationship" else "remove"
+                ga = _route_broken_up(detail, choice, fid, path, unroutable)
+                if ga == "add_relationship":
+                    # Wire parity with the markdown "Repoint to:" field: a
+                    # non-empty decision.repoint is the user's chosen MOC —
+                    # point up:: there, NOT at the broken original. Empty →
+                    # fall back to up_target.
+                    repoint = decision.get("repoint", "")
+                    target = repoint if repoint else up_target
+                    confirmed.append({
+                        "id": fid,
+                        "garden_check": check,
+                        "garden_action": "add_relationship",
+                        "path": path,
+                        "stem": stem,
+                        "up_line": up_line(target),
+                    })
+                elif ga == "remove_up_link":
+                    # Wire remove intent (decision.action stays "edit_note_text"
+                    # — Hashi contract unchanged) → link-only removal, same
+                    # semantics as the report path.
+                    confirmed.append({
+                        "id": fid,
+                        "garden_check": check,
+                        "garden_action": "remove_up_link",
+                        "path": path,
+                        "stem": stem,
+                        "link": _up_link_stem(up_target),
+                    })
+                elif ga == "edit_frontmatter":
+                    # Frontmatter-declared parent (spec 032) — routing only;
+                    # value/expected construction is a later phase.
+                    confirmed.append({
+                        "id": fid,
+                        "garden_check": check,
+                        "garden_action": "edit_frontmatter",
+                        "path": path,
+                        "stem": stem,
+                    })
+                # ga is None → unroutable — already recorded by _route_broken_up
             # Unknown action name → skip (forward-compat)
 
         elif check == "dead_link":
@@ -567,6 +652,7 @@ def build_from_wire(wire: dict) -> dict:
         "profile": wire.get("profile"),
         "confirmed_items": confirmed,
         "acked_advisories": acked,
+        "unroutable": unroutable,
     }
 
 
@@ -649,7 +735,7 @@ def main() -> int:
         # Degrade gracefully — no structure source means no fixes to emit.
         print(json.dumps({
             "run_id": "", "generated": "", "profile": None,
-            "confirmed_items": [], "acked_advisories": [],
+            "confirmed_items": [], "acked_advisories": [], "unroutable": [],
         }, ensure_ascii=False, indent=2))
         return 0
 

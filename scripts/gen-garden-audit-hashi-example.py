@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """gen-garden-audit-hashi-example.py — generate + validate the real garden-audit
 instruction-set example (resolve_dead_link + remove_up_link + add_relationship +
 link_to_moc) for the Hashi handoffs (spec 030).
@@ -73,13 +73,17 @@ def _representative_doc() -> dict:
             _finding("F05", "dead_link", "integrity", "020 Active MOC.md",
                      "020 Active MOC", {"dead_target": "024 Thinking About MOC", "count": 1},
                      "edit_note_text"),
-            # broken_up — user fills Repoint (→ add_relationship).
+            # broken_up — user fills Repoint (→ add_relationship). Inline
+            # declaration (spec 032): up_value is always None for up_source
+            # "inline" — there is no frontmatter property to read.
             _finding("F01", "broken_up", "integrity", "021 Fleeting MOC.md",
-                     "021 Fleeting MOC", {"up_target": "['020 Active MOC']"},
+                     "021 Fleeting MOC",
+                     {"up_target": "['020 Active MOC']", "up_source": "inline", "up_value": None},
                      "edit_note_text"),
             # broken_up — user leaves Repoint empty (→ remove_up_link, link-only).
             _finding("F02", "broken_up", "integrity", "022 Placeholders MOC.md",
-                     "022 Placeholders MOC", {"up_target": "['021 Fleeting MOC']"},
+                     "022 Placeholders MOC",
+                     {"up_target": "['021 Fleeting MOC']", "up_source": "inline", "up_value": None},
                      "edit_note_text"),
             # orphan — user files it under a MOC (→ link_to_moc + add_relationship).
             _finding("F10", "orphan", "structure", "005 Important Links.md",

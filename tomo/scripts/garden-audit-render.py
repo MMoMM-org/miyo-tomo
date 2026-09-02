@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.17.0
+# version: 0.18.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -98,8 +98,13 @@ _UNROUTABLE_REMEDY = {
     # no-declaration-site precedent — it deliberately does NOT point at
     # /explore-vault, unlike the other two reasons: the cache here is healthy
     # and current, so a refresh changes nothing (SDD Complex Logic).
+    # {prop} is substituted with the derived property name (ADR-6) at render
+    # time — never hardcoded to "up". "up::" is the inline-marker spelling;
+    # this reason only ever arises for a frontmatter-sourced finding (a
+    # map-shaped value comes from parsed YAML), so the property name is the
+    # correct noun here, not the inline marker.
     "unsupported-shape": [
-        "- **Not fixable this run:** this note's `up::` property has a value"
+        "- **Not fixable this run:** this note's `{prop}` property has a value"
         " shape (a map) this fix does not yet support.",
         "  This is not a stale cache — refreshing it will not change the"
         " outcome. Edit the property by hand instead.",
@@ -135,11 +140,16 @@ def _broken_up_withhold_reason(f: dict) -> str | None:
     return "no-declaration-site"
 
 
-def _render_withheld_block(reason: str) -> list[str]:
+def _render_withheld_block(reason: str, up_property: str) -> list[str]:
     """The reason + remedy for one withheld finding — no Apply checkbox and no
     Suggest opt-in, because there is nothing to approve or suggest a target
-    for until the cache is refreshed (PRD AC-F6.1/F6.2)."""
-    return list(_UNROUTABLE_REMEDY[reason]) + [""]
+    for until the cache is refreshed (PRD AC-F6.1/F6.2).
+
+    ``up_property`` fills the "unsupported-shape" template's ``{prop}`` slot
+    (ADR-6, derived — never hardcoded); the other two reasons have no
+    placeholder, so .format is a no-op for them.
+    """
+    return [ln.format(prop=up_property) for ln in _UNROUTABLE_REMEDY[reason]] + [""]
 
 
 # ── Note-reference rendering ──────────────────────────────────────────────────
@@ -172,11 +182,16 @@ def _wikilink(ref) -> str:
     return f"[[{stem}]]"
 
 
-def _fix_summary(check: str, detail: dict, decision: dict) -> str:
+def _fix_summary(check: str, detail: dict, decision: dict, up_property: str) -> str:
     """One plain-language line describing what applying the fix will DO to the note.
 
     The report must let the user decide without reading the wire — spell out the
     concrete before→after change, not just "Apply fix".
+
+    ``up_property`` (ADR-6, derived — never hardcoded) names the fix action for
+    a property-resident broken_up finding: it is fixed via a YAML-property
+    edit, not a body-text edit, so the summary must say "property", not
+    "up::" / "the broken line" — those describe the body-resident action.
     """
     if check in ("unparented", "orphan"):
         mocs = detail.get("candidate_mocs") or []
@@ -189,6 +204,11 @@ def _fix_summary(check: str, detail: dict, decision: dict) -> str:
         )
     if check == "broken_up":
         up = _wikilink(detail.get("up_target"))
+        if detail.get("up_source") == "frontmatter":
+            return (
+                f"The broken `{up_property}` property (was {up}) — repoint it to "
+                "a MOC you enter below, or leave empty to remove the property value."
+            )
         return (
             f"The broken `up::` (was {up}) — repoint it to a MOC you enter below, "
             "or leave empty to remove the broken line."
@@ -481,11 +501,11 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
     # decision is None) and still falls through to the ValueError guard.
     withhold_reason = _broken_up_withhold_reason(f)
     if withhold_reason is not None:
-        lines += _render_withheld_block(withhold_reason)
+        lines += _render_withheld_block(withhold_reason, up_property)
     elif decision is not None:
         selected = decision.get("selected", False)
         check_mark = "x" if selected else " "
-        lines.append("**Fix:** " + _fix_summary(check, detail, decision))
+        lines.append("**Fix:** " + _fix_summary(check, detail, decision, up_property))
         # Property-edit disclosure (spec 032 T5.1): only for a broken_up finding
         # whose up:: lives in frontmatter — an edit_frontmatter fix drops YAML
         # comments in that property block, and the cost must be visible BEFORE
@@ -504,10 +524,20 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
             # Every broken_up offers repoint OR remove — the user chooses by
             # filling (repoint) or leaving empty (remove). The parser reads this
             # field for all broken_up findings, not just pre-marked repoints.
-            lines.append(
-                "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
-                "up::, or leave empty to remove"
-            )
+            # Property-resident (up_source == "frontmatter") names the target
+            # as a property (ADR-6 derived, never hardcoded) — the fix is a
+            # YAML-property edit, not a body edit, so "up::" would misdescribe
+            # the action. Body-resident wording is unchanged (CON-7).
+            if detail.get("up_source") == "frontmatter":
+                lines.append(
+                    "- **Repoint to:** [[]]    ← enter the correct MOC to "
+                    f"repoint the `{up_property}` property, or leave empty to remove"
+                )
+            else:
+                lines.append(
+                    "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
+                    "up::, or leave empty to remove"
+                )
         elif check in ("unparented", "orphan"):
             # File under: the MOC to file this orphan under. Semantically clearer
             # than "Repoint to:" for filing (Change 2). Typed value / picked

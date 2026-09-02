@@ -1437,3 +1437,197 @@ class TestBrokenUpSplitLine:
         assert "Broken `up::` → [[Deleted MOC]]" in report
         assert "Apply — tick to apply this fix" in report
         assert "**Repoint to:**" in report
+
+
+# ---------------------------------------------------------------------------
+# Fix-a: property-language for the ACTION, not the FINDING (T5.1/T5.2/T5.3
+# follow-up). A property-resident (up_source == "frontmatter") broken_up
+# finding is fixed via a YAML-property edit — but the Fix summary line and
+# the Repoint hint still described a body edit ("up::", "the broken line"),
+# contradicting the property-edit disclosure rendered right below them. This
+# section locks the corrected, property-aware wording for those two lines,
+# and the analogous self-contradiction in the unsupported-shape remedy
+# (":102" — "this note's `up::` property" says inline-marker and YAML-key in
+# the same phrase).
+#
+# Deliberately NOT touched (per rationale in the task): the check label
+# ("Broken up:: link"), the `### F<id>` heading, and the detail line
+# ("Broken `up::` → [[X]]") — those name the FINDING (a broken parent link
+# exists), not the fix ACTION, and the detail line is pinned by
+# test_inline_resident_matches_pinned_golden_broken_up_line above.
+
+# The heading ("Broken up:: link") and the detail line ("Broken `up::` →
+# [[X]]") legitimately keep "up::" — they name the FINDING and are DO-NOT-
+# CHANGE per the task rationale. So the "self-contradiction is gone" proof
+# below is scoped to the specific rendered line the fix corrected (the
+# "**Fix:**" line / the "**Repoint to:**" line), never to the whole report.
+
+
+def _line_starting_with(report: str, prefix: str) -> str:
+    for line in report.splitlines():
+        if line.startswith(prefix):
+            return line
+    raise AssertionError(f"no line starting with {prefix!r} in report:\n{report}")
+
+
+class TestPropertyResidentFixLanguage:
+    def test_frontmatter_resident_fix_line_names_property_not_up_marker(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**")
+        assert fix_line == (
+            "**Fix:** The broken `up` property (was [[Deleted MOC]]) — repoint it "
+            "to a MOC you enter below, or leave empty to remove the property value."
+        )
+        assert "up::" not in fix_line
+        assert "the broken line" not in fix_line
+
+    def test_frontmatter_resident_fix_line_uses_derived_property_non_default_marker(
+        self, tmp_path, monkeypatch
+    ):
+        # ADR-6 proof — a single-marker test never exposes a hardcoded "up".
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        fix_line = _line_starting_with(report, "**Fix:**")
+        assert fix_line == (
+            "**Fix:** The broken `parent` property (was [[Deleted MOC]]) — repoint "
+            "it to a MOC you enter below, or leave empty to remove the property value."
+        )
+        assert "up" not in fix_line
+        assert "`up`" not in fix_line
+
+    def test_frontmatter_resident_repoint_hint_names_property_not_up_marker(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        assert (
+            "- **Repoint to:** [[]]    ← enter the correct MOC to repoint the "
+            "`up` property, or leave empty to remove"
+        ) in report
+        # Proves discrimination: the OLD hint wording must be fully gone, not
+        # just partially — a loose "in" check on a fragment shared by both
+        # old and new text would pass vacuously.
+        assert "repoint up::" not in report
+
+    def test_frontmatter_resident_repoint_hint_uses_derived_property_non_default_marker(
+        self, tmp_path, monkeypatch
+    ):
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        assert (
+            "- **Repoint to:** [[]]    ← enter the correct MOC to repoint the "
+            "`parent` property, or leave empty to remove"
+        ) in report
+        assert "`up`" not in report
+
+    def test_inline_resident_fix_and_repoint_lines_unchanged_con7(self):
+        # CON-7: body-resident wording is untouched — same strings as before
+        # this fix, verbatim.
+        f = _make_broken_up_finding(
+            "F01", up_source="inline", up_value="[[Alte MOC]]"
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        assert (
+            "**Fix:** The broken `up::` (was [[Deleted MOC]]) — repoint it to a "
+            "MOC you enter below, or leave empty to remove the broken line."
+        ) in report
+        assert (
+            "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
+            "up::, or leave empty to remove"
+        ) in report
+
+    def test_inline_resident_full_report_byte_identical_to_pre_fix_render_con7(self):
+        # Strongest CON-7 proof: load the pre-change renderer (the last commit
+        # to touch this file before this fix) as a separate module from git
+        # history, render the SAME inline-resident doc through both the old
+        # and the current module, and assert full-report byte-identity.
+        import subprocess
+        import tempfile
+
+        pre_fix_sha = "24d46d278a50b88f5b7aaaddc2c39e9e8ecd87d7"
+        content = subprocess.run(
+            ["git", "show", f"{pre_fix_sha}:tomo/scripts/garden-audit-render.py"],
+            cwd=_ROOT, capture_output=True, check=True, text=True,
+        ).stdout
+
+        with tempfile.TemporaryDirectory() as td:
+            old_path = pathlib.Path(td) / "garden_audit_render_old.py"
+            old_path.write_text(content, encoding="utf-8")
+            old_spec = importlib.util.spec_from_file_location(
+                "garden_audit_render_old", old_path
+            )
+            old_gar = importlib.util.module_from_spec(old_spec)
+            old_spec.loader.exec_module(old_gar)
+
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="inline", up_value="[[Alte MOC]]"
+            ),
+            _make_dead_link_finding("F02"),
+            _make_unparented_finding("F03"),
+        ]
+        doc = _make_doc(findings=findings)
+
+        old_report = old_gar.render_report(doc)
+        new_report = gar.render_report(doc)
+        assert new_report == old_report
+
+
+# ---------------------------------------------------------------------------
+# unsupported-shape remedy (:102) — same self-contradiction, different spot:
+# "this note's `up::` property" names both the inline marker and the YAML
+# key in one phrase. This reason is derived only via T3.2's map-shape check
+# (never gated on up_source here — see garden-audit-render.py comment), but
+# in measured practice only ever arises for a frontmatter-sourced finding.
+# ---------------------------------------------------------------------------
+
+class TestUnsupportedShapeRemedyLanguage:
+    def test_remedy_no_longer_says_up_marker_and_property_together(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        assert "`up::` property" not in report
+        assert "`up` property has a value shape" in report
+
+    def test_remedy_property_name_is_derived_not_hardcoded(self, tmp_path, monkeypatch):
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        assert "`parent` property has a value shape" in report
+        assert "`up::` property" not in report
+        assert "`up` property" not in report

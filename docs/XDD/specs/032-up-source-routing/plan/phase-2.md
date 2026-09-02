@@ -29,7 +29,7 @@ phase: 2
 
 Makes the declaration site visible to everything downstream, without changing any behaviour yet.
 
-- [ ] **T2.1 Finding detail carries site and value** `[activity: backend-logic]`
+- [x] **T2.1 Finding detail carries site and value** `[activity: backend-logic]`
 
   1. **Prime**: Read `_check_broken_up` at `garden-audit.py:150-169`. It currently passes `{"up_target": ...}` as `detail`.
   2. **Test** (RED):

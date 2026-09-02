@@ -1,4 +1,4 @@
-# version: 0.6.0
+# version: 0.6.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -216,6 +216,7 @@ _REQUIRED_PATH_FIELDS = {
     "delete_source": ("source_path",),
     "add_relationship": ("target_moc_path",),
     "insert_under_marker": ("target_path",),
+    "edit_frontmatter": ("path",),
 }
 
 

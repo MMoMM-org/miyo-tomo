@@ -1,4 +1,4 @@
-# version: 0.2.3
+# version: 0.2.4
 """up_parse.py — SSoT for "does this note declare a parent?"
 
 Parses both inline `up::` (Dataview-style) and frontmatter `up:` values
@@ -27,7 +27,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
 
@@ -45,6 +45,10 @@ class UpParseResult:
 
     target: Optional[str]  # parent stem, anchor-stripped; None when absent
     source: Optional[str]  # "inline" | "frontmatter" | None
+    raw_value: Any = None  # frontmatter: the property value AS PARSED (list|scalar).
+    # inline: None — there is no property to guard. Also None when the
+    # frontmatter property is absent/empty, since that path falls through to
+    # the shared "absent" return below rather than the frontmatter return site.
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -206,9 +210,10 @@ def parse_up_from_content(
             return UpParseResult(target=_clean_target(raw_target), source="inline")
 
     # 2. Frontmatter fallback
-    target = _first_wikilink(frontmatter.get(marker_word(parent_marker)))
+    fm_value = frontmatter.get(marker_word(parent_marker))
+    target = _first_wikilink(fm_value)
     if target:
-        return UpParseResult(target=target, source="frontmatter")
+        return UpParseResult(target=target, source="frontmatter", raw_value=fm_value)
 
     # 3. Absent
     return UpParseResult(target=None, source=None)

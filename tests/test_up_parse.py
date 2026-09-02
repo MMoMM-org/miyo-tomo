@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_up_parse.py — Tests for lib/up_parse.parse_up_from_content.
 
 Covers the dual-up SSoT (spec 021, Phase 1, T1.1):
@@ -289,3 +289,65 @@ def test_leading_newline_does_not_corrupt_body_slice():
     result = up_parse.parse_up_from_content(content)
     assert result.target == "LeadingNewlineParent"
     assert result.source == "inline"
+
+
+# ── raw_value (spec 032, Phase 1, T1.1) ───────────────────────────────────────
+# raw_value carries the observed frontmatter `up:` property value VERBATIM
+# (shape and order intact) so a later phase can guard against re-emitting an
+# already-broken declaration. Inline declarations carry no value — there is
+# no property to guard (ADR-1).
+
+
+def test_raw_value_frontmatter_list_preserves_shape_and_order():
+    content = _fm(["[[A]]", "[[B]]"])
+    result = up_parse.parse_up_from_content(content)
+    assert result.raw_value == ["[[A]]", "[[B]]"]
+
+
+def test_raw_value_frontmatter_scalar_not_wrapped_in_list():
+    content = _fm("[[A]]")
+    result = up_parse.parse_up_from_content(content)
+    assert result.raw_value == "[[A]]"
+    assert not isinstance(result.raw_value, list)
+
+
+def test_raw_value_inline_is_none():
+    content = _inline("A")
+    result = up_parse.parse_up_from_content(content)
+    assert result.source == "inline"
+    assert result.raw_value is None
+
+
+def test_raw_value_both_present_inline_wins_raw_value_none():
+    """Inline still wins (unchanged precedence, ADR-2); raw_value stays None —
+    inline has no property to guard, and the frontmatter value it shadows must
+    not leak through."""
+    content = _both(fm_target="FMParent", inline_target="InlineParent")
+    result = up_parse.parse_up_from_content(content)
+    assert result.source == "inline"
+    assert result.target == "InlineParent"
+    assert result.raw_value is None
+
+
+def test_raw_value_no_declaration_is_none():
+    content = "Just plain text.\n"
+    result = up_parse.parse_up_from_content(content)
+    assert result.target is None
+    assert result.source is None
+    assert result.raw_value is None
+
+
+def test_raw_value_empty_property_falls_through_to_none():
+    """An empty `up:` property makes _first_wikilink return falsy, so control
+    falls through past the frontmatter return site to the final absent-branch
+    return — which does NOT populate raw_value. This means an empty property,
+    an inline declaration, and total absence all yield raw_value is None. That
+    is expected: ADR-3's `_MISSING` sentinel (not a `None` check) is what later
+    distinguishes freshness downstream — this fall-through path is NOT to be
+    "fixed" to populate raw_value, since that would be a design change."""
+    empty_string = up_parse.parse_up_from_content(_fm(""))
+    empty_list = up_parse.parse_up_from_content(_fm([]))
+    assert empty_string.target is None
+    assert empty_string.raw_value is None
+    assert empty_list.target is None
+    assert empty_list.raw_value is None

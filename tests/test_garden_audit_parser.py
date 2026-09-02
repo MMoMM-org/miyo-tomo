@@ -482,6 +482,43 @@ class TestBuildFromWireBrokenUpRouting:
             {"id": "F01", "path": "Notes/Broken.md", "reason": "stale-cache"}
         ]
 
+    def test_stale_cache_finding_does_not_suppress_other_findings_in_batch(self):
+        # spec 032 T3.4 (PRD AC-F6.3): withholding one finding must not swallow
+        # the rest of the run. A parser that returned an empty confirmed_items
+        # for any reason would pass a batch of purely stale-cache findings — so
+        # this batch pairs the stale one with a finding that DOES route, and
+        # asserts the count as well as the shape.
+        findings = [
+            _broken_up_stale_cache("F01"),
+            _broken_up_frontmatter_removal("F02"),
+        ]
+        result = build_from_wire(_make_wire(findings))
+        items = result["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["id"] == "F02"
+        assert items[0]["garden_action"] == "edit_frontmatter"
+        assert result["unroutable"] == [
+            {"id": "F01", "path": "Notes/Broken.md", "reason": "stale-cache"}
+        ]
+
+    def test_stale_cache_finding_routes_normally_once_up_value_recovers(self):
+        # spec 032 T3.4, PRD AC-F6.4: withholding is temporary, not terminal. A
+        # cache rebuild adds the up_value key for the same note/target; the next
+        # audit run must route it like any other finding.
+        stale = build_from_wire(_make_wire([_broken_up_stale_cache(selected=True)]))
+        assert stale["confirmed_items"] == []
+        assert stale["unroutable"] == [
+            {"id": "F01", "path": "Notes/Broken.md", "reason": "stale-cache"}
+        ]
+
+        # Same note, same up_target ("Old MOC"), same inline source — the only
+        # difference is that up_value is now present (a refreshed cache entry).
+        recovered = build_from_wire(_make_wire([_broken_up_repoint(selected=True)]))
+        items = recovered["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["garden_action"] == "add_relationship"
+        assert recovered["unroutable"] == []
+
     def test_up_value_present_none_is_not_treated_as_stale(self):
         # Inline sources legitimately carry up_value=None (ADR-3) — the sentinel
         # must distinguish this from a genuinely absent key.
@@ -1045,6 +1082,47 @@ class TestBuildFromReportBrokenUpRouting:
         assert result["unroutable"] == [
             {"id": "F02", "path": "Notes/Broken Note.md", "reason": "stale-cache"}
         ]
+
+    def test_stale_cache_finding_does_not_suppress_other_findings_in_batch(self):
+        # spec 032 T3.4 (PRD AC-F6.3): pair the stale finding with one that DOES
+        # route, and assert the count — a parser returning an empty
+        # confirmed_items for any reason would pass a batch of only stale
+        # findings.
+        doc = _make_doc([
+            _doc_finding_broken_up_stale_cache("F02"),
+            _doc_finding_broken_up_frontmatter_removal("F03"),
+        ])
+        md, wire = _report_and_wire(doc)
+        result = build_from_report(md, wire)
+        items = result["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["id"] == "F03"
+        assert items[0]["garden_action"] == "edit_frontmatter"
+        assert result["unroutable"] == [
+            {"id": "F02", "path": "Notes/Broken Note.md", "reason": "stale-cache"}
+        ]
+
+    def test_stale_cache_finding_routes_normally_once_up_value_recovers(self):
+        # spec 032 T3.4, PRD AC-F6.4: withholding is temporary. Same note/target
+        # ("Deleted MOC", inline source) — the second run's cache carries
+        # up_value, so the finding must route rather than stay withheld.
+        stale_md, stale_wire = _report_and_wire(
+            _make_doc([_doc_finding_broken_up_stale_cache("F02")])
+        )
+        stale = build_from_report(stale_md, stale_wire)
+        assert stale["confirmed_items"] == []
+        assert stale["unroutable"] == [
+            {"id": "F02", "path": "Notes/Broken Note.md", "reason": "stale-cache"}
+        ]
+
+        fresh_md, fresh_wire = _report_and_wire(
+            _make_doc([_doc_finding_broken_up_removal("F02")])
+        )
+        fresh = build_from_report(fresh_md, fresh_wire)
+        items = fresh["confirmed_items"]
+        assert len(items) == 1
+        assert items[0]["garden_action"] == "remove_up_link"
+        assert fresh["unroutable"] == []
 
     def test_up_value_present_none_is_not_treated_as_stale(self):
         md, wire = _report_and_wire(_make_doc([_doc_finding_broken_up_removal("F02")]))

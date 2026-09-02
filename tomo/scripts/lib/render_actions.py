@@ -1,4 +1,4 @@
-# version: 0.7.0
+# version: 0.8.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -19,6 +19,7 @@ from pathlib import Path
 
 from lib.kado_client import KadoError
 from lib.obsidian_filename import sanitize_stem
+from lib.profile_conventions import marker_word
 from lib.render_helpers import _moc_stem, _stem
 from lib.render_md import bare_stem
 from lib.up_parse import up_marker_re as _up_marker_re
@@ -1259,6 +1260,9 @@ def _construct_edit_frontmatter_fields(
     if choice == "repoint":
         replacement = f"[[{new_target}]]"
         if is_scalar:
+            # No match (observed value != the broken target) is a deliberate
+            # no-op — a stale/inconsistent cache must never crash the pipeline
+            # or guess a transform; locked by test (T3.3 code-quality carryover).
             value = replacement if bare_stem(up_value) == match_key else up_value
             return {"operation": "set", "value": value, "expected": up_value}
         value = list(up_value)
@@ -1271,6 +1275,7 @@ def _construct_edit_frontmatter_fields(
     if is_scalar:
         if bare_stem(up_value) == match_key:
             return {"operation": "remove", "expected": up_value}
+        # Same deliberate no-op as the repoint branch above: no match, no guess.
         return {"operation": "set", "value": up_value, "expected": up_value}
     remaining = [e for e in up_value if bare_stem(e) != match_key]
     if not remaining:
@@ -1278,9 +1283,54 @@ def _construct_edit_frontmatter_fields(
     return {"operation": "set", "value": remaining, "expected": up_value}
 
 
+def _build_edit_frontmatter_actions(
+    items: list[dict], counter: list[int], parent_marker: str = "up::",
+) -> list[dict]:
+    """Build ``edit_frontmatter`` actions for broken-`up` fixes whose parent is
+    declared in frontmatter (spec 032 T3.3 — the wiring named by the SDD's
+    Integration Points).
+
+    Each item is an ``edit_frontmatter`` confirmed_item carrying ``up_value``,
+    ``up_target``, ``choice`` (and ``new_target`` for a repoint) — threaded by
+    garden-audit-parser.py exactly as ``add_relationship`` carries ``up_line``
+    and ``remove_up_link`` carries ``link``. This builder derives ``property``
+    via ``marker_word(parent_marker)`` (ADR-6 — never hardcoded, so a profile
+    configured with a different marker yields a different property name), and
+    delegates ``operation``/``value``/``expected`` to the pure transform
+    ``_construct_edit_frontmatter_fields`` (T3.2). ``value`` is included only
+    when the transform returns it (operation='set') — T3.2 omits the key
+    entirely for 'remove', and this builder must not re-add it via a default.
+
+    Caller is responsible for stamping ``applied: False`` before wire emission
+    — this builder does not emit it, matching ``_build_edit_note_text_actions``'
+    convention; ``build_garden_audit_actions`` stamps the whole output
+    centrally.
+    """
+    property_name = marker_word(parent_marker)
+    out: list[dict] = []
+    for item in items:
+        fields = _construct_edit_frontmatter_fields(
+            item["up_value"], item["up_target"], item["choice"],
+            new_target=item.get("new_target"),
+        )
+        action = {
+            "id": _next_id(counter),
+            "action": "edit_frontmatter",
+            "path": item["path"],
+            "property": property_name,
+            "operation": fields["operation"],
+            "expected": fields["expected"],
+        }
+        if "value" in fields:
+            action["value"] = fields["value"]
+        out.append(action)
+    return out
+
+
 def build_garden_audit_actions(
     confirmed: list[dict],
     counter: list[int] | None = None,
+    parent_marker: str = "up::",
 ) -> list[dict]:
     """Assemble Hashi actions from garden-audit confirmed_items (spec 030).
 
@@ -1303,6 +1353,10 @@ def build_garden_audit_actions(
       - add_relationship→ one add_relationship up:: (broken_up repoint).
       - file_note       → link_to_moc (bullet on the MOC) + add_relationship up::
         (up-link on the note). Files an unparented/orphan note under a MOC.
+      - edit_frontmatter→ one edit_frontmatter (broken_up frontmatter-declared
+        parent — spec 032 T3.3). Property name derived via
+        marker_word(parent_marker) (ADR-6); operation/value/expected from
+        _construct_edit_frontmatter_fields (T3.2).
 
     Single loop over ``confirmed`` — action IDs track input order (a file_note
     before an edit_note_text yields link_to_moc, add_relationship, edit_note_text
@@ -1364,6 +1418,10 @@ def build_garden_audit_actions(
                 "line": f"up:: [[{target_moc}]]",
                 "source_note_title": None,
             })
+        elif ga == "edit_frontmatter":
+            # Reuse the shared builder on a one-item list — same pattern as
+            # edit_note_text above, keeping this item's action in input order.
+            out.extend(_build_edit_frontmatter_actions([c], counter, parent_marker))
 
     for a in out:
         a["applied"] = False

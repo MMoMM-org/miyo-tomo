@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.0
+# version: 0.14.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -429,14 +429,22 @@ def _confirmed_item_from_wire_finding(
                 "link": _up_link_stem(detail.get("up_target", "")),
             }
         if ga == "edit_frontmatter":
-            # Frontmatter-declared parent (spec 032) — routing only; value/
-            # expected construction is a later phase.
+            # Frontmatter-declared parent (spec 032 T3.3) — carries up_value/
+            # up_target/choice for render_actions._build_edit_frontmatter_actions
+            # to construct value/expected (T3.2), exactly as add_relationship
+            # carries up_line and remove_up_link carries link. new_target is
+            # only meaningful for choice=="repoint"; repoint is already the
+            # bare stem (typed_repoint via _wikilink_target).
             return {
                 "id": fid,
                 "garden_check": check,
                 "garden_action": "edit_frontmatter",
                 "path": path,
                 "stem": stem,
+                "up_value": detail.get("up_value"),
+                "up_target": detail.get("up_target", ""),
+                "choice": choice,
+                "new_target": repoint if choice == "repoint" else None,
             }
         return None  # unroutable — already recorded by _route_broken_up
 
@@ -626,14 +634,27 @@ def build_from_wire(wire: dict) -> dict:
                         "link": _up_link_stem(up_target),
                     })
                 elif ga == "edit_frontmatter":
-                    # Frontmatter-declared parent (spec 032) — routing only;
-                    # value/expected construction is a later phase.
+                    # Frontmatter-declared parent (spec 032 T3.3) — same fields
+                    # as the report path. Wire parity with add_relationship
+                    # (:602-607): a non-empty decision.repoint is the user's
+                    # chosen MOC; empty falls back to up_target, same as
+                    # add_relationship's own fallback. decision.repoint may
+                    # carry [[ ]] on the wire — bare it via _wikilink_target,
+                    # same normalisation the report path already applies.
+                    repoint = decision.get("repoint", "")
+                    new_target = (
+                        _wikilink_target(repoint) if repoint else _up_link_stem(up_target)
+                    )
                     confirmed.append({
                         "id": fid,
                         "garden_check": check,
                         "garden_action": "edit_frontmatter",
                         "path": path,
                         "stem": stem,
+                        "up_value": detail.get("up_value"),
+                        "up_target": up_target,
+                        "choice": choice,
+                        "new_target": new_target if choice == "repoint" else None,
                     })
                 # ga is None → unroutable — already recorded by _route_broken_up
             # Unknown action name → skip (forward-compat)

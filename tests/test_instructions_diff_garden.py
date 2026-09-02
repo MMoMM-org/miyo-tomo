@@ -133,3 +133,59 @@ class TestGardenFalsify:
                         "applied": False})
         code, out = _run(parsed, _instrs(actions))
         assert code == 1
+
+
+class TestGardenEditFrontmatter:
+    """spec 032 T4.3 — a frontmatter-declared broken-`up` fix routes to
+    garden_action "edit_frontmatter" (_route_broken_up, garden-audit-parser.py).
+
+    Before this task, _GARDEN_EXPECTED_KINDS had no "edit_frontmatter" key, so
+    _garden_item_covered's `for kind in _GARDEN_EXPECTED_KINDS.get(ga, ())`
+    iterated zero times and returned True having checked nothing — per-item
+    coverage printed [OK] for an item it never verified. These tests must fail
+    on that vacuous True, not merely confirm a correct item prints [OK].
+    """
+
+    def _item(self, **overrides) -> dict:
+        item = {
+            "id": "F06", "garden_check": "broken_up",
+            "garden_action": "edit_frontmatter", "path": "Notes/FM.md",
+            "stem": "FM", "up_value": "[[Dead MOC]]", "up_target": "Dead MOC",
+            "choice": "remove", "new_target": None,
+        }
+        item.update(overrides)
+        return item
+
+    def test_missing_action_not_covered(self):
+        # No edit_frontmatter action at all — the exact vacuous-True scenario.
+        item = self._item()
+        assert diff._garden_item_covered(item, []) is False
+
+    def test_mismatched_path_not_covered(self):
+        item = self._item()
+        actions = build_garden_audit_actions([item])
+        for a in actions:
+            a["path"] = "Notes/Wrong.md"
+        assert diff._garden_item_covered(item, actions) is False
+
+    def test_correct_item_is_covered(self):
+        item = self._item()
+        actions = build_garden_audit_actions([item])
+        assert diff._garden_item_covered(item, actions) is True
+
+    def test_end_to_end_missing_action_hard_fails(self):
+        # Also proves GARDEN_ACTION_ORDER must carry "edit_frontmatter": with
+        # zero actual actions of this kind, all_kinds only extends with kinds
+        # PRESENT in actual_counts — a kind absent from both GARDEN_ACTION_ORDER
+        # and actual_counts never enters the printed table or the TOTAL sums,
+        # so a wholly-missing action would silently reconcile as equal (0/0)
+        # rather than hard-failing on the expected N vs actual 0 mismatch.
+        parsed = {
+            "run_id": "run-diff-garden-fm", "generated": "g", "profile": "miyo",
+            "confirmed_items": [self._item()],
+            "acked_advisories": [],
+        }
+        code, out = _run(parsed, _instrs([]))
+        assert code == 1
+        assert "edit_frontmatter" in out
+        assert "[DIFF]" in out or "[MISSING]" in out

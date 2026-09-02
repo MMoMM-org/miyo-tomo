@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.0
+# version: 0.10.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -441,6 +441,7 @@ ACTION_ORDER = [
 
 GARDEN_ACTION_ORDER = [
     "resolve_dead_link", "remove_up_link", "link_to_moc", "add_relationship",
+    "edit_frontmatter",
 ]
 
 # garden_action → instruction kinds it must produce (mirrors
@@ -450,6 +451,7 @@ _GARDEN_EXPECTED_KINDS: dict[str, tuple[str, ...]] = {
     "remove_up_link": ("remove_up_link",),
     "add_relationship": ("add_relationship",),
     "file_note": ("link_to_moc", "add_relationship"),
+    "edit_frontmatter": ("edit_frontmatter",),
 }
 
 
@@ -481,6 +483,11 @@ def _garden_item_covered(item: dict, actions: list[dict]) -> bool:
         elif kind == "add_relationship":
             ok = any(
                 a["action"] == kind and a.get("target_moc_path") == path
+                for a in actions
+            )
+        elif kind == "edit_frontmatter":
+            ok = any(
+                a["action"] == kind and a.get("path") == path
                 for a in actions
             )
         else:  # link_to_moc (file_note bullet on the MOC)

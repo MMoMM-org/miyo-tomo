@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.5
+# version: 0.3.6
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -13,6 +13,7 @@ that verify the XDD 008 Phase 1 contract:
 """
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -316,9 +317,21 @@ def test_action_building():
 
 
 def check_schema_validity(actions):
-    """Validate instructions.json against instructions.schema.json."""
+    """Validate instructions.json against instructions.schema.json.
+
+    `actions` as returned by build_actions() carries Tomo-internal fields
+    (e.g. move_note.audio_peer, spec 027) that are deliberately stripped
+    by lib.render_resolve._strip_internal_link_fields() before the wire —
+    see that function's docstring. Validating the pre-strip actions here
+    would reject a shape the wire never sends; validate a stripped COPY
+    so this checks the real wire contract without mutating `actions` for
+    the callers still to come (check_md_rendering, check_path_shape_validator).
+    """
     schema_path = REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"
     schema = json.loads(schema_path.read_text())
+
+    wire_actions = copy.deepcopy(actions)
+    ir._strip_internal_link_fields(wire_actions)
 
     doc = {
         "schema_version": "2",
@@ -327,8 +340,8 @@ def check_schema_validity(actions):
         "generated": "2026-04-21T12:00:00Z",
         "profile": "miyo",
         "tomo_version": None,
-        "action_count": len(actions),
-        "actions": actions,
+        "action_count": len(wire_actions),
+        "actions": wire_actions,
     }
 
     # Required top-level fields
@@ -347,7 +360,7 @@ def check_schema_validity(actions):
         "delete_source": action_defs["delete_source"],
         "skip": action_defs["skip"],
     }
-    for action in actions:
+    for action in wire_actions:
         kind = action["action"]
         action_schema = action_def_by_kind.get(kind)
         _must(action_schema is not None, f"unknown action kind: {kind}")
@@ -363,9 +376,9 @@ def check_schema_validity(actions):
     try:
         import jsonschema
         jsonschema.validate(doc, schema)
-        print(f"[PASS] schema_validity — {len(actions)} actions valid per jsonschema.validate")
+        print(f"[PASS] schema_validity — {len(wire_actions)} actions valid per jsonschema.validate")
     except ImportError:
-        print(f"[PASS] schema_validity — {len(actions)} actions pass structural check "
+        print(f"[PASS] schema_validity — {len(wire_actions)} actions pass structural check "
               f"(jsonschema not installed for full validation)")
 
 

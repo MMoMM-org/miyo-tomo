@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Capture the declaration value"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -29,7 +29,7 @@ phase: 1
 
 Widens what is captured about a note's parent declaration. No behaviour changes.
 
-- [ ] **T1.1 `UpParseResult.raw_value`** `[activity: domain-modeling]`
+- [x] **T1.1 `UpParseResult.raw_value`** `[activity: domain-modeling]`
 
   1. **Prime**: Read `up_parse.py:43-47` and both return sites at `:206` and `:211`. Note that `:210` already fetches the whole property value before `_first_wikilink` discards all but the first link.
   2. **Test** (RED):
@@ -59,7 +59,7 @@ Widens what is captured about a note's parent declaration. No behaviour changes.
      - [ ] Every entry carries the key, so absence unambiguously means "old cache" `[ref: PRD/Feature 6]`
      - [ ] No additional Kado call is made — the value comes from `content` already in hand `[ref: CON-3]`
 
-- [ ] **T1.3 Second-consumer regression** `[activity: validate]` `[parallel: true]`
+- [x] **T1.3 Second-consumer regression** `[activity: validate]` `[parallel: true]`
 
   1. **Prime**: `moc-discovery.py:63` and `:1399` also call `parse_up_from_content`.
   2. **Test** (RED): `moc-discovery`'s existing behaviour is unchanged by the wider dataclass — it reads `.target`/`.source` only.

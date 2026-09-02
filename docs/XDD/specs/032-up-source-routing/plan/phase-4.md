@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Register the new action kind"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -87,7 +87,7 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
   4. **Validate**: unit tests pass; `# version:` bumped.
   5. **Success**: an unaudited property action is impossible `[ref: PRD/Risks; row 1]`
 
-- [ ] **T4.3 Expectation derivation** `[activity: backend-logic]`
+- [x] **T4.3 Expectation derivation** `[activity: backend-logic]`
 
   > **SCOPE EXPANDED (2026-09-02)** — absorbs T4.2's real deliverable. The coverage audit for
   > spec 032 runs through `run_diff_garden`, whose expected side is built from
@@ -165,7 +165,7 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
   4. **Validate**: unit tests pass.
   5. **Success**: property actions are shape-validated like every other kind
 
-- [ ] **T4.6 Phase Validation** `[activity: validate]`
+- [x] **T4.6 Phase Validation** `[activity: validate]`
 
   - Full suite green. Walk every site and confirm each has a passing test that could actually
     fail: producer schema, mirror schema, `instructions-dryrun`, `render_md`,

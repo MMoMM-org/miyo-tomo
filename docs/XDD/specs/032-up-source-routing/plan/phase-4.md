@@ -37,7 +37,14 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
      - a well-formed `edit_frontmatter` validates against **both** `instructions.schema.json` and `hashi-instructions.schema.json` `[ref: PRD/AC-F5 family]`
      - dropping any required field is rejected by both
      - `expected` and `expected_absent` together is a **validation error**, not a precedence rule `[ref: CON-1]`
+     - `operation: "set"` **without** `value` is a validation error — the second `allOf` clause
      - `additionalProperties:false` rejects an added field
+     - **STRUCTURAL PARITY**: Hashi's `$def` carries an `allOf` with two clauses — the `oneOf`
+       mutual exclusion above, and an `if operation==set then value required`. The existing
+       parity test compares **property sets, not schema structure**, so a mirror that copies the
+       properties and drops `allOf` passes parity **green** and fails only at Hashi's gate in
+       production. Assert both clauses are present and enforced in **each** schema, by
+       validating a violating document and requiring rejection — not by comparing property lists
      - the parity test passes with the kind in **both** schemas, i.e. it is **not** added to `MIRROR_ONLY_ACTIONS` — Tomo emits it
      - `schema_version` is unchanged `[ref: CON-2]`
   3. **Implement**: add the `$def` and `oneOf` ref to both schemas; verify byte-equality against Hashi's copy programmatically, not by eye.
@@ -46,9 +53,16 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
 
 - [ ] **T4.2 Coverage audit registration** `[activity: backend-logic]`
 
-  1. **Prime**: Read `run_diff` at `:645-659`. Write the blind-spot test **first**, so it fails once the kind is registered — a test that is green before and after proves nothing.
-  2. **Test** (RED):
-     - pre-registration: a set containing `edit_frontmatter` yields a `TOTAL` that **excludes** them, while `action_count` includes them — the documented symptom
+  1. **Prime**: Read `run_diff` at `:645-659`. Test file is `tests/test-instructions-diff.py`
+     (hyphenated). Write the tests as **invariants**, not as assertions about the current bug.
+     A test that asserts the pre-fix symptom passes before the fix and fails after, so it has to
+     be deleted or inverted — that documents temporary state rather than a requirement. Spec 031
+     phase-4 hit this same question and did not resolve it; do not inherit the pattern.
+  2. **Test** (RED — each must FAIL before registration and PASS after, and remain true forever):
+     - **primary invariant**: for any instruction set, `action_count == TOTAL`. Unregistered kinds
+       break this because `summarize_actual` counts generically while `run_diff` iterates
+       `ACTION_ORDER`. RED before registration, GREEN after, never needs inverting
+     - a set containing N `edit_frontmatter` actions contributes N to `TOTAL`
      - post-registration: expected N, actual N → pass `[ref: PRD/AC-F5.1]`
      - expected N, actual N−1 → **hard fail** `[ref: PRD/AC-F5.2]`
      - the kind appears in the printed table and contributes to `TOTAL` `[ref: PRD/AC-F5.3]`

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.4
+# version: 0.3.5
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -315,7 +315,7 @@ def test_action_building():
     return actions
 
 
-def test_schema_validity(actions):
+def check_schema_validity(actions):
     """Validate instructions.json against instructions.schema.json."""
     schema_path = REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"
     schema = json.loads(schema_path.read_text())
@@ -369,7 +369,7 @@ def test_schema_validity(actions):
               f"(jsonschema not installed for full validation)")
 
 
-def test_md_rendering(actions):
+def check_md_rendering(actions):
     md = ir.render_instructions_md(
         actions,
         {
@@ -410,7 +410,7 @@ def test_md_rendering(actions):
     print(f"[PASS] md_rendering — {len(md)} chars, all {len(actions)} actions rendered")
 
 
-def test_config_loading(tmp_config_yaml: Path):
+def check_config_loading(tmp_config_yaml: Path):
     cfg = ir.load_config(str(tmp_config_yaml))
     _must(cfg["profile"] == "miyo", f"profile mismatch: {cfg['profile']}")
     _must(cfg["concepts.inbox"] == "100 Inbox/", "inbox mismatch")
@@ -749,7 +749,7 @@ def test_resolve_target_moc_paths():
     print("[PASS] resolve_target_moc_paths — happy, cached, graceful-degrade, in-set tier-1")
 
 
-def test_path_shape_validator(actions):
+def check_path_shape_validator(actions):
     # Happy-path actions emitted by build_actions() must conform to the
     # Path Shape Contract — the renderer aborts otherwise.
     violations = ir._validate_action_paths(actions)
@@ -830,14 +830,14 @@ daily_log:
         tf.write(sample_yaml)
         cfg_path = Path(tf.name)
     try:
-        test_config_loading(cfg_path)
+        check_config_loading(cfg_path)
     finally:
         cfg_path.unlink(missing_ok=True)
 
     actions = test_action_building()
-    test_schema_validity(actions)
-    test_md_rendering(actions)
-    test_path_shape_validator(actions)
+    check_schema_validity(actions)
+    check_md_rendering(actions)
+    check_path_shape_validator(actions)
     test_backfill_supporting_items_parents()
     test_backfill_plus_build_actions_no_duplicate_links()
     test_resolve_target_moc_paths()

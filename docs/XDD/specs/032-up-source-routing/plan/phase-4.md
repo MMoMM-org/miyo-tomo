@@ -98,8 +98,19 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
   > the parser used — which is exactly why this task waits for Phase 3.
   > Expectation and emission must share ONE routing rule; two independently-authored rules that
   > must agree is the divergence this task exists to prevent.
-  > Note `_GARDEN_EXPECTED_KINDS` is keyed by `garden_action` while its values are instruction
-  > kinds — the routing decision changes the VALUE, not the key.
+  > **The genuine SILENT bug lives here** (verified empirically 2026-09-02). `_garden_item_covered`
+  > (`instructions-diff.py:~462-493`) iterates `_GARDEN_EXPECTED_KINDS.get(ga, ())`. With no
+  > `"edit_frontmatter"` key the loop body **never executes and the function returns `True`
+  > vacuously** — per-item coverage prints `[OK]` for every such item having checked nothing.
+  > The count-level TOTAL does hard-fail loudly, so this is silent only at per-item granularity —
+  > but that is precisely the granularity the per-item coverage section exists to provide.
+  > A test for this MUST assert that an `edit_frontmatter` item with a MISSING or MISMATCHED
+  > action is reported NOT covered. A test that only checks a correct item shows `[OK]` passes
+  > vacuously today and proves nothing.
+  > Correction to an earlier assumption: per `solution.md:353` the routing branch sets
+  > `garden_action = "edit_frontmatter"` **directly on the confirmed_item** — it does not keep
+  > `remove_up_link` and vary only the emitted kind. So `_GARDEN_EXPECTED_KINDS` needs a NEW KEY,
+  > and `GARDEN_ACTION_ORDER` likely needs the value too.
 
   1. **Prime**: `derive_expected` predicts per-kind counts from the parsed decisions. The prediction must model the **routing**, not the finding count — a `broken_up` finding produces either kind, never both.
   2. **Test** (RED):

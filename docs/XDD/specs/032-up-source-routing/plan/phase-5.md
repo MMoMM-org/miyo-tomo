@@ -30,7 +30,7 @@ phase: 5
 
 Makes the routing visible to the person approving it.
 
-- [ ] **T5.1 Property-edit disclosure** `[activity: frontend-ui]`
+- [x] **T5.1 Property-edit disclosure** `[activity: frontend-ui]`
 
   > **Verbatim string — DO NOT PARAPHRASE** (`solution.md` UI & UX section):
   > ```markdown

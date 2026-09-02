@@ -96,7 +96,7 @@ carries it to the finding. P3 is the behavioural change. P4 is the new-kind chec
 its own phase, because it is exactly the work that gets folded into an emission task and then
 forgotten; spec 031 hit the same trap. P5 is the user-visible surface. P6 proves the chain.
 
-- [ ] [Phase 1: Capture the declaration value](phase-1.md)
+- [x] [Phase 1: Capture the declaration value](phase-1.md)
 - [ ] [Phase 2: Carry it to the finding](phase-2.md)
 - [ ] [Phase 3: Route and emit](phase-3.md)
 - [ ] [Phase 4: Register the new action kind](phase-4.md)

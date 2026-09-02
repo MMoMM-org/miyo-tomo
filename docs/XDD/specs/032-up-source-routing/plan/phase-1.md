@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Capture the declaration value"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -45,7 +45,7 @@ Widens what is captured about a note's parent declaration. No behaviour changes.
      - [ ] The observed value is carried verbatim, shape and order intact `[ref: PRD/Business rule 4]`
      - [ ] Inline declarations carry no value `[ref: SDD/ADR-1]`
 
-- [ ] **T1.2 Cache entry carries `up_value`** `[activity: data-architecture]`
+- [x] **T1.2 Cache entry carries `up_value`** `[activity: data-architecture]`
 
   1. **Prime**: Read `moc-tree-builder.py:415-425`. `up_source` is already written at `:423`; this is the sibling field.
   2. **Test** (RED):
@@ -67,6 +67,6 @@ Widens what is captured about a note's parent declaration. No behaviour changes.
   4. **Validate**: the `moc-discovery` test suite passes untouched.
   5. **Success**: widening the shared result breaks no consumer `[ref: SDD/Implementation Boundaries]`
 
-- [ ] **T1.4 Phase Validation** `[activity: validate]`
+- [x] **T1.4 Phase Validation** `[activity: validate]`
 
   - Full suite green. Confirm a freshly built cache carries `up_value` on 100% of entries, matching how `up_source` behaves today. `ruff` clean.

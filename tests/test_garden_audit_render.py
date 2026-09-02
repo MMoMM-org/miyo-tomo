@@ -1229,6 +1229,21 @@ class TestUnroutableFindings:
         report = _render_report(_make_doc(findings=[f]))
         assert "] Apply" not in report
 
+    def test_map_shaped_up_value_finding_renders_reason_and_remedy(self):
+        # spec 032 T3.2: a map-shaped up_value gets its OWN reason — NOT
+        # stale-cache (the cache is healthy here) — and its remedy must not
+        # point at /explore-vault, since a refresh cannot fix an unsupported
+        # shape.
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Not fixable this run" in report
+        assert "unsupported-shape" not in report  # internal reason code, stderr-only
+
+    def test_map_shaped_up_value_finding_renders_no_apply_checkbox(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        assert "] Apply" not in report
+
     def test_fully_routable_run_has_no_withheld_text_or_summary(self):
         f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
         report = _render_report(_make_doc(findings=[f]))
@@ -1243,6 +1258,19 @@ class TestUnroutableFindings:
         report = _render_report(_make_doc(findings=findings))
         assert "2 findings withheld" in report
         assert "/explore-vault" in report
+
+    def test_summary_line_names_unsupported_shape_count_and_reason(self):
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="frontmatter", up_value={"a": 1}
+            ),
+            _make_broken_up_finding(
+                "F02", up_source="frontmatter", up_value={"b": 2}
+            ),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "2 findings withheld" in report
+        assert "unsupported value shape" in report.lower()
 
     def test_summary_omitted_when_nothing_withheld(self):
         f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")

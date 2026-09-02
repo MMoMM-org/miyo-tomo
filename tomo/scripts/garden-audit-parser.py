@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.0
+# version: 0.13.0
 """Pass-2 reader for garden-audit (ADR-4 / spec 030 two-artifact split).
 
 Pure reader: the markdown report (human-facing DECISIONS) + the wire JSON
@@ -112,6 +112,17 @@ def _route_broken_up(
     if up_value is _MISSING:
         # ADR-3: cache predates spec 032. ADR-5: withhold, never fall back.
         unroutable.append({"id": fid, "path": path, "reason": "stale-cache"})
+        return None
+
+    if isinstance(up_value, dict):
+        # spec 032 T3.2: a map-shaped up_value is out of scope — the cache is
+        # healthy (this is NOT stale-cache), but no transform is defined for
+        # this shape (render_actions._construct_edit_frontmatter_fields raises
+        # UnsupportedShapeError for the same shape; this check lets the router
+        # withhold WITHOUT ever calling the transform). See SDD Complex Logic:
+        # "guessing a transform for a shape we have never seen is how the
+        # current defect was born."
+        unroutable.append({"id": fid, "path": path, "reason": "unsupported-shape"})
         return None
 
     if up_source == "frontmatter":

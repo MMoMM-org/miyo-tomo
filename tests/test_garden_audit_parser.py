@@ -182,6 +182,17 @@ def _broken_up_no_declaration_site(fid="F01", selected=True, action="edit_note_t
     )
 
 
+def _broken_up_map_shaped_value(fid="F01", selected=True, action="edit_note_text"):
+    """A map-shaped up_value (spec 032 T3.2) — no defined transform, unroutable
+    with its own reason (NOT stale-cache: the cache is healthy here)."""
+    return _wire_finding(
+        fid, "broken_up", "integrity", True,
+        "Notes/Broken.md", "Broken",
+        {"up_target": "Old MOC", "up_source": "frontmatter", "up_value": {"a": 1}},
+        decision={"selected": selected, "action": action},
+    )
+
+
 def _dead_link(fid="F01", selected=True, replace=None):
     decision = {"selected": selected, "action": "edit_note_text"}
     if replace is not None:
@@ -485,6 +496,15 @@ class TestBuildFromWireBrokenUpRouting:
         assert result["confirmed_items"] == []
         assert result["unroutable"] == [
             {"id": "F01", "path": "Notes/Broken.md", "reason": "no-declaration-site"}
+        ]
+
+    def test_map_shaped_up_value_is_unroutable_unsupported_shape(self):
+        result = build_from_wire(
+            _make_wire([_broken_up_map_shaped_value(selected=True)])
+        )
+        assert result["confirmed_items"] == []
+        assert result["unroutable"] == [
+            {"id": "F01", "path": "Notes/Broken.md", "reason": "unsupported-shape"}
         ]
 
     def test_no_frontmatter_finding_ever_emits_body_oriented_action(self):

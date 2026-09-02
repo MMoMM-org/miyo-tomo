@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.15.0
+# version: 0.16.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -93,6 +93,17 @@ _UNROUTABLE_REMEDY = {
         " declaration site.",
         "  Run `/explore-vault` to refresh the cache, then re-run the audit.",
     ],
+    # Not spec-locked: neither the PRD nor the SDD give verbatim wording for
+    # unsupported-shape (spec 032 T3.2). Proposed wording, following T5.2's
+    # no-declaration-site precedent — it deliberately does NOT point at
+    # /explore-vault, unlike the other two reasons: the cache here is healthy
+    # and current, so a refresh changes nothing (SDD Complex Logic).
+    "unsupported-shape": [
+        "- **Not fixable this run:** this note's `up::` property has a value"
+        " shape (a map) this fix does not yet support.",
+        "  This is not a stale cache — refreshing it will not change the"
+        " outcome. Edit the property by hand instead.",
+    ],
 }
 
 
@@ -114,6 +125,11 @@ def _broken_up_withhold_reason(f: dict) -> str | None:
     up_value = detail.get("up_value", _MISSING)
     if up_value is _MISSING:
         return "stale-cache"
+    if isinstance(up_value, dict):
+        # spec 032 T3.2: a map-shaped up_value has no defined transform — the
+        # cache is healthy (not stale-cache), so it gets its own reason.
+        # Mirrors garden-audit-parser._route_broken_up's shape check.
+        return "unsupported-shape"
     if up_source in ("frontmatter", "inline"):
         return None
     return "no-declaration-site"
@@ -297,6 +313,7 @@ def _render_summary(findings: list[dict]) -> list[str]:
 _UNROUTABLE_REASON_LABEL = {
     "stale-cache": "stale cache",
     "no-declaration-site": "no declaration site",
+    "unsupported-shape": "unsupported value shape",
 }
 _UNROUTABLE_SUMMARY_TEXT = {
     "stale-cache": (
@@ -306,6 +323,10 @@ _UNROUTABLE_SUMMARY_TEXT = {
     "no-declaration-site": (
         "no recorded declaration site for the broken `up::`. Run "
         "`/explore-vault` to refresh the cache, then re-run the audit"
+    ),
+    "unsupported-shape": (
+        "a map-shaped `up::` value this fix does not yet support — not a "
+        "stale cache, edit the property by hand"
     ),
 }
 
@@ -328,7 +349,7 @@ def _render_unroutable_summary(findings: list[dict]) -> list[str]:
     total = sum(counts.values())
     noun = "finding" if total == 1 else "findings"
     lines = [f"**{total} {noun} withheld this run — not fixable:**", ""]
-    for reason in ("stale-cache", "no-declaration-site"):
+    for reason in ("stale-cache", "no-declaration-site", "unsupported-shape"):
         n = counts.get(reason, 0)
         if n:
             label = _UNROUTABLE_REASON_LABEL[reason]

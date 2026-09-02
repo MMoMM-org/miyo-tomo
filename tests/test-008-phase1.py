@@ -785,6 +785,9 @@ def test_path_shape_validator(actions):
         ({"id": "X8", "action": "create_moc",
           "destination": "Atlas/X.md"},  # missing required `source`
          "missing or empty"),
+        ({"id": "X12", "action": "edit_frontmatter",
+          "property": "up", "operation": "remove"},  # missing required `path`
+         "missing or empty"),
     ]
     for action, needle in cases:
         v = ir._validate_action_paths([action])

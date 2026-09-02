@@ -758,7 +758,7 @@ class TestClickableLinksAndFixSummary:
         assert "Replace" in report
 
     def test_fix_line_no_longer_says_apply_backtick_action(self):
-        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")]))
         assert "Apply `edit_note_text`" not in report
 
 

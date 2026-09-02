@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# version: 0.1.0
 """test_edit_frontmatter_schema.py — spec 032-up-source-routing T4.1.
 
 Registers `edit_frontmatter` in both instruction schemas (producer +

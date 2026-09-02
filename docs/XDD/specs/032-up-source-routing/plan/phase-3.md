@@ -108,7 +108,7 @@ The behavioural change. Everything before this was plumbing.
      - [ ] A legitimate sibling parent is never deleted `[ref: PRD/Edge case: list with several entries]`
      - [ ] Shape is preserved `[ref: PRD/Business rule 4]`
 
-- [ ] **T3.3 `edit_frontmatter` emission** `[activity: backend-logic]`
+- [x] **T3.3 `edit_frontmatter` emission** `[activity: backend-logic]`
 
   > **SEAM against T3.2, settled 2026-09-02.** T3.2 delivers the pure transform. T3.3 does the
   > wiring, and owns two prerequisites the plan did not name:

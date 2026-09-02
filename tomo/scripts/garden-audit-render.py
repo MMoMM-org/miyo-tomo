@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.16.0
+# version: 0.17.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -358,6 +358,57 @@ def _render_unroutable_summary(findings: list[dict]) -> list[str]:
     return lines
 
 
+# ── Routing-split line (spec 032 T5.3, ADR-4) ───────────────────────────────
+def _broken_up_site(f: dict) -> str | None:
+    """Where a broken_up finding's up:: is declared — "body" or "property" —
+    or None when the site can't be attributed: a stale cache predating
+    ADR-1's raw_value capture (up_source absent), or the "unreachable in
+    practice" no-declaration-site branch (up_source present but not one of
+    the two known values).
+
+    Deliberately reads detail.up_source directly rather than routing through
+    _broken_up_withhold_reason: a T3.2 unsupported-shape finding (map-shaped
+    up_value) is withheld, but ADR-1 still populated its up_source at
+    cache-build time, so its declaration site IS known. ADR-4's population
+    visibility is about where the parent is declared, not about fixability —
+    those are separate questions, answered by separate report lines.
+    """
+    if f.get("check") != "broken_up":
+        return None
+    up_source = (f.get("detail") or {}).get("up_source")
+    if up_source == "frontmatter":
+        return "property"
+    if up_source == "inline":
+        return "body"
+    return None
+
+
+def _render_broken_up_split(findings: list[dict]) -> list[str]:
+    """Once-per-run routing-split line (ADR-4, verbatim per solution.md UI &
+    UX): "Broken parents: N findings — B in the note body, P in a note
+    property."
+
+    N is deliberately B + P, not the raw broken_up finding count. A finding
+    whose site can't be attributed (see _broken_up_site) is excluded here
+    rather than folded into N — a mismatched "29 findings — 0 in the note
+    body, 0 in a note property" would be true, useless, and alarming. Those
+    findings are already named by _render_unroutable_summary; this line just
+    doesn't double-count them. Suppressed entirely when B + P == 0, which
+    covers both "no broken_up findings this run" and the measured first-run
+    reality where every broken_up finding is stale-cache and unattributable.
+    """
+    body = sum(1 for f in findings if _broken_up_site(f) == "body")
+    prop = sum(1 for f in findings if _broken_up_site(f) == "property")
+    total = body + prop
+    if total == 0:
+        return []
+    return [
+        f"Broken parents: {total} findings — {body} in the note body, "
+        f"{prop} in a note property.",
+        "",
+    ]
+
+
 def _render_property_edit_disclosure(up_property: str) -> list[str]:
     """The property-edit disclosure (spec 032 T5.1) — verbatim per solution.md
     UI & UX, `up_property` derived (ADR-6), never hardcoded to "up".
@@ -547,6 +598,7 @@ def render_report(d: dict) -> str:
     parts += _render_caveats()
     parts += _render_preamble(d)
     parts += _render_summary(findings)
+    parts += _render_broken_up_split(findings)
     parts += _render_unroutable_summary(findings)
     for tier in ("integrity", "structure", "advisory"):
         parts += _render_tier_section(tier, findings, up_property, ack_days)

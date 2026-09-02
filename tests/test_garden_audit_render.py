@@ -1317,3 +1317,123 @@ class TestUnroutableFindings:
         summary_idx = report.find("29 findings withheld")
         first_block_idx = report.find("### F01")
         assert -1 < summary_idx < first_block_idx
+
+
+# ---------------------------------------------------------------------------
+# Spec 032 T5.3: routing-split line (ADR-4) — once per run, the population of
+# broken_up findings split by declaration site.
+# ---------------------------------------------------------------------------
+# Verbatim (solution.md UI & UX, ADR-4): "Broken parents: N findings — B in
+# the note body, P in a note property." N is deliberately B + P, NOT the raw
+# broken_up finding count: a finding whose site can't be attributed (a
+# stale-cache finding predating ADR-1, or the "unreachable in practice"
+# no-declaration-site branch) is excluded from this line rather than folded
+# into N — a mismatched "29 findings — 0 in body, 0 in property" would be
+# true, useless, and alarming (the measured first-run reality: 346 cache
+# entries, 0 carrying up_value, so every one of the 29 broken_up findings is
+# unattributable on the very first run this ships). Those findings are
+# already covered by TestUnroutableFindings' summary — this line isn't the
+# only place they're surfaced, just not the place they're double-counted.
+# The line is suppressed entirely whenever B + P == 0, covering both "no
+# broken_up findings at all" and "every one is unattributable."
+
+_SPLIT_LINE = "Broken parents: {total} findings — {body} in the note body, {prop} in a note property."
+
+
+class TestBrokenUpSplitLine:
+    def test_mixed_body_and_property_renders_verbatim_split(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+            _make_broken_up_finding("F03", up_source="inline", up_value="[[C]]"),
+            _make_broken_up_finding("F04", up_source="frontmatter", up_value="[[D]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=4, body=3, prop=1) in report
+
+    def test_split_line_appears_exactly_once_regardless_of_finding_count(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+            _make_broken_up_finding("F03", up_source="frontmatter", up_value="[[C]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert report.count("Broken parents:") == 1
+
+    def test_only_body_resident_still_renders_with_zero_property(self):
+        # A zero here must be distinguishable from "the line never renders" —
+        # otherwise "no property findings" and "routing broken" look the same.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=2, body=2, prop=0) in report
+
+    def test_only_property_resident_still_renders_with_zero_body(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="frontmatter", up_value="[[A]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=1, body=0, prop=1) in report
+
+    def test_no_broken_up_findings_renders_no_split_line(self):
+        report = _render_report(_make_doc(findings=[_make_unparented_finding()]))
+        assert "Broken parents:" not in report
+
+    def test_zero_findings_renders_no_split_line(self):
+        report = _render_report(_make_doc(findings=[]))
+        assert "Broken parents:" not in report
+
+    def test_all_findings_unattributable_renders_no_split_line(self):
+        # Decision (Q2): the measured first-run reality — every broken_up
+        # finding is stale-cache, site unknown for all of them. A naive
+        # count-everything line would read "29 findings — 0 in the note
+        # body, 0 in a note property." — true, useless, and alarming. The
+        # line must not render at all in this case.
+        findings = [_make_broken_up_finding(f"F{i:02d}") for i in range(1, 30)]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Broken parents:" not in report
+
+    def test_no_declaration_site_finding_excluded_from_split(self):
+        # up_value present (not stale) but up_source not in
+        # {"frontmatter", "inline"} — "unreachable in practice" per
+        # garden-audit-parser.py, but still unattributable to a site.
+        findings = [
+            _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=1, body=1, prop=0) in report
+
+    def test_unsupported_shape_finding_still_counted_by_site(self):
+        # T3.2: a map-shaped up_value is withheld (unsupported-shape), but its
+        # declaration site IS known — ADR-4 wants population visibility
+        # regardless of fixability, so it must still count toward the split.
+        findings = [
+            _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1}),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=1, body=0, prop=1) in report
+
+    def test_split_line_precedes_unroutable_summary(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02"),  # stale-cache — withheld
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        split_idx = report.find("Broken parents:")
+        withheld_idx = report.find("withheld this run")
+        assert -1 < split_idx < withheld_idx
+
+    def test_body_resident_finding_block_unaffected_con7(self):
+        # CON-7: the split line must not alter a body-resident finding's own
+        # per-finding block rendering.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]"),
+            _make_broken_up_finding("F02", up_source="frontmatter", up_value="[[B]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Broken `up::` → [[Deleted MOC]]" in report
+        assert "Apply — tick to apply this fix" in report
+        assert "**Repoint to:**" in report

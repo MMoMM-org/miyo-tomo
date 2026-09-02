@@ -31,7 +31,7 @@ Widens what is captured about a note's parent declaration. No behaviour changes.
 
 - [x] **T1.1 `UpParseResult.raw_value`** `[activity: domain-modeling]`
 
-  1. **Prime**: Read `up_parse.py:43-47` and both return sites at `:206` and `:211`. Note that `:210` already fetches the whole property value before `_first_wikilink` discards all but the first link.
+  1. **Prime**: Read `up_parse.py:42-46` (the dataclass) and both return sites at `:206` and `:211`. Note that `:210` already fetches the whole property value before `_first_wikilink` discards all but the first link.
   2. **Test** (RED):
      - a frontmatter list `up: ["[[A]]", "[[B]]"]` → `raw_value == ["[[A]]", "[[B]]"]`, order preserved `[ref: PRD/Business rule 4]`
      - a frontmatter scalar `up: "[[A]]"` → `raw_value == "[[A]]"`, **not** wrapped in a list `[ref: SDD/Implementation Gotchas]`
@@ -61,7 +61,9 @@ Widens what is captured about a note's parent declaration. No behaviour changes.
 
 - [x] **T1.3 Second-consumer regression** `[activity: validate]` `[parallel: true]`
 
-  1. **Prime**: `moc-discovery.py:63` and `:1399` also call `parse_up_from_content`.
+  1. **Prime**: `moc-discovery.py:1545` also calls `parse_up_from_content`, reading `.target`
+     only. (`:63` is the import and `:1399` a section comment — neither is a call site.)
+     `tests/test_028_markers_phase3.py` is a second consumer and reads `.target` and `.source`.
   2. **Test** (RED): `moc-discovery`'s existing behaviour is unchanged by the wider dataclass — it reads `.target`/`.source` only.
   3. **Implement**: no production change expected. If one is needed, the dataclass change was not additive.
   4. **Validate**: the `moc-discovery` test suite passes untouched.

@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Carry it to the finding"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -62,7 +62,7 @@ Makes the declaration site visible to everything downstream, without changing an
   4. **Validate**: schema tests pass. Schemas sync bytewise — no version bump `[ref: CON-8]`.
   5. **Success**: both channels accept the enriched finding, and legacy artefacts still validate
 
-- [ ] **T2.3 Digest impact check** `[activity: validate]`
+- [x] **T2.3 Digest impact check** `[activity: validate]`
 
   1. **Prime**: `compute_garden_audit_digest` (`lib/render_md.py:294`) is an **allowlist**
      projection — it hashes only `{id, decision: <apply-decision keys present>}` and never reads
@@ -76,6 +76,6 @@ Makes the declaration site visible to everything downstream, without changing an
   4. **Validate**: digest tests pass.
   5. **Success**: Tomo-written fields never masquerade as user edits `[ref: SDD/Cross-Cutting Concepts]`
 
-- [ ] **T2.4 Phase Validation** `[activity: validate]`
+- [x] **T2.4 Phase Validation** `[activity: validate]`
 
   - Full suite green. Confirm end to end that a frontmatter-sourced broken parent produces a finding carrying both fields, through both the doc and the wire channel. `ruff` clean.

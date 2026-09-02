@@ -134,7 +134,7 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
   4. **Validate**: unit tests pass; `# version:` bumped on both files.
   5. **Success**: neither tool rejects nor mislabels a valid set
 
-- [ ] **T4.5 Path validation** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T4.5 Path validation** `[activity: backend-logic]` `[parallel: true]`
 
   1. **Prime**: `_REQUIRED_PATH_FIELDS` at `render_actions.py:204-219`; an unlisted kind is silently skipped by `_validate_action_paths`.
   2. **Test** (RED): an `edit_frontmatter` with an empty `path` is rejected, proving the kind is no longer skipped.

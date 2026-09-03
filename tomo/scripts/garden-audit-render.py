@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.0
+# version: 0.18.2
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -37,12 +37,18 @@ from pathlib import Path
 import yaml
 
 from lib.doc_frontmatter import build_tomo_block
+from lib.profile_conventions import marker_word, resolve_conventions
 from lib.render_md import compute_garden_audit_digest, unwrap_list_repr
 from lib.target_suggest import (
     suggest_dead_link_targets,
     suggest_file_under_mocs,
     suggest_repoint_mocs,
 )
+
+# Instance-relative profiles dir (ADR-2, profile_conventions.py): the script
+# supplies profiles_dir, the lib never derives it from its own __file__.
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_PROFILES_DIR = SCRIPT_DIR.parent / "profiles"
 
 # ── Tier ordering ────────────────────────────────────────────────────────────
 _TIER_ORDER = {"integrity": 0, "structure": 1, "advisory": 2}
@@ -61,6 +67,89 @@ _CHECK_LABEL = {
     "duplicate_stem": "Duplicate stem",
     "stale_moc": "Stale MOC",
 }
+
+
+# ── Unroutable broken_up findings (spec 032 T5.2) ──────────────────────────────
+# Sentinel mirroring garden-audit-parser.py's ADR-3 _MISSING — detail.up_value
+# may legitimately be None (a property that exists and holds nothing), so only
+# identity-checking against a sentinel distinguishes that from a cache that
+# never wrote the key at all (a pre-032 cache, CON-1).
+_MISSING = object()
+
+_UNROUTABLE_REMEDY = {
+    # Verbatim (solution.md, User Interface & UX) — DO NOT PARAPHRASE.
+    "stale-cache": [
+        "- **Not fixable this run:** the discovery cache predates property routing.",
+        "  Run `/explore-vault` to refresh it, then re-run the audit.",
+    ],
+    # Not spec-locked: the PRD/SDD only give verbatim wording for stale-cache.
+    # no-declaration-site is documented in garden-audit-parser.py as
+    # "unreachable in practice" (a broken state requires a target, and a
+    # target requires a declared source) with no specified user-facing text.
+    # Reuses the /explore-vault remedy — a cache refresh is the only recovery
+    # lever this system offers — but this wording is proposed, not verbatim.
+    "no-declaration-site": [
+        "- **Not fixable this run:** this note's broken `up::` has no recorded"
+        " declaration site.",
+        "  Run `/explore-vault` to refresh the cache, then re-run the audit.",
+    ],
+    # Not spec-locked: neither the PRD nor the SDD give verbatim wording for
+    # unsupported-shape (spec 032 T3.2). Proposed wording, following T5.2's
+    # no-declaration-site precedent — it deliberately does NOT point at
+    # /explore-vault, unlike the other two reasons: the cache here is healthy
+    # and current, so a refresh changes nothing (SDD Complex Logic).
+    # {prop} is substituted with the derived property name (ADR-6) at render
+    # time — never hardcoded to "up". "up::" is the inline-marker spelling;
+    # this reason only ever arises for a frontmatter-sourced finding (a
+    # map-shaped value comes from parsed YAML), so the property name is the
+    # correct noun here, not the inline marker.
+    "unsupported-shape": [
+        "- **Not fixable this run:** this note's `{prop}` property has a value"
+        " shape (a map) this fix does not yet support.",
+        "  This is not a stale cache — refreshing it will not change the"
+        " outcome. Edit the property by hand instead.",
+    ],
+}
+
+
+def _broken_up_withhold_reason(f: dict) -> str | None:
+    """Reason a broken_up finding cannot be routed to a fix this run, or None
+    when it is routable.
+
+    Mirrors garden-audit-parser.py's ``_route_broken_up`` reason logic
+    (ADR-3/ADR-5) so the report agrees with Pass-2 about what is (un)routable
+    — without needing the user's remove/repoint choice, since routability
+    doesn't depend on it. Only meaningful for a fixable broken_up finding
+    (decision present); a malformed finding with no decision block at all
+    still falls through to the ValueError guard in ``_render_finding``.
+    """
+    if f.get("check") != "broken_up" or f.get("decision") is None:
+        return None
+    detail = f.get("detail") or {}
+    up_source = detail.get("up_source")
+    up_value = detail.get("up_value", _MISSING)
+    if up_value is _MISSING:
+        return "stale-cache"
+    if isinstance(up_value, dict):
+        # spec 032 T3.2: a map-shaped up_value has no defined transform — the
+        # cache is healthy (not stale-cache), so it gets its own reason.
+        # Mirrors garden-audit-parser._route_broken_up's shape check.
+        return "unsupported-shape"
+    if up_source in ("frontmatter", "inline"):
+        return None
+    return "no-declaration-site"
+
+
+def _render_withheld_block(reason: str, up_property: str) -> list[str]:
+    """The reason + remedy for one withheld finding — no Apply checkbox and no
+    Suggest opt-in, because there is nothing to approve or suggest a target
+    for until the cache is refreshed (PRD AC-F6.1/F6.2).
+
+    ``up_property`` fills the "unsupported-shape" template's ``{prop}`` slot
+    (ADR-6, derived — never hardcoded); the other two reasons have no
+    placeholder, so .format is a no-op for them.
+    """
+    return [ln.format(prop=up_property) for ln in _UNROUTABLE_REMEDY[reason]] + [""]
 
 
 # ── Note-reference rendering ──────────────────────────────────────────────────
@@ -93,11 +182,16 @@ def _wikilink(ref) -> str:
     return f"[[{stem}]]"
 
 
-def _fix_summary(check: str, detail: dict, decision: dict) -> str:
+def _fix_summary(check: str, detail: dict, decision: dict, up_property: str) -> str:
     """One plain-language line describing what applying the fix will DO to the note.
 
     The report must let the user decide without reading the wire — spell out the
     concrete before→after change, not just "Apply fix".
+
+    ``up_property`` (ADR-6, derived — never hardcoded) names the fix action for
+    a property-resident broken_up finding: it is fixed via a YAML-property
+    edit, not a body-text edit, so the summary must say "property", not
+    "up::" / "the broken line" — those describe the body-resident action.
     """
     if check in ("unparented", "orphan"):
         mocs = detail.get("candidate_mocs") or []
@@ -110,6 +204,11 @@ def _fix_summary(check: str, detail: dict, decision: dict) -> str:
         )
     if check == "broken_up":
         up = _wikilink(detail.get("up_target"))
+        if detail.get("up_source") == "frontmatter":
+            return (
+                f"The broken `{up_property}` property (was {up}) — repoint it to "
+                "a MOC you enter below, or leave empty to remove the property value."
+            )
         return (
             f"The broken `up::` (was {up}) — repoint it to a MOC you enter below, "
             "or leave empty to remove the broken line."
@@ -231,7 +330,134 @@ def _render_summary(findings: list[dict]) -> list[str]:
     return lines
 
 
-def _render_finding(f: dict) -> list[str]:
+_UNROUTABLE_REASON_LABEL = {
+    "stale-cache": "stale cache",
+    "no-declaration-site": "no declaration site",
+    "unsupported-shape": "unsupported value shape",
+}
+_UNROUTABLE_SUMMARY_TEXT = {
+    "stale-cache": (
+        "the discovery cache predates property routing. Run `/explore-vault` "
+        "to refresh it, then re-run the audit"
+    ),
+    "no-declaration-site": (
+        "no recorded declaration site for the broken `up::`. Run "
+        "`/explore-vault` to refresh the cache, then re-run the audit"
+    ),
+    # {prop} substituted with the derived property name (ADR-6) at render
+    # time — never hardcoded to "up" — mirrors _UNROUTABLE_REMEDY's
+    # unsupported-shape template above. This reason only ever arises for a
+    # frontmatter-sourced finding, so "property" is the correct noun here,
+    # not the inline-marker "up::" spelling.
+    "unsupported-shape": (
+        "a map-shaped `{prop}` property value this fix does not yet support "
+        "— not a stale cache, edit the property by hand"
+    ),
+}
+
+
+def _render_unroutable_summary(findings: list[dict], up_property: str) -> list[str]:
+    """Once-per-run summary of withheld findings (PRD Should-have: unroutable
+    summary; ADR-4-adjacent observability). In addition to the per-finding
+    reason + remedy blocks, not a replacement for them (SDD render shape) —
+    the measured first-run reality is that EVERY broken_up finding can be
+    withheld at once, and the reader must not have to infer the collective
+    remedy from N identical blocks.
+
+    ``up_property`` fills the "unsupported-shape" template's ``{prop}`` slot
+    (ADR-6, derived — never hardcoded), the same substitution
+    _render_withheld_block applies to the per-finding remedy for the same
+    reason; the other two reasons have no placeholder, so .format is a no-op
+    for them.
+    """
+    counts: dict[str, int] = {}
+    for f in findings:
+        reason = _broken_up_withhold_reason(f)
+        if reason:
+            counts[reason] = counts.get(reason, 0) + 1
+    if not counts:
+        return []
+
+    total = sum(counts.values())
+    noun = "finding" if total == 1 else "findings"
+    lines = [f"**{total} {noun} withheld this run — not fixable:**", ""]
+    for reason in ("stale-cache", "no-declaration-site", "unsupported-shape"):
+        n = counts.get(reason, 0)
+        if n:
+            label = _UNROUTABLE_REASON_LABEL[reason]
+            text = _UNROUTABLE_SUMMARY_TEXT[reason].format(prop=up_property)
+            lines.append(f"- {n} {label} — {text}.")
+    lines.append("")
+    return lines
+
+
+# ── Routing-split line (spec 032 T5.3, ADR-4) ───────────────────────────────
+def _broken_up_site(f: dict) -> str | None:
+    """Where a broken_up finding's up:: is declared — "body" or "property" —
+    or None when the site can't be attributed: a stale cache predating
+    ADR-1's raw_value capture (up_source absent), or the "unreachable in
+    practice" no-declaration-site branch (up_source present but not one of
+    the two known values).
+
+    Deliberately reads detail.up_source directly rather than routing through
+    _broken_up_withhold_reason: a T3.2 unsupported-shape finding (map-shaped
+    up_value) is withheld, but ADR-1 still populated its up_source at
+    cache-build time, so its declaration site IS known. ADR-4's population
+    visibility is about where the parent is declared, not about fixability —
+    those are separate questions, answered by separate report lines.
+    """
+    if f.get("check") != "broken_up":
+        return None
+    up_source = (f.get("detail") or {}).get("up_source")
+    if up_source == "frontmatter":
+        return "property"
+    if up_source == "inline":
+        return "body"
+    return None
+
+
+def _render_broken_up_split(findings: list[dict]) -> list[str]:
+    """Once-per-run routing-split line (ADR-4, verbatim per solution.md UI &
+    UX): "Broken parents: N findings — B in the note body, P in a note
+    property."
+
+    N is deliberately B + P, not the raw broken_up finding count. A finding
+    whose site can't be attributed (see _broken_up_site) is excluded here
+    rather than folded into N — a mismatched "29 findings — 0 in the note
+    body, 0 in a note property" would be true, useless, and alarming. Those
+    findings are already named by _render_unroutable_summary; this line just
+    doesn't double-count them. Suppressed entirely when B + P == 0, which
+    covers both "no broken_up findings this run" and the measured first-run
+    reality where every broken_up finding is stale-cache and unattributable.
+    """
+    body = sum(1 for f in findings if _broken_up_site(f) == "body")
+    prop = sum(1 for f in findings if _broken_up_site(f) == "property")
+    total = body + prop
+    if total == 0:
+        return []
+    return [
+        f"Broken parents: {total} findings — {body} in the note body, "
+        f"{prop} in a note property.",
+        "",
+    ]
+
+
+def _render_property_edit_disclosure(up_property: str) -> list[str]:
+    """The property-edit disclosure (spec 032 T5.1) — verbatim per solution.md
+    UI & UX, `up_property` derived (ADR-6), never hardcoded to "up".
+
+    Rendered at approval time (before the Apply checkbox): a successful
+    edit_frontmatter fix drops YAML comments in the note's property block
+    irreversibly, so the cost must be visible before the user ticks Apply,
+    not after — a post-hoc note is too late by construction.
+    """
+    return [
+        f"- **Fix target:** note property `{up_property}` — editing YAML properties.",
+        "  ⚠️ Comments inside this note's property block will not survive the edit.",
+    ]
+
+
+def _render_finding(f: dict, up_property: str) -> list[str]:
     """Render one finding as a human-facing report block.
 
     The report carries the user's DECISIONS only, joined to the machine wire by
@@ -263,7 +489,15 @@ def _render_finding(f: dict) -> list[str]:
     elif check == "broken_up":
         up_target = detail.get("up_target")
         if up_target:
-            lines.append(f"Broken `up::` → {_wikilink(up_target)}")
+            # Same site branch as _fix_summary: a frontmatter-declared parent has
+            # no `up::` line to name, and saying so contradicts the property
+            # language the same block carries two lines below.
+            if detail.get("up_source") == "frontmatter":
+                lines.append(
+                    f"Broken `{up_property}` property → {_wikilink(up_target)}"
+                )
+            else:
+                lines.append(f"Broken `up::` → {_wikilink(up_target)}")
     elif check == "dead_link":
         dead_target = detail.get("dead_target", "")
         count = detail.get("count", 1)
@@ -281,13 +515,26 @@ def _render_finding(f: dict) -> list[str]:
 
     # Fixable → checkbox (opt-in: decision.selected defaults False since 0.11.0)
     decision = f.get("decision")
-    if decision is not None:
+    # Unroutable broken_up (spec 032 T5.2): checked BEFORE the decision branch
+    # so a withheld finding never reaches the Apply/Suggest affordances below —
+    # there is nothing to approve. A malformed finding with no decision block
+    # at all is unaffected (_broken_up_withhold_reason returns None when
+    # decision is None) and still falls through to the ValueError guard.
+    withhold_reason = _broken_up_withhold_reason(f)
+    if withhold_reason is not None:
+        lines += _render_withheld_block(withhold_reason, up_property)
+    elif decision is not None:
         selected = decision.get("selected", False)
         check_mark = "x" if selected else " "
-        lines += [
-            "**Fix:** " + _fix_summary(check, detail, decision),
-            f"- [{check_mark}] Apply — tick to apply this fix",
-        ]
+        lines.append("**Fix:** " + _fix_summary(check, detail, decision, up_property))
+        # Property-edit disclosure (spec 032 T5.1): only for a broken_up finding
+        # whose up:: lives in frontmatter — an edit_frontmatter fix drops YAML
+        # comments in that property block, and the cost must be visible BEFORE
+        # Apply is ticked. Body-resident (inline/absent up_source) findings are
+        # unaffected — CON-7 byte-identical rendering.
+        if check == "broken_up" and detail.get("up_source") == "frontmatter":
+            lines += _render_property_edit_disclosure(up_property)
+        lines.append(f"- [{check_mark}] Apply — tick to apply this fix")
         # Editable target field — the parser reads it back to decide the fix.
         if check == "dead_link":
             lines.append(
@@ -298,10 +545,20 @@ def _render_finding(f: dict) -> list[str]:
             # Every broken_up offers repoint OR remove — the user chooses by
             # filling (repoint) or leaving empty (remove). The parser reads this
             # field for all broken_up findings, not just pre-marked repoints.
-            lines.append(
-                "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
-                "up::, or leave empty to remove"
-            )
+            # Property-resident (up_source == "frontmatter") names the target
+            # as a property (ADR-6 derived, never hardcoded) — the fix is a
+            # YAML-property edit, not a body edit, so "up::" would misdescribe
+            # the action. Body-resident wording is unchanged (CON-7).
+            if detail.get("up_source") == "frontmatter":
+                lines.append(
+                    "- **Repoint to:** [[]]    ← enter the correct MOC to "
+                    f"repoint the `{up_property}` property, or leave empty to remove"
+                )
+            else:
+                lines.append(
+                    "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
+                    "up::, or leave empty to remove"
+                )
         elif check in ("unparented", "orphan"):
             # File under: the MOC to file this orphan under. Semantically clearer
             # than "Repoint to:" for filing (Change 2). Typed value / picked
@@ -339,7 +596,7 @@ def _render_finding(f: dict) -> list[str]:
     return lines
 
 
-def _render_tier_section(tier: str, findings: list[dict],
+def _render_tier_section(tier: str, findings: list[dict], up_property: str,
                          ack_days: int = 30) -> list[str]:
     """Render one tier section (e.g. ## Integrity). Returns [] when no findings."""
     tier_findings = [f for f in findings if f["tier"] == tier]
@@ -355,7 +612,7 @@ def _render_tier_section(tier: str, findings: list[dict],
             "",
         ]
     for f in tier_findings:
-        lines.extend(_render_finding(f))
+        lines.extend(_render_finding(f, up_property))
     return lines
 
 
@@ -363,6 +620,15 @@ def render_report(d: dict) -> str:
     """Render the full markdown report body (without frontmatter) as a string."""
     findings = d.get("findings") or []
     date = d["generated"][:10]
+
+    # ADR-6 (spec 032): the property name shown in the T5.1 disclosure is always
+    # derived from the active profile's configured parent marker — never
+    # hardcoded to "up" — via the same marker_word() SSoT the rest of the
+    # pipeline uses.
+    conventions = resolve_conventions(
+        profile_override=d.get("profile"), profiles_dir=DEFAULT_PROFILES_DIR
+    )
+    up_property = marker_word(conventions.parent_marker)
 
     ack_days = d.get("advisory_pushback_days") or 30
     parts: list[str] = []
@@ -383,8 +649,10 @@ def render_report(d: dict) -> str:
     parts += _render_caveats()
     parts += _render_preamble(d)
     parts += _render_summary(findings)
+    parts += _render_broken_up_split(findings)
+    parts += _render_unroutable_summary(findings, up_property)
     for tier in ("integrity", "structure", "advisory"):
-        parts += _render_tier_section(tier, findings, ack_days)
+        parts += _render_tier_section(tier, findings, up_property, ack_days)
 
     return "\n".join(parts)
 
@@ -723,6 +991,28 @@ def _wire_suggest_pending(findings: list[dict]) -> bool:
     return False
 
 
+def _log_unroutable_findings(findings: list[dict], stream=None) -> None:
+    """One [garden-audit]-prefixed stderr line per withheld finding (solution.md
+    System-Wide Patterns: "unroutable findings go to stderr with the existing
+    [garden-audit] prefix, naming the note and the reason").
+
+    ``stream`` defaults to ``sys.stderr`` read at CALL time, not def time — a
+    default bound at definition time would capture the stream object current
+    at module import, before a test's capsys redirection ever takes effect.
+    """
+    stream = stream if stream is not None else sys.stderr
+    for f in findings:
+        reason = _broken_up_withhold_reason(f)
+        if reason is None:
+            continue
+        target = f.get("target") or {}
+        note = target.get("stem") or target.get("path") or f.get("id")
+        print(
+            f"[garden-audit] Withheld {f.get('id')} — {note}: not routable ({reason})",
+            file=stream,
+        )
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -761,6 +1051,8 @@ def main() -> int:
     wire = build_wire_payload(d)
     with open(args.json_output, "w", encoding="utf-8") as f:
         json.dump(wire, f, ensure_ascii=False, indent=2)
+
+    _log_unroutable_findings(d.get("findings") or [])
 
     finding_count = len(d.get("findings") or [])
     print(

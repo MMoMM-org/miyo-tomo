@@ -1,4 +1,4 @@
-# version: 0.2.3
+# version: 0.2.5
 """up_parse.py — SSoT for "does this note declare a parent?"
 
 Parses both inline `up::` (Dataview-style) and frontmatter `up:` values
@@ -27,7 +27,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
 
@@ -41,10 +41,18 @@ from lib.profile_conventions import marker_word
 
 @dataclass
 class UpParseResult:
-    """Result of parsing the `up` relationship from a raw note."""
+    """Result of parsing the `up` relationship from a raw note.
+
+    `raw_value` carries the frontmatter property value verbatim, so a caller can
+    guard an edit against what the note actually holds. It is None for an inline
+    declaration (there is no property to guard) and also None when the property is
+    absent or empty — that path falls through to the shared "absent" return rather
+    than the frontmatter return site.
+    """
 
     target: Optional[str]  # parent stem, anchor-stripped; None when absent
     source: Optional[str]  # "inline" | "frontmatter" | None
+    raw_value: Any = None  # frontmatter: the property value AS PARSED (list|scalar)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -206,9 +214,10 @@ def parse_up_from_content(
             return UpParseResult(target=_clean_target(raw_target), source="inline")
 
     # 2. Frontmatter fallback
-    target = _first_wikilink(frontmatter.get(marker_word(parent_marker)))
+    fm_value = frontmatter.get(marker_word(parent_marker))
+    target = _first_wikilink(fm_value)
     if target:
-        return UpParseResult(target=target, source="frontmatter")
+        return UpParseResult(target=target, source="frontmatter", raw_value=fm_value)
 
     # 3. Absent
     return UpParseResult(target=None, source=None)

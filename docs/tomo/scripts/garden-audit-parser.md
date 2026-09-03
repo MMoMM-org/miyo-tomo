@@ -6,6 +6,61 @@
 > machine STRUCTURE (always read), joined by the F-id in each `### F<id>` heading.
 > The result is a `{"confirmed_items": [...]}` envelope printed to STDOUT.
 
+## Version 0.14.0 — broken_up routes by declaration site, never falls back (spec 032, 2026-09-02)
+
+WHY `_route_broken_up` exists as a discrete gate ahead of the existing repoint/remove branching
+instead of the parser simply always emitting `add_relationship`/`remove_up_link`: those two actions
+are body-oriented — Hashi's executor for both locates the fix by regex-scanning the note's `up::`
+line. When a note's parent is declared in a **frontmatter property** instead, there is no such line
+to find. Before this spec, a property-declared broken parent still routed to one of those two
+actions, and the result was invisible-bad: `remove_up_link` finds no `up::` line and reports "nothing
+to remove" — **silent success** on a fix that never happened. `add_relationship` hits Hashi's
+`addRelationship.ts:21,70` guard and returns `failed` with "Marker not found" — at least loud, but
+still the wrong action kind sent for the wrong declaration site. Verified live: of 29 `broken_up`
+findings in `moc-structure-cache.yaml` (346 entries), 1 is frontmatter-sourced and was, before this
+fix, hitting exactly this defect on a real note
+(`Atlas/202 Notes/Aristotle and Metaphor - Seeing the similarity between things..md` →
+`Philosophy MOC (kit)`).
+
+`_route_broken_up` reads `detail.up_source` (populated by `lib/up_parse.py` → `moc-tree-builder.py` →
+the moc-structure cache) and returns one of three garden_actions: `"frontmatter"` → `edit_frontmatter`
+(new, spec 032); `"inline"` → `remove_up_link` / `add_relationship` (unchanged, pre-032 behaviour);
+anything else (missing/unknown) is **withheld**, never guessed — appended to `unroutable` with a
+reason (`"stale-cache"` when `up_value` was never observed at all, `"unsupported-shape"` for a
+map-shaped `up_value` with no defined transform, `"no-declaration-site"` for the — believed
+unreachable in practice — case of a broken finding with neither declaration site set).
+
+**WHY the fallback is forbidden (ADR-5), not merely avoided as a nicety.** The SDD states the
+reasoning directly: *"that fallback is not a degradation, it is a reproduction of the exact defect
+this spec exists to remove. A withheld finding is visible and re-runnable after `/explore-vault`; a
+wrongly-routed one is invisible and reports success."* The whole point of this spec is that Tomo
+already has the data (`up_source`) to know which action is safe and chose not to use it. Falling back
+to a body-oriented action when routing data is missing (e.g. an unrefreshed cache) would silently
+reintroduce the identical failure mode under a different trigger — "the cache is stale" instead of
+"the parser never checked" — and a user reading a report that claims success has no reason to
+suspect anything is wrong. A withheld finding, by contrast, is visible in the report (see
+`_render_withheld_block` / `_broken_up_withhold_reason` in `garden-audit-render.py`) and self-heals:
+running `/explore-vault` populates `up_value` in the cache, and the very next `/garden-audit` run
+routes correctly. This is why `_route_broken_up`'s three failure branches all end in `unroutable.append`
++ `return None`, never in a guessed action.
+
+**Trap worth recording — `_up_link_stem` normalises, `up_value` must not.** `_up_link_stem` (used by
+the `remove_up_link` branch) calls `unwrap_list_repr` on `up_target` to defensively unbox a dirty
+cache's stringified list-repr before extracting the bare stem — correct there, because `up_target` is
+only ever used as a **display/removal key**, never round-tripped back to Hashi as a guard value. The
+same normalisation must **never** touch `up_value` on the `edit_frontmatter` path: `up_value` becomes
+the wire `expected` guard (see `render_actions._construct_edit_frontmatter_fields`), and Hashi compares
+it **deep-equal against the note's actual frontmatter**. If the parser silently reshaped a dirty
+list-repr into a clean list before sending it as `expected`, Hashi's guard would compare a normalised
+value against the note's actual (unnormalised) frontmatter and fail the write on every apply — the fix
+would never land, and the failure would look like a vault-changed-since-report race rather than what it
+actually is (a parser-side reshape of the guard value). The reason this is easy to get wrong silently:
+`unwrap_list_repr` passes a real list straight through unchanged, so every normal test fixture — and
+every healthy note — stays green either way. Only a dirty list-repr value flowing through the
+`edit_frontmatter` path would expose the mistake, and that shape is rare enough that a superficial test
+pass would not catch it. Pinned by the spec 032 test suite's routing tests, which assert `up_value` is
+carried through `_confirmed_item_from_wire_finding` / `build_from_wire` byte-for-byte.
+
 ## Version 0.7.0 — dead_link removal UNLINKS instead of deleting (2026-07-22, user-confirmed)
 
 WHY both dead_link → edit_note_text sites (`_confirmed_item_from_wire_finding` and `build_from_wire`)

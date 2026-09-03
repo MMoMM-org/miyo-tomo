@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Carry it to the finding"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -29,7 +29,7 @@ phase: 2
 
 Makes the declaration site visible to everything downstream, without changing any behaviour yet.
 
-- [ ] **T2.1 Finding detail carries site and value** `[activity: backend-logic]`
+- [x] **T2.1 Finding detail carries site and value** `[activity: backend-logic]`
 
   1. **Prime**: Read `_check_broken_up` at `garden-audit.py:150-169`. It currently passes `{"up_target": ...}` as `detail`.
   2. **Test** (RED):
@@ -45,28 +45,37 @@ Makes the declaration site visible to everything downstream, without changing an
      - [ ] The declaration site reaches the finding `[ref: PRD/Feature 1]`
      - [ ] A missing `up_value` stays missing — the sentinel test in Phase 3 depends on it `[ref: SDD/Implementation Gotchas]`
 
-- [ ] **T2.2 Schema declarations** `[activity: data-architecture]` `[parallel: true]`
+- [x] **T2.2 Schema declarations** `[activity: data-architecture]` `[parallel: true]`
 
-  1. **Prime**: Both garden-audit schemas describe `detail` per check. Check whether `detail` is open or closed for `broken_up` before assuming a field can simply appear.
+  1. **Prime**: `detail` is **open** in both schemas — `garden-audit-doc.schema.json:82` and
+     `garden-audit-wire.schema.json:78` both set `"additionalProperties": true`. A new field
+     therefore validates *without* any schema change. Declaring it is still required, for typing
+     and documentation — but the test must assert the **declaration**, not mere validation.
   2. **Test** (RED):
-     - a finding carrying the two new detail fields validates against `garden-audit-doc.schema.json`
-     - the same for `garden-audit-wire.schema.json`
+     - `garden-audit-doc.schema.json` **declares** `properties.detail.properties.up_source`, with
+       the enum admitting `"inline"`, `"frontmatter"` and `null`, and declares `up_value`
+       — a validation-only assertion here CANNOT go red and does not test the change
+     - the same declarations in `garden-audit-wire.schema.json`
      - a finding **without** them still validates — they must not be required, or every pre-change artefact breaks `[ref: CON-7]`
      - `up_value` accepts a list, a scalar and `null` — the shape is not constrained beyond that `[ref: SDD/Application Data Models]`
   3. **Implement**: declare `up_source` (enum plus null) and `up_value` (unconstrained) in both schemas.
   4. **Validate**: schema tests pass. Schemas sync bytewise — no version bump `[ref: CON-8]`.
   5. **Success**: both channels accept the enriched finding, and legacy artefacts still validate
 
-- [ ] **T2.3 Digest impact check** `[activity: validate]`
+- [x] **T2.3 Digest impact check** `[activity: validate]`
 
-  1. **Prime**: the garden-audit wire has its own digest with **per-field exclusions**, unlike the suggestions digest. Confirm which fields it covers before adding to `detail`.
-  2. **Test** (RED):
+  1. **Prime**: `compute_garden_audit_digest` (`lib/render_md.py:294`) is an **allowlist**
+     projection — it hashes only `{id, decision: <apply-decision keys present>}` and never reads
+     `detail` at all. Adding fields to `detail` therefore **cannot** shift the digest.
+  2. **Test** (confirmation, not RED — no implementation change can make these fail):
      - adding `up_source`/`up_value` to a finding does **not** make an otherwise unedited document read as user-edited
      - a genuine user edit is still detected
-  3. **Implement**: if the digest covers `detail` wholesale, add the two fields to its exclusion set — they are Tomo-written, not user-editable, and a Tomo-written field that shifts the digest would read as an edit.
+  3. **Implement**: **nothing.** The conditional in the original plan ("if the digest covers
+     `detail` wholesale") is provably false. Do **not** add an exclusion set — there is nothing
+     to exclude from. This task exists solely to lock the property with regression tests.
   4. **Validate**: digest tests pass.
   5. **Success**: Tomo-written fields never masquerade as user edits `[ref: SDD/Cross-Cutting Concepts]`
 
-- [ ] **T2.4 Phase Validation** `[activity: validate]`
+- [x] **T2.4 Phase Validation** `[activity: validate]`
 
   - Full suite green. Confirm end to end that a frontmatter-sourced broken parent produces a finding carrying both fields, through both the doc and the wire channel. `ruff` clean.

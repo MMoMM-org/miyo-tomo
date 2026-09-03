@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.1
+# version: 0.42.2
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -466,7 +466,9 @@ def main() -> int:
     # the isolated builder so the suggestions/moc-proposal hot path stays
     # untouched (spec 030 SDD: "no new apply path… mirror /moc-propose").
     if args.upstream_type == "garden-audit":
-        actions = build_garden_audit_actions(confirmed)
+        actions = build_garden_audit_actions(
+            confirmed, parent_marker=conventions.parent_marker,
+        )
     else:
         actions = build_actions(
             manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,

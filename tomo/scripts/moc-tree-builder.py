@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.0
+# version: 0.9.1
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -421,6 +421,7 @@ def build_entries(
             "up_state": up_state,
             "up_target": up.target,
             "up_source": up.source,
+            "up_value": up.raw_value,
             "tags": extract_tags(fm, body),
         }
 

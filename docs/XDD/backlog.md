@@ -312,3 +312,90 @@ vault-wide. From the same handoff, no action needed: `kado-search byContent` is 
 callers); `_hints` responses are optional and currently ignored. Source:
 `_inbox/from-kado/2026-06-24_kado-to-tomo_graph-tool-and-search-ranking.md`; Kado ADR-002 (disclosure
 guard) / ADR-003 (`_hints` contract).
+
+## OPEN — `garden-audit-render.py` is 1059 LOC, 2-3.5x over the constitution guideline
+
+Flagged by the Phase 5 constitution check of spec 032-up-source-routing (2026-09-02).
+
+MiYo Constitution, Code Quality L2: *"Files implementing core behaviour … should remain small and
+focused. When a file grows beyond ~300–500 LOC of dense logic, it should be refactored into smaller
+modules along its natural seams."*
+
+Measured: **1059 LOC**. It was already **775 LOC** before spec 032 touched it — so the breach is
+pre-existing, but spec 032 added roughly **+284 LOC**, a material contribution rather than pure
+inheritance. L2 requires rationale on violation rather than a hard block, so this did not gate the
+phase.
+
+Natural seams observed while working in it:
+- the three once-per-run summary renderers (`_render_summary`, `_render_unroutable_summary`,
+  `_render_broken_up_split`) — the last two are structural twins sharing a
+  classify → bucket → suppress-at-zero skeleton
+- the withheld-finding surface: `_broken_up_withhold_reason`, `_render_withheld_block`,
+  `_log_unroutable_findings`, plus the three parallel dicts `_UNROUTABLE_REMEDY`,
+  `_UNROUTABLE_REASON_LABEL`, `_UNROUTABLE_SUMMARY_TEXT`
+
+A code-quality reviewer recommended NOT extracting the twin renderers yet — two instances with
+different render shapes make it a complexity wash — and named the trigger: **a third broken_up-scoped
+summary line is the point to extract the shared skeleton.** Same judgment applies to the three
+parallel dicts: a fourth unroutable reason would be the moment to collapse them into one dict of
+records, since a reason currently needs an entry in all three and nothing enforces completeness.
+
+Not spec-032 scope. Pick up when either trigger fires, or as a standalone refactor.
+
+## Decision record — `remove_up_link` stays unguarded; spec 032's routing is the alternative
+
+Hashi's shipped `remove_up_link` executor has no guard against a note whose parent is declared in a
+frontmatter `up:` property rather than an inline `up::` line — the action would find no line to
+remove from and report `skipped-already` (a no-op that looks identical to "nothing to remove", not a
+loud failure). Hashi raised this as a blind spot on 2026-09-01: a guard is technically possible
+("fail only when the note has no inline `up::` line AND a frontmatter `up:` exists whose value
+references the link; absent everywhere stays `skipped-already`"), but Tomo recommended **not**
+building it — the durable fix is to stop *sending* `remove_up_link` for a frontmatter-declared parent
+in the first place, which is exactly what this spec (032-up-source-routing) does by routing such
+findings to `edit_frontmatter` instead. A guard on Hashi's side would fail honest no-ops in order to
+absorb an action Tomo should never have sent.
+
+Hashi accepted the reasoning and recorded the decision in their own spec — `spec-002
+(instruction-executor)`, decision row 2026-09-01, PR **#128** (merged, commit `244cb45`) — including
+the guard condition Tomo supplied, precisely because they are *not* implementing it: a future reader
+finding `remove_up_link` unguarded next to two guarded siblings should find a written answer, not an
+invitation to guess. Kokoro carries the same open-by-design note in ADR-028 §5, with an explicit
+warning that the class must not be assumed swept clean. Hashi's `edit_frontmatter` (`operation:
+"remove"` + `expected`) shipped in **0.23.0** and needs nothing new to receive this spec's output.
+
+Hashi is not tracking an issue on their side for this — there is nothing left for them to build. They
+are waiting for Tomo to notify them once the routing ships (plan task **T6.6**), at which point the
+frontmatter case stops being merely rare (measured: 1 of 29 live `broken_up` findings) and becomes
+**unreachable** through `remove_up_link`, and the cross-repo record closes on both sides.
+
+Source: `_inbox/from-hashi/2026-09-01_hashi-to-tomo_remove-up-link-acknowledged-unguarded.md`;
+`_outbox/for-hashi/2026-09-01_tomo-to-hashi_remove-up-link-yes-it-can-occur.md`; spec
+`032-up-source-routing` (this repo).
+
+## OPEN — `broken_up` conflates three causes; the offered fix destroys valid links for two → [#157](https://github.com/MMoMM-org/miyo-tomo/issues/157)
+
+`_resolve_up_state` (`tomo/scripts/moc-tree-builder.py:280`) returns `broken` for exactly one
+condition — the `up::` target is not the stem of an **in-scope** MOC. Three unrelated vault states
+land on that label, and `_check_broken_up` offers the same remedy to all three:
+
+| actual state | is "repoint, or leave empty to remove" correct? |
+|---|---|
+| target does not exist | yes |
+| target exists in scope, no MOC tag | no — the link is fine, the tag is missing |
+| target exists outside `scope_paths` | no — the scanner is blind, not the vault |
+
+Measured on the 2026-09-03 run (359 entries, scope `Atlas/200 Maps/` + `Atlas/202 Notes/`): 42
+findings — **20** whose target sits in the cache as `kind: note`, **22** whose target is absent from
+it. Cause 3 is confirmed rather than assumed: seven of those 22 name one target by bare stem while an
+eighth records the same target as a full path under a folder outside `scope_paths`. The note exists;
+it is never scanned.
+
+Consequence is user-data, not code: nothing crashes and the emitted instruction is well-formed and
+correctly guarded. Accepting the fix on causes 2 and 3 deletes a working parent link and flattens
+deliberate hierarchy (notes parented to notes, or across a folder boundary).
+
+Scope boundary worth keeping straight: spec 032 decides **where** a broken-parent fix is written
+(`edit_frontmatter` vs. a body edit) and is unaffected by this. This issue is the separate question
+of **whether** the fix should be offered.
+
+Found while validating spec 032 — see `docs/XDD/specs/032-up-source-routing/live-validation.md`.

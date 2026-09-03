@@ -67,6 +67,7 @@
           {"$ref": "#/$defs/delete_source"},
           {"$ref": "#/$defs/skip"},
           {"$ref": "#/$defs/edit_note_text"},
+          {"$ref": "#/$defs/edit_frontmatter"},
           {"$ref": "#/$defs/remove_up_link"},
           {"$ref": "#/$defs/resolve_dead_link"}
         ]
@@ -311,6 +312,35 @@
         },
         "applied": {"$ref": "#/$defs/applied_field"}
       }
+    },
+    "edit_frontmatter": {
+      "type": "object",
+      "required": ["id", "action", "path", "property", "operation"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/action_id"},
+        "action": {"const": "edit_frontmatter"},
+        "path": {"type": "string", "description": "Vault-relative path of the note whose frontmatter is edited. MUST be a '.md' file — Obsidian's processFrontMatter is markdown-only."},
+        "property": {"type": "string", "description": "The YAML key to write or remove, e.g. 'up'. Any key; nothing is treated specially."},
+        "operation": {"enum": ["set", "remove"], "description": "'set' writes `value`, creating the key if absent (this is also how a property is ADDED). 'remove' deletes the key."},
+        "value": {"description": "The whole new value for `property`. Any JSON value — maps to YAML scalars, lists and maps. Required for operation='set'; ignored for 'remove'. Tomo reads the current value and emits the complete replacement; there are no list-item operations."},
+        "expected": {"description": "The value that must currently be at `property`, compared deep-equal — including a literal `null`, which now means the property holds a YAML null rather than being absent. Required UNLESS `expected_absent` is true. If the note does not match, the action FAILS and writes nothing, so a vault that changed between report and apply is never silently clobbered."},
+        "expected_absent": {"const": true, "description": "Expect the property NOT to exist — this is how an add is expressed. Mutually exclusive with `expected`: supplying both is a schema error, because the two would be stating different expectations about the same key. Only `true` is accepted; to expect a value, use `expected` instead of `expected_absent: false`."},
+        "applied": {"$ref": "#/$defs/applied_field"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"operation": {"const": "set"}}, "required": ["operation"]},
+          "then": {"required": ["value"]}
+        },
+        {
+          "$comment": "Exactly one of expected / expected_absent. Both together state two different things about the same key; neither leaves the guard unstated, which is the failure mode a required expectation exists to prevent.",
+          "oneOf": [
+            {"required": ["expected"], "not": {"required": ["expected_absent"]}},
+            {"required": ["expected_absent"], "not": {"required": ["expected"]}}
+          ]
+        }
+      ]
     },
     "remove_up_link": {
       "type": "object",

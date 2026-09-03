@@ -51,6 +51,46 @@ explicitly states: "parse_up_from_content does NOT emit up_state; the caller
 derives it." Keeping the return shape to `{target, source}` preserves that
 contract and makes unit-testing the parser trivial.
 
+## `raw_value` is `None` for an inline declaration, deliberately (spec 032, ADR-1)
+
+WHY `UpParseResult.raw_value` stays at its dataclass default (`None`) on the inline-wins return
+path (`parse_up_from_content`'s branch 1): a body-resident `up:: [[X]]` declaration has no
+frontmatter property to guard — there is nothing for a caller to compare an `expected` value
+against before editing. Carrying the property's value through anyway (if the note happened to
+ALSO have a stale, unused `up:` frontmatter key) would invite a caller to construct an
+`edit_frontmatter` guard for a property the fix never touches — exactly the class of
+wrongly-routed edit spec 032 exists to prevent (see `docs/tomo/scripts/garden-audit-parser.md`
+ADR-5). `None` here
+means "not applicable to this declaration", a distinct meaning from a frontmatter property that
+exists and legitimately holds nothing.
+
+ADR-1 (spec 032, confirmed 2026-09-01) is what promoted `raw_value` from an internal detail to a
+field on `UpParseResult`: `parse_up_from_content` already read the frontmatter value at `:210`
+to resolve `target`, so extending the dataclass kept the single parse as the one place a caller
+can obtain both the resolved stem AND the property's observed shape — no second read, no second
+parser.
+
+**The empty-property case funnels into the SAME `None`, for a different reason.** An empty or
+absent frontmatter property (`up:` with no value, `up: []`, or the key missing entirely) never
+reaches the frontmatter return statement at all — `_first_wikilink` returns `None` for it, the
+`if target:` guard fails, and execution falls through to the branch-3 "absent" return
+(`UpParseResult(target=None, source=None)`), which — like every `UpParseResult` — carries
+`raw_value` at its dataclass default. So `raw_value is None` is true for three different
+situations (inline declaration, empty property, no property at all) that share nothing except
+"no guardable value observed here". A caller cannot distinguish them from `raw_value` alone —
+correctly so, since none of them yield a frontmatter-declared parent to route.
+
+**Consequence downstream: test key ABSENCE, never `raw_value is None`.** `moc-tree-builder.py`
+persists `raw_value` into the moc-structure cache as `up_value` (`:424`); `garden-audit-parser.py`
+reads that field back via `detail.get("up_value", _MISSING)` — a sentinel object, not `None` —
+specifically because `up_value: None` is itself a legitimate OBSERVED value once the cache is
+fresh (e.g. a frontmatter property that is present but empty). Testing `up_value is None` would
+conflate "the cache never wrote this key" (a pre-spec-032 / stale cache — must be withheld,
+ADR-3) with "the key is here and the observed value happens to be null" (a normal, routable
+case). Only presence-vs-absence of the dict key tells them apart; `_MISSING` is how that
+distinction survives the JSON round-trip, where a missing key and an explicit `null` are
+otherwise easy to blur.
+
 ## Stringified list-repr in `up:` frontmatter (spec 030 FIX 2, 2026-07-21)
 
 WHY `_first_wikilink` yaml.safe_loads a `raw` that starts with `[` but is not a

@@ -514,7 +514,7 @@ A withheld finding renders its reason and the remedy:
 | Shape fidelity | Scalar stays scalar, list stays list; siblings and their order survive | Emission tests per shape |
 | Regression safety | Body-resident output byte-identical to today | Golden comparison |
 | Cost | Zero additional Kado calls | Test asserting call count is unchanged as note count varies |
-| Audit integrity | `edit_frontmatter` appears in the coverage audit totals | `ACTION_ORDER` membership + reconciliation test |
+| Audit integrity | `edit_frontmatter` appears in the coverage audit totals **and per-item coverage actually checks it** | `_GARDEN_EXPECTED_KINDS` entry (garden path — the one that matters, see Known Technical Issues) + `ACTION_ORDER` membership (non-garden, hygiene) + reconciliation test |
 | Degradation | A pre-change cache withholds and reports; never crashes, never falls back | Stale-cache tests |
 
 ## Acceptance Criteria
@@ -525,7 +525,7 @@ A withheld finding renders its reason and the remedy:
 | F2 — property fixes proposed as property changes | The routing branch; `_build_edit_frontmatter_actions`; ADR-6 derivation |
 | F3 — guard against a changed vault | `expected` construction walkthrough; the `expected_absent` criterion is **vacuously satisfied** and implemented as an assertion, per the dedicated example above |
 | F4 — proposal discloses the property cost | `garden-audit-render.py` warning line |
-| F5 — coverage audit accounts for the kind | `instructions-diff` counts + `ACTION_ORDER` + expectation pass; `instructions-dryrun` REQUIRED |
+| F5 — coverage audit accounts for the kind | `instructions-diff`: `_GARDEN_EXPECTED_KINDS` (garden path, where this spec's documents go) + `ACTION_ORDER`/counts (non-garden, hygiene) + expectation pass; `instructions-dryrun` REQUIRED |
 | F6 — older caches degrade | ADR-3 sentinel; ADR-5 no-fallback; report remedy line |
 | Should — routing split | ADR-4 (accepted into scope) |
 | Should — unroutable summary | The stderr + report lines |
@@ -534,9 +534,34 @@ A withheld finding renders its reason and the remedy:
 
 ### Known Technical Issues
 
-- **`instructions-diff` blind spot** — `ACTION_ORDER` is the reconciliation whitelist; an unlisted
-  kind is counted but never reconciled, so the audit passes green. **Second consecutive spec to hit
-  this.** Registration is part of the definition of done.
+- **`instructions-diff` blind spot — CORRECTED 2026-09-02, empirically.** The original claim here
+  ("`ACTION_ORDER` is the reconciliation whitelist; an unlisted kind is counted but never
+  reconciled, so the audit passes green") was inherited from spec 031 **without checking that
+  spec 032's findings stay garden-shaped after routing.** It is true of the NON-GARDEN path and
+  **false for the path this spec actually uses.**
+  - `run_diff` dispatches on document shape (`:~610`): garden-shaped documents — every
+    `confirmed_item` carrying a `garden_action` — return from `run_diff_garden` **before**
+    `derive_expected` is reached at `:614`. `broken_up` findings are garden_action items, and per
+    the routing branch below a frontmatter-sourced one carries `garden_action:
+    "edit_frontmatter"` directly. So `ACTION_ORDER`, the counts initialiser and `derive_expected`
+    are **unreachable for this spec's documents**.
+  - `run_diff_garden` (`:~529-531`) already discovers unlisted kinds dynamically:
+    `all_kinds = GARDEN_ACTION_ORDER + [k for k in sorted(actual_counts) if k not in GARDEN_ACTION_ORDER]`.
+    Verified by probe: 2 `edit_frontmatter` actions against unmodified code give
+    `rc=1`, `edit_frontmatter 0 / 2 [DIFF]`, `TOTAL 0 / 2 [DIFF]` — a **loud hard-fail**, not a
+    green pass.
+  - **The genuine silent bug is one layer deeper.** `_garden_item_covered` (`:~462-493`) iterates
+    `_GARDEN_EXPECTED_KINDS.get(ga, ())`. With no `"edit_frontmatter"` key the loop body never
+    executes and the function returns `True` **vacuously** — per-item coverage reports `[OK]` for
+    every such item having checked nothing. That is the real registration gap, it lives in
+    `_GARDEN_EXPECTED_KINDS`, and it is **T4.3**, not T4.2.
+  - Registration is still part of the definition of done — but the site that matters for a
+    garden-routed kind is `_GARDEN_EXPECTED_KINDS`, not `ACTION_ORDER`. The `ACTION_ORDER` entry
+    was landed anyway (T4.2, `7b29d07`) as forward-compatible hygiene.
+  - **Lesson for the next spec:** when a module dispatches on data shape, confirm which branch the
+    spec's data takes before adopting a diagnosis written for the other one. Three review gates
+    passed T4.2 because each validated the task against the plan, and the plan faithfully encoded
+    this passage.
 - **`up_value: None` is ambiguous without a sentinel** — see ADR-3. The obvious `detail.get()` idiom
   is wrong here.
 - **"Remove" is usually `operation: "set"`** — the naming invites the wrong operation, which would

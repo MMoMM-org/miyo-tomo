@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration, regression and documentation"
-status: pending
+status: completed
 version: "1.0"
 phase: 6
 ---
@@ -16,7 +16,13 @@ phase: 6
 - `[ref: SDD/Deployment View]` — the cache-refresh ordering note
 - `[ref: PRD/Success Metrics]`
 - `[ref: CON-7]` body-resident output byte-identical; `[ref: CON-3]` zero added Kado calls
-- Live population: 17 property-resident notes, 1 currently broken and it is inline — so a live test needs a **deliberately broken** property-resident note
+- Live population — **CORRECTED 2026-09-02**, the original figure came from `discovery-cache.yaml`
+  (64 entries) while `garden-audit.py:550` actually loads `moc-structure-cache.yaml`. Measured
+  there: **346 entries, 22 property-resident, 29 broken — and one is BOTH broken and
+  property-resident**: `Atlas/202 Notes/Aristotle and Metaphor - Seeing the similarity between
+  things..md` → `Philosophy MOC (kit)`. So a live test does **not** need a deliberately broken
+  note: a real one exists. Prefer it — a naturally occurring case proves more than a synthetic
+  one, and it avoids editing the user's vault to manufacture a fixture.
 
 **Key Decisions**:
 - The headline metric is behavioural, not self-reported: **a property-resident fix, once approved, changes the note.** Today it does not.
@@ -31,7 +37,7 @@ phase: 6
 
 Proves the chain and leaves the repo and the sibling repo in a consistent state.
 
-- [ ] **T6.1 End-to-end routing test** `[activity: integration-testing]`
+- [x] **T6.1 End-to-end routing test** `[activity: integration-testing]`
 
   1. **Prime**: Drive the public entry point, not the helpers `[ref: memory: mock at orchestrator, not helper]`.
   2. **Test** (RED) — one scenario, mixed by construction:
@@ -45,7 +51,7 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   4. **Validate**: passes without touching a live vault.
   5. **Success**: the two declaration styles produce two different, correct actions from one uniform approval flow
 
-- [ ] **T6.2 Regression: body-resident unchanged** `[activity: integration-testing]` `[parallel: true]`
+- [x] **T6.2 Regression: body-resident unchanged** `[activity: integration-testing]` `[parallel: true]`
 
   1. **Prime**: `[ref: CON-7]`. This is a routing addition, not a rewrite.
   2. **Test** (RED):
@@ -56,7 +62,7 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   4. **Validate**: full suite green.
   5. **Success**: no behavioural change for the 18 inline-declared notes `[ref: CON-7]`
 
-- [ ] **T6.3 Cost verification** `[activity: integration-testing]` `[parallel: true]`
+- [x] **T6.3 Cost verification** `[activity: integration-testing]` `[parallel: true]`
 
   1. **Prime**: `[ref: CON-3]`. The design's central claim is that this costs nothing at audit time.
   2. **Test** (RED):
@@ -67,7 +73,7 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   4. **Validate**: passes.
   5. **Success**: zero added calls, enforced by test rather than by argument
 
-- [ ] **T6.4 Documentation and sync** `[activity: documentation]`
+- [x] **T6.4 Documentation and sync** `[activity: documentation]`
 
   1. **Prime**: the WHY-layer rule in `CLAUDE.md`; `[ref: SDD/Deployment View]`.
   2. **Implement**:
@@ -79,7 +85,27 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   3. **Validate**: `scripts/update-tomo.sh` dry run lists every intended file as changed; an unchanged file means a missed bump.
   4. **Success**: the instance would receive every change
 
-- [ ] **T6.5 Live validation** `[activity: validate]`
+- [x] **T6.5 Live validation** `[activity: validate]`
+
+  > **CLOSED 2026-09-03 — the headline metric was observed.**
+  > Full cycle run on the real vault: `update-tomo --yolo` → `/explore-vault` → `/garden-audit` →
+  > approve one property-resident finding → `/inbox` → apply through Hashi in Obsidian.
+  > Cache rebuilt to 359 entries, **all** carrying the `up_value` key (ADR-3 presence signal);
+  > 42 broken parents, split **28 body / 14 property**, zero withheld. The emitted action was
+  > byte-identical to the one predicted from the wire before the run, and schema-valid against the
+  > mirrored Hashi schema:
+  > `{edit_frontmatter, property: "up", operation: "remove", expected: ["[[…]]"]}`.
+  > After the apply the note's `up:` key is **gone from its frontmatter**, sibling keys intact,
+  > body untouched. It routed as `edit_frontmatter`, not as the `remove_up_link` that would have
+  > reported success and changed nothing.
+  > Criterion 6 (withhold-with-remedy on a pre-032 cache) was confirmed separately on the
+  > pre-refresh cache before the rebuild.
+  > Two findings surfaced by this run, both filed rather than folded in: the report's per-finding
+  > detail line still said `up::` for property-resident findings (fixed, `dd2712a`), and
+  > `broken_up` conflates three distinct causes so that its remedy is wrong for two of them
+  > (issue **#157** — out of this spec's scope, which decides *where* a fix is written, not
+  > *whether* it should be offered).
+  > Full record, measured numbers and symptom table: `../live-validation.md`.
 
   1. **Prime**: one batched cycle. Order matters: `update-tomo` → `/explore-vault` (so the cache gains `up_value`) → `/garden-audit`.
   2. **Test**: against the real vault, with one property-resident note deliberately given a broken parent:
@@ -91,13 +117,13 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   3. **Validate**: record the outcome and the observed Kado call count in `docs/evolution/inbox-cost-log.md`.
   4. **Success**: a property-resident fix, once approved, changes the note `[ref: PRD/Success Metrics]`
 
-- [ ] **T6.6 Notify Hashi** `[activity: documentation]`
+- [x] **T6.6 Notify Hashi** `[activity: documentation]`
 
   1. **Prime**: Hashi left `remove_up_link` unguarded on our recommendation and recorded the decision in their spec-002 (PR #128), explicitly awaiting this routing. We promised to tell them when it shipped.
   2. **Implement**: a handoff in `_outbox/for-hashi/` stating that routing has shipped, that the mis-routed case is now unreachable rather than merely rare, and that the guard remains correctly unbuilt.
   3. **Validate**: the handoff names the version and the behaviour, not just the fact.
   4. **Success**: the open cross-repo loop is closed on our side `[ref: spec README decisions log]`
 
-- [ ] **T6.7 Phase Validation** `[activity: validate]`
+- [x] **T6.7 Phase Validation** `[activity: validate]`
 
   - Full suite green; `ruff` clean. Walk the SDD Quality Requirements table and confirm each row has a passing test. Walk the PRD acceptance criteria and confirm each maps to a green test — including the vacuously-satisfied `expected_absent` criterion, which must be covered by an assertion that it is never emitted. Update the spec README to `Implemented` via `xdd-meta finalize`.

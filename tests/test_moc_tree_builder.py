@@ -134,10 +134,18 @@ def test_builder_assembles_entries_with_correct_kind_and_fields():
     assert "up_target" in moc_entry
     assert "up_source" in moc_entry
     assert isinstance(moc_entry["tags"], list)
+    # T1.2: Home has no `up` declaration at all (absent) — the key is still
+    # written, carrying None (ADR-3: presence, not value, is the freshness signal).
+    assert "up_value" in moc_entry
+    assert moc_entry["up_value"] is None
 
     note_entry = by_path[note_path]
     assert note_entry["kind"] == "note"
     assert note_entry["stem"] == "Idea"
+    # Idea declares `up` via frontmatter (`up: "[[Home]]"`) — up_value must equal
+    # the property value AS PARSED (verbatim, not target-resolved).
+    assert note_entry["up_source"] == "frontmatter"
+    assert note_entry["up_value"] == "[[Home]]"
 
 
 def test_moc_entries_carry_classification_and_linked_notes():
@@ -198,6 +206,61 @@ def test_caller_resolves_up_state_absent_valid_broken():
     assert by_path[child]["up_source"] == "inline"
     assert by_path[stray]["up_state"] == "broken"
     assert by_path[stray]["up_target"] == "Nonexistent"
+    # T1.2: inline declarations carry up_value=None (there is no property to
+    # guard) — but the key must still be PRESENT, not omitted.
+    assert "up_value" in by_path[child]
+    assert by_path[child]["up_value"] is None
+    assert "up_value" in by_path[stray]
+    assert by_path[stray]["up_value"] is None
+
+
+def test_up_value_key_present_for_every_entry_regardless_of_declaration_style():
+    """T1.2 / ADR-3: `up_value` is written UNCONDITIONALLY for every entry — its
+    PRESENCE (not its value) is the cache-freshness signal a downstream reader
+    uses (a `_MISSING` sentinel, per the spec). A conditionally-written key would
+    destroy that signal, so this test checks presence via a sentinel default
+    rather than truthiness, and covers absent/inline/frontmatter declarations in
+    one cache build. CON-7: up_state/up_target/up_source are unchanged.
+    """
+    _MISSING = object()
+    home = "Atlas/200 Maps/Home.md"              # no up → absent
+    child = "Atlas/200 Maps/Child.md"             # up:: [[Home]] → inline
+    note = "Atlas/202 Notes/Idea.md"              # up: "[[Home]]" → frontmatter
+    client = FakeKadoClient(
+        tagged=[{"path": home}, {"path": child}],
+        listings={
+            "Atlas/200 Maps/": [{"path": home}, {"path": child}],
+            "Atlas/202 Notes/": [{"path": note}],
+        },
+        notes={
+            home: "---\ntitle: Home\n---\n# Home\n",
+            child: "---\ntitle: Child\n---\n# Child\n\nup:: [[Home]]\n",
+            note: '---\ntitle: Idea\nup: "[[Home]]"\n---\n# Idea\n',
+        },
+    )
+    cache = _cache(client, _config())
+    by_path = {e["path"]: e for e in cache["entries"]}
+
+    for path in (home, child, note):
+        entry = by_path[path]
+        assert entry.get("up_value", _MISSING) is not _MISSING, (
+            f"up_value key missing entirely for {path} — freshness signal broken"
+        )
+
+    assert by_path[home]["up_value"] is None
+    assert by_path[child]["up_value"] is None
+    assert by_path[note]["up_value"] == "[[Home]]"
+
+    # CON-7: up_state/up_target/up_source unchanged for every fixture.
+    assert by_path[home]["up_state"] == "absent"
+    assert by_path[home]["up_target"] is None
+    assert by_path[home]["up_source"] is None
+    assert by_path[child]["up_state"] == "valid"
+    assert by_path[child]["up_target"] == "Home"
+    assert by_path[child]["up_source"] == "inline"
+    assert by_path[note]["up_state"] == "valid"
+    assert by_path[note]["up_target"] == "Home"
+    assert by_path[note]["up_source"] == "frontmatter"
 
 
 def test_writes_moc_structure_cache_yaml_with_versioned_schema(tmp_path):

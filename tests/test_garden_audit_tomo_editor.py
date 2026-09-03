@@ -180,6 +180,35 @@ class TestChangeDetectionDigest:
         wire["findings"][0]["decision"]["repoint"] = "[[Correct MOC]]"
         assert compute_garden_audit_digest(wire) != base
 
+    # spec 032 T2.3: up_source/up_value (added to detail in T2.1/T2.2) reach
+    # compute_garden_audit_digest through the same 'detail' key already proven
+    # excluded above (test_detail_excluded_from_digest). This is a regression
+    # GUARD, not a RED test: the digest is an allowlist projection that never
+    # reads 'detail' at all (lib/render_md.py:314), so adding fields to detail
+    # cannot move it — no implementation change could make this fail today. It
+    # exists to catch a future "helpful" widening of the digest to hash the
+    # whole finding, which would make every Tomo-written field (including
+    # these two) masquerade as a user edit.
+    def test_up_source_and_up_value_do_not_affect_digest_guard_against_widening(self):
+        wire = gar.build_wire_payload(_doc([_broken_up()]))
+        wire["findings"][0]["detail"]["up_source"] = "frontmatter"
+        wire["findings"][0]["detail"]["up_value"] = "Deleted MOC"
+        base = compute_garden_audit_digest(wire)
+        wire["findings"][0]["detail"]["up_source"] = "inline"
+        wire["findings"][0]["detail"]["up_value"] = None
+        assert compute_garden_audit_digest(wire) == base
+
+    # Companion behavioural check: up_source/up_value being present in detail
+    # must not mask a genuine apply-decision edit — repoint still flips the
+    # digest exactly as in test_repoint_flips_digest above.
+    def test_repoint_still_flips_digest_with_up_source_and_up_value_present(self):
+        wire = gar.build_wire_payload(_doc([_broken_up()]))
+        wire["findings"][0]["detail"]["up_source"] = "frontmatter"
+        wire["findings"][0]["detail"]["up_value"] = "Deleted MOC"
+        base = compute_garden_audit_digest(wire)
+        wire["findings"][0]["decision"]["repoint"] = "[[Correct MOC]]"
+        assert compute_garden_audit_digest(wire) != base
+
     def test_file_under_flips_digest(self):
         wire = gar.build_wire_payload(_doc([_orphan()]))
         base = wire["emit_digest"]

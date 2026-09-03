@@ -67,14 +67,25 @@ def _make_unparented_finding(fid: str = "F01") -> dict:
     }
 
 
-def _make_broken_up_finding(fid: str = "F02") -> dict:
+_UNSET = object()  # sentinel — distinguishes "not passed" from "passed as None"
+
+
+def _make_broken_up_finding(fid: str = "F02", up_source=_UNSET, up_value=_UNSET) -> dict:
+    # up_source/up_value are OMITTED from detail unless explicitly passed (spec
+    # 032 T5.1 prerequisite) — existing callers that don't pass them must keep
+    # getting the pre-032 detail shape, byte-identical (CON-7).
+    detail = {"up_target": "Deleted MOC"}
+    if up_source is not _UNSET:
+        detail["up_source"] = up_source
+    if up_value is not _UNSET:
+        detail["up_value"] = up_value
     return {
         "id": fid,
         "check": "broken_up",
         "tier": "integrity",
         "fixable": True,
         "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
-        "detail": {"up_target": "Deleted MOC"},
+        "detail": detail,
         "decision": {"selected": True, "action": "edit_note_text"},
     }
 
@@ -264,14 +275,15 @@ class TestReportStructure:
         assert "## Structure" not in report
 
     def test_fixable_finding_has_checkbox(self):
-        findings = [_make_broken_up_finding()]
+        findings = [_make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")]
         d = _make_doc(findings=findings)
         report = _render_report(d)
-        assert "- [" in report  # checkbox pattern
+        assert "- [x] Apply" in report
 
     def test_fixable_finding_preselected_checked(self):
-        # decision.selected=True → pre-checked box
-        findings = [_make_broken_up_finding()]
+        # decision.selected=True → pre-checked box. Routable (T5.2): a
+        # stale-cache/absent-source finding renders no checkbox at all.
+        findings = [_make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")]
         d = _make_doc(findings=findings)
         report = _render_report(d)
         assert "- [x]" in report
@@ -375,6 +387,73 @@ class TestWirePayload:
         d = _make_doc(findings=findings)
         wire = _build_wire(d)
         jsonschema.validate(wire, schema)
+
+
+# ---------------------------------------------------------------------------
+# Wire schema declares up_source/up_value (spec 032 T2.2)
+#
+# detail is additionalProperties:true, so a validation-only assertion CANNOT
+# go red — the fields already validate as unknown extra properties. These
+# tests assert the DECLARATION itself in the schema JSON.
+# ---------------------------------------------------------------------------
+
+class TestWireSchemaUpSourceUpValue:
+    def test_wire_schema_declares_up_source_enum(self):
+        """garden-audit-wire.schema.json declares detail.up_source with an
+        enum admitting 'inline', 'frontmatter' and null. [T2.2]
+        """
+        schema = _load_wire_schema()
+        detail_props = schema["properties"]["findings"]["items"]["properties"]["detail"]["properties"]
+        assert "up_source" in detail_props, "up_source must be declared in detail.properties"
+        assert set(detail_props["up_source"]["enum"]) == {"inline", "frontmatter", None}
+
+    def test_wire_schema_declares_up_value(self):
+        """garden-audit-wire.schema.json declares detail.up_value. [T2.2]"""
+        schema = _load_wire_schema()
+        detail_props = schema["properties"]["findings"]["items"]["properties"]["detail"]["properties"]
+        assert "up_value" in detail_props, "up_value must be declared in detail.properties"
+
+    def test_up_source_up_value_absent_from_required_guard_against_creep(self):
+        """Guard: up_source/up_value must NOT land in any 'required' array —
+        every pre-change artefact lacks them (CON-7). Passes trivially today;
+        it locks the property against a later 'add to required' regression.
+        """
+        schema = _load_wire_schema()
+        finding_schema = schema["properties"]["findings"]["items"]
+        detail_schema = finding_schema["properties"]["detail"]
+        assert "up_source" not in finding_schema.get("required", [])
+        assert "up_value" not in finding_schema.get("required", [])
+        assert "up_source" not in detail_schema.get("required", [])
+        assert "up_value" not in detail_schema.get("required", [])
+
+    def test_finding_without_up_source_up_value_still_validates_guard_against_required_creep(self):
+        """Guard: a finding without up_source/up_value still validates
+        against the wire schema — every pre-032 artefact (CON-7). Passes
+        trivially today (they're simply absent); guards a later regression
+        that makes them required.
+        """
+        schema = _load_wire_schema()
+        d = _make_doc(findings=[_make_broken_up_finding("F01")])
+        wire = _build_wire(d)
+        jsonschema.validate(wire, schema)
+
+    def test_up_value_has_no_type_constraint_guard_against_creep(self):
+        """Guard: up_value must stay UNCONSTRAINED — it carries a raw
+        frontmatter property value that may be a list, a string, or null.
+        If someone later adds e.g. "type": "string" to the schema, this
+        test catches it because the list/null artefacts below would fail.
+        """
+        schema = _load_wire_schema()
+        for value in (["Deleted MOC", "Other Ref"], "Deleted MOC", None):
+            finding = _make_broken_up_finding("F01")
+            finding["detail"] = {
+                "up_target": "Deleted MOC",
+                "up_source": "frontmatter",
+                "up_value": value,
+            }
+            d = _make_doc(findings=[finding])
+            wire = _build_wire(d)
+            jsonschema.validate(wire, schema)
 
 
 # ---------------------------------------------------------------------------
@@ -645,18 +724,22 @@ class TestClickableLinksAndFixSummary:
 
     def test_broken_up_fix_describes_both_repoint_and_remove(self):
         # FIX 3: every broken_up now offers repoint OR remove (not removal-only).
-        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        # Routable (T5.2): a withheld finding has no Fix line to describe.
+        f = _make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
         assert "repoint" in report.lower()
         assert "remove" in report.lower()
 
     def test_broken_up_offers_repoint_field_for_every_finding(self):
         # FIX 3: the editable Repoint field renders for a plain broken_up removal
-        # finding (action=edit_note_text), not just pre-marked repoints.
-        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        # finding (action=edit_note_text), not just pre-marked repoints. Routable
+        # (T5.2): a withheld finding renders no editable field.
+        f = _make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
         assert "**Repoint to:**" in report
 
     def test_broken_up_repoint_action_also_offers_repoint_field(self):
-        f = _make_broken_up_finding()
+        f = _make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")
         f["decision"]["action"] = "add_relationship"
         report = _render_report(_make_doc(findings=[f]))
         assert "**Repoint to:**" in report
@@ -675,7 +758,7 @@ class TestClickableLinksAndFixSummary:
         assert "Replace" in report
 
     def test_fix_line_no_longer_says_apply_backtick_action(self):
-        report = _render_report(_make_doc(findings=[_make_broken_up_finding()]))
+        report = _render_report(_make_doc(findings=[_make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")]))
         assert "Apply `edit_note_text`" not in report
 
 
@@ -757,7 +840,10 @@ class TestSuggestOptInRender:
         assert "- [ ] Suggest targets" in report
 
     def test_broken_up_has_suggest_box(self):
-        report = _render_report(_make_doc(findings=[_make_broken_up_finding("F01")]))
+        # Routable (T5.2): a withheld finding renders no Suggest opt-in either —
+        # there is nothing to suggest a target for until the cache is refreshed.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
         assert "- [ ] Suggest targets" in report
 
     def test_unparented_has_suggest_box(self):
@@ -846,7 +932,8 @@ class TestSuggestEnrichment:
         assert "Pick one" not in out
 
     def test_ticked_broken_up_gets_moc_pick_list(self):
-        f = _make_broken_up_finding("F01")
+        # Routable (T5.2): a withheld finding renders no Suggest box to tick.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Writng MOC]]")
         f["detail"]["up_target"] = "Writng MOC"  # typo of "Writing MOC"
         doc = _make_doc(findings=[f])
         report = _full_report(doc)
@@ -945,8 +1032,12 @@ class TestSuggestEnrichment:
         # Change 3 on the broken_up repoint path: the note has NO topics and the
         # cache MOC stem is dissimilar to the up-target "Deleted MOC" → neither
         # the topic nor the stem signal produces a candidate.
+        # Routable (T5.2): a withheld finding renders no Suggest box to tick.
         f = _make_broken_up_finding("F01")
-        f["detail"] = {"up_target": "Deleted MOC", "topics": []}
+        f["detail"] = {
+            "up_target": "Deleted MOC", "topics": [],
+            "up_source": "inline", "up_value": "[[Deleted MOC]]",
+        }
         doc = _make_doc(findings=[f])
         report = _full_report(doc)
         wire = _build_wire(doc)
@@ -972,3 +1063,795 @@ class TestSuggestEnrichment:
         out = gar.enrich_report_with_suggestions(report, wire, cache)
         assert "No suggestions found" in out
         assert "Pick one" not in out
+
+
+# ---------------------------------------------------------------------------
+# Spec 032 T5.1: property-edit disclosure at approval time
+# ---------------------------------------------------------------------------
+# A broken_up finding resident in frontmatter (up_source == "frontmatter") gets
+# fixed via a YAML-property edit, which drops any comments in that property
+# block irreversibly. The report must disclose this BEFORE the user ticks
+# Apply — a post-hoc note is too late by construction. The wording is
+# verbatim-locked (solution.md UI & UX); the property name is derived via
+# marker_word(conventions.parent_marker) (ADR-6), never hardcoded to "up".
+
+_DISCLOSURE_TARGET_LINE = (
+    "- **Fix target:** note property `{prop}` — editing YAML properties."
+)
+_DISCLOSURE_WARNING_LINE = (
+    "  ⚠️ Comments inside this note's property block will not survive the edit."
+)
+
+
+class TestPropertyEditDisclosure:
+    def test_frontmatter_resident_renders_verbatim_disclosure_with_default_property(self):
+        # Default (miyo) profile's parent marker is "up::" → marker_word → "up".
+        f = _make_broken_up_finding(up_source="frontmatter", up_value=["[[Alte MOC]]"])
+        report = _render_report(_make_doc(findings=[f]))
+        assert _DISCLOSURE_TARGET_LINE.format(prop="up") in report
+        assert _DISCLOSURE_WARNING_LINE in report
+
+    def test_frontmatter_resident_disclosure_uses_derived_not_hardcoded_property(
+        self, tmp_path, monkeypatch
+    ):
+        # ADR-6 proof: a profile configured with a DIFFERENT parent marker must
+        # change the disclosed property name. If the renderer hardcoded "up",
+        # this test would still see "up" and fail.
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding(up_source="frontmatter", up_value=["[[Alte MOC]]"])
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        assert _DISCLOSURE_TARGET_LINE.format(prop="parent") in report
+        assert _DISCLOSURE_TARGET_LINE.format(prop="up") not in report
+
+    def test_frontmatter_resident_disclosure_appears_before_apply_checkbox(self):
+        # "At approval time" — the user must read the warning before ticking
+        # Apply, not after.
+        f = _make_broken_up_finding(up_source="frontmatter", up_value=["[[Alte MOC]]"])
+        report = _render_report(_make_doc(findings=[f]))
+        disclosure_idx = report.index(_DISCLOSURE_TARGET_LINE.format(prop="up"))
+        apply_idx = report.index("Apply — tick to apply this fix")
+        assert disclosure_idx < apply_idx
+
+    def test_inline_resident_renders_no_disclosure(self):
+        f = _make_broken_up_finding(up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Fix target:" not in report
+        assert "⚠️" not in report
+
+    def test_absent_up_source_renders_no_disclosure(self):
+        # Pre-032 cache shape: up_source/up_value simply absent from detail.
+        f = _make_broken_up_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Fix target:" not in report
+        assert "⚠️" not in report
+
+    def test_non_broken_up_finding_renders_no_disclosure(self):
+        report = _render_report(_make_doc(findings=[_make_unparented_finding()]))
+        assert "Fix target:" not in report
+        assert "⚠️" not in report
+
+    def test_inline_resident_rendering_diverges_from_absent_up_source_since_t5_2(self):
+        # Superseded by spec 032 T5.2: at T5.1 landing, "today" meant the
+        # absent-up_source shape (pre-032 fixtures never carried up_source at
+        # all), and it rendered byte-identical to an explicit inline finding —
+        # this test used to assert exactly that equality. T5.2 gives that
+        # absent shape its own meaning: it IS the stale-cache case (ADR-3's
+        # _MISSING sentinel — up_value key absent), withheld with a reason and
+        # remedy rather than an Apply checkbox. So the two are now expected to
+        # DIFFER; see TestUnroutableFindings for the withheld-path coverage,
+        # and test_inline_resident_matches_pinned_golden_broken_up_line below
+        # for this file's CON-7 anchor on the still-routable inline case.
+        f_absent = _make_broken_up_finding("F01")
+        f_inline = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report_absent = _render_report(_make_doc(findings=[f_absent]))
+        report_inline = _render_report(_make_doc(findings=[f_inline]))
+        assert report_inline != report_absent
+        assert "Apply — tick to apply this fix" in report_inline
+        assert "Not fixable this run" in report_absent
+
+    def test_inline_resident_matches_pinned_golden_broken_up_line(self):
+        # Pins the exact pre-032 detail line (also exercised in
+        # TestDirtyListReprRender) so a future change to this block cannot
+        # silently alter body-resident rendering without failing here too.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Broken `up::` → [[Deleted MOC]]" in report
+
+
+# ---------------------------------------------------------------------------
+# Spec 032 T5.2: unroutable findings render their reason AND remedy
+# ---------------------------------------------------------------------------
+# A broken_up finding garden-audit-parser.py's _route_broken_up (ADR-3/ADR-5)
+# cannot route must not silently render the normal Apply-checkbox flow — the
+# report has to withhold it too, so the human-reviewed report and Pass-2 agree
+# about what is (un)routable. Reason detection mirrors the parser's sentinel
+# logic without needing the user's remove/repoint choice, since routability
+# doesn't depend on it: up_value key absent → "stale-cache" (ADR-3 _MISSING
+# sentinel — this is the pre-032 cache shape, and per the measured first-run
+# reality every _make_broken_up_finding() default fixture IS this shape);
+# up_value present but up_source not in {"inline", "frontmatter"} →
+# "no-declaration-site".
+#
+# no-declaration-site wording: the SDD/PRD only specify verbatim wording for
+# the stale-cache remedy (solution.md UI & UX); no-declaration-site is
+# documented in garden-audit-parser.py as "unreachable in practice" (a broken
+# state requires a target, and a target requires a declared source) with no
+# specified user-facing text. The wording below is proposed, not spec-locked —
+# it reuses the /explore-vault remedy because a cache refresh is the only
+# recovery lever this system offers, but it is not a verbatim string.
+
+_STALE_CACHE_REASON_LINE = (
+    "- **Not fixable this run:** the discovery cache predates property routing."
+)
+_STALE_CACHE_REMEDY_LINE = (
+    "  Run `/explore-vault` to refresh it, then re-run the audit."
+)
+
+
+class TestUnroutableFindings:
+    def test_stale_cache_finding_renders_verbatim_reason_and_remedy(self):
+        # Pre-032 cache shape (up_source/up_value both absent) — the measured,
+        # default first-run reality (346 cache entries, 0 carrying up_value).
+        f = _make_broken_up_finding("F01")
+        report = _render_report(_make_doc(findings=[f]))
+        assert _STALE_CACHE_REASON_LINE in report
+        assert _STALE_CACHE_REMEDY_LINE in report
+
+    def test_stale_cache_finding_renders_no_apply_checkbox(self):
+        f = _make_broken_up_finding("F01")
+        report = _render_report(_make_doc(findings=[f]))
+        # Nothing to approve — no per-finding Apply or Suggest affordance.
+        assert "] Apply" not in report
+        assert "Suggest targets" not in report
+
+    def test_no_declaration_site_finding_renders_reason_and_remedy(self):
+        # up_value present (not stale) but up_source absent on a broken
+        # finding — "unreachable in practice" per garden-audit-parser.py,
+        # still withheld rather than guessed (ADR-5), never a body-oriented
+        # fallback.
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Not fixable this run" in report
+        assert "/explore-vault" in report
+        assert "no-declaration-site" not in report  # internal reason code, stderr-only
+
+    def test_no_declaration_site_finding_renders_no_apply_checkbox(self):
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "] Apply" not in report
+
+    def test_map_shaped_up_value_finding_renders_reason_and_remedy(self):
+        # spec 032 T3.2: a map-shaped up_value gets its OWN reason — NOT
+        # stale-cache (the cache is healthy here) — and its remedy must not
+        # point at /explore-vault, since a refresh cannot fix an unsupported
+        # shape.
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Not fixable this run" in report
+        assert "unsupported-shape" not in report  # internal reason code, stderr-only
+
+    def test_map_shaped_up_value_finding_renders_no_apply_checkbox(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        assert "] Apply" not in report
+
+    def test_fully_routable_run_has_no_withheld_text_or_summary(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Not fixable this run" not in report
+        assert "withheld" not in report.lower()
+
+    def test_summary_line_names_count_and_reason(self):
+        findings = [
+            _make_broken_up_finding("F01"),  # stale-cache (absent up_value)
+            _make_broken_up_finding("F02"),  # stale-cache
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "2 findings withheld" in report
+        assert "/explore-vault" in report
+
+    def test_summary_line_names_unsupported_shape_count_and_reason(self):
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="frontmatter", up_value={"a": 1}
+            ),
+            _make_broken_up_finding(
+                "F02", up_source="frontmatter", up_value={"b": 2}
+            ),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "2 findings withheld" in report
+        assert "unsupported value shape" in report.lower()
+
+    def test_summary_omitted_when_nothing_withheld(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "withheld" not in report.lower()
+
+    def test_summary_omitted_on_zero_findings(self):
+        report = _render_report(_make_doc(findings=[]))
+        assert "withheld" not in report.lower()
+
+    def test_stderr_carries_one_prefixed_line_per_withheld_finding(self, capsys):
+        findings = [
+            _make_broken_up_finding("F01"),  # stale-cache — withheld
+            _make_broken_up_finding(
+                "F02", up_source="inline", up_value="[[Alte MOC]]"
+            ),  # routable — no stderr line
+        ]
+        gar._log_unroutable_findings(findings)
+        err = capsys.readouterr().err
+        lines = [ln for ln in err.splitlines() if ln.startswith("[garden-audit]")]
+        assert len(lines) == 1
+        assert "F01" in lines[0]
+        assert "Broken Note" in lines[0]
+        assert "stale-cache" in lines[0]
+
+    def test_routable_finding_rendering_unaffected_con7(self):
+        # CON-7: a routable finding's rendering is unaffected by T5.2 — same
+        # Apply checkbox and Repoint field as the pinned T5.1 golden shape.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        assert "Apply — tick to apply this fix" in report
+        assert "**Repoint to:**" in report
+        assert "Not fixable this run" not in report
+
+    def test_realistic_withheld_count_stays_readable(self):
+        # Measured first-run reality: the entire population can be withheld
+        # (346 cache entries, 0 carrying up_value; 29 broken_up findings).
+        findings = [_make_broken_up_finding(f"F{i:02d}") for i in range(1, 30)]
+        report = _render_report(_make_doc(findings=findings))
+        assert report.count("Not fixable this run") == 29
+        assert "29 findings withheld" in report
+        # The collective summary precedes the 29 identical per-finding blocks
+        # — the reader gets the remedy once, up front, not by inference.
+        summary_idx = report.find("29 findings withheld")
+        first_block_idx = report.find("### F01")
+        assert -1 < summary_idx < first_block_idx
+
+
+# ---------------------------------------------------------------------------
+# Spec 032 T5.3: routing-split line (ADR-4) — once per run, the population of
+# broken_up findings split by declaration site.
+# ---------------------------------------------------------------------------
+# Verbatim (solution.md UI & UX, ADR-4): "Broken parents: N findings — B in
+# the note body, P in a note property." N is deliberately B + P, NOT the raw
+# broken_up finding count: a finding whose site can't be attributed (a
+# stale-cache finding predating ADR-1, or the "unreachable in practice"
+# no-declaration-site branch) is excluded from this line rather than folded
+# into N — a mismatched "29 findings — 0 in body, 0 in property" would be
+# true, useless, and alarming (the measured first-run reality: 346 cache
+# entries, 0 carrying up_value, so every one of the 29 broken_up findings is
+# unattributable on the very first run this ships). Those findings are
+# already covered by TestUnroutableFindings' summary — this line isn't the
+# only place they're surfaced, just not the place they're double-counted.
+# The line is suppressed entirely whenever B + P == 0, covering both "no
+# broken_up findings at all" and "every one is unattributable."
+
+_SPLIT_LINE = "Broken parents: {total} findings — {body} in the note body, {prop} in a note property."
+
+
+class TestBrokenUpSplitLine:
+    def test_mixed_body_and_property_renders_verbatim_split(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+            _make_broken_up_finding("F03", up_source="inline", up_value="[[C]]"),
+            _make_broken_up_finding("F04", up_source="frontmatter", up_value="[[D]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=4, body=3, prop=1) in report
+
+    def test_split_line_appears_exactly_once_regardless_of_finding_count(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+            _make_broken_up_finding("F03", up_source="frontmatter", up_value="[[C]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert report.count("Broken parents:") == 1
+
+    def test_only_body_resident_still_renders_with_zero_property(self):
+        # A zero here must be distinguishable from "the line never renders" —
+        # otherwise "no property findings" and "routing broken" look the same.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=2, body=2, prop=0) in report
+
+    def test_only_property_resident_still_renders_with_zero_body(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="frontmatter", up_value="[[A]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=1, body=0, prop=1) in report
+
+    def test_no_broken_up_findings_renders_no_split_line(self):
+        report = _render_report(_make_doc(findings=[_make_unparented_finding()]))
+        assert "Broken parents:" not in report
+
+    def test_zero_findings_renders_no_split_line(self):
+        report = _render_report(_make_doc(findings=[]))
+        assert "Broken parents:" not in report
+
+    def test_all_findings_unattributable_renders_no_split_line(self):
+        # Decision (Q2): the measured first-run reality — every broken_up
+        # finding is stale-cache, site unknown for all of them. A naive
+        # count-everything line would read "29 findings — 0 in the note
+        # body, 0 in a note property." — true, useless, and alarming. The
+        # line must not render at all in this case.
+        findings = [_make_broken_up_finding(f"F{i:02d}") for i in range(1, 30)]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Broken parents:" not in report
+
+    def test_no_declaration_site_finding_excluded_from_split(self):
+        # up_value present (not stale) but up_source not in
+        # {"frontmatter", "inline"} — "unreachable in practice" per
+        # garden-audit-parser.py, but still unattributable to a site.
+        findings = [
+            _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=1, body=1, prop=0) in report
+
+    def test_unsupported_shape_finding_still_counted_by_site(self):
+        # T3.2: a map-shaped up_value is withheld (unsupported-shape), but its
+        # declaration site IS known — ADR-4 wants population visibility
+        # regardless of fixability, so it must still count toward the split.
+        findings = [
+            _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1}),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert _SPLIT_LINE.format(total=1, body=0, prop=1) in report
+
+    def test_split_line_precedes_unroutable_summary(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02"),  # stale-cache — withheld
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        split_idx = report.find("Broken parents:")
+        withheld_idx = report.find("withheld this run")
+        assert -1 < split_idx < withheld_idx
+
+    def test_body_resident_finding_block_unaffected_con7(self):
+        # CON-7: the split line must not alter a body-resident finding's own
+        # per-finding block rendering.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]"),
+            _make_broken_up_finding("F02", up_source="frontmatter", up_value="[[B]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Broken `up::` → [[Deleted MOC]]" in report
+        assert "Apply — tick to apply this fix" in report
+        assert "**Repoint to:**" in report
+
+
+# ---------------------------------------------------------------------------
+# Fix-a: property-language for the ACTION, not the FINDING (T5.1/T5.2/T5.3
+# follow-up). A property-resident (up_source == "frontmatter") broken_up
+# finding is fixed via a YAML-property edit — but the Fix summary line and
+# the Repoint hint still described a body edit ("up::", "the broken line"),
+# contradicting the property-edit disclosure rendered right below them. This
+# section locks the corrected, property-aware wording for those two lines,
+# and the analogous self-contradiction in the unsupported-shape remedy
+# (":102" — "this note's `up::` property" says inline-marker and YAML-key in
+# the same phrase).
+#
+# Deliberately NOT touched (per rationale in the task): the check label
+# ("Broken up:: link"), the `### F<id>` heading, and the detail line
+# ("Broken `up::` → [[X]]") — those name the FINDING (a broken parent link
+# exists), not the fix ACTION, and the detail line is pinned by
+# test_inline_resident_matches_pinned_golden_broken_up_line above.
+
+# The heading ("Broken up:: link") and the detail line ("Broken `up::` →
+# [[X]]") legitimately keep "up::" — they name the FINDING and are DO-NOT-
+# CHANGE per the task rationale. So the "self-contradiction is gone" proof
+# below is scoped to the specific rendered line the fix corrected (the
+# "**Fix:**" line / the "**Repoint to:**" line), never to the whole report.
+
+
+def _line_starting_with(report: str, prefix: str) -> str:
+    for line in report.splitlines():
+        if line.startswith(prefix):
+            return line
+    raise AssertionError(f"no line starting with {prefix!r} in report:\n{report}")
+
+
+class TestPropertyResidentFixLanguage:
+    def test_frontmatter_resident_fix_line_names_property_not_up_marker(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**")
+        assert fix_line == (
+            "**Fix:** The broken `up` property (was [[Deleted MOC]]) — repoint it "
+            "to a MOC you enter below, or leave empty to remove the property value."
+        )
+        assert "up::" not in fix_line
+        assert "the broken line" not in fix_line
+
+    def test_frontmatter_resident_fix_line_uses_derived_property_non_default_marker(
+        self, tmp_path, monkeypatch
+    ):
+        # ADR-6 proof — a single-marker test never exposes a hardcoded "up".
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        fix_line = _line_starting_with(report, "**Fix:**")
+        assert fix_line == (
+            "**Fix:** The broken `parent` property (was [[Deleted MOC]]) — repoint "
+            "it to a MOC you enter below, or leave empty to remove the property value."
+        )
+        assert "up" not in fix_line
+        assert "`up`" not in fix_line
+
+    def test_frontmatter_resident_repoint_hint_names_property_not_up_marker(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        assert (
+            "- **Repoint to:** [[]]    ← enter the correct MOC to repoint the "
+            "`up` property, or leave empty to remove"
+        ) in report
+        # Proves discrimination: the OLD hint wording must be fully gone, not
+        # just partially — a loose "in" check on a fragment shared by both
+        # old and new text would pass vacuously.
+        assert "repoint up::" not in report
+
+    def test_frontmatter_resident_repoint_hint_uses_derived_property_non_default_marker(
+        self, tmp_path, monkeypatch
+    ):
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        assert (
+            "- **Repoint to:** [[]]    ← enter the correct MOC to repoint the "
+            "`parent` property, or leave empty to remove"
+        ) in report
+        assert "`up`" not in report
+
+    def test_inline_resident_fix_and_repoint_lines_unchanged_con7(self):
+        # CON-7: body-resident wording is untouched — same strings as before
+        # this fix, verbatim.
+        f = _make_broken_up_finding(
+            "F01", up_source="inline", up_value="[[Alte MOC]]"
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        assert (
+            "**Fix:** The broken `up::` (was [[Deleted MOC]]) — repoint it to a "
+            "MOC you enter below, or leave empty to remove the broken line."
+        ) in report
+        assert (
+            "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
+            "up::, or leave empty to remove"
+        ) in report
+
+    def test_inline_resident_full_report_byte_identical_to_pre_fix_render_con7(self):
+        # Strongest CON-7 proof: load the pre-change renderer (the last commit
+        # to touch this file before this fix) as a separate module from git
+        # history, render the SAME inline-resident doc through both the old
+        # and the current module, and assert full-report byte-identity.
+        import subprocess
+        import tempfile
+
+        pre_fix_sha = "24d46d278a50b88f5b7aaaddc2c39e9e8ecd87d7"
+        content = subprocess.run(
+            ["git", "show", f"{pre_fix_sha}:tomo/scripts/garden-audit-render.py"],
+            cwd=_ROOT, capture_output=True, check=True, text=True,
+        ).stdout
+
+        with tempfile.TemporaryDirectory() as td:
+            old_path = pathlib.Path(td) / "garden_audit_render_old.py"
+            old_path.write_text(content, encoding="utf-8")
+            old_spec = importlib.util.spec_from_file_location(
+                "garden_audit_render_old", old_path
+            )
+            old_gar = importlib.util.module_from_spec(old_spec)
+            old_spec.loader.exec_module(old_gar)
+
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="inline", up_value="[[Alte MOC]]"
+            ),
+            _make_dead_link_finding("F02"),
+            _make_unparented_finding("F03"),
+        ]
+        doc = _make_doc(findings=findings)
+
+        old_report = old_gar.render_report(doc)
+        new_report = gar.render_report(doc)
+        assert new_report == old_report
+
+
+# ---------------------------------------------------------------------------
+# unsupported-shape remedy (:102) — same self-contradiction, different spot:
+# "this note's `up::` property" names both the inline marker and the YAML
+# key in one phrase. This reason is derived only via T3.2's map-shape check
+# (never gated on up_source here — see garden-audit-render.py comment), but
+# in measured practice only ever arises for a frontmatter-sourced finding.
+# ---------------------------------------------------------------------------
+
+class TestUnsupportedShapeRemedyLanguage:
+    def test_remedy_no_longer_says_up_marker_and_property_together(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        assert "`up::` property" not in report
+        assert "`up` property has a value shape" in report
+
+    def test_remedy_property_name_is_derived_not_hardcoded(self, tmp_path, monkeypatch):
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        assert "`parent` property has a value shape" in report
+        assert "`up::` property" not in report
+        assert "`up` property" not in report
+
+
+# ---------------------------------------------------------------------------
+# Fix-b (Phase 5 follow-up to 68c4594): the fourth site. 68c4594 fixed
+# property-language in the **Fix:** line, the **Repoint to:** hint, and
+# _UNROUTABLE_REMEDY["unsupported-shape"] (the per-finding remedy) — but
+# missed _UNROUTABLE_SUMMARY_TEXT["unsupported-shape"] (the once-per-run
+# Summary-section line, _render_unroutable_summary). That line still said
+# "a map-shaped `up::` value" — the SAME self-contradiction 68c4594 fixed
+# elsewhere (inline-marker naming + "edit the property by hand" in one
+# sentence), and now inconsistent with the per-finding remedy a few lines
+# below it in the SAME report.
+#
+# no-declaration-site's Summary text is deliberately UNCHANGED: that reason
+# is not gated to frontmatter (it fires when the declaration site is
+# unknown), so inline-marker naming is correct there and matches its own
+# untouched per-finding remedy. Same for stale-cache (spec-locked verbatim).
+# ---------------------------------------------------------------------------
+
+
+def _line_containing(report: str, needle: str) -> str:
+    for line in report.splitlines():
+        if needle in line:
+            return line
+    raise AssertionError(f"no line containing {needle!r} in report:\n{report}")
+
+
+class TestUnsupportedShapeSummaryLanguage:
+    def test_summary_line_names_property_not_up_marker(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        summary_line = _line_containing(report, "unsupported value shape")
+        assert "`up::`" not in summary_line
+        assert "`up` property" in summary_line
+
+    def test_summary_and_per_finding_remedy_agree_on_noun(self):
+        # This is the assertion that would have caught the miss: both lines
+        # describe the SAME finding and must use the same noun for it.
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        summary_line = _line_containing(report, "unsupported value shape")
+        remedy_line = _line_containing(report, "Not fixable this run")
+        assert "`up` property" in summary_line
+        assert "`up` property" in remedy_line
+
+    def test_summary_line_uses_derived_property_non_default_marker(
+        self, tmp_path, monkeypatch
+    ):
+        # ADR-6 proof — a single-marker test never exposes a hardcoded "up".
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        summary_line = _line_containing(report, "unsupported value shape")
+        assert "`parent` property" in summary_line
+        assert "`up`" not in summary_line
+        assert "`up::`" not in summary_line
+
+    def test_no_declaration_site_summary_text_unchanged_verbatim(self):
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        summary_line = _line_containing(report, "no declaration site")
+        assert summary_line == (
+            "- 1 no declaration site — no recorded declaration site for the "
+            "broken `up::`. Run `/explore-vault` to refresh the cache, then "
+            "re-run the audit."
+        )
+
+    def test_stale_cache_summary_text_unchanged_verbatim(self):
+        f = _make_broken_up_finding("F01")
+        report = _render_report(_make_doc(findings=[f]))
+        summary_line = _line_containing(report, "stale cache")
+        assert summary_line == (
+            "- 1 stale cache — the discovery cache predates property routing. "
+            "Run `/explore-vault` to refresh it, then re-run the audit."
+        )
+
+    def test_mixed_doc_body_resident_output_byte_identical_con7(self):
+        # CON-7: prove the Summary-line fix leaves a body-resident (inline
+        # up_source) finding's report untouched, the way 68c4594 proved it
+        # for the Fix/Repoint lines — load the module as it stood right
+        # before this fix (68c4594) under a DISTINCT module name, render a
+        # MIXED doc (one withheld unsupported-shape finding alongside one
+        # routable inline finding) through both, and assert the inline block
+        # is byte-identical while the Summary line changed.
+        import subprocess
+        import tempfile
+
+        pre_fix_sha = "68c4594"
+        content = subprocess.run(
+            ["git", "show", f"{pre_fix_sha}:tomo/scripts/garden-audit-render.py"],
+            cwd=_ROOT, capture_output=True, check=True, text=True,
+        ).stdout
+
+        with tempfile.TemporaryDirectory() as td:
+            old_path = pathlib.Path(td) / "garden_audit_render_pre_phase5.py"
+            old_spec = importlib.util.spec_from_file_location(
+                "garden_audit_render_pre_phase5", old_path
+            )
+            old_path.write_text(content, encoding="utf-8")
+            old_gar = importlib.util.module_from_spec(old_spec)
+            old_spec.loader.exec_module(old_gar)
+
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="frontmatter", up_value={"a": 1}
+            ),  # unsupported-shape — withheld, Summary line changes
+            _make_broken_up_finding(
+                "F02", up_source="inline", up_value="[[Alte MOC]]"
+            ),  # routable — untouched by this fix
+        ]
+        doc = _make_doc(findings=findings)
+
+        old_report = old_gar.render_report(doc)
+        new_report = gar.render_report(doc)
+
+        old_lines = old_report.splitlines()
+        new_lines = new_report.splitlines()
+        assert len(old_lines) == len(new_lines)
+
+        def _block_indices(lines, fid):
+            idx, inside = [], False
+            for i, ln in enumerate(lines):
+                if ln.startswith("### "):
+                    inside = ln.startswith(f"### {fid} ")
+                if inside:
+                    idx.append(i)
+            return idx
+
+        # CON-7 asserted on the thing CON-7 names: the BODY-RESIDENT finding's
+        # block, byte for byte. An earlier form of this test counted changed
+        # lines across the whole report and required exactly one — a proxy that
+        # held only while the Summary line was the sole property-side change.
+        # It then failed for a later property-side fix that CON-7 does not
+        # constrain at all, so the count was tightened into the real invariant.
+        f02_old = _block_indices(old_lines, "F02")
+        f02_new = _block_indices(new_lines, "F02")
+        assert f02_old == f02_new
+        assert [old_lines[i] for i in f02_old] == [new_lines[i] for i in f02_new]
+
+        changed = [
+            i for i, (o, n) in enumerate(zip(old_lines, new_lines)) if o != n
+        ]
+        assert changed, "the fix under test changed nothing — assertion is hollow"
+        body_resident = set(f02_new) & set(changed)
+        assert not body_resident, (
+            f"body-resident lines changed, CON-7 violated: "
+            f"{[new_lines[i] for i in sorted(body_resident)]}"
+        )
+
+        summary = [i for i in changed if "unsupported value shape" in new_lines[i]]
+        assert len(summary) == 1, f"expected one Summary line, got {summary}"
+        assert "unsupported value shape" in old_lines[summary[0]]
+
+
+class TestPropertyResidentDetailLine:
+    """The per-finding detail line must not say `up::` for a parent that lives
+    in a YAML property — the block already says "note property `up`" two lines
+    below, and the two readings contradict each other in the same block.
+
+    Scoped deliberately to the detail line: the section heading comes from a
+    static per-check label shared by all broken_up findings and is a separate
+    change.
+    """
+
+    def test_frontmatter_resident_detail_line_names_property_not_up_marker(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up` property → [[Deleted MOC]]"
+        assert "up::" not in detail_line
+
+    def test_frontmatter_resident_detail_line_uses_derived_property(
+        self, tmp_path, monkeypatch
+    ):
+        # ADR-6 proof — a single-marker test never exposes a hardcoded "up".
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `parent` property → [[Deleted MOC]]"
+
+    def test_body_resident_detail_line_is_unchanged(self):
+        # CON-7: body-resident output stays byte-identical.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value=None)
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up::` → [[Deleted MOC]]"
+
+    def test_block_does_not_state_both_readings_for_one_finding(self):
+        """The contradiction itself, asserted as one property of the block:
+        below the heading, a property-resident finding never names `up::`.
+        """
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        body = [
+            ln for ln in report.splitlines()
+            if ln.strip() and not ln.startswith("###")
+        ]
+        offenders = [ln for ln in body if "up::" in ln]
+        assert offenders == [], f"body syntax on a property finding: {offenders}"

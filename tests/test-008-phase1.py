@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.4
+# version: 0.3.6
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -13,6 +13,7 @@ that verify the XDD 008 Phase 1 contract:
 """
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -315,10 +316,22 @@ def test_action_building():
     return actions
 
 
-def test_schema_validity(actions):
-    """Validate instructions.json against instructions.schema.json."""
+def check_schema_validity(actions):
+    """Validate instructions.json against instructions.schema.json.
+
+    `actions` as returned by build_actions() carries Tomo-internal fields
+    (e.g. move_note.audio_peer, spec 027) that are deliberately stripped
+    by lib.render_resolve._strip_internal_link_fields() before the wire —
+    see that function's docstring. Validating the pre-strip actions here
+    would reject a shape the wire never sends; validate a stripped COPY
+    so this checks the real wire contract without mutating `actions` for
+    the callers still to come (check_md_rendering, check_path_shape_validator).
+    """
     schema_path = REPO_ROOT / "tomo" / "schemas" / "instructions.schema.json"
     schema = json.loads(schema_path.read_text())
+
+    wire_actions = copy.deepcopy(actions)
+    ir._strip_internal_link_fields(wire_actions)
 
     doc = {
         "schema_version": "2",
@@ -327,8 +340,8 @@ def test_schema_validity(actions):
         "generated": "2026-04-21T12:00:00Z",
         "profile": "miyo",
         "tomo_version": None,
-        "action_count": len(actions),
-        "actions": actions,
+        "action_count": len(wire_actions),
+        "actions": wire_actions,
     }
 
     # Required top-level fields
@@ -347,7 +360,7 @@ def test_schema_validity(actions):
         "delete_source": action_defs["delete_source"],
         "skip": action_defs["skip"],
     }
-    for action in actions:
+    for action in wire_actions:
         kind = action["action"]
         action_schema = action_def_by_kind.get(kind)
         _must(action_schema is not None, f"unknown action kind: {kind}")
@@ -363,13 +376,13 @@ def test_schema_validity(actions):
     try:
         import jsonschema
         jsonschema.validate(doc, schema)
-        print(f"[PASS] schema_validity — {len(actions)} actions valid per jsonschema.validate")
+        print(f"[PASS] schema_validity — {len(wire_actions)} actions valid per jsonschema.validate")
     except ImportError:
-        print(f"[PASS] schema_validity — {len(actions)} actions pass structural check "
+        print(f"[PASS] schema_validity — {len(wire_actions)} actions pass structural check "
               f"(jsonschema not installed for full validation)")
 
 
-def test_md_rendering(actions):
+def check_md_rendering(actions):
     md = ir.render_instructions_md(
         actions,
         {
@@ -410,7 +423,7 @@ def test_md_rendering(actions):
     print(f"[PASS] md_rendering — {len(md)} chars, all {len(actions)} actions rendered")
 
 
-def test_config_loading(tmp_config_yaml: Path):
+def check_config_loading(tmp_config_yaml: Path):
     cfg = ir.load_config(str(tmp_config_yaml))
     _must(cfg["profile"] == "miyo", f"profile mismatch: {cfg['profile']}")
     _must(cfg["concepts.inbox"] == "100 Inbox/", "inbox mismatch")
@@ -749,7 +762,7 @@ def test_resolve_target_moc_paths():
     print("[PASS] resolve_target_moc_paths — happy, cached, graceful-degrade, in-set tier-1")
 
 
-def test_path_shape_validator(actions):
+def check_path_shape_validator(actions):
     # Happy-path actions emitted by build_actions() must conform to the
     # Path Shape Contract — the renderer aborts otherwise.
     violations = ir._validate_action_paths(actions)
@@ -784,6 +797,9 @@ def test_path_shape_validator(actions):
          "drive-letter"),
         ({"id": "X8", "action": "create_moc",
           "destination": "Atlas/X.md"},  # missing required `source`
+         "missing or empty"),
+        ({"id": "X12", "action": "edit_frontmatter",
+          "property": "up", "operation": "remove"},  # missing required `path`
          "missing or empty"),
     ]
     for action, needle in cases:
@@ -827,14 +843,14 @@ daily_log:
         tf.write(sample_yaml)
         cfg_path = Path(tf.name)
     try:
-        test_config_loading(cfg_path)
+        check_config_loading(cfg_path)
     finally:
         cfg_path.unlink(missing_ok=True)
 
     actions = test_action_building()
-    test_schema_validity(actions)
-    test_md_rendering(actions)
-    test_path_shape_validator(actions)
+    check_schema_validity(actions)
+    check_md_rendering(actions)
+    check_path_shape_validator(actions)
     test_backfill_supporting_items_parents()
     test_backfill_plus_build_actions_no_duplicate_links()
     test_resolve_target_moc_paths()

@@ -423,3 +423,29 @@ other six (orphan detection, cache post-write validation, classification coverag
 frontmatter sampling, per-tag counting, deep-nesting warning) have since shipped. This is
 the last one, re-verified open on 2026-09-03 while retiring the memory file that carried
 the list.
+
+## RELEASE NOTE — spec 033 (`parent_not_moc`) may make excluded `broken_up` findings reappear
+
+Spec 033 splits the `broken_up` garden-audit check: a link whose parent target exists but carries no
+MOC tag now reports as a separate advisory check, `parent_not_moc`, instead of as `broken_up`. This
+is correct (the two are different situations — see
+[spec 033](specs/033-broken-up-cause-split/README.md)) but it silently changes what an existing
+exclusion config suppresses (ADR-4 in `specs/033-broken-up-cause-split/solution.md`):
+
+- An exclusion using `checks: all` for a path/note/tag keeps covering everything, `parent_not_moc`
+  included. No action needed.
+- An exclusion that names checks **explicitly** and lists `broken_up` does **not** automatically
+  cover `parent_not_moc` — a finding on that path that used to be silent as `broken_up` can reappear,
+  now labeled `parent_not_moc`, in the advisory tier.
+
+Measured against this project's own live vault config
+(`tomo-instance/config/garden-audit-exclusions.yaml`, spec 033 T3.3, 2026-09-03): 4 of 6 rules use
+`checks: all` (unaffected); one rule (`Efforts/` → `[broken_up, dead_link, stale_moc]`) names
+`broken_up` explicitly and will see reappearance the first time `/garden-audit` runs after this
+ships. Confirmed by running the actual `GardenExclusions` loader against the file, not by reading the
+YAML.
+
+Action for anyone shipping this: mention it in the release note for spec 033 — "if you excluded
+`broken_up` by name rather than with `checks: all`, you may see a few new advisory findings; this is
+expected, not a regression" — and, for users who prefer silence, that adding `parent_not_moc` to the
+explicit `checks` list restores it.

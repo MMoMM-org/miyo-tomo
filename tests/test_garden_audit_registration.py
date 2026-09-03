@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_garden_audit_registration.py — spec 033 T3.1: registration of the new
 `parent_not_moc` check across every site that must know its name.
 
@@ -34,6 +34,14 @@ sys.path.insert(0, str(_SCRIPTS_DIR))
 def _load_module(name: str, filename: str):
     """Load a hyphen-named script fresh — exercises its module-level code
     (imports, module-scope asserts) on every call, not just on first import.
+
+    Each call site passes a distinct throwaway `name` (`_reg`, `_reg2`, `_reg3`,
+    …) rather than sharing one module-level load: garden-audit-stats.py's
+    `_CHECKS` assert (site 7) runs at import time, so if two tests in this file
+    shared a single loaded module, one missing registration would raise
+    `AssertionError` during collection and take out every other test in this
+    file with it — exactly the failure this per-site-assertion file exists to
+    prevent. Reloading per test keeps each site's failure local to its own test.
     """
     spec = importlib.util.spec_from_file_location(name, _SCRIPTS_DIR / filename)
     mod = importlib.util.module_from_spec(spec)
@@ -180,3 +188,73 @@ def test_site9_exclusions_schema_validates_parent_not_moc_rule():
 def test_should_register_stats_local_tier_matches_advisory():
     mod = _load_module("garden_audit_stats_reg3", "garden-audit-stats.py")
     assert mod._TIER.get("parent_not_moc") == "advisory"
+
+
+# ── ADR-4 — registering the check changes what existing exclusion configs do ──
+#
+# Two consequences, opposite in sign (SDD ADR-4, T3.3):
+#   - `checks: all` starts covering `parent_not_moc` with no config edit — correct,
+#     no migration needed.
+#   - an exclusion that names `broken_up` explicitly does NOT also cover
+#     `parent_not_moc` — a finding the user thought they had silenced reappears,
+#     in the advisory tier, under the new check name.
+# T3.3 step 4 ran this same loader against the live instance config
+# (tomo-instance/config/garden-audit-exclusions.yaml) and found both cases are
+# real today: 4 of 6 rules use `checks: all` (auto-covered); the `Efforts/` rule
+# lists `[broken_up, dead_link, stale_moc]` explicitly and will see reappearance.
+# Recorded in the spec README Decisions Log.
+
+def _adr4_note(path: str) -> dict:
+    return {"path": path, "tags": []}
+
+
+def test_adr4_checks_all_covers_parent_not_moc_without_config_changes():
+    from lib.garden_exclusions import GardenExclusions
+
+    config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "path", "value": "Foo/"},
+                "checks": "all",
+                "mode": "permanent",
+                "reason": "test",
+                "created": "2026-09-03",
+            }
+        ],
+    }
+    excl = GardenExclusions.from_dict(config)
+    assert excl.is_excluded(_adr4_note("Foo/Bar.md"), "parent_not_moc") is True
+
+
+def test_adr4_explicit_broken_up_exclusion_does_not_cover_parent_not_moc_reappears():
+    from lib.garden_exclusions import GardenExclusions
+
+    config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "path", "value": "Foo/"},
+                "checks": ["broken_up"],
+                "mode": "permanent",
+                "reason": "test",
+                "created": "2026-09-03",
+            }
+        ],
+    }
+    excl = GardenExclusions.from_dict(config)
+    note = _adr4_note("Foo/Bar.md")
+
+    # The exclusion still does exactly what it always did for broken_up...
+    assert excl.is_excluded(note, "broken_up") is True
+
+    # ...but a broken_up finding on this same note that now reclassifies as
+    # parent_not_moc REAPPEARS: the exclusion rule never named the new check,
+    # so it does not suppress it. This is the positive assertion the reviewer
+    # asked for — not merely "checks doesn't match", but "the finding is
+    # visible again".
+    reappears = not excl.is_excluded(note, "parent_not_moc")
+    assert reappears, (
+        "an exclusion naming 'broken_up' explicitly must NOT also suppress "
+        "'parent_not_moc' — ADR-4's reappearance case"
+    )

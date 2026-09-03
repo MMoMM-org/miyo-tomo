@@ -1,107 +1,190 @@
 # Spec 032 — Live-Validierung (T6.5)
 
-> Was von hier aus validiert wurde, und was einen echten Lauf braucht.
-> Stand: 2026-09-03.
+> Was auf echten Vault-Daten bestätigt ist, was noch fehlt, und der eine Konfig-Eingriff,
+> den der letzte Schritt braucht.
+> Stand: 2026-09-03, nach `update-tomo` + `/explore-vault` + `/garden-audit`.
 
-## Bereits bestätigt — auf echten Vault-Daten, ohne Änderung am Vault
+## Lauf vom 2026-09-03
 
-Gemessen gegen `tomo-instance/config/moc-structure-cache.yaml`, die Datei, die
-`garden-audit.py:550` tatsächlich lädt:
+Instanz-Code synchronisiert 09:40, Cache neu gebaut 10:05, Audit gelaufen 10:07.
 
-| | |
+### Schritt 2 — der Cache hat `up_value` bekommen ✅
+
+| | vorher (2026-07-24) | nachher (2026-09-03) |
+|---|---|---|
+| Cache-Einträge | 346 | **359** |
+| davon mit `up_value`-Schlüssel | 0 | **359** — alle |
+| davon mit `up_source` | 107 | **359** — alle |
+| `up_state: broken` | 29 | **42** |
+| davon frontmatter-deklariert | 1 | **14** |
+
+Der Schlüssel steht auf **allen** Einträgen, auch den inline-deklarierten (Wert dort `None`). Genau
+diese Anwesenheit-statt-Wert-Unterscheidung ist ADR-3 — der `_MISSING`-Sentinel im Parser
+unterscheidet „Cache kennt das Feld nicht" von „Property ist leer".
+
+Prüfbefehl:
+
+```
+grep -c 'up_value:' tomo-instance/config/moc-structure-cache.yaml   # erwartet: 359
+```
+
+### Schritt 3 — der Report enthielt null `broken_up`-Findings ⚠️
+
+9 Findings insgesamt: 4 Orphans, 5 stale MOCs. **Kein einziger kaputter Parent**, obwohl 42 im
+Cache stehen.
+
+**Ursache — kein Fehler.** In `tomo-instance/config/garden-audit-exclusions.yaml`:
+
+```yaml
+- target: {type: path, value: Atlas/}
+  checks: all
+  mode: temporary
+  reason: working through 605 findings — revisit in 90 days
+  created: '2026-07-21'
+  until: '2026-10-19'
+```
+
+Der Cache-Scope ist vollständig `Atlas/200 Maps/` + `Atlas/202 Notes/` — **329 der 359 Einträge
+liegen unter `Atlas/`**, und alle 42 broken ebenfalls. Die 9 verbleibenden Findings stammen aus den
+30 Einträgen außerhalb. Gemessen:
+
+| | Findings |
 |---|---|
-| Cache-Einträge | 346 |
-| davon mit `up_value` | **0** — der Cache stammt aus der Zeit vor dieser Spec |
-| `up_source` | 239 ohne, 85 `inline`, 22 `frontmatter` |
-| `broken_up`-Findings | 29 — davon **28 inline, 1 frontmatter** |
-| die eine property-residente | `Atlas/202 Notes/Aristotle and Metaphor - Seeing the similarity between things..md` → `Philosophy MOC (kit)` |
+| `_check_broken_up` ohne Exclusions | 42 |
+| mit den echten Exclusions | **0** |
+| geblockt | 42 von 42 |
 
-Der echte Scan über diese Daten, durch den echten Renderer, ergibt:
+Die Exclusion-Maschinerie arbeitet korrekt. Der Nullwert ist die richtige Antwort auf die
+Konfiguration, nicht ein Ausfall des Routings.
 
-```
-Broken parents: 29 findings — 28 in the note body, 1 in a note property.
+## Was ohne Vault-Änderung bestätigt ist
 
-**29 findings withheld this run — not fixable:**
+Gegen die 14 echten frontmatter-deklarierten Einträge, durch die echte Transform
+(`render_actions._construct_edit_frontmatter_fields`):
 
-- 29 stale cache — the discovery cache predates property routing.
-  Run `/explore-vault` to refresh it, then re-run the audit.
-```
+| Wahl | Operation | Fälle |
+|---|---|---|
+| `remove` | `remove` | **14 von 14** |
+| `repoint` | `set` | **14 von 14** |
 
-**Kriterium 3** (die Split-Zeile meldet mindestens ein property-residentes Finding) — ✅ erfüllt.
-**Kriterium 6** (auf einem Vor-Refresh-Cache werden Property-Findings zurückgehalten *mit* Remedy,
-nicht falsch geroutet) — ✅ erfüllt, alle 29, keines mit Apply-Häkchen, keine body-orientierte
-Aktion angeboten.
+Alle 14 `up_value` sind `list[1]` — deshalb ist `remove` (ganze Property löschen) hier immer
+korrekt. Der `set`-auf-remove-Fall (Property hält mehrere Parents, einer kaputt) kommt in diesem
+Vault **nicht vor**; er ist im Code abgedeckt und getestet, aber nicht live beobachtet.
 
-Bemerkenswert: die Findings sind **zurückgehalten** und trotzdem **zuordenbar**. Der Cache trägt
-`up_source`, nur `up_value` fehlt. ADR-4 („wo steht die Deklaration") und ADR-5 („ist das diesen
-Lauf fixbar") sind bewusst getrennte Fragen, und der Report beantwortet beide.
-
-## Was einen echten Lauf braucht
-
-Die verbleibenden Kriterien verlangen einen Cache-Rebuild und ein Apply durch Hashi. Beides ist von
-außen nicht auslösbar: der Rebuild sollte im Container laufen (Host-seitige Vollscans laufen in
-Kados 429-Limit), und das Apply passiert in Obsidian.
-
-### Reihenfolge — sie ist nicht beliebig
+Ein echtes Paar, verbatim:
 
 ```
-1.  scripts/update-tomo.sh          # Instanz bekommt den neuen Code
-2.  /explore-vault                  # Cache wird neu gebaut UND GEWINNT up_value
-3.  /garden-audit                   # erst jetzt ist irgendetwas routbar
+remove   → {"operation": "remove", "expected": ["[[Philosophy MOC (kit)]]"]}
+repoint  → {"operation": "set", "value": ["[[Philosophy MOC]]"],
+            "expected": ["[[Philosophy MOC (kit)]]"]}
 ```
 
-Ohne Schritt 2 sind weiterhin alle Findings `stale-cache` — der Lauf wäre korrekt, würde aber nichts
-über das Routing beweisen.
+Beide validieren gegen `tomo/schemas/hashi-instructions.schema.json` — geprüft, nicht angenommen.
+`expected` ist in beiden dasselbe Objekt, unverändert; `remove` trägt kein `value`.
+
+**Kriterium 3** (Split-Zeile meldet mindestens ein property-residentes Finding) — auf dem
+Vor-Refresh-Cache erfüllt, siehe Historie unten.
+**Kriterium 6** (Property-Findings werden bei fehlendem `up_value` zurückgehalten *mit* Remedy,
+nicht falsch geroutet) — erfüllt.
+
+> **Messvorbehalt.** Die obigen Zahlen stammen aus direkten Aufrufen der Scan- und
+> Transform-Funktionen über die echten Cache-Einträge. Sie beschreiben **nicht** einen gerenderten
+> Report — den blockiert die `Atlas/`-Exclusion. Frühere Fassungen dieses Dokuments haben die
+> Unterscheidung nicht gemacht: das damalige Prüfskript rief `run_scan()` ohne das
+> `exclusions`-Argument auf, die Pipeline übergibt es. Deshalb standen dort 29 Findings, wo
+> `/garden-audit` null liefert.
+
+## Was noch fehlt — und wie man es bekommt
+
+Offen ist das eigentliche Verhaltenskriterium: **ein property-residenter Fix ändert nach Freigabe
+tatsächlich die Notiz.** Dafür muss mindestens ein `broken_up`-Finding in den Report gelangen.
+
+### Der Eingriff
+
+`Atlas/`-Regel von `checks: all` auf die Liste ohne `broken_up` umstellen:
+
+```yaml
+- target: {type: path, value: Atlas/}
+  checks:
+  - dead_link
+  - duplicate_stem
+  - orphan
+  - stale_moc
+  - unparented
+  mode: temporary
+  ...
+```
+
+Wirkung, gemessen: `broken_up` für alle 329 Atlas-Einträge **offen**, die anderen fünf Checks
+weiterhin für alle 329 **still**. Ergebnis: 42 Findings, davon 14 property-resident — statt der 605
+eines ungefilterten Scans.
+
+`ALL_CHECK_NAMES` = `broken_up, dead_link, duplicate_stem, orphan, stale_moc, unparented`.
+
+### Ablauf
+
+```
+1.  Exclusion wie oben umstellen   (Backup nicht vergessen)
+2.  /garden-audit                  → 42 broken_up-Findings
+3.  ein Häkchen setzen             → der property-residente Fall genügt
+4.  /inbox                         → Apply durch Hashi
+5.  Exclusion zurücksetzen
+```
+
+Der Konfig-Header sagt „Managed via `/garden-audit --configure`. Do not edit manually." Für einen
+temporären, zurückgesetzten Testeingriff ist die Handbearbeitung vertretbar — aber sie ist ein
+Eingriff, und Schritt 5 gehört dazu.
 
 ### Woran du erkennst, dass es funktioniert hat
 
-**Nach Schritt 2**, im neuen Cache: `up_value` steht auf **allen** Einträgen (nicht nur den
-frontmatter-deklarierten — bei inline ist der Wert `None`, aber der *Schlüssel* muss da sein). Prüfen:
+**Im Report:**
 
-```
-grep -c 'up_value:' tomo-instance/config/moc-structure-cache.yaml   # erwartet: 346
-```
-
-Steht dort 0, hat Schritt 1 den Code nicht ausgeliefert.
-
-**Nach Schritt 3**, im Report:
-
-- Die Withheld-Zeile ist **weg** oder deutlich kleiner — die 29 sind jetzt routbar.
-- Die Split-Zeile steht weiterhin da: `28 in the note body, 1 in a note property`.
-- Der Block für `Aristotle and Metaphor …` trägt **zusätzlich zu den anderen** diese zwei Zeilen:
+- Split-Zeile: `Broken parents: 42 findings — 28 in the note body, 14 in a note property.`
+- Der property-residente Block trägt zusätzlich:
 
   ```
   - **Fix target:** note property `up` — editing YAML properties.
     ⚠️ Comments inside this note's property block will not survive the edit.
   ```
 
-- Seine Fix-Zeile spricht von **`up` property**, nicht von `` `up::` `` — die anderen 28 sprechen
-  weiterhin von `` `up::` ``. Das ist der sichtbarste Unterschied und der schnellste Check.
+- Seine Fix-Zeile spricht von **`up` property**, die body-residenten weiterhin von `` `up::` ``.
+  Das ist der schnellste Sichtbeweis.
 
-**Nach dem Apply** (Häkchen setzen, `/inbox`):
+**Nach dem Apply:**
 
-- Die Notiz `Aristotle and Metaphor …` hat im Frontmatter ein geändertes `up:`.
-- **Kommentare in genau diesem Property-Block sind weg** — das ist bekannt und unvermeidbar, deshalb
-  die Warnung. Wenn dort Kommentare stehen, die du behalten willst: vorher sichern.
-- Die 28 inline-deklarierten Notizen verhalten sich **unverändert** wie vorher.
+- Die Notiz hat im Frontmatter ein geändertes `up:`.
+- **Kommentare in genau diesem Property-Block sind weg** — bekannt, unvermeidbar, deshalb die
+  Warnung vor dem Häkchen. Wenn dort Kommentare stehen, die du behalten willst: vorher sichern.
+- Die body-deklarierten Notizen verhalten sich unverändert.
 
 ### Wenn etwas anders aussieht
 
 | Beobachtung | wahrscheinliche Ursache |
 |---|---|
-| weiterhin 29 withheld nach `/explore-vault` | Schritt 1 fehlte — die Instanz hat den alten Code |
-| Split-Zeile fehlt ganz | keine `broken_up`-Findings mehr, oder `up_source` fehlt im Cache |
-| Aristotle-Block ohne ⚠️-Warnung | sein `up_source` wurde nicht als `frontmatter` erkannt |
-| Apply meldet Erfolg, Notiz unverändert | genau der Defekt, den diese Spec behebt — bitte melden |
+| weiterhin 0 broken_up nach dem Eingriff | Exclusion-Datei nicht neu geladen, oder Tippfehler in der Check-Liste |
+| Split-Zeile fehlt ganz | keine `broken_up`-Findings — Exclusion greift noch |
+| alle Findings withheld mit „stale cache" | `/explore-vault` fehlte, `up_value` steht nicht im Cache |
+| Block ohne ⚠️-Warnung | sein `up_source` wurde nicht als `frontmatter` erkannt |
+| **Apply meldet Erfolg, Notiz unverändert** | **genau der Defekt, den diese Spec behebt — bitte melden** |
 
 Der letzte Fall wäre das eigentliche Signal: er würde bedeuten, dass die Action doch als Body-Fix
-geroutet wurde. Nach dem, was hier verifiziert ist, kann das nicht passieren — es gibt keinen Pfad
-von einem frontmatter-Finding zu `remove_up_link`/`add_relationship`. Falls doch, ist das der
-wichtigste Fehlerbericht dieser Spec.
+geroutet wurde. Nach dem, was verifiziert ist, kann das nicht passieren — es gibt keinen Pfad von
+einem frontmatter-Finding zu `remove_up_link`/`add_relationship`. Falls doch, ist das der wichtigste
+Fehlerbericht dieser Spec.
 
 ## Kosten (CON-3)
 
-Zu protokollieren in `docs/evolution/inbox-cost-log.md` nach dem Lauf. Erwartung: **keine
-zusätzlichen Kado-Calls** gegenüber vorher. `broken_up` ist cache-only — `_check_broken_up` hat
-keine `graph_audit_fn`/`list_dir_fn`-Parameter und kann Kado strukturell nicht aufrufen. `up_value`
-kommt aus Content, der bei `moc-tree-builder.py:410` ohnehin gelesen wurde.
+Zu protokollieren in `docs/evolution/inbox-cost-log.md` nach dem Apply-Lauf. Erwartung: **keine
+zusätzlichen Kado-Calls**. `broken_up` ist cache-only — `_check_broken_up` hat keine
+`graph_audit_fn`/`list_dir_fn`-Parameter und kann Kado strukturell nicht aufrufen. `up_value` kommt
+aus Content, der bei `moc-tree-builder.py:410` ohnehin gelesen wurde.
+
+## Historie — Vor-Refresh-Cache (2026-07-24)
+
+Auf dem alten Cache (346 Einträge, kein `up_value`) ergab der Scan 29 `broken_up`-Findings, alle
+zurückgehalten mit `Run /explore-vault to refresh it`, keines mit Apply-Häkchen, keine
+body-orientierte Aktion angeboten. Bemerkenswert war dabei: die Findings waren **zurückgehalten**
+und trotzdem **zuordenbar** — der Cache trug `up_source`, nur `up_value` fehlte. ADR-4 („wo steht
+die Deklaration") und ADR-5 („ist das diesen Lauf fixbar") sind bewusst getrennte Fragen, und der
+Report beantwortete beide. Das ist die ADR-5-Garantie auf echten Daten, und sie gilt weiterhin —
+mit dem oben genannten Messvorbehalt.

@@ -63,6 +63,7 @@ def _entry(
     up_target: str | None = None,
     up_source: str | None = _UNSET,
     up_value=_UNSET,
+    up_broken_reason: str | None = _UNSET,
     topics: list[str] | None = None,
     tags: list[str] | None = None,
     path: str | None = None,
@@ -81,6 +82,8 @@ def _entry(
         entry["up_source"] = up_source
     if up_value is not _UNSET:
         entry["up_value"] = up_value
+    if up_broken_reason is not _UNSET:
+        entry["up_broken_reason"] = up_broken_reason
     return entry
 
 
@@ -219,6 +222,176 @@ def test_broken_up_is_cache_only_zero_graph_audit_calls():
         f"graph_audit call count must not scale with broken_up entries; "
         f"1 entry={graph_calls_one_broken}, 5 entries={len(graph_calls)}"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# up_broken_reason routing (spec 033 T2.1 / ADR-1, ADR-3)
+#
+# A "broken" up:: link is three unrelated vault states (PRD): a genuinely
+# missing target, a target that exists but isn't a MOC (link works — the
+# destructive remove/repoint fix must not be offered), and a target outside
+# scan scope. up_broken_reason (moc-tree-builder, T1.1/T1.2) tells these
+# apart; _check_broken_up must route on it into two separate checks rather
+# than folding all three into one "broken_up" label (ADR-1).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_broken_up_reason_unresolved_routes_to_broken_up_check():
+    """up_broken_reason=='unresolved' -> check 'broken_up' (integrity, fixable)."""
+    entries = [
+        _moc("PKM"),
+        _entry(
+            "Broken Note", up_state="broken", up_target="Deleted MOC",
+            up_broken_reason="unresolved",
+        ),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    findings = [f for f in doc["findings"] if f["target"]["stem"] == "Broken Note"]
+    assert len(findings) == 1
+    f = findings[0]
+    assert f["check"] == "broken_up"
+    assert f["tier"] == "integrity"
+    assert f["fixable"] is True
+
+
+def test_broken_up_reason_not_a_moc_routes_to_parent_not_moc_check():
+    """up_broken_reason=='not-a-moc' -> check 'parent_not_moc' (advisory, NOT
+    fixable — the link works, so no decision block, no destructive remedy).
+    """
+    entries = [
+        _moc("PKM"),
+        _entry(
+            "Broken Note", up_state="broken", up_target="Real Note",
+            up_broken_reason="not-a-moc",
+        ),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    findings = [f for f in doc["findings"] if f["target"]["stem"] == "Broken Note"]
+    assert len(findings) == 1
+    f = findings[0]
+    assert f["check"] == "parent_not_moc"
+    assert f["tier"] == "advisory"
+    assert f["fixable"] is False
+    assert "decision" not in f, "advisory finding must carry no decision block (ADR-1)"
+
+
+def test_broken_up_mixed_batch_splits_without_dropping_entries():
+    """A mix of unresolved/not-a-moc/absent-reason broken entries: the two
+    check counts must sum to the total number of broken entries — asserting
+    the sum, not each branch in isolation, so a silently dropped entry fails
+    this test rather than hiding behind an untouched branch.
+    """
+    entries = [
+        _moc("PKM"),
+        _entry("Unresolved A", up_state="broken", up_target="Gone A", up_broken_reason="unresolved"),
+        _entry("Unresolved B", up_state="broken", up_target="Gone B", up_broken_reason="unresolved"),
+        _entry("Not MOC A", up_state="broken", up_target="Real A", up_broken_reason="not-a-moc"),
+        _entry("Not MOC B", up_state="broken", up_target="Real B", up_broken_reason="not-a-moc"),
+        _entry("Not MOC C", up_state="broken", up_target="Real C", up_broken_reason="not-a-moc"),
+        # No up_broken_reason kwarg -> key absent (stale pre-033 cache) -> still broken_up (T2.3 owns disclosure).
+        _entry("Stale Cache", up_state="broken", up_target="Gone C"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    broken_up = [f for f in doc["findings"] if f["check"] == "broken_up"]
+    parent_not_moc = [f for f in doc["findings"] if f["check"] == "parent_not_moc"]
+    total_broken_entries = 6
+    assert len(broken_up) + len(parent_not_moc) == total_broken_entries, (
+        f"broken_up ({len(broken_up)}) + parent_not_moc ({len(parent_not_moc)}) "
+        f"must equal every broken entry ({total_broken_entries}) — none may be dropped"
+    )
+    assert len(broken_up) == 3  # 2 unresolved + 1 stale-cache/absent-reason
+    assert len(parent_not_moc) == 3
+
+
+def test_broken_up_detail_carries_reason_via_membership_test():
+    """detail.up_broken_reason mirrors the cache entry's value verbatim when
+    the key is PRESENT, and is ABSENT from detail when the cache entry never
+    carried the key at all (ADR-3) — proving the implementation reads it with
+    a sentinel/membership test, not `.get()` with a default.
+    """
+    entries = [
+        _moc("PKM"),
+        _entry("Unresolved", up_state="broken", up_target="Gone", up_broken_reason="unresolved"),
+        _entry("Not MOC", up_state="broken", up_target="Real", up_broken_reason="not-a-moc"),
+        _entry("Stale", up_state="broken", up_target="Gone2"),  # key absent entirely
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    by_stem = {f["target"]["stem"]: f for f in doc["findings"]}
+    assert by_stem["Unresolved"]["detail"]["up_broken_reason"] == "unresolved"
+    assert by_stem["Not MOC"]["detail"]["up_broken_reason"] == "not-a-moc"
+    assert "up_broken_reason" not in by_stem["Stale"]["detail"], (
+        "a stale cache entry lacking the key must produce a detail lacking the "
+        "key too — defaulting to None here would destroy the stale-cache signal"
+    )
+
+
+def test_parent_not_moc_batch_carries_no_decision_and_correct_tier_fixable():
+    """spec 033 T2.2 / PRD F2 criteria 2+3: over a WHOLE mixed batch (not one
+    happy-path finding), every parent_not_moc finding is advisory, unfixable,
+    and carries NO decision key at all. This is the mechanism (ADR-1) that
+    makes the destructive remove/repoint fix structurally unreachable for
+    these findings — not merely unused (CON-2).
+    """
+    entries = [
+        _moc("PKM"),
+        _entry("Not MOC A", up_state="broken", up_target="Real A", up_broken_reason="not-a-moc"),
+        _entry("Not MOC B", up_state="broken", up_target="Real B", up_broken_reason="not-a-moc"),
+        _entry("Not MOC C", up_state="broken", up_target="Real C", up_broken_reason="not-a-moc"),
+        _entry("Unresolved A", up_state="broken", up_target="Gone A", up_broken_reason="unresolved"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    parent_not_moc = [f for f in doc["findings"] if f["check"] == "parent_not_moc"]
+    assert len(parent_not_moc) == 3
+    for f in parent_not_moc:
+        assert f["tier"] == "advisory"
+        assert f["fixable"] is False
+        assert "decision" not in f, (
+            f"{f['target']['stem']}: parent_not_moc must carry no decision block at all"
+        )
+
+
+def test_broken_up_exclusion_is_per_check_name():
+    """A path excluded for 'broken_up' only must still be eligible for
+    'parent_not_moc' — exclusions are consulted per check name, not per
+    up_state=='broken' membership.
+    """
+    from lib.garden_exclusions import GardenExclusions
+
+    excl_config = {
+        "version": 1,
+        "exclusions": [
+            {
+                "target": {"type": "note", "value": "Notes/Note A.md"},
+                "checks": ["broken_up"],
+                "mode": "permanent",
+                "reason": "known unresolved link, tracked elsewhere",
+                "created": "2026-07-19",
+            },
+            {
+                "target": {"type": "note", "value": "Notes/Note B.md"},
+                "checks": ["broken_up"],
+                "mode": "permanent",
+                "reason": "known unresolved link, tracked elsewhere",
+                "created": "2026-07-19",
+            },
+        ],
+    }
+    excl = GardenExclusions.from_dict(excl_config, today=date(2026, 7, 19))
+
+    entries = [
+        _moc("PKM"),
+        # Excluded for broken_up, but its reason routes it to parent_not_moc —
+        # the exclusion must NOT suppress it there.
+        _entry("Note A", up_state="broken", up_target="Real A", up_broken_reason="not-a-moc"),
+        # Excluded for broken_up, and its reason DOES route it to broken_up —
+        # the exclusion must suppress it.
+        _entry("Note B", up_state="broken", up_target="Gone B", up_broken_reason="unresolved"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir, exclusions=excl)
+    checks_by_stem = {f["target"]["stem"]: f["check"] for f in doc["findings"]}
+    assert checks_by_stem.get("Note A") == "parent_not_moc", (
+        "excluded only for broken_up — must still surface under parent_not_moc"
+    )
+    assert "Note B" not in checks_by_stem, "excluded for broken_up and routed to broken_up — must be suppressed"
 
 
 # ──────────────────────────────────────────────────────────────────────────────

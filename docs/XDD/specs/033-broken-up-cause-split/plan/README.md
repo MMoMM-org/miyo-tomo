@@ -106,7 +106,7 @@ work folded into an emission task gets forgotten, and this spec has **thirteen**
 — nine that must register the new check, one that should for consistency, and three that must
 deliberately stay untouched. P4 is the user-visible surface. P5 proves the chain end to end.
 
-- [ ] [Phase 1: Resolve and record the cause](phase-1.md)
+- [x] [Phase 1: Resolve and record the cause](phase-1.md)
 - [ ] [Phase 2: Split the check](phase-2.md)
 - [ ] [Phase 3: Register the new check](phase-3.md)
 - [ ] [Phase 4: Report surface](phase-4.md)

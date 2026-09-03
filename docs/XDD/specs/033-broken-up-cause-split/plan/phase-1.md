@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Resolve and record the cause"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -71,7 +71,7 @@ exactly the findings it produces today.
   4. **Validate**: `./venv/bin/python -m pytest tests/test_moc_tree_builder.py tests/test_moc_cache_loader.py -q`
   5. **Success**: presence is universal, so absence is unambiguous `[ref: PRD/F6]`.
 
-- [ ] **T1.3 Absence semantics are stated for the next reader** `[activity: documentation]`
+- [x] **T1.3 Absence semantics are stated for the next reader** `[activity: documentation]`
 
   1. **Prime**: this task's original text told the implementer to find the schema that validates
      `moc-structure-cache.yaml` entries. **No such schema exists.** Verified: `tomo/schemas/`
@@ -98,7 +98,7 @@ exactly the findings it produces today.
      reader does not have to infer them from the sentinel — the same success bar the original task
      set, met by the artifact that actually governs this field.
 
-- [ ] **T1.4 Phase Validation** `[activity: validate]`
+- [x] **T1.4 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - Rebuild the cache from the live vault fixture and confirm every entry carries the key.

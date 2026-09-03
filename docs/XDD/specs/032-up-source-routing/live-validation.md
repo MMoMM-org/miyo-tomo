@@ -94,10 +94,49 @@ nicht falsch geroutet) — erfüllt.
 > `exclusions`-Argument auf, die Pipeline übergibt es. Deshalb standen dort 29 Findings, wo
 > `/garden-audit` null liefert.
 
-## Was noch fehlt — und wie man es bekommt
+## ✅ Das Verhaltenskriterium — durchgeführt und bestätigt (2026-09-03)
 
-Offen ist das eigentliche Verhaltenskriterium: **ein property-residenter Fix ändert nach Freigabe
-tatsächlich die Notiz.** Dafür muss mindestens ein `broken_up`-Finding in den Report gelangen.
+**Ein property-residenter Fix ändert nach Freigabe tatsächlich die Notiz.** Beobachtet, nicht
+abgeleitet.
+
+Vorher (Cache, 10:05): `up_value: ['[[Nordböhmische Bergwelten]]']`, `up_source: frontmatter`.
+Nach dem Apply, über Kado gelesen:
+
+```yaml
+---
+related:
+  - "[[⛰ Elbsandstein & Tschechien 2026]]"
+created: 2025-11-23
+Updated: 2026-09-03 15:05
+---
+```
+
+Der `up:`-Schlüssel ist **vollständig weg** — das ist `operation: "remove"`, korrekt, weil die
+Property genau diesen einen Eintrag hielt. Geschwister-Schlüssel unversehrt, Notizkörper
+unangetastet, keine `Nordböhmische`-Referenz mehr in der Datei.
+
+Die von `/inbox` erzeugte Action war **byte-gleich** mit der Vorhersage, die vor dem Lauf aus der
+Wire berechnet wurde:
+
+```json
+{"id": "I01", "action": "edit_frontmatter",
+ "path": "Atlas/202 Notes/Adersbacher Felsenstädte.md",
+ "property": "up", "operation": "remove",
+ "expected": ["[[Nordböhmische Bergwelten]]"], "applied": false}
+```
+
+Geroutet als `edit_frontmatter` — **nicht** als `remove_up_link`, das keine `up::`-Zeile gefunden,
+stillschweigend Erfolg gemeldet und nichts geändert hätte. Genau dieser Defekt ist damit
+verhaltensmäßig ausgeschlossen, nicht nur strukturell.
+
+Nebenbefunde dieses Laufs, beide gesondert festgehalten statt hier eingearbeitet: die Detailzeile
+sagte für property-residente Findings noch `up::` (behoben, `dd2712a`), und `broken_up` wirft drei
+verschiedene Ursachen zusammen (Issue **#157**).
+
+## Wie der Lauf zustande kam
+
+Die `Atlas/`-Exclusion musste dafür temporär geöffnet werden — sie ist inzwischen wieder auf
+`checks: all` zurückgesetzt (verifiziert: 329/329 geblockt). Der Ablauf zur Wiederholung:
 
 ### Der Eingriff
 

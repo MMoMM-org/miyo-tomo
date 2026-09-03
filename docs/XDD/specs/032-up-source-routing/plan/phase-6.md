@@ -85,18 +85,27 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   3. **Validate**: `scripts/update-tomo.sh` dry run lists every intended file as changed; an unchanged file means a missed bump.
   4. **Success**: the instance would receive every change
 
-- [ ] **T6.5 Live validation** `[activity: validate]`
+- [x] **T6.5 Live validation** `[activity: validate]`
 
-  > **DELIBERATELY PART-OPEN — the only unticked task in this spec.**
-  > Criteria 3 and 6 are confirmed on real vault data (346 cache entries, 29 broken parents, one
-  > property-declared): the split line reports the property-resident finding, and the pre-refresh
-  > cache withholds all 29 with the `/explore-vault` remedy while mis-routing none.
-  > The remaining criteria need a cache rebuild and an apply through Hashi in Obsidian — neither
-  > drivable from a coding session, since host-side full scans hit Kado's 429 limit and the apply
-  > happens in the plugin. **Left unticked rather than marked done**, because the headline metric
-  > is behavioural: *a property-resident fix, once approved, changes the note.* That has not been
-  > observed yet.
-  > Instructions, expected observations and a symptom table: `../live-validation.md`.
+  > **CLOSED 2026-09-03 — the headline metric was observed.**
+  > Full cycle run on the real vault: `update-tomo --yolo` → `/explore-vault` → `/garden-audit` →
+  > approve one property-resident finding → `/inbox` → apply through Hashi in Obsidian.
+  > Cache rebuilt to 359 entries, **all** carrying the `up_value` key (ADR-3 presence signal);
+  > 42 broken parents, split **28 body / 14 property**, zero withheld. The emitted action was
+  > byte-identical to the one predicted from the wire before the run, and schema-valid against the
+  > mirrored Hashi schema:
+  > `{edit_frontmatter, property: "up", operation: "remove", expected: ["[[…]]"]}`.
+  > After the apply the note's `up:` key is **gone from its frontmatter**, sibling keys intact,
+  > body untouched. It routed as `edit_frontmatter`, not as the `remove_up_link` that would have
+  > reported success and changed nothing.
+  > Criterion 6 (withhold-with-remedy on a pre-032 cache) was confirmed separately on the
+  > pre-refresh cache before the rebuild.
+  > Two findings surfaced by this run, both filed rather than folded in: the report's per-finding
+  > detail line still said `up::` for property-resident findings (fixed, `dd2712a`), and
+  > `broken_up` conflates three distinct causes so that its remedy is wrong for two of them
+  > (issue **#157** — out of this spec's scope, which decides *where* a fix is written, not
+  > *whether* it should be offered).
+  > Full record, measured numbers and symptom table: `../live-validation.md`.
 
   1. **Prime**: one batched cycle. Order matters: `update-tomo` → `/explore-vault` (so the cache gains `up_value`) → `/garden-audit`.
   2. **Test**: against the real vault, with one property-resident note deliberately given a broken parent:

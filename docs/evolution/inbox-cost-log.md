@@ -356,3 +356,50 @@ vs the same-architecture baseline (PRD CON-3 / C2, §7, §10).
 - All fixes validated in one clean run: exact stem match (no duplicates), callout up:: regex, Rule 4.2 (old up:: → related::), append mode for related::, state-promoter MODIFIED, 429 retry, triage approved/accepted exclusion.
 - 5 children had existing up:: in callout blocks — all correctly detected and preserved as related:: (I30/I32/I34/I36/I38).
 - Cost down to $0.24 from initial $0.94 (Sonnet impersonated) — 74% reduction.
+
+---
+
+## Spec 032 — property-resident broken-parent fix (T6.5 live validation)
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-09-03 |
+| **Phase** | `/garden-audit` → `/inbox` → Hashi apply (garden path, `tomo_skip_inbox_analysis: true`) |
+| **Items** | 42 `broken_up` findings surfaced, 1 approved → 1 action (`edit_frontmatter`) |
+| **Vault** | Privat-Test |
+| **Versions** | garden-audit 0.5.0, garden-audit-parser 0.14.0, garden-audit-render 0.18.2, render_actions 0.8.0, moc-tree-builder 0.9.1, up_parse 0.2.5 |
+
+**Kado calls**
+
+| Measure | Value |
+|---|---|
+| MCP-level `kado-*` tool calls by the model | **0** |
+| Model tool calls total | 41 (34 Bash, 6 Read, 1 Agent) |
+| Script-level HTTP calls to Kado | **not measured** — see caveat |
+
+Caveat, stated rather than glossed: the count above comes from `tool_use` blocks in the container
+session JSONL, so it measures what the *model* invoked. Tomo's scripts reach Kado over HTTP through
+`kado_client`, which never appears as a `tool_use` block. The zero therefore proves the model added
+no MCP round-trips; it does not enumerate script-level traffic.
+
+CON-3 ("no added Kado calls") is nevertheless satisfied **structurally**, which is the stronger
+guarantee: `_check_broken_up` takes no `graph_audit_fn` / `list_dir_fn` parameter and so cannot call
+out at all, and `up_value` is read from content that `moc-tree-builder.py:410` already parsed for
+`up_target`. The new field rides along on an existing read.
+
+**Token table: absent.** `measure-f47-token-cost.py --session-latest` keys on `lifecycle.discovery`
+events, which the garden-audit path does not emit (it sets `tomo_skip_inbox_analysis: true` and
+never runs discovery). The tool exits with *"No lifecycle.discovery events found"*. Measuring this
+flow would need a separate hook — noted here as a gap in the measurement tooling, not as a cost of
+this spec.
+
+**Notes**:
+- The emitted action was byte-identical to the prediction computed from the wire before the run, and
+  validated against the mirrored Hashi schema.
+- Routed as `edit_frontmatter` with `operation: "remove"`; after the apply the note's `up:` key is
+  gone from its frontmatter, sibling keys and body untouched.
+- Two findings filed rather than folded in: the per-finding detail line still said `up::` for
+  property-resident findings (fixed, `dd2712a`), and `broken_up` conflates three causes so its
+  remedy is wrong for two of them (issue #157).
+- The `Atlas/` audit exclusion had to be narrowed for the run and was restored afterwards
+  (verified: 329/329 blocked again).

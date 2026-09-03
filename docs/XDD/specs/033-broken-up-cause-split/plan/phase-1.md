@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Resolve and record the cause"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 1
 ---
@@ -35,7 +35,7 @@ phase: 1
 Widens what the cache records about a broken parent. No behaviour changes; the audit still produces
 exactly the findings it produces today.
 
-- [ ] **T1.1 `_resolve_up_state` reports why** `[activity: domain-modeling]`
+- [x] **T1.1 `_resolve_up_state` reports why** `[activity: domain-modeling]`
 
   1. **Prime**: Read `moc-tree-builder.py:280-290`. Note that the caller at `:367` builds
      `moc_stem_set` from `scan_result.moc_paths`, and that the same `ScanResult` carries
@@ -54,7 +54,7 @@ exactly the findings it produces today.
   5. **Success**: the three broken/valid distinctions are decided in one place, from sets the caller
      already holds, with no vault access added `[ref: PRD/F1 criterion 4]`.
 
-- [ ] **T1.2 The cache entry carries `up_broken_reason`** `[activity: data-architecture]`
+- [x] **T1.2 The cache entry carries `up_broken_reason`** `[activity: data-architecture]`
 
   1. **Prime**: Read `moc-tree-builder.py:405-425`. Note how spec 032 added `up_source` and
      `up_value` at this site, and that `up_value` is written **unconditionally** precisely so its
@@ -71,23 +71,37 @@ exactly the findings it produces today.
   4. **Validate**: `./venv/bin/python -m pytest tests/test_moc_tree_builder.py tests/test_moc_cache_loader.py -q`
   5. **Success**: presence is universal, so absence is unambiguous `[ref: PRD/F6]`.
 
-- [ ] **T1.3 Cache schema accepts the field** `[activity: data-architecture]` `[parallel: true]`
+- [ ] **T1.3 Absence semantics are stated for the next reader** `[activity: documentation]`
 
-  1. **Prime**: find the schema that validates `moc-structure-cache.yaml` entries and check whether
-     it sets `additionalProperties: false`. If it does, an unregistered field is a hard failure, and
-     this task is a prerequisite for T1.2 rather than a parallel one — **verify before assuming the
-     parallel tag holds**. `[ref: SDD/Constraints; CON-6]`
-  2. **Test** (RED): a full built cache validates with the new field present, and with the value
-     `null`, `"not-a-moc"` and `"unresolved"`.
-  3. **Implement**: register the field with its three values plus `null`, and a description saying
-     absence means a pre-033 cache.
-  4. **Validate**: full suite.
-  5. **Success**: the schema states the absence semantics, so the next reader does not have to infer
-     them from the sentinel.
+  1. **Prime**: this task's original text told the implementer to find the schema that validates
+     `moc-structure-cache.yaml` entries. **No such schema exists.** Verified: `tomo/schemas/`
+     contains no `moc-structure-cache.schema.json` and no file there mentions `up_state` at all;
+     `tomo/scripts/lib/moc_cache_loader.py` reads the cache with a bare `yaml.safe_load` and performs
+     no schema validation of any kind — only staleness and structural checks. A JSON schema for this
+     cache was considered and rejected as out of scope for this spec; CON-6 ("schema and its mirror
+     stay bytewise identical") does not apply because nothing here is a mirrored schema — there is no
+     schema to begin with. Do not re-open this question; the absence was confirmed by direct
+     inspection, not by a failed search.
+  2. **Test**: none — there is no schema to add a RED assertion against. The success criterion this
+     task serves (the absence semantics are stated, not left to be inferred from the sentinel) is a
+     documentation deliverable, not a validated one.
+  3. **Implement**: document `up_broken_reason`'s three values (`null` / `"not-a-moc"` /
+     `"unresolved"`) and its absence semantics (missing key = pre-033 cache, per ADR-3) in
+     `docs/tomo/scripts/moc-tree-builder.md` — this repo's WHY-persistence layer for
+     `tomo/scripts/moc-tree-builder.py`, per the root CLAUDE.md rule that runtime rationale lives
+     there, not in the runtime file itself. Include a short note that a JSON schema was looked for and
+     does not exist, so a future reader does not re-litigate this search.
+  4. **Validate**: read the added section back; confirm it states all three values, the `null`
+     meaning, and the absence-means-pre-033-cache rule without requiring the reader to re-derive it
+     from `_MISSING`-sentinel code.
+  5. **Success**: `docs/tomo/scripts/moc-tree-builder.md` states the absence semantics, so the next
+     reader does not have to infer them from the sentinel — the same success bar the original task
+     set, met by the artifact that actually governs this field.
 
 - [ ] **T1.4 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - Rebuild the cache from the live vault fixture and confirm every entry carries the key.
   - Confirm no consumer reads it yet: grep `up_broken_reason` outside `moc-tree-builder.py`, its
-    tests and the schema. A hit means this phase is not standalone after all.
+    tests, and `docs/tomo/scripts/moc-tree-builder.md`. A hit means this phase is not standalone
+    after all.

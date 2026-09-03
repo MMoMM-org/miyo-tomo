@@ -125,6 +125,18 @@ author did not know to look for. So the sites are enumerated here rather than le
 the **must-not-register** list is given equal weight — a wrong entry there silently restores exactly
 the destructive behaviour this spec removes.
 
+**This inventory was itself corrected once.** The first draft listed six must-register sites and
+missed three — all three in the stats-view surface (`garden-audit-stats.py`), which duplicates
+check-name knowledge that `garden-audit.py` and its schemas already carry, for its own compact
+rendering. The most severe of the three is a **module-scope `assert`**: `garden-audit-stats.py:50`
+runs `assert set(_CHECKS) == set(ALL_CHECK_NAMES)` at import time, not inside a test. Registering
+`parent_not_moc` in `ALL_CHECK_NAMES` (site #2 below) without also widening `_CHECKS` here makes
+`garden-audit-stats.py` raise `AssertionError` on import — `/garden-audit stats` stops running
+entirely, for every check, not just the new one. `tests/test_garden_audit_stats.py:132`
+(`test_stats_checks_match_lib_all_check_names`) is the second line of defence, but the import-time
+assert fires first. This is exactly the failure mode ADR-4 and Q6 exist to catch, and the reason the
+inventory is now nine sites deep instead of six.
+
 **Must register `parent_not_moc`:**
 
 | # | Site | Value |
@@ -135,18 +147,29 @@ the destructive behaviour this spec removes.
 | 4 | `garden-audit-wire.schema.json:53` check enum | add |
 | 5 | `garden-audit-configure.py:147` `_VALID_CHECKS` | add, or the wizard cannot configure an exclusion for it |
 | 6 | `garden-audit-render.py:63` `_CHECK_LABEL` | a label that does not use the word "broken" |
+| 7 | `garden-audit-stats.py:49` `_CHECKS` | add — the module-scope `assert` at `:50` makes the whole stats view fail to import otherwise; `tests/test_garden_audit_stats.py:132` is the second line of defence |
+| 8 | `garden-audit-stats.py:63-66` `_COL_LABEL` | add — indexed unconditionally at `:119` (`_COL_LABEL[c] for c in _CHECKS`); a `KeyError` at render time once #7 is corrected |
+| 9 | `garden-audit-exclusions.schema.json:73` checks-array enum | add — a third, independent check-name enum from the doc/wire schemas above. `garden-audit-configure.py:266-274` validates the wizard's assembled config against exactly this schema before writing; missing this entry means the wizard gathers a `parent_not_moc` exclusion and then hard-fails schema validation, refusing to write it, and the user sees a schema error rather than "not yet supported" |
+
+**Should register `parent_not_moc` — consistency, not correctness:**
+
+| # | Site | Why should, not must |
+|---|---|---|
+| 10 | `garden-audit-stats.py:53-57` `_TIER` (stats-local, distinct from `garden-audit.py:51`'s) | a second, independent tier table for the same check names. NOT test-enforced: rendering reads `f.get("tier") or _TIER.get(check)` (`:150`) — the finding's own `tier` field, written by the registered `garden-audit.py:51` table, wins first, so a missing stats-local entry never surfaces as `None`. Leaving it out is a real inconsistency (two tables, one drifted), not a functional break |
 
 **Must NOT register — each omission is load-bearing:**
 
 | # | Site | Why not |
 |---|---|---|
-| 7 | `garden-audit.py:60` `_FIXABLE` | the entire mechanism of ADR-1. Adding it here attaches a `decision` block and the report grows an apply checkbox — CON-2 violated in one line |
-| 8 | `garden-audit-render.py:574` suggest-targets tuple | offering to suggest repoint targets for a link that is not broken |
-| 9 | `garden-audit-render.py:813` enrichment tuple | enrichment exists to fill a fix block; there is no fix block |
+| 11 | `garden-audit.py:60` `_FIXABLE` | the entire mechanism of ADR-1. Adding it here attaches a `decision` block and the report grows an apply checkbox — CON-2 violated in one line |
+| 12 | `garden-audit-render.py:574` suggest-targets tuple | offering to suggest repoint targets for a link that is not broken |
+| 13 | `garden-audit-render.py:813` enrichment tuple | enrichment exists to fill a fix block; there is no fix block |
 
-Two schema **descriptions** also enumerate the checks in prose (`garden-audit-doc.schema.json:63`
-for `tier`, `:67` for `fixable`). They are documentation, not validation, so a stale one fails no
-test — which is precisely why they are listed.
+Four schema **descriptions** also enumerate the checks in prose — the same two sentences, duplicated
+verbatim across two files: `garden-audit-doc.schema.json:63` (`tier`) and `:67` (`fixable`), and
+identically at `garden-audit-wire.schema.json:59` (`tier`) and `:63` (`fixable`). They are
+documentation, not validation, so a stale one fails no test — which is precisely why they are
+listed.
 
 ### Interface Specifications
 
@@ -345,10 +368,13 @@ declaration-site line, and the same trap.
 2. **The reason must be resolved where the note-stem set is in scope.** Resolving it later, from the
    finding, would mean re-deriving the set — and a second derivation is a second place to get it
    wrong.
-3. **Two emission sites, not one — and nine registration sites, not three.** Spec 032 hit this five
-   separate times: a change is written at the site the author grepped, and a second site with a
+3. **Two emission sites, not one — and thirteen registration sites, not three.** Spec 032 hit this
+   five separate times: a change is written at the site the author grepped, and a second site with a
    different name is missed. The registration inventory above exists because the first draft of this
-   SDD listed three sites and there are nine. The parser's two routing sites (`:403` report, `:603`
+   SDD listed three sites where there are thirteen (nine must-register, one should-register, three
+   must-not-register) — and even the corrected-to-nine draft still missed three, all three in
+   `garden-audit-stats.py`'s stats-view surface, the most severe being a module-scope `assert` that
+   fails on **import**, not on a test run. The parser's two routing sites (`:403` report, `:603`
    wire) are likewise counted, not assumed. Any task that touches a name must state the count it is
    working from.
 4. **The all-advisory run.** If every flagged parent is `parent_not_moc`, the integrity section has

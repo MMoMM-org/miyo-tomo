@@ -72,7 +72,7 @@ version: "1.0"
 - Bump `# version:` on every touched file under `tomo/scripts/` or `update-tomo` ships nothing.
 - Never read `up_broken_reason` with `.get()` — `null` is a legitimate value; use the sentinel.
 - Never add `parent_not_moc` to `_FIXABLE`, the suggest-targets tuple, or the enrichment tuple.
-- Every task touching a check name states the site count it worked from (9 registration, 2 routing).
+- Every task touching a check name states the site count it worked from (13 registration, 2 routing).
 - Output for every check other than `broken_up` stays byte-identical.
 
 ---
@@ -102,8 +102,9 @@ the design, and record it in the spec README's decisions log.
 **Sequencing rationale.** P1 resolves and records the cause and has no consumers, so it lands alone
 — the same shape as 032's P1, for the same reason. P2 splits the check, which is the behavioural
 change. P3 is the registration checklist, deliberately its own phase: 032 proved that registration
-work folded into an emission task gets forgotten, and this spec has **nine** sites plus three that
-must deliberately stay untouched. P4 is the user-visible surface. P5 proves the chain end to end.
+work folded into an emission task gets forgotten, and this spec has **thirteen** registration sites
+— nine that must register the new check, one that should for consistency, and three that must
+deliberately stay untouched. P4 is the user-visible surface. P5 proves the chain end to end.
 
 - [ ] [Phase 1: Resolve and record the cause](phase-1.md)
 - [ ] [Phase 2: Split the check](phase-2.md)

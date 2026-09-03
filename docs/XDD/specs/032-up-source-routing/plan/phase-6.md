@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration, regression and documentation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 6
 ---
@@ -37,7 +37,7 @@ phase: 6
 
 Proves the chain and leaves the repo and the sibling repo in a consistent state.
 
-- [ ] **T6.1 End-to-end routing test** `[activity: integration-testing]`
+- [x] **T6.1 End-to-end routing test** `[activity: integration-testing]`
 
   1. **Prime**: Drive the public entry point, not the helpers `[ref: memory: mock at orchestrator, not helper]`.
   2. **Test** (RED) — one scenario, mixed by construction:
@@ -51,7 +51,7 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   4. **Validate**: passes without touching a live vault.
   5. **Success**: the two declaration styles produce two different, correct actions from one uniform approval flow
 
-- [ ] **T6.2 Regression: body-resident unchanged** `[activity: integration-testing]` `[parallel: true]`
+- [x] **T6.2 Regression: body-resident unchanged** `[activity: integration-testing]` `[parallel: true]`
 
   1. **Prime**: `[ref: CON-7]`. This is a routing addition, not a rewrite.
   2. **Test** (RED):
@@ -62,7 +62,7 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   4. **Validate**: full suite green.
   5. **Success**: no behavioural change for the 18 inline-declared notes `[ref: CON-7]`
 
-- [ ] **T6.3 Cost verification** `[activity: integration-testing]` `[parallel: true]`
+- [x] **T6.3 Cost verification** `[activity: integration-testing]` `[parallel: true]`
 
   1. **Prime**: `[ref: CON-3]`. The design's central claim is that this costs nothing at audit time.
   2. **Test** (RED):
@@ -73,7 +73,7 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   4. **Validate**: passes.
   5. **Success**: zero added calls, enforced by test rather than by argument
 
-- [ ] **T6.4 Documentation and sync** `[activity: documentation]`
+- [x] **T6.4 Documentation and sync** `[activity: documentation]`
 
   1. **Prime**: the WHY-layer rule in `CLAUDE.md`; `[ref: SDD/Deployment View]`.
   2. **Implement**:
@@ -87,6 +87,17 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
 
 - [ ] **T6.5 Live validation** `[activity: validate]`
 
+  > **DELIBERATELY PART-OPEN — the only unticked task in this spec.**
+  > Criteria 3 and 6 are confirmed on real vault data (346 cache entries, 29 broken parents, one
+  > property-declared): the split line reports the property-resident finding, and the pre-refresh
+  > cache withholds all 29 with the `/explore-vault` remedy while mis-routing none.
+  > The remaining criteria need a cache rebuild and an apply through Hashi in Obsidian — neither
+  > drivable from a coding session, since host-side full scans hit Kado's 429 limit and the apply
+  > happens in the plugin. **Left unticked rather than marked done**, because the headline metric
+  > is behavioural: *a property-resident fix, once approved, changes the note.* That has not been
+  > observed yet.
+  > Instructions, expected observations and a symptom table: `../live-validation.md`.
+
   1. **Prime**: one batched cycle. Order matters: `update-tomo` → `/explore-vault` (so the cache gains `up_value`) → `/garden-audit`.
   2. **Test**: against the real vault, with one property-resident note deliberately given a broken parent:
      - the report marks it as a property fix and shows the comment-loss warning
@@ -97,13 +108,13 @@ Proves the chain and leaves the repo and the sibling repo in a consistent state.
   3. **Validate**: record the outcome and the observed Kado call count in `docs/evolution/inbox-cost-log.md`.
   4. **Success**: a property-resident fix, once approved, changes the note `[ref: PRD/Success Metrics]`
 
-- [ ] **T6.6 Notify Hashi** `[activity: documentation]`
+- [x] **T6.6 Notify Hashi** `[activity: documentation]`
 
   1. **Prime**: Hashi left `remove_up_link` unguarded on our recommendation and recorded the decision in their spec-002 (PR #128), explicitly awaiting this routing. We promised to tell them when it shipped.
   2. **Implement**: a handoff in `_outbox/for-hashi/` stating that routing has shipped, that the mis-routed case is now unreachable rather than merely rare, and that the guard remains correctly unbuilt.
   3. **Validate**: the handoff names the version and the behaviour, not just the fact.
   4. **Success**: the open cross-repo loop is closed on our side `[ref: spec README decisions log]`
 
-- [ ] **T6.7 Phase Validation** `[activity: validate]`
+- [x] **T6.7 Phase Validation** `[activity: validate]`
 
   - Full suite green; `ruff` clean. Walk the SDD Quality Requirements table and confirm each row has a passing test. Walk the PRD acceptance criteria and confirm each maps to a green test — including the vacuously-satisfied `expected_absent` criterion, which must be covered by an assertion that it is never emitted. Update the spec README to `Implemented` via `xdd-meta finalize`.

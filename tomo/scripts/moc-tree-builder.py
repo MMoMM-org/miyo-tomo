@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.2
+# version: 0.9.3
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -424,9 +424,7 @@ def build_entries(
         kind = "moc" if path in moc_paths else "note"
 
         up = up_parse.parse_up_from_content(content, conventions.parent_marker)
-        # T1.2 wires up_broken_reason into the entry dict; T1.1 only widens the
-        # resolver's signature and keeps the entry dict unchanged.
-        up_state, _up_broken_reason = _resolve_up_state(up.target, moc_stem_set, note_stem_set)
+        up_state, up_broken_reason = _resolve_up_state(up.target, moc_stem_set, note_stem_set)
 
         title = extract_title(fm, body, path)
         entry: dict = {
@@ -440,6 +438,11 @@ def build_entries(
             "up_target": up.target,
             "up_source": up.source,
             "up_value": up.raw_value,
+            # spec 033 T1.2 / ADR-3: written UNCONDITIONALLY (None where it does
+            # not apply) — its PRESENCE, not its value, is the freshness signal
+            # a downstream reader uses to tell "no reason applies" apart from
+            # "this cache predates this spec". Never write it conditionally.
+            "up_broken_reason": up_broken_reason,
             "tags": extract_tags(fm, body),
         }
 

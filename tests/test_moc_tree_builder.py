@@ -218,7 +218,8 @@ def test_resolve_up_state_reports_why():
     """Spec 033 T1.1 / PRD F1: _resolve_up_state takes the note-stem set as a
     third argument and returns (up_state, up_broken_reason). up_state's three
     values are unchanged (ADR-2); up_broken_reason is a second, additive
-    return value that is None everywhere except the "unresolved" case.
+    return value that is None for "absent"/"valid" and non-None ("not-a-moc"
+    or "unresolved") for the two "broken" cases.
     """
     moc_stems = {"Home", "Shared"}
     note_stems = {"Idea", "Shared"}
@@ -243,6 +244,88 @@ def test_resolve_up_state_reports_why():
 
     # a stem in BOTH sets (a MOC also listed as a note) → MOC wins, valid.
     assert _builder._resolve_up_state("Shared", moc_stems, note_stems) == ("valid", None)
+
+
+def test_cache_entry_carries_up_broken_reason_not_a_moc_vs_unresolved():
+    """Spec 033 T1.2 / PRD F1: the cache entry dict carries `up_broken_reason`,
+    distinguishing a broken-with-note-target ("not-a-moc") from a
+    broken-with-unknown-target ("unresolved"). valid/absent entries carry the
+    key too, with value None (ADR-3 — presence is universal).
+    """
+    home = "Atlas/200 Maps/Home.md"                    # no up → absent
+    child = "Atlas/200 Maps/Child.md"                  # up:: [[Home]] (a MOC) → valid
+    stray = "Atlas/202 Notes/Stray.md"                 # up:: [[Nonexistent]] → broken/unresolved
+    idea = "Atlas/202 Notes/Idea.md"                   # plain in-scope note, no up
+    linked_to_note = "Atlas/202 Notes/LinkedToNote.md"  # up:: [[Idea]] (a note) → broken/not-a-moc
+    client = FakeKadoClient(
+        tagged=[{"path": home}, {"path": child}],
+        listings={
+            "Atlas/200 Maps/": [{"path": home}, {"path": child}],
+            "Atlas/202 Notes/": [{"path": stray}, {"path": idea}, {"path": linked_to_note}],
+        },
+        notes={
+            home: "---\ntitle: Home\n---\n# Home\n",
+            child: "---\ntitle: Child\n---\n# Child\n\nup:: [[Home]]\n",
+            stray: "---\ntitle: Stray\n---\n# Stray\n\nup:: [[Nonexistent]]\n",
+            idea: "---\ntitle: Idea\n---\n# Idea\n",
+            linked_to_note: "---\ntitle: LinkedToNote\n---\n# LinkedToNote\n\nup:: [[Idea]]\n",
+        },
+    )
+    cache = _cache(client, _config())
+    by_path = {e["path"]: e for e in cache["entries"]}
+
+    assert by_path[linked_to_note]["up_state"] == "broken"
+    assert by_path[linked_to_note]["up_broken_reason"] == "not-a-moc"
+
+    assert by_path[stray]["up_state"] == "broken"
+    assert by_path[stray]["up_broken_reason"] == "unresolved"
+
+    assert by_path[child]["up_state"] == "valid"
+    assert "up_broken_reason" in by_path[child]
+    assert by_path[child]["up_broken_reason"] is None
+
+    assert by_path[home]["up_state"] == "absent"
+    assert "up_broken_reason" in by_path[home]
+    assert by_path[home]["up_broken_reason"] is None
+
+
+def test_up_broken_reason_key_present_for_every_entry():
+    """T1.2 / ADR-3: `up_broken_reason` is written UNCONDITIONALLY for every
+    entry — its PRESENCE (not its value) is the freshness signal a downstream
+    reader uses (a `_MISSING` sentinel, per the spec, mirroring
+    `test_up_value_key_present_for_every_entry_regardless_of_declaration_style`).
+    A conditional write would still pass a hand-picked spot check, so this
+    asserts on the COUNT of entries carrying the key across the whole built
+    cache, not on any single entry.
+    """
+    _MISSING = object()
+    home = "Atlas/200 Maps/Home.md"
+    child = "Atlas/200 Maps/Child.md"
+    stray = "Atlas/202 Notes/Stray.md"
+    idea = "Atlas/202 Notes/Idea.md"
+    linked_to_note = "Atlas/202 Notes/LinkedToNote.md"
+    client = FakeKadoClient(
+        tagged=[{"path": home}, {"path": child}],
+        listings={
+            "Atlas/200 Maps/": [{"path": home}, {"path": child}],
+            "Atlas/202 Notes/": [{"path": stray}, {"path": idea}, {"path": linked_to_note}],
+        },
+        notes={
+            home: "---\ntitle: Home\n---\n# Home\n",
+            child: "---\ntitle: Child\n---\n# Child\n\nup:: [[Home]]\n",
+            stray: "---\ntitle: Stray\n---\n# Stray\n\nup:: [[Nonexistent]]\n",
+            idea: "---\ntitle: Idea\n---\n# Idea\n",
+            linked_to_note: "---\ntitle: LinkedToNote\n---\n# LinkedToNote\n\nup:: [[Idea]]\n",
+        },
+    )
+    cache = _cache(client, _config())
+    entries = cache["entries"]
+    assert len(entries) == 5  # sanity: the count assertion below isn't vacuous
+
+    present_count = sum(
+        1 for e in entries if e.get("up_broken_reason", _MISSING) is not _MISSING
+    )
+    assert present_count == len(entries)
 
 
 def test_up_value_key_present_for_every_entry_regardless_of_declaration_style():

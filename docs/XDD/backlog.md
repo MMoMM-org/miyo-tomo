@@ -341,3 +341,33 @@ parallel dicts: a fourth unroutable reason would be the moment to collapse them 
 records, since a reason currently needs an entry in all three and nothing enforces completeness.
 
 Not spec-032 scope. Pick up when either trigger fires, or as a standalone refactor.
+
+## Decision record — `remove_up_link` stays unguarded; spec 032's routing is the alternative
+
+Hashi's shipped `remove_up_link` executor has no guard against a note whose parent is declared in a
+frontmatter `up:` property rather than an inline `up::` line — the action would find no line to
+remove from and report `skipped-already` (a no-op that looks identical to "nothing to remove", not a
+loud failure). Hashi raised this as a blind spot on 2026-09-01: a guard is technically possible
+("fail only when the note has no inline `up::` line AND a frontmatter `up:` exists whose value
+references the link; absent everywhere stays `skipped-already`"), but Tomo recommended **not**
+building it — the durable fix is to stop *sending* `remove_up_link` for a frontmatter-declared parent
+in the first place, which is exactly what this spec (032-up-source-routing) does by routing such
+findings to `edit_frontmatter` instead. A guard on Hashi's side would fail honest no-ops in order to
+absorb an action Tomo should never have sent.
+
+Hashi accepted the reasoning and recorded the decision in their own spec — `spec-002
+(instruction-executor)`, decision row 2026-09-01, PR **#128** (merged, commit `244cb45`) — including
+the guard condition Tomo supplied, precisely because they are *not* implementing it: a future reader
+finding `remove_up_link` unguarded next to two guarded siblings should find a written answer, not an
+invitation to guess. Kokoro carries the same open-by-design note in ADR-028 §5, with an explicit
+warning that the class must not be assumed swept clean. Hashi's `edit_frontmatter` (`operation:
+"remove"` + `expected`) shipped in **0.23.0** and needs nothing new to receive this spec's output.
+
+Hashi is not tracking an issue on their side for this — there is nothing left for them to build. They
+are waiting for Tomo to notify them once the routing ships (plan task **T6.6**), at which point the
+frontmatter case stops being merely rare (measured: 1 of 29 live `broken_up` findings) and becomes
+**unreachable** through `remove_up_link`, and the cross-repo record closes on both sides.
+
+Source: `_inbox/from-hashi/2026-09-01_hashi-to-tomo_remove-up-link-acknowledged-unguarded.md`;
+`_outbox/for-hashi/2026-09-01_tomo-to-hashi_remove-up-link-yes-it-can-occur.md`; spec
+`032-up-source-routing` (this repo).

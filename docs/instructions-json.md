@@ -1310,6 +1310,69 @@ structural field; an emptied `up::` correctly resurfaces the note as unparented
 on the next scan). On no-match (no `up::` line, or the link is not on it): skip
 and report — no error, no partial write.
 
+### `edit_frontmatter` — set or remove a YAML frontmatter property
+
+Introduced by spec 032 (broken-`up` fixes whose parent is declared in a
+frontmatter property rather than the note body — see
+[`docs/tomo/scripts/garden-audit-parser.md`](tomo/scripts/garden-audit-parser.md)
+for why that routing decision exists). Mirrors Hashi's already-shipped
+`edit_frontmatter` `$def` (0.22.0/0.23.0) byte-equal; Tomo began emitting it
+2026-09-02.
+
+```json
+{
+  "id": "I13",
+  "action": "edit_frontmatter",
+  "path": "Atlas/202 Notes/Aristotle and Metaphor - Seeing the similarity between things..md",
+  "property": "up",
+  "operation": "remove",
+  "expected": "Philosophy MOC (kit)"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `path` | string | Vault-relative note whose frontmatter is edited. **Must** be `.md` — Obsidian's `processFrontMatter` is markdown-only. |
+| `property` | string | The YAML key to write or remove, e.g. `up`. Any key; nothing is treated specially. Derived from the active profile's parent marker — never hardcoded. |
+| `operation` | `"set"` \| `"remove"` | `set` writes `value`, creating the key if absent — this is also how a property is *added*. `remove` deletes the key entirely. |
+| `value` | any | The whole new value for `property`. Any JSON value, mapped to YAML scalars/lists/maps. **Required when `operation == "set"`; absent (not merely `null`) when `operation == "remove"`.** Tomo reads the current value and sends the complete replacement — there is no list-item add/delete operation, so a multi-value edit re-sends the whole list. |
+| `expected` | any | The value that must currently be at `property`, compared **deep-equal and order-significant**. A literal `null` means the property holds a YAML null, not that it's absent. |
+| `expected_absent` | `true` | Expect the property NOT to exist — how an add is expressed. Only `true` is accepted; there is no `expected_absent: false`. |
+
+**`expected` and `expected_absent` are mutually exclusive by JSON Schema**
+(`oneOf` on the action definition) — supplying both is a **validation
+error**, not something with a defined precedence. Every emitted action
+carries exactly one of the two; Hashi never needs to decide which wins
+because a payload with both never validates.
+
+**"remove" is usually `operation: "set"`, not `"remove"`.** `operation:
+"remove"` deletes the **whole property** and is correct only when the
+broken link was its sole content. When the property holds a list
+(`up: ["Hobbies (MOC)", "Broken (MOC)"]`) and only `Broken (MOC)` is being
+fixed, the emitted action is `operation: "set"` with
+`value: ["Hobbies (MOC)"]` — reaching for `operation: "remove"` because the
+user said "remove the broken parent" would delete a legitimate sibling
+parent MOC along with it. `operation` is the only signal for which case
+applies; Hashi must not infer it from context.
+
+**Execution algorithm:**
+
+1. Open `path`, read its frontmatter.
+2. Compare the current value at `property` against `expected`
+   (`expected_absent: true` compares against "key does not exist" instead).
+   **On mismatch: fail the action and write nothing** — a vault that
+   changed between report generation and apply time is never silently
+   clobbered.
+3. On match: `set` writes `value` at `property` (creating the key when the
+   guard was `expected_absent`); `remove` deletes `property`.
+
+**Cost — irreversible on success.** Writing through
+`processFrontMatter` re-serialises the whole frontmatter block, so a
+successful edit **drops any YAML comments in that note's property block**,
+permanently. This is disclosed to the user in the garden-audit report
+*before* the Apply checkbox — see `_render_property_edit_disclosure` in
+`garden-audit-render.py` — because a post-hoc note would be too late.
+
 ---
 
 ## Worked example (abridged)

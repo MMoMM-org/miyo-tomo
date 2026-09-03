@@ -9,8 +9,8 @@ coverage audit hard-failed on ANY garden-audit doc with confirmed items.
 
 Covers:
   - route:    garden-shaped parsed envelopes reach run_diff_garden
-  - reconcile: a correct parser→builder render (all four garden_action kinds,
-               incl. the new remove_up_link) → exit 0
+  - reconcile: a correct parser→builder render (all five garden_action kinds,
+               incl. the new remove_up_link and edit_frontmatter) → exit 0
   - falsify:  a missing / mismatched instruction still fails (exit 1)
   - advisory: acked_advisories produce no expected actions
 """
@@ -133,6 +133,48 @@ class TestGardenFalsify:
                         "applied": False})
         code, out = _run(parsed, _instrs(actions))
         assert code == 1
+
+
+class TestGardenRegistrationSync:
+    """Guard: GARDEN_ACTION_ORDER and _GARDEN_EXPECTED_KINDS must stay in sync.
+
+    These structures have an asymmetric relationship: GARDEN_ACTION_ORDER lists
+    the instruction kinds (e.g., resolve_dead_link, link_to_moc), while
+    _GARDEN_EXPECTED_KINDS maps garden_action values to instruction kinds.
+
+    Specifically:
+    - GARDEN_ACTION_ORDER contains all possible instruction kinds that can be
+      emitted by any garden_action (e.g., link_to_moc is only emitted via the
+      file_note garden_action, not via a link_to_moc garden_action).
+    - _GARDEN_EXPECTED_KINDS has garden_action keys (e.g., file_note, which is
+      NOT an instruction kind itself but maps to multiple kinds).
+
+    The silent bug (T4.3) manifested when a garden_action was registered but
+    lacked an entry in _GARDEN_EXPECTED_KINDS: _garden_item_covered would get
+    an empty tuple, never enter its loop, and return True without checking
+    anything. Asymmetric forgetting is the failure mode: missing from
+    _GARDEN_EXPECTED_KINDS is silent, not loud.
+
+    This guard ensures every instruction kind in GARDEN_ACTION_ORDER appears
+    in the values of _GARDEN_EXPECTED_KINDS. If a new instruction kind is
+    added to one structure without the other, the test fails.
+    """
+
+    def test_all_instruction_kinds_are_mapped(self):
+        """Every instruction kind in GARDEN_ACTION_ORDER must appear as a value
+        in _GARDEN_EXPECTED_KINDS. This ensures no instruction kind is emitted
+        without a garden_action having declared it, and vice versa."""
+        from itertools import chain
+
+        # Collect all instruction kinds that are produced
+        produced_kinds = set(chain(*diff._GARDEN_EXPECTED_KINDS.values()))
+
+        # Assert they match exactly (==, not <=) to catch divergence in either direction
+        assert set(diff.GARDEN_ACTION_ORDER) == produced_kinds, (
+            f"Instruction kinds mismatch: "
+            f"GARDEN_ACTION_ORDER={set(diff.GARDEN_ACTION_ORDER)}, "
+            f"produced_kinds={produced_kinds}"
+        )
 
 
 class TestGardenEditFrontmatter:

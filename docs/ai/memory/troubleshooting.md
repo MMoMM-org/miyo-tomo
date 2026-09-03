@@ -28,3 +28,23 @@ When a new field flows through the Pass-2 pipeline, every transformation stage m
 ## Empty stub notes generated from an approved suggestion doc with missing source notes — Status: open (needs repro)
 
 Observed (2026-07-02): Tomo generated empty stub notes. Suspected trigger is an **approved suggestion document whose source notes are missing** — possibly a leftover temp state, or a suggestion doc that was approved without a matching instruction document. Root cause not yet confirmed. Desired behavior: Tomo must NOT emit empty stubs just because an approved suggestion doc exists while the source notes are absent — it should detect the missing sources and skip/flag rather than render empty placeholders. Action: recreate the exact conditions (approved suggestion doc + absent sources, ± instruction doc) to determine why the empty render fired, then add a guard + regression fixture. Related: Phase 0b stale-state detection (#37/F-51), stale-run re-ingestion fixes.
+
+<!-- 2026-09-03 -->
+
+## `edit_frontmatter` re-run returns `failed`, not `skipped-already` — Status: known, not a bug
+
+Reported by Hashi 2026-09-03 (`_inbox/from-hashi/2026-09-03_hashi-to-tomo_up-source-routing-confirmed-and-one-rerun-asymmetry.md`), verified by them against `editFrontmatter.ts`. **Diagnostic note, not a defect on either side.**
+
+Re-running an `edit_frontmatter` action that already applied does **not** come back `skipped-already`. It comes back **`failed`** with a "the note changed since the instruction set was written" reason:
+
+```
+{"operation": "remove", "expected": ["[[Philosophy MOC (kit)]]"]}
+```
+
+First run deletes the key. Second run finds the property absent while `expected` still names the old value, so the optimistic-lock guard reports a changed world and refuses. The same holds for `set` — the second run sees the new value where `expected` names the old one.
+
+**What this means for triage:** a `failed` on a re-run is **not** evidence that Tomo emitted a wrong `expected`. When a user reports `edit_frontmatter` failures with "the note changed" reasons after re-running an instruction set, the first hypothesis is *"already applied, `applied` flag not persisted"* — not a mis-emission. Check the `applied` flag in the instruction set before suspecting the payload.
+
+Hashi's real idempotency mechanism is the planner filter that drops every action carrying `applied: true` before the handler runs (`planner.ts:179`), so the failure needs a run where the vault edit landed but the flag did not persist. Neither side is loosening the guard: treating "expected a value, found absent" as success is exactly the silent-success shape spec 032 exists to remove.
+
+Related: the `up_value`-never-normalised contract in `tomo/scripts/lib/render_actions.py::_construct_edit_frontmatter_fields` (rule 4) — Hashi's `expected` comparison is order-sensitive `deepEqual`, so a normalising change would fail guards at apply time, in a user's vault, with a green suite.

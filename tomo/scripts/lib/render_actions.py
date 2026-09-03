@@ -1,4 +1,4 @@
-# version: 0.8.0
+# version: 0.8.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1234,6 +1234,18 @@ def _construct_edit_frontmatter_fields(
        ``value``; it is never normalised into a one-item list. Normalising
        would change the note beyond the approved fix AND fail Hashi's
        deep-equal ``expected`` guard.
+
+    4. **CONTRACT — ``up_value`` is never normalised, anywhere on the path
+       from cache to wire.** Not sorted, not de-duplicated, not re-wrapped.
+       Hashi confirmed the mechanism 2026-09-03 (handoff
+       ``2026-09-03_hashi-to-tomo_up-source-routing-confirmed-and-one-rerun-asymmetry``):
+       their ``expected`` comparison is ``deepEqual`` over the PARSED YAML
+       value, and for arrays it is element-wise **and order-sensitive** —
+       ``[A, B]`` does not match ``[B, A]``, deliberately, so the guard
+       cannot pass on a note someone reordered. A normalising "cleanup" here
+       would therefore fail every guard at APPLY time in a user's vault
+       while every fixture in this repo stayed green. Treat as a contract,
+       not a convention.
 
     ``expected`` is always the ``up_value`` argument itself, byte-for-byte,
     in every branch — never the transformed copy. ``expected_absent`` is

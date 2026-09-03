@@ -366,3 +366,66 @@ def test_scalar_remove_no_match_is_a_no_op_not_a_crash():
     assert fields["operation"] == "set"
     assert fields["value"] == "[[Unrelated MOC]]"  # unchanged — no match, no guess
     assert fields["expected"] == "[[Unrelated MOC]]"
+
+
+# ---------------------------------------------------------------------------
+# 9. CONTRACT — up_value survives the whole cache→wire path unnormalised.
+#
+# Hashi's `expected` comparison is deepEqual over the parsed YAML value, and
+# for arrays it is element-wise AND ORDER-SENSITIVE ([A,B] does not match
+# [B,A]) so the guard cannot pass on a note someone reordered. Confirmed by
+# Hashi 2026-09-03 against editFrontmatter.ts. A normalising "cleanup"
+# anywhere on our path would therefore fail every guard at APPLY time in a
+# user's vault while the suite stayed green.
+#
+# The pure transform is already covered in test_032_t3_2. These assert the
+# END-TO-END path — report/wire → parser → confirmed_item → built action —
+# with a list whose observed order differs from sorted order, so a sort
+# introduced at ANY hop is caught, not just one inside the transform.
+# ---------------------------------------------------------------------------
+
+_UNSORTED = ["[[Zeta MOC]]", "[[Alpha MOC]]", "[[Mid MOC]]"]
+
+
+def _assert_order_preserved(action, observed):
+    assert action["expected"] == observed, (
+        "expected must equal the observed value element-wise and in order"
+    )
+    assert action["expected"] != sorted(observed), (
+        "a sorted expected would pass a set-comparison but fail Hashi's "
+        "order-sensitive deepEqual at apply time"
+    )
+
+
+def test_wire_path_preserves_up_value_order_end_to_end():
+    item = _broken_up_frontmatter_removal(selected=True)
+    item["detail"]["up_value"] = list(_UNSORTED)
+    item["detail"]["up_target"] = "Zeta MOC"
+    items = build_from_wire(_make_wire([item]))["confirmed_items"]
+    assert len(items) == 1
+    assert items[0]["up_value"] == _UNSORTED
+
+    actions = build_garden_audit_actions(items)
+    assert len(actions) == 1
+    _assert_order_preserved(actions[0], _UNSORTED)
+
+
+def test_report_path_preserves_up_value_order_end_to_end():
+    finding = _doc_finding_broken_up_frontmatter_repoint("F03")
+    finding["detail"]["up_value"] = list(_UNSORTED)
+    finding["detail"]["up_target"] = "Zeta MOC"
+    doc = _make_doc([finding])
+    md = _full_report(doc).replace(
+        "**Repoint to:** [[]]", "**Repoint to:** [[New MOC]]", 1
+    )
+    items = build_from_report(md, _wire(doc))["confirmed_items"]
+    assert len(items) == 1
+    assert items[0]["up_value"] == _UNSORTED
+
+    actions = build_garden_audit_actions(items)
+    assert len(actions) == 1
+    a = actions[0]
+    _assert_order_preserved(a, _UNSORTED)
+    # value is transformed in place at the broken index — the surviving
+    # entries keep their positions, they are not rebuilt from a set.
+    assert a["value"] == ["[[New MOC]]", "[[Alpha MOC]]", "[[Mid MOC]]"]

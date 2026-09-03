@@ -1722,9 +1722,8 @@ class TestUnsupportedShapeSummaryLanguage:
         # for the Fix/Repoint lines — load the module as it stood right
         # before this fix (68c4594) under a DISTINCT module name, render a
         # MIXED doc (one withheld unsupported-shape finding alongside one
-        # routable inline finding) through both, and assert equality on
-        # everything except the one Summary line this fix intentionally
-        # changes.
+        # routable inline finding) through both, and assert the inline block
+        # is byte-identical while the Summary line changed.
         import subprocess
         import tempfile
 
@@ -1759,13 +1758,100 @@ class TestUnsupportedShapeSummaryLanguage:
         old_lines = old_report.splitlines()
         new_lines = new_report.splitlines()
         assert len(old_lines) == len(new_lines)
+
+        def _block_indices(lines, fid):
+            idx, inside = [], False
+            for i, ln in enumerate(lines):
+                if ln.startswith("### "):
+                    inside = ln.startswith(f"### {fid} ")
+                if inside:
+                    idx.append(i)
+            return idx
+
+        # CON-7 asserted on the thing CON-7 names: the BODY-RESIDENT finding's
+        # block, byte for byte. An earlier form of this test counted changed
+        # lines across the whole report and required exactly one — a proxy that
+        # held only while the Summary line was the sole property-side change.
+        # It then failed for a later property-side fix that CON-7 does not
+        # constrain at all, so the count was tightened into the real invariant.
+        f02_old = _block_indices(old_lines, "F02")
+        f02_new = _block_indices(new_lines, "F02")
+        assert f02_old == f02_new
+        assert [old_lines[i] for i in f02_old] == [new_lines[i] for i in f02_new]
+
         changed = [
             i for i, (o, n) in enumerate(zip(old_lines, new_lines)) if o != n
         ]
-        assert len(changed) == 1, (
-            f"expected exactly one changed line, got {changed}:\n"
-            f"old={[old_lines[i] for i in changed]}\n"
-            f"new={[new_lines[i] for i in changed]}"
+        assert changed, "the fix under test changed nothing — assertion is hollow"
+        body_resident = set(f02_new) & set(changed)
+        assert not body_resident, (
+            f"body-resident lines changed, CON-7 violated: "
+            f"{[new_lines[i] for i in sorted(body_resident)]}"
         )
-        assert "unsupported value shape" in old_lines[changed[0]]
-        assert "unsupported value shape" in new_lines[changed[0]]
+
+        summary = [i for i in changed if "unsupported value shape" in new_lines[i]]
+        assert len(summary) == 1, f"expected one Summary line, got {summary}"
+        assert "unsupported value shape" in old_lines[summary[0]]
+
+
+class TestPropertyResidentDetailLine:
+    """The per-finding detail line must not say `up::` for a parent that lives
+    in a YAML property — the block already says "note property `up`" two lines
+    below, and the two readings contradict each other in the same block.
+
+    Scoped deliberately to the detail line: the section heading comes from a
+    static per-check label shared by all broken_up findings and is a separate
+    change.
+    """
+
+    def test_frontmatter_resident_detail_line_names_property_not_up_marker(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up` property → [[Deleted MOC]]"
+        assert "up::" not in detail_line
+
+    def test_frontmatter_resident_detail_line_uses_derived_property(
+        self, tmp_path, monkeypatch
+    ):
+        # ADR-6 proof — a single-marker test never exposes a hardcoded "up".
+        profiles_dir = tmp_path / "profiles"
+        profiles_dir.mkdir()
+        (profiles_dir / "custom.yaml").write_text(
+            "relationship_defaults:\n  parent:\n    marker: \"parent::\"\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(gar, "DEFAULT_PROFILES_DIR", profiles_dir)
+
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        d = _make_doc(findings=[f])
+        d["profile"] = "custom"
+        report = _render_report(d)
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `parent` property → [[Deleted MOC]]"
+
+    def test_body_resident_detail_line_is_unchanged(self):
+        # CON-7: body-resident output stays byte-identical.
+        f = _make_broken_up_finding("F01", up_source="inline", up_value=None)
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up::` → [[Deleted MOC]]"
+
+    def test_block_does_not_state_both_readings_for_one_finding(self):
+        """The contradiction itself, asserted as one property of the block:
+        below the heading, a property-resident finding never names `up::`.
+        """
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        body = [
+            ln for ln in report.splitlines()
+            if ln.strip() and not ln.startswith("###")
+        ]
+        offenders = [ln for ln in body if "up::" in ln]
+        assert offenders == [], f"body syntax on a property finding: {offenders}"

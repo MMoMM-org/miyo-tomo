@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.1
+# version: 0.18.2
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -489,7 +489,15 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
     elif check == "broken_up":
         up_target = detail.get("up_target")
         if up_target:
-            lines.append(f"Broken `up::` → {_wikilink(up_target)}")
+            # Same site branch as _fix_summary: a frontmatter-declared parent has
+            # no `up::` line to name, and saying so contradicts the property
+            # language the same block carries two lines below.
+            if detail.get("up_source") == "frontmatter":
+                lines.append(
+                    f"Broken `{up_property}` property → {_wikilink(up_target)}"
+                )
+            else:
+                lines.append(f"Broken `up::` → {_wikilink(up_target)}")
     elif check == "dead_link":
         dead_target = detail.get("dead_target", "")
         count = detail.get("count", 1)

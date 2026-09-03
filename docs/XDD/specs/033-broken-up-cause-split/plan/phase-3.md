@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Register the new check"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---
@@ -36,7 +36,7 @@ concurrently with Phases 1–2.
 
 ## Tasks
 
-- [ ] **T3.1 Register at all nine must-register sites, and fix the should-register drift**
+- [x] **T3.1 Register at all nine must-register sites, and fix the should-register drift**
   `[activity: integration]`
 
   1. **Prime**: read the SDD's Registration inventory in full and **restate the count in the
@@ -104,7 +104,7 @@ concurrently with Phases 1–2.
      one that fails **with** it, and the grep shows no fourteenth site exists outside the table. The
      grep is the novel part; 032, and this spec's own first SDD draft, only ever walked a table.
 
-- [ ] **T3.3 Exclusion behaviour change is documented, not discovered** `[activity: documentation]`
+- [x] **T3.3 Exclusion behaviour change is documented, not discovered** `[activity: documentation]`
 
   1. **Prime**: `[ref: SDD/ADR-4]`. Two real consequences, opposite in sign.
   2. **Test**:

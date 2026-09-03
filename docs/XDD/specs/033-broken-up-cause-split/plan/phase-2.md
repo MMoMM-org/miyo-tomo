@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Split the check"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -34,7 +34,7 @@ phase: 2
 The behavioural change. After this phase the audit emits two checks where it emitted one, and the
 advisory one carries no decision block.
 
-- [ ] **T2.1 `_check_broken_up` branches on the reason** `[activity: domain-modeling]`
+- [x] **T2.1 `_check_broken_up` branches on the reason** `[activity: domain-modeling]`
 
   1. **Prime**: Read `garden-audit.py:148-181`. Note the ADR-3 membership pattern spec 032 already
      uses there for `up_source` and `up_value` — copy it, do not re-invent it.
@@ -51,7 +51,7 @@ advisory one carries no decision block.
   4. **Validate**: `./venv/bin/python -m pytest tests/test_garden_audit_scan.py -q`
   5. **Success**: every broken entry produces exactly one finding, under the right check name.
 
-- [ ] **T2.2 The advisory check carries no decision block** `[activity: domain-modeling]`
+- [x] **T2.2 The advisory check carries no decision block** `[activity: domain-modeling]`
 
   1. **Prime**: `_finding` attaches `decision` only when `check in _FIXABLE` (`:98-100`). Registering
      the tier without touching `_FIXABLE` is the whole mechanism. `[ref: SDD/ADR-1]`
@@ -66,7 +66,7 @@ advisory one carries no decision block.
   4. **Validate**: `./venv/bin/python -m pytest tests/test_garden_audit_scan.py tests/test_garden_audit_parser.py -q`
   5. **Success**: CON-2 holds because the code path does not exist, not because nothing takes it.
 
-- [ ] **T2.3 A pre-033 cache claims no cause** `[activity: domain-modeling]`
+- [x] **T2.3 A pre-033 cache claims no cause** `[activity: domain-modeling]`
 
   1. **Prime**: `[ref: SDD/ADR-3]` and its named failure — a `.get()` default classifies every old
      finding as `unresolved`, which keeps offering the destructive fix on exactly the findings this
@@ -82,7 +82,7 @@ advisory one carries no decision block.
   5. **Success**: reverting the sentinel to `.get("up_broken_reason")` turns a test red — prove it by
      doing so, do not assert it `[ref: SDD/Implementation Gotchas 1]`.
 
-- [ ] **T2.4 Phase Validation** `[activity: validate]`
+- [x] **T2.4 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - Run the real check over the live cache: the two counts must sum to today's 42.

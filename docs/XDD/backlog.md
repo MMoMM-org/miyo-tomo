@@ -371,3 +371,31 @@ frontmatter case stops being merely rare (measured: 1 of 29 live `broken_up` fin
 Source: `_inbox/from-hashi/2026-09-01_hashi-to-tomo_remove-up-link-acknowledged-unguarded.md`;
 `_outbox/for-hashi/2026-09-01_tomo-to-hashi_remove-up-link-yes-it-can-occur.md`; spec
 `032-up-source-routing` (this repo).
+
+## OPEN — `broken_up` conflates three causes; the offered fix destroys valid links for two → [#157](https://github.com/MMoMM-org/miyo-tomo/issues/157)
+
+`_resolve_up_state` (`tomo/scripts/moc-tree-builder.py:280`) returns `broken` for exactly one
+condition — the `up::` target is not the stem of an **in-scope** MOC. Three unrelated vault states
+land on that label, and `_check_broken_up` offers the same remedy to all three:
+
+| actual state | is "repoint, or leave empty to remove" correct? |
+|---|---|
+| target does not exist | yes |
+| target exists in scope, no MOC tag | no — the link is fine, the tag is missing |
+| target exists outside `scope_paths` | no — the scanner is blind, not the vault |
+
+Measured on the 2026-09-03 run (359 entries, scope `Atlas/200 Maps/` + `Atlas/202 Notes/`): 42
+findings — **20** whose target sits in the cache as `kind: note`, **22** whose target is absent from
+it. Cause 3 is confirmed rather than assumed: seven of those 22 name one target by bare stem while an
+eighth records the same target as a full path under a folder outside `scope_paths`. The note exists;
+it is never scanned.
+
+Consequence is user-data, not code: nothing crashes and the emitted instruction is well-formed and
+correctly guarded. Accepting the fix on causes 2 and 3 deletes a working parent link and flattens
+deliberate hierarchy (notes parented to notes, or across a folder boundary).
+
+Scope boundary worth keeping straight: spec 032 decides **where** a broken-parent fix is written
+(`edit_frontmatter` vs. a body edit) and is unaffected by this. This issue is the separate question
+of **whether** the fix should be offered.
+
+Found while validating spec 032 — see `docs/XDD/specs/032-up-source-routing/live-validation.md`.

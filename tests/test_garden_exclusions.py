@@ -168,7 +168,10 @@ def test_permanent_tag_does_not_exclude_note_without_that_tag():
 
 def test_checks_all_excludes_every_named_check():
     """checks: all suppresses every known check name for the matched target."""
-    all_checks = ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"]
+    all_checks = [
+        "unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc",
+        "parent_not_moc",
+    ]
     config = {
         "version": 1,
         "exclusions": [
@@ -694,9 +697,13 @@ def test_active_rules_checks_are_sorted_lists():
 def test_active_rules_all_expands_to_every_check_sorted():
     cfg = GardenExclusions.from_dict(SAMPLE_CONFIG, today=date(2026, 8, 1))
     temp = next(r for r in cfg.active_rules(date(2026, 8, 1)) if r["mode"] == "temporary")
-    # checks:"all" → the six check names, sorted.
+    # checks:"all" → every registered check name, sorted (ADR-4: a new check
+    # joins "all" automatically — spec 033 added parent_not_moc).
     assert temp["checks"] == sorted(
-        ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"]
+        [
+            "unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc",
+            "parent_not_moc",
+        ]
     )
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.2
+# version: 0.18.3
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -66,6 +66,7 @@ _CHECK_LABEL = {
     "orphan": "Orphan note",
     "duplicate_stem": "Duplicate stem",
     "stale_moc": "Stale MOC",
+    "parent_not_moc": "Parent not a MOC",
 }
 
 

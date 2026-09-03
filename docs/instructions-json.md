@@ -1316,7 +1316,7 @@ Introduced by spec 032 (broken-`up` fixes whose parent is declared in a
 frontmatter property rather than the note body — see
 [`docs/tomo/scripts/garden-audit-parser.md`](tomo/scripts/garden-audit-parser.md)
 for why that routing decision exists). Mirrors Hashi's already-shipped
-`edit_frontmatter` `$def` (0.22.0/0.23.0) byte-equal; Tomo began emitting it
+`edit_frontmatter` `$def` (Hashi 0.22.0; split in 0.23.1) byte-equal; Tomo began emitting it
 2026-09-02.
 
 ```json

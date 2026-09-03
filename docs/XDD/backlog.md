@@ -361,7 +361,10 @@ the guard condition Tomo supplied, precisely because they are *not* implementing
 finding `remove_up_link` unguarded next to two guarded siblings should find a written answer, not an
 invitation to guess. Kokoro carries the same open-by-design note in ADR-028 §5, with an explicit
 warning that the class must not be assumed swept clean. Hashi's `edit_frontmatter` (`operation:
-"remove"` + `expected`) shipped in **0.23.0** and needs nothing new to receive this spec's output.
+"remove"` + `expected`) shipped in **0.22.0** and needs nothing new to receive this spec's output.
+(Corrected 2026-09-03: the earlier **0.23.0** here named neither the release that added the kind nor
+the one that added the `expected`/`expected_absent` split — that is 0.23.1. Tomo keeps 0.23.0 as a
+stated floor deliberately, for its comment-preserving pre-check.)
 
 Hashi is not tracking an issue on their side for this — there is nothing left for them to build. They
 are waiting for Tomo to notify them once the routing ships (plan task **T6.6**), at which point the

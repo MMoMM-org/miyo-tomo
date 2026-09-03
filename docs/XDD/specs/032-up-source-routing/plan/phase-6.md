@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration, regression and documentation"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 6
 ---
@@ -16,7 +16,13 @@ phase: 6
 - `[ref: SDD/Deployment View]` — the cache-refresh ordering note
 - `[ref: PRD/Success Metrics]`
 - `[ref: CON-7]` body-resident output byte-identical; `[ref: CON-3]` zero added Kado calls
-- Live population: 17 property-resident notes, 1 currently broken and it is inline — so a live test needs a **deliberately broken** property-resident note
+- Live population — **CORRECTED 2026-09-02**, the original figure came from `discovery-cache.yaml`
+  (64 entries) while `garden-audit.py:550` actually loads `moc-structure-cache.yaml`. Measured
+  there: **346 entries, 22 property-resident, 29 broken — and one is BOTH broken and
+  property-resident**: `Atlas/202 Notes/Aristotle and Metaphor - Seeing the similarity between
+  things..md` → `Philosophy MOC (kit)`. So a live test does **not** need a deliberately broken
+  note: a real one exists. Prefer it — a naturally occurring case proves more than a synthetic
+  one, and it avoids editing the user's vault to manufacture a fixture.
 
 **Key Decisions**:
 - The headline metric is behavioural, not self-reported: **a property-resident fix, once approved, changes the note.** Today it does not.

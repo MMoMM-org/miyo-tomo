@@ -324,6 +324,96 @@ def test_broken_up_detail_carries_reason_via_membership_test():
     )
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# T2.3 (spec 033 / ADR-3 / PRD F6 criterion 1): a pre-033 cache claims no cause.
+#
+# Three distinguishable states on a broken entry:
+#   key absent               -> pre-033 cache, classifier never ran, UNKNOWN
+#   key present, value None  -> anomalous (a fresh builder never writes null on
+#                                a broken entry — solution.md's interface spec),
+#                                but a defensive consumer must still treat it as
+#                                UNKNOWN rather than crash or guess
+#   key present, real value  -> "not-a-moc" / "unresolved", already covered above
+# Both UNKNOWN cases must route to check "broken_up" (today's behaviour,
+# unchanged) and must NEVER produce a detail claiming "unresolved" — that
+# would be a confident wrong answer on exactly the findings this spec exists
+# to protect. Tested as SEPARATE cases (not one shared assertion) so a future
+# change that starts treating them differently — or that starts collapsing
+# them into an identical claimed-cause shape — is caught either way.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_broken_up_absent_key_finding_never_claims_unresolved():
+    """A pre-033 cache entry (up_broken_reason key absent entirely) still
+    produces a broken_up finding (today's behaviour, unchanged), and its
+    detail never claims "unresolved" — the failure ADR-3 exists to prevent.
+    """
+    entries = [
+        _moc("PKM"),
+        _entry("Pre033 Note", up_state="broken", up_target="Old Target"),  # no up_broken_reason kwarg at all
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    f = next(x for x in doc["findings"] if x["target"]["stem"] == "Pre033 Note")
+    assert f["check"] == "broken_up"
+    assert f["detail"].get("up_broken_reason") != "unresolved"
+    assert "up_broken_reason" not in f["detail"], (
+        "the key's ABSENCE from the cache entry must survive as absence from "
+        "detail — a defaulted None or claimed value both destroy the signal"
+    )
+
+
+def test_broken_up_explicit_null_reason_is_also_treated_as_unknown():
+    """An entry with up_broken_reason: null AND up_state: broken (an anomaly —
+    a fresh builder never writes null on a broken entry) is ALSO treated as
+    unknown: routes to broken_up (same as the absent case) and never claims
+    "unresolved". Asserted as its own test, separate from the absent-key
+    case above, so the two cannot silently collapse into each other.
+    """
+    entries = [
+        _moc("PKM"),
+        _entry(
+            "Anomalous Note", up_state="broken", up_target="Old Target",
+            up_broken_reason=None,  # key PRESENT, value explicitly None
+        ),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    f = next(x for x in doc["findings"] if x["target"]["stem"] == "Anomalous Note")
+    assert f["check"] == "broken_up"
+    assert f["detail"].get("up_broken_reason") != "unresolved"
+
+
+def test_broken_up_mixed_pre_and_post_033_batch_each_handled_on_its_own_terms():
+    """A batch mixing a pre-033 entry (key absent), an anomalous entry (key
+    present, None), and fresh post-033 entries ("not-a-moc" / "unresolved")
+    — each must be handled on its own terms: the two unknown-cause entries
+    route to broken_up with no claimed cause, the two fresh entries route and
+    carry their real reason, and none is silently dropped.
+    """
+    entries = [
+        _moc("PKM"),
+        _entry("Pre033", up_state="broken", up_target="Gone A"),  # absent key
+        _entry("Anomaly", up_state="broken", up_target="Gone B", up_broken_reason=None),
+        _entry("Fresh Unresolved", up_state="broken", up_target="Gone C", up_broken_reason="unresolved"),
+        _entry("Fresh Not MOC", up_state="broken", up_target="Real A", up_broken_reason="not-a-moc"),
+    ]
+    doc = run_scan(entries, graph_audit_fn=_no_graph_audit, list_dir_fn=_no_list_dir)
+    by_stem = {f["target"]["stem"]: f for f in doc["findings"]}
+
+    assert by_stem["Pre033"]["check"] == "broken_up"
+    assert "up_broken_reason" not in by_stem["Pre033"]["detail"]
+
+    assert by_stem["Anomaly"]["check"] == "broken_up"
+    assert by_stem["Anomaly"]["detail"].get("up_broken_reason") != "unresolved"
+
+    assert by_stem["Fresh Unresolved"]["check"] == "broken_up"
+    assert by_stem["Fresh Unresolved"]["detail"]["up_broken_reason"] == "unresolved"
+
+    assert by_stem["Fresh Not MOC"]["check"] == "parent_not_moc"
+    assert by_stem["Fresh Not MOC"]["detail"]["up_broken_reason"] == "not-a-moc"
+
+    # No entry silently dropped.
+    assert len(doc["findings"]) == 4
+
+
 def test_parent_not_moc_batch_carries_no_decision_and_correct_tier_fixable():
     """spec 033 T2.2 / PRD F2 criteria 2+3: over a WHOLE mixed batch (not one
     happy-path finding), every parent_not_moc finding is advisory, unfixable,

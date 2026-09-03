@@ -12,7 +12,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | completed | 6 Must features, 27 Gherkin criteria, 4 business rules, 4 edge cases |
+| requirements.md | completed | 6 Must features, 21 Gherkin criteria, 4 business rules, 4 edge cases |
 | solution.md | pending | |
 | plan/ | pending | |
 

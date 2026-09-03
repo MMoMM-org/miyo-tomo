@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.9.1
+# version: 0.9.2
 """moc-tree-builder.py — Build the MOC-structure cache (config/moc-structure-cache.yaml).
 
 Rebuilt for spec 021 (MOC-propose consolidation, Phase 1 T1.4). Orchestrates the
@@ -277,16 +277,29 @@ def read_note_raw(client, path: str) -> "str | None":
 # Entry assembly (orchestration core)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _resolve_up_state(target: "str | None", moc_stem_set: set[str]) -> str:
-    """M1: caller resolves up_state from the parse target vs the MOC stem set.
+def _resolve_up_state(
+    target: "str | None", moc_stem_set: set[str], note_stem_set: set[str]
+) -> "tuple[str, str | None]":
+    """M1 + spec 033 F1: caller resolves (up_state, up_broken_reason) from the
+    parse target vs. the MOC stem set and the in-scope note stem set.
 
-    target None             → "absent"
-    target in moc_stem_set  → "valid"
-    else                    → "broken"
+    target None                          → ("absent", None)
+    target in moc_stem_set               → ("valid", None) — MOC wins ties
+    target in note_stem_set (not a MOC)  → ("broken", "not-a-moc")
+    target in neither set                → ("broken", "unresolved")
+
+    up_state's three values (absent/valid/broken) are unchanged (ADR-2) —
+    up_broken_reason is a second, additive return value that distinguishes
+    WHY a "broken" resolution happened, without touching the enum consumers
+    already keyed on up_state.
     """
     if target is None:
-        return "absent"
-    return "valid" if target in moc_stem_set else "broken"
+        return "absent", None
+    if target in moc_stem_set:
+        return "valid", None
+    if target in note_stem_set:
+        return "broken", "not-a-moc"
+    return "broken", "unresolved"
 
 
 def _editable_set_from_config(config: dict) -> frozenset[str]:
@@ -367,6 +380,9 @@ def build_entries(
     # MOC stem set drives both up_state resolution (M1) and the
     # MOC-name resolution inside the linked_notes count below.
     moc_stem_set = {basename_no_ext(p) for p in moc_paths}
+    # note stem set feeds up_broken_reason resolution (spec 033 F1) — derived
+    # here, from data already loaded, no new vault access.
+    note_stem_set = {basename_no_ext(p) for p in note_paths}
 
     # Read every path once; cache the parsed shape for entry assembly +
     # placeholder detection (which needs linked_notes_raw per MOC).
@@ -408,7 +424,9 @@ def build_entries(
         kind = "moc" if path in moc_paths else "note"
 
         up = up_parse.parse_up_from_content(content, conventions.parent_marker)
-        up_state = _resolve_up_state(up.target, moc_stem_set)
+        # T1.2 wires up_broken_reason into the entry dict; T1.1 only widens the
+        # resolver's signature and keeps the entry dict unchanged.
+        up_state, _up_broken_reason = _resolve_up_state(up.target, moc_stem_set, note_stem_set)
 
         title = extract_title(fm, body, path)
         entry: dict = {

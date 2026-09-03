@@ -118,6 +118,36 @@ a repair"* is not a new behaviour to build; it is an existing behaviour to route
 | summary renderer | per-situation counts | F5 |
 | stale-cache path | withhold the cause claim, keep today's wording | F6 |
 
+### Registration inventory — counted, not grepped
+
+A new check name is a registration, and spec 032 was bitten five separate times by a site the
+author did not know to look for. So the sites are enumerated here rather than left to a grep, and
+the **must-not-register** list is given equal weight — a wrong entry there silently restores exactly
+the destructive behaviour this spec removes.
+
+**Must register `parent_not_moc`:**
+
+| # | Site | Value |
+|---|---|---|
+| 1 | `garden-audit.py:51` `_TIER` | `"advisory"` |
+| 2 | `lib/garden_exclusions.py:30` `ALL_CHECK_NAMES` | add — see ADR-4 |
+| 3 | `garden-audit-doc.schema.json:57` check enum | add |
+| 4 | `garden-audit-wire.schema.json:53` check enum | add |
+| 5 | `garden-audit-configure.py:147` `_VALID_CHECKS` | add, or the wizard cannot configure an exclusion for it |
+| 6 | `garden-audit-render.py:63` `_CHECK_LABEL` | a label that does not use the word "broken" |
+
+**Must NOT register — each omission is load-bearing:**
+
+| # | Site | Why not |
+|---|---|---|
+| 7 | `garden-audit.py:60` `_FIXABLE` | the entire mechanism of ADR-1. Adding it here attaches a `decision` block and the report grows an apply checkbox — CON-2 violated in one line |
+| 8 | `garden-audit-render.py:574` suggest-targets tuple | offering to suggest repoint targets for a link that is not broken |
+| 9 | `garden-audit-render.py:813` enrichment tuple | enrichment exists to fill a fix block; there is no fix block |
+
+Two schema **descriptions** also enumerate the checks in prose (`garden-audit-doc.schema.json:63`
+for `tier`, `:67` for `fixable`). They are documentation, not validation, so a stale one fails no
+test — which is precisely why they are listed.
+
 ### Interface Specifications
 
 #### Cache entry — one added field
@@ -315,10 +345,12 @@ declaration-site line, and the same trap.
 2. **The reason must be resolved where the note-stem set is in scope.** Resolving it later, from the
    finding, would mean re-deriving the set — and a second derivation is a second place to get it
    wrong.
-3. **Two emission sites, not one.** Spec 032 hit this five separate times: a change is written at
-   the site the author grepped, and a second site with a different name is missed. Before
-   implementing, grep for every place `broken_up` findings are constructed *and* every place they
-   are consumed, and count them out loud in the task.
+3. **Two emission sites, not one — and nine registration sites, not three.** Spec 032 hit this five
+   separate times: a change is written at the site the author grepped, and a second site with a
+   different name is missed. The registration inventory above exists because the first draft of this
+   SDD listed three sites and there are nine. The parser's two routing sites (`:403` report, `:603`
+   wire) are likewise counted, not assumed. Any task that touches a name must state the count it is
+   working from.
 4. **The all-advisory run.** If every flagged parent is `parent_not_moc`, the integrity section has
    no broken-parent entries. The renderer already has an all-advisory path (`:322-325`); confirm it
    reads correctly rather than assuming it does.

@@ -399,3 +399,24 @@ Scope boundary worth keeping straight: spec 032 decides **where** a broken-paren
 of **whether** the fix should be offered.
 
 Found while validating spec 032 — see `docs/XDD/specs/032-up-source-routing/live-validation.md`.
+
+## OPEN — placeholder links carry no `section` (which H2 the link sits under)
+
+`moc-indexing.md §6` specifies that placeholder output should record the **section** a
+placeholder link appears under, so a later fix can put a created note back where it was
+referenced. Today `moc-tree-builder.py` emits `placeholder_links` as `{target,
+referenced_by}` only — the heading context is dropped at detection time in
+`lib/placeholder_detect.py`.
+
+Consequence: anything acting on a placeholder has to re-open the referencing MOC and
+re-derive the heading, which is exactly the kind of second parse that
+[spec 022's insertion-point work](specs/022-moc-insertion-point-intelligence/) exists to avoid.
+
+Not urgent — no current consumer needs it. Recorded so the gap stays visible.
+
+Provenance: filed during a 2026-04-12 drift check against `cache-generation.md` /
+`structure-scan.md` / `moc-indexing.md`. That check listed seven spec-defined gaps; the
+other six (orphan detection, cache post-write validation, classification coverage,
+frontmatter sampling, per-tag counting, deep-nesting warning) have since shipped. This is
+the last one, re-verified open on 2026-09-03 while retiring the memory file that carried
+the list.

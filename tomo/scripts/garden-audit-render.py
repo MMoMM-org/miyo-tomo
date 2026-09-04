@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.19.1
+# version: 0.20.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -188,7 +188,7 @@ def _wikilink(ref) -> str:
 # so there is nothing to key shared-target messaging on except the finding's
 # own detail — grouping lives here rather than piggybacking on a decision.
 
-def _group_up_target(f: dict) -> str | None:
+def _up_target_key(f: dict) -> str | None:
     """The rendered ``[[wikilink]]`` grouping key for a parent_not_moc finding,
     or None when it can't form a group.
 
@@ -210,7 +210,7 @@ def _group_by_up_target(findings: list[dict]) -> dict[str, list[dict]]:
     advisory count clause both read from this single pass."""
     groups: dict[str, list[dict]] = {}
     for f in findings:
-        key = _group_up_target(f)
+        key = _up_target_key(f)
         if key is None:
             continue
         groups.setdefault(key, []).append(f)
@@ -236,6 +236,14 @@ def _render_untagged_parents_block(up_target_groups: dict[str, list[dict]]) -> l
         "one tag each settles the group:**",
         "",
     ]
+    # Row order is deterministic by construction, not incidental: `shared`
+    # is filtered from `up_target_groups`, whose insertion order in turn
+    # comes from _group_by_up_target's single ordered pass over `findings`
+    # — both filters preserve dict insertion order, so rows render in
+    # findings order. That determinism is a diff-stability property, not an
+    # aesthetic one: a user re-running the audit and diffing the report in
+    # their vault should see row order shift only when the underlying
+    # findings order shifts, never as an artifact of this renderer.
     for target, fs in shared.items():
         # Reuse each finding's own id verbatim — _make_id assigns it once at
         # creation and the report renders it in the ### F<id> heading; a
@@ -413,6 +421,52 @@ def _render_preamble(d: dict) -> list[str]:
     return lines
 
 
+def _flagged_parent_situation_counts(findings: list[dict]) -> tuple[int, int]:
+    """(broken_up count, parent_not_moc count) — the two situations a flagged
+    parent link falls into (spec 033 T4.3, PRD F5). Check-name scoped, not
+    tier-scoped: `integrity` also holds dead_link and `advisory` also holds
+    duplicate_stem/stale_moc, neither of which is a flagged PARENT.
+    """
+    broken_up = sum(1 for f in findings if f.get("check") == "broken_up")
+    parent_not_moc = sum(1 for f in findings if f.get("check") == "parent_not_moc")
+    return broken_up, parent_not_moc
+
+
+def _render_flagged_parent_situations(findings: list[dict]) -> list[str]:
+    """Per-situation counts for flagged parents (PRD F5) — part of the
+    Summary block, so a reader can triage without reading 42 blocks.
+
+    Suppressed entirely when there are no flagged parents at all (crit 3).
+    When only one situation is populated, states that single count and names
+    only it — a "B / 0 P" pair would imply a division that does not exist
+    (crit 2), the same trap 032's own _render_broken_up_split line hit for a
+    *neutral routing fact* (its zero is fine: "0 in a note property" doesn't
+    ask "should there be some?"). This split does ask that question, so a
+    lopsided count gets a plain single-situation sentence instead.
+    """
+    broken_up, parent_not_moc = _flagged_parent_situation_counts(findings)
+    total = broken_up + parent_not_moc
+    if total == 0:
+        return []
+    if broken_up and parent_not_moc:
+        return [
+            f"Flagged parents: {total} — {broken_up} not found in the audited "
+            f"area, {parent_not_moc} not yet tagged as a MOC.",
+            "",
+        ]
+    if broken_up:
+        noun = "finding" if broken_up == 1 else "findings"
+        return [
+            f"Flagged parents: {broken_up} {noun}, not found in the audited area.",
+            "",
+        ]
+    noun = "finding" if parent_not_moc == 1 else "findings"
+    return [
+        f"Flagged parents: {parent_not_moc} {noun}, not yet tagged as a MOC.",
+        "",
+    ]
+
+
 def _render_summary(findings: list[dict]) -> list[str]:
     """Summary block with per-tier counts; zero findings → positive message."""
     lines = ["## Summary", ""]
@@ -438,6 +492,8 @@ def _render_summary(findings: list[dict]) -> list[str]:
         if n:
             lines.append(f"- {_TIER_LABEL[tier]}: {n}")
     lines.append("")
+
+    lines += _render_flagged_parent_situations(findings)
 
     # All-advisory run: no fixable findings — user must handle manually (PRD Feature 2).
     if fixable_count == 0:
@@ -539,7 +595,8 @@ def _broken_up_site(f: dict) -> str | None:
 def _render_broken_up_split(findings: list[dict]) -> list[str]:
     """Once-per-run routing-split line (ADR-4, verbatim per solution.md UI &
     UX): "Broken parents: N findings — B in the note body, P in a note
-    property."
+    property." — with a trailing clause (spec 033 T4.3, ADR-7) noting that N
+    counts broken_up survivors only.
 
     N is deliberately B + P, not the raw broken_up finding count. A finding
     whose site can't be attributed (see _broken_up_site) is excluded here
@@ -549,6 +606,13 @@ def _render_broken_up_split(findings: list[dict]) -> list[str]:
     doesn't double-count them. Suppressed entirely when B + P == 0, which
     covers both "no broken_up findings this run" and the measured first-run
     reality where every broken_up finding is stale-cache and unattributable.
+
+    ADR-7: _broken_up_site already gates on check == "broken_up", so N never
+    counted parent_not_moc findings — the split predates this spec by
+    construction. What changed is that N is now visibly SMALLER than a
+    reader may remember from before this spec shipped, because those
+    findings used to be broken_up too. The trailing clause says why, so a
+    dropped number doesn't read as a regression.
     """
     body = sum(1 for f in findings if _broken_up_site(f) == "body")
     prop = sum(1 for f in findings if _broken_up_site(f) == "property")
@@ -557,7 +621,8 @@ def _render_broken_up_split(findings: list[dict]) -> list[str]:
         return []
     return [
         f"Broken parents: {total} findings — {body} in the note body, "
-        f"{prop} in a note property.",
+        f"{prop} in a note property. Counts findings not found in the "
+        "audited area only — untagged parents are shown separately, above.",
         "",
     ]
 
@@ -707,7 +772,7 @@ def _render_finding(
         # Advisory → read-only note, no checkbox. Auto-pushback (2026-07-23):
         # approving the report pauses ALL advisories for the window — no
         # per-finding tick (the preamble states this once).
-        group_key = _group_up_target(f)
+        group_key = _up_target_key(f)
         group_size = len(up_target_groups.get(group_key, [])) if group_key else 1
         lines += [
             _advisory_message(f, group_size),

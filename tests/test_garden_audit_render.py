@@ -1460,6 +1460,80 @@ class TestBrokenUpSplitLine:
 
 
 # ---------------------------------------------------------------------------
+# spec 033 T4.3 / PRD F5: the Summary states how many flagged parents fall
+# into each situation (broken_up vs parent_not_moc) — a reader can triage
+# without reading 42 blocks. Same trap 032's declaration-site line named:
+# a breakdown that implies a division when only one situation is populated
+# ("42 findings — 42 unresolved, 0 untagged parents" is true, useless, and
+# alarming). Unlike that line's body/property split (a neutral routing
+# fact, shown with its zero), THIS split answers "should there be some?" —
+# so a populated-but-lopsided count renders as a single sentence naming
+# only the situation that's actually there, never a 0-count clause.
+# ---------------------------------------------------------------------------
+
+class TestFlaggedParentSituationCounts:
+    def test_both_situations_present_states_both_counts_summing_to_total(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+            _make_parent_not_moc_finding("F03", up_target="X"),
+            _make_parent_not_moc_finding("F04", up_target="Y"),
+            _make_parent_not_moc_finding("F05", up_target="Z"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        # Reconciliation, not each side alone — recompute from the findings
+        # list rather than hardcoding the numbers a second time.
+        broken_up_n = sum(1 for f in findings if f["check"] == "broken_up")
+        parent_not_moc_n = sum(1 for f in findings if f["check"] == "parent_not_moc")
+        assert str(broken_up_n + parent_not_moc_n) in line
+        assert str(broken_up_n) in line
+        assert str(parent_not_moc_n) in line
+
+    def test_only_broken_up_present_names_only_that_situation(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        assert "not found in the audited area" in line
+        assert "not yet tagged as a MOC" not in line
+
+    def test_only_parent_not_moc_present_names_only_that_situation(self):
+        findings = [_make_parent_not_moc_finding("F01", up_target="X")]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        assert "not yet tagged as a MOC" in line
+        assert "not found in the audited area" not in line
+
+    def test_no_flagged_parents_no_line_at_all(self):
+        findings = [_make_dead_link_finding("F01"), _make_duplicate_stem_finding("F02")]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Flagged parents:" not in report
+
+    def test_zero_findings_no_line_at_all(self):
+        report = _render_report(_make_doc(findings=[]))
+        assert "Flagged parents:" not in report
+
+    def test_declaration_site_line_says_it_counts_survivors_only(self):
+        # ADR-7: 032's own line ("Broken parents: N findings — B in the note
+        # body, P in a note property.") now sums to a SMALLER N than before
+        # this spec, because parent_not_moc findings have left the broken_up
+        # population. The line must say so, not just silently drop.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_parent_not_moc_finding("F02", up_target="X"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        split_line = _line_containing(report, "Broken parents:")
+        # The verbatim spec-032 prefix survives untouched (substring, not
+        # equality) — this test only proves the NEW clause was appended.
+        assert _SPLIT_LINE.format(total=1, body=1, prop=0) in split_line
+        assert "untagged" in split_line.lower()
+
+
+# ---------------------------------------------------------------------------
 # Fix-a: property-language for the ACTION, not the FINDING (T5.1/T5.2/T5.3
 # follow-up). A property-resident (up_source == "frontmatter") broken_up
 # finding is fixed via a YAML-property edit — but the Fix summary line and
@@ -1600,13 +1674,13 @@ class TestPropertyResidentFixLanguage:
         # spec 032's CON-7 proved this line's OLD wording survived byte-for-
         # byte through THAT fix (68c4594) — a historical fact, still true at
         # that commit, not a promise that no later spec may ever reword it.
-        # spec 033 T4.2 deliberately rewords this line (ADR-6), so a full-
-        # report equality assertion against the pre-033 renderer no longer
-        # holds. What CON-7 protects going forward is narrower and still
-        # real: OTHER findings sharing the same report must render
-        # byte-identically, and the broken_up block's own detail line /
-        # heading / Repoint hint (everything except the Fix line) must be
-        # untouched too.
+        # spec 033 T4.2 deliberately rewords the Fix line (ADR-6) and T4.3
+        # appends a clause to the declaration-site split line (ADR-7), so a
+        # full-report equality assertion against the pre-033 renderer no
+        # longer holds. What CON-7 protects going forward is narrower and
+        # still real: OTHER findings render byte-identically, and the
+        # broken_up block's own detail line / heading / Repoint hint
+        # (everything except the two known, declared changes) is untouched.
         import subprocess
         import tempfile
 
@@ -1636,25 +1710,48 @@ class TestPropertyResidentFixLanguage:
 
         old_lines = old_gar.render_report(doc).splitlines()
         new_lines = gar.render_report(doc).splitlines()
-        assert len(old_lines) == len(new_lines), (
-            "T4.2 reworded one line's text, not the line count"
+
+        # spec 033 T4.3 adds a "Flagged parents:" line (+ trailing blank) to
+        # the Summary — this pre-033 baseline has never seen it at all, a
+        # second, separately declared addition on top of T4.2's reword.
+        # Identify and strip it precisely before comparing anything else.
+        flagged_idx = next(
+            i for i, ln in enumerate(new_lines) if ln.startswith("Flagged parents:")
+        )
+        assert new_lines[flagged_idx + 1] == ""
+        assert "not found in the audited area" in new_lines[flagged_idx]
+        stripped_new_lines = new_lines[:flagged_idx] + new_lines[flagged_idx + 2:]
+
+        assert len(old_lines) == len(stripped_new_lines), (
+            "T4.2 reworded one line's text; T4.3's addition is now stripped"
         )
 
         changed = [
-            i for i, (o, n) in enumerate(zip(old_lines, new_lines)) if o != n
+            i for i, (o, n) in enumerate(zip(old_lines, stripped_new_lines)) if o != n
         ]
         assert changed, "the fix under test changed nothing — assertion is hollow"
-        # Exactly one line differs: F01's own Fix line. Everything else —
-        # F02 (dead_link) and F03 (unparented) in full, and F01's own
+        # Exactly two lines differ: the declaration-site split line (T4.3's
+        # ADR-7 clause) and F01's own Fix line (T4.2's reword). Everything
+        # else — F02 (dead_link) and F03 (unparented) in full, and F01's own
         # heading/detail-line/Repoint-hint — is untouched.
-        assert len(changed) == 1, (
-            f"expected exactly the Fix line to change, got: "
-            f"{[new_lines[i] for i in changed]}"
+        assert len(changed) == 2, (
+            f"expected exactly the split line and the Fix line to change, got: "
+            f"{[stripped_new_lines[i] for i in changed]}"
         )
-        assert new_lines[changed[0]].startswith("**Fix:**")
-        assert old_lines[changed[0]].startswith("**Fix:**")
-        assert "not found in the audited area" in new_lines[changed[0]]
-        assert "not found in the audited area" not in old_lines[changed[0]]
+        split_idx, fix_idx = (
+            (changed[0], changed[1])
+            if stripped_new_lines[changed[0]].startswith("Broken parents:")
+            else (changed[1], changed[0])
+        )
+        assert stripped_new_lines[split_idx].startswith("Broken parents:")
+        assert old_lines[split_idx].startswith("Broken parents:")
+        assert "untagged" in stripped_new_lines[split_idx].lower()
+        assert "untagged" not in old_lines[split_idx].lower()
+
+        assert stripped_new_lines[fix_idx].startswith("**Fix:**")
+        assert old_lines[fix_idx].startswith("**Fix:**")
+        assert "not found in the audited area" in stripped_new_lines[fix_idx]
+        assert "not found in the audited area" not in old_lines[fix_idx]
 
 
 # ---------------------------------------------------------------------------
@@ -1885,6 +1982,18 @@ class TestUnsupportedShapeSummaryLanguage:
 
         old_lines = old_report.splitlines()
         new_lines = new_report.splitlines()
+
+        # spec 033 T4.3 adds a "Flagged parents:" line (+ trailing blank) to
+        # the Summary — absent from this 68c4594 baseline entirely, a third
+        # sanctioned difference alongside T4.2's Fix-line reword. Strip it
+        # first so every index below lines up between old and new.
+        flagged_idx = next(
+            i for i, ln in enumerate(new_lines) if ln.startswith("Flagged parents:")
+        )
+        assert new_lines[flagged_idx + 1] == ""
+        assert "not found in the audited area" in new_lines[flagged_idx]
+        new_lines = new_lines[:flagged_idx] + new_lines[flagged_idx + 2:]
+
         assert len(old_lines) == len(new_lines)
 
         def _block_indices(lines, fid):
@@ -2161,6 +2270,26 @@ class TestUntaggedParentsBlockContent:
         assert "F19" in block_line
         assert "F02" not in block_line
         assert "F03" not in block_line
+
+    def test_row_order_follows_findings_order_not_alphabetical(self):
+        # Row order is deterministic by construction — one ordered pass over
+        # findings, with dict insertion order preserved through the filter
+        # and the render loop — but nothing asserted it before this test. A
+        # user keeping these reports in a vault gets diff noise on every run
+        # if that order ever starts depending on something other than
+        # encounter order (e.g. alphabetical sorting creeping in later).
+        # "Zebra" appears first in findings but sorts AFTER "Apple" — the two
+        # orderings disagree here, so this actually distinguishes them.
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Zebra"),
+            _make_parent_not_moc_finding("F02", up_target="Zebra"),
+            _make_parent_not_moc_finding("F03", up_target="Apple"),
+            _make_parent_not_moc_finding("F04", up_target="Apple"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        zebra_idx = report.index("[[Zebra]] —")
+        apple_idx = report.index("[[Apple]] —")
+        assert zebra_idx < apple_idx
 
 
 class TestUntaggedParentsMissingTarget:

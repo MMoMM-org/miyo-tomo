@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Integration, regression and live validation"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -79,7 +79,7 @@ phase: 5
      real apply was observed, and that discipline is why the defect was found rather than assumed
      absent.
 
-- [ ] **T5.5 Documentation** `[activity: documentation]`
+- [x] **T5.5 Documentation** `[activity: documentation]`
 
   1. Update the spec README to `Implemented` via `xdd-meta finalize`, with the measured before/after.
   2. Close issue #157 with the numbers, not with a description.

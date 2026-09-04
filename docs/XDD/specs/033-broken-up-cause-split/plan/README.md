@@ -110,7 +110,7 @@ deliberately stay untouched. P4 is the user-visible surface. P5 proves the chain
 - [x] [Phase 2: Split the check](phase-2.md)
 - [x] [Phase 3: Register the new check](phase-3.md)
 - [x] [Phase 4: Report surface](phase-4.md)
-- [ ] [Phase 5: Integration, regression and live validation](phase-5.md)
+- [x] [Phase 5: Integration, regression and live validation](phase-5.md)
 
 ### Dependency graph
 

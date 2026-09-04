@@ -403,3 +403,50 @@ this spec.
   remedy is wrong for two of them (issue #157).
 - The `Atlas/` audit exclusion had to be narrowed for the run and was restored afterwards
   (verified: 329/329 blocked again).
+
+---
+
+## Spec 033 — broken-parent cause split (T5.3 zero-added-vault-access validation)
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-09-04 |
+| **Phase** | Phase 5 (`plan/phase-5.md` T5.3) — structural regression validation, not a live pipeline run |
+| **Scope** | `garden-audit.py::_check_broken_up` — the single function issue #157's split routes into BOTH `broken_up` and the new `parent_not_moc` (spec 033 ADR-1) |
+| **Versions** | garden-audit 0.6.1 |
+
+**No `tool_use` table this entry.** This task validates a structural property of the scripts, not a
+live `/inbox` run — there is no container session to pull a `tool_use` count from. Recorded anyway,
+because the caveat spec 032 stated for its own T6.5 measurement applies here in advance, not just in
+hindsight: a `tool_use` count (had one been taken) measures what the *model* invoked via MCP, not
+what Tomo's scripts do over HTTP through `kado_client`. A zero (or an absent count, as here) proves
+nothing about script-level traffic on its own — it takes the structural argument below to close that
+gap.
+
+CON-1 ("zero added vault access") is proven **structurally**, the same stronger guarantee spec 032's
+entry above already leaned on for the pre-033 shape of this same function:
+`tests/test_garden_audit_broken_up_no_vault_access.py` asserts (a) `_check_broken_up`'s signature —
+`inspect.signature` — accepts no `graph_audit_fn` / `list_dir_fn` parameter (its full parameter set
+is exactly `{entries, exclusions, counter}`), and (b) walking the AST of its body (docstring
+excluded, so the prose "cache-only, NEVER triggers graph_audit" in its own docstring can't produce a
+false hit) turns up no reference to a vault-callable identifier at all — closing the gap a
+signature-only check leaves open (a module-level client or an inline `from lib.kado_client import
+...` inside the function body would grant access without adding a parameter). Extended to
+`_check_unparented` / `_check_duplicate_stem` (the other cache-only checks) for consistency, and
+contrasted against `_check_stale_moc` (which legitimately takes `list_dir_fn`) so the guard is shown
+to actually discriminate rather than describing every check identically.
+
+Because spec 033 emits `parent_not_moc` from `_check_broken_up` itself — no second function was
+added — this one structural proof covers both check outputs. The property is structural, so it
+cannot regress silently: any future PR that threads a vault-callable into this function fails the
+signature assertion immediately, without needing a live run to catch it.
+
+**Notes**:
+- `tests/test_garden_audit_broken_up_no_vault_access.py`: 5 tests, all green.
+- `tests/test_garden_audit_render_con3_byte_identity.py` (T5.2, same session): loads
+  `garden-audit-render.py` as of `8d866bb` (last commit before Phase 1) via `git show` + `importlib`,
+  renders a 7-finding mixed document through both, and asserts every non-broken-parent finding block
+  (`unparented`, `orphan`, `dead_link`, `duplicate_stem`, `stale_moc`) is byte-identical by F-id —
+  scoped to blocks, not a changed-line count, per the CON-3 rationale in the file's own docstring.
+  Guard proven to bite: a deliberate one-word mutation to the `dead_link` detail line (reverted
+  immediately after) turned the test red on exactly that block before being reverted back to green.

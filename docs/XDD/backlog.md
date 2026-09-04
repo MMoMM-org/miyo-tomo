@@ -449,3 +449,39 @@ Action for anyone shipping this: mention it in the release note for spec 033 —
 `broken_up` by name rather than with `checks: all`, you may see a few new advisory findings; this is
 expected, not a regression" — and, for users who prefer silence, that adding `parent_not_moc` to the
 explicit `checks` list restores it.
+
+## OPEN — check-name knowledge is duplicated across six structures; it has already caused a real miss
+
+Adding one garden-audit check requires editing **nine** separate registration sites, because no
+single structure owns the set of check names. They are spread across:
+
+- `tomo/scripts/garden-audit.py` — `_TIER` (name → tier), `_FIXABLE` (which names may carry a fix)
+- `tomo/scripts/lib/garden_exclusions.py` — `ALL_CHECK_NAMES`
+- `tomo/scripts/garden-audit-configure.py` — `_VALID_CHECKS`
+- `tomo/scripts/garden-audit-render.py` — `_CHECK_LABEL`, plus two check-name tuples
+- `tomo/scripts/garden-audit-stats.py` — `_CHECKS`, `_COL_LABEL`, **and a second, stats-local
+  `_TIER`** that duplicates `garden-audit.py`'s
+- `tomo/schemas/` — three separate check-name enums (`garden-audit-doc`, `garden-audit-wire`,
+  `garden-audit-exclusions`), plus four prose descriptions that enumerate checks and validate
+  nothing
+
+**This is not hypothetical debt.** Spec 033's SDD first drafted the registration inventory at six
+must-register sites. An independent audit found three more, all of them in `garden-audit-stats.py`
+or the third schema enum — the surfaces furthest from the check that owns the name. The most severe
+(`_CHECKS`, guarded by a module-scope `assert` at `garden-audit-stats.py:50`) would have raised
+`AssertionError` at **import**, taking the stats tool down entirely, and the planned verification
+walk would not have caught it: a walk over the inventory can only prove the sites named in it are
+covered, never that no others exist. Spec 032 hit the same class of miss, and spec 031's
+`move_asset` is still unregistered in three places for the same reason.
+
+Spec 033 mitigated the symptom rather than the cause: it corrected the inventory to nine sites, and
+rewrote its verification to include a completeness grep independent of the table (classify every
+occurrence of an existing check name as either registered-or-deliberately-excluded). That grep is
+reusable and should be the minimum bar for any future check — but it is a detector, not a fix.
+
+The fix would be a single source of truth for check metadata (name, tier, fixable, label, column
+label) with every other structure derived from it, leaving only the genuinely independent decisions
+— the three sites where a name must deliberately NOT appear — as explicit opt-outs. The schema
+enums could be generated rather than hand-maintained.
+
+Worth doing before the next check is added, not after.

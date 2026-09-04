@@ -86,7 +86,7 @@ phase: 5
   3. Record the exclusion behaviour change from T3.3 wherever a release note is owed.
   4. **Success**: someone reading #157 in six months sees what changed and by how much.
 
-- [ ] **T5.6 Phase Validation** `[activity: validate]`
+- [x] **T5.6 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - Walk the SDD Quality Requirements table and confirm each row has a passing test.

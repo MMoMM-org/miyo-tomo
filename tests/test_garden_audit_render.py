@@ -2695,3 +2695,70 @@ class TestAdvisoryFallbackByteIdenticalCon3:
             "_Advisory — no automated fix. Review and handle manually._",
             "_Advisory — no automated fix. Review and handle manually._",
         ]
+
+
+# ---------------------------------------------------------------------------
+# spec 033 T4.6, SDD Implementation Gotcha 4: the all-advisory case — every
+# flagged parent is parent_not_moc, so no broken_up findings survive the
+# split. Verified correct by direct render during the T4.5 prose read, but
+# nothing in the suite guarded it: a future change could break any of it
+# and stay green. Three cases, not two — Case C exists on purpose (see its
+# own docstring below): it is the only one that distinguishes "the
+# Integrity section is suppressed because it is EMPTY" from "suppressed
+# because no broken parents exist". Those are different code paths
+# (_render_tier_section gates on the tier being empty; _render_broken_up_
+# split gates on body+prop == 0) that happen to agree whenever integrity
+# is empty — Case A and B can't tell them apart, only Case C can.
+# ---------------------------------------------------------------------------
+
+class TestAllAdvisoryCaseGotcha4:
+    def test_case_a_all_unique_targets_no_integrity_no_split_no_untagged_block(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Alpha"),
+            _make_parent_not_moc_finding("F02", up_target="Beta"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "## Integrity" not in report
+        assert "Broken parents:" not in report
+        # Single-situation form, no zero-count clause implying a division.
+        line = _line_containing(report, "Flagged parents:")
+        assert line == "Flagged parents: 2 findings, not yet tagged as a MOC."
+        assert "Untagged parents" not in report
+        assert "No fixable findings" in report  # all-advisory notice present
+
+    def test_case_b_one_shared_target_lists_only_the_shared_one(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Shared"),
+            _make_parent_not_moc_finding("F02", up_target="Shared"),
+            _make_parent_not_moc_finding("F03", up_target="Unique"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "**Untagged parents" in report
+        shared_line = _line_containing(report, "[[Shared]] —")
+        assert "F01" in shared_line
+        assert "F02" in shared_line
+        assert "[[Unique]] —" not in report
+        assert "## Integrity" not in report
+        assert "Broken parents:" not in report
+
+    def test_case_c_advisory_plus_a_real_fixable_integrity_finding(self):
+        # The case with zero prior coverage, and the one that actually
+        # distinguishes the two "why is Integrity/split absent" reasons —
+        # see the class docstring. A dead_link finding keeps Integrity
+        # non-empty and keeps the run fixable, while zero broken_up
+        # findings still means zero broken-parent entries and no split
+        # line. If a future refactor conflated "tier empty" with "no
+        # broken parents", this is the only case here that would catch it.
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Alpha"),
+            _make_parent_not_moc_finding("F02", up_target="Beta"),
+            _make_dead_link_finding("F03"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "## Integrity" in report
+        assert "Dead link" in report
+        assert "Broken up:: link" not in report
+        assert "Broken parents:" not in report
+        # A fixable (dead_link) finding is present — the all-advisory
+        # notice must NOT render, unlike Case A/B.
+        assert "No fixable findings" not in report

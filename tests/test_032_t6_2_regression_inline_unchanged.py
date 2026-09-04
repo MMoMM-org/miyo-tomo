@@ -26,17 +26,36 @@ exactly as before). An all-inline fixture never takes that branch, so the
 action-kind sequence build_garden_audit_actions produces is identical to the
 pre-032 sequence, id-for-id.
 
-One DECLARED exception on the report side, not a defect: T5.3 (ADR-4,
-garden-audit-render.py:419 _render_broken_up_split) added a once-per-run
-summary line — "Broken parents: N findings — B in the note body, P in a
-note property." — that solution.md's UI & UX spec verbatim as suppressed
-ONLY when body+prop == 0. It is therefore emitted for an all-inline run too
-(P is legitimately 0), not gated on any property-resident finding actually
-existing. TestReportByteIdenticalCon7 asserts the narrower property this
-implies: every line OTHER than that one declared addition is untouched, and
-proves the exception is real (not a cover for a bug) by also asserting full
-byte-identity holds when there are zero broken_up findings at all — the
-case where ADR-4's own suppression rule applies.
+FOUR DECLARED exceptions on the report side, not defects. Originally one
+(spec 032 T5.3); spec 033 sanctioned three more on top of it, all for this
+same all-inline fixture:
+
+  1. (032, T5.3/ADR-4) garden-audit-render.py's _render_broken_up_split adds
+     a once-per-run summary line — "Broken parents: N findings — B in the
+     note body, P in a note property." — suppressed ONLY when body+prop == 0,
+     so it's emitted for an all-inline run too (P legitimately 0), not gated
+     on any property-resident finding existing.
+  2. (033, T4.2/ADR-6) _fix_summary's broken_up branch is reworded to say
+     the target was "not found in the audited area" rather than implying it
+     is gone — for EVERY broken_up finding, body-resident included. Spec 032
+     kept inline Fix-line wording byte-identical through its own whole diff
+     (only exception 1 was needed until now); T4.2 is the first change ever
+     to touch it, which is why this file's fixture (all findings inline)
+     newly diverges here too.
+  3. (033, T4.3/ADR-7) the SAME split line from exception 1 gains a trailing
+     clause noting it counts broken_up survivors only — parent_not_moc
+     findings left that population, and a reader who remembers a bigger N
+     needs to know why it dropped.
+  4. (033, T4.3/PRD F5) a brand-new "Flagged parents:" line (+ its trailing
+     blank) is added to the Summary, stating the per-situation counts. This
+     baseline predates the whole per-situation-counts feature, so it never
+     had it.
+
+TestReportByteIdenticalCon7 asserts the narrower property these four imply:
+every line OTHER than these four declared differences is untouched, and
+proves the differences are real (not cover for a bug) by also asserting
+full byte-identity holds when there are zero broken_up findings at all — the
+case where every one of the four is gated off at once.
 """
 from __future__ import annotations
 
@@ -284,20 +303,31 @@ class TestInstructionSetByteIdenticalCon7:
 # ---------------------------------------------------------------------------
 
 class TestReportByteIdenticalCon7:
-    def test_full_report_byte_identical_old_vs_new_except_the_declared_split_line(self):
+    def test_full_report_byte_identical_old_vs_new_except_the_declared_exceptions(self):
         # NOT a full byte-identity assertion — and that is itself a finding,
-        # not an oversight. garden-audit-render.py:419 _render_broken_up_split
-        # is a once-per-run summary line that ADR-4 / solution.md UI & UX
-        # spec verbatim as suppressed ONLY when body+prop == 0 — it is
-        # deliberately emitted for an ALL-INLINE run too (0 property-resident,
-        # >=1 body-resident), not gated on any property-resident finding
-        # existing. So an all-inline fixture legitimately gains exactly ONE
-        # new line (+ its trailing blank line) versus the true pre-032
-        # baseline. This is the one exception CON-7's own T6.2 wording
-        # anticipates ("no split line CHANGES to existing wording" — the
-        # split line's own text, not its presence, is what must be correct).
+        # not an oversight. Originally ONE declared exception (spec 032 T5.3):
+        # garden-audit-render.py's _render_broken_up_split is a once-per-run
+        # summary line, suppressed ONLY when body+prop == 0 — deliberately
+        # emitted for an ALL-INLINE run too (0 property-resident, >=1
+        # body-resident), not gated on any property-resident finding
+        # existing.
+        #
+        # spec 033 sanctioned three MORE differences for this same all-inline
+        # fixture, none of them defects:
+        #   (2) T4.2 (ADR-6) rewords the Fix line for EVERY broken_up finding,
+        #       body-resident included — this fixture's F02 (removal) and F03
+        #       (repoint) are both inline, so both differ now. Spec 032 kept
+        #       inline Fix-line wording byte-identical through its own whole
+        #       diff (that's why exception (1) alone sufficed until now);
+        #       T4.2 is the first change to ever touch it.
+        #   (3) T4.3 (ADR-7) appends a clause to the SAME split line from (1),
+        #       noting it counts broken_up survivors only.
+        #   (4) T4.3 (PRD F5) adds a brand-new "Flagged parents:" line (+ its
+        #       trailing blank) to the Summary — this baseline predates the
+        #       whole per-situation-counts feature, so it never had it.
         # Assert the narrower property: every OTHER line is untouched, AND
-        # the new lines are exactly this one declared, spec-locked addition.
+        # the changed/added lines are exactly these four declared, spec-
+        # locked differences — nothing else rode in with them.
         doc = _make_doc(_all_inline_findings())
 
         old_report = (
@@ -310,24 +340,62 @@ class TestReportByteIdenticalCon7:
         old_lines = old_report.splitlines()
         new_lines = new_report.splitlines()
 
-        split_line = (
+        # Exceptions (1)+(3): the split line's PRESENCE (032) now carries
+        # T4.3's clause (033) too — no longer the bare verbatim string, but
+        # still starting with it (substring, not equality).
+        split_line = next(ln for ln in new_lines if ln.startswith("Broken parents:"))
+        assert split_line not in old_lines
+        assert split_line.startswith(
             "Broken parents: 2 findings — 2 in the note body, 0 in a note property."
         )
-        assert split_line in new_lines
-        assert split_line not in old_lines
+        assert "untagged" in split_line.lower()
+        split_idx = new_lines.index(split_line)
+        assert new_lines[split_idx + 1] == ""  # its trailing blank
 
-        # Remove exactly the split line + its trailing blank line from the
-        # new report and require what remains to be byte-identical, in
-        # order, to the true pre-032 report.
-        idx = new_lines.index(split_line)
-        assert new_lines[idx + 1] == ""  # the blank line _render_broken_up_split appends
-        stripped_new_lines = new_lines[:idx] + new_lines[idx + 2:]
-        assert stripped_new_lines == old_lines
+        # Exception (4): the new "Flagged parents:" line + its trailing blank.
+        flagged_line = next(ln for ln in new_lines if ln.startswith("Flagged parents:"))
+        assert flagged_line not in old_lines
+        assert flagged_line == "Flagged parents: 2 findings, not found in the audited area."
+        flagged_idx = new_lines.index(flagged_line)
+        assert new_lines[flagged_idx + 1] == ""
 
-    def test_split_line_only_addition_is_gated_off_with_zero_broken_up(self):
-        # Falsifies the exception above: with NO broken_up findings at all,
-        # _render_broken_up_split is suppressed (body+prop == 0) and the
-        # report really is fully byte-identical, no exception needed.
+        # Remove exactly these two line-pairs (4 lines total) from the new
+        # report, highest index first so earlier deletions don't shift later
+        # ones, and require what remains to be byte-identical, in order, to
+        # the true pre-032 report — except for exception (2), handled next.
+        added = sorted([split_idx, split_idx + 1, flagged_idx, flagged_idx + 1], reverse=True)
+        stripped_new_lines = list(new_lines)
+        for i in added:
+            del stripped_new_lines[i]
+
+        assert len(stripped_new_lines) == len(old_lines)
+        changed = [
+            i for i, (o, n) in enumerate(zip(old_lines, stripped_new_lines)) if o != n
+        ]
+        assert changed, "the fix under test changed nothing — assertion is hollow"
+
+        # Exception (2): F02 and F03's own Fix lines, both inline, both
+        # reworded by T4.2. Nothing else may differ.
+        assert len(changed) == 2, (
+            f"expected exactly F02 and F03's Fix lines to differ, got: "
+            f"{[stripped_new_lines[i] for i in changed]}"
+        )
+        for i in changed:
+            assert stripped_new_lines[i].startswith("**Fix:**")
+            assert old_lines[i].startswith("**Fix:**")
+            assert "not found in the audited area" in stripped_new_lines[i]
+            assert "not found in the audited area" not in old_lines[i]
+
+    def test_declared_exceptions_are_gated_off_with_zero_broken_up(self):
+        # Falsifies all four exceptions above at once: with NO broken_up
+        # findings at all, _render_broken_up_split is suppressed
+        # (body+prop == 0), _render_flagged_parent_situations is suppressed
+        # (broken_up count == 0, and this fixture has no parent_not_moc
+        # findings either), and _fix_summary's broken_up branch is never
+        # reached at all — so the report really is fully byte-identical, no
+        # exception needed. Proves the four declared differences above are
+        # exactly what the two sanctioning specs (032 T5.3, 033 T4.2/T4.3)
+        # produce, not a cover for something else riding along.
         doc = _make_doc([f for f in _all_inline_findings() if f["check"] != "broken_up"])
 
         old_report = (
@@ -337,6 +405,8 @@ class TestReportByteIdenticalCon7:
             "\n".join(new_gar.render_frontmatter(doc)) + "\n" + new_gar.render_report(doc)
         )
         assert new_report == old_report
+        assert "Broken parents:" not in new_report
+        assert "Flagged parents:" not in new_report
 
     def test_wire_payload_byte_identical_old_vs_new(self):
         # build_wire_payload is untouched by this spec (0-line diff at

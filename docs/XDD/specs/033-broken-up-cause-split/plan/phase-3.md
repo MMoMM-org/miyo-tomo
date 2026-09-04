@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Register the new check"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -72,7 +72,7 @@ concurrently with Phases 1–2.
   5. **Success**: nine must-register sites registered, the stats-local `_TIER` drift is closed, and
      the four prose descriptions match reality.
 
-- [ ] **T3.2 Prove each registration, each deliberate omission, and that the inventory itself is
+- [x] **T3.2 Prove each registration, each deliberate omission, and that the inventory itself is
   complete** `[activity: validate]`
 
   1. **Prime**: `[ref: SDD/Quality Requirements; Q6]`. Spec 032 ran exactly this walk and found two
@@ -117,7 +117,7 @@ concurrently with Phases 1–2.
      applies to this vault.
   5. **Success**: the first user to see a "reappeared" finding finds a written answer.
 
-- [ ] **T3.4 Phase Validation** `[activity: validate]`
+- [x] **T3.4 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - The T3.2 walk (9 red on removal, 3 red on addition, the `broken_up` completeness grep fully

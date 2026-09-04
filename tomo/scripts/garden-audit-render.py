@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.19.0
+# version: 0.19.1
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -311,15 +311,27 @@ def _fix_summary(check: str, detail: dict, decision: dict, up_property: str) -> 
             "`/garden-audit suggest`, or set one in **File under:** below."
         )
     if check == "broken_up":
+        # spec 033 T4.2, ADR-6: the target's absence from the discovery cache
+        # does not prove the note is gone — the cache covers only the
+        # audited scope, and a target can legitimately live in a folder the
+        # scan never looked at (measured: 8 of 22 unresolved targets do).
+        # Say "not found in the audited area" and point at that scope as
+        # something the user can widen, rather than asserting the note does
+        # not exist. Remove and repoint remain available — this rewords the
+        # CLAIM, not the fix (ADR-7's routing by declaration site, and the
+        # property-edit disclosure it carries, are unchanged below).
         up = _wikilink(detail.get("up_target"))
         if detail.get("up_source") == "frontmatter":
             return (
-                f"The broken `{up_property}` property (was {up}) — repoint it to "
-                "a MOC you enter below, or leave empty to remove the property value."
+                f"The broken `{up_property}` property (was {up}) — not found in "
+                "the audited area. Widen the audited scope if it exists "
+                "elsewhere, repoint it to a MOC you enter below, or leave empty "
+                "to remove the property value."
             )
         return (
-            f"The broken `up::` (was {up}) — repoint it to a MOC you enter below, "
-            "or leave empty to remove the broken line."
+            f"The broken `up::` (was {up}) — not found in the audited area. "
+            "Widen the audited scope if it exists elsewhere, repoint it to a "
+            "MOC you enter below, or leave empty to remove the broken line."
         )
     if check == "dead_link":
         dead = _wikilink(detail.get("dead_target"))

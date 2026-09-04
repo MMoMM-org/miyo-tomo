@@ -1492,14 +1492,20 @@ def _line_starting_with(report: str, prefix: str) -> str:
 
 class TestPropertyResidentFixLanguage:
     def test_frontmatter_resident_fix_line_names_property_not_up_marker(self):
+        # spec 033 T4.2 reworded this exact line's wording (ADR-6, "not found
+        # in the audited area") — the string below is the CURRENT verbatim
+        # text, not the pre-033 one; TestBrokenUpAuditedAreaWording covers
+        # the T4.2 criteria themselves.
         f = _make_broken_up_finding(
             "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
         )
         report = _render_report(_make_doc(findings=[f]))
         fix_line = _line_starting_with(report, "**Fix:**")
         assert fix_line == (
-            "**Fix:** The broken `up` property (was [[Deleted MOC]]) — repoint it "
-            "to a MOC you enter below, or leave empty to remove the property value."
+            "**Fix:** The broken `up` property (was [[Deleted MOC]]) — not found "
+            "in the audited area. Widen the audited scope if it exists elsewhere, "
+            "repoint it to a MOC you enter below, or leave empty to remove the "
+            "property value."
         )
         assert "up::" not in fix_line
         assert "the broken line" not in fix_line
@@ -1524,8 +1530,10 @@ class TestPropertyResidentFixLanguage:
         report = _render_report(d)
         fix_line = _line_starting_with(report, "**Fix:**")
         assert fix_line == (
-            "**Fix:** The broken `parent` property (was [[Deleted MOC]]) — repoint "
-            "it to a MOC you enter below, or leave empty to remove the property value."
+            "**Fix:** The broken `parent` property (was [[Deleted MOC]]) — not "
+            "found in the audited area. Widen the audited scope if it exists "
+            "elsewhere, repoint it to a MOC you enter below, or leave empty to "
+            "remove the property value."
         )
         assert "up" not in fix_line
         assert "`up`" not in fix_line
@@ -1567,27 +1575,38 @@ class TestPropertyResidentFixLanguage:
         ) in report
         assert "`up`" not in report
 
-    def test_inline_resident_fix_and_repoint_lines_unchanged_con7(self):
-        # CON-7: body-resident wording is untouched — same strings as before
-        # this fix, verbatim.
+    def test_inline_resident_fix_line_reworded_repoint_hint_unchanged_con7(self):
+        # spec 033 T4.2 reworded the Fix line (ADR-6) for BOTH declaration
+        # sites — that CON-7 guarantee (from spec 032's property-language
+        # fix) covered the property-vs-up:: contradiction, not this spec's
+        # deliberate audited-area rewording. What T4.2 does NOT touch is the
+        # separate "**Repoint to:**" hint line — still exactly as before.
         f = _make_broken_up_finding(
             "F01", up_source="inline", up_value="[[Alte MOC]]"
         )
         report = _render_report(_make_doc(findings=[f]))
         assert (
-            "**Fix:** The broken `up::` (was [[Deleted MOC]]) — repoint it to a "
-            "MOC you enter below, or leave empty to remove the broken line."
+            "**Fix:** The broken `up::` (was [[Deleted MOC]]) — not found in "
+            "the audited area. Widen the audited scope if it exists elsewhere, "
+            "repoint it to a MOC you enter below, or leave empty to remove the "
+            "broken line."
         ) in report
         assert (
             "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
             "up::, or leave empty to remove"
         ) in report
 
-    def test_inline_resident_full_report_byte_identical_to_pre_fix_render_con7(self):
-        # Strongest CON-7 proof: load the pre-change renderer (the last commit
-        # to touch this file before this fix) as a separate module from git
-        # history, render the SAME inline-resident doc through both the old
-        # and the current module, and assert full-report byte-identity.
+    def test_inline_resident_report_unaffected_findings_byte_identical_con7(self):
+        # spec 032's CON-7 proved this line's OLD wording survived byte-for-
+        # byte through THAT fix (68c4594) — a historical fact, still true at
+        # that commit, not a promise that no later spec may ever reword it.
+        # spec 033 T4.2 deliberately rewords this line (ADR-6), so a full-
+        # report equality assertion against the pre-033 renderer no longer
+        # holds. What CON-7 protects going forward is narrower and still
+        # real: OTHER findings sharing the same report must render
+        # byte-identically, and the broken_up block's own detail line /
+        # heading / Repoint hint (everything except the Fix line) must be
+        # untouched too.
         import subprocess
         import tempfile
 
@@ -1615,9 +1634,98 @@ class TestPropertyResidentFixLanguage:
         ]
         doc = _make_doc(findings=findings)
 
-        old_report = old_gar.render_report(doc)
-        new_report = gar.render_report(doc)
-        assert new_report == old_report
+        old_lines = old_gar.render_report(doc).splitlines()
+        new_lines = gar.render_report(doc).splitlines()
+        assert len(old_lines) == len(new_lines), (
+            "T4.2 reworded one line's text, not the line count"
+        )
+
+        changed = [
+            i for i, (o, n) in enumerate(zip(old_lines, new_lines)) if o != n
+        ]
+        assert changed, "the fix under test changed nothing — assertion is hollow"
+        # Exactly one line differs: F01's own Fix line. Everything else —
+        # F02 (dead_link) and F03 (unparented) in full, and F01's own
+        # heading/detail-line/Repoint-hint — is untouched.
+        assert len(changed) == 1, (
+            f"expected exactly the Fix line to change, got: "
+            f"{[new_lines[i] for i in changed]}"
+        )
+        assert new_lines[changed[0]].startswith("**Fix:**")
+        assert old_lines[changed[0]].startswith("**Fix:**")
+        assert "not found in the audited area" in new_lines[changed[0]]
+        assert "not found in the audited area" not in old_lines[changed[0]]
+
+
+# ---------------------------------------------------------------------------
+# spec 033 T4.2 / PRD F3, ADR-6: the broken_up fix line says the target was
+# not found in the audited area — never that the note is gone — and points
+# at the audited scope as something the user can widen. Remove and repoint
+# both remain available; this only rewords the CLAIM the line makes about
+# the target, not the fix mechanism (ADR-7's routing is untouched).
+# ---------------------------------------------------------------------------
+
+class TestBrokenUpAuditedAreaWording:
+    def test_body_resident_fix_line_says_not_found_in_audited_area(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**")
+        assert "not found in the audited area" in fix_line
+
+    def test_property_resident_fix_line_says_not_found_in_audited_area(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**")
+        assert "not found in the audited area" in fix_line
+
+    def test_fix_line_never_asserts_the_note_does_not_exist(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**").lower()
+        for forbidden in ("does not exist", "no longer exists", "was deleted", "is gone"):
+            assert forbidden not in fix_line
+
+    def test_fix_line_points_at_audited_scope_as_user_controllable(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**").lower()
+        assert "widen" in fix_line
+        assert "audited scope" in fix_line
+
+    def test_remove_and_repoint_both_still_available_body_resident(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**").lower()
+        assert "repoint" in fix_line
+        assert "remove" in fix_line
+        assert "**Repoint to:**" in report  # editable field still rendered
+
+    def test_remove_and_repoint_both_still_available_property_resident(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**").lower()
+        assert "repoint" in fix_line
+        assert "remove" in fix_line
+        assert "**Repoint to:**" in report
+
+    def test_property_resident_still_carries_fix_target_disclosure_adr7(self):
+        # ADR-7 regression guard: T4.2 rewords the Fix line's CLAIM but must
+        # not disturb spec 032's property-edit disclosure — a successful
+        # edit_frontmatter fix drops YAML comments in the property block,
+        # and that cost must still be visible before Apply is ticked.
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        assert "**Fix target:** note property `up`" in report
+        assert (
+            "Comments inside this note's property block will not survive "
+            "the edit."
+        ) in report
 
 
 # ---------------------------------------------------------------------------
@@ -1794,20 +1902,39 @@ class TestUnsupportedShapeSummaryLanguage:
         # held only while the Summary line was the sole property-side change.
         # It then failed for a later property-side fix that CON-7 does not
         # constrain at all, so the count was tightened into the real invariant.
+        #
+        # spec 033 T4.2 (ADR-6) later reworded the Fix line for EVERY broken_up
+        # finding, body-resident included — a separate, deliberate change this
+        # test does not own. So F02's block is no longer fully byte-identical
+        # to 68c4594; what CON-7 still protects here is everything about F02
+        # EXCEPT its own Fix line (heading, detail line, checkbox, Repoint
+        # hint, Suggest opt-in).
         f02_old = _block_indices(old_lines, "F02")
         f02_new = _block_indices(new_lines, "F02")
         assert f02_old == f02_new
-        assert [old_lines[i] for i in f02_old] == [new_lines[i] for i in f02_new]
+
+        f02_fix_positions = [i for i in f02_old if old_lines[i].startswith("**Fix:**")]
+        assert len(f02_fix_positions) == 1
+        f02_fix_idx = f02_fix_positions[0]
+
+        f02_rest_old = [old_lines[i] for i in f02_old if i != f02_fix_idx]
+        f02_rest_new = [new_lines[i] for i in f02_new if i != f02_fix_idx]
+        assert f02_rest_old == f02_rest_new
 
         changed = [
             i for i, (o, n) in enumerate(zip(old_lines, new_lines)) if o != n
         ]
         assert changed, "the fix under test changed nothing — assertion is hollow"
+        # Body-resident lines changed ONLY at F02's own Fix line — T4.2's
+        # known, separate rewording, not a regression in the
+        # unsupported-shape summary fix this test exists to prove.
         body_resident = set(f02_new) & set(changed)
-        assert not body_resident, (
-            f"body-resident lines changed, CON-7 violated: "
-            f"{[new_lines[i] for i in sorted(body_resident)]}"
+        assert body_resident == {f02_fix_idx}, (
+            f"body-resident lines changed beyond the known T4.2 Fix-line "
+            f"rewording: {[new_lines[i] for i in sorted(body_resident - {f02_fix_idx})]}"
         )
+        assert "not found in the audited area" in new_lines[f02_fix_idx]
+        assert "not found in the audited area" not in old_lines[f02_fix_idx]
 
         summary = [i for i in changed if "unsupported value shape" in new_lines[i]]
         assert len(summary) == 1, f"expected one Summary line, got {summary}"

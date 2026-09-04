@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Integration, regression and live validation"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 5
 ---
@@ -42,7 +42,7 @@ phase: 5
   3. **Validate**: run it; record the numbers.
   4. **Success**: the split holds on production data, not only on fixtures.
 
-- [ ] **T5.2 Everything else is byte-identical** `[activity: validate]`
+- [x] **T5.2 Everything else is byte-identical** `[activity: validate]`
 
   1. **Prime**: `[ref: CON-3]`. Load the pre-spec modules from git under distinct module names and
      render the same document through both.
@@ -54,7 +54,7 @@ phase: 5
      confirming red.
   4. **Success**: the guard asserts the invariant it is named after.
 
-- [ ] **T5.3 Zero added vault access** `[activity: validate]`
+- [x] **T5.3 Zero added vault access** `[activity: validate]`
 
   1. **Prime**: `[ref: CON-1]`. `_check_broken_up` takes no `graph_audit_fn` / `list_dir_fn`, so it
      structurally cannot call out; the new sibling must inherit that property.

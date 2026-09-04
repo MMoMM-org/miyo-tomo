@@ -313,18 +313,28 @@ callers); `_hints` responses are optional and currently ignored. Source:
 `_inbox/from-kado/2026-06-24_kado-to-tomo_graph-tool-and-search-ranking.md`; Kado ADR-002 (disclosure
 guard) / ADR-003 (`_hints` contract).
 
-## OPEN — `garden-audit-render.py` is 1059 LOC, 2-3.5x over the constitution guideline
+## OPEN — `garden-audit-render.py` is 1387 LOC, 2.8-4.6x over the constitution guideline
 
-Flagged by the Phase 5 constitution check of spec 032-up-source-routing (2026-09-02).
+Flagged by the Phase 5 constitution check of spec 032-up-source-routing (2026-09-02); revisited
+after spec 033-broken-up-cause-split Phase 4's constitution check (2026-09-04).
 
 MiYo Constitution, Code Quality L2: *"Files implementing core behaviour … should remain small and
 focused. When a file grows beyond ~300–500 LOC of dense logic, it should be refactored into smaller
 modules along its natural seams."*
 
-Measured: **1059 LOC**. It was already **775 LOC** before spec 032 touched it — so the breach is
-pre-existing, but spec 032 added roughly **+284 LOC**, a material contribution rather than pure
-inheritance. L2 requires rationale on violation rather than a hard block, so this did not gate the
-phase.
+Measured: **1387 LOC**. It was **1059 LOC** at the spec-032 checkpoint above (1068 LOC once spec
+033's own Phases 1-3 had also landed, +9 LOC registering the new `parent_not_moc` check). Phase 4
+(T4.1-T4.6) then added **+319 LOC** on its own (338 insertions, 19 deletions against the pre-Phase-4
+commit) — a ~30% increase, material rather than incidental, matching spec 032's own precedent above.
+The growth bought: the per-check advisory message table and the once-per-run "Untagged parents"
+grouping block that lets one MOC tag resolve several findings at once (T4.1); the reworded
+`broken_up` wording that stops implying a target was found to be missing when the check cannot tell
+missing from out-of-scope (T4.2); the per-situation "Flagged parents" counts, extended to a third
+bucket after the fact (T4.3, corrected T4.5); the `cause-unknown` withholding path that reuses the
+existing `_UNROUTABLE_REMEDY` mechanism rather than adding a parallel one (T4.4); and the fixes and
+regression coverage the T4.5 prose read and T4.6 required to prove all of the above holds up as
+rendered English, not just as passing assertions. L2 requires rationale on violation rather than a
+hard block, so this did not gate either phase.
 
 Natural seams observed while working in it:
 - the three once-per-run summary renderers (`_render_summary`, `_render_unroutable_summary`,
@@ -340,7 +350,40 @@ summary line is the point to extract the shared skeleton.** Same judgment applie
 parallel dicts: a fourth unroutable reason would be the moment to collapse them into one dict of
 records, since a reason currently needs an entry in all three and nothing enforces completeness.
 
-Not spec-032 scope. Pick up when either trigger fires, or as a standalone refactor.
+**Both triggers arguably fired in Phase 4, unassessed.** T4.3 added `_render_flagged_parent_situations`
+— a fourth once-per-run summary renderer sharing the same classify → bucket → suppress-at-zero
+skeleton as the two already named (it is not `broken_up`-scoped alone, since it also counts
+`parent_not_moc`, so it may or may not be the "third broken_up-scoped summary line" the original
+trigger meant precisely — a judgment call for whoever picks this up, not decided here). T4.4 added a
+fourth entry (`cause-unknown`) to all three parallel dicts, exactly the count the second trigger
+named. Neither was extracted or collapsed during Phase 4 — flagging that the triggers exist, not
+acting on them, since this entry's own scope is documentation, not refactoring.
+
+Not spec-032 or spec-033 scope. Pick up when either trigger fires (now, arguably), or as a standalone
+refactor.
+
+## Decision record — the split line's "Broken parents:" label outlives its own precision
+
+Spec 033 T4.5's prose read (2026-09-04) fixed the same defect — a `broken_up` finding's rendered
+text asserting breakage it cannot confirm — at the per-finding heading, detail line, and Summary
+levels for a cause-unknown finding (see `docs/tomo/scripts/garden-audit-render.md`'s T4.5 entry).
+One instance survives, one level up. `_render_broken_up_split`'s section label ("Broken parents: N
+findings — B in the note body, P in a note property…") still reads "Broken parents" even when N
+includes a cause-unknown survivor. A reader who encounters this line in isolation — skipping the
+Summary's own "Flagged parents" breakdown two lines above it, which DOES separate cause-unknown out
+after T4.5's fix — sees "Broken parents: 1 finding" attached to a finding that may turn out to be
+untagged-but-real rather than confirmed broken.
+
+**Accepted, not fixed.** This is spec-032 verbatim-locked text (ADR-4, solution.md UI & UX,
+"DO NOT PARAPHRASE" provenance); the check itself is named `broken_up` and this spec does not rename
+it; and the trailing clause (T4.3/ADR-7) already scopes the count to declaration site rather than
+asserting a cause. Rewording the label itself would mean reaching into 032-locked text and adding a
+fourth sanctioned byte-identity difference to `test_032_t6_2_regression_inline_unchanged.py`'s
+baseline comparison, for a residual the Summary line two lines above already resolves for a reader
+who reads the whole Summary rather than one line of it in isolation.
+
+Pick up if a future spec touches this line for an unrelated reason anyway, or if user feedback shows
+readers land on the split line without reading the Summary above it.
 
 ## Decision record — `remove_up_link` stays unguarded; spec 032's routing is the alternative
 

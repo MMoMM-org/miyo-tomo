@@ -297,3 +297,176 @@ request. Excluded from emit_digest by construction (the digest projects only per
 so toggling it never reads as a user apply-edit — same class as top-level `approved`. Pass-2 triage
 ALSO refuses to apply while pending (also from the markdown for .md-only users) — see
 docs/tomo/scripts/inbox-triage.md.
+
+## Versions 0.14.0–0.18.3 — spec 032 Phase 5 property-language fixes, plus spec 033 T3.1 (established from commit history, 2026-09-04)
+
+This file stopped at 0.13.0 for over five weeks of real version history — spec 032 landed the whole
+0.13.0→0.18.2 jump in one squash-merged PR (#158), so no per-version WHY was ever written here, and
+spec 033's own T3.1 bumped it once more (0.18.3) before Phase 4 picked the file back up. The
+individual commits behind the squash survive in the repo's object graph even though they are no
+longer ancestors of `main` — each one bumped the version exactly once, giving an honest, cheaply
+recoverable trail rather than an invented one. 0.18.3 is deliberately NOT grouped with spec 032 below
+— it is spec 033 T3.1, landed after the squash, and Phase 4 (below) starts at 0.19.0.
+
+- **0.14.0** — a property-resident (`up_source == "frontmatter"`) `broken_up` finding renders a
+  verbatim disclosure before its Apply checkbox: the property name and a warning that YAML comments
+  in that block will not survive an `edit_frontmatter` edit. Placed at approval time because the
+  edit drops comments irreversibly — a post-hoc note is too late by construction. Body-resident and
+  pre-032 findings render byte-identically (CON-7). Spec 032 T5.1.
+- **0.15.0** — a `broken_up` finding the parser cannot route (ADR-3/ADR-5) renders its withholding
+  reason + remedy instead of the normal Apply flow, so the report and Pass-2 agree about what is
+  (un)routable: no checkbox, no Suggest opt-in — there is nothing to approve. `stale-cache` uses
+  solution.md's verbatim wording; `no-declaration-site` is proposed wording (not spec-locked). A
+  once-per-run summary line names the withheld count up front, since the measured first-run reality
+  (346 cache entries, 0 carrying `up_value`) meant every `broken_up` finding was withheld — the
+  reader must not infer the remedy from 29 identical blocks. Spec 032 T5.2.
+- **0.16.0** — a map-shaped `up_value` gets its own withhold reason, `unsupported-shape` (not
+  `stale-cache`: the cache is healthy here, a refresh changes nothing) — the third entry in
+  `_UNROUTABLE_REMEDY` / `_UNROUTABLE_REASON_LABEL` / `_UNROUTABLE_SUMMARY_TEXT`. Spec 032 T3.2.
+- **0.17.0** — a once-per-run line names how `broken_up` findings split between body-resident and
+  property-resident declaration sites (ADR-4's observability gap — the property/inline distinction
+  was invisible before this). Counted findings are those with a KNOWN site, including withheld
+  unsupported-shape findings (site is known even though the fix is not); stale-cache and
+  no-declaration-site findings are excluded rather than folded in, and the line is suppressed
+  entirely when nothing is attributable — a true-but-useless "N findings — 0 in body, 0 in property"
+  would otherwise have rendered on the very first live run. Spec 032 T5.3.
+- **0.18.0 → 0.18.1 → 0.18.2** — the same self-contradiction, found and fixed three times in a row
+  because it lived in three separate rendered lines: a property-resident finding's fix is a
+  YAML-property edit, but the **Fix:**/**Repoint to:** lines (0.18.0), then the once-per-run Summary
+  line (0.18.1, missed by 0.18.0), then the per-finding detail line (0.18.2, missed by both) all
+  still said `up::` / "the broken line" — contradicting the property-edit disclosure (0.14.0)
+  rendered in the same block. Each fix threads the same derived property name (ADR-6,
+  `marker_word(conventions.parent_marker)`) into one more site; body-resident wording is untouched
+  at every step (CON-7). The check label and heading were deliberately left alone throughout, as
+  naming the FINDING rather than the fix action — spec 033 T4.5 later found a reason the detail line
+  needed to change again anyway, for a different bug (see the T4.5 entry below). Spec 032 T5.4.
+- **0.18.3** — registers the new advisory check `parent_not_moc` in `_CHECK_LABEL` ("Parent not a
+  MOC" — no "broken", no "up::", per PRD F2 criterion 3), one of nine registration sites across the
+  codebase for the check spec 033 Phase 2 introduces. Spec 033 T3.1.
+
+## Versions 0.19.0–0.22.1 — spec 033 Phase 4: the advisory inversion, honest wording, and reading the report as prose (2026-09-04)
+
+### Per-check advisory message table (T4.1, 0.19.0)
+
+WHY the advisory branch in `_render_finding` looks up a per-CHECK message via
+`_ADVISORY_MESSAGE.get(check)`, falling back to today's literal "_Advisory — no automated fix.
+Review and handle manually._" line: a single fixed advisory line was fine when every advisory check
+had no available action, but `parent_not_moc` DOES have one (tag the target as a MOC) — the old line
+told the user to do nothing about a problem the code could name precisely. The `.get(check)` lookup
+with fallback is the SAME mechanism `_UNROUTABLE_REMEDY` already uses for withhold reasons, reused
+rather than duplicated; `duplicate_stem`/`stale_moc` render byte-identically because they never match
+a table entry (CON-3).
+
+WHY `_parent_not_moc_advisory_message` inverts the OLD remedy rather than softening it: measured on
+the live vault, 20 of 42 `broken_up`-shaped findings were actually `parent_not_moc` — the target
+exists and is in scope, it just isn't tagged as a MOC. The pre-033 remedy (repoint or remove the
+link) would have deleted a WORKING parent relationship for every one of them. The new message says
+the opposite: tag the target, never touch the link.
+
+### Once-per-run "Untagged parents" grouping block (T4.1, 0.19.0)
+
+WHY `_render_untagged_parents_block` exists at all, once per run, rather than repeating the group
+information in every finding's own block: 7 of those 20 live `parent_not_moc` findings point at just
+3 shared parent notes — tagging ONE note as a MOC resolves several findings at once, and a reader
+working the list finding-by-finding has no way to see that without this block. It reuses the
+"derived block, suppressed when empty" shape `_render_broken_up_split` and `_render_unroutable_summary`
+already established (compute once from `findings`, return `[]` below a threshold) — a new instance
+of an existing pattern, not a new architectural shape. Row order follows the ONE pass over `findings`
+that built the grouping (`_group_by_up_target`), preserved through every filter — a diff-stability
+property, not an aesthetic one: a user re-running the audit and diffing the report in their vault
+should see row order shift only when the underlying findings order shifts.
+
+### "Not found in the audited area", not "the note is gone" (T4.2, 0.20.0/0.21.0)
+
+WHY the `broken_up` Fix line says the target was "not found in the audited area" and points at that
+scope as something the user can widen, rather than asserting the note does not exist (ADR-6): the
+check is cache-only by construction (`_check_broken_up` takes no vault-callable parameter — CON-1),
+so it cannot distinguish a genuinely missing note from one that exists just outside the scanned
+folders. Measured on the live vault: 8 of 22 unresolved targets are confirmed to exist in an
+unscanned folder. Asserting "gone" would be a wrong certainty; "not found in the audited area" is an
+honest under-claim that still points at a lever (widen the scan) the user actually controls. Remove
+and repoint remain offered on both declaration sites — this rewords the CLAIM, not the fix.
+
+### Per-situation counts in the Summary (T4.3, 0.20.0; corrected T4.5, 0.22.0)
+
+WHY the Summary states how many flagged parents are unresolved vs. untagged vs. (later) cause-unknown,
+and why a single-populated bucket never renders a "B / 0 P" breakdown: the same trap spec 032's own
+`_render_broken_up_split` line named for a DIFFERENT reason (routing-split, a neutral fact whose zero
+is fine) — here a "42 findings — 42 unresolved, 0 untagged" line would be true, useless, and alarming,
+implying a division the data does not actually contain. `_flagged_parent_situation_counts` reads each
+finding's OWN `detail.up_broken_reason` value directly, not just its `check` name — a lesson learned
+one release later, in T4.5 below, after the first version trusted `check == "broken_up"` alone and
+silently filed a cause-unknown finding under "not found in the audited area", a claim its own block
+disclaims.
+
+### `cause-unknown` withholding reuses the existing mechanism (T4.4, 0.21.0)
+
+WHY a `broken_up` finding whose cache entry has `up_value`/`up_source` (spec 032 ran) but lacks
+`up_broken_reason` (predates spec 033's Phase 1 classifier) gets a NEW fourth entry in
+`_UNROUTABLE_REMEDY` / `_UNROUTABLE_REASON_LABEL` / `_UNROUTABLE_SUMMARY_TEXT` rather than a parallel
+disclosure mechanism: `_broken_up_withhold_reason` already IS the "this finding cannot be routed,
+here is why" surface (spec 032 T5.2) — a second mechanism doing the same job risks two subtly
+different disclosure styles in one report. The live vault cache is measured in exactly this state
+(359 entries, 42 broken, 0 carrying `up_broken_reason`), so this is the path a real `/garden-audit`
+run hits today, not a hypothetical.
+
+WHY the fix is WITHHELD entirely rather than offered with a caveat: on an unclassified index, Tomo
+cannot tell whether the target is genuinely missing, out of the audited area, or a real note that is
+just untagged (`parent_not_moc` in disguise) — remove/repoint is the correct action for the first two
+and destroys a working relationship for the third. PRD F6 crit 3 requires that no finding OFFER a fix
+that could be wrong for two of the three situations; a caveated offer still offers it.
+
+WHY `_broken_up_withhold_reason` (and `_flagged_parent_situation_counts`) test
+`"up_broken_reason" not in detail` — key ABSENCE — rather than
+`detail.get("up_broken_reason") is None` or a bare `.get()` with a default: ADR-3's absence-as-signal
+discipline, inherited from spec 032's own `up_value is _MISSING` sentinel pattern. `up_broken_reason`
+is never explicitly written as `None` by `garden-audit.py` — it is either a real string
+("unresolved") or the key was never written at all (a pre-033 cache). A future edit that
+"simplified" this to `detail.get("up_broken_reason") == "unresolved"` would still work for the
+routable case, but would silently reclassify every pre-033 finding as a fourth, unnamed situation
+instead of triggering the cause-unknown path — the bug would not raise, it would just quietly stop
+disclosing.
+
+### Reading the report as prose (T4.5, 0.22.0/0.22.1)
+
+WHY four defects existed that no test had caught, and needed a rendered report read end to end rather
+than another assertion: spec 032 shipped a block whose heading said `up::` and whose fix line said
+`up` property — every test green, both review gates passed, and the contradiction was visible only
+to the first person who read the output as English (see 0.18.0→0.18.2 above — the SAME defect class,
+three sites, one release earlier). T4.5 repeated that exercise deliberately and found:
+
+1. the Summary's Flagged-parents line filed a cause-unknown finding under a cause its own block
+   disclaimed — fixed by reading `up_broken_reason` directly (the T4.3 entry above);
+2. the T4.3 split-line clause claimed to count "findings not found in the audited area" when it
+   actually counts by declaration site — reworded to say what the line actually measures;
+3. a cause-unknown finding's heading said "Broken up:: link" over a body saying Tomo cannot tell
+   whether it is broken — a new label, `_CAUSE_UNKNOWN_LABEL` ("Unclassified parent link"), scoped
+   STRICTLY to that one withhold reason; the other three (`stale-cache`, `no-declaration-site`,
+   `unsupported-shape`) ARE genuinely about a broken, unroutable link and keep "Broken up:: link";
+4. the SAME contradiction survived one line further down, in the per-finding detail line
+   ("Broken `up::` → [[X]]") — the fix moved from the heading to the detail line before it actually
+   resolved, proof that a claim repeated in more than one place needs a sweep of ALL of them, not a
+   fix at the first site found.
+
+The once-per-run split line's OWN "Broken parents:" section label was reviewed for the same defect
+and deliberately left alone — it names the check's population (parallel to the check name
+`broken_up` itself, which this spec does not rename), not a specific finding's state. See
+`docs/XDD/backlog.md`'s decision record for the accepted residual and its cost to fix.
+
+WHY `parent_not_moc` blocks close the blank-line gap instead of adding a detail line: no detail-line
+branch ever existed for the check, but the blank-line separator fired unconditionally regardless,
+rendering two blank lines after every heading. The advisory message (T4.1) already names the target,
+so a detail line would either duplicate it or reintroduce "broken"/"up::" language T4.1 exists to
+avoid.
+
+### T4.6 — the all-advisory case is now suite-guarded (test-only, no version bump)
+
+WHY `TestAllAdvisoryCaseGotcha4` covers three cases rather than two: a run where every flagged parent
+is `parent_not_moc` was verified correct by direct render during the T4.5 prose read, but nothing in
+the suite guarded it. `_render_tier_section` gates Integrity's presence on the tier being non-empty;
+`_render_broken_up_split` gates its own line on `body + prop == 0` — two independent checks that
+happen to agree whenever Integrity has nothing in it at all. A fully-advisory fixture (with or
+without a shared target) cannot distinguish "suppressed because empty" from "suppressed because no
+broken parents exist"; only a MIXED run (advisory findings alongside a real, fixable Integrity
+finding) can — that is the case with zero prior coverage, and the reason the test class carries three
+cases instead of two.

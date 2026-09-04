@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_garden_audit_registration.py — spec 033 T3.1: registration of the new
 `parent_not_moc` check across every site that must know its name.
 
@@ -10,13 +10,18 @@ must-register sites + one should-register). Sites 2-9 must be GREEN; site 1
 (T2.2) and is expected RED here until Phase 2 lands — see the class docstring
 on TestSite1ParentNotMocTier.
 
-Must-NOT-register sites (garden-audit.py _FIXABLE, garden-audit-render.py's
-suggest-targets and enrichment tuples) are covered by Phase 2/5 tests, not
-here — this file only proves presence at the nine sites, not absence
-elsewhere.
+Must-NOT-register site 11 (garden-audit.py's `_FIXABLE`) is covered by Phase
+2's own tests, not here. Sites 12 and 13 (garden-audit-render.py's
+suggest-targets and enrichment tuples) ARE covered here — see the "structural"
+tests below — because the T3.2 addition walk (spec 033) found no behavioural
+test can reach them: both tuples are unreachable for `parent_not_moc` while
+`_FIXABLE` excludes it, so there is no observable behaviour difference to
+assert. See `docs/XDD/specs/033-broken-up-cause-split/README.md` Decisions Log
+for the full trace.
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 import sys
@@ -258,3 +263,89 @@ def test_adr4_explicit_broken_up_exclusion_does_not_cover_parent_not_moc_reappea
         "an exclusion naming 'broken_up' explicitly must NOT also suppress "
         "'parent_not_moc' — ADR-4's reappearance case"
     )
+
+
+# ── Sites 12 & 13 — must-not-register, asserted structurally ──────────────────
+#
+# T3.2's addition walk (spec 033) found that adding "parent_not_moc" to EITHER
+# tuple below produces ZERO test failures anywhere in the suite: both live
+# inside code paths gated by `decision is not None`
+# (`garden-audit-render.py:527`), and `decision` is attached to a finding only
+# when it is fixable — controlled exclusively by `_FIXABLE` (site 11). Since
+# `parent_not_moc` is never in `_FIXABLE`, these branches are structurally
+# unreachable for it, so there is no BEHAVIOUR to observe and no behavioural
+# test can cover them. The realistic regression here is not a behaviour
+# change — it is an editor tidying up, noticing "parent_not_moc" missing from
+# a check-name list, and adding it for consistency. So these two tests assert
+# the tuples' literal CONTENTS directly (via `ast`, reading the real source —
+# not a text/string search) rather than any observable behaviour: they go red
+# the moment the name is added, regardless of whether the resulting code path
+# is reachable. Do not delete these as "pointless string checks" — they are
+# the only automated defence these two sites have.
+
+def _check_name_tuples_in(func_name: str) -> list[list[str]]:
+    """Every check-name tuple used in an `in (...)` / `not in (...)` test
+    inside the named function, found by parsing garden-audit-render.py's real
+    source with `ast` (not by importing it — these tuples are literals inside
+    function bodies, not module-level constants, so they cannot be imported).
+    """
+    src = (_SCRIPTS_DIR / "garden-audit-render.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == func_name:
+            for sub in ast.walk(node):
+                if not isinstance(sub, ast.Compare):
+                    continue
+                for op, comparator in zip(sub.ops, sub.comparators):
+                    if not isinstance(op, (ast.In, ast.NotIn)):
+                        continue
+                    if not isinstance(comparator, ast.Tuple):
+                        continue
+                    values = []
+                    all_str_const = True
+                    for elt in comparator.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            values.append(elt.value)
+                        else:
+                            all_str_const = False
+                    # Only the check-name tuples, identified by carrying the
+                    # four checks every must-not-register site's tuple starts
+                    # from — filters out unrelated `in (...)` tests in the
+                    # same function without hardcoding a line number.
+                    if all_str_const and {
+                        "dead_link", "broken_up", "unparented", "orphan"
+                    } <= set(values):
+                        found.append(values)
+    return found
+
+
+def test_site12_suggest_targets_tuple_excludes_parent_not_moc():
+    tuples = _check_name_tuples_in("_render_finding")
+    assert tuples, (
+        "expected to find the suggest-targets check-name tuple inside "
+        "_render_finding — if this function was renamed or the tuple "
+        "restructured, update _check_name_tuples_in's target, don't delete "
+        "this test"
+    )
+    for values in tuples:
+        assert "parent_not_moc" not in values, (
+            "site 12: parent_not_moc must NOT be added to the suggest-targets "
+            "tuple in _render_finding — see the module docstring"
+        )
+
+
+def test_site13_enrichment_tuple_excludes_parent_not_moc():
+    tuples = _check_name_tuples_in("enrich_report_with_suggestions")
+    assert tuples, (
+        "expected to find the enrichment check-name tuple inside "
+        "enrich_report_with_suggestions — if this function was renamed or "
+        "the tuple restructured, update _check_name_tuples_in's target, "
+        "don't delete this test"
+    )
+    for values in tuples:
+        assert "parent_not_moc" not in values, (
+            "site 13: parent_not_moc must NOT be added to the enrichment "
+            "tuple in enrich_report_with_suggestions — see the module "
+            "docstring"
+        )

@@ -252,3 +252,67 @@ class TestUnrelatedChecksByteIdenticalToPreSpec:
         # target-naming advisory message T4.1 adds.
         assert "not yet tagged as a MOC" not in "\n".join(old_blocks["F07"])
         assert "not yet tagged as a MOC" in "\n".join(new_blocks["F07"])
+
+
+# ---------------------------------------------------------------------------
+# T5.6 gap (team-lead review): PRD F4 criterion 3 — "Given a run with no
+# flagged parents at all, When the report is written, Then it is unchanged
+# from today." The per-block guard above can never reach this case: its
+# fixture always carries a broken_up AND a parent_not_moc finding, and it
+# deliberately exempts block 0 (the preamble) as expected-to-differ.
+#
+# Today that criterion rested on three separate absence assertions (no
+# "Flagged parents:" line, no "Broken parents:" split line, no "Untagged
+# parents" block) — individually sound, but together an ENUMERATED-ABSENCE
+# proof: it is only as complete as "these three things are the only things
+# spec 033 adds to a zero-flagged-parents report," which nothing mechanically
+# guarantees. The plan's Key Decision forbids exactly this substitution:
+# byte-identity is proven by loading the pre-spec module from git and
+# diffing, never by observing that a fixed list of absences holds.
+#
+# With zero flagged parents, every one of spec 033's additions is suppressed
+# — so the preamble the per-block test above has to exempt must now itself
+# be byte-identical. This case diffs the WHOLE report, no exemptions, no
+# per-block scoping, no enumeration to trust: same input, same bytes.
+# ---------------------------------------------------------------------------
+
+
+def _make_no_flagged_parents_doc() -> dict:
+    """Every check EXCEPT broken_up/parent_not_moc — the case PRD F4
+    criterion 3 names. Five findings, one per non-broken-parent check."""
+    all_findings = _make_mixed_findings()
+    findings = [f for f in all_findings if f["check"] not in _BROKEN_PARENT_CHECKS]
+    assert {f["check"] for f in findings} == {
+        "unparented", "orphan", "dead_link", "duplicate_stem", "stale_moc",
+    }
+    return {
+        "run_id": _RUN_ID,
+        "generated": _GENERATED,
+        "profile": _PROFILE,
+        "findings": findings,
+        "skipped_checks": [],
+        "skipped_checks_reason": "",
+        "reappeared_exclusions": [],
+    }
+
+
+class TestZeroFlaggedParentsReportIsWhollyUnchanged:
+    def test_whole_report_byte_identical_when_no_broken_parent_findings(self):
+        doc = _make_no_flagged_parents_doc()
+        old_report = old_gar.render_report(doc)
+        new_report = new_gar.render_report(doc)
+
+        # Non-vacuous: a whole-report equality is the easiest kind to pass
+        # for the wrong reason (two empty strings are "equal" too) — prove
+        # both renders are substantive BEFORE trusting their equality.
+        assert "## Summary" in new_report
+        for fid in ("F01", "F02", "F04", "F05", "F06"):
+            assert f"### {fid} " in new_report
+            assert f"### {fid} " in old_report
+        assert len(new_report) > 500
+
+        assert new_report == old_report, (
+            "CON-3 violated (PRD F4 crit 3) — a zero-flagged-parents report "
+            "differs from the pre-spec-033 renderer's output. This is a "
+            "genuine finding, not a fixture to adjust."
+        )

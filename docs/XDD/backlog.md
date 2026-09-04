@@ -485,3 +485,31 @@ label) with every other structure derived from it, leaving only the genuinely in
 enums could be generated rather than hand-maintained.
 
 Worth doing before the next check is added, not after.
+
+## RELEASE NOTE — spec 033: the first `/garden-audit` run after upgrading offers no broken-parent fixes
+
+Spec 033 classifies *why* an `up::` parent link is flagged, using a new `up_broken_reason` field the
+MOC-structure cache only gains once it is rebuilt. An index built before this change carries no such
+field — and per PRD Feature 6, a report drawn from it must not claim a cause it cannot determine, nor
+offer a fix that would be wrong for two of the three situations it cannot tell apart.
+
+So on an unrefreshed index, every `broken_up` finding is **withheld**: no Apply checkbox, no
+`Repoint to:` field, no Suggest opt-in. The block instead discloses that the index predates the
+classifier and names the remedy — run `/explore-vault` to refresh the cache, then re-run the audit.
+
+**This affects the first run for every existing user, not an edge case.** Measured on this project's
+own vault (spec 033 T2.4, 2026-09-03): the live cache carried 359 entries and 42 `up_state=="broken"`
+findings, and **0 of the 42** carried `up_broken_reason`. All 42 would be withheld on the first run
+after this ships.
+
+This is the designed behaviour, not a regression. Before spec 033 the audit offered one remedy —
+*"repoint it to a MOC, or leave empty to remove"* — for three unrelated situations, and it was wrong
+for two of them: it deleted links whose target was a real note that simply carried no MOC tag, and it
+blamed the vault when the target merely sat outside the audited scope. Withholding until the index can
+tell the cases apart is the honest behaviour; the spec's own Could-Have ("counting the saved
+deletions") anticipates it.
+
+Action for anyone shipping this: say so in the release note — *"the first audit after upgrading will
+ask you to refresh the index before it offers broken-parent fixes; run `/explore-vault` once and the
+fixes come back, now with the right one offered for each situation."* One refresh clears it
+permanently.

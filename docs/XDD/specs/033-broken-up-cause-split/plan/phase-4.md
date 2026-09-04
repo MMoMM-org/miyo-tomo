@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Report surface"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -37,16 +37,57 @@ phase: 4
   1. **Prime**: read `:580-587`. Today every advisory renders *"Advisory — no automated fix. Review
      and handle manually."* For this check that is true and useless — there **is** an action, just
      not one Tomo performs `[ref: SDD/ADR-5]`.
-  2. **Test** (RED):
+  2. **Test** (RED). Assert the target name is **present first**, then that the forbidden words are
+     absent — a bare negative substring check passes trivially when the block renders empty:
      - a `parent_not_moc` block names the **target** as the thing to change `[ref: PRD/F2 crit 3]`
      - it contains neither "broken" nor "remove" `[ref: SDD/UI & UX]`
      - it contains **no** `- [ ]` checkbox and no `Repoint to:` field `[ref: PRD/F2 crit 2]`
-     - several findings sharing one target render the one-action-settles-many relationship
+     - **group size 1** — the line is the base sentence only, and carries no "N findings" clause
+     - **group size > 1** — the line adds the count clause and points at the summary block
        `[ref: PRD/F2 crit 4]`
-     - `duplicate_stem` and `stale_moc` blocks are **byte-identical** to today's — the fallback path
-       `[ref: CON-3]`
+     - the **"Untagged parents" block does not render at all** when every target has exactly one
+       finding. Suppression is its own test; a renderer that always emits it passes every
+       shared-target assertion above.
+     - the summary block's per-target counts **agree with** the number of findings actually carrying
+       that target — assert the reconciliation, not each side alone
+     - `duplicate_stem` and `stale_moc` blocks are **byte-identical** to today's generic line — the
+       fallback path `[ref: CON-3]`
   3. **Implement**: a per-check advisory message table; `.get(check)` falling back to the existing
-     line.
+     line. The chosen wording (user decision, 2026-09-04) is verbatim:
+
+     Group size 1:
+     ```
+     _[[Target]] is a real note, not yet tagged as a MOC. Tag [[Target]] as a MOC — the link stays as it is._
+     ```
+     Group size > 1 (example: three findings share `[[Target]]`):
+     ```
+     _[[Target]] is a real note, not yet tagged as a MOC. Tag [[Target]] as a MOC — the link stays as it is. 3 findings in this report point at [[Target]]; tagging it once resolves all 3 (see "Untagged parents" below)._
+     ```
+     Once-per-run block, rendered **only** when at least one target has group size > 1, placed with
+     the existing derived blocks (after `_render_summary`, before the tier-section loop) — the same
+     "suppressed when empty" shape `_render_broken_up_split` and `_render_unroutable_summary`
+     already use:
+     ```
+     **Untagged parents — 3 targets, 7 findings, one tag each settles the group:**
+
+     - [[Projects]] — 3 findings (F12, F15, F19)
+     - [[Ideas]] — 2 findings (F21, F27)
+     - [[Archive]] — 2 findings (F33, F38)
+     ```
+
+     Three details the wording does not settle on its own:
+     - **Plural at exactly two.** "resolves all 2" is not English. Render "resolves **both**" for a
+       group of two, "resolves all N" for three or more. Test the two-case explicitly — it is the
+       most common shared size and the one a fixture of three will never exercise.
+     - **Finding IDs are reused, never recomputed.** `_make_id` (`garden-audit.py:95`) assigns
+       `f"F{counter:02d}"` at finding-creation time and the report renders it in the `### F<id>`
+       heading. The summary block MUST use each finding's own `id` field verbatim. A recomputed
+       index would agree today and drift the moment findings are filtered or reordered.
+     - **Grouping key.** `parent_not_moc` is not fixable, so there is no `decision` block to hang
+       this on. Group over `findings` by `detail.up_target`, computed once before the tier-section
+       loop, and thread it into both the new block renderer and `_render_finding` (which currently
+       receives only `up_property`). A finding whose `up_target` is missing or empty must not crash
+       the block and must not form a group — assert that.
   4. **Validate**: `./venv/bin/python -m pytest tests/test_garden_audit_render.py -q`
   5. **Success**: a reader who acts on the advisory changes the right note.
 

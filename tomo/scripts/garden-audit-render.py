@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.3
+# version: 0.19.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -181,6 +181,113 @@ def _wikilink(ref) -> str:
     if "|" in stem:
         stem = stem.split("|", 1)[1].strip()
     return f"[[{stem}]]"
+
+
+# ── parent_not_moc target grouping (spec 033 T4.1) ─────────────────────────
+# parent_not_moc is the only check with no decision block (it isn't fixable),
+# so there is nothing to key shared-target messaging on except the finding's
+# own detail — grouping lives here rather than piggybacking on a decision.
+
+def _group_up_target(f: dict) -> str | None:
+    """The rendered ``[[wikilink]]`` grouping key for a parent_not_moc finding,
+    or None when it can't form a group.
+
+    Reuses _wikilink's own normalization (list / dirty list-repr / alias /
+    path-prefix handling) as the SSoT for "what counts as the same target" —
+    the same string the finding's own advisory line renders. A finding whose
+    detail.up_target is missing or empty renders "(none)" and is excluded
+    here — it must not crash the block and must not form a group.
+    """
+    if f.get("check") != "parent_not_moc":
+        return None
+    link = _wikilink((f.get("detail") or {}).get("up_target"))
+    return None if link == "(none)" else link
+
+
+def _group_by_up_target(findings: list[dict]) -> dict[str, list[dict]]:
+    """Group parent_not_moc findings by their rendered up_target, preserving
+    first-seen order — the "Untagged parents" block and each finding's own
+    advisory count clause both read from this single pass."""
+    groups: dict[str, list[dict]] = {}
+    for f in findings:
+        key = _group_up_target(f)
+        if key is None:
+            continue
+        groups.setdefault(key, []).append(f)
+    return groups
+
+
+def _render_untagged_parents_block(up_target_groups: dict[str, list[dict]]) -> list[str]:
+    """Once-per-run block naming every parent_not_moc target shared by more
+    than one finding (PRD F2 crit 4) — the group-size>1 branch of the
+    per-finding advisory message points here. Suppressed when no target has
+    group size > 1 (every parent_not_moc target this run is unique), the same
+    "suppressed when empty" shape _render_broken_up_split and
+    _render_unroutable_summary already use — a new instance of an existing
+    pattern, not a new architectural shape.
+    """
+    shared = {t: fs for t, fs in up_target_groups.items() if len(fs) > 1}
+    if not shared:
+        return []
+    total_targets = len(shared)
+    total_findings = sum(len(fs) for fs in shared.values())
+    lines = [
+        f"**Untagged parents — {total_targets} targets, {total_findings} findings, "
+        "one tag each settles the group:**",
+        "",
+    ]
+    for target, fs in shared.items():
+        # Reuse each finding's own id verbatim — _make_id assigns it once at
+        # creation and the report renders it in the ### F<id> heading; a
+        # recomputed index would drift the moment findings are filtered or
+        # reordered.
+        ids = ", ".join(f["id"] for f in fs)
+        lines.append(f"- {target} — {len(fs)} findings ({ids})")
+    lines.append("")
+    return lines
+
+
+# ── Per-check advisory message (spec 033 T4.1, ADR-5) ───────────────────────
+_ADVISORY_FALLBACK = "_Advisory — no automated fix. Review and handle manually._"
+
+
+def _parent_not_moc_advisory_message(f: dict, group_size: int) -> str:
+    """Verbatim wording (plan/phase-4.md T4.1, user decision 2026-09-04) —
+    DO NOT PARAPHRASE. The link works (the target exists and is in scope, it
+    just isn't tagged as a MOC) — the message names the target and inverts
+    today's generic "review and handle manually" into the actual action.
+
+    group_size 1 renders the base sentence only. group_size > 1 appends a
+    count clause pointing at the once-per-run "Untagged parents" block —
+    "resolves both" at exactly two ("resolves all 2" is not English),
+    "resolves all N" at three or more.
+    """
+    target = _wikilink((f.get("detail") or {}).get("up_target"))
+    msg = (
+        f"_{target} is a real note, not yet tagged as a MOC. Tag {target} as "
+        "a MOC — the link stays as it is."
+    )
+    if group_size > 1:
+        resolves = "both" if group_size == 2 else f"all {group_size}"
+        msg += (
+            f" {group_size} findings in this report point at {target}; "
+            f'tagging it once resolves {resolves} (see "Untagged parents" below).'
+        )
+    return msg + "_"
+
+
+_ADVISORY_MESSAGE = {
+    "parent_not_moc": _parent_not_moc_advisory_message,
+}
+
+
+def _advisory_message(f: dict, group_size: int) -> str:
+    """Per-check advisory line (ADR-5). ``.get(check)`` falls back to today's
+    literal line so duplicate_stem/stale_moc stay byte-identical (CON-3)."""
+    builder = _ADVISORY_MESSAGE.get(f.get("check"))
+    if builder is None:
+        return _ADVISORY_FALLBACK
+    return builder(f, group_size)
 
 
 def _fix_summary(check: str, detail: dict, decision: dict, up_property: str) -> str:
@@ -458,7 +565,9 @@ def _render_property_edit_disclosure(up_property: str) -> list[str]:
     ]
 
 
-def _render_finding(f: dict, up_property: str) -> list[str]:
+def _render_finding(
+    f: dict, up_property: str, up_target_groups: dict[str, list[dict]]
+) -> list[str]:
     """Render one finding as a human-facing report block.
 
     The report carries the user's DECISIONS only, joined to the machine wire by
@@ -467,6 +576,10 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
     target is editable — a Replace with: / Repoint to: field. Advisory findings
     are read-only. All STRUCTURE (path, detail, candidate_mocs) lives in the wire,
     not in the markdown — there is no HTML comment.
+
+    ``up_target_groups`` (spec 033 T4.1) is the pre-computed
+    parent_not_moc-by-target grouping — read here only to size the advisory
+    message's shared-target count clause.
     """
     fid = f["id"]
     check = f["check"]
@@ -582,8 +695,10 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
         # Advisory → read-only note, no checkbox. Auto-pushback (2026-07-23):
         # approving the report pauses ALL advisories for the window — no
         # per-finding tick (the preamble states this once).
+        group_key = _group_up_target(f)
+        group_size = len(up_target_groups.get(group_key, [])) if group_key else 1
         lines += [
-            "_Advisory — no automated fix. Review and handle manually._",
+            _advisory_message(f, group_size),
             "",
         ]
     else:
@@ -598,6 +713,7 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
 
 
 def _render_tier_section(tier: str, findings: list[dict], up_property: str,
+                         up_target_groups: dict[str, list[dict]],
                          ack_days: int = 30) -> list[str]:
     """Render one tier section (e.g. ## Integrity). Returns [] when no findings."""
     tier_findings = [f for f in findings if f["tier"] == tier]
@@ -613,7 +729,7 @@ def _render_tier_section(tier: str, findings: list[dict], up_property: str,
             "",
         ]
     for f in tier_findings:
-        lines.extend(_render_finding(f, up_property))
+        lines.extend(_render_finding(f, up_property, up_target_groups))
     return lines
 
 
@@ -632,6 +748,10 @@ def render_report(d: dict) -> str:
     up_property = marker_word(conventions.parent_marker)
 
     ack_days = d.get("advisory_pushback_days") or 30
+    # spec 033 T4.1: computed once, before the tier-section loop — threaded
+    # into both the "Untagged parents" block and each advisory finding's
+    # count clause.
+    up_target_groups = _group_by_up_target(findings)
     parts: list[str] = []
     parts += ["", f"# Knowledge-Garden Audit — {date}", ""]
     parts += [
@@ -652,8 +772,9 @@ def render_report(d: dict) -> str:
     parts += _render_summary(findings)
     parts += _render_broken_up_split(findings)
     parts += _render_unroutable_summary(findings, up_property)
+    parts += _render_untagged_parents_block(up_target_groups)
     for tier in ("integrity", "structure", "advisory"):
-        parts += _render_tier_section(tier, findings, up_property, ack_days)
+        parts += _render_tier_section(tier, findings, up_property, up_target_groups, ack_days)
 
     return "\n".join(parts)
 

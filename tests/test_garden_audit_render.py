@@ -129,6 +129,26 @@ def _make_stale_moc_finding(fid: str = "F05") -> dict:
     }
 
 
+def _make_parent_not_moc_finding(fid: str = "F06", up_target: str = "Real Note") -> dict:
+    """spec 033 T2.1: the up:: target exists and is in scope but isn't a MOC —
+    advisory, not fixable, no decision block at all. Matches exactly the shape
+    garden-audit.py's _check_broken_up emits for up_broken_reason=='not-a-moc'
+    (see tests/test_garden_audit_parser.py's `_parent_not_moc`)."""
+    return {
+        "id": fid,
+        "check": "parent_not_moc",
+        "tier": "advisory",
+        "fixable": False,
+        "target": {"path": "Notes/Broken.md", "stem": "Broken"},
+        "detail": {
+            "up_target": up_target,
+            "up_source": "inline",
+            "up_value": None,
+            "up_broken_reason": "not-a-moc",
+        },
+    }
+
+
 def _make_doc(findings=None, skipped_checks=None, skipped_checks_reason="", reappeared_exclusions=None) -> dict:
     return {
         "run_id": _RUN_ID,
@@ -1855,3 +1875,197 @@ class TestPropertyResidentDetailLine:
         ]
         offenders = [ln for ln in body if "up::" in ln]
         assert offenders == [], f"body syntax on a property finding: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# spec 033 T4.1 — parent_not_moc advisory message names the target and
+# inverts the suggestion (ADR-5). A per-check advisory table replaces the
+# single generic literal for this check only; duplicate_stem/stale_moc must
+# keep getting the untouched fallback line (CON-3).
+# ---------------------------------------------------------------------------
+
+class TestParentNotMocAdvisoryMessageGroupSizeOne:
+    def test_message_names_target_before_asserting_forbidden_words_absent(self):
+        f = _make_parent_not_moc_finding("F01", up_target="Real Note")
+        report = _render_report(_make_doc(findings=[f]))
+        advisory_line = _line_containing(report, "Real Note")
+        # Target name present FIRST — a bare negative check passes trivially
+        # against an empty/unrelated block.
+        assert "[[Real Note]]" in advisory_line
+        assert "broken" not in advisory_line
+        assert "remove" not in advisory_line
+
+    def test_no_checkbox_or_repoint_field(self):
+        # Scoped to the finding's own block (after its ### heading) — the
+        # report's top-level "- [ ] Approved" gate is unrelated and always
+        # present, so checking the whole report would be a false positive.
+        f = _make_parent_not_moc_finding("F01")
+        report = _render_report(_make_doc(findings=[f]))
+        heading_idx = next(
+            i for i, ln in enumerate(report.splitlines()) if ln.startswith("### F01")
+        )
+        block = "\n".join(report.splitlines()[heading_idx:])
+        assert "- [ ]" not in block
+        assert "Repoint to:" not in block
+
+    def test_group_size_one_carries_no_findings_count_clause(self):
+        f = _make_parent_not_moc_finding("F01", up_target="Solo Target")
+        report = _render_report(_make_doc(findings=[f]))
+        advisory_line = _line_containing(report, "Solo Target")
+        assert "findings in this report" not in advisory_line
+        assert "resolves" not in advisory_line
+
+
+class TestParentNotMocAdvisoryMessageGroupSizeMany:
+    def test_group_size_two_says_resolves_both_not_resolves_all_two(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Pair"),
+            _make_parent_not_moc_finding("F02", up_target="Pair"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "[[Pair]] is a real note")
+        assert "[[Pair]]" in line
+        assert "resolves both" in line
+        assert "resolves all 2" not in line
+
+    def test_group_size_three_says_resolves_all_n(self):
+        findings = [
+            _make_parent_not_moc_finding(f"F0{i}", up_target="Trio") for i in range(1, 4)
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "[[Trio]] is a real note")
+        assert "3 findings in this report point at [[Trio]]" in line
+        assert "resolves all 3" in line
+
+    def test_count_clause_applies_to_every_group_member_not_just_one(self):
+        findings = [
+            _make_parent_not_moc_finding(f"F{i:02d}", up_target="Group") for i in range(1, 4)
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        matches = [ln for ln in report.splitlines() if "resolves all 3" in ln]
+        assert len(matches) == 3, "every finding sharing the target must carry the clause"
+
+    def test_count_clause_points_at_untagged_parents_block(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Shared"),
+            _make_parent_not_moc_finding("F02", up_target="Shared"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "[[Shared]] is a real note")
+        assert '"Untagged parents"' in line
+
+
+class TestUntaggedParentsBlockSuppression:
+    """Suppression is its own test — a renderer that always emits the block
+    would pass every shared-target assertion above."""
+
+    def test_block_absent_when_no_finding_exists(self):
+        report = _render_report(_make_doc(findings=[]))
+        assert "Untagged parents" not in report
+
+    def test_block_absent_when_every_target_is_unique(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Projects"),
+            _make_parent_not_moc_finding("F02", up_target="Ideas"),
+            _make_parent_not_moc_finding("F03", up_target="Archive"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Untagged parents" not in report
+
+    def test_block_absent_for_non_parent_not_moc_advisories(self):
+        findings = [
+            _make_duplicate_stem_finding("F01"),
+            _make_stale_moc_finding("F02"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Untagged parents" not in report
+
+
+class TestUntaggedParentsBlockContent:
+    def test_block_renders_when_a_target_is_shared(self):
+        findings = [
+            _make_parent_not_moc_finding("F12", up_target="Projects"),
+            _make_parent_not_moc_finding("F15", up_target="Projects"),
+            _make_parent_not_moc_finding("F19", up_target="Projects"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "**Untagged parents" in report
+        assert "[[Projects]]" in report
+
+    def test_per_target_counts_agree_with_actual_finding_count(self):
+        # Reconciliation, not each side alone: recompute expected counts from
+        # the findings list itself rather than hardcoding them a second time.
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Projects"),
+            _make_parent_not_moc_finding("F02", up_target="Projects"),
+            _make_parent_not_moc_finding("F03", up_target="Projects"),
+            _make_parent_not_moc_finding("F04", up_target="Ideas"),
+            _make_parent_not_moc_finding("F05", up_target="Ideas"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        projects_count = sum(
+            1 for f in findings if f["detail"]["up_target"] == "Projects"
+        )
+        ideas_count = sum(1 for f in findings if f["detail"]["up_target"] == "Ideas")
+
+        projects_line = _line_containing(report, "[[Projects]] —")
+        ideas_line = _line_containing(report, "[[Ideas]] —")
+        assert f"{projects_count} findings" in projects_line
+        assert f"{ideas_count} findings" in ideas_line
+
+        header_line = _line_starting_with(report, "**Untagged parents")
+        assert "2 targets" in header_line
+        assert f"{projects_count + ideas_count} findings" in header_line
+
+    def test_reuses_each_findings_own_id_verbatim_never_recomputed(self):
+        # F01 is an unrelated fixable finding ahead of the group in the list,
+        # and the group's own ids (F12/F15/F19) are deliberately non-sequential
+        # — a recomputed index would land on F01/F02/F03 instead.
+        findings = [
+            _make_broken_up_finding("F01"),
+            _make_parent_not_moc_finding("F12", up_target="Projects"),
+            _make_parent_not_moc_finding("F15", up_target="Projects"),
+            _make_parent_not_moc_finding("F19", up_target="Projects"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        block_line = _line_containing(report, "[[Projects]] —")
+        assert "F12" in block_line
+        assert "F15" in block_line
+        assert "F19" in block_line
+        assert "F02" not in block_line
+        assert "F03" not in block_line
+
+
+class TestUntaggedParentsMissingTarget:
+    def test_missing_up_target_does_not_crash_and_forms_no_group(self):
+        f_missing = _make_parent_not_moc_finding("F01")
+        del f_missing["detail"]["up_target"]
+        f_empty = _make_parent_not_moc_finding("F02")
+        f_empty["detail"]["up_target"] = ""
+        report = _render_report(_make_doc(findings=[f_missing, f_empty]))  # must not raise
+        assert "Untagged parents" not in report
+
+    def test_missing_up_target_advisory_line_still_renders(self):
+        f_missing = _make_parent_not_moc_finding("F01")
+        del f_missing["detail"]["up_target"]
+        report = _render_report(_make_doc(findings=[f_missing]))
+        assert "### F01" in report
+
+
+class TestAdvisoryFallbackByteIdenticalCon3:
+    """CON-3: the per-check advisory table must fall back to today's exact
+    literal line for every check that isn't parent_not_moc."""
+
+    def test_duplicate_stem_and_stale_moc_line_unchanged(self):
+        findings = [
+            _make_duplicate_stem_finding("F01"),
+            _make_stale_moc_finding("F02"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        advisory_lines = [
+            ln for ln in report.splitlines() if ln.startswith("_Advisory")
+        ]
+        assert advisory_lines == [
+            "_Advisory — no automated fix. Review and handle manually._",
+            "_Advisory — no automated fix. Review and handle manually._",
+        ]

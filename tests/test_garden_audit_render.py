@@ -70,15 +70,36 @@ def _make_unparented_finding(fid: str = "F01") -> dict:
 _UNSET = object()  # sentinel — distinguishes "not passed" from "passed as None"
 
 
-def _make_broken_up_finding(fid: str = "F02", up_source=_UNSET, up_value=_UNSET) -> dict:
+def _make_broken_up_finding(
+    fid: str = "F02", up_source=_UNSET, up_value=_UNSET, up_broken_reason=_UNSET
+) -> dict:
     # up_source/up_value are OMITTED from detail unless explicitly passed (spec
     # 032 T5.1 prerequisite) — existing callers that don't pass them must keep
     # getting the pre-032 detail shape, byte-identical (CON-7).
+    #
+    # up_broken_reason (spec 033 T4.4): a real garden-audit.py finding
+    # ALWAYS carries this key once up_source/up_value are populated (a
+    # modern, classified cache entry) — its absence specifically means "the
+    # cache predates the cause classifier" (T4.4's cause-unknown reason).
+    # Every EXISTING caller in this file that passes up_source is
+    # constructing a routable, classified fixture (testing Fix-line wording,
+    # split-line counts, etc.) — none of them are about T4.4's withholding
+    # behavior — so up_broken_reason defaults to "unresolved" whenever
+    # up_source is given, matching what garden-audit.py actually produces
+    # for a modern cache. Pass up_broken_reason=None explicitly to build the
+    # genuine pre-033 shape (the key omitted entirely) that
+    # TestPreSpec033CacheDisclosure exercises. Passing up_source=_UNSET too (the
+    # original, oldest fixture shape) still omits BOTH keys, unaffected.
     detail = {"up_target": "Deleted MOC"}
     if up_source is not _UNSET:
         detail["up_source"] = up_source
     if up_value is not _UNSET:
         detail["up_value"] = up_value
+    if up_broken_reason is _UNSET:
+        if up_source is not _UNSET:
+            detail["up_broken_reason"] = "unresolved"
+    elif up_broken_reason is not None:
+        detail["up_broken_reason"] = up_broken_reason
     return {
         "id": fid,
         "check": "broken_up",
@@ -1057,6 +1078,11 @@ class TestSuggestEnrichment:
         f["detail"] = {
             "up_target": "Deleted MOC", "topics": [],
             "up_source": "inline", "up_value": "[[Deleted MOC]]",
+            # spec 033 T4.4: this detail dict is hand-built (bypasses
+            # _make_broken_up_finding's auto-default), so up_broken_reason
+            # must be set explicitly or the finding becomes withheld
+            # (cause-unknown) and never reaches the Suggest box at all.
+            "up_broken_reason": "unresolved",
         }
         doc = _make_doc(findings=[f])
         report = _full_report(doc)
@@ -1340,6 +1366,100 @@ class TestUnroutableFindings:
 
 
 # ---------------------------------------------------------------------------
+# spec 033 T4.4 / PRD F6: a cache entry that HAS up_value/up_source (spec
+# 032 ran) but lacks up_broken_reason predates spec 033's cause classifier
+# entirely — distinct from "stale-cache" above, which is an even older
+# cache missing up_value too. The live vault cache is measured in exactly
+# this state (359 entries, 42 broken, 0 carrying up_broken_reason), so this
+# is the path a real /garden-audit run hits today, not a hypothetical.
+# Reuses the existing _UNROUTABLE_REMEDY withholding mechanism (a new
+# "cause-unknown" reason) rather than a parallel one.
+# ---------------------------------------------------------------------------
+
+class TestPreSpec033CacheDisclosure:
+    def _pre033_finding(self, fid="F01"):
+        # up_broken_reason=None (explicit) omits the key entirely — the
+        # genuine pre-033 shape, distinct from _UNSET (which also omits
+        # up_source/up_value, the even-older pre-032 stale-cache shape).
+        return _make_broken_up_finding(
+            fid, up_source="inline", up_value="[[Alte MOC]]", up_broken_reason=None
+        )
+
+    def test_no_finding_claims_a_cause(self):
+        # crit 1: uncertainty is stated explicitly, present first — then
+        # confirm neither classified conclusion's own wording leaked in
+        # (T4.2's routable broken_up claim, T4.1's parent_not_moc claim).
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "cannot tell" in block
+        assert "not found in the audited area" not in block
+        assert "is a real note, not yet tagged as a MOC" not in block
+
+    def test_report_says_index_predates_distinction_and_how_to_refresh(self):
+        # crit 2, both halves: says WHY (predates the cause classifier) and
+        # HOW to fix it (the refresh command) — a disclosure without the
+        # remedy leaves the reader stuck.
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "predates the cause classifier" in block
+        assert "/explore-vault" in block
+
+    def test_no_fix_offered_that_could_be_wrong_for_the_untagged_situation(self):
+        # crit 3: no Apply checkbox, no Repoint field, no Suggest opt-in —
+        # remove/repoint would be wrong if this finding is actually
+        # parent_not_moc in disguise (untagged-but-real), which the
+        # classifier never ran to rule out.
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "- [ ] Apply" not in block
+        assert "- [x] Apply" not in block
+        assert "**Repoint to:**" not in block
+        assert "Suggest targets" not in block
+
+    def test_summary_names_cause_unknown_and_the_refresh_path(self):
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        assert "cause unknown" in report
+        assert "/explore-vault" in report
+
+    def test_internal_reason_code_is_stderr_only(self):
+        # Matches the existing withheld reasons' convention (see
+        # TestUnroutableFindings) — the internal reason string never leaks
+        # into the user-facing report.
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        assert "cause-unknown" not in report
+
+    def test_classified_finding_still_offers_apply_and_repoint(self):
+        # Falsifies the withholding above: a finding that DOES carry
+        # up_broken_reason (the modern, classified shape) is unaffected —
+        # only the key's ABSENCE triggers withholding (ADR-3).
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "- [x] Apply" in block
+        assert "**Repoint to:**" in block
+        assert "predates the cause classifier" not in block
+
+    def test_property_resident_pre033_finding_also_withheld(self):
+        # The gap isn't inline-only — a frontmatter-declared parent on a
+        # pre-033 cache is just as unclassified.
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"],
+            up_broken_reason=None,
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "predates the cause classifier" in block
+        assert "**Repoint to:**" not in block
+        # No Fix-target disclosure either — nothing to approve at all.
+        assert "**Fix target:**" not in block
+
+
+# ---------------------------------------------------------------------------
 # Spec 032 T5.3: routing-split line (ADR-4) — once per run, the population of
 # broken_up findings split by declaration site.
 # ---------------------------------------------------------------------------
@@ -1357,7 +1477,13 @@ class TestUnroutableFindings:
 # The line is suppressed entirely whenever B + P == 0, covering both "no
 # broken_up findings at all" and "every one is unattributable."
 
-_SPLIT_LINE = "Broken parents: {total} findings — {body} in the note body, {prop} in a note property."
+def _split_line(total: int, body: int, prop: int) -> str:
+    # spec 033 T4.4 review: "N findings" must read "N finding" at total==1 —
+    # the same class of bug as "resolves all 2" (T4.1). This helper is the
+    # single source of the expected string so every call site stays correct
+    # when total is 1, instead of each test hardcoding "findings".
+    noun = "finding" if total == 1 else "findings"
+    return f"Broken parents: {total} {noun} — {body} in the note body, {prop} in a note property."
 
 
 class TestBrokenUpSplitLine:
@@ -1369,7 +1495,7 @@ class TestBrokenUpSplitLine:
             _make_broken_up_finding("F04", up_source="frontmatter", up_value="[[D]]"),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=4, body=3, prop=1) in report
+        assert _split_line(4, 3, 1) in report
 
     def test_split_line_appears_exactly_once_regardless_of_finding_count(self):
         findings = [
@@ -1388,14 +1514,27 @@ class TestBrokenUpSplitLine:
             _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=2, body=2, prop=0) in report
+        assert _split_line(2, 2, 0) in report
 
     def test_only_property_resident_still_renders_with_zero_body(self):
         findings = [
             _make_broken_up_finding("F01", up_source="frontmatter", up_value="[[A]]"),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=1, body=0, prop=1) in report
+        assert _split_line(1, 0, 1) in report
+
+    def test_total_one_says_finding_not_findings(self):
+        # "1 findings" is not English — the same class of bug T4.1's
+        # "resolves all 2" fixed. A fixture with 2+ findings (most of this
+        # class) never exercises total == 1, which is exactly how this
+        # survived spec 032 unnoticed.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        split_line = _line_starting_with(report, "Broken parents:")
+        assert "1 finding —" in split_line
+        assert "1 findings —" not in split_line
 
     def test_no_broken_up_findings_renders_no_split_line(self):
         report = _render_report(_make_doc(findings=[_make_unparented_finding()]))
@@ -1424,7 +1563,7 @@ class TestBrokenUpSplitLine:
             _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=1, body=1, prop=0) in report
+        assert _split_line(1, 1, 0) in report
 
     def test_unsupported_shape_finding_still_counted_by_site(self):
         # T3.2: a map-shaped up_value is withheld (unsupported-shape), but its
@@ -1434,7 +1573,7 @@ class TestBrokenUpSplitLine:
             _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1}),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=1, body=0, prop=1) in report
+        assert _split_line(1, 0, 1) in report
 
     def test_split_line_precedes_unroutable_summary(self):
         findings = [
@@ -1529,7 +1668,7 @@ class TestFlaggedParentSituationCounts:
         split_line = _line_containing(report, "Broken parents:")
         # The verbatim spec-032 prefix survives untouched (substring, not
         # equality) — this test only proves the NEW clause was appended.
-        assert _SPLIT_LINE.format(total=1, body=1, prop=0) in split_line
+        assert _split_line(1, 1, 0) in split_line
         assert "untagged" in split_line.lower()
 
 
@@ -2227,6 +2366,24 @@ class TestUntaggedParentsBlockContent:
         report = _render_report(_make_doc(findings=findings))
         assert "**Untagged parents" in report
         assert "[[Projects]]" in report
+
+    def test_header_says_target_not_targets_when_exactly_one_shared(self):
+        # Found while auditing for the same "1 findings" class of bug
+        # (spec 033 T4.4 review): this header's total_targets can be
+        # exactly 1 (one shared target this run, everything else unique) —
+        # "1 targets" is not English. total_findings can't hit this trap
+        # (every included target has group size > 1 by construction, so
+        # it's always >= 2), only total_targets can.
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Projects"),
+            _make_parent_not_moc_finding("F02", up_target="Projects"),
+            _make_parent_not_moc_finding("F03", up_target="Projects"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        header_line = _line_starting_with(report, "**Untagged parents")
+        assert "1 target," in header_line
+        assert "1 targets," not in header_line
+        assert "3 findings," in header_line
 
     def test_per_target_counts_agree_with_actual_finding_count(self):
         # Reconciliation, not each side alone: recompute expected counts from

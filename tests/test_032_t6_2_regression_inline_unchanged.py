@@ -189,6 +189,14 @@ def _wire_finding(fid, check, tier, fixable, path, stem, detail, decision=None):
 
 
 def _all_inline_findings():
+    # spec 033 T4.4: F02/F03's detail carries up_broken_reason="unresolved"
+    # — a real garden-audit.py finding always does once up_source/up_value
+    # are populated (a modern, classified cache entry); its absence is
+    # T4.4's OWN new "cause-unknown" withhold reason, which would make both
+    # findings unroutable here and break every assertion below that this
+    # fixture predates. This fixture represents a MODERN cache, not a
+    # pre-033 one — T4.4's own tests in test_garden_audit_render.py cover
+    # the pre-033 shape.
     return [
         _wire_finding(
             "F01", "dead_link", "integrity", True,
@@ -199,13 +207,19 @@ def _all_inline_findings():
         _wire_finding(
             "F02", "broken_up", "integrity", True,
             "Notes/Broken Note.md", "Broken Note",
-            {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None},
+            {
+                "up_target": "Deleted MOC", "up_source": "inline", "up_value": None,
+                "up_broken_reason": "unresolved",
+            },
             decision={"selected": True, "action": "edit_note_text", "repoint": ""},
         ),
         _wire_finding(
             "F03", "broken_up", "integrity", True,
             "Notes/Repoint Note.md", "Repoint Note",
-            {"up_target": "Old MOC", "up_source": "inline", "up_value": None},
+            {
+                "up_target": "Old MOC", "up_source": "inline", "up_value": None,
+                "up_broken_reason": "unresolved",
+            },
             decision={
                 "selected": True, "action": "add_relationship",
                 "repoint": "Correct MOC",

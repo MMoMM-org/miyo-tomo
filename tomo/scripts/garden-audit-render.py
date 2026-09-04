@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.0
+# version: 0.21.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -110,6 +110,22 @@ _UNROUTABLE_REMEDY = {
         "  This is not a stale cache — refreshing it will not change the"
         " outcome. Edit the property by hand instead.",
     ],
+    # spec 033 T4.4, PRD F6: distinct from "stale-cache" above — that reason
+    # is a cache predating spec 032 (up_value/up_source never written at
+    # all). This one is a cache that HAS up_value/up_source (spec 032 ran)
+    # but predates spec 033's cause classifier (up_broken_reason never
+    # written) — the current live vault cache is measured in exactly this
+    # state (359 entries, 42 broken, 0 carrying up_broken_reason). Not
+    # spec-locked verbatim, but must say BOTH that the index predates the
+    # distinction (PRD F6 crit 2) AND how to refresh it — a disclosure
+    # without the remedy leaves the reader stuck.
+    "cause-unknown": [
+        "- **Not fixable this run:** the discovery cache predates the cause"
+        " classifier — Tomo cannot tell whether this parent is genuinely"
+        " missing, outside the audited area, or a real note that just isn't"
+        " tagged as a MOC yet.",
+        "  Run `/explore-vault` to refresh the cache, then re-run the audit.",
+    ],
 }
 
 
@@ -137,6 +153,19 @@ def _broken_up_withhold_reason(f: dict) -> str | None:
         # Mirrors garden-audit-parser._route_broken_up's shape check.
         return "unsupported-shape"
     if up_source in ("frontmatter", "inline"):
+        # spec 033 T4.4, ADR-3: absence of the KEY is the signal, never a
+        # defaulted value — garden-audit.py's _check_broken_up only ever
+        # writes detail.up_broken_reason when the cache entry itself carried
+        # up_broken_reason (Phase 1). A finding that reaches here with
+        # up_value/up_source present (so NOT spec-032 stale-cache) but no
+        # up_broken_reason at all predates spec 033's cause classifier —
+        # Tomo cannot tell whether it is genuinely missing, out of the
+        # audited area, or a real note that just isn't tagged as a MOC
+        # (parent_not_moc in disguise). Offering remove/repoint without
+        # disclosure would risk deleting a working parent link, so this is
+        # withheld exactly like the other unroutable reasons above.
+        if "up_broken_reason" not in detail:
+            return "cause-unknown"
         return None
     return "no-declaration-site"
 
@@ -230,10 +259,16 @@ def _render_untagged_parents_block(up_target_groups: dict[str, list[dict]]) -> l
     if not shared:
         return []
     total_targets = len(shared)
+    # total_findings is always >= 2 (every included target has group size >
+    # 1 by the filter above), so "findings" is always correctly plural
+    # there. total_targets CAN be exactly 1 (one shared target this run,
+    # the rest unique) — caught while checking for the "1 findings" class
+    # of bug elsewhere in this file (spec 033 T4.4 review).
     total_findings = sum(len(fs) for fs in shared.values())
+    target_noun = "target" if total_targets == 1 else "targets"
     lines = [
-        f"**Untagged parents — {total_targets} targets, {total_findings} findings, "
-        "one tag each settles the group:**",
+        f"**Untagged parents — {total_targets} {target_noun}, {total_findings} "
+        "findings, one tag each settles the group:**",
         "",
     ]
     # Row order is deterministic by construction, not incidental: `shared`
@@ -510,6 +545,7 @@ _UNROUTABLE_REASON_LABEL = {
     "stale-cache": "stale cache",
     "no-declaration-site": "no declaration site",
     "unsupported-shape": "unsupported value shape",
+    "cause-unknown": "cause unknown",
 }
 _UNROUTABLE_SUMMARY_TEXT = {
     "stale-cache": (
@@ -528,6 +564,13 @@ _UNROUTABLE_SUMMARY_TEXT = {
     "unsupported-shape": (
         "a map-shaped `{prop}` property value this fix does not yet support "
         "— not a stale cache, edit the property by hand"
+    ),
+    # spec 033 T4.4, PRD F6 crit 2: says the index predates the distinction
+    # AND how to refresh it, mirroring stale-cache's shape above.
+    "cause-unknown": (
+        "the discovery cache predates the cause classifier — could be "
+        "missing, out of the audited area, or untagged. Run `/explore-vault` "
+        "to refresh it, then re-run the audit"
     ),
 }
 
@@ -557,7 +600,9 @@ def _render_unroutable_summary(findings: list[dict], up_property: str) -> list[s
     total = sum(counts.values())
     noun = "finding" if total == 1 else "findings"
     lines = [f"**{total} {noun} withheld this run — not fixable:**", ""]
-    for reason in ("stale-cache", "no-declaration-site", "unsupported-shape"):
+    for reason in (
+        "stale-cache", "no-declaration-site", "unsupported-shape", "cause-unknown"
+    ):
         n = counts.get(reason, 0)
         if n:
             label = _UNROUTABLE_REASON_LABEL[reason]
@@ -619,8 +664,14 @@ def _render_broken_up_split(findings: list[dict]) -> list[str]:
     total = body + prop
     if total == 0:
         return []
+    # spec 033 T4.4 review: "1 findings" is not English — the same class of
+    # bug T4.1's "resolves all 2" avoided. Pre-dates this spec (032, 33fb7d8)
+    # but this spec both edits this exact line (the trailing clause below)
+    # and makes total == 1 far more common than it used to be, now that the
+    # denominator excludes parent_not_moc findings.
+    noun = "finding" if total == 1 else "findings"
     return [
-        f"Broken parents: {total} findings — {body} in the note body, "
+        f"Broken parents: {total} {noun} — {body} in the note body, "
         f"{prop} in a note property. Counts findings not found in the "
         "audited area only — untagged parents are shown separately, above.",
         "",

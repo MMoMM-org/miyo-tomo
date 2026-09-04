@@ -99,6 +99,58 @@ built once in `build_entries` and reused for all notes. This keeps up_parse
 independent of vault state (testable in isolation) while keeping the resolution
 logic co-located with the data that makes it possible.
 
+## `up_broken_reason` Distinguishes WHY `up_state` Is Broken (spec 033 T1.1/T1.2 / ADR-2, ADR-3)
+
+WHY: `_resolve_up_state` now returns `(up_state, up_broken_reason)` instead of
+`up_state` alone. `up_state`'s three values (`absent` / `valid` / `broken`)
+are deliberately UNCHANGED (ADR-2) — three existing consumers key on
+`up_state == "absent"` (`_check_unparented`) or `== "broken"`
+(`_check_broken_up`, and `_check_orphan`'s `setdefault`). Extending the enum
+itself with new values like `not-a-moc` / `unresolved` would make each of
+those `==` comparisons silently wrong for the new values — code that still
+compiles, still passes any test that only checks the old values, and quietly
+stops flagging findings it used to catch. An additive field leaves every
+existing comparison true and every consumer correct; this is the same choice
+spec 032 made twice already, for `up_source` and `up_value` (see T7.1 above).
+
+`up_broken_reason` distinguishes the two ways a resolution can be `broken`:
+- `not-a-moc` — the `up::` target IS a real, in-scope note (it resolves
+  against `note_stem_set`, derived from `scan_result.in_scope_note_paths`).
+  The link itself works; the note it points to just doesn't carry the MOC
+  tag. This is an advisory situation, not data corruption — nothing here is
+  actually broken in the vault.
+- `unresolved` — the target is not in `moc_stem_set` OR `note_stem_set`: it
+  is not part of the audited area at all. `unresolved` deliberately means
+  "not found in the scope this cache scanned", NOT "does not exist anywhere
+  in the vault" — the cache only knows its own scope, and answering the
+  stronger question would require a vault existence check this builder must
+  not acquire (ADR-6; C1's single-read-per-note contract governs reads that
+  DO happen, but a broken-link classifier must not reach for an extra one
+  just to firm up its answer).
+
+A stem present in both `moc_stem_set` and `note_stem_set` (a MOC also listed
+as a note) resolves `valid` — the MOC set is checked first and wins the tie,
+matching `up_state`'s pre-existing MOC-first precedence.
+
+**The load-bearing part is absence (ADR-3):** `up_broken_reason` is written
+on EVERY entry the builder assembles, `None` where it does not apply (the
+`absent`/`valid` cases). Its PRESENCE, not its value, is the cache-freshness
+signal a downstream reader relies on. `None` is a legitimate, meaningful
+value here — so a reader that does `entry.get("up_broken_reason")` and
+treats a `None` result as "no reason" cannot tell that case apart from "this
+cache predates spec 033 and never wrote the key at all". Consumers MUST test
+for the key with a module-level `_MISSING` sentinel and a membership check
+(`entry.get("up_broken_reason", _MISSING) is not _MISSING`), never `.get()`
+with a default — mirroring the sentinel pattern spec 032 already established
+for `up_value` (T7.1 above).
+
+The failure this absence rule exists to prevent: without it, a pre-033 cache
+read by 033-aware code would silently read as `unresolved` for every single
+finding (because a missing key and an explicit `None` are indistinguishable
+under a bare `.get()`). That would keep offering the destructive "repoint or
+remove" fix on exactly the findings this spec exists to protect from
+that fix — while the report claims it already checked.
+
 ## `placeholder.build` / `moc-cache.build` Telemetry Goes to stderr (M2/M4/M7)
 
 WHY: The PRD §Observability table promises these two events to validate the

@@ -313,18 +313,28 @@ callers); `_hints` responses are optional and currently ignored. Source:
 `_inbox/from-kado/2026-06-24_kado-to-tomo_graph-tool-and-search-ranking.md`; Kado ADR-002 (disclosure
 guard) / ADR-003 (`_hints` contract).
 
-## OPEN — `garden-audit-render.py` is 1059 LOC, 2-3.5x over the constitution guideline
+## OPEN — `garden-audit-render.py` is 1387 LOC, 2.8-4.6x over the constitution guideline
 
-Flagged by the Phase 5 constitution check of spec 032-up-source-routing (2026-09-02).
+Flagged by the Phase 5 constitution check of spec 032-up-source-routing (2026-09-02); revisited
+after spec 033-broken-up-cause-split Phase 4's constitution check (2026-09-04).
 
 MiYo Constitution, Code Quality L2: *"Files implementing core behaviour … should remain small and
 focused. When a file grows beyond ~300–500 LOC of dense logic, it should be refactored into smaller
 modules along its natural seams."*
 
-Measured: **1059 LOC**. It was already **775 LOC** before spec 032 touched it — so the breach is
-pre-existing, but spec 032 added roughly **+284 LOC**, a material contribution rather than pure
-inheritance. L2 requires rationale on violation rather than a hard block, so this did not gate the
-phase.
+Measured: **1387 LOC**. It was **1059 LOC** at the spec-032 checkpoint above (1068 LOC once spec
+033's own Phases 1-3 had also landed, +9 LOC registering the new `parent_not_moc` check). Phase 4
+(T4.1-T4.6) then added **+319 LOC** on its own (338 insertions, 19 deletions against the pre-Phase-4
+commit) — a ~30% increase, material rather than incidental, matching spec 032's own precedent above.
+The growth bought: the per-check advisory message table and the once-per-run "Untagged parents"
+grouping block that lets one MOC tag resolve several findings at once (T4.1); the reworded
+`broken_up` wording that stops implying a target was found to be missing when the check cannot tell
+missing from out-of-scope (T4.2); the per-situation "Flagged parents" counts, extended to a third
+bucket after the fact (T4.3, corrected T4.5); the `cause-unknown` withholding path that reuses the
+existing `_UNROUTABLE_REMEDY` mechanism rather than adding a parallel one (T4.4); and the fixes and
+regression coverage the T4.5 prose read and T4.6 required to prove all of the above holds up as
+rendered English, not just as passing assertions. L2 requires rationale on violation rather than a
+hard block, so this did not gate either phase.
 
 Natural seams observed while working in it:
 - the three once-per-run summary renderers (`_render_summary`, `_render_unroutable_summary`,
@@ -340,7 +350,40 @@ summary line is the point to extract the shared skeleton.** Same judgment applie
 parallel dicts: a fourth unroutable reason would be the moment to collapse them into one dict of
 records, since a reason currently needs an entry in all three and nothing enforces completeness.
 
-Not spec-032 scope. Pick up when either trigger fires, or as a standalone refactor.
+**Both triggers arguably fired in Phase 4, unassessed.** T4.3 added `_render_flagged_parent_situations`
+— a fourth once-per-run summary renderer sharing the same classify → bucket → suppress-at-zero
+skeleton as the two already named (it is not `broken_up`-scoped alone, since it also counts
+`parent_not_moc`, so it may or may not be the "third broken_up-scoped summary line" the original
+trigger meant precisely — a judgment call for whoever picks this up, not decided here). T4.4 added a
+fourth entry (`cause-unknown`) to all three parallel dicts, exactly the count the second trigger
+named. Neither was extracted or collapsed during Phase 4 — flagging that the triggers exist, not
+acting on them, since this entry's own scope is documentation, not refactoring.
+
+Not spec-032 or spec-033 scope. Pick up when either trigger fires (now, arguably), or as a standalone
+refactor.
+
+## Decision record — the split line's "Broken parents:" label outlives its own precision
+
+Spec 033 T4.5's prose read (2026-09-04) fixed the same defect — a `broken_up` finding's rendered
+text asserting breakage it cannot confirm — at the per-finding heading, detail line, and Summary
+levels for a cause-unknown finding (see `docs/tomo/scripts/garden-audit-render.md`'s T4.5 entry).
+One instance survives, one level up. `_render_broken_up_split`'s section label ("Broken parents: N
+findings — B in the note body, P in a note property…") still reads "Broken parents" even when N
+includes a cause-unknown survivor. A reader who encounters this line in isolation — skipping the
+Summary's own "Flagged parents" breakdown two lines above it, which DOES separate cause-unknown out
+after T4.5's fix — sees "Broken parents: 1 finding" attached to a finding that may turn out to be
+untagged-but-real rather than confirmed broken.
+
+**Accepted, not fixed.** This is spec-032 verbatim-locked text (ADR-4, solution.md UI & UX,
+"DO NOT PARAPHRASE" provenance); the check itself is named `broken_up` and this spec does not rename
+it; and the trailing clause (T4.3/ADR-7) already scopes the count to declaration site rather than
+asserting a cause. Rewording the label itself would mean reaching into 032-locked text and adding a
+fourth sanctioned byte-identity difference to `test_032_t6_2_regression_inline_unchanged.py`'s
+baseline comparison, for a residual the Summary line two lines above already resolves for a reader
+who reads the whole Summary rather than one line of it in isolation.
+
+Pick up if a future spec touches this line for an unrelated reason anyway, or if user feedback shows
+readers land on the split line without reading the Summary above it.
 
 ## Decision record — `remove_up_link` stays unguarded; spec 032's routing is the alternative
 
@@ -361,7 +404,10 @@ the guard condition Tomo supplied, precisely because they are *not* implementing
 finding `remove_up_link` unguarded next to two guarded siblings should find a written answer, not an
 invitation to guess. Kokoro carries the same open-by-design note in ADR-028 §5, with an explicit
 warning that the class must not be assumed swept clean. Hashi's `edit_frontmatter` (`operation:
-"remove"` + `expected`) shipped in **0.23.0** and needs nothing new to receive this spec's output.
+"remove"` + `expected`) shipped in **0.22.0** and needs nothing new to receive this spec's output.
+(Corrected 2026-09-03: the earlier **0.23.0** here named neither the release that added the kind nor
+the one that added the `expected`/`expected_absent` split — that is 0.23.1. Tomo keeps 0.23.0 as a
+stated floor deliberately, for its comment-preserving pre-check.)
 
 Hashi is not tracking an issue on their side for this — there is nothing left for them to build. They
 are waiting for Tomo to notify them once the routing ships (plan task **T6.6**), at which point the
@@ -420,3 +466,93 @@ other six (orphan detection, cache post-write validation, classification coverag
 frontmatter sampling, per-tag counting, deep-nesting warning) have since shipped. This is
 the last one, re-verified open on 2026-09-03 while retiring the memory file that carried
 the list.
+
+## RELEASE NOTE — spec 033 (`parent_not_moc`) may make excluded `broken_up` findings reappear
+
+Spec 033 splits the `broken_up` garden-audit check: a link whose parent target exists but carries no
+MOC tag now reports as a separate advisory check, `parent_not_moc`, instead of as `broken_up`. This
+is correct (the two are different situations — see
+[spec 033](specs/033-broken-up-cause-split/README.md)) but it silently changes what an existing
+exclusion config suppresses (ADR-4 in `specs/033-broken-up-cause-split/solution.md`):
+
+- An exclusion using `checks: all` for a path/note/tag keeps covering everything, `parent_not_moc`
+  included. No action needed.
+- An exclusion that names checks **explicitly** and lists `broken_up` does **not** automatically
+  cover `parent_not_moc` — a finding on that path that used to be silent as `broken_up` can reappear,
+  now labeled `parent_not_moc`, in the advisory tier.
+
+Measured against this project's own live vault config
+(`tomo-instance/config/garden-audit-exclusions.yaml`, spec 033 T3.3, 2026-09-03): 4 of 6 rules use
+`checks: all` (unaffected); one rule (`Efforts/` → `[broken_up, dead_link, stale_moc]`) names
+`broken_up` explicitly and will see reappearance the first time `/garden-audit` runs after this
+ships. Confirmed by running the actual `GardenExclusions` loader against the file, not by reading the
+YAML.
+
+Action for anyone shipping this: mention it in the release note for spec 033 — "if you excluded
+`broken_up` by name rather than with `checks: all`, you may see a few new advisory findings; this is
+expected, not a regression" — and, for users who prefer silence, that adding `parent_not_moc` to the
+explicit `checks` list restores it.
+
+## OPEN — check-name knowledge is duplicated across six structures; it has already caused a real miss
+
+Adding one garden-audit check requires editing **nine** separate registration sites, because no
+single structure owns the set of check names. They are spread across:
+
+- `tomo/scripts/garden-audit.py` — `_TIER` (name → tier), `_FIXABLE` (which names may carry a fix)
+- `tomo/scripts/lib/garden_exclusions.py` — `ALL_CHECK_NAMES`
+- `tomo/scripts/garden-audit-configure.py` — `_VALID_CHECKS`
+- `tomo/scripts/garden-audit-render.py` — `_CHECK_LABEL`, plus two check-name tuples
+- `tomo/scripts/garden-audit-stats.py` — `_CHECKS`, `_COL_LABEL`, **and a second, stats-local
+  `_TIER`** that duplicates `garden-audit.py`'s
+- `tomo/schemas/` — three separate check-name enums (`garden-audit-doc`, `garden-audit-wire`,
+  `garden-audit-exclusions`), plus four prose descriptions that enumerate checks and validate
+  nothing
+
+**This is not hypothetical debt.** Spec 033's SDD first drafted the registration inventory at six
+must-register sites. An independent audit found three more, all of them in `garden-audit-stats.py`
+or the third schema enum — the surfaces furthest from the check that owns the name. The most severe
+(`_CHECKS`, guarded by a module-scope `assert` at `garden-audit-stats.py:50`) would have raised
+`AssertionError` at **import**, taking the stats tool down entirely, and the planned verification
+walk would not have caught it: a walk over the inventory can only prove the sites named in it are
+covered, never that no others exist. Spec 032 hit the same class of miss, and spec 031's
+`move_asset` is still unregistered in three places for the same reason.
+
+Spec 033 mitigated the symptom rather than the cause: it corrected the inventory to nine sites, and
+rewrote its verification to include a completeness grep independent of the table (classify every
+occurrence of an existing check name as either registered-or-deliberately-excluded). That grep is
+reusable and should be the minimum bar for any future check — but it is a detector, not a fix.
+
+The fix would be a single source of truth for check metadata (name, tier, fixable, label, column
+label) with every other structure derived from it, leaving only the genuinely independent decisions
+— the three sites where a name must deliberately NOT appear — as explicit opt-outs. The schema
+enums could be generated rather than hand-maintained.
+
+Worth doing before the next check is added, not after.
+
+## RELEASE NOTE — spec 033: the first `/garden-audit` run after upgrading offers no broken-parent fixes
+
+Spec 033 classifies *why* an `up::` parent link is flagged, using a new `up_broken_reason` field the
+MOC-structure cache only gains once it is rebuilt. An index built before this change carries no such
+field — and per PRD Feature 6, a report drawn from it must not claim a cause it cannot determine, nor
+offer a fix that would be wrong for two of the three situations it cannot tell apart.
+
+So on an unrefreshed index, every `broken_up` finding is **withheld**: no Apply checkbox, no
+`Repoint to:` field, no Suggest opt-in. The block instead discloses that the index predates the
+classifier and names the remedy — run `/explore-vault` to refresh the cache, then re-run the audit.
+
+**This affects the first run for every existing user, not an edge case.** Measured on this project's
+own vault (spec 033 T2.4, 2026-09-03): the live cache carried 359 entries and 42 `up_state=="broken"`
+findings, and **0 of the 42** carried `up_broken_reason`. All 42 would be withheld on the first run
+after this ships.
+
+This is the designed behaviour, not a regression. Before spec 033 the audit offered one remedy —
+*"repoint it to a MOC, or leave empty to remove"* — for three unrelated situations, and it was wrong
+for two of them: it deleted links whose target was a real note that simply carried no MOC tag, and it
+blamed the vault when the target merely sat outside the audited scope. Withholding until the index can
+tell the cases apart is the honest behaviour; the spec's own Could-Have ("counting the saved
+deletions") anticipates it.
+
+Action for anyone shipping this: say so in the release note — *"the first audit after upgrading will
+ask you to refresh the index before it offers broken-parent fixes; run `/explore-vault` once and the
+fixes come back, now with the right one offered for each situation."* One refresh clears it
+permanently.

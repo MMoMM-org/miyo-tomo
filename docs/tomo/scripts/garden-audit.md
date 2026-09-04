@@ -2,7 +2,7 @@
 
 > Rationale for decisions in `tomo/scripts/garden-audit.py`.
 > The script is the scan orchestrator for the knowledge-garden audit skill (spec 030).
-> It runs six checks over the MOC-structure cache, kado-graph-audit results, and
+> It runs seven checks over the MOC-structure cache, kado-graph-audit results, and
 > listDir modified times, applies GardenExclusions, and emits `garden-audit-doc.json`.
 > That intermediate doc feeds `garden-audit-render.py` (report + wire).
 
@@ -10,12 +10,15 @@
 
 WHY each check has a fixed data source and never crosses into another source's domain:
 
-- **Cache-only** (`broken_up`, `unparented`, `duplicate_stem`): these checks require
-  only the MOC-structure YAML cache that the container already loaded — no network call
-  to Kado. `broken_up` in particular MUST NOT trigger a graph_audit call; the broken
-  `up_target` is already recorded in `up_target` on the cache entry. Triggering a graph
-  call would incur unnecessary latency and Kado 429 risk on a check that is fully
-  answerable from the cache (SDD ADR-5 Rule 1).
+- **Cache-only** (`broken_up`, `parent_not_moc`, `unparented`, `duplicate_stem`): these
+  checks require only the MOC-structure YAML cache that the container already loaded — no
+  network call to Kado. `broken_up` and `parent_not_moc` in particular MUST NOT trigger a
+  graph_audit call; the broken `up_target` (and, since spec 033, `up_broken_reason`) is
+  already recorded on the cache entry. Triggering a graph call would incur unnecessary
+  latency and Kado 429 risk on a check that is fully answerable from the cache (SDD ADR-5
+  Rule 1). `parent_not_moc` is `broken_up` split by cause (spec 033) — see below — and
+  inherits this property unchanged; the split added a second check name, not a second
+  data source.
 - **Graph-dependent** (`orphan`, `dead_link`): these require the `kado-graph-audit`
   MCP tool, which walks the full vault link graph server-side. They cannot be answered
   from the cache alone (a note can be cache-absent because it was just added; dead
@@ -27,6 +30,66 @@ WHY each check has a fixed data source and never crosses into another source's d
 WHY the split matters for the graceful-partial guarantee: cache checks always run even
 when graph_audit or listDir raises. A Kado outage degrades to cache-only findings rather
 than a full failure.
+
+## `broken_up` Splits Into Two Checks By Cause (spec 033, ADR-1/ADR-3)
+
+WHY `_check_broken_up` used to fire for three unrelated vault states and offer all three
+the same remedy — *"repoint it to a MOC you enter below, or leave empty to remove"*: that
+remedy is correct for only one of them.
+
+- **target genuinely missing, or outside the audited `scope_paths`** — repoint or remove
+  is the right fix. This check cannot tell these two apart without leaving the cache
+  (deliberately out of scope, PRD Won't-Have — under-claiming here is correct; a confident
+  wrong answer is exactly what spec 033 removes), so both collapse into one cause below.
+- **target IS a real, in-scope note that just isn't tagged as a MOC** — the link WORKS.
+  Offering to repoint-or-remove it deletes a real parent. Measured on the live vault: 20 of
+  the 42 `broken_up` findings were this case — notes the pre-033 audit was inviting the
+  user to unparent.
+
+`up_broken_reason` (written unconditionally by `moc-tree-builder.py`, spec 033 T1) tells
+these apart, and `_check_broken_up` routes on it:
+
+```
+up_broken_reason == "not-a-moc"        -> check "parent_not_moc" (advisory, NOT fixable)
+up_broken_reason == "unresolved"       -> check "broken_up"      (integrity, fixable)
+up_broken_reason key absent (pre-033)  -> check "broken_up", detail withholds the cause
+```
+
+WHY `parent_not_moc` is registered in `_TIER` (`:51`, `"advisory"`) but deliberately absent
+from `_FIXABLE` (`:60`): that absence IS the fix-prevention mechanism, not a convention
+someone remembered to follow. `_finding` (`:86-101`) attaches a `decision` block only
+`if check in _FIXABLE` — leave `parent_not_moc` out and no `decision` block is ever built,
+so the report can never render an Apply checkbox or a repoint field for it, and
+`garden-audit-parser.py`'s two routing sites (`:403`, `:603`, both gated on the literal
+`check == "broken_up"`) never see it either — there is no code path left for an advisory
+finding to reach an action through. **A future reader who "tidies up" by adding
+`parent_not_moc` to `_FIXABLE` silently re-enables the exact destructive fix this spec
+removes, on notes whose parent link works.**
+
+WHY a stale (pre-033) cache entry — `up_broken_reason` key absent from the raw entry —
+still routes to `broken_up` rather than a new state: the check cannot safely assume
+`not-a-moc` (it might genuinely be a dead link), so it falls back to today's fixable
+behaviour rather than silently going advisory-only on an unexamined finding. But its
+`detail` withholds any claim to a cause: `up_broken_reason` is read via a module-level
+`_MISSING` sentinel and a membership test (`entry.get("up_broken_reason", _MISSING)`),
+never `.get()` with a default — a plain `.get()` cannot distinguish "no reason applies"
+from "this cache predates spec 033", and would silently print a claimed `"unresolved"`
+cause for every one of those findings while the report claims it checked.
+`detail["up_broken_reason"]` is attached only `if reason is not _MISSING`, so an
+absent-key entry's finding carries no `up_broken_reason` key in `detail` at all — not
+even `None`. An entry with the key present but explicitly `null` on a broken `up_state`
+(an anomaly a correctly-functioning builder never writes) is treated the same way: routed
+to `broken_up`, no claimed cause.
+
+WHY exclusions are now consulted by the resolved check name instead of the literal
+`"broken_up"` string: an exclusion naming `broken_up` explicitly no longer silences
+`parent_not_moc` findings on the same path — they are a different statement about the
+same note (SDD ADR-4). A `checks: all` exclusion still covers both, since it expands to
+every registered check name. This is a visible consequence on this repo's own dev
+instance's exclusion config (`config/garden-audit-exclusions.yaml`): 4 of its 6 rules use
+`checks: all` and silently gain `parent_not_moc` coverage, but the `Efforts/` rule names
+`broken_up` explicitly (`[broken_up, stale_moc, dead_link]`) — `parent_not_moc` findings
+under `Efforts/` will reappear even though the user believed that path silenced.
 
 ## Batch Orphan Suggestions, Not Per-Orphan Calls (S1)
 
@@ -124,3 +187,25 @@ pushback ledger (merged via GardenExclusions.from_paths) — it never writes it.
 WHAT lands in the ledger moved from per-finding acknowledgement to "every advisory in an approved
 report" (see garden-audit-parser.md 0.10.0), which is entirely a Pass-2 parser concern. The scan
 still passes `advisory_pushback_days` into the doc for the renderer's pause-window label.
+
+## Version 0.5.0 (spec 032, 2026-09-03)
+
+WHY: `_check_broken_up`'s `detail` gained `up_source`/`up_value`, copied from the cache entry
+only when the entry actually carries the key (ADR-3 membership pattern — a key's ABSENCE from a
+stale pre-032 cache must survive as absence from `detail`, not collapse into a defaulted `None`).
+This is the only change spec 032 made to `garden-audit.py` itself (commit `33fb7d8`, PR #158);
+the declaration-site routing (inline vs. frontmatter vs. stale/withheld) that these two new
+fields feed downstream is entirely `garden-audit-parser.py`'s concern — see that file's WHY doc.
+
+## Version 0.6.0 — `broken_up` splits by cause; the advisory half carries no fix (spec 033, 2026-09-03)
+
+WHY: `_TIER` gains `parent_not_moc` → `"advisory"`; `_FIXABLE` is deliberately left unchanged
+(still `{unparented, orphan, broken_up, dead_link}`). `_check_broken_up` now reads
+`up_broken_reason` off the cache entry via a `_MISSING` sentinel and routes: `"not-a-moc"` →
+check `"parent_not_moc"`; everything else (`"unresolved"` or the key absent) → check
+`"broken_up"`, unchanged from before. `detail` carries `up_broken_reason` only when the raw
+entry has the key (the same ADR-3 membership discipline 0.5.0 established for `up_source` /
+`up_value`). Exclusions are now consulted by the resolved check name rather than the literal
+string `"broken_up"`, so a path excluded for one check remains eligible for the other. See
+"`broken_up` Splits Into Two Checks By Cause" above for the full rationale — including why
+`parent_not_moc`'s absence from `_FIXABLE` must never be "corrected".

@@ -74,7 +74,13 @@ def _finding(fid: str, path: str, stem: str, detail: dict) -> dict:
 
 
 def _mixed_doc() -> dict:
-    """One inline-declared + one property-declared broken-`up` finding."""
+    """One inline-declared + one property-declared broken-`up` finding.
+
+    spec 033: up_broken_reason is always present once up_source/up_value are
+    populated (a post-033-classified cache entry) — its absence is a
+    DIFFERENT, deliberate shape (garden-audit-render.py's cause-unknown
+    withhold reason), not this fixture's concern.
+    """
     return {
         "run_id": "run-t6-1-001",
         "generated": "2026-09-02T10:00:00Z",
@@ -84,11 +90,13 @@ def _mixed_doc() -> dict:
         "findings": [
             _finding(
                 "F01", INLINE_PATH, INLINE_STEM,
-                {"up_target": "['Old Parent MOC']", "up_source": "inline", "up_value": None},
+                {"up_target": "['Old Parent MOC']", "up_source": "inline", "up_value": None,
+                 "up_broken_reason": "unresolved"},
             ),
             _finding(
                 "F02", PROPERTY_PATH, PROPERTY_STEM,
-                {"up_target": "Old MOC", "up_source": "frontmatter", "up_value": PROPERTY_UP_VALUE},
+                {"up_target": "Old MOC", "up_source": "frontmatter", "up_value": PROPERTY_UP_VALUE,
+                 "up_broken_reason": "unresolved"},
             ),
         ],
     }

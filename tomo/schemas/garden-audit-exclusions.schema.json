@@ -70,7 +70,7 @@
                 "minItems": 1,
                 "items": {
                   "type": "string",
-                  "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"]
+                  "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc", "parent_not_moc"]
                 },
                 "description": "Specific checks to suppress."
               }

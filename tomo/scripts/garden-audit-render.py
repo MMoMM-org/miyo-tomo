@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.2
+# version: 0.22.1
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -66,7 +66,19 @@ _CHECK_LABEL = {
     "orphan": "Orphan note",
     "duplicate_stem": "Duplicate stem",
     "stale_moc": "Stale MOC",
+    "parent_not_moc": "Parent not a MOC",
 }
+
+# spec 033 T4.5 review, finding ③: NOT a check-name registration (never index
+# this by a check name, never add it to _CHECK_LABEL) — a display override
+# for one specific withhold REASON on the existing "broken_up" check. Its
+# own block says Tomo cannot tell whether the parent is even broken (it
+# might be a real, untagged note in disguise), so "Broken up:: link" would
+# contradict the body directly below it — the exact defect class spec 032
+# shipped once already. The other three withhold reasons (stale-cache,
+# no-declaration-site, unsupported-shape) ARE genuinely about a broken link
+# that cannot be routed — only cause-unknown gets this override.
+_CAUSE_UNKNOWN_LABEL = "Unclassified parent link"
 
 
 # ── Unroutable broken_up findings (spec 032 T5.2) ──────────────────────────────
@@ -109,6 +121,22 @@ _UNROUTABLE_REMEDY = {
         "  This is not a stale cache — refreshing it will not change the"
         " outcome. Edit the property by hand instead.",
     ],
+    # spec 033 T4.4, PRD F6: distinct from "stale-cache" above — that reason
+    # is a cache predating spec 032 (up_value/up_source never written at
+    # all). This one is a cache that HAS up_value/up_source (spec 032 ran)
+    # but predates spec 033's cause classifier (up_broken_reason never
+    # written) — the current live vault cache is measured in exactly this
+    # state (359 entries, 42 broken, 0 carrying up_broken_reason). Not
+    # spec-locked verbatim, but must say BOTH that the index predates the
+    # distinction (PRD F6 crit 2) AND how to refresh it — a disclosure
+    # without the remedy leaves the reader stuck.
+    "cause-unknown": [
+        "- **Not fixable this run:** the discovery cache predates the cause"
+        " classifier — Tomo cannot tell whether this parent is genuinely"
+        " missing, outside the audited area, or a real note that just isn't"
+        " tagged as a MOC yet.",
+        "  Run `/explore-vault` to refresh the cache, then re-run the audit.",
+    ],
 }
 
 
@@ -136,6 +164,19 @@ def _broken_up_withhold_reason(f: dict) -> str | None:
         # Mirrors garden-audit-parser._route_broken_up's shape check.
         return "unsupported-shape"
     if up_source in ("frontmatter", "inline"):
+        # spec 033 T4.4, ADR-3: absence of the KEY is the signal, never a
+        # defaulted value — garden-audit.py's _check_broken_up only ever
+        # writes detail.up_broken_reason when the cache entry itself carried
+        # up_broken_reason (Phase 1). A finding that reaches here with
+        # up_value/up_source present (so NOT spec-032 stale-cache) but no
+        # up_broken_reason at all predates spec 033's cause classifier —
+        # Tomo cannot tell whether it is genuinely missing, out of the
+        # audited area, or a real note that just isn't tagged as a MOC
+        # (parent_not_moc in disguise). Offering remove/repoint without
+        # disclosure would risk deleting a working parent link, so this is
+        # withheld exactly like the other unroutable reasons above.
+        if "up_broken_reason" not in detail:
+            return "cause-unknown"
         return None
     return "no-declaration-site"
 
@@ -182,6 +223,127 @@ def _wikilink(ref) -> str:
     return f"[[{stem}]]"
 
 
+# ── parent_not_moc target grouping (spec 033 T4.1) ─────────────────────────
+# parent_not_moc is the only check with no decision block (it isn't fixable),
+# so there is nothing to key shared-target messaging on except the finding's
+# own detail — grouping lives here rather than piggybacking on a decision.
+
+def _up_target_key(f: dict) -> str | None:
+    """The rendered ``[[wikilink]]`` grouping key for a parent_not_moc finding,
+    or None when it can't form a group.
+
+    Reuses _wikilink's own normalization (list / dirty list-repr / alias /
+    path-prefix handling) as the SSoT for "what counts as the same target" —
+    the same string the finding's own advisory line renders. A finding whose
+    detail.up_target is missing or empty renders "(none)" and is excluded
+    here — it must not crash the block and must not form a group.
+    """
+    if f.get("check") != "parent_not_moc":
+        return None
+    link = _wikilink((f.get("detail") or {}).get("up_target"))
+    return None if link == "(none)" else link
+
+
+def _group_by_up_target(findings: list[dict]) -> dict[str, list[dict]]:
+    """Group parent_not_moc findings by their rendered up_target, preserving
+    first-seen order — the "Untagged parents" block and each finding's own
+    advisory count clause both read from this single pass."""
+    groups: dict[str, list[dict]] = {}
+    for f in findings:
+        key = _up_target_key(f)
+        if key is None:
+            continue
+        groups.setdefault(key, []).append(f)
+    return groups
+
+
+def _render_untagged_parents_block(up_target_groups: dict[str, list[dict]]) -> list[str]:
+    """Once-per-run block naming every parent_not_moc target shared by more
+    than one finding (PRD F2 crit 4) — the group-size>1 branch of the
+    per-finding advisory message points here. Suppressed when no target has
+    group size > 1 (every parent_not_moc target this run is unique), the same
+    "suppressed when empty" shape _render_broken_up_split and
+    _render_unroutable_summary already use — a new instance of an existing
+    pattern, not a new architectural shape.
+    """
+    shared = {t: fs for t, fs in up_target_groups.items() if len(fs) > 1}
+    if not shared:
+        return []
+    total_targets = len(shared)
+    # total_findings is always >= 2 (every included target has group size >
+    # 1 by the filter above), so "findings" is always correctly plural
+    # there. total_targets CAN be exactly 1 (one shared target this run,
+    # the rest unique) — caught while checking for the "1 findings" class
+    # of bug elsewhere in this file (spec 033 T4.4 review).
+    total_findings = sum(len(fs) for fs in shared.values())
+    target_noun = "target" if total_targets == 1 else "targets"
+    lines = [
+        f"**Untagged parents — {total_targets} {target_noun}, {total_findings} "
+        "findings, one tag each settles the group:**",
+        "",
+    ]
+    # Row order is deterministic by construction, not incidental: `shared`
+    # is filtered from `up_target_groups`, whose insertion order in turn
+    # comes from _group_by_up_target's single ordered pass over `findings`
+    # — both filters preserve dict insertion order, so rows render in
+    # findings order. That determinism is a diff-stability property, not an
+    # aesthetic one: a user re-running the audit and diffing the report in
+    # their vault should see row order shift only when the underlying
+    # findings order shifts, never as an artifact of this renderer.
+    for target, fs in shared.items():
+        # Reuse each finding's own id verbatim — _make_id assigns it once at
+        # creation and the report renders it in the ### F<id> heading; a
+        # recomputed index would drift the moment findings are filtered or
+        # reordered.
+        ids = ", ".join(f["id"] for f in fs)
+        lines.append(f"- {target} — {len(fs)} findings ({ids})")
+    lines.append("")
+    return lines
+
+
+# ── Per-check advisory message (spec 033 T4.1, ADR-5) ───────────────────────
+_ADVISORY_FALLBACK = "_Advisory — no automated fix. Review and handle manually._"
+
+
+def _parent_not_moc_advisory_message(f: dict, group_size: int) -> str:
+    """Verbatim wording (plan/phase-4.md T4.1, user decision 2026-09-04) —
+    DO NOT PARAPHRASE. The link works (the target exists and is in scope, it
+    just isn't tagged as a MOC) — the message names the target and inverts
+    today's generic "review and handle manually" into the actual action.
+
+    group_size 1 renders the base sentence only. group_size > 1 appends a
+    count clause pointing at the once-per-run "Untagged parents" block —
+    "resolves both" at exactly two ("resolves all 2" is not English),
+    "resolves all N" at three or more.
+    """
+    target = _wikilink((f.get("detail") or {}).get("up_target"))
+    msg = (
+        f"_{target} is a real note, not yet tagged as a MOC. Tag {target} as "
+        "a MOC — the link stays as it is."
+    )
+    if group_size > 1:
+        resolves = "both" if group_size == 2 else f"all {group_size}"
+        msg += (
+            f" {group_size} findings in this report point at {target}; "
+            f'tagging it once resolves {resolves} (see "Untagged parents" below).'
+        )
+    return msg + "_"
+
+
+_ADVISORY_MESSAGE = {
+    "parent_not_moc": _parent_not_moc_advisory_message,
+}
+
+
+def _advisory_message(f: dict, group_size: int) -> str:
+    """Per-check advisory line (ADR-5). ``.get(check)`` falls back to today's
+    literal line so duplicate_stem/stale_moc stay byte-identical (CON-3)."""
+    builder = _ADVISORY_MESSAGE.get(f.get("check"))
+    if builder is None:
+        return _ADVISORY_FALLBACK
+    return builder(f, group_size)
+
+
 def _fix_summary(check: str, detail: dict, decision: dict, up_property: str) -> str:
     """One plain-language line describing what applying the fix will DO to the note.
 
@@ -203,15 +365,27 @@ def _fix_summary(check: str, detail: dict, decision: dict, up_property: str) -> 
             "`/garden-audit suggest`, or set one in **File under:** below."
         )
     if check == "broken_up":
+        # spec 033 T4.2, ADR-6: the target's absence from the discovery cache
+        # does not prove the note is gone — the cache covers only the
+        # audited scope, and a target can legitimately live in a folder the
+        # scan never looked at (measured: 8 of 22 unresolved targets do).
+        # Say "not found in the audited area" and point at that scope as
+        # something the user can widen, rather than asserting the note does
+        # not exist. Remove and repoint remain available — this rewords the
+        # CLAIM, not the fix (ADR-7's routing by declaration site, and the
+        # property-edit disclosure it carries, are unchanged below).
         up = _wikilink(detail.get("up_target"))
         if detail.get("up_source") == "frontmatter":
             return (
-                f"The broken `{up_property}` property (was {up}) — repoint it to "
-                "a MOC you enter below, or leave empty to remove the property value."
+                f"The broken `{up_property}` property (was {up}) — not found in "
+                "the audited area. Widen the audited scope if it exists "
+                "elsewhere, repoint it to a MOC you enter below, or leave empty "
+                "to remove the property value."
             )
         return (
-            f"The broken `up::` (was {up}) — repoint it to a MOC you enter below, "
-            "or leave empty to remove the broken line."
+            f"The broken `up::` (was {up}) — not found in the audited area. "
+            "Widen the audited scope if it exists elsewhere, repoint it to a "
+            "MOC you enter below, or leave empty to remove the broken line."
         )
     if check == "dead_link":
         dead = _wikilink(detail.get("dead_target"))
@@ -293,6 +467,78 @@ def _render_preamble(d: dict) -> list[str]:
     return lines
 
 
+_SITUATION_PHRASE = {
+    "unresolved": "not found in the audited area",
+    "untagged": "not yet tagged as a MOC",
+    "cause_unknown": "cause unknown",
+}
+
+
+def _flagged_parent_situation_counts(findings: list[dict]) -> dict[str, int]:
+    """{"unresolved", "untagged", "cause_unknown"} counts — the three
+    situations a flagged parent link falls into (spec 033 T4.3, PRD F5;
+    "three situations", solution.md Q1).
+
+    T4.5 review finding ①: a check=="broken_up" finding is counted as
+    "unresolved" (the ONLY claim that justifies "not found in the audited
+    area") only when its OWN detail.up_broken_reason says so. A
+    check=="broken_up" finding can never carry up_broken_reason=="not-a-moc"
+    (garden-audit.py routes that to check=="parent_not_moc" instead), so a
+    broken_up finding's reason is exactly one of: "unresolved" (known,
+    counted there) or absent (counted as cause_unknown) — no finding is
+    double-counted or dropped. A withheld finding of ANY reason (stale-cache,
+    no-declaration-site, unsupported-shape, cause-unknown) that lacks the key
+    lands in cause_unknown: none of them can safely claim "not found in the
+    audited area" either, whatever their withhold reason is actually about
+    (declaration site, value shape, ...) — this bucket answers "do we know
+    the cause", a different, coarser question than "can we offer a fix".
+    """
+    unresolved = sum(
+        1 for f in findings
+        if f.get("check") == "broken_up"
+        and (f.get("detail") or {}).get("up_broken_reason") == "unresolved"
+    )
+    cause_unknown = sum(
+        1 for f in findings
+        if f.get("check") == "broken_up"
+        and "up_broken_reason" not in (f.get("detail") or {})
+    )
+    untagged = sum(1 for f in findings if f.get("check") == "parent_not_moc")
+    return {
+        "unresolved": unresolved, "untagged": untagged, "cause_unknown": cause_unknown,
+    }
+
+
+def _render_flagged_parent_situations(findings: list[dict]) -> list[str]:
+    """Per-situation counts for flagged parents (PRD F5) — part of the
+    Summary block, so a reader can triage without reading 42 blocks.
+
+    Suppressed entirely when there are no flagged parents at all (crit 3).
+    When only one situation is populated, states that single count and names
+    only it — a "B / 0 P" pair would imply a division that does not exist
+    (crit 2), the same trap 032's own _render_broken_up_split line hit for a
+    *neutral routing fact* (its zero is fine: "0 in a note property" doesn't
+    ask "should there be some?"). This split does ask that question, so a
+    lopsided count gets a plain single-situation sentence instead. Extends
+    to a third, equally-gated bucket (cause_unknown) the same way — never a
+    zero-count clause, never a claim this bucket's own findings disclaim.
+    """
+    counts = _flagged_parent_situation_counts(findings)
+    populated = [(k, v) for k, v in counts.items() if v]
+    total = sum(counts.values())
+    if total == 0:
+        return []
+    if len(populated) > 1:
+        clauses = ", ".join(f"{v} {_SITUATION_PHRASE[k]}" for k, v in populated)
+        return [f"Flagged parents: {total} — {clauses}.", ""]
+    situation, n = populated[0]
+    noun = "finding" if n == 1 else "findings"
+    return [
+        f"Flagged parents: {n} {noun}, {_SITUATION_PHRASE[situation]}.",
+        "",
+    ]
+
+
 def _render_summary(findings: list[dict]) -> list[str]:
     """Summary block with per-tier counts; zero findings → positive message."""
     lines = ["## Summary", ""]
@@ -319,6 +565,8 @@ def _render_summary(findings: list[dict]) -> list[str]:
             lines.append(f"- {_TIER_LABEL[tier]}: {n}")
     lines.append("")
 
+    lines += _render_flagged_parent_situations(findings)
+
     # All-advisory run: no fixable findings — user must handle manually (PRD Feature 2).
     if fixable_count == 0:
         lines += [
@@ -334,6 +582,7 @@ _UNROUTABLE_REASON_LABEL = {
     "stale-cache": "stale cache",
     "no-declaration-site": "no declaration site",
     "unsupported-shape": "unsupported value shape",
+    "cause-unknown": "cause unknown",
 }
 _UNROUTABLE_SUMMARY_TEXT = {
     "stale-cache": (
@@ -352,6 +601,13 @@ _UNROUTABLE_SUMMARY_TEXT = {
     "unsupported-shape": (
         "a map-shaped `{prop}` property value this fix does not yet support "
         "— not a stale cache, edit the property by hand"
+    ),
+    # spec 033 T4.4, PRD F6 crit 2: says the index predates the distinction
+    # AND how to refresh it, mirroring stale-cache's shape above.
+    "cause-unknown": (
+        "the discovery cache predates the cause classifier — could be "
+        "missing, out of the audited area, or untagged. Run `/explore-vault` "
+        "to refresh it, then re-run the audit"
     ),
 }
 
@@ -381,7 +637,9 @@ def _render_unroutable_summary(findings: list[dict], up_property: str) -> list[s
     total = sum(counts.values())
     noun = "finding" if total == 1 else "findings"
     lines = [f"**{total} {noun} withheld this run — not fixable:**", ""]
-    for reason in ("stale-cache", "no-declaration-site", "unsupported-shape"):
+    for reason in (
+        "stale-cache", "no-declaration-site", "unsupported-shape", "cause-unknown"
+    ):
         n = counts.get(reason, 0)
         if n:
             label = _UNROUTABLE_REASON_LABEL[reason]
@@ -419,7 +677,8 @@ def _broken_up_site(f: dict) -> str | None:
 def _render_broken_up_split(findings: list[dict]) -> list[str]:
     """Once-per-run routing-split line (ADR-4, verbatim per solution.md UI &
     UX): "Broken parents: N findings — B in the note body, P in a note
-    property."
+    property." — with a trailing clause (spec 033 T4.3, ADR-7) noting that N
+    counts broken_up survivors only.
 
     N is deliberately B + P, not the raw broken_up finding count. A finding
     whose site can't be attributed (see _broken_up_site) is excluded here
@@ -429,15 +688,39 @@ def _render_broken_up_split(findings: list[dict]) -> list[str]:
     doesn't double-count them. Suppressed entirely when B + P == 0, which
     covers both "no broken_up findings this run" and the measured first-run
     reality where every broken_up finding is stale-cache and unattributable.
+
+    ADR-7: _broken_up_site already gates on check == "broken_up", so N never
+    counted parent_not_moc findings — the split predates this spec by
+    construction. What changed is that N is now visibly SMALLER than a
+    reader may remember from before this spec shipped, because those
+    findings used to be broken_up too. The trailing clause says why, so a
+    dropped number doesn't read as a regression.
+
+    T4.5 review finding ②: the ORIGINAL trailing clause said "counts
+    findings not found in the audited area only" — false for a cause-unknown
+    survivor (T4.4), whose own block says Tomo cannot tell whether it was
+    found or not. This line answers WHERE a broken parent is declared
+    (_broken_up_site reads detail.up_source only), never WHY it is broken —
+    that claim belongs to the per-finding Fix line and the Summary's
+    Flagged-parents line, both of which are now honest about it (①). The
+    clause here says only what changed about the denominator: it used to
+    include untagged parents, and no longer does.
     """
     body = sum(1 for f in findings if _broken_up_site(f) == "body")
     prop = sum(1 for f in findings if _broken_up_site(f) == "property")
     total = body + prop
     if total == 0:
         return []
+    # spec 033 T4.4 review: "1 findings" is not English — the same class of
+    # bug T4.1's "resolves all 2" avoided. Pre-dates this spec (032, 33fb7d8)
+    # but this spec both edits this exact line (the trailing clause below)
+    # and makes total == 1 far more common than it used to be, now that the
+    # denominator excludes parent_not_moc findings.
+    noun = "finding" if total == 1 else "findings"
     return [
-        f"Broken parents: {total} findings — {body} in the note body, "
-        f"{prop} in a note property.",
+        f"Broken parents: {total} {noun} — {body} in the note body, "
+        f"{prop} in a note property. By declaration site only — excludes "
+        "untagged parents (shown separately, above).",
         "",
     ]
 
@@ -457,7 +740,9 @@ def _render_property_edit_disclosure(up_property: str) -> list[str]:
     ]
 
 
-def _render_finding(f: dict, up_property: str) -> list[str]:
+def _render_finding(
+    f: dict, up_property: str, up_target_groups: dict[str, list[dict]]
+) -> list[str]:
     """Render one finding as a human-facing report block.
 
     The report carries the user's DECISIONS only, joined to the machine wire by
@@ -466,10 +751,20 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
     target is editable — a Replace with: / Repoint to: field. Advisory findings
     are read-only. All STRUCTURE (path, detail, candidate_mocs) lives in the wire,
     not in the markdown — there is no HTML comment.
+
+    ``up_target_groups`` (spec 033 T4.1) is the pre-computed
+    parent_not_moc-by-target grouping — read here only to size the advisory
+    message's shared-target count clause.
     """
     fid = f["id"]
     check = f["check"]
-    label = _CHECK_LABEL.get(check, check)
+    # Computed once, up front (spec 033 T4.5 review, finding ③): the heading
+    # needs it too, not just the Apply/withheld branch further down.
+    withhold_reason = _broken_up_withhold_reason(f)
+    if check == "broken_up" and withhold_reason == "cause-unknown":
+        label = _CAUSE_UNKNOWN_LABEL
+    else:
+        label = _CHECK_LABEL.get(check, check)
     target = f["target"]
     path = target.get("path", "")
     stem = target.get("stem") or Path(path).stem
@@ -492,12 +787,22 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
             # Same site branch as _fix_summary: a frontmatter-declared parent has
             # no `up::` line to name, and saying so contradicts the property
             # language the same block carries two lines below.
+            #
+            # T4.5 review, finding ③ continued: the heading stopped asserting
+            # breakage for a cause-unknown finding (label override above),
+            # but this line still said "Broken ..." for every broken_up
+            # finding regardless — the contradiction just moved down one
+            # line. Only cause-unknown drops the "Broken " prefix; the
+            # target and declaration site (the facts we DO have) stay.
+            # Every other withhold reason and every routable finding keeps
+            # "Broken ..." exactly as before (CON-3).
+            prefix = "" if withhold_reason == "cause-unknown" else "Broken "
             if detail.get("up_source") == "frontmatter":
                 lines.append(
-                    f"Broken `{up_property}` property → {_wikilink(up_target)}"
+                    f"{prefix}`{up_property}` property → {_wikilink(up_target)}"
                 )
             else:
-                lines.append(f"Broken `up::` → {_wikilink(up_target)}")
+                lines.append(f"{prefix}`up::` → {_wikilink(up_target)}")
     elif check == "dead_link":
         dead_target = detail.get("dead_target", "")
         count = detail.get("count", 1)
@@ -510,8 +815,16 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
     elif check == "stale_moc":
         mtime = detail.get("mtime", "unknown")
         lines.append(f"Last modified: {mtime}")
+    # parent_not_moc has NO detail-line branch, deliberately (spec 033 T4.5
+    # review, finding ④): the advisory message below already names the
+    # target, and a separate line here would either duplicate it or risk
+    # reusing "broken"/"up::" language T4.1 avoids on purpose. See the
+    # `check != "parent_not_moc"` guard below — the blank-line separator is
+    # skipped too, so the heading and the advisory message aren't split by
+    # an empty gap with nothing in it.
 
-    lines.append("")
+    if check != "parent_not_moc":
+        lines.append("")
 
     # Fixable → checkbox (opt-in: decision.selected defaults False since 0.11.0)
     decision = f.get("decision")
@@ -520,7 +833,6 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
     # there is nothing to approve. A malformed finding with no decision block
     # at all is unaffected (_broken_up_withhold_reason returns None when
     # decision is None) and still falls through to the ValueError guard.
-    withhold_reason = _broken_up_withhold_reason(f)
     if withhold_reason is not None:
         lines += _render_withheld_block(withhold_reason, up_property)
     elif decision is not None:
@@ -581,8 +893,10 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
         # Advisory → read-only note, no checkbox. Auto-pushback (2026-07-23):
         # approving the report pauses ALL advisories for the window — no
         # per-finding tick (the preamble states this once).
+        group_key = _up_target_key(f)
+        group_size = len(up_target_groups.get(group_key, [])) if group_key else 1
         lines += [
-            "_Advisory — no automated fix. Review and handle manually._",
+            _advisory_message(f, group_size),
             "",
         ]
     else:
@@ -597,6 +911,7 @@ def _render_finding(f: dict, up_property: str) -> list[str]:
 
 
 def _render_tier_section(tier: str, findings: list[dict], up_property: str,
+                         up_target_groups: dict[str, list[dict]],
                          ack_days: int = 30) -> list[str]:
     """Render one tier section (e.g. ## Integrity). Returns [] when no findings."""
     tier_findings = [f for f in findings if f["tier"] == tier]
@@ -612,7 +927,7 @@ def _render_tier_section(tier: str, findings: list[dict], up_property: str,
             "",
         ]
     for f in tier_findings:
-        lines.extend(_render_finding(f, up_property))
+        lines.extend(_render_finding(f, up_property, up_target_groups))
     return lines
 
 
@@ -631,6 +946,10 @@ def render_report(d: dict) -> str:
     up_property = marker_word(conventions.parent_marker)
 
     ack_days = d.get("advisory_pushback_days") or 30
+    # spec 033 T4.1: computed once, before the tier-section loop — threaded
+    # into both the "Untagged parents" block and each advisory finding's
+    # count clause.
+    up_target_groups = _group_by_up_target(findings)
     parts: list[str] = []
     parts += ["", f"# Knowledge-Garden Audit — {date}", ""]
     parts += [
@@ -651,8 +970,9 @@ def render_report(d: dict) -> str:
     parts += _render_summary(findings)
     parts += _render_broken_up_split(findings)
     parts += _render_unroutable_summary(findings, up_property)
+    parts += _render_untagged_parents_block(up_target_groups)
     for tier in ("integrity", "structure", "advisory"):
-        parts += _render_tier_section(tier, findings, up_property, ack_days)
+        parts += _render_tier_section(tier, findings, up_property, up_target_groups, ack_days)
 
     return "\n".join(parts)
 

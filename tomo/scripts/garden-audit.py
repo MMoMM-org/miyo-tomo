@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.1
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
-Runs six checks over the MOC-structure cache, kado-graph-audit results, and
+Runs seven checks over the MOC-structure cache, kado-graph-audit results, and
 listDir modified times, applies GardenExclusions, and emits garden-audit-doc.json.
 This doc is the intermediate contract feeding garden-audit-render.py (Phase 3).
 
 Data-source split (ADR-5):
-  cache       → unparented (up_state=="absent"), broken_up (up_state=="broken"),
-                duplicate_stem (stem groups)
+  cache       → unparented (up_state=="absent"), duplicate_stem (stem groups),
+                and up_state=="broken" split by up_broken_reason into
+                broken_up (unresolved/unknown) + parent_not_moc (spec 033 ADR-1)
   graph_audit → orphan (orphans[]), dead_link (deadLinks[])
   listDir     → stale_moc (modified timestamp vs threshold)
 
@@ -55,9 +56,22 @@ _TIER: dict[str, str] = {
     "orphan":         "structure",
     "duplicate_stem": "advisory",
     "stale_moc":      "advisory",
+    # spec 033 T2.1: the "target exists but isn't a MOC" case is split out of
+    # broken_up into its own advisory check (ADR-1) — the link works, so no
+    # destructive remedy is offered. NEVER add this to _FIXABLE below.
+    "parent_not_moc": "advisory",
 }
 
 _FIXABLE: frozenset[str] = frozenset(["unparented", "orphan", "broken_up", "dead_link"])
+
+# Sentinel for "the cache entry never carried up_broken_reason at all" (ADR-3,
+# spec 033) — mirrors the up_value sentinel already used by garden-audit-parser
+# and garden-audit-render for the same reason. None is a legitimate observed
+# value (up_state=="broken" cases where neither classifier fires), so a plain
+# `.get()` with a default cannot tell "no reason applies" apart from "this
+# cache predates spec 033 and never wrote the key". Only identity-checking
+# against this sentinel distinguishes the two.
+_MISSING = object()
 
 # Default stale-MOC threshold in days
 _DEFAULT_STALE_MOC_DAYS = 90
@@ -150,7 +164,16 @@ def _check_broken_up(
     exclusions,
     counter: list[int],
 ) -> list[dict]:
-    """Check 3: broken up:: (up_state=="broken" + up_target) — cache-only, NEVER triggers graph_audit."""
+    """Check 3/3b: broken up:: (up_state=="broken") — cache-only, NEVER triggers graph_audit.
+
+    Routes on up_broken_reason (spec 033 ADR-1) into two separate checks —
+    the destructive remove/repoint remedy is only correct for one of the
+    three vault states "broken" used to collapse together:
+      "not-a-moc"        -> check "parent_not_moc" (advisory, link works, NOT fixable)
+      "unresolved" / MISSING -> check "broken_up"  (integrity, fixable)
+    A MISSING reason (stale pre-033 cache) still routes to "broken_up" —
+    T2.3 owns disclosing that the cache predates this classifier.
+    """
     findings = []
     for entry in entries:
         if not isinstance(entry, dict):
@@ -158,21 +181,28 @@ def _check_broken_up(
         if entry.get("up_state") != "broken":
             continue
         path = entry.get("path", "")
-        if exclusions and exclusions.is_excluded(entry, "broken_up"):
+
+        # ADR-3: read with the sentinel, never `.get()` with a default — a
+        # missing key and an explicit None are both legitimate and distinct.
+        reason = entry.get("up_broken_reason", _MISSING)
+        check = "parent_not_moc" if reason == "not-a-moc" else "broken_up"
+
+        if exclusions and exclusions.is_excluded(entry, check):
             continue
-        # ADR-3: a key's ABSENCE from the cache entry (stale pre-032 cache)
-        # must survive as absence from detail, not collapse into a defaulted
-        # None — copy each key only when the entry actually has it, verbatim,
-        # no transform. up_source has been written for a long time so its
-        # absence is unlikely, but the same reasoning applies regardless.
+        # ADR-3: a key's ABSENCE from the cache entry (stale pre-032/033
+        # cache) must survive as absence from detail, not collapse into a
+        # defaulted None — copy each key only when the entry actually has
+        # it, verbatim, no transform.
         detail: dict = {"up_target": entry.get("up_target")}
         if "up_source" in entry:
             detail["up_source"] = entry["up_source"]
         if "up_value" in entry:
             detail["up_value"] = entry["up_value"]
+        if reason is not _MISSING:
+            detail["up_broken_reason"] = reason
         findings.append(_finding(
             _make_id(counter),
-            "broken_up",
+            check,
             path,
             entry.get("stem"),
             detail,

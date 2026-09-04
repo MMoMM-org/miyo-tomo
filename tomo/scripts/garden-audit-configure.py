@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.5.1
 """garden-audit-configure.py — Wizard-support helper for the garden-auditor agent.
 
 Two modes, invoked by garden-auditor.md during the exclusion wizard:
@@ -144,7 +144,8 @@ def summarize(doc_path: str) -> int:
 # ──────────────────────────────────────────────────────────────────────────────
 
 _VALID_CHECKS = frozenset([
-    "unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"
+    "unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc",
+    "parent_not_moc",
 ])
 
 

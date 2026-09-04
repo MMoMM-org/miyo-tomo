@@ -32,7 +32,7 @@ The new-kind checklist. Five sites, none of which the emitter needs in order to 
 
 - [x] **T4.1 Schemas — producer and mirror** `[activity: data-architecture]`
 
-  1. **Prime**: `edit_frontmatter` is shipped in Hashi 0.22.0/0.23.0. Copy the `$def` **verbatim** from `Hashi/src/schema/instructions.schema.json` and diff it, exactly as spec 031 did for `move_asset` — the mirror's value is that it is byte-equal.
+  1. **Prime**: `edit_frontmatter` is shipped in Hashi 0.22.0 (split added in 0.23.1). Copy the `$def` **verbatim** from `Hashi/src/schema/instructions.schema.json` and diff it, exactly as spec 031 did for `move_asset` — the mirror's value is that it is byte-equal.
   2. **Test** (RED):
      - a well-formed `edit_frontmatter` validates against **both** `instructions.schema.json` and `hashi-instructions.schema.json` `[ref: PRD/AC-F5 family]`
      - dropping any required field is rejected by both

@@ -23,7 +23,7 @@ WHY the agent is prohibited from reading the report and inlining it into a `kado
 tool call: observed live on the `/moc-propose` track (2026-06-06), a 136 KB proposal-doc
 exhausted the output-token budget when inlined as tool-call args — the content was
 correct on disk but never reached the vault. The garden-audit report can exceed that
-threshold when a large vault has many findings across all six checks. `kado-write-file.py`
+threshold when a large vault has many findings across all seven checks. `kado-write-file.py`
 reads the file from disk and pushes it through its own Kado client (`operation=note` for
 `.md`, `operation=file` for `.json`), so the content never routes through the agent's
 token budget. The STRICT comment documents the failure mode in one line per the STRICT

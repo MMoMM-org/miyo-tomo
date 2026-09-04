@@ -125,10 +125,15 @@ def _broken_up_repoint(fid="F01", selected=True):
     # cache entry. Inline declarations carry up_value=None (there is no
     # frontmatter property to read) — this is the routing branch's normal
     # inline shape, not a stale cache.
+    # spec 033: up_broken_reason is always present once up_source/up_value
+    # are populated (a post-033-classified cache entry) — its absence is a
+    # DIFFERENT, deliberate shape (garden-audit-render.py's cause-unknown
+    # withhold reason), not this fixture's concern.
     return _wire_finding(
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
-        {"up_target": "Old MOC", "up_source": "inline", "up_value": None},
+        {"up_target": "Old MOC", "up_source": "inline", "up_value": None,
+         "up_broken_reason": "unresolved"},
         decision={"selected": selected, "action": "add_relationship"},
     )
 
@@ -137,7 +142,8 @@ def _broken_up_removal(fid="F01", selected=True):
     return _wire_finding(
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
-        {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None},
+        {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None,
+         "up_broken_reason": "unresolved"},
         decision={"selected": selected, "action": "edit_note_text"},
     )
 
@@ -147,7 +153,8 @@ def _broken_up_frontmatter_repoint(fid="F01", selected=True):
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
         {"up_target": "Old MOC", "up_source": "frontmatter",
-         "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"]},
+         "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"],
+         "up_broken_reason": "unresolved"},
         decision={"selected": selected, "action": "add_relationship"},
     )
 
@@ -157,7 +164,8 @@ def _broken_up_frontmatter_removal(fid="F01", selected=True):
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
         {"up_target": "Deleted MOC", "up_source": "frontmatter",
-         "up_value": ["[[Deleted MOC]]"]},
+         "up_value": ["[[Deleted MOC]]"],
+         "up_broken_reason": "unresolved"},
         decision={"selected": selected, "action": "edit_note_text"},
     )
 
@@ -218,6 +226,18 @@ def _stale_moc(fid="F01"):
         fid, "stale_moc", "advisory", False,
         "MOCs/Old MOC.md", "Old MOC",
         {"mtime": "2026-01-01T00:00:00Z"},
+    )
+
+
+def _parent_not_moc(fid="F01", up_target="Real Note"):
+    """spec 033 T2.1/ADR-1: the up:: target exists and is in scope, but isn't a
+    MOC — the link works, so this is advisory/unfixable, matching exactly the
+    shape garden-audit.py's _check_broken_up emits (no decision key at all)."""
+    return _wire_finding(
+        fid, "parent_not_moc", "advisory", False,
+        "Notes/Broken.md", "Broken",
+        {"up_target": up_target, "up_source": "inline", "up_value": None,
+         "up_broken_reason": "not-a-moc"},
     )
 
 
@@ -404,6 +424,51 @@ class TestBuildFromWireMixed:
         assert [c["id"] for c in items] == ["F01"]
 
 
+class TestBuildFromWireParentNotMocCon2:
+    """spec 033 T2.2 / PRD F2 criterion 5, CON-2: parent_not_moc must never
+    reach build_from_wire's broken_up elif (garden-audit-parser.py:603) —
+    driving the REAL function over a mixed batch, not inspecting the finding
+    dict. CON-2 holds because the code path is structurally absent (the outer
+    `if not finding.get("fixable")` gate fires first), not because nothing
+    happens to take it.
+    """
+
+    def _mixed_findings(self):
+        return [
+            _broken_up_repoint("F01"),
+            _broken_up_removal("F02"),
+            _parent_not_moc("F03", up_target="Real A"),
+            _parent_not_moc("F04", up_target="Real B"),
+            _parent_not_moc("F05", up_target="Real C"),
+        ]
+
+    def test_no_confirmed_item_and_no_action_for_any_parent_not_moc(self):
+        result = build_from_wire(_make_wire(self._mixed_findings()))
+        confirmed = result["confirmed_items"]
+        assert not any(c["garden_check"] == "parent_not_moc" for c in confirmed), (
+            "parent_not_moc must never produce a confirmed_item/action"
+        )
+        assert not any(c["id"] in ("F03", "F04", "F05") for c in confirmed)
+        acked_checks = [a["check"] for a in result["acked_advisories"]]
+        assert acked_checks.count("parent_not_moc") == 3, (
+            "all three parent_not_moc findings must land in acked_advisories"
+        )
+
+    def test_broken_up_still_routes_exactly_as_spec_032_adr7(self):
+        # ADR-7 regression guard: the split must not perturb spec 032's
+        # broken_up routing for the findings that DO stay broken_up, even
+        # when they share a batch with parent_not_moc findings.
+        confirmed = build_from_wire(_make_wire(self._mixed_findings()))["confirmed_items"]
+        assert len(confirmed) == 2, "only the two broken_up findings may confirm"
+        repoint = next(c for c in confirmed if c["id"] == "F01")
+        removal = next(c for c in confirmed if c["id"] == "F02")
+        assert repoint["garden_action"] == "add_relationship"
+        assert repoint["up_line"] == "up:: [[Old MOC]]"
+        assert removal["garden_action"] == "remove_up_link"
+        assert removal["path"] == "Notes/Broken.md"
+        assert removal["link"] == "Deleted MOC"
+
+
 class TestBrokenUpListTarget:
     """Cache up:: is a multi-value list — must reconstruct the real line."""
 
@@ -581,10 +646,15 @@ def _doc_finding_unparented(fid="F01"):
 def _doc_finding_broken_up_removal(fid="F02"):
     # spec 032: up_source/up_value present, matching a fresh (post-032) cache.
     # Inline declarations carry up_value=None (no frontmatter property to read).
+    # spec 033: up_broken_reason is always present once up_source/up_value are
+    # populated (a post-033-classified cache entry) — its absence is a
+    # DIFFERENT, deliberate shape (cause-unknown withhold reason), not this
+    # fixture's concern.
     return {
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
-        "detail": {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None},
+        "detail": {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None,
+                   "up_broken_reason": "unresolved"},
         "decision": {"selected": True, "action": "edit_note_text"},
     }
 
@@ -593,7 +663,8 @@ def _doc_finding_broken_up_repoint(fid="F03"):
     return {
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Repoint Note.md", "stem": "Repoint Note"},
-        "detail": {"up_target": "Old MOC", "up_source": "inline", "up_value": None},
+        "detail": {"up_target": "Old MOC", "up_source": "inline", "up_value": None,
+                   "up_broken_reason": "unresolved"},
         "decision": {"selected": True, "action": "add_relationship"},
     }
 
@@ -603,7 +674,8 @@ def _doc_finding_broken_up_frontmatter_repoint(fid="F03"):
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Repoint Note.md", "stem": "Repoint Note"},
         "detail": {"up_target": "Old MOC", "up_source": "frontmatter",
-                   "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"]},
+                   "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"],
+                   "up_broken_reason": "unresolved"},
         "decision": {"selected": True, "action": "add_relationship"},
     }
 
@@ -613,7 +685,8 @@ def _doc_finding_broken_up_frontmatter_removal(fid="F02"):
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
         "detail": {"up_target": "Deleted MOC", "up_source": "frontmatter",
-                   "up_value": ["[[Deleted MOC]]"]},
+                   "up_value": ["[[Deleted MOC]]"],
+                   "up_broken_reason": "unresolved"},
         "decision": {"selected": True, "action": "edit_note_text"},
     }
 
@@ -832,6 +905,64 @@ class TestBuildFromReportWithPick:
         c = build_from_report(md, wire)["confirmed_items"][0]
         assert c["garden_action"] == "remove_up_link"
         assert c["link"]
+
+
+class TestBuildFromReportParentNotMocCon2:
+    """spec 033 T2.2 / PRD F2 criterion 5, CON-2: parent_not_moc must never
+    reach _confirmed_item_from_wire_finding's `if check == "broken_up":`
+    branch (garden-audit-parser.py:403) — driving the REAL build_from_report
+    over a mixed batch. The markdown carries F-id blocks for the two broken_up
+    findings only; the three parent_not_moc findings have NO markdown block at
+    all, proving build_from_report doesn't need one — the outer
+    `if not finding.get("fixable")` gate (:516) fires before any decision-map
+    lookup would matter for them.
+    """
+
+    def _mixed_wire(self):
+        doc = _make_doc([
+            _doc_finding_broken_up_repoint("F01"),
+            _doc_finding_broken_up_removal("F02"),
+        ])
+        md = _full_report(doc)
+        # The report path resolves repoint-vs-remove from the MARKDOWN's typed
+        # "Repoint to:" field, not from the doc's decision.action — fill it in
+        # for F01 so the ADR-7 regression test exercises both outcomes, same
+        # as test_user_fills_repoint_target_adds_relationship above.
+        md = md.replace("**Repoint to:** [[]]", "**Repoint to:** [[Chosen MOC]]", 1)
+        wire = _wire(doc)
+        wire["findings"] = wire["findings"] + [
+            _parent_not_moc("F03", up_target="Real A"),
+            _parent_not_moc("F04", up_target="Real B"),
+            _parent_not_moc("F05", up_target="Real C"),
+        ]
+        return md, wire
+
+    def test_no_confirmed_item_and_no_action_for_any_parent_not_moc(self):
+        md, wire = self._mixed_wire()
+        result = build_from_report(md, wire)
+        confirmed = result["confirmed_items"]
+        assert not any(c["garden_check"] == "parent_not_moc" for c in confirmed), (
+            "parent_not_moc must never produce a confirmed_item/action"
+        )
+        assert not any(c["id"] in ("F03", "F04", "F05") for c in confirmed)
+        acked_checks = [a["check"] for a in result["acked_advisories"]]
+        assert acked_checks.count("parent_not_moc") == 3, (
+            "all three parent_not_moc findings must land in acked_advisories"
+        )
+
+    def test_broken_up_still_routes_exactly_as_spec_032_adr7(self):
+        # ADR-7 regression guard: the split must not perturb spec 032's
+        # broken_up routing for the findings that DO stay broken_up.
+        md, wire = self._mixed_wire()
+        confirmed = build_from_report(md, wire)["confirmed_items"]
+        assert len(confirmed) == 2, "only the two broken_up findings may confirm"
+        repoint = next(c for c in confirmed if c["id"] == "F01")
+        removal = next(c for c in confirmed if c["id"] == "F02")
+        assert repoint["garden_action"] == "add_relationship"
+        assert repoint["up_line"] == "up:: [[Chosen MOC]]"
+        assert removal["garden_action"] == "remove_up_link"
+        assert removal["path"] == "Notes/Broken Note.md"
+        assert removal["link"] == "Deleted MOC"
 
 
 # ---------------------------------------------------------------------------

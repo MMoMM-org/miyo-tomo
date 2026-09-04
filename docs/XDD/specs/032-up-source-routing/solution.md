@@ -33,7 +33,8 @@ version: "1.0"
 
 ## Constraints
 
-- **CON-1 — The `edit_frontmatter` contract is fixed and shipped** (Hashi 0.22.0/0.23.0):
+- **CON-1 — The `edit_frontmatter` contract is fixed and shipped** (Hashi 0.22.0; our stated floor
+  is 0.23.0 by choice — see Deployment View):
   `{id, action, path, property, operation, value?, expected|expected_absent, applied?}`,
   `additionalProperties:false`. `expected` is compared **deep-equal**; **list order is significant**;
   `expected_absent: true` and `expected: null` are a schema-enforced **exclusive pair**.
@@ -444,8 +445,18 @@ version-gated `update-tomo.sh` (CON-8); schemas sync bytewise.
 mis-routed. That is intended: the user is told once, refreshes, and proceeds. Shipping the emitter
 before the cache field would be the harmful order — hence both land together.
 
-No Hashi release is required; `edit_frontmatter` has been executable since 0.22.0 and its guard
-semantics were finalised in 0.23.0.
+No Hashi release is required. `edit_frontmatter` has been executable since **0.22.0**, which is the
+true compatibility floor for what this spec emits (non-null `expected`, never `expected_absent`).
+**0.23.0** is kept as our stated floor as a deliberate choice, not a compatibility one: it adds the
+pre-check that avoids re-serialising — and thereby de-commenting — a property block for a write that
+is going to be refused anyway. Given this spec discloses comment loss to the user *before* the
+checkbox, paying for that improvement is the consistent position.
+
+The `expected` / `expected_absent` split landed in **0.23.1**. It is not a floor for us today
+because we emit neither half; it becomes one the moment we emit `expected_absent: true` or a literal
+`expected: null`, at which point the old sentinel meaning of `expected: null` inverts. Corrected
+2026-09-03 after Hashi audited their own CHANGELOG — the earlier attribution of both the kind and
+the split to 0.23.0 was wrong in both directions.
 
 ## Cross-Cutting Concepts
 

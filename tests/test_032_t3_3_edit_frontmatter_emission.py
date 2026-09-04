@@ -89,11 +89,15 @@ def _make_wire(findings, schema_version="1", run_id="run-test-001",
 
 
 def _broken_up_frontmatter_removal(fid="F01", selected=True):
+    # spec 033: up_broken_reason is always present once up_source/up_value
+    # are populated (a post-033-classified cache entry) — its absence is a
+    # DIFFERENT, deliberate shape (garden-audit-render.py's cause-unknown
+    # withhold reason), not this fixture's concern.
     return _wire_finding(
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
         {"up_target": "Deleted MOC", "up_source": "frontmatter",
-         "up_value": ["[[Deleted MOC]]"]},
+         "up_value": ["[[Deleted MOC]]"], "up_broken_reason": "unresolved"},
         decision={"selected": selected, "action": "edit_note_text"},
     )
 
@@ -115,11 +119,14 @@ def _wire(doc):
 
 
 def _doc_finding_broken_up_frontmatter_repoint(fid="F03"):
+    # spec 033: up_broken_reason is always present once up_source/up_value
+    # are populated (a post-033-classified cache entry).
     return {
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Repoint Note.md", "stem": "Repoint Note"},
         "detail": {"up_target": "Old MOC", "up_source": "frontmatter",
-                   "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"]},
+                   "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"],
+                   "up_broken_reason": "unresolved"},
         "decision": {"selected": True, "action": "add_relationship"},
     }
 

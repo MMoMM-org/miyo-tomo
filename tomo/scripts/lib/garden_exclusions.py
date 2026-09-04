@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.1
+# version: 0.3.2
 """garden_exclusions.py — Load and apply the garden-audit exclusion config (spec 030 T1.2).
 
 Loads config/garden-audit-exclusions.yaml, separates expired temporaries
@@ -28,7 +28,10 @@ logger = logging.getLogger(__name__)
 
 # All check names recognised by garden-audit (for "checks: all" expansion).
 ALL_CHECK_NAMES = frozenset(
-    ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"]
+    [
+        "unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc",
+        "parent_not_moc",
+    ]
 )
 
 # Tuning defaults — used when the exclusions YAML has no settings block (fail-open).

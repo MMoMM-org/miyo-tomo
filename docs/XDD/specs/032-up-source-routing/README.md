@@ -64,12 +64,16 @@ on it. Meanwhile the data needed to route has been in our discovery cache all al
   significant**. A value reconstructed from a normalised cache field would fail on ordering noise —
   the stored value must be faithful.
 - `expected_absent: true` and `expected: null` are a schema-enforced **exclusive pair** (Hashi
-  0.23.0); `null` now means "holds a literal null", not "must not exist".
+  **0.23.1** — corrected 2026-09-03, see the version-floor row below); `null` now means "holds a
+  literal null", not "must not exist".
 - A failed `edit_frontmatter` leaves the file **byte-identical** (Hashi pre-checks on a read-only
   path). Retry logic may rely on this.
 - A **successful** `edit_frontmatter` drops YAML comments — Obsidian's serialiser, not a Hashi
   choice. This is a user-visible cost that belongs in the proposal surface, not a post-hoc note.
 - Existing discovery caches predate any new field. The design must degrade rather than crash.
+
+| 2026-09-03 | **Hashi version floor corrected — 0.22.0 is the real one; 0.23.0 is kept on purpose** | Hashi told us `edit_frontmatter` with `operation: "remove"` + `expected` was *"live in 0.23.0"*, we adopted it in good faith, and it was pinned here. Kokoro's CHANGELOG audit (`09f1ed8`) found the number names neither event: the **kind** landed in **0.22.0**, the **`expected`/`expected_absent` split** in **0.23.1**. Our emitted shape (non-null `expected`, never `expected_absent`) works from 0.22.0, so the stated floor was too high rather than too low — safe, but wrongly attributed. **We keep 0.23.0 as the stated floor deliberately:** it adds the pre-check that avoids re-serialising a property block for a write that will be refused, which would drop YAML comments for nothing — and this spec discloses comment loss to the user before the checkbox, so paying for that is the consistent position. **0.23.1 becomes a real floor the day we emit `expected_absent: true` or a literal `expected: null`**, at which point `expected: null` inverts meaning. Source: `_inbox/from-hashi/2026-09-03_hashi-to-tomo_version-floor-correction.md`. |
+| 2026-09-03 | The lesson under the correction: we verified the claim and not the number attached to it | Hashi read `editFrontmatter.ts` line by line to confirm four schema claims in that same message — and neither side checked the version travelling with them. A number quoted back and forth between two careful readers survived three rounds. Applies beyond this spec: **a figure adopted from another repo needs its own verification, separate from the claim it decorates.** |
 
 ---
 *This file is managed by the xdd-meta skill.*

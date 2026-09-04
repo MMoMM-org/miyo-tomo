@@ -70,15 +70,36 @@ def _make_unparented_finding(fid: str = "F01") -> dict:
 _UNSET = object()  # sentinel — distinguishes "not passed" from "passed as None"
 
 
-def _make_broken_up_finding(fid: str = "F02", up_source=_UNSET, up_value=_UNSET) -> dict:
+def _make_broken_up_finding(
+    fid: str = "F02", up_source=_UNSET, up_value=_UNSET, up_broken_reason=_UNSET
+) -> dict:
     # up_source/up_value are OMITTED from detail unless explicitly passed (spec
     # 032 T5.1 prerequisite) — existing callers that don't pass them must keep
     # getting the pre-032 detail shape, byte-identical (CON-7).
+    #
+    # up_broken_reason (spec 033 T4.4): a real garden-audit.py finding
+    # ALWAYS carries this key once up_source/up_value are populated (a
+    # modern, classified cache entry) — its absence specifically means "the
+    # cache predates the cause classifier" (T4.4's cause-unknown reason).
+    # Every EXISTING caller in this file that passes up_source is
+    # constructing a routable, classified fixture (testing Fix-line wording,
+    # split-line counts, etc.) — none of them are about T4.4's withholding
+    # behavior — so up_broken_reason defaults to "unresolved" whenever
+    # up_source is given, matching what garden-audit.py actually produces
+    # for a modern cache. Pass up_broken_reason=None explicitly to build the
+    # genuine pre-033 shape (the key omitted entirely) that
+    # TestPreSpec033CacheDisclosure exercises. Passing up_source=_UNSET too (the
+    # original, oldest fixture shape) still omits BOTH keys, unaffected.
     detail = {"up_target": "Deleted MOC"}
     if up_source is not _UNSET:
         detail["up_source"] = up_source
     if up_value is not _UNSET:
         detail["up_value"] = up_value
+    if up_broken_reason is _UNSET:
+        if up_source is not _UNSET:
+            detail["up_broken_reason"] = "unresolved"
+    elif up_broken_reason is not None:
+        detail["up_broken_reason"] = up_broken_reason
     return {
         "id": fid,
         "check": "broken_up",
@@ -126,6 +147,26 @@ def _make_stale_moc_finding(fid: str = "F05") -> dict:
         "fixable": False,
         "target": {"path": "MOCs/Old MOC.md", "stem": "Old MOC"},
         "detail": {"mtime": "2026-01-01T00:00:00Z"},
+    }
+
+
+def _make_parent_not_moc_finding(fid: str = "F06", up_target: str = "Real Note") -> dict:
+    """spec 033 T2.1: the up:: target exists and is in scope but isn't a MOC —
+    advisory, not fixable, no decision block at all. Matches exactly the shape
+    garden-audit.py's _check_broken_up emits for up_broken_reason=='not-a-moc'
+    (see tests/test_garden_audit_parser.py's `_parent_not_moc`)."""
+    return {
+        "id": fid,
+        "check": "parent_not_moc",
+        "tier": "advisory",
+        "fixable": False,
+        "target": {"path": "Notes/Broken.md", "stem": "Broken"},
+        "detail": {
+            "up_target": up_target,
+            "up_source": "inline",
+            "up_value": None,
+            "up_broken_reason": "not-a-moc",
+        },
     }
 
 
@@ -1037,6 +1078,11 @@ class TestSuggestEnrichment:
         f["detail"] = {
             "up_target": "Deleted MOC", "topics": [],
             "up_source": "inline", "up_value": "[[Deleted MOC]]",
+            # spec 033 T4.4: this detail dict is hand-built (bypasses
+            # _make_broken_up_finding's auto-default), so up_broken_reason
+            # must be set explicitly or the finding becomes withheld
+            # (cause-unknown) and never reaches the Suggest box at all.
+            "up_broken_reason": "unresolved",
         }
         doc = _make_doc(findings=[f])
         report = _full_report(doc)
@@ -1320,6 +1366,100 @@ class TestUnroutableFindings:
 
 
 # ---------------------------------------------------------------------------
+# spec 033 T4.4 / PRD F6: a cache entry that HAS up_value/up_source (spec
+# 032 ran) but lacks up_broken_reason predates spec 033's cause classifier
+# entirely — distinct from "stale-cache" above, which is an even older
+# cache missing up_value too. The live vault cache is measured in exactly
+# this state (359 entries, 42 broken, 0 carrying up_broken_reason), so this
+# is the path a real /garden-audit run hits today, not a hypothetical.
+# Reuses the existing _UNROUTABLE_REMEDY withholding mechanism (a new
+# "cause-unknown" reason) rather than a parallel one.
+# ---------------------------------------------------------------------------
+
+class TestPreSpec033CacheDisclosure:
+    def _pre033_finding(self, fid="F01"):
+        # up_broken_reason=None (explicit) omits the key entirely — the
+        # genuine pre-033 shape, distinct from _UNSET (which also omits
+        # up_source/up_value, the even-older pre-032 stale-cache shape).
+        return _make_broken_up_finding(
+            fid, up_source="inline", up_value="[[Alte MOC]]", up_broken_reason=None
+        )
+
+    def test_no_finding_claims_a_cause(self):
+        # crit 1: uncertainty is stated explicitly, present first — then
+        # confirm neither classified conclusion's own wording leaked in
+        # (T4.2's routable broken_up claim, T4.1's parent_not_moc claim).
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "cannot tell" in block
+        assert "not found in the audited area" not in block
+        assert "is a real note, not yet tagged as a MOC" not in block
+
+    def test_report_says_index_predates_distinction_and_how_to_refresh(self):
+        # crit 2, both halves: says WHY (predates the cause classifier) and
+        # HOW to fix it (the refresh command) — a disclosure without the
+        # remedy leaves the reader stuck.
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "predates the cause classifier" in block
+        assert "/explore-vault" in block
+
+    def test_no_fix_offered_that_could_be_wrong_for_the_untagged_situation(self):
+        # crit 3: no Apply checkbox, no Repoint field, no Suggest opt-in —
+        # remove/repoint would be wrong if this finding is actually
+        # parent_not_moc in disguise (untagged-but-real), which the
+        # classifier never ran to rule out.
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "- [ ] Apply" not in block
+        assert "- [x] Apply" not in block
+        assert "**Repoint to:**" not in block
+        assert "Suggest targets" not in block
+
+    def test_summary_names_cause_unknown_and_the_refresh_path(self):
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        assert "cause unknown" in report
+        assert "/explore-vault" in report
+
+    def test_internal_reason_code_is_stderr_only(self):
+        # Matches the existing withheld reasons' convention (see
+        # TestUnroutableFindings) — the internal reason string never leaks
+        # into the user-facing report.
+        f = self._pre033_finding()
+        report = _render_report(_make_doc(findings=[f]))
+        assert "cause-unknown" not in report
+
+    def test_classified_finding_still_offers_apply_and_repoint(self):
+        # Falsifies the withholding above: a finding that DOES carry
+        # up_broken_reason (the modern, classified shape) is unaffected —
+        # only the key's ABSENCE triggers withholding (ADR-3).
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "- [x] Apply" in block
+        assert "**Repoint to:**" in block
+        assert "predates the cause classifier" not in block
+
+    def test_property_resident_pre033_finding_also_withheld(self):
+        # The gap isn't inline-only — a frontmatter-declared parent on a
+        # pre-033 cache is just as unclassified.
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"],
+            up_broken_reason=None,
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        block = report[report.index("### F01"):]
+        assert "predates the cause classifier" in block
+        assert "**Repoint to:**" not in block
+        # No Fix-target disclosure either — nothing to approve at all.
+        assert "**Fix target:**" not in block
+
+
+# ---------------------------------------------------------------------------
 # Spec 032 T5.3: routing-split line (ADR-4) — once per run, the population of
 # broken_up findings split by declaration site.
 # ---------------------------------------------------------------------------
@@ -1337,7 +1477,13 @@ class TestUnroutableFindings:
 # The line is suppressed entirely whenever B + P == 0, covering both "no
 # broken_up findings at all" and "every one is unattributable."
 
-_SPLIT_LINE = "Broken parents: {total} findings — {body} in the note body, {prop} in a note property."
+def _split_line(total: int, body: int, prop: int) -> str:
+    # spec 033 T4.4 review: "N findings" must read "N finding" at total==1 —
+    # the same class of bug as "resolves all 2" (T4.1). This helper is the
+    # single source of the expected string so every call site stays correct
+    # when total is 1, instead of each test hardcoding "findings".
+    noun = "finding" if total == 1 else "findings"
+    return f"Broken parents: {total} {noun} — {body} in the note body, {prop} in a note property."
 
 
 class TestBrokenUpSplitLine:
@@ -1349,7 +1495,7 @@ class TestBrokenUpSplitLine:
             _make_broken_up_finding("F04", up_source="frontmatter", up_value="[[D]]"),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=4, body=3, prop=1) in report
+        assert _split_line(4, 3, 1) in report
 
     def test_split_line_appears_exactly_once_regardless_of_finding_count(self):
         findings = [
@@ -1368,14 +1514,27 @@ class TestBrokenUpSplitLine:
             _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=2, body=2, prop=0) in report
+        assert _split_line(2, 2, 0) in report
 
     def test_only_property_resident_still_renders_with_zero_body(self):
         findings = [
             _make_broken_up_finding("F01", up_source="frontmatter", up_value="[[A]]"),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=1, body=0, prop=1) in report
+        assert _split_line(1, 0, 1) in report
+
+    def test_total_one_says_finding_not_findings(self):
+        # "1 findings" is not English — the same class of bug T4.1's
+        # "resolves all 2" fixed. A fixture with 2+ findings (most of this
+        # class) never exercises total == 1, which is exactly how this
+        # survived spec 032 unnoticed.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        split_line = _line_starting_with(report, "Broken parents:")
+        assert "1 finding —" in split_line
+        assert "1 findings —" not in split_line
 
     def test_no_broken_up_findings_renders_no_split_line(self):
         report = _render_report(_make_doc(findings=[_make_unparented_finding()]))
@@ -1404,7 +1563,7 @@ class TestBrokenUpSplitLine:
             _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=1, body=1, prop=0) in report
+        assert _split_line(1, 1, 0) in report
 
     def test_unsupported_shape_finding_still_counted_by_site(self):
         # T3.2: a map-shaped up_value is withheld (unsupported-shape), but its
@@ -1414,7 +1573,7 @@ class TestBrokenUpSplitLine:
             _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1}),
         ]
         report = _render_report(_make_doc(findings=findings))
-        assert _SPLIT_LINE.format(total=1, body=0, prop=1) in report
+        assert _split_line(1, 0, 1) in report
 
     def test_split_line_precedes_unroutable_summary(self):
         findings = [
@@ -1440,6 +1599,284 @@ class TestBrokenUpSplitLine:
 
 
 # ---------------------------------------------------------------------------
+# spec 033 T4.3 / PRD F5: the Summary states how many flagged parents fall
+# into each situation (broken_up vs parent_not_moc) — a reader can triage
+# without reading 42 blocks. Same trap 032's declaration-site line named:
+# a breakdown that implies a division when only one situation is populated
+# ("42 findings — 42 unresolved, 0 untagged parents" is true, useless, and
+# alarming). Unlike that line's body/property split (a neutral routing
+# fact, shown with its zero), THIS split answers "should there be some?" —
+# so a populated-but-lopsided count renders as a single sentence naming
+# only the situation that's actually there, never a 0-count clause.
+# ---------------------------------------------------------------------------
+
+class TestFlaggedParentSituationCounts:
+    def test_both_situations_present_states_both_counts_summing_to_total(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+            _make_parent_not_moc_finding("F03", up_target="X"),
+            _make_parent_not_moc_finding("F04", up_target="Y"),
+            _make_parent_not_moc_finding("F05", up_target="Z"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        # Reconciliation, not each side alone — recompute from the findings
+        # list rather than hardcoding the numbers a second time.
+        broken_up_n = sum(1 for f in findings if f["check"] == "broken_up")
+        parent_not_moc_n = sum(1 for f in findings if f["check"] == "parent_not_moc")
+        assert str(broken_up_n + parent_not_moc_n) in line
+        assert str(broken_up_n) in line
+        assert str(parent_not_moc_n) in line
+
+    def test_only_broken_up_present_names_only_that_situation(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        assert "not found in the audited area" in line
+        assert "not yet tagged as a MOC" not in line
+
+    def test_only_parent_not_moc_present_names_only_that_situation(self):
+        findings = [_make_parent_not_moc_finding("F01", up_target="X")]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        assert "not yet tagged as a MOC" in line
+        assert "not found in the audited area" not in line
+
+    def test_no_flagged_parents_no_line_at_all(self):
+        findings = [_make_dead_link_finding("F01"), _make_duplicate_stem_finding("F02")]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Flagged parents:" not in report
+
+    def test_zero_findings_no_line_at_all(self):
+        report = _render_report(_make_doc(findings=[]))
+        assert "Flagged parents:" not in report
+
+    def test_declaration_site_line_says_it_counts_survivors_only(self):
+        # ADR-7: 032's own line ("Broken parents: N findings — B in the note
+        # body, P in a note property.") now sums to a SMALLER N than before
+        # this spec, because parent_not_moc findings have left the broken_up
+        # population. The line must say so, not just silently drop.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_parent_not_moc_finding("F02", up_target="X"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        split_line = _line_containing(report, "Broken parents:")
+        # The verbatim spec-032 prefix survives untouched (substring, not
+        # equality) — this test only proves the NEW clause was appended.
+        assert _split_line(1, 1, 0) in split_line
+        assert "untagged" in split_line.lower()
+
+
+# ---------------------------------------------------------------------------
+# spec 033 T4.5 review, findings ①②③④ — the prose read of a rendered report
+# (not any test) found these; a fix without a failing test proves nothing,
+# so each gets one here before the corresponding code change lands.
+# ---------------------------------------------------------------------------
+
+class TestFlaggedParentsExcludesUnknownCause:
+    """① The Summary claimed a cause a withheld finding's own block disclaims.
+    A check=="broken_up" finding can only ever carry up_broken_reason ==
+    "unresolved" or have the key absent (never "not-a-moc" — that routes to
+    check=="parent_not_moc" instead), so counting on the ACTUAL value, not
+    just the check name, is exhaustive: no finding is double-counted or
+    silently dropped from the three-way split."""
+
+    def test_cause_unknown_excluded_from_unresolved_count(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding(
+                "F02", up_source="inline", up_value="[[B]]", up_broken_reason=None
+            ),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        assert "1 not found in the audited area" in line
+        assert "2 not found in the audited area" not in line
+        assert "1 cause unknown" in line
+
+    def test_three_way_split_reconciles_with_the_findings(self):
+        # Reconciliation, not each side alone — recompute the expected
+        # per-bucket counts from the findings list rather than hardcoding
+        # them a second time.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+            _make_broken_up_finding(
+                "F03", up_source="inline", up_value="[[C]]", up_broken_reason=None
+            ),
+            _make_parent_not_moc_finding("F04", up_target="X"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        unresolved = sum(
+            1 for f in findings
+            if f["check"] == "broken_up" and f["detail"].get("up_broken_reason") == "unresolved"
+        )
+        cause_unknown = sum(
+            1 for f in findings
+            if f["check"] == "broken_up" and "up_broken_reason" not in f["detail"]
+        )
+        untagged = sum(1 for f in findings if f["check"] == "parent_not_moc")
+        assert f"{unresolved} not found in the audited area" in line
+        assert f"{untagged} not yet tagged as a MOC" in line
+        assert f"{cause_unknown} cause unknown" in line
+        assert f"Flagged parents: {unresolved + untagged + cause_unknown} —" in line
+
+    def test_only_cause_unknown_present_names_only_that_situation(self):
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="inline", up_value="[[A]]", up_broken_reason=None
+            ),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        assert "cause unknown" in line
+        assert "not found in the audited area" not in line
+        assert "not yet tagged as a MOC" not in line
+
+
+class TestSplitLineClauseDoesNotClaimCause:
+    """② The T4.3 ADR-7 clause said the split line "counts findings not
+    found in the audited area only" — false for a cause-unknown survivor,
+    whose own block says Tomo cannot tell. The line answers WHERE a parent
+    is declared (_broken_up_site reads up_source only), never WHY it broke."""
+
+    def test_clause_names_declaration_site_not_a_cause(self):
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="inline", up_value="[[A]]", up_broken_reason=None
+            ),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        split_line = _line_containing(report, "Broken parents:")
+        assert "declaration site" in split_line.lower()
+        assert "not found in the audited area" not in split_line
+
+
+class TestCauseUnknownHeadingDoesNotClaimBroken:
+    """③ F03's heading ("Broken up:: link") sat above a body saying Tomo
+    cannot tell whether the link is broken — structurally the same defect
+    class spec 032 shipped once already. Scoped to the cause-unknown
+    withhold reason only; the other three (stale-cache, no-declaration-site,
+    unsupported-shape) ARE genuinely about a broken, unroutable link, and
+    their headings must stay byte-identical (CON-3)."""
+
+    def test_cause_unknown_heading_is_not_broken_up_link(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="inline", up_value="[[A]]", up_broken_reason=None
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert "Unclassified parent link" in heading
+        assert "Broken up:: link" not in heading
+
+    def test_stale_cache_heading_unchanged(self):
+        f = _make_broken_up_finding("F01")  # up_source/up_value both omitted
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert heading == "### F01 — Broken up:: link in: [[Broken Note]]"
+
+    def test_no_declaration_site_heading_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert heading == "### F01 — Broken up:: link in: [[Broken Note]]"
+
+    def test_unsupported_shape_heading_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert heading == "### F01 — Broken up:: link in: [[Broken Note]]"
+
+    def test_routable_heading_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert heading == "### F01 — Broken up:: link in: [[Broken Note]]"
+
+
+class TestCauseUnknownDetailLineDoesNotClaimBroken:
+    """③ continued (T4.5's second read): the heading stopped asserting
+    breakage, but the detail line two lines below it still said "Broken
+    `up::` → [[X]]" — the contradiction moved down one line instead of
+    resolving (heading: unclassified; detail line: broken; body: cannot
+    tell). Same scoping as the heading fix: only the cause-unknown
+    withhold reason is neutral here; every other withhold reason and every
+    routable finding keeps "Broken ..." byte-identical (CON-3)."""
+
+    def test_cause_unknown_inline_detail_line_drops_broken(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="inline", up_value="[[A]]", up_broken_reason=None
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        # Present first: the fact (target, declaration site) survives —
+        # only the "Broken" claim is gone.
+        assert "`up::` → [[Deleted MOC]]" in report
+        assert "Broken `up::`" not in report
+
+    def test_cause_unknown_frontmatter_detail_line_drops_broken(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[A]]"], up_broken_reason=None
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        assert "`up` property → [[Deleted MOC]]" in report
+        assert "Broken `up` property" not in report
+
+    def test_stale_cache_detail_line_unchanged(self):
+        f = _make_broken_up_finding("F01")  # up_source/up_value both omitted
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up::` → [[Deleted MOC]]"
+
+    def test_no_declaration_site_detail_line_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up::` → [[Deleted MOC]]"
+
+    def test_unsupported_shape_detail_line_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up` property → [[Deleted MOC]]"
+
+    def test_routable_inline_detail_line_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up::` → [[Deleted MOC]]"
+
+    def test_routable_frontmatter_detail_line_unchanged(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up` property → [[Deleted MOC]]"
+
+
+class TestParentNotMocNoStrayBlankLine:
+    """④ Every parent_not_moc block rendered two blank lines after its
+    heading (no detail-line branch existed for the check, but the
+    blank-line separator fired unconditionally anyway). Closed the gap
+    rather than adding a detail line, since the advisory message already
+    names the target."""
+
+    def test_single_blank_line_between_heading_and_advisory_message(self):
+        f = _make_parent_not_moc_finding("F01", up_target="X")
+        report = _render_report(_make_doc(findings=[f]))
+        lines = report.splitlines()
+        idx = next(i for i, ln in enumerate(lines) if ln.startswith("### F01"))
+        assert lines[idx + 1] == ""
+        assert lines[idx + 2].startswith("_[[X]] is a real note")
+
+
+# ---------------------------------------------------------------------------
 # Fix-a: property-language for the ACTION, not the FINDING (T5.1/T5.2/T5.3
 # follow-up). A property-resident (up_source == "frontmatter") broken_up
 # finding is fixed via a YAML-property edit — but the Fix summary line and
@@ -1455,6 +1892,15 @@ class TestBrokenUpSplitLine:
 # ("Broken `up::` → [[X]]") — those name the FINDING (a broken parent link
 # exists), not the fix ACTION, and the detail line is pinned by
 # test_inline_resident_matches_pinned_golden_broken_up_line above.
+#
+# spec 033 T4.5 review, finding ③ (later): the ONE exception to "heading
+# never changes" — a cause-unknown withheld finding gets a DIFFERENT label
+# ("Unclassified parent link"), because for THAT finding "Broken up:: link"
+# is the false claim, not a neutral name for the finding. See
+# TestCauseUnknownHeadingDoesNotClaimBroken below. Every finding this
+# section actually exercises (routable, or withheld for a reason other
+# than cause-unknown) is unaffected — the heading claim above still holds
+# for them.
 
 # The heading ("Broken up:: link") and the detail line ("Broken `up::` →
 # [[X]]") legitimately keep "up::" — they name the FINDING and are DO-NOT-
@@ -1472,14 +1918,20 @@ def _line_starting_with(report: str, prefix: str) -> str:
 
 class TestPropertyResidentFixLanguage:
     def test_frontmatter_resident_fix_line_names_property_not_up_marker(self):
+        # spec 033 T4.2 reworded this exact line's wording (ADR-6, "not found
+        # in the audited area") — the string below is the CURRENT verbatim
+        # text, not the pre-033 one; TestBrokenUpAuditedAreaWording covers
+        # the T4.2 criteria themselves.
         f = _make_broken_up_finding(
             "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
         )
         report = _render_report(_make_doc(findings=[f]))
         fix_line = _line_starting_with(report, "**Fix:**")
         assert fix_line == (
-            "**Fix:** The broken `up` property (was [[Deleted MOC]]) — repoint it "
-            "to a MOC you enter below, or leave empty to remove the property value."
+            "**Fix:** The broken `up` property (was [[Deleted MOC]]) — not found "
+            "in the audited area. Widen the audited scope if it exists elsewhere, "
+            "repoint it to a MOC you enter below, or leave empty to remove the "
+            "property value."
         )
         assert "up::" not in fix_line
         assert "the broken line" not in fix_line
@@ -1504,8 +1956,10 @@ class TestPropertyResidentFixLanguage:
         report = _render_report(d)
         fix_line = _line_starting_with(report, "**Fix:**")
         assert fix_line == (
-            "**Fix:** The broken `parent` property (was [[Deleted MOC]]) — repoint "
-            "it to a MOC you enter below, or leave empty to remove the property value."
+            "**Fix:** The broken `parent` property (was [[Deleted MOC]]) — not "
+            "found in the audited area. Widen the audited scope if it exists "
+            "elsewhere, repoint it to a MOC you enter below, or leave empty to "
+            "remove the property value."
         )
         assert "up" not in fix_line
         assert "`up`" not in fix_line
@@ -1547,27 +2001,38 @@ class TestPropertyResidentFixLanguage:
         ) in report
         assert "`up`" not in report
 
-    def test_inline_resident_fix_and_repoint_lines_unchanged_con7(self):
-        # CON-7: body-resident wording is untouched — same strings as before
-        # this fix, verbatim.
+    def test_inline_resident_fix_line_reworded_repoint_hint_unchanged_con7(self):
+        # spec 033 T4.2 reworded the Fix line (ADR-6) for BOTH declaration
+        # sites — that CON-7 guarantee (from spec 032's property-language
+        # fix) covered the property-vs-up:: contradiction, not this spec's
+        # deliberate audited-area rewording. What T4.2 does NOT touch is the
+        # separate "**Repoint to:**" hint line — still exactly as before.
         f = _make_broken_up_finding(
             "F01", up_source="inline", up_value="[[Alte MOC]]"
         )
         report = _render_report(_make_doc(findings=[f]))
         assert (
-            "**Fix:** The broken `up::` (was [[Deleted MOC]]) — repoint it to a "
-            "MOC you enter below, or leave empty to remove the broken line."
+            "**Fix:** The broken `up::` (was [[Deleted MOC]]) — not found in "
+            "the audited area. Widen the audited scope if it exists elsewhere, "
+            "repoint it to a MOC you enter below, or leave empty to remove the "
+            "broken line."
         ) in report
         assert (
             "- **Repoint to:** [[]]    ← enter the correct MOC to repoint "
             "up::, or leave empty to remove"
         ) in report
 
-    def test_inline_resident_full_report_byte_identical_to_pre_fix_render_con7(self):
-        # Strongest CON-7 proof: load the pre-change renderer (the last commit
-        # to touch this file before this fix) as a separate module from git
-        # history, render the SAME inline-resident doc through both the old
-        # and the current module, and assert full-report byte-identity.
+    def test_inline_resident_report_unaffected_findings_byte_identical_con7(self):
+        # spec 032's CON-7 proved this line's OLD wording survived byte-for-
+        # byte through THAT fix (68c4594) — a historical fact, still true at
+        # that commit, not a promise that no later spec may ever reword it.
+        # spec 033 T4.2 deliberately rewords the Fix line (ADR-6) and T4.3
+        # appends a clause to the declaration-site split line (ADR-7), so a
+        # full-report equality assertion against the pre-033 renderer no
+        # longer holds. What CON-7 protects going forward is narrower and
+        # still real: OTHER findings render byte-identically, and the
+        # broken_up block's own detail line / heading / Repoint hint
+        # (everything except the two known, declared changes) is untouched.
         import subprocess
         import tempfile
 
@@ -1595,9 +2060,121 @@ class TestPropertyResidentFixLanguage:
         ]
         doc = _make_doc(findings=findings)
 
-        old_report = old_gar.render_report(doc)
-        new_report = gar.render_report(doc)
-        assert new_report == old_report
+        old_lines = old_gar.render_report(doc).splitlines()
+        new_lines = gar.render_report(doc).splitlines()
+
+        # spec 033 T4.3 adds a "Flagged parents:" line (+ trailing blank) to
+        # the Summary — this pre-033 baseline has never seen it at all, a
+        # second, separately declared addition on top of T4.2's reword.
+        # Identify and strip it precisely before comparing anything else.
+        flagged_idx = next(
+            i for i, ln in enumerate(new_lines) if ln.startswith("Flagged parents:")
+        )
+        assert new_lines[flagged_idx + 1] == ""
+        assert "not found in the audited area" in new_lines[flagged_idx]
+        stripped_new_lines = new_lines[:flagged_idx] + new_lines[flagged_idx + 2:]
+
+        assert len(old_lines) == len(stripped_new_lines), (
+            "T4.2 reworded one line's text; T4.3's addition is now stripped"
+        )
+
+        changed = [
+            i for i, (o, n) in enumerate(zip(old_lines, stripped_new_lines)) if o != n
+        ]
+        assert changed, "the fix under test changed nothing — assertion is hollow"
+        # Exactly two lines differ: the declaration-site split line (T4.3's
+        # ADR-7 clause) and F01's own Fix line (T4.2's reword). Everything
+        # else — F02 (dead_link) and F03 (unparented) in full, and F01's own
+        # heading/detail-line/Repoint-hint — is untouched.
+        assert len(changed) == 2, (
+            f"expected exactly the split line and the Fix line to change, got: "
+            f"{[stripped_new_lines[i] for i in changed]}"
+        )
+        split_idx, fix_idx = (
+            (changed[0], changed[1])
+            if stripped_new_lines[changed[0]].startswith("Broken parents:")
+            else (changed[1], changed[0])
+        )
+        assert stripped_new_lines[split_idx].startswith("Broken parents:")
+        assert old_lines[split_idx].startswith("Broken parents:")
+        assert "untagged" in stripped_new_lines[split_idx].lower()
+        assert "untagged" not in old_lines[split_idx].lower()
+
+        assert stripped_new_lines[fix_idx].startswith("**Fix:**")
+        assert old_lines[fix_idx].startswith("**Fix:**")
+        assert "not found in the audited area" in stripped_new_lines[fix_idx]
+        assert "not found in the audited area" not in old_lines[fix_idx]
+
+
+# ---------------------------------------------------------------------------
+# spec 033 T4.2 / PRD F3, ADR-6: the broken_up fix line says the target was
+# not found in the audited area — never that the note is gone — and points
+# at the audited scope as something the user can widen. Remove and repoint
+# both remain available; this only rewords the CLAIM the line makes about
+# the target, not the fix mechanism (ADR-7's routing is untouched).
+# ---------------------------------------------------------------------------
+
+class TestBrokenUpAuditedAreaWording:
+    def test_body_resident_fix_line_says_not_found_in_audited_area(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**")
+        assert "not found in the audited area" in fix_line
+
+    def test_property_resident_fix_line_says_not_found_in_audited_area(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**")
+        assert "not found in the audited area" in fix_line
+
+    def test_fix_line_never_asserts_the_note_does_not_exist(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**").lower()
+        for forbidden in ("does not exist", "no longer exists", "was deleted", "is gone"):
+            assert forbidden not in fix_line
+
+    def test_fix_line_points_at_audited_scope_as_user_controllable(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**").lower()
+        assert "widen" in fix_line
+        assert "audited scope" in fix_line
+
+    def test_remove_and_repoint_both_still_available_body_resident(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**").lower()
+        assert "repoint" in fix_line
+        assert "remove" in fix_line
+        assert "**Repoint to:**" in report  # editable field still rendered
+
+    def test_remove_and_repoint_both_still_available_property_resident(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        fix_line = _line_starting_with(report, "**Fix:**").lower()
+        assert "repoint" in fix_line
+        assert "remove" in fix_line
+        assert "**Repoint to:**" in report
+
+    def test_property_resident_still_carries_fix_target_disclosure_adr7(self):
+        # ADR-7 regression guard: T4.2 rewords the Fix line's CLAIM but must
+        # not disturb spec 032's property-edit disclosure — a successful
+        # edit_frontmatter fix drops YAML comments in the property block,
+        # and that cost must still be visible before Apply is ticked.
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        assert "**Fix target:** note property `up`" in report
+        assert (
+            "Comments inside this note's property block will not survive "
+            "the edit."
+        ) in report
 
 
 # ---------------------------------------------------------------------------
@@ -1757,6 +2334,18 @@ class TestUnsupportedShapeSummaryLanguage:
 
         old_lines = old_report.splitlines()
         new_lines = new_report.splitlines()
+
+        # spec 033 T4.3 adds a "Flagged parents:" line (+ trailing blank) to
+        # the Summary — absent from this 68c4594 baseline entirely, a third
+        # sanctioned difference alongside T4.2's Fix-line reword. Strip it
+        # first so every index below lines up between old and new.
+        flagged_idx = next(
+            i for i, ln in enumerate(new_lines) if ln.startswith("Flagged parents:")
+        )
+        assert new_lines[flagged_idx + 1] == ""
+        assert "not found in the audited area" in new_lines[flagged_idx]
+        new_lines = new_lines[:flagged_idx] + new_lines[flagged_idx + 2:]
+
         assert len(old_lines) == len(new_lines)
 
         def _block_indices(lines, fid):
@@ -1774,20 +2363,39 @@ class TestUnsupportedShapeSummaryLanguage:
         # held only while the Summary line was the sole property-side change.
         # It then failed for a later property-side fix that CON-7 does not
         # constrain at all, so the count was tightened into the real invariant.
+        #
+        # spec 033 T4.2 (ADR-6) later reworded the Fix line for EVERY broken_up
+        # finding, body-resident included — a separate, deliberate change this
+        # test does not own. So F02's block is no longer fully byte-identical
+        # to 68c4594; what CON-7 still protects here is everything about F02
+        # EXCEPT its own Fix line (heading, detail line, checkbox, Repoint
+        # hint, Suggest opt-in).
         f02_old = _block_indices(old_lines, "F02")
         f02_new = _block_indices(new_lines, "F02")
         assert f02_old == f02_new
-        assert [old_lines[i] for i in f02_old] == [new_lines[i] for i in f02_new]
+
+        f02_fix_positions = [i for i in f02_old if old_lines[i].startswith("**Fix:**")]
+        assert len(f02_fix_positions) == 1
+        f02_fix_idx = f02_fix_positions[0]
+
+        f02_rest_old = [old_lines[i] for i in f02_old if i != f02_fix_idx]
+        f02_rest_new = [new_lines[i] for i in f02_new if i != f02_fix_idx]
+        assert f02_rest_old == f02_rest_new
 
         changed = [
             i for i, (o, n) in enumerate(zip(old_lines, new_lines)) if o != n
         ]
         assert changed, "the fix under test changed nothing — assertion is hollow"
+        # Body-resident lines changed ONLY at F02's own Fix line — T4.2's
+        # known, separate rewording, not a regression in the
+        # unsupported-shape summary fix this test exists to prove.
         body_resident = set(f02_new) & set(changed)
-        assert not body_resident, (
-            f"body-resident lines changed, CON-7 violated: "
-            f"{[new_lines[i] for i in sorted(body_resident)]}"
+        assert body_resident == {f02_fix_idx}, (
+            f"body-resident lines changed beyond the known T4.2 Fix-line "
+            f"rewording: {[new_lines[i] for i in sorted(body_resident - {f02_fix_idx})]}"
         )
+        assert "not found in the audited area" in new_lines[f02_fix_idx]
+        assert "not found in the audited area" not in old_lines[f02_fix_idx]
 
         summary = [i for i in changed if "unsupported value shape" in new_lines[i]]
         assert len(summary) == 1, f"expected one Summary line, got {summary}"
@@ -1855,3 +2463,302 @@ class TestPropertyResidentDetailLine:
         ]
         offenders = [ln for ln in body if "up::" in ln]
         assert offenders == [], f"body syntax on a property finding: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# spec 033 T4.1 — parent_not_moc advisory message names the target and
+# inverts the suggestion (ADR-5). A per-check advisory table replaces the
+# single generic literal for this check only; duplicate_stem/stale_moc must
+# keep getting the untouched fallback line (CON-3).
+# ---------------------------------------------------------------------------
+
+class TestParentNotMocAdvisoryMessageGroupSizeOne:
+    def test_message_names_target_before_asserting_forbidden_words_absent(self):
+        f = _make_parent_not_moc_finding("F01", up_target="Real Note")
+        report = _render_report(_make_doc(findings=[f]))
+        advisory_line = _line_containing(report, "Real Note")
+        # Target name present FIRST — a bare negative check passes trivially
+        # against an empty/unrelated block.
+        assert "[[Real Note]]" in advisory_line
+        assert "broken" not in advisory_line
+        assert "remove" not in advisory_line
+
+    def test_no_checkbox_or_repoint_field(self):
+        # Scoped to the finding's own block (after its ### heading) — the
+        # report's top-level "- [ ] Approved" gate is unrelated and always
+        # present, so checking the whole report would be a false positive.
+        f = _make_parent_not_moc_finding("F01")
+        report = _render_report(_make_doc(findings=[f]))
+        heading_idx = next(
+            i for i, ln in enumerate(report.splitlines()) if ln.startswith("### F01")
+        )
+        block = "\n".join(report.splitlines()[heading_idx:])
+        assert "- [ ]" not in block
+        assert "Repoint to:" not in block
+
+    def test_group_size_one_carries_no_findings_count_clause(self):
+        f = _make_parent_not_moc_finding("F01", up_target="Solo Target")
+        report = _render_report(_make_doc(findings=[f]))
+        advisory_line = _line_containing(report, "Solo Target")
+        assert "findings in this report" not in advisory_line
+        assert "resolves" not in advisory_line
+
+
+class TestParentNotMocAdvisoryMessageGroupSizeMany:
+    def test_group_size_two_says_resolves_both_not_resolves_all_two(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Pair"),
+            _make_parent_not_moc_finding("F02", up_target="Pair"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "[[Pair]] is a real note")
+        assert "[[Pair]]" in line
+        assert "resolves both" in line
+        assert "resolves all 2" not in line
+
+    def test_group_size_three_says_resolves_all_n(self):
+        findings = [
+            _make_parent_not_moc_finding(f"F0{i}", up_target="Trio") for i in range(1, 4)
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "[[Trio]] is a real note")
+        assert "3 findings in this report point at [[Trio]]" in line
+        assert "resolves all 3" in line
+
+    def test_count_clause_applies_to_every_group_member_not_just_one(self):
+        findings = [
+            _make_parent_not_moc_finding(f"F{i:02d}", up_target="Group") for i in range(1, 4)
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        matches = [ln for ln in report.splitlines() if "resolves all 3" in ln]
+        assert len(matches) == 3, "every finding sharing the target must carry the clause"
+
+    def test_count_clause_points_at_untagged_parents_block(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Shared"),
+            _make_parent_not_moc_finding("F02", up_target="Shared"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "[[Shared]] is a real note")
+        assert '"Untagged parents"' in line
+
+
+class TestUntaggedParentsBlockSuppression:
+    """Suppression is its own test — a renderer that always emits the block
+    would pass every shared-target assertion above."""
+
+    def test_block_absent_when_no_finding_exists(self):
+        report = _render_report(_make_doc(findings=[]))
+        assert "Untagged parents" not in report
+
+    def test_block_absent_when_every_target_is_unique(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Projects"),
+            _make_parent_not_moc_finding("F02", up_target="Ideas"),
+            _make_parent_not_moc_finding("F03", up_target="Archive"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Untagged parents" not in report
+
+    def test_block_absent_for_non_parent_not_moc_advisories(self):
+        findings = [
+            _make_duplicate_stem_finding("F01"),
+            _make_stale_moc_finding("F02"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "Untagged parents" not in report
+
+
+class TestUntaggedParentsBlockContent:
+    def test_block_renders_when_a_target_is_shared(self):
+        findings = [
+            _make_parent_not_moc_finding("F12", up_target="Projects"),
+            _make_parent_not_moc_finding("F15", up_target="Projects"),
+            _make_parent_not_moc_finding("F19", up_target="Projects"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "**Untagged parents" in report
+        assert "[[Projects]]" in report
+
+    def test_header_says_target_not_targets_when_exactly_one_shared(self):
+        # Found while auditing for the same "1 findings" class of bug
+        # (spec 033 T4.4 review): this header's total_targets can be
+        # exactly 1 (one shared target this run, everything else unique) —
+        # "1 targets" is not English. total_findings can't hit this trap
+        # (every included target has group size > 1 by construction, so
+        # it's always >= 2), only total_targets can.
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Projects"),
+            _make_parent_not_moc_finding("F02", up_target="Projects"),
+            _make_parent_not_moc_finding("F03", up_target="Projects"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        header_line = _line_starting_with(report, "**Untagged parents")
+        assert "1 target," in header_line
+        assert "1 targets," not in header_line
+        assert "3 findings," in header_line
+
+    def test_per_target_counts_agree_with_actual_finding_count(self):
+        # Reconciliation, not each side alone: recompute expected counts from
+        # the findings list itself rather than hardcoding them a second time.
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Projects"),
+            _make_parent_not_moc_finding("F02", up_target="Projects"),
+            _make_parent_not_moc_finding("F03", up_target="Projects"),
+            _make_parent_not_moc_finding("F04", up_target="Ideas"),
+            _make_parent_not_moc_finding("F05", up_target="Ideas"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        projects_count = sum(
+            1 for f in findings if f["detail"]["up_target"] == "Projects"
+        )
+        ideas_count = sum(1 for f in findings if f["detail"]["up_target"] == "Ideas")
+
+        projects_line = _line_containing(report, "[[Projects]] —")
+        ideas_line = _line_containing(report, "[[Ideas]] —")
+        assert f"{projects_count} findings" in projects_line
+        assert f"{ideas_count} findings" in ideas_line
+
+        header_line = _line_starting_with(report, "**Untagged parents")
+        assert "2 targets" in header_line
+        assert f"{projects_count + ideas_count} findings" in header_line
+
+    def test_reuses_each_findings_own_id_verbatim_never_recomputed(self):
+        # F01 is an unrelated fixable finding ahead of the group in the list,
+        # and the group's own ids (F12/F15/F19) are deliberately non-sequential
+        # — a recomputed index would land on F01/F02/F03 instead.
+        findings = [
+            _make_broken_up_finding("F01"),
+            _make_parent_not_moc_finding("F12", up_target="Projects"),
+            _make_parent_not_moc_finding("F15", up_target="Projects"),
+            _make_parent_not_moc_finding("F19", up_target="Projects"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        block_line = _line_containing(report, "[[Projects]] —")
+        assert "F12" in block_line
+        assert "F15" in block_line
+        assert "F19" in block_line
+        assert "F02" not in block_line
+        assert "F03" not in block_line
+
+    def test_row_order_follows_findings_order_not_alphabetical(self):
+        # Row order is deterministic by construction — one ordered pass over
+        # findings, with dict insertion order preserved through the filter
+        # and the render loop — but nothing asserted it before this test. A
+        # user keeping these reports in a vault gets diff noise on every run
+        # if that order ever starts depending on something other than
+        # encounter order (e.g. alphabetical sorting creeping in later).
+        # "Zebra" appears first in findings but sorts AFTER "Apple" — the two
+        # orderings disagree here, so this actually distinguishes them.
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Zebra"),
+            _make_parent_not_moc_finding("F02", up_target="Zebra"),
+            _make_parent_not_moc_finding("F03", up_target="Apple"),
+            _make_parent_not_moc_finding("F04", up_target="Apple"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        zebra_idx = report.index("[[Zebra]] —")
+        apple_idx = report.index("[[Apple]] —")
+        assert zebra_idx < apple_idx
+
+
+class TestUntaggedParentsMissingTarget:
+    def test_missing_up_target_does_not_crash_and_forms_no_group(self):
+        f_missing = _make_parent_not_moc_finding("F01")
+        del f_missing["detail"]["up_target"]
+        f_empty = _make_parent_not_moc_finding("F02")
+        f_empty["detail"]["up_target"] = ""
+        report = _render_report(_make_doc(findings=[f_missing, f_empty]))  # must not raise
+        assert "Untagged parents" not in report
+
+    def test_missing_up_target_advisory_line_still_renders(self):
+        f_missing = _make_parent_not_moc_finding("F01")
+        del f_missing["detail"]["up_target"]
+        report = _render_report(_make_doc(findings=[f_missing]))
+        assert "### F01" in report
+
+
+class TestAdvisoryFallbackByteIdenticalCon3:
+    """CON-3: the per-check advisory table must fall back to today's exact
+    literal line for every check that isn't parent_not_moc."""
+
+    def test_duplicate_stem_and_stale_moc_line_unchanged(self):
+        findings = [
+            _make_duplicate_stem_finding("F01"),
+            _make_stale_moc_finding("F02"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        advisory_lines = [
+            ln for ln in report.splitlines() if ln.startswith("_Advisory")
+        ]
+        assert advisory_lines == [
+            "_Advisory — no automated fix. Review and handle manually._",
+            "_Advisory — no automated fix. Review and handle manually._",
+        ]
+
+
+# ---------------------------------------------------------------------------
+# spec 033 T4.6, SDD Implementation Gotcha 4: the all-advisory case — every
+# flagged parent is parent_not_moc, so no broken_up findings survive the
+# split. Verified correct by direct render during the T4.5 prose read, but
+# nothing in the suite guarded it: a future change could break any of it
+# and stay green. Three cases, not two — Case C exists on purpose (see its
+# own docstring below): it is the only one that distinguishes "the
+# Integrity section is suppressed because it is EMPTY" from "suppressed
+# because no broken parents exist". Those are different code paths
+# (_render_tier_section gates on the tier being empty; _render_broken_up_
+# split gates on body+prop == 0) that happen to agree whenever integrity
+# is empty — Case A and B can't tell them apart, only Case C can.
+# ---------------------------------------------------------------------------
+
+class TestAllAdvisoryCaseGotcha4:
+    def test_case_a_all_unique_targets_no_integrity_no_split_no_untagged_block(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Alpha"),
+            _make_parent_not_moc_finding("F02", up_target="Beta"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "## Integrity" not in report
+        assert "Broken parents:" not in report
+        # Single-situation form, no zero-count clause implying a division.
+        line = _line_containing(report, "Flagged parents:")
+        assert line == "Flagged parents: 2 findings, not yet tagged as a MOC."
+        assert "Untagged parents" not in report
+        assert "No fixable findings" in report  # all-advisory notice present
+
+    def test_case_b_one_shared_target_lists_only_the_shared_one(self):
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Shared"),
+            _make_parent_not_moc_finding("F02", up_target="Shared"),
+            _make_parent_not_moc_finding("F03", up_target="Unique"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "**Untagged parents" in report
+        shared_line = _line_containing(report, "[[Shared]] —")
+        assert "F01" in shared_line
+        assert "F02" in shared_line
+        assert "[[Unique]] —" not in report
+        assert "## Integrity" not in report
+        assert "Broken parents:" not in report
+
+    def test_case_c_advisory_plus_a_real_fixable_integrity_finding(self):
+        # The case with zero prior coverage, and the one that actually
+        # distinguishes the two "why is Integrity/split absent" reasons —
+        # see the class docstring. A dead_link finding keeps Integrity
+        # non-empty and keeps the run fixable, while zero broken_up
+        # findings still means zero broken-parent entries and no split
+        # line. If a future refactor conflated "tier empty" with "no
+        # broken parents", this is the only case here that would catch it.
+        findings = [
+            _make_parent_not_moc_finding("F01", up_target="Alpha"),
+            _make_parent_not_moc_finding("F02", up_target="Beta"),
+            _make_dead_link_finding("F03"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        assert "## Integrity" in report
+        assert "Dead link" in report
+        assert "Broken up:: link" not in report
+        assert "Broken parents:" not in report
+        # A fixable (dead_link) finding is present — the all-advisory
+        # notice must NOT render, unlike Case A/B.
+        assert "No fixable findings" not in report

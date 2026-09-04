@@ -54,17 +54,17 @@
           },
           "check": {
             "type": "string",
-            "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc"],
+            "enum": ["unparented", "orphan", "broken_up", "dead_link", "duplicate_stem", "stale_moc", "parent_not_moc"],
             "description": "Which check produced this finding."
           },
           "tier": {
             "type": "string",
             "enum": ["integrity", "structure", "advisory"],
-            "description": "Severity tier. integrity={broken_up,dead_link}; structure={unparented,orphan}; advisory={duplicate_stem,stale_moc}."
+            "description": "Severity tier. integrity={broken_up,dead_link}; structure={unparented,orphan}; advisory={duplicate_stem,stale_moc,parent_not_moc}."
           },
           "fixable": {
             "type": "boolean",
-            "description": "True for checks 1-4 (unparented,orphan,broken_up,dead_link). False for advisory checks 5-6."
+            "description": "True for checks 1-4 (unparented,orphan,broken_up,dead_link). False for advisory checks 5-7 (duplicate_stem,stale_moc,parent_not_moc)."
           },
           "target": {
             "type": "object",

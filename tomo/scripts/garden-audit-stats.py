@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """garden-audit-stats.py — read-only overview mode for garden-audit (spec 030).
 
 `/garden-audit stats` runs a fresh scan (reusing garden-audit.py, same doc.json)
@@ -46,14 +46,17 @@ _DEFAULT_INPUT = "tomo-tmp/garden-audit-doc.json"
 # Column ORDER is a display decision owned here; MEMBERSHIP is derived from the
 # lib's authoritative ALL_CHECK_NAMES so a 7th check can't silently drift out of
 # the table (a parity test locks _CHECKS == ALL_CHECK_NAMES as a set).
-_CHECKS = ("dead_link", "orphan", "unparented", "broken_up", "duplicate_stem", "stale_moc")
+_CHECKS = (
+    "dead_link", "orphan", "unparented", "broken_up", "duplicate_stem", "stale_moc",
+    "parent_not_moc",
+)
 assert set(_CHECKS) == set(ALL_CHECK_NAMES), (
     "stats._CHECKS drifted from garden_exclusions.ALL_CHECK_NAMES"
 )
 _TIER = {
     "broken_up": "integrity", "dead_link": "integrity",
     "unparented": "structure", "orphan": "structure",
-    "duplicate_stem": "advisory", "stale_moc": "advisory",
+    "duplicate_stem": "advisory", "stale_moc": "advisory", "parent_not_moc": "advisory",
 }
 _TIERS = ("integrity", "structure", "advisory")
 
@@ -63,6 +66,7 @@ _DEFAULT_TOP_N = 15
 _COL_LABEL = {
     "dead_link": "dead_link", "orphan": "orphan", "unparented": "unparented",
     "broken_up": "broken_up", "duplicate_stem": "duplicate", "stale_moc": "stale",
+    "parent_not_moc": "no_moc",
 }
 
 

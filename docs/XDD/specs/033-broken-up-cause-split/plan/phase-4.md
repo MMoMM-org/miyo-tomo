@@ -1,0 +1,150 @@
+---
+title: "Phase 4: Report surface"
+status: completed
+version: "1.0"
+phase: 4
+---
+
+# Phase 4: Report surface
+
+## Phase Context
+
+**GATE**: Read all referenced files before starting this phase.
+
+**Specification References**:
+- `[ref: SDD/Architecture Decisions; ADR-5, ADR-6, ADR-7]`
+- `[ref: SDD/Cross-Cutting Concepts; User Interface & UX]` — the constraints the wording must meet
+- `[ref: PRD/Feature 2]`, `[ref: PRD/Feature 3]`, `[ref: PRD/Feature 5]`, `[ref: PRD/Feature 6]`
+- Source to read: `tomo/scripts/garden-audit-render.py:580-587` (the advisory branch and its single
+  fixed line), `:63` (`_CHECK_LABEL`), `:485-495` (the per-finding detail line, which spec 032 taught
+  to branch on declaration site), `:312-325` (the all-advisory path), `:425-440`
+  (`_render_broken_up_split`, whose denominator this phase changes)
+
+**Key Decisions**:
+- **ADR-5** — the advisory message is per-check, with a fallback to today's generic line so
+  `duplicate_stem` and `stale_moc` stay byte-identical.
+- **ADR-6** — say *not found in the audited area*; never assert the note is gone.
+- **ADR-7** — 032's declaration-site line now counts survivors only; the drop is expected.
+
+**Dependencies**: Phase 2 (there must be two checks to render).
+
+---
+
+## Tasks
+
+- [x] **T4.1 The advisory message names the target and inverts the suggestion** `[activity: ux]`
+
+  1. **Prime**: read `:580-587`. Today every advisory renders *"Advisory — no automated fix. Review
+     and handle manually."* For this check that is true and useless — there **is** an action, just
+     not one Tomo performs `[ref: SDD/ADR-5]`.
+  2. **Test** (RED). Assert the target name is **present first**, then that the forbidden words are
+     absent — a bare negative substring check passes trivially when the block renders empty:
+     - a `parent_not_moc` block names the **target** as the thing to change `[ref: PRD/F2 crit 3]`
+     - it contains neither "broken" nor "remove" `[ref: SDD/UI & UX]`
+     - it contains **no** `- [ ]` checkbox and no `Repoint to:` field `[ref: PRD/F2 crit 2]`
+     - **group size 1** — the line is the base sentence only, and carries no "N findings" clause
+     - **group size > 1** — the line adds the count clause and points at the summary block
+       `[ref: PRD/F2 crit 4]`
+     - the **"Untagged parents" block does not render at all** when every target has exactly one
+       finding. Suppression is its own test; a renderer that always emits it passes every
+       shared-target assertion above.
+     - the summary block's per-target counts **agree with** the number of findings actually carrying
+       that target — assert the reconciliation, not each side alone
+     - `duplicate_stem` and `stale_moc` blocks are **byte-identical** to today's generic line — the
+       fallback path `[ref: CON-3]`
+  3. **Implement**: a per-check advisory message table; `.get(check)` falling back to the existing
+     line. The chosen wording (user decision, 2026-09-04) is verbatim:
+
+     Group size 1:
+     ```
+     _[[Target]] is a real note, not yet tagged as a MOC. Tag [[Target]] as a MOC — the link stays as it is._
+     ```
+     Group size > 1 (example: three findings share `[[Target]]`):
+     ```
+     _[[Target]] is a real note, not yet tagged as a MOC. Tag [[Target]] as a MOC — the link stays as it is. 3 findings in this report point at [[Target]]; tagging it once resolves all 3 (see "Untagged parents" below)._
+     ```
+     Once-per-run block, rendered **only** when at least one target has group size > 1, placed with
+     the existing derived blocks (after `_render_summary`, before the tier-section loop) — the same
+     "suppressed when empty" shape `_render_broken_up_split` and `_render_unroutable_summary`
+     already use:
+     ```
+     **Untagged parents — 3 targets, 7 findings, one tag each settles the group:**
+
+     - [[Projects]] — 3 findings (F12, F15, F19)
+     - [[Ideas]] — 2 findings (F21, F27)
+     - [[Archive]] — 2 findings (F33, F38)
+     ```
+
+     Three details the wording does not settle on its own:
+     - **Plural at exactly two.** "resolves all 2" is not English. Render "resolves **both**" for a
+       group of two, "resolves all N" for three or more. Test the two-case explicitly — it is the
+       most common shared size and the one a fixture of three will never exercise.
+     - **Finding IDs are reused, never recomputed.** `_make_id` (`garden-audit.py:95`) assigns
+       `f"F{counter:02d}"` at finding-creation time and the report renders it in the `### F<id>`
+       heading. The summary block MUST use each finding's own `id` field verbatim. A recomputed
+       index would agree today and drift the moment findings are filtered or reordered.
+     - **Grouping key.** `parent_not_moc` is not fixable, so there is no `decision` block to hang
+       this on. Group over `findings` by `detail.up_target`, computed once before the tier-section
+       loop, and thread it into both the new block renderer and `_render_finding` (which currently
+       receives only `up_property`). A finding whose `up_target` is missing or empty must not crash
+       the block and must not form a group — assert that.
+  4. **Validate**: `./venv/bin/python -m pytest tests/test_garden_audit_render.py -q`
+  5. **Success**: a reader who acts on the advisory changes the right note.
+
+- [x] **T4.2 `broken_up` says *not found in the audited area*** `[activity: ux]`
+
+  1. **Prime**: `[ref: SDD/ADR-6]`. The group is provably mixed — some targets exist outside the
+     scanned folders. Asserting the note is gone is the false claim this spec removes.
+  2. **Test** (RED):
+     - the fix line says the target was not found **in the audited area** `[ref: PRD/F3 crit 1]`
+     - it does **not** assert the note does not exist
+     - it points at the audited scope as user-controllable `[ref: PRD/F3 crit 2]`
+     - remove and repoint remain available `[ref: PRD/F3 crit 3]`
+     - a property-resident one still carries spec 032's `Fix target:` disclosure — this phase must
+       not disturb it `[ref: SDD/ADR-7]`
+  3. **Implement**: reword the `broken_up` fix summary only.
+  4. **Validate**: render suite, plus the spec 032 emission tests.
+  5. **Success**: the report describes a scan boundary, not a missing note.
+
+- [x] **T4.3 Per-situation counts** `[activity: ux]`
+
+  1. **Prime**: `[ref: PRD/F5]` and 032's `_render_broken_up_split`, which solved the same shape and
+     hit the same trap — a breakdown that implies a division when only one bucket is populated.
+  2. **Test** (RED):
+     - both situations present → the line states both counts, summing to the total flagged
+     - only one present → **no** breakdown implying a division `[ref: PRD/F5 crit 2]`
+     - no flagged parents → **no** line at all `[ref: PRD/F5 crit 3]`
+     - 032's declaration-site line now counts `broken_up` survivors only, and says so
+       `[ref: SDD/ADR-7]`
+  3. **Implement**: extend the summary renderer.
+  4. **Validate**: render suite.
+  5. **Success**: a reader can triage from the summary without reading 42 blocks.
+
+- [x] **T4.4 A pre-033 cache discloses rather than guesses** `[activity: ux]`
+
+  1. **Prime**: `[ref: PRD/F6]`, and 032's `_UNROUTABLE_REMEDY` — the same disclosure shape, already
+     built and tested. Reuse it rather than adding a parallel mechanism.
+  2. **Test** (RED):
+     - no finding claims a cause `[ref: PRD/F6 crit 1]`
+     - the report says the index predates the distinction and how to refresh it `[ref: F6 crit 2]`
+     - no fix is offered that would be wrong for two of the three situations `[ref: F6 crit 3]`
+  3. **Implement**: the disclosure line, on the existing mechanism.
+  4. **Validate**: render suite against a fixture cache built without the field.
+  5. **Success**: an unrefreshed index produces a report that is honest rather than confident.
+
+- [x] **T4.5 Read the rendered report as prose** `[activity: validate]`
+
+  1. **Prime**: spec 032 shipped a block that said `up::` in its heading and `up` property in its fix
+     line — every test green, both review gates passed, and the contradiction was visible to the
+     first person who read the output as English. No test finds that, because no test reads.
+  2. **Implement**: render a document containing every combination — advisory, unresolved
+     body-resident, unresolved property-resident, pre-033 — and **read the result end to end**.
+  3. **Validate**: no block contradicts itself; no block uses two nouns for one thing; the advisory
+     and integrity sections do not describe the same situation differently.
+  4. **Success**: the report reads as one voice. Record what was read, not that it was read.
+
+- [x] **T4.6 Phase Validation** `[activity: validate]`
+
+  - Full suite green, `ruff` clean.
+  - The all-advisory case renders correctly — if every flagged parent is `parent_not_moc`, the
+    integrity section has no broken-parent entries `[ref: SDD/Implementation Gotchas 4]`.

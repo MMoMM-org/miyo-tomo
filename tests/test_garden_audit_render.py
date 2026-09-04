@@ -1673,6 +1673,150 @@ class TestFlaggedParentSituationCounts:
 
 
 # ---------------------------------------------------------------------------
+# spec 033 T4.5 review, findings ①②③④ — the prose read of a rendered report
+# (not any test) found these; a fix without a failing test proves nothing,
+# so each gets one here before the corresponding code change lands.
+# ---------------------------------------------------------------------------
+
+class TestFlaggedParentsExcludesUnknownCause:
+    """① The Summary claimed a cause a withheld finding's own block disclaims.
+    A check=="broken_up" finding can only ever carry up_broken_reason ==
+    "unresolved" or have the key absent (never "not-a-moc" — that routes to
+    check=="parent_not_moc" instead), so counting on the ACTUAL value, not
+    just the check name, is exhaustive: no finding is double-counted or
+    silently dropped from the three-way split."""
+
+    def test_cause_unknown_excluded_from_unresolved_count(self):
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding(
+                "F02", up_source="inline", up_value="[[B]]", up_broken_reason=None
+            ),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        assert "1 not found in the audited area" in line
+        assert "2 not found in the audited area" not in line
+        assert "1 cause unknown" in line
+
+    def test_three_way_split_reconciles_with_the_findings(self):
+        # Reconciliation, not each side alone — recompute the expected
+        # per-bucket counts from the findings list rather than hardcoding
+        # them a second time.
+        findings = [
+            _make_broken_up_finding("F01", up_source="inline", up_value="[[A]]"),
+            _make_broken_up_finding("F02", up_source="inline", up_value="[[B]]"),
+            _make_broken_up_finding(
+                "F03", up_source="inline", up_value="[[C]]", up_broken_reason=None
+            ),
+            _make_parent_not_moc_finding("F04", up_target="X"),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        unresolved = sum(
+            1 for f in findings
+            if f["check"] == "broken_up" and f["detail"].get("up_broken_reason") == "unresolved"
+        )
+        cause_unknown = sum(
+            1 for f in findings
+            if f["check"] == "broken_up" and "up_broken_reason" not in f["detail"]
+        )
+        untagged = sum(1 for f in findings if f["check"] == "parent_not_moc")
+        assert f"{unresolved} not found in the audited area" in line
+        assert f"{untagged} not yet tagged as a MOC" in line
+        assert f"{cause_unknown} cause unknown" in line
+        assert f"Flagged parents: {unresolved + untagged + cause_unknown} —" in line
+
+    def test_only_cause_unknown_present_names_only_that_situation(self):
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="inline", up_value="[[A]]", up_broken_reason=None
+            ),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        line = _line_containing(report, "Flagged parents:")
+        assert "cause unknown" in line
+        assert "not found in the audited area" not in line
+        assert "not yet tagged as a MOC" not in line
+
+
+class TestSplitLineClauseDoesNotClaimCause:
+    """② The T4.3 ADR-7 clause said the split line "counts findings not
+    found in the audited area only" — false for a cause-unknown survivor,
+    whose own block says Tomo cannot tell. The line answers WHERE a parent
+    is declared (_broken_up_site reads up_source only), never WHY it broke."""
+
+    def test_clause_names_declaration_site_not_a_cause(self):
+        findings = [
+            _make_broken_up_finding(
+                "F01", up_source="inline", up_value="[[A]]", up_broken_reason=None
+            ),
+        ]
+        report = _render_report(_make_doc(findings=findings))
+        split_line = _line_containing(report, "Broken parents:")
+        assert "declaration site" in split_line.lower()
+        assert "not found in the audited area" not in split_line
+
+
+class TestCauseUnknownHeadingDoesNotClaimBroken:
+    """③ F03's heading ("Broken up:: link") sat above a body saying Tomo
+    cannot tell whether the link is broken — structurally the same defect
+    class spec 032 shipped once already. Scoped to the cause-unknown
+    withhold reason only; the other three (stale-cache, no-declaration-site,
+    unsupported-shape) ARE genuinely about a broken, unroutable link, and
+    their headings must stay byte-identical (CON-3)."""
+
+    def test_cause_unknown_heading_is_not_broken_up_link(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="inline", up_value="[[A]]", up_broken_reason=None
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert "Unclassified parent link" in heading
+        assert "Broken up:: link" not in heading
+
+    def test_stale_cache_heading_unchanged(self):
+        f = _make_broken_up_finding("F01")  # up_source/up_value both omitted
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert heading == "### F01 — Broken up:: link in: [[Broken Note]]"
+
+    def test_no_declaration_site_heading_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert heading == "### F01 — Broken up:: link in: [[Broken Note]]"
+
+    def test_unsupported_shape_heading_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert heading == "### F01 — Broken up:: link in: [[Broken Note]]"
+
+    def test_routable_heading_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        heading = _line_starting_with(report, "### F01")
+        assert heading == "### F01 — Broken up:: link in: [[Broken Note]]"
+
+
+class TestParentNotMocNoStrayBlankLine:
+    """④ Every parent_not_moc block rendered two blank lines after its
+    heading (no detail-line branch existed for the check, but the
+    blank-line separator fired unconditionally anyway). Closed the gap
+    rather than adding a detail line, since the advisory message already
+    names the target."""
+
+    def test_single_blank_line_between_heading_and_advisory_message(self):
+        f = _make_parent_not_moc_finding("F01", up_target="X")
+        report = _render_report(_make_doc(findings=[f]))
+        lines = report.splitlines()
+        idx = next(i for i, ln in enumerate(lines) if ln.startswith("### F01"))
+        assert lines[idx + 1] == ""
+        assert lines[idx + 2].startswith("_[[X]] is a real note")
+
+
+# ---------------------------------------------------------------------------
 # Fix-a: property-language for the ACTION, not the FINDING (T5.1/T5.2/T5.3
 # follow-up). A property-resident (up_source == "frontmatter") broken_up
 # finding is fixed via a YAML-property edit — but the Fix summary line and
@@ -1688,6 +1832,15 @@ class TestFlaggedParentSituationCounts:
 # ("Broken `up::` → [[X]]") — those name the FINDING (a broken parent link
 # exists), not the fix ACTION, and the detail line is pinned by
 # test_inline_resident_matches_pinned_golden_broken_up_line above.
+#
+# spec 033 T4.5 review, finding ③ (later): the ONE exception to "heading
+# never changes" — a cause-unknown withheld finding gets a DIFFERENT label
+# ("Unclassified parent link"), because for THAT finding "Broken up:: link"
+# is the false claim, not a neutral name for the finding. See
+# TestCauseUnknownHeadingDoesNotClaimBroken below. Every finding this
+# section actually exercises (routable, or withheld for a reason other
+# than cause-unknown) is unaffected — the heading claim above still holds
+# for them.
 
 # The heading ("Broken up:: link") and the detail line ("Broken `up::` →
 # [[X]]") legitimately keep "up::" — they name the FINDING and are DO-NOT-

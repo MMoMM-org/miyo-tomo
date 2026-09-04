@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.21.0
+# version: 0.22.0
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -68,6 +68,17 @@ _CHECK_LABEL = {
     "stale_moc": "Stale MOC",
     "parent_not_moc": "Parent not a MOC",
 }
+
+# spec 033 T4.5 review, finding ③: NOT a check-name registration (never index
+# this by a check name, never add it to _CHECK_LABEL) — a display override
+# for one specific withhold REASON on the existing "broken_up" check. Its
+# own block says Tomo cannot tell whether the parent is even broken (it
+# might be a real, untagged note in disguise), so "Broken up:: link" would
+# contradict the body directly below it — the exact defect class spec 032
+# shipped once already. The other three withhold reasons (stale-cache,
+# no-declaration-site, unsupported-shape) ARE genuinely about a broken link
+# that cannot be routed — only cause-unknown gets this override.
+_CAUSE_UNKNOWN_LABEL = "Unclassified parent link"
 
 
 # ── Unroutable broken_up findings (spec 032 T5.2) ──────────────────────────────
@@ -456,15 +467,46 @@ def _render_preamble(d: dict) -> list[str]:
     return lines
 
 
-def _flagged_parent_situation_counts(findings: list[dict]) -> tuple[int, int]:
-    """(broken_up count, parent_not_moc count) — the two situations a flagged
-    parent link falls into (spec 033 T4.3, PRD F5). Check-name scoped, not
-    tier-scoped: `integrity` also holds dead_link and `advisory` also holds
-    duplicate_stem/stale_moc, neither of which is a flagged PARENT.
+_SITUATION_PHRASE = {
+    "unresolved": "not found in the audited area",
+    "untagged": "not yet tagged as a MOC",
+    "cause_unknown": "cause unknown",
+}
+
+
+def _flagged_parent_situation_counts(findings: list[dict]) -> dict[str, int]:
+    """{"unresolved", "untagged", "cause_unknown"} counts — the three
+    situations a flagged parent link falls into (spec 033 T4.3, PRD F5;
+    "three situations", solution.md Q1).
+
+    T4.5 review finding ①: a check=="broken_up" finding is counted as
+    "unresolved" (the ONLY claim that justifies "not found in the audited
+    area") only when its OWN detail.up_broken_reason says so. A
+    check=="broken_up" finding can never carry up_broken_reason=="not-a-moc"
+    (garden-audit.py routes that to check=="parent_not_moc" instead), so a
+    broken_up finding's reason is exactly one of: "unresolved" (known,
+    counted there) or absent (counted as cause_unknown) — no finding is
+    double-counted or dropped. A withheld finding of ANY reason (stale-cache,
+    no-declaration-site, unsupported-shape, cause-unknown) that lacks the key
+    lands in cause_unknown: none of them can safely claim "not found in the
+    audited area" either, whatever their withhold reason is actually about
+    (declaration site, value shape, ...) — this bucket answers "do we know
+    the cause", a different, coarser question than "can we offer a fix".
     """
-    broken_up = sum(1 for f in findings if f.get("check") == "broken_up")
-    parent_not_moc = sum(1 for f in findings if f.get("check") == "parent_not_moc")
-    return broken_up, parent_not_moc
+    unresolved = sum(
+        1 for f in findings
+        if f.get("check") == "broken_up"
+        and (f.get("detail") or {}).get("up_broken_reason") == "unresolved"
+    )
+    cause_unknown = sum(
+        1 for f in findings
+        if f.get("check") == "broken_up"
+        and "up_broken_reason" not in (f.get("detail") or {})
+    )
+    untagged = sum(1 for f in findings if f.get("check") == "parent_not_moc")
+    return {
+        "unresolved": unresolved, "untagged": untagged, "cause_unknown": cause_unknown,
+    }
 
 
 def _render_flagged_parent_situations(findings: list[dict]) -> list[str]:
@@ -477,27 +519,22 @@ def _render_flagged_parent_situations(findings: list[dict]) -> list[str]:
     (crit 2), the same trap 032's own _render_broken_up_split line hit for a
     *neutral routing fact* (its zero is fine: "0 in a note property" doesn't
     ask "should there be some?"). This split does ask that question, so a
-    lopsided count gets a plain single-situation sentence instead.
+    lopsided count gets a plain single-situation sentence instead. Extends
+    to a third, equally-gated bucket (cause_unknown) the same way — never a
+    zero-count clause, never a claim this bucket's own findings disclaim.
     """
-    broken_up, parent_not_moc = _flagged_parent_situation_counts(findings)
-    total = broken_up + parent_not_moc
+    counts = _flagged_parent_situation_counts(findings)
+    populated = [(k, v) for k, v in counts.items() if v]
+    total = sum(counts.values())
     if total == 0:
         return []
-    if broken_up and parent_not_moc:
-        return [
-            f"Flagged parents: {total} — {broken_up} not found in the audited "
-            f"area, {parent_not_moc} not yet tagged as a MOC.",
-            "",
-        ]
-    if broken_up:
-        noun = "finding" if broken_up == 1 else "findings"
-        return [
-            f"Flagged parents: {broken_up} {noun}, not found in the audited area.",
-            "",
-        ]
-    noun = "finding" if parent_not_moc == 1 else "findings"
+    if len(populated) > 1:
+        clauses = ", ".join(f"{v} {_SITUATION_PHRASE[k]}" for k, v in populated)
+        return [f"Flagged parents: {total} — {clauses}.", ""]
+    situation, n = populated[0]
+    noun = "finding" if n == 1 else "findings"
     return [
-        f"Flagged parents: {parent_not_moc} {noun}, not yet tagged as a MOC.",
+        f"Flagged parents: {n} {noun}, {_SITUATION_PHRASE[situation]}.",
         "",
     ]
 
@@ -658,6 +695,16 @@ def _render_broken_up_split(findings: list[dict]) -> list[str]:
     reader may remember from before this spec shipped, because those
     findings used to be broken_up too. The trailing clause says why, so a
     dropped number doesn't read as a regression.
+
+    T4.5 review finding ②: the ORIGINAL trailing clause said "counts
+    findings not found in the audited area only" — false for a cause-unknown
+    survivor (T4.4), whose own block says Tomo cannot tell whether it was
+    found or not. This line answers WHERE a broken parent is declared
+    (_broken_up_site reads detail.up_source only), never WHY it is broken —
+    that claim belongs to the per-finding Fix line and the Summary's
+    Flagged-parents line, both of which are now honest about it (①). The
+    clause here says only what changed about the denominator: it used to
+    include untagged parents, and no longer does.
     """
     body = sum(1 for f in findings if _broken_up_site(f) == "body")
     prop = sum(1 for f in findings if _broken_up_site(f) == "property")
@@ -672,8 +719,8 @@ def _render_broken_up_split(findings: list[dict]) -> list[str]:
     noun = "finding" if total == 1 else "findings"
     return [
         f"Broken parents: {total} {noun} — {body} in the note body, "
-        f"{prop} in a note property. Counts findings not found in the "
-        "audited area only — untagged parents are shown separately, above.",
+        f"{prop} in a note property. By declaration site only — excludes "
+        "untagged parents (shown separately, above).",
         "",
     ]
 
@@ -711,7 +758,13 @@ def _render_finding(
     """
     fid = f["id"]
     check = f["check"]
-    label = _CHECK_LABEL.get(check, check)
+    # Computed once, up front (spec 033 T4.5 review, finding ③): the heading
+    # needs it too, not just the Apply/withheld branch further down.
+    withhold_reason = _broken_up_withhold_reason(f)
+    if check == "broken_up" and withhold_reason == "cause-unknown":
+        label = _CAUSE_UNKNOWN_LABEL
+    else:
+        label = _CHECK_LABEL.get(check, check)
     target = f["target"]
     path = target.get("path", "")
     stem = target.get("stem") or Path(path).stem
@@ -752,8 +805,16 @@ def _render_finding(
     elif check == "stale_moc":
         mtime = detail.get("mtime", "unknown")
         lines.append(f"Last modified: {mtime}")
+    # parent_not_moc has NO detail-line branch, deliberately (spec 033 T4.5
+    # review, finding ④): the advisory message below already names the
+    # target, and a separate line here would either duplicate it or risk
+    # reusing "broken"/"up::" language T4.1 avoids on purpose. See the
+    # `check != "parent_not_moc"` guard below — the blank-line separator is
+    # skipped too, so the heading and the advisory message aren't split by
+    # an empty gap with nothing in it.
 
-    lines.append("")
+    if check != "parent_not_moc":
+        lines.append("")
 
     # Fixable → checkbox (opt-in: decision.selected defaults False since 0.11.0)
     decision = f.get("decision")
@@ -762,7 +823,6 @@ def _render_finding(
     # there is nothing to approve. A malformed finding with no decision block
     # at all is unaffected (_broken_up_withhold_reason returns None when
     # decision is None) and still falls through to the ValueError guard.
-    withhold_reason = _broken_up_withhold_reason(f)
     if withhold_reason is not None:
         lines += _render_withheld_block(withhold_reason, up_property)
     elif decision is not None:

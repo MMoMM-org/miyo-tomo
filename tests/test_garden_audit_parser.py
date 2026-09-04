@@ -125,10 +125,15 @@ def _broken_up_repoint(fid="F01", selected=True):
     # cache entry. Inline declarations carry up_value=None (there is no
     # frontmatter property to read) — this is the routing branch's normal
     # inline shape, not a stale cache.
+    # spec 033: up_broken_reason is always present once up_source/up_value
+    # are populated (a post-033-classified cache entry) — its absence is a
+    # DIFFERENT, deliberate shape (garden-audit-render.py's cause-unknown
+    # withhold reason), not this fixture's concern.
     return _wire_finding(
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
-        {"up_target": "Old MOC", "up_source": "inline", "up_value": None},
+        {"up_target": "Old MOC", "up_source": "inline", "up_value": None,
+         "up_broken_reason": "unresolved"},
         decision={"selected": selected, "action": "add_relationship"},
     )
 
@@ -137,7 +142,8 @@ def _broken_up_removal(fid="F01", selected=True):
     return _wire_finding(
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
-        {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None},
+        {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None,
+         "up_broken_reason": "unresolved"},
         decision={"selected": selected, "action": "edit_note_text"},
     )
 
@@ -147,7 +153,8 @@ def _broken_up_frontmatter_repoint(fid="F01", selected=True):
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
         {"up_target": "Old MOC", "up_source": "frontmatter",
-         "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"]},
+         "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"],
+         "up_broken_reason": "unresolved"},
         decision={"selected": selected, "action": "add_relationship"},
     )
 
@@ -157,7 +164,8 @@ def _broken_up_frontmatter_removal(fid="F01", selected=True):
         fid, "broken_up", "integrity", True,
         "Notes/Broken.md", "Broken",
         {"up_target": "Deleted MOC", "up_source": "frontmatter",
-         "up_value": ["[[Deleted MOC]]"]},
+         "up_value": ["[[Deleted MOC]]"],
+         "up_broken_reason": "unresolved"},
         decision={"selected": selected, "action": "edit_note_text"},
     )
 
@@ -638,10 +646,15 @@ def _doc_finding_unparented(fid="F01"):
 def _doc_finding_broken_up_removal(fid="F02"):
     # spec 032: up_source/up_value present, matching a fresh (post-032) cache.
     # Inline declarations carry up_value=None (no frontmatter property to read).
+    # spec 033: up_broken_reason is always present once up_source/up_value are
+    # populated (a post-033-classified cache entry) — its absence is a
+    # DIFFERENT, deliberate shape (cause-unknown withhold reason), not this
+    # fixture's concern.
     return {
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
-        "detail": {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None},
+        "detail": {"up_target": "Deleted MOC", "up_source": "inline", "up_value": None,
+                   "up_broken_reason": "unresolved"},
         "decision": {"selected": True, "action": "edit_note_text"},
     }
 
@@ -650,7 +663,8 @@ def _doc_finding_broken_up_repoint(fid="F03"):
     return {
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Repoint Note.md", "stem": "Repoint Note"},
-        "detail": {"up_target": "Old MOC", "up_source": "inline", "up_value": None},
+        "detail": {"up_target": "Old MOC", "up_source": "inline", "up_value": None,
+                   "up_broken_reason": "unresolved"},
         "decision": {"selected": True, "action": "add_relationship"},
     }
 
@@ -660,7 +674,8 @@ def _doc_finding_broken_up_frontmatter_repoint(fid="F03"):
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Repoint Note.md", "stem": "Repoint Note"},
         "detail": {"up_target": "Old MOC", "up_source": "frontmatter",
-                   "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"]},
+                   "up_value": ["[[Old MOC]]", "[[Reisen (MOC)]]"],
+                   "up_broken_reason": "unresolved"},
         "decision": {"selected": True, "action": "add_relationship"},
     }
 
@@ -670,7 +685,8 @@ def _doc_finding_broken_up_frontmatter_removal(fid="F02"):
         "id": fid, "check": "broken_up", "tier": "integrity", "fixable": True,
         "target": {"path": "Notes/Broken Note.md", "stem": "Broken Note"},
         "detail": {"up_target": "Deleted MOC", "up_source": "frontmatter",
-                   "up_value": ["[[Deleted MOC]]"]},
+                   "up_value": ["[[Deleted MOC]]"],
+                   "up_broken_reason": "unresolved"},
         "decision": {"selected": True, "action": "edit_note_text"},
     }
 

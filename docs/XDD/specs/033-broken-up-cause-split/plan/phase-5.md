@@ -29,7 +29,7 @@ phase: 5
 
 ## Tasks
 
-- [ ] **T5.1 End-to-end on the live cache** `[activity: validate]`
+- [x] **T5.1 End-to-end on the live cache** `[activity: validate]`
 
   1. **Prime**: the measured baseline is 359 entries, 42 flagged, of which 20 are `not-a-moc` and 22
      `unresolved` `[ref: README/decisions log]`.
@@ -65,7 +65,7 @@ phase: 5
      spec 032 recorded: a `tool_use` count measures the model, not the scripts.
   4. **Success**: the property is structural, so it cannot regress silently.
 
-- [ ] **T5.4 Live run and the one metric that matters** `[activity: validate]`
+- [x] **T5.4 Live run and the one metric that matters** `[activity: validate]`
 
   1. **Prime**: `./scripts/update-tomo.sh --yolo` → `/explore-vault` → `/garden-audit`. The bare
      `update-tomo.sh` dies at the voice prompt without copying anything.

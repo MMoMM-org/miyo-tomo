@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Report surface"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -32,7 +32,7 @@ phase: 4
 
 ## Tasks
 
-- [ ] **T4.1 The advisory message names the target and inverts the suggestion** `[activity: ux]`
+- [x] **T4.1 The advisory message names the target and inverts the suggestion** `[activity: ux]`
 
   1. **Prime**: read `:580-587`. Today every advisory renders *"Advisory — no automated fix. Review
      and handle manually."* For this check that is true and useless — there **is** an action, just
@@ -91,7 +91,7 @@ phase: 4
   4. **Validate**: `./venv/bin/python -m pytest tests/test_garden_audit_render.py -q`
   5. **Success**: a reader who acts on the advisory changes the right note.
 
-- [ ] **T4.2 `broken_up` says *not found in the audited area*** `[activity: ux]`
+- [x] **T4.2 `broken_up` says *not found in the audited area*** `[activity: ux]`
 
   1. **Prime**: `[ref: SDD/ADR-6]`. The group is provably mixed — some targets exist outside the
      scanned folders. Asserting the note is gone is the false claim this spec removes.
@@ -106,7 +106,7 @@ phase: 4
   4. **Validate**: render suite, plus the spec 032 emission tests.
   5. **Success**: the report describes a scan boundary, not a missing note.
 
-- [ ] **T4.3 Per-situation counts** `[activity: ux]`
+- [x] **T4.3 Per-situation counts** `[activity: ux]`
 
   1. **Prime**: `[ref: PRD/F5]` and 032's `_render_broken_up_split`, which solved the same shape and
      hit the same trap — a breakdown that implies a division when only one bucket is populated.
@@ -120,7 +120,7 @@ phase: 4
   4. **Validate**: render suite.
   5. **Success**: a reader can triage from the summary without reading 42 blocks.
 
-- [ ] **T4.4 A pre-033 cache discloses rather than guesses** `[activity: ux]`
+- [x] **T4.4 A pre-033 cache discloses rather than guesses** `[activity: ux]`
 
   1. **Prime**: `[ref: PRD/F6]`, and 032's `_UNROUTABLE_REMEDY` — the same disclosure shape, already
      built and tested. Reuse it rather than adding a parallel mechanism.
@@ -132,7 +132,7 @@ phase: 4
   4. **Validate**: render suite against a fixture cache built without the field.
   5. **Success**: an unrefreshed index produces a report that is honest rather than confident.
 
-- [ ] **T4.5 Read the rendered report as prose** `[activity: validate]`
+- [x] **T4.5 Read the rendered report as prose** `[activity: validate]`
 
   1. **Prime**: spec 032 shipped a block that said `up::` in its heading and `up` property in its fix
      line — every test green, both review gates passed, and the contradiction was visible to the
@@ -143,7 +143,7 @@ phase: 4
      and integrity sections do not describe the same situation differently.
   4. **Success**: the report reads as one voice. Record what was read, not that it was read.
 
-- [ ] **T4.6 Phase Validation** `[activity: validate]`
+- [x] **T4.6 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - The all-advisory case renders correctly — if every flagged parent is `parent_not_moc`, the

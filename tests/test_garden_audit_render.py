@@ -1800,6 +1800,66 @@ class TestCauseUnknownHeadingDoesNotClaimBroken:
         assert heading == "### F01 — Broken up:: link in: [[Broken Note]]"
 
 
+class TestCauseUnknownDetailLineDoesNotClaimBroken:
+    """③ continued (T4.5's second read): the heading stopped asserting
+    breakage, but the detail line two lines below it still said "Broken
+    `up::` → [[X]]" — the contradiction moved down one line instead of
+    resolving (heading: unclassified; detail line: broken; body: cannot
+    tell). Same scoping as the heading fix: only the cause-unknown
+    withhold reason is neutral here; every other withhold reason and every
+    routable finding keeps "Broken ..." byte-identical (CON-3)."""
+
+    def test_cause_unknown_inline_detail_line_drops_broken(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="inline", up_value="[[A]]", up_broken_reason=None
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        # Present first: the fact (target, declaration site) survives —
+        # only the "Broken" claim is gone.
+        assert "`up::` → [[Deleted MOC]]" in report
+        assert "Broken `up::`" not in report
+
+    def test_cause_unknown_frontmatter_detail_line_drops_broken(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[A]]"], up_broken_reason=None
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        assert "`up` property → [[Deleted MOC]]" in report
+        assert "Broken `up` property" not in report
+
+    def test_stale_cache_detail_line_unchanged(self):
+        f = _make_broken_up_finding("F01")  # up_source/up_value both omitted
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up::` → [[Deleted MOC]]"
+
+    def test_no_declaration_site_detail_line_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source=None, up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up::` → [[Deleted MOC]]"
+
+    def test_unsupported_shape_detail_line_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source="frontmatter", up_value={"a": 1})
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up` property → [[Deleted MOC]]"
+
+    def test_routable_inline_detail_line_unchanged(self):
+        f = _make_broken_up_finding("F01", up_source="inline", up_value="[[Alte MOC]]")
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up::` → [[Deleted MOC]]"
+
+    def test_routable_frontmatter_detail_line_unchanged(self):
+        f = _make_broken_up_finding(
+            "F01", up_source="frontmatter", up_value=["[[Alte MOC]]"]
+        )
+        report = _render_report(_make_doc(findings=[f]))
+        detail_line = _line_starting_with(report, "Broken `")
+        assert detail_line == "Broken `up` property → [[Deleted MOC]]"
+
+
 class TestParentNotMocNoStrayBlankLine:
     """④ Every parent_not_moc block rendered two blank lines after its
     heading (no detail-line branch existed for the check, but the

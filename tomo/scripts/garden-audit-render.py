@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.22.0
+# version: 0.22.1
 """Render garden-audit-doc.json to a severity-ordered markdown report + wire JSON.
 
 Deterministic renderer — no LLM. The garden-auditor agent runs this after the scan
@@ -787,12 +787,22 @@ def _render_finding(
             # Same site branch as _fix_summary: a frontmatter-declared parent has
             # no `up::` line to name, and saying so contradicts the property
             # language the same block carries two lines below.
+            #
+            # T4.5 review, finding ③ continued: the heading stopped asserting
+            # breakage for a cause-unknown finding (label override above),
+            # but this line still said "Broken ..." for every broken_up
+            # finding regardless — the contradiction just moved down one
+            # line. Only cause-unknown drops the "Broken " prefix; the
+            # target and declaration site (the facts we DO have) stay.
+            # Every other withhold reason and every routable finding keeps
+            # "Broken ..." exactly as before (CON-3).
+            prefix = "" if withhold_reason == "cause-unknown" else "Broken "
             if detail.get("up_source") == "frontmatter":
                 lines.append(
-                    f"Broken `{up_property}` property → {_wikilink(up_target)}"
+                    f"{prefix}`{up_property}` property → {_wikilink(up_target)}"
                 )
             else:
-                lines.append(f"Broken `up::` → {_wikilink(up_target)}")
+                lines.append(f"{prefix}`up::` → {_wikilink(up_target)}")
     elif check == "dead_link":
         dead_target = detail.get("dead_target", "")
         count = detail.get("count", 1)

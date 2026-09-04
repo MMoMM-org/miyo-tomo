@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.6.1
 """garden-audit.py — Scan orchestrator for the Knowledge-Garden Audit skill (spec 030).
 
-Runs six checks over the MOC-structure cache, kado-graph-audit results, and
+Runs seven checks over the MOC-structure cache, kado-graph-audit results, and
 listDir modified times, applies GardenExclusions, and emits garden-audit-doc.json.
 This doc is the intermediate contract feeding garden-audit-render.py (Phase 3).
 
 Data-source split (ADR-5):
-  cache       → unparented (up_state=="absent"), broken_up (up_state=="broken"),
-                duplicate_stem (stem groups)
+  cache       → unparented (up_state=="absent"), duplicate_stem (stem groups),
+                and up_state=="broken" split by up_broken_reason into
+                broken_up (unresolved/unknown) + parent_not_moc (spec 033 ADR-1)
   graph_audit → orphan (orphans[]), dead_link (deadLinks[])
   listDir     → stale_moc (modified timestamp vs threshold)
 

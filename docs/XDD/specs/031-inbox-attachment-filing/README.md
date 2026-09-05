@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-01 |
-| **Current Phase** | Ready |
+| **Current Phase** | Code-complete — awaiting live validation (T6.5) |
 | **Last Updated** | 2026-09-05 |
 
 ## Documents

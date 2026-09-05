@@ -203,3 +203,49 @@ membership for free. The parser fires this only when BOTH `--suggestions-json` a
 `--fan-resolve-json` are edited wires; a single edited wire warns and falls back to the
 markdown merge (mixed markdown/JSON authority across the two docs is unsupported).
 Verified on the real Hashi wires: 22 confirmed (21 atomic + 1 MOC), 0 stranded.
+
+## Attachment round trip — four sites, one delimiter bug (spec 031, T3.4)
+
+WHY `attachments` was added to exactly four sites, matching `audio_peer`'s
+established pattern site-for-site: the wire projection at the `build_from_wire`
+`confirmed_items.append({...})` literal, the markdown-path defaults dict inside
+`parse_section`, a new `elif key == "attachments":` branch in the field-line
+dispatch chain (alongside `tags`), and the markdown-path projection at the parser's
+own `confirmed_items.append({...})` call. Both projection dicts are the
+explicit-enumeration silent-drop trap this file already documents for
+`audio_peer`: `result`/`w` are never passed through wholesale, so a field present
+on either but absent from its literal projection dict never reaches the output —
+with no error. The site count was verified by `rg audio_peer
+tomo/scripts/suggestion-parser.py` before implementing (four hits, same four line
+numbers a hand-derived audit found), not assumed from the plan — this repo has a
+standing, repeatedly-observed failure mode where a plan names one site and the code
+has two.
+
+WHY `unresolved_embeds` was NOT added to any of these four sites, despite riding
+the same analyst contract as `attachments`: it is diagnostic and one-way (see
+`suggestions-reducer.md`'s Should-have note) — there is no user decision to
+round-trip, so it never reaches `confirmed_items` and needs no parser site at all.
+Adding one would have been scope creep with no consumer.
+
+WHY `_parse_attachments` extracts backtick-DELIMITED segments
+(`re.findall(r"`([^`]*)`", value)`) instead of splitting the line on `","`: the
+renderer emits `` **Attachments:** `path one`, `path two` `` — the backticks are
+the actual field delimiter; the comma between entries is incidental formatting, not
+a separator the format is built on. Splitting on `,` first, then stripping
+backticks, silently fragments any ORDINARY filename that happens to contain a comma
+(e.g. `"Screenshot 2026-01-01 at 10.30.15, edited.png"`) into two bogus paths that
+do not exist in the vault. Those bogus paths would still round-trip cleanly through
+every existing test — the renderer and parser AGREE on the split, they are just
+both wrong together — and would ride the manifest into `move_asset` actions with
+nonexistent sources; Hashi skips a source that doesn't exist, so the real
+attachment silently never moves and the inbox silently does not empty, which is
+precisely the failure this whole spec exists to close. This is why a round-trip or
+golden test (render → parse → render, or build_from_wire == markdown-parse)
+structurally cannot catch this class of bug: both halves of the contract were
+written by the same author from the same assumption, so they are consistent with
+each other and both wrong. Only a case derived independently of the renderer's own
+output shape — a filename containing the format's incidental separator — breaks the
+tie. A literal backtick in a filename is a known, accepted, unfixed limitation
+shared with the render side (`suggestions-reducer.py` wraps each path in a single
+unescaped backtick pair) — not worth an escaping scheme for a character this
+specific to fix a case that has not occurred.

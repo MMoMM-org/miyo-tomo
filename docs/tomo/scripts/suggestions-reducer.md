@@ -359,3 +359,146 @@ offline tuning aid `scripts/analyze-placement-confidence.py` (which still reads 
 RAW analyst `fit_confidence`, so a persistent flag there stays the #64 tuning signal
 for the 0.6 threshold). A metadata-only stderr line reports the demotion count per
 run — never note content or heading text.
+
+## Attachment filing — review surface + the resolved-attachments merge (spec 031)
+
+### `**Attachments:**` / `**Unresolved embeds:**` lines are source-only (Phase 3, T3.2)
+
+WHY the per-item `**Attachments:**` line renders ONLY the resolved source path(s),
+never a destination: AC-F3.1 reads as if the destination belonged next to each
+attachment, but the destination (`concepts.asset`) is a single value for the WHOLE
+RUN, not a per-attachment fact — and at the point this line renders, the reducer has
+no config access at all (no `--config`/`--vault-config` flag, unlike
+`instruction-render.py`). Repeating one folder on every item's line would also be
+noise the user has to read past N times. The destination half of AC-F3.1 is a
+separate, RUN-LEVEL preamble (below); the per-item line's job is narrower: let the
+user sanity-check WHICH file resolution picked, via the full vault-relative path in
+backticks — not a wikilink, because the existing `**Source:**` line already encodes
+up to two wikilinks POSITIONALLY (`suggestion-parser.py:712` reads `wikilinks[1]` for
+`audio_peer`), so a 0..N attachment list cannot share that slot without colliding
+with the audio-peer encoding.
+
+WHY this per-item format was frozen BEFORE the run-level preamble existed, not
+designed together with it: the destination gap (AC-F3.1) was discovered mid-Phase-3,
+after `attachments` was already threading through all four `suggestion-parser.py`
+sites (T3.4) matching the `audio_peer` precedent exactly. A per-item destination
+element — even one left blank as a placeholder — would have forced every one of
+those four sites to be re-touched when the destination was later added, because the
+line's SHAPE would have changed. Freezing the per-item line to "backticked source
+paths, nothing else" meant the eventual preamble (Phase 5) could be added as a
+document-level addition that touches zero parser sites — it is not itself part of
+any per-item field the parser round-trips.
+
+WHY `**Unresolved embeds:**` (Should-have) is rendered but never parsed back: it is
+diagnostic, one-way, display-only — there is no user decision attached to an
+unresolved/ambiguous embed (no checkbox, nothing to edit), so it does not belong to
+the CON-5 both-channels-in-lockstep guarantee that `attachments` does. Accordingly
+it was never added to the structured `item` mirror or to `suggestions-wire.schema.json`
+— an undeclared-but-unprojected field is fine; a declared-but-never-populated one is
+noise the next reader has to disprove. It IS declared on `item-result.schema.json`
+(`unresolved_embeds: [{embed_target, status, candidate_count?}]`) because the
+analyst-facing contract needs `additionalProperties:false` to accept it once
+inbox-triage's resolver populates it — declaring the analyst-side contract and
+projecting a field into the review UI are different questions with different
+answers here.
+
+### The resolved-attachments map is a FILE, not in-memory state (Phase 6 gap fix)
+
+WHY `attachments`/`unresolved_embeds` were declared, rendered, and round-tripped for
+two full phases before anything ever produced them: the original SDD's ADR-2
+assumed extraction could run "on bodies the pipeline already has" — but
+`inbox-triage.py` (the process that resolves embeds against the inbox index) never
+reads note bodies; only the analyst SUBAGENT does, per-item, and ADR-2 explicitly
+keeps embed detection OUT of the analyst (deterministic extraction, testable
+without an LLM in the loop). So there was no code that had both a note body and a
+place to put a resolved list.
+
+WHY the fix is a sibling JSON file (`tomo-tmp/resolved-attachments.json`, keyed by
+vault-relative source path) rather than an in-memory data structure passed to the
+reducer: `inbox-triage.py` and `suggestions-reducer.py` are SEPARATE PROCESSES,
+invoked by the orchestrator as two independent script runs — there is no shared
+Python heap between them. `inbox-triage.py` already writes `routing-plan.json` and
+was, at one point mid-spec, attaching `attachments`/`unresolved_embeds` directly onto
+its own `new_sources` entries in memory — but `suggestions-reducer.py` never reads
+`routing-plan.json` at all (verified: zero references), and `routing-plan.json`'s
+`fresh_sources` is scoped by NEWNESS, not by "has attachments" — the reducer
+processes every DONE stem from `state.jsonl`, which on a Pass-2 or re-run is a
+different set entirely. Keying the merge to `fresh_sources` would silently drop
+items that were new on a PRIOR run. A dedicated, path-keyed file that both processes
+independently open is the only channel that actually crosses the process boundary
+correctly. This is exactly the kind of thing a future "simplification" back to
+in-memory passing would silently break — there is no shared process to pass it in.
+
+WHY merge by source PATH, not by stem: every `{stem}.result.json` already carries a
+`path` field (required by `item-result.schema.json`), so the reducer looks it up
+directly at the point it loads the result — no derivation needed. `inbox-triage.py`
+already has full vault-relative paths from Kado's `listDir`; deriving a stem
+(stripping folder + extension) would be a lossy transform BOTH sides would have to
+agree on exactly, and paths are unique across the vault where stems are not
+guaranteed to be.
+
+WHY `merge_resolved_attachments` applies the resolved map to EVERY
+`create_atomic_note` action on one result, not just the first: F-41 lets one inbox
+item emit N atomic notes (one per conceptual thread). The embeds live in the ONE
+shared source note body — an attachment embedded in that note belongs to every
+thread derived from it, not to whichever thread happens to be first in the list.
+
+WHY the resolved map OVERRIDES an analyst-supplied value instead of merging with it
+(union) or preferring the analyst's: ADR-2 keeps the analyst from ever producing
+`attachments`/`unresolved_embeds` — so a value already present on an action when the
+merge runs is not a legitimate alternate source, it is unexpected. Treating the
+deterministic map as authoritative and logging a stderr WARNING (naming the stem)
+when an analyst value is overridden makes the disagreement visible without crashing
+the run — the map is deterministic and testable; an LLM producing this field would
+not be.
+
+### The destination is a run-level preamble line, not a per-item fact (Phase 5)
+
+WHY `render_attachments_preamble` renders one line ONCE for the whole document
+("Attachments will be filed to `<folder>`.") instead of decorating each item's
+`**Attachments:**` line with a destination: `concepts.asset` is a single flat
+folder for the ENTIRE run — every attachment in every item goes to the same place.
+Rendering it per item would repeat the identical string N times for no added
+information; a single preamble line satisfies AC-F3.1's actual intent ("see the
+full consequence before you approve") more directly than N repetitions would.
+
+WHY the line appears ONLY when at least one item in the document carries
+attachments: a run with none must look byte-identical to a pre-attachments run
+(the standing near-MVP additive-only constraint). `render_attachments_preamble`
+scans every `create_atomic_note` action's `item.attachments` before deciding to
+render anything — the scan, not a config flag, is the gate.
+
+WHY the folder value is threaded through `shared-ctx.json` (a channel the reducer
+already opened for the field→section map, `load_field_sections`) rather than the
+reducer reading `vault-config.yaml` directly: the reducer has never had a
+`--config`/`--vault-config` CLI argument — only `instruction-render.py` does. Adding
+a second, independent config reader to the reducer would duplicate
+`instruction-render.py`'s `load_config`/`CONFIG_DEFAULTS` machinery for one string.
+`shared-ctx-builder.py` already reads `vault-config.yaml` once per run and already
+writes an envelope the reducer already loads; adding `asset_folder` to that
+envelope (`shared-ctx-builder.md`'s `build_asset_folder`) reuses the existing
+channel instead of building a parallel one.
+
+WHY `load_asset_folder` fails open to `DEFAULT_ASSET_FOLDER` (imported from
+`lib.render_actions`, never restated as a literal) on a missing/unreadable/malformed
+`shared-ctx.json` or an absent/blank key: this mirrors `load_field_sections`'s
+existing fail-open shape exactly, and a missing default here would mean the
+preamble either crashes the run or renders an empty backtick pair — both worse than
+falling back to the same default `_asset_dest_join` (`render_actions.py`) uses when
+it actually resolves the destination at instruction-render time. The two functions
+sharing one canonical constant is what keeps the preamble text and the real move
+target from silently disagreeing.
+
+WHY `load_resolved_attachments` distinguishes a MISSING file (silent) from an
+EXISTING-but-broken one (a loud stderr `WARNING` naming the path): both failure
+modes fall back to `{}`, and every item then gets `attachments: []` — but they mean
+opposite things. A missing file is the normal state before inbox-triage's producer
+has run, or on a run with genuinely no attachment-bearing embeds; treated the same
+way as a malformed/unreadable file, the two become indistinguishable from stderr
+alone, and "the feature silently does nothing" would read identically to "this
+inbox had no attachments" — exactly the class of failure this whole spec exists to
+close (a note files, its attachment doesn't, and nothing looks wrong). The non-dict
+JSON case (a syntactically valid file that parses to e.g. a list) is checked
+separately from the JSON-decode/OSError case, because a `json.loads` success with
+the wrong top-level shape needs its own WARNING naming the actual type found — it is
+not caught by the `except` clause at all.

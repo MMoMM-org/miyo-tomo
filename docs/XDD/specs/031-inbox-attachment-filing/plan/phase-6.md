@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Integration, regression and documentation"
-status: pending
+status: completed
 version: "1.0"
 phase: 6
 ---
@@ -30,7 +30,7 @@ phase: 6
 
 Proves the chain end to end and leaves the repo documented and synced.
 
-- [ ] **T6.1 End-to-end pipeline test** `[activity: integration-testing]`
+- [x] **T6.1 End-to-end pipeline test** `[activity: integration-testing]`
 
   1. **Prime**: Read `[ref: SDD/Building Block View; Components]`. The test drives the public entry point, not the helpers `[ref: memory: mock at orchestrator, not helper]`.
   2. **Test** (RED) — one scenario mirroring the motivating import:
@@ -45,7 +45,7 @@ Proves the chain end to end and leaves the repo documented and synced.
   4. **Validate**: the test passes without touching a live vault.
   5. **Success**: the pipeline reproduces, deterministically, what previously had to be hand-composed `[ref: PRD/User Research]`
 
-- [ ] **T6.2 Regression: attachment-free runs unchanged** `[activity: integration-testing]` `[parallel: true]`
+- [x] **T6.2 Regression: attachment-free runs unchanged** `[activity: integration-testing]` `[parallel: true]`
 
   1. **Prime**: `[ref: CON-8]`. Tomo is near MVP; hot paths take additive changes only.
   2. **Test** (RED):
@@ -56,7 +56,7 @@ Proves the chain end to end and leaves the repo documented and synced.
   4. **Validate**: full suite green.
   5. **Success**: no behavioural change for items without attachments `[ref: CON-8]`
 
-- [ ] **T6.3 Cost verification** `[activity: integration-testing]` `[parallel: true]`
+- [x] **T6.3 Cost verification** `[activity: integration-testing]` `[parallel: true]`
 
   1. **Prime**: `[ref: PRD/Success Metrics; Cost]` and the corrected counter from T5.2.
   2. **Test** (RED):
@@ -66,7 +66,7 @@ Proves the chain end to end and leaves the repo documented and synced.
   4. **Validate**: passes.
   5. **Success**: the O(1) claim is enforced by a test, not by argument `[ref: ADR-1]`
 
-- [ ] **T6.4 Documentation and sync** `[activity: documentation]`
+- [x] **T6.4 Documentation and sync** `[activity: documentation]`
 
   1. **Prime**: Read the WHY-layer rule in `CLAUDE.md` and `[ref: SDD/Deployment View]`.
   2. **Test**: n/a.
@@ -79,7 +79,7 @@ Proves the chain end to end and leaves the repo documented and synced.
   4. **Validate**: `scripts/update-tomo.sh` dry run shows every intended file as changed; a file listed as unchanged means a missed version bump.
   5. **Success**: the instance would receive every change `[ref: CON-7]`
 
-- [ ] **T6.5 Live validation** `[activity: validate]`
+- [ ] **T6.5 Live validation** `[activity: validate]` — **left unchecked deliberately: this task is the user's to run against their own vault, not part of implementation. Not skipped, not forgotten.**
 
   1. **Prime**: Batch this into a **single** live cycle `[ref: memory: minimize live-test cycles]`. Run `scripts/update-tomo.sh` first, then `/inbox` in the container.
   2. **Test**: against a small real inbox containing at least one note with an embedded image in a subfolder:
@@ -91,6 +91,6 @@ Proves the chain end to end and leaves the repo documented and synced.
   4. **Validate**: record the outcome and the observed Kado call count in `docs/evolution/inbox-cost-log.md`.
   5. **Success**: inbox residue reaches zero for an all-approved run `[ref: PRD/Success Metrics]`
 
-- [ ] **T6.6 Phase Validation** `[activity: validate]`
+- [x] **T6.6 Phase Validation** `[activity: validate]`
 
   - Full suite green; `ruff` clean. Walk the SDD Quality Requirements table and confirm each row has a passing test. Walk the PRD acceptance criteria and confirm each maps to a green test. Update the spec README status to `Implemented` via `xdd-meta finalize`.

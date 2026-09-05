@@ -112,7 +112,7 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 - [x] [Phase 3: Field threading through both review channels](phase-3.md)
 - [x] [Phase 4: Coverage audit and dry run](phase-4.md)
 - [x] [Phase 5: Pipeline wiring and cost accounting](phase-5.md)
-- [ ] [Phase 6: Integration, regression and documentation](phase-6.md)
+- [x] [Phase 6: Integration, regression and documentation](phase-6.md) — T6.1-T6.4, T6.6 done; T6.5 (live validation) deliberately left to the user
 
 ### Dependency graph
 

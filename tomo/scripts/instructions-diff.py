@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.11.0
+# version: 0.12.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -336,6 +336,20 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
             th_seen.add(stem)
             expected_deletions.append(stem)
     counts["delete_source"] = len(expected_deletions)
+
+    # Attachment moves (spec 031 ADR-5/ADR-6): mirror the renderer's GLOBAL
+    # dedup (render_actions._build_move_asset_actions spans the whole
+    # manifest, not a per-item loop) and key on the resolved path, not the
+    # basename, so this stays in lockstep with the renderer's own dedup key.
+    # create_moc items carry no attachments; an attachment is never appended
+    # to expected_deletions — filing is the audio_peer's exact inversion.
+    attachments_seen: set[str] = set()
+    for item in confirmed:
+        if item.get("action") == "create_moc":
+            continue
+        for path in item.get("attachments") or []:
+            attachments_seen.add(path)
+    counts["move_asset"] = len(attachments_seen)
 
     expected_skips: list[str] = []
     for sk in skipped:

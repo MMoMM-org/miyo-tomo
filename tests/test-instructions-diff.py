@@ -646,6 +646,122 @@ def test_move_asset_overcoverage_hard_fails(monkeypatch):
     print("[PASS] move_asset overcoverage (N+1) → rc=1")
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# move_asset expectation derivation (spec 031 T4.2)
+#
+# derive_expected must count how many move_asset actions confirmed items
+# EXPECT, mirroring the renderer's global dedup (render_actions.py
+# _build_move_asset_actions — the set spans the whole manifest, not a
+# per-item loop) and keying on the resolved vault-relative path, not the
+# basename — the audio_peer analogue's live asymmetry (basename on the diff
+# side, inbox-joined path on the renderer side) must NOT be replicated here.
+#
+# ADR-6: an attachment move never implies a deletion — attachments must
+# never be appended to expected_deletions (that is the audio_peer/deleted
+# behaviour; filing is its exact inversion).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _confirmed_item(item_id, source_path, attachments=None, action=None, **over):
+    item = {
+        "id": item_id, "source_path": source_path, "action": action,
+        "title": f"Item {item_id}", "tags": [],
+        "parent_moc": "", "parent_mocs": [],
+    }
+    if attachments is not None:
+        item["attachments"] = attachments
+    item.update(over)
+    return item
+
+
+def test_move_asset_expected_counts_unique_attachments_on_one_item():
+    """One confirmed item with 2 unique attachments -> expects 2
+    [ref: PRD/AC-F5.1]."""
+    confirmed = [_confirmed_item(
+        "S01", "Trip.md",
+        attachments=["100 Inbox/Attachments/a.jpg", "100 Inbox/Attachments/b.jpg"],
+    )]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 2,
+          f"expected 2 move_asset, got {expected['counts']['move_asset']}")
+    print("[PASS] one item, 2 unique attachments -> expects 2")
+
+
+def test_move_asset_expected_dedups_shared_attachment_globally():
+    """Two confirmed items sharing one attachment path -> expects 1, matching
+    the renderer's GLOBAL dedup (not per-item) [ref: PRD/AC-F4.2]."""
+    shared = "100 Inbox/Attachments/shared.jpg"
+    confirmed = [
+        _confirmed_item("S01", "A.md", attachments=[shared]),
+        _confirmed_item("S02", "B.md", attachments=[shared]),
+    ]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 1,
+          f"expected 1 (globally deduped), got {expected['counts']['move_asset']}")
+    print("[PASS] two items sharing one attachment -> expects 1 (global dedup)")
+
+
+def test_move_asset_expected_keys_on_full_path_not_basename():
+    """Two items whose attachments share a BASENAME but live at different
+    paths -> expects 2, proving the dedup key is the full resolved path, not
+    the basename (the audio_peer asymmetry this design must not replicate)."""
+    confirmed = [
+        _confirmed_item("S01", "A.md", attachments=["100 Inbox/FolderA/photo.jpg"]),
+        _confirmed_item("S02", "B.md", attachments=["100 Inbox/FolderB/photo.jpg"]),
+    ]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 2,
+          f"expected 2 (same basename, different path), got {expected['counts']['move_asset']}")
+    print("[PASS] same-basename-different-path attachments -> expects 2 (keyed on full path)")
+
+
+def test_move_asset_expected_skips_create_moc_items():
+    """create_moc items are skipped, as in the existing passes — an
+    attachments field on one (should never occur, but must not be trusted)
+    contributes nothing [ref: PRD/AC-F5.1]."""
+    confirmed = [
+        _confirmed_item("A1", "Note.md", attachments=["100 Inbox/x.jpg"]),
+        _confirmed_item("MOC01", None, action="create_moc",
+                        attachments=["100 Inbox/should-not-count.jpg"]),
+    ]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 1,
+          f"create_moc attachments must not count, got {expected['counts']['move_asset']}")
+    print("[PASS] create_moc item's attachments contribute nothing")
+
+
+def test_move_asset_never_appended_to_expected_deletions():
+    """ADR-6 guard, asserted on the deletions list itself: attachments must
+    never appear in expected_deletions — filing means the file continues to
+    exist at a new path, unlike the audio_peer's delete."""
+    attachment = "100 Inbox/Attachments/keepsake.jpg"
+    confirmed = [_confirmed_item("S01", "A.md", attachments=[attachment])]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(attachment not in expected["expected_deletions"],
+          f"attachment path leaked into expected_deletions: {expected['expected_deletions']}")
+    print("[PASS] attachment path never appears in expected_deletions (ADR-6)")
+
+
+def test_move_asset_skipped_items_contribute_nothing():
+    """A skipped[] entry's attachments (if any survived onto that shape)
+    contribute nothing — only confirmed_items feed the expectation
+    [ref: PRD/AC-F4.5]."""
+    confirmed = [_confirmed_item("S01", "A.md", attachments=["100 Inbox/x.jpg"])]
+    skipped = [{
+        "source_path": "B.md", "disposition": "skip",
+        "attachments": ["100 Inbox/should-not-count.jpg"],
+    }]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": skipped}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 1,
+          f"skipped item's attachments must not count, got {expected['counts']['move_asset']}")
+    print("[PASS] skipped item's attachments contribute nothing")
+
+
 def main() -> int:
     test_happy_path_reconciles()
     test_missing_instruction_fails()
@@ -663,6 +779,12 @@ def main() -> int:
     # test_move_asset_matched_counts_reconcile, test_move_asset_undercoverage_hard_fails,
     # and test_move_asset_overcoverage_hard_fails require the pytest `monkeypatch`
     # fixture and are run only under pytest collection, not this script entrypoint.
+    test_move_asset_expected_counts_unique_attachments_on_one_item()
+    test_move_asset_expected_dedups_shared_attachment_globally()
+    test_move_asset_expected_keys_on_full_path_not_basename()
+    test_move_asset_expected_skips_create_moc_items()
+    test_move_asset_never_appended_to_expected_deletions()
+    test_move_asset_skipped_items_contribute_nothing()
     print("\n\u2713 All instructions-diff tests passed.")
     return 0
 

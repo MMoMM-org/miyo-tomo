@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.6
+# version: 0.3.7
 """test-008-phase1.py — Unit coverage for instruction-render action-building.
 
 Exercises `build_actions()` + `render_instructions_md()` with a handcrafted
@@ -178,7 +178,7 @@ def _must(cond: bool, msg: str) -> None:
 
 
 def test_action_building():
-    actions = ir.build_actions(MANIFEST, CONFIRMED, DAILY_UPDATES, SKIPPED, CFG)
+    actions, _skipped_assets = ir.build_actions(MANIFEST, CONFIRMED, DAILY_UPDATES, SKIPPED, CFG)
 
     kinds = [a["action"] for a in actions]
     ids = [a["id"] for a in actions]
@@ -517,7 +517,7 @@ def test_backfill_plus_build_actions_no_duplicate_links():
             m["parent_moc"] = a1["parent_moc"]
             m["parent_mocs"] = list(a1["parent_mocs"])
 
-    actions = ir.build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = ir.build_actions(manifest, confirmed, [], [], CFG)
     links = [a for a in actions if a["action"] == "link_to_moc"]
     # Expected:
     #   1. Brettspiele ← Catan  (from A1's newly-backfilled parent_mocs)

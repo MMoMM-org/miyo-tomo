@@ -1,6 +1,8 @@
 # instructions.json + instructions.md — Tomo Hashi Consumer Contract
 
-> Last reviewed: 2026-05-27 (018: supporting_items accepts string|array|null; related:: aggregation confirmed Tomo-side per §882-886; add_relationship mode field NOT added — Hashi always replaces; up:: regex handles callout/list prefixes).
+> Last reviewed: 2026-09-05 (031: `move_asset`'s "Who emits it" updated — the deterministic
+> `/inbox` pipeline now emits it via `_build_move_asset_actions`, not only session-composed sets).
+> Prior: 2026-05-27 (018: supporting_items accepts string|array|null; related:: aggregation confirmed Tomo-side per §882-886; add_relationship mode field NOT added — Hashi always replaces; up:: regex handles callout/list prefixes).
 
 **Audience:** Authors and integrators of [Tomo Hashi (友橋)](https://github.com/MMoMM-org)
 — the Obsidian community plugin that reads Tomo's Pass-2 instruction set
@@ -786,11 +788,14 @@ whole reason this is a separate kind from `move_note`.
 `skipped-already`; both present → `failed` (inconsistent state); neither → `failed` (source
 missing). Same illegal-filename-character rejection. Hashi validates and rejects, never repairs.
 
-**Who emits it.** Not the deterministic renderer — `_build_move_note_actions` only ever moves
-Tomo-rendered `.md` notes. `move_asset` comes from **session-composed instruction sets**, e.g. a
-cross-vault import that relocates a folder of notes together with their images. When composing one,
-route by extension: notes → `move_note`, everything else → `move_asset`. Pair a `delete_source` for
-the origin exactly as you would for a note; link and embed integrity does not depend on it.
+**Who emits it.** The deterministic `/inbox` pipeline now emits this directly:
+`_build_move_asset_actions` (spec 031) reads each manifest entry's `attachments[]` — resolved
+inbox-embedded attachment paths, detected and resolved upstream in `inbox-triage.py` — and emits one
+`move_asset` per unique resolved path across the whole run, deduplicated globally. `move_asset` also
+comes from **session-composed instruction sets**, e.g. a cross-vault import that relocates a folder
+of notes together with their images. When composing one by hand, route by extension: notes →
+`move_note`, everything else → `move_asset`. Pair a `delete_source` for the origin exactly as you
+would for a note; link and embed integrity does not depend on it.
 
 ---
 

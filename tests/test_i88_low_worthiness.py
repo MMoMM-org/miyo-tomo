@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_i88_low_worthiness.py — sub-0.5 atomic suppression + Force-Atomic escape.
 
 Covers issue #88:
@@ -95,3 +95,60 @@ def test_parse_force_atomic_ticked_sets_flag():
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# ── spec 031 T6.5 finding A: the unresolved-embed warning must survive ───────
+#
+# A suppressed item is NOT promoted, so no move_asset is ever emitted for it
+# and an `**Attachments:**` line would promise an action that never happens.
+# An UNRESOLVED or AMBIGUOUS embed is the opposite: it is a real defect in the
+# user's vault that they must fix by hand, and it is equally true whether or
+# not Tomo files the note. Live run 2 proved the warning was computed, written
+# to resolved-attachments.json, and then dropped here — silently.
+
+
+def _ambiguous_action() -> dict:
+    action = _suppressed_action()
+    action["attachments"] = []
+    action["unresolved_embeds"] = [
+        {"embed_target": "karte.png", "status": "ambiguous", "candidate_count": 2},
+    ]
+    return action
+
+
+def test_light_block_reports_ambiguous_embed():
+    md = render_suppressed_atomic(_ambiguous_action(), "Dresden")
+    assert "**Unresolved embeds:** `karte.png` (ambiguous — 2 candidates)" in md
+
+
+def test_light_block_reports_unresolved_embed():
+    action = _suppressed_action()
+    action["unresolved_embeds"] = [
+        {"embed_target": "fehlt.png", "status": "unresolved"},
+    ]
+    md = render_suppressed_atomic(action, "Dresden")
+    assert "**Unresolved embeds:** `fehlt.png` (unresolved)" in md
+
+
+def test_light_block_omits_attachments_line():
+    """A resolved attachment on a suppressed item is deliberately NOT shown.
+
+    Nothing will be moved — the note stays in the inbox and so does its image.
+    Naming the attachment here would imply a filing action that Pass 2 never
+    emits, which is the same class of defect as hiding the warning above.
+    """
+    action = _suppressed_action()
+    action["attachments"] = ["100 Inbox/Images/bautzen-turm.jpg"]
+    md = render_suppressed_atomic(action, "Bautzen")
+    assert "**Attachments:**" not in md
+    assert "bautzen-turm.jpg" not in md
+
+
+def test_light_block_silent_when_every_embed_resolved():
+    """CON-8 control: no unresolved embeds → no block, byte-identical output."""
+    action = _suppressed_action()
+    action["attachments"] = ["100 Inbox/Images/prag-karte.png"]
+    action["unresolved_embeds"] = []
+    assert render_suppressed_atomic(action, "X") == render_suppressed_atomic(
+        _suppressed_action(), "X"
+    )

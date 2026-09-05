@@ -76,6 +76,11 @@
         "items": {"type": "string"}
       }
     },
+    "asset_folder": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Configured attachment-filing destination (concepts.asset), defaulting to DEFAULT_ASSET_FOLDER when unconfigured. Spec 031 Phase 5."
+    },
     "daily_notes": {
       "type": "object",
       "required": ["enabled", "path_pattern", "date_formats", "tracker_fields"],

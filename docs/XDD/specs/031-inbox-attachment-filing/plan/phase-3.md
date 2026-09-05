@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Field threading through both review channels"
-status: pending
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -32,7 +32,7 @@ phase: 3
 
 Carries the attachment list from the analyst contract to the render manifest, across both review channels, without a silent drop.
 
-- [ ] **T3.1 Schema declarations** `[activity: data-architecture]`
+- [x] **T3.1 Schema declarations** `[activity: data-architecture]`
 
   1. **Prime**: Note that all three schemas set `additionalProperties:false` — `item-result.schema.json:52`, `suggestions-doc.schema.json:59`, `suggestions-wire.schema.json:26`. A field not declared is a validation failure, not a silent pass.
   2. **Test** (RED):
@@ -44,7 +44,7 @@ Carries the attachment list from the analyst contract to the render manifest, ac
   4. **Validate**: schema tests pass. Schemas sync bytewise, so no version bump is needed `[ref: CON-7]`.
   5. **Success**: legacy artefacts without the field still validate `[ref: CON-8]`
 
-- [ ] **T3.2 Review surface — both channels** `[activity: frontend-ui]`
+- [x] **T3.2 Review surface — both channels** `[activity: frontend-ui]`
 
   1. **Prime**: Read `suggestions-reducer.py:370-390` (markdown) **and** `:1774-1783` (structured mirror). `[ref: CON-5]` — a field added to one only is invisible on the other path.
   2. **Test** (RED):
@@ -57,7 +57,7 @@ Carries the attachment list from the analyst contract to the render manifest, ac
   4. **Validate**: unit tests pass; `# version:` bumped.
   5. **Success**: both channels carry the same list for the same item `[ref: CON-5]`
 
-- [ ] **T3.3 Wire projection** `[activity: data-architecture]` `[parallel: true]`
+- [x] **T3.3 Wire projection** `[activity: data-architecture]` `[parallel: true]`
 
   1. **Prime**: Read `_wire_note` at `suggestions-render.py:272-300`; `tags` at `:295` is the list-shaped precedent.
   2. **Test** (RED):
@@ -68,7 +68,7 @@ Carries the attachment list from the analyst contract to the render manifest, ac
   4. **Validate**: unit tests pass; `# version:` bumped. **Land this together with T3.1's wire-schema change** — a half-added wire field makes a mid-flight payload read as "edited" `[ref: SDD/Implementation Gotchas]`.
   5. **Success**: the wire carries the field and the digest covers it `[ref: PRD/AC-F3.3]`
 
-- [ ] **T3.4 Parser round trip — four sites** `[activity: backend-logic]`
+- [x] **T3.4 Parser round trip — four sites** `[activity: backend-logic]`
 
   1. **Prime**: Read all four sites. The projection dicts at `:305` and `:2006` are the silent-drop trap — a field on `result` that is missing from the projection never reaches the output.
   2. **Test** (RED):
@@ -83,7 +83,7 @@ Carries the attachment list from the analyst contract to the render manifest, ac
      - [ ] The field survives both parse paths `[ref: PRD/AC-F3.3, AC-F3.4]`
      - [ ] Neither projection drops it `[ref: docs/tomo/scripts/suggestion-parser.md:180-186]`
 
-- [ ] **T3.5 Manifest entry** `[activity: backend-logic]`
+- [x] **T3.5 Manifest entry** `[activity: backend-logic]`
 
   1. **Prime**: Read `instruction-render.py:307-317` (the per-item loop) and `:425-430` (the manifest entry). Note `:313` — items with no template are `continue`d before the entry is built.
   2. **Test** (RED):
@@ -94,6 +94,6 @@ Carries the attachment list from the analyst contract to the render manifest, ac
   4. **Validate**: unit tests pass; `# version:` bumped.
   5. **Success**: `_build_move_asset_actions` receives real data `[ref: SDD/Integration Points]`
 
-- [ ] **T3.6 Phase Validation** `[activity: validate]`
+- [x] **T3.6 Phase Validation** `[activity: validate]`
 
   - Run all Phase 3 tests plus the full suite. Confirm with a single end-to-end assertion that an item's attachment list is identical after: reducer → wire → parser, and after reducer → markdown → parser. `ruff` clean.

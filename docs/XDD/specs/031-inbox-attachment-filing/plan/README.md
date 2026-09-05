@@ -69,7 +69,7 @@ scripts/update-tomo.sh
 
 - Bump the `# version:` header on every touched file under `tomo/scripts/` — `update-tomo` is version-gated and ships nothing otherwise.
 - Never reuse an existing wikilink regex; none of the nine distinguish `![[…]]` from `[[…]]`.
-- Never call `_ensure_md_extension` or `_dest_join` on an attachment path; both force `.md`.
+- Never call `_ensure_md_extension` or `_dest_join` on an attachment path. `_dest_join` unconditionally forces `.md`; `_ensure_md_extension` is a silent no-op for an allowlisted extension (`foto.jpg` → `foto.jpg`) but silently appends `.md` to anything outside the allowlist (`scan.heic` → `scan.heic.md`) — neither behaviour is safe here.
 - Never add a field to the `move_asset` action — `additionalProperties:false` rejects the whole set.
 
 ---
@@ -107,12 +107,12 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 
 **Sequencing rationale.** Phase 1 is pure and depends on nothing. Phases 2–4 each consume a synthetic manifest and can therefore be built before real data exists — they are independent of one another and of Phase 5. Phase 5 connects Phase 1's output to the pipeline, which is why it comes after the consumers exist rather than before. Phase 6 proves the whole chain end to end.
 
-- [ ] [Phase 1: Detection and resolution core](phase-1.md)
-- [ ] [Phase 2: Action emission](phase-2.md)
-- [ ] [Phase 3: Field threading through both review channels](phase-3.md)
-- [ ] [Phase 4: Coverage audit and dry run](phase-4.md)
-- [ ] [Phase 5: Pipeline wiring and cost accounting](phase-5.md)
-- [ ] [Phase 6: Integration, regression and documentation](phase-6.md)
+- [x] [Phase 1: Detection and resolution core](phase-1.md)
+- [x] [Phase 2: Action emission](phase-2.md)
+- [x] [Phase 3: Field threading through both review channels](phase-3.md)
+- [x] [Phase 4: Coverage audit and dry run](phase-4.md)
+- [x] [Phase 5: Pipeline wiring and cost accounting](phase-5.md)
+- [x] [Phase 6: Integration, regression and documentation](phase-6.md) — T6.1-T6.4, T6.6 done; T6.5 (live validation) deliberately left to the user
 
 ### Dependency graph
 

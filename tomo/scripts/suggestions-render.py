@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.15.0
+# version: 0.17.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -72,6 +72,11 @@ def render_header(d: dict) -> list[str]:
     precedence = d.get("decision_precedence_note", "").strip()
     if precedence:
         lines.append(f"> {precedence}")
+        lines.append("")
+
+    preamble = d.get("attachments_preamble", "").strip()
+    if preamble:
+        lines.append(f"> {preamble}")
         lines.append("")
 
     return lines
@@ -295,6 +300,7 @@ def _wire_note(section: dict, action: dict) -> dict:
         "location": item.get("location", ""),
         "tags": list(item.get("tags") or []),
         "audio_peer": item.get("audio_peer"),
+        "attachments": list(item.get("attachments") or []),
         "decision": decision,
         "keep_source": False,
         "delete_source": False,

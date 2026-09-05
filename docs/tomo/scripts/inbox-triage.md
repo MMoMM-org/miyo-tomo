@@ -169,6 +169,60 @@ silently no-op'd. The rename to the dated inbox convention makes it true; `_cach
 itself was NOT changed (the rename aligns to what it already expects). Pinned by
 `test_wire_is_report_json_sibling_by_convention`.
 
+## Attachment detection/resolution, and why the resolved map is a FILE (spec 031)
+
+WHY `build_attachment_index` (Step 2b) is a second, independent `listDir` call rather
+than folding into the existing depth=1 partition listing (Step 1): the partition
+listing is shallow (direct children only) and exists to bucket inbox files by
+type; resolving an embed correctly requires a RECURSIVE view of the whole inbox
+subtree, since the observed real-world case is a note in one subfolder embedding
+an attachment in another (`100 Inbox/Places/note.md` → `100 Inbox/Images/karte.jpg`).
+Reusing or widening the partition call would change its depth semantics for
+every existing caller; a separate call keeps both call sites' contracts
+unchanged and costs exactly one extra call per run, independent of note or
+embed count.
+
+WHY embed extraction (Step 2c, `resolve_inbox_attachments`) calls
+`client.list_notes(inbox_path, fields=["links"])` rather than
+`lib.attachment_index.extract_attachment_embeds`'s regex, reversing the
+original SDD's ADR-2: ADR-2 assumed the regex could run "on bodies the
+pipeline already has" — but `inbox-triage.py` never reads a note's fresh body
+for any of the notes it triages; only the per-item analyst SUBAGENT does, and
+ADR-2 deliberately keeps embed detection out of the analyst (deterministic,
+testable without an LLM in the loop). So the regex had a correct
+implementation with nowhere in this process to run it against real data.
+`list_notes(fields=["links"])` needs no body at all — Kado's own
+metadataCache already discriminates `kind == "embed"` from a plain link
+(including cases a regex cannot see, like a fenced code block containing
+`![[x.jpg]]`) — so it became the actual extraction path once that gap
+surfaced. `attachment_index._is_attachment_target` and
+`_strip_alias_and_anchor` are reused as-is to classify and clean each
+`list_notes` target; `extract_attachment_embeds` itself keeps zero callers in
+the pipeline but remains a correct, tested library function (see
+`docs/tomo/scripts/lib/attachment_index.md`).
+
+WHY the resolved map (`attachments[]` + `unresolved_embeds[]` per source path)
+is written to a sibling file, `<output_dir>/resolved-attachments.json`, rather
+than attached in-memory to a `routing-plan.json` entry:
+`inbox-triage.py` and `suggestions-reducer.py` are SEPARATE PROCESSES,
+invoked as two independent script runs by the orchestrator — there is no
+shared Python heap to pass a data structure through. The reducer never reads
+`routing-plan.json` at all (zero references, verified), and even if it did,
+`routing-plan.json`'s `fresh_sources[]` is scoped by NEWNESS, not by "has
+attachments" — the reducer processes every DONE stem from `state.jsonl`,
+which on a Pass-2 or later re-run is a different stem set than whatever was
+"fresh" on the run that first resolved the embeds. Keying the hand-off to
+`fresh_sources` would silently drop attachments for items that were new on a
+PRIOR run. A dedicated, path-keyed file that both processes independently
+open and close is the only channel that actually crosses the process
+boundary correctly. **Two agents independently reached for
+`routing-plan.json` as the join point before this was pinned down** — if a
+future refactor considers passing this in-memory again, there is no shared
+process on the other end to receive it. The reducer-side half of this
+contract (how `merge_resolved_attachments` consumes the file, and why by
+path rather than by stem) is documented in
+`docs/tomo/scripts/suggestions-reducer.md`.
+
 ## Suggest-before-approve gate (garden-audit, 2026-07-24)
 
 WHY the garden-audit branch now clears `approved` when `_garden_suggest_pending(body, wire)` is true:

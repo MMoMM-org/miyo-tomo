@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_instruction_render_collision_guard.py — filename collision guard (C5, F-41).
 
 T5.1 (XDD-016): Verifies that _disambiguate_filename() produces distinct filenames
@@ -205,7 +205,7 @@ def test_loop_degrades_gracefully_on_exhaustion(monkeypatch, tmp_path):
 
     # Stub downstream steps that require a real vault (path validation and
     # action builders call Kado; we want to isolate the render loop only).
-    monkeypatch.setattr(ir, "build_actions", lambda *_a, **_kw: [])
+    monkeypatch.setattr(ir, "build_actions", lambda *_a, **_kw: ([], []))
     monkeypatch.setattr(ir, "resolve_target_moc_paths", lambda _actions, _client: 0)
     monkeypatch.setattr(ir, "resolve_section_names", lambda *_a, **_kw: 0)
     monkeypatch.setattr(ir, "_validate_action_paths", lambda _actions: [])

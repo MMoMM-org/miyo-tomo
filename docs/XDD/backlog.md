@@ -296,6 +296,14 @@ Documented in `docs/instructions-json.md`.
 Source: `_inbox/from-hashi/2026-09-01_hashi-to-tomo_wire-sync-move-asset-and-replace-section.md`;
 Hashi PRs #119 + #120, spec 002 decision log 2026-09-01. Tomo PRs #152 (mirror) + the correction.
 
+**Update — the deterministic pipeline emits it too (spec 031).** The gap this entry describes —
+"the producer is not the deterministic renderer" — is closed: spec 031 (Inbox attachment filing)
+added `_build_move_asset_actions` (`lib/render_actions.py`), which reads `attachments[]` off each
+manifest entry (populated by `inbox-triage.py`'s embed detection/resolution, `instruction-render.py`'s
+manifest-entry threading) and emits `move_asset` for every unique resolved path, globally
+deduplicated. Session-composed instruction sets remain a valid second producer for the same kind;
+see `docs/instructions-json.md`'s "Who emits it" for `move_asset`.
+
 ## OPEN — Adopt Kado `kado-graph` navigation tool for MOC/related-note features (opportunity)
 
 Kado shipped a read-only `kado-graph` navigation tool (PR #87, ~v0.17.0): per-note `backlinks` /

@@ -87,7 +87,7 @@ version: "1.0"
 ```yaml
 - file: tomo/scripts/lib/render_actions.py
   relevance: CRITICAL
-  why: "Emission site. _build_move_note_actions:559 (the template), build_actions:1275 (ordering), _dest_join:488 and _ensure_md_extension:69 (the .md traps), _KNOWN_FILE_EXTENSIONS:59-68 (the attachment classifier to reuse), _REQUIRED_PATH_FIELDS:204-219"
+  why: "Emission site. _build_move_note_actions:559 (the template), build_actions:1275 (ordering), _dest_join:488 and _ensure_md_extension:63 (the .md traps), _REQUIRED_PATH_FIELDS:204-219. The classifier itself now lives in lib/file_extensions.py:18-25 (public KNOWN_FILE_EXTENSIONS), relocated during T1.1; render_actions.py keeps _KNOWN_FILE_EXTENSIONS:60 only as a back-compat alias"
 
 - file: tomo/scripts/lib/kado_client.py
   relevance: CRITICAL
@@ -140,7 +140,7 @@ version: "1.0"
 - service: Kado MCP gateway
   doc: docs/instructions-json.md, tomo/scripts/lib/kado_client.py
   relevance: CRITICAL
-  why: "listDir is the only call this design adds. Confirmed to return non-.md files (Kado search-adapter.ts:242-252 walks every TFile); the .md-only restriction applies to kado-read only (Kado tools.ts:113)"
+  why: "listDir and listNotes are the two calls this design adds (ADR-1, ADR-2). listDir confirmed to return non-.md files (Kado search-adapter.ts:242-252 walks every TFile); the .md-only restriction applies to kado-read only (Kado tools.ts:113). listNotes fields=['links'] folds embeds into the link list with kind=='embed', targets echoed verbatim from metadataCache — no body read (Kado search-adapter.ts:295-296)"
 
 - service: Tomo Hashi executor
   doc: docs/instructions-json.md
@@ -198,6 +198,15 @@ outbound:
     data_flow: "One recursive listing of the inbox, returning every file including attachments"
     criticality: HIGH
     call_budget: "+1 per run, plus one page per 500 subtree entries (cursor loop at :597-617)"
+
+  - name: "Kado listNotes — embed targets"
+    type: MCP over HTTP
+    format: JSON
+    authentication: bearer token from instance .mcp.json
+    doc: tomo/scripts/lib/kado_client.py:203
+    data_flow: "One listing of inbox notes with fields=['links'], filtered client-side to kind=='embed', for per-note embed targets"
+    criticality: HIGH
+    call_budget: "+1 per run, plus one page per 500 subtree entries (shared cursor loop at :597-617)"
 
   - name: "Tomo Hashi instruction set"
     type: file handoff (instructions.json in the vault)
@@ -378,7 +387,7 @@ manifest, both of which gain one optional list field.
 - from: inbox-triage.py
   to: lib/attachment_index.py
     - protocol: in-process function call
-    - data_flow: "inbox listDir result (recursive) + per-note embed targets → resolved paths per item"
+    - data_flow: "inbox listDir result (recursive, ADR-1) + per-note embed targets from Kado's listNotes fields=['links'] filtered to kind=='embed' (ADR-2) → resolved paths per item"
 
 - from: instruction-render.py
   to: lib/render_actions.py::_build_move_asset_actions
@@ -387,9 +396,9 @@ manifest, both of which gain one optional list field.
 
 Kado:
   - doc: tomo/scripts/lib/kado_client.py
-  - sections: [list_dir]
-  - integration: "One recursive list_dir(inbox_path) per run. No depth cap; pagination via the existing _search_all cursor loop"
-  - critical_data: [vault-relative paths of every inbox file including attachments]
+  - sections: [list_dir, list_notes]
+  - integration: "One recursive list_dir(inbox_path) per run for the resolution index (ADR-1); one list_notes(inbox_path, fields=['links']) per run for per-note embed targets, filtered client-side to kind=='embed' (ADR-2). No depth cap; pagination via the existing _search_all cursor loop"
+  - critical_data: [vault-relative paths of every inbox file including attachments, per-note embed targets echoed verbatim from metadataCache]
 ```
 
 ### Implementation Examples
@@ -426,16 +435,18 @@ def extract_attachment_embeds(body: str) -> list[str]:
 ```
 
 `_is_attachment_target` reuses the existing classifier rather than inventing an extension list —
-`render_actions.py:59-66` `_KNOWN_FILE_EXTENSIONS` already contains `png, jpg, jpeg, gif, webp, svg,
-bmp, pdf` plus the audio/video set, and already encodes the Obsidian rule that `[[FooBar]]` means
-`FooBar.md` while `[[FooBar.m4a]]` means the literal file.
+`lib/file_extensions.py:18-25` `KNOWN_FILE_EXTENSIONS` already contains `png, jpg, jpeg, gif, webp,
+svg, bmp, pdf` plus the audio/video set, and already encodes the Obsidian rule that `[[FooBar]]`
+means `FooBar.md` while `[[FooBar.m4a]]` means the literal file. (Relocated out of
+`render_actions.py` during T1.1 to keep this library free of the render pipeline's imports — see
+`docs/tomo/scripts/lib/file_extensions.md`.)
 
 **It is a two-step test, not a membership check.** That frozenset also contains `md`, so a naive
-`ext in _KNOWN_FILE_EXTENSIONS` would classify `![[Note.md]]` as an attachment and emit a
+`ext in KNOWN_FILE_EXTENSIONS` would classify `![[Note.md]]` as an attachment and emit a
 `move_asset` for a note — which Hashi rejects (CON-3), and rightly. The test is:
 
 ```
-is_attachment = ext in _KNOWN_FILE_EXTENSIONS and ext not in {"md", "canvas", "base"}
+is_attachment = ext in KNOWN_FILE_EXTENSIONS and ext not in {"md", "canvas", "base"}
 ```
 
 Note that `canvas` and `base` are **not** in the frozenset today, so they already fall out at step
@@ -475,8 +486,12 @@ Now trace four embeds:
 |---|---|---|---|---|
 | 1 | `![[prag-karte.jpg]]` | `prag-karte.jpg` | 1 | **resolved** → `100 Inbox/Images/prag-karte.jpg`. The sibling assumption would have produced `100 Inbox/Places/prag-karte.jpg` — a path that does not exist |
 | 2 | `![[karte.jpg]]` | `karte.jpg` | 2 | **ambiguous** → no action, reported. Business rule 4: a wrong move is worse than no move |
-| 3 | `![[Images/karte.jpg]]` | — (path given) | — | **resolved** → used verbatim after verifying membership in the index's path set. Business rule 2 |
+| 3 | `![[Images/karte.jpg]]` | `karte.jpg` (its own basename) | 2, narrowed to 1 | **resolved** → `100 Inbox/Images/karte.jpg`. NOT a membership test against the index's path set — Kado's `listDir` returns full vault-relative paths, so the index never holds a bare `Images/karte.jpg` to test against. Instead: look up `karte.jpg`'s two candidates, then keep whichever ends with the given target at a `/` boundary (here, `/Images/karte.jpg`). Business rule 2 |
 | 4 | `![[Dresden]]` | — | — | not an attachment at all — no extension, so `_is_attachment_target` rejects it before lookup. A note embed |
+
+Row 3's `resolved_path` is always a value **retrieved** from the index, never a string built by
+joining the target onto a prefix — that is what makes fabrication impossible by construction rather
+than by test. Narrowing to more than one surviving candidate is `ambiguous`, not first-hit-wins.
 
 Edge cases and their code paths:
 
@@ -501,8 +516,13 @@ def _asset_dest_join(asset_folder: str, source_path: str) -> str:
     """Join the asset folder with the source's basename, preserving the extension.
 
     NOT _dest_join (:488) — that hardcodes a '.md' suffix at :498.
-    NOT _ensure_md_extension (:69) — '.jpg' is absent from _KNOWN_FILE_EXTENSIONS'
-    note set, so it would append '.md' to 'foto.jpg'.
+    NOT _ensure_md_extension (:63) — it is a silent NO-OP for any extension
+    already in KNOWN_FILE_EXTENSIONS (lib/file_extensions.py:18-25): 'foto.jpg'
+    returns unchanged, since 'jpg' IS in the allowlist. The actual hazard is the
+    opposite case — it silently appends '.md' to every extension NOT in that
+    allowlist ('scan.heic' -> 'scan.heic.md', 'doc.docx' -> 'doc.docx.md'), so
+    the failure only shows up for attachment types least likely to appear in a
+    test fixture.
     """
     folder = (asset_folder or "").rstrip("/") + "/"
     return f"{folder}{source_path.rsplit('/', 1)[-1]}"
@@ -556,9 +576,10 @@ Single application. No deployment topology change.
 
 ### Pattern Documentation
 
-- **Deterministic over LLM-assembled.** Detection and resolution are pure functions over a listDir
-  result. This follows the repo's standing preference for scripts producing structured output rather
-  than agents freehanding it, and is the substance of ADR-2.
+- **Deterministic over LLM-assembled.** Detection is a filter over a `listNotes` result and
+  resolution is a pure function over a `listDir` result — both pure, no LLM. This follows the
+  repo's standing preference for scripts producing structured output rather than agents
+  freehanding it, and is the substance of ADR-2.
 - **Fail open, never guess.** Every failure mode — listDir unavailable, target absent, target
   ambiguous, destination occupied — degrades to "no attachment action, note files normally, user
   told". This is the same posture `garden-audit.py` takes when the graph call fails.
@@ -591,9 +612,10 @@ they do today (CON-8).
   statuses; callers decide. A Kado failure is caught at the call site and yields an empty index.
 - **Logging**: unresolved and ambiguous embeds go to stderr with the note path and target, matching
   the `[triage]`/`[render]` prefix convention already in use.
-- **Security**: no new external surface. One additional read-only Kado call, inside the existing
-  key scope. No attachment *content* is ever read — only paths (Constitution L2: metadata only).
-- **Performance**: +1 Kado call per run, O(1) in notes and embeds (CON-4). Index build is O(F) in
+- **Security**: no new external surface. Two additional read-only Kado calls, inside the existing
+  key scope. No attachment *content* is ever read — only paths and link targets (Constitution L2:
+  metadata only).
+- **Performance**: +2 Kado calls per run, O(1) in notes and embeds (CON-4). Index build is O(F) in
   inbox files; resolution is O(1) per embed via dict lookup.
 
 ## Architecture Decisions
@@ -601,7 +623,7 @@ they do today (CON-8).
 | ID | Decision | Rationale | Trade-offs | Status |
 |---|---|---|---|---|
 | **ADR-1** | **Resolve embeds against a per-run index of the inbox subtree** (one recursive `list_dir`), matching on basename | Only option that is both correct for the observed layout (`100 Inbox/Places/note` → `100 Inbox/Images/karte.jpg`) and O(1) in call count. Ambiguity is *detectable*, so rule 4 can be honoured. Failure is local and benign | Misses attachments stored outside the inbox — acceptable, since those need no move. Basename collisions across subfolders must be reported rather than resolved. Rejected: `byName` per embed (O(unique embeds), and `byName` is substring matching — `kado_client.py:277-279` — so it can silently select a wrong file; already rejected for the same purpose in 027 ADR-2 on 429 grounds). Rejected: sibling assumption (0 calls but wrong for the observed case, and fails by fabricating a path) | **CONFIRMED** 2026-09-01 |
-| **ADR-2** | **Detect embeds deterministically, not in the analyst** | Keeps structured-data extraction out of the LLM, per the repo's standing preference. Fully unit-testable without an agent in the loop (Constitution L1: domain behaviour testable without an AI). No change to the analyst contract or its output schema semantics | Costs one call the analyst path would have avoided, since the analyst already reads each body. Accepted: total added cost is 2 calls per run, constant. Note `listNotes fields=["links"]` is available as a zero-regex alternative for extraction (returns `kind=='embed'`), but requires the body-less path and is deferred — the regex runs on bodies the pipeline already has | **CONFIRMED** 2026-09-01 |
+| **ADR-2** | **Detect embeds via `list_notes(fields=["links"])`, not via regex over note bodies and not in the analyst** | Keeps structured-data extraction out of the LLM, per the repo's standing preference. Fully unit-testable without an agent in the loop (Constitution L1: domain behaviour testable without an AI). No change to the analyst contract or its output schema semantics. More correct than the regex, not merely equivalent: targets come from Obsidian's own `metadataCache` (`kind=='embed'`, `Kado/src/obsidian/search-adapter.ts:295-296`), which does not treat an `![[x.jpg]]` inside a fenced code block as an embed the way a raw-text regex would | **Corrects the original ADR text**, which claimed the regex "runs on bodies the pipeline already has" — traced and found false. `inbox-triage.py` reads note bodies only at `:674`/`:806`, both parsing upstream review documents for approval markers; a fresh inbox note's body is read per item, inside the inbox-analyst subagent's fan-out (`inbox-analyst.md:69`), invisible to this deterministic pipeline. The regex path this ADR originally chose therefore had no body to run on. What shipped is the alternative this ADR always named and deferred for that same false premise: one `list_notes(inbox_path, fields=["links"])` per run; per note, keep `kind == 'embed'`, run the target through `_strip_alias_and_anchor` (Kado echoes targets verbatim, so an alias like `![[karte.jpg\|Karte]]` would otherwise fail `_is_attachment_target` for the wrong reason), then `_is_attachment_target`, then `resolve_attachments` against the recursive-`list_dir` index from ADR-1. `extract_attachment_embeds` (the regex extractor) remains in the library, tested and correct — the pipeline does not call it. Cost is unchanged at 2 calls per run: the recursive `list_dir` plus this `list_notes`; the cost table below already reflected this mechanism, only the prose described a different one | **CONFIRMED** 2026-09-01 |
 | **ADR-3** | **On destination collision with a different file: skip and report** | Safe by default and needs no new code. `_disambiguate_filename` (`render_actions.py:448`) asserts `.md` at `:467-469` and cannot be reused; an asset variant would be new code for a Should-have. Same-name-same-file is already handled by Hashi's idempotency (`src✗dst✓` → `skipped-already`) | The user must resolve a genuine collision by hand. Renaming remains a Should-have, deferred with defined behaviour rather than left undefined | **CONFIRMED** 2026-09-01 |
 | **ADR-4** | **Fix `_count_kado_calls` in this spec** | It returns `5 + body_reads` while its own docstring says 8, and ignores the per-item reads at `:242`, `:315`, `:583`. It feeds the cost log that this spec's cost metric depends on. A metric that cannot be trusted is worse than none | Small scope addition unrelated to attachments. Contained to one function and its test; the corrected baseline shifts the cost log's historical numbers, which must be noted in the log rather than silently rebased | **CONFIRMED** 2026-09-01 |
 | **ADR-5** | **`attachments` never rides the `move_note` action** — a separate `_build_move_asset_actions` reads the manifest directly | `audio_peer` only rides `move_note` because `_build_delete_source_actions` receives `move_notes` as its input (`render_actions.py:1320-1325`). `move_asset` has no such downstream coupling. This removes the strip-before-wire step entirely and makes it structurally impossible for an attachment to reach a `delete_source` | None identified. Strictly simpler than the precedent | Corollary of ADR-1/ADR-2 |
@@ -658,7 +680,10 @@ Traceability from PRD features to this design:
 ### Implementation Gotchas
 
 - **Do not reuse any existing wikilink regex.** All nine match the inner `[[…]]` of an embed.
-- **Do not call `_ensure_md_extension` or `_dest_join` on an attachment path.** Both force `.md`.
+- **Do not call `_ensure_md_extension` or `_dest_join` on an attachment path.** `_dest_join`
+  unconditionally forces `.md`; `_ensure_md_extension` is a silent no-op for an allowlisted
+  extension (`foto.jpg` → `foto.jpg`) but silently appends `.md` to anything outside the allowlist
+  (`scan.heic` → `scan.heic.md`) — neither behaviour is safe here.
 - **Do not add `attachments` to the `move_asset` action.** `additionalProperties:false` — the entire
   instruction set is rejected at apply time.
 - **Add the field to both review channels and both parser projections**, atomically with the wire

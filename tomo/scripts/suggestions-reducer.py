@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.32.0
+# version: 1.36.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -53,6 +53,7 @@ from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filenam
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
+from lib.render_actions import DEFAULT_ASSET_FOLDER  # noqa: E402 — spec 031 Phase 5 attachments preamble
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -302,6 +303,23 @@ def _location_link(location: str) -> str:
     return f"[[{loc}/]]" if loc else ""
 
 
+def _unresolved_embeds_text(entries: list[dict]) -> str:
+    """Render unresolved/ambiguous embed entries as one comma-separated segment.
+
+    Each entry carries embed_target, status ('unresolved' | 'ambiguous'), and
+    candidate_count (meaningful for 'ambiguous' only).
+    """
+    parts = []
+    for entry in entries:
+        target = entry.get("embed_target", "")
+        if entry.get("status") == "ambiguous":
+            count = entry.get("candidate_count", 0)
+            parts.append(f"`{target}` (ambiguous — {count} candidates)")
+        else:
+            parts.append(f"`{target}` (unresolved)")
+    return ", ".join(parts)
+
+
 def _atomic_survives(action: dict) -> bool:
     """An atomic survives coexistence if it is worthy (>=0.5) or force_atomic.
 
@@ -388,6 +406,15 @@ def render_create_atomic_note(action: dict, stem: str, moc_suffix: str) -> str:
     if location:
         lines.append(f"**Location:** {_location_link(location)}    ← change if you want a different folder")
 
+    attachments = [a for a in (action.get("attachments") or []) if a]
+    if attachments:
+        paths = ", ".join(f"`{a}`" for a in attachments)
+        lines.append(f"**Attachments:** {paths}")
+
+    unresolved_embeds = action.get("unresolved_embeds") or []
+    if unresolved_embeds:
+        lines.append(f"**Unresolved embeds:** {_unresolved_embeds_text(unresolved_embeds)}")
+
     mocs = action.get("candidate_mocs") or []
     if mocs:
         lines.append("")
@@ -454,6 +481,10 @@ def render_suppressed_atomic(action: dict, stem: str) -> str:
     It reports the worthiness (so the user sees Tomo's judgement) and offers
     Force Atomic Note as the opt-in escape hatch; otherwise the item stays in
     the inbox untouched.
+
+    Carries the `**Unresolved embeds:**` warning but NOT `**Attachments:**` —
+    see the comment at the emission site for why the two are treated
+    differently here.
     """
     title = (action.get("suggested_title") or "").strip() or stem
     worthiness = action.get("atomic_note_worthiness")
@@ -465,8 +496,20 @@ def render_suppressed_atomic(action: dict, stem: str) -> str:
     ]
     if summary:
         lines.append(f"**Summary:** {summary}")
+    lines.append(
+        f"**Atomic-worthiness:** {pct} — below the 0.5 threshold; kept in inbox."
+    )
+    # A resolved attachment is deliberately NOT listed here — the item stays in
+    # the inbox, so no move_asset is emitted and naming it would promise an
+    # action that never happens. An unresolved or ambiguous embed is different:
+    # it is a defect in the vault the user must resolve by hand, true whether
+    # or not Tomo files the note.
+    unresolved_embeds = action.get("unresolved_embeds") or []
+    if unresolved_embeds:
+        lines.append(
+            f"**Unresolved embeds:** {_unresolved_embeds_text(unresolved_embeds)}"
+        )
     lines += [
-        f"**Atomic-worthiness:** {pct} — below the 0.5 threshold; kept in inbox.",
         "",
         "Tomo did not promote this to an atomic note. Tick **Force Atomic Note** "
         "to create one anyway; otherwise it stays in the inbox.",
@@ -1243,6 +1286,114 @@ def load_field_sections(shared_ctx_path: Path) -> dict[str, str]:
     return out
 
 
+def load_asset_folder(shared_ctx_path: Path) -> str:
+    """Read the configured attachment-filing destination from shared-ctx.json.
+
+    Fail-open like load_field_sections: a missing/unreadable file or an
+    absent/blank key falls back to the canonical default rather than raising.
+    """
+    if not shared_ctx_path or not shared_ctx_path.exists():
+        return DEFAULT_ASSET_FOLDER
+    try:
+        ctx = json.loads(shared_ctx_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return DEFAULT_ASSET_FOLDER
+    folder = ctx.get("asset_folder")
+    return folder.strip() if isinstance(folder, str) and folder.strip() else DEFAULT_ASSET_FOLDER
+
+
+def load_resolved_attachments(path: "Path | None") -> dict:
+    """Read the deterministic attachment-resolution map, keyed by source path.
+
+    Fail-open: a missing file, an unreadable/malformed file, or a file whose
+    top level isn't a JSON object all yield {} rather than raising, so every
+    item is merged against an empty map and gets attachments: [] and
+    unresolved_embeds: [] — the run continues either way (matches
+    load_field_sections and load_asset_folder).
+
+    But the two failure shapes are NOT equally silent. A missing file is the
+    normal state (no producer has run yet, or this run has no attachments)
+    and prints nothing. A file that EXISTS but is unreadable or malformed is
+    a real problem masquerading as "no attachments" — indistinguishable
+    downstream without a loud stderr WARNING naming the path, since a
+    silent fallback here means the feature does nothing and looks fine.
+    """
+    if not path or not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"[suggestions-reducer] WARNING: {path} exists but could not be "
+            f"read as JSON ({exc}) — every item's attachments/unresolved_embeds "
+            f"will be empty this run, not because there are none",
+            file=sys.stderr,
+        )
+        return {}
+    if not isinstance(data, dict):
+        print(
+            f"[suggestions-reducer] WARNING: {path} is not a JSON object "
+            f"(got {type(data).__name__}) — every item's attachments/"
+            f"unresolved_embeds will be empty this run, not because there are none",
+            file=sys.stderr,
+        )
+        return {}
+    return data
+
+
+def merge_resolved_attachments(result: dict, resolved: "dict | None") -> dict:
+    """Merge the deterministic attachment-resolution map onto one item-result.
+
+    Looked up by the item's own `path` (vault-relative, e.g.
+    "100 Inbox/note.md"). The analyst never produces `attachments` or
+    `unresolved_embeds` (ADR-2 keeps embed extraction out of the analyst) —
+    if either is somehow already present on an action, the resolved map's
+    value overrides it rather than merging, since the map is the
+    deterministic source and the analyst was never supposed to emit these.
+    An item absent from the map, or an empty/None map, yields [] for both.
+
+    Applies to every create_atomic_note action on the result: N atomics from
+    one source (F-41) share the same source-level attachment list, since the
+    embeds live in the one shared source body. Mutates and returns `result`.
+    """
+    entry = (resolved or {}).get(result.get("path")) or {}
+    attachments = entry.get("attachments") or []
+    unresolved_embeds = entry.get("unresolved_embeds") or []
+    for action in result.get("actions", []):
+        if action.get("kind") != "create_atomic_note":
+            continue
+        if action.get("attachments") or action.get("unresolved_embeds"):
+            print(
+                f"[suggestions-reducer] WARNING: {result.get('stem')} action "
+                f"already carried attachments/unresolved_embeds from the "
+                f"analyst — overriding with the resolved map (deterministic "
+                f"source wins)",
+                file=sys.stderr,
+            )
+        action["attachments"] = attachments
+        action["unresolved_embeds"] = unresolved_embeds
+    return result
+
+
+def render_attachments_preamble(sections: list[dict], asset_folder: str) -> str:
+    """One run-level note on where resolved attachments will be filed.
+
+    Rendered once for the whole document, never per item, and only when at
+    least one create_atomic_note item carries attachments — a run with none
+    produces an empty string so the document looks exactly as it did before
+    this field existed.
+    """
+    has_attachments = any(
+        (action.get("item") or {}).get("attachments")
+        for section in sections
+        for action in section.get("actions", [])
+        if action.get("kind") == "create_atomic_note"
+    )
+    if not has_attachments:
+        return ""
+    return f"Attachments will be filed to `{asset_folder}`."
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 # ── I38 Pass-1: flag daily-note groups whose target note doesn't exist ────────
@@ -1467,6 +1618,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--output")
     p.add_argument("--shared-ctx", default="tomo-tmp/shared-ctx.json",
                    help="Path to shared-ctx.json (for field→section lookup)")
+    p.add_argument("--resolved-attachments", default="tomo-tmp/resolved-attachments.json",
+                   help="Path to resolved-attachments.json (inbox-triage's per-item "
+                        "attachment/unresolved-embed resolution, keyed by source path)")
     p.add_argument("--threshold", type=int, default=1,
                    help="Minimum cluster size to emit a Proposed MOC section (default 1 — "
                         "every needs_new_moc surfaces; cluster size shown in heading)")
@@ -1544,6 +1698,8 @@ def main() -> int:
     items_dir = Path(args.items_dir)
     out_path = Path(args.output)
     load_field_sections(Path(args.shared_ctx))
+    asset_folder = load_asset_folder(Path(args.shared_ctx))
+    resolved_attachments = load_resolved_attachments(Path(args.resolved_attachments))
 
     # spec 028 T2.3: resolve the active profile's vault conventions once. The
     # MOC suffix drives title enrichment; the full block is written into the
@@ -1625,6 +1781,7 @@ def main() -> int:
             result = json.loads(result_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
+        result = merge_resolved_attachments(result, resolved_attachments)
 
         section_id = f"S{idx:02d}"
         rendered_actions: list[dict] = []
@@ -1778,6 +1935,7 @@ def main() -> int:
                         "location": action.get("location") or "",
                         "tags": [t for t in (action.get("tags_to_add") or []) if t],
                         "audio_peer": action.get("audio_peer"),
+                        "attachments": [a for a in (action.get("attachments") or []) if a],
                         "worthiness": action.get("atomic_note_worthiness"),
                         "suppressed": bool(action.get("suppressed")),
                         "force_atomic": bool(action.get("force_atomic")),
@@ -1940,6 +2098,8 @@ def main() -> int:
         )
         doc_variant = "primary"
 
+    attachments_preamble = render_attachments_preamble(sections, asset_folder)
+
     doc = {
         "schema_version": "1",
         "generated": now_iso(),
@@ -1958,6 +2118,7 @@ def main() -> int:
         "daily_notes_updates": daily_notes_updates,
         "rendered_daily_updates_md": rendered_daily_updates_md,
         "decision_precedence_note": precedence_note,
+        "attachments_preamble": attachments_preamble,
         "proposed_mocs": proposed_mocs,
         "needs_attention": needs_attention,
     }

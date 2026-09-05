@@ -252,6 +252,10 @@ def test_discovery_uses_frontmatter_not_tag(tmp_path):
                 {"path": captured_path, "type": "file", "modified": 1, "size": 10},
             ]
 
+        def list_notes(self, path, *, fields=None, depth=None, limit=500):
+            self.calls.append(("list_notes", path))
+            return []
+
         def search_by_frontmatter(self, query, *, path_prefix=None, limit=500,
                                    modified_after=None):
             self.calls.append(("search_by_frontmatter", query))
@@ -402,6 +406,9 @@ def test_end_to_end_lifecycle_all_stages_use_frontmatter(done_state_file, monkey
     class DiscoveryClient:
         def list_dir(self, path, *, depth=None, limit=500):
             return [{"path": NOTE_PATH, "type": "file", "modified": 1, "size": 10}]
+
+        def list_notes(self, path, *, fields=None, depth=None, limit=500):
+            return []
 
         def search_by_frontmatter(self, query, *, path_prefix=None, limit=500,
                                    modified_after=None):

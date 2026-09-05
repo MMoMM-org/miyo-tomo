@@ -91,7 +91,7 @@ def _run(parsed: dict, instrs: dict) -> tuple[int, str]:
 
 def test_renderer_emits_two_deletes_for_voice_item():
     """Sanity: the producer emits transcript + audio delete for a non-kept voice item."""
-    actions = ir.build_actions([_voice_manifest()], [_voice_item()], [], [], CFG)
+    actions, _skipped_assets = ir.build_actions([_voice_manifest()], [_voice_item()], [], [], CFG)
     deletes = [a for a in actions if a["action"] == "delete_source"]
     assert len(deletes) == 2, f"expected 2 delete_source (transcript + audio), got {deletes}"
 
@@ -111,7 +111,7 @@ def test_derive_expected_counts_audio_peer():
 def test_voice_item_coverage_reconciles():
     """End-to-end: a confirmed non-kept voice item reconciles (rc=0), not a mismatch."""
     confirmed = [_voice_item()]
-    actions = ir.build_actions([_voice_manifest()], confirmed, [], [], CFG)
+    actions, _skipped_assets = ir.build_actions([_voice_manifest()], confirmed, [], [], CFG)
     parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
     rc, out = _run(parsed, _instrs(actions))
     assert rc == 0, f"voice item must reconcile (expected==actual deletes), got rc={rc}\n{out}"
@@ -120,7 +120,7 @@ def test_voice_item_coverage_reconciles():
 def test_keep_source_voice_item_reconciles_with_zero_deletes():
     """Keep path: keep_source suppresses both deletes; expected==actual==0 → reconciles."""
     confirmed = [_voice_item(keep_source=True)]
-    actions = ir.build_actions([_voice_manifest()], confirmed, [], [], CFG)
+    actions, _skipped_assets = ir.build_actions([_voice_manifest()], confirmed, [], [], CFG)
     deletes = [a for a in actions if a["action"] == "delete_source"]
     assert deletes == [], f"keep_source must suppress BOTH deletes, got {deletes}"
     parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
@@ -136,7 +136,7 @@ def test_audio_peer_stripped_from_move_note_before_wire():
     Hashi validation failure on 2026-07-01.
     """
     confirmed = [_voice_item()]
-    actions = ir.build_actions([_voice_manifest()], confirmed, [], [], CFG)
+    actions, _skipped_assets = ir.build_actions([_voice_manifest()], confirmed, [], [], CFG)
     # Pre-strip: build_actions already ran the delete builder → audio delete exists.
     assert any(
         a["action"] == "delete_source" and a["source_path"].endswith(".m4a")

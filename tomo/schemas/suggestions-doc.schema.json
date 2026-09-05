@@ -64,6 +64,7 @@
                     "location": {"type": "string"},
                     "tags": {"type": "array", "items": {"type": "string"}},
                     "audio_peer": {"type": ["string", "null"]},
+                    "attachments": {"type": "array", "items": {"type": "string"}, "description": "Resolved vault-relative attachment paths (spec 031). Optional; absent or empty means none."},
                     "worthiness": {"type": ["number", "null"]},
                     "suppressed": {"type": "boolean", "description": "Sub-worthiness atomic rendered as a light 'kept in inbox' block (#88)."},
                     "force_atomic": {"type": "boolean", "description": "Default state of the Force Atomic Note opt-in."}
@@ -204,6 +205,10 @@
       "description": "Pre-rendered ## Tag-Handler Updates markdown section (spec 024 T3.3). Empty string when no groups."
     },
     "decision_precedence_note": {"type": "string"},
+    "attachments_preamble": {
+      "type": "string",
+      "description": "Run-level note on the configured attachment-filing destination, rendered once when at least one item carries attachments. Empty string otherwise (spec 031 Phase 5)."
+    },
     "needs_attention": {
       "type": "array",
       "items": {

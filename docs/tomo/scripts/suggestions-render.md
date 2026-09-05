@@ -52,3 +52,30 @@ The fan-resolve doc never drifted (its sources are all atomics, so
 section-space == flat-space), which is why only the primary wire showed the bug.
 Scope: this fixes the ADR-026 JSON wire (Hashi's active flow); the markdown Pass-2
 path resolves proposed-MOC members by note title, not by these raw ids.
+
+## Attachment filing — wire projection + the preamble splat (spec 031)
+
+WHY `_wire_note` projects `attachments` as `list(item.get("attachments") or [])`
+(defaulting to `[]`, never `None`): this mirrors the existing `tags` projection
+line immediately above it — the wire schema declares `attachments` as
+`{"type": "array", ...}`, and a `null` value would fail that schema even though
+`additionalProperties:false` alone would not catch it. `emit_digest` hashes the
+whole canonical payload, so a changed attachments list changes the digest
+automatically; no special-casing was needed there, only documented as a guarantee.
+
+WHY the run-level "Attachments will be filed to `<folder>`" preamble (see
+`suggestions-reducer.md` for why it exists and why it is run-level, not per-item)
+is spliced into `render_header` as a THIRD optional blockquote line, rather than
+a new render function with its own call site in `main()`'s assembly: `render_header`
+already renders exactly one other optional advisory blockquote —
+`decision_precedence_note` — with the identical shape (`d.get(field, "").strip()`,
+append `> {text}` + a blank line only when non-empty). Reusing that established
+pattern for a second, unrelated advisory line is a three-line addition inside an
+existing function; a parallel `render_attachments_preamble(d)` plus a new line in
+`main()`'s `parts.extend(...)` chain would have been a second, near-identical
+implementation of the same "optional single-string advisory" idiom for no
+behavioural difference. The reducer decides WHETHER to include the line at all
+(scanning every item's attachments before setting `attachments_preamble` on the
+doc); this renderer's job is only the generic "if present, blockquote it" splat —
+same division of responsibility `rendered_daily_updates_md` /
+`render_daily_updates` already establish elsewhere in this file.

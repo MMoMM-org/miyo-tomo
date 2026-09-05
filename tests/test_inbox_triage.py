@@ -39,6 +39,7 @@ class FakeKadoClient:
         read_frontmatter_responses: dict[str, dict] | None = None,
         read_frontmatter_errors: dict[str, Exception] | None = None,
         read_file_responses: dict[str, bytes] | None = None,
+        list_notes_responses: list[dict] | None = None,
     ):
         self._listdir_items = listdir_items or []
         self._frontmatter_responses = frontmatter_responses or {}
@@ -47,11 +48,24 @@ class FakeKadoClient:
         self._read_frontmatter_responses = read_frontmatter_responses or {}
         self._read_frontmatter_errors = read_frontmatter_errors or {}
         self._read_file_responses = read_file_responses or {}
+        # spec 031 T5.1 (corrected ADR-2): inbox-triage's attachment
+        # extraction/resolution reads listNotes(fields=["links"]) once per
+        # run. No test in this file exercises attachments, so this defaults
+        # to no embeds anywhere — every source's attachments/unresolved_embeds
+        # come back empty, which is byte-identical to pre-031 behaviour.
+        self._list_notes_responses = list_notes_responses or []
         self.calls: list[tuple[str, dict]] = []
 
     def list_dir(self, path: str, *, depth: int = None, limit: int = 500) -> list:
         self.calls.append(("list_dir", {"path": path, "depth": depth}))
         return self._listdir_items
+
+    def list_notes(
+        self, path: str, *, fields: list[str] | None = None,
+        depth: int | None = None, limit: int = 500,
+    ) -> list[dict]:
+        self.calls.append(("list_notes", {"path": path, "fields": fields}))
+        return self._list_notes_responses
 
     def search_by_frontmatter(
         self, query: str, *, path_prefix: str | None = None, limit: int = 500,

@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Pipeline wiring and cost accounting"
-status: pending
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -20,7 +20,7 @@ phase: 5
 
 **Key Decisions**:
 - **ADR-1** — one recursive `list_dir` of the inbox, in addition to the existing `depth=1` call. Do **not** change the existing call's depth; `discover_files` and the `#93` partition depend on its current shape.
-- **ADR-2** — extraction runs on note bodies the pipeline already reads. No analyst change.
+- **ADR-2** — extraction runs via `list_notes(inbox_path, fields=["links"])`, filtered to `kind=='embed'` — NOT via regex over note bodies, which the pipeline does not read for fresh inbox items (bodies are read per item inside the inbox-analyst subagent's fan-out, invisible to this pipeline). No analyst change.
 - **ADR-4** — correct `_count_kado_calls` here, and note the corrected baseline in the cost log rather than silently rebasing it.
 
 **Dependencies**: Phases 1–4. This phase connects Phase 1's output to the consumers built in 2–4.
@@ -31,7 +31,7 @@ phase: 5
 
 Connects detection to the run and makes the cost claim measurable.
 
-- [ ] **T5.1 Inbox attachment index in the run** `[activity: backend-logic]`
+- [x] **T5.1 Inbox attachment index in the run** `[activity: backend-logic]`
 
   1. **Prime**: Read `discover_files` at `inbox-triage.py:150-176`. The existing `list_dir(inbox_path, depth=1)` stays exactly as it is; this adds a second, recursive call whose result feeds `build_inbox_index`.
   2. **Test** (RED):
@@ -47,7 +47,14 @@ Connects detection to the run and makes the cost claim measurable.
      - [ ] Only inbox paths can be resolved `[ref: PRD/Business rule 3]`
      - [ ] The `#93` partition is unchanged `[ref: SDD/Implementation Boundaries; Must Not Touch]`
 
-- [ ] **T5.2 Correct the Kado call counter** `[activity: backend-logic]` `[parallel: true]`
+  **Note — what shipped (Phase 5 is closed; the code is the authority here):** extraction is one
+  `list_notes(inbox_path, fields=["links"])` per run, filtering `kind == 'embed'` (ADR-2). Resolution
+  happens in `inbox-triage.py` and is persisted to `tomo-tmp/resolved-attachments.json`, keyed by
+  source path. `suggestions-reducer.py` merges that map onto each item as it loads
+  `items/<stem>.result.json`. `inbox-triage` and `suggestions-reducer` are separate processes, which
+  is why this is a file rather than in-memory state.
+
+- [x] **T5.2 Correct the Kado call counter** `[activity: backend-logic]` `[parallel: true]`
 
   1. **Prime**: Read `_count_kado_calls` at `:1521-1533`. Its docstring says *"1 listDir + 7 byFrontmatter + N body reads"* but it returns `5 + body_reads`, and it ignores the per-item reads at `:242`, `:315` and `:583`.
   2. **Test** (RED):
@@ -60,7 +67,7 @@ Connects detection to the run and makes the cost claim measurable.
      - [ ] The reported number matches the observed call count `[ref: ADR-4]`
      - [ ] The correction is noted in `docs/evolution/inbox-cost-log.md` so historical entries are not silently rebased
 
-- [ ] **T5.3 Unresolved and ambiguous reporting** `[activity: backend-logic]`
+- [x] **T5.3 Unresolved and ambiguous reporting** `[activity: backend-logic]`
 
   1. **Prime**: Read `[ref: SDD/Cross-Cutting Concepts; System-Wide Patterns]` — stderr with the existing `[triage]` prefix convention, plus the suggestions-doc line from T3.2.
   2. **Test** (RED):
@@ -72,6 +79,6 @@ Connects detection to the run and makes the cost claim measurable.
   4. **Validate**: unit tests capture stderr; `ruff` clean.
   5. **Success**: a silent skip is impossible — every non-resolution is visible `[ref: PRD/Tracking Requirements]`
 
-- [ ] **T5.4 Phase Validation** `[activity: validate]`
+- [x] **T5.4 Phase Validation** `[activity: validate]`
 
   - Run all Phase 5 tests plus the full suite. Assert the cost claim directly: a run over 1 note and a run over 20 notes issue the **same** number of Kado calls for attachment handling `[ref: CON-4]`. Confirm no live Kado call is made in tests. `ruff` clean.

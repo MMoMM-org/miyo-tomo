@@ -33,6 +33,7 @@
           "location": {"type": "string", "description": "Editable — destination folder."},
           "tags": {"type": "array", "items": {"type": "string"}, "description": "Editable — tags to add."},
           "audio_peer": {"type": ["string", "null"], "description": "Read-only — audio peer basename, when the source is an audio+transcript pair."},
+          "attachments": {"type": "array", "items": {"type": "string"}, "description": "Read-only — resolved vault-relative attachment paths (spec 031). Absent or empty means none."},
           "decision": {"type": "string", "enum": ["approve", "skip"], "description": "Editable — create the note (approve) or not (skip). Default mirrors the Approve pre-check (approve when worthiness >= 0.5)."},
           "keep_source": {"type": "boolean", "description": "Editable — when approved, keep the origin inbox note instead of deleting it. Default false (origin is consumed)."},
           "delete_source": {"type": "boolean", "description": "Editable — explicitly delete the origin. Default false."},

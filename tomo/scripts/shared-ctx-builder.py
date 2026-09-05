@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.8.0
+# version: 1.9.1
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -49,6 +49,11 @@ except ImportError:
 # spec 028 T2.4: placeholder-MOC detection derives its regex from the active
 # profile's MOC suffix. sys.path already carries SCRIPT_DIR/lib (inserted above).
 from profile_conventions import marker_word, resolve_conventions  # type: ignore  # noqa: E402
+
+# spec 031 Phase 5: the canonical asset-folder default lives in render_actions
+# (dotted-package import — needs SCRIPT_DIR itself on sys.path, not SCRIPT_DIR/lib).
+sys.path.insert(0, str(SCRIPT_DIR))
+from lib.render_actions import DEFAULT_ASSET_FOLDER  # noqa: E402
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -561,6 +566,23 @@ def build_daily_log(vault_cfg: dict) -> dict:
     return result
 
 
+def build_asset_folder(vault_cfg: dict) -> str:
+    """Return the configured attachment-filing destination (concepts.asset).
+
+    Falls back to DEFAULT_ASSET_FOLDER when the key is absent or blank so
+    the field is always a usable, non-empty path — never None. Normalised
+    with the same rstrip("/") + "/" shape `_asset_dest_join`
+    (lib/render_actions.py) uses when it actually places a file, so the
+    preamble line always names the exact string the destination is built
+    from — never a value differing only by a trailing slash.
+    """
+    raw = (vault_cfg.get("concepts") or {}).get("asset")
+    folder = (raw or "").strip()
+    if not folder:
+        return DEFAULT_ASSET_FOLDER
+    return folder.rstrip("/") + "/"
+
+
 def build_daily_notes(vault_cfg: dict) -> dict | None:
     """Build daily_notes block iff calendar.granularities.daily.enabled."""
     calendar = ((vault_cfg.get("concepts") or {}).get("calendar") or {})
@@ -781,6 +803,7 @@ def main() -> int:
     tag_prefixes = build_tag_prefixes(cache, vault_cfg)
     classification_keywords = build_classification_keywords(profile)
     daily_notes = build_daily_notes(vault_cfg)
+    asset_folder = build_asset_folder(vault_cfg)
     placeholder_links = build_placeholder_links(cache, _moc_name_re(conventions.moc_suffix))
 
     ctx: dict = {
@@ -789,6 +812,7 @@ def main() -> int:
         "mocs": mocs,
         "tag_prefixes": tag_prefixes,
         "classification_keywords": classification_keywords,
+        "asset_folder": asset_folder,
     }
     if placeholder_links:
         ctx["placeholder_links"] = placeholder_links
@@ -811,6 +835,7 @@ def main() -> int:
         f"classification_categories={len(ctx['classification_keywords'])} "
         f"placeholder_links={len(placeholder_links)} "
         f"daily_notes_enabled={bool(daily_notes)} "
+        f"asset_folder={ctx['asset_folder']} "
         f"bytes={len(data)} "
         f"run_id={run_id}",
         file=sys.stderr,

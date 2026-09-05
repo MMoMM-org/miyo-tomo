@@ -72,6 +72,16 @@ class FakeKadoClient:
     def list_dir(self, path: str, *, depth: int = None, limit: int = 500) -> list:
         return self._listdir_items
 
+    def list_notes(
+        self, path: str, *, fields: list[str] | None = None,
+        depth: int | None = None, limit: int = 500,
+    ) -> list[dict]:
+        # spec 031 T5.1 (corrected ADR-2): inbox-triage's attachment
+        # extraction reads listNotes(fields=["links"]) once per run. No test
+        # in this file carries embeds, so this always returns no notes —
+        # every source's attachments/unresolved_embeds come back empty.
+        return []
+
     def search_by_frontmatter(
         self, query: str, *, path_prefix: str | None = None, limit: int = 500,
         modified_after: int | None = None,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """test-instructions-diff.py — Unit tests for instructions-diff.
 
 Covers:
@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import re
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -73,7 +74,7 @@ CFG = {
 
 def _build_instrs_from(manifest, confirmed, daily_updates, skipped):
     """Use instruction-render's build_actions so tests exercise the real producer."""
-    actions = ir.build_actions(manifest, confirmed, daily_updates, skipped, CFG)
+    actions, _skipped_assets = ir.build_actions(manifest, confirmed, daily_updates, skipped, CFG)
     return {
         "schema_version": "1",
         "type": "tomo-instructions",
@@ -321,7 +322,7 @@ def test_batched_link_to_moc_reconciles():
 
     # Real producer path: build_actions, then the main() post-processing that
     # applies the #70 merge + serialize + internal-field strip.
-    actions = ir.build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = ir.build_actions(manifest, confirmed, [], [], CFG)
     merged = ir._merge_new_section_links(actions)
     ir._serialize_new_sections(actions)
     ir._strip_internal_link_fields(actions)
@@ -367,7 +368,7 @@ def test_batched_link_to_moc_coverage_gap_fails():
                 _man("S02", "Sapporo — Hokkaido capital", "Sapporo.md", "2026-04-21_1200_sapporo.md")]
     parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
 
-    actions = ir.build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = ir.build_actions(manifest, confirmed, [], [], CFG)
     ir._merge_new_section_links(actions)
     ir._serialize_new_sections(actions)
     ir._strip_internal_link_fields(actions)
@@ -510,6 +511,305 @@ def test_garden_diff_never_drops_unregistered_kind():
     print("[PASS] run_diff_garden: unregistered kind is shown and counted, never dropped")
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# move_asset registration (spec 031 T4.1)
+#
+# PRD Feature 5 / Risks row 1 (Likelihood High): run_diff's reconciliation loop
+# iterates the FIXED ACTION_ORDER list (line ~653), not summarize_actual's
+# dynamic per-kind counts (line ~365-366). A kind absent from ACTION_ORDER is
+# counted by summarize_actual but never reconciled or printed — the audit
+# exits 0 (OK) while those actions go completely unchecked. The only visible
+# symptom is the header's action_count exceeding the printed TOTAL.
+#
+# Expectation derivation (how many move_asset actions SHOULD exist, from
+# parsed-suggestions attachments) is spec 031 T4.2's job, not this one — these
+# tests isolate the registration concern (counts initialiser + ACTION_ORDER)
+# by patching derive_expected's returned counts directly where a matched
+# expected/actual comparison is needed.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _move_asset_action(n: str) -> dict:
+    return {
+        "id": f"asset-{n}", "action": "move_asset",
+        "source": f"100 Inbox/Attachments/photo-{n}.jpg",
+        "destination": f"Atlas/900 Assets/photo-{n}.jpg",
+    }
+
+
+def test_move_asset_action_count_reconciles_with_total():
+    """Headline internal-invariant guard (PRD Risks row 1): for ANY
+    instruction set, the actual count summed over ACTION_ORDER must equal
+    action_count — including a set carrying move_asset actions. Before
+    registration, move_asset is excluded from ACTION_ORDER and this sum
+    falls short — the exact symptom the PRD calls out ('action_count
+    exceeding the printed TOTAL'). Complementary to the rendered-output
+    canary below, which asserts the same invariant on run_diff's real
+    stdout instead of a locally-recomputed sum."""
+    actions = [_move_asset_action(str(i)) for i in range(4)]
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": len(actions), "actions": actions}
+
+    actual = diff.summarize_actual(instrs)
+    total_actual = sum(actual["counts"].get(k, 0) for k in diff.ACTION_ORDER)
+
+    _must(
+        total_actual == instrs["action_count"],
+        f"action_count={instrs['action_count']} but ACTION_ORDER-summed "
+        f"total={total_actual} — move_asset is uncounted in the table",
+    )
+    print("[PASS] move_asset: action_count reconciles with ACTION_ORDER total")
+
+
+# Parses the two printed values the audit's own output claims should agree
+# — the header's action_count=N and the TOTAL row's actual column — out of
+# the REAL stdout run_diff produces. Unlike the two tests above (which
+# re-derive the sum locally via summarize_actual + ACTION_ORDER), this is
+# the canary for the whole blind-spot class: it fails on a bug in run_diff's
+# own summation OR on a broken f-string (wrong variable, wrong column),
+# neither of which the internal-invariant tests above can see.
+_ACTION_COUNT_RE = re.compile(r"action_count=(\d+)")
+_TOTAL_ROW_RE = re.compile(r"TOTAL\s+\d+\s+(\d+)\s+\[(?:OK|DIFF)\]")
+
+
+def test_move_asset_rendered_action_count_matches_rendered_total():
+    """The printed action_count header and the printed TOTAL row's actual
+    column must agree for a set carrying move_asset actions — asserted on
+    the audit's real stdout, not on a value the test recomputes itself
+    [ref: PRD/Risks; row 1]."""
+    n = 4
+    actions = [_move_asset_action(str(i)) for i in range(n)]
+    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": n, "actions": actions}
+    _rc, _obs, out = _run(parsed, instrs)
+
+    header_match = _ACTION_COUNT_RE.search(out)
+    total_match = _TOTAL_ROW_RE.search(out)
+    _must(header_match is not None, f"action_count header not found in output:\n{out}")
+    _must(total_match is not None, f"TOTAL row not found in output:\n{out}")
+
+    header_count = int(header_match.group(1))
+    total_actual = int(total_match.group(1))
+    _must(
+        header_count == total_actual,
+        f"printed action_count={header_count} but printed TOTAL actual={total_actual}:\n{out}",
+    )
+    print("[PASS] rendered action_count header matches rendered TOTAL actual column")
+
+
+def test_move_asset_appears_in_printed_table():
+    """move_asset must get its own row in the printed count table via the
+    full run_diff pipeline, not be silently merged or omitted."""
+    n = 2
+    actions = [_move_asset_action(str(i)) for i in range(n)]
+    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": n, "actions": actions}
+    _rc, _obs, out = _run(parsed, instrs)
+    _must("move_asset" in out, f"move_asset row missing from printed table:\n{out}")
+    print("[PASS] move_asset row appears in the printed count table")
+
+
+def _manifest_item(item_id, source_path, rendered_file, attachments=None):
+    item = {
+        "id": item_id, "action": None, "title": f"Item {item_id}",
+        "source_path": source_path, "rendered_file": rendered_file,
+        "destination": "Atlas/202 Notes/", "parent_moc": "", "parent_mocs": [],
+        "tags": [],
+    }
+    if attachments is not None:
+        item["attachments"] = attachments
+    return item
+
+
+def test_move_asset_matched_counts_reconcile():
+    """Expected N == actual N move_asset actions reconciles (rc=0), driven
+    end to end: real confirmed_items[].attachments feed derive_expected
+    (T4.2) and the real renderer (ir.build_actions) emits the matching
+    move_asset actions — neither side is stubbed [ref: PRD/AC-F5.1]."""
+    n = 3
+    attachments = [f"100 Inbox/Attachments/photo-{i}.jpg" for i in range(n)]
+    confirmed = [_confirmed_item("S01", "Trip.md", attachments=attachments)]
+    manifest = [_manifest_item("S01", "Trip.md", "2026-04-21_1200_trip.md", attachments=attachments)]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    instrs = _build_instrs_from(manifest, confirmed, [], [])
+
+    rc, _obs, out = _run(parsed, instrs)
+    row = f"  {'move_asset':<20s} {n:>9d} {n:>9d}  [OK]"
+    _must(row in out, f"expected matched move_asset row not found:\n{out}")
+    _must(rc == 0, f"matched move_asset counts must reconcile, got rc={rc}\n{out}")
+    print("[PASS] move_asset expected==actual reconciles (real pipeline)")
+
+
+def test_move_asset_undercoverage_hard_fails():
+    """Expected N move_asset actions (from real confirmed_items[].attachments
+    via derive_expected), renderer emits only N-1 -> per-kind mismatch, hard
+    fail [ref: PRD/AC-F5.2]. Simulates a renderer regression that
+    under-emits: one real move_asset action is dropped post-generation."""
+    n_expected = 3
+    attachments = [f"100 Inbox/Attachments/photo-{i}.jpg" for i in range(n_expected)]
+    confirmed = [_confirmed_item("S01", "Trip.md", attachments=attachments)]
+    manifest = [_manifest_item("S01", "Trip.md", "2026-04-21_1200_trip.md", attachments=attachments)]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    instrs = _build_instrs_from(manifest, confirmed, [], [])
+
+    move_asset_actions = [a for a in instrs["actions"] if a["action"] == "move_asset"]
+    _must(len(move_asset_actions) == n_expected,
+          f"fixture sanity: renderer should emit {n_expected} move_asset actions, "
+          f"got {len(move_asset_actions)}")
+    instrs["actions"].remove(move_asset_actions[0])
+    instrs["action_count"] = len(instrs["actions"])
+
+    rc, _obs, out = _run(parsed, instrs)
+    n_actual = n_expected - 1
+    row = f"  {'move_asset':<20s} {n_expected:>9d} {n_actual:>9d}  [DIFF]"
+    _must(row in out, f"expected move_asset [DIFF] row not found:\n{out}")
+    _must(rc == 1, f"undercoverage must hard-fail, got rc={rc}\n{out}")
+    print("[PASS] move_asset undercoverage (N-1) → rc=1 (real pipeline)")
+
+
+def test_move_asset_overcoverage_hard_fails():
+    """Expected N move_asset actions, renderer emits N+1 -> hard fail.
+    Simulates a renderer regression that over-emits: one fabricated
+    move_asset action is injected post-generation."""
+    n_expected = 3
+    attachments = [f"100 Inbox/Attachments/photo-{i}.jpg" for i in range(n_expected)]
+    confirmed = [_confirmed_item("S01", "Trip.md", attachments=attachments)]
+    manifest = [_manifest_item("S01", "Trip.md", "2026-04-21_1200_trip.md", attachments=attachments)]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    instrs = _build_instrs_from(manifest, confirmed, [], [])
+
+    instrs["actions"].append({
+        "id": "asset-extra", "action": "move_asset",
+        "source": "100 Inbox/Attachments/orphan.jpg",
+        "destination": "Atlas/900 Assets/orphan.jpg",
+    })
+    instrs["action_count"] = len(instrs["actions"])
+
+    rc, _obs, out = _run(parsed, instrs)
+    n_actual = n_expected + 1
+    row = f"  {'move_asset':<20s} {n_expected:>9d} {n_actual:>9d}  [DIFF]"
+    _must(row in out, f"expected move_asset [DIFF] row not found:\n{out}")
+    _must(rc == 1, f"overcoverage must hard-fail, got rc={rc}\n{out}")
+    print("[PASS] move_asset overcoverage (N+1) → rc=1 (real pipeline)")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# move_asset expectation derivation (spec 031 T4.2)
+#
+# derive_expected must count how many move_asset actions confirmed items
+# EXPECT, mirroring the renderer's global dedup (render_actions.py
+# _build_move_asset_actions — the set spans the whole manifest, not a
+# per-item loop) and keying on the resolved vault-relative path, not the
+# basename — the audio_peer analogue's live asymmetry (basename on the diff
+# side, inbox-joined path on the renderer side) must NOT be replicated here.
+#
+# ADR-6: an attachment move never implies a deletion — attachments must
+# never be appended to expected_deletions (that is the audio_peer/deleted
+# behaviour; filing is its exact inversion).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _confirmed_item(item_id, source_path, attachments=None, action=None, **over):
+    item = {
+        "id": item_id, "source_path": source_path, "action": action,
+        "title": f"Item {item_id}", "tags": [],
+        "parent_moc": "", "parent_mocs": [],
+    }
+    if attachments is not None:
+        item["attachments"] = attachments
+    item.update(over)
+    return item
+
+
+def test_move_asset_expected_counts_unique_attachments_on_one_item():
+    """One confirmed item with 2 unique attachments -> expects 2
+    [ref: PRD/AC-F5.1]."""
+    confirmed = [_confirmed_item(
+        "S01", "Trip.md",
+        attachments=["100 Inbox/Attachments/a.jpg", "100 Inbox/Attachments/b.jpg"],
+    )]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 2,
+          f"expected 2 move_asset, got {expected['counts']['move_asset']}")
+    print("[PASS] one item, 2 unique attachments -> expects 2")
+
+
+def test_move_asset_expected_dedups_shared_attachment_globally():
+    """Two confirmed items sharing one attachment path -> expects 1, matching
+    the renderer's GLOBAL dedup (not per-item) [ref: PRD/AC-F4.2]."""
+    shared = "100 Inbox/Attachments/shared.jpg"
+    confirmed = [
+        _confirmed_item("S01", "A.md", attachments=[shared]),
+        _confirmed_item("S02", "B.md", attachments=[shared]),
+    ]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 1,
+          f"expected 1 (globally deduped), got {expected['counts']['move_asset']}")
+    print("[PASS] two items sharing one attachment -> expects 1 (global dedup)")
+
+
+def test_move_asset_expected_keys_on_full_path_not_basename():
+    """Two items whose attachments share a BASENAME but live at different
+    paths -> expects 2, proving the dedup key is the full resolved path, not
+    the basename (the audio_peer asymmetry this design must not replicate)."""
+    confirmed = [
+        _confirmed_item("S01", "A.md", attachments=["100 Inbox/FolderA/photo.jpg"]),
+        _confirmed_item("S02", "B.md", attachments=["100 Inbox/FolderB/photo.jpg"]),
+    ]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 2,
+          f"expected 2 (same basename, different path), got {expected['counts']['move_asset']}")
+    print("[PASS] same-basename-different-path attachments -> expects 2 (keyed on full path)")
+
+
+def test_move_asset_expected_skips_create_moc_items():
+    """create_moc items are skipped, as in the existing passes — an
+    attachments field on one (should never occur, but must not be trusted)
+    contributes nothing [ref: PRD/AC-F5.1]."""
+    confirmed = [
+        _confirmed_item("A1", "Note.md", attachments=["100 Inbox/x.jpg"]),
+        _confirmed_item("MOC01", None, action="create_moc",
+                        attachments=["100 Inbox/should-not-count.jpg"]),
+    ]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 1,
+          f"create_moc attachments must not count, got {expected['counts']['move_asset']}")
+    print("[PASS] create_moc item's attachments contribute nothing")
+
+
+def test_move_asset_never_appended_to_expected_deletions():
+    """ADR-6 guard, asserted on the deletions list itself: attachments must
+    never appear in expected_deletions — filing means the file continues to
+    exist at a new path, unlike the audio_peer's delete."""
+    attachment = "100 Inbox/Attachments/keepsake.jpg"
+    confirmed = [_confirmed_item("S01", "A.md", attachments=[attachment])]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    expected = diff.derive_expected(parsed)
+    _must(attachment not in expected["expected_deletions"],
+          f"attachment path leaked into expected_deletions: {expected['expected_deletions']}")
+    print("[PASS] attachment path never appears in expected_deletions (ADR-6)")
+
+
+def test_move_asset_skipped_items_contribute_nothing():
+    """A skipped[] entry's attachments (if any survived onto that shape)
+    contribute nothing — only confirmed_items feed the expectation
+    [ref: PRD/AC-F4.5]."""
+    confirmed = [_confirmed_item("S01", "A.md", attachments=["100 Inbox/x.jpg"])]
+    skipped = [{
+        "source_path": "B.md", "disposition": "skip",
+        "attachments": ["100 Inbox/should-not-count.jpg"],
+    }]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": skipped}
+    expected = diff.derive_expected(parsed)
+    _must(expected["counts"]["move_asset"] == 1,
+          f"skipped item's attachments must not count, got {expected['counts']['move_asset']}")
+    print("[PASS] skipped item's attachments contribute nothing")
+
+
 def main() -> int:
     test_happy_path_reconciles()
     test_missing_instruction_fails()
@@ -521,6 +821,18 @@ def main() -> int:
     test_edit_frontmatter_action_count_reconciles_with_total()
     test_edit_frontmatter_contributes_n_to_total()
     test_garden_diff_never_drops_unregistered_kind()
+    test_move_asset_action_count_reconciles_with_total()
+    test_move_asset_rendered_action_count_matches_rendered_total()
+    test_move_asset_appears_in_printed_table()
+    test_move_asset_matched_counts_reconcile()
+    test_move_asset_undercoverage_hard_fails()
+    test_move_asset_overcoverage_hard_fails()
+    test_move_asset_expected_counts_unique_attachments_on_one_item()
+    test_move_asset_expected_dedups_shared_attachment_globally()
+    test_move_asset_expected_keys_on_full_path_not_basename()
+    test_move_asset_expected_skips_create_moc_items()
+    test_move_asset_never_appended_to_expected_deletions()
+    test_move_asset_skipped_items_contribute_nothing()
     print("\n\u2713 All instructions-diff tests passed.")
     return 0
 

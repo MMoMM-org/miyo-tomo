@@ -450,3 +450,103 @@ signature assertion immediately, without needing a live run to catch it.
   scoped to blocks, not a changed-line count, per the CON-3 rationale in the file's own docstring.
   Guard proven to bite: a deliberate one-word mutation to the `dead_link` detail line (reverted
   immediately after) turned the test red on exactly that block before being reverted back to green.
+
+---
+
+## Spec 031 — ADR-4: `_count_kado_calls` corrected (T5.2)
+
+| Key | Value |
+|-----|-------|
+| **Date** | 2026-09-05 |
+| **Phase** | Phase 5 (`plan/phase-5.md` T5.2) — `inbox-triage.py`'s internal Kado-call estimator, not a live run |
+| **Versions** | inbox-triage 0.28.0 → 0.29.0 |
+
+**Discontinuity notice — read before comparing any `kado_calls=` figure across this date.**
+
+`_count_kado_calls(state)` (the estimator behind the `kado_calls=` field in `inbox-triage.py`'s own
+stderr metrics line and the `metrics.kado_calls` value in `routing-plan.json`) was **wrong before this
+fix** and is a **different, larger number after it** for the same run — not because Tomo now makes
+more Kado calls, but because the estimator now counts calls it previously missed entirely.
+
+Before: `_count_kado_calls` returned `5 + body_reads`, while its own docstring claimed
+`1 listDir + 7 byFrontmatter + N body reads` (= 8, not 5) — already inconsistent with itself — and
+omitted three per-item read sites entirely: `enrich_instructions_frontmatter`'s per-instructions-hit
+`read_frontmatter`, `resolve_handlers`' per-new-source `read_frontmatter` (tag-handler resolution),
+and `_cache_wire_sibling`'s `read_file_bytes` (four call sites gated by doc_type/approval-state
+combinations). T5.1 (same phase) also added a second, recursive `listDir` call, which the estimator
+needed to learn about regardless.
+
+After: `_count_kado_calls` returns `2 (listDir) + 7 (byFrontmatter) + instructions_frontmatter_reads +
+tag_handler_reads + wire_sibling_reads + body_reads`, verified against a fake client's own observed
+`.calls` invocation log (not a second hand-derived expectation) in
+`tests/test_031_t5_2_kado_call_counter.py`.
+
+**Addendum (T5.3, same phase, later commit).** The base constant above moved from `2` to `3`:
+ADR-2's original premise (the analyst's regex extractor runs on note bodies the pipeline already
+reads) was corrected the same phase — the pipeline never reads those fresh bodies, so embed
+extraction was rewired to `client.list_notes(inbox_path, fields=["links"])`, a third base call
+alongside the two `listDir`s. `_count_kado_calls` now returns `3 (listDir + listDir + listNotes) + 7
+(byFrontmatter) + ...`, matching its own current docstring. This entry's own text above still says
+`2` because it captured T5.2's commit at the time; the code and its docstring are the source of
+truth going forward, not this paragraph's number.
+
+**No entry above this line reports a `kado_calls=` figure**, so nothing in this log's existing token/
+cost rows needs correction retroactively — this notice exists so that if/when a future entry logs
+`kado_calls=` (from the stderr metrics line or `routing-plan.json`'s `metrics` block), no one
+compares it against a pre-2026-09-05 run and mistakes the jump for a regression. The corrected number
+is more accurate, not more expensive: real Kado traffic is unchanged by this fix.
+
+**Notes**:
+- Known residual approximation, unchanged by this fix and out of this task's narrow scope: `body_reads`
+  still undercounts by one per `read_note` call that raises `KadoError` mid-run (the call happened; its
+  result lands in `drift_indicators`, not one of the five summed buckets). Documented in
+  `_count_kado_calls`'s own docstring.
+- Full suite: 3171 passed, 1 skipped, 0 failed. `ruff` clean.
+
+## Spec 031 — inbox attachment filing (T6.5 live validation)
+
+**Date**: 2026-09-05 · **Vault**: Privat-Test · **Branch**: `feat/031-inbox-attachment-filing`
+
+Two live runs. Run 1 produced no attachment output at all — the fixtures had been placed in
+`100 Inbox/Places/`, and `discover_files` runs at `depth=1`, so they were never discovered. Fixtures
+moved to the inbox root; run 2 is the one reported here.
+
+**Run 2 — Pass 1**: `kado_calls=20` (from `routing-plan.json`), 4 source items.
+
+Four fixtures, each targeting one thing the offline suite cannot prove:
+
+| Fixture | Case | Result |
+|---|---|---|
+| `Prag.md` | ADR-1 — image in a different inbox subfolder | resolved to `100 Inbox/Images/prag-karte.png` |
+| `Dresden.md` | same basename in `Images/` and `Scans/` | `ambiguous`, `candidate_count: 2`, no action |
+| `Bautzen.md` | same image embedded twice, once aliased | exactly one entry — PRD F1-AC4 |
+| `Meissen.md` | no embed at all | absent from the map — CON-8 control |
+
+**Apply (Hashi)**: 5 actions, 5 applied, 0 failed, 0 skipped. `move_asset` executed without a Hashi
+change. `prag-karte.png` reached `Atlas/290 Assets/295 Attachments/`, the source note was deleted, and
+`![[prag-karte.png]]` survived verbatim in the moved note — the basename is unique vault-wide, so
+Obsidian resolves it to the new location.
+
+**Residue**: zero for the approved item. Three files remain in the inbox, both deliberately:
+`Images/karte.png` and `Scans/karte.png` are Dresden's ambiguous pair, retained because Dresden stays
+in the inbox and a wrong move is worse than no move; `Images/bautzen-turm.jpg` remains because of
+#165, a pre-existing force-atomic defect unrelated to the attachment path.
+
+**Findings — three, none of them in the resolution layer, which was 4/4 correct on live data**:
+
+1. **The analyst violated ADR-2 on the first live run.** `Bautzen.result.json` came back carrying
+   `unresolved_embeds: [{"embed_target": "bautzen-turm.jpg", "status": "unresolved"}]` — a field ADR-2
+   says the analyst never produces, with a verdict that was wrong. The override branch in
+   `merge_resolved_attachments` replaced it with the deterministic map's answer and the run was
+   correct. That guard is load-bearing, not defensive theatre.
+2. **Suppressed items dropped the unresolved-embed warning at render** (fixed, `b28cd07`). Three of the
+   four fixtures scored below the 0.5 worthiness threshold and took `render_suppressed_atomic`, a
+   second renderer spec 031 never touched — spec 031 does not mention suppressed items anywhere.
+   Dresden's ambiguity was computed, persisted, and silently dropped.
+3. **Force Atomic on a suppressed item is a livelock** (#165, not fixed here). The approved
+   resolve-doc proposal parses perfectly and is never read; every Pass 2 re-parks it. Pre-existing
+   #88/XDD-012 defect that this validation walked into. Depends on #161.
+
+**Note on the fixture count**: only Prag exercised the full path end-to-end. The other three were
+suppressed by worthiness scoring, which is why finding 2 existed at all — a reminder that a fixture
+proves what the pipeline actually does with it, not what it was designed to prove.

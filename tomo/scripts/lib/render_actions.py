@@ -1,4 +1,4 @@
-# version: 0.8.1
+# version: 0.9.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -17,6 +17,7 @@ import re
 import sys
 from pathlib import Path
 
+from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 from lib.kado_client import KadoError
 from lib.obsidian_filename import sanitize_stem
 from lib.profile_conventions import marker_word
@@ -53,19 +54,10 @@ def _inbox_join(inbox: str, basename: str) -> str:
     return f"{(inbox or '').rstrip('/')}/{basename}"
 
 
-# Obsidian-resolvable extensions seen in vault paths derived from wikilinks.
-# Used by `_ensure_md_extension` to discriminate a real file extension
-# (`Voice.m4a`, `Notes.html`) from a dotted note name (`Foo.Bar`,
-# `2026-04-29.draft`). Obsidian allows dots in note titles, so "any dot
-# means extension" is wrong — match against this allowlist instead.
-_KNOWN_FILE_EXTENSIONS = frozenset({
-    "md",
-    "m4a", "mp3", "wav", "flac", "ogg", "aac", "opus",
-    "mp4", "mov", "webm", "mkv", "avi",
-    "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp",
-    "pdf", "html", "txt", "csv", "json", "yaml", "yml",
-    "zip",
-})
+# Moved to lib/file_extensions.py (spec 031 T1.1 code-quality fix) so a pure
+# text library can classify a wikilink target without importing this module.
+# Alias kept so existing references below (and any other consumer) are unchanged.
+_KNOWN_FILE_EXTENSIONS = KNOWN_FILE_EXTENSIONS
 
 
 def _ensure_md_extension(path: str | None) -> str | None:
@@ -212,6 +204,7 @@ _OPTIONAL_PATH_FIELDS = {
 _REQUIRED_PATH_FIELDS = {
     "create_moc": ("source", "destination"),
     "move_note": ("source", "destination"),
+    "move_asset": ("source", "destination"),
     "update_tracker": ("daily_note_path",),
     "update_log_entry": ("daily_note_path",),
     "update_log_link": ("daily_note_path",),
@@ -501,6 +494,30 @@ def _dest_join(folder: str, title: str) -> str:
     return f"{folder}{sanitize_stem(stem)}.md"
 
 
+# Default asset folder — single source of truth for both the fallback used
+# when a caller's cfg dict lacks "concepts.asset" (build_actions, below) and
+# instruction-render.py's CONFIG_DEFAULTS entry for the same key.
+DEFAULT_ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
+
+
+def _asset_dest_join(asset_folder: str, source_path: str) -> str:
+    """Join the asset folder with the source path's basename, preserving it verbatim.
+
+    Never _dest_join (appends a '.md' suffix) or _ensure_md_extension (a silent
+    no-op for an allowlisted extension, a corrupting '.md' append for anything
+    else) — an attachment's basename must survive exactly as-is, uppercase,
+    unusual extension, and all, or the embed referencing it stops resolving.
+
+    Raises ValueError if source_path has no basename (empty, or ending in
+    "/") rather than silently returning a bare folder path.
+    """
+    basename = source_path.rsplit("/", 1)[-1]
+    if not basename:
+        raise ValueError(f"attachment source path has no filename: {source_path!r}")
+    folder = (asset_folder or "").rstrip("/") + "/"
+    return f"{folder}{basename}"
+
+
 def _wikilink(title: str) -> str:
     """Render an Obsidian wikilink whose target resolves to the safe filename.
 
@@ -600,6 +617,70 @@ def _build_move_note_actions(
             "tags": m.get("tags", []) or [],
         })
     return out
+
+
+def _build_move_asset_actions(
+    manifest: list[dict],
+    inbox_path: str,
+    asset_folder: str,
+    counter: list[int],
+) -> tuple[list[dict], list[dict]]:
+    """Emit move_asset actions for every unique attachment path across the
+    whole manifest, deduplicated globally (not per item) on the resolved path.
+
+    Returns (actions, skipped) — mirrors filter_unappliable_relationships's
+    shape. An attachment is skipped, reported to stderr, and added to
+    `skipped` (never raises, never aborts the run) in two cases:
+
+    - the path has no basename (_asset_dest_join raises ValueError)
+    - a destination collision: two DIFFERENT paths (same basename, different
+      source folders) resolve to the same destination — the first claim wins,
+      the second is skipped. Renaming is not attempted.
+
+    Each skipped entry is {"source", "destination", "reason", "kind"} —
+    destination is None for the no-basename case, since none could be
+    computed. `kind` is "no_basename" or "collision" — the two cases need
+    different remedies (a malformed inbox path vs. a real naming conflict),
+    so callers rendering this for a user must not treat them as one case.
+    """
+    out: list[dict] = []
+    skipped: list[dict] = []
+    seen: set[str] = set()
+    claimed: dict[str, str] = {}  # destination -> path that claimed it
+    for m in manifest:
+        for path in m.get("attachments") or []:
+            if path in seen:
+                continue
+            seen.add(path)
+            try:
+                destination = _asset_dest_join(asset_folder, path)
+            except ValueError as exc:
+                print(f"  [warn] skipping attachment — {exc}", file=sys.stderr)
+                skipped.append({
+                    "source": path, "destination": None, "reason": str(exc),
+                    "kind": "no_basename",
+                })
+                continue
+            claimant = claimed.get(destination)
+            if claimant is not None:
+                reason = (
+                    f"destination collision: {path!r} also resolves to "
+                    f"{destination!r}, already claimed by {claimant!r}"
+                )
+                print(f"  [warn] {reason} — skipping {path!r}", file=sys.stderr)
+                skipped.append({
+                    "source": path, "destination": destination, "reason": reason,
+                    "kind": "collision",
+                })
+                continue
+            claimed[destination] = path
+            out.append({
+                "id": _next_id(counter),
+                "action": "move_asset",
+                "source": path,
+                "destination": destination,
+            })
+    return out, skipped
 
 
 def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:
@@ -1452,26 +1533,35 @@ def build_actions(
     tag_handler_keep_source_group_ids: list[str] | None = None,
     parent_marker: str = "up::",
     peer_marker: str = "related::",
-) -> list[dict]:
+) -> tuple[list[dict], list[dict]]:
     """Assemble the full ordered action list.
+
+    Returns (actions, skipped_assets) — skipped_assets are attachments that
+    could not be filed (no basename, or a destination collision); see
+    _build_move_asset_actions.
 
     Execution order matters: create_moc comes first because subsequent
     link_to_moc actions may target the newly-created MOCs (via supporting_items
-    expansion). move_note follows, then all links (parent_mocs + supporting
-    items), then daily updates, deletions, and skips.
+    expansion). move_note follows, then attachments, then all links (parent_mocs
+    + supporting items), then daily updates, deletions, and skips.
 
     Emitted order:
       1. create_moc         — new MOCs must exist before anything links into them
       2. up_preservation    — per-child up:: / related:: on ConfirmedMOCProposal children
       3. move_note          — atomic notes
-      4. link_to_moc        — parent_mocs up-links + supporting_items down-links
-      5. update_tracker / update_log_entry / update_log_link
-      6. insert_under_marker — approved tag-handler group blocks (spec 024 T4.1)
-      7. delete_source      — incl. approved tag-handler group sources (after their insert)
-      8. skip
+      4. move_asset         — attachments named on the manifest, deduplicated globally
+      5. link_to_moc        — parent_mocs up-links + supporting_items down-links
+      6. update_tracker / update_log_entry / update_log_link
+      7. insert_under_marker — approved tag-handler group blocks (spec 024 T4.1)
+      8. delete_source      — incl. approved tag-handler group sources (after their insert)
+      9. skip
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]
+    # cfg.get, not cfg[...]: concepts.asset is resolved with the same default
+    # here as instruction-render.py's CONFIG_DEFAULTS, so a caller passing a
+    # bare cfg dict without the key (as most existing tests do) still works.
+    asset_folder = cfg.get("concepts.asset", DEFAULT_ASSET_FOLDER)
     out: list[dict] = []
     out.extend(_build_create_moc_actions(manifest, inbox_path, counter))
     out.extend(_build_up_preservation_actions(
@@ -1480,6 +1570,10 @@ def build_actions(
     ))
     move_notes = _build_move_note_actions(manifest, inbox_path, counter)
     out.extend(move_notes)
+    move_assets, skipped_assets = _build_move_asset_actions(
+        manifest, inbox_path, asset_folder, counter
+    )
+    out.extend(move_assets)
     out.extend(_build_link_to_moc_actions(confirmed, counter))
     out.extend(_build_daily_update_actions(daily_updates, cfg, counter))
     out.extend(_build_insert_under_marker_actions(
@@ -1503,7 +1597,6 @@ def build_actions(
     # docs/instructions-json.md.
     for a in out:
         a["applied"] = False
-    return out
-
+    return out, skipped_assets
 
 

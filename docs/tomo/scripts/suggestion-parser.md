@@ -249,3 +249,61 @@ tie. A literal backtick in a filename is a known, accepted, unfixed limitation
 shared with the render side (`suggestions-reducer.py` wraps each path in a single
 unescaped backtick pair) — not worth an escaping scheme for a character this
 specific to fix a case that has not occurred.
+
+## The suppressed-block Force-Atomic path needs branch (b), not just (c) (#165, v0.26.0)
+
+WHY the section-level Force-Atomic loop consults `resolve_sections_by_stem`
+before parking a stem, duplicating logic the daily-driven loop above already
+has: without it the loop parked unconditionally, and the resolve subflow it
+was parking *for* could never complete.
+
+The three-way lookup documented above the daily-driven loop — (a) primary-doc
+section, (b) resolve-doc section, (c) neither, so park — was only ever wired
+for stems that come from daily-note log entries. `force_atomic_stems` is built
+exclusively from `daily_updates[].log_entries[]`. A suppressed low-worthiness
+per-item block (#88) has no daily-note log entry, so it never entered that
+loop at all and was handled instead by the section-level loop added for #88,
+which had (c) and nothing else.
+
+The result was a livelock. Pass 2 parked the stem and generated a
+Force-Atomic Resolve doc; the user approved the proposal in it; the next Pass 2
+parked the same stem again and regenerated the same doc. Forever. The approved
+proposal parsed perfectly and landed in `resolve_sections_by_stem`, where
+nothing read it. Worse, the run reported *"you left its Approve box unticked
+in the fan doc"* — pointing the user at the one thing that was already correct.
+
+Found by spec 031's T6.5 live validation, which force-atomic'd a suppressed
+fixture to exercise the attachment path through the resolve route.
+
+Two things to preserve if this loop is ever reworked:
+
+- **The (c) branch must stay reachable.** Parking is the correct outcome
+  the first time round, when no companion doc exists yet, and also when the
+  resolve doc's own Approve box is genuinely unticked. Both cases are covered
+  by tests; a fix that promotes unconditionally would consume proposals the
+  user has not agreed to.
+- **`resolve_promoted_ids` is shared with the daily-driven loop** and must
+  stay shared. A stem reachable from both loops would otherwise be promoted
+  twice, once per loop.
+
+## _promote_entry omitted two fields of the canonical shape (#161, v0.26.0)
+
+WHY `_promote_entry` carries `audio_peer` and `attachments`: it builds its
+entry dict field-by-field rather than copying the section, and both fields
+were missing from that list while being present in the canonical
+confirmed-item shape assembled for a normally-approved section. A promoted
+item therefore lost its audio peer and its attachments on the way to
+`instruction-render`.
+
+This was filed as a latent defect and became load-bearing the moment #165 was
+fixed: wiring branch (b) into the suppressed-block path without this would
+confirm the note, file it to its destination, delete the source — and leave
+the image behind in the inbox. That is precisely the residue failure spec 031
+exists to eliminate, so the two had to land together.
+
+Note the failure mode is silent rather than loud: `instruction-render` reads
+`item.get("attachments", [])`, so a missing key degrades to "no attachments"
+rather than raising. That is why the test asserts the key is *present and
+empty* for an item with no attachments, not merely that the populated cases
+work — an absent key would otherwise pass every positive assertion by
+accident.

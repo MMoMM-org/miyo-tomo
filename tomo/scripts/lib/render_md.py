@@ -1,4 +1,4 @@
-# version: 0.7.3
+# version: 0.8.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -513,7 +513,8 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # cannot create one). Create the daily note and re-run to apply these.
     skipped_daily = metadata.get("skipped_daily") or []
     skipped_rel = metadata.get("skipped_rel") or []
-    if skipped_daily or skipped_rel:
+    skipped_assets = metadata.get("skipped_assets") or []
+    if skipped_daily or skipped_rel or skipped_assets:
         body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
         if skipped_daily:
@@ -537,6 +538,17 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                 error = a.get("error") or "?"
                 line = a.get("line") or ""
                 body_parts.append(f"- `add_relationship` → `{target}` [{error}] — {line}".rstrip(" —"))
+            body_parts.append("")
+        if skipped_assets:
+            body_parts.append(
+                "**Attachment not filed** — a naming or destination conflict "
+                "prevented this attachment from moving. Resolve it (e.g. rename "
+                "one of the files) and re-run `/inbox`:")
+            body_parts.append("")
+            for s in skipped_assets:
+                source = s.get("source") or "?"
+                reason = s.get("reason") or "?"
+                body_parts.append(f"- `move_asset` → `{source}` — {reason}")
             body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"
 

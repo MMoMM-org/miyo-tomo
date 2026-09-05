@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_031_t2_6_phase2_validation.py — spec 031 T2.6 Phase 2 validation.
 
 End-to-end check that an instructions.json produced by build_actions() with a
@@ -84,7 +84,7 @@ def test_move_asset_instruction_set_validates_against_the_schema():
         attachments=["100 Inbox/Images/karte.jpg"],
     )]
     confirmed = [_confirmed_entry(source_path="dresden.md")]
-    actions = build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = build_actions(manifest, confirmed, [], [], CFG)
     assert any(a["action"] == "move_asset" for a in actions)
     # Mirrors the real pipeline: instruction-render.py strips Tomo-internal
     # fields (e.g. move_note.audio_peer) before writing/validating the wire doc.
@@ -105,7 +105,7 @@ def test_zero_delete_source_actions_reference_an_attachment_path():
         attachments=["100 Inbox/Images/karte.jpg", "100 Inbox/Images/prag-karte.jpg"],
     )]
     confirmed = [_confirmed_entry(source_path="dresden.md")]
-    actions = build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = build_actions(manifest, confirmed, [], [], CFG)
     attachment_paths = {"100 Inbox/Images/karte.jpg", "100 Inbox/Images/prag-karte.jpg"}
     delete_sources = [a for a in actions if a["action"] == "delete_source"]
     assert delete_sources, "expected the origin's own delete_source to exist"

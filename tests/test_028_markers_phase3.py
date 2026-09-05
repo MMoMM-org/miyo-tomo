@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_028_markers_phase3.py — spec 028 Phase 3: relationship markers from profile (F-16).
 
 Covers the read + write marker seams de-hardcoded in Phase 3:
@@ -177,7 +177,7 @@ def test_build_actions_miyo_add_relationship_byte_identical():
         "child-a": ("Atlas/202 Notes/child-a.md", "up:: [[OldParent]]\n"),
         "OldParent": ("Atlas/200 Maps/OldParent.md", "# old\n"),
     })
-    actions = ra.build_actions(
+    actions, _skipped_assets = ra.build_actions(
         _moc_proposal_manifest(), [], [], [], _CFG,
         kado_client=kado,
     )
@@ -193,7 +193,7 @@ def test_build_actions_threads_custom_markers():
         "child-a": ("Atlas/202 Notes/child-a.md", "parent:: [[OldParent]]\n"),
         "OldParent": ("Atlas/200 Maps/OldParent.md", "# old\n"),
     })
-    actions = ra.build_actions(
+    actions, _skipped_assets = ra.build_actions(
         _moc_proposal_manifest(), [], [], [], _CFG,
         kado_client=kado, parent_marker="parent::", peer_marker="peer::",
     )

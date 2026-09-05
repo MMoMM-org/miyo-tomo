@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_instruction_render_profile_markers.py — Phase 4 T4.1 wire-in.
 
 instruction-render.py must resolve the active profile's relationship markers
@@ -42,7 +42,7 @@ def _run_capturing_markers(tmp_path, monkeypatch, config_text: str) -> dict:
     def _fake_build_actions(*args, **kwargs):
         captured["parent_marker"] = kwargs.get("parent_marker")
         captured["peer_marker"] = kwargs.get("peer_marker")
-        return []
+        return [], []
 
     monkeypatch.setattr(ir, "build_actions", _fake_build_actions)
 

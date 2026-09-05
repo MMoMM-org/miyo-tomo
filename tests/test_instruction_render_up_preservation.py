@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_instruction_render_up_preservation.py — Rule 4.x existing-up:: preservation.
 
 F-43 T4.2: Verifies that emit_up_preservation_actions produces correct
@@ -406,7 +406,7 @@ def test_wire_actions_have_no_error_field_on_child_missing() -> None:
         "callouts.editable": ["blocks"],
         "profile": "miyo",
     }
-    raw_actions = ir.build_actions(
+    raw_actions, _skipped_assets = ir.build_actions(
         manifest=manifest, confirmed=[], daily_updates=[], skipped=[], cfg=cfg, kado_client=kado,
     )
     wire_actions, skipped_rel = ir.filter_unappliable_relationships(raw_actions)
@@ -461,7 +461,7 @@ def test_wire_actions_have_no_error_field_on_non_markdown_asset() -> None:
         "callouts.editable": ["blocks"],
         "profile": "miyo",
     }
-    raw_actions = ir.build_actions(
+    raw_actions, _skipped_assets = ir.build_actions(
         manifest=manifest, confirmed=[], daily_updates=[], skipped=[], cfg=cfg, kado_client=kado,
     )
     wire_actions, skipped_rel = ir.filter_unappliable_relationships(raw_actions)
@@ -537,7 +537,7 @@ def test_assembler_wires_up_preservation_for_moc_proposal() -> None:
         "profile": "miyo",
     }
 
-    actions = ir.build_actions(
+    actions, _skipped_assets = ir.build_actions(
         manifest=manifest,
         confirmed=[],
         daily_updates=[],

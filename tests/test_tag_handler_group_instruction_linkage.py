@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_tag_handler_group_instruction_linkage.py — T4.1 (spec 024 Phase 4).
 
 Covers the approval→render linkage that turns an APPROVED tag-handler group
@@ -569,7 +569,7 @@ def test_delete_source_after_insert_in_build_actions():
     """Full build_actions: the tag-handler delete_source lands AFTER its
     insert_under_marker (positional ordering contract — Hashi applies in order)."""
     g = _group(target_path="Efforts/Tomo Dev Log.md", source_paths=["100 Inbox/x.md"])
-    actions = build_actions(
+    actions, _skipped_assets = build_actions(
         [], [], [], [], _CFG,
         tag_handler_groups=[g],
         approved_tag_handler_group_ids=[group_id(g)],
@@ -587,7 +587,7 @@ def test_delete_source_after_insert_in_build_actions():
 def test_build_actions_keep_source_suppresses_delete():
     """build_actions honors tag_handler_keep_source_group_ids end-to-end (denial)."""
     g = _group(source_paths=["100 Inbox/x.md"])
-    actions = build_actions(
+    actions, _skipped_assets = build_actions(
         [], [], [], [], _CFG,
         tag_handler_groups=[g],
         approved_tag_handler_group_ids=[group_id(g)],
@@ -637,7 +637,7 @@ def _parsed_for(group, *, approved, kept=None):
 
 
 def _instrs_for(group, *, approved, kept=None):
-    actions = build_actions(
+    actions, _skipped_assets = build_actions(
         [], [], [], [], _CFG,
         tag_handler_groups=[group],
         approved_tag_handler_group_ids=approved,

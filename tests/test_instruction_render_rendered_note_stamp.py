@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_instruction_render_rendered_note_stamp.py — #108 rendered-note stamping.
 
 Verifies the render loop stamps a ``tomo: {doc_type: rendered-note,
@@ -79,7 +79,7 @@ def _stub_pipeline(monkeypatch, tmp_path, rendered_body: str):
         ir, "render_via_script", lambda _tmpl, _tokens, _cfg: rendered_body,
     )
     # Isolate the render loop from vault-dependent downstream steps.
-    monkeypatch.setattr(ir, "build_actions", lambda *_a, **_kw: [])
+    monkeypatch.setattr(ir, "build_actions", lambda *_a, **_kw: ([], []))
     monkeypatch.setattr(ir, "resolve_target_moc_paths", lambda _actions, _client: 0)
     monkeypatch.setattr(ir, "resolve_section_names", lambda *_a, **_kw: 0)
     monkeypatch.setattr(ir, "_validate_action_paths", lambda _actions: [])

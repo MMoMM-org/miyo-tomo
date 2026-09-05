@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.3
+# version: 0.43.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -55,6 +55,7 @@ from lib.render_actions import (  # noqa: E402,F401
     _build_insert_under_marker_actions,
     _build_link_to_moc_actions,
     _build_move_note_actions,
+    DEFAULT_ASSET_FOLDER,
     _dest_join,
     _disambiguate_filename,
     _load_tag_handler_groups,
@@ -104,7 +105,7 @@ from lib.supporting_items import (  # noqa: E402
 
 CONFIG_DEFAULTS = {
     "concepts.inbox": "100 Inbox/",
-    "concepts.asset": "Atlas/290 Assets/295 Attachments/",
+    "concepts.asset": DEFAULT_ASSET_FOLDER,
     "concepts.calendar.granularities.daily.path": "Calendar/301 Daily/",
     "daily_log.heading": "Daily Log",
     "daily_log.heading_level": 2,
@@ -466,12 +467,13 @@ def main() -> int:
     # garden_action), NOT the suggestions manifest shape — assemble them with
     # the isolated builder so the suggestions/moc-proposal hot path stays
     # untouched (spec 030 SDD: "no new apply path… mirror /moc-propose").
+    skipped_assets: list[dict] = []
     if args.upstream_type == "garden-audit":
         actions = build_garden_audit_actions(
             confirmed, parent_marker=conventions.parent_marker,
         )
     else:
-        actions = build_actions(
+        actions, skipped_assets = build_actions(
             manifest, confirmed, daily_updates, skipped, cfg, kado_client=client,
             tag_handler_groups=tag_handler_groups,
             approved_tag_handler_group_ids=approved_tag_handler_group_ids,
@@ -635,6 +637,23 @@ def main() -> int:
             }
             for a in skipped_daily
         ]
+    # Record attachments that could not be filed (no basename, or a
+    # destination collision) so instructions-diff can reconcile expected vs
+    # actual instead of reading a deliberate skip as a coverage gap. Metadata
+    # only: source/destination/reason, never content.
+    if skipped_assets:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["skipped_assets"] = [
+            {
+                "source": s.get("source"),
+                "destination": s.get("destination"),
+                "reason": s.get("reason"),
+            }
+            for s in skipped_assets
+        ]
     instructions_json_path = out_dir / "instructions.json"
     instructions_json_path.write_text(
         json.dumps(instructions_doc, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -654,6 +673,7 @@ def main() -> int:
             "tomo_version": tomo_version,
             "skipped_daily": skipped_daily,
             "skipped_rel": skipped_rel,
+            "skipped_assets": skipped_assets,
         },
         cfg,
     )

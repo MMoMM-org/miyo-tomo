@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t2_2_move_asset_emission.py — spec 031 T2.2 move_asset emission
 with global de-duplication.
 
@@ -7,7 +7,8 @@ _build_move_asset_actions(manifest, inbox_path, asset_folder, counter) reads
 `m.get("attachments")` off each manifest entry and emits one move_asset action
 per unique resolved path across the WHOLE manifest — not per item, unlike the
 audio_peer set at render_actions.py:922, which dedups within one origin-stem
-group only.
+group only. Returns (actions, skipped) — skipped attachments (no basename, or
+a destination collision) are covered in test_031_t2_4_destination_collision_guard.py.
 """
 from __future__ import annotations
 
@@ -71,10 +72,11 @@ def test_one_item_one_attachment_emits_one_action_with_correct_paths():
         source_path="dresden.md", rendered_file="2026-01-01_0900_dresden.md",
         attachments=["100 Inbox/Images/karte.jpg"],
     )]
-    actions = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
     assert actions[0]["destination"] == "Atlas/290 Assets/295 Attachments/karte.jpg"
+    assert skipped == []
 
 
 def test_two_items_embedding_same_path_emit_one_action():
@@ -90,7 +92,7 @@ def test_two_items_embedding_same_path_emit_one_action():
             attachments=["100 Inbox/Images/karte.jpg"],
         ),
     ]
-    actions = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, _skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
 
@@ -114,17 +116,20 @@ def test_two_items_same_basename_different_path_are_not_deduped_at_seen_level(ca
             attachments=["100 Inbox/Scans/karte.jpg"],
         ),
     ]
-    actions = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
     assert "100 Inbox/Scans/karte.jpg" in capsys.readouterr().err
+    assert skipped and skipped[0]["source"] == "100 Inbox/Scans/karte.jpg"
 
 
 def test_item_with_empty_attachment_list_emits_no_actions():
     manifest = [_manifest_entry(
         source_path="a.md", rendered_file="2026-01-01_0900_a.md", attachments=[],
     )]
-    assert _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0]) == []
+    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    assert actions == []
+    assert skipped == []
 
 
 def test_manifest_with_no_attachments_key_emits_no_actions():
@@ -132,7 +137,9 @@ def test_manifest_with_no_attachments_key_emits_no_actions():
     m.get('attachments') is None, not []."""
     manifest = [_manifest_entry(source_path="a.md", rendered_file="2026-01-01_0900_a.md")]
     assert "attachments" not in manifest[0]
-    assert _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0]) == []
+    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    assert actions == []
+    assert skipped == []
 
 
 def test_rest_of_the_action_set_is_byte_identical_without_attachments():
@@ -141,10 +148,11 @@ def test_rest_of_the_action_set_is_byte_identical_without_attachments():
     when there is nothing to add."""
     manifest = [_manifest_entry(source_path="a.md", rendered_file="2026-01-01_0900_a.md")]
     confirmed = [_confirmed_entry(source_path="a.md")]
-    with_emitter = build_actions(manifest, confirmed, [], [], CFG)
+    with_emitter, skipped_assets = build_actions(manifest, confirmed, [], [], CFG)
     move_assets = [a for a in with_emitter if a["action"] == "move_asset"]
     others = [a for a in with_emitter if a["action"] != "move_asset"]
     assert move_assets == []
+    assert skipped_assets == []
     # IDs stay monotonic and untouched by an absent attachments key.
     assert [a["id"] for a in others] == [f"I{i:02d}" for i in range(1, len(others) + 1)]
 
@@ -155,7 +163,7 @@ def test_ids_assigned_from_shared_counter_are_monotonic():
         attachments=["100 Inbox/Images/one.jpg", "100 Inbox/Images/two.jpg"],
     )]
     counter = [5]
-    actions = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, counter)
+    actions, _skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, counter)
     assert [a["id"] for a in actions] == ["I06", "I07"]
     assert counter == [7]
 
@@ -167,7 +175,7 @@ def test_move_asset_occupies_planner_slot_3_between_move_note_and_link_to_moc():
         parent_mocs=["Japan"],
     )]
     confirmed = [_confirmed_entry(source_path="a.md", parent_mocs=["Japan"])]
-    actions = build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = build_actions(manifest, confirmed, [], [], CFG)
     kinds = [a["action"] for a in actions]
     move_note_idx = kinds.index("move_note")
     move_asset_idx = kinds.index("move_asset")
@@ -184,7 +192,7 @@ def test_no_delete_source_action_references_an_attachment_path():
         attachments=["100 Inbox/Images/karte.jpg"],
     )]
     confirmed = [_confirmed_entry(source_path="a.md")]
-    actions = build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = build_actions(manifest, confirmed, [], [], CFG)
     attachment_paths = {"100 Inbox/Images/karte.jpg"}
     delete_sources = [a for a in actions if a["action"] == "delete_source"]
     assert delete_sources, "expected the origin's own delete_source to exist"

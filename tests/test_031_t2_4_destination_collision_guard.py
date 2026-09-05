@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t2_4_destination_collision_guard.py — spec 031 T2.4 destination
-collision guard for _build_move_asset_actions.
+collision guard for _build_move_asset_actions, plus the empty-basename skip
+folded in here (same skip-and-report machinery, same code-quality review).
 
 ADR-3: on a destination collision between two DIFFERENT source files, skip
 the second and report it — never silently overwrite. Renaming is explicitly
 deferred (Should-have). The same file resolved twice is NOT a collision — the
 global dedup from T2.2 handles it before the guard is ever consulted.
+
+A source path with no basename (empty, or ending in "/") is a second,
+distinct skip reason: _asset_dest_join raises ValueError rather than
+returning a bare folder path, and _build_move_asset_actions catches it,
+skips that one attachment, and reports it — the run is not aborted.
 """
 from __future__ import annotations
 
@@ -80,12 +86,15 @@ def test_second_colliding_attachment_is_skipped_and_reported(capsys):
             attachments=["100 Inbox/Scans/karte.jpg"],
         ),
     ]
-    actions = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
     err = capsys.readouterr().err
     assert "100 Inbox/Scans/karte.jpg" in err
     assert "collision" in err.lower()
+    assert len(skipped) == 1
+    assert skipped[0]["source"] == "100 Inbox/Scans/karte.jpg"
+    assert "collision" in skipped[0]["reason"].lower()
 
 
 def test_same_path_resolved_twice_is_dedup_not_collision(capsys):
@@ -101,10 +110,11 @@ def test_same_path_resolved_twice_is_dedup_not_collision(capsys):
             attachments=["100 Inbox/Images/karte.jpg"],
         ),
     ]
-    actions = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
     assert len(actions) == 1
     err = capsys.readouterr().err
     assert "collision" not in err.lower()
+    assert skipped == []
 
 
 def test_collision_does_not_suppress_the_notes_own_move_note():
@@ -119,7 +129,7 @@ def test_collision_does_not_suppress_the_notes_own_move_note():
         ),
     ]
     confirmed = [_confirmed_entry(source_path="a.md"), _confirmed_entry(source_path="b.md")]
-    actions = build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = build_actions(manifest, confirmed, [], [], CFG)
     move_notes = [a for a in actions if a["action"] == "move_note"]
     assert len(move_notes) == 2
     move_assets = [a for a in actions if a["action"] == "move_asset"]
@@ -137,6 +147,31 @@ def test_no_two_move_asset_actions_share_a_destination():
             attachments=["100 Inbox/Scans/karte.jpg", "100 Inbox/Images/other.png"],
         ),
     ]
-    actions = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    actions, _skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
     destinations = [a["destination"] for a in actions]
     assert len(destinations) == len(set(destinations))
+
+
+# --- empty-basename skip (folded in here: same skip-and-report path) -------
+
+def test_attachment_with_no_basename_is_skipped_and_reported(capsys):
+    """A malformed attachment path with no filename (e.g. from a Kado listDir
+    entry that mistypes a folder as a file) must not raise out of
+    _build_move_asset_actions and must not silently produce a directory
+    destination — it is skipped and reported, and the run continues. The good
+    attachment in the same batch still emits: a skip test that also swallows
+    the valid case would be worse than none."""
+    manifest = [
+        _manifest_entry(
+            source_path="a.md", rendered_file="2026-01-01_0900_a.md",
+            attachments=["100 Inbox/Images/", "100 Inbox/Images/karte.jpg"],
+        ),
+    ]
+    actions, skipped = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
+    assert len(actions) == 1
+    assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
+    assert len(skipped) == 1
+    assert skipped[0]["source"] == "100 Inbox/Images/"
+    assert skipped[0]["destination"] is None
+    err = capsys.readouterr().err
+    assert "100 Inbox/Images/" in err

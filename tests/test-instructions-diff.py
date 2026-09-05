@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.4.1
 """test-instructions-diff.py — Unit tests for instructions-diff.
 
 Covers:
@@ -74,7 +74,7 @@ CFG = {
 
 def _build_instrs_from(manifest, confirmed, daily_updates, skipped):
     """Use instruction-render's build_actions so tests exercise the real producer."""
-    actions = ir.build_actions(manifest, confirmed, daily_updates, skipped, CFG)
+    actions, _skipped_assets = ir.build_actions(manifest, confirmed, daily_updates, skipped, CFG)
     return {
         "schema_version": "1",
         "type": "tomo-instructions",
@@ -322,7 +322,7 @@ def test_batched_link_to_moc_reconciles():
 
     # Real producer path: build_actions, then the main() post-processing that
     # applies the #70 merge + serialize + internal-field strip.
-    actions = ir.build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = ir.build_actions(manifest, confirmed, [], [], CFG)
     merged = ir._merge_new_section_links(actions)
     ir._serialize_new_sections(actions)
     ir._strip_internal_link_fields(actions)
@@ -368,7 +368,7 @@ def test_batched_link_to_moc_coverage_gap_fails():
                 _man("S02", "Sapporo — Hokkaido capital", "Sapporo.md", "2026-04-21_1200_sapporo.md")]
     parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
 
-    actions = ir.build_actions(manifest, confirmed, [], [], CFG)
+    actions, _skipped_assets = ir.build_actions(manifest, confirmed, [], [], CFG)
     ir._merge_new_section_links(actions)
     ir._serialize_new_sections(actions)
     ir._strip_internal_link_fields(actions)

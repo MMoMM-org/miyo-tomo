@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """attachment_index.py — Detect and normalise attachment embeds in note bodies."""
 from __future__ import annotations
 
@@ -22,8 +22,7 @@ def extract_attachment_embeds(body: str) -> list[str]:
     deduplicated.
 
     Only `![[...]]` counts. A plain `[[...]]` link is a deliberate reference,
-    not a dependency of the note (PRD Feature 1, business rule: embeds are the
-    signal).
+    not a dependency of the note.
     """
     out: list[str] = []
     seen: set[str] = set()
@@ -121,7 +120,7 @@ def _strip_alias_and_anchor(raw: str) -> str:
 
     Unlike topic-extract.py's `_strip_link_target`, this does NOT strip the
     path — a path-qualified embed target is already an answer and must be
-    preserved (PRD Feature 2, criterion 2).
+    preserved.
     """
     target = raw.split("|")[0].strip()   # alias: "karte.jpg|Karte" → "karte.jpg"
     target = target.split("#")[0].strip()  # heading/block anchor

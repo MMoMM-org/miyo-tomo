@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """file_extensions.py — Owns the Obsidian-resolvable extension allowlist.
 
 Split out of render_actions.py (spec 031 T1.1 code-quality fix) so that a pure
 text library (attachment_index.py) can classify a wikilink target as a file
 vs. a note without transitively importing the render pipeline — render_actions
-pulls in ~175 modules and executes tag-handler-group.py at import time, which
-is incompatible with ADR-2's pure-library boundary.
+pulls in ~175 modules and executes tag-handler-group.py at import time.
 """
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.3.1
 """test_attachment_index.py — Tests for lib.attachment_index — spec 031
 (Inbox attachment filing), Phase 1.
 
@@ -291,3 +291,24 @@ def test_resolve_no_resolved_path_is_absent_from_the_index(five_file_index):
     for ref in refs:
         if ref.resolved_path is not None:
             assert ref.resolved_path in all_indexed_paths
+
+
+def test_resolve_fully_qualified_target_matches_by_exact_path(five_file_index):
+    """A target that is ALREADY the full vault-relative path (e.g. an embed
+    written as `![[100 Inbox/Images/karte.jpg]]`) hits the `path == target`
+    branch, not the `.../` suffix branch — no basename collision is even in
+    play here since prag-karte.jpg only has one index entry regardless."""
+    target = "100 Inbox/Images/prag-karte.jpg"
+    [ref] = resolve_attachments([target], five_file_index)
+    assert ref == AttachmentRef(target, target, "resolved")
+
+
+def test_resolve_duplicate_target_is_not_deduplicated(five_file_index):
+    """The same embed target appearing twice in embed_targets produces two
+    independent AttachmentRefs, not one — deduplication across the run is
+    Phase 2's job (_build_move_asset_actions), not this function's."""
+    refs = resolve_attachments(["prag-karte.jpg", "prag-karte.jpg"], five_file_index)
+    assert refs == [
+        AttachmentRef("prag-karte.jpg", "100 Inbox/Images/prag-karte.jpg", "resolved"),
+        AttachmentRef("prag-karte.jpg", "100 Inbox/Images/prag-karte.jpg", "resolved"),
+    ]

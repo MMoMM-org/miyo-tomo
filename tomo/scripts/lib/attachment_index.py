@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.1
+# version: 0.1.2
 """attachment_index.py — Detect and normalise attachment embeds in note bodies."""
 from __future__ import annotations
 
@@ -36,6 +36,28 @@ def extract_attachment_embeds(body: str) -> list[str]:
             seen.add(target)
             out.append(target)
     return out
+
+
+def build_inbox_index(list_dir_result: list[dict] | None) -> dict[str, list[str]]:
+    """Index inbox files by basename: basename -> list of vault-relative paths.
+
+    Accepts the flat list of item dicts returned by `KadoClient.list_dir()`,
+    each carrying `path` and `type`. Folder entries are excluded; `.md`
+    files are indexed like any other file, in list order. Returns `{}` for
+    `None`, an empty list, or any other falsy/malformed input — never raises.
+    """
+    index: dict[str, list[str]] = {}
+    if not list_dir_result:
+        return index
+    for item in list_dir_result:
+        if not isinstance(item, dict) or item.get("type") != "file":
+            continue
+        path = item.get("path")
+        if not path:
+            continue
+        basename = path.rsplit("/", 1)[-1]
+        index.setdefault(basename, []).append(path)
+    return index
 
 
 def _is_attachment_target(target: str) -> bool:

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_attachment_index.py — Tests for lib.attachment_index.extract_attachment_embeds() —
-T1.1 of spec 031 (Inbox attachment filing), Phase 1.
+# version: 0.2.0
+"""test_attachment_index.py — Tests for lib.attachment_index — spec 031
+(Inbox attachment filing), Phase 1.
 
-Covers PRD Feature 1 (detect embedded attachments):
+T1.1 covers extract_attachment_embeds() — PRD Feature 1 (detect embedded
+attachments):
   - AC-F1.1: `![[karte.jpg]]` embed is recorded
   - AC-F1.2: note-to-note embed `![[Some Note]]` is NOT recorded
   - AC-F1.3: plain link `[[karte.jpg]]` (no bang) is NOT recorded
@@ -11,20 +12,28 @@ Covers PRD Feature 1 (detect embedded attachments):
   - AC-F1.5: no embeds → empty list
 
 Plus the two-step classifier boundary (SDD "Example: Embed extraction"): the
-`_KNOWN_FILE_EXTENSIONS` frozenset in render_actions.py contains `md`, so a naive
-membership check would wrongly treat `![[Note.md]]` as an attachment. And PRD
-Feature 2 criterion 2: a path-qualified embed target keeps its path — unlike
+`KNOWN_FILE_EXTENSIONS` frozenset contains `md`, so a naive membership check
+would wrongly treat `![[Note.md]]` as an attachment. And PRD Feature 2
+criterion 2: a path-qualified embed target keeps its path — unlike
 topic-extract.py's `_strip_link_target`, which discards it.
+
+T1.2 covers build_inbox_index() — indexing a Kado listDir result by basename
+so basename collisions across folders are representable rather than lost.
+`five_file_inbox` is the SDD's worked five-file inbox fixture, reused
+verbatim by T1.3's resolution tests.
 """
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.attachment_index import extract_attachment_embeds  # noqa: E402
+from lib.attachment_index import build_inbox_index, extract_attachment_embeds  # noqa: E402
 
 
 def test_embed_with_extension_is_recorded():
@@ -94,3 +103,79 @@ def test_empty_body_returns_empty_list():
 def test_body_with_no_embeds_returns_empty_list():
     """AC-F1.5: prose with no wikilinks at all → empty attachment list."""
     assert extract_attachment_embeds("Just plain prose, no links here.") == []
+
+
+def test_attachment_index_module_stays_pure():
+    """Regression guard for the 175→4 module fix: importing lib.attachment_index
+    must not pull in lib.render_actions or lib.kado_client. Runs in a subprocess
+    so the assertion holds regardless of what other tests have already imported."""
+    code = (
+        "import sys; sys.path.insert(0, %r); "
+        "import lib.attachment_index; "
+        "assert 'lib.render_actions' not in sys.modules; "
+        "assert 'lib.kado_client' not in sys.modules"
+    ) % str(SCRIPTS_DIR)
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+
+
+# --- T1.2: build_inbox_index() ---------------------------------------------
+
+@pytest.fixture
+def five_file_inbox():
+    """SDD's worked five-file inbox, reused verbatim by T1.3.
+
+    Matches the real shape of `KadoClient.list_dir()` — a flat list of item
+    dicts, each carrying `path` and `type` ('file' | 'folder') — NOT a dict
+    wrapped under an "entries" key (see plan/phase-1.md discrepancy note).
+    """
+    return [
+        {"path": "100 Inbox/Places/Dresden.md", "type": "file"},
+        {"path": "100 Inbox/Places/Prag.md", "type": "file"},
+        {"path": "100 Inbox/Images/karte.jpg", "type": "file"},
+        {"path": "100 Inbox/Images/prag-karte.jpg", "type": "file"},
+        {"path": "100 Inbox/Scans/karte.jpg", "type": "file"},
+    ]
+
+
+def test_build_inbox_index_indexes_each_file_by_basename(five_file_inbox):
+    index = build_inbox_index(five_file_inbox)
+    assert index["Dresden.md"] == ["100 Inbox/Places/Dresden.md"]
+    assert index["prag-karte.jpg"] == ["100 Inbox/Images/prag-karte.jpg"]
+
+
+def test_build_inbox_index_preserves_basename_collisions(five_file_inbox):
+    """PRD Business rule 4: collisions are preserved as multiple paths, never
+    collapsed to one — karte.jpg exists under both Images/ and Scans/."""
+    index = build_inbox_index(five_file_inbox)
+    assert index["karte.jpg"] == [
+        "100 Inbox/Images/karte.jpg",
+        "100 Inbox/Scans/karte.jpg",
+    ]
+
+
+def test_build_inbox_index_excludes_folder_entries():
+    result = [
+        {"path": "100 Inbox/Images", "type": "folder"},
+        {"path": "100 Inbox/Images/karte.jpg", "type": "file"},
+    ]
+    index = build_inbox_index(result)
+    assert "Images" not in index
+    assert index["karte.jpg"] == ["100 Inbox/Images/karte.jpg"]
+
+
+def test_build_inbox_index_indexes_md_files_too():
+    """The index describes the inbox as-is — filtering .md notes out is the
+    resolver's job (T1.3), not this function's."""
+    index = build_inbox_index([{"path": "100 Inbox/Places/Dresden.md", "type": "file"}])
+    assert index == {"Dresden.md": ["100 Inbox/Places/Dresden.md"]}
+
+
+@pytest.mark.parametrize("empty_result", [None, [], {}])
+def test_build_inbox_index_fails_open_on_empty_or_missing_result(empty_result):
+    """PRD Business rule 10: an empty index is a valid state, not an
+    exception. None/[] covers a listDir call that failed or returned nothing;
+    {} covers a caller passing a malformed non-list result."""
+    assert build_inbox_index(empty_result) == {}

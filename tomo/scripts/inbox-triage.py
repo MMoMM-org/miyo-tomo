@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.27.0
+# version: 0.28.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -30,6 +30,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+from lib.attachment_index import build_inbox_index  # noqa: E402
 from lib.audio_constants import AUDIO_EXTS  # noqa: E402
 from lib.doc_frontmatter import body_after_frontmatter  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
@@ -86,6 +87,11 @@ class TriageState:
     pending_approval_hits: list[dict] = field(default_factory=list)
     pending_accept_hits: list[dict] = field(default_factory=list)
     captured_hits: list[dict] = field(default_factory=list)
+    # ADR-1 (spec 031): basename -> [vault-relative paths], from one recursive
+    # listDir of the inbox subtree. Empty when the recursive call fails
+    # (fail-open) or hasn't been requested. Written to
+    # <output_dir>/attachment-index.json for the downstream resolution step.
+    attachment_index: dict = field(default_factory=dict)
     instructions_hits: list[dict] = field(default_factory=list)
     new_sources: list[dict] = field(default_factory=list)
     has_audio: bool = False
@@ -174,6 +180,31 @@ def discover_files(client, inbox_path: str) -> tuple[list[dict], list[dict], lis
         # scale. See docs/tomo/scripts/inbox-triage.md.
 
     return all_files, audio_files, md_files
+
+
+# ---------------------------------------------------------------------------
+# Step 2b: recursive attachment index (ADR-1, spec 031)
+# ---------------------------------------------------------------------------
+
+def build_attachment_index(client, inbox_path: str) -> dict[str, list[str]]:
+    """One recursive listDir of the inbox subtree, indexed by basename.
+
+    A second, independent call from the existing depth=1 partition listing —
+    it does not replace or narrow that call, and its own cost is exactly one
+    call per run regardless of note or embed count. Fail-open: a KadoError
+    degrades to an empty index rather than raising, so the run continues
+    without attachment resolution downstream.
+    """
+    try:
+        listing = client.list_dir(inbox_path)
+    except KadoError as exc:
+        print(
+            f"[inbox-triage] WARNING: recursive list_dir failed for "
+            f"{inbox_path!r}: {exc} — attachment index empty, run continues",
+            file=sys.stderr,
+        )
+        return {}
+    return build_inbox_index(listing)
 
 
 # ---------------------------------------------------------------------------
@@ -864,6 +895,23 @@ def discover(
     # Step 2: discover files
     all_files, audio_files, md_files = discover_files(client, inbox_path)
 
+    # Step 2b: recursive attachment index (ADR-1) — ONE additional listDir,
+    # independent of note/embed count (CON-4). Persisted as a sibling
+    # artifact rather than folded into routing-plan.json (schema-locked,
+    # additionalProperties:false) so the downstream resolution step (a
+    # separate, later process) can consume it without its own recursive call.
+    attachment_index = build_attachment_index(client, inbox_path)
+    try:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        (Path(output_dir) / "attachment-index.json").write_text(
+            json.dumps(attachment_index), encoding="utf-8"
+        )
+    except OSError as exc:
+        print(
+            f"[inbox-triage] WARNING: could not write attachment-index.json: {exc}",
+            file=sys.stderr,
+        )
+
     # Step 3: query frontmatter
     (pending_approval_hits, pending_accept_hits, captured_hits,
      instructions_hits, approved_hits, accepted_hits, rendered_hits) = (
@@ -943,6 +991,7 @@ def discover(
         pending_accept_hits=pending_accept_hits,
         captured_hits=captured_hits,
         instructions_hits=instructions_hits,
+        attachment_index=attachment_index,
         new_sources=new_sources,
         has_audio=has_audio,
         approved_suggestions=approved_suggestions,

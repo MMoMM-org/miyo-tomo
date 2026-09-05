@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.34.0
+# version: 1.35.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1286,6 +1286,58 @@ def load_asset_folder(shared_ctx_path: Path) -> str:
     return folder.strip() if isinstance(folder, str) and folder.strip() else DEFAULT_ASSET_FOLDER
 
 
+def load_resolved_attachments(path: "Path | None") -> dict:
+    """Read the deterministic attachment-resolution map, keyed by source path.
+
+    Fail-open: a missing file, an unreadable/malformed file, or a file whose
+    top level isn't a JSON object all yield {} rather than raising. Every
+    item is then merged against an empty map, so it gets attachments: [] and
+    unresolved_embeds: [] and the run continues (matches load_field_sections
+    and load_asset_folder).
+    """
+    if not path or not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def merge_resolved_attachments(result: dict, resolved: "dict | None") -> dict:
+    """Merge the deterministic attachment-resolution map onto one item-result.
+
+    Looked up by the item's own `path` (vault-relative, e.g.
+    "100 Inbox/note.md"). The analyst never produces `attachments` or
+    `unresolved_embeds` (ADR-2 keeps embed extraction out of the analyst) —
+    if either is somehow already present on an action, the resolved map's
+    value overrides it rather than merging, since the map is the
+    deterministic source and the analyst was never supposed to emit these.
+    An item absent from the map, or an empty/None map, yields [] for both.
+
+    Applies to every create_atomic_note action on the result: N atomics from
+    one source (F-41) share the same source-level attachment list, since the
+    embeds live in the one shared source body. Mutates and returns `result`.
+    """
+    entry = (resolved or {}).get(result.get("path")) or {}
+    attachments = entry.get("attachments") or []
+    unresolved_embeds = entry.get("unresolved_embeds") or []
+    for action in result.get("actions", []):
+        if action.get("kind") != "create_atomic_note":
+            continue
+        if action.get("attachments") or action.get("unresolved_embeds"):
+            print(
+                f"[suggestions-reducer] WARNING: {result.get('stem')} action "
+                f"already carried attachments/unresolved_embeds from the "
+                f"analyst — overriding with the resolved map (deterministic "
+                f"source wins)",
+                file=sys.stderr,
+            )
+        action["attachments"] = attachments
+        action["unresolved_embeds"] = unresolved_embeds
+    return result
+
+
 def render_attachments_preamble(sections: list[dict], asset_folder: str) -> str:
     """One run-level note on where resolved attachments will be filed.
 
@@ -1529,6 +1581,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--output")
     p.add_argument("--shared-ctx", default="tomo-tmp/shared-ctx.json",
                    help="Path to shared-ctx.json (for field→section lookup)")
+    p.add_argument("--resolved-attachments", default="tomo-tmp/resolved-attachments.json",
+                   help="Path to resolved-attachments.json (inbox-triage's per-item "
+                        "attachment/unresolved-embed resolution, keyed by source path)")
     p.add_argument("--threshold", type=int, default=1,
                    help="Minimum cluster size to emit a Proposed MOC section (default 1 — "
                         "every needs_new_moc surfaces; cluster size shown in heading)")
@@ -1607,6 +1662,7 @@ def main() -> int:
     out_path = Path(args.output)
     load_field_sections(Path(args.shared_ctx))
     asset_folder = load_asset_folder(Path(args.shared_ctx))
+    resolved_attachments = load_resolved_attachments(Path(args.resolved_attachments))
 
     # spec 028 T2.3: resolve the active profile's vault conventions once. The
     # MOC suffix drives title enrichment; the full block is written into the
@@ -1688,6 +1744,7 @@ def main() -> int:
             result = json.loads(result_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
+        result = merge_resolved_attachments(result, resolved_attachments)
 
         section_id = f"S{idx:02d}"
         rendered_actions: list[dict] = []

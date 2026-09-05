@@ -169,6 +169,9 @@ def _write_state(path: Path, stem: str) -> None:
 
 
 def _write_result(items_dir: Path, stem: str, atomic_overrides: dict) -> None:
+    """`attachments` in atomic_overrides is NOT applied to the action here —
+    the analyst never produces this field (ADR-2); `_write_resolved_attachments`
+    is the actual source, consumed via merge_resolved_attachments."""
     items_dir.mkdir(parents=True, exist_ok=True)
     action = {
         "kind": "create_atomic_note",
@@ -182,7 +185,7 @@ def _write_result(items_dir: Path, stem: str, atomic_overrides: dict) -> None:
         "classification": {"category": "100 Philosophy", "confidence": 0.9},
         "alternatives": [],
     }
-    action.update(atomic_overrides)
+    action.update({k: v for k, v in atomic_overrides.items() if k != "attachments"})
     (items_dir / f"{stem}.result.json").write_text(json.dumps({
         "schema_version": "1",
         "stem": stem,
@@ -196,12 +199,22 @@ def _write_result(items_dir: Path, stem: str, atomic_overrides: dict) -> None:
     }, ensure_ascii=False), encoding="utf-8")
 
 
+def _write_resolved_attachments(path: Path, stem: str, attachments: list | None) -> None:
+    """The reducer sources `attachments` from this map, keyed by source path,
+    not from the item-result.json's action (Phase 6 gap fix — the analyst
+    never produces this field; merge_resolved_attachments is authoritative)."""
+    entry = {"attachments": attachments, "unresolved_embeds": []} if attachments is not None else {}
+    path.write_text(json.dumps({f"100 Inbox/{stem}.md": entry} if entry else {}), encoding="utf-8")
+
+
 def _run_reducer(tmp_path: Path, stem: str, atomic_overrides: dict) -> dict:
     items_dir = tmp_path / "items"
     shared_ctx = tmp_path / "shared-ctx.json"
+    resolved_attachments = tmp_path / "resolved-attachments.json"
     state = tmp_path / "state.jsonl"
     output = tmp_path / "doc.json"
     _write_shared_ctx(shared_ctx)
+    _write_resolved_attachments(resolved_attachments, stem, atomic_overrides.get("attachments"))
     _write_state(state, stem)
     _write_result(items_dir, stem, atomic_overrides)
 
@@ -214,6 +227,7 @@ def _run_reducer(tmp_path: Path, stem: str, atomic_overrides: dict) -> dict:
             "--profile", "miyo",
             "--shared-ctx", str(shared_ctx),
             "--output", str(output),
+            "--resolved-attachments", str(resolved_attachments),
             "--no-kado",
         ],
         capture_output=True, text=True, check=False, env=_ENV,

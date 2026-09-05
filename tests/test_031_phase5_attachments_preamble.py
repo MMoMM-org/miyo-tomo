@@ -282,6 +282,9 @@ def _write_state(path: Path, stem: str) -> None:
 
 
 def _write_result(items_dir: Path, stem: str, attachments: list | None) -> None:
+    """`attachments` is unused here — the analyst never produces this field
+    (ADR-2); `_write_resolved_attachments` is the actual source. Kept as a
+    parameter only so callers stay symmetric across both fixture writers."""
     items_dir.mkdir(parents=True, exist_ok=True)
     action = {
         "kind": "create_atomic_note",
@@ -295,8 +298,6 @@ def _write_result(items_dir: Path, stem: str, attachments: list | None) -> None:
         "classification": {"category": "Travel", "confidence": 0.9},
         "alternatives": [],
     }
-    if attachments is not None:
-        action["attachments"] = attachments
     (items_dir / f"{stem}.result.json").write_text(json.dumps({
         "schema_version": "1", "stem": stem, "path": f"100 Inbox/{stem}.md",
         "type": "fleeting_note", "type_confidence": 0.9, "force_atomic": False,
@@ -314,12 +315,24 @@ def _write_hand_written_shared_ctx(path: Path, asset_folder: str) -> None:
     }), encoding="utf-8")
 
 
+def _write_resolved_attachments(path: Path, stem: str, attachments: list | None) -> None:
+    """The reducer now sources `attachments` from this map, keyed by source
+    path, not from the item-result.json's action (Phase 6 gap fix — the
+    analyst never produces this field; merge_resolved_attachments is
+    authoritative). An empty map here is a legitimate "nothing resolved"
+    case, matching a real run with no attachment-bearing embeds."""
+    entry = {} if attachments is None else {"attachments": attachments, "unresolved_embeds": []}
+    path.write_text(json.dumps({f"100 Inbox/{stem}.md": entry} if entry else {}), encoding="utf-8")
+
+
 def _run_reducer(tmp_path: Path, stem: str, attachments: list | None, asset_folder: str) -> dict:
     items_dir = tmp_path / "items"
     shared_ctx = tmp_path / "shared-ctx.json"
+    resolved_attachments = tmp_path / "resolved-attachments.json"
     state = tmp_path / "state.jsonl"
     output = tmp_path / "doc.json"
     _write_hand_written_shared_ctx(shared_ctx, asset_folder)
+    _write_resolved_attachments(resolved_attachments, stem, attachments)
     _write_state(state, stem)
     _write_result(items_dir, stem, attachments)
 
@@ -329,6 +342,7 @@ def _run_reducer(tmp_path: Path, stem: str, attachments: list | None, asset_fold
             "--state", str(state), "--items-dir", str(items_dir),
             "--run-id", "test-p5b", "--profile", "miyo",
             "--shared-ctx", str(shared_ctx), "--output", str(output),
+            "--resolved-attachments", str(resolved_attachments),
             "--no-kado",
         ],
         capture_output=True, text=True, check=False, env=_ENV,

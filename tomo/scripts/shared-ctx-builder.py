@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # shared-ctx-builder.py — Phase A: build distilled shared context for fan-out.
-# version: 1.9.0
+# version: 1.9.1
 """
 Build the per-run shared-context JSON consumed by Phase-B subagents during
 /inbox fan-out. The output distills the discovery cache, profile, and user
@@ -570,11 +570,17 @@ def build_asset_folder(vault_cfg: dict) -> str:
     """Return the configured attachment-filing destination (concepts.asset).
 
     Falls back to DEFAULT_ASSET_FOLDER when the key is absent or blank so
-    the field is always a usable, non-empty path — never None.
+    the field is always a usable, non-empty path — never None. Normalised
+    with the same rstrip("/") + "/" shape `_asset_dest_join`
+    (lib/render_actions.py) uses when it actually places a file, so the
+    preamble line always names the exact string the destination is built
+    from — never a value differing only by a trailing slash.
     """
     raw = (vault_cfg.get("concepts") or {}).get("asset")
     folder = (raw or "").strip()
-    return folder if folder else DEFAULT_ASSET_FOLDER
+    if not folder:
+        return DEFAULT_ASSET_FOLDER
+    return folder.rstrip("/") + "/"
 
 
 def build_daily_notes(vault_cfg: dict) -> dict | None:

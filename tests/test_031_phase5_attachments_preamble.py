@@ -90,6 +90,21 @@ def test_build_asset_folder_defaults_when_value_is_blank():
     assert scb.build_asset_folder(vault_cfg) == DEFAULT_ASSET_FOLDER
 
 
+def test_build_asset_folder_normalises_missing_trailing_slash():
+    """A configured value with no trailing slash must be normalised the same
+    way `_asset_dest_join` (render_actions.py) normalises it when it actually
+    places a file — otherwise the preamble tells the user one folder while
+    the destination is built from a different (slash-appended) string.
+    Code-quality review advisory, spec 031 Phase 5."""
+    vault_cfg = {"concepts": {"asset": "Atlas/Assets"}}
+    assert scb.build_asset_folder(vault_cfg) == "Atlas/Assets/"
+
+
+def test_build_asset_folder_normalises_doubled_trailing_slash():
+    vault_cfg = {"concepts": {"asset": "Atlas/Assets//"}}
+    assert scb.build_asset_folder(vault_cfg) == "Atlas/Assets/"
+
+
 # ---------------------------------------------------------------------------
 # Producer end-to-end — main() writes asset_folder to shared-ctx.json
 # ---------------------------------------------------------------------------
@@ -125,6 +140,14 @@ def _run_shared_ctx_main(tmp_path: Path, vault_cfg: dict) -> dict:
 def test_main_writes_configured_asset_folder(tmp_path):
     ctx = _run_shared_ctx_main(tmp_path, {"profile": "miyo", "concepts": {"asset": CUSTOM_FOLDER}})
     assert ctx["asset_folder"] == CUSTOM_FOLDER
+
+
+def test_main_writes_normalised_asset_folder_when_config_omits_trailing_slash(tmp_path):
+    """End-to-end: a vault-config value without a trailing slash reaches
+    shared-ctx.json already normalised, matching what _asset_dest_join
+    will build the actual destination from."""
+    ctx = _run_shared_ctx_main(tmp_path, {"profile": "miyo", "concepts": {"asset": "Atlas/Assets"}})
+    assert ctx["asset_folder"] == "Atlas/Assets/"
 
 
 def test_main_writes_default_asset_folder_when_unconfigured(tmp_path):

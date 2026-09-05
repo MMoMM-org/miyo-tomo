@@ -64,6 +64,7 @@
                     "location": {"type": "string"},
                     "tags": {"type": "array", "items": {"type": "string"}},
                     "audio_peer": {"type": ["string", "null"]},
+                    "attachments": {"type": "array", "items": {"type": "string"}, "description": "Resolved vault-relative attachment paths (spec 031). Optional; absent or empty means none."},
                     "worthiness": {"type": ["number", "null"]},
                     "suppressed": {"type": "boolean", "description": "Sub-worthiness atomic rendered as a light 'kept in inbox' block (#88)."},
                     "force_atomic": {"type": "boolean", "description": "Default state of the Force Atomic Note opt-in."}

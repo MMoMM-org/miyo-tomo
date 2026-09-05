@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.30.0
+# version: 0.31.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -244,6 +244,11 @@ def resolve_inbox_attachments(
     unresolved_embeds default to empty, the run continues without attachment
     resolution.
 
+    Every unresolved or ambiguous embed is also reported to stderr with the
+    `[triage]` prefix (T5.3) — naming the source note and the target (plus
+    the candidate count when ambiguous) — so a silent skip is impossible. A
+    fully-resolving run emits no such lines. Neither ever produces an action.
+
     Returns {note_path: {"attachments": [str, ...], "unresolved_embeds":
     [dict, ...]}} — only for notes carrying at least one file-embed target;
     a note with none is simply absent (callers default to empty lists).
@@ -283,12 +288,22 @@ def resolve_inbox_attachments(
             if ref.status == "resolved":
                 attachments.append(ref.resolved_path)
             elif ref.status == "ambiguous":
+                count = _candidate_count(ref.embed_target, index)
                 unresolved_embeds.append({
                     "embed_target": ref.embed_target,
                     "status": "ambiguous",
-                    "candidate_count": _candidate_count(ref.embed_target, index),
+                    "candidate_count": count,
                 })
+                print(
+                    f"[triage] {note_path}: ambiguous embed target "
+                    f"{ref.embed_target!r} — {count} candidates",
+                    file=sys.stderr,
+                )
             else:  # unresolved
+                print(
+                    f"[triage] {note_path}: unresolved embed target {ref.embed_target!r}",
+                    file=sys.stderr,
+                )
                 unresolved_embeds.append({
                     "embed_target": ref.embed_target,
                     "status": "unresolved",
@@ -1013,8 +1028,23 @@ def discover(
     # supplies embed targets: inbox-triage never has a note body to run a
     # regex against (only the analyst subagent reads bodies, invisible to
     # this script), and the metadataCache has no fenced-code-block blind
-    # spot. One call, independent of note/embed count (CON-4).
+    # spot. One call, independent of note/embed count (CON-4). Persisted to
+    # <output_dir>/resolved-attachments.json, keyed by source path — the
+    # reducer runs as a separate, later process (after the analyst) and has
+    # no other way to receive this; routing-plan.json's fresh_sources[] is
+    # the wrong join point (the reducer never reads it, and fresh_sources'
+    # membership tracks newness, not attachment presence).
     attachment_resolutions = resolve_inbox_attachments(client, inbox_path, attachment_index)
+    try:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        (Path(output_dir) / "resolved-attachments.json").write_text(
+            json.dumps(attachment_resolutions), encoding="utf-8"
+        )
+    except OSError as exc:
+        print(
+            f"[inbox-triage] WARNING: could not write resolved-attachments.json: {exc}",
+            file=sys.stderr,
+        )
 
     # Step 3: query frontmatter
     (pending_approval_hits, pending_accept_hits, captured_hits,
@@ -1041,14 +1071,6 @@ def discover(
         new_sources = new_sources + [
             h for h in captured_hits if h.get("path") and h["path"] not in seen
         ]
-
-    # Attach each source's resolved attachments (step 2c) — absent from
-    # attachment_resolutions simply means no file-embed targets were found,
-    # not that resolution failed; a source always gets both keys.
-    for source in new_sources:
-        resolution = attachment_resolutions.get(source.get("path"), {})
-        source["attachments"] = resolution.get("attachments", [])
-        source["unresolved_embeds"] = resolution.get("unresolved_embeds", [])
 
     # Step 4b: resolve new sources against the tag-handler registry (T2.1).
     # AC-5: load_registry returns [] for a missing/empty dir → short-circuit
@@ -1433,12 +1455,7 @@ def build_routing_plan(
         ).isoformat().replace("+00:00", "Z"),
         "inbox_path": state.inbox_path,
         "fresh_sources": [
-            {
-                "path": s["path"],
-                "modified": str(s.get("modified", "")),
-                "attachments": s.get("attachments", []),
-                "unresolved_embeds": s.get("unresolved_embeds", []),
-            }
+            {"path": s["path"], "modified": str(s.get("modified", ""))}
             for s in dispatch_sources
         ],
         "has_audio": state.has_audio,

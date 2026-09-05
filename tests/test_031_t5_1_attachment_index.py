@@ -26,9 +26,20 @@ Instead `resolve_inbox_attachments` uses `list_notes(fields=["links"])` —
 Kado's own metadataCache, authoritative on what an embed is (no
 fenced-code-block false positives, unlike the regex) — and resolves each
 `kind=='embed'` file target against the SAME recursive index via Phase 1's
-`resolve_attachments`. `attachment-index.json` is dropped: the index is now
-purely internal, consumed by resolution within the same `discover()` call —
-no separate process ever reads it from disk.
+`resolve_attachments`. `attachment-index.json` is dropped: the basename
+index is purely internal now, consumed by resolution within the same
+`discover()` call.
+
+The resolution result is persisted to `<output_dir>/resolved-attachments.json`
+(keyed by source path) — NOT joined into `routing-plan.json`'s
+`fresh_sources[]`. The reducer (`suggestions-reducer.py`) never reads the
+routing plan (it takes `--state`/`--items-dir`/`--shared-ctx`) and runs as a
+separate, later process after the per-item analysts, so nothing held on
+`fresh_sources[]` would ever reach it; `fresh_sources`' membership also
+tracks newness, not attachment presence, so it is the wrong population
+regardless. T5.3's `[triage]`-prefixed stderr reporting for unresolved/
+ambiguous embeds lives inside `resolve_inbox_attachments` itself, since
+resolution happens there.
 """
 from __future__ import annotations
 
@@ -344,61 +355,63 @@ def test_list_notes_requests_links_field_and_inbox_path(tmp_path):
     assert calls[0]["fields"] == ["links"]
 
 
-def test_resolved_attachment_attaches_to_new_source(tmp_path):
+# ---------------------------------------------------------------------------
+# resolve_inbox_attachments — unit-level (no discover() plumbing needed)
+# ---------------------------------------------------------------------------
+
+def test_resolved_attachment_keyed_by_source_path(tmp_path):
     trip_path = INBOX_PATH + "trip.md"
     attachment_path = INBOX_PATH + "Images/karte.jpg"
     mod = _load_module()
     client = _FakeClient(
-        depth1_items=[_listdir_item(trip_path)],
-        recursive_items=[_listdir_item(trip_path), _listdir_item(attachment_path)],
         notes=[_note_entry(trip_path, [_note_link("karte.jpg", "embed")])],
     )
+    index = {"karte.jpg": [attachment_path]}
 
-    state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+    result = mod.resolve_inbox_attachments(client, INBOX_PATH, index)
 
-    source = next(s for s in state.new_sources if s["path"] == trip_path)
-    assert source["attachments"] == [attachment_path]
-    assert source["unresolved_embeds"] == []
+    assert result[trip_path]["attachments"] == [attachment_path]
+    assert result[trip_path]["unresolved_embeds"] == []
 
 
-def test_ambiguous_embed_reported_with_candidate_count(tmp_path):
+def test_ambiguous_embed_reported_with_candidate_count(tmp_path, capsys):
     trip_path = INBOX_PATH + "trip.md"
     mod = _load_module()
     client = _FakeClient(
-        depth1_items=[_listdir_item(trip_path)],
-        recursive_items=[
-            _listdir_item(trip_path),
-            _listdir_item(INBOX_PATH + "Images/karte.jpg"),
-            _listdir_item(INBOX_PATH + "Scans/karte.jpg"),
-        ],
         notes=[_note_entry(trip_path, [_note_link("karte.jpg", "embed")])],
     )
+    index = {"karte.jpg": [INBOX_PATH + "Images/karte.jpg", INBOX_PATH + "Scans/karte.jpg"]}
 
-    state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+    result = mod.resolve_inbox_attachments(client, INBOX_PATH, index)
 
-    source = next(s for s in state.new_sources if s["path"] == trip_path)
-    assert source["attachments"] == []
-    assert source["unresolved_embeds"] == [
+    assert result[trip_path]["attachments"] == []
+    assert result[trip_path]["unresolved_embeds"] == [
         {"embed_target": "karte.jpg", "status": "ambiguous", "candidate_count": 2},
     ]
+    err = capsys.readouterr().err
+    assert "[triage]" in err
+    assert trip_path in err
+    assert "karte.jpg" in err
+    assert "2 candidates" in err
 
 
-def test_unresolved_embed_reported_without_candidate_count(tmp_path):
+def test_unresolved_embed_reported_without_candidate_count(tmp_path, capsys):
     trip_path = INBOX_PATH + "trip.md"
     mod = _load_module()
     client = _FakeClient(
-        depth1_items=[_listdir_item(trip_path)],
-        recursive_items=[_listdir_item(trip_path)],  # karte.jpg is NOT in the index
         notes=[_note_entry(trip_path, [_note_link("karte.jpg", "embed")])],
     )
 
-    state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+    result = mod.resolve_inbox_attachments(client, INBOX_PATH, index={})  # karte.jpg not indexed
 
-    source = next(s for s in state.new_sources if s["path"] == trip_path)
-    assert source["attachments"] == []
-    assert source["unresolved_embeds"] == [
+    assert result[trip_path]["attachments"] == []
+    assert result[trip_path]["unresolved_embeds"] == [
         {"embed_target": "karte.jpg", "status": "unresolved"},
     ]
+    err = capsys.readouterr().err
+    assert "[triage]" in err
+    assert trip_path in err
+    assert "karte.jpg" in err
 
 
 def test_link_kind_is_never_treated_as_an_embed(tmp_path):
@@ -413,16 +426,13 @@ def test_link_kind_is_never_treated_as_an_embed(tmp_path):
     attachment_path = INBOX_PATH + "Images/karte.jpg"
     mod = _load_module()
     client = _FakeClient(
-        depth1_items=[_listdir_item(trip_path)],
-        recursive_items=[_listdir_item(trip_path), _listdir_item(attachment_path)],
         notes=[_note_entry(trip_path, [_note_link("karte.jpg", "link")])],
     )
+    index = {"karte.jpg": [attachment_path]}
 
-    state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+    result = mod.resolve_inbox_attachments(client, INBOX_PATH, index)
 
-    source = next(s for s in state.new_sources if s["path"] == trip_path)
-    assert source["attachments"] == []
-    assert source["unresolved_embeds"] == []
+    assert trip_path not in result  # no embed targets at all -> note absent
 
 
 def test_note_embed_excluded_via_is_attachment_target(tmp_path):
@@ -432,37 +442,29 @@ def test_note_embed_excluded_via_is_attachment_target(tmp_path):
     trip_path = INBOX_PATH + "trip.md"
     mod = _load_module()
     client = _FakeClient(
-        depth1_items=[_listdir_item(trip_path)],
-        recursive_items=[_listdir_item(trip_path), _listdir_item(INBOX_PATH + "Other Note.md")],
         notes=[_note_entry(trip_path, [_note_link("Other Note.md", "embed")])],
     )
+    index = {"Other Note.md": [INBOX_PATH + "Other Note.md"]}
 
-    state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+    result = mod.resolve_inbox_attachments(client, INBOX_PATH, index)
 
-    source = next(s for s in state.new_sources if s["path"] == trip_path)
-    assert source["attachments"] == []
-    assert source["unresolved_embeds"] == []
+    assert trip_path not in result
 
 
-def test_note_with_no_links_gets_empty_lists(tmp_path):
+def test_note_with_no_links_gets_no_entry(tmp_path):
     trip_path = INBOX_PATH + "trip.md"
     mod = _load_module()
-    client = _FakeClient(
-        depth1_items=[_listdir_item(trip_path)],
-        notes=[_note_entry(trip_path)],  # no "links" key at all
-    )
+    client = _FakeClient(notes=[_note_entry(trip_path)])  # no "links" key at all
 
-    state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+    result = mod.resolve_inbox_attachments(client, INBOX_PATH, index={})
 
-    source = next(s for s in state.new_sources if s["path"] == trip_path)
-    assert source["attachments"] == []
-    assert source["unresolved_embeds"] == []
+    assert trip_path not in result
 
 
 def test_list_notes_kado_error_fails_open(tmp_path):
-    """A KadoError on list_notes degrades every source's attachments to
-    empty rather than raising — the run continues, notes still file
-    normally (PRD business rule 10)."""
+    """A KadoError on list_notes yields {} rather than raising — every
+    source's attachments/unresolved_embeds default to empty downstream, and
+    the run continues (PRD business rule 10)."""
     from lib.kado_client import KadoError
 
     trip_path = INBOX_PATH + "trip.md"
@@ -475,15 +477,31 @@ def test_list_notes_kado_error_fails_open(tmp_path):
 
     state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
 
-    source = next(s for s in state.new_sources if s["path"] == trip_path)
-    assert source["attachments"] == []
-    assert source["unresolved_embeds"] == []
     assert [f["path"] for f in state.md_files] == [trip_path]  # run continued normally
 
 
-def test_resolved_attachments_reach_routing_plan_fresh_sources(tmp_path):
-    """The whole point of resolution: the data must actually reach the
-    artifact the analyst is dispatched from, not just live on TriageState."""
+def test_fully_resolving_run_emits_no_triage_lines(capsys):
+    """A fully-resolving run emits no [triage] unresolved/ambiguous lines."""
+    trip_path = INBOX_PATH + "trip.md"
+    attachment_path = INBOX_PATH + "Images/karte.jpg"
+    mod = _load_module()
+    client = _FakeClient(
+        notes=[_note_entry(trip_path, [_note_link("karte.jpg", "embed")])],
+    )
+    index = {"karte.jpg": [attachment_path]}
+
+    mod.resolve_inbox_attachments(client, INBOX_PATH, index)
+
+    err = capsys.readouterr().err
+    assert "[triage]" not in err
+
+
+# ---------------------------------------------------------------------------
+# Persistence: resolved-attachments.json — the cross-process hand-off to the
+# reducer (a separate, later process that never reads routing-plan.json)
+# ---------------------------------------------------------------------------
+
+def test_resolved_attachments_persisted_to_json(tmp_path):
     import json as _json
 
     trip_path = INBOX_PATH + "trip.md"
@@ -493,8 +511,26 @@ def test_resolved_attachments_reach_routing_plan_fresh_sources(tmp_path):
         depth1_items=[_listdir_item(trip_path)],
         recursive_items=[_listdir_item(trip_path), _listdir_item(attachment_path)],
         notes=[_note_entry(trip_path, [_note_link("karte.jpg", "embed")])],
-        # main() also issues the 7 byFrontmatter queries — none configured here
-        # return anything, which is fine (empty buckets, trip.md stays fresh).
+    )
+
+    mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+
+    on_disk = _json.loads((tmp_path / "resolved-attachments.json").read_text(encoding="utf-8"))
+    assert on_disk[trip_path]["attachments"] == [attachment_path]
+    assert on_disk[trip_path]["unresolved_embeds"] == []
+
+
+def test_fresh_sources_do_not_carry_attachment_fields(tmp_path):
+    """routing-plan.json's fresh_sources[] is the wrong join point (the
+    reducer never reads it, and its membership tracks newness, not
+    attachment presence) — confirm no attachment fields leak in there."""
+    import json as _json
+
+    trip_path = INBOX_PATH + "trip.md"
+    mod = _load_module()
+    client = _FakeClient(
+        depth1_items=[_listdir_item(trip_path)],
+        notes=[_note_entry(trip_path, [_note_link("karte.jpg", "embed")])],
     )
 
     rc = mod.main(
@@ -505,5 +541,4 @@ def test_resolved_attachments_reach_routing_plan_fresh_sources(tmp_path):
 
     plan = _json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
     entry = next(s for s in plan["fresh_sources"] if s["path"] == trip_path)
-    assert entry["attachments"] == [attachment_path]
-    assert entry["unresolved_embeds"] == []
+    assert set(entry.keys()) == {"path", "modified"}

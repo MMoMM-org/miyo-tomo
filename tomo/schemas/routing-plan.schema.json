@@ -26,26 +26,7 @@
         "additionalProperties": false,
         "properties": {
           "path": {"type": "string"},
-          "modified": {"type": "string"},
-          "attachments": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Resolved vault-relative paths of embedded attachment files (spec 031, ADR-1/ADR-2). Optional; absent or empty means no resolvable attachment embeds."
-          },
-          "unresolved_embeds": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["embed_target", "status"],
-              "additionalProperties": false,
-              "properties": {
-                "embed_target": {"type": "string", "description": "The embed target as written in the note, e.g. 'karte.jpg' or 'Images/karte.jpg'."},
-                "status": {"type": "string", "enum": ["unresolved", "ambiguous"]},
-                "candidate_count": {"type": "integer", "minimum": 0, "description": "Number of index hits when status is 'ambiguous'."}
-              }
-            },
-            "description": "Embed targets that could not be resolved to exactly one attachment path. Optional; absent or empty means every embed resolved cleanly."
-          }
+          "modified": {"type": "string"}
         }
       },
       "description": "New .md files not yet classified"

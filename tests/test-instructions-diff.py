@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import re
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -587,6 +588,43 @@ def test_move_asset_contributes_n_to_total():
     print("[PASS] move_asset: N actions contribute N to TOTAL")
 
 
+# Parses the two printed values the audit's own output claims should agree
+# — the header's action_count=N and the TOTAL row's actual column — out of
+# the REAL stdout run_diff produces. Unlike the two tests above (which
+# re-derive the sum locally via summarize_actual + ACTION_ORDER), this is
+# the canary for the whole blind-spot class: it fails on a bug in run_diff's
+# own summation OR on a broken f-string (wrong variable, wrong column),
+# neither of which the internal-invariant tests above can see.
+_ACTION_COUNT_RE = re.compile(r"action_count=(\d+)")
+_TOTAL_ROW_RE = re.compile(r"TOTAL\s+\d+\s+(\d+)\s+\[(?:OK|DIFF)\]")
+
+
+def test_move_asset_rendered_action_count_matches_rendered_total():
+    """The printed action_count header and the printed TOTAL row's actual
+    column must agree for a set carrying move_asset actions — asserted on
+    the audit's real stdout, not on a value the test recomputes itself
+    [ref: PRD/Risks; row 1]."""
+    n = 4
+    actions = [_move_asset_action(str(i)) for i in range(n)]
+    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": n, "actions": actions}
+    _rc, _obs, out = _run(parsed, instrs)
+
+    header_match = _ACTION_COUNT_RE.search(out)
+    total_match = _TOTAL_ROW_RE.search(out)
+    _must(header_match is not None, f"action_count header not found in output:\n{out}")
+    _must(total_match is not None, f"TOTAL row not found in output:\n{out}")
+
+    header_count = int(header_match.group(1))
+    total_actual = int(total_match.group(1))
+    _must(
+        header_count == total_actual,
+        f"printed action_count={header_count} but printed TOTAL actual={total_actual}:\n{out}",
+    )
+    print("[PASS] rendered action_count header matches rendered TOTAL actual column")
+
+
 def test_move_asset_appears_in_printed_table():
     """move_asset must get its own row in the printed count table via the
     full run_diff pipeline, not be silently merged or omitted."""
@@ -775,6 +813,7 @@ def main() -> int:
     test_garden_diff_never_drops_unregistered_kind()
     test_move_asset_action_count_reconciles_with_total()
     test_move_asset_contributes_n_to_total()
+    test_move_asset_rendered_action_count_matches_rendered_total()
     test_move_asset_appears_in_printed_table()
     # test_move_asset_matched_counts_reconcile, test_move_asset_undercoverage_hard_fails,
     # and test_move_asset_overcoverage_hard_fails require the pytest `monkeypatch`

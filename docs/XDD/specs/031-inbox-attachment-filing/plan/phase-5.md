@@ -47,6 +47,13 @@ Connects detection to the run and makes the cost claim measurable.
      - [ ] Only inbox paths can be resolved `[ref: PRD/Business rule 3]`
      - [ ] The `#93` partition is unchanged `[ref: SDD/Implementation Boundaries; Must Not Touch]`
 
+  **Note — what shipped (Phase 5 is closed; the code is the authority here):** extraction is one
+  `list_notes(inbox_path, fields=["links"])` per run, filtering `kind == 'embed'` (ADR-2). Resolution
+  happens in `inbox-triage.py` and is persisted to `tomo-tmp/resolved-attachments.json`, keyed by
+  source path. `suggestions-reducer.py` merges that map onto each item as it loads
+  `items/<stem>.result.json`. `inbox-triage` and `suggestions-reducer` are separate processes, which
+  is why this is a file rather than in-memory state.
+
 - [x] **T5.2 Correct the Kado call counter** `[activity: backend-logic]` `[parallel: true]`
 
   1. **Prime**: Read `_count_kado_calls` at `:1521-1533`. Its docstring says *"1 listDir + 7 byFrontmatter + N body reads"* but it returns `5 + body_reads`, and it ignores the per-item reads at `:242`, `:315` and `:583`.

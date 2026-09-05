@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.35.1
+# version: 1.36.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -481,6 +481,10 @@ def render_suppressed_atomic(action: dict, stem: str) -> str:
     It reports the worthiness (so the user sees Tomo's judgement) and offers
     Force Atomic Note as the opt-in escape hatch; otherwise the item stays in
     the inbox untouched.
+
+    Carries the `**Unresolved embeds:**` warning but NOT `**Attachments:**` —
+    see the comment at the emission site for why the two are treated
+    differently here.
     """
     title = (action.get("suggested_title") or "").strip() or stem
     worthiness = action.get("atomic_note_worthiness")
@@ -492,8 +496,20 @@ def render_suppressed_atomic(action: dict, stem: str) -> str:
     ]
     if summary:
         lines.append(f"**Summary:** {summary}")
+    lines.append(
+        f"**Atomic-worthiness:** {pct} — below the 0.5 threshold; kept in inbox."
+    )
+    # A resolved attachment is deliberately NOT listed here — the item stays in
+    # the inbox, so no move_asset is emitted and naming it would promise an
+    # action that never happens. An unresolved or ambiguous embed is different:
+    # it is a defect in the vault the user must resolve by hand, true whether
+    # or not Tomo files the note.
+    unresolved_embeds = action.get("unresolved_embeds") or []
+    if unresolved_embeds:
+        lines.append(
+            f"**Unresolved embeds:** {_unresolved_embeds_text(unresolved_embeds)}"
+        )
     lines += [
-        f"**Atomic-worthiness:** {pct} — below the 0.5 threshold; kept in inbox.",
         "",
         "Tomo did not promote this to an atomic note. Tick **Force Atomic Note** "
         "to create one anyway; otherwise it stays in the inbox.",

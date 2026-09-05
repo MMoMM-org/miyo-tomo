@@ -502,3 +502,61 @@ JSON case (a syntactically valid file that parses to e.g. a list) is checked
 separately from the JSON-decode/OSError case, because a `json.loads` success with
 the wrong top-level shape needs its own WARNING naming the actual type found — it is
 not caught by the `except` clause at all.
+
+## Suppressed items carry the embed warning but not the attachment list (spec 031 T6.5, v1.36.0)
+
+WHY `render_suppressed_atomic` emits `**Unresolved embeds:**` but deliberately
+omits `**Attachments:**`, when the full renderer (`render_create_atomic_note`)
+emits both: the two lines answer different questions, and only one of them is
+still true for an item that stays in the inbox.
+
+A suppressed item is not promoted. `suggestion-parser` never puts it in
+`confirmed_items`, so it never reaches the manifest, so
+`_build_move_asset_actions` never sees its attachments and Pass 2 emits no
+`move_asset`. Rendering `**Attachments:** \`100 Inbox/Images/x.jpg\`` there
+would name a file and imply a filing action that the pipeline has already
+decided not to take — the user would look for the image in the asset folder
+after applying and find it still in the inbox. That is a promise the render
+layer is not entitled to make.
+
+An unresolved or ambiguous embed is not a statement about what Tomo will do.
+It is a statement about the vault: two files share a basename, or an embed
+points at nothing. The user has to fix that by hand, and it is equally true
+whether or not the note is ever promoted. Dropping it costs the user a real
+signal.
+
+This gap was found by spec 031's T6.5 live validation, not by the offline
+suite: three of the four test fixtures scored below the 0.5 worthiness
+threshold and took this renderer, so `Dresden.md`'s
+`ambiguous — 2 candidates` was resolved correctly, written to
+`tomo-tmp/resolved-attachments.json`, and then silently dropped at render.
+Spec 031 never mentions suppressed items anywhere — the feature was designed
+against the promoted path, and `render_suppressed_atomic` (#88) predates it.
+The interaction was unspecified rather than mis-implemented, which is why no
+offline test caught it: nothing had ever asserted what the second renderer
+should do with these fields.
+
+Note that the merge itself needed no change. `merge_resolved_attachments`
+already applies to *every* `create_atomic_note` action regardless of
+suppression, so the data was present on the action all along — the fix is
+purely in the render layer.
+
+## The ADR-2 analyst override is load-bearing, not defensive theatre (spec 031 T6.5)
+
+WHY `merge_resolved_attachments` overrides rather than merges when an action
+already carries `attachments` or `unresolved_embeds`, and warns to stderr:
+ADR-2 says the analyst never produces these fields, so the branch reads like
+a paranoid guard against something that cannot happen. It happened on the
+first live run.
+
+`Bautzen.result.json` from spec 031's live run 2 came back from the analyst
+carrying `unresolved_embeds: [{"embed_target": "bautzen-turm.jpg", "status":
+"unresolved"}]` — a field it was never asked for, with a verdict that was
+wrong (the file resolves cleanly to `100 Inbox/Images/bautzen-turm.jpg`). The
+override replaced it with the deterministic map's answer and the run produced
+the correct single attachment. Had this branch merged instead of overridden,
+or trusted the action's existing value, the user would have seen a spurious
+"unresolved" warning for a file that was sitting right there.
+
+Keep the override, and keep the stderr warning: it is the only signal that
+the analyst is emitting fields ADR-2 says it must not.

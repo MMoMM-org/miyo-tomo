@@ -120,6 +120,20 @@
           "items": {"type": "string"},
           "description": "Resolved vault-relative paths of embedded attachment files (e.g. '100 Inbox/Images/karte.jpg'). Optional; absent or empty means no resolvable attachment embeds."
         },
+        "unresolved_embeds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["embed_target", "status"],
+            "additionalProperties": false,
+            "properties": {
+              "embed_target": {"type": "string", "description": "The embed target as written in the note body, e.g. 'karte.jpg' or 'Images/karte.jpg'."},
+              "status": {"type": "string", "enum": ["unresolved", "ambiguous"]},
+              "candidate_count": {"type": "integer", "minimum": 0, "description": "Number of index hits when status is 'ambiguous'."}
+            }
+          },
+          "description": "Embed targets that could not be resolved to exactly one attachment path. Optional; absent or empty means every embed resolved cleanly."
+        },
         "atomic_note_worthiness": {"type": "number", "minimum": 0, "maximum": 1},
         "alternatives": {
           "type": "array",

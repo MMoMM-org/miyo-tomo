@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.43.1
+# version: 0.44.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -323,6 +323,7 @@ def main() -> int:
         parent_mocs = item.get("parent_mocs", [])
         destination = item.get("destination", "")
         summary = item.get("summary", "")
+        attachments = item.get("attachments", [])
 
         print(f"  [{item_id}] Rendering: {title}", file=sys.stderr)
 
@@ -436,6 +437,7 @@ def main() -> int:
             "destination": destination,
             "parent_moc": parent_moc,
             "parent_mocs": parent_mocs,
+            "attachments": attachments,
             "tags": tags,
             # Carry supporting_items so the create_moc action surfaces it in
             # instructions.json (the link_to_moc expansion already consumes it

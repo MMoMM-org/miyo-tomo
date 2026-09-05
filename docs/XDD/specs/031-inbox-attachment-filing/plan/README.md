@@ -108,10 +108,10 @@ Each phase is defined in a separate file. Tasks follow red-green-refactor: **Pri
 **Sequencing rationale.** Phase 1 is pure and depends on nothing. Phases 2–4 each consume a synthetic manifest and can therefore be built before real data exists — they are independent of one another and of Phase 5. Phase 5 connects Phase 1's output to the pipeline, which is why it comes after the consumers exist rather than before. Phase 6 proves the whole chain end to end.
 
 - [x] [Phase 1: Detection and resolution core](phase-1.md)
-- [ ] [Phase 2: Action emission](phase-2.md)
-- [ ] [Phase 3: Field threading through both review channels](phase-3.md)
-- [ ] [Phase 4: Coverage audit and dry run](phase-4.md)
-- [ ] [Phase 5: Pipeline wiring and cost accounting](phase-5.md)
+- [x] [Phase 2: Action emission](phase-2.md)
+- [x] [Phase 3: Field threading through both review channels](phase-3.md)
+- [x] [Phase 4: Coverage audit and dry run](phase-4.md)
+- [x] [Phase 5: Pipeline wiring and cost accounting](phase-5.md)
 - [ ] [Phase 6: Integration, regression and documentation](phase-6.md)
 
 ### Dependency graph

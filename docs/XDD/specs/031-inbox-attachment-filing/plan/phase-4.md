@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Coverage audit and dry run"
-status: pending
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -31,7 +31,7 @@ phase: 4
 
 Closes the blind spot so that a missing or spurious attachment move fails loudly.
 
-- [ ] **T4.1 Audit registration** `[activity: backend-logic]`
+- [x] **T4.1 Audit registration** `[activity: backend-logic]`
 
   1. **Prime**: Read `run_diff` at `:645-659`. It iterates `ACTION_ORDER`; a kind absent from that list contributes nothing to `total_actual` and never appears in the table.
   2. **Test** (RED) — **write the failing-audit test first, before registration**:
@@ -45,7 +45,7 @@ Closes the blind spot so that a missing or spurious attachment move fails loudly
   4. **Validate**: unit tests pass; `# version:` bumped.
   5. **Success**: an unaudited attachment move is impossible `[ref: PRD/Risks; row 1]`
 
-- [ ] **T4.2 Expectation derivation** `[activity: backend-logic]`
+- [x] **T4.2 Expectation derivation** `[activity: backend-logic]`
 
   1. **Prime**: Read the audio-peer expectation block at `:296-318` — structurally what is needed, semantically inverted. Note the documented asymmetry: that block dedups on the parser-supplied basename while the renderer dedups on the inbox-joined path `[ref: SDD/Technical Debt]`.
   2. **Test** (RED):
@@ -61,7 +61,7 @@ Closes the blind spot so that a missing or spurious attachment move fails loudly
      - [ ] Renderer and audit dedup keys are the same string `[ref: SDD/Complex Logic]`
      - [ ] No attachment can reach a deletion expectation `[ref: ADR-6]`
 
-- [ ] **T4.3 Dry-run support** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T4.3 Dry-run support** `[activity: backend-logic]` `[parallel: true]`
 
   1. **Prime**: Read `instructions-dryrun.py:25-33`. The `REQUIRED` table is a whitelist; an unlisted kind reports unknown type and exits 1.
   2. **Test** (RED):
@@ -71,6 +71,6 @@ Closes the blind spot so that a missing or spurious attachment move fails loudly
   4. **Validate**: unit tests pass; `# version:` bumped.
   5. **Success**: dry run no longer rejects a valid set `[ref: PRD/AC-F5.4]`
 
-- [ ] **T4.4 Phase Validation** `[activity: validate]`
+- [x] **T4.4 Phase Validation** `[activity: validate]`
 
   - Run all Phase 4 tests plus the full suite. Confirm the count-parity trap is avoided: the tests must model *execution* (which paths are expected) and not merely compare totals `[ref: memory: count parity ≠ correctness]`. Confirm the pre-fix blind-spot test now fails for the right reason. `ruff` clean.

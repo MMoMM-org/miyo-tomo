@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Action emission"
-status: pending
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -31,7 +31,7 @@ phase: 2
 
 Delivers executable `move_asset` actions and their human-readable rendering.
 
-- [ ] **T2.1 Asset destination join** `[activity: domain-modeling]`
+- [x] **T2.1 Asset destination join** `[activity: domain-modeling]`
 
   1. **Prime**: Read the destination-join example `[ref: SDD/Implementation Examples]`. Two existing helpers look reusable and are actively harmful.
   2. **Test** (RED):
@@ -47,7 +47,7 @@ Delivers executable `move_asset` actions and their human-readable rendering.
      - [ ] No `.md` ever appears on an asset destination `[ref: PRD/AC-F4.1]`
      - [ ] `_dest_join` and `_ensure_md_extension` are not called on any attachment path `[ref: SDD/Implementation Gotchas]`
 
-- [ ] **T2.2 move_asset emission with global de-duplication** `[activity: backend-logic]`
+- [x] **T2.2 move_asset emission with global de-duplication** `[activity: backend-logic]`
 
   1. **Prime**: Read `[ref: SDD/Complex Logic]`. The audio-peer set at `render_actions.py:927` dedups *within* an origin-stem group; attachments dedup **globally**.
   2. **Test** (RED):
@@ -65,7 +65,7 @@ Delivers executable `move_asset` actions and their human-readable rendering.
      - [ ] Only approved items contribute, since the manifest holds only approved items `[ref: PRD/Business rule 6]`
      - [ ] Actions occupy planner slot 3 `[ref: docs/instructions-json.md]`
 
-- [ ] **T2.3 Readable instruction rendering** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T2.3 Readable instruction rendering** `[activity: backend-logic]` `[parallel: true]`
 
   1. **Prime**: Read `tomo/scripts/lib/render_md.py:31-46` (`_md_section_for`) and `:239` (the unknown-action fallback).
   2. **Test** (RED):
@@ -76,7 +76,7 @@ Delivers executable `move_asset` actions and their human-readable rendering.
   4. **Validate**: unit tests pass; `ruff` clean; `# version:` bumped.
   5. **Success**: the readable document describes attachment moves in plain language `[ref: PRD/Feature 6]`
 
-- [ ] **T2.4 Destination collision guard** `[activity: backend-logic]`
+- [x] **T2.4 Destination collision guard** `[activity: backend-logic]`
 
   1. **Prime**: Read `[ref: SDD/Architecture Decisions; ADR-3]`. Renaming is explicitly deferred; the behaviour must still be defined.
   2. **Test** (RED):
@@ -87,7 +87,7 @@ Delivers executable `move_asset` actions and their human-readable rendering.
   4. **Validate**: unit tests pass.
   5. **Success**: no two emitted actions target the same destination `[ref: ADR-3]`
 
-- [ ] **T2.5 Path validation and config default** `[activity: backend-logic]` `[parallel: true]`
+- [x] **T2.5 Path validation and config default** `[activity: backend-logic]` `[parallel: true]`
 
   1. **Prime**: Read `_REQUIRED_PATH_FIELDS` at `render_actions.py:204-219` and `CONFIG_DEFAULTS` at `instruction-render.py:105-111`. `concepts.asset` is absent from the latter — verified.
   2. **Test** (RED):
@@ -99,6 +99,6 @@ Delivers executable `move_asset` actions and their human-readable rendering.
      - [ ] Asset paths are shape-validated like every other kind
      - [ ] No `KeyError` on a profile without the asset concept
 
-- [ ] **T2.6 Phase Validation** `[activity: validate]`
+- [x] **T2.6 Phase Validation** `[activity: validate]`
 
   - Run all Phase 2 tests plus the full suite. Confirm: an emitted set containing `move_asset` validates against `tomo/schemas/instructions.schema.json` `[ref: PRD/AC-F4.4]`; `schema_version` is unchanged `[ref: CON-2]`; zero `delete_source` actions reference an attachment path `[ref: ADR-6]`. `ruff` clean.

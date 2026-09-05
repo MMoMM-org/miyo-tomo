@@ -510,6 +510,142 @@ def test_garden_diff_never_drops_unregistered_kind():
     print("[PASS] run_diff_garden: unregistered kind is shown and counted, never dropped")
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# move_asset registration (spec 031 T4.1)
+#
+# PRD Feature 5 / Risks row 1 (Likelihood High): run_diff's reconciliation loop
+# iterates the FIXED ACTION_ORDER list (line ~653), not summarize_actual's
+# dynamic per-kind counts (line ~365-366). A kind absent from ACTION_ORDER is
+# counted by summarize_actual but never reconciled or printed — the audit
+# exits 0 (OK) while those actions go completely unchecked. The only visible
+# symptom is the header's action_count exceeding the printed TOTAL.
+#
+# Expectation derivation (how many move_asset actions SHOULD exist, from
+# parsed-suggestions attachments) is spec 031 T4.2's job, not this one — these
+# tests isolate the registration concern (counts initialiser + ACTION_ORDER)
+# by patching derive_expected's returned counts directly where a matched
+# expected/actual comparison is needed.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _move_asset_action(n: str) -> dict:
+    return {
+        "id": f"asset-{n}", "action": "move_asset",
+        "source": f"100 Inbox/Attachments/photo-{n}.jpg",
+        "destination": f"Atlas/900 Assets/photo-{n}.jpg",
+    }
+
+
+def _run_with_expected_move_asset(parsed, instrs, n_expected, monkeypatch):
+    """Run the audit with derive_expected's move_asset count pinned to
+    n_expected, isolating ACTION_ORDER/counts registration (T4.1) from
+    expectation derivation (T4.2)."""
+    real_derive = diff.derive_expected
+
+    def _patched(parsed_arg, tag_handler_groups=None):
+        expected = real_derive(parsed_arg, tag_handler_groups)
+        expected["counts"]["move_asset"] = n_expected
+        return expected
+
+    monkeypatch.setattr(diff, "derive_expected", _patched)
+    return _run(parsed, instrs)
+
+
+def test_move_asset_action_count_reconciles_with_total():
+    """Headline invariant (PRD Risks row 1): for ANY instruction set, the
+    actual count summed over ACTION_ORDER must equal action_count —
+    including a set carrying move_asset actions. Before registration,
+    move_asset is excluded from ACTION_ORDER and this sum falls short —
+    the exact symptom the PRD calls out ('action_count exceeding the
+    printed TOTAL')."""
+    actions = [_move_asset_action(str(i)) for i in range(4)]
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": len(actions), "actions": actions}
+
+    actual = diff.summarize_actual(instrs)
+    total_actual = sum(actual["counts"].get(k, 0) for k in diff.ACTION_ORDER)
+
+    _must(
+        total_actual == instrs["action_count"],
+        f"action_count={instrs['action_count']} but ACTION_ORDER-summed "
+        f"total={total_actual} — move_asset is uncounted in the table",
+    )
+    print("[PASS] move_asset: action_count reconciles with ACTION_ORDER total")
+
+
+def test_move_asset_contributes_n_to_total():
+    """N move_asset actions contribute exactly N to the ACTION_ORDER total —
+    not zero, and not silently absorbed into another kind."""
+    n = 5
+    actions = [_move_asset_action(str(i)) for i in range(n)]
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": n, "actions": actions}
+
+    actual = diff.summarize_actual(instrs)
+    total_actual = sum(actual["counts"].get(k, 0) for k in diff.ACTION_ORDER)
+
+    _must(total_actual == n, f"expected {n} move_asset actions in TOTAL, got {total_actual}")
+    print("[PASS] move_asset: N actions contribute N to TOTAL")
+
+
+def test_move_asset_appears_in_printed_table():
+    """move_asset must get its own row in the printed count table via the
+    full run_diff pipeline, not be silently merged or omitted."""
+    n = 2
+    actions = [_move_asset_action(str(i)) for i in range(n)]
+    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": n, "actions": actions}
+    _rc, _obs, out = _run(parsed, instrs)
+    _must("move_asset" in out, f"move_asset row missing from printed table:\n{out}")
+    print("[PASS] move_asset row appears in the printed count table")
+
+
+def test_move_asset_matched_counts_reconcile(monkeypatch):
+    """Expected N == actual N move_asset actions reconciles (rc=0)
+    [ref: PRD/AC-F5.1]."""
+    n = 3
+    actions = [_move_asset_action(str(i)) for i in range(n)]
+    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": n, "actions": actions}
+    rc, _obs, out = _run_with_expected_move_asset(parsed, instrs, n, monkeypatch)
+    row = f"  {'move_asset':<20s} {n:>9d} {n:>9d}  [OK]"
+    _must(row in out, f"expected matched move_asset row not found:\n{out}")
+    _must(rc == 0, f"matched move_asset counts must reconcile, got rc={rc}\n{out}")
+    print("[PASS] move_asset expected==actual reconciles")
+
+
+def test_move_asset_undercoverage_hard_fails(monkeypatch):
+    """Expected N, actual N-1 move_asset actions -> per-kind mismatch, hard
+    fail [ref: PRD/AC-F5.2]."""
+    n_expected = 3
+    n_actual = n_expected - 1
+    actions = [_move_asset_action(str(i)) for i in range(n_actual)]
+    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": n_actual, "actions": actions}
+    rc, _obs, out = _run_with_expected_move_asset(parsed, instrs, n_expected, monkeypatch)
+    row = f"  {'move_asset':<20s} {n_expected:>9d} {n_actual:>9d}  [DIFF]"
+    _must(row in out, f"expected move_asset [DIFF] row not found:\n{out}")
+    _must(rc == 1, f"undercoverage must hard-fail, got rc={rc}\n{out}")
+    print("[PASS] move_asset undercoverage (N-1) → rc=1")
+
+
+def test_move_asset_overcoverage_hard_fails(monkeypatch):
+    """Expected N, actual N+1 move_asset actions -> hard fail."""
+    n_expected = 3
+    n_actual = n_expected + 1
+    actions = [_move_asset_action(str(i)) for i in range(n_actual)]
+    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
+    instrs = {"schema_version": "2", "type": "tomo-instructions",
+              "action_count": n_actual, "actions": actions}
+    rc, _obs, out = _run_with_expected_move_asset(parsed, instrs, n_expected, monkeypatch)
+    row = f"  {'move_asset':<20s} {n_expected:>9d} {n_actual:>9d}  [DIFF]"
+    _must(row in out, f"expected move_asset [DIFF] row not found:\n{out}")
+    _must(rc == 1, f"overcoverage must hard-fail, got rc={rc}\n{out}")
+    print("[PASS] move_asset overcoverage (N+1) → rc=1")
+
+
 def main() -> int:
     test_happy_path_reconciles()
     test_missing_instruction_fails()
@@ -521,6 +657,12 @@ def main() -> int:
     test_edit_frontmatter_action_count_reconciles_with_total()
     test_edit_frontmatter_contributes_n_to_total()
     test_garden_diff_never_drops_unregistered_kind()
+    test_move_asset_action_count_reconciles_with_total()
+    test_move_asset_contributes_n_to_total()
+    test_move_asset_appears_in_printed_table()
+    # test_move_asset_matched_counts_reconcile, test_move_asset_undercoverage_hard_fails,
+    # and test_move_asset_overcoverage_hard_fails require the pytest `monkeypatch`
+    # fixture and are run only under pytest collection, not this script entrypoint.
     print("\n\u2713 All instructions-diff tests passed.")
     return 0
 

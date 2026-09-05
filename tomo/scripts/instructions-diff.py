@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.10.0
+# version: 0.11.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -162,6 +162,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
 
     counts: dict[str, int] = {
         "move_note": 0,
+        "move_asset": 0,
         "create_moc": 0,
         "link_to_moc": 0,
         "update_tracker": 0,
@@ -428,7 +429,7 @@ def summarize_actual(instrs: dict) -> dict:
 # ──────────────────────────────────────────────────────────────────────────────
 
 ACTION_ORDER = [
-    "move_note", "create_moc", "link_to_moc",
+    "move_note", "move_asset", "create_moc", "link_to_moc",
     "update_tracker", "update_log_entry", "update_log_link",
     "delete_source", "skip", "edit_frontmatter",
 ]

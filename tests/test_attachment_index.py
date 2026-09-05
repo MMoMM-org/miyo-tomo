@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_attachment_index.py — Tests for lib.attachment_index — spec 031
 (Inbox attachment filing), Phase 1.
 
@@ -21,6 +21,11 @@ T1.2 covers build_inbox_index() — indexing a Kado listDir result by basename
 so basename collisions across folders are representable rather than lost.
 `five_file_inbox` is the SDD's worked five-file inbox fixture, reused
 verbatim by T1.3's resolution tests.
+
+T1.3 covers resolve_attachments() — resolving each embed target against a
+build_inbox_index() index into an AttachmentRef (resolved | unresolved |
+ambiguous). `five_file_index` builds on `five_file_inbox` (unchanged from
+T1.2) via build_inbox_index() to give resolve_attachments its input directly.
 """
 from __future__ import annotations
 
@@ -33,7 +38,12 @@ import pytest
 SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.attachment_index import build_inbox_index, extract_attachment_embeds  # noqa: E402
+from lib.attachment_index import (  # noqa: E402
+    AttachmentRef,
+    build_inbox_index,
+    extract_attachment_embeds,
+    resolve_attachments,
+)
 
 
 def test_embed_with_extension_is_recorded():
@@ -197,3 +207,87 @@ def test_build_inbox_index_fails_open_on_wrapped_dict_result():
     test exercises; the None/[] case above exercises the early return instead."""
     wrapped = {"items": [{"path": "100 Inbox/Images/karte.jpg", "type": "file"}]}
     assert build_inbox_index(wrapped) == {}
+
+
+# --- T1.3: resolve_attachments() --------------------------------------------
+
+@pytest.fixture
+def five_file_index(five_file_inbox):
+    """The SDD's worked index, built from the unchanged T1.2 fixture."""
+    return build_inbox_index(five_file_inbox)
+
+
+def test_resolve_subfolder_target_not_sibling(five_file_index):
+    """AC-F2.1: `prag-karte.jpg` lives in Images/, not beside the note in
+    Places/ — the sibling assumption would produce a nonexistent
+    "100 Inbox/Places/prag-karte.jpg". Basename lookup finds the real file
+    regardless of where the embedding note lives."""
+    [ref] = resolve_attachments(["prag-karte.jpg"], five_file_index)
+    assert ref == AttachmentRef(
+        "prag-karte.jpg", "100 Inbox/Images/prag-karte.jpg", "resolved"
+    )
+
+
+def test_resolve_ambiguous_basename_yields_no_path(five_file_index):
+    """AC-F2.4: karte.jpg has two index hits (Images/ and Scans/) — ambiguous,
+    not a guess. Fails if an implementation returns the first hit instead."""
+    [ref] = resolve_attachments(["karte.jpg"], five_file_index)
+    assert ref.status == "ambiguous"
+    assert ref.resolved_path is None
+
+
+def test_resolve_path_qualified_target_via_membership_check(five_file_index):
+    """AC-F2.2: `Images/karte.jpg` disambiguates the two-hit basename by path.
+    resolved_path is the retrieved index path — NOT the target string echoed
+    back — so this fails if the membership check is dropped in favour of
+    "use the given path as-is" (PRD Rule 2's literal reading; the SDD's
+    membership check overrides it, see plan/phase-1.md discrepancy note)."""
+    [ref] = resolve_attachments(["Images/karte.jpg"], five_file_index)
+    assert ref == AttachmentRef(
+        "Images/karte.jpg", "100 Inbox/Images/karte.jpg", "resolved"
+    )
+
+
+def test_resolve_target_absent_from_index_is_unresolved(five_file_index):
+    """AC-F2.3: a basename with zero index hits is unresolved, not an error."""
+    [ref] = resolve_attachments(["missing.jpg"], five_file_index)
+    assert ref == AttachmentRef("missing.jpg", None, "unresolved")
+
+
+def test_resolve_path_qualified_target_not_in_index_is_unresolved(five_file_index):
+    """A plausible-looking but wrong path-qualified target: prag-karte.jpg's
+    basename IS in the index (under Images/), but not under Scans/. This is a
+    stronger fabrication guard than an absent basename — it fails if the
+    membership check is skipped and the given path is returned verbatim,
+    since "Scans/prag-karte.jpg" would then wrongly report as resolved."""
+    [ref] = resolve_attachments(["Scans/prag-karte.jpg"], five_file_index)
+    assert ref == AttachmentRef("Scans/prag-karte.jpg", None, "unresolved")
+
+
+def test_resolve_against_empty_index_is_unresolved_for_every_target():
+    """Empty index (listDir failed or the inbox is empty) degrades every
+    target to unresolved rather than raising."""
+    targets = ["karte.jpg", "Images/karte.jpg", "anything.png"]
+    refs = resolve_attachments(targets, {})
+    assert [ref.status for ref in refs] == ["unresolved"] * 3
+    assert all(ref.resolved_path is None for ref in refs)
+
+
+def test_resolve_case_differing_basename_is_unresolved(five_file_index):
+    """The index key "karte.jpg" does not match "KARTE.jpg" — exact-case
+    lookup only. Fails if the lookup key (or the index key) is lowercased,
+    since that would turn this into an ambiguous 2-hit match instead."""
+    [ref] = resolve_attachments(["KARTE.jpg"], five_file_index)
+    assert ref == AttachmentRef("KARTE.jpg", None, "unresolved")
+
+
+def test_resolve_no_resolved_path_is_absent_from_the_index(five_file_index):
+    """Fabrication-impossible-by-construction check: every non-null
+    resolved_path returned for a realistic batch of targets must be one of
+    the actual paths the index holds."""
+    all_indexed_paths = {path for paths in five_file_index.values() for path in paths}
+    targets = ["prag-karte.jpg", "karte.jpg", "Images/karte.jpg", "missing.jpg"]
+    refs = resolve_attachments(targets, five_file_index)
+    for ref in refs:
+        if ref.resolved_path is not None:
+            assert ref.resolved_path in all_indexed_paths

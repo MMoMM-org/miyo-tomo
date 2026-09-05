@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-# version: 0.1.3
+# version: 0.2.0
 """attachment_index.py — Detect and normalise attachment embeds in note bodies."""
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 
@@ -59,6 +60,47 @@ def build_inbox_index(list_dir_result: list[dict] | None) -> dict[str, list[str]
         basename = path.rsplit("/", 1)[-1]
         index.setdefault(basename, []).append(path)
     return index
+
+
+@dataclass(frozen=True)
+class AttachmentRef:
+    """One embed target's resolution outcome against an inbox index."""
+
+    embed_target: str
+    resolved_path: str | None
+    status: str  # "resolved" | "unresolved" | "ambiguous"
+
+
+def resolve_attachments(
+    embed_targets: list[str], index: dict[str, list[str]]
+) -> list[AttachmentRef]:
+    """Resolve each embed target against an inbox index from build_inbox_index().
+
+    A bare target is looked up by basename: exactly one hit resolves to that
+    path; two or more hits are ambiguous; zero hits are unresolved. A
+    path-qualified target is looked up by its own basename, then narrowed to
+    whichever of that basename's candidate paths ends with the given target
+    (e.g. a path ending in ".../Images/karte.jpg" for a target of
+    "Images/karte.jpg"); resolved_path is always that retrieved candidate, not
+    the target string. Narrowing to zero or to more than one candidate yields
+    unresolved / ambiguous respectively, same as the bare case.
+    """
+    out: list[AttachmentRef] = []
+    for target in embed_targets:
+        basename = target.rsplit("/", 1)[-1] if "/" in target else target
+        candidates = index.get(basename, [])
+        if "/" in target:
+            candidates = [
+                path for path in candidates
+                if path == target or path.endswith("/" + target)
+            ]
+        if len(candidates) == 1:
+            out.append(AttachmentRef(target, candidates[0], "resolved"))
+        elif len(candidates) > 1:
+            out.append(AttachmentRef(target, None, "ambiguous"))
+        else:
+            out.append(AttachmentRef(target, None, "unresolved"))
+    return out
 
 
 def _is_attachment_target(target: str) -> bool:

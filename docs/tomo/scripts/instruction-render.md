@@ -231,3 +231,41 @@ and subtracts each recorded drop from both `expected["counts"]` and
 UNrecorded missing daily action still fails — the audit stays honest. This makes
 instructions-diff a paired consumer of instruction-render for daily-note skips,
 mirroring the delete_source paired-source contract.
+
+## Manifest Entry Carries `attachments[]` (spec 031 T3.5)
+
+WHY the per-item render loop reads `item.get("attachments", [])` and adds it
+to the manifest entry dict, rather than deriving it later: the manifest entry
+IS the only record `_build_move_asset_actions` (`lib/render_actions.py`) ever
+sees per confirmed item — `build_actions()` never re-consults `confirmed`
+for attachment data. Until this task, nothing populated `attachments` on a
+manifest entry at all, which is why every one of T2.2's fixtures had to be
+synthetic; this closes that gap for the first time, end to end.
+
+WHY an instruction-only confirmed item (no `template`) loses its
+`attachments` entirely: the per-item loop `continue`s at `:314` — before the
+manifest entry is ever built — for any item with no template, since such an
+item needs no rendered file. This is a DELIBERATE, PRD-documented limitation
+(an item with no note move has nothing for an attachment to travel with,
+matching the PRD's own out-of-scope note), pinned by
+`test_instruction_only_item_produces_no_manifest_entry_attachments_dropped`
+in `tests/test_031_t3_5_manifest_entry_attachments.py` rather than "fixed" —
+there is no note move for the attachment to accompany in that case.
+
+## `kind` Stays Out of `instructions.json`'s `tomo.skipped_assets`
+
+WHY `tomo_block["skipped_assets"]`'s per-entry projection carries only
+`source`/`destination`/`reason`, omitting the `kind` discriminator that
+`lib/render_md.py` uses to pick a rendering-time remedy: nothing reads
+`kind` from this JSON today — no Hashi consumer, no Tomo consumer, no test
+outside the markdown-rendering path. The Constitution's L2 Performance rule
+("trim unused fields aggressively, especially in JSON payloads") is the
+concrete reason, not just a style preference: a field with no reader is pure
+liability, and this one is also redundant — a `"no_basename"` skip never has
+a `destination`, a `"collision"` skip always does, so a future JSON consumer
+that needs the distinction can derive it from that alone. The omission is
+pinned by a test asserting `kind` is absent from every JSON entry and that
+`destination` correctly distinguishes the two cases, specifically so a later
+"just add it back" change is a decision made against a red test, not a
+change nobody notices.
+

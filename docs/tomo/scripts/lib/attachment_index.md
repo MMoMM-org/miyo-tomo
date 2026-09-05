@@ -5,6 +5,36 @@
 > targets in a note body, classify them as attachment files (not notes), and
 > resolve them against an inbox file index built from Kado's `listDir`.
 
+## Extraction Moved to Kado's metadataCache — `extract_attachment_embeds` Has No Pipeline Caller
+
+WHY `inbox-triage.py` does not call `extract_attachment_embeds`, even though
+this module was built (T1.1) specifically to detect embeds: ADR-2's original
+premise was that the pipeline already reads every inbox note's fresh body for
+other purposes, so running the regex there would cost nothing extra. That
+premise turned out to be false — the pipeline never reads fresh note bodies
+for the notes it triages, so the regex extractor had nowhere to run against
+real data. Phase 5 corrected this by extracting embeds via
+`client.list_notes(inbox_path, fields=["links"])` instead: Kado's own
+metadataCache already discriminates `kind == 'embed'` from a plain link (a
+fenced-code-block `![[x.jpg]]` is correctly excluded there, unlike a
+hand-rolled regex, which cannot see that context), and reading link metadata
+needs no note body at all. `inbox-triage.py` imports `_is_attachment_target`
+and `_strip_alias_and_anchor` directly to classify and clean each
+`list_notes` embed target, and `build_inbox_index` / `resolve_attachments` to
+resolve them — the same four functions this module always intended for that
+job. Only `extract_attachment_embeds` and its regex, `_EMBED_RE`, are unused
+by the pipeline today.
+
+This is not dead code to delete. It remains a correct, independently tested
+library function — the two-step classifier and alias/anchor stripping it
+was built to prove are exactly what the `list_notes` path also relies on,
+just fed by parsed link metadata instead of parsing the body itself. It stays
+as the reference implementation for any future caller that only has a raw
+note body and no `list_notes` result to hand (e.g. a body already fetched for
+another reason), and its test suite continues to guard the two-step
+classifier and path-preservation behaviour that `_is_attachment_target` and
+`_strip_alias_and_anchor` still provide to the real pipeline.
+
 ## A Tenth Wikilink Regex — None of the Existing Nine Capture the Bang
 
 WHY a new regex instead of reusing one of the nine wikilink regexes already in

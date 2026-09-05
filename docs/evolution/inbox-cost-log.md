@@ -481,6 +481,15 @@ tag_handler_reads + wire_sibling_reads + body_reads`, verified against a fake cl
 `.calls` invocation log (not a second hand-derived expectation) in
 `tests/test_031_t5_2_kado_call_counter.py`.
 
+**Addendum (T5.3, same phase, later commit).** The base constant above moved from `2` to `3`:
+ADR-2's original premise (the analyst's regex extractor runs on note bodies the pipeline already
+reads) was corrected the same phase — the pipeline never reads those fresh bodies, so embed
+extraction was rewired to `client.list_notes(inbox_path, fields=["links"])`, a third base call
+alongside the two `listDir`s. `_count_kado_calls` now returns `3 (listDir + listDir + listNotes) + 7
+(byFrontmatter) + ...`, matching its own current docstring. This entry's own text above still says
+`2` because it captured T5.2's commit at the time; the code and its docstring are the source of
+truth going forward, not this paragraph's number.
+
 **No entry above this line reports a `kado_calls=` figure**, so nothing in this log's existing token/
 cost rows needs correction retroactively — this notice exists so that if/when a future entry logs
 `kado_calls=` (from the stderr metrics line or `routing-plan.json`'s `metrics` block), no one

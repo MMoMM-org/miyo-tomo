@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.25.1
+# version: 0.26.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -2202,6 +2202,11 @@ def main() -> int:
         entry = {
             "id": sec["id"],
             "source_path": sec["source_path"],
+            # Both fields belong to the canonical confirmed-item shape built
+            # above; omitting them here filed the note and left its audio peer
+            # and attachments behind in the inbox (#161).
+            "audio_peer": sec.get("audio_peer"),
+            "attachments": sec.get("attachments") or [],
             "type": sec["type"],
             "approved": True,
             "delete_source": False,
@@ -2287,15 +2292,44 @@ def main() -> int:
     # ── Section-level Force Atomic (suppressed low-worthiness blocks, #88) ──
     # A suppressed light block has no Approve box (→ it landed in skipped_items)
     # and carries no template/location/MOC. Ticking its "Force Atomic Note" box
-    # routes the stem to the resolve subflow (branch c) — Pass 2 rebuilds the
-    # full atomic from source. Runs AFTER the daily-driven loop so already_in /
+    # routes the stem to the resolve subflow — Pass 2 rebuilds the full atomic
+    # from source. Runs AFTER the daily-driven loop so already_in /
     # seen_pending de-dup against it.
+    #
+    # Carries the same (b)/(c) split as the daily-driven loop above: consume an
+    # approved resolve-doc proposal when one exists, park only when none does.
+    # Without (b) this loop parked unconditionally, so the proposal the user
+    # had just approved was re-parked on every run and the subflow could never
+    # complete — a livelock reported as "you left its Approve box unticked"
+    # while the box was ticked (#165).
     for sec in parsed_sections:
         if not sec.get("force_atomic"):
             continue
         stem = _stem_of(sec.get("source_path"))
         if not stem or stem in already_in or stem in seen_pending:
             continue
+
+        # (b) resolve-doc atomic section(s) — a stem may carry N blocks (F-41).
+        resolve_secs = [
+            s for s in resolve_sections_by_stem.get(stem, [])
+            if s.get("id") not in resolve_promoted_ids
+        ]
+        if resolve_secs:
+            for rsec in resolve_secs:
+                resolve_promoted_ids.add(rsec.get("id"))
+                entry = _promote_entry(rsec, from_resolve=True)
+                entry["id"] = _alloc_resolve_id()
+                from_resolve += 1
+                confirmed_items.append(entry)
+                confirmed_ids.add(entry["id"])
+            already_in.add(stem)
+            skipped_items[:] = [
+                s for s in skipped_items
+                if _stem_of(s.get("source_path")) != stem
+            ]
+            continue
+
+        # (c) no proposal yet — park so Pass 2 generates one.
         seen_pending.add(stem)
         summary = (sec.get("summary") or sec.get("title") or "").strip()
         if len(summary) > 140:

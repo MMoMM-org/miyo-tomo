@@ -105,6 +105,52 @@ def _confirmed(parsed: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# _parse_attachments — a comma in a filename is not a path separator
+#
+# The backtick pair is the real delimiter; the comma between entries is
+# incidental. Splitting on "," before stripping backticks turns one
+# comma-bearing filename into two bogus paths, which then ride the manifest
+# into move_asset actions with sources that do not exist in the vault —
+# Hashi skips them, the real attachment never moves, and the inbox silently
+# does not empty. Code-quality review finding, spec 031 Phase 3.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_attachments_path_with_space_is_unaffected():
+    """A path containing a space (not a delimiter) parses unchanged."""
+    value = "`100 Inbox/Images/prag karte.jpg`"
+    assert parser._parse_attachments(value) == ["100 Inbox/Images/prag karte.jpg"]
+
+
+def test_parse_attachments_path_with_comma_survives_intact():
+    """A path containing a comma must not be split into two paths — the
+    backticks are the delimiter, not the comma between them."""
+    value = "`100 Inbox/Images/photo, cropped.jpg`"
+    assert parser._parse_attachments(value) == ["100 Inbox/Images/photo, cropped.jpg"]
+
+
+def test_parse_attachments_first_of_two_contains_a_comma():
+    """Two attachments, the first with an embedded comma, both survive intact
+    and in order — the comma-bearing filename must not swallow or fragment
+    the second entry."""
+    value = "`100 Inbox/Images/photo, cropped.jpg`, `100 Inbox/scan.pdf`"
+    assert parser._parse_attachments(value) == [
+        "100 Inbox/Images/photo, cropped.jpg",
+        "100 Inbox/scan.pdf",
+    ]
+
+
+def test_markdown_round_trip_with_comma_bearing_filename():
+    """End-to-end: an item whose attachment filename contains a comma
+    round-trips through render -> markdown -> parse with the path intact."""
+    comma_path = "100 Inbox/Images/photo, cropped.jpg"
+    doc = _doc([comma_path, "100 Inbox/scan.pdf"])
+    with tempfile.TemporaryDirectory() as td:
+        parsed = _markdown_output(doc, Path(td))
+    assert _confirmed(parsed)["attachments"] == [comma_path, "100 Inbox/scan.pdf"]
+
+
+# ---------------------------------------------------------------------------
 # Markdown path
 # ---------------------------------------------------------------------------
 

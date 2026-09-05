@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.25.0
+# version: 0.25.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -488,13 +488,19 @@ def _parse_tags(value: str) -> list[str]:
 
 
 def _parse_attachments(value: str) -> list[str]:
-    """Parse the **Attachments:** line's comma-separated backticked paths.
+    """Parse the **Attachments:** line's backtick-delimited paths.
 
     e.g. "`100 Inbox/Images/karte.jpg`, `100 Inbox/scan.pdf`" ->
     ["100 Inbox/Images/karte.jpg", "100 Inbox/scan.pdf"].
+
+    Extracts backtick-delimited segments rather than splitting on "," — the
+    comma between entries is incidental, not the delimiter, so a comma
+    inside a filename (e.g. "photo, cropped.jpg") must not fragment it.
+    A literal backtick in a filename is unsupported by this line format
+    (the render side has the same limitation: paths are wrapped in a single
+    unescaped backtick pair).
     """
-    parts = [p.strip().strip("`").strip() for p in value.split(",")]
-    return [p for p in parts if p]
+    return [p for p in re.findall(r"`([^`]*)`", value) if p]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

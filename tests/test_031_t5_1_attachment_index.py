@@ -542,3 +542,31 @@ def test_fresh_sources_do_not_carry_attachment_fields(tmp_path):
     plan = _json.loads((tmp_path / "routing-plan.json").read_text(encoding="utf-8"))
     entry = next(s for s in plan["fresh_sources"] if s["path"] == trip_path)
     assert set(entry.keys()) == {"path", "modified"}
+
+
+# ---------------------------------------------------------------------------
+# T5.4 headline assertion: the constant-cost claim in its final form, all
+# three attachment-related calls together (CON-4).
+# ---------------------------------------------------------------------------
+
+def test_constant_cost_claim_1_note_and_20_notes_issue_the_same_three_calls(tmp_path):
+    """1 note and 20 notes issue the SAME number of attachment-related Kado
+    calls: the depth=1 partition listDir, the recursive attachment-index
+    listDir, and the listNotes(fields=["links"]) extraction call — three
+    total, regardless of note count."""
+    mod = _load_module()
+
+    def _run(n_notes: int, out: Path) -> tuple[int, int, int]:
+        items = [_listdir_item(f"{INBOX_PATH}note-{i}.md") for i in range(n_notes)]
+        client = _FakeClient(depth1_items=items)
+        mod.discover(client, INBOX_PATH, output_dir=str(out))
+        list_dir_calls = len(_list_dir_calls(client))
+        list_notes_calls = len(_list_notes_calls(client))
+        return list_dir_calls, list_notes_calls, list_dir_calls + list_notes_calls
+
+    one_note = _run(1, tmp_path / "one")
+    twenty_notes = _run(20, tmp_path / "twenty")
+
+    assert one_note == (2, 1, 3)
+    assert twenty_notes == (2, 1, 3)
+    assert one_note == twenty_notes

@@ -502,3 +502,51 @@ is more accurate, not more expensive: real Kado traffic is unchanged by this fix
   result lands in `drift_indicators`, not one of the five summed buckets). Documented in
   `_count_kado_calls`'s own docstring.
 - Full suite: 3171 passed, 1 skipped, 0 failed. `ruff` clean.
+
+## Spec 031 — inbox attachment filing (T6.5 live validation)
+
+**Date**: 2026-09-05 · **Vault**: Privat-Test · **Branch**: `feat/031-inbox-attachment-filing`
+
+Two live runs. Run 1 produced no attachment output at all — the fixtures had been placed in
+`100 Inbox/Places/`, and `discover_files` runs at `depth=1`, so they were never discovered. Fixtures
+moved to the inbox root; run 2 is the one reported here.
+
+**Run 2 — Pass 1**: `kado_calls=20` (from `routing-plan.json`), 4 source items.
+
+Four fixtures, each targeting one thing the offline suite cannot prove:
+
+| Fixture | Case | Result |
+|---|---|---|
+| `Prag.md` | ADR-1 — image in a different inbox subfolder | resolved to `100 Inbox/Images/prag-karte.png` |
+| `Dresden.md` | same basename in `Images/` and `Scans/` | `ambiguous`, `candidate_count: 2`, no action |
+| `Bautzen.md` | same image embedded twice, once aliased | exactly one entry — PRD F1-AC4 |
+| `Meissen.md` | no embed at all | absent from the map — CON-8 control |
+
+**Apply (Hashi)**: 5 actions, 5 applied, 0 failed, 0 skipped. `move_asset` executed without a Hashi
+change. `prag-karte.png` reached `Atlas/290 Assets/295 Attachments/`, the source note was deleted, and
+`![[prag-karte.png]]` survived verbatim in the moved note — the basename is unique vault-wide, so
+Obsidian resolves it to the new location.
+
+**Residue**: zero for the approved item. Three files remain in the inbox, both deliberately:
+`Images/karte.png` and `Scans/karte.png` are Dresden's ambiguous pair, retained because Dresden stays
+in the inbox and a wrong move is worse than no move; `Images/bautzen-turm.jpg` remains because of
+#165, a pre-existing force-atomic defect unrelated to the attachment path.
+
+**Findings — three, none of them in the resolution layer, which was 4/4 correct on live data**:
+
+1. **The analyst violated ADR-2 on the first live run.** `Bautzen.result.json` came back carrying
+   `unresolved_embeds: [{"embed_target": "bautzen-turm.jpg", "status": "unresolved"}]` — a field ADR-2
+   says the analyst never produces, with a verdict that was wrong. The override branch in
+   `merge_resolved_attachments` replaced it with the deterministic map's answer and the run was
+   correct. That guard is load-bearing, not defensive theatre.
+2. **Suppressed items dropped the unresolved-embed warning at render** (fixed, `b28cd07`). Three of the
+   four fixtures scored below the 0.5 worthiness threshold and took `render_suppressed_atomic`, a
+   second renderer spec 031 never touched — spec 031 does not mention suppressed items anywhere.
+   Dresden's ambiguity was computed, persisted, and silently dropped.
+3. **Force Atomic on a suppressed item is a livelock** (#165, not fixed here). The approved
+   resolve-doc proposal parses perfectly and is never read; every Pass 2 re-parks it. Pre-existing
+   #88/XDD-012 defect that this validation walked into. Depends on #161.
+
+**Note on the fixture count**: only Prag exercised the full path end-to-end. The other three were
+suppressed by worthiness scoring, which is why finding 2 existed at all — a reminder that a fixture
+proves what the pipeline actually does with it, not what it was designed to prove.

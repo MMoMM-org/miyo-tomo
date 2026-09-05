@@ -79,7 +79,7 @@ Proves the chain end to end and leaves the repo documented and synced.
   4. **Validate**: `scripts/update-tomo.sh` dry run shows every intended file as changed; a file listed as unchanged means a missed version bump.
   5. **Success**: the instance would receive every change `[ref: CON-7]`
 
-- [ ] **T6.5 Live validation** `[activity: validate]` — **left unchecked deliberately: this task is the user's to run against their own vault, not part of implementation. Not skipped, not forgotten.**
+- [x] **T6.5 Live validation** `[activity: validate]` — run by the user against the Privat-Test vault on 2026-09-05. Outcome recorded in `docs/evolution/inbox-cost-log.md`.
 
   1. **Prime**: Batch this into a **single** live cycle `[ref: memory: minimize live-test cycles]`. Run `scripts/update-tomo.sh` first, then `/inbox` in the container.
   2. **Test**: against a small real inbox containing at least one note with an embedded image in a subfolder:

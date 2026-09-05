@@ -536,28 +536,15 @@ def _move_asset_action(n: str) -> dict:
     }
 
 
-def _run_with_expected_move_asset(parsed, instrs, n_expected, monkeypatch):
-    """Run the audit with derive_expected's move_asset count pinned to
-    n_expected, isolating ACTION_ORDER/counts registration (T4.1) from
-    expectation derivation (T4.2)."""
-    real_derive = diff.derive_expected
-
-    def _patched(parsed_arg, tag_handler_groups=None):
-        expected = real_derive(parsed_arg, tag_handler_groups)
-        expected["counts"]["move_asset"] = n_expected
-        return expected
-
-    monkeypatch.setattr(diff, "derive_expected", _patched)
-    return _run(parsed, instrs)
-
-
 def test_move_asset_action_count_reconciles_with_total():
-    """Headline invariant (PRD Risks row 1): for ANY instruction set, the
-    actual count summed over ACTION_ORDER must equal action_count —
-    including a set carrying move_asset actions. Before registration,
-    move_asset is excluded from ACTION_ORDER and this sum falls short —
-    the exact symptom the PRD calls out ('action_count exceeding the
-    printed TOTAL')."""
+    """Headline internal-invariant guard (PRD Risks row 1): for ANY
+    instruction set, the actual count summed over ACTION_ORDER must equal
+    action_count — including a set carrying move_asset actions. Before
+    registration, move_asset is excluded from ACTION_ORDER and this sum
+    falls short — the exact symptom the PRD calls out ('action_count
+    exceeding the printed TOTAL'). Complementary to the rendered-output
+    canary below, which asserts the same invariant on run_diff's real
+    stdout instead of a locally-recomputed sum."""
     actions = [_move_asset_action(str(i)) for i in range(4)]
     instrs = {"schema_version": "2", "type": "tomo-instructions",
               "action_count": len(actions), "actions": actions}
@@ -571,21 +558,6 @@ def test_move_asset_action_count_reconciles_with_total():
         f"total={total_actual} — move_asset is uncounted in the table",
     )
     print("[PASS] move_asset: action_count reconciles with ACTION_ORDER total")
-
-
-def test_move_asset_contributes_n_to_total():
-    """N move_asset actions contribute exactly N to the ACTION_ORDER total —
-    not zero, and not silently absorbed into another kind."""
-    n = 5
-    actions = [_move_asset_action(str(i)) for i in range(n)]
-    instrs = {"schema_version": "2", "type": "tomo-instructions",
-              "action_count": n, "actions": actions}
-
-    actual = diff.summarize_actual(instrs)
-    total_actual = sum(actual["counts"].get(k, 0) for k in diff.ACTION_ORDER)
-
-    _must(total_actual == n, f"expected {n} move_asset actions in TOTAL, got {total_actual}")
-    print("[PASS] move_asset: N actions contribute N to TOTAL")
 
 
 # Parses the two printed values the audit's own output claims should agree
@@ -638,50 +610,88 @@ def test_move_asset_appears_in_printed_table():
     print("[PASS] move_asset row appears in the printed count table")
 
 
-def test_move_asset_matched_counts_reconcile(monkeypatch):
-    """Expected N == actual N move_asset actions reconciles (rc=0)
-    [ref: PRD/AC-F5.1]."""
+def _manifest_item(item_id, source_path, rendered_file, attachments=None):
+    item = {
+        "id": item_id, "action": None, "title": f"Item {item_id}",
+        "source_path": source_path, "rendered_file": rendered_file,
+        "destination": "Atlas/202 Notes/", "parent_moc": "", "parent_mocs": [],
+        "tags": [],
+    }
+    if attachments is not None:
+        item["attachments"] = attachments
+    return item
+
+
+def test_move_asset_matched_counts_reconcile():
+    """Expected N == actual N move_asset actions reconciles (rc=0), driven
+    end to end: real confirmed_items[].attachments feed derive_expected
+    (T4.2) and the real renderer (ir.build_actions) emits the matching
+    move_asset actions — neither side is stubbed [ref: PRD/AC-F5.1]."""
     n = 3
-    actions = [_move_asset_action(str(i)) for i in range(n)]
-    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
-    instrs = {"schema_version": "2", "type": "tomo-instructions",
-              "action_count": n, "actions": actions}
-    rc, _obs, out = _run_with_expected_move_asset(parsed, instrs, n, monkeypatch)
+    attachments = [f"100 Inbox/Attachments/photo-{i}.jpg" for i in range(n)]
+    confirmed = [_confirmed_item("S01", "Trip.md", attachments=attachments)]
+    manifest = [_manifest_item("S01", "Trip.md", "2026-04-21_1200_trip.md", attachments=attachments)]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    instrs = _build_instrs_from(manifest, confirmed, [], [])
+
+    rc, _obs, out = _run(parsed, instrs)
     row = f"  {'move_asset':<20s} {n:>9d} {n:>9d}  [OK]"
     _must(row in out, f"expected matched move_asset row not found:\n{out}")
     _must(rc == 0, f"matched move_asset counts must reconcile, got rc={rc}\n{out}")
-    print("[PASS] move_asset expected==actual reconciles")
+    print("[PASS] move_asset expected==actual reconciles (real pipeline)")
 
 
-def test_move_asset_undercoverage_hard_fails(monkeypatch):
-    """Expected N, actual N-1 move_asset actions -> per-kind mismatch, hard
-    fail [ref: PRD/AC-F5.2]."""
+def test_move_asset_undercoverage_hard_fails():
+    """Expected N move_asset actions (from real confirmed_items[].attachments
+    via derive_expected), renderer emits only N-1 -> per-kind mismatch, hard
+    fail [ref: PRD/AC-F5.2]. Simulates a renderer regression that
+    under-emits: one real move_asset action is dropped post-generation."""
     n_expected = 3
+    attachments = [f"100 Inbox/Attachments/photo-{i}.jpg" for i in range(n_expected)]
+    confirmed = [_confirmed_item("S01", "Trip.md", attachments=attachments)]
+    manifest = [_manifest_item("S01", "Trip.md", "2026-04-21_1200_trip.md", attachments=attachments)]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    instrs = _build_instrs_from(manifest, confirmed, [], [])
+
+    move_asset_actions = [a for a in instrs["actions"] if a["action"] == "move_asset"]
+    _must(len(move_asset_actions) == n_expected,
+          f"fixture sanity: renderer should emit {n_expected} move_asset actions, "
+          f"got {len(move_asset_actions)}")
+    instrs["actions"].remove(move_asset_actions[0])
+    instrs["action_count"] = len(instrs["actions"])
+
+    rc, _obs, out = _run(parsed, instrs)
     n_actual = n_expected - 1
-    actions = [_move_asset_action(str(i)) for i in range(n_actual)]
-    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
-    instrs = {"schema_version": "2", "type": "tomo-instructions",
-              "action_count": n_actual, "actions": actions}
-    rc, _obs, out = _run_with_expected_move_asset(parsed, instrs, n_expected, monkeypatch)
     row = f"  {'move_asset':<20s} {n_expected:>9d} {n_actual:>9d}  [DIFF]"
     _must(row in out, f"expected move_asset [DIFF] row not found:\n{out}")
     _must(rc == 1, f"undercoverage must hard-fail, got rc={rc}\n{out}")
-    print("[PASS] move_asset undercoverage (N-1) → rc=1")
+    print("[PASS] move_asset undercoverage (N-1) → rc=1 (real pipeline)")
 
 
-def test_move_asset_overcoverage_hard_fails(monkeypatch):
-    """Expected N, actual N+1 move_asset actions -> hard fail."""
+def test_move_asset_overcoverage_hard_fails():
+    """Expected N move_asset actions, renderer emits N+1 -> hard fail.
+    Simulates a renderer regression that over-emits: one fabricated
+    move_asset action is injected post-generation."""
     n_expected = 3
+    attachments = [f"100 Inbox/Attachments/photo-{i}.jpg" for i in range(n_expected)]
+    confirmed = [_confirmed_item("S01", "Trip.md", attachments=attachments)]
+    manifest = [_manifest_item("S01", "Trip.md", "2026-04-21_1200_trip.md", attachments=attachments)]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+    instrs = _build_instrs_from(manifest, confirmed, [], [])
+
+    instrs["actions"].append({
+        "id": "asset-extra", "action": "move_asset",
+        "source": "100 Inbox/Attachments/orphan.jpg",
+        "destination": "Atlas/900 Assets/orphan.jpg",
+    })
+    instrs["action_count"] = len(instrs["actions"])
+
+    rc, _obs, out = _run(parsed, instrs)
     n_actual = n_expected + 1
-    actions = [_move_asset_action(str(i)) for i in range(n_actual)]
-    parsed = {"confirmed_items": [], "daily_updates": [], "skipped": []}
-    instrs = {"schema_version": "2", "type": "tomo-instructions",
-              "action_count": n_actual, "actions": actions}
-    rc, _obs, out = _run_with_expected_move_asset(parsed, instrs, n_expected, monkeypatch)
     row = f"  {'move_asset':<20s} {n_expected:>9d} {n_actual:>9d}  [DIFF]"
     _must(row in out, f"expected move_asset [DIFF] row not found:\n{out}")
     _must(rc == 1, f"overcoverage must hard-fail, got rc={rc}\n{out}")
-    print("[PASS] move_asset overcoverage (N+1) → rc=1")
+    print("[PASS] move_asset overcoverage (N+1) → rc=1 (real pipeline)")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -812,12 +822,11 @@ def main() -> int:
     test_edit_frontmatter_contributes_n_to_total()
     test_garden_diff_never_drops_unregistered_kind()
     test_move_asset_action_count_reconciles_with_total()
-    test_move_asset_contributes_n_to_total()
     test_move_asset_rendered_action_count_matches_rendered_total()
     test_move_asset_appears_in_printed_table()
-    # test_move_asset_matched_counts_reconcile, test_move_asset_undercoverage_hard_fails,
-    # and test_move_asset_overcoverage_hard_fails require the pytest `monkeypatch`
-    # fixture and are run only under pytest collection, not this script entrypoint.
+    test_move_asset_matched_counts_reconcile()
+    test_move_asset_undercoverage_hard_fails()
+    test_move_asset_overcoverage_hard_fails()
     test_move_asset_expected_counts_unique_attachments_on_one_item()
     test_move_asset_expected_dedups_shared_attachment_globally()
     test_move_asset_expected_keys_on_full_path_not_basename()

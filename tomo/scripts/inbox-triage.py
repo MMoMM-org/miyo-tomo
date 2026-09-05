@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.29.0
+# version: 0.30.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -30,7 +30,12 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from lib.attachment_index import build_inbox_index  # noqa: E402
+from lib.attachment_index import (  # noqa: E402
+    _is_attachment_target,
+    _strip_alias_and_anchor,
+    build_inbox_index,
+    resolve_attachments,
+)
 from lib.audio_constants import AUDIO_EXTS  # noqa: E402
 from lib.doc_frontmatter import body_after_frontmatter  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
@@ -211,6 +216,88 @@ def build_attachment_index(client, inbox_path: str) -> dict[str, list[str]]:
         )
         return {}
     return build_inbox_index(listing)
+
+
+def _candidate_count(target: str, index: dict[str, list[str]]) -> int:
+    """Mirror resolve_attachments' own candidate-narrowing so an ambiguous
+    result can be reported with its candidate count (item-result.schema.json
+    unresolved_embeds[].candidate_count) — resolve_attachments itself
+    collapses this to None on the AttachmentRef it returns."""
+    basename = target.rsplit("/", 1)[-1] if "/" in target else target
+    candidates = index.get(basename, [])
+    if "/" in target:
+        candidates = [p for p in candidates if p == target or p.endswith("/" + target)]
+    return len(candidates)
+
+
+def resolve_inbox_attachments(
+    client, inbox_path: str, index: dict[str, list[str]]
+) -> dict[str, dict]:
+    """One listNotes(fields=["links"]) call per run (ADR-2, corrected).
+
+    Kado's own metadataCache is authoritative on what an embed is — a
+    fenced-code-block `![[x.jpg]]` is not folded into `links` there, unlike a
+    hand-rolled regex. Per note, `kind == 'embed'` targets are filtered to
+    file targets (attachment_index._is_attachment_target, dropping note
+    embeds) and resolved against `index` (attachment_index.resolve_attachments).
+    Fail-open: a KadoError yields {} — every source's attachments/
+    unresolved_embeds default to empty, the run continues without attachment
+    resolution.
+
+    Returns {note_path: {"attachments": [str, ...], "unresolved_embeds":
+    [dict, ...]}} — only for notes carrying at least one file-embed target;
+    a note with none is simply absent (callers default to empty lists).
+    """
+    try:
+        notes = client.list_notes(inbox_path, fields=["links"])
+    except KadoError as exc:
+        print(
+            f"[inbox-triage] WARNING: list_notes failed for {inbox_path!r}: "
+            f"{exc} — attachment resolution skipped, run continues",
+            file=sys.stderr,
+        )
+        return {}
+
+    result: dict[str, dict] = {}
+    for note in notes or []:
+        note_path = note.get("path")
+        if not note_path:
+            continue
+        targets: list[str] = []
+        for link in note.get("links") or []:
+            if link.get("kind") != "embed":
+                continue  # a plain [[...]] link is a reference, not a dependency
+            raw = link.get("target") or ""
+            if not raw:
+                continue
+            target = _strip_alias_and_anchor(raw)
+            if not _is_attachment_target(target):
+                continue  # a note embed, e.g. ![[Some Note]]
+            targets.append(target)
+        if not targets:
+            continue
+
+        attachments: list[str] = []
+        unresolved_embeds: list[dict] = []
+        for ref in resolve_attachments(targets, index):
+            if ref.status == "resolved":
+                attachments.append(ref.resolved_path)
+            elif ref.status == "ambiguous":
+                unresolved_embeds.append({
+                    "embed_target": ref.embed_target,
+                    "status": "ambiguous",
+                    "candidate_count": _candidate_count(ref.embed_target, index),
+                })
+            else:  # unresolved
+                unresolved_embeds.append({
+                    "embed_target": ref.embed_target,
+                    "status": "unresolved",
+                })
+        result[note_path] = {
+            "attachments": attachments,
+            "unresolved_embeds": unresolved_embeds,
+        }
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -917,21 +1004,17 @@ def discover(
     all_files, audio_files, md_files = discover_files(client, inbox_path)
 
     # Step 2b: recursive attachment index (ADR-1) — ONE additional listDir,
-    # independent of note/embed count (CON-4). Persisted as a sibling
-    # artifact rather than folded into routing-plan.json (schema-locked,
-    # additionalProperties:false) so the downstream resolution step (a
-    # separate, later process) can consume it without its own recursive call.
+    # independent of note/embed count (CON-4). Purely internal: resolution
+    # (step 2c) consumes it within this same call, so nothing is persisted.
     attachment_index = build_attachment_index(client, inbox_path)
-    try:
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        (Path(output_dir) / "attachment-index.json").write_text(
-            json.dumps(attachment_index), encoding="utf-8"
-        )
-    except OSError as exc:
-        print(
-            f"[inbox-triage] WARNING: could not write attachment-index.json: {exc}",
-            file=sys.stderr,
-        )
+
+    # Step 2c: extraction + resolution (ADR-2, corrected). listNotes' own
+    # metadataCache — not attachment_index.extract_attachment_embeds' regex —
+    # supplies embed targets: inbox-triage never has a note body to run a
+    # regex against (only the analyst subagent reads bodies, invisible to
+    # this script), and the metadataCache has no fenced-code-block blind
+    # spot. One call, independent of note/embed count (CON-4).
+    attachment_resolutions = resolve_inbox_attachments(client, inbox_path, attachment_index)
 
     # Step 3: query frontmatter
     (pending_approval_hits, pending_accept_hits, captured_hits,
@@ -958,6 +1041,14 @@ def discover(
         new_sources = new_sources + [
             h for h in captured_hits if h.get("path") and h["path"] not in seen
         ]
+
+    # Attach each source's resolved attachments (step 2c) — absent from
+    # attachment_resolutions simply means no file-embed targets were found,
+    # not that resolution failed; a source always gets both keys.
+    for source in new_sources:
+        resolution = attachment_resolutions.get(source.get("path"), {})
+        source["attachments"] = resolution.get("attachments", [])
+        source["unresolved_embeds"] = resolution.get("unresolved_embeds", [])
 
     # Step 4b: resolve new sources against the tag-handler registry (T2.1).
     # AC-5: load_registry returns [] for a missing/empty dir → short-circuit
@@ -1342,7 +1433,12 @@ def build_routing_plan(
         ).isoformat().replace("+00:00", "Z"),
         "inbox_path": state.inbox_path,
         "fresh_sources": [
-            {"path": s["path"], "modified": str(s.get("modified", ""))}
+            {
+                "path": s["path"],
+                "modified": str(s.get("modified", "")),
+                "attachments": s.get("attachments", []),
+                "unresolved_embeds": s.get("unresolved_embeds", []),
+            }
             for s in dispatch_sources
         ],
         "has_audio": state.has_audio,
@@ -1610,8 +1706,9 @@ def main(
 def _count_kado_calls(state: TriageState) -> int:
     """Estimate Kado call count from state (ADR-4, spec 031, corrected).
 
-    2 listDir (the existing depth=1 partition call plus T5.1's recursive
-    attachment-index call) + 7 byFrontmatter + N per-item reads:
+    3 base calls (the existing depth=1 partition listDir, T5.1's recursive
+    attachment-index listDir, and T5.1's listNotes(fields=["links"]) embed
+    extraction — ADR-2, corrected) + 7 byFrontmatter + N per-item reads:
 
       - instructions_frontmatter_reads: one read_frontmatter per instructions
         hit (enrich_instructions_frontmatter) — an unconditional loop, so
@@ -1640,7 +1737,7 @@ def _count_kado_calls(state: TriageState) -> int:
         + len(state.pending_approval)
     )
     return (
-        2
+        3
         + 7
         + len(state.instructions_hits)
         + state.tag_handler_reads

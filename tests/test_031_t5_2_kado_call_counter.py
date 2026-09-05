@@ -10,6 +10,12 @@ tag-handler registry is non-empty), and `_cache_wire_sibling`
 (read_file_bytes, one per garden-audit doc seen PLUS one per approved
 suggestions/suggestions-fan doc — four call sites in read_approval_state).
 
+The base is 3, not 2: T5.1's recursive listDir (the attachment index) AND
+its listNotes(fields=["links"]) call (ADR-2, corrected — embed extraction
+reads Kado's own metadataCache, since inbox-triage never has a note body to
+run a regex against) both landed in the same phase as this fix, so the
+formula accounts for both from the start.
+
 Every test here counts the corrected function's output against
 `len(client.calls)` — the fake client's own observed invocation log — never
 against a second, independently hand-computed expectation. A test that
@@ -66,6 +72,7 @@ class _FullFakeClient:
         read_note_responses=None,
         read_frontmatter_responses=None,
         read_file_responses=None,
+        list_notes_responses=None,
     ):
         self.calls: list[tuple[str, dict]] = []
         self._listdir_items = listdir_items or []
@@ -73,10 +80,15 @@ class _FullFakeClient:
         self._read_note_responses = read_note_responses or {}
         self._read_frontmatter_responses = read_frontmatter_responses or {}
         self._read_file_responses = read_file_responses or {}
+        self._list_notes_responses = list_notes_responses or []
 
     def list_dir(self, path, *, depth=None, limit=500):
         self.calls.append(("list_dir", {"path": path, "depth": depth}))
         return self._listdir_items
+
+    def list_notes(self, path, *, fields=None, depth=None, limit=500):
+        self.calls.append(("list_notes", {"path": path, "fields": fields}))
+        return self._list_notes_responses
 
     def search_by_frontmatter(self, query, *, path_prefix=None, limit=500, modified_after=None):
         self.calls.append(("search_by_frontmatter", {"query": query}))
@@ -273,9 +285,10 @@ def test_wire_sibling_reads_force_pass2_terminal_approved_site_counted(tmp_path)
     assert ("read_file_bytes", {"path": terminal_path[:-3] + ".json"}) in client.calls
 
 
-def test_recursive_listing_from_t5_1_is_included(tmp_path):
-    """The base count reflects BOTH listDir calls (depth=1 partition +
-    T5.1's recursive index build), not just one."""
+def test_t5_1_calls_are_included_in_the_base(tmp_path):
+    """The base count reflects ALL THREE T5.1 calls: the existing depth=1
+    listDir, the recursive attachment-index listDir, and the listNotes
+    embed-extraction call (ADR-2, corrected) — not just the original one."""
     mod = _load_module()
     client = _FullFakeClient(
         listdir_items=[],
@@ -293,5 +306,7 @@ def test_recursive_listing_from_t5_1_is_included(tmp_path):
     state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
 
     list_dir_calls = [c for name, c in client.calls if name == "list_dir"]
+    list_notes_calls = [c for name, c in client.calls if name == "list_notes"]
     assert len(list_dir_calls) == 2
-    assert mod._count_kado_calls(state) == len(client.calls) == 9
+    assert len(list_notes_calls) == 1
+    assert mod._count_kado_calls(state) == len(client.calls) == 10

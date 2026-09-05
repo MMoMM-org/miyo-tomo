@@ -108,6 +108,16 @@ class FakeKadoClient:
         self.calls.append(("list_dir", {"path": path, "depth": depth}))
         return self._listdir_items
 
+    def list_notes(
+        self, path: str, *, fields: list[str] | None = None,
+        depth: int | None = None, limit: int = 500,
+    ) -> list[dict]:
+        # spec 031 T5.1 (corrected ADR-2): one listNotes(fields=["links"])
+        # call per run for attachment extraction. No test here carries
+        # embeds, so this always returns no notes.
+        self.calls.append(("list_notes", {"path": path, "fields": fields}))
+        return []
+
     def search_by_frontmatter(
         self, query: str, *, path_prefix: str | None = None, limit: int = 500,
         modified_after: int | None = None,

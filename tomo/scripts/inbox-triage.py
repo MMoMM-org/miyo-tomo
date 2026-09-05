@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.31.0
+# version: 0.32.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -249,6 +249,17 @@ def resolve_inbox_attachments(
     the candidate count when ambiguous) — so a silent skip is impossible. A
     fully-resolving run emits no such lines. Neither ever produces an action.
 
+    Per-note targets are deduplicated on the resolved (post-alias/anchor-
+    strip) target string, preserving document order — mirroring
+    attachment_index.extract_attachment_embeds' own `seen` set (PRD F1-AC4:
+    a note embedding the same attachment twice records it once). Two
+    DIFFERENT raw forms that strip to the same target (e.g. `karte.jpg|A`
+    and `karte.jpg#top`) collapse to one entry here for that reason; two
+    different targets that happen to RESOLVE to the same path (e.g.
+    `karte.jpg` and `Images/karte.jpg`) do not — that cross-target,
+    cross-note collapse is `_build_move_asset_actions`' global `seen` set,
+    a different contract.
+
     Returns {note_path: {"attachments": [str, ...], "unresolved_embeds":
     [dict, ...]}} — only for notes carrying at least one file-embed target;
     a note with none is simply absent (callers default to empty lists).
@@ -269,6 +280,7 @@ def resolve_inbox_attachments(
         if not note_path:
             continue
         targets: list[str] = []
+        seen: set[str] = set()
         for link in note.get("links") or []:
             if link.get("kind") != "embed":
                 continue  # a plain [[...]] link is a reference, not a dependency
@@ -278,6 +290,9 @@ def resolve_inbox_attachments(
             target = _strip_alias_and_anchor(raw)
             if not _is_attachment_target(target):
                 continue  # a note embed, e.g. ![[Some Note]]
+            if target in seen:
+                continue  # PRD F1-AC4: same attachment embedded twice -> once
+            seen.add(target)
             targets.append(target)
         if not targets:
             continue

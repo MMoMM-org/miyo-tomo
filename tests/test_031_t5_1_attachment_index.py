@@ -461,6 +461,42 @@ def test_note_with_no_links_gets_no_entry(tmp_path):
     assert trip_path not in result
 
 
+def test_note_embedding_the_same_attachment_twice_records_it_once(tmp_path):
+    """PRD F1-AC4: a note embedding the same attachment twice records it
+    once — mirrors attachment_index.extract_attachment_embeds' own `seen`
+    dedup, which resolve_inbox_attachments must replicate since it replaced
+    that function as the pipeline's embed source (ADR-2, corrected)."""
+    trip_path = INBOX_PATH + "trip.md"
+    attachment_path = INBOX_PATH + "Images/karte.jpg"
+    mod = _load_module()
+    client = _FakeClient(
+        notes=[_note_entry(trip_path, [_note_link("karte.jpg", "embed"), _note_link("karte.jpg", "embed")])],
+    )
+    index = {"karte.jpg": [attachment_path]}
+
+    result = mod.resolve_inbox_attachments(client, INBOX_PATH, index)
+
+    assert result[trip_path]["attachments"] == [attachment_path]
+
+
+def test_same_target_different_alias_or_anchor_collapses_to_one(tmp_path):
+    """The near-miss a naive dedup-before-stripping would catch backwards:
+    ![[karte.jpg|A]] and ![[karte.jpg#top]] are different RAW forms but
+    strip to the same target — they must still collapse to one entry, so
+    dedup has to happen on the post-strip target, not the raw string."""
+    trip_path = INBOX_PATH + "trip.md"
+    attachment_path = INBOX_PATH + "Images/karte.jpg"
+    mod = _load_module()
+    client = _FakeClient(
+        notes=[_note_entry(trip_path, [_note_link("karte.jpg|A", "embed"), _note_link("karte.jpg#top", "embed")])],
+    )
+    index = {"karte.jpg": [attachment_path]}
+
+    result = mod.resolve_inbox_attachments(client, INBOX_PATH, index)
+
+    assert result[trip_path]["attachments"] == [attachment_path]
+
+
 def test_list_notes_kado_error_fails_open(tmp_path):
     """A KadoError on list_notes yields {} rather than raising — every
     source's attachments/unresolved_embeds default to empty downstream, and

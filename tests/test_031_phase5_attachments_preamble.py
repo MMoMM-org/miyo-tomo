@@ -12,7 +12,7 @@ and writes it to shared-ctx.json as `asset_folder`, defaulting to
 DEFAULT_ASSET_FOLDER (tomo/scripts/lib/render_actions.py) when unconfigured.
 
 Consumer: suggestions-reducer.py reads `asset_folder` back from shared-ctx.json
-(load_asset_folder, fail-open like load_field_sections) and renders the
+(load_asset_folder, fail-open) and renders the
 preamble (render_attachments_preamble) onto suggestions-doc.json's
 `attachments_preamble` field. suggestions-render.py splats it into the
 document header when non-empty (same pattern as decision_precedence_note).

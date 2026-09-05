@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.36.0
+# version: 1.37.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -537,48 +537,6 @@ def _daily_note_stem(path: str) -> str:
     return segments[-1] if segments else p
 
 
-def render_update_daily(action: dict, stem: str, field_sections: dict[str, str] | None = None) -> str:
-    field_sections = field_sections or {}
-    lines: list[str] = []
-    daily_stem = _daily_note_stem(action.get("daily_note_path", ""))
-    # Wikilinks use the note-name only — never the path. Obsidian resolves by name.
-    lines.append(f"**Daily update:** [[{daily_stem}]]")
-
-    # Only render tracker updates here — log_entry and log_link are rendered
-    # in the aggregated Daily Notes Updates block, not per-item.
-    updates = action.get("updates") or []
-    trackers = [u for u in updates if u.get("kind") == "tracker"]
-
-    grouped: dict[str, list[dict]] = {}
-    for u in trackers:
-        field = u.get("field", "")
-        section = field_sections.get(field) or u.get("section") or "<unknown section>"
-        grouped.setdefault(section, []).append(u)
-
-    for section, group in grouped.items():
-        lines.append("")
-        lines.append(f"Under `## {section}` (create it if missing):")
-        for u in group:
-            field = u.get("field", "")
-            value = u.get("value", "")
-            syntax = u.get("syntax", "inline_field")
-            if syntax == "inline_field":
-                value_str = "true" if value is True else ("false" if value is False else str(value))
-                lines.append(f"- Add `{field}:: {value_str}`")
-            elif syntax == "callout_body":
-                lines.append(f"- Under the `{field}` entry, append: {value}")
-            elif syntax == "checkbox":
-                mark = "[x]" if value in (True, "true", 1, "1") else "[ ]"
-                lines.append(f"- Check `{field}`: `- {mark} {field}`")
-            else:
-                lines.append(f"- `{field}` = {value}")
-
-    lines.append("")
-    lines.append("**Decision (daily update):**")
-    lines.append("- [x] Approve")
-    return "\n".join(lines)
-
-
 def render_link_to_moc(action: dict, stem: str) -> str:
     # AC-11: never emit a bare [[Target#section]] wikilink.
     # section_name was a dead field (section_name was never reliably populated
@@ -771,7 +729,6 @@ def render_log_link_mirror(log_links_for_stem: list[dict]) -> str:
 # the profile-resolved `moc_suffix`, so they are dispatched explicitly (W1/W2,
 # F-55) rather than special-casing a 3-arg callable inside a 2-arg dict.
 RENDERERS = {
-    "update_daily": render_update_daily,
     "link_to_moc": render_link_to_moc,
     "modify_note": render_modify_note,
 }
@@ -1269,27 +1226,10 @@ def _render_orphan_section(
     return "\n".join(lines).rstrip("\n")
 
 
-def load_field_sections(shared_ctx_path: Path) -> dict[str, str]:
-    """Build a {field_name: section} map from shared-ctx.json."""
-    if not shared_ctx_path or not shared_ctx_path.exists():
-        return {}
-    try:
-        ctx = json.loads(shared_ctx_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-    out: dict[str, str] = {}
-    for f in (ctx.get("daily_notes") or {}).get("tracker_fields", []) or []:
-        name = f.get("name")
-        section = f.get("section")
-        if name and section:
-            out[name] = section
-    return out
-
-
 def load_asset_folder(shared_ctx_path: Path) -> str:
     """Read the configured attachment-filing destination from shared-ctx.json.
 
-    Fail-open like load_field_sections: a missing/unreadable file or an
+    Fail-open: a missing/unreadable file or an
     absent/blank key falls back to the canonical default rather than raising.
     """
     if not shared_ctx_path or not shared_ctx_path.exists():
@@ -1309,7 +1249,7 @@ def load_resolved_attachments(path: "Path | None") -> dict:
     top level isn't a JSON object all yield {} rather than raising, so every
     item is merged against an empty map and gets attachments: [] and
     unresolved_embeds: [] — the run continues either way (matches
-    load_field_sections and load_asset_folder).
+    load_asset_folder).
 
     But the two failure shapes are NOT equally silent. A missing file is the
     normal state (no producer has run yet, or this run has no attachments)
@@ -1697,7 +1637,6 @@ def main() -> int:
     state_path = Path(args.state)
     items_dir = Path(args.items_dir)
     out_path = Path(args.output)
-    load_field_sections(Path(args.shared_ctx))
     asset_folder = load_asset_folder(Path(args.shared_ctx))
     resolved_attachments = load_resolved_attachments(Path(args.resolved_attachments))
 

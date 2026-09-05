@@ -1,4 +1,4 @@
-# version: 0.9.1
+# version: 0.10.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -829,6 +829,12 @@ def _build_daily_update_actions(
     daily_path_cfg = cfg["concepts.calendar.granularities.daily.path"]
     heading = cfg["daily_log.heading"]
     heading_level = cfg["daily_log.heading_level"]
+    # {field_name: {"syntax": …, "section": …}} resolved from the vault config.
+    # The review document never displays either value, so neither survives the
+    # markdown round trip back through suggestion-parser — they are looked up
+    # here, at the point of use, where the config is the authority (#162).
+    # `.get` and the per-field fallbacks below keep an absent map a no-op.
+    tracker_fields = cfg.get("daily_notes.tracker_fields") or {}
     out: list[dict] = []
     for day in daily_updates:
         date = day.get("date", "")
@@ -836,6 +842,7 @@ def _build_daily_update_actions(
         for tr in day.get("trackers", []) or []:
             if not tr.get("accepted"):
                 continue
+            configured = tracker_fields.get(tr.get("field", "")) or {}
             out.append({
                 "id": _next_id(counter),
                 "action": "update_tracker",
@@ -843,8 +850,10 @@ def _build_daily_update_actions(
                 "date": date,
                 "field": tr.get("field", ""),
                 "value": tr.get("value", ""),
-                "syntax": tr.get("syntax") or "inline_field",
-                "section": tr.get("section") or None,
+                "syntax": (
+                    configured.get("syntax") or tr.get("syntax") or "inline_field"
+                ),
+                "section": configured.get("section") or tr.get("section") or None,
                 "source_stem": _stem(tr.get("source_stem")) or None,
                 "reason": tr.get("reason") or None,
             })

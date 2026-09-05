@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.44.0
+# version: 0.45.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -116,6 +116,39 @@ CONFIG_DEFAULTS = {
 }
 
 
+def load_tracker_fields(shared_ctx_path) -> dict[str, dict]:
+    """Read {field_name: {syntax, section}} from shared-ctx.json.
+
+    shared-ctx's `tracker_fields` is the vault config's `trackers:` already
+    flattened by shared-ctx-builder, so this reads the derived artifact rather
+    than duplicating that flattening (which also computes keywords and
+    descriptions nothing here needs).
+
+    Fail-open: a missing, unreadable, or shapeless file yields {}, which the
+    emitter treats as "no configuration" and falls back to exactly the values
+    it emitted before this existed. Pass 2 must not become unrunnable because
+    a derived cache is absent.
+    """
+    path = Path(shared_ctx_path) if shared_ctx_path else None
+    if not path or not path.exists():
+        return {}
+    try:
+        ctx = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}
+    if not isinstance(ctx, dict):
+        return {}
+    out: dict[str, dict] = {}
+    for f in (ctx.get("daily_notes") or {}).get("tracker_fields", []) or []:
+        if not isinstance(f, dict):
+            continue
+        name = (f.get("name") or "").strip()
+        if not name:
+            continue
+        out[name] = {"syntax": f.get("syntax"), "section": f.get("section")}
+    return out
+
+
 def _get_dotted(data: dict, dotted: str):
     node = data
     for part in dotted.split("."):
@@ -200,6 +233,10 @@ def main() -> int:
     p.add_argument("--suggestions", required=True, help="Path to parsed suggestions JSON")
     p.add_argument("--output-dir", required=True, help="Directory for rendered files")
     p.add_argument("--config", default="config/vault-config.yaml", help="vault-config.yaml path")
+    p.add_argument("--shared-ctx", default="tomo-tmp/shared-ctx.json",
+                   help="Path to shared-ctx.json — supplies each tracker field's "
+                        "configured syntax and section (#162). Fail-open: absent "
+                        "or unreadable falls back to the emitter's own defaults.")
     # F-47 T2.3: upstream doc identity for the tomo: block + source_* cross-ref.
     p.add_argument(
         "--upstream-type",
@@ -255,6 +292,7 @@ def main() -> int:
     tag_handler_groups = _load_tag_handler_groups(args.tag_handler_groups_dir)
 
     cfg = load_config(args.config)
+    cfg["daily_notes.tracker_fields"] = load_tracker_fields(args.shared_ctx)
     inbox_path = cfg["concepts.inbox"]
     profile_name = cfg["profile"]
     conventions = resolve_conventions(

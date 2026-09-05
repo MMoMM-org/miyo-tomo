@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.28.0
+# version: 0.29.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -118,6 +118,12 @@ class TriageState:
     # registry is empty or nothing matched — AC-5 byte-identity.
     handled: list[dict] = field(default_factory=list)
     handled_paths: set[str] = field(default_factory=set)
+
+    # ADR-4 (spec 031): per-item Kado call counts that TriageState's other
+    # aggregate fields cannot reconstruct after the fact — see the call sites
+    # in discover() and read_approval_state() where each is set.
+    tag_handler_reads: int = 0
+    wire_sibling_reads: int = 0
 
     # Flags passed through for T2.2
     force_pass1: bool = False
@@ -627,6 +633,7 @@ def read_approval_state(
     *,
     terminal_approved_hits: list[dict] | None = None,
     force_pass2: bool = False,
+    call_counter: list[int] | None = None,
 ) -> tuple[
     list[dict], list[dict], list[dict], list[dict],
     list[dict], list[dict], list[dict], dict,
@@ -635,6 +642,13 @@ def read_approval_state(
 
     When force_pass2=True, also reads and caches terminal-approved docs
     (tomo.state=approved) so they can be included in the synthesize work-list.
+
+    call_counter (ADR-4, spec 031), when given, has its [0] element
+    incremented once per _cache_wire_sibling call (four call sites below) so
+    the caller can recover an exact read_file_bytes count — those calls are
+    gated by doc_type/approval-state combinations the return values alone
+    don't preserve (an unapproved garden-audit doc still triggers its wire
+    pre-check but never appears in approved_garden_audits).
 
     Returns (approved_suggestions, approved_fan, approved_moc_proposals,
              approved_garden_audits,
@@ -651,6 +665,13 @@ def read_approval_state(
 
     cache_dir = Path(output_dir) / "inbox-cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _cache_wire_sibling_counted(vault_path: str) -> str | None:
+        """Wraps _cache_wire_sibling, incrementing call_counter[0] once per
+        call (ADR-4) — one read_file_bytes attempt regardless of outcome."""
+        if call_counter is not None:
+            call_counter[0] += 1
+        return _cache_wire_sibling(client, vault_path, cache_dir)
 
     tagged_pending: list[tuple[dict, str]] = []
     for doc in pending_approval_hits:
@@ -716,7 +737,7 @@ def read_approval_state(
             # sibling first so we can read its approve flag, then reuse the cached
             # path in the approved branch. Per-finding Apply ticks + the wire
             # digest still drive WHICH fixes apply (garden-audit-parser, Pass-2).
-            garden_wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+            garden_wire_cache = _cache_wire_sibling_counted(vault_path)
             approved = bool(_RE_APPROVED.search(body)) or _wire_approved(
                 garden_wire_cache
             )
@@ -741,7 +762,7 @@ def read_approval_state(
                 "cache_path": cache_path_str,
             }
             if doc_type == "suggestions":
-                wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+                wire_cache = _cache_wire_sibling_counted(vault_path)
                 edited_wire = None
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
@@ -760,7 +781,7 @@ def read_approval_state(
                 # ADR-026: cache the fan wire sibling too, so a Hashi-edited fan doc
                 # resolves JSON-only in Pass-2 (standalone-fan path). Fan docs carry
                 # no force-atomic re-opt-in, so extraction stays markdown here.
-                wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+                wire_cache = _cache_wire_sibling_counted(vault_path)
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
                 force_atomic_items.extend(_extract_fan_items(body, vault_path))
@@ -832,7 +853,7 @@ def read_approval_state(
                 "cache_path": str(cache_path),
             }
             if doc_type == "suggestions":
-                wire_cache = _cache_wire_sibling(client, vault_path, cache_dir)
+                wire_cache = _cache_wire_sibling_counted(vault_path)
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
                 approved_suggestions.append(entry)
@@ -960,13 +981,28 @@ def discover(
     registry = load_registry(resolved_registry_dir)
     handled: list[dict] = []
     handled_paths: set[str] = set()
+    # ADR-4 (spec 031): resolve_handlers reads one read_frontmatter per
+    # new_source, unconditionally, when the registry is non-empty (AC-5: zero
+    # reads when it's empty). handled/handled_paths staying empty cannot
+    # distinguish "registry empty, no reads" from "registry non-empty, no
+    # matches" — so this count is tracked explicitly here, at the only point
+    # that knows which case applies, rather than reconstructed from state.
+    tag_handler_reads = 0
     if registry:
         handled, handled_paths = resolve_handlers(client, new_sources, registry)
+        tag_handler_reads = len(new_sources)
 
     # Step 5: check audio
     has_audio = check_audio(audio_files, md_files)
 
     # Step 6: read approval state and cache
+    # ADR-4: _cache_wire_sibling (read_file_bytes) has four call sites inside
+    # read_approval_state, gated by doc_type/approval-state combinations that
+    # state's aggregate buckets cannot reconstruct after the fact (e.g. an
+    # UNAPPROVED garden-audit doc still triggers its wire pre-check, but never
+    # lands in approved_garden_audits). Counted at the true call sites via
+    # this mutable counter instead.
+    wire_sibling_counter = [0]
     (
         approved_suggestions,
         approved_fan,
@@ -980,7 +1016,9 @@ def discover(
         client, pending_approval_hits, pending_accept_hits, output_dir,
         terminal_approved_hits=approved_hits,
         force_pass2=force_pass2 or force_all,
+        call_counter=wire_sibling_counter,
     )
+    wire_sibling_reads = wire_sibling_counter[0]
 
     return TriageState(
         inbox_path=inbox_path,
@@ -1005,6 +1043,8 @@ def discover(
         terminal_approved_hits=approved_hits,
         handled=handled,
         handled_paths=handled_paths,
+        tag_handler_reads=tag_handler_reads,
+        wire_sibling_reads=wire_sibling_reads,
         force_pass1=force_pass1,
         force_pass2=force_pass2,
         force_all=force_all,
@@ -1568,9 +1608,29 @@ def main(
 
 
 def _count_kado_calls(state: TriageState) -> int:
-    """Estimate Kado call count from state.
+    """Estimate Kado call count from state (ADR-4, spec 031, corrected).
 
-    1 listDir + 7 byFrontmatter + N body reads (one read_note per pending/accepted doc).
+    2 listDir (the existing depth=1 partition call plus T5.1's recursive
+    attachment-index call) + 7 byFrontmatter + N per-item reads:
+
+      - instructions_frontmatter_reads: one read_frontmatter per instructions
+        hit (enrich_instructions_frontmatter) — an unconditional loop, so
+        len(instructions_hits) counts call ATTEMPTS correctly even when one
+        fails.
+      - tag_handler_reads: one read_frontmatter per new source, made only
+        when the tag-handler registry is non-empty (resolve_handlers) — set
+        explicitly in discover(), since handled/handled_paths staying empty
+        cannot distinguish "registry empty" from "registry non-empty, no
+        matches".
+      - wire_sibling_reads: one read_file_bytes per _cache_wire_sibling call
+        (four call sites in read_approval_state — an unapproved garden-audit
+        doc still triggers its wire pre-check) — set explicitly via the
+        call_counter threaded through read_approval_state.
+      - body_reads: one read_note per pending/accepted doc that lands in one
+        of the five buckets below. Known approximation, unchanged by this
+        fix: a read_note that raises KadoError makes a real call but lands
+        in none of these buckets, so a mid-run read failure still
+        under-counts by one per failure.
     """
     body_reads = (
         len(state.approved_suggestions)
@@ -1579,7 +1639,14 @@ def _count_kado_calls(state: TriageState) -> int:
         + len(state.approved_garden_audits)
         + len(state.pending_approval)
     )
-    return 5 + body_reads
+    return (
+        2
+        + 7
+        + len(state.instructions_hits)
+        + state.tag_handler_reads
+        + state.wire_sibling_reads
+        + body_reads
+    )
 
 
 if __name__ == "__main__":

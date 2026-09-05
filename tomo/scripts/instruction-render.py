@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.42.2
+# version: 0.42.3
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -104,6 +104,7 @@ from lib.supporting_items import (  # noqa: E402
 
 CONFIG_DEFAULTS = {
     "concepts.inbox": "100 Inbox/",
+    "concepts.asset": "Atlas/290 Assets/295 Attachments/",
     "concepts.calendar.granularities.daily.path": "Calendar/301 Daily/",
     "daily_log.heading": "Daily Log",
     "daily_log.heading_level": 2,

@@ -1,4 +1,4 @@
-# version: 0.8.5
+# version: 0.8.6
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -204,6 +204,7 @@ _OPTIONAL_PATH_FIELDS = {
 _REQUIRED_PATH_FIELDS = {
     "create_moc": ("source", "destination"),
     "move_note": ("source", "destination"),
+    "move_asset": ("source", "destination"),
     "update_tracker": ("daily_note_path",),
     "update_log_entry": ("daily_note_path",),
     "update_log_link": ("daily_note_path",),

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_031_t2_4_destination_collision_guard.py — spec 031 T2.4 destination
 collision guard for _build_move_asset_actions, plus the empty-basename skip
 folded in here (same skip-and-report machinery, same code-quality review).
@@ -95,6 +95,7 @@ def test_second_colliding_attachment_is_skipped_and_reported(capsys):
     assert len(skipped) == 1
     assert skipped[0]["source"] == "100 Inbox/Scans/karte.jpg"
     assert "collision" in skipped[0]["reason"].lower()
+    assert skipped[0]["kind"] == "collision"
 
 
 def test_same_path_resolved_twice_is_dedup_not_collision(capsys):
@@ -173,5 +174,6 @@ def test_attachment_with_no_basename_is_skipped_and_reported(capsys):
     assert len(skipped) == 1
     assert skipped[0]["source"] == "100 Inbox/Images/"
     assert skipped[0]["destination"] is None
+    assert skipped[0]["kind"] == "no_basename"
     err = capsys.readouterr().err
     assert "100 Inbox/Images/" in err

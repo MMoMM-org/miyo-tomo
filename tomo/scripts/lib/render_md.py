@@ -1,4 +1,4 @@
-# version: 0.8.0
+# version: 0.8.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -541,14 +541,17 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
             body_parts.append("")
         if skipped_assets:
             body_parts.append(
-                "**Attachment not filed** — a naming or destination conflict "
-                "prevented this attachment from moving. Resolve it (e.g. rename "
-                "one of the files) and re-run `/inbox`:")
+                "**Attachment not filed** — these attachments were left in the inbox:")
             body_parts.append("")
             for s in skipped_assets:
                 source = s.get("source") or "?"
                 reason = s.get("reason") or "?"
-                body_parts.append(f"- `move_asset` → `{source}` — {reason}")
+                if s.get("kind") == "no_basename":
+                    remedy = "the inbox entry has no filename — inspect that inbox path directly, this is not a naming conflict"
+                else:
+                    destination = s.get("destination") or "?"
+                    remedy = f"rename one of the two files so they no longer share `{destination}`, then re-run `/inbox`"
+                body_parts.append(f"- `move_asset` → `{source}` — {reason}. {remedy}.")
             body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"
 

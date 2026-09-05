@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_031_t2_3_move_asset_md_rendering.py — spec 031 T2.3 readable
 instruction rendering for move_asset.
 
@@ -70,6 +70,7 @@ def test_skipped_attachment_is_surfaced_in_the_rendered_markdown():
             "reason": "destination collision: also resolves to "
                       "'Atlas/290 Assets/295 Attachments/karte.jpg', "
                       "already claimed by '100 Inbox/Images/karte.jpg'",
+            "kind": "collision",
         }],
     }
     md = render_instructions_md([], metadata, {})

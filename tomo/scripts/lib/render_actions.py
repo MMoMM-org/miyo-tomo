@@ -1,4 +1,4 @@
-# version: 0.9.0
+# version: 0.9.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -637,8 +637,11 @@ def _build_move_asset_actions(
       source folders) resolve to the same destination — the first claim wins,
       the second is skipped. Renaming is not attempted.
 
-    Each skipped entry is {"source", "destination", "reason"} — destination
-    is None for the no-basename case, since none could be computed.
+    Each skipped entry is {"source", "destination", "reason", "kind"} —
+    destination is None for the no-basename case, since none could be
+    computed. `kind` is "no_basename" or "collision" — the two cases need
+    different remedies (a malformed inbox path vs. a real naming conflict),
+    so callers rendering this for a user must not treat them as one case.
     """
     out: list[dict] = []
     skipped: list[dict] = []
@@ -653,7 +656,10 @@ def _build_move_asset_actions(
                 destination = _asset_dest_join(asset_folder, path)
             except ValueError as exc:
                 print(f"  [warn] skipping attachment — {exc}", file=sys.stderr)
-                skipped.append({"source": path, "destination": None, "reason": str(exc)})
+                skipped.append({
+                    "source": path, "destination": None, "reason": str(exc),
+                    "kind": "no_basename",
+                })
                 continue
             claimant = claimed.get(destination)
             if claimant is not None:
@@ -662,7 +668,10 @@ def _build_move_asset_actions(
                     f"{destination!r}, already claimed by {claimant!r}"
                 )
                 print(f"  [warn] {reason} — skipping {path!r}", file=sys.stderr)
-                skipped.append({"source": path, "destination": destination, "reason": reason})
+                skipped.append({
+                    "source": path, "destination": destination, "reason": reason,
+                    "kind": "collision",
+                })
                 continue
             claimed[destination] = path
             out.append({

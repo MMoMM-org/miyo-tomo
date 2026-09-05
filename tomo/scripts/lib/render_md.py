@@ -1,4 +1,4 @@
-# version: 0.7.2
+# version: 0.7.3
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -20,6 +20,7 @@ from lib.supporting_items import parse_supporting_items as _parse_supporting_ite
 
 SECTION_TITLES = [
     ("new_files", "New Files"),
+    ("attachments", "Attachments"),
     ("moc_links", "MOC Links"),
     ("daily_updates", "Daily Updates"),
     ("tag_handler_updates", "Tag-Handler Updates"),
@@ -32,6 +33,8 @@ def _md_section_for(action: dict) -> str:
     kind = action["action"]
     if kind in ("move_note", "create_moc"):
         return "new_files"
+    if kind == "move_asset":
+        return "attachments"
     if kind in ("link_to_moc", "add_relationship", "edit_note_text",
                 "remove_up_link", "resolve_dead_link", "edit_frontmatter"):
         return "moc_links"
@@ -65,6 +68,15 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         if action.get("source_inbox_item"):
             lines.append(f"- **Source (reference):** [[{_stem(action['source_inbox_item'])}]]")
         lines.append("- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P")
+        return "\n".join(lines)
+
+    if kind == "move_asset":
+        name = (action.get("source") or "").rsplit("/", 1)[-1] or "(unnamed)"
+        lines = [f"{heading_prefix}Move attachment: {name}", "- [ ] Applied"]
+        if action.get("source"):
+            lines.append(f"- **From:** `{action['source']}`")
+        if action.get("destination"):
+            lines.append(f"- **To:** `{action['destination']}`")
         return "\n".join(lines)
 
     if kind == "create_moc":

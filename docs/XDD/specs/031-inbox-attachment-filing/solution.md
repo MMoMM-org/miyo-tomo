@@ -87,7 +87,7 @@ version: "1.0"
 ```yaml
 - file: tomo/scripts/lib/render_actions.py
   relevance: CRITICAL
-  why: "Emission site. _build_move_note_actions:559 (the template), build_actions:1275 (ordering), _dest_join:488 and _ensure_md_extension:69 (the .md traps), _KNOWN_FILE_EXTENSIONS:59-68 (the attachment classifier to reuse), _REQUIRED_PATH_FIELDS:204-219"
+  why: "Emission site. _build_move_note_actions:559 (the template), build_actions:1275 (ordering), _dest_join:488 and _ensure_md_extension:63 (the .md traps), _REQUIRED_PATH_FIELDS:204-219. The classifier itself now lives in lib/file_extensions.py:18-25 (public KNOWN_FILE_EXTENSIONS), relocated during T1.1; render_actions.py keeps _KNOWN_FILE_EXTENSIONS:60 only as a back-compat alias"
 
 - file: tomo/scripts/lib/kado_client.py
   relevance: CRITICAL
@@ -426,16 +426,18 @@ def extract_attachment_embeds(body: str) -> list[str]:
 ```
 
 `_is_attachment_target` reuses the existing classifier rather than inventing an extension list —
-`render_actions.py:59-66` `_KNOWN_FILE_EXTENSIONS` already contains `png, jpg, jpeg, gif, webp, svg,
-bmp, pdf` plus the audio/video set, and already encodes the Obsidian rule that `[[FooBar]]` means
-`FooBar.md` while `[[FooBar.m4a]]` means the literal file.
+`lib/file_extensions.py:18-25` `KNOWN_FILE_EXTENSIONS` already contains `png, jpg, jpeg, gif, webp,
+svg, bmp, pdf` plus the audio/video set, and already encodes the Obsidian rule that `[[FooBar]]`
+means `FooBar.md` while `[[FooBar.m4a]]` means the literal file. (Relocated out of
+`render_actions.py` during T1.1 to keep this library free of the render pipeline's imports — see
+`docs/tomo/scripts/lib/file_extensions.md`.)
 
 **It is a two-step test, not a membership check.** That frozenset also contains `md`, so a naive
-`ext in _KNOWN_FILE_EXTENSIONS` would classify `![[Note.md]]` as an attachment and emit a
+`ext in KNOWN_FILE_EXTENSIONS` would classify `![[Note.md]]` as an attachment and emit a
 `move_asset` for a note — which Hashi rejects (CON-3), and rightly. The test is:
 
 ```
-is_attachment = ext in _KNOWN_FILE_EXTENSIONS and ext not in {"md", "canvas", "base"}
+is_attachment = ext in KNOWN_FILE_EXTENSIONS and ext not in {"md", "canvas", "base"}
 ```
 
 Note that `canvas` and `base` are **not** in the frozenset today, so they already fall out at step
@@ -475,8 +477,12 @@ Now trace four embeds:
 |---|---|---|---|---|
 | 1 | `![[prag-karte.jpg]]` | `prag-karte.jpg` | 1 | **resolved** → `100 Inbox/Images/prag-karte.jpg`. The sibling assumption would have produced `100 Inbox/Places/prag-karte.jpg` — a path that does not exist |
 | 2 | `![[karte.jpg]]` | `karte.jpg` | 2 | **ambiguous** → no action, reported. Business rule 4: a wrong move is worse than no move |
-| 3 | `![[Images/karte.jpg]]` | — (path given) | — | **resolved** → used verbatim after verifying membership in the index's path set. Business rule 2 |
+| 3 | `![[Images/karte.jpg]]` | `karte.jpg` (its own basename) | 2, narrowed to 1 | **resolved** → `100 Inbox/Images/karte.jpg`. NOT a membership test against the index's path set — Kado's `listDir` returns full vault-relative paths, so the index never holds a bare `Images/karte.jpg` to test against. Instead: look up `karte.jpg`'s two candidates, then keep whichever ends with the given target at a `/` boundary (here, `/Images/karte.jpg`). Business rule 2 |
 | 4 | `![[Dresden]]` | — | — | not an attachment at all — no extension, so `_is_attachment_target` rejects it before lookup. A note embed |
+
+Row 3's `resolved_path` is always a value **retrieved** from the index, never a string built by
+joining the target onto a prefix — that is what makes fabrication impossible by construction rather
+than by test. Narrowing to more than one surviving candidate is `ambiguous`, not first-hit-wins.
 
 Edge cases and their code paths:
 
@@ -501,8 +507,13 @@ def _asset_dest_join(asset_folder: str, source_path: str) -> str:
     """Join the asset folder with the source's basename, preserving the extension.
 
     NOT _dest_join (:488) — that hardcodes a '.md' suffix at :498.
-    NOT _ensure_md_extension (:69) — '.jpg' is absent from _KNOWN_FILE_EXTENSIONS'
-    note set, so it would append '.md' to 'foto.jpg'.
+    NOT _ensure_md_extension (:63) — it is a silent NO-OP for any extension
+    already in KNOWN_FILE_EXTENSIONS (lib/file_extensions.py:18-25): 'foto.jpg'
+    returns unchanged, since 'jpg' IS in the allowlist. The actual hazard is the
+    opposite case — it silently appends '.md' to every extension NOT in that
+    allowlist ('scan.heic' -> 'scan.heic.md', 'doc.docx' -> 'doc.docx.md'), so
+    the failure only shows up for attachment types least likely to appear in a
+    test fixture.
     """
     folder = (asset_folder or "").rstrip("/") + "/"
     return f"{folder}{source_path.rsplit('/', 1)[-1]}"

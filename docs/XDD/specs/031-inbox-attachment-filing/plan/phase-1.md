@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Detection and resolution core"
-status: pending
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -30,7 +30,7 @@ phase: 1
 
 Establishes the detection and resolution capability as a pure, fully unit-testable library. Nothing in this phase touches the pipeline.
 
-- [ ] **T1.1 Embed extraction** `[activity: domain-modeling]`
+- [x] **T1.1 Embed extraction** `[activity: domain-modeling]`
 
   1. **Prime**: Read the extraction example `[ref: SDD/Implementation Examples]` and the classifier at `tomo/scripts/lib/render_actions.py:59-66`. Note that the frozenset contains `md` — the test is two-step, not a membership check.
   2. **Test** (RED):
@@ -51,14 +51,15 @@ Establishes the detection and resolution capability as a pure, fully unit-testab
      - [ ] Note extensions are never returned, including `.md` which IS in the frozenset `[ref: SDD/Implementation Examples]`
      - [ ] A path-qualified target keeps its path `[ref: PRD/AC-F2.2]`
 
-- [ ] **T1.2 Inbox file index** `[activity: domain-modeling]`
+- [x] **T1.2 Inbox file index** `[activity: domain-modeling]`
 
   1. **Prime**: Read the traced walkthrough's index table `[ref: SDD/Implementation Examples]`. The index maps basename → list of paths, so collisions are representable rather than lost.
   2. **Test** (RED):
      - a flat listDir result indexes each file under its basename
      - two files sharing a basename in different folders produce one key with two paths
      - folder entries (`type: "folder"`) are excluded
-     - an empty or missing result yields an empty index (fail-open, `[ref: SDD/Cross-Cutting Concepts; "Fail open, never guess"]`)
+     - `list_dir_result` is the flat `list[dict]` Kado's `list_dir` actually returns — items carry `path`/`type`, no wrapper object, no `entries` key (confirmed against `kado_client.py` `list_dir` → `_search_all`, and `garden-audit.py:371`'s `items = list_dir_fn(path="/") or []`)
+     - `None`, `[]`, and a truthy non-list container all fail open to an empty index, never an exception (fail-open, `[ref: SDD/Cross-Cutting Concepts; "Fail open, never guess"]`)
      - `.md` files are indexed too — the index describes the inbox, filtering is the resolver's job
   3. **Implement**: `build_inbox_index(list_dir_result) -> dict[str, list[str]]` in the same module.
   4. **Validate**: unit tests pass; `ruff` clean.
@@ -66,13 +67,13 @@ Establishes the detection and resolution capability as a pure, fully unit-testab
      - [ ] Collisions are preserved as multiple paths, never collapsed `[ref: PRD/Business rule 4]`
      - [ ] An empty index is a valid state, not an exception `[ref: PRD/Business rule 10]`
 
-- [ ] **T1.3 Embed resolution** `[activity: domain-modeling]`
+- [x] **T1.3 Embed resolution** `[activity: domain-modeling]`
 
   1. **Prime**: Read the traced walkthrough in full `[ref: SDD/Implementation Examples]`. Four outcomes, four rows.
   2. **Test** (RED) — reproduce the SDD's five-file inbox verbatim as the fixture:
      - `![[prag-karte.jpg]]` → resolved to `100 Inbox/Images/prag-karte.jpg` — **the sibling assumption would fail here** `[ref: PRD/AC-F2.1]`
      - `![[karte.jpg]]` with two index hits → `ambiguous`, no path `[ref: PRD/AC-F2.4]`
-     - `![[Images/karte.jpg]]` → resolved verbatim after index-membership check `[ref: PRD/AC-F2.2]`
+     - `![[Images/karte.jpg]]` → resolved by narrowing its basename's index hits to the one ending with the given target at a `/` boundary — NOT a literal membership test against the index's path set, which only ever holds full vault-relative paths `[ref: PRD/AC-F2.2]`
      - target absent from the index → `unresolved`, no path `[ref: PRD/AC-F2.3]`
      - a path-qualified target NOT in the index → `unresolved`, never fabricated
      - empty index → every target `unresolved`
@@ -84,7 +85,7 @@ Establishes the detection and resolution capability as a pure, fully unit-testab
      - [ ] Ambiguity yields no action and is distinguishable from absence `[ref: PRD/Business rule 4]`
      - [ ] Resolution is O(1) per embed `[ref: SDD/Quality Requirements; Cost]`
 
-- [ ] **T1.4 WHY-layer documentation** `[activity: documentation]` `[parallel: true]`
+- [x] **T1.4 WHY-layer documentation** `[activity: documentation]` `[parallel: true]`
 
   1. **Prime**: Read the repo rule on `docs/tomo/<mirrored-path>.md` in `CLAUDE.md`.
   2. **Test**: n/a — documentation deliverable.
@@ -92,6 +93,6 @@ Establishes the detection and resolution capability as a pure, fully unit-testab
   4. **Validate**: every rationale in the runtime file's comments has a counterpart here.
   5. **Success**: `[ref: CLAUDE.md; WHY-persistence layer rule]`
 
-- [ ] **T1.5 Phase Validation** `[activity: validate]`
+- [x] **T1.5 Phase Validation** `[activity: validate]`
 
   - Run all Phase 1 tests. Confirm the traced walkthrough's four outcomes are each covered by a named test. `ruff` clean. No Kado import anywhere in `attachment_index.py` — grep to prove it.

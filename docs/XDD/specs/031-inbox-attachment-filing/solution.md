@@ -669,7 +669,10 @@ Traceability from PRD features to this design:
 ### Implementation Gotchas
 
 - **Do not reuse any existing wikilink regex.** All nine match the inner `[[…]]` of an embed.
-- **Do not call `_ensure_md_extension` or `_dest_join` on an attachment path.** Both force `.md`.
+- **Do not call `_ensure_md_extension` or `_dest_join` on an attachment path.** `_dest_join`
+  unconditionally forces `.md`; `_ensure_md_extension` is a silent no-op for an allowlisted
+  extension (`foto.jpg` → `foto.jpg`) but silently appends `.md` to anything outside the allowlist
+  (`scan.heic` → `scan.heic.md`) — neither behaviour is safe here.
 - **Do not add `attachments` to the `move_asset` action.** `additionalProperties:false` — the entire
   instruction set is rejected at apply time.
 - **Add the field to both review channels and both parser projections**, atomically with the wire

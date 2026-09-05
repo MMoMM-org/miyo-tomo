@@ -53,7 +53,7 @@ Closes the blind spot so that a missing or spurious attachment move fails loudly
      - two confirmed items sharing one attachment → expects **1**, matching the renderer's global dedup `[ref: PRD/AC-F4.2]`
      - two items with same-basename-different-path attachments → expects 2, proving the key is the full path, not the basename
      - `create_moc` items are skipped, as in the existing passes
-     - **attachments never appear in `expected_deletions`** — the ADR-6 guard, asserted on the deletions list itself `[ref: ADR-6]`
+     - **attachments never appear in `expected_deletions`** — the ADR-6 guard on the *expectation* side; the emitted side is asserted in Phase 2 T2.2 `[ref: ADR-6]`
      - a skipped item's attachments contribute nothing `[ref: PRD/AC-F4.5]`
   3. **Implement**: add an expectation pass in `derive_expected` collecting `item.get("attachments")` into an `attachments_seen: set[str]`, then `counts["move_asset"] = len(attachments_seen)`. Key on the resolved path.
   4. **Validate**: unit tests pass.

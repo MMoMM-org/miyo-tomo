@@ -36,10 +36,11 @@ Delivers executable `move_asset` actions and their human-readable rendering.
   1. **Prime**: Read the destination-join example `[ref: SDD/Implementation Examples]`. Two existing helpers look reusable and are actively harmful.
   2. **Test** (RED):
      - `("Atlas/290 Assets/295 Attachments/", "100 Inbox/Images/karte.jpg")` → `Atlas/290 Assets/295 Attachments/karte.jpg`
+     - `("Atlas/290 Assets/295 Attachments/", "100 Inbox/Images/scan.heic")` → `Atlas/290 Assets/295 Attachments/scan.heic` — the case that actually falsifies a wrong helper, since `.jpg` is a no-op under `_ensure_md_extension` and proves nothing
      - extension is preserved exactly, including uppercase (`FOTO.JPG` stays `FOTO.JPG`) `[ref: PRD/Edge case: unusual extension]`
      - a folder given without a trailing slash still joins correctly
      - the basename is **not** passed through `sanitize_stem` — an existing filename must survive verbatim so the embed keeps resolving
-     - a regression test asserting `_ensure_md_extension("foto.jpg")` returns `foto.jpg.md`, documenting *why* it is not used here
+     - a regression test showing `_ensure_md_extension` is unsafe for asset paths: it is a silent no-op for an allowlisted extension (`foto.jpg` → `foto.jpg`) but appends `.md` to anything outside the allowlist (`scan.heic` → `scan.heic.md`) — which is why it must never touch an attachment path
   3. **Implement**: `_asset_dest_join(asset_folder, source_path)` in `tomo/scripts/lib/render_actions.py`.
   4. **Validate**: unit tests pass; `ruff` clean; `# version:` bumped.
   5. **Success**:
@@ -48,7 +49,7 @@ Delivers executable `move_asset` actions and their human-readable rendering.
 
 - [ ] **T2.2 move_asset emission with global de-duplication** `[activity: backend-logic]`
 
-  1. **Prime**: Read `[ref: SDD/Complex Logic]`. The audio-peer set at `render_actions.py:927` dedups *within* an origin-stem group; attachments dedup **globally**.
+  1. **Prime**: Read `[ref: SDD/Complex Logic]`. The audio-peer set at `render_actions.py:927` dedups *within* an origin-stem group; attachments dedup **globally**. The ADR-6 no-deletion guarantee below is cheap to satisfy: ADR-5 already makes it structural — `attachments` never rides the `move_note` action, and `_build_delete_source_actions` takes `move_notes` as its input (`render_actions.py:1320-1325`), so an attachment has no path to a deletion by construction. The test pins that property rather than creating it — but a structural guarantee with no test is one refactor away from not being one.
   2. **Test** (RED):
      - one item with one attachment → one action, correct source and destination `[ref: PRD/AC-F4.1]`
      - two items embedding the same path → **one** action `[ref: PRD/AC-F4.2]`
@@ -56,13 +57,14 @@ Delivers executable `move_asset` actions and their human-readable rendering.
      - an item with an empty attachment list → no actions
      - a manifest with no attachment keys at all → no actions, and the rest of the set is byte-identical `[ref: CON-8]`
      - IDs are assigned from the shared counter and are monotonic
-     - **no `delete_source` action references any attachment path** `[ref: ADR-6]`
+     - for an item with 2 unique attachments, the emitted action set contains exactly 2 `move_asset` actions and **zero `delete_source` actions referencing either attachment path** — the ADR-6 guarantee asserted on the emitted side, complementing T4.2's assertion on the expectation side `[ref: ADR-6]`
   3. **Implement**: `_build_move_asset_actions(manifest, inbox_path, asset_folder, counter)` reading `m.get("attachments")`. Insert into `build_actions` between the `move_note` extend and the `link_to_moc` extend, and update the ordering docstring at `:1287-1303`.
   4. **Validate**: unit tests pass; full suite run to surface ID-renumbering churn in existing fixtures (expected, not a regression) `[ref: SDD/Implementation Gotchas]`.
   5. **Success**:
      - [ ] Dedup is global across the run, not per item `[ref: PRD/Business rule 5]`
      - [ ] Only approved items contribute, since the manifest holds only approved items `[ref: PRD/Business rule 6]`
      - [ ] Actions occupy planner slot 3 `[ref: docs/instructions-json.md]`
+     - [ ] No attachment path can reach a `delete_source` action `[ref: ADR-6]`
 
 - [ ] **T2.3 Readable instruction rendering** `[activity: backend-logic]` `[parallel: true]`
 

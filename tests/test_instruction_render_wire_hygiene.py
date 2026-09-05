@@ -1,3 +1,4 @@
+# version: 0.1.0
 """test_instruction_render_wire_hygiene.py — apply-blocker fixes (#68/#69/#70/#64).
 
 Covers the producer-side hygiene that makes a Tomo instruction set appliable by
@@ -21,6 +22,7 @@ automatically when the upstream GitHub URL is unreachable (offline runs).
 """
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import io
 import json
@@ -300,7 +302,18 @@ class TestHashiSchemaParity:
                         f"upstream Hashi schema unreachable — HTTP {resp.status} — offline"
                     )
                 live = json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, OSError):
+        except (
+            urllib.error.URLError, TimeoutError, OSError,
+            # http.client.IncompleteRead (raised by resp.read() on a partial
+            # transfer) is an HTTPException, not an OSError — a truncated
+            # read is the same "upstream unreachable" condition as the cases
+            # above, not a schema comparison to run.
+            http.client.HTTPException,
+            # A truncated-but-otherwise-well-formed-looking body can still
+            # fail to parse (e.g. cut off mid-string) — same "network gave
+            # us garbage" class as a transport failure, not genuine drift.
+            json.JSONDecodeError,
+        ):
             pytest.skip("upstream Hashi schema unreachable — offline")
 
         # Compare every action def's required fields and property names.
@@ -353,6 +366,32 @@ class TestHashiSchemaParity:
             + "\n".join(mismatches)
             + "\nFix: refresh tomo/schemas/hashi-instructions.schema.json from upstream Hashi."
         )
+
+    def test_incomplete_read_during_fetch_skips_not_fails(self, hashi_snapshot, monkeypatch):
+        """A partial network read (http.client.IncompleteRead, raised by
+        resp.read() on a truncated transfer) must be treated the same as an
+        unreachable upstream — skip, not fail. Fails if HTTPException is
+        removed from the except tuple, since IncompleteRead does not inherit
+        from OSError."""
+
+        class _TruncatedResponse:
+            status = 200
+
+            def read(self):
+                raise http.client.IncompleteRead(b"", 100)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        monkeypatch.setattr(
+            urllib.request, "urlopen", lambda *a, **kw: _TruncatedResponse()
+        )
+
+        with pytest.raises(pytest.skip.Exception):
+            self.test_snapshot_matches_upstream_hashi(hashi_snapshot)
 
 
 # ── #69 — filename sanitisation + resolvable references ─────────────────────

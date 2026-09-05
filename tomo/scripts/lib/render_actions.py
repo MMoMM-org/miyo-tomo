@@ -1,4 +1,4 @@
-# version: 0.8.3
+# version: 0.8.4
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -603,6 +603,31 @@ def _build_move_note_actions(
             "parent_mocs": [_moc_stem(x) for x in (m.get("parent_mocs") or []) if x],
             "tags": m.get("tags", []) or [],
         })
+    return out
+
+
+def _build_move_asset_actions(
+    manifest: list[dict],
+    inbox_path: str,
+    asset_folder: str,
+    counter: list[int],
+) -> list[dict]:
+    """Emit move_asset actions for every unique attachment path across the
+    whole manifest, deduplicated globally (not per item) on the resolved path.
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+    for m in manifest:
+        for path in m.get("attachments") or []:
+            if path in seen:
+                continue
+            seen.add(path)
+            out.append({
+                "id": _next_id(counter),
+                "action": "move_asset",
+                "source": path,
+                "destination": _asset_dest_join(asset_folder, path),
+            })
     return out
 
 
@@ -1461,21 +1486,26 @@ def build_actions(
 
     Execution order matters: create_moc comes first because subsequent
     link_to_moc actions may target the newly-created MOCs (via supporting_items
-    expansion). move_note follows, then all links (parent_mocs + supporting
-    items), then daily updates, deletions, and skips.
+    expansion). move_note follows, then attachments, then all links (parent_mocs
+    + supporting items), then daily updates, deletions, and skips.
 
     Emitted order:
       1. create_moc         — new MOCs must exist before anything links into them
       2. up_preservation    — per-child up:: / related:: on ConfirmedMOCProposal children
       3. move_note          — atomic notes
-      4. link_to_moc        — parent_mocs up-links + supporting_items down-links
-      5. update_tracker / update_log_entry / update_log_link
-      6. insert_under_marker — approved tag-handler group blocks (spec 024 T4.1)
-      7. delete_source      — incl. approved tag-handler group sources (after their insert)
-      8. skip
+      4. move_asset         — attachments named on the manifest, deduplicated globally
+      5. link_to_moc        — parent_mocs up-links + supporting_items down-links
+      6. update_tracker / update_log_entry / update_log_link
+      7. insert_under_marker — approved tag-handler group blocks (spec 024 T4.1)
+      8. delete_source      — incl. approved tag-handler group sources (after their insert)
+      9. skip
     """
     counter = [0]
     inbox_path = cfg["concepts.inbox"]
+    # cfg.get, not cfg[...]: concepts.asset is resolved with the same default
+    # here as instruction-render.py's CONFIG_DEFAULTS, so a caller passing a
+    # bare cfg dict without the key (as most existing tests do) still works.
+    asset_folder = cfg.get("concepts.asset", "Atlas/290 Assets/295 Attachments/")
     out: list[dict] = []
     out.extend(_build_create_moc_actions(manifest, inbox_path, counter))
     out.extend(_build_up_preservation_actions(
@@ -1484,6 +1514,7 @@ def build_actions(
     ))
     move_notes = _build_move_note_actions(manifest, inbox_path, counter)
     out.extend(move_notes)
+    out.extend(_build_move_asset_actions(manifest, inbox_path, asset_folder, counter))
     out.extend(_build_link_to_moc_actions(confirmed, counter))
     out.extend(_build_daily_update_actions(daily_updates, cfg, counter))
     out.extend(_build_insert_under_marker_actions(

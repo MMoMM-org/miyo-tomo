@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.24.0
+# version: 0.25.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -306,6 +306,7 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
                 "id": w.get("id"),
                 "source_path": stem,
                 "audio_peer": w.get("audio_peer"),
+                "attachments": list(w.get("attachments") or []),
                 "type": None,
                 "approved": True,
                 "delete_source": bool(w.get("delete_source")),
@@ -486,6 +487,16 @@ def _parse_tags(value: str) -> list[str]:
     return tags
 
 
+def _parse_attachments(value: str) -> list[str]:
+    """Parse the **Attachments:** line's comma-separated backticked paths.
+
+    e.g. "`100 Inbox/Images/karte.jpg`, `100 Inbox/scan.pdf`" ->
+    ["100 Inbox/Images/karte.jpg", "100 Inbox/scan.pdf"].
+    """
+    parts = [p.strip().strip("`").strip() for p in value.split(",")]
+    return [p for p in parts if p]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Section parser
 # ──────────────────────────────────────────────────────────────────────────────
@@ -587,6 +598,7 @@ def parse_section(
         "id": section_id,
         "source_path": None,
         "audio_peer": None,
+        "attachments": [],
         "type": None,
         "approved": False,
         "delete_source": False,
@@ -728,6 +740,9 @@ def parse_section(
 
         elif key in ("tags", "tag", "new tags to add", "new tags"):
             result["tags"] = _parse_tags(val)
+
+        elif key == "attachments":
+            result["attachments"] = _parse_attachments(val)
 
         elif key in ("parent moc", "parent_moc", "parentmoc", "link to moc", "moc"):
             in_moc_list = True  # subsequent checkboxes are MOC selections
@@ -2007,6 +2022,7 @@ def main() -> int:
                 "id": item["id"],
                 "source_path": item["source_path"],
                 "audio_peer": item.get("audio_peer"),
+                "attachments": item.get("attachments") or [],
                 "type": item["type"],
                 "approved": item["approved"],
                 "delete_source": item["delete_source"],

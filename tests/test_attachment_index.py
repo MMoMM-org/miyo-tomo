@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.2.1
 """test_attachment_index.py — Tests for lib.attachment_index — spec 031
 (Inbox attachment filing), Phase 1.
 
@@ -173,9 +173,27 @@ def test_build_inbox_index_indexes_md_files_too():
     assert index == {"Dresden.md": ["100 Inbox/Places/Dresden.md"]}
 
 
-@pytest.mark.parametrize("empty_result", [None, [], {}])
+def test_build_inbox_index_skips_file_item_without_path():
+    """An item claiming type=='file' but missing 'path' contributes nothing,
+    rather than indexing under a bogus key."""
+    assert build_inbox_index([{"type": "file"}]) == {}
+
+
+@pytest.mark.parametrize("empty_result", [None, []])
 def test_build_inbox_index_fails_open_on_empty_or_missing_result(empty_result):
     """PRD Business rule 10: an empty index is a valid state, not an
-    exception. None/[] covers a listDir call that failed or returned nothing;
-    {} covers a caller passing a malformed non-list result."""
+    exception. Both None (a listDir call that failed) and [] (a listDir call
+    that returned nothing) hit the early `if not list_dir_result` return —
+    they never reach the per-item guard below."""
     assert build_inbox_index(empty_result) == {}
+
+
+def test_build_inbox_index_fails_open_on_wrapped_dict_result():
+    """A truthy non-list container — e.g. a caller mistakenly passing the raw
+    {"items": [...]} wrapper instead of the flat list — does NOT hit the
+    early-return (a non-empty dict is truthy). It reaches the loop, which
+    iterates the dict's keys (plain strings), and the per-item
+    `isinstance(item, dict)` guard rejects each one. This is the guard this
+    test exercises; the None/[] case above exercises the early return instead."""
+    wrapped = {"items": [{"path": "100 Inbox/Images/karte.jpg", "type": "file"}]}
+    assert build_inbox_index(wrapped) == {}

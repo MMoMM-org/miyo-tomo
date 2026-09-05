@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.2
+# version: 0.1.3
 """attachment_index.py — Detect and normalise attachment embeds in note bodies."""
 from __future__ import annotations
 
@@ -45,6 +45,7 @@ def build_inbox_index(list_dir_result: list[dict] | None) -> dict[str, list[str]
     each carrying `path` and `type`. Folder entries are excluded; `.md`
     files are indexed like any other file, in list order. Returns `{}` for
     `None`, an empty list, or any other falsy/malformed input — never raises.
+    Duplicate identical paths are not deduplicated.
     """
     index: dict[str, list[str]] = {}
     if not list_dir_result:

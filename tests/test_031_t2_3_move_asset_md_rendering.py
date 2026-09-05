@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.2.2
 """test_031_t2_3_move_asset_md_rendering.py — spec 031 T2.3 readable
 instruction rendering for move_asset.
 
@@ -77,3 +77,25 @@ def test_skipped_attachment_is_surfaced_in_the_rendered_markdown():
     assert "## Skipped — un-appliable actions" in md
     assert "100 Inbox/Scans/karte.jpg" in md
     assert "collision" in md.lower()
+
+
+def test_unrecognized_skip_kind_never_inherits_a_remedy():
+    """A missing or unknown "kind" must not silently fall back to either the
+    collision or no-basename remedy — that is exactly how a third skip reason
+    added later would quietly inherit the wrong instruction. It must render a
+    visibly-wrong placeholder instead, the same way an unknown action kind
+    does in _render_action_md."""
+    metadata = {
+        "generated": "2026-09-05T12:00:00Z",
+        "skipped_assets": [{
+            "source": "100 Inbox/Images/mystery.jpg",
+            "destination": None,
+            "reason": "some future skip reason",
+            "kind": "something_new",
+        }],
+    }
+    md = render_instructions_md([], metadata, {})
+    assert "rename" not in md.lower()
+    assert "naming conflict" not in md.lower()
+    assert "no remedy defined" in md.lower()
+    assert "something_new" in md

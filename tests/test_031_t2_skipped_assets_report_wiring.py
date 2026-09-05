@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """test_031_t2_skipped_assets_report_wiring.py — spec 031 T2.2/T2.4
 code-quality follow-up: skipped attachments must reach the user, not just
 stderr, and the two skip reasons (collision vs. no-basename) must read
@@ -126,6 +126,14 @@ def test_skipped_assets_populate_the_json_tomo_block(monkeypatch, tmp_path):
     assert "collision" in by_source["100 Inbox/Scans/karte.jpg"]["reason"].lower()
     assert by_source["100 Inbox/Images/"]["destination"] is None
     assert "no filename" in by_source["100 Inbox/Images/"]["reason"].lower()
+
+    # "kind" is a rendering-time concern (picks the markdown remedy) and is
+    # deliberately NOT projected into the JSON — nothing consumes it there,
+    # and it is redundant: a no-basename skip never has a destination.
+    # Pinned here so the omission is a tested decision, not an oversight.
+    for entry in entries:
+        assert "kind" not in entry
+    assert by_source["100 Inbox/Scans/karte.jpg"]["destination"] is not None
 
 
 def test_collision_and_no_basename_render_with_different_remedies(monkeypatch, tmp_path):

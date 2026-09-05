@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.43.0
+# version: 0.43.1
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -646,6 +646,11 @@ def main() -> int:
         if tomo_block is None:
             tomo_block = {}
             instructions_doc["tomo"] = tomo_block
+        # "kind" is deliberately not projected here — it exists to pick a
+        # rendering-time remedy string (see render_md.py) and nothing reads
+        # it from this JSON today. A future JSON consumer that needs to
+        # distinguish the two cases can derive it: a no-basename skip never
+        # has a destination, a collision always does.
         tomo_block["skipped_assets"] = [
             {
                 "source": s.get("source"),

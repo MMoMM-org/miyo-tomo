@@ -1,4 +1,4 @@
-# version: 0.8.1
+# version: 0.8.2
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -546,11 +546,17 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
             for s in skipped_assets:
                 source = s.get("source") or "?"
                 reason = s.get("reason") or "?"
-                if s.get("kind") == "no_basename":
+                kind = s.get("kind")
+                if kind == "no_basename":
                     remedy = "the inbox entry has no filename — inspect that inbox path directly, this is not a naming conflict"
-                else:
+                elif kind == "collision":
                     destination = s.get("destination") or "?"
                     remedy = f"rename one of the two files so they no longer share `{destination}`, then re-run `/inbox`"
+                else:
+                    # A missing or unrecognized kind must never silently fall
+                    # back to either remedy above — that is how a third skip
+                    # reason would quietly inherit the wrong instruction.
+                    remedy = f"(no remedy defined for skip kind {kind!r} — check render_md.py)"
                 body_parts.append(f"- `move_asset` → `{source}` — {reason}. {remedy}.")
             body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"

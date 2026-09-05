@@ -145,3 +145,52 @@ def test_describe_faithfully_renders_null_expected():
 
 def test_edit_frontmatter_registered_in_required_fields():
     assert "edit_frontmatter" in dryrun.REQUIRED_FIELDS_BY_KIND
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# move_asset (spec 031 T4.3) — REQUIRED is a whitelist keyed by action kind;
+# an unlisted kind reports "unknown kind" and exits 1 regardless of how
+# well-formed the action otherwise is. describe() has its own separate
+# if/elif chain that must also gain a move_asset branch, or a well-formed
+# action still prints "UNKNOWN ACTION" in the per-action listing.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _move_asset_action(**over) -> dict:
+    action = {
+        "id": "I05",
+        "action": "move_asset",
+        "source": "100 Inbox/Attachments/photo.jpg",
+        "destination": "Atlas/900 Assets/photo.jpg",
+    }
+    action.update(over)
+    return action
+
+
+def test_move_asset_dry_run_exits_0_and_describes_each_action(tmp_path):
+    actions = [_move_asset_action()]
+    code, out, err = _run(actions, tmp_path)
+    assert code == 0, err
+    assert "I05" in out
+    assert "unknown kind" not in out
+    assert "unknown kind" not in err
+
+
+def test_move_asset_missing_destination_is_invalid(tmp_path):
+    bad = _move_asset_action(id="I06")
+    del bad["destination"]
+
+    code, out, err = _run([bad], tmp_path)
+    assert code == 1
+    assert "I06" in err
+    assert "unknown kind" not in err
+
+
+def test_move_asset_registered_in_required_fields():
+    assert "move_asset" in dryrun.REQUIRED_FIELDS_BY_KIND
+
+
+def test_describe_names_move_asset_source_and_destination():
+    text = dryrun.describe(_move_asset_action())
+    assert "100 Inbox/Attachments/photo.jpg" in text
+    assert "Atlas/900 Assets/photo.jpg" in text
+    assert "UNKNOWN ACTION" not in text

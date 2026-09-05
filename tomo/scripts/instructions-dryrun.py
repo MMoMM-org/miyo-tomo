@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.4
+# version: 0.3.0
 """instructions-dryrun.py — Validate an instructions.json is Tomo-Hashi-ready.
 
 Reads an instructions.json file and prints a one-line summary of each action
@@ -23,6 +23,7 @@ from pathlib import Path
 
 REQUIRED_FIELDS_BY_KIND = {
     "move_note": {"id", "action", "source", "destination", "title"},
+    "move_asset": {"id", "action", "source", "destination"},
     "link_to_moc": {"id", "action", "target_moc", "anchor", "placement", "line_to_add"},
     "add_relationship": {"id", "action", "target_moc_path", "marker", "line"},
     "update_tracker": {"id", "action", "daily_note_path", "date", "field", "value", "syntax"},
@@ -55,6 +56,8 @@ def describe(action: dict) -> str:
     aid = action.get("id", "?")
     if kind == "move_note":
         return (f"{aid} move_note: {action.get('source')} → {action.get('destination')}")
+    if kind == "move_asset":
+        return (f"{aid} move_asset: {action.get('source')} → {action.get('destination')}")
     if kind == "create_moc":
         return (f"{aid} create_moc: {action.get('source')} → {action.get('destination')} "
                 f"(title={action.get('title')!r})")

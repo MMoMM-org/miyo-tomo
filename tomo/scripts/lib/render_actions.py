@@ -1,4 +1,4 @@
-# version: 0.8.4
+# version: 0.8.5
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -614,19 +614,35 @@ def _build_move_asset_actions(
 ) -> list[dict]:
     """Emit move_asset actions for every unique attachment path across the
     whole manifest, deduplicated globally (not per item) on the resolved path.
+
+    On a destination collision between two DIFFERENT paths (same basename,
+    different source folders), the first claim wins; the second is skipped
+    and reported to stderr rather than silently overwriting the first.
+    Renaming is not attempted.
     """
     out: list[dict] = []
     seen: set[str] = set()
+    claimed: dict[str, str] = {}  # destination -> path that claimed it
     for m in manifest:
         for path in m.get("attachments") or []:
             if path in seen:
                 continue
             seen.add(path)
+            destination = _asset_dest_join(asset_folder, path)
+            claimant = claimed.get(destination)
+            if claimant is not None:
+                print(
+                    f"  [warn] destination collision: {path!r} also resolves to "
+                    f"{destination!r}, already claimed by {claimant!r} — skipping {path!r}",
+                    file=sys.stderr,
+                )
+                continue
+            claimed[destination] = path
             out.append({
                 "id": _next_id(counter),
                 "action": "move_asset",
                 "source": path,
-                "destination": _asset_dest_join(asset_folder, path),
+                "destination": destination,
             })
     return out
 

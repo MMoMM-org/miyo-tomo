@@ -95,9 +95,15 @@ def test_two_items_embedding_same_path_emit_one_action():
     assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
 
 
-def test_two_items_same_basename_different_path_emit_two_actions():
-    """Dedup keys on the full resolved path, not the basename — fails if the
-    dedup key is the basename, since both attachments would collapse to one."""
+def test_two_items_same_basename_different_path_are_not_deduped_at_seen_level(capsys):
+    """Dedup (this task) keys on the full resolved path, not the basename — two
+    different files are NOT silently merged into a single "already seen" entry.
+    They collide at the DESTINATION instead, a distinct, later concern (T2.4's
+    collision guard): the warning it prints names the second path explicitly,
+    which only happens if dedup let it through to the destination-claim step in
+    the first place. Fails if the dedup key is the basename, since the second
+    path would then be dropped silently with no warning at all — indistinguishable
+    from the collision guard having done its job, except for that missing warning."""
     manifest = [
         _manifest_entry(
             source_path="a.md", rendered_file="2026-01-01_0900_a.md",
@@ -109,9 +115,9 @@ def test_two_items_same_basename_different_path_emit_two_actions():
         ),
     ]
     actions = _build_move_asset_actions(manifest, INBOX, ASSET_FOLDER, [0])
-    assert len(actions) == 2
-    sources = {a["source"] for a in actions}
-    assert sources == {"100 Inbox/Images/karte.jpg", "100 Inbox/Scans/karte.jpg"}
+    assert len(actions) == 1
+    assert actions[0]["source"] == "100 Inbox/Images/karte.jpg"
+    assert "100 Inbox/Scans/karte.jpg" in capsys.readouterr().err
 
 
 def test_item_with_empty_attachment_list_emits_no_actions():

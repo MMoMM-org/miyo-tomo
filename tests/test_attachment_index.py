@@ -78,6 +78,14 @@ def test_duplicate_embed_recorded_once_in_document_order():
     assert extract_attachment_embeds(body) == ["karte.jpg", "other.png"]
 
 
+def test_mixed_case_extension_is_recorded():
+    """The `.lower()` in _is_attachment_target's extension check is the only
+    thing making a mixed-case extension classify as an attachment — nothing
+    else tests it, so a refactor dropping it would break case-insensitive
+    matching silently. Original casing is preserved in the returned value."""
+    assert extract_attachment_embeds("![[FOTO.JPG]]") == ["FOTO.JPG"]
+
+
 def test_empty_body_returns_empty_list():
     """AC-F1.5: no embeds → empty attachment list."""
     assert extract_attachment_embeds("") == []

@@ -1,4 +1,4 @@
-# version: 0.8.1
+# version: 0.8.2
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -17,6 +17,7 @@ import re
 import sys
 from pathlib import Path
 
+from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 from lib.kado_client import KadoError
 from lib.obsidian_filename import sanitize_stem
 from lib.profile_conventions import marker_word
@@ -53,19 +54,10 @@ def _inbox_join(inbox: str, basename: str) -> str:
     return f"{(inbox or '').rstrip('/')}/{basename}"
 
 
-# Obsidian-resolvable extensions seen in vault paths derived from wikilinks.
-# Used by `_ensure_md_extension` to discriminate a real file extension
-# (`Voice.m4a`, `Notes.html`) from a dotted note name (`Foo.Bar`,
-# `2026-04-29.draft`). Obsidian allows dots in note titles, so "any dot
-# means extension" is wrong — match against this allowlist instead.
-_KNOWN_FILE_EXTENSIONS = frozenset({
-    "md",
-    "m4a", "mp3", "wav", "flac", "ogg", "aac", "opus",
-    "mp4", "mov", "webm", "mkv", "avi",
-    "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp",
-    "pdf", "html", "txt", "csv", "json", "yaml", "yml",
-    "zip",
-})
+# Moved to lib/file_extensions.py (spec 031 T1.1 code-quality fix) so a pure
+# text library can classify a wikilink target without importing this module.
+# Alias kept so existing references below (and any other consumer) are unchanged.
+_KNOWN_FILE_EXTENSIONS = KNOWN_FILE_EXTENSIONS
 
 
 def _ensure_md_extension(path: str | None) -> str | None:

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """attachment_index.py — Detect and normalise attachment embeds in note bodies."""
 from __future__ import annotations
 
 import re
 
-from lib.render_actions import _KNOWN_FILE_EXTENSIONS
+from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 
 # The leading (!) is the whole point — every existing wikilink pattern in this
 # repo omits it, so none of them distinguish an embed from a plain link.
 _EMBED_RE = re.compile(r"(!)?\[\[([^\[\]]+)\]\]")
 
 # Extensions that name a note or a note-like container, not an attachment file.
-# _KNOWN_FILE_EXTENSIONS also contains "md" — see _is_attachment_target.
+# KNOWN_FILE_EXTENSIONS also contains "md" — see _is_attachment_target.
 _NOTE_EXTENSIONS = frozenset({"md", "canvas", "base"})
 
 
@@ -41,14 +41,14 @@ def extract_attachment_embeds(body: str) -> list[str]:
 def _is_attachment_target(target: str) -> bool:
     """True if `target` names a file, not a note.
 
-    Two-step test, not a membership check: _KNOWN_FILE_EXTENSIONS also
-    contains "md", so a naive `ext in _KNOWN_FILE_EXTENSIONS` would classify
+    Two-step test, not a membership check: KNOWN_FILE_EXTENSIONS also
+    contains "md", so a naive `ext in KNOWN_FILE_EXTENSIONS` would classify
     `![[Note.md]]` as an attachment. `canvas` and `base` are not in that
     frozenset today, so they already fall out at step one — they are named
     here anyway to keep the note/attachment partition explicit.
     """
     ext = target.rsplit(".", 1)[-1].lower() if "." in target else ""
-    return ext in _KNOWN_FILE_EXTENSIONS and ext not in _NOTE_EXTENSIONS
+    return ext in KNOWN_FILE_EXTENSIONS and ext not in _NOTE_EXTENSIONS
 
 
 def _strip_alias_and_anchor(raw: str) -> str:

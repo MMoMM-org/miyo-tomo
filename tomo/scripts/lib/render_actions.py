@@ -1,4 +1,4 @@
-# version: 0.8.2
+# version: 0.8.3
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -491,6 +491,18 @@ def _dest_join(folder: str, title: str) -> str:
     # keeps the original. Link targets are sanitised the same way (_wikilink).
     stem = title[:-3] if title.endswith(".md") else title
     return f"{folder}{sanitize_stem(stem)}.md"
+
+
+def _asset_dest_join(asset_folder: str, source_path: str) -> str:
+    """Join the asset folder with the source path's basename, preserving it verbatim.
+
+    Never _dest_join (appends a '.md' suffix) or _ensure_md_extension (a silent
+    no-op for an allowlisted extension, a corrupting '.md' append for anything
+    else) — an attachment's basename must survive exactly as-is, uppercase,
+    unusual extension, and all, or the embed referencing it stops resolving.
+    """
+    folder = (asset_folder or "").rstrip("/") + "/"
+    return f"{folder}{source_path.rsplit('/', 1)[-1]}"
 
 
 def _wikilink(title: str) -> str:

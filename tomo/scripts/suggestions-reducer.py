@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.33.0
+# version: 1.34.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -53,6 +53,7 @@ from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filenam
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
+from lib.render_actions import DEFAULT_ASSET_FOLDER  # noqa: E402 — spec 031 Phase 5 attachments preamble
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -1269,6 +1270,41 @@ def load_field_sections(shared_ctx_path: Path) -> dict[str, str]:
     return out
 
 
+def load_asset_folder(shared_ctx_path: Path) -> str:
+    """Read the configured attachment-filing destination from shared-ctx.json.
+
+    Fail-open like load_field_sections: a missing/unreadable file or an
+    absent/blank key falls back to the canonical default rather than raising.
+    """
+    if not shared_ctx_path or not shared_ctx_path.exists():
+        return DEFAULT_ASSET_FOLDER
+    try:
+        ctx = json.loads(shared_ctx_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return DEFAULT_ASSET_FOLDER
+    folder = ctx.get("asset_folder")
+    return folder.strip() if isinstance(folder, str) and folder.strip() else DEFAULT_ASSET_FOLDER
+
+
+def render_attachments_preamble(sections: list[dict], asset_folder: str) -> str:
+    """One run-level note on where resolved attachments will be filed.
+
+    Rendered once for the whole document, never per item, and only when at
+    least one create_atomic_note item carries attachments — a run with none
+    produces an empty string so the document looks exactly as it did before
+    this field existed.
+    """
+    has_attachments = any(
+        (action.get("item") or {}).get("attachments")
+        for section in sections
+        for action in section.get("actions", [])
+        if action.get("kind") == "create_atomic_note"
+    )
+    if not has_attachments:
+        return ""
+    return f"Attachments will be filed to `{asset_folder}`."
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 # ── I38 Pass-1: flag daily-note groups whose target note doesn't exist ────────
@@ -1570,6 +1606,7 @@ def main() -> int:
     items_dir = Path(args.items_dir)
     out_path = Path(args.output)
     load_field_sections(Path(args.shared_ctx))
+    asset_folder = load_asset_folder(Path(args.shared_ctx))
 
     # spec 028 T2.3: resolve the active profile's vault conventions once. The
     # MOC suffix drives title enrichment; the full block is written into the
@@ -1967,6 +2004,8 @@ def main() -> int:
         )
         doc_variant = "primary"
 
+    attachments_preamble = render_attachments_preamble(sections, asset_folder)
+
     doc = {
         "schema_version": "1",
         "generated": now_iso(),
@@ -1985,6 +2024,7 @@ def main() -> int:
         "daily_notes_updates": daily_notes_updates,
         "rendered_daily_updates_md": rendered_daily_updates_md,
         "decision_precedence_note": precedence_note,
+        "attachments_preamble": attachments_preamble,
         "proposed_mocs": proposed_mocs,
         "needs_attention": needs_attention,
     }

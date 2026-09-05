@@ -469,7 +469,7 @@ scans every `create_atomic_note` action's `item.attachments` before deciding to
 render anything — the scan, not a config flag, is the gate.
 
 WHY the folder value is threaded through `shared-ctx.json` (a channel the reducer
-already opened for the field→section map, `load_field_sections`) rather than the
+already opened for the field→section map, since removed with #162) rather than the
 reducer reading `vault-config.yaml` directly: the reducer has never had a
 `--config`/`--vault-config` CLI argument — only `instruction-render.py` does. Adding
 a second, independent config reader to the reducer would duplicate
@@ -481,8 +481,9 @@ channel instead of building a parallel one.
 
 WHY `load_asset_folder` fails open to `DEFAULT_ASSET_FOLDER` (imported from
 `lib.render_actions`, never restated as a literal) on a missing/unreadable/malformed
-`shared-ctx.json` or an absent/blank key: this mirrors `load_field_sections`'s
-existing fail-open shape exactly, and a missing default here would mean the
+`shared-ctx.json` or an absent/blank key: this mirrored the fail-open shape of
+`load_field_sections` (removed with #162; the same shape now lives in
+`instruction-render.load_tracker_fields`), and a missing default here would mean the
 preamble either crashes the run or renders an empty backtick pair — both worse than
 falling back to the same default `_asset_dest_join` (`render_actions.py`) uses when
 it actually resolves the destination at instruction-render time. The two functions
@@ -560,3 +561,38 @@ or trusted the action's existing value, the user would have seen a spurious
 
 Keep the override, and keep the stderr warning: it is the only signal that
 the analyst is emitting fields ADR-2 says it must not.
+
+## render_update_daily, its RENDERERS entry, and load_field_sections were dead (#162, v1.37.0)
+
+WHY three things were removed rather than repaired: none of them could run.
+
+`2db4a0f` ("drop duplicate daily blocks per-item") acted on the 2026-04-22 UX
+decision that the per-item `**Daily update:**` block should not repeat what the
+aggregated `## Daily Notes Updates` block already shows. From then on
+`update_daily` was handled by its own branch in the dispatch loop, which sets
+`rendered = None` and collects into `daily_groups`. `RENDERERS` is consulted in
+exactly one place — the `else` arm of that same chain — so the
+`"update_daily": render_update_daily` entry became unreachable and the function
+with it. `load_field_sections` existed only to feed that function's
+`field_sections` parameter, and its return value was discarded at the call site,
+which is how #162 was noticed.
+
+The removal was not taken on a reading of the control flow alone. The function
+body was replaced with a bare `raise` and the full suite run: 3232 tests passed,
+including the fixtures carrying `update_daily` actions and the tests covering
+the aggregated block. Nothing reached it. That check is worth repeating for any
+future "this looks dead" removal — a static argument about an `elif` chain is
+easy to get wrong, and this codebase cannot be exercised end to end in the test
+vault on demand.
+
+What replaces it: nothing here. The field→section map was never the reducer's
+to apply — the values are consumed at Pass 2, so the lookup now lives in
+`instruction-render.load_tracker_fields`, reading the same `shared-ctx.json`
+key. See `docs/tomo/scripts/instruction-render.md`.
+
+`--shared-ctx` stays on this script: `load_asset_folder` still uses it.
+
+A permanent structural guard asserts `"update_daily"` is absent from
+`RENDERERS` and that neither removed function has come back. It is structural
+rather than behavioural because code that never executes cannot fail a
+behavioural test — the same reasoning as spec 033's `ast.parse` guard.

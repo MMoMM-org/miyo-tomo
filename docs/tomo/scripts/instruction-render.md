@@ -269,3 +269,51 @@ pinned by a test asserting `kind` is absent from every JSON entry and that
 "just add it back" change is a decision made against a red test, not a
 change nobody notices.
 
+
+## Tracker syntax and section are read from config here, not round-tripped (#162, v0.45.0)
+
+WHY `load_tracker_fields` reads `shared-ctx.json` at Pass 2 instead of the
+values travelling with each tracker from Pass 1: they cannot travel. The
+suggestions-reducer collects a tracker as
+`{field, value, reason, source_stem, source_section}` and the aggregated
+`## Daily Notes Updates` block renders neither `syntax` nor `section` — they
+are not user decisions, so the review document has no reason to show them.
+`suggestion-parser` reads that block back and can only reconstruct what was
+printed. Both values were therefore absent by the time
+`_build_daily_update_actions` ran, and every tracker action was emitted with
+`syntax="inline_field"` and `section=None`.
+
+That is invisible for a field whose configured syntax *is* `inline_field` —
+12 of 15 in the reference vault. It is not invisible for a `callout_body`
+field. Hashi reads `section` only in that branch
+(`Hashi/src/actions/updateTracker.ts`), and its `inline_field` handler returns
+`failed: Tracker field not found` when the field is not already present in the
+daily note rather than inserting it under the configured heading. The three
+`callout_body` fields in the reference vault survived only because the daily
+template already contains them and the inline matcher's optional `(?:>\s+)?`
+group happens to match a line inside a callout.
+
+Note that fixing `section` alone would have changed nothing: `syntax` would
+still default to `inline_field`, and that branch never reads `section`. The
+two had to be recovered together or neither mattered.
+
+Two alternatives were considered and rejected:
+
+- **Carry both through the wire**, as spec 031 did for attachments. Rejected
+  because the markdown path — the one taken when the user only ticks
+  checkboxes, which is the normal case — stays lossy, so the fix would apply
+  only when the JSON sibling had been edited.
+- **Re-derive from `vault-config.yaml`**, which this script already loads.
+  Rejected because the flattening lives in `shared-ctx-builder.build_tracker_fields`
+  and pulls in four helpers plus keyword and description synthesis that Pass 2
+  has no use for. `shared-ctx.json` already holds the flattened result, so
+  reading the derived artifact avoids duplicating that logic.
+
+`--shared-ctx` defaults to `tomo-tmp/shared-ctx.json`, matching the reducer's
+own default and the cwd the synthesis-conductor invokes both scripts from, so
+no caller needed changing. The loader fails open to `{}` on a missing,
+unreadable, or shapeless file, and every per-field lookup falls back to the
+action's own value and then to the previous default — so an absent config
+yields actions byte-identical to those emitted before this existed. That
+property is asserted directly rather than left implicit, by comparing whole
+action dicts rather than selected fields.

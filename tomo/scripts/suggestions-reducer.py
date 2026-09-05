@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.35.0
+# version: 1.35.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1290,18 +1290,39 @@ def load_resolved_attachments(path: "Path | None") -> dict:
     """Read the deterministic attachment-resolution map, keyed by source path.
 
     Fail-open: a missing file, an unreadable/malformed file, or a file whose
-    top level isn't a JSON object all yield {} rather than raising. Every
-    item is then merged against an empty map, so it gets attachments: [] and
-    unresolved_embeds: [] and the run continues (matches load_field_sections
-    and load_asset_folder).
+    top level isn't a JSON object all yield {} rather than raising, so every
+    item is merged against an empty map and gets attachments: [] and
+    unresolved_embeds: [] — the run continues either way (matches
+    load_field_sections and load_asset_folder).
+
+    But the two failure shapes are NOT equally silent. A missing file is the
+    normal state (no producer has run yet, or this run has no attachments)
+    and prints nothing. A file that EXISTS but is unreadable or malformed is
+    a real problem masquerading as "no attachments" — indistinguishable
+    downstream without a loud stderr WARNING naming the path, since a
+    silent fallback here means the feature does nothing and looks fine.
     """
     if not path or not path.exists():
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"[suggestions-reducer] WARNING: {path} exists but could not be "
+            f"read as JSON ({exc}) — every item's attachments/unresolved_embeds "
+            f"will be empty this run, not because there are none",
+            file=sys.stderr,
+        )
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        print(
+            f"[suggestions-reducer] WARNING: {path} is not a JSON object "
+            f"(got {type(data).__name__}) — every item's attachments/"
+            f"unresolved_embeds will be empty this run, not because there are none",
+            file=sys.stderr,
+        )
+        return {}
+    return data
 
 
 def merge_resolved_attachments(result: dict, resolved: "dict | None") -> dict:

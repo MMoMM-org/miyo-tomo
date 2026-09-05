@@ -217,6 +217,66 @@ def test_load_resolved_attachments_none_path_fails_open():
 
 
 # ---------------------------------------------------------------------------
+# Fail-open stderr distinction — a missing file (no attachments this run,
+# normal) must not be confused with a malformed/unreadable one (a real
+# problem the pipeline is silently swallowing into "no attachments").
+# ---------------------------------------------------------------------------
+
+
+def test_load_resolved_attachments_missing_file_is_quiet(tmp_path, capsys):
+    """A missing file is the normal state on a run with no attachments (or
+    before strand A's producer has run) — no warning."""
+    reducer.load_resolved_attachments(tmp_path / "does-not-exist.json")
+    captured = capsys.readouterr()
+    assert "WARNING" not in captured.err
+
+
+def test_load_resolved_attachments_none_path_is_quiet(capsys):
+    reducer.load_resolved_attachments(None)
+    captured = capsys.readouterr()
+    assert "WARNING" not in captured.err
+
+
+def test_load_resolved_attachments_valid_file_is_quiet(tmp_path, capsys):
+    path = tmp_path / "resolved-attachments.json"
+    path.write_text(json.dumps({SOURCE_PATH: {"attachments": [ATTACHMENT], "unresolved_embeds": []}}))
+    reducer.load_resolved_attachments(path)
+    captured = capsys.readouterr()
+    assert "WARNING" not in captured.err
+
+
+def test_load_resolved_attachments_malformed_json_warns_loudly(tmp_path, capsys):
+    """Existing but unparseable — a real problem, not a normal absence.
+    Silently falling back here is indistinguishable from "no attachments"."""
+    path = tmp_path / "resolved-attachments.json"
+    path.write_text("{not valid json")
+    reducer.load_resolved_attachments(path)
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+    assert str(path) in captured.err
+
+
+def test_load_resolved_attachments_non_dict_json_warns_loudly(tmp_path, capsys):
+    path = tmp_path / "resolved-attachments.json"
+    path.write_text(json.dumps(["not", "a", "map"]))
+    reducer.load_resolved_attachments(path)
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+    assert str(path) in captured.err
+
+
+def test_load_resolved_attachments_unreadable_file_warns_loudly(tmp_path, capsys):
+    """A directory in place of the expected file raises OSError on read —
+    the same class of "existing but broken" problem as malformed JSON."""
+    path = tmp_path / "resolved-attachments.json"
+    path.mkdir()
+    reducer.load_resolved_attachments(path)
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+    assert str(path) in captured.err
+
+
+# ---------------------------------------------------------------------------
 # End-to-end proof: a resolved attachment in the map reaches the rendered
 # **Attachments:** line — merge -> render_create_atomic_note.
 # ---------------------------------------------------------------------------

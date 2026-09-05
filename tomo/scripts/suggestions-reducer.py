@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.32.0
+# version: 1.33.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -302,6 +302,23 @@ def _location_link(location: str) -> str:
     return f"[[{loc}/]]" if loc else ""
 
 
+def _unresolved_embeds_text(entries: list[dict]) -> str:
+    """Render unresolved/ambiguous embed entries as one comma-separated segment.
+
+    Each entry carries embed_target, status ('unresolved' | 'ambiguous'), and
+    candidate_count (meaningful for 'ambiguous' only).
+    """
+    parts = []
+    for entry in entries:
+        target = entry.get("embed_target", "")
+        if entry.get("status") == "ambiguous":
+            count = entry.get("candidate_count", 0)
+            parts.append(f"`{target}` (ambiguous — {count} candidates)")
+        else:
+            parts.append(f"`{target}` (unresolved)")
+    return ", ".join(parts)
+
+
 def _atomic_survives(action: dict) -> bool:
     """An atomic survives coexistence if it is worthy (>=0.5) or force_atomic.
 
@@ -387,6 +404,15 @@ def render_create_atomic_note(action: dict, stem: str, moc_suffix: str) -> str:
     location = action.get("location")
     if location:
         lines.append(f"**Location:** {_location_link(location)}    ← change if you want a different folder")
+
+    attachments = [a for a in (action.get("attachments") or []) if a]
+    if attachments:
+        paths = ", ".join(f"`{a}`" for a in attachments)
+        lines.append(f"**Attachments:** {paths}")
+
+    unresolved_embeds = action.get("unresolved_embeds") or []
+    if unresolved_embeds:
+        lines.append(f"**Unresolved embeds:** {_unresolved_embeds_text(unresolved_embeds)}")
 
     mocs = action.get("candidate_mocs") or []
     if mocs:
@@ -1778,6 +1804,7 @@ def main() -> int:
                         "location": action.get("location") or "",
                         "tags": [t for t in (action.get("tags_to_add") or []) if t],
                         "audio_peer": action.get("audio_peer"),
+                        "attachments": [a for a in (action.get("attachments") or []) if a],
                         "worthiness": action.get("atomic_note_worthiness"),
                         "suppressed": bool(action.get("suppressed")),
                         "force_atomic": bool(action.get("force_atomic")),

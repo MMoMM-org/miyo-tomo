@@ -10,7 +10,7 @@ WHY the allowlist moved to its own module instead of `attachment_index.py`
 importing it from `render_actions.py`, where it used to live: `render_actions.py`
 is not a leaf module — importing anything from it transitively pulls in
 roughly 175 modules, including `kado_client`, and triggers a module-scope
-`exec_module()` of `tag-handler-group.py` (`render_actions.py:34-42`) purely
+`exec_module()` of `tag-handler-group.py` (`render_actions.py:32-44`) purely
 as an import side effect. `attachment_index.py` needs to stay a genuinely
 I/O-free text library per ADR-2's pure-library boundary — a text-classification
 function should not need a working Kado client and a live tag-handler module

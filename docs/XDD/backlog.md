@@ -599,3 +599,21 @@ Worth closing anyway on the same principle as T2.3's "a vanished item is now aud
 a truncated final line (disk full mid-write) is a real corruption shape, and the helper
 should count skipped lines and let callers report them rather than swallowing them.
 Small: a counter plus a stderr line in each of the two callers.
+
+### Three more `listDir` consumers carry their own `type == "file"` check (spec 034 residual)
+
+Found by T3.1, 2026-09-06, while unifying the two filters ADR-3 needs. Outside that ADR's
+stated two-consumer scope, so deliberately left alone:
+
+- `tomo/scripts/voice-precheck.py:52`
+- `tomo/scripts/garden-audit.py:381`
+- `tomo/scripts/shared-ctx-builder.py:204`
+
+Each classifies Kado `listDir` entries independently. `tomo/scripts/lib/attachment_index.py`
+now exposes `is_file_entry(item)` — case-insensitive, None-safe, non-dict-safe — which is what
+`discover_files` and `build_inbox_index` share. The three above could route through it too.
+
+Worth doing because T3.1 found the divergence was not merely cosmetic: the old
+`discover_files` predicate **crashed** with `AttributeError` on a non-dict entry where
+`build_inbox_index` returned `False`. Any consumer still on a hand-rolled check carries that
+same latent fragility. Not urgent — Kado emits lowercase literals and well-formed dicts today.

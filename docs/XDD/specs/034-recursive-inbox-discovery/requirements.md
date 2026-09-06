@@ -39,7 +39,7 @@ version: "1.0"
 | title | Recursive inbox discovery |
 | status | IN_REVIEW |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 31 |
+| acceptanceCriteria | 34 |
 
 ---
 
@@ -281,25 +281,40 @@ overwrote the other's result, or that the wrong one was marked as captured in th
 
 #### Feature 7: Two notes cannot silently claim the same destination
 
-- **User Story:** As the vault owner, I want to be told when two notes would be filed to the
-  same place, so that I can name them myself instead of one failing or overwriting the other.
-- **Acceptance Criteria:**
-  - [ ] Given two approved items whose suggested names would produce the same destination
-        file, When the suggestions document is rendered, Then it proposes a distinct name for
-        the second one rather than letting both target the same path
+- **User Story:** As the vault owner, I want to be stopped before two notes are filed to the
+  same place, so that I never discover the clash only when applying, after I have approved.
+- **Acceptance Criteria — the proposal (Pass 1):**
+  - [ ] Given two items whose names would produce the same destination file, When the
+        suggestions document is rendered, Then it proposes a distinct name for the second
+        rather than letting both target the same path
   - [ ] Given that proposal, When the user edits the suggested name, Then their name is used —
         the disambiguation is a starting point, not a decision made for them
   - [ ] Given an item whose destination would collide with a note already in the target
-        folder from an earlier run, When the suggestions document is rendered, Then the
-        collision is surfaced there too, not left to fail at apply time
+        folder, When the suggestions document is rendered, Then that collision is surfaced
+        there too
+- **Acceptance Criteria — the guard (Pass 2):**
+  - [ ] Given the user has edited two approved items to the same name, When Pass 2 builds
+        instructions, Then **neither** is emitted as a move and the clash is reported
+        prominently in the instructions document
+  - [ ] Given the user has named an item after a note that already exists in the target
+        folder, When Pass 2 builds instructions, Then that move is not emitted and the clash
+        is reported the same way
+  - [ ] Given the user then corrects one of the names and re-runs Pass 2, When instructions
+        are built, Then both items are emitted normally — the halt is recoverable without
+        starting the run over
+
+  *Neither item is filed, deliberately. Choosing a winner between two things the user
+  explicitly named the same would itself be a guess, and this codebase prefers no action to
+  a wrong one. Note this differs from the attachment-collision guard, where first-claim-wins
+  is right because nothing is lost by skipping a duplicate file.*
 
   *The destination folder is flat, so two notes named Dresden cannot both live in it. Nothing
-  checks this today: the destination is built from the title with no collision guard, and the
-  existing filename-disambiguation helper only compares against names claimed within one
-  render run, not against the vault. This is pre-existing — two root-level notes could
-  already be given the same title — but recursion makes it likely rather than unlikely, so it
-  is in scope here. It is deliberately handled in Pass 1, where the name is shown and the
-  user can already change it.*
+  checks this today: `_dest_join` builds the destination from the title with no guard, and
+  the existing filename-disambiguation helper compares only against names claimed within one
+  render run — it protects the intermediate rendered file, not the vault destination. The
+  clash currently survives both passes and fails at apply time. Pre-existing (two root-level
+  notes could already be given the same title), but recursion makes it likely rather than
+  theoretical, so it is in scope.*
 
 ### Should Have Features
 
@@ -396,7 +411,11 @@ the whole inbox subtree, and that the name of that thing says what it is.
   components receive.
 - Rule 7: When the pipeline cannot address a source note unambiguously, it must decline the
   operation rather than choose. Silence is preferable to a wrong write.
-- Rule 8: Every stage that derives the addressing identifier must derive it the same way.
+- Rule 8: A check performed before the user edits the review document is advisory, not
+  binding. The user may rename anything, including into a fresh clash, so any rule about
+  what reaches the vault must be enforced after their edits are parsed — a Pass-1 proposal
+  helps them avoid the problem, it cannot prevent it.
+- Rule 9: Every stage that derives the addressing identifier must derive it the same way.
   Two stages computing it differently would reintroduce, in a harder-to-see form, the exact
   defect fixed in #165 — a proposal that parses correctly into a lookup nothing then reads.
 
@@ -419,9 +438,12 @@ the whole inbox subtree, and that the name of that thing says what it is.
   precedence given to the root one.
 - The same note discovered twice within one run → Expected: one item, not two.
 - Two approved items whose suggested names produce the same destination file → Expected: the
-  review document proposes a distinct name for the second and the user can change it there,
-  as they already can for any suggested name. The destination folder is flat; two notes
-  cannot occupy one filename, and nothing checks this today.
+  review document proposes a distinct name for the second, and the user can change it there
+  as they already can for any suggested name.
+- The user edits two items to the same name after the proposal → Expected: Pass 2 stops both
+  and says so. The Pass-1 proposal cannot bind, because the edit comes after it.
+- The user names an item after a note that already exists in the target folder → Expected:
+  treated identically — the note is not filed and the clash is reported.
 
 ## Success Metrics
 

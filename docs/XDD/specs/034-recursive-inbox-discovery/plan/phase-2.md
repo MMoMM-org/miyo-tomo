@@ -96,6 +96,29 @@ rather than loudly, which is why T2.8 exists.
 
 - [ ] **T2.3 The reducer reads by key, displays by stem** `[activity: backend]`
 
+  **Extended 2026-09-06 — two runtime skills still instruct the old filename, and the interim
+  window is live.** T2.2 changed `inbox-analyst.md` to write its result under
+  `lib.item_key.to_filename(item_key)`. But the two skills that build the analyst's dispatch prompt
+  still say `tomo-tmp/items/<stem>.result.json` — `suggest-handling/SKILL.md:86` and
+  `force-atomic-handling/SKILL.md:78`. The agent contract and the dispatching skill now contradict
+  each other, and because both are LLM-loaded verbatim, that produces **nondeterministic**
+  behaviour rather than an honest failure — worse than either being consistently wrong.
+
+  Until this task lands, the analyst writes where the reducer cannot read, and
+  `suggestions-reducer.py:1716` **silently `continue`s** past a missing result file, so an item
+  simply vanishes from the run. That is the failure this task's own RED case ("a missing result
+  file is reported, not skipped") exists to close — it is not hypothetical, it is the current state
+  of the branch.
+
+  So in addition to the read-side change, this task must:
+  - Update both SKILL.md dispatch instructions to the new filename. Imperatives only, CON-5; write
+    the `docs/tomo/` counterparts first if any rationale needs recording.
+  - Delete `tests/test_034_t2_2_analyst_contract.py::test_reducer_lookup_is_not_yet_item_key_aware`,
+    or convert it to a positive assertion. T2.2 wrote it as `xfail(strict=True)` against the literal
+    `items_dir / f"{stem}.result.json"` at `:1677` and `:1715`, precisely so that removing that
+    pattern turns the xfail into a hard failure and forces you to deal with it. That is by design —
+    do not simply loosen the strictness.
+
   **Added 2026-09-06 — a second state-replay reader nobody owned.** `last_state_per_stem` is
   **duplicated**: `suggestions-reducer.py:78` (called at `:1652`) and `mark-captured.py:44`
   (called at `:108`). Both replay `inbox-state.jsonl` with `out[stem] = obj`, last-wins per bare
@@ -212,7 +235,7 @@ rather than loudly, which is why T2.8 exists.
      - [ ] Zero wrong-note writes in a clash scenario `[ref: PRD/Success Metrics]`
      - [ ] The decline-rather-than-guess branch has its own test, not just the happy path
 
-- [ ] **T2.6 The parser derives identity once** `[activity: backend]`
+- [x] **T2.6 The parser derives identity once** `[activity: backend]`
 
   1. **Prime**: Read `suggestion-parser.py:1971` (`_stem_of`) and the ~20 stem-keyed sites in
      the Force-Atomic reconciliation, including branch (b) added by #165. Read
@@ -231,7 +254,7 @@ rather than loudly, which is why T2.8 exists.
      - [ ] Two namesakes never merge into one bucket `[ref: PRD/AC Feature 2]`
      - [ ] #165 stays fixed, proven against a subfolder path `[ref: SDD/ADR-2]`
 
-- [ ] **T2.7 The coverage audit stops collapsing items** `[activity: backend]` `[parallel: true]`
+- [x] **T2.7 The coverage audit stops collapsing items** `[activity: backend]` `[parallel: true]`
 
   1. **Prime**: Read `instructions-diff.py:105-111` (its own duplicated `_stem()`), `:281`
      (`derive_expected`) and `:397` (`summarize_actual`). Both sides flatten identically today,

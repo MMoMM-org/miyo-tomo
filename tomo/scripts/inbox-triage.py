@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.33.0
+# version: 0.33.1
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -34,6 +34,7 @@ from lib.attachment_index import (  # noqa: E402
     _is_attachment_target,
     _strip_alias_and_anchor,
     build_inbox_index,
+    is_file_entry,
     resolve_attachments,
 )
 from lib.audio_constants import AUDIO_EXTS  # noqa: E402
@@ -175,7 +176,7 @@ def discover_files(client, inbox_path: str) -> tuple[list[dict], list[dict], lis
     md_files = []
 
     for item in all_files:
-        if (item.get("type") or "").lower() != "file":
+        if not is_file_entry(item):
             continue
         path = item.get("path", "")
         suffix = Path(path).suffix.lower()

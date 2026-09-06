@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """attachment_index.py — Detect and normalise attachment embeds in note bodies."""
 from __future__ import annotations
 
@@ -38,6 +38,22 @@ def extract_attachment_embeds(body: str) -> list[str]:
     return out
 
 
+def is_file_entry(item: object) -> bool:
+    """True if `item` is a Kado `listDir` entry naming a file, not a folder.
+
+    Case-insensitive and defensive: Kado's gateway always emits a lowercase
+    `"file"`/`"folder"` literal (`search-adapter.ts`), but this repo's two
+    listDir-filtering call sites — `build_inbox_index` below and
+    `inbox-triage.py`'s `discover_files` — independently disagreed on how to
+    handle case variants, a `None` type, a missing `type` key, and a
+    non-dict entry (spec 034 T3.1). Both now route through this single
+    predicate so they cannot re-diverge (ADR-3).
+    """
+    if not isinstance(item, dict):
+        return False
+    return (item.get("type") or "").lower() == "file"
+
+
 def build_inbox_index(list_dir_result: list[dict] | None) -> dict[str, list[str]]:
     """Index inbox files by basename: basename -> list of vault-relative paths.
 
@@ -51,7 +67,7 @@ def build_inbox_index(list_dir_result: list[dict] | None) -> dict[str, list[str]
     if not list_dir_result:
         return index
     for item in list_dir_result:
-        if not isinstance(item, dict) or item.get("type") != "file":
+        if not is_file_entry(item):
             continue
         path = item.get("path")
         if not path:

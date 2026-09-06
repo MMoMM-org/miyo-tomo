@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.0
+# version: 0.13.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -48,6 +48,8 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
+
+from lib.item_key import derive as _item_key  # noqa: E402
 
 # tag-handler-group.py is a hyphenated top-level script; load it via importlib
 # for the stable group_id slug (spec 024 T4.1) — the SAME id the renderer keys
@@ -113,6 +115,44 @@ def _stem(path: str | None) -> str:
 
 def _moc_stem(name: str | None) -> str:
     return _stem(name)
+
+
+def _key_segments(key: str) -> list[str]:
+    """Split an item_key into path segments, extension-stripped on the last
+    one only. The parser's current source_path is the bare wikilink stem
+    (no extension, e.g. "Dresden") while a rendered action's traceability
+    field carries the real filename (e.g. "100 Inbox/Dresden.md") — the two
+    conventions must still agree on the *last* segment. Directory segments
+    are left untouched: they carry the disambiguating information this
+    module needs (ADR-1), and a plain stem compare is exactly what
+    collapses two same-named items in different subfolders."""
+    parts = key.split("/")
+    last = parts[-1]
+    if last.endswith(".md"):
+        last = last[:-3]
+    parts[-1] = last
+    return parts
+
+
+def _keys_match(expected_key: str, actual_key: str) -> bool:
+    """True when `expected_key` (an item_key drawn straight from
+    confirmed_items, never inbox-prefixed) and `actual_key` (an item_key
+    drawn from a rendered action's traceability field) name the same item.
+
+    `render_actions._build_move_note_actions` only inbox-joins a bare
+    (single-segment) origin — a subfolder-qualified one is carried through
+    verbatim — so `actual_key` may carry one extra leading path segment that
+    `expected_key` does not. Comparing the trailing path segments lets the
+    two conventions agree without this module knowing the inbox path,
+    while still keeping two same-named items in different subfolders apart
+    (ADR-1) — the exact identity a bare-stem compare collapses."""
+    if not expected_key or not actual_key:
+        return False
+    if expected_key == actual_key:
+        return True
+    e_parts = _key_segments(expected_key)
+    a_parts = _key_segments(actual_key)
+    return len(e_parts) <= len(a_parts) and a_parts[-len(e_parts):] == e_parts
 
 
 def _parse_supporting_items(raw: str | list | None) -> list[str]:
@@ -295,7 +335,11 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                     daily_only_seen.add(stem)
                     expected_deletions.append(stem)
     # Paired with move_note: every confirmed atomic note with a source_path
-    # AND keep_source=False expects a paired delete on its origin.
+    # AND keep_source=False expects a paired delete on its origin. Dedup on
+    # the item_key (the full source_path, ADR-1), not the bare stem — two
+    # confirmed items sharing a filename in different subfolders are two
+    # distinct origins, each owed its own paired delete; a stem-keyed dedup
+    # would drop the second one's expected deletion silently.
     paired_origins_seen: set[str] = set()
     audio_peers_seen: set[str] = set()
     for item in confirmed:
@@ -306,10 +350,10 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
         sp = item.get("source_path")
         if not sp:
             continue
-        stem = _stem(sp)
-        if stem not in paired_origins_seen:
-            paired_origins_seen.add(stem)
-            expected_deletions.append(stem)
+        key = _item_key(sp)
+        if key not in paired_origins_seen:
+            paired_origins_seen.add(key)
+            expected_deletions.append(_stem(sp))
         # Voice source set (spec 027 ADR-1): a confirmed non-kept item with an
         # audio_peer expects a SECOND paired delete for the audio file. The
         # renderer emits one audio delete_source per origin stem group; mirror it
@@ -381,7 +425,7 @@ def summarize_actual(instrs: dict) -> dict:
     for a in actions:
         counts[a["action"]] = counts.get(a["action"], 0) + 1
 
-    move_by_stem: dict[str, dict] = {}
+    move_by_key: dict[str, dict] = {}
     create_mocs: list[dict] = []
     links_by_source: dict[str, list[str]] = {}
     # link_to_moc COVERAGE is counted as (note, MOC) pairs, not raw actions: a
@@ -392,10 +436,15 @@ def summarize_actual(instrs: dict) -> dict:
     for a in actions:
         kind = a["action"]
         if kind == "move_note":
-            # Match by the stem of source_inbox_item (traceability field);
-            # falls back to the rendered_file stem if source wasn't captured.
-            stem = _stem(a.get("source_inbox_item")) or _stem(a.get("rendered_file"))
-            move_by_stem[stem] = a
+            # Match by the item_key of source_inbox_item (traceability field);
+            # falls back to rendered_file if source wasn't captured. Keying on
+            # the full path (not the bare stem) keeps two same-named items in
+            # different subfolders from collapsing onto one dict entry — see
+            # _keys_match for how this reconciles with a bare-name origin's
+            # inbox-joined prefix.
+            raw_origin = a.get("source_inbox_item") or a.get("rendered_file")
+            key = _item_key(raw_origin) if raw_origin else ""
+            move_by_key[key] = a
         elif kind == "create_moc":
             create_mocs.append(a)
         elif kind == "link_to_moc":
@@ -429,7 +478,7 @@ def summarize_actual(instrs: dict) -> dict:
 
     return {
         "counts": counts,
-        "move_by_stem": move_by_stem,
+        "move_by_key": move_by_key,
         "create_mocs": create_mocs,
         "links_by_source": links_by_source,
         "daily_by_kind": daily_by_kind,
@@ -687,7 +736,12 @@ def run_diff(
         if info["kind"] == "create_moc":
             found = any(a.get("title") == info["title"] for a in actual["create_mocs"])
         else:
-            found = _stem(info.get("source_path")) in actual["move_by_stem"]
+            source_path = info.get("source_path")
+            expected_key = _item_key(source_path) if source_path else ""
+            found = bool(expected_key) and any(
+                _keys_match(expected_key, actual_key)
+                for actual_key in actual["move_by_key"]
+            )
         file_mark = "[OK]" if found else "[MISSING]"
         if not found:
             hard_fail = True

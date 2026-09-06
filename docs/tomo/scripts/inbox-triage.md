@@ -293,12 +293,25 @@ subfolder note once discovery went recursive. The path now comes from here, wher
 the run's inbox listing is in scope, instead of being guessed at the far end of
 the pipeline.
 
-WHY `_resolve_fan_note` narrows the way `resolve_attachments` narrows an embed
-target — basename first, then the path suffix when the reference carries one:
-these are the same problem (a wikilink that may or may not be path-qualified,
-against one listing), and two derivations of one rule is how PRD Business Rule 9
-gets violated. It also means the resolver already accepts the path-qualified
-`[[100 Inbox/Places/Dresden|Dresden]]` form that T5.1 will start emitting.
+WHY `_resolve_fan_note` calls `attachment_index.narrow_candidates` instead of
+narrowing for itself: these are the same problem (a wikilink that may or may not
+be path-qualified, resolved against one listing), and a second derivation of one
+rule is how PRD Business Rule 9 gets violated. The first version of this fix DID
+hand-copy the rule, and it drifted inside the same commit — the copy stripped the
+alias and the heading anchor but not the block anchor, so `[[Dresden^abc123]]`
+failed against an index that plainly contained `Dresden.md`. Three copies existed
+at that point (`resolve_attachments`, `_candidate_count`, `_resolve_fan_note`);
+all three now route through the one helper. Sharing it also means the resolver
+accepts the path-qualified `[[100 Inbox/Places/Dresden|Dresden]]` form T5.1 will
+start emitting, for free.
+
+WHY the `.md` suffix is a parameter of the shared helper rather than something
+this site appends first: a note wikilink omits the extension, a file embed
+carries it, so the two callers genuinely differ — but only in that one input.
+The ORDER (strip the alias and anchors, THEN append) is part of the rule, not
+part of the caller: appending first would search the index for
+`Dresden|Alias.md`. Putting `default_extension` inside `narrow_candidates` keeps
+that ordering in the one place that owns it.
 
 WHY zero matches and two matches both decline rather than pick: with two
 same-named inbox notes, `Source: [[Dresden]]` genuinely does not say which one is

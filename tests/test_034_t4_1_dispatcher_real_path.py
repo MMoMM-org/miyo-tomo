@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t4_1_dispatcher_real_path.py — the FAN dispatcher uses the item's real path.
 
 Covers T4.1 (XDD 034 Phase 4). Two defects close together here:
@@ -371,3 +371,169 @@ class TestSkillFileInstruction:
         assert "source_path" in joined
         assert "NEVER use it as path" in joined
         assert "Why:" in joined
+
+
+# ---------------------------------------------------------------------------
+# 5. One narrowing rule, three call sites (PRD Business Rule 9)
+# ---------------------------------------------------------------------------
+
+# The rule — strip alias/anchors, match by basename, narrow by path suffix —
+# was hand-copied three times. It drifted immediately: the FAN copy stripped
+# `|` and `#` but not `^`, so a block-anchored reference failed to resolve
+# against an index that plainly contained it. All three sites now route
+# through lib.attachment_index.narrow_candidates.
+
+AGREEMENT_INDEX = {
+    "Dresden.md": ["100 Inbox/Places/Dresden.md", "100 Inbox/Reise/Dresden.md"],
+    "Furano.md": ["100 Inbox/Furano.md"],
+}
+
+# (reference, the single path it must resolve to)
+AGREEING_REFERENCES = [
+    ("Furano.md", "100 Inbox/Furano.md"),                        # bare
+    ("Furano.md|Furano", "100 Inbox/Furano.md"),                 # alias
+    ("Furano.md#Trip notes", "100 Inbox/Furano.md"),             # heading anchor
+    ("Furano.md^a1b2c3", "100 Inbox/Furano.md"),                 # block anchor
+    ("Places/Dresden.md", "100 Inbox/Places/Dresden.md"),        # path-qualified
+    ("Reise/Dresden.md|Dresden", "100 Inbox/Reise/Dresden.md"),  # both
+]
+
+
+class TestOneNarrowingRule:
+    def test_block_anchor_reference_resolves(self):
+        """`^block` is an anchor, not part of the filename — the FAN copy's gap."""
+        mod = _load_module()
+
+        note_path, count = mod._resolve_fan_note(
+            "Dresden Impressionen^a1b2c3", _index(SUBFOLDER_SPACE_MIXED_CASE),
+        )
+
+        assert note_path == SUBFOLDER_SPACE_MIXED_CASE
+        assert count == 1
+
+    def test_all_three_sites_agree_on_the_same_reference(self):
+        """resolve_attachments, _candidate_count and _resolve_fan_note agree.
+
+        Three call sites, one rule. Each adapts the shared result to its own
+        return shape; none re-implements the narrowing.
+        """
+        mod = _load_module()
+        from lib.attachment_index import resolve_attachments
+
+        for reference, expected in AGREEING_REFERENCES:
+            refs = resolve_attachments([reference], AGREEMENT_INDEX)
+            assert refs[0].status == "resolved", reference
+            assert refs[0].resolved_path == expected, reference
+
+            assert mod._candidate_count(reference, AGREEMENT_INDEX) == 1, reference
+
+            note_path, count = mod._resolve_fan_note(reference, AGREEMENT_INDEX)
+            assert note_path == expected, reference
+            assert count == 1, reference
+
+    def test_all_three_sites_agree_that_a_reference_is_ambiguous(self):
+        """Agreement has to hold on the failing side too, not just the happy one."""
+        mod = _load_module()
+        from lib.attachment_index import resolve_attachments
+
+        refs = resolve_attachments(["Dresden.md"], AGREEMENT_INDEX)
+        assert refs[0].status == "ambiguous"
+        assert refs[0].resolved_path is None
+        assert mod._candidate_count("Dresden.md", AGREEMENT_INDEX) == 2
+        assert mod._resolve_fan_note("Dresden.md", AGREEMENT_INDEX) == (None, 2)
+
+    def test_fan_site_supplies_the_note_extension_a_wikilink_omits(self):
+        """The only difference the FAN site is allowed to carry: `[[Furano]]`
+        names a note, so `.md` is appended — after stripping, never before."""
+        mod = _load_module()
+
+        assert mod._resolve_fan_note("Furano", AGREEMENT_INDEX) == (
+            "100 Inbox/Furano.md", 1,
+        )
+        # Strip-then-append: appending first would search for "Furano|x.md".
+        assert mod._resolve_fan_note("Furano|Nice trip", AGREEMENT_INDEX) == (
+            "100 Inbox/Furano.md", 1,
+        )
+
+
+# ---------------------------------------------------------------------------
+# 6. The remaining decline branches
+# ---------------------------------------------------------------------------
+
+class TestDeclineBranches:
+    def test_wire_daily_entry_with_no_resolvable_note_declines(self, capsys):
+        """The wire fallback: a daily entry whose stem matches no suggestion
+        and no inbox note (`_add_by_stem`'s resolution branch)."""
+        mod = _load_module()
+        wire = {
+            "schema_version": "1",
+            "suggestions": [],
+            "daily_updates": [
+                {"date": "2026-04-17", "log_entries": [
+                    {"source_stem": "Vanished", "force_atomic_note": True},
+                ]},
+            ],
+        }
+
+        items = mod._extract_fan_items_from_wire(
+            wire, DOC_PATH, inbox_index=_index(ROOT_LEVEL_NOTE),
+        )
+
+        assert items == []
+        err = capsys.readouterr().err
+        assert "Vanished" in err
+        assert "declined" in err.lower()
+
+    def test_wire_daily_entry_ambiguous_between_two_suggestions_declines(self, capsys):
+        """Two suggestions share the stem, so the daily entry's `source_stem`
+        cannot say which note it belongs to — and the listing cannot either."""
+        mod = _load_module()
+        wire = {
+            "schema_version": "1",
+            "suggestions": [
+                {"id": "S01", "stem": "Dresden", "item_key": DRESDEN_PLACES,
+                 "suppressed": False, "force_atomic": False},
+                {"id": "S02", "stem": "Dresden", "item_key": DRESDEN_REISE,
+                 "suppressed": False, "force_atomic": False},
+            ],
+            "daily_updates": [
+                {"date": "2026-04-17", "log_entries": [
+                    {"source_stem": "Dresden", "force_atomic_note": True},
+                ]},
+            ],
+        }
+
+        items = mod._extract_fan_items_from_wire(
+            wire, DOC_PATH, inbox_index=_index(DRESDEN_PLACES, DRESDEN_REISE),
+        )
+
+        assert items == []
+        assert "declined" in capsys.readouterr().err.lower()
+
+    def test_markdown_note_no_longer_in_inbox_declines(self, capsys):
+        """Zero candidates: the note was moved, renamed or already consumed."""
+        mod = _load_module()
+        body = _suggestions_body(["Vanished"])
+
+        items = mod._extract_fan_items(
+            body, DOC_PATH, inbox_index=_index(ROOT_LEVEL_NOTE),
+        )
+
+        assert items == []
+        err = capsys.readouterr().err
+        assert "Vanished" in err
+        assert "no inbox note of that name" in err
+
+    def test_zero_candidate_decline_names_a_different_cause_than_ambiguity(self, capsys):
+        """The two declines are not interchangeable — the user's next action
+        differs (find the note vs. disambiguate two)."""
+        mod = _load_module()
+
+        mod._report_fan_decline("Gone", DOC_PATH, 0)
+        missing = capsys.readouterr().err
+        mod._report_fan_decline("Dresden", DOC_PATH, 2)
+        ambiguous = capsys.readouterr().err
+
+        assert "no inbox note of that name" in missing
+        assert "share that filename" in ambiguous
+        assert missing != ambiguous

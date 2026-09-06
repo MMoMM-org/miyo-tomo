@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """attachment_index.py — Detect and normalise attachment embeds in note bodies."""
 from __future__ import annotations
 
@@ -86,29 +86,56 @@ class AttachmentRef:
     status: str  # "resolved" | "unresolved" | "ambiguous"
 
 
+def narrow_candidates(
+    reference: str,
+    index: dict[str, list[str]] | None,
+    *,
+    default_extension: str | None = None,
+) -> list[str]:
+    """The one narrowing rule: a wikilink-style reference -> its candidate paths.
+
+    Strips the alias and any anchor, optionally supplies the extension a note
+    link omits, matches by basename, then narrows by path suffix when the
+    reference is path-qualified. Returns every surviving candidate, in index
+    order; callers decide what one, none or several mean to them.
+
+    `default_extension` (e.g. ".md") is appended only when the stripped
+    reference does not already end in it. Order matters and is owned here:
+    appending before stripping would search for "Dresden|Alias.md".
+
+    This is the single definition of the rule. It was previously hand-copied
+    at three call sites and had already drifted — one copy stripped "|" and
+    "#" but not "^", so a block-anchored reference failed against an index
+    that contained it (PRD Business Rule 9, spec 034).
+    """
+    target = _strip_alias_and_anchor(reference)
+    if default_extension and not target.lower().endswith(default_extension.lower()):
+        target += default_extension
+    basename = target.rsplit("/", 1)[-1]
+    candidates = (index or {}).get(basename, [])
+    if "/" in target:
+        candidates = [
+            path for path in candidates
+            if path == target or path.endswith("/" + target)
+        ]
+    return list(candidates)
+
+
 def resolve_attachments(
     embed_targets: list[str], index: dict[str, list[str]]
 ) -> list[AttachmentRef]:
     """Resolve each embed target against an inbox index from build_inbox_index().
 
-    A bare target is looked up by basename: exactly one hit resolves to that
-    path; two or more hits are ambiguous; zero hits are unresolved. A
-    path-qualified target is looked up by its own basename, then narrowed to
-    whichever of that basename's candidate paths ends with the given target
-    (e.g. a path ending in ".../Images/karte.jpg" for a target of
-    "Images/karte.jpg"); resolved_path is always that retrieved candidate, not
-    the target string. Narrowing to zero or to more than one candidate yields
-    unresolved / ambiguous respectively, same as the bare case.
+    Narrowing is `narrow_candidates` — shared with every other site that
+    resolves a reference against this index. This function only maps its
+    result onto the three-state outcome: exactly one candidate resolves, two
+    or more are ambiguous, zero is unresolved. `resolved_path` is always the
+    retrieved candidate, never the target string, and `embed_target` echoes
+    the reference exactly as given (alias and anchor included, if any).
     """
     out: list[AttachmentRef] = []
     for target in embed_targets:
-        basename = target.rsplit("/", 1)[-1] if "/" in target else target
-        candidates = index.get(basename, [])
-        if "/" in target:
-            candidates = [
-                path for path in candidates
-                if path == target or path.endswith("/" + target)
-            ]
+        candidates = narrow_candidates(target, index)
         if len(candidates) == 1:
             out.append(AttachmentRef(target, candidates[0], "resolved"))
         elif len(candidates) > 1:

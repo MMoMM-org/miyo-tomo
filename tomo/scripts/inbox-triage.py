@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.35.0
+# version: 0.36.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -35,6 +35,7 @@ from lib.attachment_index import (  # noqa: E402
     _strip_alias_and_anchor,
     build_inbox_index,
     is_file_entry,
+    narrow_candidates,
     resolve_attachments,
 )
 from lib.audio_constants import AUDIO_EXTS  # noqa: E402
@@ -218,15 +219,13 @@ def build_attachment_index(listing: list[dict] | None) -> dict[str, list[str]]:
 
 
 def _candidate_count(target: str, index: dict[str, list[str]]) -> int:
-    """Mirror resolve_attachments' own candidate-narrowing so an ambiguous
-    result can be reported with its candidate count (item-result.schema.json
-    unresolved_embeds[].candidate_count) — resolve_attachments itself
-    collapses this to None on the AttachmentRef it returns."""
-    basename = target.rsplit("/", 1)[-1] if "/" in target else target
-    candidates = index.get(basename, [])
-    if "/" in target:
-        candidates = [p for p in candidates if p == target or p.endswith("/" + target)]
-    return len(candidates)
+    """How many candidates an ambiguous embed target narrowed to.
+
+    resolve_attachments collapses this to None on the AttachmentRef it
+    returns, but item-result.schema.json's unresolved_embeds[].candidate_count
+    wants the number. Same narrowing, called again for its length — not a
+    second copy of the rule."""
+    return len(narrow_candidates(target, index))
 
 
 def resolve_inbox_attachments(
@@ -598,21 +597,15 @@ def _resolve_fan_note(
 
     `reference` is whatever the checkbox names: the bare stem a `Source: [[x]]`
     wikilink carries today, or the path-qualified form with an alias the
-    renderer emits once two items share a filename. Resolution narrows the
-    run's inbox listing exactly as `resolve_attachments` narrows an embed
-    target — basename first, then the path suffix when the reference has one.
+    renderer emits once two items share a filename. Narrowing is
+    `narrow_candidates`, shared with attachment resolution; the only thing
+    this site adds is the `.md` a note link omits and a file embed carries.
 
     Returns (path, candidate_count). `path` is None unless exactly one inbox
     note matches: zero means the note is gone, more than one means the
     reference cannot say which is meant, and both decline (PRD Business Rule 7).
     """
-    target = reference.split("|", 1)[0].split("#", 1)[0].strip()
-    if not target.lower().endswith(".md"):
-        target += ".md"
-    basename = target.rsplit("/", 1)[-1]
-    candidates = (inbox_index or {}).get(basename, [])
-    if "/" in target:
-        candidates = [p for p in candidates if p == target or p.endswith("/" + target)]
+    candidates = narrow_candidates(reference, inbox_index, default_extension=".md")
     if len(candidates) == 1:
         return candidates[0], 1
     return None, len(candidates)

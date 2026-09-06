@@ -12,7 +12,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | in_progress | |
+| requirements.md | completed | 8 features (6 Must, 1 Should, 1 Could), 21 acceptance criteria, 6 business rules, 6 edge cases, 3 open questions |
 | solution.md | pending | |
 | plan/ | pending | |
 

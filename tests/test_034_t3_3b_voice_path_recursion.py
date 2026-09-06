@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t3_3b_voice_path_recursion.py — XDD 034 T3.3b voice path sweep.
 
 T3.2 made inbox discovery recursive; T3.3 fixed `check_audio` in
@@ -8,7 +8,14 @@ path itself was never swept: `voice-precheck.py` still listed the inbox with
 `depth=1` (hiding subfolder audio from the cheap pre-dispatch check
 entirely), and `voice-transcriber.md` still composed both the sibling
 membership check (Step 3) and the actual kado-write target (Step 5) as
-`<inbox_path>/<...>` — the inbox ROOT, not the audio's own folder.
+`<inbox_path>/<...>` — the inbox ROOT, not the audio's own folder. A fourth
+site surfaced on review: `voice-transcriber.md` Step 2 — the agent's OWN
+discovery listDir — was still `depth: 1`, so even after Step 3/Step 5 compose
+correctly, the agent never sees a subfolder audio file to act on in the first
+place. The `depth: 1` param shape was justified in the runtime file as
+"mirrors `inbox-orchestrator`'s call" — that agent was retired under spec
+018 (agent-architecture-cleanup) and no longer exists anywhere in the repo;
+the reference was stale and has been dropped, not redirected.
 
 Before recursion this was harmless (all audio sat at the root, so
 "root" and "own folder" were the same path). After T3.2 it is not: a
@@ -18,9 +25,9 @@ transcriber on every run — the same repeated-dispatch shape as the historical
 `:`-vs-`-` infinite transcribe loop, here caused by a folder mismatch instead
 of a character mismatch.
 
-`[ref: PRD/AC Feature 5]` — all three sites (inbox-triage's `check_audio`,
-`voice-precheck.py`, `voice-transcriber.md`) must agree on where a transcript
-lives, for any audio file at any depth.
+`[ref: PRD/AC Feature 5]` — all sites (inbox-triage's `check_audio`,
+`voice-precheck.py`, `voice-transcriber.md` Steps 2/3/5) must agree on where
+a transcript lives, for any audio file at any depth.
 
 This file covers:
   (a) `voice-precheck.py` sees subfolder audio at all — today `depth=1`
@@ -30,8 +37,12 @@ This file covers:
       must reach the same cached/uncached verdict per fixture.
   (d) root-level behaviour, including the `sanitize_stem` asymmetry, is
       unchanged by the fix.
-  A static scan of `voice-transcriber.md`'s Step 3 and Step 5 instruction
-  text — the only automated guard possible for LLM-loaded markdown (CON-5).
+  A static scan of `voice-transcriber.md`'s Step 2, Step 3, and Step 5
+  instruction text — the only automated guard possible for LLM-loaded
+  markdown (CON-5).
+  A whole-chain test that walks precheck (executable) → the transcriber's own
+  discovery (markdown-only, covered by static scan) → check_audio re-pairing
+  after the write (executable), for one subfolder fixture.
 """
 from __future__ import annotations
 
@@ -282,6 +293,55 @@ def test_step5_writes_target_beside_its_own_audio():
     assert "<inbox_path>/<results[i].target>" not in step5
     assert "<inbox_path>/<sanitised_stem>.transcribe-error.md" not in step5
     assert step5.count("containing folder of todo[i]") >= 2
+
+
+def test_step2_discovery_listdir_has_no_depth_limit():
+    """Step 2 is the transcriber's OWN discovery call — a fourth site. A
+    `depth: 1` listDir here hides subfolder audio from the agent entirely,
+    independent of how correctly Step 3/Step 5 compose paths afterward.
+    Fixed Step 2 must drop the `depth: 1` param and must not justify itself
+    by pointing at `inbox-orchestrator`, which no longer exists in this
+    repo (retired under spec 018)."""
+    step2 = _normalize(_extract(_load_voice_transcriber_text(), "### Step 2", "### Step 3"))
+
+    assert "depth: 1" not in step2
+    assert "inbox-orchestrator" not in step2
+
+
+# ---------------------------------------------------------------------------
+# Whole-chain fixture: precheck (executable) -> transcriber's own discovery
+# (markdown-only, covered by the Step 2 static scan above) -> check_audio
+# re-pairing after the write (executable).
+# ---------------------------------------------------------------------------
+
+def test_whole_chain_subfolder_audio_precheck_to_repair(monkeypatch):
+    """A subfolder audio file with no sibling:
+    1. (EXECUTED) `voice-precheck` reports it uncached — the dispatch must
+       not be skipped.
+    2. (STATIC SCAN — see test_step2_discovery_listdir_has_no_depth_limit)
+       the transcriber's own Step 2 discovery is depth-unbounded, so it
+       would see this file too; this leg lives in LLM-loaded markdown and
+       cannot be executed by a unit test.
+    3. (EXECUTED) once the transcriber writes the sibling beside its own
+       audio (the folder Step 5 now resolves to), `check_audio` reports the
+       pair as no longer uncached — the loop actually closes.
+    """
+    items_before = [_entry("100 Inbox/Voice/memo.m4a")]
+    precheck_mod = _load_precheck()
+    triage_mod = _load_triage()
+    fake_client = _DepthAwareClient(items_before)
+    monkeypatch.setattr(precheck_mod, "KadoClient", lambda: fake_client)
+
+    # Leg 1 — precheck must not skip the dispatch.
+    precheck_result = precheck_mod.precheck("100 Inbox")
+    assert precheck_result["all_cached"] is False
+    assert precheck_result["missing"] == ["100 Inbox/Voice/memo.m4a"]
+
+    # Leg 3 — simulate the write Step 5 would perform (same folder as the
+    # audio, sanitised stem) and confirm check_audio now agrees it's paired.
+    items_after = items_before + [_entry("100 Inbox/Voice/memo.md")]
+    audio, md = _split(items_after)
+    assert triage_mod.check_audio(audio, md) is False
 
 
 if __name__ == "__main__":

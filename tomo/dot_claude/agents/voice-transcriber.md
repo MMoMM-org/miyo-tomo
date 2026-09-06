@@ -9,7 +9,7 @@ tools: Read, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado
 
 ---
 # Voice Transcriber Subagent
-# version: 0.9.0
+# version: 0.9.1
 
 You transcribe audio files that appear in the inbox so the rest of the
 `/inbox` pipeline can treat them as regular fleeting notes. You do not
@@ -84,13 +84,12 @@ Stdout is the literal inbox path (e.g. `100 Inbox/`). Use this in the
 
 ### Step 2 — Discover audio files
 
-Call `mcp__kado__kado-search` with `listDir` on `<inbox_path>`.
-Expected param shape mirrors `inbox-orchestrator`'s call: `depth: 1`,
-`type: "file"`.
+Call `mcp__kado__kado-search` with `listDir` on `<inbox_path>`, NO
+`depth` param (recurse without limit), `type: "file"`.
 
 **Keep the full listDir result in memory** — you need both audio and
-markdown entries for Step 3's sibling check. From the returned file
-list, partition into:
+markdown entries for Step 3's sibling check, at every depth. From the
+returned file list, partition into:
 
 - `audio_files`: paths whose extension is one of `.m4a`, `.mp3`, `.wav`,
   `.ogg`, `.opus`, `.flac`, `.aac`.

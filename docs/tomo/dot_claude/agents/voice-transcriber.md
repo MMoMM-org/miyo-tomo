@@ -48,6 +48,56 @@ corresponds to `todo[i]`; the CLI preserves input order). `<inbox_path>` is
 no longer used to build any transcript path in this agent — only to seed the
 Step 2 `kado-search` call.
 
+## A Fourth Site: Step 2's Own Discovery Was Still `depth: 1` (spec 034 T3.3b follow-up)
+
+WHY: the first pass of T3.3b fixed Step 3 (sibling-membership target) and
+Step 5 (kado-write target) to compose from the audio's own containing
+folder, and fixed `voice-precheck.py`'s listDir call. It missed that this
+agent does its OWN discovery in Step 2, independently of `voice-precheck.py`
+— and Step 2's `listDir` call was still `depth: 1`. Folder-aware composition
+in Step 3/Step 5 is moot if Step 2 never hands the agent a subfolder audio
+file to act on in the first place: the chain became `check_audio` (T3.3,
+folder-aware) → `voice-precheck` (fixed, folder-aware, doesn't skip
+dispatch) → this agent's Step 2 (`depth: 1`, never sees the file) →
+`no_audio` / nothing transcribed → identical result next run. Same
+repeated-dispatch shape, moved one step along rather than closed.
+
+Step 2's `depth: 1` was justified in the runtime file as "mirrors
+`inbox-orchestrator`'s call". `inbox-orchestrator.md` was deleted under spec
+018 (agent-architecture-cleanup) — retired in favour of `suggestion-
+conductor` + `synthesis-conductor` — and no longer exists anywhere in this
+repo. The justification was stale at the moment T3.2 made discovery
+recursive elsewhere (`inbox-triage.py`'s own discovery call,
+`client.list_dir(inbox_path)`, already dropped its depth limit for exactly
+this reason). Fix: Step 2 drops `depth: 1` entirely and no longer cites a
+retired agent as its justification — CON-5 forbids rationale in the runtime
+file regardless, so the corrected instruction is a bare imperative.
+
+## Full Enumeration — Every listDir / Path Composition / Membership Check in the Voice Path
+
+WHY: recorded once, here, so a future sweep does not have to rediscover this
+by hand. As of this fix, every site in the voice path is folder-aware AND
+depth-unbounded:
+
+| File | Site | Folder-aware | Depth-unbounded |
+|---|---|---|---|
+| `voice-precheck.py` | `client.list_dir(inbox)` | n/a (see sibling math) | ✅ (no `depth=` kwarg since this fix; `KadoClient.list_dir` defaults to unbounded recursion) |
+| `voice-precheck.py` | `_expected_md_path` (sibling path math) | ✅ uses `p.parent` | ✅ (not depth-limited by construction) |
+| `voice-transcriber.md` | Step 2 `listDir` (own discovery) | n/a (listing only) | ✅ (this fix — `depth: 1` dropped) |
+| `voice-transcriber.md` | Step 3 (sibling-membership target) | ✅ audio's own folder (T3.3b) | ✅ (downstream of Step 2; correct now that Step 2 is unbounded) |
+| `voice-transcriber.md` | Step 5 (`kado-write` target, success + `.transcribe-error.md`) | ✅ audio's own folder (T3.3b) | ✅ (writes are not depth-limited at all — this axis never applied here) |
+| `voice-transcribe.py` | none — the CLI does no discovery | n/a | n/a — it receives explicit vault-relative paths as argv and never lists a directory |
+| `voice-transcribe.py` | `entry["target"] = f"{target_stem}.md"` | intentionally NOT folder-aware — a bare filename by design | n/a |
+
+`voice-transcribe.py`'s bare-filename `target` is deliberate, not a gap: the
+CLI has no opinion on vault layout, and the split described in Step 5 (the
+CLI sanitises the filename; the agent — which already knows each audio
+file's own folder from Step 3 — supplies the folder) is the intended
+division of labour. `inbox-triage.py`'s `check_audio` (a separate file, not
+part of the voice-transcriber/voice-precheck/voice-transcribe trio audited
+here) was already fixed under T3.3 and remains folder-aware and
+depth-unbounded.
+
 ## The `sanitize_stem` Asymmetry Is Preserved, and Is Independent of This Fix
 
 WHY: only the derived `.md` target is sanitised (`sanitize_stem`); the source

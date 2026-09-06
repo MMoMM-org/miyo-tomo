@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_reducer_conventions_block.py — reducer suffix + conventions block (028 T2.3).
 
 The reducer must:
@@ -26,6 +26,7 @@ SCRIPT_PATH = SCRIPTS_DIR / "suggestions-reducer.py"
 SCHEMA_PATH = REPO_ROOT / "tomo" / "schemas" / "suggestions-doc.schema.json"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 
 _spec = importlib.util.spec_from_file_location("suggestions_reducer", SCRIPT_PATH)
 _mod = importlib.util.module_from_spec(_spec)
@@ -134,17 +135,19 @@ def _run_with_moc_topic(tmp_path: Path, profile: str, topic: str) -> dict:
         json.dumps({
             "stem": stem,
             "path": f"100 Inbox/{stem}.md",
+            "item_key": f"100 Inbox/{stem}.md",
             "status": "done",
             "run_id": "test-run",
             "ts": "2026-07-01T10:00:00Z",
         }) + "\n",
         encoding="utf-8",
     )
-    (items / f"{stem}.result.json").write_text(
+    (items / to_filename(f"100 Inbox/{stem}.md")).write_text(
         json.dumps({
             "schema_version": "1",
             "stem": stem,
             "path": f"100 Inbox/{stem}.md",
+            "item_key": f"100 Inbox/{stem}.md",
             "type": "fleeting_note",
             "type_confidence": 0.9,
             "force_atomic": False,

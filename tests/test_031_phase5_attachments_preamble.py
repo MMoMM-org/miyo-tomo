@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_phase5_attachments_preamble.py — the run-level attachments preamble line.
 
 Covers spec 031 Phase 5 strand B: AC-F3.1's "destination folder" half is a
@@ -47,6 +47,7 @@ SHARED_CTX_SCHEMA = REPO_ROOT / "tomo" / "schemas" / "shared-ctx.schema.json"
 SUGGESTIONS_DOC_SCHEMA = REPO_ROOT / "tomo" / "schemas" / "suggestions-doc.schema.json"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 
 
 def _load(mod_name: str, filename: str):
@@ -222,7 +223,7 @@ def _section(*, attachments: list | None = None) -> dict:
         "attachments": attachments if attachments is not None else [],
     }
     return {
-        "id": "S01", "stem": "memo",
+        "id": "S01", "stem": "memo", "item_key": "100 Inbox/memo.md",
         "actions": [{"kind": "create_atomic_note", "rendered_md": "x", "item": item}],
     }
 
@@ -276,7 +277,8 @@ _ENV = {
 
 def _write_state(path: Path, stem: str) -> None:
     path.write_text(json.dumps({
-        "stem": stem, "path": f"100 Inbox/{stem}.md", "status": "done",
+        "stem": stem, "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md", "status": "done",
         "run_id": "test-p5b", "ts": "2026-09-05T10:00:00Z",
     }) + "\n", encoding="utf-8")
 
@@ -298,8 +300,9 @@ def _write_result(items_dir: Path, stem: str, attachments: list | None) -> None:
         "classification": {"category": "Travel", "confidence": 0.9},
         "alternatives": [],
     }
-    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+    (items_dir / to_filename(f"100 Inbox/{stem}.md")).write_text(json.dumps({
         "schema_version": "1", "stem": stem, "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "type": "fleeting_note", "type_confidence": 0.9, "force_atomic": False,
         "actions": [action], "issues": [], "duration_ms": 0,
     }, ensure_ascii=False), encoding="utf-8")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_suggestions_reducer_stale_run_filter.py — regression guard for #116.
 
 `tomo-tmp/inbox-state.jsonl` is append-only and never truncated between runs.
@@ -28,6 +28,8 @@ REDUCER = REPO_ROOT / "tomo" / "scripts" / "suggestions-reducer.py"
 
 _DEPS = "/tmp/claude/py_deps"
 _SCRIPTS_DIR = str(REPO_ROOT / "tomo" / "scripts")
+sys.path.insert(0, str(REPO_ROOT / "tomo" / "scripts"))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 _extra = ":".join(p for p in [_DEPS, _SCRIPTS_DIR] if os.path.isdir(p))
 _ENV = {
     **os.environ,
@@ -55,6 +57,7 @@ def _write_state(path: Path, entries: list[tuple[str, str]]) -> None:
         json.dumps({
             "stem": stem,
             "path": f"100 Inbox/{stem}.md",
+            "item_key": f"100 Inbox/{stem}.md",
             "status": "done",
             "run_id": run_id,
             "ts": "2026-07-02T12:00:00Z",
@@ -78,10 +81,11 @@ def _write_result(items_dir: Path, stem: str) -> None:
         "classification": {"category": "2600 - Applied Sciences", "confidence": 0.5},
         "tags_to_add": [],
     }
-    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+    (items_dir / to_filename(f"100 Inbox/{stem}.md")).write_text(json.dumps({
         "schema_version": "1",
         "stem": stem,
         "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "type": "fleeting_note",
         "type_confidence": 0.5,
         "force_atomic": False,

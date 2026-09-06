@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_suggestions_reducer_multi_atomic.py — F-41 T3.1 + T1.
 
 Covers the two silent-collapse fixes in suggestions-reducer.py that let N
@@ -28,6 +28,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 SCRIPT_PATH = SCRIPTS_DIR / "suggestions-reducer.py"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 
 # Load suggestions-reducer.py as a module (hyphen in filename → importlib).
 _spec = importlib.util.spec_from_file_location("suggestions_reducer", SCRIPT_PATH)
@@ -360,6 +361,7 @@ def _write_state(path: Path, stems: list[str]) -> None:
         json.dumps({
             "stem": s,
             "path": f"100 Inbox/{s}.md",
+            "item_key": f"100 Inbox/{s}.md",
             "status": "done",
             "run_id": "test-t1",
             "ts": "2026-06-11T10:00:00Z",
@@ -406,10 +408,11 @@ def _write_result_atomic(
                 "reason": "noted",
             }],
         })
-    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+    (items_dir / to_filename(f"100 Inbox/{stem}.md")).write_text(json.dumps({
         "schema_version": "1",
         "stem": stem,
         "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "type": "fleeting_note",
         "type_confidence": 0.9,
         "force_atomic": False,
@@ -429,10 +432,11 @@ def _write_result_atomic(
 def _write_result_daily_only(items_dir: Path, stem: str) -> None:
     """Write a result.json with only a log_entry (no atomics — daily-only)."""
     items_dir.mkdir(parents=True, exist_ok=True)
-    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+    (items_dir / to_filename(f"100 Inbox/{stem}.md")).write_text(json.dumps({
         "schema_version": "1",
         "stem": stem,
         "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "type": "fleeting_note",
         "type_confidence": 0.9,
         "force_atomic": False,
@@ -704,10 +708,11 @@ def _write_result_atomic_daily_first(
     ]
     # update_daily is FIRST — this is the ordering that triggered the bug.
     actions = [daily_action] + atomic_actions
-    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+    (items_dir / to_filename(f"100 Inbox/{stem}.md")).write_text(json.dumps({
         "schema_version": "1",
         "stem": stem,
         "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "type": "fleeting_note",
         "type_confidence": 0.9,
         "force_atomic": False,

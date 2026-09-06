@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.4.0
+# version: 0.5.0
 
 ## When to Activate
 
@@ -72,10 +72,12 @@ Agent(
       state_path      = "tomo-tmp/inbox-state.jsonl"
       items_dir       = "tomo-tmp/items"
       run_id          = "<RUN_ID>"
+      item_key        = "<inbox_path>/<stem>.md"
       force_atomic    = true
 
-    Follow the IO Contract in your agent definition strictly. Write
-    tomo-tmp/items/<stem>.result.json and update the state-file.
+    Follow the IO Contract in your agent definition strictly. Write your
+    result to <items_dir>/<result_filename> (Step 10 derives <result_filename>
+    from item_key; never assemble it yourself) and update the state-file.
     Return one confirmation line, no prose.
 )
 ```

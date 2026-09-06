@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_016_multi_topic_e2e.py — F-41 T6.1: End-to-end multi-topic atomic notes suite.
 
 Tests the deterministic pipeline (reducer → render → parser) with recorded
@@ -41,6 +41,8 @@ PARSER = SCRIPTS_DIR / "suggestion-parser.py"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
+
 
 # ── Module loaders (reuse conftest pattern) ────────────────────────────────────
 
@@ -71,6 +73,7 @@ def _make_item_result(
         "schema_version": "1",
         "stem": stem,
         "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "type": "fleeting_note",
         "type_confidence": 0.9,
         "date_relevance": None,
@@ -145,6 +148,7 @@ def _write_state(tmp_path: Path, stems: list[str]) -> Path:
     for stem in stems:
         lines.append(json.dumps({
             "stem": stem,
+            "item_key": f"100 Inbox/{stem}.md",
             "status": "done",
             # #116: the reducer filters state by run_id, so seed the same run_id
             # the pipeline runners invoke it with (_run_reducer --run-id).
@@ -242,7 +246,7 @@ def _full_pipeline(
     items_dir.mkdir()
 
     for stem, result in item_results.items():
-        item_path = items_dir / f"{stem}.result.json"
+        item_path = items_dir / to_filename(f"100 Inbox/{stem}.md")
         item_path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
 
     state_path = _write_state(tmp_path, list(item_results.keys()))

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """Regression guard for XDD 012 — suggestions-reducer --fan-resolve.
 
 Ensures the reducer's --fan-resolve flag:
@@ -28,6 +28,8 @@ REDUCER = REPO_ROOT / "tomo" / "scripts" / "suggestions-reducer.py"
 # in-process equivalent that covers importlib-loaded modules).
 _DEPS = "/tmp/claude/py_deps"
 _SCRIPTS_DIR = str(REPO_ROOT / "tomo" / "scripts")
+sys.path.insert(0, str(REPO_ROOT / "tomo" / "scripts"))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 _extra = ":".join(p for p in [_DEPS, _SCRIPTS_DIR] if os.path.isdir(p))
 _ENV = {**os.environ, "PYTHONPATH": _extra + (":" + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")}
 
@@ -48,6 +50,7 @@ def _write_state(path: Path, stems: list[str]) -> None:
         lines.append(json.dumps({
             "stem": stem,
             "path": f"100 Inbox/{stem}.md",
+            "item_key": f"100 Inbox/{stem}.md",
             "status": "done",
             "run_id": "test-run",
             "ts": "2026-04-23T12:00:00Z",
@@ -76,10 +79,11 @@ def _write_result(
         "classification": {"category": "2700 - Art & Recreation", "confidence": 0.6},
         "tags_to_add": ["topic/recreation/board-games"] if needs_new_moc else [],
     }
-    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+    (items_dir / to_filename(f"100 Inbox/{stem}.md")).write_text(json.dumps({
         "schema_version": "1",
         "stem": stem,
         "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "type": "fleeting_note",
         "type_confidence": 0.5,
         "force_atomic": force_atomic,

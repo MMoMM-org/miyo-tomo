@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t3_2_attachments_review_surface.py — attachments on both review channels.
 
 Covers T3.2 (spec 031 Phase 3): render_create_atomic_note's markdown output and
@@ -26,6 +26,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 REDUCER_PATH = SCRIPTS_DIR / "suggestions-reducer.py"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 
 
 def _load(mod_name: str, filename: str):
@@ -162,6 +163,7 @@ def _write_state(path: Path, stem: str) -> None:
     path.write_text(json.dumps({
         "stem": stem,
         "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "status": "done",
         "run_id": "test-t32",
         "ts": "2026-09-05T10:00:00Z",
@@ -186,10 +188,11 @@ def _write_result(items_dir: Path, stem: str, atomic_overrides: dict) -> None:
         "alternatives": [],
     }
     action.update({k: v for k, v in atomic_overrides.items() if k != "attachments"})
-    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+    (items_dir / to_filename(f"100 Inbox/{stem}.md")).write_text(json.dumps({
         "schema_version": "1",
         "stem": stem,
         "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "type": "fleeting_note",
         "type_confidence": 0.9,
         "force_atomic": False,

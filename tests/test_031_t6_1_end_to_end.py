@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t6_1_end_to_end.py — spec 031 T6.1 end-to-end pipeline test.
 
 Drives the pipeline's PUBLIC entry points, not internal helpers
@@ -53,6 +53,7 @@ RENDER = SCRIPTS_DIR / "suggestions-render.py"
 PARSER = SCRIPTS_DIR / "suggestion-parser.py"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 
 INBOX_PATH = "100 Inbox/"
 
@@ -162,7 +163,8 @@ def _write_state(tmp_path: Path, stems: list[str]) -> Path:
     state_path = tmp_path / "state.jsonl"
     lines = [
         json.dumps({
-            "stem": stem, "status": "done", "run_id": "t6-1-run",
+            "stem": stem, "item_key": f"100 Inbox/Places/{stem}.md",
+            "status": "done", "run_id": "t6-1-run",
             "started_at": "2026-09-06T09:00:00Z", "finished_at": "2026-09-06T09:00:01Z",
         })
         for stem in stems
@@ -192,7 +194,7 @@ def _parsed_confirmed_items(
     items_dir = tmp_path / "items"
     items_dir.mkdir()
     for stem, result in item_results.items():
-        (items_dir / f"{stem}.result.json").write_text(
+        (items_dir / to_filename(f"100 Inbox/Places/{stem}.md")).write_text(
             json.dumps(result, ensure_ascii=False), encoding="utf-8"
         )
     state_path = _write_state(tmp_path, list(item_results.keys()))

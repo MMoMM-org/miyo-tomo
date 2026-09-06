@@ -596,3 +596,59 @@ A permanent structural guard asserts `"update_daily"` is absent from
 `RENDERERS` and that neither removed function has come back. It is structural
 rather than behavioural because code that never executes cannot fail a
 behavioural test — the same reasoning as spec 033's `ast.parse` guard.
+
+## The Result Lookup Joins on `item_key`, Every Render Site Still Uses `stem` (spec 034 T2.3)
+
+WHY the per-item result file is addressed as `lib/item_key.to_filename(item_key)`
+and no longer as `<stem>.result.json`: with a recursive inbox, two notes in
+different subfolders share a filename, and a stem-named result file lets the
+second analyst overwrite the first. `to_filename` pairs a readable stem with a
+digest of the exact vault-relative path, so the name stays distinct even on a
+case-insensitive filesystem. The analyst names its output with the same
+function (via `scripts/item-result-filename.py`) — one derivation, so the write
+and the read side cannot drift.
+
+WHY `stem` was left on all 16 render sites — the `or stem` title fallback
+(`render_create_atomic_note`, `render_suppressed_atomic`, `demote_structural_anchors`,
+the `item` mirror, the `section_titles` map and the suggestion-id pre-pass) and
+the `[[{stem}]]` source links and headings: those strings are written into the
+user's vault as note titles and wikilinks. `item_key` is a path; putting it in
+any of them would title a note `100 Inbox/Places/Dresden` or emit a broken
+`[[100 Inbox/Places/Dresden]]`, and nothing would error. ADR-2 is the rule —
+`item_key` joins, `stem` displays — and the regression guard for it is a
+property of the whole document (no rendered title and no wikilink may carry a
+path-derived value), not a per-site check, so a leak at a site nobody
+enumerated is caught just the same.
+
+Two wikilink emitters legitimately contain `/` and are not item links:
+`_location_link` (`[[Atlas/202 Notes/]]`, a folder) and the tag-handler group's
+source-path links.
+
+## A Missing Result File Is Reported, Not Skipped (spec 034 T2.3)
+
+WHY the loop no longer does a bare `continue` when a `done` item's result file
+is absent or unparseable: an item simply disappeared from the run — no stderr
+line, no entry in the document, no way for the user to know Tomo had dropped a
+note. That is the failure mode the identity change itself could have caused
+during the interim window when the analyst wrote one filename and the reducer
+read another. The item is now named on stderr and appears in the document's
+`needs_attention` block with an `unreadable_result:` prefix, so a vanished item
+is audible in both the log and the review surface.
+
+The unparseable-JSON branch is treated identically to the missing-file branch:
+it is the same silent-vanish defect, and reporting only one of the two would
+leave half the window open.
+
+## One Shared State Replay, Keyed on `item_key` (spec 034 T2.3)
+
+WHY the local `last_state_per_stem` was removed in favour of
+`lib/inbox_state.last_state_per_item_key`: an identical copy lived in
+`mark-captured.py`, and both replayed `inbox-state.jsonl` into `out[stem]` —
+last-wins per bare filename, so one item's `done`/`failed` status masked its
+namesake's and that namesake dropped out of the work list. Two divergent copies
+of one identity computation is how #165 happened, so the fix is one function in
+`lib/`, not two patched copies. `mark-captured.py` consumes the same helper.
+
+The `#116` `run_id` filter that scopes the work list to the current run is
+applied on top of the replay exactly as before — it is what stops an
+append-only state file from re-emitting proposals for prior runs.

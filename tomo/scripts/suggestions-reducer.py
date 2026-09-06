@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.37.0
+# version: 1.38.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -54,6 +54,8 @@ from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
 from lib.render_actions import DEFAULT_ASSET_FOLDER  # noqa: E402 — spec 031 Phase 5 attachments preamble
+from lib.inbox_state import last_state_per_item_key, display_stem  # noqa: E402 — spec 034 T2.3
+from lib.item_key import to_filename as item_key_to_filename  # noqa: E402 — spec 034 T2.3
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -73,26 +75,6 @@ group_id = _thg_mod.group_id  # noqa: E305 — spec 024 T4.1: stable group ident
 
 def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def last_state_per_stem(state_path: Path) -> dict[str, dict]:
-    """Return {stem: last_entry} by replaying the append-only JSONL."""
-    out: dict[str, dict] = {}
-    if not state_path.exists():
-        return out
-    with state_path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            stem = obj.get("stem")
-            if stem:
-                out[stem] = obj
-    return out
 
 
 # `normalise_topic` and `_compute_moc_tags` previously lived inline here.
@@ -1649,39 +1631,50 @@ def main() -> int:
     )
     moc_suffix = conventions.moc_suffix
 
-    state = last_state_per_stem(state_path)
+    # spec 034 T2.3: the replay joins on item_key (the vault-relative path), so
+    # two inbox items sharing a filename keep their own status. `stem` rides
+    # along purely as the display text for each (ADR-2).
+    state = last_state_per_item_key(state_path)
     # #116: inbox-state.jsonl is append-only and never truncated between runs,
     # so scope the work-list to THIS run's entries. Without the run_id filter a
-    # new run re-reads every done/failed stem the file ever accumulated and
+    # new run re-reads every done/failed item the file ever accumulated and
     # re-emits stale proposals for source notes that no longer exist.
-    done_stems = sorted(
-        s
-        for s, e in state.items()
-        if e.get("status") == "done" and e.get("run_id") == args.run_id
-    )
-    failed_entries = sorted(
-        (
-            (s, e)
-            for s, e in state.items()
-            if e.get("status") == "failed" and e.get("run_id") == args.run_id
-        ),
-        key=lambda kv: kv[0],
-    )
+    def _work_list(status: str) -> list[tuple[str, str, dict]]:
+        """(stem, item_key, entry) triples for this run, in stem display order."""
+        return sorted(
+            (
+                (display_stem(e, k), k, e)
+                for k, e in state.items()
+                if e.get("status") == status and e.get("run_id") == args.run_id
+            ),
+            key=lambda t: (t[0], t[1]),
+        )
 
-    # XDD 012 fan-resolve mode: filter done_stems to items whose result.json
+    done_items = _work_list("done")
+    failed_entries = _work_list("failed")
+
+    # XDD 012 fan-resolve mode: filter the work list to items whose result file
     # carries force_atomic=true. This keeps the resolve doc focused on the
     # FAN-triggered atomic proposals only, regardless of what else the
     # state-file contains.
     if args.fan_resolve:
-        def _has_force_atomic(stem: str) -> bool:
-            rp = items_dir / f"{stem}.result.json"
+        def _has_force_atomic(item_key: str) -> bool:
+            rp = items_dir / item_key_to_filename(item_key)
             if not rp.exists():
+                # Distinguish "not force-atomic" (the ordinary filter outcome)
+                # from "the analyst's result is gone" (an item vanishing).
+                print(
+                    f"suggestions-reducer: result file missing for "
+                    f"item_key={item_key} at {rp} — item dropped from the "
+                    f"fan-resolve work list",
+                    file=sys.stderr,
+                )
                 return False
             try:
                 return bool(json.loads(rp.read_text(encoding="utf-8")).get("force_atomic"))
             except (json.JSONDecodeError, OSError):
                 return False
-        done_stems = [s for s in done_stems if _has_force_atomic(s)]
+        done_items = [t for t in done_items if _has_force_atomic(t[1])]
         failed_entries = []  # resolve doc does not surface other failures
 
     sections: list[dict] = []
@@ -1711,14 +1704,33 @@ def main() -> int:
     # (metadata-only telemetry — a count, never note content).
     structural_demotions: int = 0
 
-    for idx, stem in enumerate(done_stems, start=1):
-        result_path = items_dir / f"{stem}.result.json"
+    # spec 034 T2.3: items whose analyst result cannot be read. The loop used to
+    # `continue` in silence, so a `done` item simply vanished from the run with
+    # nothing to show for it. These are surfaced on stderr AND in the document's
+    # needs-attention block.
+    unreadable_results: list[tuple[str, str, str]] = []
+
+    for idx, (stem, item_key, _entry) in enumerate(done_items, start=1):
+        result_path = items_dir / item_key_to_filename(item_key)
         if not result_path.exists():
-            # Subagent reported done but file is missing — skip gracefully
+            reason = f"result file missing at {result_path.name}"
+            print(
+                f"suggestions-reducer: {reason} for item_key={item_key} "
+                f"(stem={stem}) — item reported, not skipped",
+                file=sys.stderr,
+            )
+            unreadable_results.append((stem, item_key, reason))
             continue
         try:
             result = json.loads(result_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            reason = f"result file is not valid JSON ({exc.msg} at line {exc.lineno})"
+            print(
+                f"suggestions-reducer: {reason} for item_key={item_key} "
+                f"(stem={stem}) — item reported, not skipped",
+                file=sys.stderr,
+            )
+            unreadable_results.append((stem, item_key, reason))
             continue
         result = merge_resolved_attachments(result, resolved_attachments)
 
@@ -1932,6 +1944,7 @@ def main() -> int:
             sections.append({
                 "id": section_id,
                 "stem": stem,
+                "item_key": item_key,
                 "actions": rendered_actions,
             })
 
@@ -1955,11 +1968,18 @@ def main() -> int:
     _enrich_proposed_mocs(proposed_mocs, section_titles, moc_suffix)
 
     needs_attention: list[dict] = []
-    for stem, entry in failed_entries:
+    for stem, item_key, entry in failed_entries:
         err = entry.get("error") or {}
         needs_attention.append({
             "stem": stem,
+            "item_key": item_key,
             "error": f"{err.get('kind', 'unknown')}: {err.get('message', '')}".strip(": "),
+        })
+    for stem, item_key, reason in unreadable_results:
+        needs_attention.append({
+            "stem": stem,
+            "item_key": item_key,
+            "error": f"unreadable_result: {reason}",
         })
 
     # I38: flag groups whose daily note doesn't exist so Pass 1 surfaces it
@@ -2052,7 +2072,7 @@ def main() -> int:
             "moc_suffix": conventions.moc_suffix,
         },
         "doc_variant": doc_variant,  # XDD 012 — primary | fan-resolve
-        "source_items": len(done_stems) + len(failed_entries),
+        "source_items": len(done_items) + len(failed_entries),
         "sections": sections,
         "daily_notes_updates": daily_notes_updates,
         "rendered_daily_updates_md": rendered_daily_updates_md,
@@ -2073,7 +2093,8 @@ def main() -> int:
     )
 
     print(
-        f"suggestions-reducer: done={len(done_stems)} failed={len(failed_entries)} "
+        f"suggestions-reducer: done={len(done_items)} failed={len(failed_entries)} "
+        f"unreadable_results={len(unreadable_results)} "
         f"sections={len(sections)} daily_notes_updates={len(daily_notes_updates)} "
         f"daily_notes_missing={missing_daily} "
         f"tag_handler_updates={len(tag_handler_updates)} "

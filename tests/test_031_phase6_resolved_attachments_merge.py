@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_phase6_resolved_attachments_merge.py — merge the resolved-attachments map.
 
 Covers the gap surfaced during Phase 5/6 review: nothing in the pipeline
@@ -48,6 +48,7 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 REDUCER_PATH = SCRIPTS_DIR / "suggestions-reducer.py"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 
 
 def _load(mod_name: str, filename: str):
@@ -314,7 +315,7 @@ _ENV = {
 
 def _write_state(path: Path, stem: str) -> None:
     path.write_text(json.dumps({
-        "stem": stem, "path": SOURCE_PATH, "status": "done",
+        "stem": stem, "path": SOURCE_PATH, "item_key": SOURCE_PATH, "status": "done",
         "run_id": "test-p6", "ts": "2026-09-05T10:00:00Z",
     }) + "\n", encoding="utf-8")
 
@@ -335,8 +336,9 @@ def _write_result(items_dir: Path, stem: str) -> None:
         "classification": {"category": "Travel", "confidence": 0.9},
         "alternatives": [],
     }
-    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+    (items_dir / to_filename(SOURCE_PATH)).write_text(json.dumps({
         "schema_version": "1", "stem": stem, "path": SOURCE_PATH,
+        "item_key": SOURCE_PATH,
         "type": "fleeting_note", "type_confidence": 0.9, "force_atomic": False,
         "actions": [action], "issues": [], "duration_ms": 0,
     }, ensure_ascii=False), encoding="utf-8")

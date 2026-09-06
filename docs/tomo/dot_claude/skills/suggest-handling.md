@@ -54,3 +54,19 @@ tool-agnostic — Hashi need do nothing to preserve it (any semantic edit moves 
 digest; a canonical re-serialization means reformatting alone does not). See
 `docs/tomo/dot_claude/agents/synthesis-conductor.md` for the JSON-only Pass-2
 read-back side.
+
+## The dispatch prompt passes `item_key` and never names the result file
+
+WHY: the per-item result file is named `<readable>-<8 hex>.result.json`, derived
+from the item's `item_key` by `lib/item_key.to_filename` (spec 034 ADR-5). This
+block used to instruct `tomo-tmp/items/<stem>.result.json`, which the reducer no
+longer reads — and because both this skill and `inbox-analyst.md` are LLM-loaded
+verbatim, the two contradicting each other produced nondeterministic behaviour
+rather than an honest failure. The instruction now points at the analyst's own
+Step 10, which shells out to `scripts/item-result-filename.py`; one derivation,
+one place to change it.
+
+WHY `item_key` is passed even though it equals `path`: it is a declared input of
+the analyst's IO Contract (ADR-1 makes derivation the identity function), and
+the analyst must never reconstruct it from `stem` — two inbox items in different
+subfolders share a stem and would collide on one result file.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t2_2_analyst_contract.py — inbox-analyst.md carries item_key end to end.
 
 Covers T2.2 (XDD 034 Phase 2): T2.4 made `--item-key` a required argument of
@@ -29,7 +29,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
@@ -176,14 +175,13 @@ def test_template_carries_item_key_placeholder():
 
 # ---------------------------------------------------------------------------
 # Round-trip: a fixture written under to_filename(item_key) is the artifact
-# the reducer must key on. T2.3 (not yet implemented) is the task that wires
-# the reducer's *lookup* to this filename — see the xfail test below, which
-# proves that gap still exists today rather than silently assuming it away.
+# the reducer must key on. T2.3 wired the reducer's *lookup* to this filename;
+# the second test below is the read-side half of the same round-trip.
 # ---------------------------------------------------------------------------
 
 
 def test_fixture_written_under_item_key_filename_is_self_discoverable(tmp_path):
-    """Anyone holding the item_key (the reducer, after T2.3) can deterministically
+    """Anyone holding the item_key (the reducer included) can deterministically
     reconstruct the filename the analyst wrote and find the file — no directory
     listing, no stem-based guess.
     """
@@ -207,27 +205,21 @@ def test_fixture_written_under_item_key_filename_is_self_discoverable(tmp_path):
     assert json.loads(rediscovered_path.read_text(encoding="utf-8")) == fixture
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "T2.3 (not yet implemented) must switch suggestions-reducer.py's result "
-        "lookup from `items_dir / f'{stem}.result.json'` to "
-        "`items_dir / to_filename(item_key)`. Until then, a result written under "
-        "the new item_key filename is invisible to the reducer (suggestions-"
-        "reducer.py silently `continue`s past the missing file — see the loop "
-        "starting at the `for idx, stem in enumerate(done_stems, ...)` line). "
-        "This test intentionally documents the still-open gap: once T2.3 lands "
-        "the literal `f'{stem}.result.json'` pattern disappears from the reducer "
-        "source, this assertion starts passing, and xfail(strict=True) turns "
-        "that unexpected pass into a failure — forcing this test to be updated "
-        "alongside T2.3 instead of silently going stale."
-    ),
-)
-def test_reducer_lookup_is_not_yet_item_key_aware():
+def test_reducer_lookup_is_item_key_aware():
+    """The read side of the round-trip above (T2.3, now landed).
+
+    T2.2 left this as an `xfail(strict=True)` asserting the bare-stem lookup was
+    still present, so that removing it would turn into a hard failure and force
+    the test to be updated rather than silently going stale. T2.3 removed it, so
+    this is now the positive assertion: the reducer names the result file the
+    same way the analyst does, through `lib.item_key.to_filename`.
+    """
     reducer_source = REDUCER_PATH.read_text(encoding="utf-8")
-    # The exact two call sites that construct a result path from a bare stem.
     stem_keyed_lookups = re.findall(r'items_dir / f"\{stem\}\.result\.json"', reducer_source)
-    assert len(stem_keyed_lookups) == 0, (
-        "suggestions-reducer.py no longer keys its result lookup on bare stem — "
-        "T2.3 has landed; update/remove this xfail test."
+    assert stem_keyed_lookups == [], (
+        "suggestions-reducer.py is keying a result lookup on the bare stem again "
+        "— two items sharing a filename would overwrite each other's result file"
+    )
+    assert "item_key_to_filename(item_key)" in reducer_source, (
+        "the reducer must derive the result filename through lib.item_key.to_filename"
     )

@@ -39,7 +39,7 @@ version: "1.0"
 | title | Recursive inbox discovery |
 | status | IN_REVIEW |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 34 |
+| acceptanceCriteria | 38 |
 
 ---
 
@@ -316,9 +316,40 @@ overwrote the other's result, or that the wrong one was marked as captured in th
   notes could already be given the same title), but recursion makes it likely rather than
   theoretical, so it is in scope.*
 
+#### Feature 8: A note whose attachment cannot be filed stays with it
+
+- **User Story:** As the vault owner, I want a note to stay in the inbox when its image
+  cannot follow it, so that I never end up with a filed note pointing at the wrong picture.
+- **Acceptance Criteria:**
+  - [ ] Given two different files with the same basename in different inbox subfolders, each
+        embedded by its own note, When instructions are built, Then the second file is not
+        filed **and neither is its note** — both stay in the inbox and the clash is reported
+  - [ ] Given the same situation, When instructions are built, Then the first note and its
+        attachment are filed normally — one note's clash does not hold up the other
+  - [ ] Given one file embedded by two different notes, When instructions are built, Then it
+        is filed once and both notes move — that is a duplicate reference, not a clash, and
+        the existing behaviour is unchanged
+  - [ ] Given the user renames one of the two files and re-runs, When instructions are
+        built, Then both notes and both attachments are filed normally
+
+  *Filing a note while its image stays behind is the inbox residue the attachment feature
+  exists to eliminate, and worse: the moved note's embed may then resolve to the other file
+  of that name. Whether it does depends on the vault's own resolution of an ambiguous bare
+  name, which has not been verified here — but the note-without-its-image outcome is
+  certain regardless, and that alone decides it.*
+
+  **This reverses a decision from spec 031** (`plan/phase-2.md:85`), which required that a
+  collision not suppress the note's own move. That was right when a collision was
+  unreachable — a flat inbox cannot hold two files with one name. Recursion makes it
+  reachable. The existing test
+  `tests/test_031_t2_4_destination_collision_guard.py:121`
+  (`test_collision_does_not_suppress_the_notes_own_move_note`) asserts the old behaviour and
+  must be inverted as part of this work. It is named here so that a red test is recognised
+  as the intended change rather than mistaken for a regression.
+
 ### Should Have Features
 
-#### Feature 8: Discovery does not cost an extra vault listing
+#### Feature 9: Discovery does not cost an extra vault listing
 
 - **User Story:** As the vault owner, I want recursion not to make my runs more expensive.
 - **Acceptance Criteria:**
@@ -334,7 +365,7 @@ overwrote the other's result, or that the wrong one was marked as captured in th
 
 ### Could Have Features
 
-#### Feature 9: The two file-type checks agree
+#### Feature 10: The two file-type checks agree
 
 Two places decide "is this entry a file" using different comparisons, one tolerant of
 casing and one not. No live divergence exists — the vault gateway emits a fixed lowercase
@@ -444,6 +475,10 @@ the whole inbox subtree, and that the name of that thing says what it is.
   and says so. The Pass-1 proposal cannot bind, because the edit comes after it.
 - The user names an item after a note that already exists in the target folder → Expected:
   treated identically — the note is not filed and the clash is reported.
+- Two different attachments sharing a basename, in different subfolders → Expected: the
+  second is not filed, and its note stays in the inbox with it.
+- One attachment embedded by two notes → Expected: unchanged — filed once, both notes move.
+  A duplicate reference is not a clash.
 
 ## Success Metrics
 

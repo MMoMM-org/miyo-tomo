@@ -152,6 +152,7 @@ class TestReducerPersistsAnchor:
                 {
                     "id": "S01",
                     "stem": "First Principles Thinking",
+                    "item_key": "100 Inbox/First Principles Thinking.md",
                     "actions": [
                         {
                             "kind": "create_atomic_note",

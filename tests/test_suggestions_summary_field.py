@@ -133,6 +133,7 @@ def _minimal_result(with_summary: bool) -> dict:
     return {
         "schema_version": "1",
         "stem": "first-principles",
+        "item_key": "100 Inbox/first-principles.md",
         "path": "100 Inbox/first-principles.md",
         "type": "fleeting_note",
         "type_confidence": 0.7,

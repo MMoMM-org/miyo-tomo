@@ -4,11 +4,12 @@
   "title": "Item Classifier Result",
   "description": "Output of a Phase-B subagent for a single inbox item. Polymorphic actions[] — an item may produce multiple actions.",
   "type": "object",
-  "required": ["schema_version", "stem", "path", "type", "type_confidence", "actions"],
+  "required": ["schema_version", "stem", "item_key", "path", "type", "type_confidence", "actions"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {"const": "1"},
     "stem": {"type": "string", "minLength": 1},
+    "item_key": {"type": "string", "minLength": 1, "description": "The item's identity: its vault-relative path, verbatim (e.g. '100 Inbox/Places/Dresden.md'). Used for joins, dict keys and set membership — unlike stem, it stays unique across subfolders."},
     "path": {"type": "string", "minLength": 1},
     "type": {"type": "string"},
     "type_confidence": {"type": "number", "minimum": 0, "maximum": 1},

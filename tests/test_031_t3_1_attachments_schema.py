@@ -69,6 +69,7 @@ def _make_item_result(actions: list) -> dict:
     return {
         "schema_version": "1",
         "stem": "my-inbox-note",
+        "item_key": "100 Inbox/my-inbox-note.md",
         "path": "100 Inbox/my-inbox-note.md",
         "type": "atomic",
         "type_confidence": 0.9,
@@ -129,6 +130,7 @@ def _make_doc(item: dict) -> dict:
             {
                 "id": "S01",
                 "stem": "my-inbox-note",
+                "item_key": "100 Inbox/my-inbox-note.md",
                 "actions": [
                     {
                         "kind": "create_atomic_note",
@@ -168,6 +170,7 @@ def _make_wire_suggestion(**overrides) -> dict:
     suggestion = {
         "id": "S01",
         "stem": "my-inbox-note",
+        "item_key": "100 Inbox/my-inbox-note.md",
         "title": "My Note",
         "template": "t_note_tomo.md",
         "location": "Atlas/202 Notes/",

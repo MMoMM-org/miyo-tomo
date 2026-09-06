@@ -98,10 +98,11 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["stem", "source_path"],
+        "required": ["stem", "item_key", "source_path"],
         "additionalProperties": false,
         "properties": {
           "stem": {"type": "string"},
+          "item_key": {"type": "string", "minLength": 1, "description": "The item's identity: its vault-relative path, verbatim (e.g. '100 Inbox/Places/Dresden.md'). Used for joins, dict keys and set membership — unlike stem, it stays unique across subfolders."},
           "source_path": {"type": "string"},
           "section_id": {"type": "string"}
         }

@@ -261,6 +261,7 @@ def _multi_atomic_result() -> dict:
     return {
         "schema_version": "1",
         "stem": shared_stem,
+        "item_key": "00 Inbox/2026-06-10 voice memo.md",
         "path": "00 Inbox/2026-06-10 voice memo.md",
         "type": "voice-transcript",
         "type_confidence": 0.9,

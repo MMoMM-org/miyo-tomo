@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Force Atomic in subfolders"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 4
 ---
@@ -93,7 +93,7 @@ issue that started this spec did not mention it.
   5. **Success**:
      - [ ] The livelock cannot return through a re-keying seam `[ref: SDD/Implementation Gotchas]`
 
-- [ ] **T4.3 Phase Validation** `[activity: validate]`
+- [x] **T4.3 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - Mutation-prove T4.2: make the two derivation paths disagree, confirm the new subfolder test

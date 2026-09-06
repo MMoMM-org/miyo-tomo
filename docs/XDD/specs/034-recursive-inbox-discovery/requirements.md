@@ -39,7 +39,7 @@ version: "1.0"
 | title | Recursive inbox discovery |
 | status | IN_REVIEW |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 38 |
+| acceptanceCriteria | 40 |
 
 ---
 
@@ -206,6 +206,13 @@ overwrote the other's result, or that the wrong one was marked as captured in th
   - [ ] Given only one item with a given filename, When the suggestions document is
         rendered, Then its source link is the plain filename — location is added only where
         it is needed to disambiguate
+  - [ ] Given two notes in different subfolders that each embed their own file of the same
+        name, and the embeds are path-qualified as the vault writes them, When the run
+        resolves attachments, Then each note resolves to its own file — neither is reported
+        as ambiguous
+  - [ ] Given a hand-written embed that names a file only by its basename, and two files in
+        the inbox carry that name, When the run resolves attachments, Then it is reported as
+        ambiguous and no file is moved for it
 
   *Business context: today the per-item result file, the append-only run state, and the
   coverage audit are all addressed by bare filename. The last criterion is deliberately
@@ -333,10 +340,15 @@ overwrote the other's result, or that the wrong one was marked as captured in th
         built, Then both notes and both attachments are filed normally
 
   *Filing a note while its image stays behind is the inbox residue the attachment feature
-  exists to eliminate, and worse: the moved note's embed may then resolve to the other file
-  of that name. Whether it does depends on the vault's own resolution of an ambiguous bare
-  name, which has not been verified here — but the note-without-its-image outcome is
-  certain regardless, and that alone decides it.*
+  exists to eliminate: a note in the permanent collection carrying a dependency on a file
+  still sitting in the inbox.*
+
+  *An earlier draft also argued the moved note might then display the **other** file of that
+  name. That does not hold and is withdrawn. When two files share a basename, the vault
+  writes the link path-qualified with a display alias — verified against a real note in the
+  test vault, which reads `[[100 Inbox/Images/Test|Test]]` and `[[100 Inbox/assets/Test|Test]]`,
+  not a bare name. Such a link keeps pointing at its own file whether or not that file has
+  moved. The residue outcome alone decides this feature.*
 
   **This reverses a decision from spec 031** (`plan/phase-2.md:85`), which required that a
   collision not suppress the note's own move. That was right when a collision was

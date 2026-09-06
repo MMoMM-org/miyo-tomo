@@ -306,15 +306,17 @@ rather than loudly, which is why T2.8 exists.
     markdown path still keys on a bare stem pending Phase 5 T5.1. Do not let a green suite imply
     more than that.
 
-  - **Settle an order-dependent flake before declaring the gate green.**
-    `tests/test_suggestion_parser_fan_resolve.py::test_fan_without_section_no_resolve_populates_pending`
-    failed intermittently under `pytest-randomly`'s default ordering during T2.2's review, and
-    passed standalone and with ordering pinned. It was reported as pre-existing in an "untouched"
-    file — but T2.6 **did** edit an assertion in that file (`furano` -> `Furano`). Do not accept
-    "pre-existing" without evidence. Run the full suite several times with random ordering on a
-    quiet tree, and if it reproduces, bisect against `cc95d4b~1` to establish whether T2.6
-    introduced the order dependence or merely exposed it. A test that passes only in one ordering
-    is not a passing test.
+  - **Order-dependent flake — RESOLVED 2026-09-06, no action needed.** During T2.2's review a
+    failure in `tests/test_suggestion_parser_fan_resolve.py::test_fan_without_section_no_resolve_populates_pending`
+    was attributed to `pytest-randomly`'s default ordering. Investigated at the phase gate:
+    **`pytest-randomly` is not installed**, no ordering or shuffle plugin is present, and
+    `pyproject.toml`'s `[tool.pytest.ini_options]` sets no `addopts` randomisation — test order here
+    is deterministic, so there was no ordering for a test to be sensitive to. Four consecutive full
+    suite runs on a quiet tree: `3352 passed, 1 skipped`, zero failures. The transient failure was
+    almost certainly concurrent-agent noise: at that moment T2.3 was mid-edit in
+    `suggestions-reducer.py` and T2.6 had just changed an assertion in that very file, and full-suite
+    readings in that window ranged from 44 to 51 failures. A mid-flight failure in a shared working
+    tree looks exactly like an intermittent one.
 
   - **Prove the coverage audit actually stops collapsing.** Re-run the adversarial case from T2.7's
     review against the finished phase: two confirmed items for `100 Inbox/Places/Dresden.md` and

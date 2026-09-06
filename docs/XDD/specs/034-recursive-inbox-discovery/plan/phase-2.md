@@ -41,7 +41,7 @@ Replaces bare-filename identity with `item_key` at every site that joins, keys o
 blast-radius table in the spec README is the checklist; a site left behind fails silently
 rather than loudly, which is why T2.8 exists.
 
-- [ ] **T2.1 `inbox-triage` emits `item_key` per item** `[activity: backend]`
+- [x] **T2.1 `inbox-triage` emits `item_key` per item** `[activity: backend]`
 
   1. **Prime**: Read `discover_files` (`inbox-triage.py:167-193`) and how items flow into the
      routing plan. Read `[ref: SDD/Integration Points]`.
@@ -56,6 +56,26 @@ rather than loudly, which is why T2.8 exists.
      - [ ] Downstream stages receive an identity they can use `[ref: SDD/inter_stage]`
 
 - [ ] **T2.2 The analyst contract carries the key** `[activity: prompt-engineering]`
+
+  **BLOCKING, added 2026-09-06 — the runtime pipeline is broken until this task lands.** T2.4 made
+  `--item-key` a **required** argument of `state-update.py`. `inbox-analyst.md` invokes that script
+  at four sites — `:53`, `:91`, `:742`, `:750` (Step 0, Step 2b, and both branches of Step 11) —
+  and **none of them pass it**. Every analyst dispatch now dies at argparse. Nothing in pytest
+  catches this: these runtime files are LLM-loaded markdown, not collected by the suite, so the
+  break is invisible until a live `/inbox` run.
+
+  This task must therefore also:
+  - Add `--item-key "<path>"` at all four call sites. No new plumbing is needed — the agent's IO
+    Contract already receives `path`, and `derive()` is the identity function, so the item key **is**
+    that value. Do not reconstruct it from `stem`.
+  - Add `item_key` to the IO Contract input list (`:24-33`), which currently names only `stem`,
+    `path`, `shared_ctx_path`, `state_path`, `items_dir`, `run_id`, `force_atomic`.
+  - Verify no *other* runtime file under `tomo/dot_claude/` or `tomo/skills/` invokes
+    `state-update.py` without the flag. Grep, do not assume — the four above were found by grep
+    after an earlier sweep missed them.
+
+  `suggestion-conductor.md` was checked and needs no change: the analyst already receives `path`,
+  so nothing new has to be handed down.
 
   1. **Prime**: Read `tomo/dot_claude/agents/inbox-analyst.md` at `:28` (defines stem), `:37`
      (output path), `:43` (forbids writing elsewhere) and `:613-616` (stamps `source_stem`).
@@ -134,7 +154,7 @@ rather than loudly, which is why T2.8 exists.
            `test_suggestions_wire_emit.py::test_fan_doc_wire_conforms_to_schema`
      - [ ] What Hashi joins on is unchanged `[ref: SDD/CON-4]`
 
-- [ ] **T2.4 Run state joins on the key** `[activity: backend]` `[parallel: true]`
+- [x] **T2.4 Run state joins on the key** `[activity: backend]` `[parallel: true]`
 
   1. **Prime**: Read `state-update.py:39,52,76,82` — `inbox-state.jsonl` is an append-only log
      on disk, replayed last-wins per key.

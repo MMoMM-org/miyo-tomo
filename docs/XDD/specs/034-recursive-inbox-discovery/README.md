@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-05 |
-| **Current Phase** | SDD |
+| **Current Phase** | PLAN |
 | **Last Updated** | 2026-09-06 |
 
 ## Documents
@@ -14,7 +14,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 10 features (8 Must, 1 Should, 1 Could), 40 acceptance criteria, 9 business rules, 12 edge cases, 0 open questions |
 | solution.md | completed | 6 ADRs (4 user-confirmed, 2 corollaries), 7 constraints, traced walkthrough of the destination guard, 7 implementation gotchas |
-| plan/ | pending | |
+| plan/ | completed | 6 phases, 29 tasks, 5 parallel, 101 spec references |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -43,6 +43,7 @@
 | 2026-09-06 | **ADR-2 refined during design: add `item_key`, keep `stem` honest** | The PRD decision was to rename the field. While drafting the SDD a cheaper form of the same intent appeared: add `item_key` for the path and let `stem` go back to meaning exactly what its name says — a bare filename, which is what its 16 display sites actually need. No field ends up holding something its name does not describe, and the rename sweep across five schemas, `validate-result.py` and the analyst contract is avoided. Confirmed by the user 2026-09-06. |
 | 2026-09-06 | **ADR-5: the per-item filename is a readable stem plus a digest of the exact key** | Corollary of ADR-1 under a verified constraint: this filesystem is case-insensitive, so `Places/Dresden.md` and `places/dresden.md` would produce one file from a readable-only name — re-creating the very collision the spec removes. `sanitize_stem` cannot be used either; it is lossy by design and maps distinct paths onto one name. A pure digest would be unreadable in a pipeline whose intermediate state is read by hand, so the name carries both: a readable half to identify the item, a digest to guarantee distinctness. |
 | 2026-09-06 | **Correction during SDD drafting: `stem` is display text at 16 sites, not 8** | A first draft of the implementation gotchas said eight. The real figure is 16 — six title fallbacks, six source links, four rendered headings. An implementer working from the wrong number would have fixed half of them and written item keys into vault-visible text at the rest. Corrected, and reframed: the gotcha now tells the reader to enumerate the sites themselves, because a count in a document goes stale while the instruction to grep does not. |
+| 2026-09-06 | **Phase order is driven by one rule: recursion must not ship before the key is threaded** | Making `discover_files` recursive is a two-line change and the most dangerous one in the plan if taken first — the moment subfolder notes become items, two can share a filename, and every stem-keyed site starts merging distinct notes, including the one that writes to the vault. Phases 1 and 2 therefore land the identity with no user-visible change at all, and Phase 3 turns on the behaviour that needs it. Phase 2 ends with an end-to-end trace of the key through every artefact boundary rather than per-stage unit tests, because per-stage green is exactly what let spec 031 build five phases against a field nothing populated. Phases 3 and 4 touch different files and can run in parallel. |
 
 ## Context
 

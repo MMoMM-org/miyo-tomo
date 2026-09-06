@@ -178,8 +178,31 @@ two confirmed namesakes, one atomic each: both `move_note`s land in one
 `origin_path = moves[0]` emits a single delete — the second note is never
 deleted. `keep_source` on either one suppresses the delete for both.
 
+Proven with fixtures, not inferred, on post-T5.0 code:
+
+| collection | consequence when two namesakes collide |
+|---|---|
+| `moves_by_origin` / `expected_by_stem` | both `move_note`s land in one bucket, the gate passes (`2 >= 2`), `moves[0]` emits a single delete — B's source survives |
+| `keep_source_stems` | `keep_source` on A suppresses B's delete too: **zero** deletes |
+| `seen` | the second daily-only namesake gets no delete at all |
+| `confirmed_stems` | B's daily-only delete is suppressed because A is confirmed |
+| `daily_stems` | reason-string mis-attribution only (below) |
+
 This is left as-is deliberately. Every direction traced fails SAFE (a file
 stays in the inbox and is re-proposed next run, rather than the wrong file
 being deleted), and re-keying the completion gate is a behaviour change to
 OQ6's logic, not an addressing fix. It is a collision concern, distinct from
 the addressing concern T5.0 closes.
+
+**The part that reaches the user, not the vault.** Two reason strings
+mis-describe reality in the document the user reads BEFORE approving:
+
+- `"Origin consumed by 2 atomics."` names A, while one of those two atomics
+  came from B — the count is right, the note it is attached to is not.
+- `"Origin consumed by 1 atomic + daily."` credits A with a daily capture that
+  belonged to B (`daily_stems` is stem-keyed, so B's daily entry marks A).
+
+A user approving on those strings is approving a description that is wrong
+about which note did what. CON-2 puts the two-pass review between Tomo and the
+vault, and this is the review text — so whoever picks up the collision task
+should treat the reason strings as part of it, not as cosmetics.

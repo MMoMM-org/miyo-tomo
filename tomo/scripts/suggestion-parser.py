@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.29.0
+# version: 0.30.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1751,6 +1751,71 @@ RE_TAG_HANDLER_GROUP_ID = re.compile(
 )
 
 
+def item_keys_by_section_id(doc: dict) -> dict[str, tuple[str, str] | None]:
+    """Map each rendered section id to (item_key, display stem) from the doc.
+
+    The rendered markdown carries only a bare display stem, but the markdown
+    PATH is never just the markdown: `synthesis-conductor.md` passes
+    `--suggestions-doc`, and that document holds `sections[].item_key` keyed by
+    the same id the heading shows (`### S01 — …`). So identity is recoverable
+    without changing a byte of what the user reads.
+
+    Both the section id and each action's flat `suggestion_id` are registered:
+    F-41 gives a multi-atomic source several headings from one section, and the
+    heading shows the suggestion_id. Every atomic of one source shares that
+    source's key, so the two id spaces cannot disagree about the key.
+
+    An id that maps to two different keys is recorded as None — ambiguous, and
+    never guessed.
+    """
+    lookup: dict[str, tuple[str, str] | None] = {}
+
+    def _register(sid: str | None, value: tuple[str, str]) -> None:
+        if not sid:
+            return
+        if sid in lookup and lookup[sid] != value:
+            lookup[sid] = None
+            return
+        lookup.setdefault(sid, value)
+
+    for section in (doc or {}).get("sections") or []:
+        key = section.get("item_key")
+        if not key:
+            continue
+        value = (key, section.get("stem") or "")
+        _register(section.get("id"), value)
+        for action in section.get("actions") or []:
+            _register(action.get("suggestion_id"), value)
+    return lookup
+
+
+def bind_section_item_key(
+    item: dict, lookup: dict[str, tuple[str, str] | None]
+) -> None:
+    """Attach `item_key` to a parsed section, or leave it unset (ADR-1/ADR-2).
+
+    The id match alone is not evidence: the user owns this document and may
+    have retyped the Source line. The display stem is therefore cross-checked
+    against the one the doc recorded before binding — on a mismatch the key is
+    left unset, so the item falls back to the reconstruction. A wrong key names
+    a specific wrong note, which is strictly worse than a fallback that may
+    simply find nothing.
+
+    Compared on the basename so a path-qualified source link still binds
+    (spec 034 T5.1 qualifies links for same-filename groups).
+    """
+    entry = lookup.get(item.get("id"))
+    if not entry:
+        return
+    key, doc_stem = entry
+    parsed = (item.get("source_path") or "").rsplit("/", 1)[-1]
+    if parsed.endswith(".md"):
+        parsed = parsed[:-3]
+    if doc_stem and parsed and parsed != doc_stem:
+        return
+    item["item_key"] = key
+
+
 _DAILY_DISCRIMINATOR = {
     "trackers": "field",
     "log_entries": "content",
@@ -2070,6 +2135,11 @@ def main() -> int:
     # line overrides it when hand-edited. Absent doc → empty map (back-compat).
     _primary_doc_path = args.suggestions_doc or _default_doc_path(filename)
     doc_anchor_map = load_doc_anchor_map(_primary_doc_path)
+    # spec 034: the rendered document carries a display stem only, so identity
+    # is joined back from the structured doc it was rendered from. Empty when
+    # no doc is reachable — every item then falls back to the reconstruction,
+    # exactly as before this existed.
+    doc_item_keys = item_keys_by_section_id(_load_json_doc(_primary_doc_path))
 
     # F-41: split each rendered section into per-atomic-block groups on
     # **Source:** boundaries. Sections with ≤1 Source line yield one group
@@ -2098,6 +2168,7 @@ def main() -> int:
             skipped_items.append({"id": section_id, "disposition": "error"})
             continue
 
+        bind_section_item_key(item, doc_item_keys)
         parsed_sections.append(item)
         stem_key = _item_key_of(item.get("source_path"))
         if stem_key:
@@ -2106,7 +2177,10 @@ def main() -> int:
         if item["approved"]:
             confirmed_items.append({
                 "id": item["id"],
+                # source_path stays the display stem (ADR-2); item_key is the
+                # identity Pass 2 addresses the note by (ADR-1).
                 "source_path": item["source_path"],
+                "item_key": item.get("item_key"),
                 "audio_peer": item.get("audio_peer"),
                 "attachments": item.get("attachments") or [],
                 "type": item["type"],
@@ -2129,6 +2203,7 @@ def main() -> int:
             skipped_items.append({
                 "id": section_id,
                 "source_path": item["source_path"],
+                "item_key": item.get("item_key"),
                 "disposition": disposition,
             })
 
@@ -2288,6 +2363,7 @@ def main() -> int:
         entry = {
             "id": sec["id"],
             "source_path": sec["source_path"],
+            "item_key": sec.get("item_key"),
             # Both fields belong to the canonical confirmed-item shape built
             # above; omitting them here filed the note and left its audio peer
             # and attachments behind in the inbox (#161).

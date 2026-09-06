@@ -34,13 +34,14 @@ vault-relative path (ADR-1). The fixture inbox deliberately contains:
   - a path with BOTH a space and mixed case, so a normalising, lowercasing,
     slugging or basename-taking stage fails loudly rather than quietly.
 
-WHICH PATH THIS PROVES: the ADR-026 **wire** path (`build_from_wire`).
-`suggestion-parser.main()` — the markdown path the normal
-`synthesis-conductor.md` flow invokes — mints no `item_key` at all,
-because the rendered markdown carries only a bare display stem and no
-path is recoverable from it. That is pinned to Phase 5 T5.1, and is
-asserted here as a known limit (see TestKnownLimitMarkdownPathMintsNoKey)
-so a future green run cannot be mistaken for coverage it does not have.
+WHICH PATHS THIS PROVES: both. The hop-by-hop trace runs the ADR-026
+**wire** path (`build_from_wire`). The **markdown** path that the normal
+`synthesis-conductor.md` flow invokes is traced separately in
+TestMarkdownPathAlsoCarriesTheKey — it recovers each item's key from the
+`--suggestions-doc` sibling rather than from the rendered markdown, which
+carries only a bare display stem. What remains for Phase 5 T5.1 is the
+DISPLAY problem: both namesakes still render `[[Dresden]]`, so the user
+cannot tell them apart even though Tomo now can.
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
@@ -553,26 +554,48 @@ class TestHop8EmissionBoundaryStaysBareForHashi:
 # The known limit — stated, not discovered
 # ---------------------------------------------------------------------------
 
-class TestKnownLimitMarkdownPathMintsNoKey:
-    """`suggestion-parser.main()` is what `synthesis-conductor.md` invokes in
-    the normal flow, and it mints no `item_key`: the rendered markdown carries
-    only a bare display stem, so no path is recoverable there.
+class TestMarkdownPathAlsoCarriesTheKey:
+    """Was a known-limit assertion; now a positive trace, as it required.
 
-    Phase 5 T5.1 owns closing this. Until it lands, this assertion is the
-    honest statement of what Phase 2 does and does not cover — if T5.1 makes
-    the markdown path carry the key, this test fails and must be replaced by
-    a positive trace, not loosened.
+    `suggestion-parser.main()` — what `synthesis-conductor.md` invokes in the
+    normal flow — used to mint no `item_key`, on the premise that the rendered
+    markdown carries only a bare display stem. That premise held for the
+    markdown FILE and not for the markdown PATH: the same invocation passes
+    `--suggestions-doc`, and that document carries `sections[].item_key` keyed
+    by the id the heading shows. The key is joined back from there.
+
+    Note this is NOT what T5.1 does — T5.1 path-qualifies source links only for
+    same-filename groups, so a globally unique subfolder note would have kept
+    its bare link and stayed unrecoverable.
     """
 
-    def test_markdown_path_confirmed_items_have_no_item_key(self, traced):
+    def test_markdown_path_confirmed_items_carry_their_own_key(self, traced):
         confirmed = traced["parsed_md"]["confirmed_items"]
         assert confirmed, "the markdown path parsed no confirmed items at all"
-        assert all("item_key" not in c for c in confirmed), (
-            "the markdown path now mints item_key — Phase 5 T5.1 has landed; "
-            "replace this known-limit assertion with a positive value trace"
+        keys = {c["title"]: c.get("item_key") for c in confirmed}
+        assert keys == {
+            "Dresden — Frauenkirche": DRESDEN_PLACES,
+            "Dresden — a different note": DRESDEN_REISE,
+            "Hokkaido powder days": HOKKAIDO,
+        }, f"markdown path bound the wrong keys: {keys}"
+
+    def test_the_two_namesakes_do_not_collapse_onto_one_key(self, traced):
+        """The whole point: identical display stems, distinct identities."""
+        confirmed = traced["parsed_md"]["confirmed_items"]
+        dresdens = [c for c in confirmed if c["source_path"] == "Dresden"]
+        assert len(dresdens) == 2
+        assert len({c["item_key"] for c in dresdens}) == 2, (
+            f"both namesakes bound the same key: {dresdens}"
         )
 
-    def test_markdown_carries_only_bare_stems_so_no_path_is_recoverable(self, traced):
-        """Why T5.1 is needed at all: the review document's Source links are
-        bare, so both namesakes render the identical `[[Dresden]]`."""
+    def test_display_stems_stay_bare_on_the_markdown_path(self, traced):
+        """ADR-2 still holds — recovering identity must not put a path into
+        the display text the note title is derived from."""
+        confirmed = traced["parsed_md"]["confirmed_items"]
+        assert all("/" not in (c["source_path"] or "") for c in confirmed)
+
+    def test_markdown_still_renders_bare_source_links(self, traced):
+        """Why T5.1 is still needed: the review document's Source links remain
+        bare, so both namesakes render the identical `[[Dresden]]` and the USER
+        cannot tell them apart — a display problem, now separate from identity."""
         assert traced["markdown"].count("**Source:** [[Dresden]]") == 2

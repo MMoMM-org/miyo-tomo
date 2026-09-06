@@ -94,15 +94,15 @@ def _markdown_output(doc: dict, tmp: Path) -> dict:
 
 
 def _without_item_key(parsed: dict) -> dict:
-    """Drop the wire-path-only `item_key` for the shape-parity compare.
+    """Drop `item_key` from BOTH sides for the shape-parity compare.
 
-    Spec 034 T2.3b: `build_from_wire` threads the wire's `item_key` (the item's
-    vault-relative path, verbatim — ADR-1) onto every confirmed item. The
-    markdown path mints no such field: the rendered document carries only the
-    bare display stem (ADR-2) and cannot recover a path from it. The asymmetry
-    is deliberate — `instructions-diff.derive_expected` prefers `item_key` and
-    falls back to `source_path` when it is absent — but everything else about
-    the two outputs must still match exactly, which is what this file guards.
+    Both paths now carry the field — the markdown path joins it back from the
+    suggestions doc, which the rendered markdown itself cannot supply (spec
+    034). Their FALLBACKS still differ when no key is available: the wire falls
+    back to the display stem (`build_from_wire`: `w.get("item_key") or stem`)
+    while the markdown path leaves it None. These fixtures carry no section
+    `item_key`, so they exercise exactly that fallback gap. Everything else
+    about the two outputs must match exactly, which is what this file guards.
     """
     out = copy.deepcopy(parsed)
     for item in out.get("confirmed_items", []):
@@ -116,10 +116,13 @@ def test_build_from_wire_matches_markdown_parse():
         expected = _markdown_output(doc, Path(td))
     wire = render.build_wire_payload(doc)
     full = parser.build_from_wire(wire, "")
-    # The one deliberate divergence, asserted rather than silently stripped.
+    # Both paths now carry item_key; only the no-key FALLBACK still differs.
     assert full["confirmed_items"][0]["item_key"] == wire["suggestions"][0]["item_key"]
-    assert "item_key" not in expected["confirmed_items"][0]
+    assert "item_key" in expected["confirmed_items"][0], (
+        "the markdown path must carry the field, joined back from the doc"
+    )
     actual = _without_item_key(full)
+    expected = _without_item_key(expected)
     assert actual == expected, (
         "JSON-only build_from_wire diverged from the markdown parse.\n"
         f"expected={json.dumps(expected, indent=2)}\nactual={json.dumps(actual, indent=2)}"
@@ -173,7 +176,7 @@ def _markdown_output_full(doc: dict, tmp: Path) -> dict:
 def test_full_mirror_matches_markdown_parse_with_daily_and_tag_handler():
     doc = _doc_with_sections()
     with tempfile.TemporaryDirectory() as td:
-        expected = _markdown_output_full(doc, Path(td))
+        expected = _without_item_key(_markdown_output_full(doc, Path(td)))
     wire = render.build_wire_payload(doc)
     actual = _without_item_key(parser.build_from_wire(wire, ""))
     assert actual == expected, (

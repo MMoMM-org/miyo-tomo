@@ -394,27 +394,44 @@ class TestSubfolderNotesSurvivePass2:
             f"nothing should be dropped — the vault holds all three: {dropped}"
         )
 
-    def test_markdown_path_keeps_the_root_note(self, three_depths):
-        """The reconstruction fallback must still work for a keyless document."""
-        kept, _dropped = self._filter(three_depths["parsed_md"])
-        assert "Kaffee als Ritual" in {i.get("title") for i in kept}
+    def test_markdown_path_keeps_every_note_too(self, three_depths):
+        """The markdown path recovers each key from the `--suggestions-doc`
+        sibling, so it no longer drops subfolder notes either. Its keyless
+        fallback is exercised separately, in
+        test_034_t5_0b_markdown_path_mints_item_key.py."""
+        kept, dropped = self._filter(three_depths["parsed_md"])
+        assert dropped == [], f"a note that exists was dropped: {dropped}"
+        assert {i.get("title") for i in kept} == {
+            "Kaffee als Ritual", "Bohnen aus Äthiopien", "Sapporo im Februar",
+        }
 
-    def test_markdown_path_drop_is_visible_and_accurately_worded(self, three_depths):
-        """No item_key on the markdown path (T5.1) — so the subfolder notes are
-        still dropped there. That is a known limit, but it must never be silent:
-        each drop must name the path that was probed and say why."""
-        _kept, dropped = self._filter(three_depths["parsed_md"])
-        assert dropped, "the markdown path drops subfolder notes — it must report them"
-        for record in dropped:
-            assert record.get("probed_path"), (
-                f"a drop record must name the path that was probed: {record}"
-            )
-            assert record.get("reason"), f"a drop record must carry a reason: {record}"
+    def test_a_keyless_drop_is_visible_and_accurately_worded(self):
+        """Whatever causes a drop, it must never be silent: the record names
+        the path that was probed and says why — and never calls a note that
+        exists one folder down `missing`."""
+        from lib.render_resolve import filter_missing_source_notes  # noqa: PLC0415
+
+        confirmed = [{
+            "id": "S01", "title": "Bohnen", "template": "t_note_tomo",
+            "source_path": "Bohnen", "parent_mocs": [], "candidate_mocs": [],
+            "tags": [],
+        }]  # no item_key: a document minted before spec 034
+        client = _exact_path_client({DEEP_1})
+        _kept, dropped = self._filter_with(
+            filter_missing_source_notes, confirmed, client
+        )
+        assert len(dropped) == 1
+        assert dropped[0]["probed_path"] == "100 Inbox/Bohnen.md"
+        assert dropped[0]["reason"]
         blob = json.dumps(dropped, ensure_ascii=False).lower()
         assert "missing" not in blob, (
             "'missing' misdiagnoses a note that exists one folder down — "
             f"the wording must say what really happened: {dropped}"
         )
+
+    @staticmethod
+    def _filter_with(fn, confirmed, client):
+        return fn(confirmed, client, INBOX)
 
 
 class TestGuard116StillFires:

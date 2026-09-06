@@ -243,6 +243,12 @@ def _manifest_from_confirmed(confirmed: list[dict]) -> list[dict]:
             "action": item.get("action"),
             "title": item.get("title") or _stem_of(item["source_path"]),
             "source_path": item["source_path"],
+            # instruction-render.py carries item_key onto the manifest entry
+            # (spec 034 T5.0) so the move origin is the note's real path. These
+            # fixture notes live at `100 Inbox/Places/<stem>.md`; without the
+            # key the origin reconstructs to the inbox root and the coverage
+            # audit reports [MISSING] — correctly, which is the point.
+            "item_key": item.get("item_key"),
             "rendered_file": f"2026-09-06_1200_{_stem_of(item['source_path'])}.md",
             "destination": "Atlas/202 Notes/",
             "parent_moc": item.get("parent_moc") or "",

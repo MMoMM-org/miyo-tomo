@@ -398,3 +398,61 @@ user ticking "Delete source" on a subfolder note asked to delete the inbox
 root. `source_path` stays the display stem (ADR-2); `item_key` is the identity
 (ADR-1). The markdown path mints no key here for the same reason it mints none
 on confirmed items — the document carries no path (T5.1).
+
+## The Markdown Path Recovers Identity From the Doc, Not the Markdown (spec 034)
+
+WHY `item_keys_by_section_id` / `bind_section_item_key` exist, and why they are
+not what T5.1 does:
+
+The markdown path — `main()`, what `synthesis-conductor.md:105` invokes in the
+normal flow — minted no `item_key`, so every subfolder note carrying a template
+was dropped by the Pass-2 `#116` guard before it could be rendered. The premise
+recorded for that gap was that the rendered document carries only a bare
+display stem and a path cannot be recovered from one.
+
+That premise is true of the markdown FILE and false of the markdown PATH. The
+same invocation passes `--suggestions-doc tomo-tmp/suggestions-doc.json`, and
+that document carries `sections[].item_key` keyed by the very id the heading
+shows:
+
+    markdown:  ### S01 — Bohnen aus Äthiopien      **Source:** [[Bohnen]]
+    doc:       {"id": "S01", "stem": "Bohnen",
+                "item_key": "100 Inbox/Places/Bohnen.md"}
+
+So the key is joined back on the section id. Nothing about the rendered
+document changes, and ADR-2 still holds — `source_path` stays the display stem,
+which is what the note title is derived from.
+
+**T5.1 would not have closed this.** T5.1 path-qualifies source links only for
+same-filename GROUPS. A subfolder note with a globally unique filename keeps
+its bare `[[Bohnen]]` link, so after T5.1 as specified it would still have had
+no path to recover. The two tasks are independent: this one is identity, T5.1
+is display — the user still cannot tell two `[[Dresden]]` links apart.
+
+Three properties the join has to hold:
+
+- **Both id spaces are registered.** F-41 gives a multi-atomic source several
+  headings from one section, and the heading shows the flat `suggestion_id`,
+  not the section id. Every atomic of one source shares that source's key, so
+  the two id spaces cannot disagree.
+- **The stem is cross-checked before binding.** The user owns this document and
+  may retype the Source line. An id match alone is not evidence; on a mismatch
+  the key is left unset and the item falls back to the reconstruction. A wrong
+  key names a specific wrong note, which is worse than a fallback that finds
+  nothing. Compared on the basename, so a path-qualified link (T5.1) still
+  binds.
+- **No doc means no key.** `synthesis-conductor.md:117` runs the parser bare,
+  and `_load_json_doc` returns `{}` for anything it cannot read, so the lookup
+  is empty and every item behaves exactly as it did before this existed. Note
+  that `_default_doc_path` prefers a `suggestions-doc.json` SIBLING of the
+  markdown before the cwd-relative fallback, and the pipeline writes the two
+  side by side — so the bare invocation usually still finds the doc. Omitting
+  the flag is therefore not enough to exercise the no-doc path in a test; the
+  markdown has to live somewhere the doc does not.
+
+One asymmetry deliberately left in place: `build_from_wire` falls back to
+`w.get("item_key") or stem`, putting a display stem in an identity field when
+the wire carries no key, while the markdown path leaves it None. Real documents
+always carry the key (the doc schema requires it with `minLength: 1`), so the
+two agree in practice; `tests/test_suggestions_wire_golden.py` strips the field
+from both sides for its parity compare and says why.

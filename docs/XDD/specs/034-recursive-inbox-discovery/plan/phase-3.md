@@ -50,7 +50,7 @@ Turns on the behaviour the previous two phases prepared for.
   5. **Success**:
      - [ ] The two consumers cannot disagree about what a file is `[ref: SDD/ADR-3]`
 
-- [ ] **T3.2 Recursive discovery on one shared listing** `[activity: backend]`
+- [x] **T3.2 Recursive discovery on one shared listing** `[activity: backend]`
 
   1. **Prime**: Read `discover_files` (`inbox-triage.py:167-193`) and `build_attachment_index`
      (`:200-217`), whose docstring already calls itself "a second, independent call from the

@@ -9,7 +9,7 @@ tools: Read, Bash, mcp__kado__kado-search, mcp__kado__kado-read, mcp__kado__kado
 
 ---
 # Voice Transcriber Subagent
-# version: 0.8.3
+# version: 0.9.0
 
 You transcribe audio files that appear in the inbox so the rest of the
 `/inbox` pipeline can treat them as regular fleeting notes. You do not
@@ -115,11 +115,16 @@ For each path in `audio_files`:
    sibling `.md` target you build here is sanitised. Both this agent
    and the CLI use this same script — agreement on the sanitised form
    is required.
-2. Compose the target path: `<inbox_path>/<SAFE_STEM>.md`.
+2. Compose the target path from this audio path's own containing
+   folder, NOT `<inbox_path>`: take the audio path, drop its filename,
+   and append `<SAFE_STEM>.md` — e.g. `<inbox_path>/Voice/memo.m4a`
+   composes `<inbox_path>/Voice/memo.md`, never
+   `<inbox_path>/memo.md`.
 3. Check membership: is `target` in `existing_md_paths`?
 4. If yes → increment `skipped`, drop from the todo list. Do NOT
    overwrite.
-5. If no → include in the todo list.
+5. If no → include in the todo list, remembering this audio's
+   containing folder for Step 5.
 
 Name the resulting set `todo`. If `todo` is empty after filtering →
 return `{"transcribed": 0, "skipped": <N>, "errors": []}`. No Bash.
@@ -182,16 +187,21 @@ Stdout from Step 4 is a single JSON object:
 }
 ```
 
+`results[i]` corresponds to `todo[i]` — the CLI preserves input order.
+Resolve each write's folder as the containing folder of todo[i] — the
+same folder you recorded for this audio file in Step 3 — NEVER
+`<inbox_path>`.
+
 For each entry `results[i]`:
 - If `markdown != null`:
   `kado-write` with `operation: "note"`,
-  path = `<inbox_path>/<results[i].target>`,
+  path = `<containing folder of todo[i]>/<results[i].target>`,
   content = `results[i].markdown`.
   (The CLI has already sanitised `target` — you pass it through
   verbatim.) Increment `transcribed`.
 - If `error != null`:
   `kado-write` with `operation: "note"`,
-  path = `<inbox_path>/<sanitised_stem>.transcribe-error.md`.
+  path = `<containing folder of todo[i]>/<sanitised_stem>.transcribe-error.md`.
   Use the target stem (strip `.md`) from `results[i].target` — the CLI
   has already sanitised it via the same script as Step 3. Content =
   plain-text block:

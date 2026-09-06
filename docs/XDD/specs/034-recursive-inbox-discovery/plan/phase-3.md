@@ -86,7 +86,7 @@ Turns on the behaviour the previous two phases prepared for.
      - [ ] A namesake elsewhere cannot mark an audio file as already handled
            `[ref: PRD/AC Feature 5]`
 
-- [ ] **T3.3b The voice path follows recursion** `[activity: backend]`
+- [x] **T3.3b The voice path follows recursion** `[activity: backend]`
 
   Added 2026-09-06 at the T3.3 review. T3.2 made discovery recursive; the voice path was never
   swept for it, and T3.3 alone makes subfolder audio **worse**, not better.

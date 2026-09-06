@@ -260,3 +260,24 @@ such block. Two detection channels (either → pending): the wire's top-level `s
 `No suggestions found` note (--suggest hasn't enriched it). When pending, triage logs a clear reason
 and leaves the doc in pending-approval; once `--suggest` runs, the signal clears and it applies on the
 next /inbox.
+
+## Audio pairing keys on folder + stem, not stem alone (spec 034, T3.3)
+
+WHY `check_audio` compares `(containing folder, stem)` pairs instead of bare stems
+(v0.34.1): spec 034 / T3.2 made inbox discovery recursive, so a note like
+`100 Inbox/Archive/memo.md` is discovered for the first time. Before this fix,
+`md_stems` was built by dropping the folder entirely, so that unrelated Archive
+note satisfied a root-level (or any other folder's) `memo.m4a`, `check_audio`
+returned `False`, and `has_audio` (which gates the `transcribe` routing decision
+directly) silently skipped transcription. The user drops a voice memo, a namesake
+note exists anywhere else in the tree, and the transcript never appears — no
+error, no explanation. Before T3.2 this was unreachable; after it, reachable on
+any inbox with subfolders.
+
+Only the audio-side stem is run through `sanitize_stem` before comparison; the
+markdown side stays raw. This asymmetry is deliberate, not an oversight — Obsidian
+already forbids the offending filename characters (`:` etc.) in note filenames,
+while a recorder happily produces them (e.g. `Rec 2026-01-02 14:30.m4a` pairs with
+`Rec 2026-01-02 14-30.md`). **Do not symmetrise or drop this sanitisation** — audio
+to transcript sibling matching has already broken here once on exactly a raw `:`
+vs `-` mismatch, and the consequence was an infinite transcribe loop.

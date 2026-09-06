@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.34.0
+# version: 0.34.1
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -523,18 +523,24 @@ def resolve_handlers(
 # ---------------------------------------------------------------------------
 
 def check_audio(audio_files: list[dict], md_files: list[dict]) -> bool:
-    """True if uncached audio files exist (audio without sibling .md)."""
+    """True if uncached audio files exist (audio without sibling .md).
+
+    Pairing keys on containing folder plus stem, not stem alone — recursive
+    discovery (#93/T3.2) means a namesake note elsewhere in the tree must
+    never satisfy an audio file it does not actually sit beside.
+    """
     if not audio_files:
         return False
 
-    md_stems = set()
+    md_keys = set()
     for f in md_files:
-        md_stems.add(Path(f["path"]).stem.lower())
+        p = Path(f["path"])
+        md_keys.add((str(p.parent), p.stem.lower()))
 
     for af in audio_files:
-        raw_stem = Path(af["path"]).stem
-        safe_stem = sanitize_stem(raw_stem).lower()
-        if safe_stem not in md_stems:
+        p = Path(af["path"])
+        safe_stem = sanitize_stem(p.stem).lower()
+        if (str(p.parent), safe_stem) not in md_keys:
             return True
 
     return False

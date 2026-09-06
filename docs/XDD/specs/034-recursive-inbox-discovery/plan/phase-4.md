@@ -33,7 +33,7 @@ issue that started this spec did not mention it.
 
 ## Tasks
 
-- [ ] **T4.1 The dispatcher uses the item's real path** `[activity: prompt-engineering]`
+- [x] **T4.1 The dispatcher uses the item's real path** `[activity: prompt-engineering]`
 
   **Inherited from T2.1 — this task must correct it.** T2.1 populated
   `force_atomic_items[*].item_key` with the **review document's** path, because that is the only

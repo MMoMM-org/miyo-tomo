@@ -31,6 +31,30 @@ phase: 6
 
 - [ ] **T6.1 The run records its own cost** `[activity: backend]`
 
+  **Added 2026-09-06 by the Phase 3 gate — the number this task is about to make durable cannot
+  detect its own regression.** `_count_kado_calls` (`inbox-triage.py:1863`) hardcodes the base as a
+  literal `2`. The gate proved the consequence rather than arguing it: when it mutated
+  `build_attachment_index(all_files)` back to a second `client.list_dir(...)` call, the fake client
+  recorded **3** base calls while the estimator still printed `kado_calls=9`. Nothing in the suite
+  observed the true count until that gate ran.
+
+  ADR-3's whole claim is that recursion makes discovery *cheaper* — base calls 3 → 2 — and this
+  task writes that figure into a permanent history. A history whose source is a constant records
+  the intent, not the behaviour, and would keep reporting 2 through any future change that
+  reintroduces a listing.
+
+  So this task must also:
+  - Derive the recorded base count from the run's **observed** Kado calls, not a literal. If the
+    client cannot report its own call count today, add that capability rather than keeping the
+    constant.
+  - Add a test that **fails** when a second base listing is reintroduced — the exact mutation the
+    gate ran. The plan already states the principle for T3.4: *"the estimator is the thing under
+    test, so it cannot also be the evidence."* The same holds once the estimator's output is being
+    persisted.
+  - If the count genuinely cannot be observed without disproportionate change, say so and record
+    the constant as a known limitation **in the history's own schema**, so a later reader knows the
+    figure is declared rather than measured.
+
   1. **Prime**: Read `[ref: SDD/Data Storage Changes; cost_history]`. Read
      `mark-captured.py:78-79`, whose `state/moc-squelch.json` default is the precedent — a small
      persistent registry in the instance state, addressed cwd-relative. Read

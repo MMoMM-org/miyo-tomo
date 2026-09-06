@@ -76,6 +76,20 @@ rather than loudly, which is why T2.8 exists.
 
 - [ ] **T2.3 The reducer reads by key, displays by stem** `[activity: backend]`
 
+  **Added 2026-09-06 — a second state-replay reader nobody owned.** `last_state_per_stem` is
+  **duplicated**: `suggestions-reducer.py:78` (called at `:1652`) and `mark-captured.py:44`
+  (called at `:108`). Both replay `inbox-state.jsonl` with `out[stem] = obj`, last-wins per bare
+  filename. T2.4 keyed `state-update.py`'s writer and reader on `item_key`, but these two readers
+  were left behind and no task named the reducer's copy. Once Phase 3 lands, one item's
+  `done`/`failed` status masks its namesake's and that item silently drops out of the work list —
+  PRD Feature 2's failure mode.
+
+  Two divergent copies of one replay is also how #165 happened, so do not simply patch both in
+  place. **Extract a single shared helper into `tomo/scripts/lib/` keyed on `item_key`** and route
+  the reducer's call site through it. Leave `mark-captured.py` alone — T2.5 consumes the same
+  helper and must run after this task. Add a test proving two entries sharing a `stem` but
+  differing in `item_key` both survive the replay with their own status.
+
   1. **Prime**: Read `suggestions-reducer.py:1638→1715` (the result-file read) and the display
      sites. **Enumerate the display sites yourself** — grep `or stem` and `[[{stem}]]`; a first
      draft of the SDD undercounted them by half `[ref: SDD/Implementation Gotchas]`.
@@ -134,6 +148,12 @@ rather than loudly, which is why T2.8 exists.
      - [ ] One item's status can no longer hide another's `[ref: PRD/AC Feature 2]`
 
 - [ ] **T2.5 The captured mark targets the right note** `[activity: backend]`
+
+  **Depends on T2.3.** T2.3 extracts the shared `item_key`-keyed state-replay helper into
+  `tomo/scripts/lib/` (replacing the duplicated `last_state_per_stem` in
+  `suggestions-reducer.py:78` and here at `mark-captured.py:44`). **Use that helper — do not write
+  a third copy.** If it is not present when you start, stop and report `BLOCKED` rather than
+  duplicating the logic.
 
   1. **Prime**: Read `mark-captured.py:44-49` (`last_state_per_stem`, last-wins) and `:161`
      (`client.write_frontmatter`). This is the only path in the spec where a collision mutates

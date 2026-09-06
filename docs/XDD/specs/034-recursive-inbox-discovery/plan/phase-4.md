@@ -35,6 +35,24 @@ issue that started this spec did not mention it.
 
 - [ ] **T4.1 The dispatcher uses the item's real path** `[activity: prompt-engineering]`
 
+  **Inherited from T2.1 — this task must correct it.** T2.1 populated
+  `force_atomic_items[*].item_key` with the **review document's** path, because that is the only
+  path available at `_extract_fan_items` (`inbox-triage.py:589`) and
+  `_extract_fan_items_from_wire` (`:693`) — the FAN checkbox carries a bare `stem` via
+  `Source: [[stem]]`, never a full path. The schema requires the field, so it could not be left
+  out. Two consequences you must close:
+
+  - The value violates ADR-1 in spirit: `item_key` is meant to be *the item's* vault-relative
+    path, and it currently holds the path of the document the checkbox was ticked in.
+  - Two FAN items in one suggestions document therefore share one `item_key`. Nothing joins on it
+    today (`force_atomic_items` is consumed only by `force-atomic-handling/SKILL.md`, which
+    iterates and dispatches), so no merge bug is live — but the moment anything does join on it,
+    two distinct items merge silently.
+
+  Carrying the item's real path through the routing plan is already this task's job. When you do,
+  set `item_key` to that path and add a test asserting two FAN items in one document get
+  **distinct** `item_key` values.
+
   1. **Prime**: Read `tomo/dot_claude/skills/force-atomic-handling/SKILL.md:55-70`. The STRICT
      block reads: *path MUST be `<inbox_path>/<stem>.md` (the ORIGINAL inbox note)*, with the
      `Why:` that the analyst reads the note at `path` via Kado and a wrong path makes it

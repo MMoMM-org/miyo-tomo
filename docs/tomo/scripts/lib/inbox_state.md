@@ -2,7 +2,8 @@
 
 > Rationale for decisions in `tomo/scripts/lib/inbox_state.py`.
 > The module replays the append-only `tomo-tmp/inbox-state.jsonl` run-state log
-> into a per-item view. It exposes `last_state_per_item_key(state_path)` and
+> into a per-item view. It exposes
+> `last_state_per_item_key(state_path, skip_report=None)` and
 > `display_stem(entry, item_key)`.
 
 ## Why This Module Exists At All (spec 034 T2.3)
@@ -43,6 +44,29 @@ a half-written record from an interrupted run, say — must not take down a run
 that can still process every other item. The items affected by a skipped line
 do not vanish quietly: they never enter the work list, and the caller's own
 missing-result reporting names anything that was expected and is not there.
+
+## `skip_report` Makes the Skip Audible, Without Touching the Contract
+
+WHY the skip is now countable via an optional `skip_report` out-parameter
+rather than a change to the return value: the fail-open behaviour and the
+`{item_key: entry}` return shape are load-bearing for both callers, and a
+corrupt line is genuinely rare (unreachable from a well-formed log — see
+above). An out-parameter that a caller opts into by passing a dict, and reads
+back after the call, adds visibility without forcing every call site to
+unpack a tuple or branch on a second return value it will almost never use.
+
+WHY two causes (`malformed_json`, `missing_item_key`) instead of one total: a
+malformed-JSON line points at file truncation — a writer interrupted
+mid-append — while a valid-but-key-less line points at a state-update.py
+caller that dropped `--item-key`, which is a code defect, not a disk-full
+event. Collapsing both into one number would tell the user "something was
+skipped" without telling them which kind of problem to go chase.
+
+Both callers (`suggestions-reducer.py`, `mark-captured.py`) print the same
+shape of diagnostic immediately after the replay call — before any
+downstream early-return (e.g. "no done items") — so the diagnostic fires
+whenever a line was actually skipped, regardless of what the rest of the run
+does next.
 
 ## `display_stem` Never Returns a Path
 

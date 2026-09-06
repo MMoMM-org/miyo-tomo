@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.38.0
+# version: 1.39.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1634,7 +1634,21 @@ def main() -> int:
     # spec 034 T2.3: the replay joins on item_key (the vault-relative path), so
     # two inbox items sharing a filename keep their own status. `stem` rides
     # along purely as the display text for each (ADR-2).
-    state = last_state_per_item_key(state_path)
+    # Hardening: last_state_per_item_key() fails open on a corrupt line (bad
+    # JSON, or no item_key) — it used to drop the line with no trace at all.
+    # skip_report makes that audible without turning the skip into an abort.
+    state_skip_report: dict[str, int] = {}
+    state = last_state_per_item_key(state_path, skip_report=state_skip_report)
+    state_lines_skipped = sum(state_skip_report.values())
+    if state_lines_skipped:
+        print(
+            f"suggestions-reducer: {state_lines_skipped} line(s) of {state_path} "
+            f"skipped during replay (malformed_json="
+            f"{state_skip_report.get('malformed_json', 0)}, missing_item_key="
+            f"{state_skip_report.get('missing_item_key', 0)}) — run continued "
+            f"past the corrupt line(s)",
+            file=sys.stderr,
+        )
     # #116: inbox-state.jsonl is append-only and never truncated between runs,
     # so scope the work-list to THIS run's entries. Without the run_id filter a
     # new run re-reads every done/failed item the file ever accumulated and

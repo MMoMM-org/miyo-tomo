@@ -669,3 +669,24 @@ blocks. Deleting is likely right — the format rules those greps guard moved wi
 
 `docs/XDD/specs/005-daily-note-workflow/solution.md:12` also names it; that is a historical
 spec and should be left as written.
+
+### The Hashi wire-hygiene test skips silently when offline
+
+Observed 2026-09-06 during spec 034: `tests/test_instruction_render_wire_hygiene.py:317`
+skips with "upstream Hashi schema unreachable — offline". Across three consecutive full-suite
+runs on a quiet tree it skipped once and ran twice — a transient network hiccup is enough.
+
+Why it matters more than a typical skip: this test guards a **cross-repo contract**. CON-4 of
+spec 034 states that what Hashi receives must not change, and Hashi is a separate repository —
+so this is one of the few tests standing between a wire-shape change here and a break there.
+A contract test that quietly opts out on a network blip can pass a drift through on exactly
+the run where nobody is watching, and the suite still reports green.
+
+The skip itself is reasonable (the alternative is a hard failure on every offline run). The
+problem is that it is **invisible**: `pytest -q` reports only a count, so the difference
+between "3435 passed, 1 skipped" and "3434 passed, 2 skipped" is easy to read past.
+
+Fix shape, cheapest first: vendor a pinned copy of the upstream schema and test against that,
+refreshing it deliberately — turning a network dependency into a reviewable diff. Failing that,
+make the skip loud (a warning summary that names the contract left unverified), or gate it so
+CI treats an offline skip as a failure while local runs stay tolerant.

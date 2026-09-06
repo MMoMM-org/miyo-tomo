@@ -185,6 +185,55 @@ phase: 5
      - [ ] The `#116` guard still catches a genuinely missing source note
      - [ ] No `<inbox_path>/<stem>` composition survives in the Pass-2 render stage
 
+- [ ] **T5.0b The delete bookkeeping in `render_actions` still keys on the stem** `[activity: backend]`
+
+  Added 2026-09-06 by T5.0's implementer, which found it while sweeping for the shape and then
+  proved all four cases with fixtures against post-fix code rather than leaving them inferred.
+
+  Six collections inside `_build_delete_source_actions` key on the bare stem, so two namesakes
+  collapse into one bucket:
+
+  | collection | consequence when two namesakes collide |
+  |---|---|
+  | `moves_by_origin` | one delete emitted for `moves[0]`; the second note's source survives |
+  | `expected_by_stem` | the OQ6 gate denominator counts one bucket holding both — passes coincidentally here; with one atomic each and an item dropped it would under-count and defer |
+  | `keep_source_stems` | `keep_source` on A suppresses B's delete too — **zero** deletes |
+  | `seen` | the second daily-only namesake gets no delete |
+  | `confirmed_stems` | B's daily-only delete is suppressed because A is confirmed |
+  | `daily_stems` | mis-attribution only: A's reason reads `+ daily` because **B** had the daily entry |
+
+  **Every direction fails safe.** The second note's source is left *undeleted*; the wrong note is
+  never deleted. Both notes still move correctly — only the cleanup is lost, and recovery is
+  automatic because the file stays in the inbox and is re-proposed on the next run. That is why
+  T5.0 deliberately left it: re-keying the OQ6 completion gate changes that gate's logic, which is
+  a behaviour change rather than an addressing fix, and it does not belong inside a task about
+  addressing.
+
+  **The part that reaches the user, and the reason this is not merely cosmetic.** Two reason
+  strings mis-describe reality *in the document the user approves*:
+  - `"Origin consumed by 2 atomics"` names A while one of those atomics came from **B**.
+  - `"+ daily"` credits A with **B's** daily capture.
+
+  Under CON-2 the user approves on what that document says. A description that is wrong about
+  which note did what is a wrong basis for approval, even when the resulting action is safe.
+
+  **Reachability by path**, proven: cases 1-2 need two confirmed items carrying templates, which
+  the `#116` filter drops on the markdown path before `build_actions` — **wire path only today**.
+  Cases 3-4 involve daily entries, whose keys T5.0 recovers on both paths — **both paths**.
+
+  1. **Prime**: read `_build_delete_source_actions` in `lib/render_actions.py` end to end, and the
+     OQ6 completion gate it depends on. Read `docs/tomo/scripts/lib/render_actions.md`, where T5.0
+     recorded the four fixtures.
+  2. **Test** (RED): each of the four proven cases — two confirmed namesakes; `keep_source` on one
+     only; two daily-only namesakes; one confirmed plus one daily-only. Assert **both** sources are
+     handled, and that each reason string names the note that actually caused it.
+  3. **Implement**: key the six collections on `item_key`. The OQ6 gate's denominator changes
+     meaning — state what it now counts and why that is right, rather than making it pass.
+  4. **Validate**: tests pass; `ruff` clean; the emitted shape is unchanged (CON-4).
+  5. **Success**:
+     - [ ] Two namesakes each get their own delete, or their own suppression, for their own reason
+     - [ ] No reason string attributes one note's action to another
+
 - [ ] **T5.1 Source links disambiguate on collision** `[activity: backend]`
 
   **Inherited from Phase 2 — this task closes the markdown path's identity gap.** T2.3b closed the

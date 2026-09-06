@@ -29,6 +29,8 @@
 | 2026-09-06 | **All subfolders discovered, no exclusion mechanism** | No inbox exclusion mechanism exists today (`garden-audit-exclusions.yaml` is bound to `/garden-audit` only, zero references in `inbox-triage.py`), so building one is net-new surface for a problem that does not exist yet: attachment folders hold no `.md` files. YAGNI. Revisit if a subfolder ever needs to be hidden from triage. |
 | 2026-09-06 | **Hashi gets a handoff, not an ADR** | The wire contract does not change: `render_helpers._stem()` (`:12-18`) flattens every emitted `source_stem`/`target_stem` to a bare filename at the emission boundary (`render_actions.py:857,873,888`), so Tomo's internal key never crosses. But two same-stem items still produce indistinguishable values there, and Hashi joins on that field (`forceAtomicSync.ts:47`) and renders it as a note link (`DailyTab.ts:229`). That is a behavioural consequence in a sibling component, which Constitution L2 says must be made visible — a `_outbox/for-hashi/` handoff, not an ADR-gated redesign. |
 | 2026-09-06 | **Correction: this is not a cross-repo contract change** | Recorded because it was asserted as one mid-research before being checked. The schema researcher read the schemas and marked Hashi's TypeScript consumer unverified; the orchestrator read the consumer and not the schemas. Each half alone supported a wrong conclusion — the consumer join looked like a contract dependency, the schema alone looked like a non-issue. Only the emission-boundary flattening, which neither had looked at, settles it. Lesson for the SDD: a boundary question needs the producer, the schema, and the consumer read together. |
+| 2026-09-06 | **Refinement: the field is split, not merely renamed** | `stem` turned out to carry two jobs that only look like one because a flat folder makes a filename unique: it is the join key at every site in the blast-radius table, and it is **display text** — `suggestions-reducer.py:390,489` fall back to it for the note title, and `:395,397,494,546,604` render it as `**Source:** [[{stem}]]`. Putting a path-derived value in that one field would title a note `places__dresden` and emit `[[100_inbox_places_dresden]]` into the vault: a visible wrong mutation in the same severity class as the `mark-captured.py` risk, and harder to catch because nothing errors. So the decision to rename stands, but its correct form is two fields — a path-derived identifier for addressing, a bare filename for anything a person reads. PRD business rules 4, 5 and 8 encode this. |
+| 2026-09-06 | **Correction: the Hashi join is on the Pass-1 suggestions wire, not the instructions schema** | Recorded because it was cited wrongly in this session before being checked. `forceAtomicSync.ts:31,47` and `SuggestionsTab.ts:180-181` join on `suggestions-wire.schema.json`'s `stem`/`source_stem`, reached from live handlers (`SuggestionsTab.ts:693`, `DailyTab.ts:313`) — not dead code. On the Pass-2 instruction path, `action.source_stem` has **zero** consumers in Hashi's `actions/` and `executor/` — inert. `target_stem` is the exception: `updateLogLink.ts:47-48` composes it into a literal `[[…]]` written into the daily note. The conclusion is unchanged, but the handoff must point at the wire builder, not `render_actions.py`'s emission — the earlier citation would have sent someone to the wrong file. |
 
 ## Context
 
@@ -158,12 +160,22 @@ Tomo's client flattens it for its own convenience.
 
 ### Hashi
 
-The wire never sees the internal key: `render_helpers._stem()` (`:12-18`) flattens every
-emitted `source_stem`/`target_stem` to a bare filename at the emission boundary
-(`render_actions.py:857,873,888`), and Hashi's schema types both as unconstrained strings
-(`instructions.schema.json:170,189`). So no schema change and no contract change.
+The Pass-2 instruction path never sees the internal key: `render_helpers._stem()`
+(`:12-18`) flattens every emitted `source_stem`/`target_stem` to a bare filename at the
+emission boundary (`render_actions.py:857,873,888`). On that path `source_stem` has zero
+consumers in Hashi; `target_stem` is used, composed into a literal `[[…]]` line written
+into the daily note (`updateLogLink.ts:47-48`).
 
-Two same-stem items nevertheless produce indistinguishable values there, and Hashi joins on
-that field (`forceAtomicSync.ts:47`, whose own comment says "the wire has no other" key) and
-renders it as a clickable note link (`DailyTab.ts:229`). Behavioural, sibling-component —
-hence the handoff decision above.
+The live join is elsewhere — on the **Pass-1 suggestions wire**
+(`tomo/schemas/suggestions-wire.schema.json`). `forceAtomicSync.ts:31,47` matches
+`suggestion.stem === stem` and `entry.source_stem === stem`, and `SuggestionsTab.ts:180-181`
+keys a second Map on `source_stem`; both are reached from real handlers
+(`SuggestionsTab.ts:693`, `DailyTab.ts:313`). The wire's daily-log entries carry no id and
+no suggestion id, so that string genuinely is the only link, as the file's own comment says.
+Stems are also rendered as clickable links resolved through Obsidian
+(`openNote.ts:24-25`), whose own comment already records bare-name ambiguity as an accepted
+limitation of the current version.
+
+So: no schema change, no contract change — but two same-stem items produce indistinguishable
+values on that wire, widening a limitation the sibling component already knows it has. Hence
+the handoff, aimed at the wire builder rather than the executor emission.

@@ -39,7 +39,7 @@ version: "1.0"
 | title | Recursive inbox discovery |
 | status | IN_REVIEW |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 21 |
+| acceptanceCriteria | 24 |
 
 ---
 
@@ -187,6 +187,14 @@ overwrote the other's result, or that the wrong one was marked as captured in th
   - [ ] Given the same two notes both approved, When the coverage audit runs, Then it
         accounts for two items, not one — it must not report full coverage by collapsing
         them
+  - [ ] Given a note at `100 Inbox/Places/Dresden.md` with no explicit title, When the
+        suggestions document is rendered, Then its suggested name reads `Dresden` — never a
+        path-derived string
+  - [ ] Given the same note, When the suggestions document is rendered, Then its source
+        link reads `[[Dresden]]` — never a path-derived string
+  - [ ] Given the same note, When it is approved and applied, Then the note created in the
+        vault is titled from the filename or its own frontmatter, never from the internal
+        identifier
 
   *Business context: today the per-item result file, the append-only run state, and the
   coverage audit are all addressed by bare filename. The last criterion is deliberately
@@ -285,10 +293,12 @@ sharing input.
 - **A subfolder exclusion mechanism.** None exists for the inbox today, and attachment
   folders contain no notes, so it would be new surface for a problem that has not occurred.
   *(Decision: 2026-09-06.)*
-- **Changes to how Hashi resolves a source note.** Two same-named notes still produce
-  indistinguishable source references at the boundary, which affects a sibling component's
-  linking and matching. That is being handed off rather than solved here. *(Decision:
-  2026-09-06.)*
+- **Changes to how the sibling component resolves a source note.** Two same-named notes
+  still produce indistinguishable source references, which affects that component's linking
+  and its matching between a suggestion and a daily-log entry. Handed off rather than solved
+  here. Note that the component's own code already records bare-name ambiguity as an
+  accepted limitation of its current version — the handoff tells its owner that the
+  limitation got wider, it does not report a new defect. *(Decision: 2026-09-06.)*
 - **Bounding the in-memory size of a directory listing.** The vault gateway pages its
   responses correctly; the client merges all pages eagerly. That is a pre-existing
   consumer-side memory characteristic, not introduced by this feature.
@@ -322,14 +332,23 @@ the whole inbox subtree, and that the name of that thing says what it is.
   consulting run state — the same note yields the same identifier in Pass 1 and Pass 2.
 - Rule 3: Where the pipeline stores per-item output as a file, the filename must be safe on
   the filesystem and must not collide for two distinct notes.
-- Rule 4: The field carrying this identifier must be named for what it holds. It currently
-  says "stem", meaning a bare filename; if it no longer holds a bare filename it must be
-  renamed. *(Decision: 2026-09-06 — accepted with its versioning cost.)*
-- Rule 5: Where an identifier is passed to another component that expects a bare filename,
+- Rule 4: The identifier that makes items distinct and the text shown to the user must be
+  two separate things. Today one field does both jobs, and they look like one job only
+  because a flat folder makes a filename unique. They must be split: a distinct identifier
+  for addressing, and a plain filename for anything a person reads.
+- Rule 5: No user-visible text may be derived from the addressing identifier. Note titles
+  and the source links in the review document must continue to read as plain filenames.
+  *(Decision: 2026-09-06 — the field is renamed rather than repurposed, accepted with its
+  versioning cost. Splitting is the form that decision has to take, because the existing
+  field feeds both a machine join and a rendered title.)*
+- Rule 6: Where an identifier is passed to another component that expects a bare filename,
   it must still be a bare filename at that boundary. This spec does not change what other
   components receive.
-- Rule 6: When the pipeline cannot address a source note unambiguously, it must decline the
+- Rule 7: When the pipeline cannot address a source note unambiguously, it must decline the
   operation rather than choose. Silence is preferable to a wrong write.
+- Rule 8: Every stage that derives the addressing identifier must derive it the same way.
+  Two stages computing it differently would reintroduce, in a harder-to-see form, the exact
+  defect fixed in #165 — a proposal that parses correctly into a lookup nothing then reads.
 
 **Edge Cases:**
 
@@ -342,6 +361,10 @@ the whole inbox subtree, and that the name of that thing says what it is.
 - A run interrupted between Pass 1 and Pass 2, with per-item output from an older run still
   present → Expected: stale output from a previous run is not mistaken for this run's, and
   a missing item is reported rather than skipped in silence.
+- The identifier's format changes between Pass 1 and a later Pass 2 within the same session
+  → Expected: the affected item is reported as missing. Today this path skips silently, so
+  an item would simply vanish from the run with no message — this must become a report, not
+  a gap.
 - A subfolder note and a root note with the same name → Expected: treated as two items, no
   precedence given to the root one.
 - The same note discovered twice within one run → Expected: one item, not two.
@@ -425,6 +448,7 @@ entries use.
 | The identifier rename is applied to some artefacts and not others | High — a partial rollout fails silently rather than loudly, because nothing validates the shape | Medium | Change every carrier together in one step; a validation gate should reject the old field name rather than tolerating both |
 | Recursion widens name-based matching elsewhere in ways not yet found | Medium | Low — the known cases are enumerated, but the enumeration may be incomplete | Search for name-based matching as a class during design, not just the known instances |
 | The sibling component's own matching becomes ambiguous for clashing names | Low — display and linking, not data loss | Medium | Handed off so the owning component can decide; documented as a known limitation here |
+| An item silently vanishes when per-item output written before a change is looked up after it | Medium — a note disappears from a run with no message | Medium — the window exists whenever the format changes mid-session, and the lookup already skips missing files without warning | Make the missing-file case report rather than skip; cover it with a test that exercises the window directly |
 | Live validation is skipped and the feature ships unproven | High — this exact failure produced spec 031's fixture error | Low — the recent precedent is fresh | The spec is not complete until a live run over a real subfolder note passes |
 
 ## Open Questions

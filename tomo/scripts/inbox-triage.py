@@ -526,8 +526,8 @@ def check_audio(audio_files: list[dict], md_files: list[dict]) -> bool:
     """True if uncached audio files exist (audio without sibling .md).
 
     Pairing keys on containing folder plus stem, not stem alone — recursive
-    discovery (#93/T3.2) means a namesake note elsewhere in the tree must
-    never satisfy an audio file it does not actually sit beside.
+    discovery (spec 034 T3.2) means a namesake note elsewhere in the tree
+    must never satisfy an audio file it does not actually sit beside.
     """
     if not audio_files:
         return False

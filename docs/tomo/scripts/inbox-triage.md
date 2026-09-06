@@ -171,16 +171,42 @@ itself was NOT changed (the rename aligns to what it already expects). Pinned by
 
 ## Attachment detection/resolution, and why the resolved map is a FILE (spec 031)
 
-WHY `build_attachment_index` (Step 2b) is a second, independent `listDir` call rather
-than folding into the existing depth=1 partition listing (Step 1): the partition
-listing is shallow (direct children only) and exists to bucket inbox files by
-type; resolving an embed correctly requires a RECURSIVE view of the whole inbox
-subtree, since the observed real-world case is a note in one subfolder embedding
-an attachment in another (`100 Inbox/Places/note.md` → `100 Inbox/Images/karte.jpg`).
-Reusing or widening the partition call would change its depth semantics for
-every existing caller; a separate call keeps both call sites' contracts
-unchanged and costs exactly one extra call per run, independent of note or
-embed count.
+WHY `build_attachment_index` (Step 2b) was ORIGINALLY a second, independent `listDir`
+call (spec 031): the partition listing (Step 1) was shallow — direct children only —
+and existed to bucket inbox files by type, while resolving an embed correctly requires a
+RECURSIVE view of the whole inbox subtree, since the observed real-world case is a note in
+one subfolder embedding an attachment in another (`100 Inbox/Places/note.md` →
+`100 Inbox/Images/karte.jpg`). Widening the partition call would have changed its depth
+semantics for every existing caller, so a separate call kept both contracts unchanged at a
+cost of exactly one extra call per run, independent of note or embed count.
+
+WHY it is now ONE shared listing (spec 034, ADR-3, 2026-09-06): that "changed depth
+semantics for every existing caller" objection was the whole POINT of spec 034 — making
+discovery recursive is the feature, not a side effect. Once the partition recurses too,
+the two calls fetch byte-identical data, and the second one is pure waste.
+`discover_files` makes the single call and returns the raw listing (folders and every
+suffix included, deliberately — `build_inbox_index` does its own filtering);
+`build_attachment_index` takes that listing instead of a client. Base Kado calls fall
+3 → 2. The precondition was spec 034 T3.1: the two consumers used to disagree about what
+a `listDir` entry naming a file is, and had to be unified on `is_file_entry` before they
+could safely read the same input.
+
+WHY the attachment index no longer fails open on a `KadoError` (also spec 034 ADR-3):
+while the index had a listing of its own, losing it cost only attachment resolution — the
+partition had its own call and the run carried on degraded. That call is now the run's
+ONLY inbox listing, so losing it leaves no partition either. Degrading to an empty listing
+would report an EMPTY INBOX rather than an outage — strictly worse than failing, and
+invisible to the user. So the error propagates and `main()` exits 1, exactly as the
+partition's own listing failure always did. Pinned by
+`test_kado_error_on_the_listing_aborts_the_run` and
+`test_kado_error_on_the_listing_exits_1_rather_than_reporting_an_empty_inbox`.
+
+WHY recursion does NOT change the `#93` partition: that decision is by SUFFIX — a `.png`
+is a terminal artifact outside the frontmatter-driven lifecycle wherever it sits. Recursion
+changes WHERE files are found, never WHAT counts as an item, so a subfolder `.png` is
+classified exactly as a root-level one. Pinned by
+`test_subfolder_png_is_classified_exactly_as_a_root_png`, which asserts both in the same
+run so the test states the invariant rather than two separate facts.
 
 WHY embed extraction (Step 2c, `resolve_inbox_attachments`) calls
 `client.list_notes(inbox_path, fields=["links"])` rather than

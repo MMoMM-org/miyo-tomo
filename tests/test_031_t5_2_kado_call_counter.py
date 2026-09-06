@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t5_2_kado_call_counter.py — spec 031 T5.2 corrected _count_kado_calls.
 
 `_count_kado_calls` claimed "1 listDir + 7 byFrontmatter + N body reads" but
@@ -10,11 +10,13 @@ tag-handler registry is non-empty), and `_cache_wire_sibling`
 (read_file_bytes, one per garden-audit doc seen PLUS one per approved
 suggestions/suggestions-fan doc — four call sites in read_approval_state).
 
-The base is 3, not 2: T5.1's recursive listDir (the attachment index) AND
-its listNotes(fields=["links"]) call (ADR-2, corrected — embed extraction
-reads Kado's own metadataCache, since inbox-triage never has a note body to
-run a regex against) both landed in the same phase as this fix, so the
-formula accounts for both from the start.
+The base was 3 when this fix landed: T5.1's recursive listDir (the
+attachment index) AND its listNotes(fields=["links"]) call (ADR-2, corrected
+— embed extraction reads Kado's own metadataCache, since inbox-triage never
+has a note body to run a regex against) arrived in the same phase, so the
+formula accounted for both from the start. Spec 034 ADR-3 then collapsed the
+partition listDir and the attachment-index listDir into one shared recursive
+listing, bringing the base to 2.
 
 Every test here counts the corrected function's output against
 `len(client.calls)` — the fake client's own observed invocation log — never
@@ -285,10 +287,10 @@ def test_wire_sibling_reads_force_pass2_terminal_approved_site_counted(tmp_path)
     assert ("read_file_bytes", {"path": terminal_path[:-3] + ".json"}) in client.calls
 
 
-def test_t5_1_calls_are_included_in_the_base(tmp_path):
-    """The base count reflects ALL THREE T5.1 calls: the existing depth=1
-    listDir, the recursive attachment-index listDir, and the listNotes
-    embed-extraction call (ADR-2, corrected) — not just the original one."""
+def test_base_calls_are_the_shared_listing_plus_list_notes(tmp_path):
+    """The base count reflects both remaining base calls: the ONE recursive
+    listDir shared by the partition and the attachment index (spec 034
+    ADR-3), and the listNotes embed-extraction call (ADR-2, corrected)."""
     mod = _load_module()
     client = _FullFakeClient(
         listdir_items=[],
@@ -307,6 +309,6 @@ def test_t5_1_calls_are_included_in_the_base(tmp_path):
 
     list_dir_calls = [c for name, c in client.calls if name == "list_dir"]
     list_notes_calls = [c for name, c in client.calls if name == "list_notes"]
-    assert len(list_dir_calls) == 2
+    assert len(list_dir_calls) == 1
     assert len(list_notes_calls) == 1
-    assert mod._count_kado_calls(state) == len(client.calls) == 10
+    assert mod._count_kado_calls(state) == len(client.calls) == 9

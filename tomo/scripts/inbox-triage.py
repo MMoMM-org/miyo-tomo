@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.33.1
+# version: 0.34.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -167,11 +167,16 @@ def resolve_inbox_path(cli_inbox_path: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 def discover_files(client, inbox_path: str) -> tuple[list[dict], list[dict], list[dict]]:
-    """listDir inbox, partition into audio_files and md_files.
+    """Recursively listDir the inbox subtree, partition into audio_files and md_files.
+
+    The listing recurses without a depth limit, so a note at any depth below
+    the inbox root is an item. It is also the run's ONLY inbox listing: the
+    returned all_files is handed to build_attachment_index unchanged (ADR-3),
+    which is why it stays raw — folder entries and every suffix included.
 
     Returns (all_files, audio_files, md_files).
     """
-    all_files = client.list_dir(inbox_path, depth=1)
+    all_files = client.list_dir(inbox_path)
     audio_files = []
     md_files = []
 
@@ -199,24 +204,16 @@ def discover_files(client, inbox_path: str) -> tuple[list[dict], list[dict], lis
 # Step 2b: recursive attachment index (ADR-1, spec 031)
 # ---------------------------------------------------------------------------
 
-def build_attachment_index(client, inbox_path: str) -> dict[str, list[str]]:
-    """One recursive listDir of the inbox subtree, indexed by basename.
+def build_attachment_index(listing: list[dict] | None) -> dict[str, list[str]]:
+    """Index the run's inbox listing by basename.
 
-    A second, independent call from the existing depth=1 partition listing —
-    it does not replace or narrow that call, and its own cost is exactly one
-    call per run regardless of note or embed count. Fail-open: a KadoError
-    degrades to an empty index rather than raising, so the run continues
-    without attachment resolution downstream.
+    Takes the listing discover_files already fetched rather than making a
+    call of its own (ADR-3, spec 034): both consumers read the same recursive
+    subtree, so the index costs zero Kado calls. A listing failure is now
+    fatal upstream in discover_files — as it always was for the partition
+    half — instead of degrading to an empty index; there is no run left to
+    continue when the inbox cannot be listed at all.
     """
-    try:
-        listing = client.list_dir(inbox_path)
-    except KadoError as exc:
-        print(
-            f"[inbox-triage] WARNING: recursive list_dir failed for "
-            f"{inbox_path!r}: {exc} — attachment index empty, run continues",
-            file=sys.stderr,
-        )
-        return {}
     return build_inbox_index(listing)
 
 
@@ -1037,13 +1034,14 @@ def discover(
     """
     inbox_path = inbox_path.rstrip("/") + "/"
 
-    # Step 2: discover files
+    # Step 2: discover files — ONE recursive listDir, the run's only inbox
+    # listing (ADR-3, spec 034).
     all_files, audio_files, md_files = discover_files(client, inbox_path)
 
-    # Step 2b: recursive attachment index (ADR-1) — ONE additional listDir,
-    # independent of note/embed count (CON-4). Purely internal: resolution
-    # (step 2c) consumes it within this same call, so nothing is persisted.
-    attachment_index = build_attachment_index(client, inbox_path)
+    # Step 2b: attachment index (ADR-1) over that same listing — no call of
+    # its own. Purely internal: resolution (step 2c) consumes it within this
+    # same call, so nothing is persisted.
+    attachment_index = build_attachment_index(all_files)
 
     # Step 2c: extraction + resolution (ADR-2, corrected). listNotes' own
     # metadataCache — not attachment_index.extract_attachment_embeds' regex —
@@ -1745,9 +1743,9 @@ def main(
 def _count_kado_calls(state: TriageState) -> int:
     """Estimate Kado call count from state (ADR-4, spec 031, corrected).
 
-    3 base calls (the existing depth=1 partition listDir, T5.1's recursive
-    attachment-index listDir, and T5.1's listNotes(fields=["links"]) embed
-    extraction — ADR-2, corrected) + 7 byFrontmatter + N per-item reads:
+    2 base calls (the one recursive listDir that feeds both the partition and
+    the attachment index — ADR-3, spec 034 — and the listNotes(fields=["links"])
+    embed extraction, ADR-2 corrected) + 7 byFrontmatter + N per-item reads:
 
       - instructions_frontmatter_reads: one read_frontmatter per instructions
         hit (enrich_instructions_frontmatter) — an unconditional loop, so
@@ -1776,7 +1774,7 @@ def _count_kado_calls(state: TriageState) -> int:
         + len(state.pending_approval)
     )
     return (
-        3
+        2
         + 7
         + len(state.instructions_hits)
         + state.tag_handler_reads

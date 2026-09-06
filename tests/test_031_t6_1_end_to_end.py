@@ -96,12 +96,12 @@ def _note_entry(path: str, embed_targets: list[str]) -> dict:
 
 
 class _FakeClient:
-    """Only what build_attachment_index/resolve_inbox_attachments call.
+    """Only what the ADR-1 chain calls.
 
     depth=1 deliberately returns EMPTY — this fixture's notes and images
     both live in subfolders (Places/, Images/), never at the inbox root, so
-    a regression that resolves against the depth=1 listing instead of the
-    real recursive one would find nothing and this fixture would catch it.
+    a regression that re-introduces a depth ceiling on the listing (spec 034
+    ADR-3 removed it) would find nothing and this fixture would catch it.
     A fake that returned recursive_items regardless of depth would let that
     exact class of bug through undetected.
     """
@@ -122,7 +122,9 @@ class _FakeClient:
 def _resolve_and_persist(tmp_path: Path, recursive_items: list[dict], notes: list[dict]) -> Path:
     """Runs the real ADR-1 chain and writes resolved-attachments.json."""
     client = _FakeClient(recursive_items, notes)
-    index = triage.build_attachment_index(client, INBOX_PATH)
+    # ADR-3 (spec 034): one recursive listing feeds both consumers; the index
+    # is built from that listing, not from a call of its own.
+    index = triage.build_attachment_index(client.list_dir(INBOX_PATH))
     resolutions = triage.resolve_inbox_attachments(client, INBOX_PATH, index)
     out_path = tmp_path / "resolved-attachments.json"
     out_path.write_text(json.dumps(resolutions), encoding="utf-8")

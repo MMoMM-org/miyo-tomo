@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.26.0
+# version: 0.27.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # noqa: E402
 from lib.supporting_items import (  # noqa: E402
     union_supporting_items as _union_supporting_items,
 )
+from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402
 
 
@@ -255,6 +256,22 @@ def _stem_lower(src: str | None) -> str:
     if bare.endswith(".md"):
         bare = bare[:-3]
     return bare.strip().lower()
+
+
+def _item_key_of(src: str | None) -> str:
+    """Item identity for the Force-Atomic reconciliation join (ADR-1).
+
+    The daily-log path (`source_stem` on a log_entry) and the primary/
+    resolve-doc path (`source_path` on a parsed section) both derive
+    identity through this one module-level function — the vault-relative
+    path verbatim, via `lib.item_key.derive`. No basename extraction, no
+    lowercasing: letting the two paths diverge reopens #165 in a form its
+    original regression test does not exercise (see
+    docs/tomo/scripts/suggestion-parser.md).
+    """
+    if not src:
+        return ""
+    return derive_item_key(src)
 
 
 def build_from_wire(wire: dict, moc_template: str) -> dict:
@@ -1968,19 +1985,10 @@ def main() -> int:
     skipped_items: list[dict] = []
     total_sections = len(raw_sections)
 
-    def _stem_of(src: str | None) -> str:
-        """Lowercase stem for source_path/source_stem matching — handles
-        paths with folders, .md suffixes, and wikilink aliases."""
-        if not src:
-            return ""
-        bare = src.rsplit("/", 1)[-1]
-        if bare.endswith(".md"):
-            bare = bare[:-3]
-        return bare.strip().lower()
-
-    # Keep parsed sections by stem so the Force-Atomic reconciliation pass
-    # can promote unapproved items later. A single rendered section can carry
-    # N atomic blocks (F-41), so the map is stem → list of per-block items.
+    # Keep parsed sections by item key (`_item_key_of`, module-level) so the
+    # Force-Atomic reconciliation pass can promote unapproved items later. A
+    # single rendered section can carry N atomic blocks (F-41), so the map is
+    # item_key → list of per-block items.
     parsed_sections: list[dict] = []
     sections_by_stem: dict[str, list[dict]] = {}
 
@@ -2019,7 +2027,7 @@ def main() -> int:
             continue
 
         parsed_sections.append(item)
-        stem_key = _stem_of(item.get("source_path"))
+        stem_key = _item_key_of(item.get("source_path"))
         if stem_key:
             sections_by_stem.setdefault(stem_key, []).append(item)
 
@@ -2153,7 +2161,7 @@ def main() -> int:
             # hasn't accepted the proposal yet.
             if not item.get("approved"):
                 continue
-            stem_key = _stem_of(item.get("source_path"))
+            stem_key = _item_key_of(item.get("source_path"))
             if stem_key:
                 resolve_sections_by_stem.setdefault(stem_key, []).append(item)
 
@@ -2169,14 +2177,14 @@ def main() -> int:
     for d in daily_updates:
         for le in d.get("log_entries", []):
             if le.get("force_atomic_note"):
-                stem = _stem_of(le.get("source_stem"))
+                stem = _item_key_of(le.get("source_stem"))
                 if stem:
                     force_atomic_stems.append((stem, le))
 
     promoted = 0
     from_resolve = 0
     pending_fan_resolutions: list[dict] = []
-    already_in = {_stem_of(c.get("source_path")) for c in confirmed_items}
+    already_in = {_item_key_of(c.get("source_path")) for c in confirmed_items}
     # Track per-block confirmations by id so a stem with N atomic blocks can
     # have some user-approved and the rest FAN-promoted without duplication.
     confirmed_ids = {c.get("id") for c in confirmed_items}
@@ -2243,7 +2251,7 @@ def main() -> int:
             already_in.add(stem)
             skipped_items[:] = [
                 s for s in skipped_items
-                if _stem_of(s.get("source_path")) != stem
+                if _item_key_of(s.get("source_path")) != stem
             ]
             continue
 
@@ -2268,7 +2276,7 @@ def main() -> int:
             # Drop the matching skipped entry (if any) so counts stay clean.
             skipped_items[:] = [
                 s for s in skipped_items
-                if _stem_of(s.get("source_path")) != stem
+                if _item_key_of(s.get("source_path")) != stem
             ]
         else:
             # Branch (c): no matching section anywhere. Record the item so
@@ -2305,7 +2313,7 @@ def main() -> int:
     for sec in parsed_sections:
         if not sec.get("force_atomic"):
             continue
-        stem = _stem_of(sec.get("source_path"))
+        stem = _item_key_of(sec.get("source_path"))
         if not stem or stem in already_in or stem in seen_pending:
             continue
 
@@ -2325,7 +2333,7 @@ def main() -> int:
             already_in.add(stem)
             skipped_items[:] = [
                 s for s in skipped_items
-                if _stem_of(s.get("source_path")) != stem
+                if _item_key_of(s.get("source_path")) != stem
             ]
             continue
 
@@ -2341,7 +2349,7 @@ def main() -> int:
         })
         # Remove from skipped (it's being force-atomic'd, not skipped).
         skipped_items[:] = [
-            s for s in skipped_items if _stem_of(s.get("source_path")) != stem
+            s for s in skipped_items if _item_key_of(s.get("source_path")) != stem
         ]
 
     if promoted:
@@ -2368,16 +2376,16 @@ def main() -> int:
     # FINAL confirmed-item ids so _build_link_to_moc_actions emits the child
     # links into the new MOC. Strip the internal helper fields afterwards.
     _stem_to_id = {
-        _stem_of(c.get("source_path")): c.get("id")
+        _item_key_of(c.get("source_path")): c.get("id")
         for c in confirmed_items
         if c.get("source_path") and c.get("id")
     }
     for c in confirmed_items:
         if c.get("action") == "create_moc":
             ids = [
-                _stem_to_id[_stem_of(s)]
+                _stem_to_id[_item_key_of(s)]
                 for s in (c.get("member_stems") or [])
-                if _stem_of(s) in _stem_to_id
+                if _item_key_of(s) in _stem_to_id
             ]
             if ids:
                 c["supporting_items"] = ", ".join(ids)

@@ -250,7 +250,9 @@ def test_fan_without_section_no_resolve_populates_pending(tmp_path):
 
     pending = out.get("pending_fan_resolutions") or []
     assert len(pending) == 1, f"expected 1 pending, got {pending}"
-    assert pending[0]["stem"] == "furano", pending[0]
+    # spec 034 T2.6: item identity is the source path verbatim (ADR-1) — no
+    # lowercasing — so the parked stem keeps its original casing.
+    assert pending[0]["stem"] == "Furano", pending[0]
     # The log entry carries an inline summary — ensure it flowed through.
     assert "furano" in pending[0]["log_entry_summary"].lower() or \
            "biei" in pending[0]["log_entry_summary"].lower(), pending[0]

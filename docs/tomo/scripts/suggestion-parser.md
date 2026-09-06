@@ -307,3 +307,44 @@ rather than raising. That is why the test asserts the key is *present and
 empty* for an item with no attachments, not merely that the populated cases
 work — an absent key would otherwise pass every positive assertion by
 accident.
+
+## One derivation function replaces `_stem_of` (spec 034 T2.6, v0.27.0)
+
+WHY `_stem_of` had to go: it lowercased and stripped every `source_path` /
+`source_stem` down to a bare filename before using it as a join key —
+`sections_by_stem`, `already_in`, `seen_pending`, the `force_atomic_stems`
+match in the daily-log loop, and the final MOC-member → confirmed-id binding
+all keyed on that bare, lowercased stem. Two notes with the same filename in
+different subfolders collapsed to one key at every one of those sites: one
+namesake's Force Atomic tick could silently sweep in or suppress the other,
+and a proposed MOC's member binding could resolve to whichever namesake
+happened to iterate last. Recursive inbox discovery (spec 034) makes that
+collision reachable for the first time — a flat inbox can't have two notes
+share a name.
+
+WHY one module-level function, not a `main()`-local closure: `_stem_of` lived
+inside `main()` purely as an implementation convenience — it has no closure
+state. Hoisting `_item_key_of` to module scope makes both call sites
+(the daily-log `source_stem` path and the primary/resolve-doc `source_path`
+path) provably the same callable, which is the exact invariant #165's fix
+depends on (see the section above): if the two paths ever compute identity
+differently again, #165's livelock returns in a form the original,
+flat-fixture regression test cannot see. `tests/test_034_t2_6_parser_single_
+derivation.py` re-proves #165 against a subfolder source for this reason.
+
+WHY the value is now the path verbatim, not a re-derived stem: ADR-1 (spec
+034) defines the item key as the vault-relative path, unmodified — no slug,
+no hash, no lowercasing. `_item_key_of` just guards `None`/empty and
+delegates to `lib.item_key.derive`. A visible side effect: `pending_
+fan_resolutions[].stem` and similar internal fields now carry the source's
+original casing instead of a lowercased stem — existing tests asserting a
+lowercased literal there were updated to match (they were pinning `_stem_of`'s
+incidental lowercasing, not a documented contract).
+
+WHY `_stem_lower` (a byte-similar duplicate a few hundred lines above,
+serving `build_from_wire`'s ADR-026 JSON-only path) was left untouched: that
+join keys on `w.get("stem")`, the wire's deliberately-bare display stem
+(CON-4) — collapsing it into `_item_key_of` would need the wire to carry
+`item_key` first, which is T2.3b's change, not this one. Same bug shape,
+different prerequisite; noted here rather than silently left for someone to
+rediscover.

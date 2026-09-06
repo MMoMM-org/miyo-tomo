@@ -281,3 +281,44 @@ while a recorder happily produces them (e.g. `Rec 2026-01-02 14:30.m4a` pairs wi
 `Rec 2026-01-02 14-30.md`). **Do not symmetrise or drop this sanitisation** — audio
 to transcript sibling matching has already broken here once on exactly a raw `:`
 vs `-` mismatch, and the consequence was an infinite transcribe loop.
+
+## Force-Atomic items are resolved to their own note (spec 034, T4.1)
+
+WHY `_extract_fan_items` / `_extract_fan_items_from_wire` resolve a path at all
+(v0.35.0): `force_atomic_items[*]` is consumed by
+`force-atomic-handling/SKILL.md`, which dispatches `inbox-analyst` against the
+note the checkbox names. It used to rebuild that path as `<inbox_path>/<stem>.md`
+— correct only while the inbox was flat, and a file that does not exist for every
+subfolder note once discovery went recursive. The path now comes from here, where
+the run's inbox listing is in scope, instead of being guessed at the far end of
+the pipeline.
+
+WHY `_resolve_fan_note` narrows the way `resolve_attachments` narrows an embed
+target — basename first, then the path suffix when the reference carries one:
+these are the same problem (a wikilink that may or may not be path-qualified,
+against one listing), and two derivations of one rule is how PRD Business Rule 9
+gets violated. It also means the resolver already accepts the path-qualified
+`[[100 Inbox/Places/Dresden|Dresden]]` form that T5.1 will start emitting.
+
+WHY zero matches and two matches both decline rather than pick: with two
+same-named inbox notes, `Source: [[Dresden]]` genuinely does not say which one is
+meant, and first-match-wins would silently rebuild the collision this spec exists
+to remove — writing a proposal from the wrong note's content. PRD Business Rule 7
+governs: decline rather than choose. Zero matches means the note is gone (moved,
+renamed, consumed), and inventing a path for it is where this defect started.
+
+WHY the decline is printed to stderr with the `[triage]` prefix rather than
+dropped: an approved item that is never built, with nobody told, is the same
+class of defect as building the wrong one. The line names the review document,
+the reference and the candidate count, so the user can rename a note or
+path-qualify the link. Same channel, same prefix as the unresolved/ambiguous
+attachment-embed reports above.
+
+WHY the wire path prefers a suggestion's own `item_key` over resolution:
+`suggestions-wire.schema.json` already requires it, and it is exact — two
+suppressed suggestions sharing a stem stay two items, where any stem-keyed join
+would collapse them. Only a daily `log_entries[]` entry, which carries just
+`source_stem`, needs resolving; it joins to a suggestion of that stem when
+exactly one exists (keeping #165's invariant that the daily-log path and the
+suggestion path yield one identity) and falls back to the listing otherwise.
+Deduplication moved from the stem to the resolved path for the same reason.

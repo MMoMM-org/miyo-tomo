@@ -245,23 +245,27 @@ phase: 5
   changes what source links carry, so decide deliberately whether to make both paths agree on
   `None` rather than inheriting the divergence.
 
-  **Inherited from Phase 2 — this task closes the markdown path's identity gap.** T2.3b closed the
-  coverage-audit collapse for the ADR-026 **wire** path by threading `item_key` into
-  `confirmed_items` in `build_from_wire` (`suggestion-parser.py:267`). The **markdown** path —
-  `main()` at `:1854`, which `synthesis-conductor.md` actually invokes as
-  `--file <CACHE_PATH>` in the normal flow — mints no `item_key` at any of its four
-  `confirmed_items.append` sites (`:2034`, `:2247`, `:2272`, `:2330`), because the rendered document
-  carries only a bare display stem and a path cannot be recovered from one.
+  **Superseded 2026-09-06 — T5.0 already closed the identity half of this.** This block used to
+  say the markdown path minted no `item_key` and that T5.1 would fix it. That is no longer true and
+  chasing it would redo solved work:
 
-  Path-qualifying the source link on collision is exactly what this task does, so it is also what
-  makes the markdown path's identity recoverable. When it lands:
-  - Thread the qualified path into `confirmed_items` as `item_key` on the markdown path too, using
-    the module-level `_item_key_of` — no second derivation.
-  - Re-run T2.7's adversarial case through the **markdown** path (two confirmed items for
-    `100 Inbox/Places/Dresden.md` and `100 Inbox/Reise/Dresden.md`, one with a duplicated
-    `move_note`, one with none) and assert the audit **reports the missing item**. Through the wire
-    path this already returns `RESULT: FAIL … RC=1`; through the markdown path it still returns
-    `RESULT: OK … RC=0` today.
+  - `suggestion-parser.py` `main()` now mints `item_key` at all four `confirmed_items.append` sites
+    (`:2034`, `:2247`, `:2272`, `:2330`) by joining the suggestions document on the suggestion id.
+    The rendered document is still lossy, but it is not the only input — `synthesis-conductor.md:105`
+    already passes `--suggestions-doc`, and the doc carries the path keyed by the id the markdown
+    heading shows.
+  - T2.7's adversarial case now **passes through the markdown path**. T2.8's
+    `TestKnownLimitMarkdownPathMintsNoKey` became `TestMarkdownPathAlsoCarriesTheKey`, a positive
+    value trace asserting two `[[Dresden]]` namesakes bind **distinct** keys. It previously returned
+    `RESULT: OK … RC=0` on that path; it does not any more.
+  - The join **refuses to guess**: an edited `Source:` line whose stem no longer matches its id
+    binds no key at all rather than binding the wrong one.
+
+  **What remains for this task is the display half, and only that.** Identity is solved; two
+  suggestions for two different `Dresden` notes still render as `[[Dresden]]` twice, so the user
+  cannot tell them apart in the document they approve. That is what path-qualifying on collision
+  fixes, and it is a `stem`-side, display-only change (ADR-2) — do **not** put a path into an
+  identity field or take one out of `item_key` to achieve it.
 
   1. **Prime**: Read the display sites in `suggestions-reducer.py` — enumerate them yourself
      rather than working from a count `[ref: SDD/Implementation Gotchas]`. Read the verified

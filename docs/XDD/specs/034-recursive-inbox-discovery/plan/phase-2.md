@@ -129,6 +129,27 @@ rather than loudly, which is why T2.8 exists.
 
 - [ ] **T2.3b The wire projection carries the key** `[activity: backend]`
 
+  **Extended 2026-09-06 — this task owns the consumer too, not just the producer.** T2.6 re-keyed
+  the Force-Atomic reconciliation onto `item_key` at 13 sites, but could not reach
+  `suggestion-parser.py`'s `_stem_lower` (`:251`), which serves `build_from_wire`'s ADR-026
+  wire-edit path and joins on the wire's deliberately bare `stem`. `_stem_lower` does
+  `rsplit("/")[-1]` **and** `.lower()` — the full collapse — and drives `stem_to_id` member-id
+  binding at `:388`, `:395`, `:397`. Two same-named notes therefore bind a MOC member to the wrong
+  item: the exact defect T2.6 fixed, surviving in the one path it had no key for.
+
+  T2.6 was correct to leave it — the wire carried no `item_key` until this task. Now that it does,
+  **this task must re-key that consumer**:
+  - Route `:388`, `:395`, `:397` onto the wire's `item_key` via the module-level `_item_key_of`
+    T2.6 hoisted. Do not write a second derivation — one function, per the SDD gotcha.
+  - Add a test proving a MOC member binds to the source that justified it, not to a namesake,
+    **through the wire path** specifically.
+  - Leave the wire's `stem` bare and untouched: CON-4, it is what Hashi joins on.
+  - If `_stem_lower` has no remaining caller afterwards, remove it; if it still serves display, keep
+    it and say which uses remain.
+
+  Adding `item_key` to the wire without re-keying its consumer would leave a field nothing reads —
+  the spec 031 failure this plan is sequenced to avoid.
+
   Added 2026-09-06 at the Phase 2 boundary. `suggestions-render.py` is a live pipeline stage
   (`suggest-handling/SKILL.md:108`, `force-atomic-handling/SKILL.md:92`) that projects the
   suggestions document to `suggestions-wire.json`, but it is named in no SDD directory-map row

@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Thread the key through the pipeline"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 2
 ---
@@ -92,6 +92,33 @@ rather than loudly, which is why T2.8 exists.
   5. **Success**:
      - [ ] No result file can be overwritten by another item `[ref: PRD/AC Feature 2]`
      - [ ] A vanished item is now audible `[ref: PRD/Risks]`
+
+- [ ] **T2.3b The wire projection carries the key** `[activity: backend]`
+
+  Added 2026-09-06 at the Phase 2 boundary. `suggestions-render.py` is a live pipeline stage
+  (`suggest-handling/SKILL.md:108`, `force-atomic-handling/SKILL.md:92`) that projects the
+  suggestions document to `suggestions-wire.json`, but it is named in no SDD directory-map row
+  and no task. T2.8's gate requires the key at the **wire** boundary, so the phase cannot pass
+  without it.
+
+  1. **Prime**: Read `suggestions-render.py:277` (`_wire_note`) and `:314`
+     (`build_wire_payload`). Note `_wire_note` builds `{"id": sid, "stem": section["stem"], ...}`
+     and projects no identity field beyond `stem`.
+  2. **Test** (RED):
+     - a wire suggestion carries the `item_key` of the section it was projected from
+     - two sections sharing a `stem` project to two wire suggestions with distinct `item_key`
+     - the wire validates against `suggestions-wire.schema.json` `[ref: SDD/Data Storage Changes]`
+     - `stem` is still present and still the bare filename — the wire is what Hashi joins on
+       `[ref: SDD/CON-4]`
+  3. **Implement**: project `item_key` from the section in `_wire_note`. Change nothing else
+     about the wire's shape.
+  4. **Validate**: tests pass; `ruff` clean.
+  5. **Success**:
+     - [ ] These three known-red tests go green:
+           `test_031_t3_3_attachments_wire_projection.py::test_build_wire_payload_carries_attachments_and_validates`,
+           `test_suggestions_wire_emit.py::test_wire_conforms_to_schema`,
+           `test_suggestions_wire_emit.py::test_fan_doc_wire_conforms_to_schema`
+     - [ ] What Hashi joins on is unchanged `[ref: SDD/CON-4]`
 
 - [ ] **T2.4 Run state joins on the key** `[activity: backend]` `[parallel: true]`
 

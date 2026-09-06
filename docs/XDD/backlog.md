@@ -564,3 +564,20 @@ Action for anyone shipping this: say so in the release note — *"the first audi
 ask you to refresh the index before it offers broken-parent fixes; run `/explore-vault` once and the
 fixes come back, now with the right one offered for each situation."* One refresh clears it
 permanently.
+
+### `link_to_moc` per-item coverage is title-keyed (spec 034 residual)
+
+Found during spec 034 T2.7 review, 2026-09-06. `instructions-diff.py`'s `run_diff` uses
+`source_key = info["title"]` (~`:752`) to look up `actual["links_by_source"]` for the
+`link_to_moc` per-item coverage row. `title` falls back to the bare stem
+(`:225,255,268`), so two confirmed items that both default their title to the same
+filename merge in that coverage row — structurally identical to the `move_note` /
+`delete_source` collapse that spec 034 T2.7 fixed, but for `link_to_moc`.
+
+Not fixable within spec 034: `render_actions._build_link_to_moc_actions` (`:758-761`)
+emits only `source_note_title` and carries no `source_path` or `item_key` traceability
+field, so `instructions-diff.py` has nothing to key on. Closing it needs a renderer
+schema change to add that field, plus title disambiguation on collision.
+
+Narrower blast radius than the fixed case: needs two items sharing a filename *and*
+neither title user-edited.

@@ -152,6 +152,32 @@ rather than loudly, which is why T2.8 exists.
 
 - [ ] **T2.3b The wire projection carries the key** `[activity: backend]`
 
+  **Extended again 2026-09-06 — this task also closes T2.7's missing precondition.** T2.7's review
+  built the adversarial case and got a **full false pass** (`RESULT: OK — 3/3 actions reconciled`,
+  `RC=0`) for an item with no action at all. T2.7's code is correct; it simply has no real identity
+  to key on. The chain: `instructions-diff`'s expected key comes from
+  `confirmed_items[].source_path`, set at `suggestion-parser.py:324` to the wire's **bare,
+  extensionless `stem`**. A bare `"Dresden"` matches any `.../Dresden.md`, so two namesakes still
+  merge.
+
+  The reviewer concluded this waits for Phase 5's path-qualified source links. It does not — this
+  task is already putting `item_key` on the wire, so one more step closes it now:
+
+  - Carry the wire's `item_key` into `confirmed_items` at `suggestion-parser.py:324` — as a
+    dedicated `item_key` field, not by overwriting `source_path`, so display text stays display
+    text (ADR-2).
+  - Make `instructions-diff.derive_expected` prefer that `item_key` when present, falling back to
+    today's bare `source_path` when it is not. T2.7's `_keys_match` already tolerates both
+    conventions, so the transition is safe in either order.
+  - Add a test reproducing the reviewer's adversarial case — two confirmed items for
+    `100 Inbox/Places/Dresden.md` and `100 Inbox/Reise/Dresden.md`, one with a duplicated
+    `move_note` and one with none — and assert the audit **reports the missing item** rather than
+    `RESULT: OK`.
+  - **CON-4 check**: `confirmed_items` feeds `render_actions`, which emits to Hashi.
+    `render_helpers._stem()` (`:12-18`) flattens `source_stem`/`target_stem` at the emission
+    boundary, so the instruction set should be unchanged. **Verify that, do not assume it** — a
+    path leaking into an emitted stem is a cross-component contract break.
+
   **Extended 2026-09-06 — this task owns the consumer too, not just the producer.** T2.6 re-keyed
   the Force-Atomic reconciliation onto `item_key` at 13 sites, but could not reach
   `suggestion-parser.py`'s `_stem_lower` (`:251`), which serves `build_from_wire`'s ADR-026
@@ -254,7 +280,7 @@ rather than loudly, which is why T2.8 exists.
      - [ ] Two namesakes never merge into one bucket `[ref: PRD/AC Feature 2]`
      - [ ] #165 stays fixed, proven against a subfolder path `[ref: SDD/ADR-2]`
 
-- [x] **T2.7 The coverage audit stops collapsing items** `[activity: backend]` `[parallel: true]`
+- [ ] **T2.7 The coverage audit stops collapsing items** `[activity: backend]` `[parallel: true]`
 
   1. **Prime**: Read `instructions-diff.py:105-111` (its own duplicated `_stem()`), `:281`
      (`derive_expected`) and `:397` (`summarize_actual`). Both sides flatten identically today,
@@ -270,6 +296,14 @@ rather than loudly, which is why T2.8 exists.
            `[ref: PRD/AC Feature 2]`
 
 - [ ] **T2.8 Phase Validation — prove the key is carried end to end** `[activity: validate]`
+
+  - **Prove the coverage audit actually stops collapsing.** Re-run the adversarial case from T2.7's
+    review against the finished phase: two confirmed items for `100 Inbox/Places/Dresden.md` and
+    `100 Inbox/Reise/Dresden.md`, one with a duplicated `move_note`, one with none. Before this
+    phase it printed `RESULT: OK — 3/3 actions reconciled` with `RC=0` for an item that had no
+    action. It must now report the missing item. A green suite is not sufficient evidence here —
+    T2.7's own tests passed while the defect was live, because their fixtures modelled a data shape
+    production does not yet produce.
 
   - Full suite green, `ruff` clean.
   - **The gate that matters**: trace `item_key` from `inbox-triage` to the emitted instruction

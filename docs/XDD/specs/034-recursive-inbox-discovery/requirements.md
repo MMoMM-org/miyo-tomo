@@ -325,8 +325,9 @@ overwrote the other's result, or that the wrong one was marked as captured in th
 
 #### Feature 8: A note whose attachment cannot be filed stays with it
 
-- **User Story:** As the vault owner, I want a note to stay in the inbox when its image
-  cannot follow it, so that I never end up with a filed note pointing at the wrong picture.
+- **User Story:** As the vault owner, I want a note to stay in the inbox when its image is
+  not being filed with it, so that I never end up with a note in my permanent collection
+  that still depends on something sitting in the inbox.
 - **Acceptance Criteria:**
   - [ ] Given two different files with the same basename in different inbox subfolders, each
         embedded by its own note, When instructions are built, Then the second file is not
@@ -341,7 +342,9 @@ overwrote the other's result, or that the wrong one was marked as captured in th
 
   *Filing a note while its image stays behind is the inbox residue the attachment feature
   exists to eliminate: a note in the permanent collection carrying a dependency on a file
-  still sitting in the inbox.*
+  still sitting in the inbox. Nothing rescues this afterwards — moving a note does not carry
+  its attachments along, and nothing is ever moved that was not explicitly instructed. If the
+  image is not filed in the same run, it stays where it is indefinitely.*
 
   *An earlier draft also argued the moved note might then display the **other** file of that
   name. That does not hold and is withdrawn. When two files share a basename, the vault

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.1
+# version: 0.14.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -155,6 +155,20 @@ def _keys_match(expected_key: str, actual_key: str) -> bool:
     return len(e_parts) <= len(a_parts) and a_parts[-len(e_parts):] == e_parts
 
 
+def _confirmed_key(item: dict) -> str:
+    """Identity of a confirmed item for the coverage join (ADR-1).
+
+    Prefers the dedicated `item_key` — the item's vault-relative path,
+    verbatim — which `suggestion-parser.build_from_wire` threads through from
+    the wire. Falls back to `source_path`, the bare display stem, for the
+    markdown path, which mints no `item_key`. `_keys_match` tolerates both
+    conventions, so the two paths can converge independently; without the
+    preference, two confirmed items sharing a bare stem are indistinguishable
+    here and a missing action for one hides behind the other's presence.
+    """
+    return _item_key(item.get("item_key") or item.get("source_path") or "")
+
+
 def _parse_supporting_items(raw: str | list | None) -> list[str]:
     """Parse supporting_items — list (moc-proposal-parser) or str (SNN IDs)."""
     if not raw:
@@ -190,7 +204,8 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
         "counts": {kind: int},
         "by_item": {item_id: {"kind": "move_note"|"create_moc",
                               "title": str,
-                              "expected_links": [moc_stem, ...]}},
+                              "expected_links": [moc_stem, ...],
+                              "item_key": str}},
         "expected_daily_kinds": [{"kind", "date", "key", "source_stem"}],
         "expected_deletions": [source_path],
         "expected_skips": [source_path_or_None],
@@ -229,7 +244,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                 "kind": "create_moc",
                 "title": title,
                 "expected_links": parent_stems,
-                "source_path": item.get("source_path"),
+                "item_key": _confirmed_key(item),
                 "supporting_items": item.get("supporting_items"),
             }
         else:
@@ -238,7 +253,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                 "kind": "move_note",
                 "title": title,
                 "expected_links": parent_stems,
-                "source_path": item.get("source_path"),
+                "item_key": _confirmed_key(item),
             }
         counts["link_to_moc"] += len(parent_stems)
 
@@ -352,7 +367,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
         sp = item.get("source_path")
         if not sp:
             continue
-        key = _item_key(sp)
+        key = _confirmed_key(item)
         if key not in paired_origins_seen:
             paired_origins_seen.add(key)
             expected_deletions.append(_stem(sp))
@@ -738,8 +753,7 @@ def run_diff(
         if info["kind"] == "create_moc":
             found = any(a.get("title") == info["title"] for a in actual["create_mocs"])
         else:
-            source_path = info.get("source_path")
-            expected_key = _item_key(source_path) if source_path else ""
+            expected_key = info.get("item_key") or ""
             found = bool(expected_key) and any(
                 _keys_match(expected_key, actual_key)
                 for actual_key in actual["move_by_key"]

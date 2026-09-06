@@ -341,10 +341,22 @@ original casing instead of a lowercased stem — existing tests asserting a
 lowercased literal there were updated to match (they were pinning `_stem_of`'s
 incidental lowercasing, not a documented contract).
 
-WHY `_stem_lower` (a byte-similar duplicate a few hundred lines above,
-serving `build_from_wire`'s ADR-026 JSON-only path) was left untouched: that
-join keys on `w.get("stem")`, the wire's deliberately-bare display stem
-(CON-4) — collapsing it into `_item_key_of` would need the wire to carry
-`item_key` first, which is T2.3b's change, not this one. Same bug shape,
-different prerequisite; noted here rather than silently left for someone to
-rediscover.
+WHY `_stem_lower` is gone (T2.3b): it was a byte-similar duplicate a few
+hundred lines above, serving `build_from_wire`'s ADR-026 JSON-only path,
+which joined on `w.get("stem")` — the wire's deliberately-bare display stem
+(CON-4). T2.6 had to leave it: collapsing it into `_item_key_of` needed the
+wire to carry `item_key` first. T2.3b added that projection
+(`suggestions-render._wire_note`), so `build_from_wire` now resolves
+`member_ids` through `id_to_item_key` and binds them via `_item_key_of`.
+With its last three call sites re-keyed, `_stem_lower` had no caller left and
+was deleted rather than kept as a second, divergent derivation — the exact
+duplication #165 punished.
+
+WHY `confirmed_items` gained a dedicated `item_key` field instead of
+`source_path` being overwritten with the path: `source_path` is display text
+(ADR-2) and feeds `render_actions`, which emits `source_stem`/`target_stem`
+to Hashi. CON-4 fixes those as bare filenames; overwriting `source_path`
+would push a path at that emission boundary and break a cross-repo contract.
+A separate field lets identity and display coexist —
+`instructions-diff.derive_expected` prefers `item_key` and falls back to
+`source_path`, so the markdown path (which mints no `item_key`) is unaffected.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.17.0
+# version: 0.18.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -294,6 +294,12 @@ def _wire_note(section: dict, action: dict) -> dict:
     return {
         "id": sid,
         "stem": section["stem"],
+        # ADR-1: the item's identity, carried verbatim so the wire's consumers
+        # (build_from_wire's member binding, instructions-diff's coverage audit)
+        # can tell two same-named notes in different subfolders apart. `stem`
+        # stays a bare filename and stays display-only (ADR-2). Falls back to
+        # `stem` for a section minted before item_key became required.
+        "item_key": section.get("item_key") or section["stem"],
         "title": item.get("title") or section["stem"],
         "summary": item.get("summary"),
         "template": item.get("template", ""),

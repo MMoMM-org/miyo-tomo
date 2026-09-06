@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.27.0
+# version: 0.28.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -248,16 +248,6 @@ def _norm_anchor(anchor: dict) -> dict:
     return out
 
 
-def _stem_lower(src: str | None) -> str:
-    """Lowercase bare stem of a source path/wikilink for member-id binding."""
-    if not src:
-        return ""
-    bare = src.rsplit("/", 1)[-1]
-    if bare.endswith(".md"):
-        bare = bare[:-3]
-    return bare.strip().lower()
-
-
 def _item_key_of(src: str | None) -> str:
     """Item identity for the Force-Atomic reconciliation join (ADR-1).
 
@@ -285,11 +275,15 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
     confirmed_items: list[dict] = []
     skipped_items: list[dict] = []
     pending_fan_resolutions: list[dict] = []
-    id_to_stem: dict[str, str] = {}
+    # id → item_key (ADR-1), not id → stem: proposed-MOC member_ids resolve
+    # through this map, and a bare stem binds a member to whichever same-named
+    # note was written into the join dict last.
+    id_to_item_key: dict[str, str] = {}
 
     for w in wire.get("suggestions", []):
         stem = w.get("stem")
-        id_to_stem[w.get("id")] = stem
+        item_key = w.get("item_key") or stem
+        id_to_item_key[w.get("id")] = item_key
         # Suppressed light block promoted via Force Atomic → resolve subflow (#88).
         # Mirror the section-level pending_fan_resolutions shape (stem is the
         # lowercased source stem; Pass 2 verifies via kado-search).
@@ -321,7 +315,10 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
                 template = template[:-3]
             confirmed_items.append({
                 "id": w.get("id"),
+                # source_path stays the bare display stem (ADR-2); item_key is
+                # the identity downstream joins key on (ADR-1).
                 "source_path": stem,
+                "item_key": item_key,
                 "audio_peer": w.get("audio_peer"),
                 "attachments": list(w.get("attachments") or []),
                 "type": None,
@@ -359,7 +356,9 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
             continue
         parent = pm.get("parent", "")
         member_stems = [
-            id_to_stem[mid] for mid in pm.get("member_ids", []) if mid in id_to_stem
+            id_to_item_key[mid]
+            for mid in pm.get("member_ids", [])
+            if mid in id_to_item_key
         ]
         wire_mocs.append({
             "id": f"MOC{idx:02d}",
@@ -384,17 +383,17 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
 
     # Bind member_stems → supporting_items ids (mirrors the markdown path's final
     # pass), then strip the internal helper fields.
-    stem_to_id = {
-        _stem_lower(c.get("source_path")): c.get("id")
+    key_to_id = {
+        _item_key_of(c.get("item_key") or c.get("source_path")): c.get("id")
         for c in confirmed_items
-        if c.get("source_path") and c.get("id")
+        if (c.get("item_key") or c.get("source_path")) and c.get("id")
     }
     for c in confirmed_items:
         if c.get("action") == "create_moc":
             ids = [
-                stem_to_id[_stem_lower(s)]
+                key_to_id[_item_key_of(s)]
                 for s in (c.get("member_stems") or [])
-                if _stem_lower(s) in stem_to_id
+                if _item_key_of(s) in key_to_id
             ]
             if ids:
                 c["supporting_items"] = ", ".join(ids)

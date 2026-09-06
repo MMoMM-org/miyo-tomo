@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """ADR-026 golden test: build_from_wire(unedited wire) == markdown parse.
 
 Proves the JSON-only Pass-2 path (build_from_wire) reproduces the markdown path's
@@ -9,6 +9,7 @@ authoritative paths agree on the default case. This is the safety net for the
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import subprocess
@@ -90,12 +91,35 @@ def _markdown_output(doc: dict, tmp: Path) -> dict:
     return json.loads(out.stdout)
 
 
+
+
+def _without_item_key(parsed: dict) -> dict:
+    """Drop the wire-path-only `item_key` for the shape-parity compare.
+
+    Spec 034 T2.3b: `build_from_wire` threads the wire's `item_key` (the item's
+    vault-relative path, verbatim — ADR-1) onto every confirmed item. The
+    markdown path mints no such field: the rendered document carries only the
+    bare display stem (ADR-2) and cannot recover a path from it. The asymmetry
+    is deliberate — `instructions-diff.derive_expected` prefers `item_key` and
+    falls back to `source_path` when it is absent — but everything else about
+    the two outputs must still match exactly, which is what this file guards.
+    """
+    out = copy.deepcopy(parsed)
+    for item in out.get("confirmed_items", []):
+        item.pop("item_key", None)
+    return out
+
+
 def test_build_from_wire_matches_markdown_parse():
     doc = _doc()
     with tempfile.TemporaryDirectory() as td:
         expected = _markdown_output(doc, Path(td))
     wire = render.build_wire_payload(doc)
-    actual = parser.build_from_wire(wire, "")
+    full = parser.build_from_wire(wire, "")
+    # The one deliberate divergence, asserted rather than silently stripped.
+    assert full["confirmed_items"][0]["item_key"] == wire["suggestions"][0]["item_key"]
+    assert "item_key" not in expected["confirmed_items"][0]
+    actual = _without_item_key(full)
     assert actual == expected, (
         "JSON-only build_from_wire diverged from the markdown parse.\n"
         f"expected={json.dumps(expected, indent=2)}\nactual={json.dumps(actual, indent=2)}"
@@ -151,7 +175,7 @@ def test_full_mirror_matches_markdown_parse_with_daily_and_tag_handler():
     with tempfile.TemporaryDirectory() as td:
         expected = _markdown_output_full(doc, Path(td))
     wire = render.build_wire_payload(doc)
-    actual = parser.build_from_wire(wire, "")
+    actual = _without_item_key(parser.build_from_wire(wire, ""))
     assert actual == expected, (
         "Full-mirror build_from_wire diverged from the markdown parse.\n"
         f"expected={json.dumps(expected, indent=2)}\nactual={json.dumps(actual, indent=2)}"

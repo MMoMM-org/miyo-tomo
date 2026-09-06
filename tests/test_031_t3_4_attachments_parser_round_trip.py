@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t3_4_attachments_parser_round_trip.py — attachments parser round trip.
 
 Covers T3.4 (spec 031 Phase 3): the four suggestion-parser.py sites that carry
@@ -18,6 +18,7 @@ Ref: PRD/AC-F3.3, AC-F3.4; SDD/Constraints CON-5
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import subprocess
@@ -210,6 +211,24 @@ def test_wire_path_no_attachments_yields_empty_list():
 # ---------------------------------------------------------------------------
 
 
+
+def _without_item_key(parsed: dict) -> dict:
+    """Drop the wire-path-only `item_key` for the shape-parity compare.
+
+    Spec 034 T2.3b: `build_from_wire` threads the wire's `item_key` (the item's
+    vault-relative path, verbatim — ADR-1) onto every confirmed item. The
+    markdown path mints no such field: the rendered document carries only the
+    bare display stem (ADR-2) and cannot recover a path from it. The asymmetry
+    is deliberate — `instructions-diff.derive_expected` prefers `item_key` and
+    falls back to `source_path` when it is absent — but everything else about
+    the two outputs must still match exactly, which is what this file guards.
+    """
+    out = copy.deepcopy(parsed)
+    for item in out.get("confirmed_items", []):
+        item.pop("item_key", None)
+    return out
+
+
 def test_both_paths_produce_identical_confirmed_items():
     """Golden-test style: build_from_wire(unedited wire) == markdown parse,
     for an item that carries attachments (CON-5, asserted directly)."""
@@ -217,7 +236,7 @@ def test_both_paths_produce_identical_confirmed_items():
     with tempfile.TemporaryDirectory() as td:
         expected = _markdown_output(doc, Path(td))
     wire = render.build_wire_payload(doc)
-    actual = parser.build_from_wire(wire, "")
+    actual = _without_item_key(parser.build_from_wire(wire, ""))
     assert actual == expected, (
         "JSON-only build_from_wire diverged from the markdown parse for an "
         "item carrying attachments.\n"

@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Item key foundation"
-status: pending
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -37,7 +37,7 @@ intended — see the sequencing rule in `plan/README.md`.
 Establishes an item identity that is unique across the whole inbox subtree, and the schema
 surface that carries it. Deliberately inert: Phase 2 wires it in.
 
-- [ ] **T1.1 `lib/item_key.py` — derive and encode** `[activity: domain-modeling]`
+- [x] **T1.1 `lib/item_key.py` — derive and encode** `[activity: domain-modeling]`
 
   1. **Prime**: Read `[ref: SDD/Application Data Models]` and `[ref: SDD/Implementation Examples]`.
      Read `tomo/scripts/lib/attachment_index.py` as the shape to follow — a pure library under
@@ -56,12 +56,12 @@ surface that carries it. Deliberately inert: Phase 2 wires it in.
      `to_filename` = readable part + `-` + 8 hex characters of a digest over the **exact** key.
   4. **Validate**: unit tests pass; `ruff` clean; the module imports nothing from the pipeline.
   5. **Success**:
-     - [ ] Two same-named notes in different folders cannot produce one filename
+     - [x] Two same-named notes in different folders cannot produce one filename
            `[ref: PRD/AC Feature 2]`
-     - [ ] The case-collision test fails if the digest is taken over a lowercased key —
+     - [x] The case-collision test fails if the digest is taken over a lowercased key —
            prove it by mutation `[ref: SDD/ADR-5]`
 
-- [ ] **T1.2 Schemas carry `item_key`** `[activity: data-architecture]` `[parallel: true]`
+- [x] **T1.2 Schemas carry `item_key`** `[activity: data-architecture]` `[parallel: true]`
 
   1. **Prime**: Read `[ref: SDD/Data Storage Changes]`. Note that every affected schema sets
      `additionalProperties: false`, so a payload carrying a field the schema does not declare is
@@ -78,10 +78,10 @@ surface that carries it. Deliberately inert: Phase 2 wires it in.
      `suggestions-wire.schema.json`, `routing-plan.schema.json`.
   4. **Validate**: schema tests pass; every existing fixture that must keep validating still does.
   5. **Success**:
-     - [ ] All five schemas accept and require `item_key` `[ref: SDD/Data Storage Changes]`
-     - [ ] `stem`'s declared meaning is unchanged `[ref: SDD/ADR-2]`
+     - [x] All five schemas accept and require `item_key` `[ref: SDD/Data Storage Changes]`
+     - [x] `stem`'s declared meaning is unchanged `[ref: SDD/ADR-2]`
 
-- [ ] **T1.3 `validate-result.py` requires the key** `[activity: backend]` `[parallel: true]`
+- [x] **T1.3 `validate-result.py` requires the key** `[activity: backend]` `[parallel: true]`
 
   1. **Prime**: Read `tomo/scripts/validate-result.py`, particularly `REQUIRED_TOP` (`:29`).
   2. **Test** (RED):
@@ -91,10 +91,10 @@ surface that carries it. Deliberately inert: Phase 2 wires it in.
   3. **Implement**: add `item_key` to `REQUIRED_TOP`.
   4. **Validate**: unit tests pass; `ruff` clean.
   5. **Success**:
-     - [ ] A result without the key cannot reach the reducer unnoticed
+     - [x] A result without the key cannot reach the reducer unnoticed
            `[ref: SDD/Building Block View]`
 
-- [ ] **T1.4 Phase Validation** `[activity: validate]`
+- [x] **T1.4 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - Confirm the phase is genuinely inert: no pipeline script imports `lib/item_key.py` yet, and

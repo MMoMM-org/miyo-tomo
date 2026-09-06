@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-05 |
-| **Current Phase** | PLAN |
+| **Current Phase** | Ready |
 | **Last Updated** | 2026-09-06 |
 
 ## Documents
@@ -44,6 +44,26 @@
 | 2026-09-06 | **ADR-5: the per-item filename is a readable stem plus a digest of the exact key** | Corollary of ADR-1 under a verified constraint: this filesystem is case-insensitive, so `Places/Dresden.md` and `places/dresden.md` would produce one file from a readable-only name — re-creating the very collision the spec removes. `sanitize_stem` cannot be used either; it is lossy by design and maps distinct paths onto one name. A pure digest would be unreadable in a pipeline whose intermediate state is read by hand, so the name carries both: a readable half to identify the item, a digest to guarantee distinctness. |
 | 2026-09-06 | **Correction during SDD drafting: `stem` is display text at 16 sites, not 8** | A first draft of the implementation gotchas said eight. The real figure is 16 — six title fallbacks, six source links, four rendered headings. An implementer working from the wrong number would have fixed half of them and written item keys into vault-visible text at the rest. Corrected, and reframed: the gotcha now tells the reader to enumerate the sites themselves, because a count in a document goes stale while the instruction to grep does not. |
 | 2026-09-06 | **Phase order is driven by one rule: recursion must not ship before the key is threaded** | Making `discover_files` recursive is a two-line change and the most dangerous one in the plan if taken first — the moment subfolder notes become items, two can share a filename, and every stem-keyed site starts merging distinct notes, including the one that writes to the vault. Phases 1 and 2 therefore land the identity with no user-visible change at all, and Phase 3 turns on the behaviour that needs it. Phase 2 ends with an end-to-end trace of the key through every artefact boundary rather than per-stage unit tests, because per-stage green is exactly what let spec 031 build five phases against a field nothing populated. Phases 3 and 4 touch different files and can run in parallel. |
+| 2026-09-06 | **Phase 1 closes with 7 known-red tests, carried as Phase 2's worklist** | Phase 1's own gate asks for a green suite AND an inert phase, and those cannot both hold: T1.2 makes `item_key` a required field in five schemas while the producers that build those payloads do not emit it until Phase 2. Verified that no fixture edit can close them — the validated object is constructed in production code (`suggestions-reducer.py:1932` `sections.append`, `inbox-triage.py`'s `force_atomic_items` builder, `suggestions-render.py`'s `_wire_note`), reached through `_run_pipeline` / `_run_reducer` / `build_wire_payload`. Three options were weighed: declare `item_key` optional now and flip it to required in Phase 2 (green at every boundary, but contradicts the plan's explicit "required, not optional", weakens T1.3's guarantee for a phase, and edits five schemas twice); pull the three producer wirings forward (green today, but duplicates Phase 2 tasks T2.1/T2.3, performs that work outside their TDD structure, and breaks the inertness the sequencing rule depends on); or carry the 7 as an enumerated known-red set. The third was chosen: the failures are precisely the work Phase 2 already owns, and T2.8 ("prove the key is carried end to end") is the gate that closes them. The exact list is pinned below so any NEW failure during Phase 2 is visible immediately rather than hiding in a red suite. Phase 2 may not pass its gate until all 7 are green. |
+
+### Phase 1 known-red tests (must be green before Phase 2 passes its gate)
+
+Pinned 2026-09-06 at the Phase 1 boundary. These fail because `item_key` is required by the
+schemas but not yet emitted by the producers; Phase 2 tasks T2.1 and T2.3 close them. Any
+failure outside this list during Phase 2 is a regression, not inherited state.
+
+```
+tests/integration/test_018_pipeline.py::TestFanResolveActionFromForceAtomic::test_approved_with_fan_items_no_fan_doc_produce_fan_resolve
+tests/integration/test_018_pipeline.py::TestRoutingPlanAllFieldsValid::test_full_routing_plan_validates
+tests/test_031_phase5_attachments_preamble.py::test_end_to_end_doc_validates_against_suggestions_doc_schema
+tests/test_031_t3_3_attachments_wire_projection.py::test_build_wire_payload_carries_attachments_and_validates
+tests/test_suggestions_reducer_multi_atomic.py::test_t1_schema_validation_with_suggestion_id_field
+tests/test_suggestions_wire_emit.py::test_wire_conforms_to_schema
+tests/test_suggestions_wire_emit.py::test_fan_doc_wire_conforms_to_schema
+```
+
+Baseline at this boundary: **3287 passed, 7 failed, 1 skipped**, ruff clean.
+
 
 ## Context
 

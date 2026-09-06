@@ -446,7 +446,7 @@ cost_history:
 ```
 
 Every schema carrying item identity gains `item_key` as a required string. `stem` stays
-required and keeps its description. All six schemas set `additionalProperties: false`, so the
+required and keeps its description. All five schemas set `additionalProperties: false`, so the
 schema change must land **before or with** the producers — a new field on an undeclared schema
 rejects the whole payload.
 

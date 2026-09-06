@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t2_3_reducer_reads_by_key.py — the reducer joins on item_key, renders stem.
 
 Covers T2.3 (XDD 034 Phase 2). Three defects live in `suggestions-reducer.py`
@@ -252,6 +252,55 @@ def test_missing_result_file_is_reported_not_skipped(tmp_path):
     )
     assert reported[0]["stem"] == "Dresden"
     assert "result" in reported[0]["error"].lower()
+    assert "unreadable_results=1" in stderr, (
+        f"the run tally did not count the vanished item:\n{stderr}"
+    )
+
+
+def test_unparseable_result_file_is_reported_not_skipped(tmp_path):
+    """The other half of the same silent skip: the file is found but won't parse.
+
+    Distinct from the missing-file case above — here the item is on the work
+    list, `to_filename` resolves, and the file genuinely exists on disk. Only
+    `json.loads` fails. That branch used to `continue` in silence too, so the
+    item vanished with exactly as little trace.
+    """
+    item_key = f"{INBOX_PREFIX}Places/Dresden.md"
+    items_dir = tmp_path / "items"
+    items_dir.mkdir()
+    result_path = items_dir / to_filename(item_key)
+    result_path.write_text('{"schema_version": "1", "actions": [', encoding="utf-8")
+    assert result_path.exists(), (
+        "fixture must leave a real file behind — otherwise this re-tests the "
+        "missing-file branch rather than the parse branch"
+    )
+
+    doc, stderr = _run_reducer(tmp_path, [_state_line(stem="Dresden", item_key=item_key)])
+
+    assert item_key in stderr, (
+        f"reducer said nothing about the unparseable result on stderr:\n{stderr}"
+    )
+    reported = [
+        entry for entry in doc.get("needs_attention", [])
+        if entry.get("item_key") == item_key
+    ]
+    assert reported, (
+        "the unparseable result file left no trace in the document's "
+        f"needs_attention block: {doc.get('needs_attention')}"
+    )
+    assert reported[0]["stem"] == "Dresden", "the report must render the bare filename"
+    assert reported[0]["error"].startswith("unreadable_result:"), (
+        f"the entry does not identify itself as an unreadable result: {reported[0]}"
+    )
+    assert "json" in reported[0]["error"].lower(), (
+        f"the entry does not say the result would not parse: {reported[0]}"
+    )
+    assert "unreadable_results=1" in stderr, (
+        f"the run tally did not count the unparseable item:\n{stderr}"
+    )
+    assert doc["sections"] == [], (
+        "an item whose result would not parse must not reach the review surface"
+    )
 
 
 def test_two_items_sharing_a_filename_read_their_own_result_file(tmp_path):

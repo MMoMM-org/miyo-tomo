@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.32.0
+# version: 0.33.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -38,6 +38,7 @@ from lib.attachment_index import (  # noqa: E402
 )
 from lib.audio_constants import AUDIO_EXTS  # noqa: E402
 from lib.doc_frontmatter import body_after_frontmatter  # noqa: E402
+from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402 — ADR-026 wire-edit check
@@ -610,6 +611,7 @@ def _extract_fan_items(body: str, source_path: str) -> list[dict]:
         if _RE_FORCE_ATOMIC.search(line) and last_source_stem:
             items.append({
                 "stem": last_source_stem,
+                "item_key": derive_item_key(source_path),
                 "source_path": source_path,
             })
 
@@ -705,7 +707,11 @@ def _extract_fan_items_from_wire(wire: dict, source_path: str) -> list[dict]:
     def _add(stem: "str | None") -> None:
         if stem and stem not in seen:
             seen.add(stem)
-            items.append({"stem": stem, "source_path": source_path})
+            items.append({
+                "stem": stem,
+                "item_key": derive_item_key(source_path),
+                "source_path": source_path,
+            })
 
     for s in wire.get("suggestions") or []:
         if s.get("suppressed") and s.get("force_atomic"):

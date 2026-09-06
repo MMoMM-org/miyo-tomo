@@ -617,3 +617,23 @@ Worth doing because T3.1 found the divergence was not merely cosmetic: the old
 `discover_files` predicate **crashed** with `AttributeError` on a non-dict entry where
 `build_inbox_index` returned `False`. Any consumer still on a hand-rolled check carries that
 same latent fragility. Not urgent — Kado emits lowercase literals and well-formed dicts today.
+
+### `test_mark_captured.py` shadows the real `lib.doc_frontmatter` for the whole process
+
+Found 2026-09-06 during spec 034's inbox-state hardening; pre-existing, not introduced by it.
+Confirmed by `git stash` before any edit.
+
+`tests/test_mark_captured.py` registers a fake `lib.doc_frontmatter` module via
+`sys.modules.setdefault(...)`. That fake is missing `body_after_frontmatter`. Because
+`sys.modules` is process-global, the fake shadows the real module for anything that imports
+it transitively **later in the same pytest process**.
+
+The file fails when run in isolation. It only passes in the full suite because some earlier
+test happens to import the real module first — so the suite's health depends on collection
+order, and a future reordering or a new `-k` selection can surface it without warning.
+
+Fix shape: register the fake with the real module's full surface, or scope it with a fixture
+that restores `sys.modules` on teardown, rather than a process-global `setdefault`.
+
+Worth doing because the failure mode is invisible: the suite stays green while a real module
+is silently replaced for every later importer in that process.

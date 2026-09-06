@@ -61,8 +61,16 @@ def test_a_path_with_filename_unsafe_characters_still_yields_a_usable_name():
 
 
 @pytest.mark.parametrize("bad_key", ["", None])
-def test_empty_or_malformed_key_raises(bad_key):
-    """An empty or malformed key must raise rather than silently produce a
+def test_empty_or_none_key_raises_value_error(bad_key):
+    """An empty or missing key must raise rather than silently produce a
     name that could collide with a legitimate one."""
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises(ValueError):
+        to_filename(bad_key)
+
+
+@pytest.mark.parametrize("bad_key", [123, Path("100 Inbox/Dresden.md")])
+def test_non_string_key_raises_type_error(bad_key):
+    """A truthy non-string key must raise TypeError rather than leak a bare
+    AttributeError out of the digest computation."""
+    with pytest.raises(TypeError):
         to_filename(bad_key)

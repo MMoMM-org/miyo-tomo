@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.1.1
 """item_key.py — Item identity for the inbox pipeline (spec 034).
 
 Recursive inbox discovery means two notes in different subfolders can share
@@ -47,6 +47,11 @@ def to_filename(item_key: str) -> str:
     """
     if not item_key:
         raise ValueError("item_key must be a non-empty string")
+    if not isinstance(item_key, str):
+        # A pathlib.Path (or any other truthy non-string) reaching here is a
+        # caller mistake, not a malformed key — surface it as such instead
+        # of leaking an AttributeError from inside the digest computation.
+        raise TypeError(f"item_key must be a string, got {type(item_key).__name__}")
     digest = hashlib.sha256(item_key.encode("utf-8")).hexdigest()[:8]
     readable = _readable_part(item_key)
     return f"{readable}-{digest}.result.json"

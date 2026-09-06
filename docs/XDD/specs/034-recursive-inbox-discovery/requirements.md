@@ -39,7 +39,7 @@ version: "1.0"
 | title | Recursive inbox discovery |
 | status | IN_REVIEW |
 | clarificationsRemaining | 0 |
-| acceptanceCriteria | 24 |
+| acceptanceCriteria | 31 |
 
 ---
 
@@ -72,8 +72,13 @@ Two consequences follow:
   AC-F2.1 and its SDD walkthrough both use `100 Inbox/Places/Dresden.md` as a source note
   (#163). The documents were written against the behaviour a reader would reasonably expect.
 
-Marcus confirmed on 2026-09-05 that he does organise the inbox into subfolders. The
-documents are right; the pipeline is too narrow.
+The user does **not** organise the inbox into subfolders today — asked and answered
+2026-09-06. That matters in two directions. It means there is no hidden backlog waiting to
+surface, so the first recursive run will be uneventful. And it means the justification is
+not "this is broken for me right now" but "the documents already describe this, the tool
+silently cannot do it, and I want the freedom to organise the inbox the way I organise
+everything else". The defect is real either way: a note placed in a subfolder disappears
+without a word, and no user should have to learn that by experiment.
 
 ### Value Proposition
 
@@ -195,6 +200,12 @@ overwrote the other's result, or that the wrong one was marked as captured in th
   - [ ] Given the same note, When it is approved and applied, Then the note created in the
         vault is titled from the filename or its own frontmatter, never from the internal
         identifier
+  - [ ] Given two items in one run that share a filename, When the suggestions document is
+        rendered, Then each of their source links carries enough location to be distinct,
+        and following either one reaches that item's own note
+  - [ ] Given only one item with a given filename, When the suggestions document is
+        rendered, Then its source link is the plain filename — location is added only where
+        it is needed to disambiguate
 
   *Business context: today the per-item result file, the append-only run state, and the
   coverage audit are all addressed by bare filename. The last criterion is deliberately
@@ -248,16 +259,51 @@ overwrote the other's result, or that the wrong one was marked as captured in th
 - **Acceptance Criteria:**
   - [ ] Given any `/inbox` Pass 1, When it completes, Then the item count and the Kado call
         count are reported in the run output
-  - [ ] Given a run notably larger than previous ones, When it completes, Then its figures
-        are recorded in `docs/evolution/inbox-cost-log.md` alongside existing entries in
-        the same format
+  - [ ] Given a completed run, When it finishes, Then it appends its figures to a durable
+        cost history inside the instance's own persistent state, so a history accumulates
+        without anyone remembering to record it
+  - [ ] Given several runs over time, When the history is read, Then each run is a separate
+        entry with its date, item count and call counts — runs are never overwritten by
+        later ones
+  - [ ] Given the working directory being cleared between runs, When the next run completes,
+        Then earlier entries are still present — the history does not live anywhere that
+        gets wiped
+
+  *The pipeline runs in a container that cannot see the repository, so it cannot write to
+  `docs/evolution/inbox-cost-log.md`. Writing into the instance's persistent state solves
+  both halves: the run records its own figures, and they accumulate into a history that can
+  be read later from the host. The instance already keeps a small persistent registry there,
+  so this follows an existing pattern rather than inventing a location. Transcribing a
+  notable run into the repository's cost log remains a deliberate host-side act.*
 
   *No volume cap is specified — see Won't Have. This feature exists so that the absence of
   a cap is an observed choice rather than an unexamined one.*
 
+#### Feature 7: Two notes cannot silently claim the same destination
+
+- **User Story:** As the vault owner, I want to be told when two notes would be filed to the
+  same place, so that I can name them myself instead of one failing or overwriting the other.
+- **Acceptance Criteria:**
+  - [ ] Given two approved items whose suggested names would produce the same destination
+        file, When the suggestions document is rendered, Then it proposes a distinct name for
+        the second one rather than letting both target the same path
+  - [ ] Given that proposal, When the user edits the suggested name, Then their name is used —
+        the disambiguation is a starting point, not a decision made for them
+  - [ ] Given an item whose destination would collide with a note already in the target
+        folder from an earlier run, When the suggestions document is rendered, Then the
+        collision is surfaced there too, not left to fail at apply time
+
+  *The destination folder is flat, so two notes named Dresden cannot both live in it. Nothing
+  checks this today: the destination is built from the title with no collision guard, and the
+  existing filename-disambiguation helper only compares against names claimed within one
+  render run, not against the vault. This is pre-existing — two root-level notes could
+  already be given the same title — but recursion makes it likely rather than unlikely, so it
+  is in scope here. It is deliberately handled in Pass 1, where the name is shown and the
+  user can already change it.*
+
 ### Should Have Features
 
-#### Feature 7: Discovery does not cost an extra vault listing
+#### Feature 8: Discovery does not cost an extra vault listing
 
 - **User Story:** As the vault owner, I want recursion not to make my runs more expensive.
 - **Acceptance Criteria:**
@@ -273,7 +319,7 @@ overwrote the other's result, or that the wrong one was marked as captured in th
 
 ### Could Have Features
 
-#### Feature 8: The two file-type checks agree
+#### Feature 9: The two file-type checks agree
 
 Two places decide "is this entry a file" using different comparisons, one tolerant of
 casing and one not. No live divergence exists — the vault gateway emits a fixed lowercase
@@ -336,8 +382,12 @@ the whole inbox subtree, and that the name of that thing says what it is.
   two separate things. Today one field does both jobs, and they look like one job only
   because a flat folder makes a filename unique. They must be split: a distinct identifier
   for addressing, and a plain filename for anything a person reads.
-- Rule 5: No user-visible text may be derived from the addressing identifier. Note titles
-  and the source links in the review document must continue to read as plain filenames.
+- Rule 5: No user-visible text may be derived from the addressing identifier. Where two
+  items in the same run share a filename, the review document must instead show enough of
+  each note's real location to tell them apart — a bare name is not merely unhelpful there,
+  it is unusable: the vault resolves a bare link by name, so clicking or hovering either of
+  two identically-named links opens whichever the vault picks. Outside a collision the
+  display stays a plain filename.
   *(Decision: 2026-09-06 — the field is renamed rather than repurposed, accepted with its
   versioning cost. Splitting is the form that decision has to take, because the existing
   field feeds both a machine join and a rendered title.)*
@@ -368,6 +418,10 @@ the whole inbox subtree, and that the name of that thing says what it is.
 - A subfolder note and a root note with the same name → Expected: treated as two items, no
   precedence given to the root one.
 - The same note discovered twice within one run → Expected: one item, not two.
+- Two approved items whose suggested names produce the same destination file → Expected: the
+  review document proposes a distinct name for the second and the user can change it there,
+  as they already can for any suggested name. The destination folder is flat; two notes
+  cannot occupy one filename, and nothing checks this today.
 
 ## Success Metrics
 
@@ -444,7 +498,7 @@ entries use.
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
 | A stage that addresses notes by bare filename is missed, and fails silently | High — silent data loss, or a wrong vault write | Medium — the sites are spread across many files and several are not obvious | Enumerate every one during design and cover each with a test that fails on collision; treat a missed site as the defect this spec exists to prevent |
-| A first run over a long-hidden backlog produces an overwhelming review document | Medium — the user faces an unreviewable list | Medium — depends entirely on the user's actual inbox, which is unmeasured | Accepted deliberately, no cap. Feature 6 measures it; a limit can follow from data |
+| A first run over a long-hidden backlog produces an overwhelming review document | Medium — the user faces an unreviewable list | **Low** — reassessed 2026-09-06: the inbox has no subfolder notes today, so there is no hidden backlog to surface | Accepted deliberately, no cap. Feature 6 accumulates the history a future limit would be set from |
 | The identifier rename is applied to some artefacts and not others | High — a partial rollout fails silently rather than loudly, because nothing validates the shape | Medium | Change every carrier together in one step; a validation gate should reject the old field name rather than tolerating both |
 | Recursion widens name-based matching elsewhere in ways not yet found | Medium | Low — the known cases are enumerated, but the enumeration may be incomplete | Search for name-based matching as a class during design, not just the known instances |
 | The sibling component's own matching becomes ambiguous for clashing names | Low — display and linking, not data loss | Medium | Handed off so the owning component can decide; documented as a known limitation here |
@@ -453,15 +507,18 @@ entries use.
 
 ## Open Questions
 
-- [ ] Does the user's real inbox already contain subfolder notes, and how many? This
-      determines whether the first run is uneventful or is a large backlog. Not measurable
-      from here — the real vault is not accessible to this session.
-- [ ] Should a note that becomes visible for the first time be marked in any way, so the
-      user can tell "newly discovered because of this change" from "newly captured"? Not
-      required by any criterion above; raised because the first run is a one-off event.
-- [ ] Is there a subfolder the user would want excluded after all, once they see the first
-      recursive run? The decision was to build no mechanism; this question exists so the
-      decision is revisited on evidence rather than forgotten.
+All three questions raised during drafting have been answered (2026-09-06) and are recorded
+here rather than deleted, so the reasoning survives:
+
+- [x] **Does the inbox already contain subfolder notes?** No — the user does not use inbox
+      subfolders today, and wants the capability rather than a fix for a present breakage.
+      Consequence: no hidden backlog, so the first recursive run is uneventful and the
+      decision to add no volume cap carries less risk than it did when this was unknown.
+- [x] **Should a newly-visible note be marked as such?** No. No first-run marker is built.
+- [x] **Should any subfolder be excluded?** Not at present. The decision to build no
+      exclusion mechanism stands, and this entry is where it gets revisited if that changes.
+
+No open questions remain.
 
 ---
 

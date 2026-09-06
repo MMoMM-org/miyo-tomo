@@ -94,7 +94,7 @@ rather than loudly, which is why T2.8 exists.
      - [ ] The analyst writes where the reducer reads `[ref: SDD/inter_stage]`
      - [ ] No rationale leaked into a runtime file `[ref: SDD/CON-5]`
 
-- [ ] **T2.3 The reducer reads by key, displays by stem** `[activity: backend]`
+- [x] **T2.3 The reducer reads by key, displays by stem** `[activity: backend]`
 
   **Extended 2026-09-06 — two runtime skills still instruct the old filename, and the interim
   window is live.** T2.2 changed `inbox-analyst.md` to write its result under

@@ -150,7 +150,7 @@ rather than loudly, which is why T2.8 exists.
      - [ ] No result file can be overwritten by another item `[ref: PRD/AC Feature 2]`
      - [ ] A vanished item is now audible `[ref: PRD/Risks]`
 
-- [ ] **T2.3b The wire projection carries the key** `[activity: backend]`
+- [x] **T2.3b The wire projection carries the key** `[activity: backend]`
 
   **Extended again 2026-09-06 — this task also closes T2.7's missing precondition.** T2.7's review
   built the adversarial case and got a **full false pass** (`RESULT: OK — 3/3 actions reconciled`,
@@ -237,7 +237,7 @@ rather than loudly, which is why T2.8 exists.
   5. **Success**:
      - [ ] One item's status can no longer hide another's `[ref: PRD/AC Feature 2]`
 
-- [ ] **T2.5 The captured mark targets the right note** `[activity: backend]`
+- [x] **T2.5 The captured mark targets the right note** `[activity: backend]`
 
   **Depends on T2.3.** T2.3 extracts the shared `item_key`-keyed state-replay helper into
   `tomo/scripts/lib/` (replacing the duplicated `last_state_per_stem` in

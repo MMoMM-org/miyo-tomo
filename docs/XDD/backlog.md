@@ -581,3 +581,21 @@ schema change to add that field, plus title disambiguation on collision.
 
 Narrower blast radius than the fixed case: needs two items sharing a filename *and*
 neither title user-edited.
+
+### `inbox_state.last_state_per_item_key` drops a key-less line silently (spec 034 residual)
+
+Flagged by T2.5's review, 2026-09-06. `tomo/scripts/lib/inbox_state.py` fails open: an
+unparseable or `item_key`-less line in `inbox-state.jsonl` is passed over rather than
+aborting the run. An entry missing `item_key` therefore never reaches `done_keys`, is
+never counted in the `declined` tally, and produces no per-item diagnostic — only the
+generic "no done items to mark" if it was the sole entry.
+
+Not reachable from a well-formed log: `item_key` is `required` + `minLength: 1` in
+`state-entry.schema.json`, and `state-update.py` takes `--item-key` as a mandatory CLI
+argument with no default. The fail-open is deliberate and inherited from the reducer's
+prior tolerance.
+
+Worth closing anyway on the same principle as T2.3's "a vanished item is now audible":
+a truncated final line (disk full mid-write) is a real corruption shape, and the helper
+should count skipped lines and let callers report them rather than swallowing them.
+Small: a counter plus a stderr line in each of the two callers.

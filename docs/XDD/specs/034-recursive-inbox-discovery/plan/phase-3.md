@@ -70,7 +70,7 @@ Turns on the behaviour the previous two phases prepared for.
      - [ ] Subfolder notes are triaged `[ref: PRD/AC Feature 1]`
      - [ ] Base Kado calls are 2, down from 3 `[ref: PRD/AC Feature 9]`
 
-- [ ] **T3.3 Audio pairs by note, not by name** `[activity: backend]` `[parallel: true]`
+- [x] **T3.3 Audio pairs by note, not by name** `[activity: backend]` `[parallel: true]`
 
   1. **Prime**: Read `check_audio` (`inbox-triage.py:526-541`). `md_stems` is a flat set of
      `Path(f["path"]).stem.lower()` with no folder component — safe only while discovery is flat.
@@ -85,6 +85,52 @@ Turns on the behaviour the previous two phases prepared for.
   5. **Success**:
      - [ ] A namesake elsewhere cannot mark an audio file as already handled
            `[ref: PRD/AC Feature 5]`
+
+- [ ] **T3.3b The voice path follows recursion** `[activity: backend]`
+
+  Added 2026-09-06 at the T3.3 review. T3.2 made discovery recursive; the voice path was never
+  swept for it, and T3.3 alone makes subfolder audio **worse**, not better.
+
+  Three sites, three different answers to "where does a transcript live":
+
+  | Site | Target / pairing | Folder-aware | Sees subfolders |
+  |---|---|---|---|
+  | `inbox-triage.check_audio` (T3.3) | `(parent, stem)` | yes | yes |
+  | `voice-precheck.py:42-45` `_expected_md_path` | `p.parent / f"{safe}.md"` | yes | **no — `depth=1` at `:50`** |
+  | `voice-transcriber.md:118` | `<inbox_path>/<SAFE_STEM>.md` | **no — inbox root** | its own listDir |
+
+  T3.3 aligned `check_audio` with `voice-precheck`'s already-folder-aware convention, which is the
+  right direction. The outlier is the transcriber agent, which writes to the inbox root. Before
+  recursion that *was* beside the audio, because all audio sat at the root; T3.2 broke that
+  assumption silently.
+
+  **The user-visible consequence, and why this cannot wait:** before T3.3, a subfolder audio with a
+  root namesake was wrongly considered done and silently never transcribed. After T3.3 alone it
+  never pairs, so every run reports it as needing transcription, dispatches the transcriber, which
+  writes the transcript to the **root** — where the pairing still fails. Next run, same again. That
+  is the repeated-dispatch shape of the `:`-versus-`-` infinite transcribe loop this repo has
+  already hit once, with a folder mismatch instead of a character mismatch.
+
+  1. **Prime**: Read `voice-precheck.py:42-52`, `voice-transcriber.md:90-125` (Step 3's sibling
+     filter and target composition), and `voice-transcribe.py:146-153` (the CLI emits a bare
+     `target` filename — the agent composes the folder). Read `[ref: SDD/CON-5]`.
+  2. **Test** (RED):
+     - `voice-precheck` sees an audio file in a subfolder at all — today `depth=1` hides it
+     - a subfolder audio with its sibling transcript beside it is reported cached by
+       `voice-precheck`, and `check_audio` agrees — the two must not disagree
+     - a subfolder audio with **no** sibling is reported uncached by both
+     - a root-level audio behaves exactly as before, including the `sanitize_stem` case
+       (`Rec 2026-01-02 14:30.m4a` pairs with `Rec 2026-01-02 14-30.md`)
+  3. **Implement**: drop `depth=1` in `voice-precheck.py`; change the transcriber's target
+     composition to the audio file's **containing folder** plus the sanitised stem. Write the
+     `docs/tomo/` counterpart first `[ref: SDD/CON-5]` — `voice-transcriber.md` is LLM-loaded
+     verbatim and carries imperatives only.
+  4. **Validate**: tests pass; `ruff` clean; the runtime agent file stays imperative-only.
+  5. **Success**:
+     - [ ] All three sites agree on where a transcript lives `[ref: PRD/AC Feature 5]`
+     - [ ] A subfolder audio is transcribed exactly once and never re-dispatched
+     - [ ] The `sanitize_stem` asymmetry is preserved — only the derived `.md` target is
+           sanitised, never the source audio name
 
 - [ ] **T3.4 Phase Validation** `[activity: validate]`
 

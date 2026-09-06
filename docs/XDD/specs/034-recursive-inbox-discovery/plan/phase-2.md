@@ -55,7 +55,7 @@ rather than loudly, which is why T2.8 exists.
   5. **Success**:
      - [ ] Downstream stages receive an identity they can use `[ref: SDD/inter_stage]`
 
-- [ ] **T2.2 The analyst contract carries the key** `[activity: prompt-engineering]`
+- [x] **T2.2 The analyst contract carries the key** `[activity: prompt-engineering]`
 
   **BLOCKING, added 2026-09-06 — the runtime pipeline is broken until this task lands.** T2.4 made
   `--item-key` a **required** argument of `state-update.py`. `inbox-analyst.md` invokes that script
@@ -280,7 +280,7 @@ rather than loudly, which is why T2.8 exists.
      - [ ] Two namesakes never merge into one bucket `[ref: PRD/AC Feature 2]`
      - [ ] #165 stays fixed, proven against a subfolder path `[ref: SDD/ADR-2]`
 
-- [ ] **T2.7 The coverage audit stops collapsing items** `[activity: backend]` `[parallel: true]`
+- [x] **T2.7 The coverage audit stops collapsing items** `[activity: backend]` `[parallel: true]`
 
   1. **Prime**: Read `instructions-diff.py:105-111` (its own duplicated `_stem()`), `:281`
      (`derive_expected`) and `:397` (`summarize_actual`). Both sides flatten identically today,
@@ -296,6 +296,16 @@ rather than loudly, which is why T2.8 exists.
            `[ref: PRD/AC Feature 2]`
 
 - [ ] **T2.8 Phase Validation — prove the key is carried end to end** `[activity: validate]`
+
+  - **Settle an order-dependent flake before declaring the gate green.**
+    `tests/test_suggestion_parser_fan_resolve.py::test_fan_without_section_no_resolve_populates_pending`
+    failed intermittently under `pytest-randomly`'s default ordering during T2.2's review, and
+    passed standalone and with ordering pinned. It was reported as pre-existing in an "untouched"
+    file — but T2.6 **did** edit an assertion in that file (`furano` -> `Furano`). Do not accept
+    "pre-existing" without evidence. Run the full suite several times with random ordering on a
+    quiet tree, and if it reproduces, bisect against `cc95d4b~1` to establish whether T2.6
+    introduced the order dependence or merely exposed it. A test that passes only in one ordering
+    is not a passing test.
 
   - **Prove the coverage audit actually stops collapsing.** Re-run the adversarial case from T2.7's
     review against the finished phase: two confirmed items for `100 Inbox/Places/Dresden.md` and

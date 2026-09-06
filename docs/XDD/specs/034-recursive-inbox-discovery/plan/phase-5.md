@@ -33,7 +33,7 @@ phase: 5
 
 ## Tasks
 
-- [ ] **T5.0 Pass 2 reads `item_key` — the feature does not work without this** `[activity: backend]`
+- [x] **T5.0 Pass 2 reads `item_key` — the feature does not work without this** `[activity: backend]`
 
   **BLOCKING, added 2026-09-06 by the Phase 3 gate.** Recursion is live and the key is threaded
   through Pass 1, but **every subfolder note is silently dropped in Pass 2**, so nothing the

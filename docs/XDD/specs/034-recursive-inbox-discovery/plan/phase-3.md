@@ -35,8 +35,8 @@ Turns on the behaviour the previous two phases prepared for.
 
 - [ ] **T3.1 One file-type filter** `[activity: backend]`
 
-  1. **Prime**: Read `discover_files` (`inbox-triage.py:178`) — `(item.get("type") or "").lower()`,
-     case-insensitive and None-safe — and `build_inbox_index` (`lib/attachment_index.py:53`) —
+  1. **Prime**: Read `discover_files` (`inbox-triage.py:177`) — `(item.get("type") or "").lower()`,
+     case-insensitive and None-safe — and `build_inbox_index` (`lib/attachment_index.py:54`) —
      `item.get("type") != "file"`, exact match. They disagree. Verified that the gateway emits
      lowercase literals (`Kado/src/obsidian/search-adapter.ts:194,247`), so this is latent
      robustness, not a live bug — but the two must agree before they share input.

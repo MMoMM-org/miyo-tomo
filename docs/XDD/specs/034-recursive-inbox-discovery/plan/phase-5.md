@@ -33,6 +33,74 @@ phase: 5
 
 ## Tasks
 
+- [ ] **T5.0 Pass 2 reads `item_key` — the feature does not work without this** `[activity: backend]`
+
+  **BLOCKING, added 2026-09-06 by the Phase 3 gate.** Recursion is live and the key is threaded
+  through Pass 1, but **every subfolder note is silently dropped in Pass 2**, so nothing the
+  recursion discovers reaches the instruction set. PRD Feature 1's acceptance criterion —
+  "subfolder notes are triaged" — is not met end to end until this lands.
+
+  **The mechanism.** `filter_missing_source_notes` (`lib/render_resolve.py:672-683`), called from
+  `instruction-render.py:320`, reconstructs a path from the bare display stem:
+
+  ```python
+  if item.get("template") and source_path:
+      full_path = source_path
+      if "/" not in full_path:
+          full_path = f"{inbox_path.rstrip('/')}/{full_path}"
+      if not full_path.endswith(".md"):
+          full_path += ".md"
+      if not _exists(full_path):
+          dropped.append(item)
+  ```
+
+  For `100 Inbox/Places/Kaffee.md` the item's `source_path` is `Kaffee`, so it probes
+  `100 Inbox/Kaffee.md`, finds nothing, and drops the item. **This is the same
+  `<inbox_path>/<stem>.md` reconstruction T4.1 removed from `force-atomic-handling/SKILL.md`**,
+  living in a file no task pointed at. A second copy sits at `instruction-render.py:381-386`
+  (the body read); subfolder items never reach it because they are already gone.
+
+  **It is not a markdown-versus-wire problem.** Both parser paths emit a bare `source_path` by
+  Phase 2's deliberate design — `item_key` carries identity, `source_path` stays display text
+  (ADR-2). The defect is on the **consumer** side: the whole Pass-2 render stage never adopted
+  the key.
+
+  ```
+  tomo/scripts/instruction-render.py     0 occurrences of "item_key"
+  tomo/scripts/lib/render_resolve.py     0
+  tomo/scripts/lib/render_io.py          0
+  ```
+
+  T2.3b landed `item_key` one hop short of the stage that needs it.
+
+  **Blast radius: every subfolder note carrying a `template`** — every atomic-note suggestion —
+  not only ones whose filename collides. The guard branches on `"/" not in source_path`, a plain
+  "is this a bare stem" test with no collision awareness. Demonstrated on three globally unique
+  filenames (`Kaffee`, `Level2`, `Root Note`): the two in subfolders were dropped, the root one
+  kept, and every path the guard probed exists in the vault — it probed none of them.
+
+  **T5.1 does not close this.** T5.1 path-qualifies source links *on collision*; this drops every
+  subfolder note regardless. They are independent.
+
+  1. **Prime**: Read `filter_missing_source_notes` (`lib/render_resolve.py:672-683`), its caller
+     (`instruction-render.py:320`), and the body read at `instruction-render.py:381-386`. Read the
+     `#116` rationale the guard exists for — it is right, it is only addressing the item wrongly.
+  2. **Test** (RED):
+     - a subfolder note with a globally unique filename survives Pass 2 and reaches the
+       instruction set `[ref: PRD/AC Feature 1]`
+     - a note nested two levels deep survives
+     - a root-level note is unchanged
+     - the `#116` guard still drops an item whose source note is genuinely gone — the guard must
+       keep working, not be removed
+     - no path is composed from a bare stem anywhere in the Pass-2 render stage
+  3. **Implement**: address the item by `item_key`, falling back to the reconstruction only when
+     the key is absent, so a document produced before this spec still renders. Fix both sites.
+  4. **Validate**: tests pass; `ruff` clean.
+  5. **Success**:
+     - [ ] A subfolder note reaches the instruction set `[ref: PRD/AC Feature 1]`
+     - [ ] The `#116` guard still catches a genuinely missing source note
+     - [ ] No `<inbox_path>/<stem>` composition survives in the Pass-2 render stage
+
 - [ ] **T5.1 Source links disambiguate on collision** `[activity: backend]`
 
   **Inherited from Phase 2 — this task closes the markdown path's identity gap.** T2.3b closed the

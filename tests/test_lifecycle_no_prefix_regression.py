@@ -152,6 +152,7 @@ def done_state_file(tmp_path: Path) -> Path:
     p.write_text(
         json.dumps({
             "stem": "Asahikawa",
+            "item_key": NOTE_PATH,
             "path": NOTE_PATH,
             "status": "done",
             "run_id": "run-t44",

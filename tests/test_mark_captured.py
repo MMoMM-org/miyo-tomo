@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_mark_captured.py — Behavioural tests for mark-captured.py.
 
 Verifies that mark-captured.py:
@@ -98,12 +98,14 @@ def state_file(tmp_path):
     entries = [
         {
             "stem": "Asahikawa",
+            "item_key": "100 Inbox/Asahikawa.md",
             "path": "100 Inbox/Asahikawa.md",
             "status": "done",
             "run_id": "run-fixture",
         },
         {
             "stem": "memo-audio",
+            "item_key": "100 Inbox/memo.m4a",
             "path": "100 Inbox/memo.m4a",
             "status": "done",
             "run_id": "run-fixture",
@@ -120,12 +122,14 @@ def two_md_state_file(tmp_path):
     entries = [
         {
             "stem": "NoteA",
+            "item_key": "100 Inbox/NoteA.md",
             "path": "100 Inbox/NoteA.md",
             "status": "done",
             "run_id": "run-fixture",
         },
         {
             "stem": "NoteB",
+            "item_key": "100 Inbox/NoteB.md",
             "path": "100 Inbox/NoteB.md",
             "status": "done",
             "run_id": "run-fixture",
@@ -302,6 +306,7 @@ def test_run_id_propagated_from_argv(tmp_path, monkeypatch):
     state_file = tmp_path / "inbox-state.jsonl"
     state_file.write_text(json.dumps({
         "stem": "Asahikawa",
+        "item_key": "100 Inbox/Asahikawa.md",
         "path": "100 Inbox/Asahikawa.md",
         "status": "done",
         "run_id": unique_run_id,
@@ -482,12 +487,14 @@ def mixed_run_state_file(tmp_path):
     entries = [
         {
             "stem": "StaleNote",
+            "item_key": "100 Inbox/StaleNote.md",
             "path": "100 Inbox/StaleNote.md",
             "status": "done",
             "run_id": "run-OLD",
         },
         {
             "stem": "FreshNote",
+            "item_key": "100 Inbox/FreshNote.md",
             "path": "100 Inbox/FreshNote.md",
             "status": "done",
             "run_id": "run-NEW",

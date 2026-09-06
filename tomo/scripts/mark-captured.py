@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 1.0.3
+# version: 1.1.0
 """mark-captured.py — Mark processed inbox source items with tomo.state=captured.
 
 Reads the state-file, finds all items with status=done, and writes a
@@ -11,6 +11,13 @@ overwritten with the same value.
 Non-markdown items (audio, binaries, stray text) are skipped — they
 carry no frontmatter.
 
+The state-file replay joins on `item_key` — the item's vault-relative path,
+verbatim (spec 034 ADR-1/ADR-2). Two inbox items in different subfolders can
+share a bare filename, and this script drives a vault write: keyed on the
+filename, one item's entry masks its namesake's and the captured mark lands on
+the wrong note, or on no note at all. An entry that cannot be addressed
+unambiguously is declined — nothing is written for it.
+
 Called by the orchestrator after successfully writing the suggestions
 document to the vault (Phase C5).
 
@@ -20,15 +27,16 @@ Usage:
         --run-id <run-id>
 
 Exit codes:
-    0 — all done items marked (or already marked, or no state-file / no done
-        items — a tag-handler-only batch records no per-item state)
+    0 — all addressable done items marked (or already marked, or no state-file
+        / no done items — a tag-handler-only batch records no per-item state).
+        An item that cannot be addressed is declined, counted, and reported;
+        declining is not a failure.
     1 — one or more items failed (partial, logged to stderr)
     2 — fatal error (no Kado connection)
 """
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from pathlib import Path
@@ -37,17 +45,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.doc_frontmatter import build_tomo_block  # noqa: E402
+from lib.inbox_state import display_stem, last_state_per_item_key  # noqa: E402
 from lib.kado_client import KadoClient, KadoError  # noqa: E402
 from lib.squelch_persist import persist_rejected_clusters  # noqa: E402
-
-
-def last_state_per_stem(state_path: Path) -> dict[str, dict]:
-    """Read state-file and return the last entry per stem."""
-    state: dict[str, dict] = {}
-    for line in state_path.read_text(encoding="utf-8").strip().splitlines():
-        entry = json.loads(line)
-        state[entry["stem"]] = entry
-    return state
 
 
 def _load_squelch_config(config_path: str) -> dict:
@@ -105,31 +105,42 @@ def main() -> int:
         print(f"FATAL: Cannot connect to Kado: {exc}", file=sys.stderr)
         return 2
 
-    state = last_state_per_stem(state_path)
+    state = last_state_per_item_key(state_path)
     # #116: scope to THIS run's entries. inbox-state.jsonl is append-only and
-    # never truncated, so an unfiltered done-list re-stamps prior-run stems
+    # never truncated, so an unfiltered done-list re-stamps prior-run items
     # (source/captured) even when their source notes are gone.
-    done_stems = [
-        s
-        for s, e in state.items()
+    done_keys = [
+        k
+        for k, e in state.items()
         if e.get("status") == "done" and e.get("run_id") == args.run_id
     ]
 
-    if not done_stems:
+    if not done_keys:
         print("mark-captured: no done items to mark", file=sys.stderr)
         return 0
 
     marked = 0
     errors = 0
+    declined = 0
     skipped_non_md = 0
     squelched_total = 0
     registry_path = Path(args.squelch_registry)
     squelch_cfg = _load_squelch_config(args.config)
 
-    for stem in sorted(done_stems):
-        entry = state[stem]
+    for item_key in sorted(done_keys):
+        entry = state[item_key]
+        stem = display_stem(entry, item_key)
+        # The write target is the entry's own stored path — never a path
+        # reconstructed from the display stem. Without a path the item cannot be
+        # addressed, so it is declined rather than guessed at.
         path = entry.get("path", "")
         if not path:
+            print(
+                f"  [declined] {stem}: no path recorded for item_key={item_key}; "
+                f"nothing written",
+                file=sys.stderr,
+            )
+            declined += 1
             continue
 
         # Frontmatter lives only in markdown files. Skip audio, binaries, etc.
@@ -210,7 +221,7 @@ def main() -> int:
                     )
 
     print(
-        f"mark-captured: marked={marked} errors={errors} "
+        f"mark-captured: marked={marked} errors={errors} declined={declined} "
         f"skipped_non_md={skipped_non_md} squelched={squelched_total}",
         file=sys.stderr,
     )

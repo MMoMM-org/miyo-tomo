@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 # state-update.py — Append one status transition line to the inbox state-file.
-# version: 0.2.0
+# version: 0.3.0
 """
 Append-only writer for tomo-tmp/inbox-state.jsonl.
 
 Each invocation appends exactly one JSON line matching
-schemas/state-entry.schema.json. Readers take the last line per stem
-(last-write-wins). The original `pending` seed line from state-init is left
-in place; transitions are recorded as new lines.
+schemas/state-entry.schema.json. Readers take the last line per item_key
+(last-write-wins) — recursive inbox discovery means two items can share a
+bare stem, so `stem` alone is not a safe join key (spec 034 ADR-1/ADR-2);
+`item_key` is the item's vault-relative path and stays unique across
+subfolders. The original `pending` seed line from state-init is left in
+place; transitions are recorded as new lines.
 
 Inputs (CLI):
   --state        Path to inbox-state.jsonl
-  --stem         Item stem
+  --item-key     Item identity — the vault-relative path, verbatim (join key)
+  --stem         Item stem (display only; not used for lookups)
   --path         Vault path of the item (required on running/done; optional on failed)
   --status       pending | running | done | failed
   --run-id       Run identifier (must match existing entries for safety)
@@ -36,7 +40,13 @@ def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def read_last_entry(state_path: Path, stem: str) -> dict | None:
+def read_last_entry(state_path: Path, item_key: str) -> dict | None:
+    """Return the last-write-wins entry for `item_key` (spec 034 ADR-1/ADR-2).
+
+    Joining on `stem` would let two items in different subfolders that share
+    a filename mask each other's carried-forward state — the last line
+    matching the shared stem wins, regardless of which item it belongs to.
+    """
     if not state_path.exists():
         return None
     last = None
@@ -49,7 +59,7 @@ def read_last_entry(state_path: Path, stem: str) -> dict | None:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if obj.get("stem") == stem:
+            if obj.get("item_key") == item_key:
                 last = obj
     return last
 
@@ -59,6 +69,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description="Append a status transition line to the inbox state-file."
     )
     p.add_argument("--state", required=True)
+    p.add_argument("--item-key", required=True, help="Vault-relative path; the join key")
     p.add_argument("--stem", required=True)
     p.add_argument("--path", default=None)
     p.add_argument("--status", required=True, choices=["pending", "running", "done", "failed"])
@@ -73,13 +84,14 @@ def main() -> int:
     args = build_arg_parser().parse_args()
     state_path = Path(args.state)
 
-    prior = read_last_entry(state_path, args.stem)
+    prior = read_last_entry(state_path, args.item_key)
     now = now_iso()
 
     # Build the new entry, carrying forward what we can from the prior line
     entry: dict = {
         "run_id": args.run_id,
         "stem": args.stem,
+        "item_key": args.item_key,
         "path": args.path or (prior.get("path") if prior else None),
         "status": args.status,
         "attempts": args.attempts if args.attempts is not None
@@ -89,7 +101,7 @@ def main() -> int:
         "error": None,
     }
     if entry["path"] is None:
-        print(f"ERROR: no path known for stem={args.stem}", file=sys.stderr)
+        print(f"ERROR: no path known for item_key={args.item_key}", file=sys.stderr)
         return 1
 
     if args.status == "running":
@@ -110,7 +122,7 @@ def main() -> int:
         fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     print(
-        f"state-update: stem={args.stem} status={args.status} "
+        f"state-update: item_key={args.item_key} stem={args.stem} status={args.status} "
         f"attempts={entry['attempts']} run_id={args.run_id}",
         file=sys.stderr,
     )

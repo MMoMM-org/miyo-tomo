@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t2_7_diff_keys_on_item_key.py — instructions-diff.py's coverage
 audit must key identity on item_key (the vault-relative path, ADR-1), not a
 bare filename stem.
@@ -24,6 +24,8 @@ import io
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
+
+import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
@@ -197,6 +199,61 @@ def test_single_item_flat_inbox_audit_unchanged():
     _must(obs == [], f"no observations expected, got {obs}")
     _must("file=[OK]" in out, f"single item must show file=[OK]:\n{out}")
     print("[PASS] single-item, flat-inbox audit is unchanged")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Residual gap — today's bare-stem source_path is still ambiguous; pending T2.3b
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# T2.7 fixed the JOIN — both sides of the coverage check now key on item_key
+# instead of a bare stem. But upstream of this module, confirmed_items[].source_path
+# is TODAY still the bare wikilink stem suggestion-parser.py projects onto the wire
+# (no subfolder, no extension — see suggestion-parser.py:324), so two confirmed
+# items that happen to share that bare stem are, on today's data alone, genuinely
+# indistinguishable: there is no path-qualified value anywhere in confirmed_items
+# for _keys_match to work with. T2.3b closes this precondition by threading
+# item_key into confirmed_items and making derive_expected prefer it.
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "T2.3b (not yet implemented) must thread item_key into confirmed_items "
+        "and make derive_expected prefer it over the bare source_path stem. Until "
+        "then, two confirmed items sharing a bare stem (e.g. 'Dresden', no "
+        "subfolder/extension) are indistinguishable to this module: a duplicate-"
+        "render defect that produces two REAL move_note actions for two different "
+        "real files (both actually belonging to one item, none belonging to the "
+        "other) reconciles as a full pass instead of reporting the item with no "
+        "action. This test intentionally documents that still-open gap — once "
+        "T2.3b lands and derive_expected has a real item_key to key on, this "
+        "assertion starts passing, and xfail(strict=True) turns that unexpected "
+        "pass into a failure, forcing whoever ships T2.3b to convert this into a "
+        "positive assertion here instead of leaving it to silently bit-rot."
+    ),
+)
+def test_bare_stem_duplicate_render_defect_not_yet_caught():
+    # keep_source=True on both — this test isolates the move_note per-item
+    # identity gap; delete_source pairing is a separate concern (T2.7 already
+    # keys that dedup on item_key, see paired_origins_seen).
+    confirmed = [
+        {**_confirmed("S01", "Dresden", "Dresden — Frauenkirche"), "keep_source": True},
+        {**_confirmed("S02", "Dresden", "Dresden — a different note"), "keep_source": True},
+    ]
+    parsed = {"confirmed_items": confirmed, "daily_updates": [], "skipped": []}
+
+    # Both real move_note actions are, in truth, S01 rendered twice (a
+    # duplicate-render defect) — S02 has no action of its own anywhere.
+    actions = [
+        _move_note_action("a1", "100 Inbox/Places/Dresden.md", "Dresden — Frauenkirche"),
+        _move_note_action("a2", "100 Inbox/Reise/Dresden.md", "Dresden — Frauenkirche"),
+    ]
+    instrs = _instrs(actions)
+
+    rc, _obs, out = _run(parsed, instrs)
+    assert rc == 1, (
+        f"S02 has no action anywhere and must be reported, not folded into a "
+        f"false full pass:\n{out}"
+    )
 
 
 def main() -> int:

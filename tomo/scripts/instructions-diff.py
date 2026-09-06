@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.13.0
+# version: 0.13.1
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -318,6 +318,8 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
     #      their inbox origin unless the user opted out via "Keep source files".
     #   4. tag-handler group sources: each APPROVED group (not "Keep source files")
     #      deletes every consolidated inbox source (instruction-render branch 4).
+    # NOTE: deliberately stem-keyed, not item_key — daily_updates[].source_stem
+    # is bare-stem upstream, so this stays a residual collapse point until T2.3b.
     confirmed_stems = {_stem(it.get("source_path")) for it in confirmed if it.get("source_path")}
     expected_deletions: list[str] = []
     for sk in skipped:

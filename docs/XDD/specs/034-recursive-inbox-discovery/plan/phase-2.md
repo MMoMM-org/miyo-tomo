@@ -297,6 +297,15 @@ rather than loudly, which is why T2.8 exists.
 
 - [ ] **T2.8 Phase Validation — prove the key is carried end to end** `[activity: validate]`
 
+  - **State which path the end-to-end trace actually proves.** `suggestion-parser.py` has two
+    entry points that build `confirmed_items`, and only one of them carries the key:
+    `build_from_wire` (`:267`, the ADR-026 wire-edit path) threads `item_key`, while `main()`
+    (`:1854`; appends at `:2034`, `:2247`, `:2272`, `:2330`) mints **none** — and `main()` is the
+    path `synthesis-conductor.md` invokes in the normal flow (`--file <CACHE_PATH>`). The gate must
+    say plainly that the coverage-audit collapse is closed **for the wire path only**, and that the
+    markdown path still keys on a bare stem pending Phase 5 T5.1. Do not let a green suite imply
+    more than that.
+
   - **Settle an order-dependent flake before declaring the gate green.**
     `tests/test_suggestion_parser_fan_resolve.py::test_fan_without_section_no_resolve_populates_pending`
     failed intermittently under `pytest-randomly`'s default ordering during T2.2's review, and

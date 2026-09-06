@@ -35,6 +35,24 @@ phase: 5
 
 - [ ] **T5.1 Source links disambiguate on collision** `[activity: backend]`
 
+  **Inherited from Phase 2 — this task closes the markdown path's identity gap.** T2.3b closed the
+  coverage-audit collapse for the ADR-026 **wire** path by threading `item_key` into
+  `confirmed_items` in `build_from_wire` (`suggestion-parser.py:267`). The **markdown** path —
+  `main()` at `:1854`, which `synthesis-conductor.md` actually invokes as
+  `--file <CACHE_PATH>` in the normal flow — mints no `item_key` at any of its four
+  `confirmed_items.append` sites (`:2034`, `:2247`, `:2272`, `:2330`), because the rendered document
+  carries only a bare display stem and a path cannot be recovered from one.
+
+  Path-qualifying the source link on collision is exactly what this task does, so it is also what
+  makes the markdown path's identity recoverable. When it lands:
+  - Thread the qualified path into `confirmed_items` as `item_key` on the markdown path too, using
+    the module-level `_item_key_of` — no second derivation.
+  - Re-run T2.7's adversarial case through the **markdown** path (two confirmed items for
+    `100 Inbox/Places/Dresden.md` and `100 Inbox/Reise/Dresden.md`, one with a duplicated
+    `move_note`, one with none) and assert the audit **reports the missing item**. Through the wire
+    path this already returns `RESULT: FAIL … RC=1`; through the markdown path it still returns
+    `RESULT: OK … RC=0` today.
+
   1. **Prime**: Read the display sites in `suggestions-reducer.py` — enumerate them yourself
      rather than working from a count `[ref: SDD/Implementation Gotchas]`. Read the verified
      evidence in the spec README: when two files share a basename the vault itself writes

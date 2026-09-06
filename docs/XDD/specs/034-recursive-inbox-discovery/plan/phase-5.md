@@ -236,6 +236,15 @@ phase: 5
 
 - [ ] **T5.1 Source links disambiguate on collision** `[activity: backend]`
 
+  **Caveat inherited from T5.0, recorded by its implementer.** The two parser paths disagree on
+  what an absent key means: `build_from_wire` falls back to `w.get("item_key") or stem`, putting a
+  **display stem into an identity field** when a wire carries no key, while the markdown path
+  leaves it `None`. Real documents always carry the key, so they agree in practice, and the golden
+  parity tests strip the field from both sides and say why. But the wire's fallback is an ADR-2
+  violation in waiting — a field holding something its name does not describe — and this task
+  changes what source links carry, so decide deliberately whether to make both paths agree on
+  `None` rather than inheriting the divergence.
+
   **Inherited from Phase 2 — this task closes the markdown path's identity gap.** T2.3b closed the
   coverage-audit collapse for the ADR-026 **wire** path by threading `item_key` into
   `confirmed_items` in `build_from_wire` (`suggestion-parser.py:267`). The **markdown** path —

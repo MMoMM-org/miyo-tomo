@@ -644,3 +644,28 @@ that restores `sys.modules` on teardown, rather than a process-global `setdefaul
 
 Worth doing because the failure mode is invisible: the suite stays green while a real module
 is silently replaced for every later importer in that process.
+
+### Dead shell tests still assert the retired `inbox-orchestrator` exists
+
+Traced 2026-09-06 while closing spec 034's voice-path recursion. `inbox-orchestrator` was
+deleted under spec 018 (agent-architecture-cleanup), retired in favour of
+`suggestion-conductor` + `synthesis-conductor`. Three stale references survive:
+
+- `tests/test-phase3.sh:141-144` — `check_file` asserts the file **exists**, then greps it for
+  S-section format, the Classification Guard and the anti-parrot rule. Guaranteed to fail.
+- `tests/test-004-phase3.sh:193,219` — feeds the missing path to a Python check and greps it
+  for `mcp__kado__kado-write`. Guaranteed to fail.
+- `tomo/dot_claude/agents/voice-transcriber.md:261` — a boundary line reading "You do NOT
+  invoke `inbox-orchestrator`, `inbox-analyst`, or any other agent". Harmless but it is an
+  LLM-loaded runtime file naming an agent that does not exist, which is exactly the noise CON-5
+  exists to keep out. One-word removal; the sentence stays sound without it.
+
+These two `.sh` scripts are not pytest-collected, which is why they have been failing silently
+for some time — spec 034 repeatedly confirmed them as "pre-existing, unrelated" via `git stash`
+without anyone identifying the cause. This is that cause.
+
+Fix shape: either retarget the assertions at the agents that replaced it, or delete the dead
+blocks. Deleting is likely right — the format rules those greps guard moved with the agent.
+
+`docs/XDD/specs/005-daily-note-workflow/solution.md:12` also names it; that is a historical
+spec and should be left as written.

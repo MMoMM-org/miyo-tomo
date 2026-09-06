@@ -82,6 +82,43 @@ phase: 5
   **T5.1 does not close this.** T5.1 path-qualifies source links *on collision*; this drops every
   subfolder note regardless. They are independent.
 
+
+  **Three further facts from the gate, each of which changes how this must be fixed.**
+
+  **(a) The guard fabricates the very stub it exists to prevent.** `_exists` returns `True` on
+  *any* exception. So a transient Kado error does not drop the item — it **keeps** it, and the
+  item then reaches the body read at `instruction-render.py:381`, reads an empty body, and
+  fabricates a stub. `#116` exists precisely to stop that. The function therefore fails in both
+  directions: it drops items whose notes exist, and on error it admits items whose notes it
+  could not check. Fixing the addressing does not fix this; the fail-open branch needs its own
+  decision, and "keep and read an empty body" is not it.
+
+  **(b) The message misdiagnoses, and reaches no artefact.** `instruction-render.py:323-333`
+  prints, to stderr only:
+
+  ```
+  [skip] 2 confirmed item(s) skipped — source note missing, not fabricating a stub:
+    • S01 → Kaffee
+    • S02 → Level2
+  ```
+
+  The note is **not** missing — it is one folder down. A user reading this looks for a deleted
+  file. `dropped_missing_source` is referenced at `:320`, `:323`, `:329` and nowhere else: it
+  reaches neither the instruction set, nor `needs_attention`, nor `instructions.md`, and the exit
+  code stays **0** (`:739`, the drop never increments `errors`). Whatever this task does about the
+  addressing, a dropped item must become visible in an artefact the user actually reads, and the
+  wording must say what really happened.
+
+  **(c) Inherited, not introduced — and that is why nobody looked.** `render_resolve.py:673-678`
+  and `instruction-render.py:381-384` are **byte-identical at `ee44cb3`**. The reconstruction was
+  correct while `depth=1` guaranteed every item sat at the root; Phase 3 removed the precondition,
+  not the code. So this is a live defect on HEAD that no diff in this spec would ever show —
+  which is why four task-level reviews, each correctly scoped to its own diff, could not have
+  found it. Only walking the chain did.
+
+  **Not in the spec at all**: `filter_missing_source_notes`, `render_resolve.py`, `render_io.py`,
+  `render_actions.py` and `#116` appear nowhere in spec 034's plan, SDD or backlog.
+
   1. **Prime**: Read `filter_missing_source_notes` (`lib/render_resolve.py:672-683`), its caller
      (`instruction-render.py:320`), and the body read at `instruction-render.py:381-386`. Read the
      `#116` rationale the guard exists for — it is right, it is only addressing the item wrongly.

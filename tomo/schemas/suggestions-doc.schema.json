@@ -142,6 +142,7 @@
                 "value": {},
                 "reason": {"type": "string"},
                 "source_stem": {"type": "string"},
+                "source_item_key": {"type": "string", "description": "The source note's identity: its vault-relative path, verbatim (spec 034 ADR-1). Absent on documents produced before spec 034."},
                 "source_section": {"type": "string", "pattern": "^S[0-9]{2,}$"}
               }
             }
@@ -155,9 +156,11 @@
               "properties": {
                 "time": {"type": ["string", "null"]},
                 "time_source": {"type": ["string", "null"]},
+                "position": {"type": ["string", "null"]},
                 "content": {"type": "string"},
                 "reason": {"type": "string"},
                 "source_stem": {"type": "string"},
+                "source_item_key": {"type": "string", "description": "The source note's identity: its vault-relative path, verbatim (spec 034 ADR-1). Absent on documents produced before spec 034."},
                 "source_section": {"type": "string", "pattern": "^S[0-9]{2,}$"}
               }
             }
@@ -172,8 +175,10 @@
                 "target_stem": {"type": "string"},
                 "time": {"type": ["string", "null"]},
                 "time_source": {"type": ["string", "null"]},
+                "position": {"type": ["string", "null"]},
                 "reason": {"type": "string"},
                 "source_stem": {"type": "string"},
+                "source_item_key": {"type": "string", "description": "The source note's identity: its vault-relative path, verbatim (spec 034 ADR-1). Absent on documents produced before spec 034."},
                 "source_section": {"type": "string", "pattern": "^S[0-9]{2,}$"}
               }
             }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.28.0
+# version: 0.29.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -339,7 +339,11 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
         else:
             skipped_items.append({
                 "id": w.get("id"),
+                # source_path stays the bare display stem (ADR-2); item_key is
+                # what Pass 2 addresses the note by when it emits a skip or a
+                # user-requested delete for it (ADR-1).
                 "source_path": stem,
+                "item_key": item_key,
                 "disposition": "delete_source" if w.get("delete_source") else "skip",
             })
 
@@ -1747,6 +1751,77 @@ RE_TAG_HANDLER_GROUP_ID = re.compile(
 )
 
 
+_DAILY_DISCRIMINATOR = {
+    "trackers": "field",
+    "log_entries": "content",
+    "log_links": "target_stem",
+}
+
+
+def enrich_daily_updates_with_item_keys(entries: list[dict], doc: dict) -> None:
+    """Restore each daily entry's `source_item_key` from the structured doc.
+
+    A daily-only item — one whose content is fully captured in a daily note —
+    gets no per-item section, so the rendered document is the only place it
+    appears, and there it carries a bare display stem. Pass 2 nonetheless emits
+    a `delete_source` for it (`render_actions._build_delete_source_actions`),
+    which is why its identity has to survive the round trip through markdown.
+
+    The structured `daily_notes_updates` block the markdown was rendered from
+    still holds `source_item_key`, so the key is recovered by matching on the
+    daily-note stem, the bucket, and the entry's own discriminating field
+    (tracker name / log content / link target). A discriminator that maps to
+    more than one distinct key is ambiguous and is left unset rather than
+    guessed — an absent key falls back to the inbox-root reconstruction, a
+    wrong one names the wrong note.
+
+    Mutates `entries` in place. A document without the field is untouched.
+    """
+    if not entries or not isinstance(doc, dict):
+        return
+    lookup: dict[tuple[str, str, str], str | None] = {}
+    for day in doc.get("daily_notes_updates") or []:
+        day_stem = day.get("daily_note_stem") or ""
+        for bucket, field in _DAILY_DISCRIMINATOR.items():
+            for entry in day.get(bucket) or []:
+                key = entry.get("source_item_key")
+                if not key:
+                    continue
+                lookup_key = (day_stem, bucket, str(entry.get(field, "")))
+                if lookup_key in lookup and lookup[lookup_key] != key:
+                    lookup[lookup_key] = None  # ambiguous — never guess
+                else:
+                    lookup.setdefault(lookup_key, key)
+
+    if not lookup:
+        return
+    for day in entries:
+        day_stem = day.get("date") or ""
+        for bucket, field in _DAILY_DISCRIMINATOR.items():
+            for entry in day.get(bucket) or []:
+                key = lookup.get((day_stem, bucket, str(entry.get(field, ""))))
+                if key:
+                    entry["source_item_key"] = key
+
+
+def _restore_daily_item_keys(
+    parsed: dict, suggestions_doc: str | None, markdown_path: str
+) -> None:
+    """Re-attach daily-entry item keys to a wire-built output (ADR-026 path).
+
+    The wire deliberately does NOT carry `source_item_key`: its schema is
+    `additionalProperties: false` and it is the Hashi Suggestions Editor's
+    contract, so widening it is a coordinated cross-repo change. The key is
+    instead recovered here from the Tomo-owned suggestions doc — the same
+    source the markdown path uses — which keeps both parser paths on one
+    recovery mechanism and leaves the wire untouched.
+    """
+    doc_path = suggestions_doc or _default_doc_path(markdown_path)
+    enrich_daily_updates_with_item_keys(
+        parsed.get("daily_updates") or [], _load_json_doc(doc_path)
+    )
+
+
 def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
     """Walk the ## Tag-Handler Updates section, one record per group block.
 
@@ -1942,10 +2017,9 @@ def main() -> int:
         # Primary flow (no companion): edited primary wire → JSON-only.
         _wire = load_changed_wire(args.suggestions_json)
         if _wire is not None:
-            print(json.dumps(
-                build_from_wire(_wire, _load_moc_template()),
-                indent=2, ensure_ascii=False,
-            ))
+            _out = build_from_wire(_wire, _load_moc_template())
+            _restore_daily_item_keys(_out, args.suggestions_doc, filename)
+            print(json.dumps(_out, indent=2, ensure_ascii=False))
             print(
                 "suggestions-json: edited wire is authoritative (JSON-only path)",
                 file=sys.stderr,
@@ -1958,10 +2032,9 @@ def main() -> int:
         _p = load_changed_wire(args.suggestions_json)
         _f = load_changed_wire(args.fan_resolve_json)
         if _p is not None and _f is not None:
-            print(json.dumps(
-                build_from_wire_companion(_p, _f, _load_moc_template()),
-                indent=2, ensure_ascii=False,
-            ))
+            _out = build_from_wire_companion(_p, _f, _load_moc_template())
+            _restore_daily_item_keys(_out, args.suggestions_doc, filename)
+            print(json.dumps(_out, indent=2, ensure_ascii=False))
             print(
                 "companion: both wires edited — JSON-only merge (build_from_wire_companion)",
                 file=sys.stderr,
@@ -2121,6 +2194,12 @@ def main() -> int:
 
     # ── Parse Daily Notes Updates ─────────────────────────────
     daily_updates = parse_daily_updates(text)
+    # The rendered daily block carries only a display stem, so the identity of
+    # each entry's source note is recovered from the structured doc it was
+    # rendered from — Pass 2 emits a delete_source for daily-only items.
+    enrich_daily_updates_with_item_keys(
+        daily_updates, _load_json_doc(_primary_doc_path)
+    )
     if daily_updates:
         accepted_count = sum(
             1 for d in daily_updates

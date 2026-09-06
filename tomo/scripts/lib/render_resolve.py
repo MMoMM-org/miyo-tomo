@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.3.0
 """render_resolve.py — post-build resolution + filtering passes for the action list.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). These passes
@@ -14,7 +14,7 @@ import re
 import sys
 
 import lib.moc_structure as moc_structure
-from lib.render_helpers import _moc_stem, _stem
+from lib.render_helpers import _moc_stem, _stem, resolve_source_path
 from lib.render_io import read_template
 
 # Editable-callout name regex: captures the callout keyword from a callout header
@@ -648,22 +648,40 @@ def filter_missing_source_notes(
     without a `source_path` (synthesized MOC proposals) are always kept — this
     filter targets note-fabrication only.
 
-    Returns (kept, dropped). Fail-open: if `client` is None or a Kado read fails
-    for any reason other than a definitive not-found, the item is kept — never
-    drop on a transient error.
+    The item is addressed by `item_key` — its vault-relative path, verbatim
+    (spec 034 ADR-1). Only when no key is present does it fall back to the
+    inbox-root reconstruction, which is correct for a document produced before
+    recursive discovery and a guess for anything after it.
+
+    Three outcomes, not two. A Kado failure used to be treated as "exists",
+    which KEPT the item — it then read an empty body downstream and fabricated
+    exactly the stub #116 exists to prevent. An unverifiable source is
+    therefore no longer rendered either; the source note stays untouched in the
+    inbox and is re-proposed on the next run, which is recoverable, whereas a
+    fabricated stub is not. `client is None` is a different case — no check was
+    requested at all — and still keeps everything.
+
+    Returns (kept_items, drop_reports). A drop report is metadata only
+    (Constitution L2): `id`, `title`, `source_path`, `item_key`, the
+    `probed_path` actually asked about, and a `reason`. It carries no note
+    content, and it is a report — not the item — because the caller's job with
+    it is to tell the user what happened, not to re-render it.
     """
     if client is None:
         return confirmed, []
-    exists_cache: dict[str, bool] = {}
+    exists_cache: dict[str, bool | None] = {}
 
-    def _exists(path: str) -> bool:
+    def _exists(path: str) -> bool | None:
+        """True/False on a definitive answer, None when Kado could not say."""
         if path in exists_cache:
             return exists_cache[path]
-        ok = True  # fail-open default
         try:
-            ok = client.note_exists(path)
-        except Exception:  # noqa: BLE001 — transient/other error: keep the item
-            ok = True
+            # bool(), not the raw return: the tri-state distinguishes "the
+            # client answered" from "the client could not", so a truthy answer
+            # from a duck-typed client must read as a yes, not as a non-answer.
+            ok: bool | None = bool(client.note_exists(path))
+        except Exception:  # noqa: BLE001 — transport/validation: not a verdict
+            ok = None
         exists_cache[path] = ok
         return ok
 
@@ -672,13 +690,27 @@ def filter_missing_source_notes(
     for item in confirmed:
         source_path = item.get("source_path", "")
         if item.get("template") and source_path:
-            full_path = source_path
-            if "/" not in full_path:
-                full_path = f"{inbox_path.rstrip('/')}/{full_path}"
+            item_key = item.get("item_key")
+            full_path = resolve_source_path(item_key, source_path, inbox_path)
             if not full_path.endswith(".md"):
                 full_path += ".md"
-            if not _exists(full_path):
-                dropped.append(item)
+            verdict = _exists(full_path)
+            if verdict is not True:
+                dropped.append({
+                    "id": item.get("id"),
+                    "title": item.get("title"),
+                    "source_path": source_path,
+                    "item_key": item_key or "",
+                    "probed_path": full_path,
+                    # `kind` is the stable discriminator renderers branch on;
+                    # `reason` is prose for a human and must never be parsed.
+                    "kind": "not-found" if verdict is False else "unverifiable",
+                    "reason": (
+                        "no note at this path"
+                        if verdict is False
+                        else "Kado could not confirm this path"
+                    ),
+                })
                 continue
         kept.append(item)
     return kept, dropped

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.45.0
+# version: 0.46.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -68,7 +68,7 @@ from lib.render_actions import (  # noqa: E402,F401
     extract_first_up_marker,
     group_id,
 )
-from lib.render_helpers import _moc_stem, _stem  # noqa: E402,F401
+from lib.render_helpers import _moc_stem, _stem, resolve_source_path  # noqa: E402,F401
 from lib.render_io import read_note_body, read_template  # noqa: E402,F401
 from lib.render_md import (  # noqa: E402,F401
     SECTION_TITLES,
@@ -322,13 +322,16 @@ def main() -> int:
     )
     if dropped_missing_source:
         print(
-            f"  [skip] {len(dropped_missing_source)} confirmed item(s) skipped — "
-            "source note missing, not fabricating a stub:",
+            f"  [skip] {len(dropped_missing_source)} confirmed item(s) not rendered — "
+            "the source note could not be read at the path Tomo asked for, and a "
+            "stub is never fabricated in its place:",
             file=sys.stderr,
         )
-        for item in dropped_missing_source:
+        for record in dropped_missing_source:
+            addressed = "item_key" if record.get("item_key") else "display name only"
             print(
-                f"    • {item.get('id', '?')} → {item.get('source_path', '')}",
+                f"    • {record.get('id', '?')} → probed {record.get('probed_path', '')} "
+                f"({record.get('reason', '')}; addressed by {addressed})",
                 file=sys.stderr,
             )
 
@@ -354,6 +357,7 @@ def main() -> int:
             continue
         title = item.get("title") or item.get("source_path", "untitled")
         source_path = item.get("source_path", "")
+        item_key_value = item.get("item_key")
         audio_peer = item.get("audio_peer")
         template_ref = item.get("template", "")
         tags = item.get("tags", [])
@@ -376,12 +380,11 @@ def main() -> int:
             errors += 1
             continue
 
-        # 2. Read source note body (uses pre-loaded inbox_path from config)
+        # 2. Read source note body — addressed by item_key (spec 034 ADR-1),
+        #    falling back to the inbox-root reconstruction only when absent.
         body = ""
         if source_path:
-            full_path = source_path
-            if "/" not in full_path:
-                full_path = f"{inbox_path.rstrip('/')}/{full_path}"
+            full_path = resolve_source_path(item_key_value, source_path, inbox_path)
             if not full_path.endswith(".md"):
                 full_path += ".md"
             body = read_note_body(client, full_path)
@@ -468,6 +471,10 @@ def main() -> int:
             "action": item.get("action", "create_note"),
             "title": title,
             "source_path": source_path,
+            # Tomo-internal identity (ADR-1). The action builders address the
+            # origin note by this; `source_path` stays display text (ADR-2).
+            # Never emitted to Hashi — build_actions copies named fields only.
+            "item_key": item_key_value,
             "audio_peer": audio_peer,
             "template": template_ref,
             "rendered_file": filename,
@@ -699,6 +706,26 @@ def main() -> int:
             }
             for s in skipped_assets
         ]
+    # Record confirmed items the #116 guard withheld, so the drop reaches an
+    # artefact instead of scrolling past on stderr. Metadata only: id, the path
+    # probed, and why — never note content. Nested under the permissive `tomo`
+    # block, so Hashi ignores it and the wire schema is untouched (CON-4).
+    if dropped_missing_source:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["dropped_sources"] = [
+            {
+                "id": d.get("id"),
+                "source_path": d.get("source_path"),
+                "item_key": d.get("item_key"),
+                "probed_path": d.get("probed_path"),
+                "kind": d.get("kind"),
+                "reason": d.get("reason"),
+            }
+            for d in dropped_missing_source
+        ]
     instructions_json_path = out_dir / "instructions.json"
     instructions_json_path.write_text(
         json.dumps(instructions_doc, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -719,6 +746,7 @@ def main() -> int:
             "skipped_daily": skipped_daily,
             "skipped_rel": skipped_rel,
             "skipped_assets": skipped_assets,
+            "dropped_sources": dropped_missing_source,
         },
         cfg,
     )

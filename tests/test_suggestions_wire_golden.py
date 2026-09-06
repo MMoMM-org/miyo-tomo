@@ -203,7 +203,12 @@ def _wire(**note_overrides) -> dict:
 def test_skip_decision_moves_note_to_skipped():
     out = parser.build_from_wire(_wire(decision="skip"), "")
     assert out["confirmed_items"] == []
-    assert out["skipped"] == [{"id": "S01", "source_path": "memo", "disposition": "skip"}]
+    # item_key rides alongside source_path (spec 034 T5.0): Pass 2 emits a skip
+    # and a user-requested delete for these, and must address the real note.
+    assert out["skipped"] == [{
+        "id": "S01", "source_path": "memo", "item_key": "memo",
+        "disposition": "skip",
+    }]
 
 
 def test_skip_with_delete_source_disposition():

@@ -1,4 +1,4 @@
-# version: 0.8.2
+# version: 0.9.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -514,7 +514,8 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     skipped_daily = metadata.get("skipped_daily") or []
     skipped_rel = metadata.get("skipped_rel") or []
     skipped_assets = metadata.get("skipped_assets") or []
-    if skipped_daily or skipped_rel or skipped_assets:
+    dropped_sources = metadata.get("dropped_sources") or []
+    if skipped_daily or skipped_rel or skipped_assets or dropped_sources:
         body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
         if skipped_daily:
@@ -558,6 +559,38 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                     # reason would quietly inherit the wrong instruction.
                     remedy = f"(no remedy defined for skip kind {kind!r} — check render_md.py)"
                 body_parts.append(f"- `move_asset` → `{source}` — {reason}. {remedy}.")
+            body_parts.append("")
+        if dropped_sources:
+            body_parts.append(
+                "**Source note not read** — no note was created for these items, "
+                "and no stub was fabricated. Their source notes are untouched in "
+                "the inbox and will be proposed again on the next `/inbox`:")
+            body_parts.append("")
+            for d in dropped_sources:
+                name = d.get("title") or d.get("source_path") or d.get("id") or "?"
+                probed = d.get("probed_path") or "?"
+                reason = d.get("reason") or "?"
+                kind = d.get("kind")
+                if kind == "unverifiable":
+                    remedy = (
+                        "Kado did not answer for this path — a connection or "
+                        "permission problem, not a missing note; re-run `/inbox` "
+                        "once Kado is reachable"
+                    )
+                elif kind == "not-found" and d.get("item_key"):
+                    remedy = "the note has moved or been deleted since Pass 1"
+                elif kind == "not-found":
+                    remedy = (
+                        "this document carries no path for the item, so only the "
+                        "inbox root was tried — a note in a subfolder is not found "
+                        "this way"
+                    )
+                else:
+                    # A missing or unrecognised kind must never inherit one of
+                    # the remedies above — misdiagnosing the cause is the whole
+                    # failure this section was rewritten to stop.
+                    remedy = f"(no remedy defined for drop kind {kind!r} — check render_md.py)"
+                body_parts.append(f"- {name} → probed `{probed}` — {reason}; {remedy}.")
             body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"
 

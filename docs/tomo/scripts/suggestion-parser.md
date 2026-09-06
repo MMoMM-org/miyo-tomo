@@ -360,3 +360,41 @@ would push a path at that emission boundary and break a cross-repo contract.
 A separate field lets identity and display coexist —
 `instructions-diff.derive_expected` prefers `item_key` and falls back to
 `source_path`, so the markdown path (which mints no `item_key`) is unaffected.
+
+## Daily-Entry Identity Is Recovered From the Doc, Never Carried in the Wire (spec 034 T5.0)
+
+WHY `enrich_daily_updates_with_item_keys` exists, and why it runs on BOTH
+parser paths rather than the key simply riding in the wire:
+
+A daily-only item — one whose content is fully captured in a daily note —
+produces no per-item section, so the rendered document shows it only as a
+daily-note entry with a bare display stem. Pass 2 nonetheless emits a
+`delete_source` for it, so its identity has to survive the round trip through
+markdown or that delete names a path composed from the inbox root.
+
+The obvious fix — put `source_item_key` in the wire — is not available. The
+wire's daily entries are `additionalProperties: false` and the wire is the
+Hashi Suggestions Editor's contract, so widening it is a coordinated cross-repo
+change (MiYo Constitution: cross-component interface changes are recorded in
+Kokoro first). The key is therefore recovered from `suggestions-doc.json`,
+which is Tomo-owned, on both paths: `main()` does it after
+`parse_daily_updates`, and `_restore_daily_item_keys` does it after
+`build_from_wire`. One mechanism, no wire change.
+
+The join is on daily-note stem + bucket + the entry's own discriminating field
+(tracker name / log content / link target), not on position: a user who deletes
+a line from the document would shift every subsequent entry, and a positional
+join would then silently rebind keys to the wrong notes. A discriminator that
+maps to more than one distinct key is left UNSET rather than guessed — an
+absent key falls back to the reconstruction, which may be wrong; a guessed key
+names a specific wrong note, which is worse.
+
+## `item_key` on `skipped_items` (spec 034 T5.0)
+
+WHY the wire path's `skipped_items` gained `item_key` alongside `source_path`:
+Pass 2 emits both a `skip` action and, for the "Delete source" disposition, a
+`delete_source` for these items. Both addressed the note by display stem, so a
+user ticking "Delete source" on a subfolder note asked to delete the inbox
+root. `source_path` stays the display stem (ADR-2); `item_key` is the identity
+(ADR-1). The markdown path mints no key here for the same reason it mints none
+on confirmed items — the document carries no path (T5.1).

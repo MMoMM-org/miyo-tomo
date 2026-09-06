@@ -1,4 +1,4 @@
-# version: 0.10.0
+# version: 0.11.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -21,7 +21,12 @@ from lib.file_extensions import KNOWN_FILE_EXTENSIONS
 from lib.kado_client import KadoError
 from lib.obsidian_filename import sanitize_stem
 from lib.profile_conventions import marker_word
-from lib.render_helpers import _moc_stem, _stem
+from lib.render_helpers import (
+    _moc_stem,
+    _stem,
+    resolve_sibling_path,
+    resolve_source_path,
+)
 from lib.render_md import bare_stem
 from lib.up_parse import up_marker_re as _up_marker_re
 from lib.supporting_items import (
@@ -588,22 +593,20 @@ def _build_move_note_actions(
             continue
         title = m.get("title", "")
         rendered = m.get("rendered_file", "")
+        # The origin note is addressed by item_key (ADR-1); the inbox-root
+        # reconstruction is the fallback for a document minted before spec 034.
         origin_basename = m.get("source_path") or ""
-        if origin_basename and "/" not in origin_basename:
-            origin = _inbox_join(inbox_path, origin_basename)
-        elif origin_basename:
-            origin = origin_basename
-        else:
-            origin = None
+        item_key = m.get("item_key")
+        origin = resolve_source_path(item_key, origin_basename, inbox_path) or None
         # Append .md only for bare/dotted note names; preserve real
         # extensions (e.g. `.m4a` for audio sources kept as origin reference).
         origin = _ensure_md_extension(origin)
-        # audio_peer is the companion audio file for voice transcripts.
-        # Join a bare basename with inbox_path exactly as we do for origin,
-        # but do NOT apply _ensure_md_extension — the .m4a must be preserved.
-        audio_peer = m.get("audio_peer")
-        if audio_peer and "/" not in audio_peer:
-            audio_peer = _inbox_join(inbox_path, audio_peer)
+        # audio_peer is the companion audio file for voice transcripts. Triage
+        # pairs it to the note by containing folder, so it resolves beside the
+        # note — not at the inbox root. No _ensure_md_extension: keep the .m4a.
+        audio_peer = resolve_sibling_path(
+            item_key, m.get("audio_peer"), inbox_path
+        ) or None
         out.append({
             "id": _next_id(counter),
             "action": "move_note",
@@ -935,8 +938,6 @@ def _build_delete_source_actions(
             if item.get("keep_source"):
                 keep_source_stems.add(stem)
 
-    inbox = inbox_path.rstrip("/") + "/"
-
     # (1) Explicit user "Delete source" on skipped items
     for sk in skipped:
         if sk.get("disposition") != "delete_source":
@@ -944,8 +945,9 @@ def _build_delete_source_actions(
         sp = sk.get("source_path") or ""
         if not sp:
             continue
-        full = sp if "/" in sp else f"{inbox}{sp}"
-        full = _ensure_md_extension(full)
+        full = _ensure_md_extension(
+            resolve_source_path(sk.get("item_key"), sp, inbox_path)
+        )
         out.append({
             "id": _next_id(counter),
             "action": "delete_source",
@@ -964,10 +966,18 @@ def _build_delete_source_actions(
                 if not stem or stem in confirmed_stems or stem in seen:
                     continue
                 seen.add(stem)
+                # This site emits a DELETE for a note the run never rendered,
+                # so it must name the note it came from and not a path composed
+                # from the display stem: with a namesake at the inbox root, a
+                # composed path names that note instead. `source_item_key` is
+                # the daily entry's identity (ADR-1).
+                full = _ensure_md_extension(resolve_source_path(
+                    entry.get("source_item_key"), entry.get("source_stem"), inbox_path
+                ))
                 out.append({
                     "id": _next_id(counter),
                     "action": "delete_source",
-                    "source_path": f"{inbox}{stem}.md",
+                    "source_path": full,
                     "reason": "Content fully captured in daily note.",
                 })
 
@@ -1038,8 +1048,11 @@ def _build_delete_source_actions(
         target = group.get("target_path") or ""
         handler = group.get("handler") or ""
         for sp in group.get("source_paths") or []:
-            full = sp if "/" in sp else f"{inbox}{sp}"
-            full = _ensure_md_extension(full)
+            # Group source_paths are vault-relative by contract (they come from
+            # triage's `item["path"]`), so this resolves to `sp` untouched. It
+            # goes through the shared resolver anyway: one rule for every inbox
+            # path in this module, and no second spelling to drift.
+            full = _ensure_md_extension(resolve_source_path(None, sp, inbox_path))
             if full in emitted:
                 continue
             emitted.add(full)
@@ -1055,13 +1068,12 @@ def _build_delete_source_actions(
 
 def _build_skip_actions(skipped: list[dict], inbox_path: str, counter: list[int]) -> list[dict]:
     out: list[dict] = []
-    inbox = inbox_path.rstrip("/") + "/"
     for sk in skipped:
         if sk.get("disposition") != "skip":
             continue
-        sp = sk.get("source_path") or None
-        if sp and "/" not in sp:
-            sp = f"{inbox}{sp}"
+        sp = resolve_source_path(
+            sk.get("item_key"), sk.get("source_path"), inbox_path
+        ) or None
         sp = _ensure_md_extension(sp)
         out.append({
             "id": _next_id(counter),

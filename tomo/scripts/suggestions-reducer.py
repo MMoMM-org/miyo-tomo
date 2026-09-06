@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.39.0
+# version: 1.40.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1829,6 +1829,7 @@ def main() -> int:
                                 "value": u.get("value"),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
+                                "source_item_key": item_key,
                                 "source_section": section_id,
                             })
                         elif ukind == "log_entry":
@@ -1839,6 +1840,7 @@ def main() -> int:
                                 "content": u.get("content", ""),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
+                                "source_item_key": item_key,
                                 "source_section": section_id,
                             })
                         elif ukind == "log_link":
@@ -1858,6 +1860,7 @@ def main() -> int:
                                 "position": u.get("position"),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
+                                "source_item_key": item_key,
                                 "source_section": log_link_source_section,
                             })
                             # Record for per-item Material für mirror

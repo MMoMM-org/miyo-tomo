@@ -119,3 +119,67 @@ a filter someone could forget to update. `tests/test_031_t2_2_move_asset_emissio
 pins this at the `build_actions()` level rather than merely assuming it —
 mutation-tested by temporarily emitting a leaked `delete_source` for an
 attachment path and confirming the test catches it.
+
+## Every Inbox Path Goes Through One Resolver (spec 034 T5.0)
+
+WHY the five sites that used to compose `<inbox>/<stem>` inline now all call
+`render_helpers.resolve_source_path`: the composition was correct only while
+inbox discovery ran at `depth=1`, which guaranteed every note sat at the inbox
+root. Phase 3 made discovery recursive and removed that precondition — but not
+the code, in four files that never adopted `item_key`. Five separate spellings
+of the same assumption is how the same defect survives four task-level reviews:
+each diff is locally correct and none of them shows the assumption.
+
+The resolver takes `item_key` (the vault-relative path, verbatim — ADR-1) and
+falls back to the reconstruction only when no key is present, so a suggestions
+document produced before spec 034 still renders exactly as it did. Verified by
+comparison against the pre-change builder: for a keyless input the emitted
+action list is byte-identical; with a key, the action count and every action's
+key set are unchanged and only path VALUES move (CON-4 — a correctness fix, not
+a shape change).
+
+`audio_peer` deliberately uses `resolve_sibling_path`, not `resolve_source_path`:
+`item_key` is the note's path, and the audio file is not the note. Triage pairs
+audio to a transcript by containing folder plus stem
+(`inbox-triage.check_audio`), so the peer's folder is the note's folder — the
+inbox root is wrong for it whenever the note is not at the root.
+
+The tag-handler group site (source 4 of `_build_delete_source_actions`) routes
+through the resolver too even though its `source_paths` are vault-relative by
+contract and the fallback can never fire. One rule for every inbox path in the
+module means there is no second spelling left to drift.
+
+## `:967` Is the Site That Could Delete the Wrong Note (spec 034 T5.0)
+
+WHY the daily-only `delete_source` gets a comment when the other four do not:
+it is the only one of the five that emits a DELETE for a note the run never
+rendered, and it had no bare-stem guard at all — it composed the inbox root
+unconditionally. Reachability was established with a fixture before the fix
+rather than assumed: a subfolder note whose content is fully captured in a
+daily note produces exactly one `delete_source`, and on both parser paths it
+named `<inbox>/<stem>.md`. With a same-named note at the inbox root that the
+run did not include (one left over from an earlier run, say), that action names
+the root note. Hashi executes instruction sets, so this is a wrong delete at
+the CON-4 boundary.
+
+A daily-only item gets no per-item section, so the display stem is the only
+thing the rendered document carries for it — which is why its identity is
+recovered from the structured doc rather than from the markdown
+(`suggestion-parser.enrich_daily_updates_with_item_keys`).
+
+## The Stem-Keyed Collections Are a Separate, Unfixed Concern
+
+`_build_delete_source_actions` keys six collections by bare stem —
+`confirmed_stems`, `expected_by_stem`, `keep_source_stems`, `seen`,
+`daily_stems`, `moves_by_origin`. Recursive discovery makes two notes in
+different subfolders share a stem, and these collide. Traced consequence for
+two confirmed namesakes, one atomic each: both `move_note`s land in one
+`moves_by_origin` bucket, the OQ6 completion gate passes (`2 >= 2`), and
+`origin_path = moves[0]` emits a single delete — the second note is never
+deleted. `keep_source` on either one suppresses the delete for both.
+
+This is left as-is deliberately. Every direction traced fails SAFE (a file
+stays in the inbox and is re-proposed next run, rather than the wrong file
+being deleted), and re-keying the completion gate is a behaviour change to
+OQ6's logic, not an addressing fix. It is a collision concern, distinct from
+the addressing concern T5.0 closes.

@@ -317,3 +317,57 @@ action's own value and then to the previous default — so an absent config
 yields actions byte-identical to those emitted before this existed. That
 property is asserted directly rather than left implicit, by comparing whole
 action dicts rather than selected fields.
+
+## The #116 Guard Now Has Three Outcomes, Not Two (spec 034 T5.0)
+
+WHY `filter_missing_source_notes` no longer keeps an item when Kado errors:
+the old fail-open treated "could not check" as "exists", which KEPT the item.
+It then reached the body read, got an empty string, and fabricated exactly the
+empty stub #116 exists to prevent. The guard failed in both directions at once
+— it dropped items whose notes existed (because it probed the wrong path) and
+admitted items whose notes it could not check.
+
+Not rendering an unverifiable item is recoverable: the source note is untouched
+in the inbox and the next run proposes it again. A fabricated stub is not — it
+lands in the vault as a real note with no content and a `link_to_moc` pointing
+at it. So the unverifiable case fails CLOSED, and is reported as unverifiable
+rather than as a deleted note, because "the note is gone" and "Kado did not
+answer" call for different actions from the user.
+
+`client is None` remains a fourth case and still keeps everything: that means no
+check was requested at all (offline/test mode), not that a check failed. The
+client's answer is coerced with `bool()` rather than compared to `True` by
+identity — a duck-typed client returning a truthy non-`bool` has answered, and
+reading that as a non-answer would drop every item under a test double.
+
+## A Dropped Item Has to Reach an Artefact
+
+WHY `dropped_missing_source` now flows into `tomo.dropped_sources` in
+`instructions.json` and a section in `instructions.md`: it previously reached
+`stderr` and nothing else, with the exit code staying `0` and no trace in the
+instruction set, `needs_attention`, or the rendered document. A user reading
+`/inbox` output saw nothing at all; a user reading the scrollback saw "source
+note missing", which misdiagnosed the common case — the note was not missing,
+it was one folder down and addressed at the root.
+
+The report is metadata only (Constitution L2): id, display name, `item_key`,
+the path actually probed, a stable `kind`, and prose `reason` — never note
+content. `kind` (`not-found` / `unverifiable`) is what renderers branch on; the
+`reason` is for a human and must never be parsed. An unrecognised `kind` gets no
+remedy at all rather than inheriting another one's — misdiagnosing the cause is
+the exact failure this section was rewritten to stop, so a third drop kind added
+later fails loudly instead of quietly reading as one of these two. It is nested
+under the permissive `tomo` block, which is documented as evolvable without a
+coordinated round-trip, so Hashi ignores it and the wire schema is untouched
+(CON-4). The rendered wording distinguishes the two causes, because a drop with
+a key means the note moved or was deleted, while a drop without one means only
+the inbox root was tried.
+
+## `item_key` on the Manifest Entry Is Tomo-Internal
+
+WHY the manifest entry carries `item_key` even though `manifest.json` is a
+backwards-compat artefact: `_build_move_note_actions` walks the manifest, not
+`confirmed`, so without it the move origin and the audio peer have nothing but
+a display stem to work from. It never reaches Hashi — the action builders copy
+named fields and never spread the manifest entry — which the shape comparison
+against the pre-change builder confirms.

@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Recursive discovery"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 3
 ---
@@ -33,7 +33,7 @@ identity work must be finished and proven first — see the sequencing rule in `
 
 Turns on the behaviour the previous two phases prepared for.
 
-- [ ] **T3.1 One file-type filter** `[activity: backend]`
+- [x] **T3.1 One file-type filter** `[activity: backend]`
 
   1. **Prime**: Read `discover_files` (`inbox-triage.py:177`) — `(item.get("type") or "").lower()`,
      case-insensitive and None-safe — and `build_inbox_index` (`lib/attachment_index.py:54`) —

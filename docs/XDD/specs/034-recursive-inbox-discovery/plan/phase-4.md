@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: Force Atomic in subfolders"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -74,7 +74,7 @@ issue that started this spec did not mention it.
      - [ ] Force Atomic on a subfolder note builds from that note `[ref: PRD/AC Feature 4]`
      - [ ] The reconstruction is gone, not merely widened
 
-- [ ] **T4.2 #165's invariant holds under the new identity** `[activity: backend]`
+- [x] **T4.2 #165's invariant holds under the new identity** `[activity: backend]`
 
   1. **Prime**: Read the Force-Atomic reconciliation in `suggestion-parser.py` and
      `tests/test_165_suppressed_force_atomic_resolve.py`. The invariant: the daily-log path and

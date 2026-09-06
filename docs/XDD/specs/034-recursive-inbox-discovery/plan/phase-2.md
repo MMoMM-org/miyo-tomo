@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Thread the key through the pipeline"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -295,7 +295,7 @@ rather than loudly, which is why T2.8 exists.
      - [ ] The audit can no longer report full coverage by merging two items
            `[ref: PRD/AC Feature 2]`
 
-- [ ] **T2.8 Phase Validation — prove the key is carried end to end** `[activity: validate]`
+- [x] **T2.8 Phase Validation — prove the key is carried end to end** `[activity: validate]`
 
   - **State which path the end-to-end trace actually proves.** `suggestion-parser.py` has two
     entry points that build `confirmed_items`, and only one of them carries the key:

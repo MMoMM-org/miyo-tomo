@@ -148,7 +148,7 @@ the instance.
 Each phase is a separate file. Tasks follow **Prime → Test → Implement → Validate → Success**.
 
 - [x] [Phase 1: Item key foundation](phase-1.md)
-- [ ] [Phase 2: Thread the key through the pipeline](phase-2.md)
+- [x] [Phase 2: Thread the key through the pipeline](phase-2.md)
 - [ ] [Phase 3: Recursive discovery](phase-3.md)
 - [ ] [Phase 4: Force Atomic in subfolders](phase-4.md)
 - [ ] [Phase 5: Display and destination guards](phase-5.md)

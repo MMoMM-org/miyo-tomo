@@ -608,6 +608,8 @@ stated two-consumer scope, so deliberately left alone:
 - `tomo/scripts/voice-precheck.py:52`
 - `tomo/scripts/garden-audit.py:381`
 - `tomo/scripts/shared-ctx-builder.py:204`
+- `tomo/scripts/moc-discovery.py:422` (`_is_md_file`) — added by T3.1's reviewer
+- `tomo/scripts/vault-scan.py:259` (root-scan folder check) — added by T3.1's reviewer
 
 Each classifies Kado `listDir` entries independently. `tomo/scripts/lib/attachment_index.py`
 now exposes `is_file_entry(item)` — case-insensitive, None-safe, non-dict-safe — which is what
@@ -617,6 +619,11 @@ Worth doing because T3.1 found the divergence was not merely cosmetic: the old
 `discover_files` predicate **crashed** with `AttributeError` on a non-dict entry where
 `build_inbox_index` returned `False`. Any consumer still on a hand-rolled check carries that
 same latent fragility. Not urgent — Kado emits lowercase literals and well-formed dicts today.
+
+Note on scope: all five consume **different** `listDir` calls, not the inbox listing ADR-3
+shares, so none belonged in T3.1. T3.1 reported three; its reviewer found two more, so the
+"grepped, zero remaining" framing was correct for the two named call sites but not literally
+repo-exhaustive. Whoever picks this up should re-grep rather than work from this list.
 
 ### `test_mark_captured.py` shadows the real `lib.doc_frontmatter` for the whole process
 

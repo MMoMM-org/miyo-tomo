@@ -119,6 +119,53 @@ phase: 5
   **Not in the spec at all**: `filter_missing_source_notes`, `render_resolve.py`, `render_io.py`,
   `render_actions.py` and `#116` appear nowhere in spec 034's plan, SDD or backlog.
 
+
+  **(d) SEVEN sites, four files — and one of them emits a `delete` at the Hashi boundary.**
+
+  Chasing the drop downstream found the same shape five more times, all in
+  `lib/render_actions.py`, none behind the filter that hides the first two:
+
+  | `file:line` | emits | guard | behind the drop? |
+  |---|---|---|---|
+  | `render_actions.py:592-593` | `move_note.source_inbox_item` | `if "/" not in ...` | yes — inert unless the filter fails open |
+  | `render_actions.py:605-606` | `move_note.audio_peer` | same | yes — same |
+  | `render_actions.py:947` | `delete_source` (skipped items) | `sp if "/" in sp` | **no** — walks `skipped` |
+  | **`render_actions.py:967`** | **`delete_source` (daily-only stems)** | **none at all** | **no** — walks `daily_updates` |
+  | `render_actions.py:1063-1064` | `skip.source_path` | `if sp and "/" not in sp` | **no** — walks `skipped` |
+
+  All four Pass-2 files ignore the key entirely: `instruction-render.py`, `render_resolve.py`,
+  `render_io.py`, `render_actions.py` — **0 occurrences of `item_key` in each.**
+
+  **`:967` is the one to fix first, and the chain is fully traced.** It has no bare-stem guard to
+  extend — it composes the inbox root unconditionally:
+
+  ```python
+  stem = _stem(entry.get("source_stem"))        # flattens to a bare filename
+  "source_path": f"{inbox}{stem}.md",           # always root, no "/" test
+  ```
+
+  Provenance: `suggestions-reducer.py:1727` binds `for idx, (stem, item_key, _entry) in
+  enumerate(done_items, ...)` — `stem` is the bare display name and **`item_key` sits unused right
+  beside it**. It reaches `daily_updates[].log_entries[].source_stem` at `:1831`/`:1841`, then
+  `render_actions.py:963`, then `:967`.
+
+  So for a subfolder note whose content is fully captured in the daily note:
+  - with no root note of that name, the emitted delete targets a path that does not exist — the
+    real note survives in the inbox and is re-suggested next run;
+  - **with a different note of that name at the inbox root, the emitted `delete_source` names the
+    root note.** That is a wrong delete on the CON-4 boundary, and Hashi executes instruction sets.
+
+  The destructive case needs exactly the basename collision this spec exists to handle, and
+  recursion is what made it reachable. CON-2's two-pass review stands between the instruction and
+  the vault — but the review document renders bare stems, so it reads `delete Dresden` without
+  saying which. **Treat `:967` as the first obligation of this task**, and before fixing it,
+  establish whether it is reachable today with a fixture rather than assuming either way.
+
+  Bounded claim on completeness: these seven are every hit of a repo-wide grep for `"/" not in`
+  and `inbox_path`-composition idioms across `tomo/scripts/` and `scripts/`. That grep does not
+  catch a stem-keyed dict, an `os.path.join`, a `Path(...) /`, or a bare-basename comparison. The
+  enumeration is complete for **this idiom**, not for the concern.
+
   1. **Prime**: Read `filter_missing_source_notes` (`lib/render_resolve.py:672-683`), its caller
      (`instruction-render.py:320`), and the body read at `instruction-render.py:381-386`. Read the
      `#116` rationale the guard exists for — it is right, it is only addressing the item wrongly.

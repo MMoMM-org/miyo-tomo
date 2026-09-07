@@ -1,4 +1,4 @@
-# version: 0.12.0
+# version: 0.13.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -183,7 +183,14 @@ def _render_action_md(action: dict, cfg: dict) -> str:
 
     if kind == "delete_source":
         src = action.get("source_path", "")
-        lines = [f"{heading_prefix}Delete source note (content captured in daily note)", "- [ ] Applied"]
+        # The heading names the note, not the cause. Five emission sites give
+        # `reason` five different causes, and a heading that states one of them
+        # contradicts the Action line beneath it for the other four — which is
+        # what the hardcoded "(content captured in daily note)" did. `reason`
+        # is the single statement of the cause; the heading is the index entry,
+        # in the same shape as `Move note: …` and `Move attachment: …`.
+        subject = f": {_stem(src)}" if src else ""
+        lines = [f"{heading_prefix}Delete source note{subject}", "- [ ] Applied"]
         if src:
             lines.append(f"- **Source:** [[{_stem(src)}]]")
         lines.append(f"- **Action:** Delete the note from the inbox — {action.get('reason', '')}")

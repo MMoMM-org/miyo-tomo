@@ -1,4 +1,4 @@
-# version: 0.15.0
+# version: 0.16.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -789,6 +789,13 @@ def _destination_clash_reason(
         if vault_note:
             head += f", and a note already exists at `{vault_note}`"
         tail = "neither is filed" if n == 2 else "none of them is filed"
+    elif vault_note == claim_dests[0]:
+        # The two-path form informs only when the two paths differ, which is
+        # the case-only collision. On an exact match it names one path twice
+        # and reads like a rendering bug — and the exact match is the common
+        # case, so the degenerate sentence is the one most users would see.
+        head = f"a note already exists at `{vault_note}`"
+        tail = "this item is not filed"
     else:
         head = (
             f"a note already exists at `{vault_note}`, where this run would "

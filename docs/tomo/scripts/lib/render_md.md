@@ -120,3 +120,34 @@ a sentence that counted would contradict the bullets underneath it in whichever
 case it did not describe. It is also omitted entirely when nothing was
 withdrawn — a reader told about a consequence that did not happen has to go
 check whether it did.
+
+## The Delete Heading Names the Note, the `reason` Names the Cause (spec 034 T5.5)
+
+`_render_action_md`'s `delete_source` branch hardcoded the heading "Delete
+source note (content captured in daily note)". `_build_delete_source_actions`
+has **five** emission sites with five different `reason` strings, so four out
+of five deletes were headed with a cause their own body contradicted:
+
+```
+### I16 — Delete source note (content captured in daily note)
+- **Action:** Delete the note from the inbox — Origin consumed by 1 atomic.
+```
+
+Pre-existing — introduced by the `#113` refactor (`6d15fa9`), not by spec 034 —
+and fixed here anyway: under CON-2 the user approves deletions on this
+document, and a heading that misstates why a note is being deleted is the same
+class of defect as the one T5.3 shipped and corrected in `76ae8be`.
+
+WHY neutral-plus-subject rather than a heading derived from `reason`: deriving
+it would put the cause in two places, and the second place is the one that goes
+stale — which is exactly how the hardcoded parenthetical survived four new
+reason strings. `reason` stays the single statement of the cause, on the
+`**Action:**` line, where the user reads it before ticking the box. For
+`I12` — the one genuine daily capture — the old heading was not wrong, merely
+redundant with the line beneath it; nothing is lost by dropping it.
+
+The heading instead names its subject, `Delete source note: Root Note`, which
+is what the other sections already do (`Move note: …`, `Move attachment: …`,
+`Skip — …`). That makes `## Source Deletions` an index of which notes leave the
+inbox — information the section did not previously carry at heading level, and
+the thing a user actually scans this section for.

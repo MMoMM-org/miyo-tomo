@@ -660,3 +660,19 @@ drop both and 2 is subtracted while the bullet goes.
 `render_md` conditions its "withdrawn with it" sentence on, and it makes the
 withdrawal visible in `instructions.json`. The audit deliberately does not read
 it: an audit that trusts the emitter's account of itself is not an audit.
+
+## The Vault-Collision Sentence Names Two Paths Only When They Differ (spec 034 T5.5)
+
+`_destination_clash_reason`'s single-claimant branch rendered "a note already
+exists at `Atlas/202 Notes/Elbe.md`, where this run would file
+`Atlas/202 Notes/Elbe.md`". The two-path form was written for the case-only
+collision (the vault holds `elbe.md`, the run would file `Elbe.md`), where the
+user must see both spellings to know which name the vault actually holds. On an
+exact match — the common case — it names one path twice and reads like a
+rendering bug, which costs the sentence its credibility exactly where it is
+asking the user to go rename something.
+
+The branch keys on `vault_note == claim_dests[0]`, not on the `case_only` flag.
+The flag is computed from a spelling count and answers a related but different
+question; the sentence's own condition is whether it is about to print the same
+string twice, so that is what it tests.

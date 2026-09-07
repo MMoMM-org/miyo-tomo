@@ -43,10 +43,30 @@ phase: 6
   the intent, not the behaviour, and would keep reporting 2 through any future change that
   reintroduces a listing.
 
+  **T5.2 added a second kind of listing — expect the observed count to move, and say why.**
+  Added 2026-09-07. `_vault_folder_notes` (`suggestions-reducer.py`) issues one cached
+  `list_dir(location, depth=1)` per distinct **destination** folder, to check whether a proposed
+  name is already taken. Two things follow, and neither is a defect to fix here:
+
+  - It is not an inbox listing, so F9's first criterion ("directory listings **of the inbox**")
+    is untouched. Do not count it against that.
+  - It is a real per-run cost that scales with the number of distinct destination folders in the
+    run, and it is currently **unmeasured**. F9's second criterion asks for the actual figure to
+    be recorded, and its user story is "recursion does not make my runs more expensive". Record
+    it as its own line rather than folding it into the base — a single number that mixes a fixed
+    pipeline cost with a content-scaling one tells the user nothing about either.
+
+  Precedent for treating it as outside the base bucket: the pre-existing I38 daily-note existence
+  probe is already a per-item, content-scaling Kado cost and has never been counted as a base
+  call. T5.2's listing follows that pattern. Surfaced by T5.2's compliance review, which judged
+  the literal text not violated and flagged the tension here rather than failing the task.
+
   So this task must also:
   - Derive the recorded base count from the run's **observed** Kado calls, not a literal. If the
     client cannot report its own call count today, add that capability rather than keeping the
     constant.
+  - Report the destination-folder listings separately from the base count, with the folder count
+    that produced them, so a future reader can tell a pipeline regression from a busy run.
   - Add a test that **fails** when a second base listing is reintroduced — the exact mutation the
     gate ran. The plan already states the principle for T3.4: *"the estimator is the thing under
     test, so it cannot also be the evidence."* The same holds once the estimator's output is being

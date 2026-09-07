@@ -244,7 +244,57 @@ phase: 5
      - [ ] Two namesakes each get their own delete, or their own suppression, for their own reason
      - [ ] No reason string attributes one note's action to another
 
-- [ ] **T5.1 Source links disambiguate on collision** `[activity: backend]`
+- [ ] **T5.0c The paired consumer still collapses** `[activity: backend]` `[parallel: true]`
+
+  Added 2026-09-07 by T5.0b's implementer, which found it in its shape-grep, deliberately left it
+  alone as out of scope, and recorded it in `docs/tomo/scripts/lib/render_actions.md`.
+
+  `instructions-diff.py`'s `derive_expected()` derives the **expected** `delete_source` count with
+  the exact shape T5.0b removed from the emitter: `confirmed_stems` is a set of bare stems, and the
+  `daily_only_seen` loop suppresses a daily-only note's expected deletion on a stem match against
+  it. Two of T5.0b's four cases — two daily-only namesakes, and one confirmed plus one daily-only —
+  now emit one more `delete_source` than this module expects.
+
+  **The user-visible consequence.** `derive_expected` feeds the coverage line
+  `delete_source coverage: expected=N actual=M [DIFF]`. So `/inbox` reports drift on a **correct**
+  instruction set. Nothing is misdeleted and nothing is missed — the instruction set is right and
+  the differ's expectation is stale — but the report is the artefact the user reads to decide
+  whether Pass 2 did the right thing, and it now says something false about a correct run.
+
+  **Why this is scheduled here rather than backlogged.** T6.4 is live validation against the real
+  vault — the first run in which subfolder namesakes actually occur. A spurious `[DIFF]` fires
+  exactly there, during the one run that judges whether the spec worked.
+
+  **The trap, named by T5.0b's implementer: do not mechanically copy `_origin_key`.** This module
+  has its own key semantics — `_keys_match` tolerates an inbox-prefix asymmetry that a
+  set-equality dedup does not. A key that compares equal under `_keys_match` can be unequal as a
+  set member, so the mixed keyed/keyless case is where a naive port breaks. Work out what this
+  module needs; do not assume the emitter's helper is it.
+
+  Note that the other two cases are already parity-correct: the confirmed-namesake and
+  `keep_source` paths dedup on `_confirmed_key`, which is item_key-based. The divergence is
+  daily-side only.
+
+  1. **Prime**: read `derive_expected()` end to end, `_keys_match`, and `_confirmed_key`. Read the
+     "Paired Consumer Still Collapses (open)" section in
+     `docs/tomo/scripts/lib/render_actions.md`, where T5.0b recorded the analysis
+     `[ref: SDD/ADR-1, ADR-2]`.
+  2. **Test** (RED): the two affected cases — two daily-only namesakes, and one confirmed plus one
+     daily-only. Assert the derived expectation **matches** what the emitter actually produces for
+     the same input, so the test pins the two modules against each other rather than against a
+     hand-written number. Add a case for the mixed keyed/keyless input the `_keys_match`
+     asymmetry makes dangerous. Prove each red by reverting the fix, not by self-report.
+  3. **Implement**: key the two collections on the note's identity, in whatever form this module's
+     comparison semantics actually require.
+  4. **Validate**: tests pass; `ruff` clean. Delete the stale `NOTE` at `derive_expected`'s head —
+     it defers this "until T2.3b", and `phase-2.md:153` shows T2.3b is `[x]`. Also correct
+     `_confirmed_key`'s docstring, which still claims the markdown path mints no `item_key`; commit
+     `2d06654` made that false.
+  5. **Success**:
+     - [ ] A correct instruction set reports `[OK]`, not `[DIFF]`, for both affected cases
+     - [ ] No stale comment survives that defers this work to an already-closed task
+
+- [ ] **T5.1 Source links disambiguate on collision** `[activity: backend]` `[parallel: true]`
 
   **Caveat inherited from T5.0, recorded by its implementer.** The two parser paths disagree on
   what an absent key means: `build_from_wire` falls back to `w.get("item_key") or stem`, putting a

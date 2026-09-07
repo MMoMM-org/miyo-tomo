@@ -277,6 +277,6 @@ with its own key semantics, and a mechanical copy of `_origin_key` breaks there.
 The emitter always holds `inbox_path` and resolves every key to one canonical
 spelling before comparing, so plain equality is correct here; the differ has no
 `inbox_path` and must reconcile a full `item_key` against a bare `source_stem`
-that names the same note. T5.0c closed it with `_key_matches_any` — `_keys_match`
+that names the same note. T5.0c closed it with `_same_note_as_any` — `_keys_match`
 applied in both directions — rather than a set dedup. See
 `docs/tomo/scripts/instructions-diff.md` (0.15.0).

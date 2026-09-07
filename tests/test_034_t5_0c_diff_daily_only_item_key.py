@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t5_0c_diff_daily_only_item_key.py — the coverage audit's daily-only
 suppression joins on the note, not on the bare filename stem.
 
@@ -35,6 +35,8 @@ import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
+import pytest
+
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
@@ -63,12 +65,18 @@ KEY_B = f"{INBOX}/Travel/Dresden.md"
 # resolves to, and therefore the note it must be recognised as.
 KEY_ROOT = f"{INBOX}/Dresden.md"
 KEY_ELBE = f"{INBOX}/Places/Elbe.md"
+# One note at the inbox ROOT, referenced twice from the daily block — once
+# with its key, once by the bare stem a failed key recovery leaves behind.
+KEY_NEUSTADT_ROOT = f"{INBOX}/Neustadt.md"
+STEM_NEUSTADT = "Neustadt"
 DISPLAY = "Dresden.md"
 STEM = "Dresden"
 DAY = "2026-06-10"
 CONTENT_A = "Sprint retro moved to the Dresden office."
 CONTENT_B = "Zwinger courtyard, gallery closed on Mondays."
 CONTENT_ELBE = "Elbe cycle path flooded past Pillnitz."
+CONTENT_N1 = "Neustadt: Kunsthofpassage funnels sing when it rains."
+CONTENT_N2 = "Neustadt: Louisenstrasse closed for the Bunte Republik."
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -272,6 +280,53 @@ def test_a_keyless_daily_entry_still_matches_its_keyed_root_note():
     )
     assert _daily_contribution(parsed) == 1, (
         "the daily-only branch must still contribute for the unmatched entry; "
+        f"got {_daily_contribution(parsed)}"
+    )
+
+    assert _expected_deletes(parsed) == len(emitted) == 1, (
+        f"audit expects {_expected_deletes(parsed)}, emitter produces "
+        f"{len(emitted)}"
+    )
+    assert "[OK]" in _delete_coverage_line(parsed, emitted)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Case 4 — one note, two daily entries, two key shapes
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("keyed_first", [True, False], ids=["keyed-first", "keyless-first"])
+def test_two_daily_entries_for_one_note_expect_one_deletion(keyed_first):
+    """The dedup WITHIN the daily-only accumulation, which this task gave new
+    behaviour to.
+
+    Two accepted entries name one daily-only note: key recovery succeeded for
+    the first and found the second's discriminator ambiguous, so one carries
+    the full path and the other only the bare stem. The emitter resolves both
+    against the inbox root, finds them equal in `seen`, and deletes the note
+    ONCE. A bare `in` membership test here splits the two shapes and expects
+    two deletions for one file.
+
+    Parametrised over entry order because the tolerance is symmetric: whichever
+    shape arrives first, the other must land in the same bucket.
+    """
+    entries = [
+        _log_entry(CONTENT_N1, STEM_NEUSTADT, KEY_NEUSTADT_ROOT),
+        _log_entry(CONTENT_N2, STEM_NEUSTADT),
+    ]
+    if not keyed_first:
+        entries.reverse()
+    daily = [_day(entries)]
+    parsed = _parsed([], daily)
+    emitted = _emitted_deletes([], [], daily)
+
+    # The branch ran: two accepted entries went in, one delete for one note
+    # came out — not zero, which is how this case would pass vacuously.
+    assert len([e for e in entries if e["accepted"]]) == 2
+    assert {a["source_path"] for a in emitted} == {KEY_NEUSTADT_ROOT}, (
+        f"one note, one delete; got {emitted}"
+    )
+    assert _daily_contribution(parsed) == 1, (
+        "the two entries name one note and owe one expected deletion; "
         f"got {_daily_contribution(parsed)}"
     )
 

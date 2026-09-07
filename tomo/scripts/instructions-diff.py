@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.15.0
+# version: 0.15.1
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -184,8 +184,11 @@ def _daily_key(entry: dict) -> str:
     return _item_key(entry.get("source_item_key") or entry.get("source_stem") or "")
 
 
-def _key_matches_any(key: str, keys: list[str]) -> bool:
+def _same_note_as_any(key: str, keys: list[str]) -> bool:
     """True when `key` names the same inbox note as any member of `keys`.
+
+    SYMMETRIC — neither side is assumed to be the qualified one. Read it as
+    "same note as", not as a membership test, before adding a call site.
 
     A plain `in` test against a set is wrong here even though both sides are
     drawn from one document: a confirmed item may carry its full path while a
@@ -371,7 +374,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
     # and both describe an inbox note that two notes can now share a filename
     # with (recursive discovery, Phase 3). It therefore joins on the note's
     # identity (ADR-1), matching the emitter, which keys this same suppression
-    # on the resolved vault-relative path. Membership is `_key_matches_any`,
+    # on the resolved vault-relative path. Membership is `_same_note_as_any`,
     # not a set lookup: the mixed keyed/keyless input a set splits still names
     # one note.
     confirmed_keys = [_confirmed_key(it) for it in confirmed if it.get("source_path")]
@@ -389,9 +392,9 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                 if not entry.get("accepted"):
                     continue
                 key = _daily_key(entry)
-                if not key or _key_matches_any(key, confirmed_keys):
+                if not key or _same_note_as_any(key, confirmed_keys):
                     continue
-                if _key_matches_any(key, daily_only_keys):
+                if _same_note_as_any(key, daily_only_keys):
                     continue
                 daily_only_keys.append(key)
                 expected_deletions.append(_stem(key))

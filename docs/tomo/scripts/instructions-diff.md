@@ -63,7 +63,7 @@ split, the audit expects a deletion the emitter does not make, and the fix
 would have moved the false `[DIFF]` rather than removed it — the direction that
 bites hardest, because a note at the inbox ROOT is the common case.
 
-`_key_matches_any` is therefore `_keys_match` applied in BOTH directions.
+`_same_note_as_any` is therefore `_keys_match` applied in BOTH directions.
 `_keys_match` already encodes exactly the tolerance needed — a key may carry
 one extra leading segment where the other was never inbox-joined — but it was
 written for the move_note join, where the expected side is known to be the

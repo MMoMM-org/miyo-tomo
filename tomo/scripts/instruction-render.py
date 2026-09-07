@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.48.0
+# version: 0.49.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -64,10 +64,12 @@ from lib.render_actions import (  # noqa: E402,F401
     _wikilink,
     build_actions,
     build_garden_audit_actions,
+    contested_note_names,
     emit_up_preservation_actions,
     extract_first_up_marker,
     group_id,
     make_folder_listing,
+    qualify_contested_moc_links,
     suppress_moves_for_unfiled_attachments,
     validate_destinations,
 )
@@ -532,6 +534,12 @@ def main() -> int:
             peer_marker=conventions.peer_marker,
         )
 
+    # The filenames this run claims twice, captured BEFORE the two guards
+    # withhold anything — a withheld claimant is exactly the note that comes
+    # back after a rename, and is what makes a surviving namesake's MOC bullet
+    # ambiguous later (spec 034 T5.5).
+    contested_names = contested_note_names(actions)
+
     # ── Validate destinations (spec 034 T5.3, ADR-4) ─────────────────────
     # The binding half of PRD Feature 7. Pass 1 proposes a distinct name on a
     # clash and is advisory — the user edits the document afterwards — so this
@@ -566,6 +574,19 @@ def main() -> int:
         print(
             f"  [attach] {withheld} move(s) withheld — attachment not filed; "
             f"see instructions.md",
+            file=sys.stderr,
+        )
+
+    # ── Name a contested note by path in its MOC bullet (spec 034 T5.5) ──
+    # The bullet outlives the run inside a MOC, so it must not resolve by a
+    # filename this run claims twice. Runs over the guards' output, so the path
+    # it writes belongs to the move that survived; before the #70 merge, while
+    # line_to_add is still one bare bullet.
+    qualified_links = qualify_contested_moc_links(actions, contested_names)
+    if qualified_links:
+        print(
+            f"  [render] {qualified_links} MOC bullet(s) named by path — the "
+            "run claims that filename more than once",
             file=sys.stderr,
         )
 

@@ -151,3 +151,38 @@ is what the other sections already do (`Move note: …`, `Move attachment: …`,
 `Skip — …`). That makes `## Source Deletions` an index of which notes leave the
 inbox — information the section did not previously carry at heading level, and
 the thing a user actually scans this section for.
+
+## The Instruction Document Says WHICH Note (spec 034 T5.5)
+
+T5.1 path-qualified source links in the **suggestions** document. The
+instruction document kept rendering `**Source:** [[Dresden]]` — on a
+`delete_source`, with three Dresden notes in the run.
+
+The action itself was correct: `source_path` held the resolved
+`100 Inbox/Quellen/Dresden.md`, so T5.0b's addressing did its job. The defect
+is in what the document SAYS, and under CON-2 that is what the user approves —
+here, an irreversible delete they cannot tell the target of. It is the most
+consequential place in the whole document for an ambiguous name.
+
+`_source_wikilink` applies T5.1's form and T5.1's collision-only rule at all
+three source-display sites, found by reading the file rather than by fixing the
+one the report named: the `delete_source` `**Source:**`, the `move_note`
+`**Source (reference):**`, and the `skip` `**Source:**`. One sentence in three
+places is one defect in three places — this file family has been bitten four
+times in this spec by fixing the named site alone.
+
+### WHY the Withheld Moves Count Toward the Collision Set
+
+`_source_display_paths` also reads `destination_clashes` and
+`attachment_suppressions` from the metadata. Those moves are gone from
+`actions` by the time it runs, but the "Not filed" sections above still name
+them, and they are what makes a surviving namesake ambiguous: the reader sees
+three Dresden notes in one document whether or not the run files all three. A
+set taken from the surviving actions alone sees one and renders the bare link.
+
+### WHY the Delete Heading Keeps the Bare Stem
+
+`### I16 — Delete source note: Dresden` is an index entry, not a link. A path
+there would make `## Source Deletions` unscannable, which is the property the
+heading was given a subject for in the first place. The `**Source:**` line
+directly beneath is the one the user clicks, and that is the one qualified.

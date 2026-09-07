@@ -676,3 +676,75 @@ The branch keys on `vault_note == claim_dests[0]`, not on the `case_only` flag.
 The flag is computed from a spelling count and answers a related but different
 question; the sentence's own condition is whether it is about to print the same
 string twice, so that is what it tests.
+
+## A MOC Bullet Outlives the Run That Wrote It (spec 034 T5.5)
+
+`link_to_moc`'s `line_to_add` was `- [[Dresden]]`. Unlike every other line in
+the instruction document, this one is written **into the vault** and stays
+there. It resolved on the day it was applied, because the destination guard had
+withheld the two other Dresden claimants and only one Dresden existed.
+
+It stops resolving the moment the user does what the guard's own report tells
+them to do: rename one withheld claimant and re-run Pass 2. The other claimant
+then files as `Atlas/202 Notes/Dresden.md`, a second Dresden exists, and the
+already-applied bullet is permanently ambiguous — in a MOC nobody revisits. The
+ambiguity arrives later than the instruction, which is what makes it easy to
+miss and expensive to find.
+
+### WHY Two Passes With Opposite Timings
+
+The fix needs two facts that are only true at different points in the pipeline,
+which is why it is a pass and not a choice made at emit time:
+
+- **`contested_note_names`** runs on the action list as built, **before** the
+  two withholding passes. The withheld twin is exactly the note that comes
+  back, so the claim set must include it. Taken from the survivors, the set
+  sees one Dresden and renders the bare link the guard's own outcome
+  invalidates.
+- **`qualify_contested_moc_links`** runs **after** both guards, over their
+  output, because the path it writes has to be one that will exist. The first
+  implementation qualified at emit time and named the *withheld* claimant's
+  `Atlas/202 Notes/Dresden.md` — a bullet pointing at a note the guard had just
+  guaranteed would not exist, which is worse than the bare link it replaced. A
+  test caught that before it shipped.
+
+It must also run before `_merge_new_section_links` and `_serialize_new_sections`
+(#70 / ADR-3), while `line_to_add` is still one bare bullet.
+
+### WHY the Display Text Comes From the Bullet, Not From `source_note_title`
+
+`source_note_title` is the **sanitised** stem. Rebuilding from it would drop the
+alias `_wikilink` writes for a forbidden-char title, so `[[Q- one|Q: one]]`
+would become `[[…/Q- one]]` and the user would lose the name they typed. The
+pass parses the existing bullet and keeps its display half, so the two alias
+uses compose: `[[Atlas/202 Notes/Q- one|Q: one]]`.
+
+### WHY Run-Scoped and Not Vault-Scoped
+
+The brief asked this explicitly, because a bullet that outlives its run is a
+weaker case for run-scoping than a transient document is. Run-scoped, for three
+reasons and with one stated limit:
+
+1. **The scenario is run-internal.** What makes the bullet go ambiguous is the
+   run's own withheld claimant returning. Including the withheld claims covers
+   it exactly.
+2. **A vault answer is not cheaply available.** Kado has no basename index, so
+   "does a Dresden exist anywhere" means listing folders this run never writes
+   to — an unbounded scan (Constitution L1) for a display decision, and CON-7
+   forbids this spec's tests from reaching a vault to calibrate against.
+3. **A vault namesake in a folder this run writes to is already handled.**
+   `validate_destinations`' vault half withholds that move outright, so no
+   bullet is emitted for it.
+
+**The limit, stated rather than hidden:** a namesake already sitting in a folder
+this run does not touch is not seen, and its bullet renders bare. Closing that
+needs a basename index Kado does not have; it is a Kado capability question, not
+a render-time one.
+
+### A Pre-Existing Limitation This Exposes But Does Not Fix
+
+`_emit` dedups by (target MOC, source title), so two *surviving* notes with the
+same filename and the same parent MOC produce ONE bullet — the MOC lists one of
+them. `survivors.setdefault` therefore names the first, which is strictly better
+than resolving to whichever the vault picks, but the missing second bullet is a
+separate defect in the emitter's dedup key and is not this task's.

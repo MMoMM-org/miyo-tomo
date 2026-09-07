@@ -392,3 +392,19 @@ withholding, and the renderer uses the rest.
 
 Exit code is unchanged: a clash is a report, not an error, matching how the
 `#116` source drop is handled. The audit downstream is where a run stops.
+
+## Where the MOC-Bullet Qualification Sits in the Pipeline (spec 034 T5.5)
+
+Two calls, deliberately far apart, because they need opposite timings:
+
+- `contested_note_names(actions)` immediately after `build_actions` — the claim
+  set must include the moves the guards are about to withhold, since a withheld
+  claimant is exactly the note that returns after a rename.
+- `qualify_contested_moc_links(actions, contested_names)` after **both**
+  guards — the path written into the MOC must belong to a move that survived.
+
+It sits before `resolve_target_moc_paths` and, critically, before
+`_merge_new_section_links` / `_serialize_new_sections`: those rewrite
+`line_to_add` into a multi-bullet block with a `## heading` prefix, and this
+pass reads one bare bullet. See `docs/tomo/scripts/lib/render_actions.md`, "A
+MOC Bullet Outlives the Run That Wrote It", for why the split exists at all.

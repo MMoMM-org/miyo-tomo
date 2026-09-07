@@ -1,4 +1,4 @@
-# version: 0.13.0
+# version: 0.14.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -16,6 +16,7 @@ import yaml
 
 from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block
 from lib.render_helpers import _moc_stem, _stem
+from lib.source_link import colliding_names, qualified_target
 from lib.supporting_items import parse_supporting_items as _parse_supporting_items
 
 SECTION_TITLES = [
@@ -49,7 +50,22 @@ def _md_section_for(action: dict) -> str:
     return "new_files"
 
 
-def _render_action_md(action: dict, cfg: dict) -> str:
+def _source_wikilink(path: str, ambiguous: set[str] | None) -> str:
+    """The `[[…]]` for one inbox source note, path-qualified only on collision.
+
+    T5.1's form and T5.1's rule, at the instruction document's source-display
+    sites (spec 034 T5.5). `ambiguous` is the run's colliding filenames; a
+    caller that does not compute it renders exactly as it did before.
+    """
+    stem = _stem(path)
+    if ambiguous and stem in ambiguous:
+        return f"[[{qualified_target(path, stem)}]]"
+    return f"[[{stem}]]"
+
+
+def _render_action_md(
+    action: dict, cfg: dict, ambiguous_sources: set[str] | None = None
+) -> str:
     """Render a single action as an H3 block with a checkbox + structured fields."""
     aid = action["id"]
     kind = action["action"]
@@ -66,7 +82,8 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         if action.get("destination"):
             lines.append(f"- **To:** `{action['destination']}`")
         if action.get("source_inbox_item"):
-            lines.append(f"- **Source (reference):** [[{_stem(action['source_inbox_item'])}]]")
+            link = _source_wikilink(action["source_inbox_item"], ambiguous_sources)
+            lines.append(f"- **Source (reference):** {link}")
         lines.append("- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P")
         return "\n".join(lines)
 
@@ -189,10 +206,13 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         # what the hardcoded "(content captured in daily note)" did. `reason`
         # is the single statement of the cause; the heading is the index entry,
         # in the same shape as `Move note: …` and `Move attachment: …`.
+        # The heading keeps the bare stem: it is an index entry, not a link, and
+        # a path in it would make the section unscannable. The `**Source:**`
+        # line below is the one the user clicks, so that is the one qualified.
         subject = f": {_stem(src)}" if src else ""
         lines = [f"{heading_prefix}Delete source note{subject}", "- [ ] Applied"]
         if src:
-            lines.append(f"- **Source:** [[{_stem(src)}]]")
+            lines.append(f"- **Source:** {_source_wikilink(src, ambiguous_sources)}")
         lines.append(f"- **Action:** Delete the note from the inbox — {action.get('reason', '')}")
         return "\n".join(lines)
 
@@ -200,7 +220,7 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         src = action.get("source_path")
         lines = [f"{heading_prefix}Skip — {_stem(src) if src else 'unknown source'}", "- [ ] Applied"]
         if src:
-            lines.append(f"- **Source:** [[{_stem(src)}]]")
+            lines.append(f"- **Source:** {_source_wikilink(src, ambiguous_sources)}")
         lines.append(f"- **Reason:** {action.get('reason', 'Skipped by user.')}")
         return "\n".join(lines)
 
@@ -473,6 +493,42 @@ def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
     )
 
 
+_SOURCE_DISPLAY_FIELDS = {
+    "move_note": "source_inbox_item",
+    "delete_source": "source_path",
+    "skip": "source_path",
+}
+
+
+def _source_display_paths(
+    actions: list[dict], metadata: dict | None = None
+) -> list[tuple[str, str]]:
+    """Every `(filename, path)` this document shows for an inbox source note.
+
+    One per display site, not per note: `colliding_names` counts distinct
+    paths, so a note named twice — a `move_note`'s source reference and its own
+    `delete_source` — is correctly not a collision.
+
+    The withheld moves count too. They are gone from `actions` by the time
+    this runs, but the "Not filed" sections above still name them, and they are
+    exactly the notes that make a surviving namesake ambiguous: the reader sees
+    three Dresden notes in one document whether or not the run files all three.
+    """
+    out: list[tuple[str, str]] = []
+    for action in actions:
+        field = _SOURCE_DISPLAY_FIELDS.get(action.get("action") or "")
+        path = action.get(field) if field else None
+        if path:
+            out.append((_stem(path), path))
+    for key in ("destination_clashes", "attachment_suppressions"):
+        for withholding in (metadata or {}).get(key) or []:
+            for dropped in withholding.get("dropped") or []:
+                path = dropped.get("source_inbox_item")
+                if path:
+                    out.append((_stem(path), path))
+    return out
+
+
 def _withdrawn_links_note(withholdings: list[dict]) -> str:
     """The sentence that accounts for MOC bullets withdrawn with a held move.
 
@@ -523,6 +579,11 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         by_section.setdefault(_md_section_for(a), []).append(a)
 
     body_parts: list[str] = [fm, "", "# Instructions", ""]
+
+    # Which inbox filenames this document names more than one note by. Taken
+    # over every source-display site at once, because a name is ambiguous to
+    # the reader of the whole document, not of one section.
+    ambiguous_sources = colliding_names(_source_display_paths(actions, metadata))
 
     # Destination clashes (spec 034 F7 / ADR-4) lead the document. Every other
     # report in this file is a skip the user can act on later; this one is the
@@ -595,7 +656,7 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         body_parts.append(f"## {title}")
         body_parts.append("")
         for a in bucket:
-            body_parts.append(_render_action_md(a, cfg))
+            body_parts.append(_render_action_md(a, cfg, ambiguous_sources))
             body_parts.append("")
 
     # Skipped daily-note actions (#37/I38): surfaced so the user knows a log

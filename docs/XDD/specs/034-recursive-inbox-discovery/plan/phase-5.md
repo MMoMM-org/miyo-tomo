@@ -606,6 +606,46 @@ phase: 5
   3. **Implement**: link the attachment clash to its note's move. **Invert**
      `test_collision_does_not_suppress_the_notes_own_move_note` — a red test here is the
      intended change, not a regression in your own work `[ref: SDD/ADR-6]`.
+
+     **Where it goes — decided 2026-09-07, because the code structure forces it.** A TDD gate
+     blocked this task for leaving the location open, and the ordering inside `build_actions`
+     settles it rather than leaving it to taste:
+
+     ```
+     render_actions.py:1841   move_notes    = _build_move_note_actions(...)
+     render_actions.py:1843   move_assets, skipped_assets = _build_move_asset_actions(...)
+     render_actions.py:1852   out.extend(_build_delete_source_actions(...))
+     ```
+
+     The paired `delete_source` actions do not exist yet when `_build_move_asset_actions` runs.
+     So suppression cannot withdraw them inline — there is nothing there to withdraw. Build it
+     as a **sibling post-pass over the finished action list**, the same shape as
+     `validate_destinations`:
+
+     - It takes the built `actions` plus `skipped_assets`. Both already cross the boundary:
+       `build_actions` returns `(actions, skipped_assets)` and `instruction-render.py:525`
+       already unpacks them, so no new plumbing is needed.
+     - Wire it in `instruction-render.py` beside `validate_destinations` (`:542`), which is
+       already the place where post-build passes drop moves and report.
+     - **Share the delete-withdrawal mechanism with `validate_destinations`; do not copy it.**
+       That function already withdraws an origin delete and an audio-peer delete for a move it
+       drops. A second copy of that logic is the duplication `docs/XDD/backlog.md` already
+       records twice for this file, and the drift it produced in T5.0c cost a task of its own.
+     - Do **not** extend `validate_destinations` itself to consume `skipped_assets`. Its
+       contract is destination contention between claimants; an attachment that could not be
+       filed is a different cause with a different report, and merging them makes one function
+       answer two questions.
+
+     **The two passes must compose.** A note can be dropped by `validate_destinations` for a
+     destination clash *and* own a skipped attachment. Withdrawing the same delete twice must
+     not double-count in any report, and a note dropped by one pass must not be reported as
+     newly dropped by the other. Assert one case where both apply to the same note.
+
+     **The user must be able to tell the two reasons apart.** "Two items claim one destination"
+     and "its attachment could not be filed" are different problems with different remedies —
+     rename one note, versus rename one file. A reader who cannot tell which happened cannot
+     act. Whether that is a second section or a distinguishable reason line is yours to choose;
+     that it is distinguishable is not.
   4. **Validate**: tests pass; `ruff` clean.
   5. **Success**:
      - [ ] No note is filed into the permanent collection while depending on a file left in the

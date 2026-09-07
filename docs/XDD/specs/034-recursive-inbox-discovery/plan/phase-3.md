@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Recursive discovery"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 3
 ---
@@ -132,7 +132,7 @@ Turns on the behaviour the previous two phases prepared for.
      - [ ] The `sanitize_stem` asymmetry is preserved — only the derived `.md` target is
            sanitised, never the source audio name
 
-- [ ] **T3.4 Phase Validation** `[activity: validate]`
+- [x] **T3.4 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - **Flat-inbox golden check**: render a suggestions document from a root-only fixture before

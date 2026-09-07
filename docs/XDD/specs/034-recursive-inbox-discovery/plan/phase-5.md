@@ -338,7 +338,14 @@ phase: 5
        each resolves to its own note
      - the suggested name shown for a subfolder note is still `Dresden`, never a path-derived
        string `[ref: PRD/AC Feature 2]`
-     - a run with no collision produces a byte-identical document to before this task
+     - a run with no collision produces a byte-identical document — **the mechanism is the
+       existing flat-inbox golden**, `tests/fixtures/034-t3-4-flat-golden/suggestions.md`,
+       asserted whole-string by `tests/test_034_t3_4_phase3_gate.py`. Do not invent a new
+       baseline: "before this task" is circular, because before the change there is no prior
+       state to diff against. That golden was rendered by the pipeline at `ee44cb3` — the commit
+       preceding Phase 1 — so it pins the stronger claim, byte-identical to before the whole
+       spec. If path-qualification leaks into a no-collision run, that test goes red on the
+       whole document string, not on selected fields.
   3. **Implement**: detect same-filename groups while rendering — the renderer already sees
      every item — and path-qualify only those.
   4. **Validate**: tests pass; `ruff` clean.

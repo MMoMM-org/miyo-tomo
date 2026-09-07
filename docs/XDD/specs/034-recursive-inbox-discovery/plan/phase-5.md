@@ -426,6 +426,12 @@ phase: 5
        the run
      - a run with no clash emits exactly the actions it emits today — whole-list comparison,
        not selected fields
+     - **Two names differing only in case are a clash** — `Dresden` and `dresden` → neither move
+       is emitted, same treatment as any other clash. Assert it for both halves: two items in
+       the run, and an item against a note already in the target folder
+     - the report for a case-only clash **says so** — the user must be told the two names differ
+       only in case, not merely that they collide. On a case-sensitive filesystem those are two
+       visibly different names, and "duplicate name" alone would read as a bug
      - **Relocated here from T5.2 on 2026-09-07**: the user's own edit to a Pass-1 disambiguated
        name is honoured `[ref: PRD/AC Feature 7, Pass-1 criterion 2]`. The criterion is Pass 1's —
        its proposal must be a starting point, not a decision — but only Pass 2 can observe it,
@@ -434,9 +440,30 @@ phase: 5
        verbatim: it must not re-disambiguate, revert to the proposal, or treat a
        Pass-1-adjusted name as special in any way. T5.2 proves the field is an ordinary editable
        one; this proves nothing downstream second-guesses it.
+  **Case folding is fail-safe, not case-blind — added 2026-09-07.** T5.2's implementer named
+  exact-string destination equality as the assumption its diff could not verify, and CON-6
+  records this filesystem as case-insensitive, *verified on this host*. But Tomo is not only run
+  here: on a case-sensitive filesystem `Dresden.md` and `dresden.md` really are two files, so
+  folding invents a clash — and ADR-4 drops **both** claimants, so a false positive costs two
+  legitimate moves.
+
+  Fold anyway, because the two errors are not comparable:
+
+  | | case-insensitive FS | case-sensitive FS |
+  |---|---|---|
+  | fold | correct — the overwrite is prevented | false clash → both dropped, reported, user renames — **recoverable** |
+  | do not fold | **silent overwrite — unrecoverable** | correct |
+
+  One column loses a note; the other costs a rename. That asymmetry, not a guess about which
+  filesystem is underneath, is the reason. It also cannot be resolved by measurement: CON-7
+  forbids any task in this spec from a live vault run, so nothing here may probe Kado's real
+  case semantics. Do not try; assume the folding filesystem and say so in the report.
+
   3. **Implement**: a validation pass over the built action list, run after `build_actions`,
      that removes clashing claimants and records a report. Check surviving destinations against
-     the vault.
+     the vault. Compare destinations case-insensitively per the block above, and keep the
+     original casing in the report — a user told their name collides needs to see the name they
+     actually typed.
   4. **Validate**: tests pass; `ruff` clean.
   5. **Success**:
      - [ ] A clash cannot reach the executor `[ref: PRD/AC Feature 7]`

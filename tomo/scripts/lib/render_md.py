@@ -1,4 +1,4 @@
-# version: 0.9.0
+# version: 0.10.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -498,6 +498,33 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         by_section.setdefault(_md_section_for(a), []).append(a)
 
     body_parts: list[str] = [fm, "", "# Instructions", ""]
+
+    # Destination clashes (spec 034 F7 / ADR-4) lead the document. Every other
+    # report in this file is a skip the user can act on later; this one is the
+    # only place where an item the user APPROVED was deliberately not filed, so
+    # it must be read before the action list rather than after it.
+    destination_clashes = metadata.get("destination_clashes") or []
+    if destination_clashes:
+        body_parts.append("## Not filed — two items claim one destination")
+        body_parts.append("")
+        body_parts.append(
+            "**No move was emitted for the items below, deliberately.** Two "
+            "notes cannot both be filed to one path, and picking a winner "
+            "between names you set would be a guess. Rename one of them in the "
+            "suggestions document and re-run Pass 2 — the run does not need "
+            "restarting. Every source note below is untouched in the inbox."
+        )
+        body_parts.append("")
+        for clash in destination_clashes:
+            body_parts.append(f"- `{clash.get('destination')}` — {clash.get('reason')}")
+            for d in clash.get("dropped") or []:
+                origin = d.get("source_inbox_item") or "?"
+                body_parts.append(
+                    f"    - `{d.get('id')}` **{d.get('title')}** "
+                    f"— source note `{origin}`"
+                )
+        body_parts.append("")
+
     for key, title in SECTION_TITLES:
         bucket = by_section.get(key) or []
         if not bucket:

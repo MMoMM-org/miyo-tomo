@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.15.1
+# version: 0.16.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -734,6 +734,53 @@ def _subtract_skipped_daily(expected: dict, skipped_daily: list[dict]) -> int:
     return removed
 
 
+def _subtract_destination_clashes(expected: dict, clashes: list[dict]) -> int:
+    """Remove guard-withheld moves and their paired deletes from expected.
+
+    The Pass-2 destination guard (`render_actions.validate_destinations`, spec
+    034 T5.3) drops **both** claimants when two approved items name one
+    destination, and withdraws each dropped move's paired `delete_source` —
+    emitting the delete without the move would remove an inbox note the run
+    refused to file. Those are deliberate withholdings, not coverage gaps, so
+    they are subtracted here the way `_subtract_skipped_daily` subtracts a
+    missing daily note. Without this the audit reports `RESULT: FAIL — count or
+    coverage mismatch` on a **correct** instruction set, and the conductor's
+    STRICT stop halts the run with a message that misdiagnoses the guard as
+    drift — the exact failure T5.0c was scheduled to fix one module over.
+
+    The move join is `_keys_match`, not set membership: a clash entry's
+    `source_inbox_item` is the inbox-joined path a rendered action carries,
+    while `by_item`'s key comes straight from `confirmed_items` and is never
+    inbox-prefixed. Deletions are matched by the raw path first (an audio peer
+    is expected under its full path) and by the bare stem second (an origin is
+    expected under its stem), mirroring how `derive_expected` appends each.
+
+    Returns the number of expected entries removed.
+    """
+    removed = 0
+    for clash in clashes or []:
+        for dropped in clash.get("dropped") or []:
+            origin = dropped.get("source_inbox_item") or ""
+            if not origin:
+                continue
+            for item_id, info in list(expected["by_item"].items()):
+                if info.get("kind") != "move_note":
+                    continue
+                if _keys_match(info.get("item_key") or "", origin):
+                    del expected["by_item"][item_id]
+                    expected["counts"]["move_note"] -= 1
+                    removed += 1
+                    break
+        for path in clash.get("withdrawn_deletes") or []:
+            for candidate in (path, _stem(path)):
+                if candidate in expected["expected_deletions"]:
+                    expected["expected_deletions"].remove(candidate)
+                    expected["counts"]["delete_source"] -= 1
+                    removed += 1
+                    break
+    return removed
+
+
 def run_diff(
     parsed: dict, instrs: dict, tag_handler_groups: list[dict] | None = None
 ) -> tuple[int, list[str]]:
@@ -753,6 +800,11 @@ def run_diff(
     # target daily note) before comparing — see _subtract_skipped_daily.
     skipped_daily = (instrs.get("tomo") or {}).get("skipped_daily") or []
     n_daily_skipped = _subtract_skipped_daily(expected, skipped_daily)
+
+    # Reconcile the moves and paired deletes the destination guard withheld —
+    # see _subtract_destination_clashes.
+    destination_clashes = (instrs.get("tomo") or {}).get("destination_clashes") or []
+    _subtract_destination_clashes(expected, destination_clashes)
 
     lines: list[str] = []
     observations: list[str] = []
@@ -839,6 +891,17 @@ def run_diff(
             lines.append(
                 f"    {kind:<20s} expected={len(exp_items)} actual={len(act_items)} {mark}"
             )
+
+    if destination_clashes:
+        withheld = sum(len(c.get("dropped") or []) for c in destination_clashes)
+        note = (
+            f"{withheld} move(s) withheld with their paired deletes — "
+            f"{len(destination_clashes)} destination(s) claimed twice; see "
+            "\"Not filed\" in instructions.md, rename one and re-run Pass 2"
+        )
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
 
     if n_daily_skipped:
         note = (

@@ -371,3 +371,24 @@ backwards-compat artefact: `_build_move_note_actions` walks the manifest, not
 a display stem to work from. It never reaches Hashi — the action builders copy
 named fields and never spread the manifest entry — which the shape comparison
 against the pre-change builder confirms.
+
+## The Destination Guard Runs Between Building and Resolving (spec 034 T5.3)
+
+`validate_destinations` is called immediately after the action list is built and
+**before** `resolve_target_moc_paths` / `resolve_section_names`, so a withheld
+move costs no Kado lookups.
+
+It runs for the garden-audit branch too. That branch emits no `move_note`, so
+the pass is a proven no-op there — which is a better guarantee than an untested
+exemption that would silently stop covering the branch if it ever emitted one.
+
+The report reaches two artefacts: `instructions.json` under the permissive
+`tomo` block (so Hashi ignores it and the wire schema is untouched, CON-4) and
+`instructions.md` as its leading section. The whole entry is passed through
+verbatim rather than projected field-by-field, because unlike `skipped_assets`
+every field on it has a consumer — `instructions-diff` joins on
+`dropped[].source_inbox_item` and `withdrawn_deletes` to reconcile the
+withholding, and the renderer uses the rest.
+
+Exit code is unchanged: a clash is a report, not an error, matching how the
+`#116` source drop is handled. The audit downstream is where a run stops.

@@ -420,7 +420,7 @@ phase: 5
   compares atomics against atomics. T5.3's brief does not cover it either. Recorded in
   `docs/tomo/scripts/suggestions-reducer.md`, not fixed here.
 
-- [ ] **T5.3 Pass 2 validates destinations** `[activity: backend]`
+- [x] **T5.3 Pass 2 validates destinations** `[activity: backend]`
 
   1. **Prime**: Read `[ref: SDD/Complex Logic]` — the four-action walkthrough — and
      `_build_move_asset_actions` (`lib/render_actions.py:630-690`) as the reporting pattern to
@@ -515,8 +515,43 @@ phase: 5
      bug and fixed it in `00edb7e`, where a trailing slash produced two listings for one folder.
   4. **Validate**: tests pass; `ruff` clean.
   5. **Success**:
-     - [ ] A clash cannot reach the executor `[ref: PRD/AC Feature 7]`
-     - [ ] The halt is recoverable by renaming and re-running Pass 2
+     - [x] A clash cannot reach the executor `[ref: PRD/AC Feature 7]`
+     - [x] The halt is recoverable by renaming and re-running Pass 2
+
+  **Closed 2026-09-07.** `validate_destinations` + `make_folder_listing` in
+  `lib/render_actions.py`, wired in `instruction-render.py` between building and
+  resolving. Baseline recorded first at `9afcf73` and committed alone
+  (`tests/fixtures/034-t5-3-actions-golden/`). Every guarantee proven red by
+  reverting it; one case was found vacuous that way and rewritten.
+
+  **Two findings the next tasks need.**
+
+  **(a) A dropped move had to take its paired `delete_source` with it** — the
+  trap this task's brief did not name. `_build_delete_source_actions` emits a
+  delete for every origin its atomics consume plus one for the audio peer.
+  Dropping the move alone would have deleted the user's inbox note *and* its
+  audio while refusing to file the rendered atomic — the guard causing the loss
+  it exists to prevent, at the CON-4 boundary. The withdrawal joins on the
+  resolved path (ADR-1) and is also correct for a partial drop: an origin with
+  one clashing atomic of two is no longer fully consumed, which is exactly the
+  OQ6 gate's defer condition.
+
+  **(b) `instructions-diff` was repaired here, not deferred.** A withheld move
+  is neither an expected `move_note` nor an expected `delete_source`, so the
+  audit reported `RESULT: FAIL — count or coverage mismatch` on a correct
+  instruction set, and `synthesis-conductor.md:3e` makes that fatal — the run
+  would have halted blaming Tomo for drift instead of naming the clash. Unlike
+  T5.0c's divergence, which pre-existed its diff, this one is created by T5.3,
+  so it is T5.3's to repair (`_subtract_destination_clashes`, 0.16.0).
+
+  **Out of scope, found while sweeping for destination composition and claim
+  tracking** — recorded in `docs/tomo/scripts/lib/render_actions.md`, not fixed:
+  `_build_create_moc_actions`'s `by_dest` compares destinations by **exact
+  string**, so two approved MOC proposals differing only in case both emit and
+  the second overwrites the first (the `#67` failure that guard exists to
+  prevent, reachable again under CON-6); the atomic-vs-MOC composition T5.2
+  already recorded; and `render_resolve.py:213`'s `create_moc_by_dest`, the
+  paired consumer of the first.
 
 - [ ] **T5.4 An attachment clash keeps its note in the inbox** `[activity: backend]`
 

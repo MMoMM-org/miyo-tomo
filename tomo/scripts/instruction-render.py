@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.46.0
+# version: 0.47.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -67,6 +67,8 @@ from lib.render_actions import (  # noqa: E402,F401
     emit_up_preservation_actions,
     extract_first_up_marker,
     group_id,
+    make_folder_listing,
+    validate_destinations,
 )
 from lib.render_helpers import _moc_stem, _stem, resolve_source_path  # noqa: E402,F401
 from lib.render_io import read_note_body, read_template  # noqa: E402,F401
@@ -529,6 +531,25 @@ def main() -> int:
             peer_marker=conventions.peer_marker,
         )
 
+    # ── Validate destinations (spec 034 T5.3, ADR-4) ─────────────────────
+    # The binding half of PRD Feature 7. Pass 1 proposes a distinct name on a
+    # clash and is advisory — the user edits the document afterwards — so this
+    # is the last point at which two notes claiming one path can be stopped.
+    # Both claimants are dropped; the report tells the user which two, and
+    # renaming one and re-running Pass 2 recovers without restarting the run.
+    # Runs for the garden-audit branch too: that branch emits no move_note, so
+    # the pass is a proven no-op there rather than an untested exemption.
+    actions, destination_clashes = validate_destinations(
+        actions, make_folder_listing(client) if client else None
+    )
+    if destination_clashes:
+        withheld = sum(len(c["dropped"]) for c in destination_clashes)
+        print(
+            f"  [clash] {withheld} move(s) withheld — destination claimed "
+            f"twice; see instructions.md",
+            file=sys.stderr,
+        )
+
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────
     # Best-effort; actions stay with `target_moc_path: null` if Kado is
     # unavailable or no match is found.
@@ -706,6 +727,17 @@ def main() -> int:
             }
             for s in skipped_assets
         ]
+    # Record the destination clashes that withheld a move, so the drop reaches
+    # the JSON as well as the markdown and instructions-diff can see which
+    # moves were deliberately withheld rather than lost. Metadata only:
+    # ids, titles, paths and the reason — never note content.
+    if destination_clashes:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["destination_clashes"] = destination_clashes
+
     # Record confirmed items the #116 guard withheld, so the drop reaches an
     # artefact instead of scrolling past on stderr. Metadata only: id, the path
     # probed, and why — never note content. Nested under the permissive `tomo`
@@ -747,6 +779,7 @@ def main() -> int:
             "skipped_rel": skipped_rel,
             "skipped_assets": skipped_assets,
             "dropped_sources": dropped_missing_source,
+            "destination_clashes": destination_clashes,
         },
         cfg,
     )

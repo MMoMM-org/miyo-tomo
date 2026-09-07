@@ -280,3 +280,175 @@ spelling before comparing, so plain equality is correct here; the differ has no
 that names the same note. T5.0c closed it with `_same_note_as_any` — `_keys_match`
 applied in both directions — rather than a set dedup. See
 `docs/tomo/scripts/instructions-diff.md` (0.15.0).
+
+## The Pass-2 Destination Guard (spec 034 T5.3)
+
+`validate_destinations` is the binding half of PRD Feature 7. Pass 1
+(`suggestions-reducer.resolve_destination_clashes`) proposes a distinct name
+when two items would land on one path, but ADR-4 makes that advisory: the user
+edits the suggestions document *after* Pass 1 has rendered, so nothing it
+proposed can bind. This pass runs after `build_actions`, over the whole
+assembled action list, and is the last point at which two `move_note` actions
+claiming one destination can be stopped before Hashi executes them.
+
+### Why Both Claimants Are Dropped
+
+`_build_move_asset_actions` is the reporting shape this follows and the
+resolution is deliberately inverted. There, the first attachment keeps the
+destination and the second is skipped, because nothing is lost by skipping a
+duplicate file — the note that embeds it still resolves. Here both names were
+set by the user, so choosing between them would itself be a guess, and letting
+emission order pick the loser leaves an approved item unfiled with no record of
+why (ADR-4).
+
+The two behaviours look alike in code and differ in exactly the place that
+matters: `for claimant in claimants` versus `for claimant in claimants[1:]`. A
+shape copied without noticing the inversion ships a guard that keeps one
+claimant — a silent overwrite wearing the appearance of a working guard. Test
+`test_two_items_claiming_one_destination_lose_both_moves` exists for that one
+character; reverting it turns fourteen tests red.
+
+### A Dropped Move Takes Its Paired Delete With It
+
+This is the trap the task did not name and the reason the guard is not a pure
+filter. `_build_delete_source_actions` emits `delete_source` for every origin
+its atomics fully consume, plus one for the origin's audio peer. Dropping the
+move while leaving those deletes would remove the user's inbox note *and* its
+audio while refusing to file the rendered atomic — the guard would cause the
+loss it exists to prevent, and on the CON-4 boundary where Hashi acts.
+
+So the pass withdraws, for each dropped move, the `delete_source` whose
+`source_path` is that move's `source_inbox_item` or `audio_peer`. The join is
+the resolved vault-relative path (ADR-1), not a bare filename, so a namesake in
+another inbox folder that the user explicitly marked for deletion keeps its own
+delete.
+
+The withdrawal is also correct for a *partial* drop. An origin with two atomics
+of which one clashes is no longer fully consumed, which is exactly the
+condition the OQ6 completion gate defers on (`len(moves) < expected`). The
+surviving atomic is still filed; the origin keeps its source.
+
+`link_to_moc` actions for a dropped note are deliberately **not** removed. The
+bullet lands on the parent MOC as an unresolved forward link, which Obsidian
+renders as such and which resolves the moment the user renames and re-applies.
+Removing them would need a title join, and a third item filed to a different
+folder under the same title would be dropped with them — a real loss traded for
+a cosmetic one.
+
+### The Vault Half Reads a Listing, Never a Probe
+
+`make_folder_listing` issues one `list_dir(folder, depth=1)` per distinct
+destination folder, cached for the life of the closure. This is not a style
+preference. A per-name `note_exists` probe answers with whatever Kado's own
+case semantics decide, and CON-7 forbids this spec from running against a live
+vault to find out what those are — so a probe would make the guard's
+correctness depend on an unmeasured behaviour. A listing returns the folder's
+real filenames, which puts the fold in Tomo where a test can reach it, and
+carries the vault's own spelling for the report.
+
+It is the twin of `suggestions-reducer._vault_folder_notes`, which serves the
+Pass-1 proposal: both compose through `_dest_join` and fold the same way, so the
+proposal and the guard cannot disagree about what "the same place" means. They
+are duplicated rather than shared on purpose — `docs/XDD/backlog.md` schedules
+the extraction of the whole clash surface into a `lib/` module after Phase 5
+closes, when T5.2, T5.3 and T5.4 have all landed, and moving the ground
+mid-phase is what that entry declined.
+
+The cache key is the folder `_dest_join` derives, not the raw string. T5.2
+shipped a raw-`location` cache and fixed it in `00eb712`, where a trailing slash
+listed one folder twice. The pass itself derives the folder from the already
+composed destination, so it cannot reach `make_folder_listing` with an
+unnormalised spelling — which is why
+`test_one_listing_per_folder_however_the_folder_is_spelled` asserts on the
+closure directly. Driven through the pass, that test passed against a
+raw-keyed cache: it was vacuous, and the mutation sweep is what found it.
+
+Kado failing is not a collision. An unreachable folder reads as empty, so the
+vault half degrades and the run-internal half keeps working (ADR-4). The
+alternative — treating an error as a clash — would drop two legitimate moves on
+a transport blip.
+
+### Folding Is Fail-Safe, Not a Claim About the Filesystem
+
+Destinations compare `casefold()`-equal (CON-6). `casefold()`, not `.lower()`:
+these are German notes and `ß` folds to `ss`, which `.lower()` leaves alone —
+`Strasse` and `Straße` are one file on a folding filesystem and would otherwise
+both be emitted.
+
+CON-6 records this host as case-insensitive, verified. Tomo is not only run
+here, and on a case-sensitive filesystem `Dresden.md` and `dresden.md` really
+are two files, so folding invents a clash — and ADR-4 drops both claimants, so
+a false positive costs two legitimate moves. Fold anyway, because the two
+errors are not comparable: not folding on a folding filesystem loses a note
+silently and unrecoverably; folding on a case-sensitive one costs a rename the
+user can see and undo. CON-7 forbids resolving this by measurement, so the
+asymmetry is the reason, not a guess about what is underneath.
+
+Only the comparison folds. Every destination the report displays keeps the
+casing its author wrote — the claimants' as the user named them, the vault's as
+the vault holds it — and a case-only clash SAYS the difference is case. On a
+case-sensitive filesystem those are two visibly different names, and "duplicate
+name" alone would read as a bug in Tomo rather than a warning.
+
+### The Report Leads the Document
+
+`render_md` puts the clash block **first**, before every action section. Every
+other report in that file is a skip the user can act on later; this is the only
+place where an item the user approved was deliberately not filed, so it must be
+read before the action list rather than after it. It names both claimants by
+their source notes, states that those sources are untouched in the inbox, and
+says the remedy: rename one and re-run Pass 2, no need to restart the run.
+
+The same list reaches `instructions.json` under the permissive `tomo` block, so
+Hashi ignores it and the wire schema is untouched (CON-4). Metadata only: ids,
+titles, paths and the reason — never note content.
+
+### The Paired Consumer, Fixed Here Rather Than Deferred
+
+`instructions-diff.derive_expected` counts an expected `move_note` per confirmed
+item and an expected `delete_source` per non-kept origin. A withheld move is
+neither, so before `_subtract_destination_clashes` the audit reported
+`RESULT: FAIL — count or coverage mismatch` on a **correct** instruction set:
+`move_note 2 → 0`, `delete_source 2 → 0`, and `file=[MISSING]` against both
+items. `synthesis-conductor.md` step 3e makes that fatal — STRICT, stop, report
+the diff verbatim — so a clash would have halted the run with a message
+blaming Tomo for drift instead of naming the clash.
+
+T5.0b deferred an equivalent divergence to T5.0c and was right to: that one
+pre-existed its diff. This one does not — the withholding is what T5.3 adds, so
+the expectation it invalidates is T5.3's to repair. The subtraction mirrors
+`_subtract_skipped_daily`, and the audit now emits a note naming how many moves
+were withheld and pointing at the `Not filed` section.
+
+The move join is `_keys_match`, not set membership: a clash entry's
+`source_inbox_item` is the inbox-joined path a rendered action carries, while
+`by_item`'s key comes from `confirmed_items` and is never inbox-prefixed — the
+same asymmetry T5.0c had to respect one function over. Deletions match on the
+raw path first and the bare stem second, because `derive_expected` appends an
+audio peer under its full path and an origin under its stem.
+
+### Found While Sweeping, Deliberately Not Fixed
+
+A repo-wide grep for destination composition (`_dest_join`, `_asset_dest_join`,
+`"destination":` writes) and claim tracking (`claimed`, `by_dest`, `seen`,
+`used_filenames`) turned up three sites this guard does not cover. None is
+fixed here; each is recorded so the next task does not have to re-find it.
+
+1. **`_build_create_moc_actions`'s `by_dest` compares destinations by exact
+   string.** Two approved MOC proposals named `Travel (MOC)` and
+   `travel (MOC)` in one folder both emit a `create_moc`, and the second
+   overwrites the first on apply — dropping the first's children, which is the
+   `#67` failure that guard was written for. The guard is real; it just does
+   not fold, and CON-6 says this filesystem does. `validate_destinations` does
+   not close it: it groups `move_note` only.
+2. **An atomic and a MOC can compose the same destination** — an atomic named
+   `Travel (MOC)` filed into the MOC folder. `_build_create_moc_actions` dedups
+   create_moc against create_moc, `_build_move_note_actions` has no guard at
+   all, and Pass 1's check compares atomics against atomics. T5.2 recorded this
+   in `docs/tomo/scripts/suggestions-reducer.md`; T5.3's brief does not cover
+   it either. Dropping a `create_moc` cascades into the `link_to_moc` and
+   up-preservation actions that target it, which is a behaviour change, not an
+   addressing fix.
+3. **`render_resolve.py:213`'s `create_moc_by_dest`** keys the same composed
+   destination by exact string. It is a paired consumer of (1) and would need
+   the same treatment if (1) ever folds.

@@ -51,3 +51,21 @@ one being guarded against. Pinned by
 `kind` is deliberately NOT projected into `instructions.json`'s
 `tomo.skipped_assets` (see `docs/tomo/scripts/instruction-render.md`) — it is
 a rendering-only concern. This file is where its only consumer lives.
+
+## The Destination-Clash Block Leads the Document (spec 034 T5.3)
+
+`destination_clashes` renders **before** every action section, unlike
+`skipped_daily`, `skipped_rel`, `skipped_assets` and `dropped_sources`, which
+all sit in the trailing `Skipped — un-appliable actions` block.
+
+The placement is the point. Those four are skips the user can act on whenever
+they get to them. This one is the only place where an item the user *approved*
+was deliberately not filed, and ADR-4 drops **both** claimants, so two approved
+items are missing from the action list below. A reader who stops after the first
+section must still have seen it.
+
+The block names each claimant by its source note, states that those sources are
+untouched in the inbox, and gives the remedy — rename one and re-run Pass 2,
+without restarting the run. It never folds or normalises a name for display:
+the reason sentence shows each destination spelled the way its author wrote it,
+so a user told their name collides sees the name they actually typed.

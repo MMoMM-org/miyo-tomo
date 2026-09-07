@@ -84,3 +84,28 @@ path there would silently stop that dedup from matching a daily-only entry.
 Sources 1, 3 and 4 all append stems; the collections that JOIN are keyed on
 identity, the list that is merely counted is not. That split is the same one
 source 3 (`paired_origins_seen`) already made.
+
+## Guard-Withheld Moves Are Not Coverage Gaps (spec 034 T5.3)
+
+`_subtract_destination_clashes` removes, from the expected tallies, the moves
+the Pass-2 destination guard withheld and the paired deletes it withdrew with
+them. Without it the audit reported `RESULT: FAIL — count or coverage mismatch`
+on a **correct** instruction set — `move_note 2 → 0`, `delete_source 2 → 0`,
+`file=[MISSING]` on both items — and `synthesis-conductor.md` step 3e makes a
+mismatch fatal, so a destination clash would have halted the run with a message
+blaming Tomo for drift rather than naming the clash.
+
+Two details the shape does not make obvious:
+
+- The move join is `_keys_match`, not set membership. A clash entry's
+  `source_inbox_item` is the inbox-joined path a rendered action carries, while
+  `by_item`'s key comes straight from `confirmed_items` and is never
+  inbox-prefixed. This is the same asymmetry `_same_note_as_any` exists for.
+- Deletions are matched by the raw path first, the bare stem second, because
+  `derive_expected` appends an audio peer under its full path and an origin
+  under its stem. Matching on one alone leaves the other counted.
+
+The withheld count is emitted as an observation naming the `Not filed` section
+of `instructions.md`, so the audit points at the real report instead of
+restating a number. See `docs/tomo/scripts/lib/render_actions.md`, "The Pass-2
+Destination Guard".

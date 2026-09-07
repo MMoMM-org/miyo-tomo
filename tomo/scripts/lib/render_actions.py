@@ -1,4 +1,4 @@
-# version: 0.12.0
+# version: 0.13.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -684,6 +684,201 @@ def _build_move_asset_actions(
                 "destination": destination,
             })
     return out, skipped
+
+
+# Names differing only in case are treated as one destination (CON-6). The
+# comparison folds; nothing displayed is ever folded, so the user always reads
+# the name they typed and the vault's own spelling of what is in its way.
+_CASE_NOTE = (
+    "The names differ only in case — the filesystem may treat them as one file."
+)
+
+_COUNT_WORDS = {2: "Two", 3: "Three", 4: "Four"}
+
+
+def _unique_in_order(values: list[str]) -> list[str]:
+    out: list[str] = []
+    for v in values:
+        if v not in out:
+            out.append(v)
+    return out
+
+
+def make_folder_listing(kado_client):
+    """Return ``folder_listing(location) -> {folded destination: vault path}``.
+
+    One ``list_dir(folder, depth=1)`` per distinct destination folder, cached
+    for the life of the returned closure. Never a per-name ``note_exists``
+    probe: a probe answers with whatever Kado's own case semantics decide, and
+    CON-7 forbids this spec from running against a live vault to find out what
+    those are. A listing returns the folder's real filenames, which puts the
+    fold in Tomo where a test can reach it, and carries the vault's own
+    spelling for the report.
+
+    The cache key is the folder ``_dest_join`` derives, not the raw string: two
+    claims whose location differs only by a trailing slash name one folder, and
+    a raw key lists it twice. Kado failing is not a collision — an unreachable
+    folder reads as empty, so the vault half degrades and the run-internal half
+    keeps working (ADR-4).
+
+    This is the twin of ``suggestions-reducer._vault_folder_notes``, which
+    serves the Pass-1 proposal. Both compose through ``_dest_join`` and fold
+    the same way so the proposal and the guard cannot disagree about what "the
+    same place" means.
+    """
+    cache: dict[str, dict[str, str]] = {}
+
+    def folder_listing(location: str) -> dict[str, str]:
+        folder = (location or "").rstrip("/") + "/"
+        if folder not in cache:
+            found: dict[str, str] = {}
+            try:
+                for entry in kado_client.list_dir(folder, depth=1):
+                    path = entry.get("path") or ""
+                    name = path.rsplit("/", 1)[-1]
+                    if entry.get("type") != "file" or not name.lower().endswith(".md"):
+                        continue
+                    # Recompose through _dest_join so both sides of the
+                    # comparison are built by the same helper.
+                    found[_dest_join(folder, name[:-3]).casefold()] = path
+            except Exception:  # noqa: BLE001 — an error is not a collision
+                found = {}
+            cache[folder] = found
+        return cache[folder]
+
+    return folder_listing
+
+
+def _destination_clash_reason(
+    claim_dests: list[str], vault_note: str | None, case_only: bool
+) -> str:
+    """The sentence the user reads for one contested destination.
+
+    Every destination is spelled the way its author wrote it — the claimants'
+    as the user named them, the vault's as the vault holds it. A user told
+    their name collides needs to see the name they actually typed.
+    """
+    n = len(claim_dests)
+    if n >= 2:
+        spelled = " and ".join(f"`{d}`" for d in _unique_in_order(claim_dests))
+        head = f"{_COUNT_WORDS.get(n, str(n))} approved items claim {spelled}"
+        if vault_note:
+            head += f", and a note already exists at `{vault_note}`"
+        tail = "neither is filed" if n == 2 else "none of them is filed"
+    else:
+        head = (
+            f"a note already exists at `{vault_note}`, where this run would "
+            f"file `{claim_dests[0]}`"
+        )
+        tail = "this item is not filed"
+    reason = f"{head} — {tail}."
+    return f"{reason} {_CASE_NOTE}" if case_only else reason
+
+
+def validate_destinations(
+    actions: list[dict], folder_listing=None
+) -> tuple[list[dict], list[dict]]:
+    """Drop every move whose destination is contested; report what was dropped.
+
+    Returns ``(kept_actions, clashes)``. Runs after ``build_actions``, over the
+    whole assembled list, so it sees every claim at once (ADR-4).
+
+    **Both** claimants are dropped, not the second one. This follows the
+    reporting shape of ``_build_move_asset_actions`` and deliberately inverts
+    its resolution: there, the first attachment keeps the destination because
+    nothing is lost by skipping a duplicate file. Here the two names were both
+    set by the user, and choosing between them would itself be a guess. Pass 1
+    (``resolve_destination_clashes``) is the advisory half that keeps the
+    common case away from this guard; this half binds.
+
+    A dropped move takes its paired ``delete_source`` with it — the origin's
+    and its audio peer's. Emitting the delete without the move would remove the
+    user's inbox note while refusing to file it, which is the loss this guard
+    exists to prevent. The withdrawal joins on the origin's resolved path
+    (ADR-1), so a namesake in another inbox folder keeps its own delete.
+
+    ``folder_listing`` is the vault view from ``make_folder_listing``; ``None``
+    skips the vault half and leaves the run-internal half working.
+
+    The pass holds no state across calls: correcting one name and re-running
+    Pass 2 emits both moves, with no memo of the earlier clash.
+    """
+    groups: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for action in actions:
+        if action.get("action") != "move_note":
+            continue
+        destination = action.get("destination") or ""
+        if not destination:
+            continue
+        key = destination.casefold()
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(action)
+
+    # One listing per destination folder, only for folders this run writes to.
+    vault_holders: dict[str, str] = {}
+    if folder_listing is not None:
+        for key in order:
+            destination = groups[key][0].get("destination") or ""
+            folder = destination.rsplit("/", 1)[0] if "/" in destination else ""
+            holder = folder_listing(folder).get(key)
+            if holder:
+                vault_holders[key] = holder
+
+    clashes: list[dict] = []
+    dropped_ids: set[str] = set()
+    withdrawn_paths: set[str] = set()
+    for key in order:
+        claimants = groups[key]
+        vault_note = vault_holders.get(key)
+        if len(claimants) < 2 and vault_note is None:
+            continue
+        claim_dests = [c.get("destination") or "" for c in claimants]
+        spellings = _unique_in_order(
+            claim_dests + ([vault_note] if vault_note else [])
+        )
+        withdrawn: list[str] = []
+        for claimant in claimants:
+            dropped_ids.add(claimant.get("id"))
+            for field in ("source_inbox_item", "audio_peer"):
+                path = claimant.get(field)
+                if path and path not in withdrawn_paths:
+                    withdrawn_paths.add(path)
+                    withdrawn.append(path)
+        clashes.append({
+            "kind": "run_collision" if len(claimants) >= 2 else "vault_collision",
+            "destination": claim_dests[0],
+            "case_only": len(spellings) > 1,
+            "vault_note": vault_note,
+            "reason": _destination_clash_reason(
+                claim_dests, vault_note, len(spellings) > 1
+            ),
+            "dropped": [
+                {
+                    "id": c.get("id"),
+                    "title": c.get("title"),
+                    "destination": c.get("destination"),
+                    "source_inbox_item": c.get("source_inbox_item"),
+                }
+                for c in claimants
+            ],
+            "withdrawn_deletes": withdrawn,
+        })
+
+    if not clashes:
+        return actions, []
+
+    kept = [
+        a for a in actions
+        if a.get("id") not in dropped_ids
+        and not (
+            a.get("action") == "delete_source"
+            and a.get("source_path") in withdrawn_paths
+        )
+    ]
+    return kept, clashes
 
 
 def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:

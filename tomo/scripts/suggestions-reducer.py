@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.43.1
+# version: 1.44.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -63,6 +63,9 @@ from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble
 )
 from lib.inbox_state import last_state_per_item_key, display_stem  # noqa: E402 — spec 034 T2.3
 from lib.item_key import to_filename as item_key_to_filename  # noqa: E402 — spec 034 T2.3
+# spec 034 T5.1, moved to lib at T5.5 when the instruction document needed
+# the same collision rule and the same link form at three more sites.
+from lib.source_link import resolve_source_link, source_link_targets  # noqa: E402
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -272,32 +275,6 @@ def demote_structural_anchors(action: dict, stem: str) -> int:
     return demoted
 
 
-def source_link_targets(items: list[tuple[str, str, dict]]) -> dict[str, str]:
-    """item_key -> the wikilink TARGET to render for that item's source note.
-
-    Bare stem while the filename is unique in this run; `<path>|<stem>` — the
-    path plus an alias, which is what the vault itself writes for a duplicate
-    basename — once two items in the run share one. Display only (ADR-2): the
-    caller keeps `stem` for names and `item_key` for identity; neither is
-    rewritten here.
-
-    `items` is the run's (stem, item_key, entry) work list.
-    """
-    counts: dict[str, int] = {}
-    for stem, _key, _entry in items:
-        counts[stem] = counts.get(stem, 0) + 1
-    targets: dict[str, str] = {}
-    for stem, key, _entry in items:
-        if not key:
-            continue
-        if counts.get(stem, 0) > 1:
-            path = key[:-3] if key.endswith(".md") else key
-            targets[key] = f"{path}|{stem}"
-        else:
-            targets[key] = stem
-    return targets
-
-
 def _clash_reason(claimed_dest: str, holder: str, in_run: bool) -> str:
     """The sentence under a renamed proposal, in the four shapes it takes.
 
@@ -381,19 +358,6 @@ def resolve_destination_clashes(
             claimed.setdefault(key, base)
 
     return adjustments
-
-
-def resolve_source_link(
-    source_links: dict[str, str] | None, item_key: str | None, stem: str
-) -> str:
-    """The link target for one item, falling back to the bare stem.
-
-    An absent key, or an item the map does not know about, renders exactly as
-    it did before this spec — a document is never worse off for a missing key.
-    """
-    if source_links and item_key:
-        return source_links.get(item_key) or stem
-    return stem
 
 
 def _template_link(template: str) -> str:

@@ -873,3 +873,17 @@ filed into the MOC folder — and neither pass sees it. Pass 2's
 merging supporting items), `_build_move_note_actions` has no guard at all, and
 this Pass-1 check compares atomics against atomics. Out of scope for T5.2 and
 not covered by T5.3's brief either.
+
+## `source_link_targets` Moved to `lib/source_link.py` (spec 034 T5.5)
+
+T5.1 put the collision rule and the `[[path|stem]]` form here, where the
+suggestions document is rendered. T5.5 found the same defect at three sites in
+the **instruction** document and one in the action list, so both helpers moved
+to `lib/source_link.py` and this file imports them.
+
+Behaviour here is unchanged except in one case the reducer could not reach
+before: `colliding_names` now counts distinct **paths** rather than
+occurrences, because the instruction document names one note at several display
+sites. An `item_key` appearing twice in one run used to be treated as a
+collision and over-qualified; it no longer is. See
+`docs/tomo/scripts/lib/source_link.md`.

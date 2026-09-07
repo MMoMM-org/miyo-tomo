@@ -716,7 +716,7 @@ of the clash logic is known. Doing it before then means refactoring code that is
 
 **Updated 2026-09-07 after T5.3.** The entry above was written during T5.2 and named only
 `suggestions-reducer.py`. T5.3 grew `tomo/scripts/lib/render_actions.py` from 1659 to 1854
-lines — equally past the Constitution's L2 ~300-500 guidance, and from the same task family.
+lines, and T5.4 took it to 2046 — equally past the Constitution's L2 ~300-500 guidance, and from the same task family.
 Naming it explicitly matters: a deferral that covers a second file only by inference from
 "the whole clash surface" is a deferral someone will read as not covering it.
 

@@ -690,3 +690,26 @@ Fix shape, cheapest first: vendor a pinned copy of the upstream schema and test 
 refreshing it deliberately — turning a network dependency into a reviewable diff. Failing that,
 make the skip loud (a warning summary that names the contract left unverified), or gate it so
 CI treats an offline skip as a failure while local runs stay tolerant.
+
+### `suggestions-reducer.py` has outgrown its file, and the clash logic is the clean seam
+
+Observed 2026-09-07 during spec 034 T5.2, raised by that task's code-quality review and
+deliberately declined at the time.
+
+The file is now 2388 lines. The MiYo Constitution's L2 code-quality rule says files of dense
+logic should be refactored along their natural seams beyond roughly 300-500 LOC, so this is
+not a near miss — and T5.2 added about 195 lines to it.
+
+The seam is already visible. `resolve_destination_clashes` and `_clash_reason` are
+self-contained pure functions whose only outside dependency is `_dest_join`, which is itself
+imported from `lib/render_actions.py`. They would move into a `lib/` module without dragging
+reducer-internal state behind them, and the move would put the Pass-1 proposal logic beside
+the Pass-2 guard logic that T5.3 is about to write against the same `_dest_join`.
+
+Why it was declined rather than done: T5.3 builds directly beside this code, so extracting it
+mid-phase moves ground the next task is standing on. A refactor folded into a task about
+destination clashes is also precisely the scope creep the review gates exist to catch — the
+right call is to do it deliberately, as its own change, not as a rider.
+
+Best done after Phase 5 closes, when T5.2, T5.3 and T5.4 have all landed and the final shape
+of the clash logic is known. Doing it before then means refactoring code that is still moving.

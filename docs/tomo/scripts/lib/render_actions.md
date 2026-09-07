@@ -167,42 +167,107 @@ thing the rendered document carries for it — which is why its identity is
 recovered from the structured doc rather than from the markdown
 (`suggestion-parser.enrich_daily_updates_with_item_keys`).
 
-## The Stem-Keyed Collections Are a Separate, Unfixed Concern
+## The Delete Bookkeeping Joins on the Note, Not the Filename (spec 034 T5.0b)
 
-`_build_delete_source_actions` keys six collections by bare stem —
+`_build_delete_source_actions` joins three inputs that describe the same inbox
+note in three different spellings — a confirmed item (`source_path`, display
+text), a move_note origin (`source_inbox_item`, already a resolved path) and a
+daily entry (`source_stem`, display text). Six collections carried that join:
 `confirmed_stems`, `expected_by_stem`, `keep_source_stems`, `seen`,
-`daily_stems`, `moves_by_origin`. Recursive discovery makes two notes in
-different subfolders share a stem, and these collide. Traced consequence for
-two confirmed namesakes, one atomic each: both `move_note`s land in one
-`moves_by_origin` bucket, the OQ6 completion gate passes (`2 >= 2`), and
-`origin_path = moves[0]` emits a single delete — the second note is never
-deleted. `keep_source` on either one suppresses the delete for both.
+`daily_stems`, `moves_by_origin`. All six keyed on the bare filename stem, and
+recursive discovery (Phase 3) lets two notes in different inbox subfolders
+share one. Each collection therefore collapsed two distinct notes into one
+bucket. They now key on `_origin_key` — the resolved vault-relative path
+(ADR-1), which is per note.
 
-Proven with fixtures, not inferred, on post-T5.0 code:
+`_origin_key` strips a trailing `.md` and nothing else. That is not cosmetic:
+the three inputs disagree about exactly that one extension (a confirmed item's
+`source_path` carries it, a daily entry's `source_stem` does not, a move_note
+origin has been through `_ensure_md_extension`), and they must still land in
+one bucket. Every other extension is significant — an `.m4a` origin and an
+`.md` note of the same name are different files, and the old `_stem` (which
+also stripped only `.md`) already treated them as such. Preserving that is what
+keeps a `keep_source` on a voice source from suppressing a same-named note's
+delete.
 
-| collection | consequence when two namesakes collide |
-|---|---|
-| `moves_by_origin` / `expected_by_stem` | both `move_note`s land in one bucket, the gate passes (`2 >= 2`), `moves[0]` emits a single delete — B's source survives |
-| `keep_source_stems` | `keep_source` on A suppresses B's delete too: **zero** deletes |
-| `seen` | the second daily-only namesake gets no delete at all |
-| `confirmed_stems` | B's daily-only delete is suppressed because A is confirmed |
-| `daily_stems` | reason-string mis-attribution only (below) |
+### What the OQ6 Denominator Now Counts
 
-This is left as-is deliberately. Every direction traced fails SAFE (a file
-stays in the inbox and is re-proposed next run, rather than the wrong file
-being deleted), and re-keying the completion gate is a behaviour change to
-OQ6's logic, not an addressing fix. It is a collision concern, distinct from
-the addressing concern T5.0 closes.
+`expected_by_key` is the completion gate's denominator: the gate holds a
+`delete_source` back until every approved atomic for an origin is represented
+in `move_notes` (OQ6 / PRD/A9). It now counts **the approved atomics of one
+specific note, identified by its path** — not of every note sharing that
+filename.
 
-**The part that reaches the user, not the vault.** Two reason strings
-mis-describe reality in the document the user reads BEFORE approving:
+That is the meaning the gate was always reaching for. The gate exists to answer
+one question about one file: *is everything I am about to delete already
+captured somewhere else?* A namesake in another inbox folder is a different
+file, and how many atomics it produced, or whether they rendered, says nothing
+about whether this one is fully captured. Sharing a denominator got that wrong
+in both directions, and neither was a rounding error:
 
-- `"Origin consumed by 2 atomics."` names A, while one of those two atomics
-  came from B — the count is right, the note it is attached to is not.
-- `"Origin consumed by 1 atomic + daily."` credits A with a daily capture that
-  belonged to B (`daily_stems` is stem-keyed, so B's daily entry marks A).
+- **Under-count → permanent defer.** Two namesakes, two atomics from A (both
+  rendered) and one from B (dropped before rendering): the shared denominator
+  read 3 against a shared bucket of 2 moves, so `2 < 3` deferred — and it
+  deferred A's delete, which was complete, on the strength of B's incomplete
+  work.
+- **Coincidental pass.** Two namesakes with one atomic each: the denominator
+  read 2 against a bucket of 2, the gate passed, and `moves[0]` emitted a
+  single delete — one origin deleted, the other silently left behind.
 
-A user approving on those strings is approving a description that is wrong
-about which note did what. CON-2 puts the two-pass review between Tomo and the
-vault, and this is the review text — so whoever picks up the collision task
-should treat the reason strings as part of it, not as cosmetics.
+The re-key was not made to turn a test green; the two tests that pin these
+(`test_oq6_denominator_counts_this_notes_atomics_only`,
+`test_two_confirmed_namesakes_each_get_their_own_delete`) assert the meaning
+above, and the emitted count differs from the old behaviour in both.
+
+### The Reason Strings Are Part of the Fix, Not Cosmetics
+
+Under CON-2 the user approves on what the rendered document says, so a reason
+that is wrong about *which* note did what is a wrong basis for approval even
+when the resulting action is safe. Two strings were:
+
+- `"Origin consumed by N atomics."` named A while one of those atomics came
+  from B (`moves_by_origin`).
+- `"+ daily"` credited A with B's daily capture (`daily_stems`).
+
+Both now derive from the same per-note key, so each names the note that caused
+it. `test_daily_suffix_still_fires_for_the_note_that_earned_it` is the positive
+control: re-keying must not make the suffix unreachable, only correctly
+attributed.
+
+### Fail-Safe Before, Correct Now
+
+Every direction of the old collapse failed *safe* — the second note's source was
+left undeleted and re-proposed next run; the wrong note was never deleted. That
+is why T5.0 deliberately left this alone: re-keying the completion gate changes
+that gate's logic, which is a behaviour change rather than an addressing fix,
+and it did not belong inside a task about addressing. It is recorded here so
+the reason the old code looked defensible is not lost: it was not a latent
+data-loss bug, it was lost cleanup plus a mis-described review document.
+
+### Reachability Dictated How Each Case Is Driven
+
+`tests/test_034_t5_0b_delete_bookkeeping_item_key.py` drives the two
+confirmed-namesake cases by calling `_build_delete_source_actions` directly,
+because they are wire-path-only today: the `#116` filter
+(`render_resolve.filter_missing_source_notes`) drops two confirmed items
+carrying templates on the markdown path before `build_actions` ever runs. Put
+through a markdown-path fixture those cases never reach the function and pass
+vacuously against broken code. The two daily-entry cases are live on both
+parser paths — T5.0 recovers `source_item_key` from the suggestions doc for
+markdown and wire alike — so both are parametrised over both paths, and each
+asserts the keys actually arrived before asserting the deletes.
+
+### The Paired Consumer Still Collapses (open)
+
+`instructions-diff.py:338` and `:350` derive the EXPECTED `delete_source` count
+with the same shape this section removes: `confirmed_stems` and
+`daily_only_seen` are stem-keyed, so a daily-only namesake's expected deletion
+is suppressed by a same-named confirmed item. Its own `NOTE` calls this a
+"residual collapse point until T2.3b", and T2.3b has since landed — the
+justification is stale. Two of the four cases above (the daily-only pair, and
+confirmed-plus-daily-only) now emit one more `delete_source` than that module
+expects, so `/inbox` would report count drift on a correct instruction set.
+Left out of T5.0b deliberately: it is a second module with its own key
+semantics (`_keys_match` tolerates an inbox-prefix asymmetry that a set-equality
+dedup does not), and it deserves its own task and its own RED test rather than
+a mechanical copy of this one.

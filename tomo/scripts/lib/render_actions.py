@@ -1,4 +1,4 @@
-# version: 0.11.0
+# version: 0.12.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -894,6 +894,27 @@ def _build_daily_update_actions(
     return out
 
 
+def _origin_key(resolved_path: str | None) -> str:
+    """The per-note identity the delete bookkeeping joins on (spec 034 T5.0b).
+
+    `_build_delete_source_actions` joins three inputs that describe the same
+    inbox note in three different spellings — a confirmed item, a move_note
+    origin and a daily entry. That join used to be the bare filename stem,
+    which two notes in different inbox subfolders share once discovery is
+    recursive: each collection collapsed two distinct notes into one bucket.
+
+    The key is the resolved vault-relative path (ADR-1) with a trailing `.md`
+    removed, because the three inputs disagree about that one extension: a
+    confirmed item's `source_path` carries it, a daily entry's `source_stem`
+    does not, and a move_note origin has already been through
+    `_ensure_md_extension`. Every other extension is significant and is kept —
+    an `.m4a` origin is a different file from an `.md` note of the same name.
+    """
+    if not resolved_path:
+        return ""
+    return resolved_path[:-3] if resolved_path.endswith(".md") else resolved_path
+
+
 def _build_delete_source_actions(
     confirmed: list[dict],
     move_notes: list[dict],
@@ -909,9 +930,9 @@ def _build_delete_source_actions(
 
     1. `skipped[]` entries where the user explicitly checked "Delete source"
        (disposition == "delete_source").
-    2. Daily-only items — source_stems that appear in accepted daily_updates
-       but have no matching confirmed_item (content fully captured in the
-       daily note, no atomic note will be created).
+    2. Daily-only items — origins that appear in accepted daily_updates but
+       have no matching confirmed_item (content fully captured in the daily
+       note, no atomic note will be created).
     3. move_note origins — for every move_note action whose corresponding
        confirmed item did NOT opt out via "Keep source files", emit a paired
        delete_source for the origin inbox item. Audio + transcript peer
@@ -921,22 +942,29 @@ def _build_delete_source_actions(
        "Keep source files", one delete_source per `source_path`. The group's
        insert_under_marker (emitted earlier) copies the captures into the
        target note, so the inbox sources are now redundant. Parity with (3),
-       but keyed by group_id rather than origin stem.
+       but keyed by group_id rather than origin note.
     """
     out: list[dict] = []
-    confirmed_stems: set[str] = set()
-    # expected_by_stem: count of approved atomics per origin stem (gate denominator).
-    expected_by_stem: dict[str, int] = {}
-    # keep_source_stems: stems where ANY confirmed item opts out of deletion.
-    keep_source_stems: set[str] = set()
+    confirmed_keys: set[str] = set()
+    # expected_by_key: number of approved atomics per ORIGIN NOTE — the OQ6
+    # completion-gate denominator. Keyed by the note's own path, it counts the
+    # atomics of THIS note; a namesake in another inbox folder is a different
+    # file, and how many atomics that one produced says nothing about whether
+    # this one is fully captured. Keyed by stem the two shared a denominator,
+    # which mis-counted in both directions: two namesakes with one atomic each
+    # passed the gate coincidentally (2 >= 2) and emitted a single delete, and
+    # one namesake's unrendered atomic deferred the other's delete forever.
+    expected_by_key: dict[str, int] = {}
+    # keep_source_keys: origins where ANY confirmed item opts out of deletion.
+    keep_source_keys: set[str] = set()
     for item in confirmed:
         sp = item.get("source_path")
         if sp:
-            stem = _stem(sp)
-            confirmed_stems.add(stem)
-            expected_by_stem[stem] = expected_by_stem.get(stem, 0) + 1
+            key = _origin_key(resolve_source_path(item.get("item_key"), sp, inbox_path))
+            confirmed_keys.add(key)
+            expected_by_key[key] = expected_by_key.get(key, 0) + 1
             if item.get("keep_source"):
-                keep_source_stems.add(stem)
+                keep_source_keys.add(key)
 
     # (1) Explicit user "Delete source" on skipped items
     for sk in skipped:
@@ -955,17 +983,19 @@ def _build_delete_source_actions(
             "reason": "User marked source for deletion (no atomic note created).",
         })
 
-    # (2) Daily-only source stems
+    # (2) Daily-only origins
     seen: set[str] = set()
     for day in daily_updates:
         for bucket in ("trackers", "log_entries", "log_links"):
             for entry in day.get(bucket, []) or []:
                 if not entry.get("accepted"):
                     continue
-                stem = _stem(entry.get("source_stem"))
-                if not stem or stem in confirmed_stems or stem in seen:
+                key = _origin_key(resolve_source_path(
+                    entry.get("source_item_key"), entry.get("source_stem"), inbox_path
+                ))
+                if not key or key in confirmed_keys or key in seen:
                     continue
-                seen.add(stem)
+                seen.add(key)
                 # This site emits a DELETE for a note the run never rendered,
                 # so it must name the note it came from and not a path composed
                 # from the display stem: with a namesake at the inbox root, a
@@ -981,19 +1011,26 @@ def _build_delete_source_actions(
                     "reason": "Content fully captured in daily note.",
                 })
 
-    # (3) move_note origins — completion gate: emit one delete per origin stem
+    # (3) move_note origins — completion gate: emit one delete per origin note
     # only after ALL expected atomics are represented in move_notes (OQ6).
-    # Collect accepted daily stems for reason-string annotation (" + daily").
-    daily_stems: set[str] = set()
+    # Collect accepted daily origins for reason-string annotation (" + daily").
+    # The user approves on that string (CON-2), so it must credit the note that
+    # actually made the daily entry, not a namesake in another folder.
+    daily_keys: set[str] = set()
     for day in daily_updates:
         for bucket in ("trackers", "log_entries", "log_links"):
             for entry in day.get(bucket, []) or []:
                 if entry.get("accepted"):
-                    s = _stem(entry.get("source_stem"))
-                    if s:
-                        daily_stems.add(s)
+                    k = _origin_key(resolve_source_path(
+                        entry.get("source_item_key"), entry.get("source_stem"),
+                        inbox_path,
+                    ))
+                    if k:
+                        daily_keys.add(k)
 
-    # Group move_notes by origin stem.
+    # Group move_notes by origin note. `source_inbox_item` is already the
+    # resolved vault-relative path (_build_move_note_actions), so it needs no
+    # second resolution — only the shared normalisation.
     moves_by_origin: dict[str, list[dict]] = {}
     for mn in move_notes:
         if mn.get("action") != "move_note":
@@ -1001,19 +1038,18 @@ def _build_delete_source_actions(
         origin = mn.get("source_inbox_item")
         if not origin:
             continue
-        origin_stem = _stem(origin)
-        bucket_list = moves_by_origin.setdefault(origin_stem, [])
+        bucket_list = moves_by_origin.setdefault(_origin_key(origin), [])
         bucket_list.append(mn)
 
-    for origin_stem, moves in moves_by_origin.items():
-        if origin_stem in keep_source_stems:
+    for origin_key, moves in moves_by_origin.items():
+        if origin_key in keep_source_keys:
             continue
-        expected = expected_by_stem.get(origin_stem, 1)
+        expected = expected_by_key.get(origin_key, 1)
         if len(moves) < expected:
             continue  # not all atomics rendered yet — defer (OQ6)
         origin_path = moves[0].get("source_inbox_item", "")
         n = len(moves)
-        has_daily = origin_stem in daily_stems
+        has_daily = origin_key in daily_keys
         daily_suffix = " + daily" if has_daily else ""
         reason = f"Origin consumed by {n} atomic{'s' if n > 1 else ''}{daily_suffix}."
         out.append({
@@ -1023,9 +1059,9 @@ def _build_delete_source_actions(
             "reason": reason,
         })
         # Paired audio peer delete — one delete per unique audio peer for this
-        # origin stem. Normally 0 or 1 peer; set deduplicates the multi-atomic
+        # origin note. Normally 0 or 1 peer; set deduplicates the multi-atomic
         # case (two atomics from one transcript share the same peer path).
-        # keep_source_stems and the gate both apply above, so arriving here
+        # keep_source_keys and the gate both apply above, so arriving here
         # means both deletes are appropriate. Empty set → no audio delete (fail-safe).
         audio_peers = {mn.get("audio_peer") for mn in moves if mn.get("audio_peer")}
         for ap in sorted(audio_peers):

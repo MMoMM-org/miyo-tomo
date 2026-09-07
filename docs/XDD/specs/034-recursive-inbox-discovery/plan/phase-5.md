@@ -358,17 +358,52 @@ phase: 5
   1. **Prime**: Read `_dest_join` (`lib/render_actions.py:484`) — it builds the destination from
      the title with no collision check — and `_disambiguate_filename` (`:444`), which guards
      only the intermediate rendered file within one render run, not the vault destination.
+  **Amended 2026-09-07 after the TDD gate blocked the original four cases.** Two were
+  untestable as written and one named no mechanism. The verified facts behind the amendment:
+
+  - **The reducer already has Kado** (`suggestions-reducer.py:2104`, added for the I38 daily-note
+    existence check). No new vault access is needed for the third case. But it **fails open** —
+    no Kado config or an unreachable Kado leaves `kado_client = None` — and it is skipped entirely
+    under `--fan-resolve` and `--no-kado`.
+  - **`_dest_join` (`lib/render_actions.py:489`)** builds the destination from the title with no
+    collision check, and **`_disambiguate_filename` (`:449`)** guards only the intermediate
+    rendered file within one render run, never the vault destination. Both confirmed.
+
+  Put the tests in `tests/test_034_t5_2_destination_clash_proposal.py`.
+
   2. **Test** (RED):
      - two items whose names would produce one destination → the second gets a distinct
        proposed name `[ref: PRD/AC Feature 7]`
-     - the user's own edit to that name is honoured — the proposal is a starting point
-     - an item whose destination already exists in the target folder is surfaced too
-     - a run with no clash proposes nothing new
+     - an item whose destination already exists in the target folder gets the same treatment —
+       a distinct proposed name AND the reason surfaced in the document. PRD says "surfaced
+       there too"; matching the run-internal case is the reading that serves the user story,
+       because a proposal they can accept unchanged beats a warning they must act on
+     - **Kado absent or unreachable → the vault half of the check silently does not run, and the
+       document renders exactly as it does today.** Not an error, not a fabricated collision.
+       Pass 1 is advisory and T5.3 is the binding guard `[ref: SDD/ADR-4]`, so a Pass-1 check
+       that cannot run costs a convenience, not a safety property. Assert this with
+       `kado_client=None` and again with `--fan-resolve`
+     - the proposed name is an ordinary editable suggested name — same field, same shape as any
+       other, carrying no marker that would make Pass 2 treat it differently
+     - a no-clash run is **byte-identical to `tests/fixtures/034-t3-4-flat-golden/suggestions.md`**,
+       asserted whole-string by `tests/test_034_t3_4_phase3_gate.py`. Do not mint a fresh golden
+       after the change — that is circular, and it is the exact shape T5.1's case 4 was blocked
+       for. That fixture was rendered by the real pipeline at `ee44cb3`, before Phase 1
+
+     **Relocated to T5.3, not dropped**: "the user's own edit to that name is honoured"
+     `[ref: PRD/AC Feature 7, Pass-1 criterion 2]`. The criterion belongs to Pass 1 — the
+     proposal must not bind — but it is only *observable* in Pass 2, because the user edits the
+     document after Pass 1 has finished rendering. Asserting it here would test nothing: no edit
+     has happened yet. T5.3 owns the assertion; T5.2 owns the property that makes it possible,
+     which is the editable-field case above.
   3. **Implement**: detect the clash while rendering the suggestions document and adjust the
-     proposed name, leaving it editable exactly as any other suggested name.
+     proposed name, leaving it editable exactly as any other suggested name. The vault half
+     reuses the existing `kado_client`; do not open a second one, and do not make the run fail
+     when it is `None`.
   4. **Validate**: tests pass; `ruff` clean.
   5. **Success**:
      - [ ] The common case never reaches the Pass-2 guard `[ref: SDD/ADR-4]`
+     - [ ] A missing Kado degrades the check, never the run
 
 - [ ] **T5.3 Pass 2 validates destinations** `[activity: backend]`
 
@@ -384,6 +419,14 @@ phase: 5
        the run
      - a run with no clash emits exactly the actions it emits today — whole-list comparison,
        not selected fields
+     - **Relocated here from T5.2 on 2026-09-07**: the user's own edit to a Pass-1 disambiguated
+       name is honoured `[ref: PRD/AC Feature 7, Pass-1 criterion 2]`. The criterion is Pass 1's —
+       its proposal must be a starting point, not a decision — but only Pass 2 can observe it,
+       because the edit happens after Pass 1 has rendered. Take a document where T5.2 proposed a
+       distinct name, edit that name to something else, and assert Pass 2 uses the user's name
+       verbatim: it must not re-disambiguate, revert to the proposal, or treat a
+       Pass-1-adjusted name as special in any way. T5.2 proves the field is an ordinary editable
+       one; this proves nothing downstream second-guesses it.
   3. **Implement**: a validation pass over the built action list, run after `build_actions`,
      that removes clashing claimants and records a report. Check surviving destinations against
      the vault.

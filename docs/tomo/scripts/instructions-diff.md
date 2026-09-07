@@ -105,6 +105,10 @@ Two details the shape does not make obvious:
   `derive_expected` appends an audio peer under its full path and an origin
   under its stem. Matching on one alone leaves the other counted.
 
+The note counts moves and withdrawn deletes separately rather than implying one
+delete per move — a kept-source item has none — which is only accurate because
+`withdrawn_deletes` itself names real removals.
+
 The withheld count is emitted as an observation naming the `Not filed` section
 of `instructions.md`, so the audit points at the real report instead of
 restating a number. See `docs/tomo/scripts/lib/render_actions.md`, "The Pass-2

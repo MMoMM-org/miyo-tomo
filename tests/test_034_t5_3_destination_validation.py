@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t5_3_destination_validation.py — spec 034 T5.3.
 
 The Pass-2 half of PRD Feature 7. Pass 1 (T5.2) proposes a distinct name on a
@@ -591,6 +591,66 @@ def test_the_clash_is_reported_in_the_instructions_document():
     )
 
 
+def _clash_block(md: str) -> list[str]:
+    """The clash section's lines, heading included, up to the next section."""
+    lines = md.splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith("## Not filed"))
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")),
+        len(lines),
+    )
+    return lines[start:end]
+
+
+def test_a_vault_clash_is_reported_without_claiming_a_second_item():
+    """A vault collision names ONE item. The document must not say two.
+
+    Under CON-2 the user approves on what this document says, so a heading
+    that miscounts what was withheld is a wrong basis for approval — the same
+    class of defect as T5.0b's mis-attributed reason strings, where the action
+    was safe and the description was not.
+    """
+    kado = FakeKado(occupied={f"{NOTES}Dresden.md"})
+    actions = _actions([_atomic(DRESDEN_PLACES, "Dresden", idx=1)])
+    kept, clashes = validate_destinations(actions, make_folder_listing(kado))
+    assert clashes[0]["kind"] == "vault_collision" and len(clashes[0]["dropped"]) == 1
+
+    md = render_instructions_md(
+        kept,
+        {"generated": "2026-09-07T10:00:00+02:00", "destination_clashes": clashes},
+        CFG,
+    )
+    block = _clash_block(md)
+    named = [ln for ln in block if ln.startswith("    - ")]
+    assert len(named) == 1, f"one item was withheld, {len(named)} are listed:\n{block}"
+    assert "two items" not in "\n".join(block).lower(), (
+        "the heading and intro must not count claimants — a vault collision "
+        f"has one:\n{block}"
+    )
+    assert f"{NOTES}Dresden.md" in "\n".join(block)
+    assert DRESDEN_PLACES in "\n".join(block)
+
+
+def test_one_heading_covers_both_kinds_in_one_document():
+    """A run collision and a vault collision in one run get one section, and
+    the wording must be true of both at once."""
+    kado = FakeKado(occupied={f"{NOTES}Root note takeaway.md"})
+    kept, clashes = validate_destinations(
+        _actions(TWO_NAMESAKES), make_folder_listing(kado)
+    )
+    kinds = {c["kind"] for c in clashes}
+    assert kinds == {"run_collision", "vault_collision"}, clashes
+
+    md = render_instructions_md(
+        kept,
+        {"generated": "2026-09-07T10:00:00+02:00", "destination_clashes": clashes},
+        CFG,
+    )
+    assert md.count("## Not filed") == 1
+    block = _clash_block(md)
+    assert len([ln for ln in block if ln.startswith("    - ")]) == 3, block
+
+
 def test_a_clean_run_renders_no_clash_block():
     md = render_instructions_md(
         _build_golden_actions(),
@@ -689,13 +749,16 @@ def test_the_clash_populates_the_json_tomo_block(monkeypatch, tmp_path):
     assert sorted(d["source_inbox_item"] for d in entries[0]["dropped"]) == [
         DRESDEN_PLACES, DRESDEN_REISE,
     ]
-    assert entries[0]["withdrawn_deletes"] == [DRESDEN_PLACES, DRESDEN_REISE]
+    # The canned list carries a delete for the Places origin only, so exactly
+    # one withdrawal is reported — the field names deletes that existed, not
+    # every path the dropped moves touched.
+    assert entries[0]["withdrawn_deletes"] == [DRESDEN_PLACES]
 
 
 def test_the_clash_reaches_the_rendered_document(monkeypatch, tmp_path):
     out_dir = _drive_render(monkeypatch, tmp_path)
     md = (out_dir / "instructions.md").read_text(encoding="utf-8")
-    assert "## Not filed — two items claim one destination" in md
+    assert "## Not filed — a destination is claimed twice" in md
     assert DRESDEN_PLACES in md and DRESDEN_REISE in md
 
 
@@ -747,6 +810,22 @@ def test_the_audit_names_the_withheld_moves_and_points_at_the_report():
     _rc, observations = _diff(TWO_NAMESAKES)
     note = next(o for o in observations if "withheld" in o)
     assert "2 move(s)" in note and "Not filed" in note and "re-run" in note, note
+    assert "2 paired delete(s)" in note, (
+        "the note counts the deletes it actually withdrew — a kept-source item "
+        f"has none, and the note must not imply one per move: {note}"
+    )
+
+
+def test_the_audit_note_counts_deletes_it_actually_withdrew():
+    pairs = [
+        _atomic(DRESDEN_PLACES, "Dresden", idx=1, keep_source=True),
+        _atomic(DRESDEN_REISE, "Dresden", idx=2, keep_source=True),
+    ]
+    _rc, observations = _diff(pairs)
+    note = next(o for o in observations if "withheld" in o)
+    assert "0 paired delete(s)" in note, (
+        f"neither item had a delete to withdraw: {note}"
+    )
 
 
 def test_a_clean_run_still_reconciles(capsys):

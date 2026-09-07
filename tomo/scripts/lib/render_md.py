@@ -1,4 +1,4 @@
-# version: 0.10.0
+# version: 0.10.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -505,14 +505,20 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     # it must be read before the action list rather than after it.
     destination_clashes = metadata.get("destination_clashes") or []
     if destination_clashes:
-        body_parts.append("## Not filed — two items claim one destination")
+        # Kind-neutral wording, deliberately. A run collision names two
+        # claimants and a vault collision names one, so a heading or intro
+        # that counted them would contradict the bullets underneath it in
+        # whichever case it did not describe. Each bullet's own reason says
+        # which kind it is. Under CON-2 the user approves on what this
+        # document says, so it must not miscount what it withheld.
+        body_parts.append("## Not filed — a destination is claimed twice")
         body_parts.append("")
         body_parts.append(
             "**No move was emitted for the items below, deliberately.** Two "
-            "notes cannot both be filed to one path, and picking a winner "
-            "between names you set would be a guess. Rename one of them in the "
-            "suggestions document and re-run Pass 2 — the run does not need "
-            "restarting. Every source note below is untouched in the inbox."
+            "notes cannot share one path, and choosing between them would be "
+            "a guess. Give one of them a different name and re-run Pass 2 — "
+            "the run does not need restarting. Every source note below is "
+            "untouched in the inbox."
         )
         body_parts.append("")
         for clash in destination_clashes:

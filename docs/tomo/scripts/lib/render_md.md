@@ -69,3 +69,19 @@ untouched in the inbox, and gives the remedy — rename one and re-run Pass 2,
 without restarting the run. It never folds or normalises a name for display:
 the reason sentence shows each destination spelled the way its author wrote it,
 so a user told their name collides sees the name they actually typed.
+
+### The Heading Must Not Count Claimants
+
+`validate_destinations` produces two kinds. A `run_collision` names two
+claimants; a `vault_collision` names one, because the second claim belongs to a
+note already in the folder. The heading and intro are therefore kind-neutral —
+"a destination is claimed twice", "choosing between them would be a guess" —
+and each bullet's own reason says which kind it is.
+
+An earlier version read `## Not filed — two items claim one destination`, which
+sat directly above a single bullet whenever the clash was with the vault. Under
+CON-2 the user approves on what this document says, so a report that miscounts
+what it withheld is a wrong basis for approval even when the withholding itself
+is right — the same class of defect as T5.0b's reason strings, which credited
+one note with another's daily entry. One section covers both kinds in a run
+that hits both, which is why the wording has to be true of each on its own.

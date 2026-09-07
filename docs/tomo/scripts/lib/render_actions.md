@@ -323,6 +323,13 @@ the resolved vault-relative path (ADR-1), not a bare filename, so a namesake in
 another inbox folder that the user explicitly marked for deletion keeps its own
 delete.
 
+`withdrawn_deletes` on the report names the deletes that were **actually**
+removed, not every path a dropped move touched. An item the user marked "Keep
+source files" has no paired delete, so listing its origin there would make both
+the rendered report and the coverage audit claim a withdrawal that never
+happened. The list is filled in after the filtering pass, from what the filter
+actually took out.
+
 The withdrawal is also correct for a *partial* drop. An origin with two atomics
 of which one clashes is no longer fully consumed, which is exactly the
 condition the OQ6 completion gate defers on (`len(moves) < expected`). The

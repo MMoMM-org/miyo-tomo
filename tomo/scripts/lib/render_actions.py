@@ -1,4 +1,4 @@
-# version: 0.13.0
+# version: 0.13.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -828,6 +828,7 @@ def validate_destinations(
                 vault_holders[key] = holder
 
     clashes: list[dict] = []
+    candidates_by_clash: list[list[str]] = []
     dropped_ids: set[str] = set()
     withdrawn_paths: set[str] = set()
     for key in order:
@@ -839,14 +840,15 @@ def validate_destinations(
         spellings = _unique_in_order(
             claim_dests + ([vault_note] if vault_note else [])
         )
-        withdrawn: list[str] = []
+        candidates: list[str] = []
         for claimant in claimants:
             dropped_ids.add(claimant.get("id"))
             for field in ("source_inbox_item", "audio_peer"):
                 path = claimant.get(field)
                 if path and path not in withdrawn_paths:
                     withdrawn_paths.add(path)
-                    withdrawn.append(path)
+                    candidates.append(path)
+        candidates_by_clash.append(candidates)
         clashes.append({
             "kind": "run_collision" if len(claimants) >= 2 else "vault_collision",
             "destination": claim_dests[0],
@@ -864,20 +866,32 @@ def validate_destinations(
                 }
                 for c in claimants
             ],
-            "withdrawn_deletes": withdrawn,
+            # Filled in below, once it is known which of `candidates`
+            # actually had a delete_source to withdraw.
+            "withdrawn_deletes": [],
         })
 
     if not clashes:
         return actions, []
 
-    kept = [
-        a for a in actions
-        if a.get("id") not in dropped_ids
-        and not (
-            a.get("action") == "delete_source"
-            and a.get("source_path") in withdrawn_paths
-        )
-    ]
+    # `withdrawn_deletes` names deletes that were actually removed, not every
+    # path a dropped move touched. An item the user marked "Keep source files"
+    # has no paired delete, so listing its origin here would have the report
+    # and the coverage audit both claim a withdrawal that never happened.
+    removed_deletes: set[str] = set()
+    kept: list[dict] = []
+    for action in actions:
+        if action.get("id") in dropped_ids:
+            continue
+        if (
+            action.get("action") == "delete_source"
+            and action.get("source_path") in withdrawn_paths
+        ):
+            removed_deletes.add(action.get("source_path"))
+            continue
+        kept.append(action)
+    for clash, candidates in zip(clashes, candidates_by_clash):
+        clash["withdrawn_deletes"] = [c for c in candidates if c in removed_deletes]
     return kept, clashes
 
 

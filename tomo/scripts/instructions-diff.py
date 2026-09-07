@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.16.0
+# version: 0.16.1
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -894,8 +894,14 @@ def run_diff(
 
     if destination_clashes:
         withheld = sum(len(c.get("dropped") or []) for c in destination_clashes)
+        # Count the withdrawn deletes rather than implying one per move: an
+        # item the user marked "Keep source files" has no paired delete to
+        # withdraw, and the note must not claim one was.
+        withdrawn = sum(
+            len(c.get("withdrawn_deletes") or []) for c in destination_clashes
+        )
         note = (
-            f"{withheld} move(s) withheld with their paired deletes — "
+            f"{withheld} move(s) and {withdrawn} paired delete(s) withheld — "
             f"{len(destination_clashes)} destination(s) claimed twice; see "
             "\"Not filed\" in instructions.md, rename one and re-run Pass 2"
         )

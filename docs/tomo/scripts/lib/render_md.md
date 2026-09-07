@@ -106,3 +106,17 @@ files that were not filed, some of which belong to no moving note at all, while
 this section reports the notes held back. `owner_source_items`, the field
 `_build_move_asset_actions` added to link the two, is not rendered — the
 skipped-asset bullets are byte-identical to before.
+
+## "Withdrawn With It" Is Count-Neutral (spec 034 T5.5)
+
+`_withdrawn_links_note` appends one sentence to both "Not filed" intros when a
+withholding took a `link_to_moc` with it. The user approved that bullet in
+Pass 1, so its absence from the action list is a change to what was agreed and
+has to be stated rather than left silent.
+
+It counts nothing, for the reason the two intros above it are already
+kind-neutral: a run collision names two claimants and a vault collision one, so
+a sentence that counted would contradict the bullets underneath it in whichever
+case it did not describe. It is also omitted entirely when nothing was
+withdrawn — a reader told about a consequence that did not happen has to go
+check whether it did.

@@ -1,4 +1,4 @@
-# version: 0.11.0
+# version: 0.12.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -466,6 +466,24 @@ def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
     )
 
 
+def _withdrawn_links_note(withholdings: list[dict]) -> str:
+    """The sentence that accounts for MOC bullets withdrawn with a held move.
+
+    The user approved those bullets in Pass 1, so their absence from the
+    action list is a change to what was agreed and has to be stated. Count-
+    neutral, like the intro it appends to: a sentence that counted them would
+    contradict the bullets underneath it in whichever case it did not
+    describe. Empty when nothing was withdrawn — the reader is not told about
+    a consequence that did not happen.
+    """
+    if any(w.get("withdrawn_moc_links") for w in withholdings):
+        return (
+            " Any MOC link that would have pointed at one of them was "
+            "withdrawn with it."
+        )
+    return ""
+
+
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:
     """Produce the full human-readable instruction set markdown."""
     import yaml
@@ -519,6 +537,7 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
             "a guess. Give one of them a different name and re-run Pass 2 — "
             "the run does not need restarting. Every source note below is "
             "untouched in the inbox."
+            + _withdrawn_links_note(destination_clashes)
         )
         body_parts.append("")
         for clash in destination_clashes:
@@ -549,6 +568,7 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
             "it later. Each line below says what to fix; re-run Pass 2 "
             "afterwards — the run does not need restarting. Every source note "
             "below is untouched in the inbox."
+            + _withdrawn_links_note(attachment_suppressions)
         )
         body_parts.append("")
         for s in attachment_suppressions:

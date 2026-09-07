@@ -139,3 +139,32 @@ and step 3e of `synthesis-conductor.md` halts the run on a mismatch.
 The subtraction is per skipped entry rather than per path lookup because
 `expected` keeps only the count, and `_build_move_asset_actions`' global `seen`
 set already guarantees one entry per distinct path.
+
+## A Withheld Move's MOC Bullets Are Not Coverage Gaps Either (spec 034 T5.5)
+
+`_subtract_withheld_moves` already removed a withheld move and its paired
+deletes from `expected`. It did not remove that item's expected `link_to_moc`
+bullets, because until T5.5 the emitter did not withdraw them — it emitted a
+bullet naming a note it had just refused to file. Now that
+`_drop_moves_with_paired_deletes` withdraws them, the subtraction is owed, or
+the audit reports `RESULT: FAIL — count or coverage mismatch` on a correct
+instruction set and `synthesis-conductor.md` step 3e halts the run blaming Tomo
+for its own guard.
+
+### The Subtraction Is Derived, Not Reported
+
+The emitter records `withdrawn_moc_links` on each withholding, and this
+function deliberately ignores it, subtracting `info["expected_links"]` — the
+audit's own derivation from `confirmed_items` — instead. An audit that accepts
+the emitter's account of what the emitter emitted checks nothing.
+
+### It Also Closes a Pre-Existing FAIL
+
+`derive_expected` counts one bullet per item per parent MOC;
+`_build_link_to_moc_actions._emit` dedups by `(target MOC, title)`. Two
+same-titled items under one MOC therefore expect 2 and emit 1, and that
+mismatch was already live before T5.5 — the clash path just never exercised it,
+because every fixture that reached this function built its items with
+`parent_mocs: []`. Deriving from `expected_links` lands correctly on both
+shapes: drop one of two authors and 1 is subtracted while the shared bullet
+survives; drop both and 2 is subtracted while the bullet is withdrawn.

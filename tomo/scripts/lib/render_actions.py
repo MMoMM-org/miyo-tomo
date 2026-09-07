@@ -1,4 +1,4 @@
-# version: 0.14.0
+# version: 0.15.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -817,16 +817,75 @@ def _paired_delete_candidates(move: dict, withdrawn_paths: set[str]) -> list[str
     return candidates
 
 
+def _orphaned_link_titles(actions: list[dict], dropped_ids: set[str]) -> set[str]:
+    """The `source_note_title` values whose every author is being dropped.
+
+    A `link_to_moc` bullet is addressed by title, not by path, because title is
+    the key it was minted under: `_emit` dedups by (target MOC, source title),
+    so one bullet can have several authors and there is no single origin to
+    join on. The rule is therefore "withdraw only when *no* surviving action
+    would still write that bullet" — the dropped titles minus the titles the
+    kept `move_note` and `create_moc` actions still put in the vault.
+
+    That subtraction is what keeps the withdrawal from over-reaching:
+
+    - a `create_moc` has no `move_note` at all, so "this title has no move"
+      cannot mean "orphaned" — its own parent bullet must survive;
+    - the garden-audit branch emits `link_to_moc` for notes already in the
+      vault and no `move_note` whatsoever, so it must never lose a bullet;
+    - a namesake that survives while its twin is dropped is still an author of
+      the shared bullet, and the bullet stays.
+    """
+    surviving: set[str] = set()
+    orphaned: set[str] = set()
+    for action in actions:
+        if action.get("action") not in ("move_note", "create_moc"):
+            continue
+        title = sanitize_stem(action.get("title") or "")
+        if not title:
+            continue
+        if action.get("id") in dropped_ids:
+            orphaned.add(title)
+        else:
+            surviving.add(title)
+    return orphaned - surviving
+
+
+def _links_for(withholding: dict, removed_moc_links: list[dict]) -> list[dict]:
+    """The share of one run's withdrawn bullets that belongs to one report.
+
+    Both post-passes may withhold in the same run, and each renders its own
+    section. A bullet is attributed to the withholding whose dropped moves
+    carry its title — the same key `_orphaned_link_titles` withdrew it under,
+    so the two cannot disagree about which bullet belongs to which report.
+    """
+    titles = {
+        sanitize_stem(d.get("title") or "")
+        for d in withholding.get("dropped") or []
+    }
+    return [
+        link for link in removed_moc_links
+        if (link.get("source_note_title") or "") in titles
+    ]
+
+
 def _drop_moves_with_paired_deletes(
     actions: list[dict], dropped_ids: set[str], withdrawn_paths: set[str]
-) -> tuple[list[dict], set[str]]:
-    """Remove the dropped moves and the deletes paired with them.
+) -> tuple[list[dict], set[str], list[dict]]:
+    """Remove the dropped moves, the deletes paired with them, and their links.
 
-    Returns ``(kept, removed_deletes)``. `removed_deletes` names the deletes
-    that actually existed, not every path a dropped move touched: an item the
-    user marked "Keep source files" has no paired delete, so listing its origin
-    would have the report and the coverage audit both claim a withdrawal that
-    never happened.
+    Returns ``(kept, removed_deletes, removed_moc_links)``. `removed_deletes`
+    names the deletes that actually existed, not every path a dropped move
+    touched: an item the user marked "Keep source files" has no paired delete,
+    so listing its origin would have the report and the coverage audit both
+    claim a withdrawal that never happened.
+
+    `removed_moc_links` is the same discipline one action kind over. A
+    `link_to_moc` for a note this run refused to file instructs the user to
+    add a bullet pointing at a path that will hold nothing — the dead link the
+    guard exists to prevent, written by the guard itself. T5.3 shipped with
+    "a `link_to_moc` for a dropped note is harmless" as its named unverified
+    assumption; the T5.5 document disproved it.
 
     Shared by both post-passes over the built action list
     (``validate_destinations`` and ``suppress_moves_for_unfiled_attachments``).
@@ -834,7 +893,9 @@ def _drop_moves_with_paired_deletes(
     withdrawal itself is one mechanism — a second copy is what drifted apart in
     T5.0c one module over.
     """
+    orphaned_titles = _orphaned_link_titles(actions, dropped_ids)
     removed_deletes: set[str] = set()
+    removed_moc_links: list[dict] = []
     kept: list[dict] = []
     for action in actions:
         if action.get("id") in dropped_ids:
@@ -845,8 +906,17 @@ def _drop_moves_with_paired_deletes(
         ):
             removed_deletes.add(action.get("source_path"))
             continue
+        if (
+            action.get("action") == "link_to_moc"
+            and (action.get("source_note_title") or "") in orphaned_titles
+        ):
+            removed_moc_links.append({
+                "source_note_title": action.get("source_note_title"),
+                "target_moc": action.get("target_moc"),
+            })
+            continue
         kept.append(action)
-    return kept, removed_deletes
+    return kept, removed_deletes, removed_moc_links
 
 
 def validate_destinations(
@@ -870,6 +940,10 @@ def validate_destinations(
     user's inbox note while refusing to file it, which is the loss this guard
     exists to prevent. The withdrawal joins on the origin's resolved path
     (ADR-1), so a namesake in another inbox folder keeps its own delete.
+
+    It takes its ``link_to_moc`` bullets too, on the title key those were
+    minted under — see ``_orphaned_link_titles``. A bullet naming a note the
+    guard refused to file is an instruction to create a dead link.
 
     ``folder_listing`` is the vault view from ``make_folder_listing``; ``None``
     skips the vault half and leaves the run-internal half working.
@@ -942,17 +1016,19 @@ def validate_destinations(
             # Filled in below, once it is known which of `candidates`
             # actually had a delete_source to withdraw.
             "withdrawn_deletes": [],
+            "withdrawn_moc_links": [],
         }
         pending.append((clash, candidates))
 
     if not pending:
         return actions, []
 
-    kept, removed_deletes = _drop_moves_with_paired_deletes(
+    kept, removed_deletes, removed_moc_links = _drop_moves_with_paired_deletes(
         actions, dropped_ids, withdrawn_paths
     )
     for clash, candidates in pending:
         clash["withdrawn_deletes"] = [c for c in candidates if c in removed_deletes]
+        clash["withdrawn_moc_links"] = _links_for(clash, removed_moc_links)
     return kept, [clash for clash, _candidates in pending]
 
 
@@ -1006,7 +1082,7 @@ def suppress_moves_for_unfiled_attachments(
 
     Composes with ``validate_destinations`` in either order: a move that pass
     already dropped is absent here, so no note is reported as withheld twice
-    and no delete is counted as withdrawn twice. Only suppressions that
+    and no delete or MOC link is counted as withdrawn twice. Only suppressions that
     actually withheld a move are returned — the attachment itself is already
     reported through ``skipped_assets``.
 
@@ -1056,6 +1132,7 @@ def suppress_moves_for_unfiled_attachments(
                 # Filled in below, once it is known which of `candidates`
                 # actually had a delete_source to withdraw.
                 "withdrawn_deletes": [],
+                "withdrawn_moc_links": [],
             },
             candidates,
         ))
@@ -1063,13 +1140,16 @@ def suppress_moves_for_unfiled_attachments(
     if not pending:
         return actions, []
 
-    kept, removed_deletes = _drop_moves_with_paired_deletes(
+    kept, removed_deletes, removed_moc_links = _drop_moves_with_paired_deletes(
         actions, dropped_ids, withdrawn_paths
     )
     for suppression, candidates in pending:
         suppression["withdrawn_deletes"] = [
             c for c in candidates if c in removed_deletes
         ]
+        suppression["withdrawn_moc_links"] = _links_for(
+            suppression, removed_moc_links
+        )
     return kept, [suppression for suppression, _candidates in pending]
 
 

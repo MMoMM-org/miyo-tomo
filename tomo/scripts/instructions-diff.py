@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.17.0
+# version: 0.18.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -760,6 +760,20 @@ def _subtract_withheld_moves(expected: dict, withholdings: list[dict]) -> int:
     withdrawal mechanism in the emitter, and a second copy here is the drift
     that produced T5.0c.
 
+    A withheld move also takes its `link_to_moc` bullets with it — a bullet
+    naming a note the run refused to file is an instruction to create a dead
+    link. Its expected links are therefore subtracted here, from the withheld
+    item's own `expected_links`, not from the emitter's report: the audit's
+    whole job is to derive what should have been emitted from the suggestions
+    document rather than to accept the emitter's account of itself.
+
+    That derivation also lands on the right count when a bullet is *shared*.
+    `_build_link_to_moc_actions` dedups by (target MOC, title) while
+    `derive_expected` counts one per item, so two same-titled items under one
+    MOC expect 2 and emit 1. Dropping one of them subtracts 1 and the emitted
+    bullet survives (the other item still authors it); dropping both subtracts
+    2 and the bullet is withdrawn. Either way both sides agree.
+
     The move join is `_keys_match`, not set membership: a clash entry's
     `source_inbox_item` is the inbox-joined path a rendered action carries,
     while `by_item`'s key comes straight from `confirmed_items` and is never
@@ -781,6 +795,9 @@ def _subtract_withheld_moves(expected: dict, withholdings: list[dict]) -> int:
                 if _keys_match(info.get("item_key") or "", origin):
                     del expected["by_item"][item_id]
                     expected["counts"]["move_note"] -= 1
+                    expected["counts"]["link_to_moc"] -= len(
+                        info.get("expected_links") or []
+                    )
                     removed += 1
                     break
         for path in clash.get("withdrawn_deletes") or []:

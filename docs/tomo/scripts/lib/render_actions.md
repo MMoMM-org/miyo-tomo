@@ -583,3 +583,80 @@ says the opposite and the plan repeats it: "the first note and its attachment
 are filed normally — one note's clash does not hold up the other". The PRD is
 the requirement of record and is what the code does; the attachment guard stays
 first-claim-wins and only the refused claimant's note is held back.
+
+## A Withheld Move Takes Its MOC Bullets With It (spec 034 T5.5)
+
+Found by reading the rendered instruction document as prose, after 3596 tests
+and six review gates had passed. Both Dresden moves were withheld by
+`validate_destinations`, and the document still instructed the user to add
+`- [[Dresden]]` to `Travel (MOC)` — a bullet pointing at
+`Atlas/202 Notes/Dresden.md`, a path this run had just guaranteed would hold
+nothing. The guard exists to stop one note overwriting another; it was writing
+a dead link instead. T5.3 shipped naming this exact risk as the assumption its
+diff could not verify ("that `link_to_moc` bullets for a dropped note are
+harmless"); the T5.5 document is the counter-example.
+
+### WHY Withdrawal, Not a Separate Report
+
+The alternative was to leave the bullet and warn about it. That fails the
+user's actual workflow: they apply the checklist top to bottom, and a warning
+elsewhere in the document does not stop a checkbox from being ticked. It also
+contradicts what the section already promises — "no move was emitted for the
+items below, deliberately" — while emitting the move's consequence. Withdrawal
+is the same treatment the paired `delete_source` already gets, for the same
+reason: an action that only makes sense alongside a move must not outlive it.
+
+### WHY the Join Is the Title, Not the Path (and Why That Is Not the ADR-1 Trap)
+
+Everywhere else in this module an item is addressed by `item_key` / resolved
+path, never by display stem — a stem is shared by two notes in different inbox
+folders. A `link_to_moc` is the one exception, and deliberately: `_emit` dedups
+by `(target MOC, source title)`, so one bullet can have **several** authors and
+there is no single origin path to join on. Title is not a weaker proxy for the
+link's identity here; it *is* the link's identity, the key it was minted under.
+
+`_orphaned_link_titles` therefore withdraws on "no surviving author", not on
+"some author was dropped": the dropped titles minus the titles still written by
+a surviving `move_note` or `create_moc`. That subtraction is what answers the
+question the brief asked — can a `link_to_moc` legitimately exist for a note
+with no move? Yes, three ways, and each is protected by it:
+
+1. **A `create_moc`'s own parent bullet.** A new MOC has no `move_note` at all.
+   Blanket "no move ⇒ withdraw" would strip the up-link of every new MOC in
+   every run that also happened to hit a clash.
+2. **The garden-audit branch.** `build_garden_audit_actions`' `file_note`
+   emits a `link_to_moc` for a note **already in the vault** and no `move_note`
+   whatsoever. `validate_destinations` runs over that branch too.
+3. **A surviving namesake.** A `create_moc` titled `Dresden` can be the
+   remaining author of `- [[Dresden]]` after two atomic notes of that name
+   clash with each other. The bullet stays; it now describes only the MOC.
+
+### WHY It Lives in `_drop_moves_with_paired_deletes`
+
+Both post-passes withhold moves, and the withdrawal is one mechanism with two
+callers — the shape T5.0c had to repair one module over after a second copy
+drifted. `_links_for` splits the run's withdrawn bullets between the two
+reports on the same title key they were withdrawn under, so the two can never
+disagree about which bullet belongs to which section.
+
+### The Paired Consumer
+
+`instructions-diff.derive_expected` counts one expected `link_to_moc` per item
+per parent MOC. Withdrawing a bullet without subtracting it makes the audit
+report `RESULT: FAIL — count or coverage mismatch` on a correct instruction
+set and halts the conductor. `_subtract_withheld_moves` now subtracts the
+withheld item's own `expected_links` alongside its `move_note`.
+
+That subtraction was already owed **before** this change: two same-titled items
+under one MOC expect 2 bullets and emit 1 (the emitter dedups, the audit does
+not), so the pre-fix scenario failed the audit as well — a latent FAIL the
+clash path had never exercised, because every existing fixture built its items
+with `parent_mocs: []`. Deriving the subtraction from `expected_links` rather
+than from the emitter's `withdrawn_moc_links` report lands correctly on both:
+drop one of two authors and 1 is subtracted while the shared bullet survives;
+drop both and 2 is subtracted while the bullet goes.
+
+`withdrawn_moc_links` is still recorded on each report — it is what
+`render_md` conditions its "withdrawn with it" sentence on, and it makes the
+withdrawal visible in `instructions.json`. The audit deliberately does not read
+it: an audit that trusts the emitter's account of itself is not an audit.

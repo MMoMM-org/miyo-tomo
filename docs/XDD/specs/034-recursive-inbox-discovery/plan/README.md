@@ -151,7 +151,7 @@ Each phase is a separate file. Tasks follow **Prime → Test → Implement → V
 - [x] [Phase 2: Thread the key through the pipeline](phase-2.md)
 - [x] [Phase 3: Recursive discovery](phase-3.md)
 - [x] [Phase 4: Force Atomic in subfolders](phase-4.md)
-- [ ] [Phase 5: Display and destination guards](phase-5.md)
+- [x] [Phase 5: Display and destination guards](phase-5.md)
 - [ ] [Phase 6: Cost history, integration and live validation](phase-6.md)
 
 ### Dependency graph

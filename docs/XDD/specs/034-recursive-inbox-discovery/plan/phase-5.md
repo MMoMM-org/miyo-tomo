@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: Display and destination guards"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 5
 ---
@@ -710,7 +710,7 @@ phase: 5
   emit and the second overwrites the first under CON-6 — with no skip recorded, so this
   task's suppression never fires. A fourth instance of the shape T5.3 recorded three of.
 
-- [ ] **T5.5 Phase Validation** `[activity: validate]`
+- [x] **T5.5 Phase Validation** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - Read the rendered output as prose. Render a suggestions document containing every

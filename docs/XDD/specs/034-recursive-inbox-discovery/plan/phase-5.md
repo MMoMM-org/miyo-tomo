@@ -244,7 +244,7 @@ phase: 5
      - [ ] Two namesakes each get their own delete, or their own suppression, for their own reason
      - [ ] No reason string attributes one note's action to another
 
-- [ ] **T5.0c The paired consumer still collapses** `[activity: backend]` `[parallel: true]`
+- [x] **T5.0c The paired consumer still collapses** `[activity: backend]` `[parallel: true]`
 
   Added 2026-09-07 by T5.0b's implementer, which found it in its shape-grep, deliberately left it
   alone as out of scope, and recorded it in `docs/tomo/scripts/lib/render_actions.md`.
@@ -291,8 +291,8 @@ phase: 5
      `_confirmed_key`'s docstring, which still claims the markdown path mints no `item_key`; commit
      `2d06654` made that false.
   5. **Success**:
-     - [ ] A correct instruction set reports `[OK]`, not `[DIFF]`, for both affected cases
-     - [ ] No stale comment survives that defers this work to an already-closed task
+     - [x] A correct instruction set reports `[OK]`, not `[DIFF]`, for both affected cases
+     - [x] No stale comment survives that defers this work to an already-closed task
 
 - [ ] **T5.1 Source links disambiguate on collision** `[activity: backend]` `[parallel: true]`
 

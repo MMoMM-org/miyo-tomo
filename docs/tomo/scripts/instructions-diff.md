@@ -27,3 +27,60 @@ WHY `_GARDEN_EXPECTED_KINDS` maps `resolve_dead_link → ("resolve_dead_link",)`
 dead_link fix moved from `edit_note_text` to the semantic `resolve_dead_link` action (see
 garden-audit-parser.md 0.11.0), so the coverage audit must expect+match the new kind or every
 dead-link fix would read as an uncovered item.
+
+## Version 0.15.0 — the daily-only suppression joins on the note (spec 034 T5.0c)
+
+WHY `derive_expected`'s `confirmed_stems` set and `daily_only_seen` loop were
+re-keyed onto the note's identity: this module is the paired consumer of
+`render_actions._build_delete_source_actions`, and T5.0b re-keyed that emitter's
+six delete-bookkeeping collections onto the resolved vault-relative path
+(ADR-1). The audit kept the removed shape — bare filename stems — so once
+recursive discovery (Phase 3) let two inbox notes share a filename, the two
+modules disagreed by one on two of T5.0b's four cases (two daily-only
+namesakes; one confirmed plus one daily-only). Nothing was misdeleted and
+nothing was missed: the instruction set was right and only the expectation was
+stale. But `derive_expected` feeds `delete_source coverage: expected=N
+actual=M`, which is the artefact the user reads to judge whether Pass 2 did the
+right thing, so a correct run reported `[DIFF]`.
+
+The stale `NOTE` that used to head that block deferred the work "until T2.3b",
+which had already landed (`phase-2.md:153`) — a comment deferring to a closed
+task reads as a live justification, which is why the collapse survived T2.3b's
+own sweep.
+
+### Why `_origin_key` Was Not Copied Across
+
+`render_actions._origin_key` is not importable as the answer here, and copying
+its shape mechanically breaks the mixed input. The emitter always holds
+`inbox_path`, so it resolves EVERY key to one canonical spelling
+(`resolve_source_path`) before comparing, and plain equality is then correct.
+This module has no `inbox_path` — it reads only the parsed suggestions — so its
+two sides can legitimately carry the same note in two spellings: a confirmed
+item's full `item_key`, and a daily entry that fell back to its bare
+`source_stem` because `enrich_daily_updates_with_item_keys` found the
+discriminator ambiguous and declined to guess. Under set equality those two
+split, the audit expects a deletion the emitter does not make, and the fix
+would have moved the false `[DIFF]` rather than removed it — the direction that
+bites hardest, because a note at the inbox ROOT is the common case.
+
+`_key_matches_any` is therefore `_keys_match` applied in BOTH directions.
+`_keys_match` already encodes exactly the tolerance needed — a key may carry
+one extra leading segment where the other was never inbox-joined — but it was
+written for the move_note join, where the expected side is known to be the
+unqualified one. Here either side may be, so the direction cannot be assumed.
+The tolerance stays narrow in the way that matters: two qualified keys in
+different inbox subfolders share no path suffix and remain distinct, which is
+the collapse the task existed to remove. It remains deliberately tolerant for a
+multi-segment `source_stem`, which ADR-2 says cannot occur — `source_stem` is
+display text, a bare filename.
+
+### The Appended Value Stays a Bare Stem
+
+`expected_deletions` holds display stems, not keys, and the daily-only branch
+still appends one — deliberately, not by omission. Only its LENGTH reaches the
+coverage line, but source 4 (tag-handler groups) dedups against
+`set(expected_deletions)` by comparing `_stem(source_path)`. Appending a full
+path there would silently stop that dedup from matching a daily-only entry.
+Sources 1, 3 and 4 all append stems; the collections that JOIN are keyed on
+identity, the list that is merely counted is not. That split is the same one
+source 3 (`paired_origins_seen`) already made.

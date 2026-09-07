@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.14.0
+# version: 0.15.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -159,14 +159,48 @@ def _confirmed_key(item: dict) -> str:
     """Identity of a confirmed item for the coverage join (ADR-1).
 
     Prefers the dedicated `item_key` — the item's vault-relative path,
-    verbatim — which `suggestion-parser.build_from_wire` threads through from
-    the wire. Falls back to `source_path`, the bare display stem, for the
-    markdown path, which mints no `item_key`. `_keys_match` tolerates both
-    conventions, so the two paths can converge independently; without the
-    preference, two confirmed items sharing a bare stem are indistinguishable
-    here and a missing action for one hides behind the other's presence.
+    verbatim — which both parser paths now mint: `build_from_wire` threads it
+    through from the wire, and the markdown path joins the suggestions doc on
+    the suggestion id. Falls back to `source_path`, the bare display stem, for
+    a document that carries no key — one produced before spec 034, or one whose
+    edited `Source:` line no longer matches its id, where the markdown join
+    refuses to guess. `_keys_match` tolerates both conventions, so the two paths
+    can converge independently; without the preference, two confirmed items
+    sharing a bare stem are indistinguishable here and a missing action for one
+    hides behind the other's presence.
     """
     return _item_key(item.get("item_key") or item.get("source_path") or "")
+
+
+def _daily_key(entry: dict) -> str:
+    """Identity of a daily-update entry for the delete-coverage join (ADR-1).
+
+    `_confirmed_key`'s counterpart on the daily side. `source_item_key` is the
+    entry's vault-relative path, restored on BOTH parser paths by
+    `suggestion-parser.enrich_daily_updates_with_item_keys`; `source_stem` is
+    display text (ADR-2) and is the fallback when the recovery found the
+    discriminator ambiguous and declined to guess.
+    """
+    return _item_key(entry.get("source_item_key") or entry.get("source_stem") or "")
+
+
+def _key_matches_any(key: str, keys: list[str]) -> bool:
+    """True when `key` names the same inbox note as any member of `keys`.
+
+    A plain `in` test against a set is wrong here even though both sides are
+    drawn from one document: a confirmed item may carry its full path while a
+    daily entry for that same note carries only the bare stem (or the reverse),
+    and the emitter resolves the bare one against the inbox root before
+    comparing — so the two DO name one note and it must not expect a deletion
+    for both. `_keys_match` is exactly that tolerance; it is applied in both
+    directions because either side may be the unqualified one, which the
+    move_note join it was written for never has to consider.
+
+    It stays tolerant only where the emitter's fallback could have produced the
+    difference: two qualified keys in different inbox subfolders share no path
+    suffix and remain distinct (ADR-1), which is the collapse this replaces.
+    """
+    return any(_keys_match(key, other) or _keys_match(other, key) for other in keys)
 
 
 def _parse_supporting_items(raw: str | list | None) -> list[str]:
@@ -333,24 +367,34 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
     #      their inbox origin unless the user opted out via "Keep source files".
     #   4. tag-handler group sources: each APPROVED group (not "Keep source files")
     #      deletes every consolidated inbox source (instruction-render branch 4).
-    # NOTE: deliberately stem-keyed, not item_key — daily_updates[].source_stem
-    # is bare-stem upstream, so this stays a residual collapse point until T2.3b.
-    confirmed_stems = {_stem(it.get("source_path")) for it in confirmed if it.get("source_path")}
+    # The daily-only suppression joins daily entries against confirmed items,
+    # and both describe an inbox note that two notes can now share a filename
+    # with (recursive discovery, Phase 3). It therefore joins on the note's
+    # identity (ADR-1), matching the emitter, which keys this same suppression
+    # on the resolved vault-relative path. Membership is `_key_matches_any`,
+    # not a set lookup: the mixed keyed/keyless input a set splits still names
+    # one note.
+    confirmed_keys = [_confirmed_key(it) for it in confirmed if it.get("source_path")]
     expected_deletions: list[str] = []
     for sk in skipped:
         if sk.get("disposition") == "delete_source":
             expected_deletions.append(_stem(sk.get("source_path")))
-    # Daily-only: accepted daily items whose source_stem isn't in confirmed
-    daily_only_seen: set[str] = set()
+    # Daily-only: accepted daily items naming no confirmed note. The appended
+    # VALUE stays the bare stem, as sources 1, 3 and 4 append theirs — the
+    # tag-handler dedup below reads these values as stems.
+    daily_only_keys: list[str] = []
     for day in daily_updates:
         for bucket in ("trackers", "log_entries", "log_links"):
             for entry in day.get(bucket) or []:
                 if not entry.get("accepted"):
                     continue
-                stem = _stem(entry.get("source_stem"))
-                if stem and stem not in confirmed_stems and stem not in daily_only_seen:
-                    daily_only_seen.add(stem)
-                    expected_deletions.append(stem)
+                key = _daily_key(entry)
+                if not key or _key_matches_any(key, confirmed_keys):
+                    continue
+                if _key_matches_any(key, daily_only_keys):
+                    continue
+                daily_only_keys.append(key)
+                expected_deletions.append(_stem(key))
     # Paired with move_note: every confirmed atomic note with a source_path
     # AND keep_source=False expects a paired delete on its origin. Dedup on
     # the item_key (the full source_path, ADR-1), not the bare stem — two

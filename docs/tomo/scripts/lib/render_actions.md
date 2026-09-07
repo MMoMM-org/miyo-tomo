@@ -257,18 +257,26 @@ parser paths — T5.0 recovers `source_item_key` from the suggestions doc for
 markdown and wire alike — so both are parametrised over both paths, and each
 asserts the keys actually arrived before asserting the deletes.
 
-### The Paired Consumer Still Collapses (open)
+### The Paired Consumer Collapsed Too — Closed by T5.0c
 
 `instructions-diff.py`'s `derive_expected()` — its `confirmed_stems` set and the
-`daily_only_seen` collision check inside it — derives the EXPECTED `delete_source` count
-with the same shape this section removes: `confirmed_stems` and
-`daily_only_seen` are stem-keyed, so a daily-only namesake's expected deletion
-is suppressed by a same-named confirmed item. Its own `NOTE` calls this a
-"residual collapse point until T2.3b", and T2.3b has since landed — the
-justification is stale. Two of the four cases above (the daily-only pair, and
-confirmed-plus-daily-only) now emit one more `delete_source` than that module
-expects, so `/inbox` would report count drift on a correct instruction set.
-Left out of T5.0b deliberately: it is a second module with its own key
-semantics (`_keys_match` tolerates an inbox-prefix asymmetry that a set-equality
-dedup does not), and it deserves its own task and its own RED test rather than
-a mechanical copy of this one.
+`daily_only_seen` collision check inside it — derived the EXPECTED
+`delete_source` count with the same shape this section removes: both were
+stem-keyed, so a daily-only namesake's expected deletion was suppressed by a
+same-named confirmed item. Two of the four cases above (the daily-only pair, and
+confirmed-plus-daily-only) emitted one more `delete_source` than that module
+expected, so `/inbox` reported count drift on a correct instruction set.
+
+Why the old code looked defensible: its own `NOTE` called the stem key a
+"residual collapse point until T2.3b" — a deliberate, dated deferral to a real
+task. T2.3b had since landed, and nothing re-read the comment when it did, so a
+stale justification kept reading as a live one.
+
+T5.0b left it out deliberately rather than by oversight: it is a second module
+with its own key semantics, and a mechanical copy of `_origin_key` breaks there.
+The emitter always holds `inbox_path` and resolves every key to one canonical
+spelling before comparing, so plain equality is correct here; the differ has no
+`inbox_path` and must reconcile a full `item_key` against a bare `source_stem`
+that names the same note. T5.0c closed it with `_key_matches_any` — `_keys_match`
+applied in both directions — rather than a set dedup. See
+`docs/tomo/scripts/instructions-diff.md` (0.15.0).

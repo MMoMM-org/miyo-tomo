@@ -311,6 +311,25 @@ def test_fan_resolve_skips_the_vault_half(tmp_path):
     assert RE_CLASH.findall(doc) == []
 
 
+def test_fan_resolve_still_runs_the_run_internal_half(tmp_path):
+    """Only the VAULT half degrades without Kado. The run-internal comparison
+    needs nothing but the run itself, so it must survive `--fan-resolve` —
+    otherwise the resolve doc can propose two notes into one file."""
+    run = {
+        key: _atomic_result(
+            r["stem"], key, r["actions"][0]["suggested_title"], force_atomic=True
+        )
+        for key, r in CLASHING_RUN.items()
+    }
+    doc = _reduce(tmp_path, run, "t5-2-fan-clash", fan_resolve=True)
+    names = RE_SUGGESTED_NAME.findall(doc)
+    assert len(set(names)) == len(names) == 3, (
+        f"two resolve-doc proposals still claim one destination: {names}"
+    )
+    reasons = RE_CLASH.findall(doc)
+    assert len(reasons) == 1 and "run" in reasons[0].lower(), reasons
+
+
 def test_an_unreachable_kado_never_fabricates_a_collision(tmp_path):
     kado = FakeKado(occupied=OCCUPIED, raises=True)
     doc = _reduce(tmp_path, VAULT_RUN, "t5-2-unreachable", kado=kado)
@@ -376,6 +395,33 @@ def test_a_vault_note_differing_only_in_case_is_a_clash(tmp_path):
     # The vault's own spelling, not the folded key or the user's casing.
     assert f"`{NOTES}Dresden.md`" in reasons[0], reasons[0]
     assert f"`{NOTES}dresden.md`" in reasons[0], reasons[0]
+
+
+# ---------------------------------------------------------------------------
+# 3c. One listing per destination folder (F9 — runs do not get more expensive)
+# ---------------------------------------------------------------------------
+
+def test_one_listing_per_folder_however_the_location_is_spelled(tmp_path):
+    """`Atlas/202 Notes` and `Atlas/202 Notes/` name one folder.
+
+    A raw-string cache key would list it twice — and the cost is a doubled
+    Kado call and nothing else, so it fails silently rather than erroring.
+    The assertion is on the client's own record of the calls it received,
+    not on the cache: the observed call is what F9 measures.
+    """
+    kado = FakeKado(occupied=OCCUPIED)
+    run = {
+        DRESDEN_PLACES: _atomic_result(
+            "Dresden", DRESDEN_PLACES, "Elbe", location=NOTES
+        ),
+        ROOT_NOTE: _atomic_result(
+            "Root Note", ROOT_NOTE, "Root note takeaway", location=NOTES.rstrip("/")
+        ),
+    }
+    _reduce(tmp_path, run, "t5-2-cache-key", kado=kado)
+    assert len(kado.probed) == 1, (
+        f"one folder, one listing — got {kado.probed}"
+    )
 
 
 # ---------------------------------------------------------------------------

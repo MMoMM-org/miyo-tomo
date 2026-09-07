@@ -792,6 +792,11 @@ Two independent fail-open points, because there are two failure shapes:
    collision**: fabricating one would rename a note for no reason, and the user
    has no way to tell that apart from a real clash.
 
+Both points disable the **vault** half only. The run-internal comparison needs
+nothing but the run itself, so it stays active under `--fan-resolve` and
+`--no-kado` — a resolve doc that proposed two notes into one file would be the
+same defect this task exists to close.
+
 An empty `location` is not listed either. Its destination folder is not decided
 yet, so `_dest_join("", title)` is a path that means nothing to the vault; the
 run-internal comparison still catches two such claims against each other.
@@ -821,6 +826,12 @@ the question Kado's case handling decides, and that answer is exactly the one
 this spec is not allowed to obtain. A listing returns the folder's real
 filenames, so the fold happens in Tomo where it can be reasoned about, and it
 costs one call per folder instead of one per destination.
+
+The listing cache keys on the folder `_dest_join` derives, not on the raw
+`location` string. `Atlas/202 Notes` and `Atlas/202 Notes/` name one folder; a
+raw key lists it twice, and the only cost is a doubled Kado call — so it fails
+silently rather than erroring, and F9 (spec 034 T6.1) makes that call count a
+reported figure.
 
 Only the comparison folds. `_clash_reason` shows both destinations spelled the
 way their authors wrote them — the run's earlier claim, or the vault's own

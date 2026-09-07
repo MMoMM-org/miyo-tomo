@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.43.0
+# version: 1.43.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1978,21 +1978,27 @@ def main() -> int:
     _folder_cache: dict[str, dict[str, str]] = {}
 
     def _vault_folder_notes(location: str) -> dict[str, str]:
-        if location not in _folder_cache:
+        # Key on the folder _dest_join derives, not on the raw string: two
+        # claims whose location differs only by a trailing slash name one
+        # folder, and a raw key would list it twice. The cost of that is a
+        # doubled Kado call and nothing else, so it fails silently — and F9
+        # measures exactly this number.
+        folder = (location or "").rstrip("/") + "/"
+        if folder not in _folder_cache:
             found: dict[str, str] = {}
             try:
-                for entry in kado_client.list_dir(location, depth=1):
+                for entry in kado_client.list_dir(folder, depth=1):
                     path = entry.get("path") or ""
                     name = path.rsplit("/", 1)[-1]
                     if entry.get("type") != "file" or not name.lower().endswith(".md"):
                         continue
                     # Recompose through _dest_join so both sides of the
                     # comparison are built by the same helper.
-                    found[_dest_join(location, name[:-3]).casefold()] = path
+                    found[_dest_join(folder, name[:-3]).casefold()] = path
             except Exception:  # noqa: BLE001 — an error is not a collision
                 found = {}
-            _folder_cache[location] = found
-        return _folder_cache[location]
+            _folder_cache[folder] = found
+        return _folder_cache[folder]
 
     clash_claims: list[tuple[str, str, str]] = []
     claim_actions: dict[str, dict] = {}

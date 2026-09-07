@@ -294,7 +294,7 @@ phase: 5
      - [x] A correct instruction set reports `[OK]`, not `[DIFF]`, for both affected cases
      - [x] No stale comment survives that defers this work to an already-closed task
 
-- [ ] **T5.1 Source links disambiguate on collision** `[activity: backend]` `[parallel: true]`
+- [x] **T5.1 Source links disambiguate on collision** `[activity: backend]` `[parallel: true]`
 
   **Caveat inherited from T5.0, recorded by its implementer.** The two parser paths disagree on
   what an absent key means: `build_from_wire` falls back to `w.get("item_key") or stem`, putting a

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.41.0
+# version: 1.41.1
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -1772,8 +1772,14 @@ def main() -> int:
         failed_entries = []  # resolve doc does not surface other failures
 
     # spec 034 T5.1: computed AFTER the fan-resolve filter, so the collision set
-    # is exactly the items this document will render. `source_links` is display
+    # is the items this document sets out to render. `source_links` is display
     # text (ADR-2) — `stem` and `item_key` below are untouched by it.
+    # Caveat, cosmetic and untested: the per-item unreadable-result filter runs
+    # later, so an item dropped there still counts toward the tally. Its
+    # surviving namesake then gets a qualified link with no visible collision
+    # beside it. The link still resolves to exactly one note, so this is noise,
+    # not a wrong target — but do not read the line above as a guarantee that
+    # the set equals what finally renders.
     source_links = source_link_targets(done_items)
 
     sections: list[dict] = []
@@ -1870,8 +1876,9 @@ def main() -> int:
             kind = action.get("kind")
             # W1/W2 (F-55): create_atomic_note and create_moc need the
             # profile-resolved moc_suffix, so they are dispatched explicitly.
-            # Every other kind flows through the uniform (action, stem) RENDERERS
-            # map; unknown kinds are skipped.
+            # Every other kind flows through the uniform
+            # (action, stem, source_link) RENDERERS map; unknown kinds are
+            # skipped.
             if kind == "create_atomic_note":
                 if action.get("suppressed"):
                     # #88: sub-0.5 atomic — render a light "kept in inbox" block

@@ -1,4 +1,4 @@
-# version: 0.13.1
+# version: 0.13.2
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -827,8 +827,12 @@ def validate_destinations(
             if holder:
                 vault_holders[key] = holder
 
-    clashes: list[dict] = []
-    candidates_by_clash: list[list[str]] = []
+    # One list of (clash, candidate paths) pairs rather than two parallel
+    # lists: the second pass below needs each clash's candidates, and any
+    # future early `continue` in this loop would desync two lists silently —
+    # a clash would then report another clash's withdrawals, with no
+    # exception and nothing for a test to catch. A tuple cannot desync.
+    pending: list[tuple[dict, list[str]]] = []
     dropped_ids: set[str] = set()
     withdrawn_paths: set[str] = set()
     for key in order:
@@ -848,8 +852,7 @@ def validate_destinations(
                 if path and path not in withdrawn_paths:
                     withdrawn_paths.add(path)
                     candidates.append(path)
-        candidates_by_clash.append(candidates)
-        clashes.append({
+        clash = {
             "kind": "run_collision" if len(claimants) >= 2 else "vault_collision",
             "destination": claim_dests[0],
             "case_only": len(spellings) > 1,
@@ -869,9 +872,10 @@ def validate_destinations(
             # Filled in below, once it is known which of `candidates`
             # actually had a delete_source to withdraw.
             "withdrawn_deletes": [],
-        })
+        }
+        pending.append((clash, candidates))
 
-    if not clashes:
+    if not pending:
         return actions, []
 
     # `withdrawn_deletes` names deletes that were actually removed, not every
@@ -890,9 +894,9 @@ def validate_destinations(
             removed_deletes.add(action.get("source_path"))
             continue
         kept.append(action)
-    for clash, candidates in zip(clashes, candidates_by_clash):
+    for clash, candidates in pending:
         clash["withdrawn_deletes"] = [c for c in candidates if c in removed_deletes]
-    return kept, clashes
+    return kept, [clash for clash, _candidates in pending]
 
 
 def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:

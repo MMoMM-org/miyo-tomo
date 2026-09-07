@@ -560,13 +560,49 @@ phase: 5
      (two different files, one destination). Read
      `tests/test_031_t2_4_destination_collision_guard.py:121`, which asserts the behaviour being
      reversed.
+
+     **Three preconditions verified 2026-09-07 — do not re-derive, but do not assume they stay
+     true if you change these files:**
+
+     - `test_collision_does_not_suppress_the_notes_own_move_note` is still at
+       `test_031_t2_4_destination_collision_guard.py:121`. The instruction points at real code.
+     - `seen` and `claimed` are still distinct in `_build_move_asset_actions`
+       (`render_actions.py:651-679`). T5.3 reworked this file heavily; the distinction survived.
+     - **T5.3's `validate_destinations` does not touch attachments.** It filters on
+       `action == "move_note"` and `delete_source` only, never `move_asset`. So the two guards
+       do not collide — and that is exactly why the gap below exists.
+
+     **The gap the two guards leave between them.** T5.3 withdraws a paired `delete_source`
+     when *it* drops a move, via its own `withdrawn_paths`. You suppress a move for a different
+     reason — an attachment clash — and T5.3's bookkeeping knows nothing about your suppression.
+     So unless you withdraw the paired delete yourself, a note that stays in the inbox has its
+     source deleted, and the note is gone. That is worse than the bug this task fixes: ADR-6
+     exists so a note is never filed while depending on a file left behind, and deleting the
+     source instead loses it outright. Neither task's text mentions the other, because T5.4 was
+     written before T5.3 existed.
   2. **Test** (RED):
      - two different files sharing a basename, each embedded by its own note → the second file
        is not filed **and neither is its note** `[ref: PRD/AC Feature 8]`
      - the first note and its attachment are filed normally — one clash does not hold up another
      - one file embedded by two notes → filed once, both notes move. Unchanged; this is a
-       duplicate reference, not a clash
-     - the user renames one file and re-runs → everything files normally
+       duplicate reference, not a clash.
+
+       **"Unchanged" needs a baseline, and the baseline must predate your code.** Same
+       requirement, same reason, same precedent as T5.3: record a one-file/two-notes fixture
+       through the real `build_actions` on current HEAD with no T5.4 code written, commit that
+       fixture alone, then implement and assert it unchanged. See
+       `tests/fixtures/034-t5-3-actions-golden/` for the shape, including a README naming the
+       commit that produced it. Recorded afterwards it pins whatever your new code happens to
+       do, which is what "provably untouched" must not mean
+
+     - **a suppressed move withdraws its paired `delete_source`** — the note stays in the inbox,
+       so deleting its source would destroy it. Assert the origin delete AND the audio-peer
+       delete are both gone, and that a `keep_source` item (which has no paired delete) reports
+       none rather than a phantom one
+     - the user renames one file and re-runs → everything files normally. **Test this as
+       statelessness**, the way T5.3's equivalent case was narrowed: invoke with the clashing
+       input and assert the suppression, invoke again with the renamed input and assert
+       everything files. Nothing may carry between invocations. Do not fabricate run state
   3. **Implement**: link the attachment clash to its note's move. **Invert**
      `test_collision_does_not_suppress_the_notes_own_move_note` — a red test here is the
      intended change, not a regression in your own work `[ref: SDD/ADR-6]`.

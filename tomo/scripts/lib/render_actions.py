@@ -1,4 +1,4 @@
-# version: 0.13.2
+# version: 0.14.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -640,29 +640,51 @@ def _build_move_asset_actions(
       source folders) resolve to the same destination — the first claim wins,
       the second is skipped. Renaming is not attempted.
 
-    Each skipped entry is {"source", "destination", "reason", "kind"} —
-    destination is None for the no-basename case, since none could be
-    computed. `kind` is "no_basename" or "collision" — the two cases need
-    different remedies (a malformed inbox path vs. a real naming conflict),
-    so callers rendering this for a user must not treat them as one case.
+    Each skipped entry is {"source", "destination", "reason", "kind",
+    "owner_source_items"} — destination is None for the no-basename case,
+    since none could be computed. `kind` is "no_basename" or "collision" — the
+    two cases need different remedies (a malformed inbox path vs. a real naming
+    conflict), so callers rendering this for a user must not treat them as one
+    case.
+
+    `owner_source_items` names the notes that embed the refused attachment, by
+    the same resolved path `_build_move_note_actions` puts in a move's
+    `source_inbox_item` — that is what lets a caller keep such a note in the
+    inbox with its file (spec 034 ADR-6). It is a list because the global
+    `seen` dedup examines each path once while several notes may embed it.
     """
     out: list[dict] = []
     skipped: list[dict] = []
     seen: set[str] = set()
     claimed: dict[str, str] = {}  # destination -> path that claimed it
+    skipped_by_path: dict[str, dict] = {}
     for m in manifest:
+        owner = _ensure_md_extension(
+            resolve_source_path(
+                m.get("item_key"), m.get("source_path") or "", inbox_path
+            ) or None
+        )
         for path in m.get("attachments") or []:
             if path in seen:
+                # A later note embedding an already-refused file owns the same
+                # residue as the first one, so it joins that entry's owners.
+                entry = skipped_by_path.get(path)
+                if entry is not None and owner:
+                    if owner not in entry["owner_source_items"]:
+                        entry["owner_source_items"].append(owner)
                 continue
             seen.add(path)
+            owners = [owner] if owner else []
             try:
                 destination = _asset_dest_join(asset_folder, path)
             except ValueError as exc:
                 print(f"  [warn] skipping attachment — {exc}", file=sys.stderr)
-                skipped.append({
+                entry = {
                     "source": path, "destination": None, "reason": str(exc),
-                    "kind": "no_basename",
-                })
+                    "kind": "no_basename", "owner_source_items": owners,
+                }
+                skipped.append(entry)
+                skipped_by_path[path] = entry
                 continue
             claimant = claimed.get(destination)
             if claimant is not None:
@@ -671,10 +693,12 @@ def _build_move_asset_actions(
                     f"{destination!r}, already claimed by {claimant!r}"
                 )
                 print(f"  [warn] {reason} — skipping {path!r}", file=sys.stderr)
-                skipped.append({
+                entry = {
                     "source": path, "destination": destination, "reason": reason,
-                    "kind": "collision",
-                })
+                    "kind": "collision", "owner_source_items": owners,
+                }
+                skipped.append(entry)
+                skipped_by_path[path] = entry
                 continue
             claimed[destination] = path
             out.append({
@@ -775,6 +799,56 @@ def _destination_clash_reason(
     return f"{reason} {_CASE_NOTE}" if case_only else reason
 
 
+def _paired_delete_candidates(move: dict, withdrawn_paths: set[str]) -> list[str]:
+    """The paths whose `delete_source` a dropped `move_note` takes with it.
+
+    A move's origin and its audio peer each get a paired delete, and emitting
+    either without the move removes an inbox note the run refused to file.
+    `withdrawn_paths` accumulates across every drop in a run — including drops
+    made by a *different* post-pass over the same list — so a path is claimed
+    once and no report can count one withdrawal twice.
+    """
+    candidates: list[str] = []
+    for field in ("source_inbox_item", "audio_peer"):
+        path = move.get(field)
+        if path and path not in withdrawn_paths:
+            withdrawn_paths.add(path)
+            candidates.append(path)
+    return candidates
+
+
+def _drop_moves_with_paired_deletes(
+    actions: list[dict], dropped_ids: set[str], withdrawn_paths: set[str]
+) -> tuple[list[dict], set[str]]:
+    """Remove the dropped moves and the deletes paired with them.
+
+    Returns ``(kept, removed_deletes)``. `removed_deletes` names the deletes
+    that actually existed, not every path a dropped move touched: an item the
+    user marked "Keep source files" has no paired delete, so listing its origin
+    would have the report and the coverage audit both claim a withdrawal that
+    never happened.
+
+    Shared by both post-passes over the built action list
+    (``validate_destinations`` and ``suppress_moves_for_unfiled_attachments``).
+    They drop moves for different reasons and report them separately, but the
+    withdrawal itself is one mechanism — a second copy is what drifted apart in
+    T5.0c one module over.
+    """
+    removed_deletes: set[str] = set()
+    kept: list[dict] = []
+    for action in actions:
+        if action.get("id") in dropped_ids:
+            continue
+        if (
+            action.get("action") == "delete_source"
+            and action.get("source_path") in withdrawn_paths
+        ):
+            removed_deletes.add(action.get("source_path"))
+            continue
+        kept.append(action)
+    return kept, removed_deletes
+
+
 def validate_destinations(
     actions: list[dict], folder_listing=None
 ) -> tuple[list[dict], list[dict]]:
@@ -847,11 +921,7 @@ def validate_destinations(
         candidates: list[str] = []
         for claimant in claimants:
             dropped_ids.add(claimant.get("id"))
-            for field in ("source_inbox_item", "audio_peer"):
-                path = claimant.get(field)
-                if path and path not in withdrawn_paths:
-                    withdrawn_paths.add(path)
-                    candidates.append(path)
+            candidates.extend(_paired_delete_candidates(claimant, withdrawn_paths))
         clash = {
             "kind": "run_collision" if len(claimants) >= 2 else "vault_collision",
             "destination": claim_dests[0],
@@ -878,25 +948,129 @@ def validate_destinations(
     if not pending:
         return actions, []
 
-    # `withdrawn_deletes` names deletes that were actually removed, not every
-    # path a dropped move touched. An item the user marked "Keep source files"
-    # has no paired delete, so listing its origin here would have the report
-    # and the coverage audit both claim a withdrawal that never happened.
-    removed_deletes: set[str] = set()
-    kept: list[dict] = []
-    for action in actions:
-        if action.get("id") in dropped_ids:
-            continue
-        if (
-            action.get("action") == "delete_source"
-            and action.get("source_path") in withdrawn_paths
-        ):
-            removed_deletes.add(action.get("source_path"))
-            continue
-        kept.append(action)
+    kept, removed_deletes = _drop_moves_with_paired_deletes(
+        actions, dropped_ids, withdrawn_paths
+    )
     for clash, candidates in pending:
         clash["withdrawn_deletes"] = [c for c in candidates if c in removed_deletes]
     return kept, [clash for clash, _candidates in pending]
+
+
+def _attachment_suppression_reason(entry: dict, note_count: int) -> str:
+    """The sentence the user reads for one attachment that could not be filed.
+
+    It must not read like a destination clash: that one is fixed by renaming a
+    *note*, this one by renaming a *file*. A reader who cannot tell which
+    happened cannot act.
+    """
+    source = entry.get("source") or "?"
+    if entry.get("kind") == "collision":
+        head = (
+            f"`{source}` cannot be filed — another file of that name already "
+            f"claims `{entry.get('destination')}`"
+        )
+        remedy = "rename one of the two files, then re-run Pass 2"
+    else:
+        head = f"`{source}` cannot be filed — {entry.get('reason') or 'no filename'}"
+        remedy = "correct that inbox path, then re-run Pass 2"
+    tail = (
+        "the note that embeds it is not filed either"
+        if note_count == 1
+        else f"the {note_count} notes that embed it are not filed either"
+    )
+    return f"{head} — {tail}. To fix: {remedy}."
+
+
+def suppress_moves_for_unfiled_attachments(
+    actions: list[dict], skipped_assets: list[dict]
+) -> tuple[list[dict], list[dict]]:
+    """Keep a note in the inbox when its attachment could not be filed.
+
+    Returns ``(kept_actions, suppressions)``. Runs after ``build_actions`` as a
+    sibling of ``validate_destinations``, over the whole assembled list, for a
+    reason the ordering inside ``build_actions`` forces: the paired
+    ``delete_source`` actions do not exist yet while ``_build_move_asset_actions``
+    is running, so an inline suppression would have nothing to withdraw and the
+    note's source would be deleted while the note stayed in the inbox — losing
+    it outright, which is worse than filing it incompletely.
+
+    This **reverses spec 031** (`plan/phase-2.md:85`), which let the note move
+    without its attachment. That was right while a flat inbox made a basename
+    clash unreachable; recursive discovery made it reachable, and moving a note
+    never carries its attachments, so the file would stay in the inbox
+    indefinitely `[ref: PRD/Feature 8, SDD/ADR-6]`.
+
+    Only the *owning* notes are suppressed, joined on the resolved source path
+    (ADR-1) that `_build_move_asset_actions` recorded on each skipped entry —
+    never on the stem, which two notes in different inbox folders share.
+
+    Composes with ``validate_destinations`` in either order: a move that pass
+    already dropped is absent here, so no note is reported as withheld twice
+    and no delete is counted as withdrawn twice. Only suppressions that
+    actually withheld a move are returned — the attachment itself is already
+    reported through ``skipped_assets``.
+
+    The pass holds no state across calls: renaming one file and re-running
+    Pass 2 files everything, with no memo of the earlier clash.
+    """
+    if not skipped_assets:
+        return actions, []
+
+    moves_by_source: dict[str, list[dict]] = {}
+    for action in actions:
+        if action.get("action") != "move_note":
+            continue
+        source = action.get("source_inbox_item")
+        if source:
+            moves_by_source.setdefault(source, []).append(action)
+
+    pending: list[tuple[dict, list[str]]] = []
+    dropped_ids: set[str] = set()
+    withdrawn_paths: set[str] = set()
+    for entry in skipped_assets:
+        dropped: list[dict] = []
+        candidates: list[str] = []
+        for owner in entry.get("owner_source_items") or []:
+            for move in moves_by_source.get(owner) or []:
+                if move.get("id") in dropped_ids:
+                    continue
+                dropped_ids.add(move.get("id"))
+                dropped.append({
+                    "id": move.get("id"),
+                    "title": move.get("title"),
+                    "destination": move.get("destination"),
+                    "source_inbox_item": move.get("source_inbox_item"),
+                })
+                candidates.extend(
+                    _paired_delete_candidates(move, withdrawn_paths)
+                )
+        if not dropped:
+            continue
+        pending.append((
+            {
+                "kind": entry.get("kind"),
+                "attachment": entry.get("source"),
+                "attachment_destination": entry.get("destination"),
+                "reason": _attachment_suppression_reason(entry, len(dropped)),
+                "dropped": dropped,
+                # Filled in below, once it is known which of `candidates`
+                # actually had a delete_source to withdraw.
+                "withdrawn_deletes": [],
+            },
+            candidates,
+        ))
+
+    if not pending:
+        return actions, []
+
+    kept, removed_deletes = _drop_moves_with_paired_deletes(
+        actions, dropped_ids, withdrawn_paths
+    )
+    for suppression, candidates in pending:
+        suppression["withdrawn_deletes"] = [
+            c for c in candidates if c in removed_deletes
+        ]
+    return kept, [suppression for suppression, _candidates in pending]
 
 
 def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:

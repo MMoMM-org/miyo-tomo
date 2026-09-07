@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.1
+# version: 0.3.0
 """test_031_t2_4_destination_collision_guard.py — spec 031 T2.4 destination
 collision guard for _build_move_asset_actions, plus the empty-basename skip
 folded in here (same skip-and-report machinery, same code-quality review).
@@ -13,6 +13,16 @@ A source path with no basename (empty, or ending in "/") is a second,
 distinct skip reason: _asset_dest_join raises ValueError rather than
 returning a bare folder path, and _build_move_asset_actions catches it,
 skips that one attachment, and reports it — the run is not aborted.
+
+**Reversed by spec 034 T5.4 (ADR-6), 2026-09-07.** T2.4 required that a
+collision leave the note's own move alone. That held while a flat inbox made
+the collision unreachable; recursive discovery made it reachable, and a note
+filed away from a file it embeds depends on that file indefinitely. The note
+now stays in the inbox with its attachment. `build_actions` itself is
+unchanged — it still emits both moves — and the suppression is a post-pass,
+`suppress_moves_for_unfiled_attachments`, which is where the assertion moved.
+`docs/XDD/specs/031-inbox-attachment-filing/plan/phase-2.md:85` is left intact
+as the historical record.
 """
 from __future__ import annotations
 
@@ -25,7 +35,11 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.render_actions import _build_move_asset_actions, build_actions  # noqa: E402
+from lib.render_actions import (  # noqa: E402
+    _build_move_asset_actions,
+    build_actions,
+    suppress_moves_for_unfiled_attachments,
+)
 
 ASSET_FOLDER = "Atlas/290 Assets/295 Attachments/"
 INBOX = "100 Inbox/"
@@ -118,7 +132,13 @@ def test_same_path_resolved_twice_is_dedup_not_collision(capsys):
     assert skipped == []
 
 
-def test_collision_does_not_suppress_the_notes_own_move_note():
+def test_collision_suppresses_the_notes_own_move_note():
+    """Inverted by spec 034 T5.4 / ADR-6 — see the module docstring.
+
+    The note whose attachment was refused stays in the inbox with it. The
+    other note, whose attachment WAS filed, moves normally: one clash does
+    not hold up another `[ref: PRD/Feature 8]`.
+    """
     manifest = [
         _manifest_entry(
             source_path="a.md", rendered_file="2026-01-01_0900_a.md",
@@ -130,10 +150,23 @@ def test_collision_does_not_suppress_the_notes_own_move_note():
         ),
     ]
     confirmed = [_confirmed_entry(source_path="a.md"), _confirmed_entry(source_path="b.md")]
-    actions, _skipped_assets = build_actions(manifest, confirmed, [], [], CFG)
-    move_notes = [a for a in actions if a["action"] == "move_note"]
-    assert len(move_notes) == 2
-    move_assets = [a for a in actions if a["action"] == "move_asset"]
+    actions, skipped_assets = build_actions(manifest, confirmed, [], [], CFG)
+    # The assembler is unchanged: it still emits both moves, and the guard
+    # that reverses T2.4 is the post-pass instruction-render runs next.
+    assert len([a for a in actions if a["action"] == "move_note"]) == 2
+
+    kept, suppressions = suppress_moves_for_unfiled_attachments(
+        actions, skipped_assets
+    )
+    move_notes = [a for a in kept if a["action"] == "move_note"]
+    assert [m["source_inbox_item"] for m in move_notes] == ["100 Inbox/a.md"], (
+        "b.md's attachment was left in the inbox, so b.md stays with it; "
+        f"a.md's was filed, so a.md moves: {move_notes}"
+    )
+    assert [d["source_inbox_item"] for d in suppressions[0]["dropped"]] == [
+        "100 Inbox/b.md",
+    ]
+    move_assets = [a for a in kept if a["action"] == "move_asset"]
     assert len(move_assets) == 1
 
 

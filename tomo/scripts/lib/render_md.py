@@ -1,4 +1,4 @@
-# version: 0.10.1
+# version: 0.11.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -524,6 +524,36 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         for clash in destination_clashes:
             body_parts.append(f"- `{clash.get('destination')}` — {clash.get('reason')}")
             for d in clash.get("dropped") or []:
+                origin = d.get("source_inbox_item") or "?"
+                body_parts.append(
+                    f"    - `{d.get('id')}` **{d.get('title')}** "
+                    f"— source note `{origin}`"
+                )
+        body_parts.append("")
+
+    # Spec 034 T5.4 / ADR-6. Its own section, not a second bullet kind under
+    # the clash heading: the two withholdings have different remedies — rename
+    # a NOTE for a destination clash, rename a FILE here — and a reader who
+    # cannot tell them apart cannot act on either.
+    attachment_suppressions = metadata.get("attachment_suppressions") or []
+    if attachment_suppressions:
+        body_parts.append("## Not filed — an attachment could not be filed with it")
+        body_parts.append("")
+        body_parts.append(
+            # Kind-neutral, like the clash intro above and for the same
+            # reason: a collision is fixed by renaming a file, a malformed
+            # inbox path is not. Each bullet carries its own remedy.
+            "**No move was emitted for the notes below, deliberately.** Their "
+            "attachments stay in the inbox, and a note filed away from a file "
+            "it embeds would depend on that file indefinitely — nothing moves "
+            "it later. Each line below says what to fix; re-run Pass 2 "
+            "afterwards — the run does not need restarting. Every source note "
+            "below is untouched in the inbox."
+        )
+        body_parts.append("")
+        for s in attachment_suppressions:
+            body_parts.append(f"- {s.get('reason')}")
+            for d in s.get("dropped") or []:
                 origin = d.get("source_inbox_item") or "?"
                 body_parts.append(
                     f"    - `{d.get('id')}` **{d.get('title')}** "

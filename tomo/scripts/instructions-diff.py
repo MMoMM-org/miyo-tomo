@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.16.1
+# version: 0.17.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -734,19 +734,31 @@ def _subtract_skipped_daily(expected: dict, skipped_daily: list[dict]) -> int:
     return removed
 
 
-def _subtract_destination_clashes(expected: dict, clashes: list[dict]) -> int:
+def _subtract_withheld_moves(expected: dict, withholdings: list[dict]) -> int:
     """Remove guard-withheld moves and their paired deletes from expected.
 
-    The Pass-2 destination guard (`render_actions.validate_destinations`, spec
-    034 T5.3) drops **both** claimants when two approved items name one
-    destination, and withdraws each dropped move's paired `delete_source` —
-    emitting the delete without the move would remove an inbox note the run
-    refused to file. Those are deliberate withholdings, not coverage gaps, so
-    they are subtracted here the way `_subtract_skipped_daily` subtracts a
-    missing daily note. Without this the audit reports `RESULT: FAIL — count or
-    coverage mismatch` on a **correct** instruction set, and the conductor's
-    STRICT stop halts the run with a message that misdiagnoses the guard as
-    drift — the exact failure T5.0c was scheduled to fix one module over.
+    Two Pass-2 post-passes withhold a move deliberately, and both report it in
+    this shape — a `dropped` list of moves and a `withdrawn_deletes` list of
+    paths:
+
+    - `render_actions.validate_destinations` (spec 034 T5.3) drops **both**
+      claimants when two approved items name one destination.
+    - `render_actions.suppress_moves_for_unfiled_attachments` (spec 034 T5.4,
+      ADR-6) drops the note whose attachment could not be filed, so the note
+      stays in the inbox with the file it embeds.
+
+    Either way the paired `delete_source` is withdrawn with the move — emitting
+    the delete without the move would remove an inbox note the run refused to
+    file. Those are deliberate withholdings, not coverage gaps, so they are
+    subtracted here the way `_subtract_skipped_daily` subtracts a missing daily
+    note. Without this the audit reports `RESULT: FAIL — count or coverage
+    mismatch` on a **correct** instruction set, and the conductor's STRICT stop
+    halts the run with a message that misdiagnoses the guard as drift — the
+    exact failure T5.0c was scheduled to fix one module over.
+
+    One function over both lists, not one per cause: the two passes share the
+    withdrawal mechanism in the emitter, and a second copy here is the drift
+    that produced T5.0c.
 
     The move join is `_keys_match`, not set membership: a clash entry's
     `source_inbox_item` is the inbox-joined path a rendered action carries,
@@ -758,7 +770,7 @@ def _subtract_destination_clashes(expected: dict, clashes: list[dict]) -> int:
     Returns the number of expected entries removed.
     """
     removed = 0
-    for clash in clashes or []:
+    for clash in withholdings or []:
         for dropped in clash.get("dropped") or []:
             origin = dropped.get("source_inbox_item") or ""
             if not origin:
@@ -778,6 +790,33 @@ def _subtract_destination_clashes(expected: dict, clashes: list[dict]) -> int:
                     expected["counts"]["delete_source"] -= 1
                     removed += 1
                     break
+    return removed
+
+
+def _subtract_skipped_assets(expected: dict, skipped_assets: list[dict]) -> int:
+    """Remove attachments the renderer could not file from expected move_asset.
+
+    `derive_expected` counts one `move_asset` per distinct attachment path on
+    the confirmed items. `_build_move_asset_actions` emits none for a path with
+    no basename or one whose destination is already claimed by a different
+    file, and records it in `tomo.skipped_assets` instead. Each such entry is
+    one path the renderer deliberately did not file — the same subtraction
+    `_subtract_skipped_daily` makes for a missing daily note.
+
+    Present since spec 031 and only reachable once discovery became recursive
+    (a flat inbox cannot hold two files with one basename), so this closes a
+    pre-existing FAIL rather than one T5.4 introduced — but T5.4 is the task
+    that makes the clash a normal outcome, and a guard whose own audit halts
+    the run is not shippable.
+
+    Returns the number of expected entries removed.
+    """
+    removed = 0
+    for _entry in skipped_assets or []:
+        if expected["counts"]["move_asset"] <= 0:
+            break
+        expected["counts"]["move_asset"] -= 1
+        removed += 1
     return removed
 
 
@@ -801,10 +840,16 @@ def run_diff(
     skipped_daily = (instrs.get("tomo") or {}).get("skipped_daily") or []
     n_daily_skipped = _subtract_skipped_daily(expected, skipped_daily)
 
-    # Reconcile the moves and paired deletes the destination guard withheld —
-    # see _subtract_destination_clashes.
-    destination_clashes = (instrs.get("tomo") or {}).get("destination_clashes") or []
-    _subtract_destination_clashes(expected, destination_clashes)
+    # Reconcile the moves and paired deletes the two Pass-2 guards withheld,
+    # and the attachments the renderer could not file — see
+    # _subtract_withheld_moves and _subtract_skipped_assets.
+    tomo_block = instrs.get("tomo") or {}
+    destination_clashes = tomo_block.get("destination_clashes") or []
+    attachment_suppressions = tomo_block.get("attachment_suppressions") or []
+    skipped_assets = tomo_block.get("skipped_assets") or []
+    _subtract_withheld_moves(expected, destination_clashes)
+    _subtract_withheld_moves(expected, attachment_suppressions)
+    n_assets_skipped = _subtract_skipped_assets(expected, skipped_assets)
 
     lines: list[str] = []
     observations: list[str] = []
@@ -904,6 +949,31 @@ def run_diff(
             f"{withheld} move(s) and {withdrawn} paired delete(s) withheld — "
             f"{len(destination_clashes)} destination(s) claimed twice; see "
             "\"Not filed\" in instructions.md, rename one and re-run Pass 2"
+        )
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
+
+    if attachment_suppressions:
+        withheld = sum(len(s.get("dropped") or []) for s in attachment_suppressions)
+        withdrawn = sum(
+            len(s.get("withdrawn_deletes") or []) for s in attachment_suppressions
+        )
+        note = (
+            f"{withheld} move(s) and {withdrawn} paired delete(s) withheld — "
+            f"{len(attachment_suppressions)} attachment(s) could not be filed; "
+            "see \"an attachment could not be filed\" in instructions.md, "
+            "rename the file and re-run Pass 2"
+        )
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
+
+    if n_assets_skipped:
+        note = (
+            f"{n_assets_skipped} attachment(s) not filed — no basename, or a "
+            "destination already claimed by a different file; excluded from "
+            "expected coverage"
         )
         lines.append("")
         lines.append(f"  note: {note}")

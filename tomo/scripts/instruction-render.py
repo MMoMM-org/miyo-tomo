@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.47.0
+# version: 0.48.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -68,6 +68,7 @@ from lib.render_actions import (  # noqa: E402,F401
     extract_first_up_marker,
     group_id,
     make_folder_listing,
+    suppress_moves_for_unfiled_attachments,
     validate_destinations,
 )
 from lib.render_helpers import _moc_stem, _stem, resolve_source_path  # noqa: E402,F401
@@ -550,6 +551,24 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    # ── Keep a note with its unfiled attachment (spec 034 T5.4, ADR-6) ────
+    # A note filed away from a file it embeds depends on that file
+    # indefinitely — nothing moves an attachment that was not instructed. So
+    # a refused attachment keeps its own note in the inbox, and the note's
+    # paired delete_source goes with the move. Runs after the destination
+    # guard and over its output, so a move that guard already dropped is not
+    # withheld or reported a second time.
+    actions, attachment_suppressions = suppress_moves_for_unfiled_attachments(
+        actions, skipped_assets
+    )
+    if attachment_suppressions:
+        withheld = sum(len(s["dropped"]) for s in attachment_suppressions)
+        print(
+            f"  [attach] {withheld} move(s) withheld — attachment not filed; "
+            f"see instructions.md",
+            file=sys.stderr,
+        )
+
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────
     # Best-effort; actions stay with `target_moc_path: null` if Kado is
     # unavailable or no match is found.
@@ -738,6 +757,16 @@ def main() -> int:
             instructions_doc["tomo"] = tomo_block
         tomo_block["destination_clashes"] = destination_clashes
 
+    # Record the moves withheld because an attachment could not be filed, in
+    # their own key: the remedy differs from a destination clash (rename a
+    # file, not a note) and instructions-diff subtracts them separately.
+    if attachment_suppressions:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["attachment_suppressions"] = attachment_suppressions
+
     # Record confirmed items the #116 guard withheld, so the drop reaches an
     # artefact instead of scrolling past on stderr. Metadata only: id, the path
     # probed, and why — never note content. Nested under the permissive `tomo`
@@ -780,6 +809,7 @@ def main() -> int:
             "skipped_assets": skipped_assets,
             "dropped_sources": dropped_missing_source,
             "destination_clashes": destination_clashes,
+            "attachment_suppressions": attachment_suppressions,
         },
         cfg,
     )

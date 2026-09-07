@@ -85,9 +85,16 @@ Sources 1, 3 and 4 all append stems; the collections that JOIN are keyed on
 identity, the list that is merely counted is not. That split is the same one
 source 3 (`paired_origins_seen`) already made.
 
-## Guard-Withheld Moves Are Not Coverage Gaps (spec 034 T5.3)
+## Guard-Withheld Moves Are Not Coverage Gaps (spec 034 T5.3, T5.4)
 
-`_subtract_destination_clashes` removes, from the expected tallies, the moves
+Renamed to `_subtract_withheld_moves` by T5.4 and now called for **both**
+withholding lists — `destination_clashes` and `attachment_suppressions`.
+They report the same shape (a `dropped` list of moves, a `withdrawn_deletes`
+list of paths) because the emitter withdraws deletes through one shared
+mechanism; a second subtraction here is exactly the drift that produced
+T5.0c one module over.
+
+`_subtract_withheld_moves` removes, from the expected tallies, the moves
 the Pass-2 destination guard withheld and the paired deletes it withdrew with
 them. Without it the audit reported `RESULT: FAIL — count or coverage mismatch`
 on a **correct** instruction set — `move_note 2 → 0`, `delete_source 2 → 0`,
@@ -113,3 +120,22 @@ The withheld count is emitted as an observation naming the `Not filed` section
 of `instructions.md`, so the audit points at the real report instead of
 restating a number. See `docs/tomo/scripts/lib/render_actions.md`, "The Pass-2
 Destination Guard".
+
+## An Unfiled Attachment Is Not a Coverage Gap Either (spec 034 T5.4)
+
+`_subtract_skipped_assets` removes, from the expected `move_asset` tally, the
+attachments the renderer deliberately did not file — a path with no basename,
+or one whose destination is already claimed by a different file.
+
+This closes a gap that predates T5.4 and was measured on HEAD before it:
+`derive_expected` counts one expected `move_asset` per distinct attachment path
+on the confirmed items, while `_build_move_asset_actions` emits none for a
+refused one, so the audit reported `move_asset expected=2 actual=1 [DIFF]` and
+`RESULT: FAIL` on a correct instruction set. It dates to spec 031 and was
+unreachable until recursive discovery let two files share a basename. It is
+fixed here rather than backlogged because T5.4 makes the clash a normal outcome
+and step 3e of `synthesis-conductor.md` halts the run on a mismatch.
+
+The subtraction is per skipped entry rather than per path lookup because
+`expected` keeps only the count, and `_build_move_asset_actions`' global `seen`
+set already guarantees one entry per distinct path.

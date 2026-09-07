@@ -85,3 +85,24 @@ what it withheld is a wrong basis for approval even when the withholding itself
 is right — the same class of defect as T5.0b's reason strings, which credited
 one note with another's daily entry. One section covers both kinds in a run
 that hits both, which is why the wording has to be true of each on its own.
+
+## `attachment_suppressions` Gets Its Own Section (spec 034 T5.4)
+
+Rendered immediately after the destination-clash block, above the action
+sections, for the same reason that one sits there: a note the run refused to
+file is what the reader must see before approving anything else.
+
+WHY a separate section rather than a second bullet kind under
+`## Not filed — a destination is claimed twice`: the two withholdings have
+different remedies. A destination clash is resolved by renaming a **note**; an
+attachment that could not be filed, by renaming a **file**. Under CON-2 the
+user approves on what this document says, so a reader who cannot tell which
+happened cannot act on either. The reason line names the attachment, not just
+the note, so the file to rename is in the document.
+
+The `skipped_assets` block further down still lists the attachment itself under
+`**Attachment not filed**`. That is deliberate and not a duplicate: it reports
+files that were not filed, some of which belong to no moving note at all, while
+this section reports the notes held back. `owner_source_items`, the field
+`_build_move_asset_actions` added to link the two, is not rendered — the
+skipped-asset bullets are byte-identical to before.

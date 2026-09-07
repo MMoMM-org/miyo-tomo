@@ -459,3 +459,127 @@ fixed here; each is recorded so the next task does not have to re-find it.
 3. **`render_resolve.py:213`'s `create_moc_by_dest`** keys the same composed
    destination by exact string. It is a paired consumer of (1) and would need
    the same treatment if (1) ever folds.
+
+## An Attachment Clash Keeps Its Note in the Inbox (spec 034 T5.4)
+
+`suppress_moves_for_unfiled_attachments` is the second post-pass over the built
+action list, sibling to `validate_destinations` and wired beside it in
+`instruction-render.py`. It **reverses spec 031 T2.4**
+(`docs/XDD/specs/031-inbox-attachment-filing/plan/phase-2.md:85`), which
+required that an attachment collision leave the note's own move alone. That
+phase-2 line is left intact as the historical record; the reversal is recorded
+here and in the inverted test's module docstring
+`[ref: PRD/Feature 8, SDD/ADR-6]`.
+
+WHY the reversal: a note filed into the permanent collection while the file it
+embeds stays in the inbox depends on that file indefinitely. Moving a note does
+not carry its attachments, and nothing is ever moved that was not instructed —
+so "next run will file it" is false. T2.4's decision was correct while a flat
+inbox made a basename clash unreachable; recursive discovery made it reachable.
+
+### WHY a Post-Pass Rather Than an Inline Suppression
+
+Inside `build_actions`, `_build_move_asset_actions` runs *before*
+`_build_delete_source_actions`. The paired `delete_source` for a note's origin
+and its audio peer therefore does not exist yet at the moment an attachment is
+skipped, so an inline suppression has nothing to withdraw. Dropping the move
+and leaving the delete standing is strictly worse than the bug being fixed: the
+note stays in the inbox and its source is deleted anyway, losing the note
+outright instead of filing it incompletely. The post-pass sees the finished
+list and can withdraw both.
+
+### WHY the Skipped Entry Carries `owner_source_items`
+
+A skipped entry was `{"source", "destination", "reason", "kind"}` — nothing on
+it named the note that embedded the attachment, so a post-pass receiving it
+could not tell which move to suppress. The owner is recorded as the note's
+**resolved source path**, derived through `resolve_source_path` +
+`_ensure_md_extension`, exactly as `_build_move_note_actions` derives
+`source_inbox_item`. One derivation, one helper: composing `<inbox>/<stem>.md`
+by hand is what T5.0 caught silently dropping every subfolder note in Pass 2,
+and here it would suppress the wrong note — proven by reverting the join to a
+stem composition, which files the real owner (`100 Inbox/Reise/Elbe.md`) and
+suppresses an unrelated root-level namesake (`100 Inbox/Elbe.md`) instead.
+
+It is a **list**, not a single key: the global `seen` dedup examines each
+attachment path once, but several notes can embed that one path. A link
+recording only the first note leaves the others filed with an embed pointing
+into the inbox — the same residue, one note over.
+
+The field is invisible to both existing `skipped_assets` consumers:
+`render_md.py` renders `source`/`reason`/`kind`, and `instruction-render.py`
+projects `source`/`destination`/`reason` into the JSON. Neither changes.
+
+### WHY the Withdrawal Mechanism Is Shared, Not Copied
+
+`_paired_delete_candidates` and `_drop_moves_with_paired_deletes` were
+extracted from `validate_destinations` and are used by both passes. The two
+drop moves for different reasons and report them separately, but the withdrawal
+itself is one behaviour. A second copy is the duplication `docs/XDD/backlog.md`
+records twice for this file, and the drift a second copy produced in
+`instructions-diff` cost T5.0c a task of its own.
+
+`withdrawn_deletes` names deletes that actually existed. A `keep_source` item
+has no paired delete, so listing its origin would make both the document and
+the coverage audit claim a withdrawal that never happened — the over-claim T5.3
+shipped and fixed in `76ae8be`.
+
+### WHY the Two Passes Compose Without Double-Counting
+
+`instruction-render.py` runs `validate_destinations` first and the attachment
+pass over its output. A move that pass already dropped is simply absent, so it
+is never withheld or reported twice, and its already-withdrawn delete cannot be
+counted again. Suppressions whose `dropped` list is empty are not returned at
+all: the attachment itself is already reported through `skipped_assets`, and an
+empty entry would render a section heading over nothing.
+
+### WHY Its Own Section in `instructions.md`
+
+"Two items claim one destination" is fixed by renaming a **note**; "its
+attachment could not be filed" by renaming a **file**. Under CON-2 the user
+approves on what that document says, so a reader who cannot tell the two apart
+cannot act on either. Hence a separate `## Not filed — an attachment could not
+be filed with it` section rather than a second bullet kind under the clash
+heading.
+
+### The Paired Consumer, and a Pre-Existing FAIL Closed Here
+
+`_subtract_destination_clashes` was renamed to `_subtract_withheld_moves` and
+is now called for both withholding lists — one function over both, for the same
+reason the emitter shares one withdrawal.
+
+Measured on HEAD before this change, a skipped attachment **already** produced
+`RESULT: FAIL` on a correct instruction set: `derive_expected` counts one
+expected `move_asset` per distinct attachment path on the confirmed items,
+while `_build_move_asset_actions` deliberately emits none for a refused one
+(`move_asset expected=2 actual=1 [DIFF]`). That gap dates to spec 031 and was
+unreachable until recursion made a basename clash possible. It is closed here
+by `_subtract_skipped_assets`, not because T5.4 caused it, but because T5.4
+makes the clash a normal outcome and `synthesis-conductor.md` step 3e halts the
+run on a diff mismatch — a guard whose own audit stops the run is not
+shippable.
+
+### Found While Sweeping, Deliberately Not Fixed
+
+The T5.3 sweep above listed three exact-string destination sites. The same grep
+run against the **attachment** half turns up a fourth, previously unlisted:
+
+4. **`_build_move_asset_actions`'s `claimed` dict keys on the exact destination
+   string.** `100 Inbox/A/Ufer.jpg` and `100 Inbox/B/ufer.jpg` compose two
+   different keys, so both emit a `move_asset` into the flat asset folder and
+   the second overwrites the first on a case-insensitive filesystem (CON-6) —
+   with no skip recorded, so T5.4's suppression never fires and both notes are
+   filed. Same shape as (1) and (3), one function over. Not fixed here:
+   folding this key changes which attachments are skipped, which changes what
+   T5.4 suppresses, and that is a behaviour change rather than the join this
+   task is about.
+
+### An SDD Inconsistency, Recorded Not Resolved
+
+`solution.md`'s "Complex Logic: the destination validation pass" walkthrough,
+step 3, says that on an attachment clash "**neither** is emitted, and each
+suppresses its own note's move". PRD Feature 8's second acceptance criterion
+says the opposite and the plan repeats it: "the first note and its attachment
+are filed normally — one note's clash does not hold up the other". The PRD is
+the requirement of record and is what the code does; the attachment guard stays
+first-claim-wins and only the refused claimant's note is held back.

@@ -553,7 +553,7 @@ phase: 5
   already recorded; and `render_resolve.py:213`'s `create_moc_by_dest`, the
   paired consumer of the first.
 
-- [ ] **T5.4 An attachment clash keeps its note in the inbox** `[activity: backend]`
+- [x] **T5.4 An attachment clash keeps its note in the inbox** `[activity: backend]`
 
   1. **Prime**: Read `[ref: SDD/ADR-6]`. Read `_build_move_asset_actions`, particularly the
      `seen` set (same file referenced twice — a duplicate, **not** a clash) versus `claimed`
@@ -673,9 +673,42 @@ phase: 5
      that it is distinguishable is not.
   4. **Validate**: tests pass; `ruff` clean.
   5. **Success**:
-     - [ ] No note is filed into the permanent collection while depending on a file left in the
+     - [x] No note is filed into the permanent collection while depending on a file left in the
            inbox `[ref: PRD/AC Feature 8]`
-     - [ ] The duplicate-reference path is provably untouched
+     - [x] The duplicate-reference path is provably untouched
+
+  **Closed 2026-09-07.** `suppress_moves_for_unfiled_attachments` in
+  `lib/render_actions.py`, a sibling post-pass wired beside `validate_destinations` in
+  `instruction-render.py`. The baseline was recorded first at `1edaccd` and committed alone
+  (`tests/fixtures/034-t5-4-duplicate-reference-golden/`). The withdrawal mechanism was
+  extracted from `validate_destinations` (`_paired_delete_candidates`,
+  `_drop_moves_with_paired_deletes`) and is shared, not copied. Every guarantee proven red by
+  reverting it; reverting the join to a `<inbox>/<stem>.md` composition suppressed an unrelated
+  root-level namesake and filed the real owner, and two assertions were found hollow that way
+  and rewritten. `test_031_t2_4_destination_collision_guard.py:121` was inverted;
+  `031/plan/phase-2.md:85` is left intact as the historical record.
+
+  **Three findings the next tasks need.**
+
+  **(a) A skipped attachment already broke the audit before this task.** Measured on HEAD:
+  `derive_expected` counts one expected `move_asset` per attachment path on the confirmed
+  items while `_build_move_asset_actions` emits none for a refused one, so a clash produced
+  `move_asset expected=2 actual=1 [DIFF]` and `RESULT: FAIL` on a correct instruction set —
+  and step 3e of `synthesis-conductor.md` makes that fatal. Spec-031-era, unreachable until
+  recursion. Closed here (`_subtract_skipped_assets`) because T5.4 makes the clash a normal
+  outcome. `_subtract_destination_clashes` was renamed `_subtract_withheld_moves` and is now
+  called for both withholding lists.
+
+  **(b) The SDD and the PRD disagree about the first claimant.** `solution.md`'s "Complex
+  Logic" walkthrough, step 3, says that on an attachment clash "**neither** is emitted".
+  PRD Feature 8's second acceptance criterion says the first note and its attachment are
+  filed normally, and the plan repeats it. The PRD was followed. Recorded, not resolved.
+
+  **Out of scope, found while sweeping for exact-string destination keys** — recorded in
+  `docs/tomo/scripts/lib/render_actions.md`, not fixed: `_build_move_asset_actions`'s
+  `claimed` dict keys on the exact destination string, so `A/Ufer.jpg` and `B/ufer.jpg` both
+  emit and the second overwrites the first under CON-6 — with no skip recorded, so this
+  task's suppression never fires. A fourth instance of the shape T5.3 recorded three of.
 
 - [ ] **T5.5 Phase Validation** `[activity: validate]`
 

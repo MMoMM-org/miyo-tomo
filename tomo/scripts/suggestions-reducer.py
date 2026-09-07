@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.41.1
+# version: 1.42.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -20,6 +20,9 @@ Rendering rules (replicated from the retired suggestion-builder format):
   - `### SNN — <suggested title>` heading (in orchestrator render step)
   - `**Source:** [[<stem>]]`, or `[[<path>|<stem>]]` when two items in the
     run share a filename (spec 034 T5.1 — display only, ADR-2)
+  - `**Name clash:** <reason>` under a name Pass 1 moved off a destination
+    something else already claims (spec 034 T5.2 — informational; the name
+    above it stays an ordinary editable field)
   - `**New tags to add:** <csv>` (omitted when empty)
   - `**Link to MOC:**` with pre-checked boxes
   - `**Why:**` 1-2 sentences (from classification signals)
@@ -54,7 +57,10 @@ from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filenam
 from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
-from lib.render_actions import DEFAULT_ASSET_FOLDER  # noqa: E402 — spec 031 Phase 5 attachments preamble
+from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash
+    DEFAULT_ASSET_FOLDER,
+    _dest_join,
+)
 from lib.inbox_state import last_state_per_item_key, display_stem  # noqa: E402 — spec 034 T2.3
 from lib.item_key import to_filename as item_key_to_filename  # noqa: E402 — spec 034 T2.3
 
@@ -292,6 +298,61 @@ def source_link_targets(items: list[tuple[str, str, dict]]) -> dict[str, str]:
     return targets
 
 
+def resolve_destination_clashes(
+    claims: list[tuple[str, str, str]],
+    dest_taken=None,
+) -> dict[str, tuple[str, str]]:
+    """claim_id -> (adjusted title, reason) for each claim whose destination
+    was already spoken for.
+
+    `claims` is (claim_id, location, title) in render order. The destination is
+    composed with `_dest_join` — the same helper Pass 2 uses — so the proposal
+    and the guard cannot disagree about what "the same place" means. The first
+    claim on a destination keeps its name; later ones are renamed, which makes
+    the outcome stable across re-runs of one document.
+
+    `dest_taken(destination) -> bool` probes the vault for a note already
+    living there. `None` skips the vault half entirely and leaves the
+    run-internal half working: ADR-4 makes Pass 1 advisory and T5.3 the binding
+    guard, so a check that cannot run costs a convenience, not a safety
+    property. A claim with no location is not probed — its destination folder
+    is not yet decided, so there is nothing to probe against.
+
+    Claims that keep their name are absent from the result: the caller renames
+    exactly what this returns and leaves everything else byte-identical.
+    """
+    adjustments: dict[str, tuple[str, str]] = {}
+    claimed: set[str] = set()
+
+    for claim_id, location, title in claims:
+        # An empty location has no folder to probe; the run-internal half still
+        # compares the two claims against each other.
+        probe = dest_taken if (location or "").strip() else None
+        base = _dest_join(location, title)
+        if base not in claimed and not (probe and probe(base)):
+            claimed.add(base)
+            continue
+
+        reason = (
+            f"another item in this run already proposes `{base}`"
+            if base in claimed
+            else f"a note already exists at `{base}`"
+        )
+        for n in range(2, 101):
+            candidate = f"{title} ({n})"
+            dest = _dest_join(location, candidate)
+            if dest not in claimed and not (probe and probe(dest)):
+                adjustments[claim_id] = (candidate, reason)
+                claimed.add(dest)
+                break
+        else:
+            # 99 taken names is not a situation a rename can rescue; leave the
+            # proposal untouched and let T5.3's Pass-2 guard refuse the move.
+            claimed.add(base)
+
+    return adjustments
+
+
 def resolve_source_link(
     source_links: dict[str, str] | None, item_key: str | None, stem: str
 ) -> str:
@@ -423,6 +484,15 @@ def render_create_atomic_note(
     else:
         lines.append(f"**Source:** [[{link}]]")
     lines.append(f"**Suggested name:** {title}")
+    # spec 034 T5.2: the name above was moved off a destination something else
+    # already claims. It stays an ordinary editable field — the reason is a
+    # separate line so nothing downstream has to parse it back out of the name.
+    clash_reason = (action.get("clash_reason") or "").strip()
+    if clash_reason:
+        lines.append(
+            f"**Name clash:** {clash_reason}. The suggested name above was "
+            "adjusted — edit it if you prefer another."
+        )
     summary = (action.get("summary") or "").strip()
     if summary:
         lines.append(f"**Summary:** {summary}")
@@ -1816,6 +1886,11 @@ def main() -> int:
     # needs-attention block.
     unreadable_results: list[tuple[str, str, str]] = []
 
+    # spec 034 T5.2: loading is its own pass so the destination-clash check
+    # below sees every item's surviving actions before any of them renders. The
+    # section index still counts over `done_items`, so an unreadable item leaves
+    # the same gap in the SNN sequence it always did.
+    prepared: list[tuple[int, str, str, list[dict]]] = []
     for idx, (stem, item_key, _entry) in enumerate(done_items, start=1):
         result_path = items_dir / item_key_to_filename(item_key)
         if not result_path.exists():
@@ -1840,13 +1915,6 @@ def main() -> int:
             continue
         result = merge_resolved_attachments(result, resolved_attachments)
 
-        section_id = f"S{idx:02d}"
-        source_link = resolve_source_link(source_links, item_key, stem)
-        rendered_actions: list[dict] = []
-        had_update_daily = False
-        # F-41: index atomics within this source so each gets a distinct
-        # cluster/title key (see _atomic_id). 0th keeps the bare section_id.
-        atomic_idx = 0
         item_actions = result.get("actions", [])
         # #88: the item-level force_atomic flag (set by the FAN / force-atomic
         # flow, e.g. fan-resolve) authoritatively overrides sub-worthiness.
@@ -1856,7 +1924,62 @@ def main() -> int:
             for _a in item_actions:
                 if _a.get("kind") == "create_atomic_note":
                     _a["force_atomic"] = True
-        actions = _enforce_coexistence(item_actions)
+        prepared.append((idx, stem, item_key, _enforce_coexistence(item_actions)))
+
+    # I38: the Kado client, opened once for every Pass-1 vault check below —
+    # the daily-note existence probe, the tag-handler guards, and the T5.2
+    # destination clash. On by default; --no-kado disables. Fail-open — no
+    # Kado config / unreachable → the checks degrade, the run does not.
+    kado_client = None
+    if not args.no_kado and not args.fan_resolve:
+        try:
+            kado_client = KadoClient()
+        except Exception:  # noqa: BLE001 — no Kado config → fail-open
+            kado_client = None
+
+    # spec 034 T5.2: the destination folder is flat, so two notes named Dresden
+    # cannot both live in it. Rename the later claimant before the user reads
+    # the document; T5.3 is the binding guard (ADR-4), this is the proposal
+    # that keeps the common case from ever reaching it.
+    _dest_probe_cache: dict[str, bool] = {}
+
+    def _vault_dest_taken(destination: str) -> bool:
+        if destination not in _dest_probe_cache:
+            try:
+                _dest_probe_cache[destination] = kado_client.note_exists(destination)
+            except Exception:  # noqa: BLE001 — an error is not a collision
+                _dest_probe_cache[destination] = False
+        return _dest_probe_cache[destination]
+
+    clash_claims: list[tuple[str, str, str]] = []
+    claim_actions: dict[str, dict] = {}
+    for _idx, stem, item_key, actions in prepared:
+        for pos, action in enumerate(actions):
+            # A suppressed atomic stays in the inbox and Pass 2 emits no move
+            # for it, so it claims no destination.
+            if action.get("kind") != "create_atomic_note" or action.get("suppressed"):
+                continue
+            claim_id = f"{item_key}#{pos}"
+            claim_actions[claim_id] = action
+            clash_claims.append((
+                claim_id,
+                action.get("location") or "",
+                (action.get("suggested_title") or "").strip() or stem,
+            ))
+    for claim_id, (adjusted_title, reason) in resolve_destination_clashes(
+        clash_claims, _vault_dest_taken if kado_client else None
+    ).items():
+        claim_actions[claim_id]["suggested_title"] = adjusted_title
+        claim_actions[claim_id]["clash_reason"] = reason
+
+    for idx, stem, item_key, actions in prepared:
+        section_id = f"S{idx:02d}"
+        source_link = resolve_source_link(source_links, item_key, stem)
+        rendered_actions: list[dict] = []
+        had_update_daily = False
+        # F-41: index atomics within this source so each gets a distinct
+        # cluster/title key (see _atomic_id). 0th keeps the bare section_id.
+        atomic_idx = 0
         # F-41 T1 W1: pre-pass — assign flat suggestion_ids to all
         # create_atomic_note actions before the main loop processes
         # update_daily.  This makes log_link.source_section resolution
@@ -2096,14 +2219,9 @@ def main() -> int:
         })
 
     # I38: flag groups whose daily note doesn't exist so Pass 1 surfaces it
-    # (not just the #58 Pass-2 backstop). On by default; --no-kado disables.
+    # (not just the #58 Pass-2 backstop). `kado_client` is opened above, before
+    # the render loop, because the T5.2 destination-clash check needs it there.
     # Fail-open — no Kado config / unreachable → all exists=True (prior behavior).
-    kado_client = None
-    if not args.no_kado and not args.fan_resolve:
-        try:
-            kado_client = KadoClient()
-        except Exception:  # noqa: BLE001 — no Kado config → fail-open
-            kado_client = None
     missing_daily = annotate_daily_note_existence(
         daily_groups, daily_path_by_stem, kado_client
     )

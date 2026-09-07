@@ -739,3 +739,89 @@ in `lib/render_actions.py`.
 `source_item_key`. Entries built by this run always carry one; the fallback is
 for hand-built and pre-spec-034 entries, which keep rendering the way they
 always did rather than silently losing their delete offer.
+
+## The Destination-Clash Proposal Runs at Render Time, in Two Halves (spec 034 T5.2)
+
+WHY Pass 1 renames a proposal at all, when T5.3 is the binding guard: the
+destination folder is flat, so two notes named `Dresden` cannot both live in
+it. `_dest_join` composes the destination from the title with no collision
+check, and `_disambiguate_filename` guards only the intermediate rendered file
+within one render run — never the vault destination. Under CON-2 the
+suggestions document is what the user approves, so without this the clash is
+invisible until Pass 2 refuses both moves, *after* the approval. PRD Feature 7's
+Pass-1 criteria exist so the common case never reaches that refusal.
+
+A clash is both halves, and they carry different reasons:
+
+- **run-internal** — two items in this run compose the same destination.
+- **vault** — a note already lives at the destination. Probed through the
+  reducer's existing `kado_client` (opened for the I38 daily-note check), one
+  cached `note_exists` per distinct destination.
+
+`resolve_destination_clashes` composes destinations with `_dest_join` itself —
+the same helper Pass 2 uses — so the proposal and the guard cannot disagree
+about what "the same place" means. Deriving the path a second way inside the
+reducer would put the two passes one refactor apart from silently diverging.
+
+WHY the first claimant keeps its name: renaming both, or picking by some
+quality signal, makes the document unstable across re-runs of one Pass 1. The
+claim order is render order, which is `done_items` order.
+
+WHY ` (2)` and not `_01`: `_disambiguate_filename`'s `_NN` suffix names a
+machine artifact — an intermediate rendered file the user never sees. This name
+is read, and edited, by a person; a parenthesised qualifier is what the profile
+itself already uses (` (MOC)`). The counter runs to 99 and then gives up
+silently, leaving the proposal untouched for T5.3 to refuse — 99 taken names is
+not a situation a rename rescues.
+
+## Why the Vault Half Fails Open, Twice (spec 034 T5.2)
+
+WHY a missing Kado degrades the check instead of the run: ADR-4 makes Pass 1
+advisory. The user edits the document afterwards, so no Pass-1 finding can be
+binding — T5.3 is. A check that cannot run therefore costs a convenience, not a
+safety property, and failing the run over it would trade a real capability for
+an imaginary one.
+
+Two independent fail-open points, because there are two failure shapes:
+
+1. `kado_client is None` — no Kado config, or `--no-kado` / `--fan-resolve`.
+   The vault half is not passed a probe at all; the run-internal half still
+   works.
+2. The probe raises — Kado reachable at construction, failing at call time.
+   Caught per destination and read as "not taken". **An error is not a
+   collision**: fabricating one would rename a note for no reason, and the user
+   has no way to tell that apart from a real clash.
+
+An empty `location` is not probed either. Its destination folder is not decided
+yet, so `_dest_join("", title)` is a path that means nothing to the vault; the
+run-internal comparison still catches two such claims against each other.
+
+## The Loop Was Split So the Clash Pass Could See Every Item (spec 034 T5.2)
+
+WHY `prepared` exists: the clash check must compare every item's destination
+before any of them renders, and the surviving actions are only known after
+`_enforce_coexistence`. Re-reading the result files in a second pre-pass would
+have meant re-deriving that filter, which is exactly the drift the split avoids.
+Loading is now its own pass; the render loop iterates what it produced. The
+section index still counts over `done_items`, so an unreadable item leaves the
+same gap in the SNN sequence it always did.
+
+A suppressed atomic claims no destination: it stays in the inbox and Pass 2
+emits no move for it, so counting it would invent a clash against a note that
+is never filed.
+
+`clash_reason` rides on the analyst's action dict, not on a wire action. The
+wire's `item` projection is built field by field, so the reason never reaches
+Pass 2 — deliberately. It is a sentence for the reader; the adjusted name is
+the whole of the machine-readable outcome, which is what makes the user's own
+edit indistinguishable from an untouched proposal (T5.3 depends on this).
+
+## Known Gap: Cross-Kind Destination Clashes Are Not Checked (spec 034 T5.2)
+
+WHY the check is atomic-note-only: an approved atomic and an approved MOC
+proposal can compose the same destination — an atomic named `Travel (MOC)`
+filed into the MOC folder — and neither pass sees it. Pass 2's
+`_build_create_moc_actions` dedups create_moc against create_moc (first-wins,
+merging supporting items), `_build_move_note_actions` has no guard at all, and
+this Pass-1 check compares atomics against atomics. Out of scope for T5.2 and
+not covered by T5.3's brief either.

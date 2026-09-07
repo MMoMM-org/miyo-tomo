@@ -28,3 +28,15 @@ states which half to read for what, because the failure mode is an LLM lifting
 the path into `**Suggested name:**` and titling a note
 `100 Inbox/Reise/Dresden`. Rationale for the change itself lives in
 `docs/tomo/scripts/suggestions-reducer.md`.
+
+## The Name Clash Notice (spec 034 T5.2)
+
+WHY the format gained an informational line under `**Suggested name:**`: the
+destination folder is flat, so two proposals cannot both be named `Dresden`
+there. Pass 1 now renames the later claimant and states why. The skill spells
+out that the notice is informational and that the name stays an ordinary
+editable field, because the failure mode is an LLM treating an adjusted name as
+special — re-deriving it, reverting it, or refusing the user's replacement.
+T5.3's Pass-2 guard depends on the opposite: it must not be able to tell an
+adjusted name from any other. Rationale for the check itself, including why the
+vault half fails open, lives in `docs/tomo/scripts/suggestions-reducer.md`.

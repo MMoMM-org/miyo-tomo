@@ -353,7 +353,7 @@ phase: 5
      - [ ] The user can tell two same-named suggestions apart, and each link goes to the right
            note `[ref: PRD/Business Rule 5]`
 
-- [ ] **T5.2 Pass 1 proposes a distinct name on a destination clash** `[activity: backend]`
+- [x] **T5.2 Pass 1 proposes a distinct name on a destination clash** `[activity: backend]`
 
   1. **Prime**: Read `_dest_join` (`lib/render_actions.py:484`) — it builds the destination from
      the title with no collision check — and `_disambiguate_filename` (`:444`), which guards
@@ -402,8 +402,15 @@ phase: 5
      when it is `None`.
   4. **Validate**: tests pass; `ruff` clean.
   5. **Success**:
-     - [ ] The common case never reaches the Pass-2 guard `[ref: SDD/ADR-4]`
-     - [ ] A missing Kado degrades the check, never the run
+     - [x] The common case never reaches the Pass-2 guard `[ref: SDD/ADR-4]`
+     - [x] A missing Kado degrades the check, never the run
+
+  **Out of scope, found while sweeping for destination-composition sites**: an approved
+  atomic and an approved MOC proposal can compose the same destination (an atomic named
+  `Travel (MOC)` filed into the MOC folder). `_build_create_moc_actions` dedups create_moc
+  against create_moc only, `_build_move_note_actions` has no guard, and this Pass-1 check
+  compares atomics against atomics. T5.3's brief does not cover it either. Recorded in
+  `docs/tomo/scripts/suggestions-reducer.md`, not fixed here.
 
 - [ ] **T5.3 Pass 2 validates destinations** `[activity: backend]`
 

@@ -4,7 +4,7 @@ description: Use PROACTIVELY when producing or parsing suggestions, suggestions-
 user-invocable: false
 ---
 # Suggestions Doc Format
-# version: 0.4.0
+# version: 0.5.0
 
 ## Approval Checkboxes
 
@@ -51,6 +51,22 @@ When two items in the run share a filename, every `**Source:**` and
 
 Read the alias as the item's display name. Read the target as the note to
 open. Never write the target into `**Suggested name:**` or any title.
+
+## Name Clash Notice
+
+An item whose proposed destination was already claimed — by another item in the
+run, or by a note already in the target folder — carries one extra line
+directly under its name:
+
+```
+**Suggested name:** <name>
+**Name clash:** <reason>. The suggested name above was adjusted — edit it if you prefer another.
+```
+
+The line is informational. Treat `**Suggested name:**` as an ordinary editable
+field: the user's value wins, whether they keep the adjusted name or replace
+it. Never re-derive a name from the notice, never carry the notice into a
+title, and never treat an adjusted name as different from any other.
 
 ## Suggestions-Fan Companion
 

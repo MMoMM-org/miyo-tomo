@@ -691,7 +691,7 @@ refreshing it deliberately — turning a network dependency into a reviewable di
 make the skip loud (a warning summary that names the contract left unverified), or gate it so
 CI treats an offline skip as a failure while local runs stay tolerant.
 
-### `suggestions-reducer.py` has outgrown its file, and the clash logic is the clean seam
+### The clash surface has outgrown two files — `suggestions-reducer.py` and `render_actions.py`
 
 Observed 2026-09-07 during spec 034 T5.2, raised by that task's code-quality review and
 deliberately declined at the time.
@@ -713,3 +713,30 @@ right call is to do it deliberately, as its own change, not as a rider.
 
 Best done after Phase 5 closes, when T5.2, T5.3 and T5.4 have all landed and the final shape
 of the clash logic is known. Doing it before then means refactoring code that is still moving.
+
+**Updated 2026-09-07 after T5.3.** The entry above was written during T5.2 and named only
+`suggestions-reducer.py`. T5.3 grew `tomo/scripts/lib/render_actions.py` from 1659 to 1854
+lines — equally past the Constitution's L2 ~300-500 guidance, and from the same task family.
+Naming it explicitly matters: a deferral that covers a second file only by inference from
+"the whole clash surface" is a deferral someone will read as not covering it.
+
+Two concrete seams now, not one:
+
+- `resolve_destination_clashes` / `_clash_reason` in `suggestions-reducer.py` (Pass 1).
+- `validate_destinations` in `render_actions.py` (Pass 2) — about 90 lines doing several
+  jobs: grouping claims by folded destination, consulting the vault, building the clash
+  record, computing drop and withdraw bookkeeping, and filtering the action list. Well
+  documented and thoroughly tested, so this is legibility rather than correctness, but it
+  splits cleanly along those named concerns.
+
+And one duplication that should collapse when they move: `make_folder_listing`
+(`render_actions.py`) is a near-verbatim copy of `_vault_folder_notes`
+(`suggestions-reducer.py`), including identical comments. Both cache one
+`list_dir(folder, depth=1)` per normalised destination folder, both deliberately avoid a
+per-name probe because CON-7 forbids measuring Kado's case semantics. Two copies of a
+decision is exactly the drift shape this spec hit in T5.0c, where an emitter moved and its
+paired consumer did not. The shared module is the fix, and Pass 1 and Pass 2 already share
+ground via `lib/` — `_dest_join` is imported across that boundary today.
+
+Still best done after Phase 5 closes, for the reason first recorded: T5.4 is still moving
+this code.

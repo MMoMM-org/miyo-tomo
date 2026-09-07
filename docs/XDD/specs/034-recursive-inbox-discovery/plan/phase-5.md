@@ -185,7 +185,7 @@ phase: 5
      - [ ] The `#116` guard still catches a genuinely missing source note
      - [ ] No `<inbox_path>/<stem>` composition survives in the Pass-2 render stage
 
-- [ ] **T5.0b The delete bookkeeping in `render_actions` still keys on the stem** `[activity: backend]`
+- [x] **T5.0b The delete bookkeeping in `render_actions` still keys on the stem** `[activity: backend]`
 
   Added 2026-09-06 by T5.0's implementer, which found it while sweeping for the shape and then
   proved all four cases with fixtures against post-fix code rather than leaving them inferred.

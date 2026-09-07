@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t5_4_attachment_clash_suppression.py — spec 034 T5.4.
 
 PRD Feature 8 / ADR-6. Two different files sharing a basename cannot both be
@@ -399,7 +399,25 @@ BOTH_CAUSES = [
 ]
 
 
-def test_a_note_dropped_for_a_clash_is_not_reported_as_newly_suppressed():
+# Three causes in one run, so that BOTH reports are non-empty and their
+# disjointness is a claim that can actually be violated:
+#   - `Ufer.jpg` under `Bilder/` and `Reise/` both lose to `Places/Ufer.jpg`;
+#   - `Elbe` in two folders claim one destination, and one of those two ALSO
+#     owns a refused attachment — the note both passes could report.
+# A fixture where the only attachment-owning note is also the clashing one
+# leaves `suppression_withdrawals` empty by construction, and an intersection
+# against the empty set holds however the withdrawal logic behaves.
+MIXED_CAUSES = [
+    _atomic(ROOT_NOTE, "Root note takeaway", idx=1, attachments=[UFER_PLACES]),
+    _atomic("100 Inbox/Wasser/Elbe.md", "Elbe", idx=2),
+    _atomic(ELBE_REISE, "Elbe", idx=3, attachments=[UFER_REISE],
+            audio_peer="100 Inbox/Reise/Elbe.m4a"),
+    _atomic("100 Inbox/Bilder/Fahrt.md", "Fahrt", idx=4,
+            attachments=["100 Inbox/Bilder/Ufer.jpg"]),
+]
+
+
+def test_a_move_already_dropped_by_the_clash_guard_is_a_no_op_here():
     kept, clashes, suppressions = _both_passes(BOTH_CAUSES)
     assert len(clashes) == 1 and len(clashes[0]["dropped"]) == 2
     assert [m["title"] for m in _moves(kept)] == ["Dresden"]
@@ -420,23 +438,125 @@ def test_a_note_dropped_for_a_clash_is_not_reported_as_newly_suppressed():
 
 
 def test_neither_report_counts_the_same_withdrawn_delete_twice():
-    _kept, clashes, suppressions = _both_passes(BOTH_CAUSES)
+    _kept, clashes, suppressions = _both_passes(MIXED_CAUSES)
     clash_withdrawals = [p for c in clashes for p in c["withdrawn_deletes"]]
     suppression_withdrawals = [
         p for s in suppressions for p in s["withdrawn_deletes"]
     ]
+    # Both sides must have something to overlap, or the intersection below is
+    # true by construction and pins nothing.
+    assert sorted(clash_withdrawals) == [
+        "100 Inbox/Reise/Elbe.m4a", ELBE_REISE, "100 Inbox/Wasser/Elbe.md",
+    ], clash_withdrawals
+    assert suppression_withdrawals == ["100 Inbox/Bilder/Fahrt.md"], (
+        suppression_withdrawals
+    )
+
     overlap = set(clash_withdrawals) & set(suppression_withdrawals)
     assert overlap == set(), (
         "one delete can only be withdrawn once; counted twice, the audit "
         f"subtracts it twice and reports drift on a correct set: {overlap}"
     )
-    assert ELBE_REISE in clash_withdrawals
 
 
 def test_the_composed_run_still_files_the_untouched_note():
     kept, _clashes, _suppressions = _both_passes(BOTH_CAUSES)
     assert [m["title"] for m in _moves(kept)] == ["Dresden"]
     assert _assets(kept) == [UFER_PLACES]
+
+
+def _drive_render(monkeypatch, tmp_path, pairs) -> Path:
+    """Drive the real `instruction-render.main()` over `pairs`.
+
+    The two post-passes compose only because `instruction-render.py` calls
+    them in that order, and nothing in the module enforces it. Every other
+    test in this file hardcodes the order in its own helper, so none of them
+    would notice a reordering. This one reads the order out of the source
+    under test instead of restating it.
+    """
+    from unittest.mock import MagicMock
+
+    ir = _load("instruction_render_t5_4", "instruction-render.py")
+    built = _build(pairs)
+    suggestions_file = tmp_path / "suggestions.json"
+    suggestions_file.write_text(json.dumps({
+        "confirmed_items": [{
+            "id": "S01", "action": None, "title": "placeholder",
+            "source_path": "", "tags": [], "parent_mocs": [], "candidate_mocs": [],
+        }],
+        "daily_updates": [], "skipped": [],
+    }), encoding="utf-8")
+    cfg_file = tmp_path / "vault-config.yaml"
+    cfg_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(ir, "load_config", lambda _p: {
+        "concepts.inbox": INBOX, "profile": "miyo", "callouts.editable": ["NOTE"],
+    })
+    monkeypatch.setattr(ir, "KadoClient", lambda: MagicMock())
+    monkeypatch.setattr(
+        ir, "build_actions",
+        lambda *_a, **_kw: ([dict(a) for a in built[0]], [dict(s) for s in built[1]]),
+    )
+    monkeypatch.setattr(ir, "resolve_target_moc_paths", lambda _a, _c: 0)
+    monkeypatch.setattr(ir, "resolve_section_names", lambda *_a, **_kw: 0)
+    monkeypatch.setattr(ir, "_validate_action_paths", lambda _a: [])
+
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "instruction-render.py", "--suggestions", str(suggestions_file),
+        "--output-dir", str(out_dir), "--config", str(cfg_file),
+    ])
+    assert isinstance(ir.main(), int)
+    return out_dir
+
+
+def test_the_clash_guard_still_sees_both_claimants_in_the_real_call_order():
+    """Order-sensitive, and asserted through the module that fixes the order.
+
+    `Reise/Elbe` owns a refused attachment AND contests `Elbe.md` with
+    `Wasser/Elbe`. Suppressing it first would leave `Wasser/Elbe` the sole
+    claimant, so the destination guard would find no clash and file it — into
+    the path the other note was contesting, which is the overwrite ADR-4
+    exists to stop. The destination guard must therefore run first.
+    """
+    kept, clashes, suppressions = _both_passes(MIXED_CAUSES)
+    assert len(clashes[0]["dropped"]) == 2, (
+        "both Elbe claimants must be dropped; one surviving means the clash "
+        f"was evaluated after a claimant had already been removed: {clashes}"
+    )
+    assert [m["title"] for m in _moves(kept)] == ["Root note takeaway"]
+    assert [s["attachment"] for s in suppressions] == ["100 Inbox/Bilder/Ufer.jpg"]
+
+
+def test_the_real_render_stage_composes_the_two_passes_in_that_order(
+    monkeypatch, tmp_path
+):
+    out_dir = _drive_render(monkeypatch, tmp_path, MIXED_CAUSES)
+    doc = json.loads((out_dir / "instructions.json").read_text(encoding="utf-8"))
+    tomo = doc["tomo"]
+
+    moves = [a["title"] for a in doc["actions"] if a["action"] == "move_note"]
+    assert moves == ["Root note takeaway"], (
+        "with the passes reversed, `Wasser/Elbe` becomes the sole claimant "
+        f"and is filed into the path `Reise/Elbe` was contesting: {moves}"
+    )
+    assert len(tomo["destination_clashes"][0]["dropped"]) == 2
+    assert [s["attachment"] for s in tomo["attachment_suppressions"]] == [
+        "100 Inbox/Bilder/Ufer.jpg",
+    ]
+    clash_withdrawals = {
+        p for c in tomo["destination_clashes"] for p in c["withdrawn_deletes"]
+    }
+    suppression_withdrawals = {
+        p for s in tomo["attachment_suppressions"] for p in s["withdrawn_deletes"]
+    }
+    assert clash_withdrawals & suppression_withdrawals == set()
+    deletes = {a["source_path"] for a in doc["actions"]
+               if a["action"] == "delete_source"}
+    assert deletes == {ROOT_NOTE}, (
+        "every withheld note keeps its source; only the filed note's origin "
+        f"is deleted: {deletes}"
+    )
 
 
 # ---------------------------------------------------------------------------

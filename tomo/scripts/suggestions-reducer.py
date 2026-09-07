@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.42.0
+# version: 1.43.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -298,9 +298,31 @@ def source_link_targets(items: list[tuple[str, str, dict]]) -> dict[str, str]:
     return targets
 
 
+def _clash_reason(claimed_dest: str, holder: str, in_run: bool) -> str:
+    """The sentence under a renamed proposal, in the four shapes it takes.
+
+    `holder` is the destination already spoken for, spelled the way it is
+    actually written — the run's earlier claim, or the vault's own filename.
+    When it differs from `claimed_dest` only in case the reason SAYS so: on a
+    case-sensitive filesystem the two are visibly different names, and a bare
+    "already exists" would read as a bug in Tomo rather than a warning.
+    """
+    where = (
+        "another item in this run already proposes"
+        if in_run
+        else "a note already exists at"
+    )
+    if holder == claimed_dest:
+        return f"{where} `{holder}`"
+    return (
+        f"{where} `{holder}`, which differs from `{claimed_dest}` only in case "
+        "— the filesystem may treat the two as one file"
+    )
+
+
 def resolve_destination_clashes(
     claims: list[tuple[str, str, str]],
-    dest_taken=None,
+    folder_listing=None,
 ) -> dict[str, tuple[str, str]]:
     """claim_id -> (adjusted title, reason) for each claim whose destination
     was already spoken for.
@@ -311,44 +333,52 @@ def resolve_destination_clashes(
     claim on a destination keeps its name; later ones are renamed, which makes
     the outcome stable across re-runs of one document.
 
-    `dest_taken(destination) -> bool` probes the vault for a note already
-    living there. `None` skips the vault half entirely and leaves the
-    run-internal half working: ADR-4 makes Pass 1 advisory and T5.3 the binding
-    guard, so a check that cannot run costs a convenience, not a safety
-    property. A claim with no location is not probed — its destination folder
-    is not yet decided, so there is nothing to probe against.
+    Destinations are compared case-folded (CON-6). Folding is the fail-safe
+    direction, not a claim about the filesystem: not folding on a folding
+    filesystem loses a note silently, folding on a case-sensitive one costs a
+    rename the user can undo. Only the comparison folds — every destination the
+    caller displays keeps the casing it was written with.
+
+    `folder_listing(location) -> dict[str, str]` returns the notes already in
+    that folder as {case-folded destination: the path as the vault spells it}.
+    `None` skips the vault half entirely and leaves the run-internal half
+    working: ADR-4 makes Pass 1 advisory and T5.3 the binding guard, so a check
+    that cannot run costs a convenience, not a safety property. A claim with no
+    location is not looked up — its destination folder is not decided yet, so
+    there is nothing to look up.
 
     Claims that keep their name are absent from the result: the caller renames
     exactly what this returns and leaves everything else byte-identical.
     """
     adjustments: dict[str, tuple[str, str]] = {}
-    claimed: set[str] = set()
+    # case-folded destination -> the destination as its claimant wrote it
+    claimed: dict[str, str] = {}
 
     for claim_id, location, title in claims:
-        # An empty location has no folder to probe; the run-internal half still
-        # compares the two claims against each other.
-        probe = dest_taken if (location or "").strip() else None
+        existing: dict[str, str] = {}
+        if folder_listing and (location or "").strip():
+            existing = folder_listing(location)
+
         base = _dest_join(location, title)
-        if base not in claimed and not (probe and probe(base)):
-            claimed.add(base)
+        key = base.casefold()
+        holder = claimed.get(key) or existing.get(key)
+        if holder is None:
+            claimed[key] = base
             continue
 
-        reason = (
-            f"another item in this run already proposes `{base}`"
-            if base in claimed
-            else f"a note already exists at `{base}`"
-        )
+        reason = _clash_reason(base, holder, key in claimed)
         for n in range(2, 101):
             candidate = f"{title} ({n})"
             dest = _dest_join(location, candidate)
-            if dest not in claimed and not (probe and probe(dest)):
+            dest_key = dest.casefold()
+            if dest_key not in claimed and dest_key not in existing:
                 adjustments[claim_id] = (candidate, reason)
-                claimed.add(dest)
+                claimed[dest_key] = dest
                 break
         else:
             # 99 taken names is not a situation a rename can rescue; leave the
             # proposal untouched and let T5.3's Pass-2 guard refuse the move.
-            claimed.add(base)
+            claimed.setdefault(key, base)
 
     return adjustments
 
@@ -1941,15 +1971,28 @@ def main() -> int:
     # cannot both live in it. Rename the later claimant before the user reads
     # the document; T5.3 is the binding guard (ADR-4), this is the proposal
     # that keeps the common case from ever reaching it.
-    _dest_probe_cache: dict[str, bool] = {}
+    # One listing per distinct destination folder, not one probe per
+    # destination: a folded comparison needs the folder's real filenames, and
+    # an existence probe would only answer the question Kado's own case
+    # semantics decide — which CON-7 forbids this spec from measuring.
+    _folder_cache: dict[str, dict[str, str]] = {}
 
-    def _vault_dest_taken(destination: str) -> bool:
-        if destination not in _dest_probe_cache:
+    def _vault_folder_notes(location: str) -> dict[str, str]:
+        if location not in _folder_cache:
+            found: dict[str, str] = {}
             try:
-                _dest_probe_cache[destination] = kado_client.note_exists(destination)
+                for entry in kado_client.list_dir(location, depth=1):
+                    path = entry.get("path") or ""
+                    name = path.rsplit("/", 1)[-1]
+                    if entry.get("type") != "file" or not name.lower().endswith(".md"):
+                        continue
+                    # Recompose through _dest_join so both sides of the
+                    # comparison are built by the same helper.
+                    found[_dest_join(location, name[:-3]).casefold()] = path
             except Exception:  # noqa: BLE001 — an error is not a collision
-                _dest_probe_cache[destination] = False
-        return _dest_probe_cache[destination]
+                found = {}
+            _folder_cache[location] = found
+        return _folder_cache[location]
 
     clash_claims: list[tuple[str, str, str]] = []
     claim_actions: dict[str, dict] = {}
@@ -1967,7 +2010,7 @@ def main() -> int:
                 (action.get("suggested_title") or "").strip() or stem,
             ))
     for claim_id, (adjusted_title, reason) in resolve_destination_clashes(
-        clash_claims, _vault_dest_taken if kado_client else None
+        clash_claims, _vault_folder_notes if kado_client else None
     ).items():
         claim_actions[claim_id]["suggested_title"] = adjusted_title
         claim_actions[claim_id]["clash_reason"] = reason

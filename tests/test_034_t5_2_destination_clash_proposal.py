@@ -123,10 +123,11 @@ def _atomic_result(
 class FakeKado:
     """The reducer's Kado client, reduced to what Pass 1 asks of it.
 
-    `occupied` is the set of vault paths that already hold a note. `raises`
-    turns every probe into a transport failure, which is the unreachable-Kado
-    shape (the constructor succeeding and the calls failing) — distinct from
-    a missing config, where the constructor itself raises.
+    `occupied` is the set of vault paths that already hold a note; `list_dir`
+    serves them the way Kado does, as entries under a folder. `raises` turns
+    every call into a transport failure, which is the unreachable-Kado shape
+    (the constructor succeeding and the calls failing) — distinct from a
+    missing config, where the constructor itself raises.
     """
 
     def __init__(self, occupied: set[str] | None = None, raises: bool = False):
@@ -134,11 +135,16 @@ class FakeKado:
         self.raises = raises
         self.probed: list[str] = []
 
-    def note_exists(self, path: str) -> bool:
+    def list_dir(self, path: str, *, depth: int | None = None, limit: int = 500) -> list:
         self.probed.append(path)
         if self.raises:
             raise RuntimeError("kado unreachable")
-        return path in self.occupied
+        prefix = path.rstrip("/") + "/"
+        return [
+            {"path": p, "type": "file", "modified": 1716300000000, "size": 100}
+            for p in sorted(self.occupied)
+            if p.startswith(prefix) and "/" not in p[len(prefix):]
+        ]
 
 
 def _reduce(
@@ -265,8 +271,8 @@ def test_a_destination_occupied_in_the_vault_is_renamed(tmp_path):
         f"a note already lives at {sorted(OCCUPIED)[0]} — the proposal must "
         f"not target it: {names}"
     )
-    assert f"{NOTES}Dresden.md" in kado.probed, (
-        f"the destination was never probed: {kado.probed}"
+    assert NOTES in kado.probed, (
+        f"the destination folder was never listed: {kado.probed}"
     )
 
 
@@ -313,6 +319,63 @@ def test_an_unreachable_kado_never_fabricates_a_collision(tmp_path):
     )
     assert RE_CLASH.findall(doc) == []
     assert kado.probed, "the probe must have been attempted, not skipped"
+
+
+# ---------------------------------------------------------------------------
+# 3b. Two names differing only in case are one destination (CON-6)
+# ---------------------------------------------------------------------------
+# Folding is the fail-safe direction, not a claim about the filesystem: not
+# folding on a folding filesystem loses a note silently and unrecoverably,
+# folding on a case-sensitive one costs a rename the user can undo. CON-7
+# forbids measuring which filesystem is underneath, so the assumption taken is
+# the one that survives being wrong.
+
+CASE_RUN = {
+    DRESDEN_PLACES: _atomic_result("Dresden", DRESDEN_PLACES, "Dresden"),
+    DRESDEN_REISE: _atomic_result("Dresden", DRESDEN_REISE, "dresden"),
+    ROOT_NOTE: _atomic_result("Root Note", ROOT_NOTE, "Root note takeaway"),
+}
+
+
+def test_two_run_items_differing_only_in_case_are_one_destination(tmp_path):
+    doc = _reduce(tmp_path, CASE_RUN, "t5-2-case-run")
+    names = RE_SUGGESTED_NAME.findall(doc)
+    assert "Dresden" in names, "the first claimant keeps its name"
+    assert "dresden" not in names, (
+        f"`Dresden` and `dresden` are one file on a folding filesystem: {names}"
+    )
+
+
+def test_a_case_only_run_clash_says_the_names_differ_only_in_case(tmp_path):
+    doc = _reduce(tmp_path, CASE_RUN, "t5-2-case-run-reason")
+    reasons = RE_CLASH.findall(doc)
+    assert len(reasons) == 1, f"expected one reason, got {reasons}"
+    assert "only in case" in reasons[0], (
+        "on a case-sensitive filesystem these are two visibly different names — "
+        f"a bare collision notice would read as a Tomo bug: {reasons[0]!r}"
+    )
+    # Both casings, as their authors wrote them.
+    assert f"`{NOTES}Dresden.md`" in reasons[0], reasons[0]
+    assert f"`{NOTES}dresden.md`" in reasons[0], reasons[0]
+
+
+def test_a_vault_note_differing_only_in_case_is_a_clash(tmp_path):
+    # The user proposes `dresden`; the vault already spells it `Dresden`.
+    run = {
+        DRESDEN_PLACES: _atomic_result("Dresden", DRESDEN_PLACES, "dresden"),
+        ROOT_NOTE: _atomic_result("Root Note", ROOT_NOTE, "Root note takeaway"),
+    }
+    doc = _reduce(tmp_path, run, "t5-2-case-vault", kado=FakeKado(occupied=OCCUPIED))
+    assert "dresden" not in RE_SUGGESTED_NAME.findall(doc), (
+        f"{sorted(OCCUPIED)[0]} already holds that file: "
+        f"{RE_SUGGESTED_NAME.findall(doc)}"
+    )
+    reasons = RE_CLASH.findall(doc)
+    assert len(reasons) == 1, f"expected one reason, got {reasons}"
+    assert "only in case" in reasons[0], reasons[0]
+    # The vault's own spelling, not the folded key or the user's casing.
+    assert f"`{NOTES}Dresden.md`" in reasons[0], reasons[0]
+    assert f"`{NOTES}dresden.md`" in reasons[0], reasons[0]
 
 
 # ---------------------------------------------------------------------------

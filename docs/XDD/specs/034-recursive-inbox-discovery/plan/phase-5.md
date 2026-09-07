@@ -405,6 +405,14 @@ phase: 5
      - [x] The common case never reaches the Pass-2 guard `[ref: SDD/ADR-4]`
      - [x] A missing Kado degrades the check, never the run
 
+  **Retrofitted 2026-09-07** for the case-folding requirement `656cc68` added to T5.3, so both
+  passes agree on what "the same place" means. Destinations compare `casefold()`-equal in both
+  halves; only the comparison folds, and `_clash_reason` shows each destination spelled the way
+  its author wrote it plus, on a case-only clash, the words "differs … only in case". The vault
+  half reads one `list_dir(location, depth=1)` per destination folder rather than probing
+  `note_exists` per destination — a probe would answer only what Kado's own case semantics
+  decide, which CON-7 forbids this spec from measuring.
+
   **Out of scope, found while sweeping for destination-composition sites**: an approved
   atomic and an approved MOC proposal can compose the same destination (an atomic named
   `Travel (MOC)` filed into the MOC folder). `_build_create_moc_actions` dedups create_moc

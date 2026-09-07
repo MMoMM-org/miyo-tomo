@@ -754,9 +754,9 @@ Pass-1 criteria exist so the common case never reaches that refusal.
 A clash is both halves, and they carry different reasons:
 
 - **run-internal** — two items in this run compose the same destination.
-- **vault** — a note already lives at the destination. Probed through the
+- **vault** — a note already lives at the destination. Read through the
   reducer's existing `kado_client` (opened for the I38 daily-note check), one
-  cached `note_exists` per distinct destination.
+  cached `list_dir(location, depth=1)` per distinct destination folder.
 
 `resolve_destination_clashes` composes destinations with `_dest_join` itself —
 the same helper Pass 2 uses — so the proposal and the guard cannot disagree
@@ -787,14 +787,51 @@ Two independent fail-open points, because there are two failure shapes:
 1. `kado_client is None` — no Kado config, or `--no-kado` / `--fan-resolve`.
    The vault half is not passed a probe at all; the run-internal half still
    works.
-2. The probe raises — Kado reachable at construction, failing at call time.
+2. The listing raises — Kado reachable at construction, failing at call time.
    Caught per destination and read as "not taken". **An error is not a
    collision**: fabricating one would rename a note for no reason, and the user
    has no way to tell that apart from a real clash.
 
-An empty `location` is not probed either. Its destination folder is not decided
+An empty `location` is not listed either. Its destination folder is not decided
 yet, so `_dest_join("", title)` is a path that means nothing to the vault; the
 run-internal comparison still catches two such claims against each other.
+
+## Destinations Compare Case-Folded, and the Reason Says When That Mattered (spec 034 T5.2)
+
+WHY fold at all: CON-6 records this filesystem as case-insensitive, verified on
+this host. Compared as exact strings, `Dresden` and `dresden` are two
+destinations; on the filesystem they are one file, so the guard built to
+prevent a silent overwrite would wave the overwrite through.
+
+WHY fold anyway, when Tomo is not only run here: on a case-sensitive filesystem
+those really are two files, and folding invents a clash. The decision is not a
+guess about which filesystem is underneath — it is the asymmetry between the
+two ways of being wrong.
+
+| | case-insensitive FS | case-sensitive FS |
+|---|---|---|
+| fold | correct — the overwrite is prevented | false clash → renamed, reported, user edits — **recoverable** |
+| do not fold | **silent overwrite — unrecoverable** | correct |
+
+It also cannot be settled by measurement: CON-7 forbids any task in this spec
+from a live vault run, so nothing here may probe Kado's own case semantics.
+That is the second reason the vault half reads a folder listing rather than
+issuing `note_exists` per destination — an existence probe would answer only
+the question Kado's case handling decides, and that answer is exactly the one
+this spec is not allowed to obtain. A listing returns the folder's real
+filenames, so the fold happens in Tomo where it can be reasoned about, and it
+costs one call per folder instead of one per destination.
+
+Only the comparison folds. `_clash_reason` shows both destinations spelled the
+way their authors wrote them — the run's earlier claim, or the vault's own
+filename — and on a case-only clash it says *"which differs from … only in
+case"*. Without that sentence a user on a case-sensitive filesystem reads a
+collision notice against two visibly different names and concludes Tomo is
+broken.
+
+WHY `casefold()` and not `.lower()`: `.lower()` is a locale-naive subset.
+`casefold()` is the operation defined for caseless matching, and the vault
+holds German notes where it is the difference that matters (`ß` folds to `ss`).
 
 ## The Loop Was Split So the Clash Pass Could See Every Item (spec 034 T5.2)
 

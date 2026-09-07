@@ -424,16 +424,44 @@ phase: 5
 
   1. **Prime**: Read `[ref: SDD/Complex Logic]` — the four-action walkthrough — and
      `_build_move_asset_actions` (`lib/render_actions.py:630-690`) as the reporting pattern to
-     follow. Note the deliberate difference: that guard is first-claim-wins, this one drops both
-     `[ref: SDD/ADR-4]`.
+     follow.
+
+     **Copy its reporting shape, invert its resolution.** That guard is **first-claim-wins**: the
+     first attachment keeps the destination and the second is skipped. This one drops **both**
+     claimants `[ref: SDD/ADR-4]`, because choosing between two names the user set deliberately
+     would itself be a guess. The two behaviours look alike in the code and differ in the one
+     place that matters, so a shape copied without noticing the inversion ships a guard that
+     keeps one claimant — which is the silent overwrite this task exists to prevent, wearing the
+     appearance of a working guard.
   2. **Test** (RED):
      - the user edits two approved items to one name → **neither** move is emitted, and the
        clash is reported prominently `[ref: PRD/AC Feature 7]`
      - a name clashing with a note already in the target folder → same treatment
      - the user corrects one name and re-runs → both are emitted normally, no need to restart
-       the run
+       the run. **Test this as statelessness of the guard, not as an edit round-trip**: invoke
+       the validation pass with clashing input and assert both are dropped, then invoke it again
+       with corrected input and assert both are emitted. It must carry nothing between
+       invocations — no memo of the earlier clash, no suppression that outlives the input that
+       caused it. The markdown-edit path is already covered by the relocated case below; do not
+       re-test the parser here, or this case ends up proving the parser works while saying
+       nothing about the guard
      - a run with no clash emits exactly the actions it emits today — whole-list comparison,
-       not selected fields
+       not selected fields.
+
+       **Capture the baseline BEFORE writing any implementation, and commit it first.** There is
+       no golden action list in this repo — the two earlier fixes in this phase both pointed at
+       a rendered-document golden, and no equivalent exists for `build_actions`' output. So one
+       must be made, and the order is what makes it evidence rather than a tautology:
+
+       1. On the current HEAD, with no T5.3 code written, drive a no-clash fixture through the
+          real `build_actions` and record the whole action list to a fixture file.
+       2. Commit that fixture on its own, before the implementation.
+       3. Implement, then assert the same fixture's action list is unchanged.
+
+       Recording it after the change would pin whatever the new code happens to produce — the
+       exact circularity T5.1's and T5.2's regression cases were blocked for. Note in the
+       fixture's own header which commit produced it, as `tests/fixtures/034-t3-4-flat-golden/`
+       does
      - **Two names differing only in case are a clash** — `Dresden` and `dresden` → neither move
        is emitted, same treatment as any other clash. Assert it for both halves: two items in
        the run, and an item against a note already in the target folder
@@ -468,10 +496,23 @@ phase: 5
   case semantics. Do not try; assume the folding filesystem and say so in the report.
 
   3. **Implement**: a validation pass over the built action list, run after `build_actions`,
-     that removes clashing claimants and records a report. Check surviving destinations against
-     the vault. Compare destinations case-insensitively per the block above, and keep the
-     original casing in the report — a user told their name collides needs to see the name they
-     actually typed.
+     that removes clashing claimants and records a report. Compare destinations
+     case-insensitively per the block above, and keep the original casing in the report — a user
+     told their name collides needs to see the name they actually typed.
+
+     **Reach the vault the way T5.2 does: one cached `list_dir(folder, depth=1)` per distinct
+     destination folder, never a per-name `note_exists` probe.** This is not a style preference.
+     A probe returns whatever Kado's own case semantics decide, and CON-7 forbids this spec from
+     running against a live vault to find out what those are — so a probe would make the guard's
+     correctness depend on an unmeasured behaviour. A listing returns the folder's real
+     filenames, which puts the fold in Tomo where a test can reach it, and supplies the vault's
+     own spelling for the report. T5.2 arrived at this deliberately (`suggestions-reducer.py`,
+     `_vault_folder_notes`); read it before choosing an approach here. If the proposal and the
+     guard consult the vault differently, they will disagree about what is taken — which is the
+     same drift that produced T5.0c one file over.
+
+     Cache the listing per normalised folder, not per raw `location` string: T5.2 shipped that
+     bug and fixed it in `00edb7e`, where a trailing slash produced two listings for one folder.
   4. **Validate**: tests pass; `ruff` clean.
   5. **Success**:
      - [ ] A clash cannot reach the executor `[ref: PRD/AC Feature 7]`

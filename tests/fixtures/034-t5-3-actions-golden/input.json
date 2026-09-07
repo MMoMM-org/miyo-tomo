@@ -1,0 +1,119 @@
+{
+  "_comment": "Inputs to lib.render_actions.build_actions for the spec-034 T5.3 no-clash regression baseline. See README.md.",
+  "cfg": {
+    "concepts.inbox": "100 Inbox/",
+    "concepts.asset": "Atlas/290 Assets/295 Attachments/",
+    "concepts.calendar.granularities.daily.path": "Calendar/301 Daily/",
+    "daily_log.heading": "Daily Log",
+    "daily_log.heading_level": 2,
+    "callouts.editable": ["note"]
+  },
+  "manifest": [
+    {
+      "action": "create_moc",
+      "title": "Reise (MOC)",
+      "rendered_file": "2026-09-07_1000_reise-moc.md",
+      "destination": "Atlas/200 MOCs/",
+      "source_path": "Reisenotizen",
+      "item_key": "100 Inbox/Reise/Reisenotizen.md",
+      "template": "MOC",
+      "parent_moc": "Atlas/200 MOCs/Atlas (MOC).md",
+      "tags": ["moc"],
+      "supporting_items": "S01, S02"
+    },
+    {
+      "action": "create_atomic_note",
+      "title": "Dresden",
+      "rendered_file": "2026-09-07_1001_dresden.md",
+      "destination": "Atlas/202 Notes/",
+      "source_path": "Dresden",
+      "item_key": "100 Inbox/Places/Dresden.md",
+      "parent_mocs": ["Atlas/200 MOCs/Orte (MOC).md"],
+      "tags": ["ort"],
+      "attachments": []
+    },
+    {
+      "action": "create_atomic_note",
+      "title": "Elbe",
+      "rendered_file": "2026-09-07_1002_elbe.md",
+      "destination": "Atlas/202 Notes/",
+      "source_path": "Elbe",
+      "item_key": "100 Inbox/Reise/Elbe.md",
+      "audio_peer": "100 Inbox/Reise/Elbe.m4a",
+      "parent_mocs": ["Atlas/200 MOCs/Orte (MOC).md"],
+      "tags": ["fluss"],
+      "attachments": ["100 Inbox/Images/Elbe.jpg"]
+    },
+    {
+      "action": "create_atomic_note",
+      "title": "Kaffee",
+      "rendered_file": "2026-09-07_1003_kaffee.md",
+      "destination": "Atlas/202 Notes/",
+      "source_path": "Kaffee",
+      "item_key": "100 Inbox/Kaffee.md",
+      "parent_mocs": [],
+      "tags": [],
+      "attachments": []
+    }
+  ],
+  "confirmed": [
+    {
+      "id": "S00",
+      "action": "create_moc",
+      "title": "Reise (MOC)",
+      "source_path": "Reisenotizen",
+      "item_key": "100 Inbox/Reise/Reisenotizen.md",
+      "parent_mocs": ["Atlas/200 MOCs/Atlas (MOC).md"],
+      "supporting_items": "S01, S02"
+    },
+    {
+      "id": "S01",
+      "title": "Dresden",
+      "source_path": "Dresden",
+      "item_key": "100 Inbox/Places/Dresden.md",
+      "parent_mocs": ["Atlas/200 MOCs/Orte (MOC).md"]
+    },
+    {
+      "id": "S02",
+      "title": "Elbe",
+      "source_path": "Elbe",
+      "item_key": "100 Inbox/Reise/Elbe.md",
+      "parent_mocs": ["Atlas/200 MOCs/Orte (MOC).md"]
+    },
+    {
+      "id": "S03",
+      "title": "Kaffee",
+      "source_path": "Kaffee",
+      "item_key": "100 Inbox/Kaffee.md",
+      "parent_mocs": []
+    }
+  ],
+  "daily_updates": [
+    {
+      "date": "2026-09-07",
+      "daily_note_path": "Calendar/301 Daily/2026-09-07.md",
+      "trackers": [],
+      "log_entries": [
+        {
+          "accepted": true,
+          "content": "Tagebucheintrag zur Elbfahrt",
+          "time": "09:30",
+          "source_stem": "Tagebuch",
+          "source_item_key": "100 Inbox/Reise/Tagebuch.md",
+          "reason": "Fully captured in the daily note."
+        }
+      ],
+      "log_links": []
+    }
+  ],
+  "skipped": [
+    {
+      "id": "S04",
+      "title": "Werbung",
+      "source_path": "Werbung",
+      "item_key": "100 Inbox/Werbung.md",
+      "disposition": "delete_source",
+      "reason": "No lasting value."
+    }
+  ]
+}

@@ -590,10 +590,21 @@ Trace:
    `…/295 Attachments/Dresden.jpg` by I02 and I04.
 2. **Note clash** — I01 and I03 both target one file. Neither is emitted. Choosing a winner
    between two names the user set deliberately would itself be a guess (ADR-4).
-3. **Attachment clash** — I02 and I04 both target one file. Neither is emitted, and each
-   suppresses its own note's move (ADR-6). I01 and I03 are already gone, so this changes
-   nothing here; in a run where only the attachments clashed, it is what keeps a note from
-   being filed away from its image.
+3. **Attachment clash** — I02 and I04 both target one file. Unlike the note clash above, this
+   is **first-claim-wins**: I02 is filed, I04 is skipped, and only I04's own note's move is
+   suppressed (ADR-6). Nothing is lost by declining to file a second file over the first,
+   whereas choosing between two *names* the user set would be a guess — which is why the two
+   guards resolve differently. I01 and I03 are already gone, so this changes nothing here; in
+   a run where only the attachments clashed, it is what keeps a note from being filed away
+   from its image.
+
+   *Corrected 2026-09-07.* This step previously read "Neither is emitted", contradicting
+   PRD Feature 8's second acceptance criterion (`requirements.md:335-336` — the first note and
+   its attachment are filed normally) and the PRD's own footnote at `:313-316`, which names
+   the contrast explicitly. The code has always been first-claim-wins
+   (`_build_move_asset_actions`' `claimed` dict); the walkthrough was the thing that was
+   wrong. Found by T5.4's implementer, which followed the PRD and reported the conflict rather
+   than resolving it by editing either document on its own authority.
 4. Check each surviving destination against the vault. A hit is treated as a clash.
 5. Report every removal in the instruction set, naming both claimants.
 

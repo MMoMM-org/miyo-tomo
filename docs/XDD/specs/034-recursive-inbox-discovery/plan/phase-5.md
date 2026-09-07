@@ -227,6 +227,16 @@ phase: 5
   2. **Test** (RED): each of the four proven cases — two confirmed namesakes; `keep_source` on one
      only; two daily-only namesakes; one confirmed plus one daily-only. Assert **both** sources are
      handled, and that each reason string names the note that actually caused it.
+
+     **Reachability guardrail.** A test that cannot reach the defect is not RED. The reachability
+     table above is not background — it dictates how each case must be driven. Cases 1-2 are
+     wire-path-only today, so exercise them by calling `_build_delete_source_actions` directly
+     (the established pattern in `tests/test_instruction_render_delete_source_completion_gate.py`)
+     or through a wire-path fixture. Driven through a markdown-path fixture they never reach the
+     function at all — the `#116` filter drops them first — and pass vacuously while the defect
+     lives. Cases 3-4 are live on both paths and must be asserted on both. Prove every one of the
+     four non-vacuous by reverting the fix and observing it fail; a self-reported "confirmed RED"
+     without that revert is not evidence.
   3. **Implement**: key the six collections on `item_key`. The OQ6 gate's denominator changes
      meaning — state what it now counts and why that is right, rather than making it pass.
   4. **Validate**: tests pass; `ruff` clean; the emitted shape is unchanged (CON-4).

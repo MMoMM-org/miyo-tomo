@@ -456,3 +456,64 @@ the wire carries no key, while the markdown path leaves it None. Real documents
 always carry the key (the doc schema requires it with `minLength: 1`), so the
 two agree in practice; `tests/test_suggestions_wire_golden.py` strips the field
 from both sides for its parity compare and says why.
+
+## A Source Link's DISPLAY Text Is Parsed, Not Its Target (spec 034 T5.1)
+
+WHY `_wikilink_display` exists beside `_extract_wikilink`, and why the two
+Source-line sites use it: T5.1 path-qualifies a source link when two items in a
+run share a filename, so the renderer now emits
+`**Source:** [[100 Inbox/Places/Dresden|Dresden]]`. `RE_WIKILINK` captures the
+TARGET and drops the alias, which would have put `100 Inbox/Places/Dresden`
+into `source_path` and into a log entry's `source_stem`.
+
+WHY that is wrong even though the value would have been more precise:
+
+- `build_from_wire` records the bare `stem` in the same field, with the comment
+  that identity lives in `item_key` and this field is display. Taking the
+  target on the markdown path makes the two parser paths disagree exactly when
+  a collision occurs — the one case they exist to handle — while
+  `tests/test_suggestions_wire_golden.py` proves parity on a fixture that has
+  no collision and so cannot see it.
+- `test_034_t2_8_end_to_end_key_trace.py` asserts no confirmed item's
+  `source_path` contains a `/`. That is ADR-2 applied to the parsed output, and
+  it was written knowing T5.1 was coming.
+- Identity was already solved: `main()` mints `item_key` by joining the
+  suggestions doc on the suggestion id. A path in the display field buys
+  nothing and costs the invariant.
+
+The Force-Atomic join (`_item_key_of(source_path)` against
+`_item_key_of(source_stem)`) keys both sides through the same display value, so
+it continues to match. It also continues to collapse two namesakes onto one
+join key — unchanged by this task, which is display-only, and noted here so it
+is not mistaken for something T5.1 introduced.
+
+An unaliased link is returned verbatim, so every pre-T5.1 document parses
+exactly as it did. The site that genuinely wants the path — Force-Atomic
+resolution in `inbox-triage.py` — reads the raw link and hands it to
+`narrow_candidates`, which strips the alias itself and narrows on the path.
+That site is unchanged and was already written for the qualified form.
+
+### The `build_from_wire` Fallback: Reviewed Under T5.1, Deliberately Kept
+
+T5.1 was asked to decide whether to make both paths agree on `None` rather than
+inherit the asymmetry recorded above. The decision is to keep it, for reasons
+that are about where the defect actually lives, not about effort:
+
+- **The parser is not its origin.** `suggestions-render.py` writes
+  `"item_key": section.get("item_key") or section["stem"]` into the wire, for
+  "a section minted before item_key became required". So a stem reaches the
+  `item_key` field one hop upstream. Returning `None` in `build_from_wire`
+  would not remove the violation; it would only move where it becomes visible.
+- **`None` and absent are not the same shape.** The markdown path omits the
+  field; the wire path would set it to `None`. The golden parity test strips it
+  from both sides either way, so the change buys no new assertion.
+- **It flips an invariant every Pass-2 consumer relies on.** `item_key` is
+  currently always truthy on `confirmed_items[]`, which is what T5.0's
+  key-addressed Pass 2 was built against. Making it sometimes falsy inside a
+  display task — with no test able to reach the branch through the real
+  emitter, because the doc schema requires the key with `minLength: 1` — is how
+  a silent regression gets in.
+
+What this needs is a back-compat decision about pre-034 wires, taken where the
+fallback is minted, with the Pass-2 consumers swept. That is a task; it is not
+a rename in the parser.

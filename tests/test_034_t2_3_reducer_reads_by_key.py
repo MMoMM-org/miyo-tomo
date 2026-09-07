@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_034_t2_3_reducer_reads_by_key.py — the reducer joins on item_key, renders stem.
 
 Covers T2.3 (XDD 034 Phase 2). Three defects live in `suggestions-reducer.py`
@@ -15,7 +15,9 @@ today, and this file pins all three:
      is one shared helper in `lib/`, keyed on `item_key`.
 
 `stem` stays display-only (ADR-2): the guard below asserts no rendered title and
-no wikilink in the emitted document carries a path-derived value.
+no wikilink DISPLAY text in the emitted document carries a path-derived value.
+Spec 034 T5.1 later made a source link's TARGET path-qualified on a filename
+collision; the guard follows the alias, so the property it pins is unchanged.
 
 Spec: docs/XDD/specs/034-recursive-inbox-discovery/
 """
@@ -335,7 +337,8 @@ def test_two_items_sharing_a_filename_read_their_own_result_file(tmp_path):
 
 
 def test_no_rendered_title_or_link_carries_a_path_derived_key(tmp_path):
-    """The hazard that reaches the vault: a path in a title or a `[[link]]`.
+    """The hazard that reaches the vault: a path in a title, or a `[[link]]`
+    whose DISPLAY text is path-derived.
 
     Scoped to rendered titles and wikilinks specifically, and asserted as a
     property of the whole document rather than per known site — a leak at a
@@ -344,7 +347,15 @@ def test_no_rendered_title_or_link_carries_a_path_derived_key(tmp_path):
     Two sites in the reducer emit a wikilink that legitimately contains `/`:
     `_location_link` (`[[Atlas/202 Notes/]]`, a folder) and the tag-handler
     group's source-path links. Neither is an item link, and neither is
-    exercised by this fixture, so the guard stays unweakened here.
+    exercised by this fixture.
+
+    Spec 034 T5.1 added a third, which this fixture DOES exercise: a source
+    link is path-qualified once two items in the run share a filename, so the
+    user can tell the two suggestions apart and each link opens its own note.
+    The guard is not dropped for it — it is applied to the link's display text
+    instead of its raw form, which is the property ADR-2 actually asserts. A
+    qualified link must carry an alias, and that alias must be the bare
+    filename; an unaliased path in a link is still a failure.
     """
     key_places = f"{INBOX_PREFIX}Places/Dresden.md"
     key_reise = f"{INBOX_PREFIX}Reise/Dresden.md"
@@ -366,9 +377,27 @@ def test_no_rendered_title_or_link_carries_a_path_derived_key(tmp_path):
 
     links = _wikilinks(doc)
     assert links, "fixture rendered no wikilinks — the guard would be vacuous"
+    qualified = 0
     for link in links:
         assert ".md" not in link, f"wikilink carries a filename extension: [[{link}]]"
-        assert INBOX_PREFIX not in link, f"wikilink carries a path-derived key: [[{link}]]"
+        if INBOX_PREFIX in link:
+            assert "|" in link, (
+                f"wikilink carries a path-derived key with no alias: [[{link}]]"
+            )
+            target, display = link.split("|", 1)
+            assert target in (key_places[:-3], key_reise[:-3]), (
+                f"a qualified link names something that is not an item: [[{link}]]"
+            )
+            qualified += 1
+        else:
+            display = link
+        assert INBOX_PREFIX not in display, (
+            f"wikilink DISPLAY text carries a path-derived key: [[{link}]]"
+        )
+    assert qualified == 2, (
+        "the two namesakes did not both get a path-qualified source link — "
+        f"the collision guard is vacuous here: {links}"
+    )
 
     titles = _rendered_titles(doc)
     assert titles, "fixture rendered no titles — the guard would be vacuous"

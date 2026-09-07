@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.30.0
+# version: 0.31.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -58,6 +58,11 @@ RE_FIELD = re.compile(r"^\s*\*\*([^*]+)\*\*[:\s]*(.*)")
 
 # Wikilink: [[Note Name]]  or  [[Note Name#anchor]]
 RE_WIKILINK = re.compile(r"\[\[([^\]#|]+)(?:[#|][^\]]*)?\]\]")
+
+# The same link, with its alias kept: group 1 = target, group 2 = alias or None.
+RE_WIKILINK_ALIASED = re.compile(
+    r"\[\[([^\]#|]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]"
+)
 
 # Source field value: backtick or plain path
 RE_SOURCE = re.compile(r"`([^`]+)`|(\S+\.md)")
@@ -147,6 +152,26 @@ def _extract_wikilink(text: str) -> str | None:
     """Return the first wikilink target found, or None."""
     m = RE_WIKILINK.search(text)
     return m.group(1).strip() if m else None
+
+
+def _wikilink_display(text: str) -> str | None:
+    """Return the first wikilink's DISPLAY text — its alias, else its target.
+
+    A source link is path-qualified with an alias only when two items in the
+    run share a filename (spec 034 T5.1): `[[100 Inbox/Places/Dresden|Dresden]]`.
+    The path is the vault's way of saying WHICH note; the alias is the bare
+    filename the document shows. Identity comes from `item_key`, so the parsed
+    display value stays the bare stem on both parser paths (ADR-2) — the wire
+    path records `stem` in the same field, and the two must agree.
+
+    An unaliased link is returned verbatim, so every pre-T5.1 document parses
+    exactly as it did.
+    """
+    m = RE_WIKILINK_ALIASED.search(text)
+    if not m:
+        return None
+    alias = m.group(2)
+    return alias.strip() if alias and alias.strip() else m.group(1).strip()
 
 
 def _moc_path_stem(ref: str | None) -> str:
@@ -743,11 +768,17 @@ def parse_section(
                 result["source_path"] = src.group(1) or src.group(2)
             else:
                 # Voice source set: "[[stem]] + [[audio.m4a]]" → stem + peer.
-                # RE_WIKILINK.findall captures ALL wikilinks; index 0 is the
-                # transcript stem, index 1 (when present) is the audio peer basename.
-                wikilinks = RE_WIKILINK.findall(val)
-                result["source_path"] = wikilinks[0].strip() if wikilinks else val
-                result["audio_peer"] = wikilinks[1].strip() if len(wikilinks) >= 2 else None
+                # findall captures ALL wikilinks; index 0 is the transcript
+                # stem, index 1 (when present) is the audio peer basename.
+                # The DISPLAY text is taken, not the target: a path-qualified
+                # source link (spec 034 T5.1) carries the bare stem as its
+                # alias, and `source_path` stays that bare stem (ADR-2).
+                wikilinks = [
+                    (alias.strip() if alias and alias.strip() else target.strip())
+                    for target, alias in RE_WIKILINK_ALIASED.findall(val)
+                ]
+                result["source_path"] = wikilinks[0] if wikilinks else val
+                result["audio_peer"] = wikilinks[1] if len(wikilinks) >= 2 else None
 
         elif key == "type":
             # "#type/note/normal" or "fleeting_note (confidence: 0.85)"
@@ -1685,7 +1716,7 @@ def parse_daily_updates(text: str) -> list[dict]:
             pending_item["reason"] = stripped.split(":", 1)[1].strip()
             continue
         if stripped.startswith("- Source:") and pending_item:
-            wl = _extract_wikilink(stripped)
+            wl = _wikilink_display(stripped)
             if wl:
                 pending_item["source_stem"] = wl
             continue

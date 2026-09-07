@@ -39,9 +39,10 @@ WHICH PATHS THIS PROVES: both. The hop-by-hop trace runs the ADR-026
 `synthesis-conductor.md` flow invokes is traced separately in
 TestMarkdownPathAlsoCarriesTheKey — it recovers each item's key from the
 `--suggestions-doc` sibling rather than from the rendered markdown, which
-carries only a bare display stem. What remains for Phase 5 T5.1 is the
-DISPLAY problem: both namesakes still render `[[Dresden]]`, so the user
-cannot tell them apart even though Tomo now can.
+carries only a bare display stem. Phase 5 T5.1 then closed the DISPLAY half:
+two namesakes no longer render the identical `[[Dresden]]`. Identity and
+display are asserted separately here — the parsed display value must stay a
+bare stem on both paths even though the rendered LINK is now qualified.
 
 CON-7: fixtures and fakes only. No live vault, no live Kado, no Docker.
 """
@@ -49,6 +50,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -594,8 +596,27 @@ class TestMarkdownPathAlsoCarriesTheKey:
         confirmed = traced["parsed_md"]["confirmed_items"]
         assert all("/" not in (c["source_path"] or "") for c in confirmed)
 
-    def test_markdown_still_renders_bare_source_links(self, traced):
-        """Why T5.1 is still needed: the review document's Source links remain
-        bare, so both namesakes render the identical `[[Dresden]]` and the USER
-        cannot tell them apart — a display problem, now separate from identity."""
-        assert traced["markdown"].count("**Source:** [[Dresden]]") == 2
+    def test_the_two_source_links_are_now_distinguishable(self, traced):
+        """Was `test_markdown_still_renders_bare_source_links`, which pinned the
+        gap T5.1 then closed: both namesakes used to render the identical
+        `[[Dresden]]`, so the USER could not tell them apart in the document
+        they approve. T5.1 path-qualifies a source link on collision. The
+        identity assertions above are unchanged — they are what this class is
+        for, and they must keep holding through the display change."""
+        md = traced["markdown"]
+        assert md.count("**Source:** [[Dresden]]") == 0, (
+            "a colliding namesake still renders a bare, ambiguous source link"
+        )
+        links = re.findall(r"^\*\*Source:\*\* \[\[([^\]]+)\]\]", md, re.MULTILINE)
+        dresden = [ln for ln in links if ln.endswith("|Dresden")]
+        assert len(dresden) == 2 and len(set(dresden)) == 2, (
+            f"the two namesakes do not carry distinct source links: {links}"
+        )
+        for ln in dresden:
+            target, alias = ln.split("|", 1)
+            assert alias == "Dresden", (
+                f"the alias must keep the display text bare (ADR-2): {ln}"
+            )
+            assert f"{target}.md" in (DRESDEN_PLACES, DRESDEN_REISE), (
+                f"the qualified link does not name a real namesake: {ln}"
+            )

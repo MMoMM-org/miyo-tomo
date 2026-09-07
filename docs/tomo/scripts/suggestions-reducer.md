@@ -652,3 +652,90 @@ of one identity computation is how #165 happened, so the fix is one function in
 The `#116` `run_id` filter that scopes the work list to the current run is
 applied on top of the replay exactly as before — it is what stops an
 append-only state file from re-emitting proposals for prior runs.
+
+## Source Links Are Path-Qualified Only on a Filename Collision (spec 034 T5.1)
+
+WHY the source link is no longer always `[[<stem>]]`: recursive discovery
+(Phase 3) lets two inbox notes in different subfolders share a filename, and
+both then rendered `[[Dresden]]`. Under CON-2 the suggestions document is what
+the user approves, and there they could not tell the two suggestions apart. The
+vault compounds it: a bare wikilink resolves by name, so clicking either link
+opens whichever note Obsidian picks.
+
+WHY `[[<path>|<stem>]]` and not some other disambiguator: it is what the vault
+itself writes when two files share a basename (`[[100 Inbox/Images/Test|Test]]`,
+recorded in the spec README). Anything Tomo invented would have to be explained
+to the user; this form already reads as "that Dresden" to anyone who has renamed
+a duplicate in Obsidian. The alias is load-bearing, not decoration — it keeps
+the DISPLAY text a bare filename, which is what ADR-2 actually asserts.
+
+WHY collision-only: qualifying every link would change every document, and a
+flat inbox — still the common case — has nothing to disambiguate. The
+regression guard is the pre-Phase-1 golden
+(`tests/fixtures/034-t3-4-flat-golden/suggestions.md`, asserted whole-string by
+`tests/test_034_t3_4_phase3_gate.py`): a run with no collision must render
+byte-identically to the pipeline at `ee44cb3`. A leak fails it on the whole
+document string, not on selected fields.
+
+WHY the collision set is computed from `done_items` AFTER the `--fan-resolve`
+filter: it is exactly the set of items this document renders. Deciding on the
+unfiltered list would qualify a link whose namesake never appears, which the
+reader cannot make sense of. Vault-wide ambiguity — a namesake outside the
+inbox — is out of reach here and deliberately not attempted: the reducer sees
+the run, not the vault.
+
+WHY `source_link` is a separate value threaded into the renderers, rather than
+`stem` being rewritten before dispatch: `stem` is also the fallback for
+`suggested_title`, the key of `section_titles` / `title_to_suggestion_id`, and
+the `stem` field of every emitted section. Rewriting it would name a subfolder
+note `100 Inbox/Reise/Dresden|Dresden` and put a path into fields ADR-2
+reserves for identity and display respectively. The renderers therefore take
+both: `stem` for names, `source_link` for the one wikilink.
+
+Every source-link site takes it. They were enumerated by reading the file, not
+from a count — this spec was bitten four times by a code shape existing in
+several copies while a plan named one:
+
+| site | link |
+|---|---|
+| `render_create_atomic_note` | `**Source:** [[…]]` (and the ` + [[peer]]` voice form) |
+| `render_suppressed_atomic` | `**Source:** [[…]]` |
+| `render_link_to_moc` | `**Source:** [[…]]` |
+| `render_create_moc` | `**Source:** [[…]]` |
+| `render_modify_note` | `**Source:** [[…]]` |
+| `render_daily_notes_updates_block` | `- Source: [[…]]` on a tracker |
+| `render_daily_notes_updates_block` | `- Source: [[…]]` on a log entry |
+| `render_daily_notes_updates_block` | `- [ ] Delete [[…]]` |
+
+Deliberately NOT qualified, and why each is a different concern:
+
+- `### [[<daily stem>]]`, `**Material für [[…]]**` — daily notes, not inbox
+  items. A daily note's name is a date; it does not collide.
+- `- [[<target_stem>]]` under Possible Log Links — the target is a note that
+  does not exist yet (a proposed atomic's title). A path would be fiction.
+- the audio peer in `**Source:** [[stem]] + [[peer.m4a]]` — the peer is a
+  sibling file, not an item in the run, so the run's collision set says nothing
+  about it. Two audio peers sharing a basename would still render alike; that
+  needs its own index and is not this task's claim.
+- `_location_link`, `_template_link`, MOC and tag-handler links — not source
+  links.
+
+## The Daily Delete Offer Keys on `item_key` (spec 034 T5.1)
+
+WHY `daily_only_stems` became `daily_only_keys`, and `deletable_sources` holds
+keys: two namesakes both fully captured in a daily note are two deletions, and
+a stem-keyed set holds one. Worse than the missing offer is the mixed case —
+one namesake daily-only, the other not — where the membership test matched on
+the shared filename and offered the wrong note for deletion. Renaming the set
+was also the precondition for qualifying the link: a bare stem cannot be turned
+back into the path it came from, so without the key there is nothing to qualify
+with.
+
+This is display bookkeeping local to the renderer; it never leaves the function.
+The emitted `delete_source` actions are a separate mechanism, re-keyed by T5.0b
+in `lib/render_actions.py`.
+
+`_entry_key` falls back to `source_stem` when an entry carries no
+`source_item_key`. Entries built by this run always carry one; the fallback is
+for hand-built and pre-spec-034 entries, which keep rendering the way they
+always did rather than silently losing their delete offer.

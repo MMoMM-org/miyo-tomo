@@ -4,7 +4,7 @@ description: Use PROACTIVELY when producing or parsing suggestions, suggestions-
 user-invocable: false
 ---
 # Suggestions Doc Format
-# version: 0.3.0
+# version: 0.4.0
 
 ## Approval Checkboxes
 
@@ -41,6 +41,16 @@ When ticked, the item gets a fan companion analysis before synthesis.
 - [ ] Approved
 - [ ] Force Atomic Note
 ```
+
+When two items in the run share a filename, every `**Source:**` and
+`- Source:` link for those items carries the path plus an alias instead:
+
+```
+**Source:** [[<vault-relative path without .md>|<stem>]]
+```
+
+Read the alias as the item's display name. Read the target as the note to
+open. Never write the target into `**Suggested name:**` or any title.
 
 ## Suggestions-Fan Companion
 

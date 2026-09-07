@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.40.0
+# version: 1.41.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -18,7 +18,8 @@ Outputs:
 
 Rendering rules (replicated from the retired suggestion-builder format):
   - `### SNN — <suggested title>` heading (in orchestrator render step)
-  - `**Source:** [[<stem>]]`
+  - `**Source:** [[<stem>]]`, or `[[<path>|<stem>]]` when two items in the
+    run share a filename (spec 034 T5.1 — display only, ADR-2)
   - `**New tags to add:** <csv>` (omitted when empty)
   - `**Link to MOC:**` with pre-checked boxes
   - `**Why:**` 1-2 sentences (from classification signals)
@@ -265,6 +266,45 @@ def demote_structural_anchors(action: dict, stem: str) -> int:
     return demoted
 
 
+def source_link_targets(items: list[tuple[str, str, dict]]) -> dict[str, str]:
+    """item_key -> the wikilink TARGET to render for that item's source note.
+
+    Bare stem while the filename is unique in this run; `<path>|<stem>` — the
+    path plus an alias, which is what the vault itself writes for a duplicate
+    basename — once two items in the run share one. Display only (ADR-2): the
+    caller keeps `stem` for names and `item_key` for identity; neither is
+    rewritten here.
+
+    `items` is the run's (stem, item_key, entry) work list.
+    """
+    counts: dict[str, int] = {}
+    for stem, _key, _entry in items:
+        counts[stem] = counts.get(stem, 0) + 1
+    targets: dict[str, str] = {}
+    for stem, key, _entry in items:
+        if not key:
+            continue
+        if counts.get(stem, 0) > 1:
+            path = key[:-3] if key.endswith(".md") else key
+            targets[key] = f"{path}|{stem}"
+        else:
+            targets[key] = stem
+    return targets
+
+
+def resolve_source_link(
+    source_links: dict[str, str] | None, item_key: str | None, stem: str
+) -> str:
+    """The link target for one item, falling back to the bare stem.
+
+    An absent key, or an item the map does not know about, renders exactly as
+    it did before this spec — a document is never worse off for a missing key.
+    """
+    if source_links and item_key:
+        return source_links.get(item_key) or stem
+    return stem
+
+
 def _template_link(template: str) -> str:
     """Render a template reference as a wikilink (bare name, no .md).
 
@@ -367,16 +407,21 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     return actions
 
 
-def render_create_atomic_note(action: dict, stem: str, moc_suffix: str) -> str:
+def render_create_atomic_note(
+    action: dict, stem: str, moc_suffix: str, source_link: str | None = None
+) -> str:
     lines: list[str] = []
+    # `title` stays the bare stem on fallback even when `link` is qualified —
+    # the suggested NAME of a subfolder note is `Dresden`, never a path.
     title = (action.get("suggested_title") or "").strip() or stem
+    link = source_link or stem
     audio_peer = action.get("audio_peer")
     if audio_peer:
         # Basename only; preserve extension (.m4a etc) — never coerce to .md (ADR-1).
         peer_name = audio_peer.rsplit("/", 1)[-1]
-        lines.append(f"**Source:** [[{stem}]] + [[{peer_name}]]")
+        lines.append(f"**Source:** [[{link}]] + [[{peer_name}]]")
     else:
-        lines.append(f"**Source:** [[{stem}]]")
+        lines.append(f"**Source:** [[{link}]]")
     lines.append(f"**Suggested name:** {title}")
     summary = (action.get("summary") or "").strip()
     if summary:
@@ -455,7 +500,9 @@ def render_create_atomic_note(action: dict, stem: str, moc_suffix: str) -> str:
     return "\n".join(lines)
 
 
-def render_suppressed_atomic(action: dict, stem: str) -> str:
+def render_suppressed_atomic(
+    action: dict, stem: str, source_link: str | None = None
+) -> str:
     """Light block for a sub-0.5-worthiness atomic the reducer suppressed (#88).
 
     Deliberately omits the template / location / MOC / Approve / Skip /
@@ -473,7 +520,7 @@ def render_suppressed_atomic(action: dict, stem: str) -> str:
     pct = f"{int(worthiness * 100)}%" if worthiness is not None else "below 50%"
     summary = (action.get("summary") or "").strip()
     lines = [
-        f"**Source:** [[{stem}]]",
+        f"**Source:** [[{source_link or stem}]]",
         f"**Suggested name:** {title}",
     ]
     if summary:
@@ -519,13 +566,15 @@ def _daily_note_stem(path: str) -> str:
     return segments[-1] if segments else p
 
 
-def render_link_to_moc(action: dict, stem: str) -> str:
+def render_link_to_moc(
+    action: dict, stem: str, source_link: str | None = None
+) -> str:
     # AC-11: never emit a bare [[Target#section]] wikilink.
     # section_name was a dead field (section_name was never reliably populated
     # by the analyst — spec 022 uses the anchor field on candidate_mocs instead).
     target = action.get("target_moc", "")
     return (
-        f"**Source:** [[{stem}]]\n"
+        f"**Source:** [[{source_link or stem}]]\n"
         f"**Link to existing MOC:** [[{target}]]\n"
         "\n**Decision (link to MOC):**\n- [x] Approve"
     )
@@ -579,23 +628,27 @@ def _enrich_proposed_mocs(
         )
 
 
-def render_create_moc(action: dict, stem: str, moc_suffix: str) -> str:
+def render_create_moc(
+    action: dict, stem: str, moc_suffix: str, source_link: str | None = None
+) -> str:
     moc_title = _ensure_moc_suffix(action.get("moc_title", ""), moc_suffix)
     parent = action.get("parent_moc", "")
     return (
-        f"**Source:** [[{stem}]]\n"
+        f"**Source:** [[{source_link or stem}]]\n"
         f"**Create new MOC:** {moc_title}\n"
         f"**Parent MOC:** [[{parent}]]\n"
         "\n**Decision (create MOC):**\n- [x] Approve"
     )
 
 
-def render_modify_note(action: dict, stem: str) -> str:
+def render_modify_note(
+    action: dict, stem: str, source_link: str | None = None
+) -> str:
     target = action.get("target_path", "")
     desc = action.get("diff_description", "")
     link = target[:-3] if target.endswith(".md") else target
     return (
-        f"**Source:** [[{stem}]]\n"
+        f"**Source:** [[{source_link or stem}]]\n"
         f"**Modify note:** [[{link}]]\n"
         f"**Change:** {desc}\n"
         "\n**Decision (modify note):**\n- [x] Approve"
@@ -604,16 +657,43 @@ def render_modify_note(action: dict, stem: str) -> str:
 
 def render_daily_notes_updates_block(
     daily_notes_updates: list[dict],
-    daily_only_stems: set[str] | None = None,
+    daily_only_keys: set[str] | None = None,
+    source_links: dict[str, str] | None = None,
 ) -> str:
-    """Render the ## Daily Notes Updates section from daily_notes_updates[]."""
+    """Render the ## Daily Notes Updates section from daily_notes_updates[].
+
+    `daily_only_keys` holds item_keys, not stems: two namesakes both fully
+    captured in a daily note are two separate deletions, and a stem-keyed set
+    offers only one of them (and, on a partial overlap, offers it for the
+    wrong note). `source_links` maps item_key -> wikilink target so each
+    rendered source and delete offer names the note it actually means.
+    """
     if not daily_notes_updates:
         return ""
-    daily_only_stems = daily_only_stems or set()
+    daily_only_keys = daily_only_keys or set()
     lines: list[str] = ["## Daily Notes Updates", ""]
-    # Collect all source stems referenced across all date entries
-    # to show delete suggestions at the end
+    # Item keys whose content is fully captured above — one delete offer each.
     deletable_sources: set[str] = set()
+
+    def _entry_key(e: dict) -> str:
+        """An entry's identity, falling back to its display stem.
+
+        The fallback keeps a hand-built or pre-spec-034 entry rendering the
+        way it always did rather than silently losing its delete offer.
+        """
+        return e.get("source_item_key") or e.get("source_stem") or ""
+
+    def _entry_link(e: dict) -> str:
+        return resolve_source_link(
+            source_links, e.get("source_item_key"), e.get("source_stem") or ""
+        )
+
+    def _key_link(key: str) -> str:
+        """Link target for a key held only in `deletable_sources`."""
+        if source_links and key in source_links:
+            return source_links[key]
+        basename = key.rsplit("/", 1)[-1]
+        return basename[:-3] if basename.endswith(".md") else basename
 
     for entry in daily_notes_updates:
         stem = entry["daily_note_stem"]
@@ -638,10 +718,10 @@ def render_daily_notes_updates_block(
                 value_str = "true" if t["value"] is True else ("false" if t["value"] is False else str(t["value"]))
                 lines.append(f"- **{t['field']}** → `{value_str}`")
                 lines.append(f"  - Reason: {t['reason']}")
-                lines.append(f"  - Source: [[{t['source_stem']}]] ({t['source_section']})")
+                lines.append(f"  - Source: [[{_entry_link(t)}]] ({t['source_section']})")
                 lines.append("  - [ ] Accept")
-                if t["source_stem"] in daily_only_stems:
-                    deletable_sources.add(t["source_stem"])
+                if _entry_key(t) in daily_only_keys:
+                    deletable_sources.add(_entry_key(t))
             lines.append("")
 
         log_entries = entry.get("log_entries") or []
@@ -652,7 +732,7 @@ def render_daily_notes_updates_block(
                 time_str = le.get("time") or position
                 lines.append(f"- {time_str} — {le['content']}")
                 lines.append(f"  - Reason: {le['reason']}")
-                lines.append(f"  - Source: [[{le['source_stem']}]]")
+                lines.append(f"  - Source: [[{_entry_link(le)}]]")
                 lines.append("  - [ ] Accept")
                 # Force Atomic Note: always available under every log_entry.
                 # Even when the source already has an atomic-note suggestion
@@ -664,8 +744,8 @@ def render_daily_notes_updates_block(
                     "  - [ ] Force Atomic Note "
                     "(create/keep a standalone note for this item)"
                 )
-                if le["source_stem"] in daily_only_stems:
-                    deletable_sources.add(le["source_stem"])
+                if _entry_key(le) in daily_only_keys:
+                    deletable_sources.add(_entry_key(le))
             lines.append("")
 
         log_links = entry.get("log_links") or []
@@ -683,8 +763,8 @@ def render_daily_notes_updates_block(
     # Sources whose content is fully captured in daily note(s) — offer deletion
     if deletable_sources:
         lines.append("**Delete source notes (content fully captured above):**")
-        for src in sorted(deletable_sources):
-            lines.append(f"- [ ] Delete [[{src}]]")
+        for src in sorted(deletable_sources, key=lambda k: (_key_link(k), k)):
+            lines.append(f"- [ ] Delete [[{_key_link(src)}]]")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
@@ -706,10 +786,10 @@ def render_log_link_mirror(log_links_for_stem: list[dict]) -> str:
     return "\n".join(lines)
 
 
-# Renderers with a uniform (action, stem) contract, dispatched by kind in the
-# main loop. `create_atomic_note` and `create_moc` are NOT in this map: both need
-# the profile-resolved `moc_suffix`, so they are dispatched explicitly (W1/W2,
-# F-55) rather than special-casing a 3-arg callable inside a 2-arg dict.
+# Renderers with a uniform (action, stem, source_link) contract, dispatched by
+# kind in the main loop. `create_atomic_note` and `create_moc` are NOT in this
+# map: both need the profile-resolved `moc_suffix`, so they are dispatched
+# explicitly (W1/W2, F-55) rather than special-casing a 4-arg callable here.
 RENDERERS = {
     "link_to_moc": render_link_to_moc,
     "modify_note": render_modify_note,
@@ -1691,6 +1771,11 @@ def main() -> int:
         done_items = [t for t in done_items if _has_force_atomic(t[1])]
         failed_entries = []  # resolve doc does not surface other failures
 
+    # spec 034 T5.1: computed AFTER the fan-resolve filter, so the collision set
+    # is exactly the items this document will render. `source_links` is display
+    # text (ADR-2) — `stem` and `item_key` below are untouched by it.
+    source_links = source_link_targets(done_items)
+
     sections: list[dict] = []
     # F-43 T1.5: clustering moved to `lib.topic_clusters.build_topic_clusters`.
     # We now collect a flat list of candidates while looping over actions and
@@ -1705,8 +1790,9 @@ def main() -> int:
     daily_path_by_stem: dict[str, str] = {}
     # stem -> [(daily_note_stem, time, reason)] for Material für mirror
     stem_log_links: dict[str, list[dict]] = {}
-    # stems whose content is fully captured in daily note(s) — source can be deleted
-    daily_only_stems: set[str] = set()
+    # item_keys whose content is fully captured in daily note(s) — source can
+    # be deleted. Keyed on item_key, not stem: two namesakes are two deletions.
+    daily_only_keys: set[str] = set()
     # F-41 T1: global flat counter for suggestion_ids (S01, S02, …); increments
     # for every rendered create_atomic_note across all sources.  Daily-only items
     # (0 atomics) do NOT increment this counter.
@@ -1749,6 +1835,7 @@ def main() -> int:
         result = merge_resolved_attachments(result, resolved_attachments)
 
         section_id = f"S{idx:02d}"
+        source_link = resolve_source_link(source_links, item_key, stem)
         rendered_actions: list[dict] = []
         had_update_daily = False
         # F-41: index atomics within this source so each gets a distinct
@@ -1789,14 +1876,16 @@ def main() -> int:
                 if action.get("suppressed"):
                     # #88: sub-0.5 atomic — render a light "kept in inbox" block
                     # instead of the full atomic-note proposal.
-                    rendered = render_suppressed_atomic(action, stem)
+                    rendered = render_suppressed_atomic(action, stem, source_link)
                 else:
                     # #71 gate backstop: demote structural-heading tier-1 anchors
                     # in place BEFORE render + persist (both read candidate_mocs).
                     structural_demotions += demote_structural_anchors(action, stem)
-                    rendered = render_create_atomic_note(action, stem, moc_suffix)
+                    rendered = render_create_atomic_note(
+                        action, stem, moc_suffix, source_link
+                    )
             elif kind == "create_moc":
-                rendered = render_create_moc(action, stem, moc_suffix)
+                rendered = render_create_moc(action, stem, moc_suffix, source_link)
             elif kind == "update_daily":
                 # Do NOT render the per-item `**Daily update:**` /
                 # `**Decision (daily update):**` block — the aggregated
@@ -1873,7 +1962,7 @@ def main() -> int:
                 renderer = RENDERERS.get(kind)
                 if not renderer:
                     continue
-                rendered = renderer(action, stem)
+                rendered = renderer(action, stem, source_link)
             if rendered is not None:
                 rendered_action: dict = {"kind": kind, "rendered_md": rendered}
                 # F-41 T1: assign a flat global suggestion_id to each rendered
@@ -1956,7 +2045,7 @@ def main() -> int:
         # (create_atomic_note, etc.) still get a per-item section; the
         # atomic decision lives there, the daily decision stays at the top.
         if had_update_daily and not rendered_actions:
-            daily_only_stems.add(stem)
+            daily_only_keys.add(item_key)
         if rendered_actions:
             sections.append({
                 "id": section_id,
@@ -2015,7 +2104,9 @@ def main() -> int:
     daily_notes_updates = sorted(daily_groups.values(), key=lambda d: d["daily_note_stem"])
     daily_notes_updates_sorted = daily_notes_updates
     rendered_daily_updates_md = render_daily_notes_updates_block(
-        daily_notes_updates_sorted, daily_only_stems=daily_only_stems
+        daily_notes_updates_sorted,
+        daily_only_keys=daily_only_keys,
+        source_links=source_links,
     )
 
     # spec 024 T3.3: load tag-handler group-results (additive — missing dir = [])

@@ -17,3 +17,14 @@ WHY: Force Atomic Note is a per-item opt-in, not a document-level flag. A user m
 ## Tomo Frontmatter State Table
 
 WHY: The state mapping (doc_type to valid states) is documented here rather than in tomo-lifecycle-states because it describes the data format of the frontmatter block — what fields exist and what values are valid. The lifecycle skill covers transitions and promotion logic. The boundary: this skill says "what the frontmatter looks like," the lifecycle skill says "how it changes."
+
+## The Aliased Source Link (spec 034 T5.1)
+
+WHY the format gained a second Source-line shape: recursive inbox discovery
+lets two notes in different subfolders share a filename, and both used to
+render `[[Dresden]]`. The reducer now emits `[[<path>|<stem>]]` for those
+items only — the vault's own convention for a duplicate basename. The skill
+states which half to read for what, because the failure mode is an LLM lifting
+the path into `**Suggested name:**` and titling a note
+`100 Inbox/Reise/Dresden`. Rationale for the change itself lives in
+`docs/tomo/scripts/suggestions-reducer.md`.

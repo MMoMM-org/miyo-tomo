@@ -1,0 +1,119 @@
+{
+  "actions": [
+    {
+      "id": "I01",
+      "action": "move_note",
+      "source": "100 Inbox/2026-09-07_1001_dresden.md",
+      "destination": "Atlas/202 Notes/Dresden.md",
+      "title": "Dresden",
+      "rendered_file": "2026-09-07_1001_dresden.md",
+      "source_inbox_item": "100 Inbox/Places/Dresden.md",
+      "audio_peer": null,
+      "parent_mocs": [
+        "Orte (MOC)"
+      ],
+      "tags": [
+        "ort"
+      ],
+      "applied": false
+    },
+    {
+      "id": "I02",
+      "action": "move_note",
+      "source": "100 Inbox/2026-09-07_1002_elbe.md",
+      "destination": "Atlas/202 Notes/Elbe.md",
+      "title": "Elbe",
+      "rendered_file": "2026-09-07_1002_elbe.md",
+      "source_inbox_item": "100 Inbox/Reise/Elbe.md",
+      "audio_peer": "100 Inbox/Reise/Elbe.m4a",
+      "parent_mocs": [
+        "Orte (MOC)"
+      ],
+      "tags": [
+        "fluss"
+      ],
+      "applied": false
+    },
+    {
+      "id": "I03",
+      "action": "move_note",
+      "source": "100 Inbox/2026-09-07_1003_kaffee.md",
+      "destination": "Atlas/202 Notes/Kaffee.md",
+      "title": "Kaffee",
+      "rendered_file": "2026-09-07_1003_kaffee.md",
+      "source_inbox_item": "100 Inbox/Kaffee.md",
+      "audio_peer": null,
+      "parent_mocs": [],
+      "tags": [],
+      "applied": false
+    },
+    {
+      "id": "I04",
+      "action": "move_asset",
+      "source": "100 Inbox/Images/Elbufer.jpg",
+      "destination": "Atlas/290 Assets/295 Attachments/Elbufer.jpg",
+      "applied": false
+    },
+    {
+      "id": "I05",
+      "action": "link_to_moc",
+      "target_moc": "Orte (MOC)",
+      "target_moc_path": null,
+      "anchor": {
+        "type": "callout",
+        "value": null
+      },
+      "placement": "after",
+      "new_section": null,
+      "fit_confidence": null,
+      "line_to_add": "- [[Dresden]]",
+      "source_note_title": "Dresden",
+      "applied": false
+    },
+    {
+      "id": "I06",
+      "action": "link_to_moc",
+      "target_moc": "Orte (MOC)",
+      "target_moc_path": null,
+      "anchor": {
+        "type": "callout",
+        "value": null
+      },
+      "placement": "after",
+      "new_section": null,
+      "fit_confidence": null,
+      "line_to_add": "- [[Elbe]]",
+      "source_note_title": "Elbe",
+      "applied": false
+    },
+    {
+      "id": "I07",
+      "action": "delete_source",
+      "source_path": "100 Inbox/Places/Dresden.md",
+      "reason": "Origin consumed by 1 atomic.",
+      "applied": false
+    },
+    {
+      "id": "I08",
+      "action": "delete_source",
+      "source_path": "100 Inbox/Reise/Elbe.md",
+      "reason": "Origin consumed by 1 atomic.",
+      "applied": false
+    },
+    {
+      "id": "I09",
+      "action": "delete_source",
+      "source_path": "100 Inbox/Reise/Elbe.m4a",
+      "reason": "Audio peer of consumed origin.",
+      "applied": false
+    },
+    {
+      "id": "I10",
+      "action": "delete_source",
+      "source_path": "100 Inbox/Kaffee.md",
+      "reason": "Origin consumed by 1 atomic.",
+      "applied": false
+    }
+  ],
+  "skipped_assets": []
+}

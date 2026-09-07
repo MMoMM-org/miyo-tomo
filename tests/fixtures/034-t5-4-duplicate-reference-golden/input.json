@@ -1,0 +1,72 @@
+{
+  "_comment": "Inputs to lib.render_actions.build_actions for the spec-034 T5.4 duplicate-reference baseline. One file embedded by two notes — a duplicate reference, NOT a clash. See README.md.",
+  "cfg": {
+    "concepts.inbox": "100 Inbox/",
+    "concepts.asset": "Atlas/290 Assets/295 Attachments/",
+    "concepts.calendar.granularities.daily.path": "Calendar/301 Daily/",
+    "daily_log.heading": "Daily Log",
+    "daily_log.heading_level": 2,
+    "callouts.editable": ["note"]
+  },
+  "manifest": [
+    {
+      "action": "create_atomic_note",
+      "title": "Dresden",
+      "rendered_file": "2026-09-07_1001_dresden.md",
+      "destination": "Atlas/202 Notes/",
+      "source_path": "Dresden",
+      "item_key": "100 Inbox/Places/Dresden.md",
+      "parent_mocs": ["Atlas/200 MOCs/Orte (MOC).md"],
+      "tags": ["ort"],
+      "attachments": ["100 Inbox/Images/Elbufer.jpg"]
+    },
+    {
+      "action": "create_atomic_note",
+      "title": "Elbe",
+      "rendered_file": "2026-09-07_1002_elbe.md",
+      "destination": "Atlas/202 Notes/",
+      "source_path": "Elbe",
+      "item_key": "100 Inbox/Reise/Elbe.md",
+      "audio_peer": "100 Inbox/Reise/Elbe.m4a",
+      "parent_mocs": ["Atlas/200 MOCs/Orte (MOC).md"],
+      "tags": ["fluss"],
+      "attachments": ["100 Inbox/Images/Elbufer.jpg"]
+    },
+    {
+      "action": "create_atomic_note",
+      "title": "Kaffee",
+      "rendered_file": "2026-09-07_1003_kaffee.md",
+      "destination": "Atlas/202 Notes/",
+      "source_path": "Kaffee",
+      "item_key": "100 Inbox/Kaffee.md",
+      "parent_mocs": [],
+      "tags": [],
+      "attachments": []
+    }
+  ],
+  "confirmed": [
+    {
+      "id": "S01",
+      "title": "Dresden",
+      "source_path": "Dresden",
+      "item_key": "100 Inbox/Places/Dresden.md",
+      "parent_mocs": ["Atlas/200 MOCs/Orte (MOC).md"]
+    },
+    {
+      "id": "S02",
+      "title": "Elbe",
+      "source_path": "Elbe",
+      "item_key": "100 Inbox/Reise/Elbe.md",
+      "parent_mocs": ["Atlas/200 MOCs/Orte (MOC).md"]
+    },
+    {
+      "id": "S03",
+      "title": "Kaffee",
+      "source_path": "Kaffee",
+      "item_key": "100 Inbox/Kaffee.md",
+      "parent_mocs": []
+    }
+  ],
+  "daily_updates": [],
+  "skipped": []
+}

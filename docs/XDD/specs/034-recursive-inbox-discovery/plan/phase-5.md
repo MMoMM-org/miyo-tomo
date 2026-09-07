@@ -624,7 +624,32 @@ phase: 5
 
      - It takes the built `actions` plus `skipped_assets`. Both already cross the boundary:
        `build_actions` returns `(actions, skipped_assets)` and `instruction-render.py:525`
-       already unpacks them, so no new plumbing is needed.
+       already unpacks them, so the routing needs no new plumbing.
+
+     **But a skipped asset does not currently say whose note it is — and that is your first
+     change.** Corrected 2026-09-07 after a gate caught the claim above overstating the case.
+     A skipped entry is `{"source", "destination", "reason", "kind"}`
+     (`render_actions.py:643-676`); nothing on it names the note that embedded the attachment,
+     so a post-pass receiving it cannot tell which move to suppress.
+
+     The information is already in scope and merely unrecorded. The loop is
+     `for m in manifest: for path in m.get("attachments") or []:` — at the moment of skipping,
+     `m` is the manifest entry, carrying `item_key` and `source_path`. So:
+
+     - Record the owning note's **`item_key`** on each skipped entry. `item_key`, not the stem:
+       it is the identity field (ADR-1, ADR-2), and two namesake notes in different subfolders
+       can each embed an attachment. A stem-keyed link would suppress the wrong note's move —
+       the exact defect this spec has spent six tasks removing.
+     - Join it to the move by matching against `move_note.source_inbox_item`, which
+       `_build_move_note_actions` derives from that same `item_key` via `resolve_source_path`
+       (`:596-600`). Derive it the same way, through the same helper — do not compose
+       `<inbox>/<stem>.md` by hand. That hand-composition is what T5.0 found silently dropping
+       every subfolder note in Pass 2.
+     - **Assert the join on a subfolder note**, where a naive inbox-root composition produces a
+       different path and would silently match nothing. A test using only root-level notes
+       cannot tell a correct join from a broken one.
+     - `skipped_assets` is also rendered for the user today. Adding a field must not change that
+       output; check its consumers before deciding the field name.
      - Wire it in `instruction-render.py` beside `validate_destinations` (`:542`), which is
        already the place where post-build passes drop moves and report.
      - **Share the delete-withdrawal mechanism with `validate_destinations`; do not copy it.**

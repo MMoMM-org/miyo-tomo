@@ -259,7 +259,8 @@ asserts the keys actually arrived before asserting the deletes.
 
 ### The Paired Consumer Still Collapses (open)
 
-`instructions-diff.py:338` and `:350` derive the EXPECTED `delete_source` count
+`instructions-diff.py`'s `derive_expected()` — its `confirmed_stems` set and the
+`daily_only_seen` collision check inside it — derives the EXPECTED `delete_source` count
 with the same shape this section removes: `confirmed_stems` and
 `daily_only_seen` are stem-keyed, so a daily-only namesake's expected deletion
 is suppressed by a same-named confirmed item. Its own `NOTE` calls this a

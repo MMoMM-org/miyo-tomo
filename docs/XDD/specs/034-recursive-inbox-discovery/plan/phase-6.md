@@ -382,8 +382,32 @@ phase: 6
        markdown, following T5.5's precedent rather than a new shape
      - a `link_to_moc` that **does** resolve is unaffected — assert this, or the fix is a
        feature regression dressed as a repair
-     - the dryrun and the coverage audit agree with the renderer: an action withheld from the
-       user is not counted `[OK]` by the audit `[ref: SDD/CON-4]`
+     - **all three causes asserted through the rendered document, not through the resolver.**
+       The gate blocked a plan that would have allowed a unit test calling
+       `resolve_target_moc_paths` (or a new filter) in isolation and checking a returned string:
+       that passes even if the cause never reaches `render_md.py`'s Skipped section — the
+       identical shape T6.0c was blocked on twice. Drive `instruction-render.main()` over a real
+       fixture, on the `_drive_render` template
+       (`tests/test_034_t5_4_attachment_clash_suppression.py:468`), and assert the rendered
+       markdown for each of the three causes.
+
+       **The cause needs plumbing this plan does not yet name.** `resolve_target_moc_paths`
+       returns an `int` and collapses all three causes to a bare `None` (`render_resolve.py:565-572`).
+       Threading a cause out of it is new plumbing; name every site it must cross before writing
+       code, the way T6.0c's four-site table does, and expect the count to be more than one.
+     - the dryrun and the coverage audit agree with the renderer. **"Not counted `[OK]`" is not
+       specific enough and the gate blocked it**: a raw `[DIFF]` hard-fail also satisfies that
+       wording, and it is the wrong answer — it would misdiagnose an intentional withholding as
+       drift, the exact failure mode T6.0c's audit narrative warns about. Use the **subtraction
+       pattern**, which is the established design language of that file: `_subtract_skipped_daily`
+       (`instructions-diff.py:709`), `_subtract_withheld_moves` (`:737`) and
+       `_subtract_skipped_assets` (`:813`) each subtract the withheld item from the expected count
+       and report the reason through the Skipped section, leaving the audit clean. Add the
+       matching subtraction for a withheld `link_to_moc` and assert the audit **completes** —
+       `rc == 0`, no `[DIFF]`, no `[MISSING]` — not merely that the count changed.
+       `derive_expected` counts `link_to_moc` per `parent_mocs` independent of resolution
+       (`:270-296`), so withholding upstream without this produces a spurious hard-fail
+       `[ref: SDD/CON-4]`
      - proven RED against HEAD, where the unresolvable action renders as an ordinary checkbox
   3. **Implement**: decide and state whether the action is withheld and reported, or emitted with
      an explicit unresolved marker the schema requires. **Do not fold `in_set`** to make targets

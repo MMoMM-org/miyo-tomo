@@ -184,6 +184,66 @@ phase: 6
      - [ ] A case-only MOC pair completes a run instead of hard-failing its audit
      - [ ] The up-bullet's fate is established by test rather than assumed either way
 
+- [ ] **T6.0d A link to a MOC that will never exist renders as a normal instruction**
+      `[activity: backend]` — **Added 2026-09-08, accepted. Runs before T6.1.**
+
+  **Inherited context — read this before the steps.** Found by T6.0c's implementer while tracing
+  a claim in T6.0c's own task text, and traced from the code rather than inferred. The task text
+  said an unresolvable `link_to_moc` is dropped by `filter_unappliable_relationships`. **It is
+  not** — that filter only touches `add_relationship` actions carrying `error`. What actually
+  happens is worse.
+
+  `resolve_target_moc_paths` has two tiers: an in-set `create_moc` lookup, then Kado
+  `search_by_name`. When both miss, `target_moc_path` stays `null` and the action continues
+  through every gate:
+
+  | gate | behaviour on a null target |
+  |---|---|
+  | `render_md.py` `link_to_moc` branch | renders `### Add link to [[X]] — <note>` with `- [ ] Applied`. **Only the `- **Path:**` line is suppressed.** The anchor falls to its "unresolved" branch, instructing the user to *open the MOC* and find an editable callout |
+  | `instructions.schema.json` | `target_moc_path` is `["string","null"]` and **not** in `required`. Validates clean |
+  | `instructions-dryrun.py` | `REQUIRED_FIELDS_BY_KIND["link_to_moc"]` omits the field; `describe()` prints only `target=[[…]]` |
+  | `instructions-diff.py` | link coverage matches on the `target_moc` **stem**, never the path. Counted `[OK]` |
+
+  So the user reads an ordinary to-do asking them to open a MOC that does not exist and will never
+  be created, and ticks it. **This violates CON-2**: the user approves on what the document says.
+
+  **The asymmetry that shows the intended design.** `add_relationship` **requires**
+  `target_moc_path` in both the schema and the dryrun whitelist, and has
+  `filter_unappliable_relationships` as its guard — because a null there is rejected by the wire
+  schema downstream. `link_to_moc` was given a nullable field and no guard. One kind is defended,
+  its sibling is not.
+
+  **Not case-specific, and not caused by this spec.** It fires whenever both resolution tiers
+  miss. Spec 034 surfaced it because case-only MOC pairs make it reachable on ordinary input; the
+  defect predates the spec. Weigh the fix accordingly — this is a repair to an existing path, not
+  a feature of recursive discovery.
+
+  1. **Prime**: read `resolve_target_moc_paths` (`render_resolve.py`) for both tiers and what a
+     miss leaves behind. Read `filter_unappliable_relationships` for the guard `add_relationship`
+     already has, and `$defs/add_relationship` vs `$defs/link_to_moc` in
+     `tomo/schemas/instructions.schema.json` for the required-field asymmetry. Read T5.5's
+     "Not filed" sections in `render_md.py` — they are the precedent for telling the user why an
+     action was withheld `[ref: SDD/CON-2, CON-4]`.
+  2. **Test** (RED):
+     - a `link_to_moc` whose target resolves through neither tier does **not** render as an
+       appliable `- [ ] Applied` instruction
+     - the user is told why, naming the MOC that could not be resolved — assert the rendered
+       markdown, following T5.5's precedent rather than a new shape
+     - a `link_to_moc` that **does** resolve is unaffected — assert this, or the fix is a
+       feature regression dressed as a repair
+     - the dryrun and the coverage audit agree with the renderer: an action withheld from the
+       user is not counted `[OK]` by the audit `[ref: SDD/CON-4]`
+     - proven RED against HEAD, where the unresolvable action renders as an ordinary checkbox
+  3. **Implement**: decide and state whether the action is withheld and reported, or emitted with
+     an explicit unresolved marker the schema requires. **Do not fold `in_set`** to make targets
+     resolve — T6.0 measured that as redirecting one MOC's bullets into a different folder's MOC
+     and reverted it (`b9d34e1`); a guard test goes RED if anyone re-folds it.
+  4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded. If a
+     no-clash run changes, that is a real regression.
+  5. **Success**:
+     - [ ] No instruction asks the user to act on a MOC the run knows will not exist
+     - [ ] Whatever the renderer withholds, the audit and the dryrun agree it was withheld
+
 - [ ] **T6.1 The run records its own cost** `[activity: backend]`
 
   **Added 2026-09-06 by the Phase 3 gate — the number this task is about to make durable cannot

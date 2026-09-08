@@ -801,3 +801,20 @@ resolution binds `WRONG — primary doc`, which is what makes the assertion a
 guard. The rendered `**Placement:**` line is absent in these fixtures (the
 reducer leaves `anchor: null` without Kado), so the doc-JSON map is the sole
 source and the assertion cannot be satisfied by the line override.
+
+## An Unlisted `doc_type` Falls Back Loudly (spec 034 T6.4a, v0.35.0)
+
+WHY `_STRUCTURED_DOC_BY_TYPE` now lists `suggestions` and `moc-proposal`
+explicitly, even though both answer with the primary doc:
+
+The table's fallback is correct for every type in use today. It is also
+invisible. A future render type whose entry someone forgets would silently
+rejoin against the primary document — the T6.4a defect, dormant. Listing every
+type in use makes an ABSENT entry mean "nobody decided" rather than "the primary
+is right", so it can be reported instead of guessed. An unlisted type still
+resolves to the primary doc and proceeds; it just says so on stderr, naming the
+type and the document it fell back to.
+
+WHY `None` and `""` stay silent: a document with no `tomo.doc_type` is a legacy
+document, and the primary doc is its correct answer, not a mistake. Warning on
+it would train the reader to ignore the line.

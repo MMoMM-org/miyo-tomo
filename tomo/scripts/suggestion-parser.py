@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.34.0
+# version: 0.35.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -603,19 +603,37 @@ def anchor_map_from_doc(doc: dict) -> dict[str, dict[str, dict]]:
 
 
 # spec 034 T6.4a: each rendered document type is rendered FROM its own
-# structured document, and identity is joined back from that one. A type absent
-# here resolves to the primary doc, which is what every pre-fan type did.
-_STRUCTURED_DOC_BY_TYPE = {
-    "suggestions-fan": "suggestions-fan-doc.json",
-}
+# structured document, and identity is joined back from that one. Every type in
+# use is listed, INCLUDING the ones whose answer is the primary doc, so that an
+# absent entry means "nobody decided" and can be reported rather than guessed.
 _PRIMARY_STRUCTURED_DOC = "suggestions-doc.json"
+_STRUCTURED_DOC_BY_TYPE = {
+    "suggestions": _PRIMARY_STRUCTURED_DOC,
+    "suggestions-fan": "suggestions-fan-doc.json",
+    "moc-proposal": _PRIMARY_STRUCTURED_DOC,  # reads the conventions block only
+}
 
 
 def _structured_doc_basename(doc_text: str) -> str:
-    """Name the structured document a rendered document was rendered from."""
-    return _STRUCTURED_DOC_BY_TYPE.get(
-        _extract_tomo_doc_type(doc_text) or "", _PRIMARY_STRUCTURED_DOC
-    )
+    """Name the structured document a rendered document was rendered from.
+
+    An unlisted type still resolves to the primary doc — the pre-fan behaviour,
+    and a safe answer — but says so, because binding a document against the
+    primary map when it has its own is exactly the T6.4a defect.
+    """
+    doc_type = _extract_tomo_doc_type(doc_text)
+    if not doc_type:  # legacy document, no provenance — the primary IS correct
+        return _PRIMARY_STRUCTURED_DOC
+    basename = _STRUCTURED_DOC_BY_TYPE.get(doc_type)
+    if basename is None:
+        print(
+            f"[warn] unrecognised tomo.doc_type {doc_type!r} — joining identity "
+            f"from {_PRIMARY_STRUCTURED_DOC}; add it to "
+            f"_STRUCTURED_DOC_BY_TYPE if it has its own structured document",
+            file=sys.stderr,
+        )
+        return _PRIMARY_STRUCTURED_DOC
+    return basename
 
 
 def _default_doc_path(markdown_path: str, doc_text: str = "") -> str:

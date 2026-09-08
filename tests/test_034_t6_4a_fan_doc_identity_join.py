@@ -497,3 +497,61 @@ class TestStandaloneAnchorsComeFromTheFanDocument:
         anchor = _anchor_of(standalone_anchor, "Kai am Strand")
         assert anchor == FAN_ANCHOR
         assert anchor != STALE_PRIMARY_ANCHOR
+
+
+# ===========================================================================
+# An unrecognised doc_type must not fall back silently — a future render type
+# whose table entry someone forgets would rejoin against the primary document,
+# which is the defect this task exists to fix.
+# ===========================================================================
+
+def _parser_module():
+    import importlib.util  # noqa: PLC0415
+
+    spec = importlib.util.spec_from_file_location(
+        "_t64a_parser_warn", SCRIPTS_DIR / "suggestion-parser.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _frontmatter(doc_type: str | None) -> str:
+    tomo = f"tomo:\n  doc_type: {doc_type}\n" if doc_type is not None else ""
+    return f"---\ntype: tomo-suggestions\n{tomo}---\n\n# Doc\n"
+
+
+class TestAnUnknownDocTypeIsLoud:
+    def test_it_still_resolves_to_the_primary_document(self, tmp_path, capsys):
+        mod = _parser_module()
+        path = mod._default_doc_path(
+            str(tmp_path / "doc.md"), _frontmatter("suggestions-triage")
+        )
+        assert path.endswith("suggestions-doc.json")
+
+    def test_it_names_the_type_and_the_document_it_fell_back_to(
+        self, tmp_path, capsys
+    ):
+        mod = _parser_module()
+        mod._default_doc_path(
+            str(tmp_path / "doc.md"), _frontmatter("suggestions-triage")
+        )
+        err = capsys.readouterr().err
+        assert "[warn]" in err
+        assert "suggestions-triage" in err
+        assert "suggestions-doc.json" in err
+
+    @pytest.mark.parametrize("doc_type", [None, ""])
+    def test_a_legacy_document_stays_silent(self, tmp_path, capsys, doc_type):
+        """No doc_type is not a mistake — the primary doc is its right answer."""
+        mod = _parser_module()
+        mod._default_doc_path(str(tmp_path / "doc.md"), _frontmatter(doc_type))
+        assert "[warn]" not in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "doc_type", ["suggestions", "suggestions-fan", "moc-proposal"]
+    )
+    def test_every_type_in_use_today_stays_silent(self, tmp_path, capsys, doc_type):
+        mod = _parser_module()
+        mod._default_doc_path(str(tmp_path / "doc.md"), _frontmatter(doc_type))
+        assert "[warn]" not in capsys.readouterr().err

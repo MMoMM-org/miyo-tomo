@@ -849,11 +849,31 @@ phase: 6
        **"Flat-inbox subset" means its own fixture** — plain root-level notes, no collisions —
        not a subset carved out of the big fixture after the fact `[ref: SDD/CON-4]`.
 
-       **Recording it needs care in this worktree.** Producing pre-034 output means running
-       pre-034 code, and `git checkout` is forbidden here — a stale `stash@{0}` must never be
-       applied and the tree must stay clean. Use `git worktree add` to a scratch path at
-       `ee44cb3`, or extract the scripts with `git show`. Never check this worktree out to another
-       commit.
+       **`ee44cb3` is verified as a clean baseline, not assumed.** Every commit touching a Pass-2
+       file between it and HEAD — 20 of them across `instruction-render.py`, `suggestion-parser.py`
+       and the three `lib/render_*.py` — is a `fix(034)` or `feat(034)`. No other in-flight spec
+       touched Pass 2 in that range, so the golden pins this spec's changes and nothing else. The
+       whole Pass-2 chain exists at that commit, so a self-consistent old pipeline is producible;
+       fixture the approval as pre-ticked checkboxes in the recorded suggestions document, as any
+       other suggestion-parser input does.
+
+       **Use `git worktree add`. Do NOT extract files with `git show`.** Producing pre-034 output
+       means running pre-034 code, and `git checkout` is forbidden in this worktree — a stale
+       `stash@{0}` must never be applied and the tree must stay clean. But per-file `git show`
+       extraction is worse than inconvenient here: `instruction-render.py` at `ee44cb3` imports
+       from `lib/*.py` and validates against `tomo/schemas/*.json`, so one missed transitive
+       dependency runs the **old renderer against HEAD's schema or a HEAD helper** — producing a
+       golden that is neither old nor new, and silently. That is the missed-site shape this spec
+       has hit four times. `git worktree add <scratch> ee44cb3` checks the whole tree out
+       consistently and removes the failure mode. Tear it down afterwards. Never check *this*
+       worktree out to another commit.
+
+       **Ship a `record.py` beside the golden.** T5.3's and T5.4's fixtures each carry one plus a
+       README and are re-derivable from the repo; T3.4's carries neither and however it was
+       produced is now unreproducible. A recording that reaches into a *different commit* needs
+       that more, not less. The script creates the scratch worktree, runs the full old chain over
+       the fixture inbox, writes `instructions.md`, and tears the worktree down; the README names
+       the commit, the reason, and the exact reproduction command.
 
      **Give the wire/markdown parity golden a collision fixture — added 2026-09-08.**
      `tests/test_suggestions_wire_golden.py` exists to catch the two parser paths diverging,
@@ -867,12 +887,17 @@ phase: 6
   3. **Implement**: n/a — test only.
   4. **Validate**: full suite green; `ruff` clean.
   5. **Success**:
-     - [ ] **A Feature-N → `test::name` traceability table exists** in the new file's docstring,
-           covering all ten PRD features `[ref: PRD/Feature Requirements]`. Each row points either
-           at a new assertion here or at the existing test that already owns it (T2.8, T3.4, T5.1,
-           T5.4 and others). **"Walk the list and confirm" is not a deliverable** — it has no
-           failure mode. The table is the artefact, and a feature with no row is a gap the task
-           must name rather than quietly leave.
+     - [ ] **A Feature-N → test mapping exists as data, and a test walks it.** Not a markdown
+           table in a docstring — that rots silently the moment a referenced test is renamed or
+           deleted, and nothing notices. Encode it as a module-level list of
+           `(feature_id, description, test_module, test_name)` near the top of the file, covering
+           all ten PRD features `[ref: PRD/Feature Requirements]`, each row pointing either at a
+           new assertion here or at the existing test that already owns it (T2.8, T3.4, T5.1,
+           T5.4 and others). Add one test in the same file that walks the list and confirms every
+           referenced test is **currently collectible** — it must fail the moment a row goes
+           stale. **"Walk the list and confirm" is not a deliverable**; it has no failure mode.
+           A row whose answer is honestly "not covered here" carries an explicit `None` and a
+           one-line reason — that is a fact, not a claim, and needs no proof.
      - [ ] Features 9 (no extra vault listing — a call-count claim) and 10 (the two file-type
            checks agree) are **not** natural fixture-boundary assertions. Point their rows at
            wherever they are really covered, or say plainly that they are not, rather than

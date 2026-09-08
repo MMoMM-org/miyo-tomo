@@ -939,3 +939,64 @@ shape:
   consumer of `_build_move_asset_actions`' `seen`, which stays exact — so the
   two still agree, and `_subtract_skipped_assets` already accounts for the extra
   skips the `claimed` fold produces.
+
+## What the Null Does Now — Withheld, With Its Cause (spec 034 T6.0d)
+
+WHY the action is **withheld** rather than emitted with an "unresolved" marker:
+an emitted marker would have to be honoured by Hashi's wire schema, which means
+making `target_moc_path` required on `link_to_moc` — a breaking change to a
+cross-repo contract, owed a Kokoro migration note, for an action Hashi could not
+apply anyway (Hashi modifies, never creates: there is no MOC to write the bullet
+into). And a marked action still renders a `- [ ] Applied` checkbox unless the
+renderer suppresses it, so the marker alone does not close the CON-2 gap it was
+supposed to close. Withholding costs one wire field nothing and reuses the guard
+`add_relationship` already has.
+
+WHY the guard is `filter_unresolvable_moc_links`, shaped exactly like
+`filter_unappliable_relationships`: both are pure functions over a marker set at
+the point the cause is known, both return `(kept, skipped)`, and both surface the
+skipped items through stderr and the instructions.md Skipped section. The
+asymmetry that produced this defect — `add_relationship` defended, its sibling
+not — is closed by giving the sibling the same shape rather than a new one.
+
+### The Cause Is Recorded Where It Is Known, Never Reconstructed
+
+`resolve_target_moc_paths`' tier 2 returns `None` for three reasons, and only one
+of them means the MOC does not exist:
+
+| cause | condition | what it means |
+|---|---|---|
+| `absent` | `not hits` | Kado answered; there is no such note |
+| `unchecked` | `client is None` | no Kado client — nothing was asked |
+| `probe-failed` | the call raised, or a hit carried no path | the lookup failed |
+
+WHY they must not be collapsed into "unresolved": withholding on a bare null and
+reporting every one as a MOC that will never exist would, on an offline run or a
+transient Kado failure, tell the user that MOCs already sitting in their vault
+are gone — and invite them to re-create or rename them. That is a worse outcome
+than the defect being repaired. `client is None` is a single condition set once
+for the whole run, so it is exactly the case where a wrong sentence would be
+repeated for every link in the run.
+
+WHY the cause is cached alongside the path, per stem, rather than derived at the
+call site: two links to the same MOC must report the same reason, and a reason
+derived a second time can differ from the first if Kado's state changes mid-run.
+
+### The Marker's Lifetime
+
+`UNRESOLVED_MOC_FIELD` (`unresolved_moc`) lives on the action from the resolver
+until `filter_unresolvable_moc_links` removes the action carrying it — every
+action stamped with it is withheld, so none survives to the wire. It is
+nevertheless added to `_strip_internal_link_fields`' list as defence in depth,
+for the same reason `alt_headings` is there: Hashi's `link_to_moc` schema is
+`additionalProperties: false`, and a future change that moves or removes the
+filter must not silently start shipping a Tomo-internal field.
+
+### The Filter Runs Beside the Resolver, Not Beside the Other Two Filters
+
+WHY it is called immediately after `resolve_target_moc_paths` rather than next to
+`filter_missing_daily_notes` and `filter_unappliable_relationships`: four passes
+sit between those two points and all four read `link_to_moc` — anchor resolution
+(a Kado read per target MOC), the `#70` same-section merge, the existing-heading
+rewrite, and new-section serialization. A withheld action must not be merged into
+a surviving one, and spending a Kado read on a MOC nobody will open is waste.

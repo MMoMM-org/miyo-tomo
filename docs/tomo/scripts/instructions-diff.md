@@ -168,3 +168,47 @@ because every fixture that reached this function built its items with
 `parent_mocs: []`. Deriving from `expected_links` lands correctly on both
 shapes: drop one of two authors and 1 is subtracted while the shared bullet
 survives; drop both and 2 is subtracted while the bullet is withdrawn.
+
+## Withheld MOC Links: Subtract for All Three Causes, Observe Them Separately (spec 034 T6.0d)
+
+`_subtract_unresolvable_links` removes the links `filter_unresolvable_moc_links`
+withheld from `expected["counts"]["link_to_moc"]` and from the withholding item's
+own `expected_links`, the way `_subtract_skipped_daily`, `_subtract_withheld_moves`
+and `_subtract_skipped_assets` do for their causes.
+
+WHY the count table subtracts for **all three** causes even though the causes are
+not equivalent: the count table answers one question — did the renderer emit what
+the document promised — and under every cause the renderer withheld the link. A
+raw `[DIFF]` for two of the three would misdiagnose a deliberate withholding as
+drift, halt the run at `synthesis-conductor.md` step 3e, and tell the user Tomo
+lost an instruction it in fact refused to write.
+
+WHY the distinction is kept in `observations` instead: that channel is
+non-blocking, compatible with exit 0, and printed unconditionally when non-empty,
+so an offline run is still visibly different from one where Kado confirmed the
+MOC absent. Silence would be the conflation; a hard fail would be the wrong
+diagnosis. The observation is the third state that already exists.
+
+WHY **one aggregated note per cause, never one per link**: `client is None` is a
+single condition set once for the whole run, so every tier-2 miss in that run
+shares it — a run with Kado down would emit a note per link and bury the one
+fact that matters. Every other withholding note here aggregates a count plus a
+pointer to the itemised detail in `instructions.md`; these follow that template.
+The two "nothing was checked" causes keep **two** notes rather than one merged
+one, because merging them re-collapses the distinction the table exists to draw.
+
+WHY every matching expectation is subtracted rather than the first: the emitter
+dedups by `(target MOC, source title)` while `derive_expected` counts one per
+item, so two same-titled items under one MOC expect 2 and emit 1 — the same
+shared-bullet arithmetic `_subtract_withheld_moves` documents one function up.
+
+### The Garden Audit Owes the Same Subtraction
+
+A garden `file_note` whose File-under value is a user-typed stem leaves the
+parser with `target_moc_path: None` and is resolved by the same tier-2 lookup in
+the same `main()`, so it reaches the same guard. `run_diff_garden` keeps its own
+count table and its own per-item coverage, so both had to learn about the
+withholding independently — without that, withholding a garden link turns
+`link_to_moc expected=2 actual=0 [DIFF]` plus two `[MISSING]` items out of a
+correct instruction set. Pinned by a garden-shaped case in
+`tests/test_034_t6_0d_unresolvable_moc_links.py`.

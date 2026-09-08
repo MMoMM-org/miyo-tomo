@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.51.0
+# version: 0.52.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -95,8 +95,10 @@ from lib.render_resolve import (  # noqa: E402,F401
     filter_missing_daily_notes,
     filter_missing_source_notes,
     filter_unappliable_relationships,
+    filter_unresolvable_moc_links,
     resolve_section_names,
     resolve_target_moc_paths,
+    unresolvable_link_reports,
 )
 from lib.supporting_items import (  # noqa: E402
     parse_supporting_items as _parse_supporting_items,
@@ -605,6 +607,30 @@ def main() -> int:
         print(f"  [resolve] target_moc_path populated for {resolved_paths} link_to_moc action(s)",
               file=sys.stderr)
 
+    # ── Withhold links into a MOC the run could not confirm (034 T6.0d) ──
+    # A null target_moc_path is a legal schema value, so such an action passes
+    # validation, the dryrun and the audit and reaches the user as an ordinary
+    # `- [ ] Applied` checkbox telling them to open a MOC that will never
+    # exist. Filtered HERE rather than beside the other two filters below: the
+    # four passes in between (anchor resolution, same-section merge, heading
+    # rewrite, new-section serialization) all read link_to_moc, and a
+    # withheld action should not be merged into a surviving one or spend a
+    # Kado read on a MOC nobody is going to open.
+    actions, unresolvable_links = filter_unresolvable_moc_links(actions)
+    unresolvable_links = unresolvable_link_reports(unresolvable_links)
+    if unresolvable_links:
+        print(
+            f"  [skip] {len(unresolvable_links)} MOC link(s) withheld — the "
+            "target MOC could not be resolved (see instructions.md):",
+            file=sys.stderr,
+        )
+        for r in unresolvable_links:
+            print(
+                f"    • {r.get('id')} link_to_moc → {r.get('target_moc')} "
+                f"[{r.get('cause')}]",
+                file=sys.stderr,
+            )
+
     # ── Resolve anchor.value by reading each target MOC ─────────────────
     # For each link_to_moc with a resolved target_moc_path, open the MOC via
     # Kado and capture the full first line of its first editable callout.
@@ -809,6 +835,19 @@ def main() -> int:
             instructions_doc["tomo"] = tomo_block
         tomo_block["merged_moc_proposals"] = merged_moc_proposals
 
+    # Record the MOC links withheld because their target could not be
+    # confirmed (spec 034 T6.0d). This is the site that makes the audit agree:
+    # instructions-diff reads instructions.json, NOT the dict handed to the
+    # renderer, so a fix that only reaches the markdown leaves the audit
+    # counting a link the renderer deliberately did not emit. Metadata only:
+    # id, MOC stem, source title and the cause discriminator.
+    if unresolvable_links:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["unresolvable_moc_links"] = unresolvable_links
+
     # Record confirmed items the #116 guard withheld, so the drop reaches an
     # artefact instead of scrolling past on stderr. Metadata only: id, the path
     # probed, and why — never note content. Nested under the permissive `tomo`
@@ -853,6 +892,7 @@ def main() -> int:
             "destination_clashes": destination_clashes,
             "attachment_suppressions": attachment_suppressions,
             "merged_moc_proposals": merged_moc_proposals,
+            "unresolvable_moc_links": unresolvable_links,
         },
         cfg,
     )

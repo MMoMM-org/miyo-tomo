@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.0
+# version: 0.19.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -589,13 +589,24 @@ def _is_garden_parsed(parsed: dict) -> bool:
     return bool(items) and all("garden_action" in i for i in items)
 
 
-def _garden_item_covered(item: dict, actions: list[dict]) -> bool:
+def _garden_item_covered(
+    item: dict, actions: list[dict], withheld_link_titles: set[str] | None = None,
+) -> bool:
     """True when every instruction kind this garden item owes exists with a
-    matching path anchor (mirrors build_garden_audit_actions field wiring)."""
+    matching path anchor (mirrors build_garden_audit_actions field wiring).
+
+    `withheld_link_titles` names the source notes whose `link_to_moc` the
+    renderer deliberately withheld (spec 034 T6.0d): a garden `file_note` whose
+    File-under value names a MOC Kado cannot confirm reaches the same guard the
+    suggestions path does, and an absent instruction there is the guard
+    working, not a coverage gap.
+    """
     ga = item.get("garden_action")
     path = item.get("path", "")
     stem = item.get("stem", "")
     for kind in _GARDEN_EXPECTED_KINDS.get(ga, ()):
+        if kind == "link_to_moc" and stem in (withheld_link_titles or set()):
+            continue
         if kind == "resolve_dead_link":
             ok = any(
                 a["action"] == kind and a.get("path") == path
@@ -634,9 +645,22 @@ def run_diff_garden(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
     confirmed = parsed.get("confirmed_items") or []
     actions = instrs.get("actions") or []
 
+    # The MOC links this run withheld because their target could not be
+    # confirmed. Garden `file_note` items flow through the same renderer and
+    # the same guard, so the same subtraction applies — see
+    # _subtract_unresolvable_links for why a raw [DIFF] is the wrong answer.
+    unresolvable_links = (instrs.get("tomo") or {}).get(
+        "unresolvable_moc_links") or []
+    withheld_link_titles = {
+        r.get("source_note_title") for r in unresolvable_links
+        if r.get("source_note_title")
+    }
+
     expected_counts: dict[str, int] = {k: 0 for k in GARDEN_ACTION_ORDER}
     for item in confirmed:
         for kind in _GARDEN_EXPECTED_KINDS.get(item.get("garden_action"), ()):
+            if kind == "link_to_moc" and item.get("stem") in withheld_link_titles:
+                continue
             expected_counts[kind] = expected_counts.get(kind, 0) + 1
 
     actual_counts: dict[str, int] = {}
@@ -685,7 +709,7 @@ def run_diff_garden(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
     lines.append("")
     lines.append("  per-item coverage (garden_action → instruction kinds):")
     for item in confirmed:
-        covered = _garden_item_covered(item, actions)
+        covered = _garden_item_covered(item, actions, withheld_link_titles)
         if not covered:
             hard_fail = True
         mark = "[OK]" if covered else "[MISSING]"
@@ -693,6 +717,11 @@ def run_diff_garden(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
             f"    {item.get('id', '?'):<6s} {item.get('garden_action', '?'):<17s} "
             f"{(item.get('stem') or '')[:44]:<46s} {mark}"
         )
+
+    for note in _unresolvable_link_notes(unresolvable_links):
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
 
     lines.append("")
     lines.append("-" * 72)
@@ -837,6 +866,100 @@ def _subtract_skipped_assets(expected: dict, skipped_assets: list[dict]) -> int:
     return removed
 
 
+def _subtract_unresolvable_links(expected: dict, records: list[dict]) -> int:
+    """Remove MOC links the renderer withheld from the expected link tallies.
+
+    `filter_unresolvable_moc_links` withholds a `link_to_moc` whose target MOC
+    the run could not confirm exists (spec 034 T6.0d) and records it in
+    `instructions.tomo.unresolvable_moc_links`. `derive_expected` counts one
+    link per `parent_mocs` entry regardless of resolution, so without this the
+    audit reports `RESULT: FAIL` on a correct instruction set and the
+    conductor's STRICT stop halts the run misdiagnosing the guard as drift —
+    the same failure `_subtract_withheld_moves` exists to prevent.
+
+    Subtracted for ALL THREE causes. Not because the three are equivalent —
+    they are not, and the observation notes keep them apart — but because the
+    count table only answers "did the renderer emit what the document
+    promised", and the renderer withheld the link under every cause. Leaving
+    two of them unsubtracted turns a deliberate withholding into a hard fail,
+    which is the wrong answer for all of them.
+
+    One withheld action can cover several expected entries: the emitter dedups
+    by (target MOC, source title) while `derive_expected` counts one per item,
+    so two same-titled items under one MOC expect 2 and emit 1. Every matching
+    expectation is therefore subtracted, not just the first — the same
+    shared-bullet arithmetic `_subtract_withheld_moves` documents.
+
+    Returns the number of expected entries removed.
+    """
+    removed = 0
+    for record in records or []:
+        title = record.get("source_note_title") or ""
+        moc = _moc_stem(record.get("target_moc") or "")
+        if not title or not moc:
+            continue
+        for info in expected["by_item"].values():
+            if info.get("title") != title:
+                continue
+            links = info.get("expected_links") or []
+            if moc in links:
+                links.remove(moc)
+                expected["counts"]["link_to_moc"] -= 1
+                removed += 1
+    return removed
+
+
+def _unresolvable_link_notes(records: list[dict]) -> list[str]:
+    """One aggregated note per cause — never one per link.
+
+    `client is None` is a single condition set once for the whole run, so every
+    tier-2 miss in that run shares it: a run with Kado down would otherwise
+    emit a dozen near-identical lines and bury the one fact that matters. Every
+    other withholding note in this file aggregates a count plus a pointer to
+    the itemised detail in instructions.md; these follow that template.
+
+    The two "nothing was checked" causes keep their own notes. Merging them
+    with the confirmed-absent one would make an offline run indistinguishable
+    from one where Kado confirmed the MOC missing — the CON-2 conflation this
+    whole guard removes from the renderer, reintroduced one layer down.
+    """
+    by_cause: dict[str, int] = {}
+    for record in records or []:
+        by_cause[record.get("cause") or "unknown"] = (
+            by_cause.get(record.get("cause") or "unknown", 0) + 1
+        )
+    detail = 'see "MOC link not offered" in instructions.md'
+    wording = {
+        "absent": (
+            "target MOC confirmed absent by Kado; excluded from expected "
+            f"coverage — {detail}, create the MOC and re-run Pass 2"
+        ),
+        "unchecked": (
+            "target MOC could not be checked — Kado was not available for this "
+            f"run, so nothing was asked about it; {detail}, re-run with Kado "
+            "running"
+        ),
+        "probe-failed": (
+            "target MOC could not be checked — the Kado lookup failed; this is "
+            f"not evidence the MOC is missing; {detail}, re-run once Kado "
+            "answers"
+        ),
+    }
+    notes: list[str] = []
+    # Fixed order so a run's observations read the same way every time; any
+    # unrecognised cause is reported rather than silently dropped, because a
+    # withholding nobody can explain is worse than one nobody expected.
+    ordered = [c for c in ("absent", "unchecked", "probe-failed") if c in by_cause]
+    ordered += [c for c in by_cause if c not in wording]
+    for cause in ordered:
+        count = by_cause[cause]
+        why = wording.get(
+            cause, f"withheld for unrecognised cause {cause!r}; {detail}"
+        )
+        notes.append(f"{count} MOC link(s) withheld — {why}")
+    return notes
+
+
 def run_diff(
     parsed: dict, instrs: dict, tag_handler_groups: list[dict] | None = None
 ) -> tuple[int, list[str]]:
@@ -867,6 +990,11 @@ def run_diff(
     _subtract_withheld_moves(expected, destination_clashes)
     _subtract_withheld_moves(expected, attachment_suppressions)
     n_assets_skipped = _subtract_skipped_assets(expected, skipped_assets)
+
+    # Reconcile the MOC links withheld because their target could not be
+    # confirmed — see _subtract_unresolvable_links.
+    unresolvable_links = tomo_block.get("unresolvable_moc_links") or []
+    _subtract_unresolvable_links(expected, unresolvable_links)
 
     lines: list[str] = []
     observations: list[str] = []
@@ -1001,6 +1129,11 @@ def run_diff(
             f"{n_daily_skipped} daily-note update(s) skipped — target daily note "
             "missing (Hashi cannot create it); excluded from expected coverage"
         )
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
+
+    for note in _unresolvable_link_notes(unresolvable_links):
         lines.append("")
         lines.append(f"  note: {note}")
         observations.append(note)

@@ -451,3 +451,31 @@ correctly after the merge — one proposal was approved as one Name, one
 `create_moc` was emitted, `expected=1 actual=1 [OK]`. The record is provenance
 for a reader. Feeding it into the audit's reconciliation is a different change
 with its own blast radius.
+
+## The Unresolvable-MOC-Link Withholding Crosses Three Sites Here (spec 034 T6.0d)
+
+`filter_unresolvable_moc_links` withholds a `link_to_moc` whose target MOC the
+run could not confirm. Three of the change's sites live in this file, and they
+are not interchangeable:
+
+1. **The call**, immediately after `resolve_target_moc_paths` — plus the stderr
+   report, per link, with its cause.
+2. **The `instructions.json` `tomo` block** (`unresolvable_moc_links`).
+3. **The `render_instructions_md` metadata dict**.
+
+WHY (2) is the one that is easy to skip and fatal to skip: `instructions-diff`
+reads `instructions.json`, **not** the dict handed to the renderer. A fix that
+does (1) and (3) produces a correct document and a wrong audit — the audit keeps
+counting a link the renderer deliberately did not emit, reports
+`RESULT: FAIL — count or coverage mismatch`, and `synthesis-conductor.md` halts
+the run blaming Tomo for its own guard. This is T6.0c's "(3) without (4)" no-op
+one level down, and it is why the T6.0d test drives `main()` and then feeds the
+**written** `instructions.json` to `run_diff` rather than asserting on the
+metadata dict.
+
+WHY the record is metadata only (Constitution L2): id, MOC stem, source note
+title, cause discriminator. Never the bullet text, never note content.
+
+WHY it is guarded `if unresolvable_links:` like every sibling record — a run
+that withholds nothing adds no key, so a clean run's `instructions.json` is
+byte-unchanged.

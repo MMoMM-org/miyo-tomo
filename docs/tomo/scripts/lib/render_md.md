@@ -210,3 +210,30 @@ a heading that counted them would contradict the bullets underneath it in
 whichever case it did not describe — the same reasoning the destination-clash
 intro records. Each record's own `reason` carries its count and, when the names
 differed only in case, says so.
+
+## "MOC Link Not Offered" Is a Skipped-Section Block, Not a Lead Section (spec 034 T6.0d)
+
+WHY this withholding goes under `## Skipped — un-appliable actions` rather than
+getting its own lead section like the destination clash and the attachment
+suppression: those two withhold a **move**, so the note the user approved stays
+in the inbox and the rest of the document has to be read in that light — the
+explanation has to come first. A withheld MOC link changes nothing about where
+the note goes; only the bullet on the MOC is missing. It belongs with the other
+un-appliable actions, beside the missing daily note and the missing up-link
+child, which are the same shape.
+
+WHY each bullet carries its own remedy rather than one shared sentence: the
+three causes are three different situations for the user.
+
+| cause | what the bullet says |
+|---|---|
+| `absent` | MOC not found — create it, or correct the name, and re-run Pass 2 |
+| `unchecked` | MOC could not be checked: Kado was not available for this run |
+| `probe-failed` | MOC could not be checked: the Kado lookup failed |
+
+Only the first says the MOC is missing. Telling an offline user their MOC does
+not exist would invite them to re-create a MOC that is already there — the
+document would be worse than the defect it replaced. The unrecognised-cause
+branch falls through to a self-naming placeholder for the same reason the
+`skipped_assets` and `dropped_sources` blocks do: a fourth cause must never
+silently inherit one of the three sentences above.

@@ -348,8 +348,10 @@ def test_the_two_unchecked_causes_are_two_aggregated_observations(
         f"the swallowed-probe cause owes exactly one aggregated note: {observations}"
     )
 
+    offline_dir = tmp_path / "offline"
+    offline_dir.mkdir()
     rc2, observations2 = _run_diff(
-        _drive_render(monkeypatch, tmp_path / "offline", with_client=False)
+        _drive_render(monkeypatch, offline_dir, with_client=False)
     )
     assert rc2 == 0
     offline = [o for o in observations2 if "Kado was not available" in o]
@@ -372,3 +374,73 @@ def test_the_cause_marker_never_reaches_an_emitted_action(monkeypatch, tmp_path)
         "Hashi's link_to_moc schema is additionalProperties:false — a "
         f"Tomo-internal marker on the wire makes it reject the set: {leaked}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. The garden-audit pipeline reaches the same guard
+# ---------------------------------------------------------------------------
+
+# A garden `file_note` whose File-under value is a user-typed stem carries
+# `target_moc_path: None` out of the parser (garden-audit-parser.py:462) and is
+# resolved by the same tier-2 lookup, so it reaches this guard too — and it is
+# audited by `run_diff_garden`, which counts expected link_to_moc per file_note
+# in its own table.
+GARDEN_ITEMS = [
+    {
+        "id": "F01", "garden_check": "orphan", "garden_action": "file_note",
+        "path": "Atlas/202 Notes/Waldweg.md", "stem": "Waldweg",
+        "target_moc": ABSENT_MOC, "target_moc_path": None,
+    },
+    {
+        "id": "F02", "garden_check": "orphan", "garden_action": "file_note",
+        "path": "Atlas/202 Notes/Bergpfad.md", "stem": "Bergpfad",
+        "target_moc": ABSENT_MOC, "target_moc_path": None,
+    },
+]
+
+
+def _drive_garden_render(monkeypatch, tmp_path) -> Path:
+    ir = _load("instruction_render_t6_0d_garden", "instruction-render.py")
+    suggestions_file = tmp_path / "garden.json"
+    suggestions_file.write_text(json.dumps({
+        "confirmed_items": GARDEN_ITEMS, "daily_updates": [], "skipped": [],
+    }), encoding="utf-8")
+    cfg_file = tmp_path / "vault-config.yaml"
+    cfg_file.write_text("", encoding="utf-8")
+
+    fake = FakeKado(hits={LIVE_MOC: [{"path": LIVE_MOC_PATH}]}, raising=set())
+    monkeypatch.setattr(ir, "load_config", lambda _p: {
+        "concepts.inbox": INBOX, "profile": "miyo", "callouts.editable": ["NOTE"],
+    })
+    monkeypatch.setattr(ir, "KadoClient", lambda: fake)
+    monkeypatch.setattr(ir, "_validate_action_paths", lambda _a: [])
+
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "instruction-render.py", "--suggestions", str(suggestions_file),
+        "--output-dir", str(out_dir), "--config", str(cfg_file),
+        "--upstream-type", "garden-audit",
+    ])
+    assert isinstance(ir.main(), int)
+    return out_dir
+
+
+def test_a_garden_file_note_into_an_absent_moc_is_withheld_and_audited(
+    monkeypatch, tmp_path,
+):
+    out_dir = _drive_garden_render(monkeypatch, tmp_path)
+    doc = _doc(out_dir)
+    assert _links(doc) == [], (
+        "the garden branch emits the same link_to_moc through the same "
+        f"resolver, so the same withholding applies: {_links(doc)}"
+    )
+    diff = _load("instructions_diff_t6_0d_garden", "instructions-diff.py")
+    rc, observations = diff.run_diff(
+        {"confirmed_items": GARDEN_ITEMS, "daily_updates": [], "skipped": []}, doc,
+    )
+    assert rc == 0, (
+        "withholding a garden link without subtracting it turns the guard "
+        "into a hard fail in the garden audit's own count table"
+    )
+    absent = [o for o in observations if "confirmed absent" in o]
+    assert len(absent) == 1 and "2 MOC link(s)" in absent[0], observations

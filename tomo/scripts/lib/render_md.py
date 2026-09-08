@@ -1,4 +1,4 @@
-# version: 0.15.0
+# version: 0.16.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -692,7 +692,9 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     skipped_rel = metadata.get("skipped_rel") or []
     skipped_assets = metadata.get("skipped_assets") or []
     dropped_sources = metadata.get("dropped_sources") or []
-    if skipped_daily or skipped_rel or skipped_assets or dropped_sources:
+    unresolvable_links = metadata.get("unresolvable_moc_links") or []
+    if (skipped_daily or skipped_rel or skipped_assets or dropped_sources
+            or unresolvable_links):
         body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
         if skipped_daily:
@@ -768,6 +770,46 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                     # failure this section was rewritten to stop.
                     remedy = f"(no remedy defined for drop kind {kind!r} — check render_md.py)"
                 body_parts.append(f"- {name} → probed `{probed}` — {reason}; {remedy}.")
+            body_parts.append("")
+        if unresolvable_links:
+            body_parts.append(
+                "**MOC link not offered** — no instruction was emitted for the "
+                "links below: the run could not confirm the target MOC exists, "
+                "and an instruction to open a MOC that is not there is one you "
+                "cannot carry out. The source notes are filed as usual; only "
+                "the bullet on the MOC is missing:")
+            body_parts.append("")
+            for r in unresolvable_links:
+                moc = r.get("target_moc") or "?"
+                src = r.get("source_note_title") or "?"
+                cause = r.get("cause")
+                if cause == "absent":
+                    remedy = (
+                        "MOC not found — create it (or correct the name in the "
+                        "suggestions document) and re-run Pass 2"
+                    )
+                elif cause == "unchecked":
+                    remedy = (
+                        "MOC could not be checked: Kado was not available for "
+                        "this run, so nothing was asked about it — re-run "
+                        "`/inbox` with Kado running"
+                    )
+                elif cause == "probe-failed":
+                    remedy = (
+                        "MOC could not be checked: the Kado lookup failed — a "
+                        "connection or permission problem, not a missing MOC; "
+                        "re-run `/inbox` once Kado answers"
+                    )
+                else:
+                    # A missing or unrecognised cause must never inherit one of
+                    # the sentences above: telling the user a MOC is gone when
+                    # nothing was checked is the conflation this section exists
+                    # to prevent.
+                    remedy = (
+                        f"(no remedy defined for cause {cause!r} — check "
+                        "render_md.py)"
+                    )
+                body_parts.append(f"- [[{moc}]] ← [[{src}]] — {remedy}.")
             body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"
 

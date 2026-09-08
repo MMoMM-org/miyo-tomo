@@ -88,3 +88,18 @@ embeds are already reported by the same script.
 WHY a FAN item whose note is not in the inbox listing also declines: the note it
 names is gone (moved, renamed or already consumed). Reconstructing a path for it
 would name a file that does not exist, which is where this whole defect started.
+
+## WHY a Terminal Cost Step Was Added (spec 034 T6.1)
+
+This skill previously ended at the Report message with no state-writing step at
+all, so there was nowhere for a `fan-resolve` run's cost-history entry to be
+appended. `inbox-triage.py` cannot write it: the entry carries the reducer's
+destination-folder counts, and the reducer runs after triage has finished.
+
+Without this step every `fan-resolve` run would silently record nothing while
+`suggest` recorded correctly — the same shape as a guard that covers one branch
+of two. Both skills call the same script so the two reducer paths cannot drift
+apart; see `docs/tomo/scripts/record-run-cost.md`.
+
+Note the input differs from `suggest-handling`'s: this flow's reducer writes
+`tomo-tmp/suggestions-fan-doc.json`.

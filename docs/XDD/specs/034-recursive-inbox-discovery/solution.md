@@ -441,9 +441,25 @@ item_identity:
 cost_history:
   location: "the instance's persistent state directory, beside the existing squelch registry"
   format: "append-only JSONL, one object per completed Pass 1"
-  fields: [timestamp, run_id, item_count, base_kado_calls, total_kado_calls,
-           folder_listing_calls, distinct_destination_folders]
+  fields: [timestamp, run_id, action, item_count, base_kado_calls,
+           total_kado_calls, folder_listing_calls, distinct_destination_folders]
   retention: "never rewritten; entries accumulate"
+  action_field: |
+    2026-09-08, during T6.1. Every triage run appends exactly one entry, tagged
+    with the action it routed to. Without the tag an entry whose folder fields
+    are absent is indistinguishable from one whose downstream step was skipped,
+    and an idle run's two base calls read as a suspiciously cheap Pass 1.
+  absent_not_zero: |
+    folder_listing_calls and distinct_destination_folders are present ONLY on
+    the paths where the reducer actually ran (suggest, fan-resolve). On idle,
+    synthesize and transcribe they are absent, not zero — zero would assert a
+    measurement nobody took.
+  observed_not_declared: |
+    Every call figure is read off the client's own round-trip counter
+    (KadoClient.call_count, exposed via kado_client.observed_call_count), never
+    from a literal. base_kado_calls and total_kado_calls come from checkpoints
+    snapshotted inside discover(); folder_listing_calls from a snapshot around
+    each destination-folder listing in the reducer.
   amended: |
     2026-09-08, during T6.1. The original five fields could not hold T5.2's
     destination-folder listings — one cached list_dir per distinct destination

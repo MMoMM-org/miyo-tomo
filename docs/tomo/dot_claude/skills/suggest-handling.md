@@ -70,3 +70,18 @@ WHY `item_key` is passed even though it equals `path`: it is a declared input of
 the analyst's IO Contract (ADR-1 makes derivation the identity function), and
 the analyst must never reconstruct it from `stem` — two inbox items in different
 subfolders share a stem and would collide on one result file.
+
+## WHY `record-run-cost.py` Runs Even When `mark-captured` Failed (spec 034 T6.1)
+
+`suggest` is one of the two actions for which `inbox-triage.py` deliberately
+writes **no** cost-history entry: the entry has to carry the reducer's
+destination-folder counts, and those do not exist until after triage has
+finished. This step is therefore the only place a `suggest` run's cost is ever
+recorded, and skipping it loses the run silently rather than loudly.
+
+The preceding step is instructed to proceed to the report when `mark-captured`
+fails — including the Kado-unreachable case, where it returns 2 before doing any
+work. The run still spent its base and byFrontmatter calls, so the measurement
+must not be contingent on that write succeeding. Hence a separate step rather
+than a line inside `mark-captured.py`; see
+`docs/tomo/scripts/record-run-cost.md`.

@@ -335,3 +335,55 @@ would collapse them. Only a daily `log_entries[]` entry, which carries just
 exactly one exists (keeping #165's invariant that the daily-log path and the
 suggestion path yield one identity) and falls back to the listing otherwise.
 Deduplication moved from the stem to the resolved path for the same reason.
+
+## The Run's Kado Cost Is Observed, Never Declared (spec 034 T6.1)
+
+`_count_kado_calls` used to open with the literals `2 + 7`: two base calls (the
+one recursive listDir plus the `listNotes(fields=["links"])` embed extraction)
+and seven `search_by_frontmatter` queries. Both now come from the client's own
+round-trip counter (`kado_client.observed_call_count`).
+
+WHY the literals had to go: T6.1 writes the base figure into a permanent cost
+history, and a history whose source is a constant records the intent, not the
+behaviour. The Phase-3 gate proved it — with a second base listing reintroduced
+by hand, the fake client recorded 3 base calls while the estimator still
+printed `kado_calls=9`. The `7` is exactly as exposed: `query_frontmatter`
+makes seven unconditional calls, and nothing tied the formula to that number.
+
+WHY a dedicated counter on `KadoClient` and not `_req_id`: `_req_id` is a
+JSON-RPC request identifier whose meaning the client does not own, so keying a
+permanent record to it breaks silently the moment anything else increments or
+resets it. `_call_tool` is the sole choke point every read, write, search and
+graph-audit passes through, so nothing can escape the count.
+
+WHY three snapshots rather than one read at the end: the counter is one
+lifetime total across `discover_files` → `resolve_inbox_attachments` →
+`query_frontmatter` → per-item reads, and a running total cannot be decomposed
+after the fact. Reading it once yields one number where the history's schema
+needs two. `_calls_between` closes out the base after
+`resolve_inbox_attachments` and byFrontmatter after `query_frontmatter`, and
+both ride out on `TriageState` — the same shape, for the same reason, as
+`tag_handler_reads` and `wire_sibling_reads`.
+
+WHY a client that keeps no count leaves both at 0 rather than raising: an old
+fake, or any compatible client, must produce an unmeasured run, never a failed
+one.
+
+## `DOWNSTREAM_COST_ENTRY_ACTIONS` — the Guard That Fails Loudly
+
+Every triage run appends exactly one cost-history entry. `suggest` and
+`fan-resolve` defer theirs to `record-run-cost.py`, because both run
+`suggestions-reducer.py` *after* triage has written `routing-plan.json` and the
+destination-folder counts do not exist yet.
+
+WHY the guard is named and asserted rather than implied: every other plumbing
+gap in this task no-ops silently. This one **double-appends** — an incomplete
+entry from triage, then the real one from the downstream script — so the test
+asserts a `suggest` run produces exactly one entry, not two.
+
+WHY `idle` records at all: an idle run still spends its base and byFrontmatter
+calls, and a history that omits them cannot show what idling costs.
+
+WHY `metrics` gained `item_count` and `base_kado_calls`: the downstream step
+reads both back out of `routing-plan.json` rather than re-deriving its own, so
+`suggest` and `idle` cannot end up counting different things.

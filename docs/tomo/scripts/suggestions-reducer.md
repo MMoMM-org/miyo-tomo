@@ -887,3 +887,35 @@ occurrences, because the instruction document names one note at several display
 sites. An `item_key` appearing twice in one run used to be treated as a
 collision and over-qualified; it no longer is. See
 `docs/tomo/scripts/lib/source_link.md`.
+
+## The Destination-Folder Listings Report What They Cost (spec 034 T6.1)
+
+T5.2's `_vault_folder_notes` issues one cached `list_dir(location, depth=1)` per
+distinct **destination** folder. It is a real per-run cost that scales with
+content, and it was entirely unmeasured — `_folder_cache` was purely local and
+emitted no metric at all, while T5.2's own comment already said "F9 measures
+exactly this number".
+
+`folder_listing_calls` and `distinct_destination_folders` now ride out in the
+output document. WHY the document and not stderr: the step that appends the
+run's cost-history entry runs in a **later process**, and a number produced in
+one process and never wired to where it is read raises no error and fails no
+unit test. The point of a history is comparability across runs, and a number
+that is not in it cannot be compared.
+
+WHY two fields and not one: folding the listings into the base cost would mix a
+fixed pipeline cost with a content-scaling one and tell a later reader nothing
+about either. The folder count is what distinguishes a pipeline regression from
+a busy run.
+
+WHY the calls are read from the client's counter rather than counted as one per
+cache miss: `list_dir` pages internally, so a paged listing is several round
+trips. The per-miss fallback applies only to a client that keeps no count.
+
+WHY the snapshot is taken after the `except`: a listing that raised still spent
+its round trip.
+
+WHY both fields are always present here, even at zero: this file only writes
+them when it ran. A `--fan-resolve` run opens no Kado client and truthfully
+reports zero listings; the paths where the reducer never runs at all omit the
+fields entirely, in `lib/cost_history.py`.

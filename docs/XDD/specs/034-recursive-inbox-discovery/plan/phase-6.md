@@ -561,7 +561,7 @@ phase: 6
   then checked against the Kado source rather than left open. Recorded in
   `docs/tomo/scripts/lib/render_actions.md` under the cause table.
 
-- [ ] **T6.1 The run records its own cost** `[activity: backend]`
+- [x] **T6.1 The run records its own cost** `[activity: backend]`
 
   **Added 2026-09-06 by the Phase 3 gate — the number this task is about to make durable cannot
   detect its own regression.** `_count_kado_calls` (`inbox-triage.py:1863`) hardcodes the base as a
@@ -738,8 +738,29 @@ phase: 6
   3. **Implement**: append-only JSONL in the instance's persistent state directory.
   4. **Validate**: tests pass; `ruff` clean.
   5. **Success**:
-     - [ ] A history accumulates without anyone remembering to record it
+     - [x] A history accumulates without anyone remembering to record it
            `[ref: PRD/AC Feature 6]`
+
+  **Done 2026-09-08.** Both literals are gone: `_count_kado_calls` derives its
+  base and byFrontmatter terms from `KadoClient.call_count`, snapshotted at
+  three points inside `discover()` and threaded out as
+  `TriageState.base_kado_calls` / `.frontmatter_kado_calls`. The reducer counts
+  its destination-folder listings the same way and carries both figures in
+  `suggestions-doc.json`. `lib/cost_history.py` owns the record's shape;
+  `inbox-triage.py` appends for `idle`/`synthesize`/`transcribe` (guarded by
+  `DOWNSTREAM_COST_ENTRY_ACTIONS`), and the new `record-run-cost.py` — called
+  from both `suggest-handling` and a new terminal step in
+  `force-atomic-handling` — appends for `suggest`/`fan-resolve` with the folder
+  fields. `tests/test_034_t6_1_cost_history.py` (21 tests) covers all five
+  paths, the "exactly one entry" guard, and an unwritable history.
+
+  **One thing the task surfaced that its own table did not name.** The history's
+  `state/` default is cwd-relative (mark-captured's precedent), and host tests
+  run from the repo root — so 24 existing `inbox-triage.main()` argv sites across
+  five test files began appending into the repo working tree. Every site was
+  scoped to `tmp_path`, and `tests/conftest.py` gained an autouse guard that
+  fails the offending test by name. The guard found the `test_018_pipeline.py`
+  helper (11 failing tests) that a file-by-file bisect had missed.
 
 - [ ] **T6.2 Integration across the whole pipeline** `[activity: test-strategy]`
 

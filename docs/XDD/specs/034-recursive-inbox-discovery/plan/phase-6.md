@@ -109,6 +109,64 @@ phase: 6
   case-folding sweep. Recorded by T5.2 in `docs/tomo/scripts/suggestions-reducer.md` and by
   T5.3 in `render_actions.md`.
 
+- [ ] **T6.0c The merge upstream of both folds still keys on the exact title**
+      `[activity: backend]` — **Added 2026-09-08, accepted. Runs before T6.1.**
+
+  **Inherited context — read this before the steps.** T6.0 folded three destination keys. It did
+  not touch `_merge_proposed_mocs_by_name` (`suggestion-parser.py:1114`), which collapses approved
+  Proposed MOCs resolving to one Name and keys `merged[name]` by the **exact** title. That function
+  is upstream of every site T6.0 touched, and leaving it exact has a measured consequence T6.0
+  introduced:
+
+  `derive_expected` (`instructions-diff.py:278`) counts one expected `create_moc` per confirmed
+  item with no destination comparison. Two confirmed items titled `Travel (MOC)` and
+  `travel (MOC)` yield `counts['create_moc'] == 2`, while T6.0's folded `by_dest` emits **one**.
+  The audit prints `create_moc expected=2 actual=1 [DIFF]` plus a per-item `[MISSING]` row, both
+  of which set `hard_fail`, and `synthesis-conductor.md` step 3e is STRICT: stop and report the
+  diff verbatim.
+
+  **This is a change in failure mode, not new data loss.** Before T6.0 the run completed and
+  dropped the merged proposal's children on apply. After it, the run stops — but the user reads
+  what looks like Tomo drifting from its own instruction set, not "two of your MOC names collide",
+  and cannot finish that run until they rename one proposal. Recorded at
+  `docs/tomo/scripts/lib/render_actions.md` §"Found While Folding, Recorded Not Fixed".
+
+  **Why upstream is the right place**: folding the merge removes the case-only pair before any
+  consumer sees it. `by_dest`'s fold then becomes defence-in-depth (which is what its own comment
+  already claims to be), and `derive_expected` counts what is actually emitted without needing a
+  destination comparison of its own.
+
+  **One claim this task must test, not inherit.** T6.0's implementer asserted the upstream fold
+  "also closes the `in_set` bullet loss" — the case in which a `link_to_moc` targeting the losing
+  spelling finds no in-set create_moc, keeps `target_moc_path: null`, and is dropped by
+  `filter_unappliable_relationships` with the note's up-bullet. **That claim is unverified and the
+  orchestrator doubts it**: `resolve_target_moc_paths`'s `in_set` keys the *survivor's* spelling,
+  so a link minted from a user-written losing spelling still misses an exact lookup. Establish
+  which is true by running it. If the bullet is still lost, say so and record it — do not fold
+  `in_set`, which T6.0 measured as redirecting bullets into a different folder's MOC and reverted
+  for that reason (`b9d34e1`).
+
+  1. **Prime**: read `_merge_proposed_mocs_by_name` (`suggestion-parser.py:1114`) and its
+     2026-06-17 decision comment — merge on Name only, first occurrence's parent kept. Read
+     T6.0's block above for the folding form (`casefold()`, never `.lower()`) and the fail-safe
+     asymmetry `[ref: SDD/CON-6, ADR-4]`. Read `b9d34e1`'s reverted-fold comment in
+     `render_resolve.py` before considering any change there.
+  2. **Test** (RED):
+     - two approved Proposed MOCs titled `Travel (MOC)` and `travel (MOC)` merge into one, with
+       `supporting_items`, `tags` and `member_stems` unioned — the same semantics the exact-name
+       merge already has, so this is a merge and not a drop
+     - the survivor keeps the spelling its author wrote; nothing folded is written back
+     - `derive_expected` over the merged confirmation counts `create_moc == 1`, so the audit
+       completes instead of hard-failing — assert the audit's own outcome, not just the count
+     - whether the `link_to_moc` up-bullet survives (see the claim above) — assert whichever
+       behaviour is real, with the failing case recorded if it does not
+     - proven RED by reverting the merge key to the exact string
+  3. **Implement**: fold the merge key. Do **not** fold `in_set`.
+  4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded.
+  5. **Success**:
+     - [ ] A case-only MOC pair completes a run instead of hard-failing its audit
+     - [ ] The up-bullet's fate is established by test rather than assumed either way
+
 - [ ] **T6.1 The run records its own cost** `[activity: backend]`
 
   **Added 2026-09-06 by the Phase 3 gate — the number this task is about to make durable cannot

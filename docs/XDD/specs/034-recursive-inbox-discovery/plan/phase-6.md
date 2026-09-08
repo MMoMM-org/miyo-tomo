@@ -691,10 +691,31 @@ phase: 6
   assert a measurement that was never taken. The append logic lives in **one shared helper**, not
   copied per skill, so the four call sites cannot drift apart.
 
+  **Superseded 2026-09-08, after implementation — the append moves into the reducer.** The table
+  below placed the `suggest` and `fan-resolve` appends in a script invoked from a SKILL.md step.
+  T6.1's implementer named the flaw as the assumption its diff could not verify: **no test can see
+  a markdown instruction.** For the two highest-traffic actions the entry would depend on an LLM
+  executing one line, and this task's own criterion is "a history accumulates **without anyone
+  remembering** to record it". That guarantee cannot live in a step someone has to remember.
+
+  The fix is available and deterministic: `suggestions-reducer.py` already runs on **both** those
+  paths as a Python process, already holds the folder counts, and `routing-plan.json` — carrying
+  triage's own metrics — sits in the same `tomo-tmp/` directory it already writes into. It simply
+  does not read it today. Appending from the reducer removes the LLM step entirely and makes the
+  criterion literally true rather than conditionally true.
+
+  This also matches the standing repo principle that deterministic work does not belong in an
+  LLM-executed step. The cost is that the reducer gains a second output responsibility; it already
+  writes `suggestions-doc.json`, so this is a second file, not a change of category.
+
+  The per-action rule is otherwise unchanged — one entry per run, tagged with its action, folder
+  fields absent rather than zero where the reducer never ran, and the triage-side guard still
+  required so triage does not double-append on the two reducer paths.
+
   | action | reducer runs? | where the entry is appended |
   |---|---|---|
-  | `suggest` | yes | at or beside `mark-captured.py`, the existing terminal state step |
-  | `fan-resolve` | yes (`--fan-resolve`) | **a terminal step that does not exist yet** in `force-atomic-handling` — invent it or give both skills the shared helper |
+  | `suggest` | yes | **in `suggestions-reducer.py`** — superseded; was a SKILL.md step |
+  | `fan-resolve` | yes (`--fan-resolve`) | **in `suggestions-reducer.py`** — superseded; was a SKILL.md step |
   | `synthesize` | no | terminates in triage; folder fields absent |
   | `transcribe` | no | terminates in triage; folder fields absent |
   | `idle` | no | terminates in triage; folder fields absent — an idle run still spends base calls, and a history that omits them cannot show what idling costs |

@@ -179,11 +179,25 @@ phase: 6
   `instruction-render.py` itself, this record is born in `suggestion-parser.py` and must survive
   a JSON round-trip. Three sites beyond the merge function, none of them a call site of it:
 
-  | site | change |
-  |---|---|
-  | `suggestion-parser.py:434` | wire-path output dict — carry the record |
-  | `suggestion-parser.py:2589` | markdown-path output dict — same |
-  | `instruction-render.py:284` | read it back beside `confirmed_items` and thread it into the render metadata |
+  | # | site | change |
+  |---|---|---|
+  | 1 | `suggestion-parser.py:434` | wire-path output dict — carry the record |
+  | 2 | `suggestion-parser.py:2589` | markdown-path output dict — same |
+  | 3 | `instruction-render.py:284` | read it back beside `confirmed_items` — **this is only a local variable** |
+  | 4 | `instruction-render.py:832` | add it to the literal dict passed as `render_instructions_md`'s second argument, beside `destination_clashes` and `attachment_suppressions` |
+
+  **(3) without (4) is a silent no-op.** `render_md.py` calls `metadata.get(...)` on the literal
+  dict at `instruction-render.py:819-835` and never sees anything read at `:284`. Reading the
+  record into a local and forgetting to add it to that dict raises no error, fails no
+  renderer-level unit test, and simply never renders the section. The first BLOCK on this task
+  caught this shape one level up; this is the same shape one level down.
+
+  **The record is a group per surviving name, not a pair.** `validate_destinations` already
+  carries `dropped: [...]` inside one clash record (`render_actions.py:1034`) rather than one
+  record per dropped claimant. Follow that: survivor plus a **list** of absorbed spellings. A
+  pairwise `(survivor, absorbed)` tuple is the more natural first guess and it breaks the
+  two-stage fixture below — a three-way collapse would emit two records where the plan asserts
+  one.
 
   **A test that calls `render_instructions_md()` with a hand-built metadata dict proves the
   renderer and nothing else.** Build a real `suggestions.json` and drive `instruction-render.main()`,

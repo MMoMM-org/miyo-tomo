@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.31.0
+# version: 0.31.1
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -1118,11 +1118,19 @@ def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
     regardless of parent; the first occurrence's parent is kept. Without this, two
     proposals renamed to one Name emit two create_moc at the same destination and
     the second overwrites the first on apply, silently dropping children.
+
+    Names are compared case-folded (CON-6, spec 034 T6.0c): `Travel (MOC)` and
+    `travel (MOC)` are one file on this filesystem, so they are one proposal.
+    `casefold()`, not `.lower()` — `ß` folds to `ss` and these are German notes.
+    The key folds; the survivor keeps the spelling its author wrote. Folding
+    here removes the case-only pair upstream of every consumer, so the
+    downstream `by_dest` fold is the defence-in-depth its comment claims and
+    `derive_expected` counts what is actually emitted.
     """
     merged: dict[str, dict] = {}
     order: list[str] = []
     for moc in mocs:
-        name = moc.get("title", "")
+        name = moc.get("title", "").casefold()
         head = merged.get(name)
         if head is None:
             merged[name] = moc

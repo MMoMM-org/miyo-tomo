@@ -838,37 +838,44 @@ lost is the up-bullet. Closing this needs the collision handled, not the key
 folded — most cleanly by folding upstream at `_merge_proposed_mocs_by_name`
 (below), which removes the case-only pair before either consumer sees it.
 
-### Found While Folding, Recorded Not Fixed
+### Found While Folding, Closed by T6.0c
 
-**`derive_expected` counts a case-only MOC pair as two, and the fold emits one.**
-`instructions-diff.py:278` counts one expected `create_moc` per confirmed item
-and does no destination comparison, so two confirmed proposals named
-`Travel (MOC)` and `travel (MOC)` expect two actions where the folded builder
-now emits one. Verified against `derive_expected` directly:
-`counts["create_moc"] == 2`, `by_item == {S01: create_moc, S02: create_moc}`.
-The audit reports `create_moc expected=2 actual=1 [DIFF]` plus a `[MISSING]`
-coverage row for the merged item, and `synthesis-conductor.md` step 3e makes a
-diff mismatch fatal.
+**`derive_expected` counted a case-only MOC pair as two, and the fold emits one
+— closed upstream.** `instructions-diff.py` counts one expected `create_moc` per
+confirmed item and does no destination comparison, so two confirmed proposals
+named `Travel (MOC)` and `travel (MOC)` expected two actions where the folded
+builder emits one. The audit reported `create_moc expected=2 actual=1 [DIFF]`
+plus a `[MISSING]` coverage row for the merged item, and `synthesis-conductor.md`
+step 3e makes a diff mismatch fatal.
 
-This is a change in failure mode, not a new data loss: before the fold the run
-completed and dropped the merged proposal's children on apply; now it stops and
-says so. Loud beats silent, and T6.0's success criterion holds. But it is the
-same shape T5.4 had to close with `_subtract_skipped_assets` — "a guard whose
-own audit stops the run is not shippable" — and closing it properly is not the
-same fold. Two candidate remedies, neither attempted here:
+That was a change in failure mode, not a new data loss: before the fold the run
+completed and dropped the merged proposal's children on apply; after it, the run
+stopped and said so. Loud beats silent — but it was the same shape T5.4 had to
+close with `_subtract_skipped_assets` ("a guard whose own audit stops the run is
+not shippable"), so it was carried as T6.0c rather than left standing.
 
-1. **Fold `_merge_proposed_mocs_by_name`** (`suggestion-parser.py:1114`), which
-   keys `merged` by exact title. Folding there produces ONE confirmed item, so
-   `derive_expected` and the builder agree and `by_dest` returns to being the
-   defence-in-depth its own comment claims it is. It also touches an explicit
-   2026-06-17 decision (merge on Name only, regardless of parent) and changes
-   what the user sees in the confirmed document, so it wants its own task.
-2. **A subtraction in `instructions-diff`**, mirroring `_subtract_skipped_assets`.
-   That needs the builder to report its merges on the wire, which owes the usual
-   triad: strip-before-wire, a paired-consumer count, and a schema test.
+**Resolved 2026-09-08 by folding `_merge_proposed_mocs_by_name`**
+(`suggestion-parser.py`), the first of the two candidate remedies recorded here
+and the smaller, more honest one: it removes the divergence instead of teaching
+the audit to tolerate it. The parser now confirms ONE item for a case-only pair,
+so `derive_expected` and the builder agree and `by_dest` returns to being the
+defence-in-depth its own comment claims it is. The rejected alternative was a
+subtraction in `instructions-diff` mirroring `_subtract_skipped_assets`, which
+would have needed the builder to report its merges on the wire — owing the usual
+triad (strip-before-wire, paired-consumer count, schema test) for a divergence
+that did not have to exist. Full rationale, including why `casefold()` rather
+than `.lower()` and why the fold has to hold across the markdown path's double
+merge, lives in `docs/tomo/scripts/suggestion-parser.md`.
 
-(1) is the smaller and more honest fix — it removes the divergence rather than
-teaching the audit to tolerate it.
+**Still open: the losing spelling's up-bullet.** T6.0's implementer claimed the
+upstream fold would also close the `in_set` bullet loss recorded above. T6.0c
+traced it at HEAD and it does not. `in_set` keys the EXACT `_moc_stem(title)`
+and stays exact by measurement (`b9d34e1`), so the merge survivor is indexed
+under its own spelling only and a `link_to_moc` minted from the losing spelling
+still misses it, keeping `target_moc_path: null` — Kado's `search_by_name` tier
+cannot help either, because the MOC does not exist in the vault yet. Pinned
+hard-coded in `tests/test_034_t6_0c_merge_proposed_mocs_case_folded.py`. Closing
+it needs the different-folder `in_set` collision handled, not a fold.
 
 ### Report-Only Sites From the T6.0 Shape-Grep
 

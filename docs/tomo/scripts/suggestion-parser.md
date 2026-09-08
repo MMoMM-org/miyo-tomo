@@ -517,3 +517,75 @@ that are about where the defect actually lives, not about effort:
 What this needs is a back-compat decision about pre-034 wires, taken where the
 fallback is minted, with the Pass-2 consumers swept. That is a task; it is not
 a rename in the parser.
+
+## `_merge_proposed_mocs_by_name` Folds Its Key (spec 034 T6.0c)
+
+WHY the by-Name merge compares case-folded: under CON-6 this filesystem is
+case-insensitive, so `Travel (MOC)` and `travel (MOC)` are one file. The
+2026-06-17 decision that shapes this function — merge on Name only, first
+occurrence's parent kept — was written for exact same-name proposals, and left
+a case-only pair intact. T6.0 then folded the downstream destination keys
+(`_build_create_moc_actions`' `by_dest` and its paired consumer
+`resolve_section_names`' `create_moc_by_dest`), so from that point the builder
+emitted ONE `create_moc` for a pair the parser still confirmed as two.
+
+WHY that mattered enough to be its own task: `derive_expected`
+(`instructions-diff.py`) counts one expected `create_moc` per confirmed item and
+does no destination comparison, so it expected two where one was emitted. The
+audit printed `create_moc expected=2 actual=1 [DIFF]` plus a `[MISSING]`
+per-item row, both of which set `hard_fail`, and `synthesis-conductor.md`
+step 3e is STRICT: stop and report the diff verbatim. The user read that as Tomo
+drifting from its own instruction set and could not finish the run without
+renaming a proposal. Before T6.0 the same input completed and dropped the merged
+proposal's children on apply — a change in failure mode, not new data loss, but
+one that had to be closed either way.
+
+WHY upstream rather than a subtraction in the audit: folding here removes the
+case-only pair before any consumer sees it. `by_dest`'s fold then becomes the
+defence-in-depth its own comment already claims to be, and `derive_expected`
+counts what is actually emitted without needing a destination comparison of its
+own. The alternative — teaching `instructions-diff` to subtract the builder's
+merges, mirroring `_subtract_skipped_assets` — would have needed the builder to
+report its merges on the wire, owing the usual triad (strip-before-wire, paired
+consumer count, schema test) for a divergence that did not have to exist.
+
+WHY `casefold()` and not `.lower()`: `ß` folds to `ss` under `casefold()` and is
+left alone by `.lower()`. These are German notes, so `Straße (MOC)` and
+`STRASSE (MOC)` are one destination on this filesystem. Same form as T5.2's
+`resolve_destination_clashes` and T5.3's `validate_destinations`
+`[ref: SDD/CON-6, ADR-4]`.
+
+The key folds; nothing folded is written back. The survivor keeps the spelling
+its author wrote in `title`, `destination` and `topic`, so the user always reads
+back the name they typed.
+
+### Idempotent Across the Markdown Path's Double Merge
+
+WHY the tests cover the same fold three times: there are three call sites and
+the two parser paths do not match. The wire path merges **once**
+(`build_from_wire`, after building `wire_mocs`). The markdown path merges
+**twice** — per-document inside `parse_proposed_mocs`, then again over
+`primary_pmocs + fan_pmocs`. A case-only pair inside one document is collapsed
+by the first merge; a third spelling arriving from the fan doc is only visible
+to the second. The fold has to hold across both, and the covered path is the one
+`derive_expected` consumes: `confirmed_items` from
+`tomo-tmp/parsed-suggestions.json`, post-merge. This spec has already been
+bitten by the two paths diverging (T5.1), so neither is assumed from the other.
+
+### What the Fold Does NOT Recover: the Losing Spelling's Up-Bullet
+
+WHY this is recorded rather than fixed: T6.0's implementer claimed the upstream
+fold would also close the `in_set` bullet loss. Traced at HEAD under T6.0c, it
+does not. `resolve_target_moc_paths`' `in_set` is keyed by the EXACT
+`_moc_stem(title)` and stays that way by measurement — `b9d34e1` folded it, saw
+two `create_moc` in *different* folders collide on one key and last-write-wins
+redirect one MOC's bullets into the other's destination, and reverted. So the
+merge survivor is indexed under its own spelling only, and a `link_to_moc`
+minted from a note whose author wrote the parent as the losing spelling misses
+that key. Tier 2 (Kado `search_by_name`) cannot help either: the MOC does not
+exist in the vault yet. The action keeps `target_moc_path: null`.
+
+Pinned hard-coded in `tests/test_034_t6_0c_merge_proposed_mocs_case_folded.py`
+so the finding is recorded as an assertion rather than an assumption. Closing it
+needs the `in_set` collision handled — a different-folder disambiguation, not a
+fold — and that is not this task.

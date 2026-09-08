@@ -810,7 +810,7 @@ phase: 6
   `unclassified action(s): {'reconcile'}`. A broken parse yields an empty set and
   fails, so the test cannot pass by not working.
 
-- [ ] **T6.2 Integration across the whole pipeline** `[activity: test-strategy]`
+- [x] **T6.2 Integration across the whole pipeline** `[activity: test-strategy]`
 
   **Amended 2026-09-08 after the TDD gate blocked three of the four items.**
 
@@ -923,7 +923,31 @@ phase: 6
   Only the pinned count and review of the list itself stand behind it — an author can edit the
   golden's expectation and the exception list in one commit. The gain over re-recording is real
   but narrow: **the deviation is visible in the diff, where a re-record is not.** That is the
-  whole of the guarantee; do not read more into it. **"Walk the list and confirm" is not a deliverable**; it has no failure mode.
+  whole of the guarantee; do not read more into it.
+
+  **Closed 2026-09-08.** `efde457`, `3312f08`, `18e5450`. Suite 3695 → 3735, ruff clean, no
+  production code, both action goldens untouched, scratch worktree torn down.
+
+  **The parity golden was blind, and the proof is that the old tests stayed green.** Reverting
+  T5.1's alias fix now fails exactly one test — the new two-namesake fixture — while the two
+  pre-existing parity tests pass. That green is the finding: the file existed to catch the two
+  parser paths diverging and could not see the only divergence this spec produces. Reproduced
+  independently by the compliance review rather than taken from the report.
+
+  **A golden's exception list is only as strong as its patterns.** The first cut matched
+  `Delete source note: .+` — shape, not content — so a regression mangling the note name passed
+  while the file's docstring claimed it "differs only where this spec meant it to". Found by the
+  code-quality review injecting `!!!WRONG!!!` and watching the suite stay green. The entries now
+  **derive** the expected line from the golden's own untouched `- **Source:**` line rather than
+  hardcoding a stem, and a test proves the mangled name is rejected instead of asserting it.
+
+  **Two of the three concerns had nothing to do with subfolder discovery**, which is why the file
+  split three ways: the boundary walk keeps the T6.2 name; the flat-inbox golden became
+  `test_pass2_flat_instruction_golden.py` — **the phase deliberately dropped from its name**,
+  because it guards every future Pass-2 change and nobody touching Pass 2 in a year would look
+  inside a T6.2 file; the ten-row map became `test_034_feature_coverage_map.py`, spanning seven
+  files. The golden's file now also asserts its own reach (three of ~fifteen action kinds), so
+  widening it is visible rather than assumed. **"Walk the list and confirm" is not a deliverable**; it has no failure mode.
            A row whose answer is honestly "not covered here" carries an explicit `None` and a
            one-line reason — that is a fact, not a claim, and needs no proof.
      - [ ] Features 9 (no extra vault listing — a call-count claim) and 10 (the two file-type

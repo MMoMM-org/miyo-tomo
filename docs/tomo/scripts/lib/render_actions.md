@@ -982,6 +982,35 @@ WHY the cause is cached alongside the path, per stem, rather than derived at the
 call site: two links to the same MOC must report the same reason, and a reason
 derived a second time can differ from the first if Kado's state changes mid-run.
 
+#### `absent` Cannot Distinguish "No Such Note" From "Not Permitted to Look"
+
+**Known limitation, accepted 2026-09-08. Do not treat this as a defect to fix in
+Tomo.**
+
+`absent` is inferred from Kado returning an empty result, and an empty result has
+two meanings Kado does not separate. `filterItemsByScope`
+(`Kado/src/obsidian/search-adapter.ts:91-97`) drops out-of-scope items silently,
+and returns `[]` outright when the caller has no scope patterns at all. Kado's
+`FORBIDDEN` code is raised only for *tag* permission failures, never for path
+scope. So a MOC that exists in the vault but sits outside Tomo's permitted paths
+comes back from `search_by_name` as an empty list — byte-identical to a MOC that
+genuinely is not there.
+
+The consequence, stated plainly so nobody rediscovers it as a bug: for such a MOC
+the instructions say **"MOC not found — create it"** about a note the user can see
+in Obsidian and already owns. Following that advice creates a duplicate.
+
+WHY it is left this way: the distinction lives in Kado's search contract, not in
+Tomo. Tomo could only recover it by reading its own ACL and re-deriving what Kado
+already knows — duplicating a sibling component's responsibility, which the MiYo
+constitution's architecture rules exclude. Kado is not changing for this, and the
+behaviour cannot be exercised from Tomo's test suite: the fake client *defines*
+`[]` as absence, so no fixture here can tell the two apart.
+
+Surfaced by T6.0d's implementer as the assumption its diff could not verify, then
+checked against the Kado source rather than left open. The wording stays as it is;
+this note is the record.
+
 ### The Marker's Lifetime
 
 `UNRESOLVED_MOC_FIELD` (`unresolved_moc`) lives on the action from the resolver

@@ -114,7 +114,7 @@ phase: 6
   case-folding sweep. Recorded by T5.2 in `docs/tomo/scripts/suggestions-reducer.md` and by
   T5.3 in `render_actions.md`.
 
-- [ ] **T6.0c The merge upstream of both folds still keys on the exact title**
+- [x] **T6.0c The merge upstream of both folds still keys on the exact title**
       `[activity: backend]` — **Added 2026-09-08, accepted. Runs before T6.1.**
 
   **Inherited context — read this before the steps.** T6.0 folded three destination keys. It did
@@ -290,8 +290,25 @@ phase: 6
   3. **Implement**: fold the merge key. Do **not** fold `in_set`.
   4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded.
   5. **Success**:
-     - [ ] A case-only MOC pair completes a run instead of hard-failing its audit
-     - [ ] The up-bullet's fate is established by test rather than assumed either way
+     - [x] A case-only MOC pair completes a run instead of hard-failing its audit
+     - [x] The up-bullet's fate is established by test rather than assumed either way
+
+  **Closed 2026-09-08** — `1ec8b6e` folds the merge key, `b2ff78e` makes the merge report what it
+  absorbed, `935d8f2` twin-writes that record like every sibling record. 19 tests; suite
+  3636 → 3655, ruff clean, both goldens byte-identical, no schema or `instructions-diff` change.
+
+  **The up-bullet verdict: it is lost, and that is now asserted rather than assumed.** T6.0's
+  claim that this fold would close it was wrong — `in_set` keys the survivor's spelling, so a
+  link minted from the losing one misses regardless. Pinned hard-coded at
+  `target_moc_path is None`, with `in_set` untouched. The fix belongs to T6.0d, which also owns
+  the larger finding that such a link renders as a tickable instruction rather than being dropped.
+
+  **Reentrancy has two halves, and the plan's own fixture only reached one.** The three-way
+  fixture cannot exercise the carry-over line — there the stage-1 survivor seeds stage 2 and its
+  list is extended in place, so `.extend()` always receives `[]`. The four-way fixture, where the
+  absorbed proposal is itself a survivor carrying its own group, is the only one where that line
+  does work. Found by the implementer after four gate rounds had approved the three-way fixture as
+  sufficient; verified by the compliance review by hand-tracing both paths. **Do not trim it.**
 
 - [ ] **T6.0d A link to a MOC that will never exist renders as a normal instruction**
       `[activity: backend]` — **Added 2026-09-08, accepted. Runs before T6.1.**

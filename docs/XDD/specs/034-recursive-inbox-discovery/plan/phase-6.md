@@ -607,6 +607,60 @@ phase: 6
     the constant as a known limitation **in the history's own schema**, so a later reader knows the
     figure is declared rather than measured.
 
+  **Amended 2026-09-08 after the TDD gate blocked the first cut. Three decisions are now made;
+  do not re-open them.**
+
+  **1. The parity test already exists — do not write it again.**
+  `tests/test_031_t6_3_cost_verification.py::test_reported_count_matches_observed_at_several_note_counts`
+  (added `92ef32d`, the day of the Phase 3 gate) already goes RED on the exact mutation this task
+  cites: the gate reproduced it by hand and saw `reported=9 observed=10`. So the *suite* does
+  observe the true count; what is still a literal is `_count_kado_calls`' **implementation**, which
+  agrees with reality by parity rather than by derivation. T6.1's new work is to make the
+  implementation derive its number. The existing test becomes regression cover for that change,
+  not a thing to duplicate.
+
+  **2. Both literals are replaced, via a dedicated counter — not `_req_id`.**
+  `_count_kado_calls` hardcodes `2` (base) **and** `7` (byFrontmatter). `query_frontmatter`
+  (`inbox-triage.py:340-367`) makes exactly seven unconditional `search_by_frontmatter` calls, so
+  the `7` is the same shape as the pre-ADR-3 `3` — a fixed count baked into a formula. The task's
+  own argument ("a history whose source is a constant records intent, not behaviour") applies to it
+  word for word, so it goes too.
+
+  The counter is a **dedicated attribute on `KadoClient`**, incremented in `_call_tool`
+  (`kado_client.py:621`) — the single choke point every read, write, search and graph-audit passes
+  through. **Not `_req_id`**: that is a JSON-RPC request identifier whose meaning the client does
+  not own, and keying a permanent history to it breaks silently the moment anything else
+  increments or resets it. Every fake client in this suite already tracks its own `self.calls` —
+  a dedicated counter is the established convention here, and it costs one integer.
+  Increment **before** the request, as `_req_id` does, so a call that raises still counts: it
+  consumed a round trip, and `_count_kado_calls`' own docstring already names that under-count as
+  a known flaw it could not fix.
+
+  **3. The folder-listing counts go into the history, and the SDD was amended to hold them.**
+  `cost_history` gained `folder_listing_calls` and `distinct_destination_folders` (`1d8c80e`).
+  Reporting them only to stderr was rejected: the point of a history is comparability across runs,
+  and a number that is not in it cannot be compared. **Assert a positive value** — a specific
+  non-zero folder count at a named location. "Reported separately, never folded into the base" is
+  satisfied by reporting nothing at all, and the gate flagged that wording as vacuous.
+
+  **The plumbing crosses a process boundary, and an ordering constraint falls out of it.**
+
+  | # | site | change |
+  |---|---|---|
+  | 1 | `kado_client.py:621` `_call_tool` | the dedicated counter, incremented before the request |
+  | 2 | `inbox-triage.py:1835` `_count_kado_calls` | derive from the counter; both `2` and `7` go |
+  | 3 | `suggestions-reducer.py:1944-1965` `_vault_folder_notes` | count listing calls and distinct folders — today `_folder_cache` is purely local and emits no metrics at all |
+  | 4 | the reducer's output dict (`suggestions-doc.json`) | carry both counts across the process boundary |
+  | 5 | wherever the history is appended | read triage's own metrics back from `routing-plan.json["metrics"]` and combine |
+  | 6 | `solution.md` `cost_history` | done at `1d8c80e` |
+
+  **The ordering constraint**: the entry **cannot** be appended by `inbox-triage.py`. The reducer
+  runs *after* triage — triage writes `routing-plan.json`, then `suggest-handling` invokes
+  `suggestions-reducer.py` — so the folder counts do not exist when triage finishes. Decide and
+  state where the append happens; it must be at or after the reducer. Site 4 is the trap this
+  spec has now hit five times: a number produced in one process and never wired to where it is
+  read raises no error and fails no unit test.
+
   1. **Prime**: Read `[ref: SDD/Data Storage Changes; cost_history]`. Read
      `mark-captured.py:78-79`, whose `state/moc-squelch.json` default is the precedent — a small
      persistent registry in the instance state, addressed cwd-relative. Read

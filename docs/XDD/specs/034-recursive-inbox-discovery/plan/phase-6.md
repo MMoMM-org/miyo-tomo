@@ -812,14 +812,48 @@ phase: 6
 
 - [ ] **T6.2 Integration across the whole pipeline** `[activity: test-strategy]`
 
-  1. **Prime**: Read `[ref: SDD/Runtime View]` and `[ref: SDD/Quality Requirements]`.
+  **Amended 2026-09-08 after the TDD gate blocked three of the four items.**
+
+  **Scope against `test_034_t2_8_end_to_end_key_trace.py` — it already owns part of this.** That
+  file walks this spec end to end in 26 tests, hop by hop (routing plan → state → item results →
+  suggestions doc → wire → confirmed_items → derive_expected → build_actions), on **both** parser
+  paths, for two namesake notes in different one-level subfolders and for a space-and-mixed-case
+  subfolder. It has **zero** attachment fixtures, **zero** audio fixtures, no root-level note and
+  no depth beyond one subfolder.
+
+  So the fixture list below is genuinely uncovered — but **do not re-assert item_key identity or
+  re-trace the hops for two namesake notes.** T2.8 owns that case; a second file repeating it
+  doubles the maintenance and leaves nobody able to say which is authoritative. Scope the new
+  assertions to what T2.8 does not touch: attachment collision (T6.0's `claimed` fold plus T5.4's
+  suppression), audio peered by note rather than by name (Feature 5's actual defect surface), the
+  no-embed note as a negative control, and root-level plus multi-level placement. Give the new
+  file a docstring that states this boundary, the way T2.8's own docstring scopes itself against
+  the seven other e2e files.
+
+  1. **Prime**: Read `[ref: SDD/Runtime View]` and `[ref: SDD/Quality Requirements]`. Read
+     `test_034_t2_8_end_to_end_key_trace.py` in full **before writing anything**, and
+     `tests/fixtures/034-t3-4-flat-golden/` for the golden conventions — volatile fields are
+     replaced with `<NORMALISED>`, not left to drift.
   2. **Test**:
-     - end to end over a fixture inbox containing: a root note, a subfolder note, a nested
-       note, two namesakes in different subfolders, a namesake pair of attachments, a note with
-       no embed, and an audio file with a namesake elsewhere
+     - end to end over a fixture inbox containing: a root note, a nested (two-level) note, a
+       namesake pair of attachments, a note with no embed, and an audio file with a namesake
+       elsewhere — plus the two namesake notes **only** as context for the attachment and audio
+       cases, not as a re-trace of T2.8
      - assert at every artefact boundary, not only at the end — routing plan, per-item results,
        suggestions document, wire, parsed suggestions, instruction set
-     - assert the instruction set is byte-identical for the flat-inbox subset `[ref: SDD/CON-4]`
+     - **the instruction-set golden, with its baseline named.** No pre-034 instruction-set golden
+       exists; `034-t3-4-flat-golden` is a Pass-1 *suggestions document*, and the two action
+       goldens are mid-Phase-5 JSON. Record a new one from **`ee44cb3`** (pre-Phase-1), mirroring
+       T3.4's choice, driven through the real `instruction-render.py`, and write a README beside
+       it naming the commit and the reason — every other golden in this spec does.
+       **"Flat-inbox subset" means its own fixture** — plain root-level notes, no collisions —
+       not a subset carved out of the big fixture after the fact `[ref: SDD/CON-4]`.
+
+       **Recording it needs care in this worktree.** Producing pre-034 output means running
+       pre-034 code, and `git checkout` is forbidden here — a stale `stash@{0}` must never be
+       applied and the tree must stay clean. Use `git worktree add` to a scratch path at
+       `ee44cb3`, or extract the scripts with `git show`. Never check this worktree out to another
+       commit.
 
      **Give the wire/markdown parity golden a collision fixture — added 2026-09-08.**
      `tests/test_suggestions_wire_golden.py` exists to catch the two parser paths diverging,
@@ -833,8 +867,16 @@ phase: 6
   3. **Implement**: n/a — test only.
   4. **Validate**: full suite green; `ruff` clean.
   5. **Success**:
-     - [ ] Every PRD feature has a passing end-to-end assertion, walked one by one against the
-           feature list `[ref: PRD/Feature Requirements]`
+     - [ ] **A Feature-N → `test::name` traceability table exists** in the new file's docstring,
+           covering all ten PRD features `[ref: PRD/Feature Requirements]`. Each row points either
+           at a new assertion here or at the existing test that already owns it (T2.8, T3.4, T5.1,
+           T5.4 and others). **"Walk the list and confirm" is not a deliverable** — it has no
+           failure mode. The table is the artefact, and a feature with no row is a gap the task
+           must name rather than quietly leave.
+     - [ ] Features 9 (no extra vault listing — a call-count claim) and 10 (the two file-type
+           checks agree) are **not** natural fixture-boundary assertions. Point their rows at
+           wherever they are really covered, or say plainly that they are not, rather than
+           inventing a weak end-to-end assertion to fill the row.
 
 - [ ] **T6.3 Prepare the live-validation fixtures** `[activity: validate]`
 

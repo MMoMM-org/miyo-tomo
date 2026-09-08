@@ -29,6 +29,68 @@ phase: 6
 
 ## Tasks
 
+- [ ] **T6.0 The three destination keys Phase 5 did not fold** `[activity: backend]`
+      — **PROPOSED 2026-09-08, not yet accepted.** Delete this task if it is deferred.
+
+  Phase 5 folded case into three destination comparisons and left three more, each found by a
+  shape-grep and recorded rather than fixed because folding them changes behaviour rather than
+  addressing. They are collected here because they are one shape, and because two of them are
+  an emitter and its paired consumer — the exact pairing that cost this spec a task of its own
+  when T5.0b moved and T5.0c did not.
+
+  All three are live on HEAD under **CON-6**, which records this filesystem as case-insensitive,
+  *verified on this host*.
+
+  | # | site | what happens today |
+  |---|---|---|
+  | 1 | `_build_create_moc_actions`'s `by_dest` | `Travel (MOC)` and `travel (MOC)` both emit a `create_moc`; the second overwrites the first on apply, **dropping the first's children** — the `#67` failure that guard exists to prevent |
+  | 2 | `render_resolve.py:213`'s `create_moc_by_dest` | keys the same composed destination by exact string; the paired consumer of (1) and must fold with it |
+  | 3 | `_build_move_asset_actions`'s `claimed` | `A/Ufer.jpg` and `B/ufer.jpg` both emit a `move_asset`; the second overwrites the first, and **no skip is recorded — so T5.4's suppression never fires** and both notes are filed |
+
+  **(3) is the one to weigh first.** It is not merely an unfolded key: T5.4 built a guard whose
+  trigger is a recorded skip, and this path records none. The feature has a blind spot exactly
+  where CON-6 says the filesystem will bite, and the user sees nothing — the notes file, the
+  attachment is overwritten, no report mentions it.
+
+  **Why folding is right here, same asymmetry as T5.3**: on a case-insensitive filesystem, not
+  folding loses data and cannot be undone; on a case-sensitive one, folding costs a rename and
+  can. That reasoning is recorded in T5.3's block and applies unchanged.
+
+  1. **Prime**: read `docs/tomo/scripts/lib/render_actions.md` — the T5.3 sweep records sites
+     (1) and (2) with their reachability, the T5.4 section records (3). Read T5.3's
+     `validate_destinations` and T5.2's `resolve_destination_clashes` for the folding form
+     already in use (`casefold()`, not `.lower()` — `ß` folds to `ss` and these are German
+     notes) `[ref: SDD/CON-6, ADR-4]`.
+  2. **Test** (RED): each site's collision, proven red by reverting to exact comparison. For
+     (3), additionally assert that a skip IS now recorded and that T5.4's suppression
+     consequently fires — the point is not the fold but the guard it re-arms.
+  3. **Implement**: fold (1) and (2) **together**; a fold on one without the other re-creates
+     the emitter/consumer divergence this spec has already paid for twice. Reuse
+     `lib/source_link.py`'s collision helpers where they fit rather than adding a fourth copy.
+  4. **Validate**: tests pass; `ruff` clean; neither action golden re-recorded — if a no-clash
+     run changes, that is a real regression, not a fixture to refresh.
+  5. **Success**:
+     - [ ] Two MOC proposals differing only in case cannot silently drop one's children
+     - [ ] An attachment collision differing only in case records a skip, so T5.4's guard fires
+
+- [ ] **T6.0b An atomic and a MOC can claim the same path, and nothing compares them**
+      `[activity: backend]` — **PROPOSED 2026-09-08, not yet accepted.**
+
+  Kept separate from T6.0 deliberately: this is not an unfolded key but a **missing comparison
+  across two action kinds**, and closing it cascades.
+
+  An atomic named `Travel (MOC)` filed into the MOC folder composes the same destination as a
+  `create_moc` for `Travel (MOC)`. `_build_create_moc_actions` dedups create_moc against
+  create_moc; `_build_move_note_actions` has no guard at all; T5.2's Pass-1 check compares
+  atomics against atomics; T5.3's `validate_destinations` groups `move_note` only. No pass sees
+  both kinds.
+
+  Why it is its own task: dropping a `create_moc` cascades into the `link_to_moc` and
+  up-preservation actions that target it. That is a behaviour change with its own blast radius,
+  not an addressing fix, and it wants its own design rather than being folded into a
+  case-folding sweep. Recorded by T5.2 in `docs/tomo/scripts/suggestions-reducer.md` and by
+  T5.3 in `render_actions.md`.
+
 - [ ] **T6.1 The run records its own cost** `[activity: backend]`
 
   **Added 2026-09-06 by the Phase 3 gate — the number this task is about to make durable cannot
@@ -103,6 +165,16 @@ phase: 6
      - assert at every artefact boundary, not only at the end — routing plan, per-item results,
        suggestions document, wire, parsed suggestions, instruction set
      - assert the instruction set is byte-identical for the flat-inbox subset `[ref: SDD/CON-4]`
+
+     **Give the wire/markdown parity golden a collision fixture — added 2026-09-08.**
+     `tests/test_suggestions_wire_golden.py` exists to catch the two parser paths diverging,
+     and every fixture in it uses single stems (`memo`, `S01`) with no two items sharing a
+     filename. So it is blind to divergence that only appears on a collision — which is the
+     only kind this spec can produce. T5.1 proved that concretely: its first cut took the
+     wikilink *target* instead of the alias, diverging the two paths precisely on the collision
+     case, and the parity golden stayed green. Six other tests caught it, by luck of what they
+     happened to assert. Add a two-namesake fixture to that golden so the test covers the case
+     it was written for.
   3. **Implement**: n/a — test only.
   4. **Validate**: full suite green; `ruff` clean.
   5. **Success**:

@@ -738,5 +738,37 @@ decision is exactly the drift shape this spec hit in T5.0c, where an emitter mov
 paired consumer did not. The shared module is the fix, and Pass 1 and Pass 2 already share
 ground via `lib/` — `_dest_join` is imported across that boundary today.
 
-Still best done after Phase 5 closes, for the reason first recorded: T5.4 is still moving
-this code.
+**Condition met 2026-09-08 — Phase 5 is closed.** T5.4 was the last task moving this code,
+and T5.5 added `lib/source_link.py`, which is the first piece of the shared ground this
+extraction would land in. The blocker was never the work; it was that the code kept
+moving underneath it. It has stopped.
+
+### `state-update.py --stem` is unvalidated, and an LLM writes it
+
+Found 2026-09-07 during spec 034 T5.0c, as the assumption that task's implementer could not
+verify from its own diff.
+
+`lib/inbox_state.display_stem` returns `entry["stem"]` verbatim when present — its basename
+fallback only guards a *malformed* entry. So everything rests on what writes that field, and
+there are two writers with different guarantees:
+
+- `inbox-triage.py:659,772` writes `Path(note_path).stem`, which can never contain a slash.
+- `state-update.py:93` writes `args.stem`, a `required=True` CLI argument with **no
+  validation**, documented as "display only; not used for lookups".
+
+That documentation was true until T5.0c widened a comparison. `_same_note_as_any` in
+`instructions-diff.py` applies `_keys_match` in both directions, so a multi-segment
+`source_stem` like `Places/Dresden` would collapse against `100 Inbox/Places/Dresden` — two
+notes the emitter keeps distinct. The state-entry schema permits it: `stem` is
+`{"type": "string", "minLength": 1}` with no pattern.
+
+What makes it reachable rather than theoretical: `state-update.py`'s callers are
+`tomo/dot_claude/agents/inbox-analyst.md` (four sites), an LLM-loaded runtime file where the
+model substitutes `<stem>` itself, with no instruction that it must be a bare filename. And
+recursion is what put subfolder notes in front of that agent — handling
+`100 Inbox/Places/Dresden.md`, writing `Places/Dresden` is a plausible thing for a model to do.
+
+Cheapest fix is a guard at the CLI boundary, where it is deterministic: reject a `/` in
+`--stem`, or take its basename. A schema `pattern` would catch it a layer later. Worth doing
+before the next live run over a subfolder-heavy inbox, since that is the first time the
+analyst meets these paths at scale.

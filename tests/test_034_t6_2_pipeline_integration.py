@@ -62,7 +62,6 @@ SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 GOLDEN_DIR = TESTS_DIR / "fixtures" / "034-t6-2-instructions-golden"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
-sys.path.insert(0, str(GOLDEN_DIR))
 
 from lib.item_key import to_filename  # noqa: E402
 from lib.kado_client import KadoError  # noqa: E402
@@ -425,6 +424,18 @@ class TestBoundary2ResolvedAttachments:
 # Boundary 3/4 — per-item results and the suggestions document
 # ---------------------------------------------------------------------------
 
+class TestBoundary3ItemResults:
+    def test_a_two_level_path_round_trips_through_the_result_filename(self, run):
+        """T2.8 proves one-level keys survive `to_filename`. Depth is this
+        file's half: a filename encoder that dropped a separator would give the
+        deep note the same file as a one-level namesake."""
+        encoded = to_filename(DEEP_NOTE)
+        assert encoded != to_filename("100 Inbox/Japan/Hokkaido Trip.md"), (
+            f"two different depths encode to the same result filename: {encoded}"
+        )
+        assert "/" not in encoded, f"{encoded} is not a flat filename"
+
+
 class TestBoundary4SuggestionsDocument:
     def test_every_discovered_note_reached_the_document(self, run):
         sections = run["suggestions_doc"]["sections"]
@@ -446,10 +457,24 @@ class TestBoundary4SuggestionsDocument:
         assert got[ROOT_NOTE] == [[]], "the no-embed control acquired an attachment"
 
     def test_the_root_and_the_deep_note_are_rendered_the_same_way(self, run):
-        """Feature 1: depth is not visible in the output."""
+        """Feature 1: depth is not visible in the output. A note two folders
+        down reads exactly as a root-level one does — its source link is the
+        bare filename, because nothing else in this run shares it."""
         md = run["markdown"]
         assert "**Source:** [[Root Note]]" in md
         assert "**Source:** [[Hokkaido Trip]]" in md
+        # T5.1 qualifies a source link ONLY where a filename repeats in the
+        # run, so the qualified ones must be exactly the namesake pair — the
+        # deep note is two folders down and still renders bare. Attachment
+        # lines are excluded: they name files, and a file path belongs there.
+        qualified = sorted(
+            ln for ln in md.splitlines()
+            if ln.startswith("**Source:**") and "100 Inbox/" in ln
+        )
+        assert qualified == [
+            "**Source:** [[100 Inbox/Places/Dresden|Dresden]]",
+            "**Source:** [[100 Inbox/Reise/Dresden|Dresden]]",
+        ], f"location was added where nothing needed disambiguating: {qualified}"
 
 
 # ---------------------------------------------------------------------------
@@ -703,11 +728,28 @@ def test_every_prd_feature_has_a_row():
 
 
 def test_a_row_without_a_test_states_why():
-    for feature_id, _description, module, name in FEATURE_COVERAGE:
-        if module is not None:
-            continue
+    """Today every feature is covered, so this guard has nothing to iterate —
+    which is stated rather than left to look like a passing check. It fires the
+    moment a future row is dropped to None without a reason beside it."""
+    uncovered = [row for row in FEATURE_COVERAGE if row[2] is None]
+    assert uncovered == [], (
+        "a feature lost its test — keep the row, set the module to None, and "
+        f"give the reason in the fourth field: {uncovered}"
+    )
+    for feature_id, _description, _module, name in uncovered:
         assert name and name.startswith("NOT COVERED"), (
             f"feature {feature_id} claims nothing and explains nothing"
+        )
+
+
+def test_every_referenced_module_exists():
+    """A typo'd module name reaches the walker as a pytest usage error buried
+    in captured stdout. Name it here instead."""
+    for feature_id, _description, module, _name in FEATURE_COVERAGE:
+        if module is None:
+            continue
+        assert (REPO_ROOT / module).is_file(), (
+            f"feature {feature_id} points at {module}, which does not exist"
         )
 
 

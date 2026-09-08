@@ -702,6 +702,27 @@ phase: 6
   **Test each path.** A suite that exercises only `suggest` passes while every `fan-resolve` run
   silently records nothing — the same shape as T6.0c's (3)-without-(4), one level further out.
 
+  **And guard the triage-side call, which fails the other way.** `inbox-triage.py` calls the helper
+  for `idle`/`synthesize`/`transcribe` but must **not** for `suggest`/`fan-resolve` — those defer to
+  the downstream script so the folder fields can be included. Missing that guard does not silently
+  no-op like every other trap in this task; it **double-appends**, writing an incomplete entry
+  before the downstream script writes the real one. Assert it directly: a `suggest` run produces
+  **exactly one** history entry, not two.
+
+  **The helper is `tomo/scripts/lib/cost_history.py`**, on the shape of `lib/squelch_persist.py` —
+  a `lib/` module with a public append function, stdlib-only, called from `mark-captured.py` at
+  archival time. All three callers reach `lib/` identically (`SCRIPT_DIR` + `sys.path.insert`, as
+  `mark-captured.py:44-50` and `inbox-triage.py:30-33` both do), so there is no split to design
+  around.
+
+  **Checked, not a risk**: every action outcome sees a fully-measured `state`. `determine_action`
+  runs strictly after `discover()` completes, `discover()` has no early return that skips
+  `query_frontmatter`, and `_build_idle_reasons` makes no Kado calls of its own. So `idle`'s two
+  return sites and `synthesize`'s three differ in *why*, never in *what was measured* —
+  "absent, not zero" stays scoped to the folder fields. A `discover()` that raises `KadoError`
+  aborts before metrics or append are reached, so it is not a partial entry but a run that never
+  completed.
+
   1. **Prime**: Read `[ref: SDD/Data Storage Changes; cost_history]`. Read
      `mark-captured.py:78-79`, whose `state/moc-squelch.json` default is the precedent — a small
      persistent registry in the instance state, addressed cwd-relative. Read

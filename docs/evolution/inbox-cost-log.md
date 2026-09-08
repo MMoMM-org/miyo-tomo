@@ -550,3 +550,62 @@ in the inbox and a wrong move is worse than no move; `Images/bautzen-turm.jpg` r
 **Note on the fixture count**: only Prag exercised the full path end-to-end. The other three were
 suppressed by worthiness scoring, which is why finding 2 existed at all — a reminder that a fixture
 proves what the pipeline actually does with it, not what it was designed to prove.
+
+## Spec 034 — recursive inbox discovery (T6.4 live validation)
+
+**Date**: 2026-09-08 · **Vault**: Privat-Test · **Branch**: `spec/034-recursive-inbox-discovery`
+
+Six runs. Every guard validated, but across two Pass-2 runs rather than one — the first found a
+defect that had to be fixed before the second could reach the cases behind it.
+
+**Cost, from `state/inbox-cost-history.jsonl`** — written by the run itself, no manual step:
+
+| time | action | items | base | total | dest folders |
+|---|---|---|---|---|---|
+| 16:08 | suggest | 12 | **2** | 17 | 1 |
+| 17:08 | suggest | 12 | **2** | 13 | 1 |
+| 18:07 | fan-resolve | 13 | **2** | 11 | 0 |
+| 18:12 | synthesize | 14 | **2** | 13 | — |
+| 19:23 | idle | 19 | **2** | 10 | — |
+| 19:27 | synthesize | 14 | **2** | 12 | — |
+
+`base_kado_calls: 2` on every run — ADR-3's claim (3 → 2) measured six times rather than declared
+once, and observed rather than derived from a literal. All five action types appear, so T6.1's
+criterion ("a history accumulates without anyone remembering to record it") holds on every path,
+including the two that used to depend on a step in a skill document.
+
+**Discovery — the spec's headline claim, proven on real content.** A filesystem walk before any
+fixture was placed showed 8 files at `depth=1` and 13 recursively. Among the five this spec newly
+sees were `Images/Test.md` and `assets/Test.md` — **a namesake pair the user had created and Tomo
+could not see** — and spec 031's `karte.png` pair. Not constructed cases.
+
+**What each run proved**
+
+| case | run | result |
+|---|---|---|
+| Note two levels deep (`Reise/Tschechien/Prager Burg.md`) | 16:08 | discovered, promoted, MOC-linked under `## Tschechien` at 90% |
+| Namesake notes, path-qualified source links | 17:08 | `[[100 Inbox/Notizen/Elbe\|Elbe]]` and `[[100 Inbox/Reise/Elbe\|Elbe]]` — T5.1 |
+| **Destination clash** (T5.2/T5.3) | 18:12 | both withheld, both source paths named, paired MOC links withdrawn, neither source deleted |
+| **Attachment clash** (T6.0 fold + T5.4) | 19:27 | `Scans/karte.png` refused, and the note embedding it withheld with it |
+| **Subfolder note through Force Atomic** (T6.4a) | 19:27 | `100 Inbox/Fotos/Kai.md` — the fix; the 18:12 run probed `100 Inbox/Kai.md` and gave up |
+
+**Two defects found live that 3735 offline tests did not**
+
+1. **The fan document was never joined to its own identity map** (fixed, T6.4a). A subfolder note
+   taken through Force Atomic reached the renderer with `item_key: null`. The companion loop was
+   worse than the standalone one: it attempted no join at all. Only a live run could find this —
+   no test drove the fan path with a subfolder note, and the case did not exist before this spec
+   made subfolders visible.
+2. **A withheld clash leaves its staging notes behind** (recorded, not fixed). Pass 2 renders into
+   the inbox before `validate_destinations` runs, so both withheld claimants left a
+   `pending-move` file. Not re-ingested and not data loss, but nothing clears them.
+
+**One expectation of the orchestrator's was wrong.** The plan predicted both notes of the
+attachment clash would stay in the inbox. Attachments are **first-claim-wins** (PRD Feature 8):
+only the losing note is withheld, and `Hafen` filed correctly. The same confusion between ADR-4
+(both claimants dropped, for note destinations) and Feature 8 had already been found once, in
+T6.0d's SDD walkthrough.
+
+**Not validated live, deliberately**: the audio-namesake case. Placing one would route a
+validation run for this spec through a model-gated transcription pipeline with a known
+infinite-loop mode. Covered offline; recorded as a live-coverage gap.

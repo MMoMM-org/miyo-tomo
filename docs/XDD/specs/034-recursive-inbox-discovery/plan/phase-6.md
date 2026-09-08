@@ -1098,6 +1098,37 @@ phase: 6
   stem cross-check at `:1913` rejects the mismatched entry before assignment, so the failure
   degrades to the same `None` the tests already assert. Test 3 exercises that guard.
 
+  **Scope widened 2026-09-08, after the first fix landed — the companion path is on the critical
+  path, not beside it.** The first cut fixed the standalone-fan invocation
+  (`synthesis-conductor.md:117`) and reported the companion loop (`:2427`, reached via
+  `synthesis-conductor.md:111` with `--fan-resolve-file`) as a report-only sibling. Checking the
+  live run's own routing plan showed that reading was wrong for the case that matters: **when a
+  primary document and an approved fan document both exist — which is exactly what Force Atomic
+  produces — the conductor takes the companion path.** So the user's validation run cannot
+  complete either way:
+
+  | | vault wires present | wires removed |
+  |---|---|---|
+  | Pass 2 reads | JSON-only (`synthesis-conductor.md:113`) | markdown (`:111`) |
+  | a hand-edited name in the markdown | **lost** — the wire is a render-time snapshot | read |
+  | a subfolder note's `item_key` | correct (wire carries it) | **lost at `:2427`** |
+
+  Neither column validates both guards. Confirmed on the live artefacts: the vault `.md` files are
+  newer than their `.json` wires, and the primary wire still carries the pre-edit title and
+  `decision: "skip"` for the item the user later forced atomic.
+
+  **The companion loop has the same defect in a starker form.** At `:2430` it calls
+  `parse_section(section_id, lines)` and keys the result by `_item_key_of(item.get("source_path"))`
+  — a **bare display stem** — and never calls `bind_section_item_key` at all. Not a wrong document
+  to join against: **no join attempted.**
+
+  **Also close the anchor-map gap the first fix left untested.** `load_doc_anchor_map` shared the
+  hole and was fixed by the same rename to `_own_doc_path`, but **no test asserts it**, because the
+  fan fixture's `candidate_mocs` carry no anchor and the map is empty either way. That one is worse
+  than the item-key case if it regresses: it has **no stem cross-check**, so a colliding `S01`
+  across two documents could bind a *wrong* placement anchor rather than degrading to none. Add an
+  anchored fan fixture and assert it.
+
   1. **Prime**: read `_default_doc_path` (`:595`), `item_keys_by_section_id` (`:1855`),
      `bind_section_item_key` (`:1893`) and the call site at `:2243`/`:2272`. Read T5.0b and T5.0c
      in `plan/phase-5.md` — the same emitter/consumer split, one document earlier
@@ -1115,8 +1146,10 @@ phase: 6
      a third document type later must not need a third branch.
   4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded.
   5. **Success**:
-     - [ ] A subfolder note taken through Force Atomic is filed to its destination
+     - [ ] A subfolder note taken through Force Atomic is filed to its destination — **on both
+           the standalone and the companion path**
      - [ ] A test fails if either document type loses its identity join
+     - [ ] A test fails if the anchor map is resolved from the wrong document
 
 - [ ] **T6.5 Phase Validation and close-out** `[activity: validate]`
 

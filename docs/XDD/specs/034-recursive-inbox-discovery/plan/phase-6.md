@@ -151,6 +151,12 @@ phase: 6
   `in_set`, which T6.0 measured as redirecting bullets into a different folder's MOC and reverted
   for that reason (`b9d34e1`).
 
+  **Three call sites, and the two parser paths do not match.** `:411` is the wire path and
+  merges once. The markdown path merges **twice** — per-document inside `parse_proposed_mocs`
+  (`:1111`), then again over primary + fan proposals (`:2282`). The fold must be idempotent
+  across that double merge, and the test must cover the path `derive_expected` actually
+  consumes; it reads `confirmed_items` from `tomo-tmp/parsed-suggestions.json`, i.e. post-merge.
+
   1. **Prime**: read `_merge_proposed_mocs_by_name` (`suggestion-parser.py:1114`) and its
      2026-06-17 decision comment — merge on Name only, first occurrence's parent kept. Read
      T6.0's block above for the folding form (`casefold()`, never `.lower()`) and the fail-safe
@@ -163,8 +169,14 @@ phase: 6
      - the survivor keeps the spelling its author wrote; nothing folded is written back
      - `derive_expected` over the merged confirmation counts `create_moc == 1`, so the audit
        completes instead of hard-failing — assert the audit's own outcome, not just the count
-     - whether the `link_to_moc` up-bullet survives (see the claim above) — assert whichever
-       behaviour is real, with the failing case recorded if it does not
+     - the `link_to_moc` up-bullet (see the claim above). **The TDD gate traced this at HEAD
+       `5acfffc` and the loss persists**: `in_set` keys `_moc_stem(title)` with no fold, so a
+       link carrying the losing spelling verbatim misses the survivor's exact key, keeps
+       `target_moc_path: null`, and is dropped by `filter_unappliable_relationships`. Pin it
+       with a **hard-coded** assertion — `assert action["target_moc_path"] is None`, or the
+       resolved path if the trace is wrong — never a branch that passes either way. Add a
+       one-line comment naming the finding. Do **not** fold `in_set` to make it pass; a guard
+       test goes RED if anyone does, and `b9d34e1` records why.
      - proven RED by reverting the merge key to the exact string
   3. **Implement**: fold the merge key. Do **not** fold `in_set`.
   4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded.

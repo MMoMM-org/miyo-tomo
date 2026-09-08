@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.33.0
+# version: 0.34.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -575,8 +575,18 @@ def load_doc_anchor_map(doc_path: str) -> dict[str, dict[str, dict]]:
             doc = json.load(fh)
     except (OSError, json.JSONDecodeError):
         return {}
+    return anchor_map_from_doc(doc)
+
+
+def anchor_map_from_doc(doc: dict) -> dict[str, dict[str, dict]]:
+    """``load_doc_anchor_map`` over an ALREADY-loaded doc (spec 034 T6.4a).
+
+    The companion resolve document is read once for its members, its identity
+    keys and its anchors; splitting the load from the mapping keeps that one
+    read instead of three.
+    """
     out: dict[str, dict[str, dict]] = {}
-    for section in doc.get("sections") or []:
+    for section in (doc or {}).get("sections") or []:
         sec_id = section.get("id")
         if not sec_id:
             continue
@@ -2354,15 +2364,24 @@ def main() -> int:
             )
             resolve_text = ""
 
+    # spec 034 T6.4a: the resolve document is a document in its own right —
+    # rendered from its own structured doc, with its own section-id namespace.
+    # Its identity keys, placement anchors and proposed-MOC members are joined
+    # back from THAT doc, resolved by its own tomo.doc_type exactly as the
+    # input markdown's are. Unreadable resolve markdown → no doc, and every
+    # consumer below is already gated on `resolve_text`.
+    _resolve_doc = (
+        _load_json_doc(_default_doc_path(args.fan_resolve_file, resolve_text))
+        if args.fan_resolve_file and resolve_text.strip() else {}
+    )
+    resolve_item_keys = item_keys_by_section_id(_resolve_doc)
+    resolve_anchor_map = anchor_map_from_doc(_resolve_doc)
+
     # Recover proposed-MOC members from the structured docs (the render drops
     # the SNN members; we resolve topic → source-stems and bind them to the
     # create_moc below so the new MOC gets its child down-links).
-    import os
     primary_members = _topic_member_stems(_load_json_doc(_own_doc_path))
-    fan_members = (
-        _topic_member_stems(_load_json_doc(os.path.join("tomo-tmp", "suggestions-fan-doc.json")))
-        if args.fan_resolve_file else {}
-    )
+    fan_members = _topic_member_stems(_resolve_doc)
     # Enrich member_stems INSIDE parse (before its internal same-name merge) so
     # a name merged from multiple topics keeps every topic's members.
     primary_pmocs = parse_proposed_mocs(
@@ -2427,7 +2446,12 @@ def main() -> int:
             for sid, lns in split_into_sections(resolve_text)
         ):
             try:
-                item = parse_section(section_id, lines)
+                # Per-block ids carry a "#N" suffix (F-41); both maps are keyed
+                # by the base section id.
+                base_id = section_id.split("#", 1)[0]
+                item = parse_section(
+                    section_id, lines, resolve_anchor_map.get(base_id)
+                )
             except Exception as exc:  # noqa: BLE001
                 print(
                     f"warning: resolve-doc {section_id} parse error: {exc}",
@@ -2436,6 +2460,10 @@ def main() -> int:
                 continue
             if item is None:
                 continue
+            # spec 034 T6.4a: `_promote_entry` reads `item_key` off this
+            # section, so a resolve atomic that never binds one addresses its
+            # note by display stem and a subfolder note cannot be filed.
+            bind_section_item_key(item, resolve_item_keys)
             # Only approved atomic sections count. Unchecked = user
             # hasn't accepted the proposal yet.
             if not item.get("approved"):

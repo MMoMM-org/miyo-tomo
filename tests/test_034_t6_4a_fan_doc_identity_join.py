@@ -309,3 +309,191 @@ class TestThePrimaryDocumentIsUnchanged:
         assert T5.DEEP_1 not in keys.values()
         assert T5.DEEP_2 not in keys.values()
         assert keys["Kai am Strand"] != "100 Inbox/Kaffee.md"
+
+
+# ===========================================================================
+# The companion path — `--fan-resolve-file`, the invocation a Force-Atomic run
+# with an approved primary actually takes (synthesis-conductor.md:111).
+# ===========================================================================
+
+FAN_ANCHOR = {"kind": "heading", "heading": "Fotos", "new_section": False}
+STALE_PRIMARY_ANCHOR = {"kind": "heading", "heading": "WRONG — primary doc"}
+
+
+def _anchor_of(parsed: dict, title: str) -> dict | None:
+    for c in parsed["confirmed_items"]:
+        if c["title"] == title:
+            cands = c.get("candidate_mocs") or []
+            return cands[0].get("anchor") if cands else None
+    raise AssertionError(f"no confirmed item titled {title!r}")
+
+
+def _set_candidate_anchor(doc_path: Path, anchor: dict) -> None:
+    """Stamp one anchor onto every candidate MOC of a structured doc.
+
+    The reducer leaves `anchor: null` without Kado, and the renderer then emits
+    no `**Placement:**` line — so the doc-JSON map is the SOLE source of the
+    apply-time anchor here, which is what makes it assertable.
+    """
+    doc = json.loads(doc_path.read_text(encoding="utf-8"))
+    for section in doc["sections"]:
+        for action in section.get("actions") or []:
+            for cand in action.get("candidate_mocs") or []:
+                cand["anchor"] = anchor
+    doc_path.write_text(json.dumps(doc, ensure_ascii=False, indent=2),
+                        encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def companion(tmp_path_factory) -> dict:
+    """A primary document with a Force-Atomic tick, plus its fan companion.
+
+    Laid out the way production does it: the parser reads both documents from
+    `tomo-tmp/inbox-cache/`, so NEITHER structured doc is a sibling and both
+    resolutions go through the cwd-relative fallback.
+    """
+    root = tmp_path_factory.mktemp("t6_4a_companion")
+
+    fan_work = root / "fan"
+    fan_work.mkdir()
+    _drive_fan(fan_work)
+
+    primary_work = root / "primary"
+    primary_work.mkdir()
+    T5._drive(
+        primary_work,
+        {FAN_DEEP: T5._daily_only_result("Kai", FAN_DEEP)},
+        accept_all=True,
+    )
+    primary_md = primary_work / "suggestions-approved.md"
+    ticked = primary_md.read_text(encoding="utf-8").replace(
+        "- [ ] Force Atomic Note", "- [x] Force Atomic Note"
+    )
+    assert "- [x] Force Atomic Note" in ticked, "the FAN checkbox was not rendered"
+    primary_md.write_text(ticked, encoding="utf-8")
+
+    # The paired anchor fixture: the fan doc and a COEXISTING stale primary doc
+    # both answer for section id S02 and the same MOC, with different values.
+    _set_candidate_anchor(fan_work / "suggestions-fan-doc.json", FAN_ANCHOR)
+    stale_primary = json.loads(
+        (fan_work / "suggestions-fan-doc.json").read_text(encoding="utf-8")
+    )
+    stale_path = root / "stale-primary.json"
+    stale_path.write_text(json.dumps(stale_primary, ensure_ascii=False),
+                          encoding="utf-8")
+    _set_candidate_anchor(stale_path, STALE_PRIMARY_ANCHOR)
+
+    instance = root / "instance"
+    cache = instance / "tomo-tmp" / "inbox-cache"
+    cache.mkdir(parents=True)
+    shutil.copy(fan_work / "suggestions-fan-doc.json",
+                instance / "tomo-tmp" / "suggestions-fan-doc.json")
+    shutil.copy(stale_path, instance / "tomo-tmp" / "suggestions-doc.json")
+    shutil.copy(primary_md, cache / "primary.md")
+    shutil.copy(fan_work / "suggestions-fan-approved.md", cache / "fan.md")
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS_DIR / "suggestion-parser.py"),
+         "--file", str(cache / "primary.md"),
+         "--fan-resolve-file", str(cache / "fan.md"),
+         "--suggestions-doc", str(primary_work / "suggestions-doc.json")],
+        capture_output=True, text=True, cwd=str(instance),
+    )
+    assert result.returncode == 0, f"parser failed:\n{result.stderr}"
+    return {"parsed": json.loads(result.stdout), "root": root}
+
+
+class TestCompanionResolveSectionsBindTheirOwnIdentity:
+    """`_promote_entry` reads `sec["item_key"]`, and nothing ever set it."""
+
+    def test_the_promoted_subfolder_note_carries_its_key(self, companion):
+        promoted = [
+            c for c in companion["parsed"]["confirmed_items"]
+            if c["title"] == "Kai am Strand"
+        ]
+        assert len(promoted) == 1, "the FAN promotion did not reach confirmed_items"
+        assert promoted[0].get("item_key") == FAN_DEEP
+
+    def test_only_the_ticked_source_is_promoted(self, companion):
+        """The fan document also holds a Kaffee section; no FAN tick asked for
+        it, so a fix that promotes the whole document would show up here."""
+        titles = {c["title"] for c in companion["parsed"]["confirmed_items"]}
+        assert titles == {"Kai am Strand"}
+
+    def test_the_move_origin_is_the_subfolder_path(self, companion):
+        from lib.render_actions import build_actions  # noqa: PLC0415
+        from lib.render_resolve import filter_missing_source_notes  # noqa: PLC0415
+
+        parsed = companion["parsed"]
+        client = T5._exact_path_client({FAN_ROOT, FAN_DEEP})
+        kept, dropped = filter_missing_source_notes(
+            parsed["confirmed_items"], client, T5.INBOX
+        )
+        assert dropped == [], f"a note that exists was still dropped: {dropped}"
+        manifest = [
+            {
+                "id": c["id"], "action": "create_note", "title": c["title"],
+                "source_path": c.get("source_path"), "item_key": c.get("item_key"),
+                "audio_peer": None, "template": c.get("template"),
+                "rendered_file": f"2026-09-08_1200_{c['id']}.md",
+                "destination": c.get("destination") or "Atlas/202 Notes/",
+                "parent_mocs": c.get("parent_mocs") or [], "attachments": [],
+                "tags": c.get("tags") or [],
+            }
+            for c in kept
+        ]
+        actions, _ = build_actions(
+            manifest, kept, parsed.get("daily_updates", []),
+            parsed.get("skipped", []), T5.CFG, kado_client=None,
+        )
+        origins = {
+            a.get("source_inbox_item")
+            for a in actions if a.get("action") == "move_note"
+        }
+        assert origins == {FAN_DEEP}
+        assert "100 Inbox/Kai.md" not in origins
+
+
+class TestCompanionAnchorsComeFromTheFanDocument:
+    """`load_doc_anchor_map` has no stem cross-check, so reading the wrong
+    document binds a WRONG anchor rather than degrading to none."""
+
+    def test_the_anchor_is_the_fan_documents_not_the_stale_primarys(
+        self, companion
+    ):
+        anchor = _anchor_of(companion["parsed"], "Kai am Strand")
+        assert anchor == FAN_ANCHOR
+        assert anchor != STALE_PRIMARY_ANCHOR
+
+
+class TestStandaloneAnchorsComeFromTheFanDocument:
+    """The same pairing on the standalone path this task first fixed — an
+    anchored fan doc alone would only prove empty-versus-populated."""
+
+    @pytest.fixture(scope="class")
+    def standalone_anchor(self, tmp_path_factory) -> dict:
+        root = tmp_path_factory.mktemp("t6_4a_anchor")
+        fan_work = root / "fan"
+        fan_work.mkdir()
+        _drive_fan(fan_work)
+        _set_candidate_anchor(fan_work / "suggestions-fan-doc.json", FAN_ANCHOR)
+        stale = root / "stale.json"
+        stale.write_text(
+            (fan_work / "suggestions-fan-doc.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        _set_candidate_anchor(stale, STALE_PRIMARY_ANCHOR)
+
+        instance = root / "instance"
+        cache = instance / "tomo-tmp" / "inbox-cache"
+        cache.mkdir(parents=True)
+        shutil.copy(fan_work / "suggestions-fan-doc.json",
+                    instance / "tomo-tmp" / "suggestions-fan-doc.json")
+        shutil.copy(stale, instance / "tomo-tmp" / "suggestions-doc.json")
+        shutil.copy(fan_work / "suggestions-fan-approved.md", cache / "fan.md")
+        return _parse(cache / "fan.md", cwd=instance)
+
+    def test_the_anchor_is_the_fan_documents(self, standalone_anchor):
+        anchor = _anchor_of(standalone_anchor, "Kai am Strand")
+        assert anchor == FAN_ANCHOR
+        assert anchor != STALE_PRIMARY_ANCHOR

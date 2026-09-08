@@ -758,15 +758,46 @@ read `item_key` straight off the wire and never touch `_default_doc_path`, so
 they never had the defect. `garden-audit-parser.py` calls none of these
 functions and is always invoked with `--wire`.
 
-KNOWN, NOT FIXED HERE — the fan-COMPANION flow has the same hole one level down.
-When `--fan-resolve-file` is passed, the resolve document's sections are parsed
-by `parse_section(section_id, lines)` with no anchor map and are never passed to
-`bind_section_item_key`, so a promoted-from-resolve atomic reaches
-`_promote_entry` with `item_key: None` — the same consequence for a subfolder
-note, reached through the companion invocation (`synthesis-conductor.md:111`)
-rather than the standalone one (`:117`). Closing it needs the resolve document's
-own doc path resolved from `--fan-resolve-file` and its own
-`item_keys_by_section_id` map. Related: `_topic_member_stems` for the companion
-fan members is hard-coded to a cwd-relative `tomo-tmp/suggestions-fan-doc.json`
-with no sibling preference, so a `--fan-resolve-file` outside the instance cwd
-loses proposed-MOC members silently.
+## The Companion Resolve Document Is a Document Too (spec 034 T6.4a, v0.34.0)
+
+WHY the `--fan-resolve-file` loop now resolves `_resolve_doc` and calls
+`bind_section_item_key`:
+
+The standalone fix above joined a fan document against the wrong structured
+document. The COMPANION flow (`synthesis-conductor.md:111`) had the same
+consequence from a different cause — it attempted **no join at all**.
+`parse_section(section_id, lines)` was called with no anchor argument, the
+resolve sections never reached `bind_section_item_key`, and `_promote_entry`
+therefore read `item_key: None` off every one of them. A subfolder note ticked
+`[x] Force Atomic Note` was promoted with no identity and dropped by the `#116`
+guard, exactly as on the standalone path — and this is the invocation a
+Force-Atomic run with an approved primary actually takes.
+
+WHY it was mechanical: the resolve document is stamped `doc_type:
+suggestions-fan` by the same `suggestions-render.py:28-34` branch that stamps
+the standalone one (both are rendered from a doc whose `doc_variant ==
+"fan-resolve"`), so `_default_doc_path(args.fan_resolve_file, resolve_text)`
+resolves it with the table already in place. No second mechanism.
+
+WHY the hard-coded `tomo-tmp/suggestions-fan-doc.json` for `fan_members` could
+be DELETED rather than left standing: it named the same file `_resolve_doc` now
+resolves, only cwd-relative and with no sibling preference. Both consumers read
+one loaded doc, so the document is read once instead of three times
+(`anchor_map_from_doc` exists to make that possible — `load_doc_anchor_map`
+keeps its path-taking signature for its existing callers). Removing that line
+also removed a function-local `import os` that shadowed the module-level import
+for the whole of `main()`; any `os.` use earlier in the function would have
+raised `UnboundLocalError`, which is what happened when a mutation probe added
+one.
+
+WHY the anchor pairing in the tests is two documents, not one: `load_doc_anchor_map`
+has no stem cross-check — unlike `bind_section_item_key`, which rejects a
+mismatched entry — so reading the wrong document binds a WRONG anchor rather
+than degrading to none. An anchored fan doc on its own would only prove
+empty-versus-populated. The fixtures therefore place a stale primary doc
+carrying a DIFFERENT anchor for the same section id and the same MOC beside the
+fan doc, on both the standalone and the companion path. Reverting either
+resolution binds `WRONG — primary doc`, which is what makes the assertion a
+guard. The rendered `**Placement:**` line is absent in these fixtures (the
+reducer leaves `anchor: null` without Kado), so the doc-JSON map is the sole
+source and the assertion cannot be satisfied by the line override.

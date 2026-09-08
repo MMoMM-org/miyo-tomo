@@ -209,11 +209,25 @@ phase: 6
   survivor, and lifted into the output at the same two sites where `member_stems` and `topic`
   are stripped.**
 
-  **An internal field riding a wire-bound dict owes the triad** this repo has paid for before:
-  a test that it is stripped before the wire, a paired-consumer count that fails if a second
-  consumer forgets it, and a schema test. `instructions.schema.json` and the wire schema use
-  `additionalProperties: false` in places — a field that survives the pop is not a cosmetic leak,
-  it is a validation failure at the far end.
+  **Strip test and paired-consumer count, but no schema test.** The internal field owes a test
+  that it is popped like `member_stems` and `topic`, and a count that fails when a second
+  consumer forgets it. It does **not** owe a schema test, and the gate cut one this plan
+  originally asked for: `instructions.schema.json` closes each action `$def` and the top level,
+  but exempts the `tomo` block by design (`:35` — "kept permissive... so Tomo can evolve the
+  block without a coordinated round-trip"), which is where `destination_clashes` and
+  `attachment_suppressions` already live. The record is popped before its dict becomes a
+  `create_moc`, its lifted destination is a plain Python dict never schema-checked, and
+  `suggestion-parser.py` calls no validator at all. A schema assertion here would assert a
+  property of the schema file, true whatever the implementer does — the same true-by-construction
+  shape Phase 5 shipped once. The strip test earns its place on consumer clarity, not validation.
+
+  **Append in encounter order; do not dedup with a set.** The absorbed spellings list is built by
+  append, matching the `tags` and `member_stems` folds it sits beside (`if tag not in
+  head["tags"]: head["tags"].append(tag)` — ordered, unsorted) and `validate_destinations`'
+  `dropped: [...]`. Because `primary_pmocs + fan_pmocs` puts primary first, encounter order is
+  `travel (MOC)` then `TRAVEL (MOC)`, deterministically — **but only if the coalescing appends.**
+  A `set()` is the natural instinct for "do not record the same absorption twice" and would make
+  the order implementation-defined, which the two-stage fixture is the only case that exposes.
 
   **The record is a group per surviving name, not a pair.** `validate_destinations` already
   carries `dropped: [...]` inside one clash record (`render_actions.py:1034`) rather than one

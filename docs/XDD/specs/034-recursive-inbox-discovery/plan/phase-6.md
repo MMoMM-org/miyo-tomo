@@ -1,6 +1,6 @@
 ---
 title: "Phase 6: Cost history, integration and live validation"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 6
 ---
@@ -30,7 +30,7 @@ phase: 6
 ## Tasks
 
 - [ ] **T6.0 The three destination keys Phase 5 did not fold** `[activity: backend]`
-      — **PROPOSED 2026-09-08, not yet accepted.** Delete this task if it is deferred.
+      — **Accepted 2026-09-08.** First task of Phase 6, ahead of T6.1.
 
   Phase 5 folded case into three destination comparisons and left three more, each found by a
   shape-grep and recorded rather than fixed because folding them changes behaviour rather than
@@ -55,6 +55,24 @@ phase: 6
   **Why folding is right here, same asymmetry as T5.3**: on a case-insensitive filesystem, not
   folding loses data and cannot be undone; on a case-sensitive one, folding costs a rename and
   can. That reasoning is recorded in T5.3's block and applies unchanged.
+
+  **`seen` is not a fourth site — fold `claimed` only. Added 2026-09-08 while reading site (3).**
+  `_build_move_asset_actions` keeps two exact-string collections and they are not the same shape.
+  `claimed` keys the **destination**, and folding it is right for the reason above. `seen` keys the
+  **source path**, and the T5.3 asymmetry inverts there:
+
+  - Not folding `seen`, on a case-insensitive filesystem: `100 Inbox/Ufer.jpg` and
+    `100 Inbox/ufer.jpg` are one file seen twice. The first moves; the second now meets a folded
+    `claimed` and is **recorded as a collision skip**, so T5.4 keeps its note in the inbox. Wrong
+    about the cause, conservative in effect, and *reported* — the user reads a line naming both
+    paths and renames one.
+  - Folding `seen`, on a case-sensitive filesystem: two genuinely distinct files collapse to one.
+    One moves, the other is **dropped with no skip recorded at all** — the exact silence T5.4's
+    guard exists to break, re-created one layer up.
+
+  So: fold `claimed`, leave `seen` exact. That ordering is what makes the second bullet
+  unreachable, and it is only safe *because* `claimed` folds — do not fold one without the other.
+  A test must pin this pair, not just the collision.
 
   1. **Prime**: read `docs/tomo/scripts/lib/render_actions.md` — the T5.3 sweep records sites
      (1) and (2) with their reachability, the T5.4 section records (3). Read T5.3's

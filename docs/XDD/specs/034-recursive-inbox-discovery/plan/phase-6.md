@@ -344,6 +344,31 @@ phase: 6
   defect predates the spec. Weigh the fix accordingly — this is a repair to an existing path, not
   a feature of recursive discovery.
 
+  **A null target has three causes and only one of them means "does not exist" — added
+  2026-09-08 while grounding the gate.** `resolve_target_moc_paths`'s tier 2 returns `None` when:
+
+  | cause | line | what it means |
+  |---|---|---|
+  | `client is None` | `render_resolve.py:562` | Kado was never available — nothing was checked |
+  | `except Exception: return None` | `:566-568` | the Kado call **failed**, swallowed silently |
+  | `not hits` | `:570-572` | Kado answered, and the MOC genuinely does not exist |
+
+  **Withholding on a bare null conflates all three.** A transient Kado failure, or an offline run,
+  would silently withhold every MOC link in the run and report each one as a MOC that will never
+  exist — which is false, and worse than the defect being fixed: the user would rename or
+  re-create MOCs that are already there. Distinguish the causes at the point where they are known;
+  do not reconstruct them later from a null. Only the third cause warrants "this MOC will not
+  exist"; the first two warrant "this could not be checked", which is a different sentence to the
+  user and possibly a different decision about whether to emit at all.
+
+  **The precedent to follow is `filter_unappliable_relationships` (`render_resolve.py:730`)**, not
+  a new shape: it returns `(kept, skipped)`, is a pure function, and its skipped items reach the
+  user through stderr and the instructions.md Skipped section — the same pattern as
+  `filter_missing_daily_notes`. Its docstring also records *why* `add_relationship` needed it:
+  Hashi's wire schema is `additionalProperties: false` with no `error` field, so one error-bearing
+  action makes Hashi reject the entire instruction set. `link_to_moc` escapes that only because
+  its null is a legal schema value — which is why it was never caught.
+
   1. **Prime**: read `resolve_target_moc_paths` (`render_resolve.py`) for both tiers and what a
      miss leaves behind. Read `filter_unappliable_relationships` for the guard `add_relationship`
      already has, and `$defs/add_relationship` vs `$defs/link_to_moc` in

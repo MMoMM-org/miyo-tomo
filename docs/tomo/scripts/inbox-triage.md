@@ -372,18 +372,19 @@ one.
 ## `DOWNSTREAM_COST_ENTRY_ACTIONS` — the Guard That Fails Loudly
 
 Every triage run appends exactly one cost-history entry. `suggest` and
-`fan-resolve` defer theirs to `record-run-cost.py`, because both run
-`suggestions-reducer.py` *after* triage has written `routing-plan.json` and the
-destination-folder counts do not exist yet.
+`fan-resolve` defer theirs to `suggestions-reducer.py`, which runs *after*
+triage has written `routing-plan.json` — the destination-folder counts do not
+exist yet when triage finishes, and the reducer is the process that measures
+them.
 
 WHY the guard is named and asserted rather than implied: every other plumbing
 gap in this task no-ops silently. This one **double-appends** — an incomplete
-entry from triage, then the real one from the downstream script — so the test
-asserts a `suggest` run produces exactly one entry, not two.
+entry from triage, then the real one from the reducer — so the test asserts a
+`suggest` run produces exactly one entry, not two.
 
 WHY `idle` records at all: an idle run still spends its base and byFrontmatter
 calls, and a history that omits them cannot show what idling costs.
 
-WHY `metrics` gained `item_count` and `base_kado_calls`: the downstream step
-reads both back out of `routing-plan.json` rather than re-deriving its own, so
-`suggest` and `idle` cannot end up counting different things.
+WHY `metrics` gained `item_count` and `base_kado_calls`: the reducer reads both
+back out of `routing-plan.json` rather than re-deriving its own, so `suggest`
+and `idle` cannot end up counting different things.

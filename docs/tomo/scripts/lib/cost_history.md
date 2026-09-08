@@ -20,17 +20,16 @@ printed `kado_calls=9`. Every figure in an entry is therefore read off the
 client's own round-trip counter (`kado_client.observed_call_count`), never
 declared. See `docs/tomo/scripts/inbox-triage.md` for the checkpoint mechanics.
 
-## WHY One Shared Helper Rather Than Per-Skill Logic
+## WHY One Shared Helper for Two Processes
 
-The entry is appended from four places across two processes — triage itself for
-the three actions that terminate there, and `record-run-cost.py` for the two
-that run the reducer first. Copying the assembly per caller is how the four
-sites drift apart, and the item's own success criterion is *"a history
-accumulates without anyone remembering to record it"*. `build_entry` and
-`record_from_artifacts` are the one place the record's shape is decided.
+The entry is appended from two processes — `inbox-triage.py` for the three
+actions that terminate there, `suggestions-reducer.py` for the two that reach
+it. Copying the assembly is how the two drift apart, and the item's own success
+criterion is *"a history accumulates without anyone remembering to record it"*.
+`build_entry` and `record_run` are the one place the record's shape is decided.
 
 Shaped on `lib/squelch_persist.py`: a `lib/` module with a public append
-function, stdlib-only. All callers reach `lib/` identically (`SCRIPT_DIR` +
+function, stdlib-only. Both callers reach `lib/` identically (`SCRIPT_DIR` +
 `sys.path.insert`), so there is no import split to design around.
 
 ## WHY the Folder Fields Are Absent, Not Zero
@@ -48,14 +47,27 @@ per-item, content-scaling Kado cost and has never been counted as a base call.
 
 ## WHY the Entry Cannot Be Written by inbox-triage.py for Every Action
 
-Triage writes `routing-plan.json`, and only *then* does `suggest-handling`
-invoke `suggestions-reducer.py`. The folder counts do not exist when triage
-finishes. So for `suggest` and `fan-resolve` the entry is appended downstream,
-by `record-run-cost.py`, reading triage's own metrics back out of the routing
-plan. The three actions that terminate inside triage still spend base and
-byFrontmatter calls, and a history that omits them cannot show what idling
-costs — so triage records those itself, guarded by
-`DOWNSTREAM_COST_ENTRY_ACTIONS`.
+Triage writes `routing-plan.json`, and only *then* does the skill invoke
+`suggestions-reducer.py`. The folder counts do not exist when triage finishes.
+So for `suggest` and `fan-resolve` the entry is appended by the **reducer**,
+which reads triage's own metrics back out of the routing plan. The three
+actions that terminate inside triage still spend base and byFrontmatter calls,
+and a history that omits them cannot show what idling costs — so triage records
+those itself, guarded by `DOWNSTREAM_COST_ENTRY_ACTIONS`.
+
+## WHY Not a Script Invoked From a SKILL.md Step
+
+The first cut put the two reducer paths in `record-run-cost.py`, called from a
+step in each skill's markdown. That step is executed by an LLM, and **no test
+can see a markdown instruction** — the entry for the two highest-traffic
+actions would have depended on the runtime remembering a line, which is
+precisely what "without anyone remembering" rules out. The reducer already runs
+on both paths as a Python process and already holds the folder counts, so the
+step was removed and the script retired (`RETIRED_SCRIPTS` in
+`scripts/update-tomo.sh` clears it from any instance that received it).
+
+Surfaced by the implementer's own unverifiable-assumption report rather than by
+a failing test — because there was no test that could fail.
 
 ## WHY `action` Is on the Entry
 

@@ -919,3 +919,29 @@ WHY both fields are always present here, even at zero: this file only writes
 them when it ran. A `--fan-resolve` run opens no Kado client and truthfully
 reports zero listings; the paths where the reducer never runs at all omit the
 fields entirely, in `lib/cost_history.py`.
+
+## The Reducer Writes the Run's Cost-History Entry (spec 034 T6.1)
+
+This process is the terminal deterministic step of the two actions that reach
+it — `suggest` and `fan-resolve` — so it appends the run's cost-history entry
+before returning. `inbox-triage.py` deliberately writes none for those two: the
+folder counts above do not exist when it finishes.
+
+WHY here and not in a step in each skill's markdown, which is where it started:
+a SKILL.md step is executed by an LLM and **no test can see whether it ran**.
+The task's criterion is "a history accumulates *without anyone remembering* to
+record it", and that cannot live in a step someone has to remember. This file
+already runs on both paths, already holds the folder counts, and
+`routing-plan.json` — carrying triage's own metrics — already sits in the
+`tomo-tmp/` it writes into. The wrapper script the skills called was retired.
+
+WHY `--routing-plan` defaults to a sibling of `--output` rather than a literal
+`tomo-tmp/routing-plan.json`: both are artefacts of one run in one directory,
+and both skills put them there. A cwd-relative literal would silently pick up a
+*different* run's plan whenever the process is driven from elsewhere — which is
+exactly what host tests do, and what made three of them append into the repo's
+own working tree before the flag existed.
+
+WHY a missing routing plan warns instead of failing: measurement must never
+fail a run `[ref: SDD/Error Handling]`. The document is already written by then;
+losing the cost line is the cheaper failure.

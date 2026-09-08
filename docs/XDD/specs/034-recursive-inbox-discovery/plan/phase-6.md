@@ -765,23 +765,30 @@ phase: 6
   **Done 2026-09-08.** Both literals are gone: `_count_kado_calls` derives its
   base and byFrontmatter terms from `KadoClient.call_count`, snapshotted at
   three points inside `discover()` and threaded out as
-  `TriageState.base_kado_calls` / `.frontmatter_kado_calls`. The reducer counts
-  its destination-folder listings the same way and carries both figures in
+  `TriageState.base_kado_calls` / `.frontmatter_kado_calls`. The counter's
+  before-the-request placement is pinned by four tests in
+  `test_kado_client_retry.py` — a call that raises still counts, a retry chain
+  counts once, and the count survives a `_req_id` reset. The reducer counts its
+  destination-folder listings the same way and carries both figures in
   `suggestions-doc.json`. `lib/cost_history.py` owns the record's shape;
   `inbox-triage.py` appends for `idle`/`synthesize`/`transcribe` (guarded by
-  `DOWNSTREAM_COST_ENTRY_ACTIONS`), and the new `record-run-cost.py` — called
-  from both `suggest-handling` and a new terminal step in
-  `force-atomic-handling` — appends for `suggest`/`fan-resolve` with the folder
-  fields. `tests/test_034_t6_1_cost_history.py` (21 tests) covers all five
-  paths, the "exactly one entry" guard, and an unwritable history.
+  `DOWNSTREAM_COST_ENTRY_ACTIONS`) and `suggestions-reducer.py` appends for
+  `suggest`/`fan-resolve` with the folder fields, per the supersession above.
+  `record-run-cost.py` and its two SKILL.md steps were removed; the script is
+  in `RETIRED_SCRIPTS`. `tests/test_034_t6_1_cost_history.py` (24 tests) covers
+  all five paths, a reducer-CLI subprocess run proving no orchestration step is
+  involved, the "exactly one entry" guard, and an unwritable history.
 
   **One thing the task surfaced that its own table did not name.** The history's
   `state/` default is cwd-relative (mark-captured's precedent), and host tests
   run from the repo root — so 24 existing `inbox-triage.main()` argv sites across
-  five test files began appending into the repo working tree. Every site was
-  scoped to `tmp_path`, and `tests/conftest.py` gained an autouse guard that
-  fails the offending test by name. The guard found the `test_018_pipeline.py`
-  helper (11 failing tests) that a file-by-file bisect had missed.
+  five test files, and (once the append moved) two reducer-driving gate files,
+  began appending into the repo working tree. Every site was scoped to
+  `tmp_path`, and `tests/conftest.py` gained an autouse guard that fails the
+  offending test by name. The guard found the `test_018_pipeline.py` helper
+  (11 failing tests) that a file-by-file bisect had missed — and then, once its
+  baseline was moved from per-test to per-session, two more files whose
+  module-scoped fixtures had been setting up *before* the guard sampled.
 
 - [ ] **T6.2 Integration across the whole pipeline** `[activity: test-strategy]`
 

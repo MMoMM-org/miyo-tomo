@@ -894,8 +894,19 @@ phase: 6
            all ten PRD features `[ref: PRD/Feature Requirements]`, each row pointing either at a
            new assertion here or at the existing test that already owns it (T2.8, T3.4, T5.1,
            T5.4 and others). Add one test in the same file that walks the list and confirms every
-           referenced test is **currently collectible** — it must fail the moment a row goes
-           stale. **"Walk the list and confirm" is not a deliverable**; it has no failure mode.
+           referenced test **currently passes** — not merely that it collects. Collectibility
+           alone would accept a row pointing at a test since marked `xfail` or `skip`, which
+           collects cleanly and proves nothing; asserting the pass costs a node-id run of a test
+           the suite already runs.
+
+           **Name the residual limit in the file's docstring, in one sentence**: this mapping
+           proves the referenced test exists and currently passes; it does **not** prove that test
+           still asserts the claimed feature. Someone gutting a body to `assert True` under an
+           unchanged name defeats it, and nothing short of re-deriving the proof would catch that
+           — disproportionate for a table whose job is to point at evidence rather than re-prove
+           it. Semantic drift stays a review responsibility at the moment that test is edited.
+           This matches how the spec already treats proof: established at authoring time by
+           RED-before-fix, not claimed as a standing mechanical guarantee. **"Walk the list and confirm" is not a deliverable**; it has no failure mode.
            A row whose answer is honestly "not covered here" carries an explicit `None` and a
            one-line reason — that is a fact, not a claim, and needs no proof.
      - [ ] Features 9 (no extra vault listing — a call-count claim) and 10 (the two file-type

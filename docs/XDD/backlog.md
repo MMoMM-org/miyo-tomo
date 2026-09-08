@@ -844,3 +844,39 @@ per re-run.
 Two possible closes: render after validation rather than before, or have the clash record carry
 its withheld staging paths so something can clean or reuse them. The first is the larger change
 and would also stop paying Kado writes for notes that are then withheld.
+
+## Link coverage fails for any title containing a sanitised character
+
+**Found 2026-09-08** in the T6.4 live run, by reading the container's own session transcript —
+the instruction document alone did not show it.
+
+`instructions-diff.py`'s link coverage matches exactly (`:634`,
+`a.get("source_note_title") == stem`). The **emitter** puts the *sanitised* title into
+`link_to_moc.source_note_title`, while `derive_expected` puts the *raw* title in. Any title
+containing a character `sanitize_stem` replaces — `\ / : * ? " < > |` — therefore never matches,
+and the audit hard-fails a run whose instruction set is correct.
+
+Observed live:
+
+| | value |
+|---|---|
+| emitted (`I07`) | `Elbe-Schifffahrt**-** Tschechischer Pegel bei Usti nad Labem …` |
+| expected (`S01`) | `Elbe-Schifffahrt**:** Tschechischer Pegel bei Usti nad Labem …` |
+
+The link itself was emitted correctly and points at the right MOC — only the audit's join fails.
+Two sibling items in the same run passed solely because their titles carry no forbidden character.
+**A colon in a title is not exotic**: the analyst produced this one unprompted, so this fires on
+ordinary content.
+
+**The likely correct fix is at the emitter, not the audit.** Under ADR-2 `source_note_title` is a
+**display** field; carrying a sanitised *filename* in it is the category error. Making the audit
+compare sanitised forms on both sides would hide that rather than fix it, and would also make the
+field's meaning depend on who reads it.
+
+Same class as T6.0d: an audit that hard-fails a correct run, so the user reads it as Tomo drifting
+from its own instruction set.
+
+**Note for whoever picks this up**: the container's orchestrator diagnosed this as an HTML-entity
+mismatch (`&amp;` vs `&`) after seeing the MOC name `Elbsandstein & Tschechien 2026 (MOC)` in the
+failure line. That was a rendering artefact of its own terminal — no `&amp;` exists anywhere in
+the artefacts or the vault. Reproducing the audit directly is what showed the real cause.

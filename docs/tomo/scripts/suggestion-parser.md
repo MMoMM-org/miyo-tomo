@@ -589,3 +589,27 @@ Pinned hard-coded in `tests/test_034_t6_0c_merge_proposed_mocs_case_folded.py`
 so the finding is recorded as an assertion rather than an assumption. Closing it
 needs the `in_set` collision handled — a different-folder disambiguation, not a
 fold — and that is not this task.
+
+WHAT the null actually costs, traced rather than assumed: the action is **not**
+dropped. `filter_unappliable_relationships` only inspects `add_relationship`
+actions carrying an `error` key and never looks at `link_to_moc`. Instead:
+
+- `lib/render_md.py` renders it as a normal instruction —
+  `### Add link to [[<losing spelling>]] — <note>` with `- [ ] Applied` and
+  `- **Target:** [[<losing spelling>]]`. Only the `- **Path:**` row is
+  suppressed (it is emitted `if action.get("target_moc_path")`), and the anchor
+  falls to its unresolved branch, which tells the user to **open the MOC** and
+  find its first editable callout — in a MOC that will never exist.
+- It validates clean. `$defs/link_to_moc` requires
+  `[id, action, target_moc, anchor, placement, line_to_add]`;
+  `target_moc_path` is nullable and NOT required. `$defs/add_relationship`
+  **does** require it — that asymmetry is why one kind has a
+  `filter_unappliable_relationships` guard and the other has none.
+- Every gate passes it: `instructions-dryrun.py` omits the field from
+  `REQUIRED_FIELDS_BY_KIND["link_to_moc"]`, and `instructions-diff.py`'s link
+  coverage keys the `target_moc` **stem**, never the path, so it counts `[OK]`.
+
+This violates CON-2 — the user approves on what the document says, and the
+document presents a tickable instruction with every check green. It is **not**
+case-specific: it fires whenever both resolution tiers miss, so it is a
+pre-existing defect this task surfaced rather than caused. Tracked as **T6.0d**.

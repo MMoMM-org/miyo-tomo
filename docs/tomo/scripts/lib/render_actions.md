@@ -807,9 +807,10 @@ the part worth recording.
 `resolve_section_names` in `instruction-render.py` (`:596` vs `:607`). Once
 `by_dest` merges `travel (MOC)` into `Travel (MOC)`, a `link_to_moc` minted
 against the merged spelling misses tier 1, misses tier 2 as well (the MOC does
-not exist in the vault yet), keeps `target_moc_path: null`, and is dropped by
-`filter_unappliable_relationships`. So folding (1) costs that note its bullet in
-the MOC.
+not exist in the vault yet), and keeps `target_moc_path: null`. That action is
+NOT dropped — see "What a Null `target_moc_path` Actually Does" below; the claim
+that `filter_unappliable_relationships` intercepts it is wrong, and the real
+consequence is worse.
 
 Folding `in_set` fixes that and introduces something worse. `by_dest` keys the
 full composed destination, so two create_moc whose titles differ only in case
@@ -832,11 +833,54 @@ guards the revert.
 
 **The cost, stated plainly:** when two MOC proposals in ONE folder differ only in
 case, `by_dest` merges them, and any `link_to_moc` minted against the merged
-spelling loses its `target_moc_path` and is dropped. The merged proposal's
-`supporting_items` still reach the survivor, so its down-links survive; what is
-lost is the up-bullet. Closing this needs the collision handled, not the key
-folded — most cleanly by folding upstream at `_merge_proposed_mocs_by_name`
-(below), which removes the case-only pair before either consumer sees it.
+spelling loses its `target_moc_path`. The merged proposal's `supporting_items`
+still reach the survivor, so its down-links survive; what is at stake is the
+up-bullet. Closing this needs the collision handled, not the key folded — the
+upstream fold at `_merge_proposed_mocs_by_name` (T6.0c, below) removes the
+case-only pair before either consumer sees it, but does **not** recover the
+up-bullet: a link minted from the LOSING spelling still misses the survivor's
+exact key.
+
+### What a Null `target_moc_path` Actually Does — Traced Under T6.0c
+
+An earlier revision of this section said the unresolved `link_to_moc` "is dropped
+by `filter_unappliable_relationships`". That is wrong, and the correction matters
+because the real behaviour is worse than a dropped bullet.
+
+`filter_unappliable_relationships` only inspects `add_relationship` actions
+carrying a truthy `error` key. It never looks at `link_to_moc`. What actually
+happens to a `link_to_moc` with `target_moc_path: null`:
+
+- **It renders as a normal, actionable instruction.** `lib/render_md.py` emits
+  `### Add link to [[<losing spelling>]] — <note>` followed by `- [ ] Applied`
+  and `- **Target:** [[<losing spelling>]]`. The `- **Path:**` line is emitted
+  only `if action.get("target_moc_path")`, so the null case is the same block
+  minus one row. The anchor falls to its unresolved branch, which prints
+  `- **Open the MOC**, find the first editable callout (e.g. `> [!blocks]`) or
+  the matching section.` — instructing the user to open a MOC that will never
+  exist. No warning, no degraded marker, no Skipped-section entry.
+- **It validates clean.** In `tomo/schemas/instructions.schema.json`,
+  `$defs/link_to_moc` requires `[id, action, target_moc, anchor, placement,
+  line_to_add]`; `target_moc_path` is `{"type": ["string","null"]}` and is NOT
+  required. The asymmetry is the whole reason one kind has a guard and the other
+  does not: `$defs/add_relationship` **does** require `target_moc_path`, so a
+  null there would be rejected by Hashi's `additionalProperties:false` wire
+  schema — which is exactly why `filter_unappliable_relationships` exists for
+  that kind and nothing equivalent exists for `link_to_moc`.
+- **Every downstream gate passes it.** `instructions-dryrun.py`'s
+  `REQUIRED_FIELDS_BY_KIND["link_to_moc"]` omits the field, and its `describe()`
+  prints only `target=[[…]]`. `instructions-diff.py`'s coverage check matches on
+  `source_note_title`, and `links_by_source` keys the `target_moc` **stem**,
+  never the path — so the action is counted `[OK]`.
+
+**This violates CON-2**: the user approves on what the document says. The document
+says "add a link to this MOC", the checkbox invites them to tick it, and every
+automated gate reports green — while the target does not and will not exist.
+
+**Not case-specific, and pre-existing.** Nothing above depends on a case-only
+collision. It fires whenever both resolution tiers miss — an unresolvable
+`target_moc` of any origin. T6.0's fold and T6.0c's merge fold only made one more
+route to it reachable; neither created it. Tracked as its own task, **T6.0d**.
 
 ### Found While Folding, Closed by T6.0c
 
@@ -876,6 +920,11 @@ still misses it, keeping `target_moc_path: null` — Kado's `search_by_name` tie
 cannot help either, because the MOC does not exist in the vault yet. Pinned
 hard-coded in `tests/test_034_t6_0c_merge_proposed_mocs_case_folded.py`. Closing
 it needs the different-folder `in_set` collision handled, not a fold.
+
+What the null then does is the subject of "What a Null `target_moc_path` Actually
+Does" above: the action is not dropped, it renders as an actionable `- [ ] Applied`
+checkbox naming a MOC that will never exist, and every gate reports green. That
+is a CON-2 violation, it is not case-specific, and it is tracked as **T6.0d**.
 
 ### Report-Only Sites From the T6.0 Shape-Grep
 

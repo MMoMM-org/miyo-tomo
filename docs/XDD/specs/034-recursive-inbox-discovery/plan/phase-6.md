@@ -1072,6 +1072,32 @@ phase: 6
   task as much as the fix is** — this is the sixth time in this spec that one of two paths got a
   fix and the other did not, and the first that only a live run could reveal.
 
+  **Three things the gate established — do not re-derive them.**
+
+  **The provenance already exists; the fix needs no new plumbing.** `_extract_tomo_doc_type(text)`
+  (`suggestion-parser.py:1261`) reads `tomo.doc_type` from the document's own frontmatter and is
+  already used for exactly this kind of dispatch (`_is_moc_proposal_doc`, `:1301`). And
+  `suggestions-render.py:31-33` already stamps fan-companion markdown with
+  `doc_type: 'suggestions-fan'`, distinct from `'suggestions'`. So the parser can read what it is
+  looking at. A fourth document type declares its own value and costs one branch, not a mechanism.
+  Note also that the standalone-fan invocation (`synthesis-conductor.md:117`) passes **no**
+  `--suggestions-doc`, so `_default_doc_path` runs unconditionally there.
+
+  **The wire path does NOT share the defect — do not test it.** `build_from_wire` (`:292`) reads
+  `item_key = w.get("item_key") or stem` straight off the wire and never touches
+  `_default_doc_path` or `item_keys_by_section_id`; `build_from_wire_companion` has the same
+  shape. A test there would be redundant.
+
+  **`garden-audit` is structurally exempt, not a counter-example.** `garden-audit-parser.py` never
+  calls any of these functions, and its branch always passes `--wire` explicitly, resolving
+  identity from the wire as `build_from_wire` does.
+
+  **A stale primary doc cannot bind the WRONG key** — worth knowing so nobody adds a fifth
+  defensive test. If a leftover `suggestions-doc.json` sits in `tomo-tmp/` while a fan doc is
+  approved standalone, an `S01` id could collide across two independently-numbered documents; the
+  stem cross-check at `:1913` rejects the mismatched entry before assignment, so the failure
+  degrades to the same `None` the tests already assert. Test 3 exercises that guard.
+
   1. **Prime**: read `_default_doc_path` (`:595`), `item_keys_by_section_id` (`:1855`),
      `bind_section_item_key` (`:1893`) and the call site at `:2243`/`:2272`. Read T5.0b and T5.0c
      in `plan/phase-5.md` — the same emitter/consumer split, one document earlier

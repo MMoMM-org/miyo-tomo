@@ -157,6 +157,51 @@ phase: 6
   across that double merge, and the test must cover the path `derive_expected` actually
   consumes; it reads `confirmed_items` from `tomo-tmp/parsed-suggestions.json`, i.e. post-merge.
 
+  **The merge must say what it did — added 2026-09-08, after T6.0c's fold shipped.** The fold
+  widened what gets absorbed, and the merge is mute: no `[warn]`, no needs-attention line, no
+  audit row. Every sibling guard in this spec surfaces its decision. Under **CON-2** the user
+  approves on what the suggestions document says, so a run that emits one MOC where two were
+  approved must say so. Raised by T6.0c's implementer as the assumption its diff could not verify.
+
+  **Model it on the record that already exists, do not invent one.** `validate_destinations`
+  (`render_actions.py:1030`) carries `case_only: bool` beside `kind`, and `_CASE_NOTE`
+  (`:827`) is appended to the reason when it is set. `render_md.py:592-611` renders that as a
+  lead section before the action list. Reuse that struct and that structural pattern.
+
+  **Do not reuse T5.5's "Not filed" wording.** Nothing is withheld here — the MOC *is* created,
+  once instead of twice, with the absorbed proposal's tags and items unioned in. "Not filed"
+  would misdescribe the outcome, which is the exact class of defect T5.5 was written to remove.
+  Take the shape (lead section, before the actions, names both spellings, cause plus remedy),
+  not the words.
+
+  **The plumbing crosses a process boundary, and that is where this will break.** Unlike
+  `destination_clashes` and `attachment_suppressions`, which are computed inside
+  `instruction-render.py` itself, this record is born in `suggestion-parser.py` and must survive
+  a JSON round-trip. Three sites beyond the merge function, none of them a call site of it:
+
+  | site | change |
+  |---|---|
+  | `suggestion-parser.py:434` | wire-path output dict — carry the record |
+  | `suggestion-parser.py:2589` | markdown-path output dict — same |
+  | `instruction-render.py:284` | read it back beside `confirmed_items` and thread it into the render metadata |
+
+  **A test that calls `render_instructions_md()` with a hand-built metadata dict proves the
+  renderer and nothing else.** Build a real `suggestions.json` and drive `instruction-render.main()`,
+  on the template of `_drive_render` in `tests/test_034_t5_4_attachment_clash_suppression.py:468`.
+  This spec has been bitten five times by a shape with more copies than the plan named; the fifth
+  was this very gap, caught by the gate before code.
+
+  **Concrete assertions, not "distinguishable":**
+  - the case-only pair records `case_only` true; an exact repeat records it false. Name the field
+    and the value per scenario — "the two records differ" passes on any two records.
+  - idempotence across the double merge needs a two-stage fixture: `Travel (MOC)` and
+    `travel (MOC)` in the primary document (collapsed by the first merge), `TRAVEL (MOC)` in the
+    fan document (only the second merge can see it). Assert one surviving `create_moc`, all three
+    supporting-item sets unioned, and **one** record — not three, not two.
+  - assert rendered markdown by substring, matching how the T5.3 and T5.4 tests check fields.
+    Full-paragraph pinning breaks on the next copy edit.
+  - a run with no merge renders no such section, and neither action golden is re-recorded.
+
   1. **Prime**: read `_merge_proposed_mocs_by_name` (`suggestion-parser.py:1114`) and its
      2026-06-17 decision comment — merge on Name only, first occurrence's parent kept. Read
      T6.0's block above for the folding form (`casefold()`, never `.lower()`) and the fail-safe

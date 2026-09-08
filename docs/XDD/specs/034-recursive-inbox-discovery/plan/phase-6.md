@@ -394,7 +394,22 @@ phase: 6
        **The cause needs plumbing this plan does not yet name.** `resolve_target_moc_paths`
        returns an `int` and collapses all three causes to a bare `None` (`render_resolve.py:565-572`).
        Threading a cause out of it is new plumbing; name every site it must cross before writing
-       code, the way T6.0c's four-site table does, and expect the count to be more than one.
+       code, the way T6.0c's four-site table does.
+
+       **The gate traced the withhold-and-report shape at seven sites** — the resolver threading a
+       cause; a new `(kept, skipped)` filter; its call site beside `instruction-render.py:660`/`:675`;
+       the `instructions.json` `tomo` block twin-write beside `:781-796`; the
+       `render_instructions_md` metadata-dict literal at `:849-856`; a new `render_md.py` Skipped
+       block parallel to `:691-746`; and the `instructions-diff.py` subtraction wired into
+       `run_diff`. **Site 4 is the trap**: `instructions-diff` reads `instructions.json`, not the
+       dict handed to the renderer, so skipping it leaves the audit wrong even when everything
+       else is right — T6.0c's "(3) without (4)" no-op, one level down.
+
+       **That count is contingent on the design choice, not a fixed number.** Emit-with-marker has
+       a different shape entirely: the schema and the dryrun's `REQUIRED_FIELDS_BY_KIND` join the
+       list, the filter split disappears, and `render_md.py`'s existing `link_to_moc` branch grows
+       a case rather than gaining a sibling block. Produce the table for the design you choose;
+       do not inherit seven as a target.
      - the dryrun and the coverage audit agree with the renderer. **"Not counted `[OK]`" is not
        specific enough and the gate blocked it**: a raw `[DIFF]` hard-fail also satisfies that
        wording, and it is the wrong answer — it would misdiagnose an intentional withholding as
@@ -403,8 +418,28 @@ phase: 6
        (`instructions-diff.py:709`), `_subtract_withheld_moves` (`:737`) and
        `_subtract_skipped_assets` (`:813`) each subtract the withheld item from the expected count
        and report the reason through the Skipped section, leaving the audit clean. Add the
-       matching subtraction for a withheld `link_to_moc` and assert the audit **completes** —
-       `rc == 0`, no `[DIFF]`, no `[MISSING]` — not merely that the count changed.
+       matching subtraction for a withheld `link_to_moc`.
+
+       **But only for one of the three causes.** The gate blocked a uniform "audit completes
+       clean" and was right: all three existing siblings subtract for causes that are
+       **permanent and user-actionable** — a missing daily note, a withdrawn move, an unfileable
+       attachment. `rc == 0` there correctly means "handled, nothing further". `client is None`
+       and the swallowed `Exception` mean **nothing was checked this run**. Subtracting those to a
+       clean `rc == 0` makes an offline run indistinguishable from one where Kado confirmed the
+       MOC absent — the same CON-2 conflation this task removes from the renderer, reintroduced
+       one layer down in the audit. So:
+
+       | cause | audit outcome |
+       |---|---|
+       | `not hits` — Kado answered, MOC confirmed absent | subtract, audit completes, `rc == 0` |
+       | `client is None` — Kado never available | soft **observation**, not silence |
+       | swallowed `Exception` — the Kado call failed | soft **observation**, not silence |
+
+       `instructions-diff.py` already has this vocabulary: `observations` is a separate
+       non-blocking channel returned beside the exit code (`:647`, `:706`), documented at `:21`
+       as "Observations (soft, non-blocking)" and at `:37` as compatible with exit 0. Use it
+       rather than inventing a third state. Assert the outcome per cause — not merely that the
+       count changed, and not one outcome for all three.
        `derive_expected` counts `link_to_moc` per `parent_mocs` independent of resolution
        (`:270-296`), so withholding upstream without this produces a spurious hard-fail
        `[ref: SDD/CON-4]`

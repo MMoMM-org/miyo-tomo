@@ -772,3 +772,31 @@ Cheapest fix is a guard at the CLI boundary, where it is deterministic: reject a
 `--stem`, or take its basename. A schema `pattern` would catch it a layer later. Worth doing
 before the next live run over a subfolder-heavy inbox, since that is the first time the
 analyst meets these paths at scale.
+
+## Cross-run document join — a stale structured doc can bind a wrong anchor
+
+**Found 2026-09-08** by T6.4a's implementer, as the assumption its diff could not verify.
+
+`suggestion-parser.py` resolves both `_own_doc_path` and the companion `_resolve_doc` by falling
+back to a **single cwd-relative filename** (`tomo-tmp/suggestions-doc.json`,
+`tomo-tmp/suggestions-fan-doc.json`). Nothing checks that the `run_id` in the markdown being
+parsed matches the `run_id` of the document it binds against.
+
+**Reachable**: `suggest-handling/SKILL.md:30` clears only `tomo-tmp/items` and
+`tomo-tmp/inbox-state.jsonl`. The structured documents are never cleared — a live instance was
+observed holding `tomo-tmp/*.json` files from June and July.
+
+**Consequence, and why it is asymmetric**: the *identity* join degrades safely, because
+`bind_section_item_key`'s stem cross-check (`:1913`) rejects a mismatched entry and leaves the key
+unset. The *anchor* join has **no such cross-check**, so a stale document with an overlapping
+section id binds a **wrong placement anchor** silently — a MOC bullet lands under a heading from
+another run.
+
+**The naive fix is wrong.** A companion merge legitimately pairs two documents with *different*
+`run_id`s — the primary from one run, the fan from the next (observed live:
+`2026-09-08T17-07-05Z-807b53` and `...T18-06-09Z-afc46b`). Any check must be **pairwise** — each
+markdown against its own structured doc — never equality across the pair.
+
+Not caused by spec 034, but 034 introduced the doc-join mechanism that makes it reachable. Left
+out of T6.4a deliberately: it is a distinct defect with its own fix, and T6.4a's scope was already
+widened once.

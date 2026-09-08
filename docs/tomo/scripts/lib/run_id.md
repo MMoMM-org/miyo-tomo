@@ -17,6 +17,14 @@ identity format of every run artefact in two places. The generator moved to
 ## WHY Triage Mints Its Own Rather Than Sharing the Skill's
 
 For the three triage-terminal actions there is no other id — the skill that
-would mint one never runs. The two downstream actions (`suggest`,
-`fan-resolve`) use the pipeline's run id, passed to `record-run-cost.py`, so
-each entry carries the id its own run actually had.
+would mint one never runs. The two reducer actions (`suggest`, `fan-resolve`)
+use the pipeline's run id, which reaches the entry through
+`suggestions-reducer.py --run-id`, so each entry carries the id its own run
+actually had.
+
+WHY not a separate recording script: one existed (`record-run-cost.py`,
+retired) and was invoked from a step in each skill's markdown. That made the
+entry depend on an LLM executing that line, which no test can observe — and the
+guarantee this history is for is that it accumulates *without anyone
+remembering*. The reducer already runs on both paths as a plain process, so the
+append happens there and the dependency is gone.

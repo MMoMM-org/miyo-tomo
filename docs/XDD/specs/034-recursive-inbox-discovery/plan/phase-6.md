@@ -1032,6 +1032,66 @@ phase: 6
      - [ ] A note in a subfolder is triaged, filed, and its source marked — end to end in a
            real vault `[ref: PRD/Success Metrics]`
 
+- [ ] **T6.4a The fan document was never joined back to its own identity map**
+      `[activity: backend]` — **Found by the T6.4 live run, 2026-09-08. Blocks T6.4's completion.**
+
+  **Inherited context — this is a regression this spec creates in its own new capability.**
+  Before spec 034 a note in an inbox subfolder was never discovered, so it could never reach the
+  Force-Atomic path. Making subfolders visible opened that path, and the identity join was wired
+  for the primary document only.
+
+  **What happens**, traced from the live artefacts:
+
+  | artefact | `item_key` |
+  |---|---|
+  | `suggestions-fan.json` (the wire the reducer wrote) | `"100 Inbox/Fotos/Kai.md"` — correct |
+  | `parsed-suggestions.json` | **`null`**, with `source_path: "Kai"` |
+  | `instruction-render.py` | probes `100 Inbox/Kai.md`, which does not exist, and gives up |
+
+  **The mechanism.** `_default_doc_path` (`suggestion-parser.py:595`) always resolves to
+  `suggestions-doc.json` — the **primary** structured document — and never to
+  `suggestions-fan-doc.json`. So when the markdown path parses a *fan* document, it binds section
+  ids against the wrong map: `doc_item_keys = item_keys_by_section_id(_load_json_doc(_primary_doc_path))`
+  (`:2243`), consumed by `bind_section_item_key` at `:2272`. The fan doc's own sections are absent
+  from that map, the key is left unset, and the render falls back to reconstructing a root path
+  from the display stem.
+
+  The comment at `:2239` states the intent this misses: *"spec 034: the rendered document carries
+  a display stem only, so identity is joined back from the structured doc **it was rendered
+  from**"*. The fan document is rendered from `suggestions-fan-doc.json`, and that is the document
+  its identity must come from.
+
+  **Consequence for the user**: any subfolder note taken through **Force Atomic Note** cannot be
+  filed, and the coverage audit hard-fails the run on every retry. The markdown path is the one
+  that matters here precisely because the user edited the document — that is what makes it
+  authoritative over the wire.
+
+  **Why 3735 offline tests do not see it.** No test drives the fan path end to end with a note in
+  a subfolder. T2.8 covers both parser paths, but for items in the *primary* document; T6.2's
+  walk covers subfolders, but not through Force Atomic. **The missing test is the point of this
+  task as much as the fix is** — this is the sixth time in this spec that one of two paths got a
+  fix and the other did not, and the first that only a live run could reveal.
+
+  1. **Prime**: read `_default_doc_path` (`:595`), `item_keys_by_section_id` (`:1855`),
+     `bind_section_item_key` (`:1893`) and the call site at `:2243`/`:2272`. Read T5.0b and T5.0c
+     in `plan/phase-5.md` — the same emitter/consumer split, one document earlier
+     `[ref: SDD/ADR-1, ADR-2]`.
+  2. **Test** (RED):
+     - a fan document whose item lives in a subfolder parses with its `item_key` intact,
+       **driven through the real parser on the markdown path**, not the wire
+     - the resulting instruction set files that note to its destination rather than probing a
+       root path — assert the emitted action, not just the parsed key
+     - a **primary** document still binds from the primary doc, unchanged — the fix must not
+       redirect the path that already works
+     - proven RED against HEAD, where the fan item's key is `null`
+  3. **Implement**: give the fan document its own structured-doc resolution. Prefer making the
+     document's own provenance decide, rather than adding a second special case beside the first —
+     a third document type later must not need a third branch.
+  4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded.
+  5. **Success**:
+     - [ ] A subfolder note taken through Force Atomic is filed to its destination
+     - [ ] A test fails if either document type loses its identity join
+
 - [ ] **T6.5 Phase Validation and close-out** `[activity: validate]`
 
   - Full suite green, `ruff` clean.

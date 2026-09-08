@@ -1195,6 +1195,18 @@ phase: 6
   compliance review checked both revisions and found no `os.` use earlier in the body — so no
   reachable path would have raised. Tidied, not defused; the first framing overstated it.
 
+  **The eighth occurrence was closed before it happened** (`b3fa089`). `_STRUCTURED_DOC_BY_TYPE`
+  fell back to the primary document for any type not in the table — correct for the three types
+  that reach it today, and a silent wrong join for the next render type whose entry someone
+  forgets. That is this spec's own defect, pre-built and waiting. An unlisted-but-present
+  `doc_type` now warns to stderr naming the type and the document it fell back to;
+  `None` and `""` stay silent, because a legacy document's fallback is its correct answer.
+
+  The implementer improved on the instruction: `suggestions` and `moc-proposal` are now **listed
+  explicitly**, both resolving to the primary. So an absent entry means *nobody decided*, not
+  *primary is right* — the table is exhaustive by intent rather than by coincidence. Suite
+  3750 → 3757.
+
 - [ ] **T6.5 Phase Validation and close-out** `[activity: validate]`
 
   - Full suite green, `ruff` clean.

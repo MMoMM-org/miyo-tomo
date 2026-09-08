@@ -955,7 +955,7 @@ phase: 6
            wherever they are really covered, or say plainly that they are not, rather than
            inventing a weak end-to-end assertion to fill the row.
 
-- [ ] **T6.3 Prepare the live-validation fixtures** `[activity: validate]`
+- [x] **T6.3 Prepare the live-validation fixtures** `[activity: validate]`
 
   1. **Prime**: Read `[ref: SDD/CON-7]`. Read the spec 031 T6.5 entry in
      `docs/evolution/inbox-cost-log.md` — its first run produced nothing because the fixtures
@@ -968,7 +968,49 @@ phase: 6
   4. **Validate**: a host-side dry run of the resolution chain over the real fixture layout
      agrees with the expectation before anything live is attempted.
   5. **Success**:
-     - [ ] Every fixture has a written expected outcome `[ref: PRD/Success Metrics]`
+     - [x] Every fixture has a written expected outcome `[ref: PRD/Success Metrics]`
+
+  **Prepared 2026-09-08. Vault: `Privat-Test` (`/Volumes/Moon/Coding/MiYo/temp/Privat-Test`).**
+
+  **The vault already contained two of this spec's headline cases, unintentionally.** Before any
+  fixture was written, a filesystem walk showed 8 files visible at `depth=1` and 13 recursively —
+  five that this spec newly discovers, among them `Images/Test.md` and `assets/Test.md`: a
+  **namesake pair the user created and Tomo could not see**, and `Images/karte.png` +
+  `Scans/karte.png`, an attachment namesake pair left from spec 031. Real content, not a
+  constructed case. Both are left in place and carried into the run.
+
+  **21 run artefacts were cleared from the inbox** (suggestions, instructions, garden-audit and
+  Hashi run-log documents from 2026-08-31 to 09-05), on the user's word that they were test
+  residue. **Moved, not deleted** — the vault is not under git, so deletion would be
+  irreversible; they sit in `temp/Privat-Test-inbox-archive-2026-09-08/`, outside the vault so
+  nothing scans them. Nothing pre-existing in the inbox was modified.
+
+  **Five fixtures written**, each targeting one thing the offline suite cannot prove:
+
+  | Fixture | Case | Expected outcome |
+  |---|---|---|
+  | `Reise/Tschechien/Prager Burg.md` | two levels deep | discovered at all; source path `100 Inbox/Reise/Tschechien/Prager Burg.md`; bare `[[Prager Burg]]` link — the name is unique |
+  | `Notizen/Elbe.md` | namesake, no embed | own suggestion; source link **path-qualified** `[[100 Inbox/Notizen/Elbe\|Elbe]]` (T5.1) |
+  | `Reise/Elbe.md` | namesake, no embed | own suggestion; qualified the same way. Pass 1 renames the second to `Elbe (2)`; **un-rename it by hand to make the destination clash fire** (T5.2/T5.3) — then both are withheld and the document says why |
+  | `Bilder/Hafen.md` | embeds `Images/karte.png`, path-qualified | its attachment collides with `Scans/karte.png` on one destination; the attachment is withheld **and the note stays in the inbox** (ADR-6 / T5.4) |
+  | `Fotos/Kai.md` | embeds `Scans/karte.png` | same, with a different note name so only the attachment clash fires and not a second destination clash on the notes |
+
+  Pre-existing and still carried: `Meissen.md` (no embed — the CON-8 control), `Bautzen.md`,
+  `Dresden.md`, `DoubleTest.md`, and the user's own `Test.md` pair.
+
+  **The host-side dry run agrees with the table** — run against the real vault layout through the
+  production helpers, no Kado and no writes. `source_link_targets` qualifies exactly the two
+  namesake groups (`Elbe`, `Test`) and leaves the other eight bare; the casefolded destination
+  check reports `karte.png` as the single attachment clash and `elbe`/`test` as the two note
+  clashes. Every row above was predicted before the run and matched after it.
+
+  **Deliberately NOT placed: the audio-namesake fixture.** T6.2 covers it offline. Placing one
+  live would put the run through the transcription pipeline, which is model-gated (the suite's
+  one standing skip) and carries a known infinite-loop failure mode when an audio stem and its
+  transcript sibling disagree on sanitisation. That is a different subsystem's risk to take on a
+  validation run for *this* spec. Recorded as a gap in live coverage rather than run blind.
+
+  **T6.4 is the user's to run.** No agent may attempt it `[ref: SDD/CON-7]`.
 
 - [ ] **T6.4 Live validation** `[activity: validate]` — **the user's to run, not the
       implementation's.** Not skipped, not forgotten.

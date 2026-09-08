@@ -906,7 +906,24 @@ phase: 6
            — disproportionate for a table whose job is to point at evidence rather than re-prove
            it. Semantic drift stays a review responsibility at the moment that test is edited.
            This matches how the spec already treats proof: established at authoring time by
-           RED-before-fix, not claimed as a standing mechanical guarantee. **"Walk the list and confirm" is not a deliverable**; it has no failure mode.
+           RED-before-fix, not claimed as a standing mechanical guarantee.
+
+  **Two limits of the instruction-set golden, recorded 2026-09-08 rather than closed.**
+
+  **It pins three of roughly fifteen action kinds.** A flat inbox emits `move_note`,
+  `link_to_moc` and `delete_source`; the other twelve (`move_asset`, `create_moc`,
+  `insert_under_marker`, `add_relationship`, the three daily kinds, `skip`, `edit_note_text`,
+  `remove_up_link`, `resolve_dead_link`, `edit_frontmatter`) are unreachable from one without
+  inventing daily updates and skips a flat inbox has no reason to carry. So the golden proves
+  "no regression in three sections", **not** "no Pass-2 regression on a flat inbox" — widening the
+  fixture would make it less representative, not more. **T6.5 owes the question of where the other
+  twelve are pinned**, when it walks the SDD Quality Requirements table; do not assume they are.
+
+  **`DELIBERATE_DELTAS` cannot tell a reviewed change from one added to make the test pass.**
+  Only the pinned count and review of the list itself stand behind it — an author can edit the
+  golden's expectation and the exception list in one commit. The gain over re-recording is real
+  but narrow: **the deviation is visible in the diff, where a re-record is not.** That is the
+  whole of the guarantee; do not read more into it. **"Walk the list and confirm" is not a deliverable**; it has no failure mode.
            A row whose answer is honestly "not covered here" carries an explicit `None` and a
            one-line reason — that is a fact, not a claim, and needs no proof.
      - [ ] Features 9 (no extra vault listing — a call-count claim) and 10 (the two file-type

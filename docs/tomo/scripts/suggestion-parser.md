@@ -705,3 +705,68 @@ clarity, not validation.
 `_MERGE_CASE_NOTE` restates it rather than importing: the parser has no
 dependency on the action builder, and buying one for a single sentence is the
 worse trade. If the wording is ever revised, both sites want revising.
+
+## A Document's Own `doc_type` Names the Structured Doc It Was Rendered From (spec 034 T6.4a, v0.33.0)
+
+WHY `_default_doc_path` takes the document's text and dispatches on
+`tomo.doc_type` instead of always resolving `suggestions-doc.json`:
+
+The identity join above ("The Markdown Path Recovers Identity From the Doc")
+recovers each `item_key` from the structured document the markdown was rendered
+FROM. `_default_doc_path` named that document by a constant, so it always named
+the PRIMARY document — including when the input markdown was a **fan** document,
+which is rendered from `suggestions-fan-doc.json`. The fan document's section
+ids do not appear in the primary document's map, so the join silently left every
+key unset, and the Pass-2 render fell back to composing `<inbox>/<stem>.md`.
+
+Found by a live vault run, 2026-09-08, not by the suite:
+
+    suggestions-fan.json     item_key  "100 Inbox/Fotos/Kai.md"   correct
+    parsed-suggestions.json  item_key  null, source_path "Kai"
+    instruction-render.py    probes    "100 Inbox/Kai.md" — absent, item dropped
+
+A regression this spec created in its own new capability: before recursive
+discovery a note in an inbox subfolder was never discovered, so it could never
+reach the Force-Atomic path at all.
+
+WHY provenance rather than a second special case: `_extract_tomo_doc_type` already
+existed for `_is_moc_proposal_doc`, and `suggestions-render.py` already stamps a
+fan document `doc_type: suggestions-fan`. So the fix is a lookup table keyed by
+the value the document already declares — `_STRUCTURED_DOC_BY_TYPE` — and a
+fourth document type costs one entry, not a third branch. A type absent from the
+table resolves to `suggestions-doc.json`, which is what every pre-fan type did.
+
+WHY the whole call site moved, not just the item-key lookup: `load_doc_anchor_map`
+(placement anchors), `item_keys_by_section_id` (identity), `_topic_member_stems`
+(proposed-MOC members) and the daily-updates enrichment all read the SAME
+resolved path, so all four were binding a fan document against the primary
+document. One variable — renamed `_own_doc_path`, because it is no longer the
+primary one — fixes all four. `_restore_daily_item_keys` and the moc-proposal
+`_parent_marker_from_doc` branch are threaded the same way for uniformity;
+neither changes behaviour, since a moc-proposal document is absent from the
+table.
+
+WHY no defensive test for a WRONG key: both documents number their sections
+independently, so an `S01` can collide across them when a stale
+`suggestions-doc.json` sits in `tomo-tmp/`. `bind_section_item_key`'s stem
+cross-check rejects the mismatched entry before assignment, so the failure
+degrades to the same `None` the no-doc case already produces. Pinned by
+`TestThePrimaryDocumentIsUnchanged::test_a_fan_doc_beside_a_stale_primary_doc_binds_no_primary_key`.
+
+WHY the wire path was left alone: `build_from_wire` / `build_from_wire_companion`
+read `item_key` straight off the wire and never touch `_default_doc_path`, so
+they never had the defect. `garden-audit-parser.py` calls none of these
+functions and is always invoked with `--wire`.
+
+KNOWN, NOT FIXED HERE — the fan-COMPANION flow has the same hole one level down.
+When `--fan-resolve-file` is passed, the resolve document's sections are parsed
+by `parse_section(section_id, lines)` with no anchor map and are never passed to
+`bind_section_item_key`, so a promoted-from-resolve atomic reaches
+`_promote_entry` with `item_key: None` — the same consequence for a subfolder
+note, reached through the companion invocation (`synthesis-conductor.md:111`)
+rather than the standalone one (`:117`). Closing it needs the resolve document's
+own doc path resolved from `--fan-resolve-file` and its own
+`item_keys_by_section_id` map. Related: `_topic_member_stems` for the companion
+fan members is hard-coded to a cwd-relative `tomo-tmp/suggestions-fan-doc.json`
+with no sibling preference, so a `--fan-resolve-file` outside the instance cwd
+loses proposed-MOC members silently.

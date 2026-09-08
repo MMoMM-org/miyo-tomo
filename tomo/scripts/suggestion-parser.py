@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.32.0
+# version: 0.33.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -592,23 +592,41 @@ def load_doc_anchor_map(doc_path: str) -> dict[str, dict[str, dict]]:
     return out
 
 
-def _default_doc_path(markdown_path: str) -> str:
-    """Derive the sibling suggestions-doc JSON path for a markdown doc.
+# spec 034 T6.4a: each rendered document type is rendered FROM its own
+# structured document, and identity is joined back from that one. A type absent
+# here resolves to the primary doc, which is what every pre-fan type did.
+_STRUCTURED_DOC_BY_TYPE = {
+    "suggestions-fan": "suggestions-fan-doc.json",
+}
+_PRIMARY_STRUCTURED_DOC = "suggestions-doc.json"
 
-    The pipeline always writes the structured doc to
-    ``tomo-tmp/suggestions-doc.json`` (relative to the instance cwd). Prefer a
-    sibling file next to the markdown; fall back to the canonical tomo-tmp path.
+
+def _structured_doc_basename(doc_text: str) -> str:
+    """Name the structured document a rendered document was rendered from."""
+    return _STRUCTURED_DOC_BY_TYPE.get(
+        _extract_tomo_doc_type(doc_text) or "", _PRIMARY_STRUCTURED_DOC
+    )
+
+
+def _default_doc_path(markdown_path: str, doc_text: str = "") -> str:
+    """Derive the structured JSON path for a rendered markdown document.
+
+    The pipeline writes each structured doc under ``tomo-tmp/`` (relative to
+    the instance cwd). Prefer a sibling file next to the markdown; fall back to
+    the canonical tomo-tmp path. Which basename is looked for follows the
+    document's own ``tomo.doc_type``: a fan document is rendered from
+    ``suggestions-fan-doc.json``, not from the primary ``suggestions-doc.json``,
+    and binding it against the primary map leaves every key unset.
     """
+    basename = _structured_doc_basename(doc_text)
     if markdown_path:
-        sibling = os.path.join(
-            os.path.dirname(markdown_path), "suggestions-doc.json"
-        )
+        sibling = os.path.join(os.path.dirname(markdown_path), basename)
         if os.path.isfile(sibling):
             return sibling
-    fallback = os.path.join("tomo-tmp", "suggestions-doc.json")
+    fallback = os.path.join("tomo-tmp", basename)
     exists = "exists" if os.path.isfile(fallback) else "does NOT exist"
     print(
-        f"note: no sibling suggestions-doc.json; falling back to "
+        f"note: no sibling {basename}; falling back to "
         f"cwd-relative {fallback} ({exists})",
         file=sys.stderr,
     )
@@ -1971,7 +1989,10 @@ def enrich_daily_updates_with_item_keys(entries: list[dict], doc: dict) -> None:
 
 
 def _restore_daily_item_keys(
-    parsed: dict, suggestions_doc: str | None, markdown_path: str
+    parsed: dict,
+    suggestions_doc: str | None,
+    markdown_path: str,
+    doc_text: str = "",
 ) -> None:
     """Re-attach daily-entry item keys to a wire-built output (ADR-026 path).
 
@@ -1982,7 +2003,7 @@ def _restore_daily_item_keys(
     source the markdown path uses — which keeps both parser paths on one
     recovery mechanism and leaves the wire untouched.
     """
-    doc_path = suggestions_doc or _default_doc_path(markdown_path)
+    doc_path = suggestions_doc or _default_doc_path(markdown_path, doc_text)
     enrich_daily_updates_with_item_keys(
         parsed.get("daily_updates") or [], _load_json_doc(doc_path)
     )
@@ -2129,8 +2150,11 @@ def main() -> int:
         help=(
             "Optional structured suggestions-doc JSON (reducer output). Supplies "
             "the Pass-1 placement anchor as the apply-time default per checked "
-            "MOC (spec 022/023). Defaults to the sibling suggestions-doc.json or "
-            "tomo-tmp/suggestions-doc.json; absent → Placement-line parsing only."
+            "MOC (spec 022/023) and the item_key identity join (spec 034). "
+            "Defaults to the sibling / tomo-tmp copy of the structured doc the "
+            "input markdown was rendered from, chosen by its own tomo.doc_type "
+            "(suggestions-fan-doc.json for a fan document, suggestions-doc.json "
+            "otherwise); absent → Placement-line parsing only."
         ),
     )
     parser.add_argument(
@@ -2166,7 +2190,7 @@ def main() -> int:
         # spec 028 T3.4: the override-header marker follows the active profile's
         # parent marker, carried in the suggestions-doc conventions block; absent
         # block → default up::.
-        _doc_path = args.suggestions_doc or _default_doc_path(filename)
+        _doc_path = args.suggestions_doc or _default_doc_path(filename, text)
         _parent_marker = _parent_marker_from_doc(_doc_path)
         proposals = parse_moc_proposal_doc(
             text, filename=filename, parent_marker=_parent_marker
@@ -2184,7 +2208,7 @@ def main() -> int:
         _wire = load_changed_wire(args.suggestions_json)
         if _wire is not None:
             _out = build_from_wire(_wire, _load_moc_template())
-            _restore_daily_item_keys(_out, args.suggestions_doc, filename)
+            _restore_daily_item_keys(_out, args.suggestions_doc, filename, text)
             print(json.dumps(_out, indent=2, ensure_ascii=False))
             print(
                 "suggestions-json: edited wire is authoritative (JSON-only path)",
@@ -2199,7 +2223,7 @@ def main() -> int:
         _f = load_changed_wire(args.fan_resolve_json)
         if _p is not None and _f is not None:
             _out = build_from_wire_companion(_p, _f, _load_moc_template())
-            _restore_daily_item_keys(_out, args.suggestions_doc, filename)
+            _restore_daily_item_keys(_out, args.suggestions_doc, filename, text)
             print(json.dumps(_out, indent=2, ensure_ascii=False))
             print(
                 "companion: both wires edited — JSON-only merge (build_from_wire_companion)",
@@ -2231,16 +2255,17 @@ def main() -> int:
     sections_by_stem: dict[str, list[dict]] = {}
 
     # spec 022/023: load the structured Pass-1 anchor map (section id → moc
-    # stem → anchor) from the sibling suggestions-doc JSON. Supplies the
+    # stem → anchor) from the structured doc this markdown was rendered from
+    # (spec 034 T6.4a — a fan document resolves its OWN doc). Supplies the
     # apply-time DEFAULT anchor per checked MOC; the rendered **Placement:**
     # line overrides it when hand-edited. Absent doc → empty map (back-compat).
-    _primary_doc_path = args.suggestions_doc or _default_doc_path(filename)
-    doc_anchor_map = load_doc_anchor_map(_primary_doc_path)
+    _own_doc_path = args.suggestions_doc or _default_doc_path(filename, text)
+    doc_anchor_map = load_doc_anchor_map(_own_doc_path)
     # spec 034: the rendered document carries a display stem only, so identity
     # is joined back from the structured doc it was rendered from. Empty when
     # no doc is reachable — every item then falls back to the reconstruction,
     # exactly as before this existed.
-    doc_item_keys = item_keys_by_section_id(_load_json_doc(_primary_doc_path))
+    doc_item_keys = item_keys_by_section_id(_load_json_doc(_own_doc_path))
 
     # F-41: split each rendered section into per-atomic-block groups on
     # **Source:** boundaries. Sections with ≤1 Source line yield one group
@@ -2333,7 +2358,7 @@ def main() -> int:
     # the SNN members; we resolve topic → source-stems and bind them to the
     # create_moc below so the new MOC gets its child down-links).
     import os
-    primary_members = _topic_member_stems(_load_json_doc(_primary_doc_path))
+    primary_members = _topic_member_stems(_load_json_doc(_own_doc_path))
     fan_members = (
         _topic_member_stems(_load_json_doc(os.path.join("tomo-tmp", "suggestions-fan-doc.json")))
         if args.fan_resolve_file else {}
@@ -2374,7 +2399,7 @@ def main() -> int:
     # each entry's source note is recovered from the structured doc it was
     # rendered from — Pass 2 emits a delete_source for daily-only items.
     enrich_daily_updates_with_item_keys(
-        daily_updates, _load_json_doc(_primary_doc_path)
+        daily_updates, _load_json_doc(_own_doc_path)
     )
     if daily_updates:
         accepted_count = sum(

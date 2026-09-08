@@ -534,29 +534,29 @@ def resolve_target_moc_paths(actions: list[dict], client) -> int:
     """
     # Tier 1 — index create_moc actions by stem of their title so we can
     # resolve links that target a new MOC in the same instruction set.
-    # Keyed case-folded (CON-6, spec 034 T6.0), the second paired consumer of
-    # `_build_create_moc_actions`' `by_dest`: once that fold merges
-    # `travel (MOC)` into `Travel (MOC)`, a link minted against the merged
-    # spelling has no in-set create_moc to find, misses tier 2 as well (the MOC
-    # does not exist yet), and is dropped downstream with its bullet. The value
-    # stays the survivor's own destination — nothing folded is written back.
+    # Keyed by the EXACT stem, deliberately (spec 034 T6.0). This is a second
+    # paired consumer of `_build_create_moc_actions`' `by_dest` and folding it
+    # was tried and reverted: two create_moc surviving that fold in DIFFERENT
+    # folders collide on one folded key, and last-write-wins then redirects one
+    # MOC's bullets to the other's destination. Redirecting an action is a
+    # behaviour change, not an addressing fix. The cost of leaving it exact is
+    # recorded in docs/tomo/scripts/lib/render_actions.md.
     in_set: dict[str, str] = {}
     for a in actions:
         if a.get("action") == "create_moc":
             title = a.get("title") or ""
             dest = a.get("destination")
             if title and dest:
-                in_set[_moc_stem(title).casefold()] = dest
+                in_set[_moc_stem(title)] = dest
 
     cache: dict[str, str | None] = {}
     def _resolve(stem: str) -> str | None:
         if stem in cache:
             return cache[stem]
         # Tier 1: in-set create_moc lookup (no Kado call, no I/O)
-        in_set_dest = in_set.get(stem.casefold())
-        if in_set_dest is not None:
-            cache[stem] = in_set_dest
-            return in_set_dest
+        if stem in in_set:
+            cache[stem] = in_set[stem]
+            return in_set[stem]
         # Tier 2: Kado byName search, cached per unique stem
         if client is None:
             cache[stem] = None

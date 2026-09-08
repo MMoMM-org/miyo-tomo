@@ -796,27 +796,47 @@ leaves site (4) open. `test_case_differing_sources_in_one_folder_are_each_accoun
 pins the invariant that carries the argument — every attachment path leaves this
 pass with either a move or a skip, never with nothing.
 
-### Site (1) Has Two Paired Consumers, Not One
+### Site (1) Has a Second Paired Consumer — Folded, Then Reverted
 
 The T5.3 sweep named `render_resolve.py`'s `create_moc_by_dest` as *the* paired
-consumer of `by_dest`. There are two, and the second was found only by grepping
-the shape rather than visiting the named site:
+consumer of `by_dest`. There are two. The second was found by grepping the shape
+rather than visiting the named site, folded, and then reverted — the revert is
+the part worth recording.
 
-- **`resolve_section_names`'s `create_moc_by_dest`** — the template-body anchor
-  fallback. A `link_to_moc` whose `target_moc_path` differs only in case from
-  the surviving create_moc's destination would find no template and keep an
-  unresolved anchor.
-- **`resolve_target_moc_paths`'s `in_set`** — keyed by title stem, and it runs
-  *before* `resolve_section_names` in `instruction-render.py`. Once `by_dest`
-  merges `travel (MOC)` into `Travel (MOC)`, a link minted against the merged
-  spelling misses tier 1, misses tier 2 as well (the MOC does not exist in the
-  vault yet), keeps `target_moc_path: null`, and is dropped by
-  `filter_unappliable_relationships`. Folding (1) without this one would have
-  cost the note its bullet in the MOC — a silent loss introduced *by* the fix,
-  which is why it is folded here rather than recorded for later.
+**`resolve_target_moc_paths`' `in_set`** is keyed by title stem and runs *before*
+`resolve_section_names` in `instruction-render.py` (`:596` vs `:607`). Once
+`by_dest` merges `travel (MOC)` into `Travel (MOC)`, a `link_to_moc` minted
+against the merged spelling misses tier 1, misses tier 2 as well (the MOC does
+not exist in the vault yet), keeps `target_moc_path: null`, and is dropped by
+`filter_unappliable_relationships`. So folding (1) costs that note its bullet in
+the MOC.
 
-This is the fourth time in spec 034 that a code shape had more copies than the
-plan named. The rule that keeps paying: grep the shape, not the site.
+Folding `in_set` fixes that and introduces something worse. `by_dest` keys the
+full composed destination, so two create_moc whose titles differ only in case
+survive it when they sit in **different folders**. A folded `in_set` collides
+those two on one key, and `in_set[key] = dest` is last-write-wins. Measured:
+
+    folded:  I03 target_moc='Travel (MOC)' -> 'Atlas/300 Other/travel (MOC).md'
+             I04 target_moc='travel (MOC)' -> 'Atlas/300 Other/travel (MOC).md'
+    exact:   I03 target_moc='Travel (MOC)' -> 'Atlas/200 Maps/Travel (MOC).md'
+             I04 target_moc='travel (MOC)' -> 'Atlas/300 Other/travel (MOC).md'
+
+The fold sends the first MOC's bullets into the second MOC. It also lets tier 1
+pre-empt tier 2 for case-only matches, which redirects a bullet from an existing
+vault MOC to a newly created one on a case-sensitive filesystem.
+
+Redirecting an action is a behaviour change, not an addressing fix — the same
+line T6.0b is held behind — so `in_set` stays exact and the cost is recorded
+instead. `test_two_in_set_mocs_differing_only_in_case_keep_their_own_links`
+guards the revert.
+
+**The cost, stated plainly:** when two MOC proposals in ONE folder differ only in
+case, `by_dest` merges them, and any `link_to_moc` minted against the merged
+spelling loses its `target_moc_path` and is dropped. The merged proposal's
+`supporting_items` still reach the survivor, so its down-links survive; what is
+lost is the up-bullet. Closing this needs the collision handled, not the key
+folded — most cleanly by folding upstream at `_merge_proposed_mocs_by_name`
+(below), which removes the case-only pair before either consumer sees it.
 
 ### Found While Folding, Recorded Not Fixed
 

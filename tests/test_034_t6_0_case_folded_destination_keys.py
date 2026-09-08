@@ -390,52 +390,62 @@ def test_one_file_embedded_by_two_notes_is_still_a_dedup_not_a_collision(capsys)
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# 2b. resolve_target_moc_paths' in_set — the OTHER paired consumer of (1)
+# 2b. resolve_target_moc_paths' in_set — folded, then REVERTED to exact
 # ──────────────────────────────────────────────────────────────────────────
 
-def test_link_to_moc_resolves_its_path_from_the_surviving_create_moc():
-    """`resolve_target_moc_paths` indexes in-set create_moc actions by title
-    stem, and runs BEFORE `resolve_section_names` in `instruction-render.py`.
+def test_two_in_set_mocs_differing_only_in_case_keep_their_own_links():
+    """`resolve_target_moc_paths`' `in_set` is keyed by EXACT title stem, and
+    must stay that way.
 
-    Folding `by_dest` means the proposal titled `travel (MOC)` no longer emits
-    a create_moc — its children were unioned into `Travel (MOC)`. A
-    `link_to_moc` minted against `travel (MOC)` must still find where that MOC
-    will actually land. Without this fold it misses tier 1, misses tier 2 (the
-    MOC does not exist yet), keeps `target_moc_path: null`, and is dropped by
-    `filter_unappliable_relationships` — so folding (1) would silently cost the
-    note its bullet in the MOC.
+    Folding it was tried while implementing T6.0, because folding `by_dest`
+    without it costs the merged proposal its MOC bullet (see the docs). It was
+    reverted: `by_dest` keys the full destination, so two create_moc whose
+    titles differ only in case survive it when they sit in DIFFERENT folders.
+    A folded `in_set` collides those two on one key, last-write-wins, and
+    redirects the first MOC's bullets into the second MOC. Measured with the
+    fold in place, both links resolved to `Atlas/300 Other/travel (MOC).md`.
 
-    This is the same emitter/consumer divergence the task warns about, at a
-    consumer the task's three sites do not name."""
+    Redirecting an action is a behaviour change, not an addressing fix. This
+    test is the guard against re-folding it without solving the collision."""
     client = StubClient()
     actions = [
         {
             "id": "I01",
             "action": "create_moc",
-            "destination": "Atlas/200 Maps/Travel (MOC).md",
             "title": "Travel (MOC)",
+            "destination": "Atlas/200 Maps/Travel (MOC).md",
         },
         {
             "id": "I02",
+            "action": "create_moc",
+            "title": "travel (MOC)",
+            "destination": "Atlas/300 Other/travel (MOC).md",
+        },
+        {
+            "id": "I03",
             "action": "link_to_moc",
-            "target_moc": "travel (MOC)",
+            "target_moc": "Travel (MOC)",
             "target_moc_path": None,
             "line_to_add": "- [[Dresden]]",
         },
+        {
+            "id": "I04",
+            "action": "link_to_moc",
+            "target_moc": "travel (MOC)",
+            "target_moc_path": None,
+            "line_to_add": "- [[Kyoto]]",
+        },
     ]
-    resolved = resolve_target_moc_paths(actions, client)
-    assert resolved == 1, (
-        "the in-set index keys the title stem by exact string, so the link "
-        f"lost the MOC the fold merged it into: {actions[1]['target_moc_path']}"
-    )
-    assert actions[1]["target_moc_path"] == "Atlas/200 Maps/Travel (MOC).md", (
-        "the resolved path is the survivor's own spelling — nothing folded is "
-        "ever written back into an action"
+    assert resolve_target_moc_paths(actions, client) == 2
+    assert actions[2]["target_moc_path"] == "Atlas/200 Maps/Travel (MOC).md"
+    assert actions[3]["target_moc_path"] == "Atlas/300 Other/travel (MOC).md", (
+        "each link resolves to its own MOC; a folded in_set sends both to the "
+        "last one written"
     )
 
 
 def test_link_to_moc_does_not_resolve_against_an_unrelated_in_set_moc():
-    """The in-set fold matches case, nothing looser."""
+    """The in-set index matches a title stem, nothing looser."""
     client = StubClient()
     actions = [
         {

@@ -192,6 +192,29 @@ phase: 6
   renderer-level unit test, and simply never renders the section. The first BLOCK on this task
   caught this shape one level up; this is the same shape one level down.
 
+  **The record must be reentrant across the two merge calls, or the fixture below cannot pass.**
+  "Group per surviving name" solves collision *within* one call. The markdown path calls the
+  function **twice**, and the second call has no memory of the first: stage 1 merges
+  `Travel (MOC)` + `travel (MOC)` into one record, then stage 2 merges that already-merged
+  one-entry list against the fan's `TRAVEL (MOC)` and — called fresh — emits a *second*
+  independent record for the same survivor. Two records where the fixture asserts one, failing
+  for a reason nothing in the plan names.
+
+  The function already solves this for its own data, one line away from the problem.
+  `member_stems` and `topic` ride as internal fields on the moc dict across repeated merge calls
+  and are popped only at the end (`suggestion-parser.py:429-430` wire, `:2585-2586` markdown) —
+  the merge site's own comment about "a name merged from multiple topics" is exactly this
+  reentrancy. Give the record the same treatment: **carried as an internal field on the survivor
+  moc, extended in place when a later call absorbs another spelling into an already-merged
+  survivor, and lifted into the output at the same two sites where `member_stems` and `topic`
+  are stripped.**
+
+  **An internal field riding a wire-bound dict owes the triad** this repo has paid for before:
+  a test that it is stripped before the wire, a paired-consumer count that fails if a second
+  consumer forgets it, and a schema test. `instructions.schema.json` and the wire schema use
+  `additionalProperties: false` in places — a field that survives the pop is not a cosmetic leak,
+  it is a validation failure at the far end.
+
   **The record is a group per surviving name, not a pair.** `validate_destinations` already
   carries `dropped: [...]` inside one clash record (`render_actions.py:1034`) rather than one
   record per dropped claimant. Follow that: survivor plus a **list** of absorbed spellings. A

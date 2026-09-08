@@ -310,7 +310,7 @@ phase: 6
   does work. Found by the implementer after four gate rounds had approved the three-way fixture as
   sufficient; verified by the compliance review by hand-tracing both paths. **Do not trim it.**
 
-- [ ] **T6.0d A link to a MOC that will never exist renders as a normal instruction**
+- [x] **T6.0d A link to a MOC that will never exist renders as a normal instruction**
       `[activity: backend]` — **Added 2026-09-08, accepted. Runs before T6.1.**
 
   **Inherited context — read this before the steps.** Found by T6.0c's implementer while tracing
@@ -472,10 +472,49 @@ phase: 6
   4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded. If a
      no-clash run changes, that is a real regression.
   5. **Success**:
-     - [ ] No instruction asks the user to act on a MOC whose existence the run could not
+     - [x] No instruction asks the user to act on a MOC whose existence the run could not
            confirm — all three causes withheld from the appliable checkbox, not only the
            confirmed-absent one
-     - [ ] Whatever the renderer withholds, the audit and the dryrun agree it was withheld
+     - [x] Whatever the renderer withholds, the audit and the dryrun agree it was withheld
+
+  **Closed 2026-09-08** — `5b52681` (RED, seven failing assertions through
+  `instruction-render.main()`), `0001e2e` (the fix). 10 tests; suite 3655 → 3665, ruff clean,
+  both action goldens byte-identical, no wire-schema change.
+
+  **Withhold-and-report, over eight sites — not the gate's seven.** The extra one is
+  `_strip_internal_link_fields`: the cause marker is a Tomo-internal field on a wire action, so it
+  owes the strip-before-wire guard even though `filter_unresolvable_moc_links` removes every action
+  carrying it. Emit-with-marker was rejected on a reason the plan did not name — the marker would
+  have to be honoured by Hashi's `additionalProperties: false` schema, making `target_moc_path`
+  required is a breaking cross-repo contract change owed a Kokoro migration note, and Hashi could
+  not apply the action anyway (it modifies, never creates: there is no MOC to write into).
+
+  **The filter runs beside the resolver, not beside the other two filters.** The gate placed the
+  call site at `instruction-render.py:660`/`:675`. Four passes sit between resolution and that
+  point and all four read `link_to_moc` — anchor resolution (one Kado read per target MOC), the #70
+  same-section merge, the existing-heading rewrite, new-section serialization. A withheld action
+  must not be merged into a surviving one, and a Kado read for a MOC nobody will open is waste.
+
+  **All three causes subtract; only the sentences differ.** The plan's table read as "subtract the
+  confirmed-absent one, observe the other two". Withholding without subtracting produces
+  `[DIFF]` — the hard fail the same paragraph calls the wrong answer — so the count table subtracts
+  for all three and the three aggregated observations carry the distinction. The count table answers
+  "did the renderer emit what the document promised"; under every cause it did not.
+
+  **The garden-audit branch was outside the plan and inside the blast radius.** A garden
+  `file_note` whose File-under value is a user-typed stem leaves the parser with
+  `target_moc_path: None` (`garden-audit-parser.py:462`) and is resolved by the same tier-2 lookup
+  in the same `main()`. `run_diff_garden` keeps its own count table and its own per-item coverage,
+  so both had to learn about the withholding independently — proven by reverting the garden half
+  and observing `link_to_moc expected=2 actual=0 [DIFF]` with two `[MISSING]` items on a correct
+  set.
+
+  **Report-only, found by the shape-grep and NOT fixed here.** The `add_relationship` that a garden
+  `file_note` emits alongside its link writes `up:: [[<MOC>]]` into the child note, and its
+  `target_moc_path` is the CHILD's path — so the null-target guard never sees it and the up-link
+  is still written pointing at a MOC that may not exist. Same CON-2 class, different action kind,
+  and not made worse by this task: both halves were emitted before it. Belongs with T6.0b's
+  cross-kind work or its own task.
 
 - [ ] **T6.1 The run records its own cost** `[activity: backend]`
 

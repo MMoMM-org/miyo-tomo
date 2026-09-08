@@ -440,14 +440,16 @@ A repo-wide grep for destination composition (`_dest_join`, `_asset_dest_join`,
 `"destination":` writes) and claim tracking (`claimed`, `by_dest`, `seen`,
 `used_filenames`) turned up three sites this guard does not cover. None is
 fixed here; each is recorded so the next task does not have to re-find it.
+**(1) and (3) were folded together by T6.0 — see "Three Keys Folded, One Left
+Exact" below. (2) is still open and is now T6.0b.**
 
 1. **`_build_create_moc_actions`'s `by_dest` compares destinations by exact
-   string.** Two approved MOC proposals named `Travel (MOC)` and
-   `travel (MOC)` in one folder both emit a `create_moc`, and the second
-   overwrites the first on apply — dropping the first's children, which is the
-   `#67` failure that guard was written for. The guard is real; it just does
-   not fold, and CON-6 says this filesystem does. `validate_destinations` does
-   not close it: it groups `move_note` only.
+   string.** — **CLOSED by T6.0.** Two approved MOC proposals named
+   `Travel (MOC)` and `travel (MOC)` in one folder both emit a `create_moc`,
+   and the second overwrites the first on apply — dropping the first's
+   children, which is the `#67` failure that guard was written for. The guard
+   is real; it just does not fold, and CON-6 says this filesystem does.
+   `validate_destinations` does not close it: it groups `move_note` only.
 2. **An atomic and a MOC can compose the same destination** — an atomic named
    `Travel (MOC)` filed into the MOC folder. `_build_create_moc_actions` dedups
    create_moc against create_moc, `_build_move_note_actions` has no guard at
@@ -457,8 +459,9 @@ fixed here; each is recorded so the next task does not have to re-find it.
    up-preservation actions that target it, which is a behaviour change, not an
    addressing fix.
 3. **`render_resolve.py:213`'s `create_moc_by_dest`** keys the same composed
-   destination by exact string. It is a paired consumer of (1) and would need
-   the same treatment if (1) ever folds.
+   destination by exact string. — **CLOSED by T6.0, in the same change as
+   (1).** It is a paired consumer of (1) and would need the same treatment if
+   (1) ever folds.
 
 ## An Attachment Clash Keeps Its Note in the Inbox (spec 034 T5.4)
 
@@ -565,7 +568,8 @@ The T5.3 sweep above listed three exact-string destination sites. The same grep
 run against the **attachment** half turns up a fourth, previously unlisted:
 
 4. **`_build_move_asset_actions`'s `claimed` dict keys on the exact destination
-   string.** `100 Inbox/A/Ufer.jpg` and `100 Inbox/B/ufer.jpg` compose two
+   string.** — **CLOSED by T6.0; see "Three Keys Folded, One Left Exact"
+   below.** `100 Inbox/A/Ufer.jpg` and `100 Inbox/B/ufer.jpg` compose two
    different keys, so both emit a `move_asset` into the flat asset folder and
    the second overwrites the first on a case-insensitive filesystem (CON-6) —
    with no skip recorded, so T5.4's suppression never fires and both notes are
@@ -748,3 +752,114 @@ same filename and the same parent MOC produce ONE bullet — the MOC lists one o
 them. `survivors.setdefault` therefore names the first, which is strictly better
 than resolving to whichever the vault picks, but the missing second bullet is a
 separate defect in the emitter's dedup key and is not this task's.
+
+## Three Keys Folded, One Left Exact (spec 034 T6.0)
+
+The T5.3 and T5.4 sweeps above recorded four exact-string sites and fixed none.
+T6.0 folds three of them — sites (1), (3) and (4) — and deliberately leaves the
+fourth shape, `seen`, exact. Site (2) is unchanged and is now T6.0b.
+
+`casefold()`, never `.lower()`: `ß` folds to `ss` and these are German notes.
+
+### WHY Fold at All
+
+Same asymmetry T5.3 recorded and T5.2 acts on. On a case-insensitive filesystem
+(CON-6, verified on this host), not folding loses data and cannot be undone. On
+a case-sensitive one, folding costs a rename, and the user can undo it. The
+fail-safe direction is the folding one.
+
+Only comparison keys fold. `_CASE_NOTE` promises the user always reads the real
+spelling, so no folded string reaches a `destination`, a `source`, a `title`, a
+`reason`, or anything rendered. Every folded dict follows T5.2's shape: the key
+is folded, the value is the string as its author wrote it.
+
+### WHY `seen` Is Not a Fourth Site
+
+`_build_move_asset_actions` keeps two exact-string collections and they are not
+the same shape. `claimed` keys the **destination**; `seen` keys the **source
+path**, and the asymmetry inverts there:
+
+- Not folding `seen` on a case-insensitive filesystem: `100 Inbox/Ufer.jpg` and
+  `100 Inbox/ufer.jpg` are one file seen twice. The first moves; the second
+  meets a folded `claimed` and is recorded as a collision skip, so T5.4 keeps
+  its note in the inbox. Wrong about the cause, conservative in effect, and
+  *reported* — the user reads a line naming both paths and renames one.
+- Folding `seen` on a case-sensitive filesystem: two genuinely distinct files
+  collapse to one. One moves, the other is dropped with **no skip recorded at
+  all** — the exact silence T5.4's guard exists to break, re-created one layer
+  up.
+
+The second bullet is what makes this a decision rather than an oversight, and it
+is only unreachable *because* `claimed` folds. The pair is load-bearing: folding
+`claimed` without `seen` is correct, folding both is not, and folding neither
+leaves site (4) open. `test_case_differing_sources_in_one_folder_are_each_accounted_for`
+pins the invariant that carries the argument — every attachment path leaves this
+pass with either a move or a skip, never with nothing.
+
+### Site (1) Has Two Paired Consumers, Not One
+
+The T5.3 sweep named `render_resolve.py`'s `create_moc_by_dest` as *the* paired
+consumer of `by_dest`. There are two, and the second was found only by grepping
+the shape rather than visiting the named site:
+
+- **`resolve_section_names`'s `create_moc_by_dest`** — the template-body anchor
+  fallback. A `link_to_moc` whose `target_moc_path` differs only in case from
+  the surviving create_moc's destination would find no template and keep an
+  unresolved anchor.
+- **`resolve_target_moc_paths`'s `in_set`** — keyed by title stem, and it runs
+  *before* `resolve_section_names` in `instruction-render.py`. Once `by_dest`
+  merges `travel (MOC)` into `Travel (MOC)`, a link minted against the merged
+  spelling misses tier 1, misses tier 2 as well (the MOC does not exist in the
+  vault yet), keeps `target_moc_path: null`, and is dropped by
+  `filter_unappliable_relationships`. Folding (1) without this one would have
+  cost the note its bullet in the MOC — a silent loss introduced *by* the fix,
+  which is why it is folded here rather than recorded for later.
+
+This is the fourth time in spec 034 that a code shape had more copies than the
+plan named. The rule that keeps paying: grep the shape, not the site.
+
+### Found While Folding, Recorded Not Fixed
+
+**`derive_expected` counts a case-only MOC pair as two, and the fold emits one.**
+`instructions-diff.py:278` counts one expected `create_moc` per confirmed item
+and does no destination comparison, so two confirmed proposals named
+`Travel (MOC)` and `travel (MOC)` expect two actions where the folded builder
+now emits one. Verified against `derive_expected` directly:
+`counts["create_moc"] == 2`, `by_item == {S01: create_moc, S02: create_moc}`.
+The audit reports `create_moc expected=2 actual=1 [DIFF]` plus a `[MISSING]`
+coverage row for the merged item, and `synthesis-conductor.md` step 3e makes a
+diff mismatch fatal.
+
+This is a change in failure mode, not a new data loss: before the fold the run
+completed and dropped the merged proposal's children on apply; now it stops and
+says so. Loud beats silent, and T6.0's success criterion holds. But it is the
+same shape T5.4 had to close with `_subtract_skipped_assets` — "a guard whose
+own audit stops the run is not shippable" — and closing it properly is not the
+same fold. Two candidate remedies, neither attempted here:
+
+1. **Fold `_merge_proposed_mocs_by_name`** (`suggestion-parser.py:1114`), which
+   keys `merged` by exact title. Folding there produces ONE confirmed item, so
+   `derive_expected` and the builder agree and `by_dest` returns to being the
+   defence-in-depth its own comment claims it is. It also touches an explicit
+   2026-06-17 decision (merge on Name only, regardless of parent) and changes
+   what the user sees in the confirmed document, so it wants its own task.
+2. **A subtraction in `instructions-diff`**, mirroring `_subtract_skipped_assets`.
+   That needs the builder to report its merges on the wire, which owes the usual
+   triad: strip-before-wire, a paired-consumer count, and a schema test.
+
+(1) is the smaller and more honest fix — it removes the divergence rather than
+teaching the audit to tolerate it.
+
+### Report-Only Sites From the T6.0 Shape-Grep
+
+Two more destination-ish collections were examined and are **not** the same
+shape:
+
+- **`instruction-render.py:352`'s `used_filenames`** keys rendered filenames in
+  `tomo-tmp/`, not vault destinations, and `slugify` lowercases its input — a
+  case-only pair is already one key there. No fold needed.
+- **`instructions-diff.py:454`'s `attachments_seen`** counts one expected
+  `move_asset` per distinct attachment path, keyed exactly. It is the paired
+  consumer of `_build_move_asset_actions`' `seen`, which stays exact — so the
+  two still agree, and `_subtract_skipped_assets` already accounts for the extra
+  skips the `claimed` fold produces.

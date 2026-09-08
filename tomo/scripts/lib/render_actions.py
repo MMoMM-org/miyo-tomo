@@ -1,4 +1,4 @@
-# version: 0.17.0
+# version: 0.17.1
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -556,6 +556,8 @@ def _build_create_moc_actions(
     link_to_moc so IDs for new MOCs precede anything that links into them.
     """
     out: list[dict] = []
+    # case-folded destination -> the action that claimed it (T6.0). The key
+    # folds; the action it holds keeps the spelling its author wrote.
     by_dest: dict[str, dict] = {}
     for m in manifest:
         if m.get("action") != "create_moc":
@@ -568,7 +570,10 @@ def _build_create_moc_actions(
         # on apply, dropping the first's children. The parser merges by Name
         # upstream; this guard ensures a duplicate can never reach Hashi even if
         # upstream misses it — union supporting_items into the survivor.
-        existing = by_dest.get(destination)
+        # Compared case-folded (CON-6, spec 034 T6.0): `Travel (MOC)` and
+        # `travel (MOC)` are one file on this filesystem, and the parser's
+        # by-Name merge is exact so a case-only pair reaches here intact.
+        existing = by_dest.get(destination.casefold())
         if existing is not None:
             existing["supporting_items"] = _union_supporting_items(
                 existing.get("supporting_items"), m.get("supporting_items")
@@ -586,7 +591,7 @@ def _build_create_moc_actions(
             "tags": m.get("tags", []) or [],
             "supporting_items": m.get("supporting_items") or None,
         }
-        by_dest[destination] = action
+        by_dest[destination.casefold()] = action
         out.append(action)
     return out
 
@@ -648,7 +653,10 @@ def _build_move_asset_actions(
     - the path has no basename (_asset_dest_join raises ValueError)
     - a destination collision: two DIFFERENT paths (same basename, different
       source folders) resolve to the same destination — the first claim wins,
-      the second is skipped. Renaming is not attempted.
+      the second is skipped. Renaming is not attempted. Destinations are
+      compared case-folded (CON-6, spec 034 T6.0); the source `seen` dedup
+      stays exact, so a case-only pair in one folder is examined twice and the
+      second sighting leaves here as a reported skip rather than as nothing.
 
     Each skipped entry is {"source", "destination", "reason", "kind",
     "owner_source_items"} — destination is None for the no-basename case,
@@ -666,7 +674,10 @@ def _build_move_asset_actions(
     out: list[dict] = []
     skipped: list[dict] = []
     seen: set[str] = set()
-    claimed: dict[str, str] = {}  # destination -> path that claimed it
+    # case-folded destination -> the path that claimed it, as it is spelled
+    # (T6.0). Only the key folds: the reason the user reads names both paths
+    # the way their notes embed them.
+    claimed: dict[str, str] = {}
     skipped_by_path: dict[str, dict] = {}
     for m in manifest:
         owner = _ensure_md_extension(
@@ -696,7 +707,7 @@ def _build_move_asset_actions(
                 skipped.append(entry)
                 skipped_by_path[path] = entry
                 continue
-            claimant = claimed.get(destination)
+            claimant = claimed.get(destination.casefold())
             if claimant is not None:
                 reason = (
                     f"destination collision: {path!r} also resolves to "
@@ -710,7 +721,7 @@ def _build_move_asset_actions(
                 skipped.append(entry)
                 skipped_by_path[path] = entry
                 continue
-            claimed[destination] = path
+            claimed[destination.casefold()] = path
             out.append({
                 "id": _next_id(counter),
                 "action": "move_asset",

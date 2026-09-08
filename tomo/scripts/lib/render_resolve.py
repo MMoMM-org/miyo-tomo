@@ -1,4 +1,4 @@
-# version: 0.3.0
+# version: 0.3.1
 """render_resolve.py — post-build resolution + filtering passes for the action list.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). These passes
@@ -210,12 +210,16 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
 
     # Index in-set create_moc actions by destination so the template-body
     # fallback can find the template a not-yet-existing MOC will be built from.
+    # Keyed case-folded (CON-6, spec 034 T6.0) — the paired consumer of
+    # `_build_create_moc_actions`' `by_dest`, which folds for the same reason.
+    # Folding one without the other lets a link_to_moc miss the create_moc that
+    # will actually land at its target and lose its anchor.
     create_moc_by_dest: dict[str, dict] = {}
     for a in actions:
         if a.get("action") == "create_moc":
             dest = a.get("destination")
             if dest:
-                create_moc_by_dest[dest] = a
+                create_moc_by_dest[dest.casefold()] = a
 
     resolved = 0
     for a in actions:
@@ -235,7 +239,7 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         if res is None:
             # Template-body fallback: in-set create_moc landing at this path
             # (the live MOC doesn't exist yet, so resolve against its template).
-            create = create_moc_by_dest.get(path)
+            create = create_moc_by_dest.get(path.casefold())
             if create:
                 template = create.get("template")
                 if template:
@@ -530,22 +534,29 @@ def resolve_target_moc_paths(actions: list[dict], client) -> int:
     """
     # Tier 1 — index create_moc actions by stem of their title so we can
     # resolve links that target a new MOC in the same instruction set.
+    # Keyed case-folded (CON-6, spec 034 T6.0), the second paired consumer of
+    # `_build_create_moc_actions`' `by_dest`: once that fold merges
+    # `travel (MOC)` into `Travel (MOC)`, a link minted against the merged
+    # spelling has no in-set create_moc to find, misses tier 2 as well (the MOC
+    # does not exist yet), and is dropped downstream with its bullet. The value
+    # stays the survivor's own destination — nothing folded is written back.
     in_set: dict[str, str] = {}
     for a in actions:
         if a.get("action") == "create_moc":
             title = a.get("title") or ""
             dest = a.get("destination")
             if title and dest:
-                in_set[_moc_stem(title)] = dest
+                in_set[_moc_stem(title).casefold()] = dest
 
     cache: dict[str, str | None] = {}
     def _resolve(stem: str) -> str | None:
         if stem in cache:
             return cache[stem]
         # Tier 1: in-set create_moc lookup (no Kado call, no I/O)
-        if stem in in_set:
-            cache[stem] = in_set[stem]
-            return in_set[stem]
+        in_set_dest = in_set.get(stem.casefold())
+        if in_set_dest is not None:
+            cache[stem] = in_set_dest
+            return in_set_dest
         # Tier 2: Kado byName search, cached per unique stem
         if client is None:
             cache[stem] = None

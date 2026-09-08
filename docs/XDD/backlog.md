@@ -800,3 +800,22 @@ markdown against its own structured doc — never equality across the pair.
 Not caused by spec 034, but 034 introduced the doc-join mechanism that makes it reachable. Left
 out of T6.4a deliberately: it is a distinct defect with its own fix, and T6.4a's scope was already
 widened once.
+
+## `suggestion-parser.py` loads its own structured doc four times
+
+**Found 2026-09-08** by T6.4a's code-quality review.
+
+T6.4a's companion path loads `_resolve_doc` once and reuses it for the item-key map, the anchor
+map and the topic members. The **pre-existing primary path was not retrofitted**: `_own_doc_path`
+is read from disk four separate times — inside `load_doc_anchor_map`, then `_load_json_doc` at
+`:2278`, `:2383` and `:2421`. The `docs/tomo` mirror's claim that "the document is read once
+instead of three times" is true only of the new half.
+
+No correctness impact — small JSON, single-process invocation. But the two paths now do the
+identical shape (resolve doc → key map → anchor map → member map) with separate variable names
+and no shared helper. A `_load_doc_bundle(path) -> (item_keys, anchor_map, members)` would
+collapse the duplication **and** the redundant reads in one move, and is a net LOC reduction in a
+file the constitution already flags as too large.
+
+Deliberately not done in T6.4a: it refactors a path that task did not break, on a task whose scope
+had already widened once, while a live validation run was waiting on it.

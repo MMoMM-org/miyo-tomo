@@ -1107,27 +1107,46 @@ phase: 6
   produces — the conductor takes the companion path.** So the user's validation run cannot
   complete either way:
 
-  | | vault wires present | wires removed |
-  |---|---|---|
-  | Pass 2 reads | JSON-only (`synthesis-conductor.md:113`) | markdown (`:111`) |
-  | a hand-edited name in the markdown | **lost** — the wire is a render-time snapshot | read |
-  | a subfolder note's `item_key` | correct (wire carries it) | **lost at `:2427`** |
+  **A correction to how this was first framed.** The orchestrator initially read
+  `synthesis-conductor.md:113` as forcing a JSON-only merge whenever both entries *carry* a
+  `wire_cache_path`, and concluded that a hand-edited markdown name would be silently discarded.
+  **That was wrong**, and the gate traced why: the real gate is a digest comparison in
+  `load_changed_wire` (`:219-249`), not field presence. Passing the JSON flags for a wire nobody
+  touched is harmless — the digest matches, `load_changed_wire` returns `None`, and both companion
+  branches fall through to the markdown parse. The conductor's prose states the field-presence
+  check as though it were the edited-check; the behaviour is correct and the looseness is
+  documentation only. **Do not "fix" it here.**
 
-  Neither column validates both guards. Confirmed on the live artefacts: the vault `.md` files are
-  newer than their `.json` wires, and the primary wire still carries the pre-edit title and
-  `decision: "skip"` for the item the user later forced atomic.
+  So one column of that matrix was real, not two: the markdown *is* read, and what breaks is the
+  subfolder note's `item_key` at `:2427`.
 
   **The companion loop has the same defect in a starker form.** At `:2430` it calls
   `parse_section(section_id, lines)` and keys the result by `_item_key_of(item.get("source_path"))`
   — a **bare display stem** — and never calls `bind_section_item_key` at all. Not a wrong document
   to join against: **no join attempted.**
 
+  **The fix is mechanical reuse — the code already knows where the document lives.**
+  `force-atomic-handling/SKILL.md:88` renders the resolve markdown from the same basename that
+  `_STRUCTURED_DOC_BY_TYPE["suggestions-fan"]` already maps to; `suggestions-render.py:28-34`
+  stamps `doc_type: "suggestions-fan"` on any document whose structured input carries
+  `doc_variant == "fan-resolve"`, so `_extract_tomo_doc_type` reads it off `resolve_text` exactly
+  as off `text`; and that filename is **already hardcoded three lines above the bug**, at `:2364`,
+  for `fan_members`. Resolve the path, build the map, and thread the anchor into the
+  `parse_section` call that currently omits it. No new mechanism, no new naming problem.
+
   **Also close the anchor-map gap the first fix left untested.** `load_doc_anchor_map` shared the
   hole and was fixed by the same rename to `_own_doc_path`, but **no test asserts it**, because the
   fan fixture's `candidate_mocs` carry no anchor and the map is empty either way. That one is worse
   than the item-key case if it regresses: it has **no stem cross-check**, so a colliding `S01`
-  across two documents could bind a *wrong* placement anchor rather than degrading to none. Add an
-  anchored fan fixture and assert it.
+  across two documents could bind a *wrong* placement anchor rather than degrading to none.
+
+  **The fixture must be paired, not isolated.** An anchored fan doc on its own proves only
+  empty-versus-populated — the weaker claim. Follow the shape the shipped
+  `test_a_fan_doc_beside_a_stale_primary_doc_binds_no_primary_key` already establishes: a
+  **coexisting stale primary doc that also carries an anchor** for an overlapping section id, with
+  a **different value**, and assert the fan parse returns the fan's anchor rather than the
+  primary's. Only a coexisting wrong answer proves "read from the correct document" instead of
+  "read from *a* document".
 
   1. **Prime**: read `_default_doc_path` (`:595`), `item_keys_by_section_id` (`:1855`),
      `bind_section_item_key` (`:1893`) and the call site at `:2243`/`:2272`. Read T5.0b and T5.0c

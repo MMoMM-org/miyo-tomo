@@ -1,0 +1,18 @@
+# The Pass-2 config for the T6.2 flat instruction-set golden. Committed so the
+# recording at ee44cb3 and the replay at HEAD read identical inputs.
+profile: miyo
+concepts:
+  inbox: "100 Inbox/"
+  asset: "Atlas/290 Assets/295 Attachments/"
+  calendar:
+    granularities:
+      daily:
+        path: "Calendar/301 Daily/"
+daily_log:
+  heading: "Daily Log"
+  heading_level: 2
+callouts:
+  editable:
+    - connect
+    - blocks
+    - anchor

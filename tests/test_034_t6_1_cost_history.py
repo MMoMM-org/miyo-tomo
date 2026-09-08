@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_034_t6_1_cost_history.py — XDD 034 T6.1: the run records its own cost.
 
 F9's claim is that recursion made discovery cheaper (3 base calls → 2), and
@@ -32,10 +32,13 @@ Spec: docs/XDD/specs/034-recursive-inbox-discovery/
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
+import inspect
 import json
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -193,6 +196,35 @@ def _notes_client(n: int = 2, **kw) -> CountingFakeClient:
         listdir_items=[_listdir_item(f"{INBOX_PATH}note-{i}.md") for i in range(n)],
         **kw,
     )
+
+
+# Every action the five tests in TestEveryActionRecords drive end to end. The
+# assertion below compares this against what `determine_action` can actually
+# return, so a sixth action cannot be added without a test that records it.
+ACTIONS_WITH_A_PER_PATH_TEST = {
+    "idle", "synthesize", "transcribe", "suggest", "fan-resolve",
+}
+
+
+def _actions_determine_action_can_return(mod) -> set[str]:
+    """The action strings `determine_action` returns, read from its own source.
+
+    Parsed rather than restated: a hand-written list beside the source is the
+    tautology this replaced. Returns are `return "<action>", <reasons>`, so the
+    tuple's first element is the action; a bare string return is accepted too,
+    in case the signature ever loses its second element.
+    """
+    tree = ast.parse(textwrap.dedent(inspect.getsource(mod.determine_action)))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Return) or node.value is None:
+            continue
+        value = node.value
+        if isinstance(value, ast.Tuple) and value.elts:
+            value = value.elts[0]
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            found.add(value.value)
+    return found
 
 
 def _run_triage(monkeypatch, tmp_path: Path, client, extra_argv=None) -> int:
@@ -603,12 +635,27 @@ class TestEveryActionRecords:
         assert entries[0]["action"] == "fan-resolve"
         assert entries[0]["run_id"] == "t61-fan"
 
-    def test_every_action_is_classified(self):
-        """A sixth action must not fall through both branches unrecorded."""
+    def test_no_action_reaches_the_history_unclassified(self):
+        """A sixth action must not appear without a recording path chosen for it.
+
+        The action set is READ OUT OF `determine_action`'s own source, not
+        restated beside it: the earlier form asserted a literal against a
+        literal, so adding a return value left it green while the new action
+        silently took the triage-side branch. Every value the router can return
+        must be one this file exercises end to end in the five tests above —
+        so a new one fails here, by name, and demands its own per-path test.
+        """
         mod = _load_triage()
-        actions = {"suggest", "synthesize", "idle", "transcribe", "fan-resolve"}
-        assert mod.DOWNSTREAM_COST_ENTRY_ACTIONS <= actions
-        assert mod.DOWNSTREAM_COST_ENTRY_ACTIONS == {"suggest", "fan-resolve"}
+        returned = _actions_determine_action_can_return(mod)
+
+        assert returned == ACTIONS_WITH_A_PER_PATH_TEST, (
+            f"unclassified action(s): {returned - ACTIONS_WITH_A_PER_PATH_TEST} — "
+            f"determine_action can return them and no test above records one; "
+            f"stale entries: {ACTIONS_WITH_A_PER_PATH_TEST - returned}"
+        )
+        assert mod.DOWNSTREAM_COST_ENTRY_ACTIONS <= returned, (
+            "the downstream set names an action determine_action never returns"
+        )
 
 
 # ---------------------------------------------------------------------------

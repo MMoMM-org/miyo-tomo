@@ -819,3 +819,28 @@ file the constitution already flags as too large.
 
 Deliberately not done in T6.4a: it refactors a path that task did not break, on a task whose scope
 had already widened once, while a live validation run was waiting on it.
+
+## A destination clash leaves orphaned `pending-move` staging notes
+
+**Found 2026-09-08** in the T6.4 live run.
+
+Pass 2 renders each approved atomic into the inbox as a staging note
+(`doc_type: rendered-note`, `state: pending-move`) **before** `validate_destinations` runs. When
+the clash guard then withholds both claimants (T5.3), their staged files are already written and
+stay in the inbox waiting for a move that will never be emitted.
+
+Observed: two `2026-09-08_1813_elbe-schifffahrt-...` files, one per withheld claimant.
+
+`pending-move` is excluded from fresh-source discovery, so they are not re-ingested — no loop, no
+data loss. But nothing detects or removes them either: `detect_orphaned_state` covers *captured
+source items whose downstream docs vanished*, a different case. The instruction set tells the user
+to rename one item and re-run Pass 2, and that re-run renders a **new** pair, leaving the old pair
+behind indefinitely.
+
+Correctness is unaffected — the guard's own promise ("every source note below is untouched in the
+inbox") holds. This is residue the user has to clear by hand, and it accumulates once per clash
+per re-run.
+
+Two possible closes: render after validation rather than before, or have the clash record carry
+its withheld staging paths so something can clean or reuse them. The first is the larger change
+and would also stop paying Kado writes for notes that are then withheld.

@@ -29,7 +29,7 @@ phase: 6
 
 ## Tasks
 
-- [ ] **T6.0 The three destination keys Phase 5 did not fold** `[activity: backend]`
+- [x] **T6.0 The three destination keys Phase 5 did not fold** `[activity: backend]`
       — **Accepted 2026-09-08.** First task of Phase 6, ahead of T6.1.
 
   Phase 5 folded case into three destination comparisons and left three more, each found by a
@@ -88,8 +88,13 @@ phase: 6
   4. **Validate**: tests pass; `ruff` clean; neither action golden re-recorded — if a no-clash
      run changes, that is a real regression, not a fixture to refresh.
   5. **Success**:
-     - [ ] Two MOC proposals differing only in case cannot silently drop one's children
-     - [ ] An attachment collision differing only in case records a skip, so T5.4's guard fires
+     - [x] Two MOC proposals differing only in case cannot silently drop one's children
+     - [x] An attachment collision differing only in case records a skip, so T5.4's guard fires
+
+  **Closed 2026-09-08** — `1afc14d` folds, `b9d34e1` reverts a fourth site that was tried and
+  measured as redirecting rather than addressing. 11 tests; suite 3625 → 3636, ruff clean, both
+  action goldens byte-identical. The fold's one downstream consequence — a case-only MOC pair
+  now hard-fails `instructions-diff` instead of silently dropping children — is T6.0c.
 
 - [ ] **T6.0b An atomic and a MOC can claim the same path, and nothing compares them**
       `[activity: backend]` — **PROPOSED 2026-09-08, not yet accepted.**

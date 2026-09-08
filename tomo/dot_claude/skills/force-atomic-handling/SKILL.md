@@ -4,7 +4,7 @@ description: Force Atomic Note sub-flow for fan-resolve action. Load when routin
 user-invocable: false
 ---
 # Force Atomic Handling
-# version: 0.6.0
+# version: 0.7.0
 
 ## When to Activate
 
@@ -107,7 +107,18 @@ Publish BOTH siblings at the same stem so the ADR-026 editor + Pass-2 pair them:
 python3 scripts/kado-write-file.py --local tomo-tmp/suggestions-fan-wire.json --vault "<inbox_path>/<YYYY-MM-DD_HHMM>_suggestions-fan.json"
 ```
 
-### 7. Report
+### 7. Record the run cost
+
+# STRICT — run this before the report. Do NOT skip it.
+# Why: this is the ONLY step that records what a `fan-resolve` run cost — triage
+# deliberately writes no entry for this action, and a skipped step loses the
+# run's cost silently.
+
+```bash
+python3 scripts/record-run-cost.py --run-id <RUN_ID> --suggestions-doc tomo-tmp/suggestions-fan-doc.json
+```
+
+### 8. Report
 
 > "FAN resolve complete — {N} items expanded into suggestions-fan doc.
 > Review + resolve in Hashi (or Obsidian), check the **Approved** box, then re-run `/inbox`."

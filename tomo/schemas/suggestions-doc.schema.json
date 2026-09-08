@@ -12,6 +12,16 @@
     "run_id": {"type": "string"},
     "profile": {"type": "string"},
     "source_items": {"type": "integer", "minimum": 0},
+    "folder_listing_calls": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Kado round trips this run spent listing destination folders for the name-collision check (spec 034 T6.1). Carried across the process boundary: the cost-history step runs later and has no other way to receive it."
+    },
+    "distinct_destination_folders": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many distinct destination folders produced those listings — the number that tells a busy run apart from a pipeline regression."
+    },
     "doc_variant": {
       "type": "string",
       "enum": ["primary", "fan-resolve"],

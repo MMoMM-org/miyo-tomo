@@ -154,7 +154,17 @@
         "total_ms": {"type": "number"},
         "discover_ms": {"type": "number"},
         "kado_calls": {"type": "integer"},
-        "docs_cached": {"type": "integer"}
+        "docs_cached": {"type": "integer"},
+        "item_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Inbox markdown files this run's listing found. Carried for the cost history (spec 034 T6.1) so every path records one definition of the figure."
+        },
+        "base_kado_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Observed round trips spent on the fixed pipeline cost — the recursive listing and the embed extraction (ADR-3). Read off the client's own counter, never declared."
+        }
       }
     },
     "handled": {

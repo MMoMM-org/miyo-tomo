@@ -4,7 +4,7 @@ description: Pass 1 suggest sub-flow — classifies fresh inbox sources into a s
 user-invocable: false
 ---
 # Suggest Handling
-# version: 0.5.0
+# version: 0.6.0
 
 ## When to Activate
 
@@ -129,6 +129,15 @@ python3 scripts/mark-captured.py --state tomo-tmp/inbox-state.jsonl --run-id <RU
 ```
 
 If mark-captured fails, report the error but still proceed to the report.
+
+# STRICT — record-run-cost runs even when mark-captured failed. Do NOT skip it.
+# Why: this is the ONLY step that records what a `suggest` run cost — triage
+# deliberately writes no entry for this action, and a skipped step loses the
+# run's cost silently.
+
+```bash
+python3 scripts/record-run-cost.py --run-id <RUN_ID> --suggestions-doc tomo-tmp/suggestions-doc.json
+```
 
 ### 7. Report
 

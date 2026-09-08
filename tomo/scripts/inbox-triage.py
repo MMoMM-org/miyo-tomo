@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.36.0
+# version: 0.37.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -39,10 +39,20 @@ from lib.attachment_index import (  # noqa: E402
     resolve_attachments,
 )
 from lib.audio_constants import AUDIO_EXTS  # noqa: E402
+from lib.cost_history import (  # noqa: E402
+    DEFAULT_HISTORY_PATH,
+    append_entry,
+    build_entry,
+)
 from lib.doc_frontmatter import body_after_frontmatter  # noqa: E402
 from lib.item_key import derive as derive_item_key  # noqa: E402
-from lib.kado_client import KadoClient, KadoError  # noqa: E402
+from lib.kado_client import (  # noqa: E402
+    KadoClient,
+    KadoError,
+    observed_call_count,
+)
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
+from lib.run_id import generate as generate_run_id  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402 — ADR-026 wire-edit check
 
 # tag-handler-resolve.py is hyphenated — load it as a module via importlib so its
@@ -132,6 +142,14 @@ class TriageState:
     # in discover() and read_approval_state() where each is set.
     tag_handler_reads: int = 0
     wire_sibling_reads: int = 0
+
+    # spec 034 T6.1: the run's own Kado cost, read off the client's round-trip
+    # counter at the boundaries bracketing the two fixed stages inside
+    # discover(). The counter is one lifetime total, and a total cannot be
+    # decomposed after the fact — reading it once at the end yields one number
+    # where the cost history needs the base cost and the run total separately.
+    base_kado_calls: int = 0
+    frontmatter_kado_calls: int = 0
 
     # Flags passed through for T2.2
     force_pass1: bool = False
@@ -1095,6 +1113,17 @@ def read_approval_state(
 # discover — main entry point for steps 1-6
 # ---------------------------------------------------------------------------
 
+def _calls_between(before: int | None, after: int | None) -> int:
+    """Round trips a client made between two snapshots of its own counter.
+
+    Returns 0 when either snapshot is missing — a client that keeps no count
+    leaves the stage unmeasured rather than aborting the run.
+    """
+    if before is None or after is None:
+        return 0
+    return max(0, after - before)
+
+
 def discover(
     client,
     inbox_path: str,
@@ -1125,6 +1154,13 @@ def discover(
     """
     inbox_path = inbox_path.rstrip("/") + "/"
 
+    # spec 034 T6.1: the run's cost is observed, never declared. Three
+    # snapshots of the client's own round-trip counter bracket the two fixed
+    # stages, so the recorded figures move when the call sites move. A client
+    # that keeps no count leaves both checkpoints at 0 — an unmeasured run,
+    # never a failed one.
+    calls_at_start = observed_call_count(client)
+
     # Step 2: discover files — ONE recursive listDir, the run's only inbox
     # listing (ADR-3, spec 034).
     all_files, audio_files, md_files = discover_files(client, inbox_path)
@@ -1146,6 +1182,7 @@ def discover(
     # the wrong join point (the reducer never reads it, and fresh_sources'
     # membership tracks newness, not attachment presence).
     attachment_resolutions = resolve_inbox_attachments(client, inbox_path, attachment_index)
+    calls_after_base = observed_call_count(client)
     try:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         (Path(output_dir) / "resolved-attachments.json").write_text(
@@ -1162,6 +1199,9 @@ def discover(
      instructions_hits, approved_hits, accepted_hits, rendered_hits) = (
         query_frontmatter(client, inbox_path)
     )
+    calls_after_frontmatter = observed_call_count(client)
+    base_kado_calls = _calls_between(calls_at_start, calls_after_base)
+    frontmatter_kado_calls = _calls_between(calls_after_base, calls_after_frontmatter)
 
     # Step 3b: enrich instructions hits with real frontmatter — byFrontmatter
     # returns {} so tomo.sources is invisible to coverage/drift otherwise (#74).
@@ -1270,6 +1310,8 @@ def discover(
         handled_paths=handled_paths,
         tag_handler_reads=tag_handler_reads,
         wire_sibling_reads=wire_sibling_reads,
+        base_kado_calls=base_kado_calls,
+        frontmatter_kado_calls=frontmatter_kado_calls,
         force_pass1=force_pass1,
         force_pass2=force_pass2,
         force_all=force_all,
@@ -1597,6 +1639,13 @@ def build_routing_plan(
 # never by /inbox — so an /inbox run can silently rely on a months-old vault map.
 DISCOVERY_CACHE_STALE_DAYS = 7
 
+# spec 034 T6.1: actions whose cost-history entry is appended DOWNSTREAM, by
+# the step that runs after the reducer. Their entries carry the reducer's
+# destination-folder counts, which do not exist yet when triage finishes.
+# Appending here as well would write an incomplete entry beside the real one —
+# the one trap in this task that fails loudly instead of silently.
+DOWNSTREAM_COST_ENTRY_ACTIONS = frozenset({"suggest", "fan-resolve"})
+
 
 def discovery_cache_staleness_drift(
     cache_path: Path,
@@ -1687,6 +1736,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--discovery-cache", default="config/discovery-cache.yaml",
         help="Discovery-cache path for the staleness warning (#36; cwd-relative "
              "default, correct for the instance runtime).",
+    )
+    p.add_argument(
+        "--cost-history", default=DEFAULT_HISTORY_PATH,
+        help=f"Cost-history JSONL to append to (default: {DEFAULT_HISTORY_PATH}; "
+             f"cwd-relative, correct for the instance runtime).",
     )
     p.add_argument(
         "--stale-cache-days", type=int, default=DISCOVERY_CACHE_STALE_DAYS,
@@ -1789,6 +1843,10 @@ def main(
         "discover_ms": discover_ms,
         "kado_calls": _count_kado_calls(state),
         "docs_cached": len(state.manifest),
+        # spec 034 T6.1: carried so the downstream cost-history step reads one
+        # definition of each figure rather than re-deriving its own.
+        "item_count": len(state.md_files),
+        "base_kado_calls": state.base_kado_calls,
     }
 
     # Step 10: build routing plan
@@ -1812,7 +1870,25 @@ def main(
         encoding="utf-8",
     )
 
-    # Step 11: metrics on stderr
+    # Step 11: record what this run cost (spec 034 T6.1, F9).
+    # suggest/fan-resolve defer to the downstream step so their entry can carry
+    # the reducer's destination-folder counts; the three actions that terminate
+    # here still spend base and byFrontmatter calls, and a history that omits
+    # them cannot show what idling costs. The folder fields stay ABSENT on these
+    # paths — zero would assert a measurement nobody took.
+    if action not in DOWNSTREAM_COST_ENTRY_ACTIONS:
+        append_entry(
+            build_entry(
+                run_id=generate_run_id(),
+                action=action,
+                item_count=metrics["item_count"],
+                base_kado_calls=metrics["base_kado_calls"],
+                total_kado_calls=metrics["kado_calls"],
+            ),
+            args.cost_history,
+        )
+
+    # Step 12: metrics on stderr
     print(
         f"[inbox-triage] {action} in {total_ms}ms — "
         f"md={len(state.md_files)} audio={len(state.audio_files)} "
@@ -1835,9 +1911,13 @@ def main(
 def _count_kado_calls(state: TriageState) -> int:
     """Estimate Kado call count from state (ADR-4, spec 031, corrected).
 
-    2 base calls (the one recursive listDir that feeds both the partition and
-    the attachment index — ADR-3, spec 034 — and the listNotes(fields=["links"])
-    embed extraction, ADR-2 corrected) + 7 byFrontmatter + N per-item reads:
+    The two fixed stages are OBSERVED, not declared (spec 034 T6.1): the base
+    (the one recursive listDir that feeds both the partition and the attachment
+    index — ADR-3, spec 034 — and the listNotes(fields=["links"]) embed
+    extraction, ADR-2 corrected) and the byFrontmatter query set, each read off
+    the client's own round-trip counter at a boundary inside discover(). A
+    literal for either would keep reporting the same number through a change
+    that reintroduced a listing or a query. On top of those, N per-item reads:
 
       - instructions_frontmatter_reads: one read_frontmatter per instructions
         hit (enrich_instructions_frontmatter) — an unconditional loop, so
@@ -1866,8 +1946,8 @@ def _count_kado_calls(state: TriageState) -> int:
         + len(state.pending_approval)
     )
     return (
-        2
-        + 7
+        state.base_kado_calls
+        + state.frontmatter_kado_calls
         + len(state.instructions_hits)
         + state.tag_handler_reads
         + state.wire_sibling_reads

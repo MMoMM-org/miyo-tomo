@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_031_t6_3_cost_verification.py — Phase 6 T6.3 cost verification.
 
 CON-4: attachment-related Kado calls must be constant as note count varies —
@@ -58,6 +58,18 @@ class _FakeClient:
     def __init__(self, n_notes: int):
         self._depth1_items = [_listdir_item(f"{INBOX_PATH}note-{i}.md") for i in range(n_notes)]
         self.calls: list[tuple[str, dict]] = []
+
+    @property
+    def call_count(self) -> int:
+        """Round trips made — the counter the real KadoClient now keeps.
+
+        spec 034 T6.1: `_count_kado_calls` derives the base and byFrontmatter
+        terms from the client's own counter instead of the literals `2` and `7`,
+        so a fake that drives it has to report what it charged. This fake was
+        already recording every call; the property just names it the way the
+        production client does.
+        """
+        return len(self.calls)
 
     def list_dir(self, path, *, depth=None, limit=500):
         self.calls.append(("list_dir", {"path": path, "depth": depth}))

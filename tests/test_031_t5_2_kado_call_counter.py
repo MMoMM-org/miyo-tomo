@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_031_t5_2_kado_call_counter.py — spec 031 T5.2 corrected _count_kado_calls.
 
 `_count_kado_calls` claimed "1 listDir + 7 byFrontmatter + N body reads" but
@@ -83,6 +83,18 @@ class _FullFakeClient:
         self._read_frontmatter_responses = read_frontmatter_responses or {}
         self._read_file_responses = read_file_responses or {}
         self._list_notes_responses = list_notes_responses or []
+
+    @property
+    def call_count(self) -> int:
+        """Round trips made — the counter the real KadoClient now keeps.
+
+        spec 034 T6.1: `_count_kado_calls` derives the base and byFrontmatter
+        terms from the client's own counter instead of the literals `2` and `7`,
+        so a fake that drives it has to report what it charged. This fake was
+        already recording every call; the property just names it the way the
+        production client does.
+        """
+        return len(self.calls)
 
     def list_dir(self, path, *, depth=None, limit=500):
         self.calls.append(("list_dir", {"path": path, "depth": depth}))

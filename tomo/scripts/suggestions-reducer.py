@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.44.0
+# version: 1.45.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -54,7 +54,11 @@ from lib.topic_clusters import (  # noqa: E402, F401
     strip_moc_marker,
 )
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
-from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
+from lib.kado_client import (  # noqa: E402 — I38 Pass-1 existence check
+    KadoClient,
+    KadoNotFoundError,
+    observed_call_count,
+)
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
 from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash
@@ -1940,8 +1944,16 @@ def main() -> int:
     # an existence probe would only answer the question Kado's own case
     # semantics decide — which CON-7 forbids this spec from measuring.
     _folder_cache: dict[str, dict[str, str]] = {}
+    # spec 034 T6.1 / F9: what those listings actually cost. One listing per
+    # cache MISS, so this is not the claim count — and it is read off the
+    # client's own round-trip counter where the client keeps one, so a paged
+    # listing is not undercounted as a single call. Carried in the output
+    # document below: the step that appends the run's cost-history entry runs in
+    # a later process and has no other way to receive it.
+    folder_listing_calls = 0
 
     def _vault_folder_notes(location: str) -> dict[str, str]:
+        nonlocal folder_listing_calls
         # Key on the folder _dest_join derives, not on the raw string: two
         # claims whose location differs only by a trailing slash name one
         # folder, and a raw key would list it twice. The cost of that is a
@@ -1950,6 +1962,7 @@ def main() -> int:
         folder = (location or "").rstrip("/") + "/"
         if folder not in _folder_cache:
             found: dict[str, str] = {}
+            calls_before = observed_call_count(kado_client)
             try:
                 for entry in kado_client.list_dir(folder, depth=1):
                     path = entry.get("path") or ""
@@ -1961,6 +1974,13 @@ def main() -> int:
                     found[_dest_join(folder, name[:-3]).casefold()] = path
             except Exception:  # noqa: BLE001 — an error is not a collision
                 found = {}
+            # After the except: a listing that raised still spent its round trip.
+            calls_after = observed_call_count(kado_client)
+            folder_listing_calls += (
+                calls_after - calls_before
+                if calls_before is not None and calls_after is not None
+                else 1
+            )
             _folder_cache[folder] = found
         return _folder_cache[folder]
 
@@ -2326,6 +2346,12 @@ def main() -> int:
         "attachments_preamble": attachments_preamble,
         "proposed_mocs": proposed_mocs,
         "needs_attention": needs_attention,
+        # spec 034 T6.1: the destination-folder listings are a real per-run cost
+        # that scales with content, reported as its own line rather than folded
+        # into the base — a single number mixing a fixed pipeline cost with a
+        # content-scaling one tells a later reader nothing about either.
+        "folder_listing_calls": folder_listing_calls,
+        "distinct_destination_folders": len(_folder_cache),
     }
     # spec 024 T3.3: omit-when-empty — a no-groups run is byte-identical to pre-T3.3.
     # render.py reads rendered_tag_handler_updates_md via .get() so absent is fine.

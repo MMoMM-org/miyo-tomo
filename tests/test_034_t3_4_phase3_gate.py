@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t3_4_phase3_gate.py — the Phase 3 validation gate.
 
 Spec 034 (recursive inbox discovery), Phase 3 T3.4.
@@ -214,7 +214,10 @@ def _drive_pass1(work: Path, fixture: list[str], titles: dict[str, str],
 
     triage = _load_script(f"inbox_triage_t3_4_{run_id}", "inbox-triage.py")
     client = RecordingClient(fixture)
-    rc = triage.main(["--inbox-path", INBOX, "--output-dir", str(work)],
+    rc = triage.main(["--inbox-path", INBOX, "--output-dir", str(work),
+                      # T6.1: the cost history defaults cwd-relative, correct for
+                      # the instance runtime — keep this run's entry out of the repo.
+                      "--cost-history", str(work / "cost-history.jsonl")],
                      client_factory=lambda: client)
     assert rc == 0, f"inbox-triage.main() returned {rc}"
 

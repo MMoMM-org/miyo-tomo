@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_034_t2_1_triage_emits_item_key.py — inbox-triage emits item_key per item.
 
 Covers T2.1 (XDD 034 Phase 2): the only routing-plan.schema.json array that
@@ -360,7 +360,9 @@ class TestRoutingPlanValidatesWithItemKey:
         )
 
         rc = mod.main(
-            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path),
+             # T6.1: the cost history defaults cwd-relative (instance runtime).
+             "--cost-history", str(tmp_path / "cost-history.jsonl"),],
             client_factory=lambda: client,
         )
         assert rc == 0

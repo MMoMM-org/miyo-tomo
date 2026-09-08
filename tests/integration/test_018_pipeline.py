@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_018_pipeline.py — Cross-phase integration tests for 018 inbox routing.
 
 T5.1: Exercises the full triage → routing-plan → conductor-selection chain
@@ -158,7 +158,12 @@ def _moc_proposal_body(accepted: bool) -> str:
 def _run_pipeline(tmp_path: Path, client: FakeKadoClient, extra_args: list[str] | None = None) -> dict:
     """Run main() through the full pipeline, return the written routing plan."""
     mod = _load_module()
-    args = ["--inbox-path", INBOX, "--output-dir", str(tmp_path)]
+    args = [
+        "--inbox-path", INBOX, "--output-dir", str(tmp_path),
+        # T6.1: the cost history defaults cwd-relative (instance runtime) — keep
+        # this run's entry out of the repo working tree.
+        "--cost-history", str(tmp_path / "cost-history.jsonl"),
+    ]
     if extra_args:
         args.extend(extra_args)
     rc = mod.main(args, client_factory=lambda: client)

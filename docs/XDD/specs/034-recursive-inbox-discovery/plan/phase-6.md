@@ -431,9 +431,19 @@ phase: 6
 
        | cause | audit outcome |
        |---|---|
-       | `not hits` — Kado answered, MOC confirmed absent | subtract, audit completes, `rc == 0` |
-       | `client is None` — Kado never available | soft **observation**, not silence |
-       | swallowed `Exception` — the Kado call failed | soft **observation**, not silence |
+       | `not hits` — Kado answered, MOC confirmed absent | subtract; its own aggregated note |
+       | `client is None` — Kado never available | subtract; its own aggregated note |
+       | swallowed `Exception` — the Kado call failed | subtract; its own aggregated note |
+
+       **Corrected 2026-09-08, after implementation.** This table first said only `not hits`
+       subtracts and the other two are "observations, not silence". That was internally
+       inconsistent and the implementer caught it: `run_diff` compares every count category and
+       sets `hard_fail` on any mismatch, with no observe-only path — so withholding an action
+       *without* subtracting its expected count produces exactly the `[DIFF]` this same paragraph
+       calls the wrong answer. All three therefore subtract. **The distinction the table exists to
+       draw survives in the note text, not in the subtraction**: three separately-worded aggregated
+       observations, so an offline run still cannot read as a confirmed-absent one. Verified by the
+       compliance review by tracing `run_diff` rather than by argument.
 
        `instructions-diff.py` already has this vocabulary: `observations` is a separate
        non-blocking channel returned beside the exit code (`:647`, `:706`), documented at `:21`

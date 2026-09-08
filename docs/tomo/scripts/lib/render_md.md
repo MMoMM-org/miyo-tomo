@@ -237,3 +237,27 @@ document would be worse than the defect it replaced. The unrecognised-cause
 branch falls through to a self-naming placeholder for the same reason the
 `skipped_assets` and `dropped_sources` blocks do: a fourth cause must never
 silently inherit one of the three sentences above.
+
+### The Shared Intro Carries No Claim At All
+
+WHY the sentence above the three bullets asserts nothing about the MOC: two of
+the three bullets under it say the MOC's existence is **unknown**, so an intro
+that states the MOC is absent — or that the instruction cannot be carried out —
+contradicts a sibling two lines below it, in the same block, which the user reads
+whole under CON-2. The first cut shipped exactly that: *"an instruction to open a
+MOC that is not there is one you cannot carry out"* sitting above *"not a missing
+MOC"*. Nine tests, a TDD gate and a compliance review passed it, because every
+one of them read the intro beside a single cause.
+
+The invariant: **the intro must be true beside every bullet that can appear under
+it, and it must not vary by cause.** Both halves are pinned by a test that renders
+all three causes into one block — `main()` cannot produce that shape (`unchecked`
+needs `client is None` for the whole run), so the renderer is driven directly, on
+purpose. A per-cause test cannot see a contradiction between an intro and a
+sibling bullet.
+
+Report-only: the enclosing heading `## Skipped — un-appliable actions` is
+pre-existing and shared with four other blocks, and "un-appliable" is likewise
+true only for the confirmed-absent cause — the other two may be perfectly
+appliable once Kado answers. Changing a heading four other blocks sit under is a
+separate change.

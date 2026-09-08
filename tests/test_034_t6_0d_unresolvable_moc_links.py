@@ -444,3 +444,65 @@ def test_a_garden_file_note_into_an_absent_moc_is_withheld_and_audited(
     )
     absent = [o for o in observations if "confirmed absent" in o]
     assert len(absent) == 1 and "2 MOC link(s)" in absent[0], observations
+
+
+# ---------------------------------------------------------------------------
+# 7. The shared intro must be true beside every bullet under it
+# ---------------------------------------------------------------------------
+
+# All three causes in ONE rendered block. `main()` cannot produce this shape —
+# `unchecked` needs `client is None` for the whole run while the other two need
+# a client — so the renderer is driven directly. That is the point: a per-cause
+# test reads one intro beside one bullet and cannot see a contradiction between
+# the intro and a SIBLING bullet, which is how the first cut shipped an intro
+# asserting "a MOC that is not there" two lines above a bullet reading "not a
+# missing MOC".
+ALL_THREE = [
+    {"id": "I01", "target_moc": ABSENT_MOC, "source_note_title": "Rhein",
+     "cause": "absent"},
+    {"id": "I02", "target_moc": FAILING_MOC, "source_note_title": "Sturm",
+     "cause": "probe-failed"},
+    {"id": "I03", "target_moc": LIVE_MOC, "source_note_title": "Elbe",
+     "cause": "unchecked"},
+]
+
+
+def _link_block(records: list[dict]) -> str:
+    from lib.render_md import render_instructions_md
+    md = render_instructions_md([], {
+        "generated": "2026-09-08T00:00:00Z", "profile": "miyo",
+        "unresolvable_moc_links": records,
+    }, CFG)
+    return md.split("**MOC link not offered**", 1)[1]
+
+
+def _intro(records: list[dict]) -> str:
+    return _link_block(records).split("\n", 1)[0]
+
+
+def test_the_shared_intro_asserts_nothing_a_sibling_bullet_denies(monkeypatch):
+    block = _link_block(ALL_THREE)
+    intro = block.split("\n", 1)[0]
+    # Every bullet in this block sits under this one sentence, and two of the
+    # three say the MOC's existence is UNKNOWN. An intro that states it is
+    # absent — or that the instruction could not be carried out — contradicts
+    # them in the document the user reads under CON-2.
+    for claim in ("is not there", "cannot carry out", "does not exist",
+                  "will never exist", "is missing", "is gone"):
+        assert claim not in intro, (
+            f"the shared intro claims {claim!r} above a bullet that says the "
+            f"MOC's existence is unknown:\n{intro}"
+        )
+    assert "not a missing MOC" in block, (
+        "the probe-failed bullet is what the intro must not contradict; if it "
+        f"is gone this test no longer proves anything:\n{block}"
+    )
+
+
+def test_the_intro_does_not_change_with_the_cause(monkeypatch):
+    # A cause-specific intro would be true beside its own bullet and false
+    # beside the others the moment two causes co-occur — the defect above,
+    # reintroduced by a different route.
+    intros = {r["cause"]: _intro([r]) for r in ALL_THREE}
+    assert len(set(intros.values())) == 1, intros
+    assert set(intros.values()) == {_intro(ALL_THREE)}, intros

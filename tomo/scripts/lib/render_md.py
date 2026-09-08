@@ -1,4 +1,4 @@
-# version: 0.16.0
+# version: 0.16.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -773,11 +773,18 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
             body_parts.append("")
         if unresolvable_links:
             body_parts.append(
+                # Cause-neutral by construction: two of the three bullets
+                # below say the MOC's existence is UNKNOWN, so an intro that
+                # asserts absence — or that the instruction is impossible —
+                # contradicts a sibling two lines down. Each bullet carries
+                # its own claim; this sentence carries none.
                 "**MOC link not offered** — no instruction was emitted for the "
                 "links below: the run could not confirm the target MOC exists, "
-                "and an instruction to open a MOC that is not there is one you "
-                "cannot carry out. The source notes are filed as usual; only "
-                "the bullet on the MOC is missing:")
+                "and a bullet is only ever written into a MOC the run has "
+                "located. Each line says what the run learned and what to do "
+                "about it — the reasons differ, and so do the remedies. The "
+                "source notes are filed as usual; only the bullet on the MOC "
+                "was not written:")
             body_parts.append("")
             for r in unresolvable_links:
                 moc = r.get("target_moc") or "?"

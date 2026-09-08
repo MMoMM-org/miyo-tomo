@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -63,7 +64,8 @@ def run_pass2(scripts_dir: Path, out_dir: Path) -> str:
     recording, HEAD's when replaying — so this function is the single place
     that knows the chain's shape.
     """
-    sys.path.insert(0, str(FIXTURE_DIR))
+    if str(FIXTURE_DIR) not in sys.path:
+        sys.path.insert(0, str(FIXTURE_DIR))
     from fake_kado import FakeKado, load_notes  # noqa: PLC0415 — path set above
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -152,6 +154,11 @@ def main() -> int:
             check=False,
         )
         subprocess.run(["git", "-C", str(REPO_ROOT), "worktree", "prune"], check=False)
+        # The rendered notes, manifest and parsed suggestions live under
+        # `scratch/out`. `worktree remove` does not touch them, so a manual
+        # re-run would leave a tree behind each time — from a script whose
+        # whole job is to leave none.
+        shutil.rmtree(scratch, ignore_errors=True)
 
     golden = FIXTURE_DIR / "instructions.md"
     golden.write_text(normalise(document), encoding="utf-8")

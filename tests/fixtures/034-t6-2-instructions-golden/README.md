@@ -25,8 +25,10 @@ name collisions, no attachments. It is the Pass-2 counterpart to
   `record.py` asserts afterwards that every loaded `lib.*` module came from the
   scratch tree, then tears that tree down. The repository's own worktree is
   never checked out to another commit.
-- **Asserted by `tests/test_034_t6_2_pipeline_integration.py`**, class
-  `TestFlatInboxInstructionGolden`, whole-document rather than field-by-field.
+- **Asserted by `tests/test_pass2_flat_instruction_golden.py`**, whole-document
+  rather than field-by-field. The fixture keeps its `034-t6-2` name because
+  that is when it was recorded; the test does not, because what it guards is
+  every future Pass-2 change, not recursive discovery.
 
 ## Why the assertion is not a byte-compare
 
@@ -38,9 +40,25 @@ beneath it for the other four — with `Delete source note: <stem>`.
 
 Re-recording the golden at HEAD would have absorbed that change and destroyed
 the evidence. Instead the golden stays the OLD document and the test compares
-against an enumerated `DELIBERATE_DELTAS` list. Anything diverging that is not
-named there fails, even though it is one line; anything named there is reviewed
-once, in that list.
+against an enumerated `DELIBERATE_DELTAS` list. Each entry DERIVES the line it
+expects from the golden's own content — the new heading must name the note the
+untouched `- **Source:**` line two lines below already names — so a regression
+that mangles the note name fails rather than satisfying a permissive pattern.
+
+What the mechanism cannot do is distinguish *a change that was reviewed* from
+*a delta added to make the test pass*. Only the pinned count and code review
+separate those. The gain over re-recording is that editing this list is visible
+in the diff, where a regenerated golden is not.
+
+## What the baseline does NOT reach
+
+A flat inbox with no attachments and no daily updates renders three of the
+roughly fifteen action kinds `lib/render_md.py` emits — `move_note`,
+`link_to_moc`, `delete_source`. A Pass-2 change to `move_asset`, `create_moc`,
+`insert_under_marker`, `add_relationship`, the three daily kinds, `skip`, or
+the four garden kinds ships unpinned by this fixture. That is a recorded limit,
+not a defect; `test_the_fixture_covers_three_of_the_renderers_action_kinds`
+asserts it, so widening the fixture is a deliberate, visible act.
 
 ## Files
 

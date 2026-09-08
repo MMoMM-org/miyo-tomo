@@ -441,8 +441,26 @@ item_identity:
 cost_history:
   location: "the instance's persistent state directory, beside the existing squelch registry"
   format: "append-only JSONL, one object per completed Pass 1"
-  fields: [timestamp, run_id, item_count, base_kado_calls, total_kado_calls]
+  fields: [timestamp, run_id, item_count, base_kado_calls, total_kado_calls,
+           folder_listing_calls, distinct_destination_folders]
   retention: "never rewritten; entries accumulate"
+  amended: |
+    2026-09-08, during T6.1. The original five fields could not hold T5.2's
+    destination-folder listings — one cached list_dir per distinct destination
+    folder, issued by the reducer to check whether a proposed name is taken.
+    That is a real per-run cost that scales with content, and F9's second
+    criterion asks for the actual figure to be recorded. Folding it into
+    base_kado_calls would mix a fixed pipeline cost with a content-scaling one
+    and tell a later reader nothing about either; leaving it out entirely makes
+    the run's true cost unrecoverable after the run. Hence two fields, not one:
+    the calls, and the folder count that produced them, so a future reader can
+    tell a pipeline regression from a busy run.
+  ordering_constraint: |
+    The entry cannot be appended by inbox-triage.py. The reducer runs AFTER
+    triage (triage writes routing-plan.json, then suggest-handling invokes
+    suggestions-reducer.py), so the folder counts do not exist when triage
+    finishes. The append happens at or after the reducer, reading triage's own
+    metrics back from routing-plan.json["metrics"].
 ```
 
 Every schema carrying item identity gains `item_key` as a required string. `stem` stays

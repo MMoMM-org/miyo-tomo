@@ -790,6 +790,26 @@ phase: 6
   baseline was moved from per-test to per-session, two more files whose
   module-scoped fixtures had been setting up *before* the guard sampled.
 
+  **A second trap the suite could not have shown.** The reducer's `--routing-plan`
+  first landed as a literal `tomo-tmp/routing-plan.json`. The repo root carries a
+  gitignored `tomo-tmp/routing-plan.json` from an old session, so every reducer
+  test would have read **a different run's plan** — green, and wrong. It now
+  derives from `--output`'s own directory: correct in production, inert in tests.
+
+  **Why the drift was unobservable rather than merely unobserved.** Before this
+  task `routing-plan.json`'s `metrics.kado_calls` had no reader anywhere in the
+  repo. A write-only number cannot regress visibly, so `2 + 7` was not a figure
+  nobody checked — it was a figure nothing *could* check.
+
+  **The action-classification test derives, it does not restate** (`af5b49f`).
+  Code-quality flagged the first form as near-tautological: a literal in the test
+  against a literal in the source, which would stay green when a sixth action was
+  added without being classified. It now parses `determine_action`'s source with
+  `ast`, collects every returned action, and fails naming the unclassified one —
+  proven by adding an unreachable `return "reconcile", []` and observing
+  `unclassified action(s): {'reconcile'}`. A broken parse yields an empty set and
+  fails, so the test cannot pass by not working.
+
 - [ ] **T6.2 Integration across the whole pipeline** `[activity: test-strategy]`
 
   1. **Prime**: Read `[ref: SDD/Runtime View]` and `[ref: SDD/Quality Requirements]`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.49.0
+# version: 0.50.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -290,6 +290,13 @@ def main() -> int:
     approved_tag_handler_group_ids = suggestions.get(
         "approved_tag_handler_group_ids", []
     )
+    # spec 034 T6.0c: the by-Name merge's own record, born in
+    # suggestion-parser.py and carried across the JSON round trip. Unlike
+    # destination_clashes and attachment_suppressions it is not computed here,
+    # so reading it is only half the wiring — it must also reach the metadata
+    # dict passed to render_instructions_md below, or it renders nothing and
+    # raises nothing.
+    merged_moc_proposals = suggestions.get("merged_moc_proposals", [])
     # Group ids the user opted out of source-deletion via "Keep source files".
     tag_handler_keep_source_group_ids = suggestions.get(
         "tag_handler_keep_source_group_ids", []
@@ -831,6 +838,7 @@ def main() -> int:
             "dropped_sources": dropped_missing_source,
             "destination_clashes": destination_clashes,
             "attachment_suppressions": attachment_suppressions,
+            "merged_moc_proposals": merged_moc_proposals,
         },
         cfg,
     )

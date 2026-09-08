@@ -613,3 +613,71 @@ This violates CON-2 — the user approves on what the document says, and the
 document presents a tickable instruction with every check green. It is **not**
 case-specific: it fires whenever both resolution tiers miss, so it is a
 pre-existing defect this task surfaced rather than caused. Tracked as **T6.0d**.
+
+## The Merge Says What It Did (spec 034 T6.0c)
+
+WHY `_merge_proposed_mocs_by_name` now records what it absorbed: T6.0c's fold
+widened what a single run collapses, and the merge was mute — no `[warn]`, no
+needs-attention line, no audit row. Every sibling guard in this spec surfaces
+its decision; this one did not. Under **CON-2** the user approves on what the
+document says, so a run that emits ONE MOC where TWO proposals were approved has
+to say so. Raised as the assumption T6.0c's own diff could not verify: if a
+case-only pair is ever two MOCs the user meant to keep apart, the old behaviour
+lost one with nothing to read.
+
+WHY the record is a **group per surviving name** rather than a pair: a pairwise
+`(survivor, absorbed)` record is the natural first guess and it breaks on a
+three-way collapse, emitting two records where one survivor exists.
+`validate_destinations` already solved this shape — it carries `dropped: [...]`
+inside one clash record rather than one record per dropped claimant — so the
+record here is survivor plus a **list** of absorbed spellings, with `case_only`
+beside it exactly as the clash record carries it.
+
+WHY the absorbed list **appends and is never a `set()`**: it sits beside the
+`tags` and `member_stems` folds, which are ordered and unsorted, and its order
+is asserted. `primary_pmocs + fan_pmocs` puts the primary document first, so the
+encounter order is deterministic — but only while the coalescing appends. A set
+is the natural instinct for "do not record the same absorption twice" and would
+make the order implementation-defined, which only the two-stage fixture exposes.
+
+### WHY the Carrier Is an Internal Field, Not a Return Value
+
+The markdown path calls the merge **twice** — per-document inside
+`parse_proposed_mocs`, then again over `primary_pmocs + fan_pmocs` — and the
+second call has no memory of the first. A record built fresh per call emits a
+*second* independent record for a survivor stage 1 had already merged: two
+records where there is one survivor, failing for a reason nothing about the fold
+would suggest.
+
+The function already solves this for its own data one line away. `member_stems`
+and `topic` ride as internal fields on the moc dict across repeated merge calls
+and are popped only at the end — the merge site's own comment about "a name
+merged from multiple topics" is exactly this reentrancy. `absorbed_names` gets
+the same treatment: carried on the survivor, extended in place when a later call
+absorbs another spelling into an already-merged survivor, and lifted out by
+`_lift_merged_moc_records` at the same two sites where `member_stems` and
+`topic` are stripped.
+
+### WHY There Is No Schema Test for It
+
+An earlier draft of this task asked for one. It cannot fail:
+`instructions.schema.json` closes each action `$def` and the top level but
+**exempts the `tomo` block by design** ("kept permissive... so Tomo can evolve
+the block without a coordinated round-trip"), which is where `destination_clashes`
+and `attachment_suppressions` already live. The carrier is popped before its
+dict becomes a `create_moc`, the lifted record is a plain Python dict that is
+never schema-checked, and `suggestion-parser.py` calls no validator at all. A
+schema assertion here would assert a property of the schema file — true whatever
+the implementer does, the same true-by-construction shape Phase 5 shipped once.
+
+What the record does owe, and has: a **strip test** (the carrier never reaches a
+confirmed item, like `member_stems` and `topic`) and a **paired-consumer count**
+that fails when a site is forgotten. The strip test earns its place on consumer
+clarity, not validation.
+
+### The Reason String Is Restated, Not Imported
+
+`render_actions._CASE_NOTE` says the same sentence about a destination clash.
+`_MERGE_CASE_NOTE` restates it rather than importing: the parser has no
+dependency on the action builder, and buying one for a single sentence is the
+worse trade. If the wording is ever revised, both sites want revising.

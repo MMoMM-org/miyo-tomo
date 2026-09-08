@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.31.1
+# version: 0.32.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -428,10 +428,18 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
                 c["supporting_items"] = ", ".join(ids)
         c.pop("member_stems", None)
         c.pop("topic", None)
+    # Lifted at the same site the other internal fields are stripped: the
+    # carrier must not reach a confirmed item, and the record must reach the
+    # output dict below.
+    merged_moc_proposals = _lift_merged_moc_records(confirmed_items)
 
     tag_groups = wire.get("tag_handler_groups", [])
     return {
         "confirmed_items": confirmed_items,
+        # spec 034 T6.0c: what the by-Name merge absorbed, so instructions.md
+        # can say that one MOC was created where more than one was approved
+        # (CON-2). Empty list when nothing merged.
+        "merged_moc_proposals": merged_moc_proposals,
         # Daily updates are carried in the wire in the parser's own output shape
         # (mirrored at emit), so they pass through verbatim.
         "daily_updates": wire.get("daily_updates", []),
@@ -1149,7 +1157,61 @@ def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
         for s in moc.get("member_stems") or []:
             if s not in head_ms:
                 head_ms.append(s)
+        # Record what was absorbed, so the run can say what it did (CON-2).
+        # Internal field, same lifecycle as `member_stems` and `topic`: it rides
+        # on the SURVIVOR across repeated merge calls and is lifted out at the
+        # same two strip sites. The markdown path merges twice and the second
+        # call has no memory of the first, so a record built per call would
+        # emit a second entry for a survivor already merged in stage 1.
+        # Appended, never a set: the absorbed list's order is asserted, and a
+        # set would make it implementation-defined.
+        head_absorbed = head.setdefault("absorbed_names", [])
+        head_absorbed.append(moc.get("title", ""))
+        head_absorbed.extend(moc.get("absorbed_names") or [])
     return [merged[name] for name in order]
+
+
+# The merge's sibling wording lives in `render_actions._CASE_NOTE`, which says
+# the same thing about a destination clash. Restated rather than imported: the
+# parser has no dependency on the action builder, and buying one for a sentence
+# would be the worse trade.
+_MERGE_CASE_NOTE = (
+    "The names differ only in case — the filesystem may treat them as one file."
+)
+
+
+def _lift_merged_moc_records(items: list[dict]) -> list[dict]:
+    """Pop the internal absorbed-spellings carrier and return user-facing records.
+
+    One record per SURVIVING name carrying the group it absorbed — the shape
+    `validate_destinations`' clash record already uses (`dropped: [...]` inside
+    one record rather than one record per claimant). A pairwise record would
+    emit two entries for a three-way collapse.
+
+    Called at the same sites that strip `member_stems` and `topic`; items that
+    absorbed nothing carry no field and produce no record.
+    """
+    records: list[dict] = []
+    for item in items:
+        absorbed = item.pop("absorbed_names", None)
+        if not absorbed:
+            continue
+        name = item.get("title", "")
+        # Every absorbed spelling is casefold-equal to the survivor's by
+        # construction, so an unequal one differed only in case.
+        case_only = any(a != name for a in absorbed)
+        count = len(absorbed) + 1
+        reason = (
+            f"{count} approved proposals resolve to this Name — one MOC was "
+            f"created, with every proposal's tags and supporting items combined"
+        )
+        records.append({
+            "name": name,
+            "case_only": case_only,
+            "absorbed": list(absorbed),
+            "reason": f"{reason}. {_MERGE_CASE_NOTE}" if case_only else f"{reason}.",
+        })
+    return records
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2584,9 +2646,16 @@ def main() -> int:
                 c["supporting_items"] = ", ".join(ids)
         c.pop("member_stems", None)
         c.pop("topic", None)
+    # Lifted at the same site the other internal fields are stripped: the
+    # carrier must not reach a confirmed item, and the record must reach the
+    # output dict below.
+    merged_moc_proposals = _lift_merged_moc_records(confirmed_items)
 
     output = {
         "confirmed_items": confirmed_items,
+        # spec 034 T6.0c — see the wire path's note. Same record, same shape;
+        # this path merges twice, so the carrier is reentrant across both.
+        "merged_moc_proposals": merged_moc_proposals,
         "daily_updates": daily_updates,
         "skipped": skipped_items,
         # XDD 012: items with FAN-without-section that Pass 2 must

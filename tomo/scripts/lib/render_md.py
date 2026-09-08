@@ -1,4 +1,4 @@
-# version: 0.14.0
+# version: 0.15.0
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -616,6 +616,32 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                     f"    - `{d.get('id')}` **{d.get('title')}** "
                     f"— source note `{origin}`"
                 )
+        body_parts.append("")
+
+    # Spec 034 T6.0c. Its own section, deliberately NOT under either "Not
+    # filed" heading: nothing was withheld here. The MOC IS created — once
+    # instead of twice, with every approved proposal's tags and supporting
+    # items combined. Describing a merge as a withholding is the exact class of
+    # defect T5.5 was written to remove. Placed before the action list for the
+    # same reason the clash section is: it changes what that list contains, and
+    # under CON-2 the user approves on what this document says.
+    merged_moc_proposals = metadata.get("merged_moc_proposals") or []
+    if merged_moc_proposals:
+        body_parts.append("## Merged — proposals resolving to one Name")
+        body_parts.append("")
+        body_parts.append(
+            "**One MOC was created for each group below, not one per approved "
+            "proposal.** Every proposal in a group resolved to the same Name, "
+            "so they were combined rather than emitted twice — each one's tags "
+            "and supporting items are in the MOC that was created. Nothing was "
+            "withheld and nothing needs re-running. If a group was meant to be "
+            "separate MOCs, give one of them a different Name and re-run Pass 2."
+        )
+        body_parts.append("")
+        for record in merged_moc_proposals:
+            body_parts.append(f"- `{record.get('name')}` — {record.get('reason')}")
+            for absorbed in record.get("absorbed") or []:
+                body_parts.append(f"    - also approved as **{absorbed}**")
         body_parts.append("")
 
     # Spec 034 T5.4 / ADR-6. Its own section, not a second bullet kind under

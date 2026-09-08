@@ -186,3 +186,27 @@ set taken from the surviving actions alone sees one and renders the bare link.
 there would make `## Source Deletions` unscannable, which is the property the
 heading was given a subject for in the first place. The `**Source:**` line
 directly beneath is the one the user clicks, and that is the one qualified.
+
+## The Merge Section Is Not a "Not filed" Section (spec 034 T6.0c)
+
+WHY the merge report gets its own heading rather than a third bullet kind under
+either "Not filed" section: **nothing was withheld.** A destination clash and an
+attachment suppression both mean an item the user approved was deliberately not
+filed. A merge means the opposite — the MOC **is** created, once instead of
+twice, with every approved proposal's tags and supporting items combined.
+
+Describing that as a withholding would misdescribe the outcome, which is the
+exact class of defect T5.5 was written to remove. The section takes the
+*structure* of the clash section — a lead section before the action list, naming
+both spellings, cause plus remedy — and none of its words.
+
+WHY it sits before the action list, like the clash section: it changes what that
+list contains. A reader who meets one `create_moc` where they approved two
+proposals needs the explanation before the list, not after it. Under CON-2 the
+user approves on what this document says.
+
+WHY the intro is count-neutral: a group can absorb one spelling or several, and
+a heading that counted them would contradict the bullets underneath it in
+whichever case it did not describe — the same reasoning the destination-clash
+intro records. Each record's own `reason` carries its count and, when the names
+differed only in case, says so.

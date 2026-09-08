@@ -408,3 +408,26 @@ It sits before `resolve_target_moc_paths` and, critically, before
 `line_to_add` into a multi-bullet block with a `## heading` prefix, and this
 pass reads one bare bullet. See `docs/tomo/scripts/lib/render_actions.md`, "A
 MOC Bullet Outlives the Run That Wrote It", for why the split exists at all.
+
+## `merged_moc_proposals` Is Read AND Passed — Both, or It Is a No-Op (spec 034 T6.0c)
+
+WHY this one metadata field gets a note of its own: unlike `destination_clashes`
+and `attachment_suppressions`, which are computed inside this module, the merge
+record is born in `suggestion-parser.py` and survives a JSON round trip. That
+makes it the only entry in the metadata dict with **two** sites here rather than
+one:
+
+1. the read-back beside `confirmed_items` — which is **only a local variable**;
+2. the literal dict passed as `render_instructions_md`'s second argument.
+
+**(1) without (2) is a silent no-op.** `render_md.py` calls `metadata.get(...)`
+on that literal dict and never sees anything bound at the read-back site. An
+implementer who reads the record into a local and forgets the dict gets no
+exception, no failing renderer unit test, and no rendered section — the run
+simply goes on not telling the user what it merged, which is the exact defect
+the record exists to fix.
+
+This is why the T6.0c test drives `main()` over a real `suggestions.json` rather
+than calling `render_instructions_md()` with a hand-built metadata dict: a test
+that builds the dict itself proves the renderer and nothing about this wiring.
+A paired-consumer count in the same test file pins that both sites exist.

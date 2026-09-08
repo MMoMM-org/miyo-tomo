@@ -648,18 +648,59 @@ phase: 6
   | # | site | change |
   |---|---|---|
   | 1 | `kado_client.py:621` `_call_tool` | the dedicated counter, incremented before the request |
-  | 2 | `inbox-triage.py:1835` `_count_kado_calls` | derive from the counter; both `2` and `7` go |
+  | 2 | `inbox-triage.py:1835` `_count_kado_calls` | derive from the checkpoints; both `2` and `7` go |
+  | 2b | `discover()` — two new `TriageState` checkpoint fields | snapshot the counter **at boundaries**, see below |
   | 3 | `suggestions-reducer.py:1944-1965` `_vault_folder_notes` | count listing calls and distinct folders — today `_folder_cache` is purely local and emits no metrics at all |
   | 4 | the reducer's output dict (`suggestions-doc.json`) | carry both counts across the process boundary |
   | 5 | wherever the history is appended | read triage's own metrics back from `routing-plan.json["metrics"]` and combine |
   | 6 | `solution.md` `cost_history` | done at `1d8c80e` |
 
-  **The ordering constraint**: the entry **cannot** be appended by `inbox-triage.py`. The reducer
-  runs *after* triage — triage writes `routing-plan.json`, then `suggest-handling` invokes
-  `suggestions-reducer.py` — so the folder counts do not exist when triage finishes. Decide and
-  state where the append happens; it must be at or after the reducer. Site 4 is the trap this
-  spec has now hit five times: a number produced in one process and never wired to where it is
-  read raises no error and fails no unit test.
+  **The ordering constraint**: the entry **cannot** be appended by `inbox-triage.py` for the paths
+  that reach the reducer. Triage writes `routing-plan.json`, then `suggest-handling` invokes
+  `suggestions-reducer.py`, so the folder counts do not exist when triage finishes. Site 4 is the
+  trap this spec has now hit five times: a number produced in one process and never wired to where
+  it is read raises no error and fails no unit test.
+
+  **A running total cannot be decomposed after the fact — hence site 2b.** The counter on
+  `KadoClient` is one lifetime total across `discover_files` → `resolve_inbox_attachments` →
+  `query_frontmatter` → per-item reads. Reading it once at the end yields **one** number, and the
+  SDD's schema needs **two** (`base_kado_calls` and `total_kado_calls`). So snapshot it at two
+  boundaries inside `discover()` — after `resolve_inbox_attachments` returns, closing out the base;
+  after `query_frontmatter` returns, closing out byFrontmatter — and thread each out as a
+  `TriageState` field, exactly the shape `tag_handler_reads` and `wire_sibling_reads` already use
+  (`inbox-triage.py:130-134`), whose own comment says they exist because they are *"per-item Kado
+  call counts that TriageState's other aggregate fields cannot reconstruct after the fact"*. Same
+  reason, same solution. Without the checkpoints, "derive from the counter" reads as a one-line
+  change at `:1835` and produces a single total that cannot fill the schema.
+
+  **Not a risk, checked**: another code path calling `search_by_frontmatter` cannot escape the
+  count — `_call_tool` is the sole choke point and nothing bypasses it. The decomposition above is
+  the only real hazard.
+
+  **Site 5 is five sites, one of which does not exist yet.** The append cannot simply be bolted to
+  `mark-captured.py`: that script is called from **`suggest-handling` only** (grepped across every
+  skill), and `force-atomic-handling` ends at a Report message with no state-writing step at all.
+  Meanwhile `idle`, `synthesize` and `transcribe` never reach the reducer — yet they still make
+  base and byFrontmatter calls, and item 4's own success criterion is *"a history accumulates
+  without anyone remembering to record it"*, which is false for four of five paths if only the
+  `suggest` path is wired.
+
+  **The rule, decided — do not re-open it.** Every triage run appends **exactly one** entry, tagged
+  with its action. `folder_listing_calls` and `distinct_destination_folders` are present only on
+  the paths where the reducer actually ran; on the others they are absent, not zero — zero would
+  assert a measurement that was never taken. The append logic lives in **one shared helper**, not
+  copied per skill, so the four call sites cannot drift apart.
+
+  | action | reducer runs? | where the entry is appended |
+  |---|---|---|
+  | `suggest` | yes | at or beside `mark-captured.py`, the existing terminal state step |
+  | `fan-resolve` | yes (`--fan-resolve`) | **a terminal step that does not exist yet** in `force-atomic-handling` — invent it or give both skills the shared helper |
+  | `synthesize` | no | terminates in triage; folder fields absent |
+  | `transcribe` | no | terminates in triage; folder fields absent |
+  | `idle` | no | terminates in triage; folder fields absent — an idle run still spends base calls, and a history that omits them cannot show what idling costs |
+
+  **Test each path.** A suite that exercises only `suggest` passes while every `fan-resolve` run
+  silently records nothing — the same shape as T6.0c's (3)-without-(4), one level further out.
 
   1. **Prime**: Read `[ref: SDD/Data Storage Changes; cost_history]`. Read
      `mark-captured.py:78-79`, whose `state/moc-squelch.json` default is the precedent — a small

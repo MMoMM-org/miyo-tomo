@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_kado_client_retry.py — Unit tests for HTTP retry-with-backoff in KadoClient._call_tool.
 
 Covers F-34 rate-limit resilience: _call_tool retries on HTTP 429/503 using
@@ -196,6 +196,80 @@ def test_429_exhausted_raises():
     assert "retries" in str(exc_info.value).lower()
     assert mock_sleep.call_count == _MAX_RETRIES
     assert mock_open.call_count == _MAX_RETRIES + 1
+
+
+# ---------------------------------------------------------------------------
+# call_count — the round-trip counter the cost history is keyed to (spec 034 T6.1)
+# ---------------------------------------------------------------------------
+
+
+def test_call_count_starts_at_zero_and_counts_a_successful_call():
+    client = _make_client()
+    assert client.call_count == 0
+
+    with patch("urllib.request.urlopen", return_value=_make_success_response()):
+        client._call_tool("kado-read", {"operation": "note", "path": "foo.md"})
+
+    assert client.call_count == 1
+
+
+def test_a_raising_call_still_increments_call_count():
+    """The increment is BEFORE the request, deliberately.
+
+    A call that raises consumed a round trip and must still be counted — the
+    cost history reports what a run spent, not what it got back. Moving the
+    increment below the request would under-report every failed call, and
+    `_count_kado_calls`' docstring already names that class of under-count as a
+    known flaw. This is the test that stops it being reintroduced silently.
+    """
+    client = _make_client()
+
+    with patch("urllib.request.urlopen", side_effect=_make_http_error(404)), \
+         patch("time.sleep"):
+        with pytest.raises(KadoNotFoundError):
+            client._call_tool("kado-read", {"operation": "note", "path": "gone.md"})
+
+    assert client.call_count == 1, (
+        "a call that raised was not counted — the increment moved below the request"
+    )
+
+
+def test_an_exhausted_retry_chain_counts_as_one_call():
+    """Retries within one _call_tool are one logical call, not _MAX_RETRIES + 1.
+
+    Pins which side of the retry loop the increment sits on: the count follows
+    `_call_tool` invocations, matching what the checkpoints in discover() are
+    bracketing, not raw urlopen attempts.
+    """
+    client = _make_client()
+
+    with patch("urllib.request.urlopen", side_effect=_make_http_error(429)) as mock_open, \
+         patch("time.sleep"):
+        with pytest.raises(KadoError):
+            client._call_tool("kado-read", {"operation": "note", "path": "foo.md"})
+
+    assert mock_open.call_count == _MAX_RETRIES + 1
+    assert client.call_count == 1
+
+
+def test_call_count_accumulates_across_calls_and_is_not_the_req_id():
+    """A dedicated counter, not `_req_id` — they agree today and need not.
+
+    `_req_id` is a JSON-RPC identifier whose meaning the client does not own;
+    keying a permanent history to it breaks the moment anything else increments
+    or resets it. The assertion is that call_count survives such a reset.
+    """
+    client = _make_client()
+
+    with patch("urllib.request.urlopen", return_value=_make_success_response()):
+        client._call_tool("kado-read", {"operation": "note", "path": "a.md"})
+        client._call_tool("kado-read", {"operation": "note", "path": "b.md"})
+        assert client.call_count == 2
+
+        client._req_id = 0
+        client._call_tool("kado-read", {"operation": "note", "path": "c.md"})
+
+    assert client.call_count == 3
 
 
 def test_503_then_success():

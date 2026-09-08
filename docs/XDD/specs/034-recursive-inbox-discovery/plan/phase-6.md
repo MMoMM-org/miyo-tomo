@@ -452,6 +452,15 @@ phase: 6
        template. The per-link detail belongs in the Skipped section, which the rendering bullet
        above already requires. Keep the two causes as **two** aggregated notes — merging them
        re-collapses the distinction this table exists to draw.
+
+       **The fixture needs at least two links under one cause, or the test cannot see the
+       difference.** With a single affected `link_to_moc`, an aggregating implementation (one
+       note, count 1) and a per-link one (one note, because there is only one link) render
+       identically — an assertion true regardless of implementation. Put **two or more**
+       `link_to_moc` actions under the same cause in the RED fixture and assert the **count the
+       note reports**, not merely that a note exists. Same trap as T6.0c's three-way fixture,
+       which could not reach the line it was meant to prove; do not trim this one back to one
+       link.
        `derive_expected` counts `link_to_moc` per `parent_mocs` independent of resolution
        (`:270-296`), so withholding upstream without this produces a spurious hard-fail
        `[ref: SDD/CON-4]`

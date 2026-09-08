@@ -437,9 +437,21 @@ phase: 6
 
        `instructions-diff.py` already has this vocabulary: `observations` is a separate
        non-blocking channel returned beside the exit code (`:647`, `:706`), documented at `:21`
-       as "Observations (soft, non-blocking)" and at `:37` as compatible with exit 0. Use it
-       rather than inventing a third state. Assert the outcome per cause — not merely that the
-       count changed, and not one outcome for all three.
+       as "Observations (soft, non-blocking)" and at `:37` as compatible with exit 0, and printed
+       unconditionally when non-empty (`:1044-1049`, `[WARN]`-prefixed) — visible on a clean exit,
+       not dead code. Use it rather than inventing a third state. Assert the outcome per cause —
+       not merely that the count changed, and not one outcome for all three.
+
+       **One aggregated note per cause, never one per link.** `client is None` is a single
+       condition set once for the whole run (`render_resolve.py:562`), so every tier-2 miss in
+       that run shares it — a run with Kado down could emit a dozen near-identical lines, burying
+       the one fact that matters. Every withholding observation in this file already aggregates:
+       `destination_clashes` (`:957-972`), `attachment_suppressions` (`:974-987`),
+       `n_assets_skipped` (`:989-997`), `n_daily_skipped` (`:999-1006`) each emit **one** note
+       carrying a count plus a pointer to the itemised detail in `instructions.md`. Follow that
+       template. The per-link detail belongs in the Skipped section, which the rendering bullet
+       above already requires. Keep the two causes as **two** aggregated notes — merging them
+       re-collapses the distinction this table exists to draw.
        `derive_expected` counts `link_to_moc` per `parent_mocs` independent of resolution
        (`:270-296`), so withholding upstream without this produces a spurious hard-fail
        `[ref: SDD/CON-4]`
@@ -451,7 +463,9 @@ phase: 6
   4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded. If a
      no-clash run changes, that is a real regression.
   5. **Success**:
-     - [ ] No instruction asks the user to act on a MOC the run knows will not exist
+     - [ ] No instruction asks the user to act on a MOC whose existence the run could not
+           confirm — all three causes withheld from the appliable checkbox, not only the
+           confirmed-absent one
      - [ ] Whatever the renderer withholds, the audit and the dryrun agree it was withheld
 
 - [ ] **T6.1 The run records its own cost** `[activity: backend]`

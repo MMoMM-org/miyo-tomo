@@ -249,6 +249,19 @@ phase: 6
     `travel (MOC)` in the primary document (collapsed by the first merge), `TRAVEL (MOC)` in the
     fan document (only the second merge can see it). Assert one surviving `create_moc`, all three
     supporting-item sets unioned, and **one** record — not three, not two.
+
+    **That fixture covers only half the reentrancy — corrected 2026-09-08 by mutation, after
+    this plan and its gate had both approved it alone. A second, FOUR-way fixture is required;
+    do not trim it back to three.** In the three-way case the stage-1 survivor is the first moc
+    stage 2 encounters, so it *seeds* the merge carrying its own list and the third spelling is
+    appended in place. The other half is the moc being **absorbed** itself being a survivor:
+    both documents merge internally first (`Travel (MOC)` + `travel (MOC)` in the primary,
+    `TRAVEL (MOC)` + `TrAvEl (MOC)` in the fan), so the fan's survivor arrives in stage 2
+    carrying its own group, and only the carry-over line moves it across. Deleting that line
+    left the three-way fixture **green**. Without it the fan pair's losing spelling vanishes
+    from the report while its supporting item is still merged into the MOC — a silent
+    under-report, the same CON-2 defect the record exists to fix, one level down. Assert the
+    four-way fixture's absorbed list exactly: `["travel (MOC)", "TRAVEL (MOC)", "TrAvEl (MOC)"]`.
   - assert rendered markdown by substring, matching how the T5.3 and T5.4 tests check fields.
     Full-paragraph pinning breaks on the next copy edit.
   - a run with no merge renders no such section, and neither action golden is re-recorded.

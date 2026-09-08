@@ -319,11 +319,41 @@ def test_the_merge_is_reported_in_the_instructions_document(monkeypatch, tmp_pat
     )
 
 
+def test_the_merge_reaches_instructions_json_too(monkeypatch, tmp_path):
+    """Twin-written, like `destination_clashes` and `attachment_suppressions`.
+
+    The markdown is not the only artefact a reader works from: a workflow driven
+    from `instructions.json` would never learn that one MOC was created where
+    two proposals were approved. Both siblings land in the `tomo` block for
+    exactly this reason, and the record has to follow them.
+
+    Asserted off the file on disk, not an in-process dict — the dict proves the
+    value was computed, never that it was written."""
+    parsed = parser.build_from_wire(_wire("Travel (MOC)", "travel (MOC)"), "")
+    out_dir = _drive_render(monkeypatch, tmp_path, parsed)
+    doc = json.loads((out_dir / "instructions.json").read_text(encoding="utf-8"))
+
+    records = doc["tomo"]["merged_moc_proposals"]
+    assert len(records) == 1, records
+    assert records[0]["name"] == "Travel (MOC)", records[0]
+    assert records[0]["absorbed"] == ["travel (MOC)"], records[0]
+    assert records[0]["case_only"] is True, records[0]
+
+
 def test_a_run_with_no_merge_renders_no_such_section(monkeypatch, tmp_path):
+    """Both artefacts stay silent, and the `tomo` block gains no key — guarded
+    the same way its siblings are, so a clean run's output is unchanged."""
     parsed = parser.build_from_wire(_wire("Travel (MOC)", "Cooking (MOC)"), "")
     out_dir = _drive_render(monkeypatch, tmp_path, parsed)
+
     md = (out_dir / "instructions.md").read_text(encoding="utf-8")
     assert "Merged" not in md, md
+
+    doc = json.loads((out_dir / "instructions.json").read_text(encoding="utf-8"))
+    assert "merged_moc_proposals" not in (doc.get("tomo") or {}), (
+        "a run with no merges must add no key — an empty list in the tomo "
+        "block would change every clean run's instructions.json"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -343,9 +373,11 @@ def test_every_consumer_of_the_record_is_wired(monkeypatch, tmp_path):
     assert sources["parser"].count('"merged_moc_proposals"') == 2, (
         "both parser output dicts (wire and markdown) must carry the record"
     )
-    assert sources["render"].count('"merged_moc_proposals"') == 2, (
-        "instruction-render must BOTH read the record back and add it to the "
-        "literal metadata dict — the read-back alone is a silent no-op"
+    assert sources["render"].count('"merged_moc_proposals"') == 3, (
+        "instruction-render has THREE sites: the read-back, the `tomo` block "
+        "written into instructions.json, and the literal metadata dict passed "
+        "to render_instructions_md. The read-back alone is a silent no-op, and "
+        "the metadata dict alone reaches only one of the two artefacts."
     )
     assert sources["md"].count('"merged_moc_proposals"') == 1, (
         "render_md must read the record off the metadata dict"

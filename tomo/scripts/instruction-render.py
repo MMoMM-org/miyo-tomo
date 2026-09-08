@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.50.0
+# version: 0.51.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -794,6 +794,20 @@ def main() -> int:
             tomo_block = {}
             instructions_doc["tomo"] = tomo_block
         tomo_block["attachment_suppressions"] = attachment_suppressions
+
+    # Record what the by-Name merge absorbed (spec 034 T6.0c), so the run's
+    # provenance reaches the JSON as well as the markdown. Twin-written like
+    # the two withholdings above and for the same reason: a reader driven from
+    # instructions.json would otherwise never learn that one MOC was created
+    # where two proposals were approved. NOT an audit input — instructions-diff
+    # already reconciles correctly after the merge (one approved, one emitted).
+    # Metadata only: the surviving Name, the absorbed spellings, and the reason.
+    if merged_moc_proposals:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["merged_moc_proposals"] = merged_moc_proposals
 
     # Record confirmed items the #116 guard withheld, so the drop reaches an
     # artefact instead of scrolling past on stderr. Metadata only: id, the path

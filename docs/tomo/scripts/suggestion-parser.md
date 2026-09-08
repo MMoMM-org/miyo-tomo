@@ -658,6 +658,30 @@ absorbs another spelling into an already-merged survivor, and lifted out by
 `_lift_merged_moc_records` at the same two sites where `member_stems` and
 `topic` are stripped.
 
+#### Reentrancy Has TWO Halves, and a Three-Way Fixture Only Reaches One
+
+WHY the tests carry a four-way fixture as well as a three-way one — **do not
+trim it back.** Found by mutation, after the plan and its gate had both approved
+the three-way fixture alone.
+
+- **Half 1 — the merged survivor SEEDS the second call.** Primary has the
+  case-only pair, the fan document adds a third spelling. In stage 2 the stage-1
+  survivor is the first moc encountered, so it seeds `merged` carrying its own
+  list, and the third spelling is appended to that list in place. This half is
+  falsified by dropping the inherited carrier at the seeding branch, and the
+  three-way fixture catches it.
+- **Half 2 — the moc being ABSORBED is itself a survivor.** Both documents merge
+  internally first, so in stage 2 the fan's survivor arrives carrying its own
+  `absorbed_names`, and only `head_absorbed.extend(...)` carries that group
+  across. **The three-way fixture cannot reach this line at all** — deleting the
+  `extend` left it green. Without it the fan pair's losing spelling vanishes
+  from the report while its supporting item is still merged into the MOC: a
+  silent under-report, the same CON-2 defect the record exists to fix, one level
+  down.
+
+A reader who trims the four-way fixture as redundant loses half the reentrancy
+coverage, and every remaining test still passes.
+
 ### WHY There Is No Schema Test for It
 
 An earlier draft of this task asked for one. It cannot fail:

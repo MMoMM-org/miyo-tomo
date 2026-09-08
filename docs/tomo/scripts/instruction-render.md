@@ -431,3 +431,23 @@ This is why the T6.0c test drives `main()` over a real `suggestions.json` rather
 than calling `render_instructions_md()` with a hand-built metadata dict: a test
 that builds the dict itself proves the renderer and nothing about this wiring.
 A paired-consumer count in the same test file pins that both sites exist.
+
+### The Record Is Twin-Written, Like Every Sibling Withholding-Record
+
+WHY `merged_moc_proposals` lands in **both** artefacts: `destination_clashes`
+and `attachment_suppressions` are each written twice — into the `tomo` block of
+`instructions.json` and into the render metadata — because the markdown is not
+the only surface a reader works from. A workflow driven from the JSON would
+otherwise never learn that one MOC was created where two proposals were
+approved, which is precisely the CON-2 gap the record exists to close.
+
+The first cut of T6.0c took only the metadata path and shipped the record to one
+surface. The pattern it should have followed sat two lines from the edit.
+Guarded `if merged_moc_proposals:` like its siblings, so a run with no merges
+adds no key and a clean run's `instructions.json` is byte-unchanged.
+
+WHY it is **not** an audit input: `instructions-diff` already reconciles
+correctly after the merge — one proposal was approved as one Name, one
+`create_moc` was emitted, `expected=1 actual=1 [OK]`. The record is provenance
+for a reader. Feeding it into the audit's reconciliation is a different change
+with its own blast radius.

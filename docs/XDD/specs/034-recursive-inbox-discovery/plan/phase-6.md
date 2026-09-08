@@ -526,6 +526,41 @@ phase: 6
   and not made worse by this task: both halves were emitted before it. Belongs with T6.0b's
   cross-kind work or its own task.
 
+  **Code quality returned FAIL, on this task's own defect for the third time.** The shared intro
+  above all three bullets said "an instruction to open a MOC **that is not there** is one you
+  cannot carry out" — true only for `absent`, and sitting two lines above the `probe-failed`
+  bullet that says "this is *not* evidence the MOC is missing". The intro and a sibling bullet
+  contradicted each other in one rendered block, and the user reads both. Fixed at `bee3889`
+  (`render_md.py` 0.16.1, +2 tests): the intro is now cause-neutral and its remaining claim —
+  "a bullet is only ever written into a MOC the run has located" — was traced to be **true of the
+  shipped pipeline**, not merely unfalsifiable. Suite 3665 → 3667.
+
+  **WHY nine tests, a five-round gate and a compliance review all passed it**: every one exercised
+  the causes *separately*. A per-cause test structurally cannot see a contradiction between an
+  intro and a sibling bullet. The guard is now a test that renders **all three causes together**
+  and asserts the intro is byte-identical across the three single-cause renders and the combined
+  one — so a cause-specific intro fails the moment two causes co-occur. This is T5.5's lesson from
+  a new direction: it is not enough to read the document as prose, the fixture must contain the
+  neighbours.
+
+  **A fourth candidate was raised and judged not a defect.** The enclosing heading
+  `## Skipped — un-appliable actions` covers five blocks, and its established sense across the
+  four pre-existing ones is "not appliable *in this run*, pending some condition" — a missing daily
+  note, an unfileable attachment, an unreachable source. `unchecked` and `probe-failed` fit that
+  sense exactly. Left unchanged, by agreement between the orchestrator and the code-quality review
+  against the implementer's reading.
+
+  **Known limitation, accepted 2026-09-08, not a defect to fix in Tomo.** `absent` is inferred
+  from Kado returning an empty result, and Kado returns an empty result for a note that exists but
+  lies outside Tomo's permitted paths — `filterItemsByScope`
+  (`Kado/src/obsidian/search-adapter.ts:91-97`) drops out-of-scope items silently, and `FORBIDDEN`
+  is raised only for *tag* permissions. So for a permission-scoped MOC the instructions say "MOC
+  not found — create it" about a note the user already owns. Recovering the distinction would mean
+  Tomo re-deriving its own ACL, duplicating what Kado knows, and no fixture here can exercise it —
+  the fake client *defines* `[]` as absence. Surfaced as the implementer's unverifiable assumption,
+  then checked against the Kado source rather than left open. Recorded in
+  `docs/tomo/scripts/lib/render_actions.md` under the cause table.
+
 - [ ] **T6.1 The run records its own cost** `[activity: backend]`
 
   **Added 2026-09-06 by the Phase 3 gate — the number this task is about to make durable cannot

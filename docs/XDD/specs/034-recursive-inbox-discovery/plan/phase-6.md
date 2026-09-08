@@ -1032,7 +1032,7 @@ phase: 6
      - [ ] A note in a subfolder is triaged, filed, and its source marked — end to end in a
            real vault `[ref: PRD/Success Metrics]`
 
-- [ ] **T6.4a The fan document was never joined back to its own identity map**
+- [x] **T6.4a The fan document was never joined back to its own identity map**
       `[activity: backend]` — **Found by the T6.4 live run, 2026-09-08. Blocks T6.4's completion.**
 
   **Inherited context — this is a regression this spec creates in its own new capability.**
@@ -1165,10 +1165,35 @@ phase: 6
      a third document type later must not need a third branch.
   4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded.
   5. **Success**:
-     - [ ] A subfolder note taken through Force Atomic is filed to its destination — **on both
+     - [x] A subfolder note taken through Force Atomic is filed to its destination — **on both
            the standalone and the companion path**
-     - [ ] A test fails if either document type loses its identity join
-     - [ ] A test fails if the anchor map is resolved from the wrong document
+     - [x] A test fails if either document type loses its identity join
+     - [x] A test fails if the anchor map is resolved from the wrong document
+
+  **Closed 2026-09-08.** `9c84b1b` (standalone, 10 tests), `0c280ef` (companion + the paired
+  anchor fixture, 5 more). Suite 3735 → 3750, ruff clean, no golden re-recorded,
+  `synthesis-conductor.md` untouched as the plan required.
+
+  **This is the one defect in the whole spec that only a live run could find.** Six earlier
+  one-of-two-paths misses were caught by gates, reviews or shape-greps. This one needed a real
+  vault: no offline test drove the fan path with a note in a subfolder, and the case did not exist
+  before this spec made subfolders visible.
+
+  **The companion loop was the worse half.** The standalone path joined against the wrong
+  document; the companion loop (`parse_section` with no anchor, no `bind_section_item_key`)
+  attempted **no join at all**. It was first reported as a report-only sibling — correct against
+  the plan as it then stood — and only the live run's own routing plan showed it is the path a
+  Force-Atomic run actually takes.
+
+  **The anchor map shared the hole and regresses worse than the identity join.** It has no stem
+  cross-check, so a wrong document binds a *wrong* placement anchor instead of degrading to none.
+  It shipped fixed but untested in the first cut, because the fixture carried no anchors — the
+  implementer reported that gap itself rather than leaving it to review.
+
+  **One correction on the record.** The `import os` removed alongside the `:2364` hardcode did
+  shadow the module-level import for all of `main()` (Python scopes per function), but the
+  compliance review checked both revisions and found no `os.` use earlier in the body — so no
+  reachable path would have raised. Tidied, not defused; the first framing overstated it.
 
 - [ ] **T6.5 Phase Validation and close-out** `[activity: validate]`
 

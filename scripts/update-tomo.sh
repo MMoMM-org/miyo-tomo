@@ -4,7 +4,7 @@
 # Overwrites managed files, skips user files, attempts to merge settings.json.
 # Also re-runs the voice transcription wizard (XDD 009) to allow model
 # changes without a full reinstall.
-# version: 0.9.0
+# version: 0.10.0
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -480,6 +480,7 @@ RETIRED_SCRIPTS=(
     state-init.py
     inbox-discovery.py
     atomic-note-indexer.py
+    record-run-cost.py
 )
 for name in "${RETIRED_SCRIPT_TESTS[@]}" "${RETIRED_SCRIPTS[@]}"; do
     dst="$INSTANCE_PATH/scripts/$name"

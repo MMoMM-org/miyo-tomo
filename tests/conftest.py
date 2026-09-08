@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """conftest.py — Host-side pytest bootstrap for the Tomo test suite.
 
 Injects /tmp/claude/py_deps onto sys.path so jsonschema (a Tomo runtime dep
@@ -35,14 +35,18 @@ collect_ignore = ["test-kado.py"]
 # without redirecting the path: the run appends into the repo working tree, where
 # it survives the test and shows up as an untracked file. The guard names the
 # offending test instead of leaving the directory to be found by `git status`.
+# The baseline is taken once, at collection, NOT per test: a module- or
+# session-scoped fixture is set up before any function-scoped one, so a
+# per-test baseline records the directory as pre-existing and the offending
+# module passes clean. That blind spot hid three files on the first pass.
 _REPO_STATE_DIR = Path(__file__).resolve().parent.parent / "state"
+_REPO_STATE_DIR_EXISTED = _REPO_STATE_DIR.exists()
 
 
 @pytest.fixture(autouse=True)
 def _no_repo_state_writes():
-    existed = _REPO_STATE_DIR.exists()
     yield
-    if _REPO_STATE_DIR.exists() and not existed:
+    if _REPO_STATE_DIR.exists() and not _REPO_STATE_DIR_EXISTED:
         contents = sorted(p.name for p in _REPO_STATE_DIR.iterdir())
         shutil.rmtree(_REPO_STATE_DIR, ignore_errors=True)
         pytest.fail(

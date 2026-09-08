@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.45.0
+# version: 1.46.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -54,6 +54,10 @@ from lib.topic_clusters import (  # noqa: E402, F401
     strip_moc_marker,
 )
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
+from lib.cost_history import (  # noqa: E402 — spec 034 T6.1
+    DEFAULT_HISTORY_PATH,
+    record_run,
+)
 from lib.kado_client import (  # noqa: E402 — I38 Pass-1 existence check
     KadoClient,
     KadoNotFoundError,
@@ -1691,6 +1695,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--resolved-attachments", default="tomo-tmp/resolved-attachments.json",
                    help="Path to resolved-attachments.json (inbox-triage's per-item "
                         "attachment/unresolved-embed resolution, keyed by source path)")
+    p.add_argument("--routing-plan", default=None,
+                   help="routing-plan.json carrying inbox-triage's metrics for this "
+                        "run (spec 034 T6.1). Default: routing-plan.json beside "
+                        "--output, which is where both skills put the two artefacts.")
+    p.add_argument("--cost-history", default=DEFAULT_HISTORY_PATH,
+                   help=f"Cost-history JSONL to append this run's entry to "
+                        f"(default: {DEFAULT_HISTORY_PATH}; cwd-relative, correct "
+                        f"for the instance runtime).")
     p.add_argument("--threshold", type=int, default=1,
                    help="Minimum cluster size to emit a Proposed MOC section (default 1 — "
                         "every needs_new_moc surfaces; cluster size shown in heading)")
@@ -2362,6 +2374,25 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
         json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    # spec 034 T6.1: this process is the terminal deterministic step of the two
+    # actions that reach it (suggest, fan-resolve), so the run's cost-history
+    # entry is written HERE. It was briefly a step in each skill's markdown; no
+    # test can see whether an LLM ran a line of markdown, and the criterion is
+    # "a history accumulates without anyone remembering to record it".
+    # inbox-triage.py deliberately writes no entry for these two actions — the
+    # folder counts below do not exist when it finishes.
+    routing_plan_path = (
+        Path(args.routing_plan) if args.routing_plan
+        else out_path.parent / "routing-plan.json"
+    )
+    record_run(
+        run_id=args.run_id,
+        routing_plan_path=routing_plan_path,
+        folder_listing_calls=folder_listing_calls,
+        distinct_destination_folders=len(_folder_cache),
+        history_path=args.cost_history,
     )
 
     print(

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_034_t3_4_phase3_gate.py — the Phase 3 validation gate.
 
 Spec 034 (recursive inbox discovery), Phase 3 T3.4.
@@ -248,6 +248,9 @@ def _drive_pass1(work: Path, fixture: list[str], titles: dict[str, str],
         "--resolved-attachments", str(work / "absent-resolved.json"),
         "--tag-handler-groups-dir", str(work / "absent-thg"),
         "--threshold", "1", "--no-kado",
+        # T6.1: the reducer appends this run's cost entry; the history path
+        # defaults cwd-relative (instance runtime) — keep it out of the repo.
+        "--cost-history", str(work / "cost-history.jsonl"),
     ])
 
     md_path = work / "suggestions.md"

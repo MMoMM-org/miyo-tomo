@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t6_1_cost_history.py — XDD 034 T6.1: the run records its own cost.
 
 F9's claim is that recursion made discovery cheaper (3 base calls → 2), and
@@ -17,10 +17,13 @@ Four things are pinned here, in the order they bite:
   2. **The folder counts cross a process boundary.** They are produced by
      `suggestions-reducer.py` and read by a later process; a number computed and
      never wired raises no error and fails no unit test.
-  3. **All five actions record.** `suggest` and `fan-resolve` record downstream
-     (the reducer's folder counts do not exist when triage finishes);
-     `idle`, `synthesize` and `transcribe` record in triage itself. A suite that
-     exercises only `suggest` passes while four paths silently record nothing.
+  3. **All five actions record, and no SKILL.md step is involved.** `suggest`
+     and `fan-resolve` record inside `suggestions-reducer.py` — the process that
+     already runs on both paths and already holds the folder counts; `idle`,
+     `synthesize` and `transcribe` record in triage itself. The first cut put the
+     two reducer paths behind a line in a SKILL.md, which no test can see: the
+     criterion is "accumulates **without anyone remembering**", and that cannot
+     live in a step someone has to remember.
   4. **Exactly one entry per run.** The triage-side guard is the one trap here
      that fails loudly rather than silently: without it a `suggest` run writes an
      incomplete entry from triage *and* the real one downstream.
@@ -384,6 +387,29 @@ def _write_item(items_dir: Path, item_key: str, title: str, location: str) -> No
     }, ensure_ascii=False), encoding="utf-8")
 
 
+def _reducer_argv(
+    work: Path, *, run_id: str, output_name: str, fan_resolve: bool,
+) -> list[str]:
+    """The command line the skills issue, verbatim in shape.
+
+    The output document lands in `tomo-tmp/` beside `routing-plan.json`, which is
+    where both skills put it — the reducer derives the routing plan from the
+    output's own directory, so the two artefacts of one run stay together with no
+    extra flag for anyone to forget.
+    """
+    return [
+        "--state", str(work / "inbox-state.jsonl"),
+        "--items-dir", str(work / "items"),
+        "--run-id", run_id,
+        "--profile", "miyo",
+        "--output", str(work / "tomo-tmp" / output_name),
+        "--shared-ctx", str(work / "absent-shared-ctx.json"),
+        "--resolved-attachments", str(work / "absent-resolved.json"),
+        "--tag-handler-groups-dir", str(work / "absent-thg"),
+        "--threshold", "1",
+    ] + (["--fan-resolve"] if fan_resolve else [])
+
+
 def _run_reducer(
     monkeypatch, work: Path, *, run_id: str, destinations: list[tuple[str, str]],
     kado, output_name: str = "suggestions-doc.json", fan_resolve: bool = False,
@@ -406,20 +432,11 @@ def _run_reducer(
             ], check=True, capture_output=True)
         _write_item(items_dir, item_key, title, location)
 
-    doc_path = work / output_name
+    doc_path = work / "tomo-tmp" / output_name
     monkeypatch.setattr(reducer, "KadoClient", lambda: kado)
-    argv = [
-        "suggestions-reducer.py", "--state", str(state_path),
-        "--items-dir", str(items_dir), "--run-id", run_id,
-        "--profile", "miyo", "--output", str(doc_path),
-        "--shared-ctx", str(work / "absent-shared-ctx.json"),
-        "--resolved-attachments", str(work / "absent-resolved.json"),
-        "--tag-handler-groups-dir", str(work / "absent-thg"),
-        "--threshold", "1",
-    ]
-    if fan_resolve:
-        argv.append("--fan-resolve")
-    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(sys, "argv", ["suggestions-reducer.py"] + _reducer_argv(
+        work, run_id=run_id, output_name=output_name, fan_resolve=fan_resolve,
+    ))
     assert reducer.main() == 0
     return json.loads(doc_path.read_text(encoding="utf-8"))
 
@@ -483,18 +500,6 @@ class TestFolderCountsReachTheDocument:
 # 4. All five actions record  (trap 3)
 # ---------------------------------------------------------------------------
 
-def _run_record_run_cost(cwd: Path, *, run_id: str, suggestions_doc: str) -> None:
-    subprocess.run(
-        [
-            sys.executable, str(SCRIPTS_DIR / "record-run-cost.py"),
-            "--run-id", run_id,
-            "--routing-plan", "tomo-tmp/routing-plan.json",
-            "--suggestions-doc", suggestions_doc,
-        ],
-        cwd=str(cwd), check=True, capture_output=True,
-    )
-
-
 class TestEveryActionRecords:
     def test_idle_records_in_triage_without_folder_fields(
         self, monkeypatch, tmp_path
@@ -533,7 +538,7 @@ class TestEveryActionRecords:
         assert entries[0]["action"] == "transcribe"
         assert not any(f in entries[0] for f in FOLDER_FIELDS)
 
-    def test_suggest_records_downstream_with_the_folder_fields(
+    def test_suggest_records_in_the_reducer_with_the_folder_fields(
         self, monkeypatch, tmp_path
     ):
         assert _run_triage(
@@ -547,10 +552,6 @@ class TestEveryActionRecords:
         _run_reducer(
             monkeypatch, tmp_path, run_id="t61-suggest",
             destinations=[("Dresden", NOTES), ("Ada", PEOPLE)], kado=kado,
-        )
-        _run_record_run_cost(
-            tmp_path, run_id="t61-suggest",
-            suggestions_doc="suggestions-doc.json",
         )
 
         entries = _read_history(tmp_path)
@@ -596,10 +597,6 @@ class TestEveryActionRecords:
             destinations=[("Dresden", NOTES)], kado=kado,
             output_name="suggestions-fan-doc.json", fan_resolve=True,
         )
-        _run_record_run_cost(
-            tmp_path, run_id="t61-fan",
-            suggestions_doc="suggestions-fan-doc.json",
-        )
 
         entries = _read_history(tmp_path)
         assert len(entries) == 1
@@ -628,27 +625,87 @@ class TestExactlyOneEntryPerRun:
             monkeypatch, tmp_path, run_id="t61-once",
             destinations=[("Dresden", NOTES)], kado=kado,
         )
-        _run_record_run_cost(
-            tmp_path, run_id="t61-once", suggestions_doc="suggestions-doc.json",
-        )
 
         entries = _read_history(tmp_path)
         assert len(entries) == 1, (
             f"expected exactly one entry for one run, got {len(entries)}: {entries}"
         )
 
-    def test_a_missing_suggestions_doc_still_records_without_folder_fields(
+    def test_a_missing_routing_plan_costs_the_entry_not_the_run(
         self, monkeypatch, tmp_path
     ):
-        """The downstream step must not lose the whole entry to a missing input."""
+        """Measurement must never fail a run `[ref: SDD/Error Handling]`."""
+        monkeypatch.chdir(tmp_path)
+        kado = _FolderListingFake({NOTES: []})
+        doc = _run_reducer(
+            monkeypatch, tmp_path, run_id="t61-noplan",
+            destinations=[("Dresden", NOTES)], kado=kado,
+        )
+
+        assert doc["sections"], "the reducer did not produce its document"
+        assert _read_history(tmp_path) == []
+
+
+# ---------------------------------------------------------------------------
+# 6. No SKILL.md step is involved  (the reason the append moved)
+# ---------------------------------------------------------------------------
+
+SKILL_DIR = REPO_ROOT / "tomo" / "dot_claude" / "skills"
+
+
+class TestNoLLMStepRecordsTheCost:
+    def test_the_reducer_cli_alone_records_the_run(self, monkeypatch, tmp_path):
+        """The production invocation, as a subprocess — nothing else runs.
+
+        The reducer is driven exactly as the skill's one command line drives it,
+        in its own process, with no in-process monkeypatching and no second step.
+        If the entry appears, the guarantee holds without anyone remembering.
+        """
         assert _run_triage(
             monkeypatch, tmp_path, _notes_client(), extra_argv=["--force-pass1"],
         ) == 0
-        _run_record_run_cost(
-            tmp_path, run_id="t61-nodoc", suggestions_doc="tomo-tmp/absent-doc.json",
+
+        items_dir = tmp_path / "items"
+        items_dir.mkdir(parents=True, exist_ok=True)
+        item_key = f"{INBOX_PATH}Sub0/Dresden.md"
+        for status in ("pending", "running", "done"):
+            subprocess.run([
+                sys.executable, str(SCRIPTS_DIR / "state-update.py"),
+                "--state", str(tmp_path / "inbox-state.jsonl"),
+                "--item-key", item_key, "--stem", "Dresden", "--path", item_key,
+                "--status", status, "--run-id", "t61-cli",
+            ], check=True, capture_output=True)
+        _write_item(items_dir, item_key, "Dresden", NOTES)
+
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "suggestions-reducer.py")]
+            + _reducer_argv(
+                tmp_path, run_id="t61-cli",
+                output_name="suggestions-doc.json", fan_resolve=False,
+            )
+            + ["--no-kado"],
+            cwd=str(tmp_path), capture_output=True, text=True,
         )
+        assert proc.returncode == 0, proc.stderr
 
         entries = _read_history(tmp_path)
-        assert len(entries) == 1
+        assert len(entries) == 1, f"stderr was: {proc.stderr}"
         assert entries[0]["action"] == "suggest"
-        assert not any(f in entries[0] for f in FOLDER_FIELDS)
+        assert entries[0]["run_id"] == "t61-cli"
+        assert entries[0]["base_kado_calls"] == 2
+
+    def test_no_skill_delegates_the_recording_to_a_separate_step(self):
+        """The two skills must not carry a cost-recording command.
+
+        A step in a SKILL.md is executed by an LLM, and pytest cannot see whether
+        it ran. This asserts the dependency is gone rather than merely unused.
+        """
+        for skill in ("suggest-handling", "force-atomic-handling"):
+            body = (SKILL_DIR / skill / "SKILL.md").read_text(encoding="utf-8")
+            assert "record-run-cost" not in body, (
+                f"{skill}/SKILL.md still delegates the cost record to an LLM step"
+            )
+            assert "cost-history" not in body
+
+    def test_the_retired_wrapper_script_is_gone(self):
+        assert not (SCRIPTS_DIR / "record-run-cost.py").exists()

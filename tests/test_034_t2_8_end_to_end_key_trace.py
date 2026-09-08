@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t2_8_end_to_end_key_trace.py — the Phase 2 validation gate.
 
 Spec 034 (recursive inbox discovery), Phase 2 T2.8.
@@ -268,6 +268,9 @@ def traced(tmp_path_factory) -> dict:
         "--tag-handler-groups-dir", str(work / "absent-thg"),
         "--threshold", "1",
         "--no-kado",
+        # T6.1: the reducer appends this run's cost entry; the history path
+        # defaults cwd-relative (instance runtime) — keep it out of the repo.
+        "--cost-history", str(work / "cost-history.jsonl"),
     ])
     suggestions_doc = json.loads(doc_path.read_text(encoding="utf-8"))
 

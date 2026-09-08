@@ -1,5 +1,5 @@
 # cost_history.py — Append one record of what a triage run cost.
-# version: 0.1.0
+# version: 0.2.0
 """Persist the observed Kado cost of a completed /inbox run.
 
 One append-only JSONL record per run, in the instance's persistent state
@@ -18,10 +18,10 @@ Public API:
         Append one record. Never raises: an unwritable history warns to stderr
         and returns False. Measurement must never fail a run.
 
-    record_from_artifacts(...) -> bool
-        The downstream form. Reads triage's own metrics back from
-        routing-plan.json and the reducer's folder counts from the suggestions
-        document, then appends. Used by the paths whose folder counts do not
+    record_run(...) -> bool
+        The reducer's form. Reads triage's own metrics back from
+        routing-plan.json, combines them with the folder counts the caller
+        measured, and appends. Used by the two paths whose folder counts do not
         exist until after triage has finished.
 
 Stdlib only — no new dependencies.
@@ -115,21 +115,25 @@ def _load_json(path: "str | Path") -> dict | None:
         return None
 
 
-def record_from_artifacts(
+def record_run(
     *,
     run_id: str,
     routing_plan_path: "str | Path",
-    suggestions_doc_path: "str | Path | None" = None,
+    folder_listing_calls: int | None = None,
+    distinct_destination_folders: int | None = None,
     history_path: "str | Path" = DEFAULT_HISTORY_PATH,
 ) -> bool:
-    """Read this run's measurements out of its artefacts and append one record.
+    """Append the entry for a run whose folder counts the caller has measured.
+
+    The action, item count and call counts come from the routing plan triage
+    wrote earlier in the same run — one definition of each figure, rather than
+    the caller re-deriving its own.
 
     Args:
         run_id:               Identifier of the run this record describes.
-        routing_plan_path:    routing-plan.json, carrying triage's own metrics.
-        suggestions_doc_path: The reducer's output document, carrying the
-                              destination-folder counts. A missing or unreadable
-                              document costs the two folder fields, not the entry.
+        routing_plan_path:    routing-plan.json, carrying triage's metrics.
+        folder_listing_calls: Round trips spent listing destination folders.
+        distinct_destination_folders: How many folders produced them.
         history_path:         Where to append.
     """
     plan = _load_json(routing_plan_path)
@@ -142,10 +146,6 @@ def record_from_artifacts(
         return False
 
     metrics = plan.get("metrics") or {}
-    doc = _load_json(suggestions_doc_path) if suggestions_doc_path else None
-    if doc is None:
-        doc = {}
-
     return append_entry(
         build_entry(
             run_id=run_id,
@@ -153,8 +153,8 @@ def record_from_artifacts(
             item_count=metrics.get("item_count", 0),
             base_kado_calls=metrics.get("base_kado_calls", 0),
             total_kado_calls=metrics.get("kado_calls", 0),
-            folder_listing_calls=doc.get("folder_listing_calls"),
-            distinct_destination_folders=doc.get("distinct_destination_folders"),
+            folder_listing_calls=folder_listing_calls,
+            distinct_destination_folders=distinct_destination_folders,
         ),
         history_path,
     )

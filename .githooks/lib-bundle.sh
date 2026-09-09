@@ -39,7 +39,13 @@
 _resolve_data_dir() {
   # 1. User-explicit override wins (lets tests + power users redirect).
   if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
-    printf '%s/cache' "$CLAUDE_PLUGIN_DATA"
+    local d="$CLAUDE_PLUGIN_DATA"
+    # Strip trailing slashes. Python's pathlib collapses them and printf does
+    # not, so an override ending in "/" would put the shell writer and the
+    # Python reader in paths that differ only by a slash — the same class of
+    # split this resolver exists to close.
+    while [ "$d" != "/" ] && [ "${d%/}" != "$d" ]; do d="${d%/}"; done
+    printf '%s/cache' "$d"
     return 0
   fi
 
@@ -157,7 +163,7 @@ _write_stale_cache() {
   local json_file="${data_dir}/${repo_hash}-stale-cache.json"
 
   # Write TSV atomically.
-  printf '%s\n' "$tsv_rows" > "${tsv_file}.tmp" 2>/dev/null || {
+  { printf '%s\n' "$tsv_rows" > "${tsv_file}.tmp"; } 2>/dev/null || {
     _emit_skip "cache-write" \
       "TSV write failed" \
       "Check write permissions on $data_dir"
@@ -166,8 +172,8 @@ _write_stale_cache() {
   mv "${tsv_file}.tmp" "$tsv_file" 2>/dev/null || true
 
   # Build JSON array from TSV rows and write atomically.
-  _emit_stale_json "$tsv_rows" "$updated_iso" "$default_branch" \
-    > "${json_file}.tmp" 2>/dev/null || {
+  { _emit_stale_json "$tsv_rows" "$updated_iso" "$default_branch" \
+      > "${json_file}.tmp"; } 2>/dev/null || {
     rm -f "${json_file}.tmp" 2>/dev/null || true
     return 0
   }

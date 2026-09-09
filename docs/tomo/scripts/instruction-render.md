@@ -479,3 +479,23 @@ title, cause discriminator. Never the bullet text, never note content.
 WHY it is guarded `if unresolvable_links:` like every sibling record — a run
 that withholds nothing adds no key, so a clean run's `instructions.json` is
 byte-unchanged.
+
+## T6.4c — The Manifest Is Rewritten After the Guards
+
+`manifest.json` is written once inside the render loop and rewritten after
+`validate_destinations` and `suppress_moves_for_unfiled_attachments` if either
+withheld a move. A run that withheld nothing does not rewrite it, so the common
+path is byte-identical.
+
+**WHY here and not earlier or later**: these two guards are the last passes that
+can drop a `move_note` or `create_moc`. Everything after them drops only
+`link_to_moc`, daily-note and `add_relationship` actions, none of which claim a
+staging note. `filter_unappliable_relationships` is the last filter in the chain
+and touches `add_relationship` only.
+
+**WHY the manifest list itself is not mutated**: the run's closing log line
+reports `rendered=len(manifest)`, which is how many notes were rendered — the
+filtered file answers a different question, namely which of them `upload-rendered.py`
+should write. Keeping the two apart preserves both.
+
+Full rationale in `docs/tomo/scripts/lib/render_actions.md` (T6.4c).

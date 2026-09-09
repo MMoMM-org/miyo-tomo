@@ -1,4 +1,4 @@
-# version: 0.18.0
+# version: 0.19.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -1271,6 +1271,55 @@ def suppress_moves_for_unfiled_attachments(
             suppression, removed_moc_links
         )
     return kept, [suppression for suppression, _candidates in pending]
+
+
+def claimed_rendered_files(actions: list[dict]) -> set[str]:
+    """The staging notes an action list claims, by ``rendered_file``.
+
+    Taken once over ``build_actions``' output and once over the guards'
+    output; the difference is what a guard withheld. See
+    ``manifest_without_withheld_staging``.
+    """
+    return {a.get("rendered_file") for a in actions if a.get("rendered_file")}
+
+
+def manifest_without_withheld_staging(
+    manifest: list[dict], actions: list[dict], claimed_before: set[str]
+) -> tuple[list[dict], list[str]]:
+    """Drop the manifest entries whose claim a guard withheld.
+
+    Returns ``(kept_entries, withheld_filenames)``. Each manifest entry is a
+    staging note that a later upload step writes into the inbox, and each is
+    claimed by exactly one ``move_note`` or ``create_moc``. When a guard
+    withholds that action the staging note has nothing left to move it, so the
+    upload must not write it.
+
+    Keyed on ``rendered_file``, which both action builders copy from the
+    manifest entry — an action ``id`` is a fresh counter value and does not
+    join back to the entry it came from.
+
+    ``claimed_before`` is that key set as ``build_actions`` left it, and is
+    what makes the pass precise rather than merely plausible: an entry no
+    action ever claimed is **kept**, because nothing withheld it. Without that
+    half, a run whose action building produced nothing would silently drop
+    every staging note — indistinguishable here from a run where every move
+    was withheld.
+
+    Written against the surviving actions rather than against a withholding
+    report, so both guards are covered by one pass and a third one would need
+    no change here. An entry with no ``rendered_file`` is kept: nothing was
+    rendered for it to leave behind.
+    """
+    surviving = claimed_rendered_files(actions)
+    kept: list[dict] = []
+    withheld: list[str] = []
+    for entry in manifest:
+        rendered = entry.get("rendered_file")
+        if rendered and rendered in claimed_before and rendered not in surviving:
+            withheld.append(rendered)
+            continue
+        kept.append(entry)
+    return kept, withheld
 
 
 def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> list[dict]:

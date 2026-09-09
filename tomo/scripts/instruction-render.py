@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.52.0
+# version: 0.53.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -68,7 +68,9 @@ from lib.render_actions import (  # noqa: E402,F401
     emit_up_preservation_actions,
     extract_first_up_marker,
     group_id,
+    claimed_rendered_files,
     make_folder_listing,
+    manifest_without_withheld_staging,
     qualify_contested_moc_links,
     suppress_moves_for_unfiled_attachments,
     validate_destinations,
@@ -543,6 +545,11 @@ def main() -> int:
             peer_marker=conventions.peer_marker,
         )
 
+    # The staging notes the action list claims before any guard runs. Paired
+    # with the post-guard set below to tell a withheld move apart from an
+    # action that was never built (spec 034 T6.4c).
+    claimed_staging = claimed_rendered_files(actions)
+
     # The filenames this run claims twice, captured BEFORE the two guards
     # withhold anything — a withheld claimant is exactly the note that comes
     # back after a rename, and is what makes a surviving namesake's MOC bullet
@@ -583,6 +590,26 @@ def main() -> int:
         print(
             f"  [attach] {withheld} move(s) withheld — attachment not filed; "
             f"see instructions.md",
+            file=sys.stderr,
+        )
+
+    # ── Withhold the staging note of every withheld move (034 T6.4c) ─────
+    # The staging notes are uploaded by a separate step reading manifest.json,
+    # so a move the two guards above withheld leaves its rendered note in the
+    # inbox with nothing left to move it. Rewritten here, after the last pass
+    # that can drop a move_note or create_moc and before anything reads the
+    # file. A run that withheld nothing does not rewrite it at all.
+    staged_manifest, withheld_staging = manifest_without_withheld_staging(
+        manifest, actions, claimed_staging
+    )
+    if withheld_staging:
+        manifest_path.write_text(
+            json.dumps(staged_manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(
+            f"  [stage] {len(withheld_staging)} staging note(s) not uploaded — "
+            "the move that would have filed them was withheld",
             file=sys.stderr,
         )
 

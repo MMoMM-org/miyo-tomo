@@ -1098,3 +1098,70 @@ withheld by the renderer and then counted as missing by the audit — a second h
 fail on a correct run, from one cause. Found while tracing this fix's blast
 radius, not by the live run; covered by
 `test_a_withheld_unresolvable_link_subtracts_for_a_colon_title`.
+
+## T6.4c — Why a Withheld Move Also Withholds Its Staging Note
+
+Found by the T6.4 live run on 2026-09-09: a destination clash withheld both
+claimants and left two `2026-09-08_1813_elbe-schifffahrt-*` files in the inbox,
+one per withheld claimant. Not data loss and not a loop — `pending-move` is
+excluded from fresh-source discovery, so nothing re-ingests them — but nothing
+clears them either, and the remedy the document prints ("rename one and re-run
+Pass 2") renders a fresh pair on every attempt.
+
+### WHY the Fix Lives at the Manifest, Not at the Render Step
+
+The plan offered "render after validation" as the larger of two directions. It is
+not available: `build_actions` is built **from** the manifest, so rendering
+cannot follow a validation that needs its output. That is circular, not merely
+risky.
+
+What made a smaller fix possible is that `instruction-render.py` never writes a
+staging note to the vault at all. It renders to a local directory and lists each
+file in `manifest.json`; a **separate process**, `upload-rendered.py`, writes one
+vault note per manifest entry. The residue is produced there. So the manifest is
+rewritten after the guards, the upload never sees the withheld entry, and no
+step's ordering moves. The Kado write the plan hoped to save is saved as a side
+effect — the note is never uploaded in the first place.
+
+`upload-rendered.py` is deliberately untouched: it reads the manifest it is
+given, and that contract is what makes it the right place to steer from.
+
+### WHY the Join Is `rendered_file`, Not the Action `id`
+
+The clash record's `dropped` entries carry the action `id`, which is a fresh
+`_next_id` counter value — it does not join back to the manifest entry the action
+was built from. `rendered_file` is the only key both sides hold, and both action
+builders copy it verbatim from the entry.
+
+### WHY `claimed_before` Exists
+
+The pass compares the claims **before** the guards against the claims after.
+Without that first half, "no surviving action claims this file" and "no action
+was ever built for this file" are the same observation, and a run whose action
+building produced nothing would have its entire manifest emptied — the note
+dropped rather than withheld. Three existing tests that stub `build_actions` to
+return no actions caught exactly that during implementation. An entry no action
+ever claimed is kept, because nothing withheld it.
+
+### WHY Both Guards, When the Task Named One
+
+`suppress_moves_for_unfiled_attachments` withholds `move_note` through the same
+`_drop_moves_with_paired_deletes` helper and produces the same `dropped` record
+shape, so it leaves the same residue. Working from the surviving actions rather
+than from either withholding report covers both in one pass, and a third guard
+would need no change here.
+
+Not covered, and deliberately: the by-Name `create_moc` merge in
+`_build_create_moc_actions` drops a duplicate claim **inside** `build_actions`,
+so the absorbed entry has no claim in `claimed_before` either. That path is
+defense-in-depth for a merge `suggestion-parser.py` already performs upstream, it
+emits no record, and reaching it means the parser missed. If it ever becomes
+reachable, the residue returns and needs its own record — this pass will not see
+it.
+
+### WHY `detect_orphaned_state` Could Not Have Covered It
+
+`inbox-triage.py:1438` flags captured source items whose downstream docs have all
+vanished. A withheld-clash run always uploads `instructions.md` and
+`instructions.json`, so `state.instructions_hits` is non-empty and the detector
+returns `[]` by design. Different case, not a gap in that detector.

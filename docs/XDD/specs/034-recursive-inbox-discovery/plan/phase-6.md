@@ -1284,7 +1284,7 @@ phase: 6
   was exactly seven added `source_note_stem` keys with nothing removed or changed. Suite
   3757 → 3769, `ruff` clean.
 
-- [ ] **T6.4c A withheld clash leaves its staging notes in the inbox**
+- [x] **T6.4c A withheld clash leaves its staging notes in the inbox**
       `[activity: backend]` — **Found by the T6.4 live run, 2026-09-09.**
 
   **Inherited context.** Pass 2 renders each approved atomic into the inbox as a staging note
@@ -1320,8 +1320,44 @@ phase: 6
   4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded — a no-clash
      run must not change.
   5. **Success**:
-     - [ ] A withheld clash leaves nothing behind that nobody will move
-     - [ ] A no-clash run is unchanged
+     - [x] A withheld clash leaves nothing behind that nobody will move
+     - [x] A no-clash run is unchanged
+
+  **Closed 2026-09-09.** Neither direction as written was the one taken, because the prime
+  read found the premise wrong: `instruction-render.py` never writes a staging note to the
+  vault. It renders locally and lists each file in `manifest.json`; a **separate process**,
+  `upload-rendered.py`, writes one vault note per entry. The residue is produced there.
+
+  So the manifest is rewritten after both guards, and the upload never sees the withheld
+  entry. No step's ordering moved, `upload-rendered.py` was not touched, and the Kado write
+  the larger direction hoped to save is saved as a side effect — the note is never uploaded.
+
+  Direction (a) as the task worded it — "render after validation" — is unavailable, not
+  merely risky: `build_actions` is built **from** the manifest, so rendering cannot follow a
+  validation that consumes its output.
+
+  Three things the diff found that the task did not name:
+
+  - **The clash record cannot be joined to the manifest at all.** Its `dropped` entries carry
+    the action `id`, which is a fresh `_next_id` counter value. `rendered_file` is the only
+    key both sides hold, so the pass works from the surviving actions instead of from either
+    withholding report.
+  - **A second site of the same shape.** `suppress_moves_for_unfiled_attachments` withholds
+    `move_note` through the same `_drop_moves_with_paired_deletes` helper and leaves the same
+    residue. Covered by the same pass, with its own RED test.
+  - **"No surviving claim" is not "withheld".** The first implementation compared only the
+    post-guard actions and emptied the manifest of any run whose action building produced
+    nothing — three existing tests that stub `build_actions` caught it. `claimed_before`
+    (the pre-guard claim set) is what makes the pass precise; `test_entry_never_claimed_by_an_action_is_kept`
+    pins it.
+
+  Not covered, deliberately: the by-Name `create_moc` merge drops its duplicate **inside**
+  `build_actions`, so the absorbed entry has no pre-guard claim either. That path is
+  defense-in-depth for a merge `suggestion-parser.py` already performs, and it emits no
+  record. Recorded in `docs/tomo/scripts/lib/render_actions.md`.
+
+  Assertions are taken at the vault write surface — the targets `upload-rendered.py` hands to
+  Kado — not at an internal list. Suite 3768 → 3773, `ruff` clean, no golden re-recorded.
 
 - [ ] **T6.5 Phase Validation and close-out** `[activity: validate]`
 

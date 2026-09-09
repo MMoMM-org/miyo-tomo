@@ -596,9 +596,11 @@ could not see** — and spec 031's `karte.png` pair. Not constructed cases.
    worse than the standalone one: it attempted no join at all. Only a live run could find this —
    no test drove the fan path with a subfolder note, and the case did not exist before this spec
    made subfolders visible.
-2. **A withheld clash leaves its staging notes behind** (recorded, not fixed). Pass 2 renders into
-   the inbox before `validate_destinations` runs, so both withheld claimants left a
-   `pending-move` file. Not re-ingested and not data loss, but nothing clears them.
+2. **A withheld clash leaves its staging notes behind** (fixed 2026-09-09, T6.4c — see the
+   re-validation entry below). The premise recorded here was wrong in one detail that mattered:
+   Pass 2 does not render into the inbox at all. It renders locally and lists the file in
+   `manifest.json`; `upload-rendered.py` writes it. Not re-ingested and not data loss, but
+   nothing cleared them.
 
 **One expectation of the orchestrator's was wrong.** The plan predicted both notes of the
 attachment clash would stay in the inbox. Attachments are **first-claim-wins** (PRD Feature 8):
@@ -609,3 +611,55 @@ T6.0d's SDD walkthrough.
 **Not validated live, deliberately**: the audio-namesake case. Placing one would route a
 validation run for this spec through a model-gated transcription pipeline with a known
 infinite-loop mode. Covered offline; recorded as a live-coverage gap.
+
+---
+
+## Spec 034 — T6.4c re-validation, the withheld staging note
+
+**Date**: 2026-09-09 · **Vault**: Privat-Test · **Branch**: `spec/034-recursive-inbox-discovery`
+
+One run, `/inbox --pass2 --force`, against the same approved suggestions document the 19:27 run of
+2026-09-08 used. An A/B with identical input, fifteen hours apart, across the T6.4c fix.
+
+| time | action | items | base | total |
+|---|---|---|---|---|
+| 2026-09-08 19:27 | synthesize | 14 | **2** | 12 |
+| 2026-09-09 13:35 | synthesize | 14 | **2** | 12 |
+
+Byte-for-byte the same cost row. `base_kado_calls: 2` for the seventh time.
+
+**What changed, and what deliberately did not**
+
+| | 19:27 (before) | 13:35 (after) |
+|---|---|---|
+| `action_count` in `instructions.json` | 11 | 11 |
+| staging notes uploaded to the inbox | **5** | **4** |
+| staging note for the withheld `Kai` item | present, orphaned | **absent** |
+| `tomo.attachment_suppressions` | names `karte.png` + dropped `I05` | unchanged |
+| `withdrawn_deletes` / `withdrawn_moc_links` | present | unchanged |
+
+The action set is identical. Only the upload differs — which is the whole claim of the fix: the
+guard's decision did not move, the file that nobody would ever move is simply no longer written.
+The report survives, so the user still reads that a note stays in the inbox and why.
+
+**The live case was the attachment suppression, not the destination clash.** The task text
+(`plan/phase-6.md`, T6.4c) was written from the 18:12 clash. What actually sat in the vault on
+2026-09-09 was the 19:27 run's `attachment_suppressions` residue: `100 Inbox/Fotos/Kai.md`'s
+staging note, withheld because `Scans/karte.png` lost the first-claim-wins race and the note that
+embeds it was kept in the inbox with it. The second site — added to the fix because the shape has
+two, not because the plan named it — is the one the vault could prove.
+
+**`total_kado_calls` does not move, by design.** It counts round trips for the whole *triage* run
+(`cost_history.py:71`), which finishes before Pass 2 renders or uploads anything. The write this
+fix saves happens in `upload-rendered.py`, a separate process the counter never sees. A run that
+uploads one note fewer therefore reports the same 12 — the saving is real and is not in this table.
+
+**T6.4b confirmed live, having only been proven offline.** `source_note_title` now carries the raw
+display title: `"Elbe-Schifffahrt: Tschechischer Pegel …"` at 13:35 against
+`"Elbe-Schifffahrt- Tschechischer Pegel …"` at 19:27, and `"Kai: Die Gruendung …"` against
+`"Kai- Die Gruendung …"` in the withdrawn MOC link. The colon is back where it belongs and the
+emitted filename is still sanitised.
+
+**Residue after the run**: four `pending-move` staging notes, each claimed by a surviving
+`move_note`/`create_moc`. Nothing orphaned. The three deleted-source actions are still pending
+apply.

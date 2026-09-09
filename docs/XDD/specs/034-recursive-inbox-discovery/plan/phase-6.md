@@ -1207,6 +1207,96 @@ phase: 6
   *primary is right* — the table is exhaustive by intent rather than by coincidence. Suite
   3750 → 3757.
 
+- [ ] **T6.4b The audit compares a sanitised title against a raw one**
+      `[activity: backend]` — **Found by the T6.4 live run, 2026-09-09.**
+
+  **Inherited context.** `instructions-diff.py`'s link coverage matches exactly (`:634`,
+  `a.get("source_note_title") == stem`). The **emitter** writes the *sanitised* title into
+  `link_to_moc.source_note_title`; `derive_expected` uses the *raw* one. Any title containing a
+  character `sanitize_stem` replaces — `\ / : * ? " < > |` — never matches, and the audit
+  **hard-fails a run whose instruction set is correct**.
+
+  Observed live:
+
+  | | value |
+  |---|---|
+  | emitted (`I07`) | `Elbe-Schifffahrt`**`-`**` Tschechischer Pegel bei Usti nad Labem …` |
+  | expected (`S01`) | `Elbe-Schifffahrt`**`:`**` Tschechischer Pegel bei Usti nad Labem …` |
+
+  The link was emitted correctly and points at the right MOC — only the audit's join fails. Two
+  sibling items in the same run passed **solely because their titles carry no forbidden
+  character**. A colon in a title is not exotic: the analyst produced this one unprompted.
+
+  **Fix at the emitter, not the audit.** Under **ADR-2** `source_note_title` is a **display**
+  field; carrying a sanitised *filename* in it is the category error. Making the audit compare
+  sanitised forms on both sides would hide the confusion and make the field mean different things
+  to different readers. Same class as T6.0d: an audit that hard-fails a correct run reads to the
+  user as Tomo drifting from its own instruction set.
+
+  **A caution for the diagnosis.** The in-container orchestrator read this as an HTML-entity
+  mismatch (`&amp;` vs `&`) after seeing the MOC name `Elbsandstein & Tschechien 2026 (MOC)` in
+  the failure line. That was a rendering artefact of its own terminal — **no `&amp;` exists
+  anywhere** in the artefacts or the vault. Reproducing the audit directly is what showed the real
+  cause. Do not chase the entity theory.
+
+  1. **Prime**: read `instructions-diff.py:516` and `:634` for the join, `derive_expected` for
+     where the raw title comes from, and every site that sets `source_note_title` on a
+     `link_to_moc` `[ref: SDD/ADR-2]`. Read `lib/obsidian_filename.py` — `sanitize_stem` is a pure
+     per-character substitution over `\/:*?"<>|`, no transliteration.
+  2. **Test** (RED):
+     - a title containing `:` produces a `link_to_moc` whose `source_note_title` is the **raw**
+       title, and the audit reports `links=[OK]` for it — **assert the audit's own outcome**, not
+       just the field
+     - a title with **no** forbidden character is unchanged — the fix must not move the two cases
+       that already pass
+     - the rendered document still shows whatever it showed before for both — the emitted
+       *filename* must stay sanitised; only the display field changes
+     - proven RED against HEAD, where the colon title yields `links=[DIFF … got=[]]`
+  3. **Implement**: carry the display title where a display title belongs.
+  4. **Validate**: full suite green; `ruff` clean; no golden re-recorded.
+  5. **Success**:
+     - [ ] A title with a filesystem-forbidden character does not fail its own audit
+     - [ ] The emitted filename is still sanitised
+
+- [ ] **T6.4c A withheld clash leaves its staging notes in the inbox**
+      `[activity: backend]` — **Found by the T6.4 live run, 2026-09-09.**
+
+  **Inherited context.** Pass 2 renders each approved atomic into the inbox as a staging note
+  (`doc_type: rendered-note`, `state: pending-move`) **before** `validate_destinations` runs. When
+  the clash guard then withholds both claimants (T5.3), their staged files are already written and
+  remain, waiting for a move that will never be emitted. Observed live: two
+  `2026-09-08_1813_elbe-schifffahrt-…` files, one per withheld claimant.
+
+  **Not a loop and not data loss.** `pending-move` is excluded from fresh-source discovery, so
+  nothing re-ingests them, and the guard's own promise — "every source note below is untouched in
+  the inbox" — holds. But nothing clears them either: `detect_orphaned_state` covers *captured
+  source items whose downstream docs vanished*, a different case. The remedy the document prints
+  ("give one of them a different name and re-run Pass 2") renders a **fresh pair each time**, so
+  the residue accumulates once per clash per re-run.
+
+  **Two directions, and they are not equal.** Rendering *after* validation is the larger change and
+  would also stop paying Kado writes for notes that are then withheld — but it moves a step whose
+  ordering other passes may depend on. Alternatively the clash record carries its withheld staging
+  paths so something can clean or reuse them. **Weigh both and state the choice**; do not assume
+  the first is available.
+
+  1. **Prime**: read `validate_destinations` (`lib/render_actions.py`) and where Pass 2 writes
+     staged notes relative to it. Read `detect_orphaned_state` (`inbox-triage.py:1438`) to see why
+     it does not cover this. Read T5.3's block in `plan/phase-5.md` for what the clash record
+     already carries `[ref: SDD/ADR-4]`.
+  2. **Test** (RED):
+     - a run whose destination clash withholds both claimants leaves **no** orphaned
+       `pending-move` note behind — assert the vault/write surface, not an internal list
+     - a run with no clash is byte-identical to today — both action goldens unchanged
+     - re-running after the user renames one item does not accumulate a second pair
+     - proven RED against HEAD, where the pair remains
+  3. **Implement**: whichever direction you chose, and say why in the `docs/tomo/` mirror.
+  4. **Validate**: full suite green; `ruff` clean; neither action golden re-recorded — a no-clash
+     run must not change.
+  5. **Success**:
+     - [ ] A withheld clash leaves nothing behind that nobody will move
+     - [ ] A no-clash run is unchanged
+
 - [ ] **T6.5 Phase Validation and close-out** `[activity: validate]`
 
   - Full suite green, `ruff` clean.

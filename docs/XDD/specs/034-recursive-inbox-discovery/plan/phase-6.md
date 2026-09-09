@@ -1207,7 +1207,7 @@ phase: 6
   *primary is right* — the table is exhaustive by intent rather than by coincidence. Suite
   3750 → 3757.
 
-- [ ] **T6.4b The audit compares a sanitised title against a raw one**
+- [x] **T6.4b The audit compares a sanitised title against a raw one**
       `[activity: backend]` — **Found by the T6.4 live run, 2026-09-09.**
 
   **Inherited context.** `instructions-diff.py`'s link coverage matches exactly (`:634`,
@@ -1255,8 +1255,34 @@ phase: 6
   3. **Implement**: carry the display title where a display title belongs.
   4. **Validate**: full suite green; `ruff` clean; no golden re-recorded.
   5. **Success**:
-     - [ ] A title with a filesystem-forbidden character does not fail its own audit
-     - [ ] The emitted filename is still sanitised
+     - [x] A title with a filesystem-forbidden character does not fail its own audit
+     - [x] The emitted filename is still sanitised
+
+  **Closed 2026-09-09.** The field was split: `source_note_title` carries the raw display
+  title, `source_note_stem` the sanitised vault key, stripped before the wire. The three
+  withholding joins moved onto the stem; the report record kept the title alone and
+  `_links_for` derives the key, so no internal field crosses the `tomo`-block surface.
+
+  Three things the diff found that the task did not name:
+
+  - **The sanitised value was load-bearing** (`#69`), and three passes joined on it. "Fix at
+    the emitter" therefore meant splitting the field, not changing its value.
+  - **A second failure path from the same cause**: `_subtract_unresolvable_links` (`:902`)
+    joins the same two forms, so a withheld link for a colon-titled note was also counted as
+    missing. Covered, and proven RED by reverting the emitter.
+  - **The garden branch must NOT carry the new field.** `gen-garden-audit-hashi-example.py`
+    calls `_build_garden_audit_actions` directly and embeds its output in a Hashi handoff
+    document, never running `_strip_internal_link_fields`. Adding it there broke
+    `test_garden_audit_hashi_example.py` at once — the triad's schema half doing its job.
+
+  Two existing tests were inverted rather than deleted, both recorded in `docs/tomo/`:
+  `test_instruction_render_wire_hygiene.py:436` encoded the defect; spec 031's byte-identity
+  guard was **sharpened** rather than loosened — it now names the post-031 field explicitly
+  and still requires every other key to be identical to the pre-031 module.
+
+  Both action goldens re-recorded via their own `record.py`, after a script proved the delta
+  was exactly seven added `source_note_stem` keys with nothing removed or changed. Suite
+  3757 → 3769, `ruff` clean.
 
 - [ ] **T6.4c A withheld clash leaves its staging notes in the inbox**
       `[activity: backend]` — **Found by the T6.4 live run, 2026-09-09.**

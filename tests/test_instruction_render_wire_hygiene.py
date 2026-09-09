@@ -433,9 +433,16 @@ class TestFilenameSanitisation:
         actions = _ir._build_link_to_moc_actions(confirmed, [0])
         link = next(a for a in actions if a["action"] == "link_to_moc")
         assert link["line_to_add"] == f"- [[{SAFE_STEM}|{COLON_TITLE}]]"
-        assert link["source_note_title"] == SAFE_STEM
+        # Spec 034 T6.4b inverted the field these two assertions were written
+        # against. The safe stem is still carried and still safe — it just has
+        # its own field now, because source_note_title is DISPLAY text under
+        # ADR-2 and the coverage audit joins on the raw title. Putting the
+        # filename there made instructions-diff hard-fail every correct run
+        # whose title held a forbidden character; found live, T6.4 run.
+        assert link["source_note_stem"] == SAFE_STEM
+        assert link["source_note_title"] == COLON_TITLE
         from lib.obsidian_filename import is_obsidian_safe
-        assert is_obsidian_safe(link["source_note_title"])
+        assert is_obsidian_safe(link["source_note_stem"])
 
 
 # ── #70 — same-section merge ────────────────────────────────────────────────

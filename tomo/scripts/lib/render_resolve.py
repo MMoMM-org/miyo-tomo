@@ -1,4 +1,4 @@
-# version: 0.4.0
+# version: 0.5.0
 """render_resolve.py — post-build resolution + filtering passes for the action list.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). These passes
@@ -354,7 +354,10 @@ def _merge_new_section_links(actions: list[dict]) -> int:
     accumulates every member's bullet (emission order preserved); the rest are
     removed in place. Only groups with a truthy new_section are merged —
     anchor-based inserts (no new_section) are left untouched. A merged section
-    spans multiple source notes, so source_note_title is cleared on the survivor.
+    spans multiple source notes, so BOTH identity fields are cleared on the
+    survivor — leaving source_note_stem behind would keep a live join key on a
+    bullet that belongs to nobody, and the withholding passes would withdraw a
+    shared bullet on one member's account (spec 034 T6.4b).
 
     Returns the count of actions removed.
     """
@@ -376,6 +379,7 @@ def _merge_new_section_links(actions: list[dict]) -> int:
         if bullet and bullet not in head_line.split("\n"):
             head["line_to_add"] = f"{head_line}\n{bullet}" if head_line else bullet
         head["source_note_title"] = None
+        head["source_note_stem"] = None
         drop.add(idx)
     if drop:
         actions[:] = [a for i, a in enumerate(actions) if i not in drop]
@@ -473,8 +477,11 @@ def _strip_internal_link_fields(actions: list[dict]) -> int:
         # action level today, but the Hashi anchor schema is
         # additionalProperties:false {type,value}, so if a future change ever
         # lifts alt_headings to the action level it must not reach the wire.
+        # source_note_stem (spec 034 T6.4b) is the vault key the withholding
+        # passes join on; source_note_title beside it is the display text and
+        # DOES belong on the wire. Only the stem is stripped.
         for field in ("new_section", "fit_confidence", "alt_headings",
-                      UNRESOLVED_MOC_FIELD):
+                      "source_note_stem", UNRESOLVED_MOC_FIELD):
             if field in a:
                 del a[field]
                 stripped += 1

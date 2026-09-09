@@ -1029,3 +1029,72 @@ sit between those two points and all four read `link_to_moc` — anchor resoluti
 (a Kado read per target MOC), the `#70` same-section merge, the existing-heading
 rewrite, and new-section serialization. A withheld action must not be merged into
 a surviving one, and spending a Kado read on a MOC nobody will open is waste.
+
+## `source_note_title` Is Display Text, `source_note_stem` Is the Vault Key
+
+**Spec 034 T6.4b**, found by the T6.4 live run on 2026-09-08.
+
+`_emit` wrote `sanitize_stem(source_title)` into `link_to_moc.source_note_title`,
+deliberately, for `#69`: every reference to a forbidden-char note had to
+round-trip to the renamed file. Meanwhile `instructions-diff.py`'s coverage audit
+joins that field against the item's **raw** title — its own comment at `:1056`
+says so ("links carry source_note_title == item title"). Any title containing a
+character `sanitize_stem` replaces (`\ / : * ? " < > |`) therefore never matched,
+and the audit hard-failed a run whose instruction set was correct.
+
+Observed live on `Elbe-Schifffahrt: Tschechischer Pegel bei Usti nad Labem`. Two
+sibling items in the same run passed **only because their titles happened to
+carry no forbidden character**. The analyst produced that colon unprompted, so
+this fires on ordinary content, not on a constructed edge case.
+
+**WHY the field was split rather than the audit taught to sanitise.** Under ADR-2
+`source_note_title` is display text; a filename in it is the category error, and
+making both sides of the audit compare sanitised forms would have hidden that
+while making the field mean different things to different readers. But the
+sanitised value is genuinely load-bearing — three passes join on it, and all
+three compute `sanitize_stem` on their own side:
+
+| site | joins against |
+|---|---|
+| `_orphaned_link_titles` / `_drop_moves_with_paired_deletes` | `sanitize_stem(action["title"])` of dropped moves |
+| `_links_for` | `sanitize_stem(d["title"])` of a withholding's dropped set |
+| `qualify_contested_moc_links` | `contested_note_names`, itself keyed on `sanitize_stem` |
+
+So the value stays and gets an honest name. Two fields, two jobs, neither lying —
+the same shape ADR-2 gave `item_key` and `stem` one layer up.
+
+### Its Lifetime, and Why the Garden Branch Does Not Carry It
+
+`source_note_stem` is emitted by `_emit`, read by the three passes above, cleared
+alongside `source_note_title` when `_merge_new_section_links` folds a section
+that spans several notes, and removed by `_strip_internal_link_fields` before the
+wire. Identical to `new_section`'s lifetime.
+
+**WHY `_build_garden_audit_actions`' `file_note` branch deliberately omits it**,
+even though it emits `link_to_moc`: `scripts/gen-garden-audit-hashi-example.py`
+calls that builder **directly** and embeds the result verbatim in a Hashi handoff
+document, without `_strip_internal_link_fields` ever running. An internal field
+there reaches Hashi, whose `link_to_moc` schema is `additionalProperties: false`,
+and the action is rejected. Adding it broke
+`test_garden_audit_hashi_example.py` immediately — the guard did its job. There is
+also no consumer: the three joins act on `move_note` / `create_moc`, which that
+branch never emits. A garden item is already in the vault, so its on-disk stem is
+both its display name and its key.
+
+### The Report Record Carries the Title Only
+
+`removed_moc_links` entries are serialised into `instructions.json`'s `tomo`
+block as `withdrawn_moc_links`, and rendered to the user by `render_md`. They
+carry `source_note_title` alone — `_links_for` derives the key with
+`sanitize_stem` the same way the dropped side does, so both halves of the join
+agree by construction without an internal field crossing that surface.
+
+### A Second Failure Path, From the Same Cause
+
+`instructions-diff.py`'s `_subtract_unresolvable_links` (`:902`) joins a
+withholding record's `source_note_title` against the item's raw title as well. A
+colon-titled note whose target MOC could not be confirmed therefore had its link
+withheld by the renderer and then counted as missing by the audit — a second hard
+fail on a correct run, from one cause. Found while tracing this fix's blast
+radius, not by the live run; covered by
+`test_a_withheld_unresolvable_link_subtracts_for_a_colon_title`.

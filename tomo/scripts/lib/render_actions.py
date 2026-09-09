@@ -1,4 +1,4 @@
-# version: 0.17.1
+# version: 0.18.0
 """render_actions.py — instruction-set action builders.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -893,7 +893,7 @@ def _links_for(withholding: dict, removed_moc_links: list[dict]) -> list[dict]:
     }
     return [
         link for link in removed_moc_links
-        if (link.get("source_note_title") or "") in titles
+        if sanitize_stem(link.get("source_note_title") or "") in titles
     ]
 
 
@@ -936,8 +936,13 @@ def _drop_moves_with_paired_deletes(
             continue
         if (
             action.get("action") == "link_to_moc"
-            and (action.get("source_note_title") or "") in orphaned_titles
+            and (action.get("source_note_stem") or "") in orphaned_titles
         ):
+            # Join on the stem (what the vault resolves by), report the title
+            # (what the user reads) — spec 034 T6.4b. The record carries the
+            # display title only: it is serialised into instructions.json's
+            # `tomo` block, and `_links_for` derives the key from it the same
+            # way the dropped side does, so both halves agree by construction.
             removed_moc_links.append({
                 "source_note_title": action.get("source_note_title"),
                 "target_moc": action.get("target_moc"),
@@ -1125,7 +1130,7 @@ def qualify_contested_moc_links(actions: list[dict], contested: set[str]) -> int
     for action in actions:
         if action.get("action") != "link_to_moc":
             continue
-        name = action.get("source_note_title") or ""
+        name = action.get("source_note_stem") or ""
         destination = survivors.get(name) if name in contested else None
         if not destination:
             continue
@@ -1339,11 +1344,19 @@ def _build_link_to_moc_actions(confirmed: list[dict], counter: list[int]) -> lis
             # (#64). Both are Tomo-internal and stripped before the wire — the
             # anchor itself stays {type, value} (anchor no-leak contract).
             "fit_confidence": (anchor or {}).get("fit_confidence"),
-            # Wikilink target resolves to the (possibly sanitised) filename;
-            # source_note_title carries the safe stem so every reference to a
-            # forbidden-char note round-trips to the renamed file (#69).
+            # Wikilink target resolves to the (possibly sanitised) filename
+            # so a forbidden-char note round-trips to the renamed file (#69).
+            # The two identity fields split the two jobs (spec 034 T6.4b):
+            # source_note_title is DISPLAY text and stays raw, because the
+            # coverage audit and every report join on the title the user reads;
+            # source_note_stem is the vault's own key, which the withholding
+            # passes join on. Writing the stem into the title field made the
+            # audit hard-fail every correct run whose title held a `:`.
+            # source_note_stem is Tomo-internal — _strip_internal_link_fields
+            # removes it before the wire.
             "line_to_add": f"- {_wikilink(source_title)}",
-            "source_note_title": sanitize_stem(source_title),
+            "source_note_title": source_title,
+            "source_note_stem": sanitize_stem(source_title),
         })
 
     # Pass 1 — parent_mocs up-links from every confirmed item.
@@ -2139,6 +2152,15 @@ def build_garden_audit_actions(
                 "anchor": {"type": "callout", "value": None},
                 "placement": "after",
                 "line_to_add": f"- [[{c['stem']}]]",
+                # A garden item is already in the vault, so its on-disk stem is
+                # both its display name and its key — no split is needed here.
+                # source_note_stem is deliberately ABSENT (spec 034 T6.4b): the
+                # withholding passes that join on it act on move_note /
+                # create_moc, which this branch never emits, and this builder's
+                # output goes to the wire WITHOUT _strip_internal_link_fields —
+                # scripts/gen-garden-audit-hashi-example.py calls it directly
+                # and embeds the result in a Hashi handoff document. An internal
+                # field here reaches Hashi and its schema rejects the action.
                 "source_note_title": c["stem"],
             })
             out.append({

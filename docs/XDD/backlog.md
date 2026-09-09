@@ -845,7 +845,13 @@ Two possible closes: render after validation rather than before, or have the cla
 its withheld staging paths so something can clean or reuse them. The first is the larger change
 and would also stop paying Kado writes for notes that are then withheld.
 
-## Link coverage fails for any title containing a sanitised character
+## ~~Link coverage fails for any title containing a sanitised character~~ — FIXED
+
+**Fixed 2026-09-09** as spec 034 T6.4b: the field was split into `source_note_title`
+(raw display text, on the wire) and `source_note_stem` (the vault key, Tomo-internal,
+stripped before the wire). The same defect had a second victim —
+`_subtract_unresolvable_links` joins the same two forms — now covered too. Kept below
+for the diagnosis, in particular the entity theory that was wrong.
 
 **Found 2026-09-08** in the T6.4 live run, by reading the container's own session transcript —
 the instruction document alone did not show it.

@@ -96,8 +96,10 @@ phase: 6
   action goldens byte-identical. The fold's one downstream consequence — a case-only MOC pair
   now hard-fails `instructions-diff` instead of silently dropping children — is T6.0c.
 
-- [ ] **T6.0b An atomic and a MOC can claim the same path, and nothing compares them**
-      `[activity: backend]` — **PROPOSED 2026-09-08, not yet accepted.**
+- [x] **T6.0b An atomic and a MOC can claim the same path, and nothing compares them**
+      `[activity: backend]` — **PROPOSED 2026-09-08, never accepted into this spec. Carried to spec 036 on 2026-09-09.**
+
+  **Not fixed here — reopened as its own spec.** Following the chain to its end on 2026-09-09 showed it does not stop at two claims on one path. Hashi fails the second claim correctly, but its dependency map has no edge from `delete_source` to `move_note`, so the paired delete runs and the user's inbox note is removed while its atomic was never filed. That is data loss, not a missing comparison, and the fix generalises beyond `move_note`: three of the four `delete_source` emission sites are conditional on a different action succeeding. See `docs/XDD/specs/036-delete-outlives-its-justification/`.
 
   Kept separate from T6.0 deliberately: this is not an unfolded key but a **missing comparison
   across two action kinds**, and closing it cascades.

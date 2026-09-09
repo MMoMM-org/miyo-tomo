@@ -820,9 +820,17 @@ file the constitution already flags as too large.
 Deliberately not done in T6.4a: it refactors a path that task did not break, on a task whose scope
 had already widened once, while a live validation run was waiting on it.
 
-## A destination clash leaves orphaned `pending-move` staging notes
+## ~~A destination clash leaves orphaned `pending-move` staging notes~~ — FIXED
 
-**Found 2026-09-08** in the T6.4 live run.
+**Found 2026-09-08** in the T6.4 live run. **Fixed 2026-09-09** as spec 034 T6.4c.
+
+The fix rewrites `manifest.json` after both guards, so `upload-rendered.py` never writes a
+staging note whose move was withheld. Both premises below turned out wrong in a way that
+mattered: Pass 2 does **not** render into the inbox — it renders locally and a separate
+process uploads from the manifest — and the residue also occurs for
+`suppress_moves_for_unfiled_attachments`, not only for the destination clash. The live case on
+2026-09-09 was in fact the attachment one. Neither of the two "possible closes" below was
+taken; see `docs/tomo/scripts/lib/render_actions.md` (T6.4c) for why.
 
 Pass 2 renders each approved atomic into the inbox as a staging note
 (`doc_type: rendered-note`, `state: pending-move`) **before** `validate_destinations` runs. When
@@ -844,6 +852,24 @@ per re-run.
 Two possible closes: render after validation rather than before, or have the clash record carry
 its withheld staging paths so something can clean or reuse them. The first is the larger change
 and would also stop paying Kado writes for notes that are then withheld.
+
+## OPEN — spec 034's per-item token cost was never measured
+
+**Recorded 2026-09-09** at spec 034's close-out (T6.5).
+
+The SDD's Quality Requirements table carries a row `≤ $0.65 subagent, ≤ $0.70 total`, to be
+measured against the 21-item baseline via `measure-f47-token-cost.py --session-latest`. It was
+not measured for this spec: the tool keys on a `lifecycle.discovery` marker that the runs
+exercising these paths do not all carry, and none of the six live runs was a 21-item run made
+under the tool.
+
+Not a blocker for 034 and not a regression: the cost claim 034 itself makes is the **base Kado
+call count** (F9/ADR-3, 3 → 2), measured seven times over and recorded in
+`docs/evolution/inbox-cost-log.md`. The dollar figure is a standing budget inherited from F-47.
+
+What closing this needs: either a run instrumented so the tool can key on it, or an honest
+decision that the budget row belongs to F-47's own validation rather than to every spec that
+touches the pipeline.
 
 ## ~~Link coverage fails for any title containing a sanitised character~~ — FIXED
 

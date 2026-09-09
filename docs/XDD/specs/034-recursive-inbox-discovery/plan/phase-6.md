@@ -1012,7 +1012,7 @@ phase: 6
 
   **T6.4 is the user's to run.** No agent may attempt it `[ref: SDD/CON-7]`.
 
-- [ ] **T6.4 Live validation** `[activity: validate]` — **the user's to run, not the
+- [x] **T6.4 Live validation** `[activity: validate]` — **the user's to run, not the
       implementation's.** Not skipped, not forgotten.
 
   1. **Prime**: `./scripts/update-tomo.sh --yolo` first — the bare form stalls without copying,
@@ -1029,8 +1029,24 @@ phase: 6
   4. **Validate**: record the outcome, the item count and the observed Kado call count in
      `docs/evolution/inbox-cost-log.md`, and compare the base count against the expected 2.
   5. **Success**:
-     - [ ] A note in a subfolder is triaged, filed, and its source marked — end to end in a
+     - [x] A note in a subfolder is triaged, filed, and its source marked — end to end in a
            real vault `[ref: PRD/Success Metrics]`
+
+  **Closed 2026-09-09.** Six runs on 2026-09-08 reached every guard; three defects they found
+  (T6.4a, T6.4b, T6.4c) were fixed, and a seventh run on 2026-09-09 re-validated the last of
+  them against the same approved suggestions document. Hashi then applied that instruction set:
+  **11 of 11 actions applied, 0 failed, 0 skipped.**
+
+  The success criterion is met three times over — `Notizen/Elbe.md`, `Reise/Elbe.md` and
+  `Bilder/Hafen.md` are all subfolder notes, all filed, all sources deleted. `Fotos/Kai.md`
+  stayed in the inbox with its move withheld, exactly as T5.4 promises, and nothing was left
+  behind that nobody would move.
+
+  Cost recorded in `docs/evolution/inbox-cost-log.md`: `base_kado_calls: 2` on all seven runs.
+
+  One defect found in the applied vault is **out of scope and not a regression**: the MOC
+  template delegates its opening `---` fence to a Templater include, which
+  `docs/template-syntax.md` (Rule 1) already forbids by name. Recorded in `close-out.md`.
 
 - [x] **T6.4a The fan document was never joined back to its own identity map**
       `[activity: backend]` — **Found by the T6.4 live run, 2026-09-08. Blocks T6.4's completion.**
@@ -1359,7 +1375,7 @@ phase: 6
   Assertions are taken at the vault write surface — the targets `upload-rendered.py` hands to
   Kado — not at an internal list. Suite 3768 → 3773, `ruff` clean, no golden re-recorded.
 
-- [ ] **T6.5 Phase Validation and close-out** `[activity: validate]`
+- [x] **T6.5 Phase Validation and close-out** `[activity: validate]`
 
   - Full suite green, `ruff` clean.
   - Walk the SDD Quality Requirements table and confirm each row has a passing measurement.

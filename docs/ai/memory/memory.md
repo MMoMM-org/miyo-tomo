@@ -17,6 +17,7 @@
 - archive/2026-06/ — resolved troubleshooting + context bug-fix entries (cleanup 2026-06-29); R11/R13 resolved + 2026-05 open blocks relocated (cleanup 2026-06-30)
 
 ## Critical Documentation
+- [Spec 034 close-out](../../XDD/specs/034-recursive-inbox-discovery/close-out.md) — the SDD quality table and all 40 PRD acceptance criteria mapped to named green tests or to the live run, plus the two live-coverage gaps recorded rather than hidden (audio namesake, per-item token cost).
 <!-- Add important docs here when created — Claude loads these on demand -->
 <!-- - [Architecture Overview](../architecture/overview.md) -->
 - [Inbox Change Detection & Pass Routing](../../XDD/reference/tier-2/workflows/inbox-change-detection.md) — how triage detects what changed (new/drift/coverage) + the determine_action routing tree + flag semantics (--pass2 vs --force). Mermaid flowchart + state diagram. (#74/#78)

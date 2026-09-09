@@ -74,7 +74,7 @@ def test_valid_full_routing_plan(schema):
                 {"path": "100 Inbox/moc.md", "cache_path": ".cache/moc.json"},
             ],
             "force_atomic_items": [
-                {"stem": "note", "source_path": "100 Inbox/note.md", "section_id": "s1"},
+                {"stem": "note", "item_key": "100 Inbox/note.md", "source_path": "100 Inbox/note.md", "section_id": "s1"},
             ],
             "pending_approval": [
                 {"path": "100 Inbox/pending.md", "doc_type": "suggestions", "message": "awaiting user"},
@@ -316,7 +316,7 @@ def test_force_atomic_items_valid_passes(schema):
             "timestamp": "2026-05-26T10:00:00Z",
             "inbox_path": "100 Inbox",
             "force_atomic_items": [
-                {"stem": "my-note", "source_path": "100 Inbox/my-note.md"},
+                {"stem": "my-note", "item_key": "100 Inbox/my-note.md", "source_path": "100 Inbox/my-note.md"},
             ],
         },
         schema=schema,

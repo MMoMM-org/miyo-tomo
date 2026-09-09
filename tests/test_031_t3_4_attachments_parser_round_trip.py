@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t3_4_attachments_parser_round_trip.py — attachments parser round trip.
 
 Covers T3.4 (spec 031 Phase 3): the four suggestion-parser.py sites that carry
@@ -18,6 +18,7 @@ Ref: PRD/AC-F3.3, AC-F3.4; SDD/Constraints CON-5
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import subprocess
@@ -210,14 +211,32 @@ def test_wire_path_no_attachments_yields_empty_list():
 # ---------------------------------------------------------------------------
 
 
+
+def _without_item_key(parsed: dict) -> dict:
+    """Drop `item_key` from BOTH sides for the shape-parity compare.
+
+    Both paths now carry the field — the markdown path joins it back from the
+    suggestions doc, which the rendered markdown itself cannot supply (spec
+    034). Their FALLBACKS still differ when no key is available: the wire falls
+    back to the display stem (`build_from_wire`: `w.get("item_key") or stem`)
+    while the markdown path leaves it None. These fixtures carry no section
+    `item_key`, so they exercise exactly that fallback gap. Everything else
+    about the two outputs must match exactly, which is what this file guards.
+    """
+    out = copy.deepcopy(parsed)
+    for item in out.get("confirmed_items", []):
+        item.pop("item_key", None)
+    return out
+
+
 def test_both_paths_produce_identical_confirmed_items():
     """Golden-test style: build_from_wire(unedited wire) == markdown parse,
     for an item that carries attachments (CON-5, asserted directly)."""
     doc = _doc(ATTACHMENTS)
     with tempfile.TemporaryDirectory() as td:
-        expected = _markdown_output(doc, Path(td))
+        expected = _without_item_key(_markdown_output(doc, Path(td)))
     wire = render.build_wire_payload(doc)
-    actual = parser.build_from_wire(wire, "")
+    actual = _without_item_key(parser.build_from_wire(wire, ""))
     assert actual == expected, (
         "JSON-only build_from_wire diverged from the markdown parse for an "
         "item carrying attachments.\n"

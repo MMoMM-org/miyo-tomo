@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t5_1_attachment_index.py — spec 031 T5.1 inbox attachment index
 and attachment extraction/resolution (ADR-1 + corrected ADR-2).
 
 Covers `build_attachment_index` (inbox-triage.py) and its wiring into
 `discover()`:
   - the recursive listDir is requested exactly once per run, independent of
-    note count (CON-4 / PRD business rule 9)
+    note count (CON-4 / PRD business rule 9) — since spec 034 ADR-3 that one
+    call is also the run's only inbox listing, shared with the partition
   - the recursive call targets the inbox path, not the vault root (PRD
     business rule 3 — only inbox paths can ever appear in the index)
-  - a KadoError on the recursive call degrades to an empty index and the run
-    continues (no exception escapes) — PRD business rule 10
+  - a KadoError on the listing aborts the run (spec 034 ADR-3 inverted PRD
+    business rule 10's fail-open — see the section comment below)
   - a subtree of 600+ entries is fully indexed, none dropped
-  - the existing depth=1 partition (`discover_files`, the #93 decision) is
-    untouched by adding the second, recursive call
+  - the `#93` partition decision (`discover_files`) is untouched by the
+    index sharing its listing
 
 ADR-2 correction: the original design deferred `listNotes(fields=["links"])`
 extraction in favour of a body-scanning regex, on the premise that "the
@@ -72,11 +73,11 @@ def _listdir_item(path: str, item_type: str = "file") -> dict:
 class _FakeClient:
     """Minimal fake covering every Kado method discover() may call.
 
-    depth1_items and recursive_items are independently configurable so tests
-    can distinguish the existing depth=1 partition call from the new
-    recursive call. recursive_error, when set, is raised ONLY on the
-    depth=None (recursive) call — the depth=1 call always succeeds, proving
-    a recursive-call failure cannot take the existing partition down with it.
+    depth1_items and recursive_items stay independently configurable, and
+    list_dir still honours `depth`, so a regression that re-introduces a
+    depth ceiling (spec 034 ADR-3 removed it) shows up as the wrong item set
+    rather than passing silently. recursive_error is raised on the
+    depth=None call — the run's only listing since ADR-3.
     """
 
     def __init__(
@@ -177,40 +178,48 @@ def test_recursive_call_targets_inbox_path_not_vault_root(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Fail open (PRD business rule 10)
+# Listing failure (was PRD business rule 10's fail-open; inverted by spec 034
+# ADR-3). While the index had a listing of its own, losing it cost only
+# attachment resolution and the partition carried on. That call is now the
+# run's ONLY inbox listing, so losing it leaves no partition either — and
+# degrading to "no files" would report an empty inbox instead of an outage.
+# It is therefore fatal, exactly as the partition's own listing always was.
 # ---------------------------------------------------------------------------
 
-def test_kado_error_on_recursive_call_yields_empty_index(tmp_path):
+def test_kado_error_on_the_listing_aborts_the_run(tmp_path):
+    import pytest
+
     from lib.kado_client import KadoError
 
     mod = _load_module()
     client = _FakeClient(
         depth1_items=[_listdir_item(INBOX_PATH + "note.md")],
-        recursive_error=KadoError("recursive listDir unavailable"),
+        recursive_error=KadoError("listDir unavailable"),
     )
 
-    state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
+    with pytest.raises(KadoError):
+        mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
 
-    assert state.attachment_index == {}
 
+def test_kado_error_on_the_listing_exits_1_rather_than_reporting_an_empty_inbox(tmp_path):
+    """The failure must reach the operator as an error, never as a run that
+    quietly found nothing to triage — main() turns the KadoError into exit 1."""
+    import pytest
 
-def test_kado_error_on_recursive_call_does_not_abort_the_run(tmp_path):
-    """The run continues past the failure — no exception escapes, and the
-    depth=1 partition (which happens first) is completely unaffected."""
     from lib.kado_client import KadoError
 
     mod = _load_module()
     client = _FakeClient(
         depth1_items=[_listdir_item(INBOX_PATH + "note.md")],
-        recursive_error=KadoError("recursive listDir unavailable"),
+        recursive_error=KadoError("listDir unavailable"),
     )
 
-    state = mod.discover(client, INBOX_PATH, output_dir=str(tmp_path))
-
-    # No exception escaped discover() (implicit — reaching this line proves
-    # it), AND the run produced normal, non-degraded triage output.
-    assert [f["path"] for f in state.md_files] == [INBOX_PATH + "note.md"]
-    assert state.attachment_index == {}
+    with pytest.raises(SystemExit) as excinfo:
+        mod.main(
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            client_factory=lambda: client,
+        )
+    assert excinfo.value.code == 1
 
 
 # ---------------------------------------------------------------------------
@@ -272,13 +281,13 @@ def test_large_subtree_is_fully_indexed(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# #93 partition regression guard — the existing depth=1 call is untouched
+# #93 partition regression guard — the partition decision is untouched
 # ---------------------------------------------------------------------------
 
-def test_93_partition_unchanged_by_the_new_recursive_call(tmp_path):
+def test_93_partition_unchanged_by_the_shared_recursive_listing(tmp_path):
     """A .png at the inbox root is still not partitioned as an item (#93),
-    even though the SAME recursive call now also sees it and indexes it as
-    an attachment candidate — two independent concerns over the same file."""
+    even though the SAME recursive listing also indexes it as an attachment
+    candidate — two independent readings of one listing."""
     mod = _load_module()
     items = [
         _listdir_item(INBOX_PATH + "note.md"),
@@ -581,15 +590,16 @@ def test_fresh_sources_do_not_carry_attachment_fields(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T5.4 headline assertion: the constant-cost claim in its final form, all
-# three attachment-related calls together (CON-4).
+# T5.4 headline assertion: the constant-cost claim in its final form, both
+# attachment-related calls together (CON-4).
 # ---------------------------------------------------------------------------
 
-def test_constant_cost_claim_1_note_and_20_notes_issue_the_same_three_calls(tmp_path):
+def test_constant_cost_claim_1_note_and_20_notes_issue_the_same_two_calls(tmp_path):
     """1 note and 20 notes issue the SAME number of attachment-related Kado
-    calls: the depth=1 partition listDir, the recursive attachment-index
-    listDir, and the listNotes(fields=["links"]) extraction call — three
-    total, regardless of note count."""
+    calls: the one recursive listDir shared by the partition and the index
+    (spec 034 ADR-3 collapsed the two into one), and the
+    listNotes(fields=["links"]) extraction call — two total, regardless of
+    note count."""
     mod = _load_module()
 
     def _run(n_notes: int, out: Path) -> tuple[int, int, int]:
@@ -603,6 +613,6 @@ def test_constant_cost_claim_1_note_and_20_notes_issue_the_same_three_calls(tmp_
     one_note = _run(1, tmp_path / "one")
     twenty_notes = _run(20, tmp_path / "twenty")
 
-    assert one_note == (2, 1, 3)
-    assert twenty_notes == (2, 1, 3)
+    assert one_note == (1, 1, 2)
+    assert twenty_notes == (1, 1, 2)
     assert one_note == twenty_notes

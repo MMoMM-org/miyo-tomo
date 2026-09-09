@@ -108,15 +108,23 @@ def test_keeps_item_without_source_path():
     assert [i["id"] for i in kept] == ["moc"]
 
 
-def test_fail_open_on_transient_error():
-    """A non-not-found Kado error must NOT drop the item (never drop on a
-    transient error — same policy as filter_missing_daily_notes)."""
+def test_unverifiable_source_is_not_rendered():
+    """A Kado error is not a verdict, and an item Tomo could not check must not
+    be rendered (spec 034 T5.0 — reversed from the original fail-open).
+
+    Fail-open kept the item, which then read an empty body and fabricated
+    exactly the stub this guard exists to prevent — the guard failed in both
+    directions. Not rendering leaves the source note untouched in the inbox, so
+    the next run proposes it again; a fabricated stub is not recoverable that
+    way. The drop is reported as unverifiable, never as a deleted note.
+    """
     confirmed = [_atomic("item", "Whatever")]
     client = MagicMock()
     client.note_exists.side_effect = KadoError("transport blew up")
     kept, dropped = filter_missing_source_notes(confirmed, client, INBOX)
-    assert dropped == []
-    assert [i["id"] for i in kept] == ["item"]
+    assert kept == []
+    assert [d["id"] for d in dropped] == ["item"]
+    assert "not found" not in dropped[0]["reason"].lower()
 
 
 def test_fail_open_when_client_none():

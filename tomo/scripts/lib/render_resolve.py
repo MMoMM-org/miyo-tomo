@@ -1,4 +1,4 @@
-# version: 0.2.0
+# version: 0.5.0
 """render_resolve.py — post-build resolution + filtering passes for the action list.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). These passes
@@ -14,7 +14,7 @@ import re
 import sys
 
 import lib.moc_structure as moc_structure
-from lib.render_helpers import _moc_stem, _stem
+from lib.render_helpers import _moc_stem, _stem, resolve_source_path
 from lib.render_io import read_template
 
 # Editable-callout name regex: captures the callout keyword from a callout header
@@ -210,12 +210,16 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
 
     # Index in-set create_moc actions by destination so the template-body
     # fallback can find the template a not-yet-existing MOC will be built from.
+    # Keyed case-folded (CON-6, spec 034 T6.0) — the paired consumer of
+    # `_build_create_moc_actions`' `by_dest`, which folds for the same reason.
+    # Folding one without the other lets a link_to_moc miss the create_moc that
+    # will actually land at its target and lose its anchor.
     create_moc_by_dest: dict[str, dict] = {}
     for a in actions:
         if a.get("action") == "create_moc":
             dest = a.get("destination")
             if dest:
-                create_moc_by_dest[dest] = a
+                create_moc_by_dest[dest.casefold()] = a
 
     resolved = 0
     for a in actions:
@@ -235,7 +239,7 @@ def resolve_section_names(actions: list[dict], client, editable_callouts: list[s
         if res is None:
             # Template-body fallback: in-set create_moc landing at this path
             # (the live MOC doesn't exist yet, so resolve against its template).
-            create = create_moc_by_dest.get(path)
+            create = create_moc_by_dest.get(path.casefold())
             if create:
                 template = create.get("template")
                 if template:
@@ -350,7 +354,10 @@ def _merge_new_section_links(actions: list[dict]) -> int:
     accumulates every member's bullet (emission order preserved); the rest are
     removed in place. Only groups with a truthy new_section are merged —
     anchor-based inserts (no new_section) are left untouched. A merged section
-    spans multiple source notes, so source_note_title is cleared on the survivor.
+    spans multiple source notes, so BOTH identity fields are cleared on the
+    survivor — leaving source_note_stem behind would keep a live join key on a
+    bullet that belongs to nobody, and the withholding passes would withdraw a
+    shared bullet on one member's account (spec 034 T6.4b).
 
     Returns the count of actions removed.
     """
@@ -372,6 +379,7 @@ def _merge_new_section_links(actions: list[dict]) -> int:
         if bullet and bullet not in head_line.split("\n"):
             head["line_to_add"] = f"{head_line}\n{bullet}" if head_line else bullet
         head["source_note_title"] = None
+        head["source_note_stem"] = None
         drop.add(idx)
     if drop:
         actions[:] = [a for i, a in enumerate(actions) if i not in drop]
@@ -461,11 +469,19 @@ def _strip_internal_link_fields(actions: list[dict]) -> int:
             continue
         if kind != "link_to_moc":
             continue
+        # unresolved_moc (spec 034 T6.0d) is the same kind of guard from the
+        # other direction: filter_unresolvable_moc_links removes every action
+        # carrying it before this runs, so a survivor here means that filter
+        # was moved or removed — and the field must still not reach the wire.
         # alt_headings is a defense-in-depth guard: it does not reach the
         # action level today, but the Hashi anchor schema is
         # additionalProperties:false {type,value}, so if a future change ever
         # lifts alt_headings to the action level it must not reach the wire.
-        for field in ("new_section", "fit_confidence", "alt_headings"):
+        # source_note_stem (spec 034 T6.4b) is the vault key the withholding
+        # passes join on; source_note_title beside it is the display text and
+        # DOES belong on the wire. Only the stem is stripped.
+        for field in ("new_section", "fit_confidence", "alt_headings",
+                      "source_note_stem", UNRESOLVED_MOC_FIELD):
             if field in a:
                 del a[field]
                 stripped += 1
@@ -515,6 +531,22 @@ def _serialize_new_sections(actions: list[dict]) -> int:
     return mutated
 
 
+# Why a link_to_moc's `target_moc_path` stayed null (spec 034 T6.0d). Recorded
+# at the point the answer is known and never reconstructed from the null: only
+# MOC_ABSENT means the MOC does not exist. The other two mean nothing was
+# learned about it this run, which is a different sentence to the user and a
+# different outcome in the coverage audit.
+MOC_ABSENT = "absent"              # Kado answered; no note by that name
+MOC_UNCHECKED = "unchecked"        # no Kado client — nothing was asked
+MOC_PROBE_FAILED = "probe-failed"  # the Kado call raised
+
+# Tomo-internal marker carrying one of the three causes above. Stripped by
+# filter_unresolvable_moc_links (every action carrying it is withheld) and
+# again by _strip_internal_link_fields as defence in depth — Hashi's
+# link_to_moc schema is additionalProperties:false.
+UNRESOLVED_MOC_FIELD = "unresolved_moc"
+
+
 def resolve_target_moc_paths(actions: list[dict], client) -> int:
     """Best-effort: resolve `target_moc_path` on link_to_moc actions.
 
@@ -526,10 +558,24 @@ def resolve_target_moc_paths(actions: list[dict], client) -> int:
       2. Kado `search_by_name` — for MOCs that already exist in the vault.
 
     Actions that can't be resolved by either route keep their
-    `target_moc_path: null`. Returns the number of resolutions populated.
+    `target_moc_path: null` and are stamped with `UNRESOLVED_MOC_FIELD`
+    carrying WHY, for `filter_unresolvable_moc_links` to act on. The cause is
+    recorded here because here is the only place it is known: a bare null
+    downstream cannot tell "Kado said no" from "Kado was never asked", and
+    treating those alike tells an offline run's user that every MOC in their
+    vault has vanished.
+
+    Returns the number of resolutions populated.
     """
     # Tier 1 — index create_moc actions by stem of their title so we can
     # resolve links that target a new MOC in the same instruction set.
+    # Keyed by the EXACT stem, deliberately (spec 034 T6.0). This is a second
+    # paired consumer of `_build_create_moc_actions`' `by_dest` and folding it
+    # was tried and reverted: two create_moc surviving that fold in DIFFERENT
+    # folders collide on one folded key, and last-write-wins then redirects one
+    # MOC's bullets to the other's destination. Redirecting an action is a
+    # behaviour change, not an addressing fix. The cost of leaving it exact is
+    # recorded in docs/tomo/scripts/lib/render_actions.md.
     in_set: dict[str, str] = {}
     for a in actions:
         if a.get("action") == "create_moc":
@@ -538,32 +584,38 @@ def resolve_target_moc_paths(actions: list[dict], client) -> int:
             if title and dest:
                 in_set[_moc_stem(title)] = dest
 
-    cache: dict[str, str | None] = {}
-    def _resolve(stem: str) -> str | None:
+    # (path, cause) per unique stem. The cause is cached alongside the path so
+    # a repeated target reports the same reason as its first lookup rather
+    # than a reconstructed one.
+    cache: dict[str, tuple[str | None, str | None]] = {}
+
+    def _resolve(stem: str) -> tuple[str | None, str | None]:
         if stem in cache:
             return cache[stem]
         # Tier 1: in-set create_moc lookup (no Kado call, no I/O)
         if stem in in_set:
-            cache[stem] = in_set[stem]
-            return in_set[stem]
+            cache[stem] = (in_set[stem], None)
+            return cache[stem]
         # Tier 2: Kado byName search, cached per unique stem
         if client is None:
-            cache[stem] = None
-            return None
+            cache[stem] = (None, MOC_UNCHECKED)
+            return cache[stem]
         try:
             hits = client.search_by_name(stem)
         except Exception:  # noqa: BLE001
-            cache[stem] = None
-            return None
+            cache[stem] = (None, MOC_PROBE_FAILED)
+            return cache[stem]
         if not hits:
-            cache[stem] = None
-            return None
+            cache[stem] = (None, MOC_ABSENT)
+            return cache[stem]
         # Prefer a hit whose filename stem matches exactly (not a substring).
         exact = [h for h in hits if _stem(h.get("path", "")) == stem]
         chosen = (exact or hits)[0]
         path = chosen.get("path") or None
-        cache[stem] = path
-        return path
+        # A hit with no usable path is Kado answering without saying where —
+        # not a confirmed absence.
+        cache[stem] = (path, None if path else MOC_PROBE_FAILED)
+        return cache[stem]
 
     resolved = 0
     for a in actions:
@@ -572,11 +624,69 @@ def resolve_target_moc_paths(actions: list[dict], client) -> int:
         target = a.get("target_moc")
         if not target:
             continue
-        path = _resolve(_moc_stem(target))
+        path, cause = _resolve(_moc_stem(target))
         if path:
             a["target_moc_path"] = path
+            # Idempotency: a second call over the same list must not leave a
+            # stale cause behind on an action that now resolves.
+            a.pop(UNRESOLVED_MOC_FIELD, None)
             resolved += 1
+        elif cause:
+            a[UNRESOLVED_MOC_FIELD] = cause
     return resolved
+
+
+def filter_unresolvable_moc_links(
+    actions: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Drop link_to_moc actions whose target MOC the run could not confirm.
+
+    A null `target_moc_path` is a legal schema value, so such an action used to
+    pass validation, the dryrun and the coverage audit and reach the user as an
+    ordinary `- [ ] Applied` checkbox telling them to open a MOC that will
+    never exist. Under CON-2 the user approves on what this document says, so
+    the action is withheld and reported instead.
+
+    Pure function over the marker `resolve_target_moc_paths` stamped — the same
+    shape as `filter_unappliable_relationships` over `add_relationship.error`,
+    and for the same reason: the cause is known at emission and nowhere else.
+
+    `add_relationship` never needed this because its null is rejected by
+    Hashi's wire schema outright; `link_to_moc` escapes that only because its
+    `target_moc_path` is typed `["string","null"]` and not required. One kind
+    was defended, its sibling was not.
+
+    Returns (kept, skipped). Non-link_to_moc actions are always kept. The
+    marker is left on the skipped actions — the caller projects it into the
+    report — and never survives on a kept one.
+    """
+    kept: list[dict] = []
+    skipped: list[dict] = []
+    for a in actions:
+        if a.get("action") == "link_to_moc" and a.get(UNRESOLVED_MOC_FIELD):
+            skipped.append(a)
+        else:
+            kept.append(a)
+    return kept, skipped
+
+
+def unresolvable_link_reports(skipped: list[dict]) -> list[dict]:
+    """Project withheld link_to_moc actions to metadata-only report records.
+
+    Constitution L2: ids, the MOC stem, the source note's title and the cause
+    discriminator — never note content or the bullet text. `cause` is the
+    stable discriminator renderers and the audit branch on; the prose that
+    explains it belongs to whoever renders it.
+    """
+    return [
+        {
+            "id": a.get("id"),
+            "target_moc": a.get("target_moc"),
+            "source_note_title": a.get("source_note_title"),
+            "cause": a.get(UNRESOLVED_MOC_FIELD),
+        }
+        for a in skipped
+    ]
 
 
 # Daily-note-targeting actions modify (never create) their daily note.
@@ -648,22 +758,40 @@ def filter_missing_source_notes(
     without a `source_path` (synthesized MOC proposals) are always kept — this
     filter targets note-fabrication only.
 
-    Returns (kept, dropped). Fail-open: if `client` is None or a Kado read fails
-    for any reason other than a definitive not-found, the item is kept — never
-    drop on a transient error.
+    The item is addressed by `item_key` — its vault-relative path, verbatim
+    (spec 034 ADR-1). Only when no key is present does it fall back to the
+    inbox-root reconstruction, which is correct for a document produced before
+    recursive discovery and a guess for anything after it.
+
+    Three outcomes, not two. A Kado failure used to be treated as "exists",
+    which KEPT the item — it then read an empty body downstream and fabricated
+    exactly the stub #116 exists to prevent. An unverifiable source is
+    therefore no longer rendered either; the source note stays untouched in the
+    inbox and is re-proposed on the next run, which is recoverable, whereas a
+    fabricated stub is not. `client is None` is a different case — no check was
+    requested at all — and still keeps everything.
+
+    Returns (kept_items, drop_reports). A drop report is metadata only
+    (Constitution L2): `id`, `title`, `source_path`, `item_key`, the
+    `probed_path` actually asked about, and a `reason`. It carries no note
+    content, and it is a report — not the item — because the caller's job with
+    it is to tell the user what happened, not to re-render it.
     """
     if client is None:
         return confirmed, []
-    exists_cache: dict[str, bool] = {}
+    exists_cache: dict[str, bool | None] = {}
 
-    def _exists(path: str) -> bool:
+    def _exists(path: str) -> bool | None:
+        """True/False on a definitive answer, None when Kado could not say."""
         if path in exists_cache:
             return exists_cache[path]
-        ok = True  # fail-open default
         try:
-            ok = client.note_exists(path)
-        except Exception:  # noqa: BLE001 — transient/other error: keep the item
-            ok = True
+            # bool(), not the raw return: the tri-state distinguishes "the
+            # client answered" from "the client could not", so a truthy answer
+            # from a duck-typed client must read as a yes, not as a non-answer.
+            ok: bool | None = bool(client.note_exists(path))
+        except Exception:  # noqa: BLE001 — transport/validation: not a verdict
+            ok = None
         exists_cache[path] = ok
         return ok
 
@@ -672,13 +800,27 @@ def filter_missing_source_notes(
     for item in confirmed:
         source_path = item.get("source_path", "")
         if item.get("template") and source_path:
-            full_path = source_path
-            if "/" not in full_path:
-                full_path = f"{inbox_path.rstrip('/')}/{full_path}"
+            item_key = item.get("item_key")
+            full_path = resolve_source_path(item_key, source_path, inbox_path)
             if not full_path.endswith(".md"):
                 full_path += ".md"
-            if not _exists(full_path):
-                dropped.append(item)
+            verdict = _exists(full_path)
+            if verdict is not True:
+                dropped.append({
+                    "id": item.get("id"),
+                    "title": item.get("title"),
+                    "source_path": source_path,
+                    "item_key": item_key or "",
+                    "probed_path": full_path,
+                    # `kind` is the stable discriminator renderers branch on;
+                    # `reason` is prose for a human and must never be parsed.
+                    "kind": "not-found" if verdict is False else "unverifiable",
+                    "reason": (
+                        "no note at this path"
+                        if verdict is False
+                        else "Kado could not confirm this path"
+                    ),
+                })
                 continue
         kept.append(item)
     return kept, dropped

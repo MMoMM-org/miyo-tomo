@@ -307,3 +307,514 @@ rather than raising. That is why the test asserts the key is *present and
 empty* for an item with no attachments, not merely that the populated cases
 work — an absent key would otherwise pass every positive assertion by
 accident.
+
+## One derivation function replaces `_stem_of` (spec 034 T2.6, v0.27.0)
+
+WHY `_stem_of` had to go: it lowercased and stripped every `source_path` /
+`source_stem` down to a bare filename before using it as a join key —
+`sections_by_stem`, `already_in`, `seen_pending`, the `force_atomic_stems`
+match in the daily-log loop, and the final MOC-member → confirmed-id binding
+all keyed on that bare, lowercased stem. Two notes with the same filename in
+different subfolders collapsed to one key at every one of those sites: one
+namesake's Force Atomic tick could silently sweep in or suppress the other,
+and a proposed MOC's member binding could resolve to whichever namesake
+happened to iterate last. Recursive inbox discovery (spec 034) makes that
+collision reachable for the first time — a flat inbox can't have two notes
+share a name.
+
+WHY one module-level function, not a `main()`-local closure: `_stem_of` lived
+inside `main()` purely as an implementation convenience — it has no closure
+state. Hoisting `_item_key_of` to module scope makes both call sites
+(the daily-log `source_stem` path and the primary/resolve-doc `source_path`
+path) provably the same callable, which is the exact invariant #165's fix
+depends on (see the section above): if the two paths ever compute identity
+differently again, #165's livelock returns in a form the original,
+flat-fixture regression test cannot see. `tests/test_034_t2_6_parser_single_
+derivation.py` re-proves #165 against a subfolder source for this reason.
+
+WHY the value is now the path verbatim, not a re-derived stem: ADR-1 (spec
+034) defines the item key as the vault-relative path, unmodified — no slug,
+no hash, no lowercasing. `_item_key_of` just guards `None`/empty and
+delegates to `lib.item_key.derive`. A visible side effect: `pending_
+fan_resolutions[].stem` and similar internal fields now carry the source's
+original casing instead of a lowercased stem — existing tests asserting a
+lowercased literal there were updated to match (they were pinning `_stem_of`'s
+incidental lowercasing, not a documented contract).
+
+WHY `_stem_lower` is gone (T2.3b): it was a byte-similar duplicate a few
+hundred lines above, serving `build_from_wire`'s ADR-026 JSON-only path,
+which joined on `w.get("stem")` — the wire's deliberately-bare display stem
+(CON-4). T2.6 had to leave it: collapsing it into `_item_key_of` needed the
+wire to carry `item_key` first. T2.3b added that projection
+(`suggestions-render._wire_note`), so `build_from_wire` now resolves
+`member_ids` through `id_to_item_key` and binds them via `_item_key_of`.
+With its last three call sites re-keyed, `_stem_lower` had no caller left and
+was deleted rather than kept as a second, divergent derivation — the exact
+duplication #165 punished.
+
+WHY `confirmed_items` gained a dedicated `item_key` field instead of
+`source_path` being overwritten with the path: `source_path` is display text
+(ADR-2) and feeds `render_actions`, which emits `source_stem`/`target_stem`
+to Hashi. CON-4 fixes those as bare filenames; overwriting `source_path`
+would push a path at that emission boundary and break a cross-repo contract.
+A separate field lets identity and display coexist —
+`instructions-diff.derive_expected` prefers `item_key` and falls back to
+`source_path`, so the markdown path (which mints no `item_key`) is unaffected.
+
+## Daily-Entry Identity Is Recovered From the Doc, Never Carried in the Wire (spec 034 T5.0)
+
+WHY `enrich_daily_updates_with_item_keys` exists, and why it runs on BOTH
+parser paths rather than the key simply riding in the wire:
+
+A daily-only item — one whose content is fully captured in a daily note —
+produces no per-item section, so the rendered document shows it only as a
+daily-note entry with a bare display stem. Pass 2 nonetheless emits a
+`delete_source` for it, so its identity has to survive the round trip through
+markdown or that delete names a path composed from the inbox root.
+
+The obvious fix — put `source_item_key` in the wire — is not available. The
+wire's daily entries are `additionalProperties: false` and the wire is the
+Hashi Suggestions Editor's contract, so widening it is a coordinated cross-repo
+change (MiYo Constitution: cross-component interface changes are recorded in
+Kokoro first). The key is therefore recovered from `suggestions-doc.json`,
+which is Tomo-owned, on both paths: `main()` does it after
+`parse_daily_updates`, and `_restore_daily_item_keys` does it after
+`build_from_wire`. One mechanism, no wire change.
+
+The join is on daily-note stem + bucket + the entry's own discriminating field
+(tracker name / log content / link target), not on position: a user who deletes
+a line from the document would shift every subsequent entry, and a positional
+join would then silently rebind keys to the wrong notes. A discriminator that
+maps to more than one distinct key is left UNSET rather than guessed — an
+absent key falls back to the reconstruction, which may be wrong; a guessed key
+names a specific wrong note, which is worse.
+
+## `item_key` on `skipped_items` (spec 034 T5.0)
+
+WHY the wire path's `skipped_items` gained `item_key` alongside `source_path`:
+Pass 2 emits both a `skip` action and, for the "Delete source" disposition, a
+`delete_source` for these items. Both addressed the note by display stem, so a
+user ticking "Delete source" on a subfolder note asked to delete the inbox
+root. `source_path` stays the display stem (ADR-2); `item_key` is the identity
+(ADR-1). The markdown path mints no key here for the same reason it mints none
+on confirmed items — the document carries no path (T5.1).
+
+## The Markdown Path Recovers Identity From the Doc, Not the Markdown (spec 034)
+
+WHY `item_keys_by_section_id` / `bind_section_item_key` exist, and why they are
+not what T5.1 does:
+
+The markdown path — `main()`, what `synthesis-conductor.md:105` invokes in the
+normal flow — minted no `item_key`, so every subfolder note carrying a template
+was dropped by the Pass-2 `#116` guard before it could be rendered. The premise
+recorded for that gap was that the rendered document carries only a bare
+display stem and a path cannot be recovered from one.
+
+That premise is true of the markdown FILE and false of the markdown PATH. The
+same invocation passes `--suggestions-doc tomo-tmp/suggestions-doc.json`, and
+that document carries `sections[].item_key` keyed by the very id the heading
+shows:
+
+    markdown:  ### S01 — Bohnen aus Äthiopien      **Source:** [[Bohnen]]
+    doc:       {"id": "S01", "stem": "Bohnen",
+                "item_key": "100 Inbox/Places/Bohnen.md"}
+
+So the key is joined back on the section id. Nothing about the rendered
+document changes, and ADR-2 still holds — `source_path` stays the display stem,
+which is what the note title is derived from.
+
+**T5.1 would not have closed this.** T5.1 path-qualifies source links only for
+same-filename GROUPS. A subfolder note with a globally unique filename keeps
+its bare `[[Bohnen]]` link, so after T5.1 as specified it would still have had
+no path to recover. The two tasks are independent: this one is identity, T5.1
+is display — the user still cannot tell two `[[Dresden]]` links apart.
+
+Three properties the join has to hold:
+
+- **Both id spaces are registered.** F-41 gives a multi-atomic source several
+  headings from one section, and the heading shows the flat `suggestion_id`,
+  not the section id. Every atomic of one source shares that source's key, so
+  the two id spaces cannot disagree.
+- **The stem is cross-checked before binding.** The user owns this document and
+  may retype the Source line. An id match alone is not evidence; on a mismatch
+  the key is left unset and the item falls back to the reconstruction. A wrong
+  key names a specific wrong note, which is worse than a fallback that finds
+  nothing. Compared on the basename, so a path-qualified link (T5.1) still
+  binds.
+- **No doc means no key.** `synthesis-conductor.md:117` runs the parser bare,
+  and `_load_json_doc` returns `{}` for anything it cannot read, so the lookup
+  is empty and every item behaves exactly as it did before this existed. Note
+  that `_default_doc_path` prefers a `suggestions-doc.json` SIBLING of the
+  markdown before the cwd-relative fallback, and the pipeline writes the two
+  side by side — so the bare invocation usually still finds the doc. Omitting
+  the flag is therefore not enough to exercise the no-doc path in a test; the
+  markdown has to live somewhere the doc does not.
+
+One asymmetry deliberately left in place: `build_from_wire` falls back to
+`w.get("item_key") or stem`, putting a display stem in an identity field when
+the wire carries no key, while the markdown path leaves it None. Real documents
+always carry the key (the doc schema requires it with `minLength: 1`), so the
+two agree in practice; `tests/test_suggestions_wire_golden.py` strips the field
+from both sides for its parity compare and says why.
+
+## A Source Link's DISPLAY Text Is Parsed, Not Its Target (spec 034 T5.1)
+
+WHY `_wikilink_display` exists beside `_extract_wikilink`, and why the two
+Source-line sites use it: T5.1 path-qualifies a source link when two items in a
+run share a filename, so the renderer now emits
+`**Source:** [[100 Inbox/Places/Dresden|Dresden]]`. `RE_WIKILINK` captures the
+TARGET and drops the alias, which would have put `100 Inbox/Places/Dresden`
+into `source_path` and into a log entry's `source_stem`.
+
+WHY that is wrong even though the value would have been more precise:
+
+- `build_from_wire` records the bare `stem` in the same field, with the comment
+  that identity lives in `item_key` and this field is display. Taking the
+  target on the markdown path makes the two parser paths disagree exactly when
+  a collision occurs — the one case they exist to handle — while
+  `tests/test_suggestions_wire_golden.py` proves parity on a fixture that has
+  no collision and so cannot see it.
+- `test_034_t2_8_end_to_end_key_trace.py` asserts no confirmed item's
+  `source_path` contains a `/`. That is ADR-2 applied to the parsed output, and
+  it was written knowing T5.1 was coming.
+- Identity was already solved: `main()` mints `item_key` by joining the
+  suggestions doc on the suggestion id. A path in the display field buys
+  nothing and costs the invariant.
+
+The Force-Atomic join (`_item_key_of(source_path)` against
+`_item_key_of(source_stem)`) keys both sides through the same display value, so
+it continues to match. It also continues to collapse two namesakes onto one
+join key — unchanged by this task, which is display-only, and noted here so it
+is not mistaken for something T5.1 introduced.
+
+An unaliased link is returned verbatim, so every pre-T5.1 document parses
+exactly as it did. The site that genuinely wants the path — Force-Atomic
+resolution in `inbox-triage.py` — reads the raw link and hands it to
+`narrow_candidates`, which strips the alias itself and narrows on the path.
+That site is unchanged and was already written for the qualified form.
+
+### The `build_from_wire` Fallback: Reviewed Under T5.1, Deliberately Kept
+
+T5.1 was asked to decide whether to make both paths agree on `None` rather than
+inherit the asymmetry recorded above. The decision is to keep it, for reasons
+that are about where the defect actually lives, not about effort:
+
+- **The parser is not its origin.** `suggestions-render.py` writes
+  `"item_key": section.get("item_key") or section["stem"]` into the wire, for
+  "a section minted before item_key became required". So a stem reaches the
+  `item_key` field one hop upstream. Returning `None` in `build_from_wire`
+  would not remove the violation; it would only move where it becomes visible.
+- **`None` and absent are not the same shape.** The markdown path omits the
+  field; the wire path would set it to `None`. The golden parity test strips it
+  from both sides either way, so the change buys no new assertion.
+- **It flips an invariant every Pass-2 consumer relies on.** `item_key` is
+  currently always truthy on `confirmed_items[]`, which is what T5.0's
+  key-addressed Pass 2 was built against. Making it sometimes falsy inside a
+  display task — with no test able to reach the branch through the real
+  emitter, because the doc schema requires the key with `minLength: 1` — is how
+  a silent regression gets in.
+
+What this needs is a back-compat decision about pre-034 wires, taken where the
+fallback is minted, with the Pass-2 consumers swept. That is a task; it is not
+a rename in the parser.
+
+## `_merge_proposed_mocs_by_name` Folds Its Key (spec 034 T6.0c)
+
+WHY the by-Name merge compares case-folded: under CON-6 this filesystem is
+case-insensitive, so `Travel (MOC)` and `travel (MOC)` are one file. The
+2026-06-17 decision that shapes this function — merge on Name only, first
+occurrence's parent kept — was written for exact same-name proposals, and left
+a case-only pair intact. T6.0 then folded the downstream destination keys
+(`_build_create_moc_actions`' `by_dest` and its paired consumer
+`resolve_section_names`' `create_moc_by_dest`), so from that point the builder
+emitted ONE `create_moc` for a pair the parser still confirmed as two.
+
+WHY that mattered enough to be its own task: `derive_expected`
+(`instructions-diff.py`) counts one expected `create_moc` per confirmed item and
+does no destination comparison, so it expected two where one was emitted. The
+audit printed `create_moc expected=2 actual=1 [DIFF]` plus a `[MISSING]`
+per-item row, both of which set `hard_fail`, and `synthesis-conductor.md`
+step 3e is STRICT: stop and report the diff verbatim. The user read that as Tomo
+drifting from its own instruction set and could not finish the run without
+renaming a proposal. Before T6.0 the same input completed and dropped the merged
+proposal's children on apply — a change in failure mode, not new data loss, but
+one that had to be closed either way.
+
+WHY upstream rather than a subtraction in the audit: folding here removes the
+case-only pair before any consumer sees it. `by_dest`'s fold then becomes the
+defence-in-depth its own comment already claims to be, and `derive_expected`
+counts what is actually emitted without needing a destination comparison of its
+own. The alternative — teaching `instructions-diff` to subtract the builder's
+merges, mirroring `_subtract_skipped_assets` — would have needed the builder to
+report its merges on the wire, owing the usual triad (strip-before-wire, paired
+consumer count, schema test) for a divergence that did not have to exist.
+
+WHY `casefold()` and not `.lower()`: `ß` folds to `ss` under `casefold()` and is
+left alone by `.lower()`. These are German notes, so `Straße (MOC)` and
+`STRASSE (MOC)` are one destination on this filesystem. Same form as T5.2's
+`resolve_destination_clashes` and T5.3's `validate_destinations`
+`[ref: SDD/CON-6, ADR-4]`.
+
+The key folds; nothing folded is written back. The survivor keeps the spelling
+its author wrote in `title`, `destination` and `topic`, so the user always reads
+back the name they typed.
+
+### Idempotent Across the Markdown Path's Double Merge
+
+WHY the tests cover the same fold three times: there are three call sites and
+the two parser paths do not match. The wire path merges **once**
+(`build_from_wire`, after building `wire_mocs`). The markdown path merges
+**twice** — per-document inside `parse_proposed_mocs`, then again over
+`primary_pmocs + fan_pmocs`. A case-only pair inside one document is collapsed
+by the first merge; a third spelling arriving from the fan doc is only visible
+to the second. The fold has to hold across both, and the covered path is the one
+`derive_expected` consumes: `confirmed_items` from
+`tomo-tmp/parsed-suggestions.json`, post-merge. This spec has already been
+bitten by the two paths diverging (T5.1), so neither is assumed from the other.
+
+### What the Fold Does NOT Recover: the Losing Spelling's Up-Bullet
+
+WHY this is recorded rather than fixed: T6.0's implementer claimed the upstream
+fold would also close the `in_set` bullet loss. Traced at HEAD under T6.0c, it
+does not. `resolve_target_moc_paths`' `in_set` is keyed by the EXACT
+`_moc_stem(title)` and stays that way by measurement — `b9d34e1` folded it, saw
+two `create_moc` in *different* folders collide on one key and last-write-wins
+redirect one MOC's bullets into the other's destination, and reverted. So the
+merge survivor is indexed under its own spelling only, and a `link_to_moc`
+minted from a note whose author wrote the parent as the losing spelling misses
+that key. Tier 2 (Kado `search_by_name`) cannot help either: the MOC does not
+exist in the vault yet. The action keeps `target_moc_path: null`.
+
+Pinned hard-coded in `tests/test_034_t6_0c_merge_proposed_mocs_case_folded.py`
+so the finding is recorded as an assertion rather than an assumption. Closing it
+needs the `in_set` collision handled — a different-folder disambiguation, not a
+fold — and that is not this task.
+
+WHAT the null actually costs, traced rather than assumed: the action is **not**
+dropped. `filter_unappliable_relationships` only inspects `add_relationship`
+actions carrying an `error` key and never looks at `link_to_moc`. Instead:
+
+- `lib/render_md.py` renders it as a normal instruction —
+  `### Add link to [[<losing spelling>]] — <note>` with `- [ ] Applied` and
+  `- **Target:** [[<losing spelling>]]`. Only the `- **Path:**` row is
+  suppressed (it is emitted `if action.get("target_moc_path")`), and the anchor
+  falls to its unresolved branch, which tells the user to **open the MOC** and
+  find its first editable callout — in a MOC that will never exist.
+- It validates clean. `$defs/link_to_moc` requires
+  `[id, action, target_moc, anchor, placement, line_to_add]`;
+  `target_moc_path` is nullable and NOT required. `$defs/add_relationship`
+  **does** require it — that asymmetry is why one kind has a
+  `filter_unappliable_relationships` guard and the other has none.
+- Every gate passes it: `instructions-dryrun.py` omits the field from
+  `REQUIRED_FIELDS_BY_KIND["link_to_moc"]`, and `instructions-diff.py`'s link
+  coverage keys the `target_moc` **stem**, never the path, so it counts `[OK]`.
+
+This violates CON-2 — the user approves on what the document says, and the
+document presents a tickable instruction with every check green. It is **not**
+case-specific: it fires whenever both resolution tiers miss, so it is a
+pre-existing defect this task surfaced rather than caused. Tracked as **T6.0d**.
+
+## The Merge Says What It Did (spec 034 T6.0c)
+
+WHY `_merge_proposed_mocs_by_name` now records what it absorbed: T6.0c's fold
+widened what a single run collapses, and the merge was mute — no `[warn]`, no
+needs-attention line, no audit row. Every sibling guard in this spec surfaces
+its decision; this one did not. Under **CON-2** the user approves on what the
+document says, so a run that emits ONE MOC where TWO proposals were approved has
+to say so. Raised as the assumption T6.0c's own diff could not verify: if a
+case-only pair is ever two MOCs the user meant to keep apart, the old behaviour
+lost one with nothing to read.
+
+WHY the record is a **group per surviving name** rather than a pair: a pairwise
+`(survivor, absorbed)` record is the natural first guess and it breaks on a
+three-way collapse, emitting two records where one survivor exists.
+`validate_destinations` already solved this shape — it carries `dropped: [...]`
+inside one clash record rather than one record per dropped claimant — so the
+record here is survivor plus a **list** of absorbed spellings, with `case_only`
+beside it exactly as the clash record carries it.
+
+WHY the absorbed list **appends and is never a `set()`**: it sits beside the
+`tags` and `member_stems` folds, which are ordered and unsorted, and its order
+is asserted. `primary_pmocs + fan_pmocs` puts the primary document first, so the
+encounter order is deterministic — but only while the coalescing appends. A set
+is the natural instinct for "do not record the same absorption twice" and would
+make the order implementation-defined, which only the two-stage fixture exposes.
+
+### WHY the Carrier Is an Internal Field, Not a Return Value
+
+The markdown path calls the merge **twice** — per-document inside
+`parse_proposed_mocs`, then again over `primary_pmocs + fan_pmocs` — and the
+second call has no memory of the first. A record built fresh per call emits a
+*second* independent record for a survivor stage 1 had already merged: two
+records where there is one survivor, failing for a reason nothing about the fold
+would suggest.
+
+The function already solves this for its own data one line away. `member_stems`
+and `topic` ride as internal fields on the moc dict across repeated merge calls
+and are popped only at the end — the merge site's own comment about "a name
+merged from multiple topics" is exactly this reentrancy. `absorbed_names` gets
+the same treatment: carried on the survivor, extended in place when a later call
+absorbs another spelling into an already-merged survivor, and lifted out by
+`_lift_merged_moc_records` at the same two sites where `member_stems` and
+`topic` are stripped.
+
+#### Reentrancy Has TWO Halves, and a Three-Way Fixture Only Reaches One
+
+WHY the tests carry a four-way fixture as well as a three-way one — **do not
+trim it back.** Found by mutation, after the plan and its gate had both approved
+the three-way fixture alone.
+
+- **Half 1 — the merged survivor SEEDS the second call.** Primary has the
+  case-only pair, the fan document adds a third spelling. In stage 2 the stage-1
+  survivor is the first moc encountered, so it seeds `merged` carrying its own
+  list, and the third spelling is appended to that list in place. This half is
+  falsified by dropping the inherited carrier at the seeding branch, and the
+  three-way fixture catches it.
+- **Half 2 — the moc being ABSORBED is itself a survivor.** Both documents merge
+  internally first, so in stage 2 the fan's survivor arrives carrying its own
+  `absorbed_names`, and only `head_absorbed.extend(...)` carries that group
+  across. **The three-way fixture cannot reach this line at all** — deleting the
+  `extend` left it green. Without it the fan pair's losing spelling vanishes
+  from the report while its supporting item is still merged into the MOC: a
+  silent under-report, the same CON-2 defect the record exists to fix, one level
+  down.
+
+A reader who trims the four-way fixture as redundant loses half the reentrancy
+coverage, and every remaining test still passes.
+
+### WHY There Is No Schema Test for It
+
+An earlier draft of this task asked for one. It cannot fail:
+`instructions.schema.json` closes each action `$def` and the top level but
+**exempts the `tomo` block by design** ("kept permissive... so Tomo can evolve
+the block without a coordinated round-trip"), which is where `destination_clashes`
+and `attachment_suppressions` already live. The carrier is popped before its
+dict becomes a `create_moc`, the lifted record is a plain Python dict that is
+never schema-checked, and `suggestion-parser.py` calls no validator at all. A
+schema assertion here would assert a property of the schema file — true whatever
+the implementer does, the same true-by-construction shape Phase 5 shipped once.
+
+What the record does owe, and has: a **strip test** (the carrier never reaches a
+confirmed item, like `member_stems` and `topic`) and a **paired-consumer count**
+that fails when a site is forgotten. The strip test earns its place on consumer
+clarity, not validation.
+
+### The Reason String Is Restated, Not Imported
+
+`render_actions._CASE_NOTE` says the same sentence about a destination clash.
+`_MERGE_CASE_NOTE` restates it rather than importing: the parser has no
+dependency on the action builder, and buying one for a single sentence is the
+worse trade. If the wording is ever revised, both sites want revising.
+
+## A Document's Own `doc_type` Names the Structured Doc It Was Rendered From (spec 034 T6.4a, v0.33.0)
+
+WHY `_default_doc_path` takes the document's text and dispatches on
+`tomo.doc_type` instead of always resolving `suggestions-doc.json`:
+
+The identity join above ("The Markdown Path Recovers Identity From the Doc")
+recovers each `item_key` from the structured document the markdown was rendered
+FROM. `_default_doc_path` named that document by a constant, so it always named
+the PRIMARY document — including when the input markdown was a **fan** document,
+which is rendered from `suggestions-fan-doc.json`. The fan document's section
+ids do not appear in the primary document's map, so the join silently left every
+key unset, and the Pass-2 render fell back to composing `<inbox>/<stem>.md`.
+
+Found by a live vault run, 2026-09-08, not by the suite:
+
+    suggestions-fan.json     item_key  "100 Inbox/Fotos/Kai.md"   correct
+    parsed-suggestions.json  item_key  null, source_path "Kai"
+    instruction-render.py    probes    "100 Inbox/Kai.md" — absent, item dropped
+
+A regression this spec created in its own new capability: before recursive
+discovery a note in an inbox subfolder was never discovered, so it could never
+reach the Force-Atomic path at all.
+
+WHY provenance rather than a second special case: `_extract_tomo_doc_type` already
+existed for `_is_moc_proposal_doc`, and `suggestions-render.py` already stamps a
+fan document `doc_type: suggestions-fan`. So the fix is a lookup table keyed by
+the value the document already declares — `_STRUCTURED_DOC_BY_TYPE` — and a
+fourth document type costs one entry, not a third branch. A type absent from the
+table resolves to `suggestions-doc.json`, which is what every pre-fan type did.
+
+WHY the whole call site moved, not just the item-key lookup: `load_doc_anchor_map`
+(placement anchors), `item_keys_by_section_id` (identity), `_topic_member_stems`
+(proposed-MOC members) and the daily-updates enrichment all read the SAME
+resolved path, so all four were binding a fan document against the primary
+document. One variable — renamed `_own_doc_path`, because it is no longer the
+primary one — fixes all four. `_restore_daily_item_keys` and the moc-proposal
+`_parent_marker_from_doc` branch are threaded the same way for uniformity;
+neither changes behaviour, since a moc-proposal document is absent from the
+table.
+
+WHY no defensive test for a WRONG key: both documents number their sections
+independently, so an `S01` can collide across them when a stale
+`suggestions-doc.json` sits in `tomo-tmp/`. `bind_section_item_key`'s stem
+cross-check rejects the mismatched entry before assignment, so the failure
+degrades to the same `None` the no-doc case already produces. Pinned by
+`TestThePrimaryDocumentIsUnchanged::test_a_fan_doc_beside_a_stale_primary_doc_binds_no_primary_key`.
+
+WHY the wire path was left alone: `build_from_wire` / `build_from_wire_companion`
+read `item_key` straight off the wire and never touch `_default_doc_path`, so
+they never had the defect. `garden-audit-parser.py` calls none of these
+functions and is always invoked with `--wire`.
+
+## The Companion Resolve Document Is a Document Too (spec 034 T6.4a, v0.34.0)
+
+WHY the `--fan-resolve-file` loop now resolves `_resolve_doc` and calls
+`bind_section_item_key`:
+
+The standalone fix above joined a fan document against the wrong structured
+document. The COMPANION flow (`synthesis-conductor.md:111`) had the same
+consequence from a different cause — it attempted **no join at all**.
+`parse_section(section_id, lines)` was called with no anchor argument, the
+resolve sections never reached `bind_section_item_key`, and `_promote_entry`
+therefore read `item_key: None` off every one of them. A subfolder note ticked
+`[x] Force Atomic Note` was promoted with no identity and dropped by the `#116`
+guard, exactly as on the standalone path — and this is the invocation a
+Force-Atomic run with an approved primary actually takes.
+
+WHY it was mechanical: the resolve document is stamped `doc_type:
+suggestions-fan` by the same `suggestions-render.py:28-34` branch that stamps
+the standalone one (both are rendered from a doc whose `doc_variant ==
+"fan-resolve"`), so `_default_doc_path(args.fan_resolve_file, resolve_text)`
+resolves it with the table already in place. No second mechanism.
+
+WHY the hard-coded `tomo-tmp/suggestions-fan-doc.json` for `fan_members` could
+be DELETED rather than left standing: it named the same file `_resolve_doc` now
+resolves, only cwd-relative and with no sibling preference. Both consumers read
+one loaded doc, so the document is read once instead of three times
+(`anchor_map_from_doc` exists to make that possible — `load_doc_anchor_map`
+keeps its path-taking signature for its existing callers). Removing that line
+also removed a function-local `import os` that shadowed the module-level import
+for the whole of `main()`; any `os.` use earlier in the function would have
+raised `UnboundLocalError`, which is what happened when a mutation probe added
+one.
+
+WHY the anchor pairing in the tests is two documents, not one: `load_doc_anchor_map`
+has no stem cross-check — unlike `bind_section_item_key`, which rejects a
+mismatched entry — so reading the wrong document binds a WRONG anchor rather
+than degrading to none. An anchored fan doc on its own would only prove
+empty-versus-populated. The fixtures therefore place a stale primary doc
+carrying a DIFFERENT anchor for the same section id and the same MOC beside the
+fan doc, on both the standalone and the companion path. Reverting either
+resolution binds `WRONG — primary doc`, which is what makes the assertion a
+guard. The rendered `**Placement:**` line is absent in these fixtures (the
+reducer leaves `anchor: null` without Kado), so the doc-JSON map is the sole
+source and the assertion cannot be satisfied by the line override.
+
+## An Unlisted `doc_type` Falls Back Loudly (spec 034 T6.4a, v0.35.0)
+
+WHY `_STRUCTURED_DOC_BY_TYPE` now lists `suggestions` and `moc-proposal`
+explicitly, even though both answer with the primary doc:
+
+The table's fallback is correct for every type in use today. It is also
+invisible. A future render type whose entry someone forgets would silently
+rejoin against the primary document — the T6.4a defect, dormant. Listing every
+type in use makes an ABSENT entry mean "nobody decided" rather than "the primary
+is right", so it can be reported instead of guessed. An unlisted type still
+resolves to the primary doc and proceeds; it just says so on stderr, naming the
+type and the document it fell back to.
+
+WHY `None` and `""` stay silent: a document with no `tomo.doc_type` is a legacy
+document, and the primary doc is its correct answer, not a mistake. Warning on
+it would train the reader to ignore the line.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.3.0
 """ADR-026 golden test: build_from_wire(unedited wire) == markdown parse.
 
 Proves the JSON-only Pass-2 path (build_from_wire) reproduces the markdown path's
@@ -9,6 +9,7 @@ authoritative paths agree on the default case. This is the safety net for the
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import subprocess
@@ -32,6 +33,8 @@ def _load(name, filename):
 reducer = _load("reducer_golden", "suggestions-reducer.py")
 render = _load("render_golden", "suggestions-render.py")
 parser = _load("parser_golden", "suggestion-parser.py")
+
+from lib.source_link import qualified_target  # noqa: E402
 
 
 def _doc() -> dict:
@@ -90,12 +93,38 @@ def _markdown_output(doc: dict, tmp: Path) -> dict:
     return json.loads(out.stdout)
 
 
+
+
+def _without_item_key(parsed: dict) -> dict:
+    """Drop `item_key` from BOTH sides for the shape-parity compare.
+
+    Both paths now carry the field — the markdown path joins it back from the
+    suggestions doc, which the rendered markdown itself cannot supply (spec
+    034). Their FALLBACKS still differ when no key is available: the wire falls
+    back to the display stem (`build_from_wire`: `w.get("item_key") or stem`)
+    while the markdown path leaves it None. These fixtures carry no section
+    `item_key`, so they exercise exactly that fallback gap. Everything else
+    about the two outputs must match exactly, which is what this file guards.
+    """
+    out = copy.deepcopy(parsed)
+    for item in out.get("confirmed_items", []):
+        item.pop("item_key", None)
+    return out
+
+
 def test_build_from_wire_matches_markdown_parse():
     doc = _doc()
     with tempfile.TemporaryDirectory() as td:
         expected = _markdown_output(doc, Path(td))
     wire = render.build_wire_payload(doc)
-    actual = parser.build_from_wire(wire, "")
+    full = parser.build_from_wire(wire, "")
+    # Both paths now carry item_key; only the no-key FALLBACK still differs.
+    assert full["confirmed_items"][0]["item_key"] == wire["suggestions"][0]["item_key"]
+    assert "item_key" in expected["confirmed_items"][0], (
+        "the markdown path must carry the field, joined back from the doc"
+    )
+    actual = _without_item_key(full)
+    expected = _without_item_key(expected)
     assert actual == expected, (
         "JSON-only build_from_wire diverged from the markdown parse.\n"
         f"expected={json.dumps(expected, indent=2)}\nactual={json.dumps(actual, indent=2)}"
@@ -149,9 +178,9 @@ def _markdown_output_full(doc: dict, tmp: Path) -> dict:
 def test_full_mirror_matches_markdown_parse_with_daily_and_tag_handler():
     doc = _doc_with_sections()
     with tempfile.TemporaryDirectory() as td:
-        expected = _markdown_output_full(doc, Path(td))
+        expected = _without_item_key(_markdown_output_full(doc, Path(td)))
     wire = render.build_wire_payload(doc)
-    actual = parser.build_from_wire(wire, "")
+    actual = _without_item_key(parser.build_from_wire(wire, ""))
     assert actual == expected, (
         "Full-mirror build_from_wire diverged from the markdown parse.\n"
         f"expected={json.dumps(expected, indent=2)}\nactual={json.dumps(actual, indent=2)}"
@@ -179,7 +208,12 @@ def _wire(**note_overrides) -> dict:
 def test_skip_decision_moves_note_to_skipped():
     out = parser.build_from_wire(_wire(decision="skip"), "")
     assert out["confirmed_items"] == []
-    assert out["skipped"] == [{"id": "S01", "source_path": "memo", "disposition": "skip"}]
+    # item_key rides alongside source_path (spec 034 T5.0): Pass 2 emits a skip
+    # and a user-requested delete for these, and must address the real note.
+    assert out["skipped"] == [{
+        "id": "S01", "source_path": "memo", "item_key": "memo",
+        "disposition": "skip",
+    }]
 
 
 def test_skip_with_delete_source_disposition():
@@ -294,3 +328,122 @@ def test_tag_handler_group_approval_and_keep_source_split():
     out = parser.build_from_wire(wire, "")
     assert out["approved_tag_handler_group_ids"] == ["th-a", "th-b"]
     assert out["tag_handler_keep_source_group_ids"] == ["th-a"]
+
+
+# ── The collision case (spec 034 T6.2) ──────────────────────────────────────
+# Every fixture above uses a single stem, so no two items share a filename and
+# the parity compare is blind to the only divergence this spec can produce.
+# T5.1 proved that concretely: its first cut took the wikilink TARGET instead
+# of the alias, diverged the two paths exactly on a collision, and this file
+# stayed green. The mechanism — `build_from_wire` sets `source_path` from the
+# suggestion's `stem` and never sees a wikilink, while the markdown path parses
+# `**Source:**`, where a qualified link matches neither `RE_SOURCE` branch and
+# falls through to `RE_WIKILINK_ALIASED`. `_without_item_key` strips `item_key`
+# and NOT `source_path`, so that divergence lands in the compare.
+
+DRESDEN_PLACES = "100 Inbox/Places/Dresden.md"
+DRESDEN_REISE = "100 Inbox/Reise/Dresden.md"
+
+
+def _collision_section(section_id: str, item_key: str, title: str) -> dict:
+    """One namesake's section, its source link qualified by hand.
+
+    Built the way `_doc()` builds its section — from the reducer's own
+    renderer, with the link target taken from `lib.source_link` — rather than
+    by driving the reducer's collision pass, so the fixture states the shape it
+    is testing instead of inheriting it from the code under test.
+    """
+    action = {
+        "kind": "create_atomic_note",
+        "suggested_title": title,
+        "template": "t_note_tomo.md",
+        "location": "Atlas/202 Notes/",
+        "audio_peer": None,
+        "atomic_note_worthiness": 0.9,
+        "tags_to_add": ["topic/travel"],
+        "classification": {"category": "Places", "confidence": 0.8},
+        "candidate_mocs": [],
+    }
+    rendered_md = reducer.render_create_atomic_note(
+        action, "Dresden", " (MOC)", qualified_target(item_key, "Dresden"),
+    )
+    item = {
+        "title": title, "template": action["template"],
+        "location": action["location"], "tags": action["tags_to_add"],
+        "audio_peer": None, "worthiness": 0.9, "suppressed": False,
+        "force_atomic": False,
+    }
+    return {
+        "id": section_id, "stem": "Dresden", "item_key": item_key,
+        "actions": [{"kind": "create_atomic_note", "suggestion_id": section_id,
+                     "rendered_md": rendered_md,
+                     "candidate_mocs": reducer.persist_candidate_anchors(action),
+                     "item": item}],
+    }
+
+
+def _collision_doc() -> dict:
+    """Two inbox notes sharing the filename `Dresden`, in different subfolders."""
+    return {
+        "schema_version": "1", "generated": "2026-09-08T10:00:00Z",
+        "run_id": "2026-09-08-1000-collision", "profile": "miyo", "source_items": 2,
+        "conventions": {"parent_marker": "up::", "peer_marker": "related::",
+                        "moc_suffix": " (MOC)"},
+        "sections": [
+            _collision_section("S01", DRESDEN_PLACES, "Dresden - Frauenkirche"),
+            _collision_section("S02", DRESDEN_REISE, "Dresden - a different note"),
+        ],
+        "proposed_mocs": [], "daily_notes_updates": [], "needs_attention": [],
+    }
+
+
+def test_the_collision_fixture_actually_renders_qualified_links():
+    """Guard the fixture, not the code: a bare `[[Dresden]]` here would make
+    the parity test below pass for the wrong reason — both paths agree
+    trivially when there is nothing to disambiguate."""
+    doc = _collision_doc()
+    parts = []
+    parts += render.render_frontmatter(doc)
+    parts += render.render_header(doc)
+    parts += render.render_summary(doc)
+    parts += render.render_suggestions(doc)
+    md = "\n".join(parts)
+    assert "**Source:** [[Dresden]]" not in md, (
+        "the fixture renders a bare source link — nothing is being disambiguated"
+    )
+    assert "**Source:** [[100 Inbox/Places/Dresden|Dresden]]" in md
+    assert "**Source:** [[100 Inbox/Reise/Dresden|Dresden]]" in md
+
+
+def test_build_from_wire_matches_markdown_parse_for_two_namesakes():
+    """The case this file was written for and could not see.
+
+    The two paths reach `source_path` by different routes — the wire from the
+    suggestion's `stem`, the markdown by parsing the rendered link — and only a
+    collision makes those routes disagree.
+    """
+    doc = _collision_doc()
+    with tempfile.TemporaryDirectory() as td:
+        expected = _markdown_output(doc, Path(td))
+    wire = render.build_wire_payload(doc)
+    full = parser.build_from_wire(wire, "")
+
+    # Identity survives on both paths and stays distinct per namesake.
+    assert [c["item_key"] for c in full["confirmed_items"]] == [
+        DRESDEN_PLACES, DRESDEN_REISE,
+    ]
+    assert [c["item_key"] for c in expected["confirmed_items"]] == [
+        DRESDEN_PLACES, DRESDEN_REISE,
+    ], "the markdown path did not join both namesakes' keys back from the doc"
+
+    # ADR-2: the qualified LINK must not put a path into the display text.
+    assert [c["source_path"] for c in expected["confirmed_items"]] == [
+        "Dresden", "Dresden",
+    ], "the markdown path took the wikilink target instead of its alias"
+
+    actual = _without_item_key(full)
+    expected = _without_item_key(expected)
+    assert actual == expected, (
+        "the two parser paths diverged on a same-filename collision.\n"
+        f"expected={json.dumps(expected, indent=2)}\nactual={json.dumps(actual, indent=2)}"
+    )

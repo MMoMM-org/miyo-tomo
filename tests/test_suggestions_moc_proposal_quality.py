@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_suggestions_moc_proposal_quality.py — F-34 MOC quality fixes (b/a/c).
 
 Tests (ordered b→a→c, fix-first):
@@ -34,6 +34,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 REDUCER = REPO_ROOT / "tomo" / "scripts" / "suggestions-reducer.py"
 RENDER_SCRIPT = REPO_ROOT / "tomo" / "scripts" / "suggestions-render.py"
 SCRIPTS_DIR = str(REPO_ROOT / "tomo" / "scripts")
+sys.path.insert(0, str(REPO_ROOT / "tomo" / "scripts"))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 
 _DEPS = "/tmp/claude/py_deps"
 _extra = ":".join(p for p in [_DEPS, SCRIPTS_DIR] if os.path.isdir(p))
@@ -61,6 +63,7 @@ def _write_state(path: Path, stems: list[str]) -> None:
         json.dumps({
             "stem": stem,
             "path": f"100 Inbox/{stem}.md",
+            "item_key": f"100 Inbox/{stem}.md",
             "status": "done",
             "run_id": "test-run",
             "ts": "2026-06-04T12:00:00Z",
@@ -82,10 +85,11 @@ def _write_result(
     classification: dict | None = None,
     atomic_note_worthiness: float = 0.7,
 ) -> None:
-    (items_dir / f"{stem}.result.json").write_text(json.dumps({
+    (items_dir / to_filename(f"100 Inbox/{stem}.md")).write_text(json.dumps({
         "schema_version": "1",
         "stem": stem,
         "path": f"100 Inbox/{stem}.md",
+        "item_key": f"100 Inbox/{stem}.md",
         "type": "fleeting_note",
         "type_confidence": 0.8,
         "force_atomic": False,

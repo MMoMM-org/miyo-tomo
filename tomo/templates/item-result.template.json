@@ -1,6 +1,7 @@
 {
   "schema_version": "1",
   "stem": "<STEM>",
+  "item_key": "<ITEM_KEY>",
   "path": "<PATH>",
   "type": "<TYPE>",
   "type_confidence": 0.0,

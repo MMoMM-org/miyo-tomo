@@ -171,16 +171,42 @@ itself was NOT changed (the rename aligns to what it already expects). Pinned by
 
 ## Attachment detection/resolution, and why the resolved map is a FILE (spec 031)
 
-WHY `build_attachment_index` (Step 2b) is a second, independent `listDir` call rather
-than folding into the existing depth=1 partition listing (Step 1): the partition
-listing is shallow (direct children only) and exists to bucket inbox files by
-type; resolving an embed correctly requires a RECURSIVE view of the whole inbox
-subtree, since the observed real-world case is a note in one subfolder embedding
-an attachment in another (`100 Inbox/Places/note.md` → `100 Inbox/Images/karte.jpg`).
-Reusing or widening the partition call would change its depth semantics for
-every existing caller; a separate call keeps both call sites' contracts
-unchanged and costs exactly one extra call per run, independent of note or
-embed count.
+WHY `build_attachment_index` (Step 2b) was ORIGINALLY a second, independent `listDir`
+call (spec 031): the partition listing (Step 1) was shallow — direct children only —
+and existed to bucket inbox files by type, while resolving an embed correctly requires a
+RECURSIVE view of the whole inbox subtree, since the observed real-world case is a note in
+one subfolder embedding an attachment in another (`100 Inbox/Places/note.md` →
+`100 Inbox/Images/karte.jpg`). Widening the partition call would have changed its depth
+semantics for every existing caller, so a separate call kept both contracts unchanged at a
+cost of exactly one extra call per run, independent of note or embed count.
+
+WHY it is now ONE shared listing (spec 034, ADR-3, 2026-09-06): that "changed depth
+semantics for every existing caller" objection was the whole POINT of spec 034 — making
+discovery recursive is the feature, not a side effect. Once the partition recurses too,
+the two calls fetch byte-identical data, and the second one is pure waste.
+`discover_files` makes the single call and returns the raw listing (folders and every
+suffix included, deliberately — `build_inbox_index` does its own filtering);
+`build_attachment_index` takes that listing instead of a client. Base Kado calls fall
+3 → 2. The precondition was spec 034 T3.1: the two consumers used to disagree about what
+a `listDir` entry naming a file is, and had to be unified on `is_file_entry` before they
+could safely read the same input.
+
+WHY the attachment index no longer fails open on a `KadoError` (also spec 034 ADR-3):
+while the index had a listing of its own, losing it cost only attachment resolution — the
+partition had its own call and the run carried on degraded. That call is now the run's
+ONLY inbox listing, so losing it leaves no partition either. Degrading to an empty listing
+would report an EMPTY INBOX rather than an outage — strictly worse than failing, and
+invisible to the user. So the error propagates and `main()` exits 1, exactly as the
+partition's own listing failure always did. Pinned by
+`test_kado_error_on_the_listing_aborts_the_run` and
+`test_kado_error_on_the_listing_exits_1_rather_than_reporting_an_empty_inbox`.
+
+WHY recursion does NOT change the `#93` partition: that decision is by SUFFIX — a `.png`
+is a terminal artifact outside the frontmatter-driven lifecycle wherever it sits. Recursion
+changes WHERE files are found, never WHAT counts as an item, so a subfolder `.png` is
+classified exactly as a root-level one. Pinned by
+`test_subfolder_png_is_classified_exactly_as_a_root_png`, which asserts both in the same
+run so the test states the invariant rather than two separate facts.
 
 WHY embed extraction (Step 2c, `resolve_inbox_attachments`) calls
 `client.list_notes(inbox_path, fields=["links"])` rather than
@@ -234,3 +260,131 @@ such block. Two detection channels (either → pending): the wire's top-level `s
 `No suggestions found` note (--suggest hasn't enriched it). When pending, triage logs a clear reason
 and leaves the doc in pending-approval; once `--suggest` runs, the signal clears and it applies on the
 next /inbox.
+
+## Audio pairing keys on folder + stem, not stem alone (spec 034, T3.3)
+
+WHY `check_audio` compares `(containing folder, stem)` pairs instead of bare stems
+(v0.34.1): spec 034 / T3.2 made inbox discovery recursive, so a note like
+`100 Inbox/Archive/memo.md` is discovered for the first time. Before this fix,
+`md_stems` was built by dropping the folder entirely, so that unrelated Archive
+note satisfied a root-level (or any other folder's) `memo.m4a`, `check_audio`
+returned `False`, and `has_audio` (which gates the `transcribe` routing decision
+directly) silently skipped transcription. The user drops a voice memo, a namesake
+note exists anywhere else in the tree, and the transcript never appears — no
+error, no explanation. Before T3.2 this was unreachable; after it, reachable on
+any inbox with subfolders.
+
+Only the audio-side stem is run through `sanitize_stem` before comparison; the
+markdown side stays raw. This asymmetry is deliberate, not an oversight — Obsidian
+already forbids the offending filename characters (`:` etc.) in note filenames,
+while a recorder happily produces them (e.g. `Rec 2026-01-02 14:30.m4a` pairs with
+`Rec 2026-01-02 14-30.md`). **Do not symmetrise or drop this sanitisation** — audio
+to transcript sibling matching has already broken here once on exactly a raw `:`
+vs `-` mismatch, and the consequence was an infinite transcribe loop.
+
+## Force-Atomic items are resolved to their own note (spec 034, T4.1)
+
+WHY `_extract_fan_items` / `_extract_fan_items_from_wire` resolve a path at all
+(v0.35.0): `force_atomic_items[*]` is consumed by
+`force-atomic-handling/SKILL.md`, which dispatches `inbox-analyst` against the
+note the checkbox names. It used to rebuild that path as `<inbox_path>/<stem>.md`
+— correct only while the inbox was flat, and a file that does not exist for every
+subfolder note once discovery went recursive. The path now comes from here, where
+the run's inbox listing is in scope, instead of being guessed at the far end of
+the pipeline.
+
+WHY `_resolve_fan_note` calls `attachment_index.narrow_candidates` instead of
+narrowing for itself: these are the same problem (a wikilink that may or may not
+be path-qualified, resolved against one listing), and a second derivation of one
+rule is how PRD Business Rule 9 gets violated. The first version of this fix DID
+hand-copy the rule, and it drifted inside the same commit — the copy stripped the
+alias and the heading anchor but not the block anchor, so `[[Dresden^abc123]]`
+failed against an index that plainly contained `Dresden.md`. Three copies existed
+at that point (`resolve_attachments`, `_candidate_count`, `_resolve_fan_note`);
+all three now route through the one helper. Sharing it also means the resolver
+accepts the path-qualified `[[100 Inbox/Places/Dresden|Dresden]]` form T5.1 will
+start emitting, for free.
+
+WHY the `.md` suffix is a parameter of the shared helper rather than something
+this site appends first: a note wikilink omits the extension, a file embed
+carries it, so the two callers genuinely differ — but only in that one input.
+The ORDER (strip the alias and anchors, THEN append) is part of the rule, not
+part of the caller: appending first would search the index for
+`Dresden|Alias.md`. Putting `default_extension` inside `narrow_candidates` keeps
+that ordering in the one place that owns it.
+
+WHY zero matches and two matches both decline rather than pick: with two
+same-named inbox notes, `Source: [[Dresden]]` genuinely does not say which one is
+meant, and first-match-wins would silently rebuild the collision this spec exists
+to remove — writing a proposal from the wrong note's content. PRD Business Rule 7
+governs: decline rather than choose. Zero matches means the note is gone (moved,
+renamed, consumed), and inventing a path for it is where this defect started.
+
+WHY the decline is printed to stderr with the `[triage]` prefix rather than
+dropped: an approved item that is never built, with nobody told, is the same
+class of defect as building the wrong one. The line names the review document,
+the reference and the candidate count, so the user can rename a note or
+path-qualify the link. Same channel, same prefix as the unresolved/ambiguous
+attachment-embed reports above.
+
+WHY the wire path prefers a suggestion's own `item_key` over resolution:
+`suggestions-wire.schema.json` already requires it, and it is exact — two
+suppressed suggestions sharing a stem stay two items, where any stem-keyed join
+would collapse them. Only a daily `log_entries[]` entry, which carries just
+`source_stem`, needs resolving; it joins to a suggestion of that stem when
+exactly one exists (keeping #165's invariant that the daily-log path and the
+suggestion path yield one identity) and falls back to the listing otherwise.
+Deduplication moved from the stem to the resolved path for the same reason.
+
+## The Run's Kado Cost Is Observed, Never Declared (spec 034 T6.1)
+
+`_count_kado_calls` used to open with the literals `2 + 7`: two base calls (the
+one recursive listDir plus the `listNotes(fields=["links"])` embed extraction)
+and seven `search_by_frontmatter` queries. Both now come from the client's own
+round-trip counter (`kado_client.observed_call_count`).
+
+WHY the literals had to go: T6.1 writes the base figure into a permanent cost
+history, and a history whose source is a constant records the intent, not the
+behaviour. The Phase-3 gate proved it — with a second base listing reintroduced
+by hand, the fake client recorded 3 base calls while the estimator still
+printed `kado_calls=9`. The `7` is exactly as exposed: `query_frontmatter`
+makes seven unconditional calls, and nothing tied the formula to that number.
+
+WHY a dedicated counter on `KadoClient` and not `_req_id`: `_req_id` is a
+JSON-RPC request identifier whose meaning the client does not own, so keying a
+permanent record to it breaks silently the moment anything else increments or
+resets it. `_call_tool` is the sole choke point every read, write, search and
+graph-audit passes through, so nothing can escape the count.
+
+WHY three snapshots rather than one read at the end: the counter is one
+lifetime total across `discover_files` → `resolve_inbox_attachments` →
+`query_frontmatter` → per-item reads, and a running total cannot be decomposed
+after the fact. Reading it once yields one number where the history's schema
+needs two. `_calls_between` closes out the base after
+`resolve_inbox_attachments` and byFrontmatter after `query_frontmatter`, and
+both ride out on `TriageState` — the same shape, for the same reason, as
+`tag_handler_reads` and `wire_sibling_reads`.
+
+WHY a client that keeps no count leaves both at 0 rather than raising: an old
+fake, or any compatible client, must produce an unmeasured run, never a failed
+one.
+
+## `DOWNSTREAM_COST_ENTRY_ACTIONS` — the Guard That Fails Loudly
+
+Every triage run appends exactly one cost-history entry. `suggest` and
+`fan-resolve` defer theirs to `suggestions-reducer.py`, which runs *after*
+triage has written `routing-plan.json` — the destination-folder counts do not
+exist yet when triage finishes, and the reducer is the process that measures
+them.
+
+WHY the guard is named and asserted rather than implied: every other plumbing
+gap in this task no-ops silently. This one **double-appends** — an incomplete
+entry from triage, then the real one from the reducer — so the test asserts a
+`suggest` run produces exactly one entry, not two.
+
+WHY `idle` records at all: an idle run still spends its base and byFrontmatter
+calls, and a history that omits them cannot show what idling costs.
+
+WHY `metrics` gained `item_count` and `base_kado_calls`: the reducer reads both
+back out of `routing-plan.json` rather than re-deriving its own, so `suggest`
+and `idle` cannot end up counting different things.

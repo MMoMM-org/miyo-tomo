@@ -54,3 +54,33 @@ tool-agnostic — Hashi need do nothing to preserve it (any semantic edit moves 
 digest; a canonical re-serialization means reformatting alone does not). See
 `docs/tomo/dot_claude/agents/synthesis-conductor.md` for the JSON-only Pass-2
 read-back side.
+
+## The dispatch prompt passes `item_key` and never names the result file
+
+WHY: the per-item result file is named `<readable>-<8 hex>.result.json`, derived
+from the item's `item_key` by `lib/item_key.to_filename` (spec 034 ADR-5). This
+block used to instruct `tomo-tmp/items/<stem>.result.json`, which the reducer no
+longer reads — and because both this skill and `inbox-analyst.md` are LLM-loaded
+verbatim, the two contradicting each other produced nondeterministic behaviour
+rather than an honest failure. The instruction now points at the analyst's own
+Step 10, which shells out to `scripts/item-result-filename.py`; one derivation,
+one place to change it.
+
+WHY `item_key` is passed even though it equals `path`: it is a declared input of
+the analyst's IO Contract (ADR-1 makes derivation the identity function), and
+the analyst must never reconstruct it from `stem` — two inbox items in different
+subfolders share a stem and would collide on one result file.
+
+## WHY There Is No Cost-Recording Step Here (spec 034 T6.1)
+
+A `suggest` run's cost-history entry is written by `suggestions-reducer.py` in
+step 4, not by a step of its own. It was briefly a separate command after
+`mark-captured`, and that was wrong for one reason: a step in this file is
+executed by an LLM, so no test can see whether it ran. The task's criterion is
+"a history accumulates *without anyone remembering* to record it" — a guarantee
+that cannot depend on the runtime remembering a line of markdown.
+
+Do not re-add one. `inbox-triage.py` writes no entry for this action (the
+reducer's destination-folder counts do not exist when it finishes), so a second
+append here would double-record the run. See
+`docs/tomo/scripts/lib/cost_history.md`.

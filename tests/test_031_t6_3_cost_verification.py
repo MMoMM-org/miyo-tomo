@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.3.0
 """test_031_t6_3_cost_verification.py — Phase 6 T6.3 cost verification.
 
 CON-4: attachment-related Kado calls must be constant as note count varies —
 the O(1) claim ADR-1 depends on, enforced here by a test rather than by
-argument. Three calls are constant regardless of note count: the existing
-depth=1 partition listDir (discover_files), the recursive attachment-index
-listDir (ADR-1), and the listNotes(fields=["links"]) extraction call
-(ADR-2, corrected, T5.1 pt 2).
+argument. Two calls are constant regardless of note count: the ONE recursive
+listDir that feeds both the partition (discover_files) and the attachment
+index (spec 034 ADR-3 collapsed those two calls into one), and the
+listNotes(fields=["links"]) extraction call (ADR-2, corrected, T5.1 pt 2).
+The retired depth=1 partition call is still counted here, and asserted to be
+zero, so re-introducing it would fail rather than pass unnoticed.
 
 Asserts the PER-METHOD breakdown, not only the sum — a regression that
-moves any ONE of the three calls into a per-note loop while the other two
-stay constant would still show up in a per-method count, but a
+moves any ONE of the calls into a per-note loop while the other stays
+constant would still show up in a per-method count, but a
 sum-only assertion could stay coincidentally stable (e.g. one call growing
 while a different one implausibly shrinks) or simply be less specific about
 which call regressed. Also re-verifies `_count_kado_calls()` against the
@@ -50,12 +52,24 @@ def _listdir_item(path: str, item_type: str = "file") -> dict:
 class _FakeClient:
     """Distinguishes depth=1 from the recursive listDir call — a fake that
     returns the same data regardless of depth would let a regression to
-    depth=1 (or vice versa) pass unnoticed, exactly the trap caught in
-    T6.1's first draft."""
+    depth=1 (spec 034 ADR-3 removed it) pass unnoticed, exactly the trap
+    caught in T6.1's first draft."""
 
     def __init__(self, n_notes: int):
         self._depth1_items = [_listdir_item(f"{INBOX_PATH}note-{i}.md") for i in range(n_notes)]
         self.calls: list[tuple[str, dict]] = []
+
+    @property
+    def call_count(self) -> int:
+        """Round trips made — the counter the real KadoClient now keeps.
+
+        spec 034 T6.1: `_count_kado_calls` derives the base and byFrontmatter
+        terms from the client's own counter instead of the literals `2` and `7`,
+        so a fake that drives it has to report what it charged. This fake was
+        already recording every call; the property just names it the way the
+        production client does.
+        """
+        return len(self.calls)
 
     def list_dir(self, path, *, depth=None, limit=500):
         self.calls.append(("list_dir", {"path": path, "depth": depth}))
@@ -115,7 +129,7 @@ def test_per_method_breakdown_constant_from_1_to_20_notes(tmp_path):
     for n, (breakdown, _reported, _observed) in results.items():
         scoped = {k: breakdown.get(k, 0) for k in _ATTACHMENT_RELATED}
         assert scoped == {
-            "list_dir_depth1": 1,
+            "list_dir_depth1": 0,   # retired by spec 034 ADR-3
             "list_dir_recursive": 1,
             "list_notes": 1,
         }, f"n={n}: breakdown={breakdown}"
@@ -141,7 +155,7 @@ def test_reported_count_matches_observed_at_several_note_counts(tmp_path):
         assert reported == observed, f"n={n}: reported={reported} observed={observed}"
 
 
-def test_only_the_three_attachment_related_calls_are_constant(tmp_path):
+def test_only_the_two_attachment_related_calls_are_constant(tmp_path):
     """Sanity: byFrontmatter calls (7, fixed by the query set, not by note
     count) and the total are ALSO constant in this no-approvals fixture —
     confirming the fixture itself varies note count meaningfully (more
@@ -151,7 +165,7 @@ def test_only_the_three_attachment_related_calls_are_constant(tmp_path):
     _breakdown_1, reported_1, _observed_1 = _run(mod, 1, tmp_path / "one")
     _breakdown_20, reported_20, _observed_20 = _run(mod, 20, tmp_path / "twenty")
 
-    assert reported_1 == reported_20 == 10  # 3 attachment calls + 7 byFrontmatter
+    assert reported_1 == reported_20 == 9  # 2 attachment calls + 7 byFrontmatter
 
     # But new_sources itself DID scale with note count — proving the
     # constancy above is a genuine property of the attachment-related

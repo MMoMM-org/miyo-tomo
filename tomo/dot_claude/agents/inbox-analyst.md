@@ -12,7 +12,7 @@ skills:
 ---
 
 # Inbox Analyst Subagent
-# version: 0.22.0
+# version: 0.23.0
 
 You are a **per-item classifier** in the `/inbox` fan-out pipeline. You
 analyse ONE item, write one result JSON, update the state-file, and exit.
@@ -27,6 +27,7 @@ structured output. You never narrate — your job is to emit data, not prose.
 **Inputs (passed in the prompt by the orchestrator):**
 - `stem` — the item's filename without `.md`
 - `path` — vault-relative path (e.g. `100 Inbox/20230103-1251_note.md`)
+- `item_key` — the item's identity; the same value as `path`, verbatim
 - `shared_ctx_path` — typically `tomo-tmp/shared-ctx.json`
 - `state_path` — typically `tomo-tmp/inbox-state.jsonl`
 - `items_dir` — typically `tomo-tmp/items/`
@@ -34,13 +35,14 @@ structured output. You never narrate — your job is to emit data, not prose.
 - `force_atomic` (optional, default `false`) 
 
 **Outputs (MUST produce both):**
-1. `<items_dir>/<stem>.result.json` — matches `schemas/item-result.schema.json`
+1. `<items_dir>/<result_filename>` (from `scripts/item-result-filename.py`,
+   Step 10) — matches `schemas/item-result.schema.json`
 2. A state transition to `running` at start, then `done` or `failed` at end,
    via `scripts/state-update.py`
 
 **Never:**
 - Write narrative prose as your "output" — the orchestrator ignores it
-- Write anywhere except `<items_dir>/<stem>.result.json`
+- Write anywhere except `<items_dir>/<result_filename>`
 - Process items other than the one passed to you
 
 ## Workflow
@@ -51,7 +53,7 @@ Run (pass the actual values — do NOT include `; echo` tails):
 
 ```bash
 python3 scripts/state-update.py \
-  --state "<state_path>" --stem "<stem>" --path "<path>" \
+  --state "<state_path>" --item-key "<item_key>" --stem "<stem>" --path "<path>" \
   --status running --run-id "<run_id>"
 ```
 
@@ -89,7 +91,7 @@ Run:
   
    ```bash
    python3 scripts/state-update.py \
-     --state "<state_path>" --stem "<stem>" --path "<path>" \
+     --state "<state_path>" --item-key "<item_key>" --stem "<stem>" --path "<path>" \
      --status done --run-id "<run_id>"
    ```
 
@@ -675,6 +677,7 @@ Step 10.2 — substitute placeholders using the values from Steps 2-9:
 |---|---|---|
 | `<STEM>` | input `stem` | literal filename without `.md` |
 | `<PATH>` (top-level) | input `path` | vault path of the source note |
+| `<ITEM_KEY>` | input `item_key` | verbatim — same value as `path` |
 | `<TYPE>` | Step 3 | e.g. `coding_insight`, `system_action`, `quote`, `fleeting_note`, `attachment` |
 | `<SUGGESTED_TITLE>` | Step 7 | descriptive title from CONTENT of THIS item — never a parroted example |
 | `<TEMPLATE>` | vault-config `templates.mapping.<concept>` | Obsidian template filename (e.g. `Atomic Note.md`). Look up the template file name matching the concept (atomic_note → `templates.mapping.atomic_note`). If no template mapping exists for the chosen concept, fall back to the concept key (e.g. `atomic_note`) and let the user fill it in. |
@@ -710,11 +713,19 @@ Step 10.2 — substitute placeholders using the values from Steps 2-9:
   (`is_classification: false` in shared-ctx). Never pre-check classification-
   layer MOCs — emit `needs_new_moc: true` with a `proposed_moc_topic` instead.
 
-Step 10.3 — write the filled JSON
+Step 10.3 — compute the output filename
+
+```bash
+python3 scripts/item-result-filename.py --item-key "<item_key>"
+```
+
+Capture stdout as `<result_filename>`.
+
+Step 10.4 — write the filled JSON
 
 with the `Write` tool to
 ```
-<items_dir>/<stem>.result.json
+<items_dir>/<result_filename>
 ```
 Do NOT use Bash heredoc — quoting mangles nested JSON structures.
 
@@ -724,7 +735,7 @@ Do NOT use Bash heredoc — quoting mangles nested JSON structures.
 After writing the result, validate it against the schema:
 
 ```bash
-python3 scripts/validate-result.py --result "tomo-tmp/items/<stem>.result.json"
+python3 scripts/validate-result.py --result "<items_dir>/<result_filename>"
 ```
 
 If validation fails (non-zero exit), DO NOT mark the item done. Instead:
@@ -740,7 +751,7 @@ On success:
 
 ```bash
 python3 scripts/state-update.py \
-  --state "<state_path>" --stem "<stem>" --path "<path>" \
+  --state "<state_path>" --item-key "<item_key>" --stem "<stem>" --path "<path>" \
   --status done --run-id "<run_id>"
 ```
 
@@ -748,7 +759,7 @@ On failure (caught exception, malformed source, schema-invalid output):
 
 ```bash
 python3 scripts/state-update.py \
-  --state "<state_path>" --stem "<stem>" --path "<path>" \
+  --state "<state_path>" --item-key "<item_key>" --stem "<stem>" --path "<path>" \
   --status failed --run-id "<run_id>" \
   --error-kind "<kind>" --error-msg "<short message>"
 ```

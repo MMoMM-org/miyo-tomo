@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.3.0
 """test_018_pipeline.py — Cross-phase integration tests for 018 inbox routing.
 
 T5.1: Exercises the full triage → routing-plan → conductor-selection chain
@@ -158,7 +158,12 @@ def _moc_proposal_body(accepted: bool) -> str:
 def _run_pipeline(tmp_path: Path, client: FakeKadoClient, extra_args: list[str] | None = None) -> dict:
     """Run main() through the full pipeline, return the written routing plan."""
     mod = _load_module()
-    args = ["--inbox-path", INBOX, "--output-dir", str(tmp_path)]
+    args = [
+        "--inbox-path", INBOX, "--output-dir", str(tmp_path),
+        # T6.1: the cost history defaults cwd-relative (instance runtime) — keep
+        # this run's entry out of the repo working tree.
+        "--cost-history", str(tmp_path / "cost-history.jsonl"),
+    ]
     if extra_args:
         args.extend(extra_args)
     rc = mod.main(args, client_factory=lambda: client)
@@ -209,7 +214,13 @@ class TestFanResolveActionFromForceAtomic:
         body = _suggestions_body(approved=True, fan_items=["Furano", "Niseko"])
 
         client = FakeKadoClient(
-            listdir_items=[_file(sugg_path)],
+            listdir_items=[
+                _file(sugg_path),
+                # The FAN'd sources: a suppressed item stays in the inbox, and
+                # each item's own path is resolved from this listing (034 T4.1).
+                _file(INBOX + "Furano.md"),
+                _file(INBOX + "Niseko.md"),
+            ],
             frontmatter_responses={
                 "tomo.state=pending-approval": [
                     _fm_hit(sugg_path, "suggestions", "pending-approval"),
@@ -231,6 +242,9 @@ class TestFanResolveActionFromForceAtomic:
         stems = [item["stem"] for item in plan["force_atomic_items"]]
         assert "Furano" in stems
         assert "Niseko" in stems
+        assert {item["item_key"] for item in plan["force_atomic_items"]} == {
+            INBOX + "Furano.md", INBOX + "Niseko.md",
+        }
         json_validate(instance=plan, schema=schema)
 
 

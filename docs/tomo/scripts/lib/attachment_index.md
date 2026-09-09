@@ -101,6 +101,25 @@ bucket, because they call for different user responses: ambiguous means "tell
 me which one", unresolved means "this file isn't in the inbox at all, or
 doesn't exist yet".
 
+## One Shared File-Type Predicate — `build_inbox_index` and `discover_files` Cannot Disagree (spec 034 T3.1, ADR-3)
+
+WHY `is_file_entry` exists as its own function instead of leaving the
+listDir file-type check inlined in `build_inbox_index`: this module's
+`build_inbox_index` and `inbox-triage.py`'s `discover_files` both filter the
+same shape of input (a Kado `listDir` result) down to "is this a file", and
+before this task they did it two different ways — `discover_files`
+lowercased the type and tolerated `None`/a missing key, `build_inbox_index`
+did an exact `== "file"` match with only an `isinstance` guard. The two
+agreed on everything Kado's gateway actually sends (it only ever emits the
+lowercase literal, verified against `search-adapter.ts`), so the
+disagreement was latent, not a live bug — but ADR-3 has both consumers about
+to share one recursive listing (T3.2), and that sharing is only safe once
+they can't classify the same entry differently. `is_file_entry` is that
+single predicate; `discover_files` now imports it from here rather than
+re-deriving its own check. As a side effect, `discover_files` no longer
+crashes on a non-dict listDir entry — the previous inline check called
+`.get()` straight on the entry with no `isinstance` guard.
+
 ## Path-Qualified Resolution Narrows Candidates, Not a Set-Membership Test — Correction to the SDD
 
 WHY `resolve_attachments` looks up a path-qualified target's own basename and

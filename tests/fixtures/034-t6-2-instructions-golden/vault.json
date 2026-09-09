@@ -1,0 +1,9 @@
+{
+  "notes": {
+    "Atlas/900 Templates/Atomic Note.md": "---\ntype: note\ntags: [{{tags}}]\nup:: {{up}}\n---\n\n# {{title}}\n\n{{body}}\n",
+    "Atlas/200 Maps/Travel (MOC).md": "---\ntype: moc\n---\n\n# Travel (MOC)\n\n> [!connect] Connections\n> - [[Somewhere else]]\n",
+    "100 Inbox/Dresden.md": "---\ntitle: Dresden\n---\n\nThe Frauenkirche was rebuilt from its own rubble.\n",
+    "100 Inbox/Hokkaido Trip.md": "---\ntitle: Hokkaido Trip\n---\n\nJanuary powder, Niseko to Furano.\n",
+    "100 Inbox/memo.md": "---\ntitle: memo\n---\n\nTranscript: remember to book the ryokan.\n"
+  }
+}

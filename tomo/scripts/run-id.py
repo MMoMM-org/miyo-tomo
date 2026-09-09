@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # run-id.py — Generate a unique run id and write it to stdout + optional file.
-# version: 0.1.0
+# version: 0.2.0
 #
 # Format: YYYY-MM-DDTHH-MM-SSZ-<6 hex chars>
 #
@@ -12,13 +12,12 @@ from __future__ import annotations
 
 import argparse
 import sys
-import time
-import uuid
+from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
 
-def generate() -> str:
-    stamp = time.strftime("%Y-%m-%dT%H-%M-%SZ", time.gmtime())
-    return f"{stamp}-{uuid.uuid4().hex[:6]}"
+from lib.run_id import generate  # noqa: E402
 
 
 def main() -> int:

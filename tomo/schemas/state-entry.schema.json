@@ -4,11 +4,12 @@
   "title": "Inbox State Entry",
   "description": "One line in tomo-tmp/inbox-state.jsonl. Append-only; last line per stem wins.",
   "type": "object",
-  "required": ["run_id", "stem", "path", "status", "attempts"],
+  "required": ["run_id", "stem", "item_key", "path", "status", "attempts"],
   "additionalProperties": false,
   "properties": {
     "run_id": {"type": "string", "minLength": 1},
     "stem": {"type": "string", "minLength": 1},
+    "item_key": {"type": "string", "minLength": 1, "description": "The item's identity: its vault-relative path, verbatim (e.g. '100 Inbox/Places/Dresden.md'). Used for joins, dict keys and set membership — unlike stem, it stays unique across subfolders."},
     "path": {"type": "string", "minLength": 1},
     "status": {"type": "string", "enum": ["pending", "running", "done", "failed"]},
     "attempts": {"type": "integer", "minimum": 0},

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_tag_handler_e2e.py — T6.1 (spec 024 Phase 6): Tomo-side E2E seam tests.
 
 Proves the full Tomo-side path for the tag-handler framework with NO cross-repo
@@ -290,6 +290,8 @@ class TestAC1ThreeCapturesAllHandled:
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
                 "--registry-dir", str(reg_dir),
+                # T6.1: the cost history defaults cwd-relative (instance runtime).
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
             ],
             client_factory=lambda: client,
         )
@@ -327,6 +329,8 @@ class TestAC1ThreeCapturesAllHandled:
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
                 "--registry-dir", str(reg_dir),
+                # T6.1: the cost history defaults cwd-relative (instance runtime).
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
             ],
             client_factory=lambda: client,
         )
@@ -377,6 +381,8 @@ class TestAC2UserAuthoredHandler:
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
                 "--registry-dir", str(reg_dir),
+                # T6.1: the cost history defaults cwd-relative (instance runtime).
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
             ],
             client_factory=lambda: client,
         )
@@ -438,6 +444,8 @@ class TestAC3ThreeCapturesOneGroup:
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
                 "--registry-dir", str(reg_dir),
+                # T6.1: the cost history defaults cwd-relative (instance runtime).
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
             ],
             client_factory=lambda: client,
         )
@@ -591,7 +599,8 @@ class TestAC5EmptyRegistry:
         # Baseline: default registry path (does not exist → empty registry)
         baseline_client = _make_client()
         rc0 = mod.main(
-            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path / "base")],
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path / "base"),
+             "--cost-history", str(tmp_path / "cost-history.jsonl"),],
             client_factory=lambda: baseline_client,
         )
         assert rc0 == 0
@@ -610,6 +619,7 @@ class TestAC5EmptyRegistry:
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path / "run"),
                 "--registry-dir", str(empty_reg),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
             ],
             client_factory=lambda: client,
         )

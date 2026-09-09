@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """voice-precheck.py — Cheap sibling-existence check before dispatching voice-transcriber.
 
 The voice-transcriber subagent costs ~17k tokens to load even when it
@@ -11,10 +11,11 @@ without dispatching it. One Kado listDir call, no file reads, no model
 boot. The orchestrator skips the dispatch entirely when all_cached.
 
 Logic:
-  1. listDir the inbox (top-level, files only).
+  1. listDir the inbox, recursively, files only.
   2. Collect audio files by extension match.
   3. For each audio, compute the Obsidian-safe sibling .md path via
-     sanitize_stem (single source of truth shared with voice-transcribe.py).
+     sanitize_stem (single source of truth shared with voice-transcribe.py) —
+     the sibling sits beside its own audio file, not at the inbox root.
   4. Check sibling presence in the same listDir result — no extra calls.
   5. Emit a JSON summary on stdout for the orchestrator to consume.
 
@@ -47,7 +48,7 @@ def _expected_md_path(audio_path: str) -> str:
 
 def precheck(inbox: str) -> dict:
     client = KadoClient()
-    items = client.list_dir(inbox, depth=1)
+    items = client.list_dir(inbox)
 
     files = [i for i in items if i.get("type") == "file"]
     paths = {i["path"] for i in files}

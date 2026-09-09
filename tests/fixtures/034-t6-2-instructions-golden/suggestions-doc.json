@@ -1,0 +1,125 @@
+{
+  "schema_version": "1",
+  "generated": "2026-09-08T14:39:52Z",
+  "run_id": "t6-2-flat-pass2",
+  "profile": "miyo",
+  "conventions": {
+    "parent_marker": "up::",
+    "peer_marker": "related::",
+    "moc_suffix": " (MOC)"
+  },
+  "doc_variant": "primary",
+  "source_items": 3,
+  "sections": [
+    {
+      "id": "S01",
+      "stem": "Dresden",
+      "item_key": "100 Inbox/Dresden.md",
+      "actions": [
+        {
+          "kind": "create_atomic_note",
+          "rendered_md": "**Source:** [[Dresden]]\n**Suggested name:** Dresden - Frauenkirche\n**Template:** [[Atomic Note]]    ← change if you want a different template\n**Location:** [[Atlas/202 Notes/]]    ← change if you want a different folder\n\n**Link to MOC:**\n- [x] [[Atlas/200 Maps/Travel (MOC)]]\n\n**New tags to add:** topic/travel\n\n**Why:** best MOC match Atlas/200 Maps/Travel (MOC).md (80%); atomic-worthiness 85%.\n\n**Decision (atomic note):**\n- [x] Approve\n- [ ] Keep source files\n      (don't delete the original(s) after the note is created — you may still need them)",
+          "suggestion_id": "S01",
+          "candidate_mocs": [
+            {
+              "path": "Atlas/200 Maps/Travel (MOC).md",
+              "anchor": null,
+              "pre_check": true,
+              "score": 0.8
+            }
+          ],
+          "item": {
+            "title": "Dresden - Frauenkirche",
+            "summary": null,
+            "template": "Atomic Note.md",
+            "location": "Atlas/202 Notes/",
+            "tags": [
+              "topic/travel"
+            ],
+            "audio_peer": null,
+            "attachments": [],
+            "worthiness": 0.85,
+            "suppressed": false,
+            "force_atomic": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "stem": "Hokkaido Trip",
+      "item_key": "100 Inbox/Hokkaido Trip.md",
+      "actions": [
+        {
+          "kind": "create_atomic_note",
+          "rendered_md": "**Source:** [[Hokkaido Trip]]\n**Suggested name:** Hokkaido powder days\n**Template:** [[Atomic Note]]    ← change if you want a different template\n**Location:** [[Atlas/202 Notes/]]    ← change if you want a different folder\n\n**Link to MOC:**\n- [x] [[Atlas/200 Maps/Travel (MOC)]]\n\n**New tags to add:** topic/travel\n\n**Why:** best MOC match Atlas/200 Maps/Travel (MOC).md (80%); atomic-worthiness 85%.\n\n**Decision (atomic note):**\n- [x] Approve\n- [ ] Keep source files\n      (don't delete the original(s) after the note is created — you may still need them)",
+          "suggestion_id": "S02",
+          "candidate_mocs": [
+            {
+              "path": "Atlas/200 Maps/Travel (MOC).md",
+              "anchor": null,
+              "pre_check": true,
+              "score": 0.8
+            }
+          ],
+          "item": {
+            "title": "Hokkaido powder days",
+            "summary": null,
+            "template": "Atomic Note.md",
+            "location": "Atlas/202 Notes/",
+            "tags": [
+              "topic/travel"
+            ],
+            "audio_peer": null,
+            "attachments": [],
+            "worthiness": 0.85,
+            "suppressed": false,
+            "force_atomic": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "stem": "memo",
+      "item_key": "100 Inbox/memo.md",
+      "actions": [
+        {
+          "kind": "create_atomic_note",
+          "rendered_md": "**Source:** [[memo]]\n**Suggested name:** Memo transcript takeaway\n**Template:** [[Atomic Note]]    ← change if you want a different template\n**Location:** [[Atlas/202 Notes/]]    ← change if you want a different folder\n\n**Link to MOC:**\n- [x] [[Atlas/200 Maps/Travel (MOC)]]\n\n**New tags to add:** topic/travel\n\n**Why:** best MOC match Atlas/200 Maps/Travel (MOC).md (80%); atomic-worthiness 85%.\n\n**Decision (atomic note):**\n- [x] Approve\n- [ ] Keep source files\n      (don't delete the original(s) after the note is created — you may still need them)",
+          "suggestion_id": "S03",
+          "candidate_mocs": [
+            {
+              "path": "Atlas/200 Maps/Travel (MOC).md",
+              "anchor": null,
+              "pre_check": true,
+              "score": 0.8
+            }
+          ],
+          "item": {
+            "title": "Memo transcript takeaway",
+            "summary": null,
+            "template": "Atomic Note.md",
+            "location": "Atlas/202 Notes/",
+            "tags": [
+              "topic/travel"
+            ],
+            "audio_peer": null,
+            "attachments": [],
+            "worthiness": 0.85,
+            "suppressed": false,
+            "force_atomic": false
+          }
+        }
+      ]
+    }
+  ],
+  "daily_notes_updates": [],
+  "rendered_daily_updates_md": "",
+  "decision_precedence_note": "Daily-note decisions (trackers, log entries, log links) live in the Daily Notes Updates block above. Per-item Suggestion sections only cover the atomic-note decision. Use **Force Atomic Note** on a log entry to create a standalone note even when the item was only proposed for the daily log.",
+  "attachments_preamble": "",
+  "proposed_mocs": [],
+  "needs_attention": [],
+  "folder_listing_calls": 0,
+  "distinct_destination_folders": 0
+}

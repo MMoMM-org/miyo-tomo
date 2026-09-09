@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.26.0
+# version: 0.35.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # noqa: E402
 from lib.supporting_items import (  # noqa: E402
     union_supporting_items as _union_supporting_items,
 )
+from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402
 
 
@@ -57,6 +58,11 @@ RE_FIELD = re.compile(r"^\s*\*\*([^*]+)\*\*[:\s]*(.*)")
 
 # Wikilink: [[Note Name]]  or  [[Note Name#anchor]]
 RE_WIKILINK = re.compile(r"\[\[([^\]#|]+)(?:[#|][^\]]*)?\]\]")
+
+# The same link, with its alias kept: group 1 = target, group 2 = alias or None.
+RE_WIKILINK_ALIASED = re.compile(
+    r"\[\[([^\]#|]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]"
+)
 
 # Source field value: backtick or plain path
 RE_SOURCE = re.compile(r"`([^`]+)`|(\S+\.md)")
@@ -146,6 +152,26 @@ def _extract_wikilink(text: str) -> str | None:
     """Return the first wikilink target found, or None."""
     m = RE_WIKILINK.search(text)
     return m.group(1).strip() if m else None
+
+
+def _wikilink_display(text: str) -> str | None:
+    """Return the first wikilink's DISPLAY text — its alias, else its target.
+
+    A source link is path-qualified with an alias only when two items in the
+    run share a filename (spec 034 T5.1): `[[100 Inbox/Places/Dresden|Dresden]]`.
+    The path is the vault's way of saying WHICH note; the alias is the bare
+    filename the document shows. Identity comes from `item_key`, so the parsed
+    display value stays the bare stem on both parser paths (ADR-2) — the wire
+    path records `stem` in the same field, and the two must agree.
+
+    An unaliased link is returned verbatim, so every pre-T5.1 document parses
+    exactly as it did.
+    """
+    m = RE_WIKILINK_ALIASED.search(text)
+    if not m:
+        return None
+    alias = m.group(2)
+    return alias.strip() if alias and alias.strip() else m.group(1).strip()
 
 
 def _moc_path_stem(ref: str | None) -> str:
@@ -247,14 +273,20 @@ def _norm_anchor(anchor: dict) -> dict:
     return out
 
 
-def _stem_lower(src: str | None) -> str:
-    """Lowercase bare stem of a source path/wikilink for member-id binding."""
+def _item_key_of(src: str | None) -> str:
+    """Item identity for the Force-Atomic reconciliation join (ADR-1).
+
+    The daily-log path (`source_stem` on a log_entry) and the primary/
+    resolve-doc path (`source_path` on a parsed section) both derive
+    identity through this one module-level function — the vault-relative
+    path verbatim, via `lib.item_key.derive`. No basename extraction, no
+    lowercasing: letting the two paths diverge reopens #165 in a form its
+    original regression test does not exercise (see
+    docs/tomo/scripts/suggestion-parser.md).
+    """
     if not src:
         return ""
-    bare = src.rsplit("/", 1)[-1]
-    if bare.endswith(".md"):
-        bare = bare[:-3]
-    return bare.strip().lower()
+    return derive_item_key(src)
 
 
 def build_from_wire(wire: dict, moc_template: str) -> dict:
@@ -268,11 +300,15 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
     confirmed_items: list[dict] = []
     skipped_items: list[dict] = []
     pending_fan_resolutions: list[dict] = []
-    id_to_stem: dict[str, str] = {}
+    # id → item_key (ADR-1), not id → stem: proposed-MOC member_ids resolve
+    # through this map, and a bare stem binds a member to whichever same-named
+    # note was written into the join dict last.
+    id_to_item_key: dict[str, str] = {}
 
     for w in wire.get("suggestions", []):
         stem = w.get("stem")
-        id_to_stem[w.get("id")] = stem
+        item_key = w.get("item_key") or stem
+        id_to_item_key[w.get("id")] = item_key
         # Suppressed light block promoted via Force Atomic → resolve subflow (#88).
         # Mirror the section-level pending_fan_resolutions shape (stem is the
         # lowercased source stem; Pass 2 verifies via kado-search).
@@ -304,7 +340,10 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
                 template = template[:-3]
             confirmed_items.append({
                 "id": w.get("id"),
+                # source_path stays the bare display stem (ADR-2); item_key is
+                # the identity downstream joins key on (ADR-1).
                 "source_path": stem,
+                "item_key": item_key,
                 "audio_peer": w.get("audio_peer"),
                 "attachments": list(w.get("attachments") or []),
                 "type": None,
@@ -325,7 +364,11 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
         else:
             skipped_items.append({
                 "id": w.get("id"),
+                # source_path stays the bare display stem (ADR-2); item_key is
+                # what Pass 2 addresses the note by when it emits a skip or a
+                # user-requested delete for it (ADR-1).
                 "source_path": stem,
+                "item_key": item_key,
                 "disposition": "delete_source" if w.get("delete_source") else "skip",
             })
 
@@ -342,7 +385,9 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
             continue
         parent = pm.get("parent", "")
         member_stems = [
-            id_to_stem[mid] for mid in pm.get("member_ids", []) if mid in id_to_stem
+            id_to_item_key[mid]
+            for mid in pm.get("member_ids", [])
+            if mid in id_to_item_key
         ]
         wire_mocs.append({
             "id": f"MOC{idx:02d}",
@@ -367,26 +412,34 @@ def build_from_wire(wire: dict, moc_template: str) -> dict:
 
     # Bind member_stems → supporting_items ids (mirrors the markdown path's final
     # pass), then strip the internal helper fields.
-    stem_to_id = {
-        _stem_lower(c.get("source_path")): c.get("id")
+    key_to_id = {
+        _item_key_of(c.get("item_key") or c.get("source_path")): c.get("id")
         for c in confirmed_items
-        if c.get("source_path") and c.get("id")
+        if (c.get("item_key") or c.get("source_path")) and c.get("id")
     }
     for c in confirmed_items:
         if c.get("action") == "create_moc":
             ids = [
-                stem_to_id[_stem_lower(s)]
+                key_to_id[_item_key_of(s)]
                 for s in (c.get("member_stems") or [])
-                if _stem_lower(s) in stem_to_id
+                if _item_key_of(s) in key_to_id
             ]
             if ids:
                 c["supporting_items"] = ", ".join(ids)
         c.pop("member_stems", None)
         c.pop("topic", None)
+    # Lifted at the same site the other internal fields are stripped: the
+    # carrier must not reach a confirmed item, and the record must reach the
+    # output dict below.
+    merged_moc_proposals = _lift_merged_moc_records(confirmed_items)
 
     tag_groups = wire.get("tag_handler_groups", [])
     return {
         "confirmed_items": confirmed_items,
+        # spec 034 T6.0c: what the by-Name merge absorbed, so instructions.md
+        # can say that one MOC was created where more than one was approved
+        # (CON-2). Empty list when nothing merged.
+        "merged_moc_proposals": merged_moc_proposals,
         # Daily updates are carried in the wire in the parser's own output shape
         # (mirrored at emit), so they pass through verbatim.
         "daily_updates": wire.get("daily_updates", []),
@@ -522,8 +575,18 @@ def load_doc_anchor_map(doc_path: str) -> dict[str, dict[str, dict]]:
             doc = json.load(fh)
     except (OSError, json.JSONDecodeError):
         return {}
+    return anchor_map_from_doc(doc)
+
+
+def anchor_map_from_doc(doc: dict) -> dict[str, dict[str, dict]]:
+    """``load_doc_anchor_map`` over an ALREADY-loaded doc (spec 034 T6.4a).
+
+    The companion resolve document is read once for its members, its identity
+    keys and its anchors; splitting the load from the mapping keeps that one
+    read instead of three.
+    """
     out: dict[str, dict[str, dict]] = {}
-    for section in doc.get("sections") or []:
+    for section in (doc or {}).get("sections") or []:
         sec_id = section.get("id")
         if not sec_id:
             continue
@@ -539,23 +602,59 @@ def load_doc_anchor_map(doc_path: str) -> dict[str, dict[str, dict]]:
     return out
 
 
-def _default_doc_path(markdown_path: str) -> str:
-    """Derive the sibling suggestions-doc JSON path for a markdown doc.
+# spec 034 T6.4a: each rendered document type is rendered FROM its own
+# structured document, and identity is joined back from that one. Every type in
+# use is listed, INCLUDING the ones whose answer is the primary doc, so that an
+# absent entry means "nobody decided" and can be reported rather than guessed.
+_PRIMARY_STRUCTURED_DOC = "suggestions-doc.json"
+_STRUCTURED_DOC_BY_TYPE = {
+    "suggestions": _PRIMARY_STRUCTURED_DOC,
+    "suggestions-fan": "suggestions-fan-doc.json",
+    "moc-proposal": _PRIMARY_STRUCTURED_DOC,  # reads the conventions block only
+}
 
-    The pipeline always writes the structured doc to
-    ``tomo-tmp/suggestions-doc.json`` (relative to the instance cwd). Prefer a
-    sibling file next to the markdown; fall back to the canonical tomo-tmp path.
+
+def _structured_doc_basename(doc_text: str) -> str:
+    """Name the structured document a rendered document was rendered from.
+
+    An unlisted type still resolves to the primary doc — the pre-fan behaviour,
+    and a safe answer — but says so, because binding a document against the
+    primary map when it has its own is exactly the T6.4a defect.
     """
-    if markdown_path:
-        sibling = os.path.join(
-            os.path.dirname(markdown_path), "suggestions-doc.json"
+    doc_type = _extract_tomo_doc_type(doc_text)
+    if not doc_type:  # legacy document, no provenance — the primary IS correct
+        return _PRIMARY_STRUCTURED_DOC
+    basename = _STRUCTURED_DOC_BY_TYPE.get(doc_type)
+    if basename is None:
+        print(
+            f"[warn] unrecognised tomo.doc_type {doc_type!r} — joining identity "
+            f"from {_PRIMARY_STRUCTURED_DOC}; add it to "
+            f"_STRUCTURED_DOC_BY_TYPE if it has its own structured document",
+            file=sys.stderr,
         )
+        return _PRIMARY_STRUCTURED_DOC
+    return basename
+
+
+def _default_doc_path(markdown_path: str, doc_text: str = "") -> str:
+    """Derive the structured JSON path for a rendered markdown document.
+
+    The pipeline writes each structured doc under ``tomo-tmp/`` (relative to
+    the instance cwd). Prefer a sibling file next to the markdown; fall back to
+    the canonical tomo-tmp path. Which basename is looked for follows the
+    document's own ``tomo.doc_type``: a fan document is rendered from
+    ``suggestions-fan-doc.json``, not from the primary ``suggestions-doc.json``,
+    and binding it against the primary map leaves every key unset.
+    """
+    basename = _structured_doc_basename(doc_text)
+    if markdown_path:
+        sibling = os.path.join(os.path.dirname(markdown_path), basename)
         if os.path.isfile(sibling):
             return sibling
-    fallback = os.path.join("tomo-tmp", "suggestions-doc.json")
+    fallback = os.path.join("tomo-tmp", basename)
     exists = "exists" if os.path.isfile(fallback) else "does NOT exist"
     print(
-        f"note: no sibling suggestions-doc.json; falling back to "
+        f"note: no sibling {basename}; falling back to "
         f"cwd-relative {fallback} ({exists})",
         file=sys.stderr,
     )
@@ -723,11 +822,17 @@ def parse_section(
                 result["source_path"] = src.group(1) or src.group(2)
             else:
                 # Voice source set: "[[stem]] + [[audio.m4a]]" → stem + peer.
-                # RE_WIKILINK.findall captures ALL wikilinks; index 0 is the
-                # transcript stem, index 1 (when present) is the audio peer basename.
-                wikilinks = RE_WIKILINK.findall(val)
-                result["source_path"] = wikilinks[0].strip() if wikilinks else val
-                result["audio_peer"] = wikilinks[1].strip() if len(wikilinks) >= 2 else None
+                # findall captures ALL wikilinks; index 0 is the transcript
+                # stem, index 1 (when present) is the audio peer basename.
+                # The DISPLAY text is taken, not the target: a path-qualified
+                # source link (spec 034 T5.1) carries the bare stem as its
+                # alias, and `source_path` stays that bare stem (ADR-2).
+                wikilinks = [
+                    (alias.strip() if alias and alias.strip() else target.strip())
+                    for target, alias in RE_WIKILINK_ALIASED.findall(val)
+                ]
+                result["source_path"] = wikilinks[0] if wikilinks else val
+                result["audio_peer"] = wikilinks[1] if len(wikilinks) >= 2 else None
 
         elif key == "type":
             # "#type/note/normal" or "fleeting_note (confidence: 0.85)"
@@ -1067,11 +1172,19 @@ def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
     regardless of parent; the first occurrence's parent is kept. Without this, two
     proposals renamed to one Name emit two create_moc at the same destination and
     the second overwrites the first on apply, silently dropping children.
+
+    Names are compared case-folded (CON-6, spec 034 T6.0c): `Travel (MOC)` and
+    `travel (MOC)` are one file on this filesystem, so they are one proposal.
+    `casefold()`, not `.lower()` — `ß` folds to `ss` and these are German notes.
+    The key folds; the survivor keeps the spelling its author wrote. Folding
+    here removes the case-only pair upstream of every consumer, so the
+    downstream `by_dest` fold is the defence-in-depth its comment claims and
+    `derive_expected` counts what is actually emitted.
     """
     merged: dict[str, dict] = {}
     order: list[str] = []
     for moc in mocs:
-        name = moc.get("title", "")
+        name = moc.get("title", "").casefold()
         head = merged.get(name)
         if head is None:
             merged[name] = moc
@@ -1090,7 +1203,61 @@ def _merge_proposed_mocs_by_name(mocs: list[dict]) -> list[dict]:
         for s in moc.get("member_stems") or []:
             if s not in head_ms:
                 head_ms.append(s)
+        # Record what was absorbed, so the run can say what it did (CON-2).
+        # Internal field, same lifecycle as `member_stems` and `topic`: it rides
+        # on the SURVIVOR across repeated merge calls and is lifted out at the
+        # same two strip sites. The markdown path merges twice and the second
+        # call has no memory of the first, so a record built per call would
+        # emit a second entry for a survivor already merged in stage 1.
+        # Appended, never a set: the absorbed list's order is asserted, and a
+        # set would make it implementation-defined.
+        head_absorbed = head.setdefault("absorbed_names", [])
+        head_absorbed.append(moc.get("title", ""))
+        head_absorbed.extend(moc.get("absorbed_names") or [])
     return [merged[name] for name in order]
+
+
+# The merge's sibling wording lives in `render_actions._CASE_NOTE`, which says
+# the same thing about a destination clash. Restated rather than imported: the
+# parser has no dependency on the action builder, and buying one for a sentence
+# would be the worse trade.
+_MERGE_CASE_NOTE = (
+    "The names differ only in case — the filesystem may treat them as one file."
+)
+
+
+def _lift_merged_moc_records(items: list[dict]) -> list[dict]:
+    """Pop the internal absorbed-spellings carrier and return user-facing records.
+
+    One record per SURVIVING name carrying the group it absorbed — the shape
+    `validate_destinations`' clash record already uses (`dropped: [...]` inside
+    one record rather than one record per claimant). A pairwise record would
+    emit two entries for a three-way collapse.
+
+    Called at the same sites that strip `member_stems` and `topic`; items that
+    absorbed nothing carry no field and produce no record.
+    """
+    records: list[dict] = []
+    for item in items:
+        absorbed = item.pop("absorbed_names", None)
+        if not absorbed:
+            continue
+        name = item.get("title", "")
+        # Every absorbed spelling is casefold-equal to the survivor's by
+        # construction, so an unequal one differed only in case.
+        case_only = any(a != name for a in absorbed)
+        count = len(absorbed) + 1
+        reason = (
+            f"{count} approved proposals resolve to this Name — one MOC was "
+            f"created, with every proposal's tags and supporting items combined"
+        )
+        records.append({
+            "name": name,
+            "case_only": case_only,
+            "absorbed": list(absorbed),
+            "reason": f"{reason}. {_MERGE_CASE_NOTE}" if case_only else f"{reason}.",
+        })
+    return records
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1665,7 +1832,7 @@ def parse_daily_updates(text: str) -> list[dict]:
             pending_item["reason"] = stripped.split(":", 1)[1].strip()
             continue
         if stripped.startswith("- Source:") and pending_item:
-            wl = _extract_wikilink(stripped)
+            wl = _wikilink_display(stripped)
             if wl:
                 pending_item["source_stem"] = wl
             continue
@@ -1729,6 +1896,145 @@ def parse_daily_updates(text: str) -> list[dict]:
 RE_TAG_HANDLER_GROUP_ID = re.compile(
     r"\*\*Group:\*\*\s*`([^`]+)`", re.IGNORECASE
 )
+
+
+def item_keys_by_section_id(doc: dict) -> dict[str, tuple[str, str] | None]:
+    """Map each rendered section id to (item_key, display stem) from the doc.
+
+    The rendered markdown carries only a bare display stem, but the markdown
+    PATH is never just the markdown: `synthesis-conductor.md` passes
+    `--suggestions-doc`, and that document holds `sections[].item_key` keyed by
+    the same id the heading shows (`### S01 — …`). So identity is recoverable
+    without changing a byte of what the user reads.
+
+    Both the section id and each action's flat `suggestion_id` are registered:
+    F-41 gives a multi-atomic source several headings from one section, and the
+    heading shows the suggestion_id. Every atomic of one source shares that
+    source's key, so the two id spaces cannot disagree about the key.
+
+    An id that maps to two different keys is recorded as None — ambiguous, and
+    never guessed.
+    """
+    lookup: dict[str, tuple[str, str] | None] = {}
+
+    def _register(sid: str | None, value: tuple[str, str]) -> None:
+        if not sid:
+            return
+        if sid in lookup and lookup[sid] != value:
+            lookup[sid] = None
+            return
+        lookup.setdefault(sid, value)
+
+    for section in (doc or {}).get("sections") or []:
+        key = section.get("item_key")
+        if not key:
+            continue
+        value = (key, section.get("stem") or "")
+        _register(section.get("id"), value)
+        for action in section.get("actions") or []:
+            _register(action.get("suggestion_id"), value)
+    return lookup
+
+
+def bind_section_item_key(
+    item: dict, lookup: dict[str, tuple[str, str] | None]
+) -> None:
+    """Attach `item_key` to a parsed section, or leave it unset (ADR-1/ADR-2).
+
+    The id match alone is not evidence: the user owns this document and may
+    have retyped the Source line. The display stem is therefore cross-checked
+    against the one the doc recorded before binding — on a mismatch the key is
+    left unset, so the item falls back to the reconstruction. A wrong key names
+    a specific wrong note, which is strictly worse than a fallback that may
+    simply find nothing.
+
+    Compared on the basename so a path-qualified source link still binds
+    (spec 034 T5.1 qualifies links for same-filename groups).
+    """
+    entry = lookup.get(item.get("id"))
+    if not entry:
+        return
+    key, doc_stem = entry
+    parsed = (item.get("source_path") or "").rsplit("/", 1)[-1]
+    if parsed.endswith(".md"):
+        parsed = parsed[:-3]
+    if doc_stem and parsed and parsed != doc_stem:
+        return
+    item["item_key"] = key
+
+
+_DAILY_DISCRIMINATOR = {
+    "trackers": "field",
+    "log_entries": "content",
+    "log_links": "target_stem",
+}
+
+
+def enrich_daily_updates_with_item_keys(entries: list[dict], doc: dict) -> None:
+    """Restore each daily entry's `source_item_key` from the structured doc.
+
+    A daily-only item — one whose content is fully captured in a daily note —
+    gets no per-item section, so the rendered document is the only place it
+    appears, and there it carries a bare display stem. Pass 2 nonetheless emits
+    a `delete_source` for it (`render_actions._build_delete_source_actions`),
+    which is why its identity has to survive the round trip through markdown.
+
+    The structured `daily_notes_updates` block the markdown was rendered from
+    still holds `source_item_key`, so the key is recovered by matching on the
+    daily-note stem, the bucket, and the entry's own discriminating field
+    (tracker name / log content / link target). A discriminator that maps to
+    more than one distinct key is ambiguous and is left unset rather than
+    guessed — an absent key falls back to the inbox-root reconstruction, a
+    wrong one names the wrong note.
+
+    Mutates `entries` in place. A document without the field is untouched.
+    """
+    if not entries or not isinstance(doc, dict):
+        return
+    lookup: dict[tuple[str, str, str], str | None] = {}
+    for day in doc.get("daily_notes_updates") or []:
+        day_stem = day.get("daily_note_stem") or ""
+        for bucket, field in _DAILY_DISCRIMINATOR.items():
+            for entry in day.get(bucket) or []:
+                key = entry.get("source_item_key")
+                if not key:
+                    continue
+                lookup_key = (day_stem, bucket, str(entry.get(field, "")))
+                if lookup_key in lookup and lookup[lookup_key] != key:
+                    lookup[lookup_key] = None  # ambiguous — never guess
+                else:
+                    lookup.setdefault(lookup_key, key)
+
+    if not lookup:
+        return
+    for day in entries:
+        day_stem = day.get("date") or ""
+        for bucket, field in _DAILY_DISCRIMINATOR.items():
+            for entry in day.get(bucket) or []:
+                key = lookup.get((day_stem, bucket, str(entry.get(field, ""))))
+                if key:
+                    entry["source_item_key"] = key
+
+
+def _restore_daily_item_keys(
+    parsed: dict,
+    suggestions_doc: str | None,
+    markdown_path: str,
+    doc_text: str = "",
+) -> None:
+    """Re-attach daily-entry item keys to a wire-built output (ADR-026 path).
+
+    The wire deliberately does NOT carry `source_item_key`: its schema is
+    `additionalProperties: false` and it is the Hashi Suggestions Editor's
+    contract, so widening it is a coordinated cross-repo change. The key is
+    instead recovered here from the Tomo-owned suggestions doc — the same
+    source the markdown path uses — which keeps both parser paths on one
+    recovery mechanism and leaves the wire untouched.
+    """
+    doc_path = suggestions_doc or _default_doc_path(markdown_path, doc_text)
+    enrich_daily_updates_with_item_keys(
+        parsed.get("daily_updates") or [], _load_json_doc(doc_path)
+    )
 
 
 def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
@@ -1872,8 +2178,11 @@ def main() -> int:
         help=(
             "Optional structured suggestions-doc JSON (reducer output). Supplies "
             "the Pass-1 placement anchor as the apply-time default per checked "
-            "MOC (spec 022/023). Defaults to the sibling suggestions-doc.json or "
-            "tomo-tmp/suggestions-doc.json; absent → Placement-line parsing only."
+            "MOC (spec 022/023) and the item_key identity join (spec 034). "
+            "Defaults to the sibling / tomo-tmp copy of the structured doc the "
+            "input markdown was rendered from, chosen by its own tomo.doc_type "
+            "(suggestions-fan-doc.json for a fan document, suggestions-doc.json "
+            "otherwise); absent → Placement-line parsing only."
         ),
     )
     parser.add_argument(
@@ -1909,7 +2218,7 @@ def main() -> int:
         # spec 028 T3.4: the override-header marker follows the active profile's
         # parent marker, carried in the suggestions-doc conventions block; absent
         # block → default up::.
-        _doc_path = args.suggestions_doc or _default_doc_path(filename)
+        _doc_path = args.suggestions_doc or _default_doc_path(filename, text)
         _parent_marker = _parent_marker_from_doc(_doc_path)
         proposals = parse_moc_proposal_doc(
             text, filename=filename, parent_marker=_parent_marker
@@ -1926,10 +2235,9 @@ def main() -> int:
         # Primary flow (no companion): edited primary wire → JSON-only.
         _wire = load_changed_wire(args.suggestions_json)
         if _wire is not None:
-            print(json.dumps(
-                build_from_wire(_wire, _load_moc_template()),
-                indent=2, ensure_ascii=False,
-            ))
+            _out = build_from_wire(_wire, _load_moc_template())
+            _restore_daily_item_keys(_out, args.suggestions_doc, filename, text)
+            print(json.dumps(_out, indent=2, ensure_ascii=False))
             print(
                 "suggestions-json: edited wire is authoritative (JSON-only path)",
                 file=sys.stderr,
@@ -1942,10 +2250,9 @@ def main() -> int:
         _p = load_changed_wire(args.suggestions_json)
         _f = load_changed_wire(args.fan_resolve_json)
         if _p is not None and _f is not None:
-            print(json.dumps(
-                build_from_wire_companion(_p, _f, _load_moc_template()),
-                indent=2, ensure_ascii=False,
-            ))
+            _out = build_from_wire_companion(_p, _f, _load_moc_template())
+            _restore_daily_item_keys(_out, args.suggestions_doc, filename, text)
+            print(json.dumps(_out, indent=2, ensure_ascii=False))
             print(
                 "companion: both wires edited — JSON-only merge (build_from_wire_companion)",
                 file=sys.stderr,
@@ -1968,28 +2275,25 @@ def main() -> int:
     skipped_items: list[dict] = []
     total_sections = len(raw_sections)
 
-    def _stem_of(src: str | None) -> str:
-        """Lowercase stem for source_path/source_stem matching — handles
-        paths with folders, .md suffixes, and wikilink aliases."""
-        if not src:
-            return ""
-        bare = src.rsplit("/", 1)[-1]
-        if bare.endswith(".md"):
-            bare = bare[:-3]
-        return bare.strip().lower()
-
-    # Keep parsed sections by stem so the Force-Atomic reconciliation pass
-    # can promote unapproved items later. A single rendered section can carry
-    # N atomic blocks (F-41), so the map is stem → list of per-block items.
+    # Keep parsed sections by item key (`_item_key_of`, module-level) so the
+    # Force-Atomic reconciliation pass can promote unapproved items later. A
+    # single rendered section can carry N atomic blocks (F-41), so the map is
+    # item_key → list of per-block items.
     parsed_sections: list[dict] = []
     sections_by_stem: dict[str, list[dict]] = {}
 
     # spec 022/023: load the structured Pass-1 anchor map (section id → moc
-    # stem → anchor) from the sibling suggestions-doc JSON. Supplies the
+    # stem → anchor) from the structured doc this markdown was rendered from
+    # (spec 034 T6.4a — a fan document resolves its OWN doc). Supplies the
     # apply-time DEFAULT anchor per checked MOC; the rendered **Placement:**
     # line overrides it when hand-edited. Absent doc → empty map (back-compat).
-    _primary_doc_path = args.suggestions_doc or _default_doc_path(filename)
-    doc_anchor_map = load_doc_anchor_map(_primary_doc_path)
+    _own_doc_path = args.suggestions_doc or _default_doc_path(filename, text)
+    doc_anchor_map = load_doc_anchor_map(_own_doc_path)
+    # spec 034: the rendered document carries a display stem only, so identity
+    # is joined back from the structured doc it was rendered from. Empty when
+    # no doc is reachable — every item then falls back to the reconstruction,
+    # exactly as before this existed.
+    doc_item_keys = item_keys_by_section_id(_load_json_doc(_own_doc_path))
 
     # F-41: split each rendered section into per-atomic-block groups on
     # **Source:** boundaries. Sections with ≤1 Source line yield one group
@@ -2018,15 +2322,19 @@ def main() -> int:
             skipped_items.append({"id": section_id, "disposition": "error"})
             continue
 
+        bind_section_item_key(item, doc_item_keys)
         parsed_sections.append(item)
-        stem_key = _stem_of(item.get("source_path"))
+        stem_key = _item_key_of(item.get("source_path"))
         if stem_key:
             sections_by_stem.setdefault(stem_key, []).append(item)
 
         if item["approved"]:
             confirmed_items.append({
                 "id": item["id"],
+                # source_path stays the display stem (ADR-2); item_key is the
+                # identity Pass 2 addresses the note by (ADR-1).
                 "source_path": item["source_path"],
+                "item_key": item.get("item_key"),
                 "audio_peer": item.get("audio_peer"),
                 "attachments": item.get("attachments") or [],
                 "type": item["type"],
@@ -2049,6 +2357,7 @@ def main() -> int:
             skipped_items.append({
                 "id": section_id,
                 "source_path": item["source_path"],
+                "item_key": item.get("item_key"),
                 "disposition": disposition,
             })
 
@@ -2073,15 +2382,24 @@ def main() -> int:
             )
             resolve_text = ""
 
+    # spec 034 T6.4a: the resolve document is a document in its own right —
+    # rendered from its own structured doc, with its own section-id namespace.
+    # Its identity keys, placement anchors and proposed-MOC members are joined
+    # back from THAT doc, resolved by its own tomo.doc_type exactly as the
+    # input markdown's are. Unreadable resolve markdown → no doc, and every
+    # consumer below is already gated on `resolve_text`.
+    _resolve_doc = (
+        _load_json_doc(_default_doc_path(args.fan_resolve_file, resolve_text))
+        if args.fan_resolve_file and resolve_text.strip() else {}
+    )
+    resolve_item_keys = item_keys_by_section_id(_resolve_doc)
+    resolve_anchor_map = anchor_map_from_doc(_resolve_doc)
+
     # Recover proposed-MOC members from the structured docs (the render drops
     # the SNN members; we resolve topic → source-stems and bind them to the
     # create_moc below so the new MOC gets its child down-links).
-    import os
-    primary_members = _topic_member_stems(_load_json_doc(_primary_doc_path))
-    fan_members = (
-        _topic_member_stems(_load_json_doc(os.path.join("tomo-tmp", "suggestions-fan-doc.json")))
-        if args.fan_resolve_file else {}
-    )
+    primary_members = _topic_member_stems(_load_json_doc(_own_doc_path))
+    fan_members = _topic_member_stems(_resolve_doc)
     # Enrich member_stems INSIDE parse (before its internal same-name merge) so
     # a name merged from multiple topics keeps every topic's members.
     primary_pmocs = parse_proposed_mocs(
@@ -2114,6 +2432,12 @@ def main() -> int:
 
     # ── Parse Daily Notes Updates ─────────────────────────────
     daily_updates = parse_daily_updates(text)
+    # The rendered daily block carries only a display stem, so the identity of
+    # each entry's source note is recovered from the structured doc it was
+    # rendered from — Pass 2 emits a delete_source for daily-only items.
+    enrich_daily_updates_with_item_keys(
+        daily_updates, _load_json_doc(_own_doc_path)
+    )
     if daily_updates:
         accepted_count = sum(
             1 for d in daily_updates
@@ -2140,7 +2464,12 @@ def main() -> int:
             for sid, lns in split_into_sections(resolve_text)
         ):
             try:
-                item = parse_section(section_id, lines)
+                # Per-block ids carry a "#N" suffix (F-41); both maps are keyed
+                # by the base section id.
+                base_id = section_id.split("#", 1)[0]
+                item = parse_section(
+                    section_id, lines, resolve_anchor_map.get(base_id)
+                )
             except Exception as exc:  # noqa: BLE001
                 print(
                     f"warning: resolve-doc {section_id} parse error: {exc}",
@@ -2149,11 +2478,15 @@ def main() -> int:
                 continue
             if item is None:
                 continue
+            # spec 034 T6.4a: `_promote_entry` reads `item_key` off this
+            # section, so a resolve atomic that never binds one addresses its
+            # note by display stem and a subfolder note cannot be filed.
+            bind_section_item_key(item, resolve_item_keys)
             # Only approved atomic sections count. Unchecked = user
             # hasn't accepted the proposal yet.
             if not item.get("approved"):
                 continue
-            stem_key = _stem_of(item.get("source_path"))
+            stem_key = _item_key_of(item.get("source_path"))
             if stem_key:
                 resolve_sections_by_stem.setdefault(stem_key, []).append(item)
 
@@ -2169,14 +2502,14 @@ def main() -> int:
     for d in daily_updates:
         for le in d.get("log_entries", []):
             if le.get("force_atomic_note"):
-                stem = _stem_of(le.get("source_stem"))
+                stem = _item_key_of(le.get("source_stem"))
                 if stem:
                     force_atomic_stems.append((stem, le))
 
     promoted = 0
     from_resolve = 0
     pending_fan_resolutions: list[dict] = []
-    already_in = {_stem_of(c.get("source_path")) for c in confirmed_items}
+    already_in = {_item_key_of(c.get("source_path")) for c in confirmed_items}
     # Track per-block confirmations by id so a stem with N atomic blocks can
     # have some user-approved and the rest FAN-promoted without duplication.
     confirmed_ids = {c.get("id") for c in confirmed_items}
@@ -2202,6 +2535,7 @@ def main() -> int:
         entry = {
             "id": sec["id"],
             "source_path": sec["source_path"],
+            "item_key": sec.get("item_key"),
             # Both fields belong to the canonical confirmed-item shape built
             # above; omitting them here filed the note and left its audio peer
             # and attachments behind in the inbox (#161).
@@ -2243,7 +2577,7 @@ def main() -> int:
             already_in.add(stem)
             skipped_items[:] = [
                 s for s in skipped_items
-                if _stem_of(s.get("source_path")) != stem
+                if _item_key_of(s.get("source_path")) != stem
             ]
             continue
 
@@ -2268,7 +2602,7 @@ def main() -> int:
             # Drop the matching skipped entry (if any) so counts stay clean.
             skipped_items[:] = [
                 s for s in skipped_items
-                if _stem_of(s.get("source_path")) != stem
+                if _item_key_of(s.get("source_path")) != stem
             ]
         else:
             # Branch (c): no matching section anywhere. Record the item so
@@ -2305,7 +2639,7 @@ def main() -> int:
     for sec in parsed_sections:
         if not sec.get("force_atomic"):
             continue
-        stem = _stem_of(sec.get("source_path"))
+        stem = _item_key_of(sec.get("source_path"))
         if not stem or stem in already_in or stem in seen_pending:
             continue
 
@@ -2325,7 +2659,7 @@ def main() -> int:
             already_in.add(stem)
             skipped_items[:] = [
                 s for s in skipped_items
-                if _stem_of(s.get("source_path")) != stem
+                if _item_key_of(s.get("source_path")) != stem
             ]
             continue
 
@@ -2341,7 +2675,7 @@ def main() -> int:
         })
         # Remove from skipped (it's being force-atomic'd, not skipped).
         skipped_items[:] = [
-            s for s in skipped_items if _stem_of(s.get("source_path")) != stem
+            s for s in skipped_items if _item_key_of(s.get("source_path")) != stem
         ]
 
     if promoted:
@@ -2368,24 +2702,31 @@ def main() -> int:
     # FINAL confirmed-item ids so _build_link_to_moc_actions emits the child
     # links into the new MOC. Strip the internal helper fields afterwards.
     _stem_to_id = {
-        _stem_of(c.get("source_path")): c.get("id")
+        _item_key_of(c.get("source_path")): c.get("id")
         for c in confirmed_items
         if c.get("source_path") and c.get("id")
     }
     for c in confirmed_items:
         if c.get("action") == "create_moc":
             ids = [
-                _stem_to_id[_stem_of(s)]
+                _stem_to_id[_item_key_of(s)]
                 for s in (c.get("member_stems") or [])
-                if _stem_of(s) in _stem_to_id
+                if _item_key_of(s) in _stem_to_id
             ]
             if ids:
                 c["supporting_items"] = ", ".join(ids)
         c.pop("member_stems", None)
         c.pop("topic", None)
+    # Lifted at the same site the other internal fields are stripped: the
+    # carrier must not reach a confirmed item, and the record must reach the
+    # output dict below.
+    merged_moc_proposals = _lift_merged_moc_records(confirmed_items)
 
     output = {
         "confirmed_items": confirmed_items,
+        # spec 034 T6.0c — see the wire path's note. Same record, same shape;
+        # this path merges twice, so the carrier is reentrant across both.
+        "merged_moc_proposals": merged_moc_proposals,
         "daily_updates": daily_updates,
         "skipped": skipped_items,
         # XDD 012: items with FAN-without-section that Pass 2 must

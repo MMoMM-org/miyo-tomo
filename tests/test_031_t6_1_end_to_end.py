@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t6_1_end_to_end.py — spec 031 T6.1 end-to-end pipeline test.
 
 Drives the pipeline's PUBLIC entry points, not internal helpers
@@ -53,6 +53,7 @@ RENDER = SCRIPTS_DIR / "suggestions-render.py"
 PARSER = SCRIPTS_DIR / "suggestion-parser.py"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
+from lib.item_key import to_filename  # noqa: E402 — spec 034 T2.3
 
 INBOX_PATH = "100 Inbox/"
 
@@ -95,12 +96,12 @@ def _note_entry(path: str, embed_targets: list[str]) -> dict:
 
 
 class _FakeClient:
-    """Only what build_attachment_index/resolve_inbox_attachments call.
+    """Only what the ADR-1 chain calls.
 
     depth=1 deliberately returns EMPTY — this fixture's notes and images
     both live in subfolders (Places/, Images/), never at the inbox root, so
-    a regression that resolves against the depth=1 listing instead of the
-    real recursive one would find nothing and this fixture would catch it.
+    a regression that re-introduces a depth ceiling on the listing (spec 034
+    ADR-3 removed it) would find nothing and this fixture would catch it.
     A fake that returned recursive_items regardless of depth would let that
     exact class of bug through undetected.
     """
@@ -121,7 +122,9 @@ class _FakeClient:
 def _resolve_and_persist(tmp_path: Path, recursive_items: list[dict], notes: list[dict]) -> Path:
     """Runs the real ADR-1 chain and writes resolved-attachments.json."""
     client = _FakeClient(recursive_items, notes)
-    index = triage.build_attachment_index(client, INBOX_PATH)
+    # ADR-3 (spec 034): one recursive listing feeds both consumers; the index
+    # is built from that listing, not from a call of its own.
+    index = triage.build_attachment_index(client.list_dir(INBOX_PATH))
     resolutions = triage.resolve_inbox_attachments(client, INBOX_PATH, index)
     out_path = tmp_path / "resolved-attachments.json"
     out_path.write_text(json.dumps(resolutions), encoding="utf-8")
@@ -162,7 +165,8 @@ def _write_state(tmp_path: Path, stems: list[str]) -> Path:
     state_path = tmp_path / "state.jsonl"
     lines = [
         json.dumps({
-            "stem": stem, "status": "done", "run_id": "t6-1-run",
+            "stem": stem, "item_key": f"100 Inbox/Places/{stem}.md",
+            "status": "done", "run_id": "t6-1-run",
             "started_at": "2026-09-06T09:00:00Z", "finished_at": "2026-09-06T09:00:01Z",
         })
         for stem in stems
@@ -192,7 +196,7 @@ def _parsed_confirmed_items(
     items_dir = tmp_path / "items"
     items_dir.mkdir()
     for stem, result in item_results.items():
-        (items_dir / f"{stem}.result.json").write_text(
+        (items_dir / to_filename(f"100 Inbox/Places/{stem}.md")).write_text(
             json.dumps(result, ensure_ascii=False), encoding="utf-8"
         )
     state_path = _write_state(tmp_path, list(item_results.keys()))
@@ -239,6 +243,12 @@ def _manifest_from_confirmed(confirmed: list[dict]) -> list[dict]:
             "action": item.get("action"),
             "title": item.get("title") or _stem_of(item["source_path"]),
             "source_path": item["source_path"],
+            # instruction-render.py carries item_key onto the manifest entry
+            # (spec 034 T5.0) so the move origin is the note's real path. These
+            # fixture notes live at `100 Inbox/Places/<stem>.md`; without the
+            # key the origin reconstructs to the inbox root and the coverage
+            # audit reports [MISSING] — correctly, which is the point.
+            "item_key": item.get("item_key"),
             "rendered_file": f"2026-09-06_1200_{_stem_of(item['source_path'])}.md",
             "destination": "Atlas/202 Notes/",
             "parent_moc": item.get("parent_moc") or "",

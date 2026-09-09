@@ -596,3 +596,352 @@ A permanent structural guard asserts `"update_daily"` is absent from
 `RENDERERS` and that neither removed function has come back. It is structural
 rather than behavioural because code that never executes cannot fail a
 behavioural test — the same reasoning as spec 033's `ast.parse` guard.
+
+## The Result Lookup Joins on `item_key`, Every Render Site Still Uses `stem` (spec 034 T2.3)
+
+WHY the per-item result file is addressed as `lib/item_key.to_filename(item_key)`
+and no longer as `<stem>.result.json`: with a recursive inbox, two notes in
+different subfolders share a filename, and a stem-named result file lets the
+second analyst overwrite the first. `to_filename` pairs a readable stem with a
+digest of the exact vault-relative path, so the name stays distinct even on a
+case-insensitive filesystem. The analyst names its output with the same
+function (via `scripts/item-result-filename.py`) — one derivation, so the write
+and the read side cannot drift.
+
+WHY `stem` was left on all 16 render sites — the `or stem` title fallback
+(`render_create_atomic_note`, `render_suppressed_atomic`, `demote_structural_anchors`,
+the `item` mirror, the `section_titles` map and the suggestion-id pre-pass) and
+the `[[{stem}]]` source links and headings: those strings are written into the
+user's vault as note titles and wikilinks. `item_key` is a path; putting it in
+any of them would title a note `100 Inbox/Places/Dresden` or emit a broken
+`[[100 Inbox/Places/Dresden]]`, and nothing would error. ADR-2 is the rule —
+`item_key` joins, `stem` displays — and the regression guard for it is a
+property of the whole document (no rendered title and no wikilink may carry a
+path-derived value), not a per-site check, so a leak at a site nobody
+enumerated is caught just the same.
+
+Two wikilink emitters legitimately contain `/` and are not item links:
+`_location_link` (`[[Atlas/202 Notes/]]`, a folder) and the tag-handler group's
+source-path links.
+
+## A Missing Result File Is Reported, Not Skipped (spec 034 T2.3)
+
+WHY the loop no longer does a bare `continue` when a `done` item's result file
+is absent or unparseable: an item simply disappeared from the run — no stderr
+line, no entry in the document, no way for the user to know Tomo had dropped a
+note. That is the failure mode the identity change itself could have caused
+during the interim window when the analyst wrote one filename and the reducer
+read another. The item is now named on stderr and appears in the document's
+`needs_attention` block with an `unreadable_result:` prefix, so a vanished item
+is audible in both the log and the review surface.
+
+The unparseable-JSON branch is treated identically to the missing-file branch:
+it is the same silent-vanish defect, and reporting only one of the two would
+leave half the window open.
+
+## One Shared State Replay, Keyed on `item_key` (spec 034 T2.3)
+
+WHY the local `last_state_per_stem` was removed in favour of
+`lib/inbox_state.last_state_per_item_key`: an identical copy lived in
+`mark-captured.py`, and both replayed `inbox-state.jsonl` into `out[stem]` —
+last-wins per bare filename, so one item's `done`/`failed` status masked its
+namesake's and that namesake dropped out of the work list. Two divergent copies
+of one identity computation is how #165 happened, so the fix is one function in
+`lib/`, not two patched copies. `mark-captured.py` consumes the same helper.
+
+The `#116` `run_id` filter that scopes the work list to the current run is
+applied on top of the replay exactly as before — it is what stops an
+append-only state file from re-emitting proposals for prior runs.
+
+## Source Links Are Path-Qualified Only on a Filename Collision (spec 034 T5.1)
+
+WHY the source link is no longer always `[[<stem>]]`: recursive discovery
+(Phase 3) lets two inbox notes in different subfolders share a filename, and
+both then rendered `[[Dresden]]`. Under CON-2 the suggestions document is what
+the user approves, and there they could not tell the two suggestions apart. The
+vault compounds it: a bare wikilink resolves by name, so clicking either link
+opens whichever note Obsidian picks.
+
+WHY `[[<path>|<stem>]]` and not some other disambiguator: it is what the vault
+itself writes when two files share a basename (`[[100 Inbox/Images/Test|Test]]`,
+recorded in the spec README). Anything Tomo invented would have to be explained
+to the user; this form already reads as "that Dresden" to anyone who has renamed
+a duplicate in Obsidian. The alias is load-bearing, not decoration — it keeps
+the DISPLAY text a bare filename, which is what ADR-2 actually asserts.
+
+WHY collision-only: qualifying every link would change every document, and a
+flat inbox — still the common case — has nothing to disambiguate. The
+regression guard is the pre-Phase-1 golden
+(`tests/fixtures/034-t3-4-flat-golden/suggestions.md`, asserted whole-string by
+`tests/test_034_t3_4_phase3_gate.py`): a run with no collision must render
+byte-identically to the pipeline at `ee44cb3`. A leak fails it on the whole
+document string, not on selected fields.
+
+WHY the collision set is computed from `done_items` AFTER the `--fan-resolve`
+filter: it is exactly the set of items this document renders. Deciding on the
+unfiltered list would qualify a link whose namesake never appears, which the
+reader cannot make sense of. Vault-wide ambiguity — a namesake outside the
+inbox — is out of reach here and deliberately not attempted: the reducer sees
+the run, not the vault.
+
+WHY `source_link` is a separate value threaded into the renderers, rather than
+`stem` being rewritten before dispatch: `stem` is also the fallback for
+`suggested_title`, the key of `section_titles` / `title_to_suggestion_id`, and
+the `stem` field of every emitted section. Rewriting it would name a subfolder
+note `100 Inbox/Reise/Dresden|Dresden` and put a path into fields ADR-2
+reserves for identity and display respectively. The renderers therefore take
+both: `stem` for names, `source_link` for the one wikilink.
+
+Every source-link site takes it. They were enumerated by reading the file, not
+from a count — this spec was bitten four times by a code shape existing in
+several copies while a plan named one:
+
+| site | link |
+|---|---|
+| `render_create_atomic_note` | `**Source:** [[…]]` (and the ` + [[peer]]` voice form) |
+| `render_suppressed_atomic` | `**Source:** [[…]]` |
+| `render_link_to_moc` | `**Source:** [[…]]` |
+| `render_create_moc` | `**Source:** [[…]]` |
+| `render_modify_note` | `**Source:** [[…]]` |
+| `render_daily_notes_updates_block` | `- Source: [[…]]` on a tracker |
+| `render_daily_notes_updates_block` | `- Source: [[…]]` on a log entry |
+| `render_daily_notes_updates_block` | `- [ ] Delete [[…]]` |
+
+Deliberately NOT qualified, and why each is a different concern:
+
+- `### [[<daily stem>]]`, `**Material für [[…]]**` — daily notes, not inbox
+  items. A daily note's name is a date; it does not collide.
+- `- [[<target_stem>]]` under Possible Log Links — the target is a note that
+  does not exist yet (a proposed atomic's title). A path would be fiction.
+- the audio peer in `**Source:** [[stem]] + [[peer.m4a]]` — the peer is a
+  sibling file, not an item in the run, so the run's collision set says nothing
+  about it. Two audio peers sharing a basename would still render alike; that
+  needs its own index and is not this task's claim.
+- `_location_link`, `_template_link`, MOC and tag-handler links — not source
+  links.
+
+## The Daily Delete Offer Keys on `item_key` (spec 034 T5.1)
+
+WHY `daily_only_stems` became `daily_only_keys`, and `deletable_sources` holds
+keys: two namesakes both fully captured in a daily note are two deletions, and
+a stem-keyed set holds one. Worse than the missing offer is the mixed case —
+one namesake daily-only, the other not — where the membership test matched on
+the shared filename and offered the wrong note for deletion. Renaming the set
+was also the precondition for qualifying the link: a bare stem cannot be turned
+back into the path it came from, so without the key there is nothing to qualify
+with.
+
+This is display bookkeeping local to the renderer; it never leaves the function.
+The emitted `delete_source` actions are a separate mechanism, re-keyed by T5.0b
+in `lib/render_actions.py`.
+
+`_entry_key` falls back to `source_stem` when an entry carries no
+`source_item_key`. Entries built by this run always carry one; the fallback is
+for hand-built and pre-spec-034 entries, which keep rendering the way they
+always did rather than silently losing their delete offer.
+
+## The Destination-Clash Proposal Runs at Render Time, in Two Halves (spec 034 T5.2)
+
+WHY Pass 1 renames a proposal at all, when T5.3 is the binding guard: the
+destination folder is flat, so two notes named `Dresden` cannot both live in
+it. `_dest_join` composes the destination from the title with no collision
+check, and `_disambiguate_filename` guards only the intermediate rendered file
+within one render run — never the vault destination. Under CON-2 the
+suggestions document is what the user approves, so without this the clash is
+invisible until Pass 2 refuses both moves, *after* the approval. PRD Feature 7's
+Pass-1 criteria exist so the common case never reaches that refusal.
+
+A clash is both halves, and they carry different reasons:
+
+- **run-internal** — two items in this run compose the same destination.
+- **vault** — a note already lives at the destination. Read through the
+  reducer's existing `kado_client` (opened for the I38 daily-note check), one
+  cached `list_dir(location, depth=1)` per distinct destination folder.
+
+`resolve_destination_clashes` composes destinations with `_dest_join` itself —
+the same helper Pass 2 uses — so the proposal and the guard cannot disagree
+about what "the same place" means. Deriving the path a second way inside the
+reducer would put the two passes one refactor apart from silently diverging.
+
+WHY the first claimant keeps its name: renaming both, or picking by some
+quality signal, makes the document unstable across re-runs of one Pass 1. The
+claim order is render order, which is `done_items` order.
+
+WHY ` (2)` and not `_01`: `_disambiguate_filename`'s `_NN` suffix names a
+machine artifact — an intermediate rendered file the user never sees. This name
+is read, and edited, by a person; a parenthesised qualifier is what the profile
+itself already uses (` (MOC)`). The counter runs to 99 and then gives up
+silently, leaving the proposal untouched for T5.3 to refuse — 99 taken names is
+not a situation a rename rescues.
+
+## Why the Vault Half Fails Open, Twice (spec 034 T5.2)
+
+WHY a missing Kado degrades the check instead of the run: ADR-4 makes Pass 1
+advisory. The user edits the document afterwards, so no Pass-1 finding can be
+binding — T5.3 is. A check that cannot run therefore costs a convenience, not a
+safety property, and failing the run over it would trade a real capability for
+an imaginary one.
+
+Two independent fail-open points, because there are two failure shapes:
+
+1. `kado_client is None` — no Kado config, or `--no-kado` / `--fan-resolve`.
+   The vault half is not passed a probe at all; the run-internal half still
+   works.
+2. The listing raises — Kado reachable at construction, failing at call time.
+   Caught per destination and read as "not taken". **An error is not a
+   collision**: fabricating one would rename a note for no reason, and the user
+   has no way to tell that apart from a real clash.
+
+Both points disable the **vault** half only. The run-internal comparison needs
+nothing but the run itself, so it stays active under `--fan-resolve` and
+`--no-kado` — a resolve doc that proposed two notes into one file would be the
+same defect this task exists to close.
+
+An empty `location` is not listed either. Its destination folder is not decided
+yet, so `_dest_join("", title)` is a path that means nothing to the vault; the
+run-internal comparison still catches two such claims against each other.
+
+## Destinations Compare Case-Folded, and the Reason Says When That Mattered (spec 034 T5.2)
+
+WHY fold at all: CON-6 records this filesystem as case-insensitive, verified on
+this host. Compared as exact strings, `Dresden` and `dresden` are two
+destinations; on the filesystem they are one file, so the guard built to
+prevent a silent overwrite would wave the overwrite through.
+
+WHY fold anyway, when Tomo is not only run here: on a case-sensitive filesystem
+those really are two files, and folding invents a clash. The decision is not a
+guess about which filesystem is underneath — it is the asymmetry between the
+two ways of being wrong.
+
+| | case-insensitive FS | case-sensitive FS |
+|---|---|---|
+| fold | correct — the overwrite is prevented | false clash → renamed, reported, user edits — **recoverable** |
+| do not fold | **silent overwrite — unrecoverable** | correct |
+
+It also cannot be settled by measurement: CON-7 forbids any task in this spec
+from a live vault run, so nothing here may probe Kado's own case semantics.
+That is the second reason the vault half reads a folder listing rather than
+issuing `note_exists` per destination — an existence probe would answer only
+the question Kado's case handling decides, and that answer is exactly the one
+this spec is not allowed to obtain. A listing returns the folder's real
+filenames, so the fold happens in Tomo where it can be reasoned about, and it
+costs one call per folder instead of one per destination.
+
+The listing cache keys on the folder `_dest_join` derives, not on the raw
+`location` string. `Atlas/202 Notes` and `Atlas/202 Notes/` name one folder; a
+raw key lists it twice, and the only cost is a doubled Kado call — so it fails
+silently rather than erroring, and F9 (spec 034 T6.1) makes that call count a
+reported figure.
+
+Only the comparison folds. `_clash_reason` shows both destinations spelled the
+way their authors wrote them — the run's earlier claim, or the vault's own
+filename — and on a case-only clash it says *"which differs from … only in
+case"*. Without that sentence a user on a case-sensitive filesystem reads a
+collision notice against two visibly different names and concludes Tomo is
+broken.
+
+WHY `casefold()` and not `.lower()`: `.lower()` is a locale-naive subset.
+`casefold()` is the operation defined for caseless matching, and the vault
+holds German notes where it is the difference that matters (`ß` folds to `ss`).
+
+## The Loop Was Split So the Clash Pass Could See Every Item (spec 034 T5.2)
+
+WHY `prepared` exists: the clash check must compare every item's destination
+before any of them renders, and the surviving actions are only known after
+`_enforce_coexistence`. Re-reading the result files in a second pre-pass would
+have meant re-deriving that filter, which is exactly the drift the split avoids.
+Loading is now its own pass; the render loop iterates what it produced. The
+section index still counts over `done_items`, so an unreadable item leaves the
+same gap in the SNN sequence it always did.
+
+A suppressed atomic claims no destination: it stays in the inbox and Pass 2
+emits no move for it, so counting it would invent a clash against a note that
+is never filed.
+
+`clash_reason` rides on the analyst's action dict, not on a wire action. The
+wire's `item` projection is built field by field, so the reason never reaches
+Pass 2 — deliberately. It is a sentence for the reader; the adjusted name is
+the whole of the machine-readable outcome, which is what makes the user's own
+edit indistinguishable from an untouched proposal (T5.3 depends on this).
+
+## Known Gap: Cross-Kind Destination Clashes Are Not Checked (spec 034 T5.2)
+
+WHY the check is atomic-note-only: an approved atomic and an approved MOC
+proposal can compose the same destination — an atomic named `Travel (MOC)`
+filed into the MOC folder — and neither pass sees it. Pass 2's
+`_build_create_moc_actions` dedups create_moc against create_moc (first-wins,
+merging supporting items), `_build_move_note_actions` has no guard at all, and
+this Pass-1 check compares atomics against atomics. Out of scope for T5.2 and
+not covered by T5.3's brief either.
+
+## `source_link_targets` Moved to `lib/source_link.py` (spec 034 T5.5)
+
+T5.1 put the collision rule and the `[[path|stem]]` form here, where the
+suggestions document is rendered. T5.5 found the same defect at three sites in
+the **instruction** document and one in the action list, so both helpers moved
+to `lib/source_link.py` and this file imports them.
+
+Behaviour here is unchanged except in one case the reducer could not reach
+before: `colliding_names` now counts distinct **paths** rather than
+occurrences, because the instruction document names one note at several display
+sites. An `item_key` appearing twice in one run used to be treated as a
+collision and over-qualified; it no longer is. See
+`docs/tomo/scripts/lib/source_link.md`.
+
+## The Destination-Folder Listings Report What They Cost (spec 034 T6.1)
+
+T5.2's `_vault_folder_notes` issues one cached `list_dir(location, depth=1)` per
+distinct **destination** folder. It is a real per-run cost that scales with
+content, and it was entirely unmeasured — `_folder_cache` was purely local and
+emitted no metric at all, while T5.2's own comment already said "F9 measures
+exactly this number".
+
+`folder_listing_calls` and `distinct_destination_folders` now ride out in the
+output document. WHY the document and not stderr: the step that appends the
+run's cost-history entry runs in a **later process**, and a number produced in
+one process and never wired to where it is read raises no error and fails no
+unit test. The point of a history is comparability across runs, and a number
+that is not in it cannot be compared.
+
+WHY two fields and not one: folding the listings into the base cost would mix a
+fixed pipeline cost with a content-scaling one and tell a later reader nothing
+about either. The folder count is what distinguishes a pipeline regression from
+a busy run.
+
+WHY the calls are read from the client's counter rather than counted as one per
+cache miss: `list_dir` pages internally, so a paged listing is several round
+trips. The per-miss fallback applies only to a client that keeps no count.
+
+WHY the snapshot is taken after the `except`: a listing that raised still spent
+its round trip.
+
+WHY both fields are always present here, even at zero: this file only writes
+them when it ran. A `--fan-resolve` run opens no Kado client and truthfully
+reports zero listings; the paths where the reducer never runs at all omit the
+fields entirely, in `lib/cost_history.py`.
+
+## The Reducer Writes the Run's Cost-History Entry (spec 034 T6.1)
+
+This process is the terminal deterministic step of the two actions that reach
+it — `suggest` and `fan-resolve` — so it appends the run's cost-history entry
+before returning. `inbox-triage.py` deliberately writes none for those two: the
+folder counts above do not exist when it finishes.
+
+WHY here and not in a step in each skill's markdown, which is where it started:
+a SKILL.md step is executed by an LLM and **no test can see whether it ran**.
+The task's criterion is "a history accumulates *without anyone remembering* to
+record it", and that cannot live in a step someone has to remember. This file
+already runs on both paths, already holds the folder counts, and
+`routing-plan.json` — carrying triage's own metrics — already sits in the
+`tomo-tmp/` it writes into. The wrapper script the skills called was retired.
+
+WHY `--routing-plan` defaults to a sibling of `--output` rather than a literal
+`tomo-tmp/routing-plan.json`: both are artefacts of one run in one directory,
+and both skills put them there. A cwd-relative literal would silently pick up a
+*different* run's plan whenever the process is driven from elsewhere — which is
+exactly what host tests do, and what made three of them append into the repo's
+own working tree before the flag existed.
+
+WHY a missing routing plan warns instead of failing: measurement must never
+fail a run `[ref: SDD/Error Handling]`. The document is already written by then;
+losing the cost line is the cheaper failure.

@@ -323,3 +323,73 @@ content-preview gap for sub-worthy items that show no content otherwise). The ST
 one-liner on that bullet exists precisely because the surrounding "never your own
 summary" scoring rule would otherwise read as forbidding this field — the guard keeps
 the two concerns separate: score from the original text, display from the gist.
+
+## item_key: identity split reaches the analyst contract (spec 034 T2.2)
+
+WHY this change was blocking (not incidental): T2.4 made `--item-key` a required
+argument of `scripts/state-update.py` (spec 034 ADR-1/ADR-2 — `item_key`, the
+vault-relative path, is the state-file join key; `stem` alone lets two items in
+different subfolders that share a filename mask each other's state). The analyst
+invokes that script at four sites (Step 0, Step 2b, both branches of Step 11) and,
+until this change, passed none of them `--item-key`. Every analyst dispatch died at
+argparse on a live `/inbox` run. Nothing in pytest caught it: `tomo/dot_claude/` is
+LLM-loaded markdown, not collected by the suite.
+
+WHY `item_key` equals `path`, not a new orchestrator-supplied value (ADR-1): the key
+IS the vault-relative path — `lib.item_key.derive` is the identity function. The
+orchestrator (`suggest-handling` / `force-atomic-handling` skills) already passes
+`path` in every dispatch prompt; requiring a second, distinct `item_key` input would
+be plumbing that adds no information the analyst doesn't already have. The IO
+Contract documents `item_key` as its own named input (for symmetry with
+`state-update.py`'s own contract and with `schemas/item-result.schema.json`, which
+already required `item_key` as a top-level field before this change), but its value
+is `path`, substituted verbatim — never reconstructed from `stem`.
+
+WHY `stem` is retained in the IO Contract and NOT collapsed into `item_key` (ADR-2):
+`stem` stays the bare, display-only filename — used in `suggested_title` fallbacks,
+`source_stem` stamping (Step 9), and human-readable log lines. Recursive inbox
+discovery (spec 034) is exactly the feature that makes `stem` ambiguous as an
+identity key (two items, two subfolders, one shared filename) while leaving it
+perfectly fine as a display string. Folding the two concepts back into one would
+resurface the collision T2.4 closed on the state-file side.
+
+WHY the output filename changes from `<stem>.result.json` to
+`lib.item_key.to_filename(item_key)`: for the same reason `stem` cannot be the
+state-file join key, it cannot be the per-item result filename either — two items
+sharing a stem in different subfolders would silently overwrite each other's
+`result.json`. `to_filename` (spec 034 Phase 1, ADR-5) pairs a readable stem with an
+8-hex digest of the exact key, so the filename stays both human-legible and
+collision-free even on a case-insensitive filesystem (CON-6).
+
+WHY a new `scripts/item-result-filename.py` CLI wrapper, instead of inlining the
+encoding logic or a `python3 -c` call in the agent file: CON-5 forbids describing
+what a called script computes inside the file that invokes it — that belongs in the
+script's own docstring. A `python3 -c "..."` one-liner would also have to
+shell-quote a vault-relative path (which routinely contains spaces), a known
+fragility this repo avoids by convention (see `~/Kouzou/standards/general.md`'s bash
+3.2 guardrails). A thin CLI that takes `--item-key` as a normal quoted argv value and
+calls the already-tested `lib.item_key.to_filename` sidesteps both problems and
+guarantees the analyst's filename can never drift from the encoding the reducer
+(T2.3) will look up by.
+
+WHY `item_key` was added to `templates/item-result.template.json` even though the
+task scope named only `inbox-analyst.md`: `schemas/item-result.schema.json` already
+required `item_key` as a top-level field (an earlier T2.1-era commit, "schemas carry
+required item_key"), but the template the analyst is told to copy and fill in (Step
+10.1–10.2, "do NOT compose the JSON from scratch") never gained the matching
+placeholder. Without it, every analyst run would fail `validate-result.py`'s
+required-field check the moment this change shipped the rest of the contract — the
+template is the file that makes Step 10 concrete, not optional supporting scope.
+
+WHY this file does not explain any of the above inline: CON-5. The runtime file
+states the imperative (pass `--item-key`, write to the helper's output filename,
+declare `item_key` as an input) with no "because" — this section is where the
+because lives.
+
+## Version 0.23.0
+
+WHY: bumped from 0.22.0 for T2.2 (spec 034) — item_key reaches the IO Contract, the
+four `state-update.py` call sites, and the per-item output filename. Contract-shape
+change (new required input, new required output-path helper) → minor bump.
+`update-tomo.sh` skips unchanged versions silently — the bump is required for the
+edit to ship to the Docker instance.

@@ -550,3 +550,116 @@ in the inbox and a wrong move is worse than no move; `Images/bautzen-turm.jpg` r
 **Note on the fixture count**: only Prag exercised the full path end-to-end. The other three were
 suppressed by worthiness scoring, which is why finding 2 existed at all — a reminder that a fixture
 proves what the pipeline actually does with it, not what it was designed to prove.
+
+## Spec 034 — recursive inbox discovery (T6.4 live validation)
+
+**Date**: 2026-09-08 · **Vault**: Privat-Test · **Branch**: `spec/034-recursive-inbox-discovery`
+
+Six runs. Every guard validated, but across two Pass-2 runs rather than one — the first found a
+defect that had to be fixed before the second could reach the cases behind it.
+
+**Cost, from `state/inbox-cost-history.jsonl`** — written by the run itself, no manual step:
+
+| time | action | items | base | total | dest folders |
+|---|---|---|---|---|---|
+| 16:08 | suggest | 12 | **2** | 17 | 1 |
+| 17:08 | suggest | 12 | **2** | 13 | 1 |
+| 18:07 | fan-resolve | 13 | **2** | 11 | 0 |
+| 18:12 | synthesize | 14 | **2** | 13 | — |
+| 19:23 | idle | 19 | **2** | 10 | — |
+| 19:27 | synthesize | 14 | **2** | 12 | — |
+
+`base_kado_calls: 2` on every run — ADR-3's claim (3 → 2) measured six times rather than declared
+once, and observed rather than derived from a literal. All five action types appear, so T6.1's
+criterion ("a history accumulates without anyone remembering to record it") holds on every path,
+including the two that used to depend on a step in a skill document.
+
+**Discovery — the spec's headline claim, proven on real content.** A filesystem walk before any
+fixture was placed showed 8 files at `depth=1` and 13 recursively. Among the five this spec newly
+sees were `Images/Test.md` and `assets/Test.md` — **a namesake pair the user had created and Tomo
+could not see** — and spec 031's `karte.png` pair. Not constructed cases.
+
+**What each run proved**
+
+| case | run | result |
+|---|---|---|
+| Note two levels deep (`Reise/Tschechien/Prager Burg.md`) | 16:08 | discovered, promoted, MOC-linked under `## Tschechien` at 90% |
+| Namesake notes, path-qualified source links | 17:08 | `[[100 Inbox/Notizen/Elbe\|Elbe]]` and `[[100 Inbox/Reise/Elbe\|Elbe]]` — T5.1 |
+| **Destination clash** (T5.2/T5.3) | 18:12 | both withheld, both source paths named, paired MOC links withdrawn, neither source deleted |
+| **Attachment clash** (T6.0 fold + T5.4) | 19:27 | `Scans/karte.png` refused, and the note embedding it withheld with it |
+| **Subfolder note through Force Atomic** (T6.4a) | 19:27 | `100 Inbox/Fotos/Kai.md` — the fix; the 18:12 run probed `100 Inbox/Kai.md` and gave up |
+
+**Two defects found live that 3735 offline tests did not**
+
+1. **The fan document was never joined to its own identity map** (fixed, T6.4a). A subfolder note
+   taken through Force Atomic reached the renderer with `item_key: null`. The companion loop was
+   worse than the standalone one: it attempted no join at all. Only a live run could find this —
+   no test drove the fan path with a subfolder note, and the case did not exist before this spec
+   made subfolders visible.
+2. **A withheld clash leaves its staging notes behind** (fixed 2026-09-09, T6.4c — see the
+   re-validation entry below). The premise recorded here was wrong in one detail that mattered:
+   Pass 2 does not render into the inbox at all. It renders locally and lists the file in
+   `manifest.json`; `upload-rendered.py` writes it. Not re-ingested and not data loss, but
+   nothing cleared them.
+
+**One expectation of the orchestrator's was wrong.** The plan predicted both notes of the
+attachment clash would stay in the inbox. Attachments are **first-claim-wins** (PRD Feature 8):
+only the losing note is withheld, and `Hafen` filed correctly. The same confusion between ADR-4
+(both claimants dropped, for note destinations) and Feature 8 had already been found once, in
+T6.0d's SDD walkthrough.
+
+**Not validated live, deliberately**: the audio-namesake case. Placing one would route a
+validation run for this spec through a model-gated transcription pipeline with a known
+infinite-loop mode. Covered offline; recorded as a live-coverage gap.
+
+---
+
+## Spec 034 — T6.4c re-validation, the withheld staging note
+
+**Date**: 2026-09-09 · **Vault**: Privat-Test · **Branch**: `spec/034-recursive-inbox-discovery`
+
+One run, `/inbox --pass2 --force`, against the same approved suggestions document the 19:27 run of
+2026-09-08 used. An A/B with identical input, fifteen hours apart, across the T6.4c fix.
+
+| time | action | items | base | total |
+|---|---|---|---|---|
+| 2026-09-08 19:27 | synthesize | 14 | **2** | 12 |
+| 2026-09-09 13:35 | synthesize | 14 | **2** | 12 |
+
+Byte-for-byte the same cost row. `base_kado_calls: 2` for the seventh time.
+
+**What changed, and what deliberately did not**
+
+| | 19:27 (before) | 13:35 (after) |
+|---|---|---|
+| `action_count` in `instructions.json` | 11 | 11 |
+| staging notes uploaded to the inbox | **5** | **4** |
+| staging note for the withheld `Kai` item | present, orphaned | **absent** |
+| `tomo.attachment_suppressions` | names `karte.png` + dropped `I05` | unchanged |
+| `withdrawn_deletes` / `withdrawn_moc_links` | present | unchanged |
+
+The action set is identical. Only the upload differs — which is the whole claim of the fix: the
+guard's decision did not move, the file that nobody would ever move is simply no longer written.
+The report survives, so the user still reads that a note stays in the inbox and why.
+
+**The live case was the attachment suppression, not the destination clash.** The task text
+(`plan/phase-6.md`, T6.4c) was written from the 18:12 clash. What actually sat in the vault on
+2026-09-09 was the 19:27 run's `attachment_suppressions` residue: `100 Inbox/Fotos/Kai.md`'s
+staging note, withheld because `Scans/karte.png` lost the first-claim-wins race and the note that
+embeds it was kept in the inbox with it. The second site — added to the fix because the shape has
+two, not because the plan named it — is the one the vault could prove.
+
+**`total_kado_calls` does not move, by design.** It counts round trips for the whole *triage* run
+(`cost_history.py:71`), which finishes before Pass 2 renders or uploads anything. The write this
+fix saves happens in `upload-rendered.py`, a separate process the counter never sees. A run that
+uploads one note fewer therefore reports the same 12 — the saving is real and is not in this table.
+
+**T6.4b confirmed live, having only been proven offline.** `source_note_title` now carries the raw
+display title: `"Elbe-Schifffahrt: Tschechischer Pegel …"` at 13:35 against
+`"Elbe-Schifffahrt- Tschechischer Pegel …"` at 19:27, and `"Kai: Die Gruendung …"` against
+`"Kai- Die Gruendung …"` in the withdrawn MOC link. The colon is back where it belongs and the
+emitted filename is still sanitised.
+
+**Residue after the run**: four `pending-move` staging notes, each claimed by a surviving
+`move_note`/`create_moc`. Nothing orphaned. The three deleted-source actions are still pending
+apply.

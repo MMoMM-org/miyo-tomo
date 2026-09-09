@@ -217,14 +217,18 @@ def test_unapproved_resolve_section_still_parks(tmp_path):
         _resolve_doc("Bautzen", approved=False),
     )
     assert out["confirmed_items"] == []
-    assert [p["stem"] for p in out["pending_fan_resolutions"]] == ["bautzen"]
+    # spec 034 T2.6: item identity is the source path verbatim (ADR-1) — no
+    # lowercasing — so the parked stem keeps its original casing.
+    assert [p["stem"] for p in out["pending_fan_resolutions"]] == ["Bautzen"]
 
 
 def test_no_resolve_doc_still_parks(tmp_path):
     """First pass: no companion doc yet, so parking is the correct outcome."""
     out = _run_parser(tmp_path, _primary_doc("Bautzen", ticked=True), None)
     assert out["confirmed_items"] == []
-    assert [p["stem"] for p in out["pending_fan_resolutions"]] == ["bautzen"]
+    # spec 034 T2.6: item identity is the source path verbatim (ADR-1) — no
+    # lowercasing — so the parked stem keeps its original casing.
+    assert [p["stem"] for p in out["pending_fan_resolutions"]] == ["Bautzen"]
 
 
 def test_unticked_force_atomic_is_untouched(tmp_path):

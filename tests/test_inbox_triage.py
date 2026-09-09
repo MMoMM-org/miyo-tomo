@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.8.0
+# version: 0.9.0
 """test_inbox_triage.py — Behavioural tests for inbox-triage.py.
 
 T2.1: discovery, bucketing, approval scanning, FAN detection, caching,
@@ -565,7 +565,13 @@ class TestForceAtomicNoteDetection:
         body = _suggestions_body(approved=True, fan_items=["Furano", "Niseko"])
 
         client = FakeKadoClient(
-            listdir_items=[_listdir_item(sugg_path)],
+            listdir_items=[
+                _listdir_item(sugg_path),
+                # The FAN'd sources themselves — a suppressed item stays in the
+                # inbox, and the item's own path is now resolved from this listing.
+                _listdir_item(INBOX_PATH + "Furano.md"),
+                _listdir_item(INBOX_PATH + "Niseko.md"),
+            ],
             frontmatter_responses={
                 "tomo.state=pending-approval": [_fm_hit(sugg_path, "suggestions", "pending-approval")],
                 "tomo.state=pending-accept": [],
@@ -585,6 +591,9 @@ class TestForceAtomicNoteDetection:
         assert "Niseko" in stems
         for item in state.force_atomic_items:
             assert item["source_path"] == sugg_path
+        assert {item["item_key"] for item in state.force_atomic_items} == {
+            INBOX_PATH + "Furano.md", INBOX_PATH + "Niseko.md",
+        }
 
     def test_fan_in_daily_notes_updates_section(self, tmp_path):
         """FAN in daily-notes-updates (log entry sub-bullet) is also detected."""
@@ -616,7 +625,10 @@ class TestForceAtomicNoteDetection:
         ])
 
         client = FakeKadoClient(
-            listdir_items=[_listdir_item(sugg_path)],
+            listdir_items=[
+                _listdir_item(sugg_path),
+                _listdir_item(INBOX_PATH + "Furano.md"),
+            ],
             frontmatter_responses={
                 "tomo.state=pending-approval": [_fm_hit(sugg_path, "suggestions", "pending-approval")],
                 "tomo.state=pending-accept": [],
@@ -633,6 +645,7 @@ class TestForceAtomicNoteDetection:
         assert len(state.force_atomic_items) == 1
         assert state.force_atomic_items[0]["stem"] == "Furano"
         assert state.force_atomic_items[0]["source_path"] == sugg_path
+        assert state.force_atomic_items[0]["item_key"] == INBOX_PATH + "Furano.md"
 
 
 # ---------------------------------------------------------------------------
@@ -774,7 +787,8 @@ class TestKadoUnreachableExits1:
             raise KadoConnectionError("Cannot reach Kado")
 
         with pytest.raises(SystemExit) as exc_info:
-            mod.main(["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            mod.main(["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path),
+             "--cost-history", str(tmp_path / "cost-history.jsonl")],
                      client_factory=_raise_connection_error)
 
         assert exc_info.value.code == 1
@@ -1694,7 +1708,8 @@ class TestMainWritesRoutingPlan:
         )
 
         rc = mod.main(
-            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path),
+             "--cost-history", str(tmp_path / "cost-history.jsonl")],
             client_factory=lambda: client,
         )
 
@@ -1732,7 +1747,8 @@ class TestMainWritesRoutingPlan:
 
         with pytest.raises(SystemExit) as exc_info:
             mod.main(
-                ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+                ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path),
+             "--cost-history", str(tmp_path / "cost-history.jsonl")],
                 client_factory=lambda: client,
             )
 
@@ -1753,7 +1769,8 @@ class TestMainWritesRoutingPlan:
         )
 
         mod.main(
-            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path),
+             "--cost-history", str(tmp_path / "cost-history.jsonl")],
             client_factory=lambda: client,
         )
 
@@ -1986,6 +2003,7 @@ class TestTerminalApprovedMessaging:
             [
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
                 "--force-pass2",
             ],
             client_factory=lambda: client,
@@ -2020,6 +2038,7 @@ class TestTerminalApprovedMessaging:
             [
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
                 "--force-pass2",
             ],
             client_factory=lambda: client,
@@ -2106,6 +2125,7 @@ class TestTagHandlerResolution:
             [
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
                 "--registry-dir", str(reg_dir),
             ],
             client_factory=lambda: client,
@@ -2170,6 +2190,7 @@ class TestTagHandlerResolution:
             [
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
                 "--registry-dir", str(reg_dir),
             ],
             client_factory=lambda: client,
@@ -2209,7 +2230,8 @@ class TestTagHandlerResolution:
         # config/tag-handlers, which does not exist → empty registry).
         baseline_client = _make_client()
         rc0 = mod.main(
-            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path / "base")],
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path / "base"),
+             "--cost-history", str(tmp_path / "cost-history.jsonl")],
             client_factory=lambda: baseline_client,
         )
         assert rc0 == 0
@@ -2226,6 +2248,7 @@ class TestTagHandlerResolution:
             [
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path / "run"),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
                 "--registry-dir", str(empty_reg),
             ],
             client_factory=lambda: client,
@@ -2272,6 +2295,7 @@ class TestTagHandlerResolution:
             [
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
                 "--registry-dir", str(reg_dir),
             ],
             client_factory=lambda: client,
@@ -2311,6 +2335,7 @@ class TestTagHandlerResolution:
             [
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
                 "--registry-dir", str(reg_dir),
             ],
             client_factory=lambda: client,
@@ -2351,6 +2376,7 @@ class TestTagHandlerResolution:
             [
                 "--inbox-path", INBOX_PATH,
                 "--output-dir", str(tmp_path),
+                "--cost-history", str(tmp_path / "cost-history.jsonl"),
                 "--registry-dir", str(reg_dir),
             ],
             client_factory=lambda: client,
@@ -2596,7 +2622,8 @@ class TestGardenAuditAsUpstreamType:
             },
         )
         rc = mod.main(
-            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path),
+             "--cost-history", str(tmp_path / "cost-history.jsonl")],
             client_factory=lambda: client,
         )
         assert rc == 0
@@ -2617,7 +2644,8 @@ class TestGardenAuditAsUpstreamType:
             },
         )
         rc = mod.main(
-            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path)],
+            ["--inbox-path", INBOX_PATH, "--output-dir", str(tmp_path),
+             "--cost-history", str(tmp_path / "cost-history.jsonl")],
             client_factory=lambda: client,
         )
         assert rc == 0

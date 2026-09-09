@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.32.0
+# version: 0.37.0
 """inbox-triage.py — Deterministic inbox triage for /inbox routing.
 
 Replaces inbox-discovery.py. Scans inbox state via Kado, reads approval
@@ -34,12 +34,25 @@ from lib.attachment_index import (  # noqa: E402
     _is_attachment_target,
     _strip_alias_and_anchor,
     build_inbox_index,
+    is_file_entry,
+    narrow_candidates,
     resolve_attachments,
 )
 from lib.audio_constants import AUDIO_EXTS  # noqa: E402
+from lib.cost_history import (  # noqa: E402
+    DEFAULT_HISTORY_PATH,
+    append_entry,
+    build_entry,
+)
 from lib.doc_frontmatter import body_after_frontmatter  # noqa: E402
-from lib.kado_client import KadoClient, KadoError  # noqa: E402
+from lib.item_key import derive as derive_item_key  # noqa: E402
+from lib.kado_client import (  # noqa: E402
+    KadoClient,
+    KadoError,
+    observed_call_count,
+)
 from lib.obsidian_filename import sanitize_stem  # noqa: E402
+from lib.run_id import generate as generate_run_id  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402 — ADR-026 wire-edit check
 
 # tag-handler-resolve.py is hyphenated — load it as a module via importlib so its
@@ -130,6 +143,14 @@ class TriageState:
     tag_handler_reads: int = 0
     wire_sibling_reads: int = 0
 
+    # spec 034 T6.1: the run's own Kado cost, read off the client's round-trip
+    # counter at the boundaries bracketing the two fixed stages inside
+    # discover(). The counter is one lifetime total, and a total cannot be
+    # decomposed after the fact — reading it once at the end yields one number
+    # where the cost history needs the base cost and the run total separately.
+    base_kado_calls: int = 0
+    frontmatter_kado_calls: int = 0
+
     # Flags passed through for T2.2
     force_pass1: bool = False
     force_pass2: bool = False
@@ -165,16 +186,21 @@ def resolve_inbox_path(cli_inbox_path: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 def discover_files(client, inbox_path: str) -> tuple[list[dict], list[dict], list[dict]]:
-    """listDir inbox, partition into audio_files and md_files.
+    """Recursively listDir the inbox subtree, partition into audio_files and md_files.
+
+    The listing recurses without a depth limit, so a note at any depth below
+    the inbox root is an item. It is also the run's ONLY inbox listing: the
+    returned all_files is handed to build_attachment_index unchanged (ADR-3),
+    which is why it stays raw — folder entries and every suffix included.
 
     Returns (all_files, audio_files, md_files).
     """
-    all_files = client.list_dir(inbox_path, depth=1)
+    all_files = client.list_dir(inbox_path)
     audio_files = []
     md_files = []
 
     for item in all_files:
-        if (item.get("type") or "").lower() != "file":
+        if not is_file_entry(item):
             continue
         path = item.get("path", "")
         suffix = Path(path).suffix.lower()
@@ -197,37 +223,27 @@ def discover_files(client, inbox_path: str) -> tuple[list[dict], list[dict], lis
 # Step 2b: recursive attachment index (ADR-1, spec 031)
 # ---------------------------------------------------------------------------
 
-def build_attachment_index(client, inbox_path: str) -> dict[str, list[str]]:
-    """One recursive listDir of the inbox subtree, indexed by basename.
+def build_attachment_index(listing: list[dict] | None) -> dict[str, list[str]]:
+    """Index the run's inbox listing by basename.
 
-    A second, independent call from the existing depth=1 partition listing —
-    it does not replace or narrow that call, and its own cost is exactly one
-    call per run regardless of note or embed count. Fail-open: a KadoError
-    degrades to an empty index rather than raising, so the run continues
-    without attachment resolution downstream.
+    Takes the listing discover_files already fetched rather than making a
+    call of its own (ADR-3, spec 034): both consumers read the same recursive
+    subtree, so the index costs zero Kado calls. A listing failure is now
+    fatal upstream in discover_files — as it always was for the partition
+    half — instead of degrading to an empty index; there is no run left to
+    continue when the inbox cannot be listed at all.
     """
-    try:
-        listing = client.list_dir(inbox_path)
-    except KadoError as exc:
-        print(
-            f"[inbox-triage] WARNING: recursive list_dir failed for "
-            f"{inbox_path!r}: {exc} — attachment index empty, run continues",
-            file=sys.stderr,
-        )
-        return {}
     return build_inbox_index(listing)
 
 
 def _candidate_count(target: str, index: dict[str, list[str]]) -> int:
-    """Mirror resolve_attachments' own candidate-narrowing so an ambiguous
-    result can be reported with its candidate count (item-result.schema.json
-    unresolved_embeds[].candidate_count) — resolve_attachments itself
-    collapses this to None on the AttachmentRef it returns."""
-    basename = target.rsplit("/", 1)[-1] if "/" in target else target
-    candidates = index.get(basename, [])
-    if "/" in target:
-        candidates = [p for p in candidates if p == target or p.endswith("/" + target)]
-    return len(candidates)
+    """How many candidates an ambiguous embed target narrowed to.
+
+    resolve_attachments collapses this to None on the AttachmentRef it
+    returns, but item-result.schema.json's unresolved_embeds[].candidate_count
+    wants the number. Same narrowing, called again for its length — not a
+    second copy of the rule."""
+    return len(narrow_candidates(target, index))
 
 
 def resolve_inbox_attachments(
@@ -524,18 +540,24 @@ def resolve_handlers(
 # ---------------------------------------------------------------------------
 
 def check_audio(audio_files: list[dict], md_files: list[dict]) -> bool:
-    """True if uncached audio files exist (audio without sibling .md)."""
+    """True if uncached audio files exist (audio without sibling .md).
+
+    Pairing keys on containing folder plus stem, not stem alone — recursive
+    discovery (spec 034 T3.2) means a namesake note elsewhere in the tree
+    must never satisfy an audio file it does not actually sit beside.
+    """
     if not audio_files:
         return False
 
-    md_stems = set()
+    md_keys = set()
     for f in md_files:
-        md_stems.add(Path(f["path"]).stem.lower())
+        p = Path(f["path"])
+        md_keys.add((str(p.parent), p.stem.lower()))
 
     for af in audio_files:
-        raw_stem = Path(af["path"]).stem
-        safe_stem = sanitize_stem(raw_stem).lower()
-        if safe_stem not in md_stems:
+        p = Path(af["path"])
+        safe_stem = sanitize_stem(p.stem).lower()
+        if (str(p.parent), safe_stem) not in md_keys:
             return True
 
     return False
@@ -586,30 +608,74 @@ def _compute_checksum(content: str) -> str:
     return f"sha256:{digest}"
 
 
-def _extract_fan_items(body: str, source_path: str) -> list[dict]:
-    """Scan for [x] Force Atomic Note in body. Extract stem from context.
+def _resolve_fan_note(
+    reference: str, inbox_index: dict[str, list[str]] | None
+) -> tuple[str | None, int]:
+    """Resolve a FAN checkbox's source reference to the note's own vault path.
+
+    `reference` is whatever the checkbox names: the bare stem a `Source: [[x]]`
+    wikilink carries today, or the path-qualified form with an alias the
+    renderer emits once two items share a filename. Narrowing is
+    `narrow_candidates`, shared with attachment resolution; the only thing
+    this site adds is the `.md` a note link omits and a file embed carries.
+
+    Returns (path, candidate_count). `path` is None unless exactly one inbox
+    note matches: zero means the note is gone, more than one means the
+    reference cannot say which is meant, and both decline (PRD Business Rule 7).
+    """
+    candidates = narrow_candidates(reference, inbox_index, default_extension=".md")
+    if len(candidates) == 1:
+        return candidates[0], 1
+    return None, len(candidates)
+
+
+def _report_fan_decline(reference: str, source_path: str, candidates: int) -> None:
+    """Announce a declined Force Atomic item — a silent drop is its own defect."""
+    if candidates:
+        detail = (
+            f"{candidates} inbox notes share that filename; the reference does "
+            "not say which. Rename one, or path-qualify the Source link."
+        )
+    else:
+        detail = "no inbox note of that name — moved, renamed or already consumed."
+    print(
+        f"[triage] {source_path}: Force Atomic on [[{reference}]] declined — {detail}",
+        file=sys.stderr,
+    )
+
+
+def _extract_fan_items(
+    body: str, source_path: str, inbox_index: dict[str, list[str]] | None = None,
+) -> list[dict]:
+    """Scan for [x] Force Atomic Note in body. Resolve each item's own note.
 
     FAN checkboxes appear in two locations:
       1. Under ### SNN — <title> sections (per-item suggestion blocks)
       2. Under ### [[date]] daily-notes-updates (log entry sub-bullets)
 
-    For each FAN checkbox, we find the nearest preceding Source: [[stem]]
-    line to determine the stem.
+    For each FAN checkbox, we find the nearest preceding Source: [[...]] line
+    and resolve that reference against the run's inbox listing. An item whose
+    note cannot be named unambiguously is declined, not guessed at.
     """
     items = []
     lines = body.splitlines()
-    last_source_stem = None
+    last_reference = None
 
     for line in lines:
-        # Track the most recent Source: [[stem]]
+        # Track the most recent Source: [[...]]
         source_match = _RE_SOURCE_LINK.search(line)
         if source_match:
-            last_source_stem = source_match.group(1)
+            last_reference = source_match.group(1)
 
         # Detect FAN checkbox
-        if _RE_FORCE_ATOMIC.search(line) and last_source_stem:
+        if _RE_FORCE_ATOMIC.search(line) and last_reference:
+            note_path, candidates = _resolve_fan_note(last_reference, inbox_index)
+            if note_path is None:
+                _report_fan_decline(last_reference, source_path, candidates)
+                continue
             items.append({
-                "stem": last_source_stem,
+                "stem": Path(note_path).stem,
+                "item_key": derive_item_key(note_path),
                 "source_path": source_path,
             })
 
@@ -690,30 +756,65 @@ def _wire_approved(wire_cache_path: str | None) -> bool:
     return isinstance(wire, dict) and bool(wire.get("approved"))
 
 
-def _extract_fan_items_from_wire(wire: dict, source_path: str) -> list[dict]:
+def _extract_fan_items_from_wire(
+    wire: dict, source_path: str, inbox_index: dict[str, list[str]] | None = None,
+) -> list[dict]:
     """Force-atomic items from an EDITED wire (ADR-026 JSON-only authority).
 
     The JSON mirror of `_extract_fan_items`: when the wire was edited the markdown body
     is Hashi's minimal envelope (no Force-Atomic checkboxes), so the force-atomic
     decisions live only in the JSON — a suppressed suggestion with `force_atomic: true`,
-    or a daily `log_entries[]` with `force_atomic_note: true`. Deduplicated by stem (a
-    source can be both a suppressed suggestion and a daily entry, e.g. a travel note).
+    or a daily `log_entries[]` with `force_atomic_note: true`.
+
+    A suggestion already carries its own `item_key` (the note's path), so it needs
+    no resolution and stays exact even when two suggestions share a stem. A daily
+    log entry names only `source_stem`; it joins to a suggestion of that stem when
+    exactly one exists, and falls back to the inbox listing otherwise.
+
+    Deduplicated by resolved path, not by stem — a source can be both a suppressed
+    suggestion and a daily entry (e.g. a travel note), while two same-stem notes in
+    different subfolders are two items and must both survive.
     """
     items: list[dict] = []
     seen: set[str] = set()
 
-    def _add(stem: "str | None") -> None:
-        if stem and stem not in seen:
-            seen.add(stem)
-            items.append({"stem": stem, "source_path": source_path})
+    stem_to_keys: dict[str, list[str]] = {}
+    for s in wire.get("suggestions") or []:
+        if s.get("stem") and s.get("item_key"):
+            stem_to_keys.setdefault(s["stem"], []).append(s["item_key"])
+
+    def _add(note_path: "str | None") -> None:
+        if note_path and note_path not in seen:
+            seen.add(note_path)
+            items.append({
+                "stem": Path(note_path).stem,
+                "item_key": derive_item_key(note_path),
+                "source_path": source_path,
+            })
+
+    def _add_by_stem(stem: "str | None") -> None:
+        if not stem:
+            return
+        keys = stem_to_keys.get(stem, [])
+        if len(keys) == 1:
+            _add(keys[0])
+            return
+        note_path, candidates = _resolve_fan_note(stem, inbox_index)
+        if note_path is None:
+            _report_fan_decline(stem, source_path, candidates or len(keys))
+            return
+        _add(note_path)
 
     for s in wire.get("suggestions") or []:
         if s.get("suppressed") and s.get("force_atomic"):
-            _add(s.get("stem"))
+            if s.get("item_key"):
+                _add(s["item_key"])
+            else:
+                _add_by_stem(s.get("stem"))
     for d in wire.get("daily_updates") or []:
         for le in d.get("log_entries") or []:
             if le.get("force_atomic_note"):
-                _add(le.get("source_stem"))
+                _add_by_stem(le.get("source_stem"))
     return items
 
 
@@ -751,6 +852,7 @@ def read_approval_state(
     terminal_approved_hits: list[dict] | None = None,
     force_pass2: bool = False,
     call_counter: list[int] | None = None,
+    inbox_index: dict[str, list[str]] | None = None,
 ) -> tuple[
     list[dict], list[dict], list[dict], list[dict],
     list[dict], list[dict], list[dict], dict,
@@ -766,6 +868,11 @@ def read_approval_state(
     gated by doc_type/approval-state combinations the return values alone
     don't preserve (an unapproved garden-audit doc still triggers its wire
     pre-check but never appears in approved_garden_audits).
+
+    inbox_index is the run's inbox listing keyed by basename (ADR-3, the same
+    index attachment resolution uses). Force-Atomic extraction resolves each
+    ticked item's Source reference through it to the note's own path; without
+    it no FAN item can be addressed and every one is declined.
 
     Returns (approved_suggestions, approved_fan, approved_moc_proposals,
              approved_garden_audits,
@@ -889,10 +996,14 @@ def read_approval_state(
                 # envelope has no Force-Atomic checkboxes). Unedited/absent → markdown.
                 if edited_wire is not None:
                     force_atomic_items.extend(
-                        _extract_fan_items_from_wire(edited_wire, vault_path)
+                        _extract_fan_items_from_wire(
+                            edited_wire, vault_path, inbox_index
+                        )
                     )
                 else:
-                    force_atomic_items.extend(_extract_fan_items(body, vault_path))
+                    force_atomic_items.extend(
+                        _extract_fan_items(body, vault_path, inbox_index)
+                    )
                 approved_suggestions.append(entry)
             elif doc_type == "suggestions-fan":
                 # ADR-026: cache the fan wire sibling too, so a Hashi-edited fan doc
@@ -901,7 +1012,9 @@ def read_approval_state(
                 wire_cache = _cache_wire_sibling_counted(vault_path)
                 if wire_cache:
                     entry["wire_cache_path"] = wire_cache
-                force_atomic_items.extend(_extract_fan_items(body, vault_path))
+                force_atomic_items.extend(
+                    _extract_fan_items(body, vault_path, inbox_index)
+                )
                 approved_fan.append(entry)
             elif doc_type == "moc-proposal":
                 approved_moc_proposals.append(entry)
@@ -1000,6 +1113,17 @@ def read_approval_state(
 # discover — main entry point for steps 1-6
 # ---------------------------------------------------------------------------
 
+def _calls_between(before: int | None, after: int | None) -> int:
+    """Round trips a client made between two snapshots of its own counter.
+
+    Returns 0 when either snapshot is missing — a client that keeps no count
+    leaves the stage unmeasured rather than aborting the run.
+    """
+    if before is None or after is None:
+        return 0
+    return max(0, after - before)
+
+
 def discover(
     client,
     inbox_path: str,
@@ -1030,13 +1154,21 @@ def discover(
     """
     inbox_path = inbox_path.rstrip("/") + "/"
 
-    # Step 2: discover files
+    # spec 034 T6.1: the run's cost is observed, never declared. Three
+    # snapshots of the client's own round-trip counter bracket the two fixed
+    # stages, so the recorded figures move when the call sites move. A client
+    # that keeps no count leaves both checkpoints at 0 — an unmeasured run,
+    # never a failed one.
+    calls_at_start = observed_call_count(client)
+
+    # Step 2: discover files — ONE recursive listDir, the run's only inbox
+    # listing (ADR-3, spec 034).
     all_files, audio_files, md_files = discover_files(client, inbox_path)
 
-    # Step 2b: recursive attachment index (ADR-1) — ONE additional listDir,
-    # independent of note/embed count (CON-4). Purely internal: resolution
-    # (step 2c) consumes it within this same call, so nothing is persisted.
-    attachment_index = build_attachment_index(client, inbox_path)
+    # Step 2b: attachment index (ADR-1) over that same listing — no call of
+    # its own. Purely internal: resolution (step 2c) consumes it within this
+    # same call, so nothing is persisted.
+    attachment_index = build_attachment_index(all_files)
 
     # Step 2c: extraction + resolution (ADR-2, corrected). listNotes' own
     # metadataCache — not attachment_index.extract_attachment_embeds' regex —
@@ -1050,6 +1182,7 @@ def discover(
     # the wrong join point (the reducer never reads it, and fresh_sources'
     # membership tracks newness, not attachment presence).
     attachment_resolutions = resolve_inbox_attachments(client, inbox_path, attachment_index)
+    calls_after_base = observed_call_count(client)
     try:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         (Path(output_dir) / "resolved-attachments.json").write_text(
@@ -1066,6 +1199,9 @@ def discover(
      instructions_hits, approved_hits, accepted_hits, rendered_hits) = (
         query_frontmatter(client, inbox_path)
     )
+    calls_after_frontmatter = observed_call_count(client)
+    base_kado_calls = _calls_between(calls_at_start, calls_after_base)
+    frontmatter_kado_calls = _calls_between(calls_after_base, calls_after_frontmatter)
 
     # Step 3b: enrich instructions hits with real frontmatter — byFrontmatter
     # returns {} so tomo.sources is invisible to coverage/drift otherwise (#74).
@@ -1145,6 +1281,7 @@ def discover(
         terminal_approved_hits=approved_hits,
         force_pass2=force_pass2 or force_all,
         call_counter=wire_sibling_counter,
+        inbox_index=attachment_index,
     )
     wire_sibling_reads = wire_sibling_counter[0]
 
@@ -1173,6 +1310,8 @@ def discover(
         handled_paths=handled_paths,
         tag_handler_reads=tag_handler_reads,
         wire_sibling_reads=wire_sibling_reads,
+        base_kado_calls=base_kado_calls,
+        frontmatter_kado_calls=frontmatter_kado_calls,
         force_pass1=force_pass1,
         force_pass2=force_pass2,
         force_all=force_all,
@@ -1500,6 +1639,13 @@ def build_routing_plan(
 # never by /inbox — so an /inbox run can silently rely on a months-old vault map.
 DISCOVERY_CACHE_STALE_DAYS = 7
 
+# spec 034 T6.1: actions whose cost-history entry is appended DOWNSTREAM, by
+# the step that runs after the reducer. Their entries carry the reducer's
+# destination-folder counts, which do not exist yet when triage finishes.
+# Appending here as well would write an incomplete entry beside the real one —
+# the one trap in this task that fails loudly instead of silently.
+DOWNSTREAM_COST_ENTRY_ACTIONS = frozenset({"suggest", "fan-resolve"})
+
 
 def discovery_cache_staleness_drift(
     cache_path: Path,
@@ -1590,6 +1736,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--discovery-cache", default="config/discovery-cache.yaml",
         help="Discovery-cache path for the staleness warning (#36; cwd-relative "
              "default, correct for the instance runtime).",
+    )
+    p.add_argument(
+        "--cost-history", default=DEFAULT_HISTORY_PATH,
+        help=f"Cost-history JSONL to append to (default: {DEFAULT_HISTORY_PATH}; "
+             f"cwd-relative, correct for the instance runtime).",
     )
     p.add_argument(
         "--stale-cache-days", type=int, default=DISCOVERY_CACHE_STALE_DAYS,
@@ -1692,6 +1843,10 @@ def main(
         "discover_ms": discover_ms,
         "kado_calls": _count_kado_calls(state),
         "docs_cached": len(state.manifest),
+        # spec 034 T6.1: carried so the downstream cost-history step reads one
+        # definition of each figure rather than re-deriving its own.
+        "item_count": len(state.md_files),
+        "base_kado_calls": state.base_kado_calls,
     }
 
     # Step 10: build routing plan
@@ -1715,7 +1870,25 @@ def main(
         encoding="utf-8",
     )
 
-    # Step 11: metrics on stderr
+    # Step 11: record what this run cost (spec 034 T6.1, F9).
+    # suggest/fan-resolve defer to the downstream step so their entry can carry
+    # the reducer's destination-folder counts; the three actions that terminate
+    # here still spend base and byFrontmatter calls, and a history that omits
+    # them cannot show what idling costs. The folder fields stay ABSENT on these
+    # paths — zero would assert a measurement nobody took.
+    if action not in DOWNSTREAM_COST_ENTRY_ACTIONS:
+        append_entry(
+            build_entry(
+                run_id=generate_run_id(),
+                action=action,
+                item_count=metrics["item_count"],
+                base_kado_calls=metrics["base_kado_calls"],
+                total_kado_calls=metrics["kado_calls"],
+            ),
+            args.cost_history,
+        )
+
+    # Step 12: metrics on stderr
     print(
         f"[inbox-triage] {action} in {total_ms}ms — "
         f"md={len(state.md_files)} audio={len(state.audio_files)} "
@@ -1738,9 +1911,13 @@ def main(
 def _count_kado_calls(state: TriageState) -> int:
     """Estimate Kado call count from state (ADR-4, spec 031, corrected).
 
-    3 base calls (the existing depth=1 partition listDir, T5.1's recursive
-    attachment-index listDir, and T5.1's listNotes(fields=["links"]) embed
-    extraction — ADR-2, corrected) + 7 byFrontmatter + N per-item reads:
+    The two fixed stages are OBSERVED, not declared (spec 034 T6.1): the base
+    (the one recursive listDir that feeds both the partition and the attachment
+    index — ADR-3, spec 034 — and the listNotes(fields=["links"]) embed
+    extraction, ADR-2 corrected) and the byFrontmatter query set, each read off
+    the client's own round-trip counter at a boundary inside discover(). A
+    literal for either would keep reporting the same number through a change
+    that reintroduced a listing or a query. On top of those, N per-item reads:
 
       - instructions_frontmatter_reads: one read_frontmatter per instructions
         hit (enrich_instructions_frontmatter) — an unconditional loop, so
@@ -1769,8 +1946,8 @@ def _count_kado_calls(state: TriageState) -> int:
         + len(state.pending_approval)
     )
     return (
-        3
-        + 7
+        state.base_kado_calls
+        + state.frontmatter_kado_calls
         + len(state.instructions_hits)
         + state.tag_handler_reads
         + state.wire_sibling_reads

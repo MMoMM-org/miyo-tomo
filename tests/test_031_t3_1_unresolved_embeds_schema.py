@@ -55,6 +55,7 @@ def _make_item_result(actions: list) -> dict:
     return {
         "schema_version": "1",
         "stem": "my-inbox-note",
+        "item_key": "100 Inbox/my-inbox-note.md",
         "path": "100 Inbox/my-inbox-note.md",
         "type": "atomic",
         "type_confidence": 0.9,

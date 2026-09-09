@@ -1,4 +1,4 @@
-# version: 0.11.1
+# version: 0.12.0
 """kado_client.py — Lightweight MCP client for Kado's StreamableHTTP transport.
 
 Communicates with the Kado MCP server via JSON-RPC 2.0 over HTTP POST /mcp.
@@ -63,6 +63,19 @@ class KadoConcurrencyError(KadoToolError):
     """Raised when a kado-write operation=frontmatter fails optimistic-concurrency check (expectedModified mismatch)."""
 
 
+# ── Call accounting ───────────────────────────────────────────────────────────
+
+def observed_call_count(client) -> int | None:
+    """Round trips ``client`` reports having made, or None if it does not count.
+
+    Callers that record a run's real Kado cost read the number here rather than
+    reaching for ``_req_id``, and degrade to an unmeasured run rather than
+    failing when handed a client that keeps no count.
+    """
+    value = getattr(client, "call_count", None)
+    return value if isinstance(value, int) else None
+
+
 # ── Client ─────────────────────────────────────────────────────────────────────
 
 class KadoClient:
@@ -107,6 +120,11 @@ class KadoClient:
         self._endpoint = normalized
         self._token = resolved_token
         self._req_id = 0
+        # Round trips this client has made. Public and separate from _req_id:
+        # _req_id is a JSON-RPC identifier whose meaning this client does not
+        # own, so a caller keying a persistent record to it breaks the moment
+        # anything else increments or resets it.
+        self.call_count = 0
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -630,6 +648,9 @@ class KadoClient:
         KadoError            — any other protocol/server error
         """
         self._req_id += 1
+        # Before the request, not after: a call that raises still consumed a
+        # round trip and must still be counted.
+        self.call_count += 1
         payload = {
             "jsonrpc": "2.0",
             "id": self._req_id,

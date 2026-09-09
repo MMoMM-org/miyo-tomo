@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # suggestions-reducer.py — Phase C: aggregate per-item results into a
 # suggestions-doc JSON which the orchestrator renders to markdown.
-# version: 1.37.0
+# version: 1.46.0
 """
 Inputs (CLI):
   --state      tomo-tmp/inbox-state.jsonl
@@ -18,7 +18,11 @@ Outputs:
 
 Rendering rules (replicated from the retired suggestion-builder format):
   - `### SNN — <suggested title>` heading (in orchestrator render step)
-  - `**Source:** [[<stem>]]`
+  - `**Source:** [[<stem>]]`, or `[[<path>|<stem>]]` when two items in the
+    run share a filename (spec 034 T5.1 — display only, ADR-2)
+  - `**Name clash:** <reason>` under a name Pass 1 moved off a destination
+    something else already claims (spec 034 T5.2 — informational; the name
+    above it stays an ordinary editable field)
   - `**New tags to add:** <csv>` (omitted when empty)
   - `**Link to MOC:**` with pre-checked boxes
   - `**Why:**` 1-2 sentences (from classification signals)
@@ -50,10 +54,26 @@ from lib.topic_clusters import (  # noqa: E402, F401
     strip_moc_marker,
 )
 from lib.slugify import slugify  # noqa: E402 — F-43 T3.1 MOC proposal filename
-from lib.kado_client import KadoClient, KadoNotFoundError  # noqa: E402 — I38 Pass-1 existence check
+from lib.cost_history import (  # noqa: E402 — spec 034 T6.1
+    DEFAULT_HISTORY_PATH,
+    record_run,
+)
+from lib.kado_client import (  # noqa: E402 — I38 Pass-1 existence check
+    KadoClient,
+    KadoNotFoundError,
+    observed_call_count,
+)
 from lib.profile_conventions import resolve_conventions  # noqa: E402 — spec 028 T2.3
 from lib.structural_headings import structural_set  # noqa: E402 — #71 gate backstop
-from lib.render_actions import DEFAULT_ASSET_FOLDER  # noqa: E402 — spec 031 Phase 5 attachments preamble
+from lib.render_actions import (  # noqa: E402 — spec 031 attachments preamble; spec 034 T5.2 destination clash
+    DEFAULT_ASSET_FOLDER,
+    _dest_join,
+)
+from lib.inbox_state import last_state_per_item_key, display_stem  # noqa: E402 — spec 034 T2.3
+from lib.item_key import to_filename as item_key_to_filename  # noqa: E402 — spec 034 T2.3
+# spec 034 T5.1, moved to lib at T5.5 when the instruction document needed
+# the same collision rule and the same link form at three more sites.
+from lib.source_link import resolve_source_link, source_link_targets  # noqa: E402
 
 # tag-handler-group.py is a hyphenated top-level script (not a lib module), so
 # it loads via importlib. sys.path already includes the script directory
@@ -73,26 +93,6 @@ group_id = _thg_mod.group_id  # noqa: E305 — spec 024 T4.1: stable group ident
 
 def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def last_state_per_stem(state_path: Path) -> dict[str, dict]:
-    """Return {stem: last_entry} by replaying the append-only JSONL."""
-    out: dict[str, dict] = {}
-    if not state_path.exists():
-        return out
-    with state_path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            stem = obj.get("stem")
-            if stem:
-                out[stem] = obj
-    return out
 
 
 # `normalise_topic` and `_compute_moc_tags` previously lived inline here.
@@ -283,6 +283,91 @@ def demote_structural_anchors(action: dict, stem: str) -> int:
     return demoted
 
 
+def _clash_reason(claimed_dest: str, holder: str, in_run: bool) -> str:
+    """The sentence under a renamed proposal, in the four shapes it takes.
+
+    `holder` is the destination already spoken for, spelled the way it is
+    actually written — the run's earlier claim, or the vault's own filename.
+    When it differs from `claimed_dest` only in case the reason SAYS so: on a
+    case-sensitive filesystem the two are visibly different names, and a bare
+    "already exists" would read as a bug in Tomo rather than a warning.
+    """
+    where = (
+        "another item in this run already proposes"
+        if in_run
+        else "a note already exists at"
+    )
+    if holder == claimed_dest:
+        return f"{where} `{holder}`"
+    return (
+        f"{where} `{holder}`, which differs from `{claimed_dest}` only in case "
+        "— the filesystem may treat the two as one file"
+    )
+
+
+def resolve_destination_clashes(
+    claims: list[tuple[str, str, str]],
+    folder_listing=None,
+) -> dict[str, tuple[str, str]]:
+    """claim_id -> (adjusted title, reason) for each claim whose destination
+    was already spoken for.
+
+    `claims` is (claim_id, location, title) in render order. The destination is
+    composed with `_dest_join` — the same helper Pass 2 uses — so the proposal
+    and the guard cannot disagree about what "the same place" means. The first
+    claim on a destination keeps its name; later ones are renamed, which makes
+    the outcome stable across re-runs of one document.
+
+    Destinations are compared case-folded (CON-6). Folding is the fail-safe
+    direction, not a claim about the filesystem: not folding on a folding
+    filesystem loses a note silently, folding on a case-sensitive one costs a
+    rename the user can undo. Only the comparison folds — every destination the
+    caller displays keeps the casing it was written with.
+
+    `folder_listing(location) -> dict[str, str]` returns the notes already in
+    that folder as {case-folded destination: the path as the vault spells it}.
+    `None` skips the vault half entirely and leaves the run-internal half
+    working: ADR-4 makes Pass 1 advisory and T5.3 the binding guard, so a check
+    that cannot run costs a convenience, not a safety property. A claim with no
+    location is not looked up — its destination folder is not decided yet, so
+    there is nothing to look up.
+
+    Claims that keep their name are absent from the result: the caller renames
+    exactly what this returns and leaves everything else byte-identical.
+    """
+    adjustments: dict[str, tuple[str, str]] = {}
+    # case-folded destination -> the destination as its claimant wrote it
+    claimed: dict[str, str] = {}
+
+    for claim_id, location, title in claims:
+        existing: dict[str, str] = {}
+        if folder_listing and (location or "").strip():
+            existing = folder_listing(location)
+
+        base = _dest_join(location, title)
+        key = base.casefold()
+        holder = claimed.get(key) or existing.get(key)
+        if holder is None:
+            claimed[key] = base
+            continue
+
+        reason = _clash_reason(base, holder, key in claimed)
+        for n in range(2, 101):
+            candidate = f"{title} ({n})"
+            dest = _dest_join(location, candidate)
+            dest_key = dest.casefold()
+            if dest_key not in claimed and dest_key not in existing:
+                adjustments[claim_id] = (candidate, reason)
+                claimed[dest_key] = dest
+                break
+        else:
+            # 99 taken names is not a situation a rename can rescue; leave the
+            # proposal untouched and let T5.3's Pass-2 guard refuse the move.
+            claimed.setdefault(key, base)
+
+    return adjustments
+
+
 def _template_link(template: str) -> str:
     """Render a template reference as a wikilink (bare name, no .md).
 
@@ -385,17 +470,31 @@ def _enforce_coexistence(actions: list[dict]) -> list[dict]:
     return actions
 
 
-def render_create_atomic_note(action: dict, stem: str, moc_suffix: str) -> str:
+def render_create_atomic_note(
+    action: dict, stem: str, moc_suffix: str, source_link: str | None = None
+) -> str:
     lines: list[str] = []
+    # `title` stays the bare stem on fallback even when `link` is qualified —
+    # the suggested NAME of a subfolder note is `Dresden`, never a path.
     title = (action.get("suggested_title") or "").strip() or stem
+    link = source_link or stem
     audio_peer = action.get("audio_peer")
     if audio_peer:
         # Basename only; preserve extension (.m4a etc) — never coerce to .md (ADR-1).
         peer_name = audio_peer.rsplit("/", 1)[-1]
-        lines.append(f"**Source:** [[{stem}]] + [[{peer_name}]]")
+        lines.append(f"**Source:** [[{link}]] + [[{peer_name}]]")
     else:
-        lines.append(f"**Source:** [[{stem}]]")
+        lines.append(f"**Source:** [[{link}]]")
     lines.append(f"**Suggested name:** {title}")
+    # spec 034 T5.2: the name above was moved off a destination something else
+    # already claims. It stays an ordinary editable field — the reason is a
+    # separate line so nothing downstream has to parse it back out of the name.
+    clash_reason = (action.get("clash_reason") or "").strip()
+    if clash_reason:
+        lines.append(
+            f"**Name clash:** {clash_reason}. The suggested name above was "
+            "adjusted — edit it if you prefer another."
+        )
     summary = (action.get("summary") or "").strip()
     if summary:
         lines.append(f"**Summary:** {summary}")
@@ -473,7 +572,9 @@ def render_create_atomic_note(action: dict, stem: str, moc_suffix: str) -> str:
     return "\n".join(lines)
 
 
-def render_suppressed_atomic(action: dict, stem: str) -> str:
+def render_suppressed_atomic(
+    action: dict, stem: str, source_link: str | None = None
+) -> str:
     """Light block for a sub-0.5-worthiness atomic the reducer suppressed (#88).
 
     Deliberately omits the template / location / MOC / Approve / Skip /
@@ -491,7 +592,7 @@ def render_suppressed_atomic(action: dict, stem: str) -> str:
     pct = f"{int(worthiness * 100)}%" if worthiness is not None else "below 50%"
     summary = (action.get("summary") or "").strip()
     lines = [
-        f"**Source:** [[{stem}]]",
+        f"**Source:** [[{source_link or stem}]]",
         f"**Suggested name:** {title}",
     ]
     if summary:
@@ -537,13 +638,15 @@ def _daily_note_stem(path: str) -> str:
     return segments[-1] if segments else p
 
 
-def render_link_to_moc(action: dict, stem: str) -> str:
+def render_link_to_moc(
+    action: dict, stem: str, source_link: str | None = None
+) -> str:
     # AC-11: never emit a bare [[Target#section]] wikilink.
     # section_name was a dead field (section_name was never reliably populated
     # by the analyst — spec 022 uses the anchor field on candidate_mocs instead).
     target = action.get("target_moc", "")
     return (
-        f"**Source:** [[{stem}]]\n"
+        f"**Source:** [[{source_link or stem}]]\n"
         f"**Link to existing MOC:** [[{target}]]\n"
         "\n**Decision (link to MOC):**\n- [x] Approve"
     )
@@ -597,23 +700,27 @@ def _enrich_proposed_mocs(
         )
 
 
-def render_create_moc(action: dict, stem: str, moc_suffix: str) -> str:
+def render_create_moc(
+    action: dict, stem: str, moc_suffix: str, source_link: str | None = None
+) -> str:
     moc_title = _ensure_moc_suffix(action.get("moc_title", ""), moc_suffix)
     parent = action.get("parent_moc", "")
     return (
-        f"**Source:** [[{stem}]]\n"
+        f"**Source:** [[{source_link or stem}]]\n"
         f"**Create new MOC:** {moc_title}\n"
         f"**Parent MOC:** [[{parent}]]\n"
         "\n**Decision (create MOC):**\n- [x] Approve"
     )
 
 
-def render_modify_note(action: dict, stem: str) -> str:
+def render_modify_note(
+    action: dict, stem: str, source_link: str | None = None
+) -> str:
     target = action.get("target_path", "")
     desc = action.get("diff_description", "")
     link = target[:-3] if target.endswith(".md") else target
     return (
-        f"**Source:** [[{stem}]]\n"
+        f"**Source:** [[{source_link or stem}]]\n"
         f"**Modify note:** [[{link}]]\n"
         f"**Change:** {desc}\n"
         "\n**Decision (modify note):**\n- [x] Approve"
@@ -622,16 +729,43 @@ def render_modify_note(action: dict, stem: str) -> str:
 
 def render_daily_notes_updates_block(
     daily_notes_updates: list[dict],
-    daily_only_stems: set[str] | None = None,
+    daily_only_keys: set[str] | None = None,
+    source_links: dict[str, str] | None = None,
 ) -> str:
-    """Render the ## Daily Notes Updates section from daily_notes_updates[]."""
+    """Render the ## Daily Notes Updates section from daily_notes_updates[].
+
+    `daily_only_keys` holds item_keys, not stems: two namesakes both fully
+    captured in a daily note are two separate deletions, and a stem-keyed set
+    offers only one of them (and, on a partial overlap, offers it for the
+    wrong note). `source_links` maps item_key -> wikilink target so each
+    rendered source and delete offer names the note it actually means.
+    """
     if not daily_notes_updates:
         return ""
-    daily_only_stems = daily_only_stems or set()
+    daily_only_keys = daily_only_keys or set()
     lines: list[str] = ["## Daily Notes Updates", ""]
-    # Collect all source stems referenced across all date entries
-    # to show delete suggestions at the end
+    # Item keys whose content is fully captured above — one delete offer each.
     deletable_sources: set[str] = set()
+
+    def _entry_key(e: dict) -> str:
+        """An entry's identity, falling back to its display stem.
+
+        The fallback keeps a hand-built or pre-spec-034 entry rendering the
+        way it always did rather than silently losing its delete offer.
+        """
+        return e.get("source_item_key") or e.get("source_stem") or ""
+
+    def _entry_link(e: dict) -> str:
+        return resolve_source_link(
+            source_links, e.get("source_item_key"), e.get("source_stem") or ""
+        )
+
+    def _key_link(key: str) -> str:
+        """Link target for a key held only in `deletable_sources`."""
+        if source_links and key in source_links:
+            return source_links[key]
+        basename = key.rsplit("/", 1)[-1]
+        return basename[:-3] if basename.endswith(".md") else basename
 
     for entry in daily_notes_updates:
         stem = entry["daily_note_stem"]
@@ -656,10 +790,10 @@ def render_daily_notes_updates_block(
                 value_str = "true" if t["value"] is True else ("false" if t["value"] is False else str(t["value"]))
                 lines.append(f"- **{t['field']}** → `{value_str}`")
                 lines.append(f"  - Reason: {t['reason']}")
-                lines.append(f"  - Source: [[{t['source_stem']}]] ({t['source_section']})")
+                lines.append(f"  - Source: [[{_entry_link(t)}]] ({t['source_section']})")
                 lines.append("  - [ ] Accept")
-                if t["source_stem"] in daily_only_stems:
-                    deletable_sources.add(t["source_stem"])
+                if _entry_key(t) in daily_only_keys:
+                    deletable_sources.add(_entry_key(t))
             lines.append("")
 
         log_entries = entry.get("log_entries") or []
@@ -670,7 +804,7 @@ def render_daily_notes_updates_block(
                 time_str = le.get("time") or position
                 lines.append(f"- {time_str} — {le['content']}")
                 lines.append(f"  - Reason: {le['reason']}")
-                lines.append(f"  - Source: [[{le['source_stem']}]]")
+                lines.append(f"  - Source: [[{_entry_link(le)}]]")
                 lines.append("  - [ ] Accept")
                 # Force Atomic Note: always available under every log_entry.
                 # Even when the source already has an atomic-note suggestion
@@ -682,8 +816,8 @@ def render_daily_notes_updates_block(
                     "  - [ ] Force Atomic Note "
                     "(create/keep a standalone note for this item)"
                 )
-                if le["source_stem"] in daily_only_stems:
-                    deletable_sources.add(le["source_stem"])
+                if _entry_key(le) in daily_only_keys:
+                    deletable_sources.add(_entry_key(le))
             lines.append("")
 
         log_links = entry.get("log_links") or []
@@ -701,8 +835,8 @@ def render_daily_notes_updates_block(
     # Sources whose content is fully captured in daily note(s) — offer deletion
     if deletable_sources:
         lines.append("**Delete source notes (content fully captured above):**")
-        for src in sorted(deletable_sources):
-            lines.append(f"- [ ] Delete [[{src}]]")
+        for src in sorted(deletable_sources, key=lambda k: (_key_link(k), k)):
+            lines.append(f"- [ ] Delete [[{_key_link(src)}]]")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
@@ -724,10 +858,10 @@ def render_log_link_mirror(log_links_for_stem: list[dict]) -> str:
     return "\n".join(lines)
 
 
-# Renderers with a uniform (action, stem) contract, dispatched by kind in the
-# main loop. `create_atomic_note` and `create_moc` are NOT in this map: both need
-# the profile-resolved `moc_suffix`, so they are dispatched explicitly (W1/W2,
-# F-55) rather than special-casing a 3-arg callable inside a 2-arg dict.
+# Renderers with a uniform (action, stem, source_link) contract, dispatched by
+# kind in the main loop. `create_atomic_note` and `create_moc` are NOT in this
+# map: both need the profile-resolved `moc_suffix`, so they are dispatched
+# explicitly (W1/W2, F-55) rather than special-casing a 4-arg callable here.
 RENDERERS = {
     "link_to_moc": render_link_to_moc,
     "modify_note": render_modify_note,
@@ -1561,6 +1695,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--resolved-attachments", default="tomo-tmp/resolved-attachments.json",
                    help="Path to resolved-attachments.json (inbox-triage's per-item "
                         "attachment/unresolved-embed resolution, keyed by source path)")
+    p.add_argument("--routing-plan", default=None,
+                   help="routing-plan.json carrying inbox-triage's metrics for this "
+                        "run (spec 034 T6.1). Default: routing-plan.json beside "
+                        "--output, which is where both skills put the two artefacts.")
+    p.add_argument("--cost-history", default=DEFAULT_HISTORY_PATH,
+                   help=f"Cost-history JSONL to append this run's entry to "
+                        f"(default: {DEFAULT_HISTORY_PATH}; cwd-relative, correct "
+                        f"for the instance runtime).")
     p.add_argument("--threshold", type=int, default=1,
                    help="Minimum cluster size to emit a Proposed MOC section (default 1 — "
                         "every needs_new_moc surfaces; cluster size shown in heading)")
@@ -1649,40 +1791,76 @@ def main() -> int:
     )
     moc_suffix = conventions.moc_suffix
 
-    state = last_state_per_stem(state_path)
+    # spec 034 T2.3: the replay joins on item_key (the vault-relative path), so
+    # two inbox items sharing a filename keep their own status. `stem` rides
+    # along purely as the display text for each (ADR-2).
+    # Hardening: last_state_per_item_key() fails open on a corrupt line (bad
+    # JSON, or no item_key) — it used to drop the line with no trace at all.
+    # skip_report makes that audible without turning the skip into an abort.
+    state_skip_report: dict[str, int] = {}
+    state = last_state_per_item_key(state_path, skip_report=state_skip_report)
+    state_lines_skipped = sum(state_skip_report.values())
+    if state_lines_skipped:
+        print(
+            f"suggestions-reducer: {state_lines_skipped} line(s) of {state_path} "
+            f"skipped during replay (malformed_json="
+            f"{state_skip_report.get('malformed_json', 0)}, missing_item_key="
+            f"{state_skip_report.get('missing_item_key', 0)}) — run continued "
+            f"past the corrupt line(s)",
+            file=sys.stderr,
+        )
     # #116: inbox-state.jsonl is append-only and never truncated between runs,
     # so scope the work-list to THIS run's entries. Without the run_id filter a
-    # new run re-reads every done/failed stem the file ever accumulated and
+    # new run re-reads every done/failed item the file ever accumulated and
     # re-emits stale proposals for source notes that no longer exist.
-    done_stems = sorted(
-        s
-        for s, e in state.items()
-        if e.get("status") == "done" and e.get("run_id") == args.run_id
-    )
-    failed_entries = sorted(
-        (
-            (s, e)
-            for s, e in state.items()
-            if e.get("status") == "failed" and e.get("run_id") == args.run_id
-        ),
-        key=lambda kv: kv[0],
-    )
+    def _work_list(status: str) -> list[tuple[str, str, dict]]:
+        """(stem, item_key, entry) triples for this run, in stem display order."""
+        return sorted(
+            (
+                (display_stem(e, k), k, e)
+                for k, e in state.items()
+                if e.get("status") == status and e.get("run_id") == args.run_id
+            ),
+            key=lambda t: (t[0], t[1]),
+        )
 
-    # XDD 012 fan-resolve mode: filter done_stems to items whose result.json
+    done_items = _work_list("done")
+    failed_entries = _work_list("failed")
+
+    # XDD 012 fan-resolve mode: filter the work list to items whose result file
     # carries force_atomic=true. This keeps the resolve doc focused on the
     # FAN-triggered atomic proposals only, regardless of what else the
     # state-file contains.
     if args.fan_resolve:
-        def _has_force_atomic(stem: str) -> bool:
-            rp = items_dir / f"{stem}.result.json"
+        def _has_force_atomic(item_key: str) -> bool:
+            rp = items_dir / item_key_to_filename(item_key)
             if not rp.exists():
+                # Distinguish "not force-atomic" (the ordinary filter outcome)
+                # from "the analyst's result is gone" (an item vanishing).
+                print(
+                    f"suggestions-reducer: result file missing for "
+                    f"item_key={item_key} at {rp} — item dropped from the "
+                    f"fan-resolve work list",
+                    file=sys.stderr,
+                )
                 return False
             try:
                 return bool(json.loads(rp.read_text(encoding="utf-8")).get("force_atomic"))
             except (json.JSONDecodeError, OSError):
                 return False
-        done_stems = [s for s in done_stems if _has_force_atomic(s)]
+        done_items = [t for t in done_items if _has_force_atomic(t[1])]
         failed_entries = []  # resolve doc does not surface other failures
+
+    # spec 034 T5.1: computed AFTER the fan-resolve filter, so the collision set
+    # is the items this document sets out to render. `source_links` is display
+    # text (ADR-2) — `stem` and `item_key` below are untouched by it.
+    # Caveat, cosmetic and untested: the per-item unreadable-result filter runs
+    # later, so an item dropped there still counts toward the tally. Its
+    # surviving namesake then gets a qualified link with no visible collision
+    # beside it. The link still resolves to exactly one note, so this is noise,
+    # not a wrong target — but do not read the line above as a guarantee that
+    # the set equals what finally renders.
+    source_links = source_link_targets(done_items)
 
     sections: list[dict] = []
     # F-43 T1.5: clustering moved to `lib.topic_clusters.build_topic_clusters`.
@@ -1698,8 +1876,9 @@ def main() -> int:
     daily_path_by_stem: dict[str, str] = {}
     # stem -> [(daily_note_stem, time, reason)] for Material für mirror
     stem_log_links: dict[str, list[dict]] = {}
-    # stems whose content is fully captured in daily note(s) — source can be deleted
-    daily_only_stems: set[str] = set()
+    # item_keys whose content is fully captured in daily note(s) — source can
+    # be deleted. Keyed on item_key, not stem: two namesakes are two deletions.
+    daily_only_keys: set[str] = set()
     # F-41 T1: global flat counter for suggestion_ids (S01, S02, …); increments
     # for every rendered create_atomic_note across all sources.  Daily-only items
     # (0 atomics) do NOT increment this counter.
@@ -1711,23 +1890,41 @@ def main() -> int:
     # (metadata-only telemetry — a count, never note content).
     structural_demotions: int = 0
 
-    for idx, stem in enumerate(done_stems, start=1):
-        result_path = items_dir / f"{stem}.result.json"
+    # spec 034 T2.3: items whose analyst result cannot be read. The loop used to
+    # `continue` in silence, so a `done` item simply vanished from the run with
+    # nothing to show for it. These are surfaced on stderr AND in the document's
+    # needs-attention block.
+    unreadable_results: list[tuple[str, str, str]] = []
+
+    # spec 034 T5.2: loading is its own pass so the destination-clash check
+    # below sees every item's surviving actions before any of them renders. The
+    # section index still counts over `done_items`, so an unreadable item leaves
+    # the same gap in the SNN sequence it always did.
+    prepared: list[tuple[int, str, str, list[dict]]] = []
+    for idx, (stem, item_key, _entry) in enumerate(done_items, start=1):
+        result_path = items_dir / item_key_to_filename(item_key)
         if not result_path.exists():
-            # Subagent reported done but file is missing — skip gracefully
+            reason = f"result file missing at {result_path.name}"
+            print(
+                f"suggestions-reducer: {reason} for item_key={item_key} "
+                f"(stem={stem}) — item reported, not skipped",
+                file=sys.stderr,
+            )
+            unreadable_results.append((stem, item_key, reason))
             continue
         try:
             result = json.loads(result_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            reason = f"result file is not valid JSON ({exc.msg} at line {exc.lineno})"
+            print(
+                f"suggestions-reducer: {reason} for item_key={item_key} "
+                f"(stem={stem}) — item reported, not skipped",
+                file=sys.stderr,
+            )
+            unreadable_results.append((stem, item_key, reason))
             continue
         result = merge_resolved_attachments(result, resolved_attachments)
 
-        section_id = f"S{idx:02d}"
-        rendered_actions: list[dict] = []
-        had_update_daily = False
-        # F-41: index atomics within this source so each gets a distinct
-        # cluster/title key (see _atomic_id). 0th keeps the bare section_id.
-        atomic_idx = 0
         item_actions = result.get("actions", [])
         # #88: the item-level force_atomic flag (set by the FAN / force-atomic
         # flow, e.g. fan-resolve) authoritatively overrides sub-worthiness.
@@ -1737,7 +1934,97 @@ def main() -> int:
             for _a in item_actions:
                 if _a.get("kind") == "create_atomic_note":
                     _a["force_atomic"] = True
-        actions = _enforce_coexistence(item_actions)
+        prepared.append((idx, stem, item_key, _enforce_coexistence(item_actions)))
+
+    # I38: the Kado client, opened once for every Pass-1 vault check below —
+    # the daily-note existence probe, the tag-handler guards, and the T5.2
+    # destination clash. On by default; --no-kado disables. Fail-open — no
+    # Kado config / unreachable → the checks degrade, the run does not.
+    kado_client = None
+    if not args.no_kado and not args.fan_resolve:
+        try:
+            kado_client = KadoClient()
+        except Exception:  # noqa: BLE001 — no Kado config → fail-open
+            kado_client = None
+
+    # spec 034 T5.2: the destination folder is flat, so two notes named Dresden
+    # cannot both live in it. Rename the later claimant before the user reads
+    # the document; T5.3 is the binding guard (ADR-4), this is the proposal
+    # that keeps the common case from ever reaching it.
+    # One listing per distinct destination folder, not one probe per
+    # destination: a folded comparison needs the folder's real filenames, and
+    # an existence probe would only answer the question Kado's own case
+    # semantics decide — which CON-7 forbids this spec from measuring.
+    _folder_cache: dict[str, dict[str, str]] = {}
+    # spec 034 T6.1 / F9: what those listings actually cost. One listing per
+    # cache MISS, so this is not the claim count — and it is read off the
+    # client's own round-trip counter where the client keeps one, so a paged
+    # listing is not undercounted as a single call. Carried in the output
+    # document below: the step that appends the run's cost-history entry runs in
+    # a later process and has no other way to receive it.
+    folder_listing_calls = 0
+
+    def _vault_folder_notes(location: str) -> dict[str, str]:
+        nonlocal folder_listing_calls
+        # Key on the folder _dest_join derives, not on the raw string: two
+        # claims whose location differs only by a trailing slash name one
+        # folder, and a raw key would list it twice. The cost of that is a
+        # doubled Kado call and nothing else, so it fails silently — and F9
+        # measures exactly this number.
+        folder = (location or "").rstrip("/") + "/"
+        if folder not in _folder_cache:
+            found: dict[str, str] = {}
+            calls_before = observed_call_count(kado_client)
+            try:
+                for entry in kado_client.list_dir(folder, depth=1):
+                    path = entry.get("path") or ""
+                    name = path.rsplit("/", 1)[-1]
+                    if entry.get("type") != "file" or not name.lower().endswith(".md"):
+                        continue
+                    # Recompose through _dest_join so both sides of the
+                    # comparison are built by the same helper.
+                    found[_dest_join(folder, name[:-3]).casefold()] = path
+            except Exception:  # noqa: BLE001 — an error is not a collision
+                found = {}
+            # After the except: a listing that raised still spent its round trip.
+            calls_after = observed_call_count(kado_client)
+            folder_listing_calls += (
+                calls_after - calls_before
+                if calls_before is not None and calls_after is not None
+                else 1
+            )
+            _folder_cache[folder] = found
+        return _folder_cache[folder]
+
+    clash_claims: list[tuple[str, str, str]] = []
+    claim_actions: dict[str, dict] = {}
+    for _idx, stem, item_key, actions in prepared:
+        for pos, action in enumerate(actions):
+            # A suppressed atomic stays in the inbox and Pass 2 emits no move
+            # for it, so it claims no destination.
+            if action.get("kind") != "create_atomic_note" or action.get("suppressed"):
+                continue
+            claim_id = f"{item_key}#{pos}"
+            claim_actions[claim_id] = action
+            clash_claims.append((
+                claim_id,
+                action.get("location") or "",
+                (action.get("suggested_title") or "").strip() or stem,
+            ))
+    for claim_id, (adjusted_title, reason) in resolve_destination_clashes(
+        clash_claims, _vault_folder_notes if kado_client else None
+    ).items():
+        claim_actions[claim_id]["suggested_title"] = adjusted_title
+        claim_actions[claim_id]["clash_reason"] = reason
+
+    for idx, stem, item_key, actions in prepared:
+        section_id = f"S{idx:02d}"
+        source_link = resolve_source_link(source_links, item_key, stem)
+        rendered_actions: list[dict] = []
+        had_update_daily = False
+        # F-41: index atomics within this source so each gets a distinct
+        # cluster/title key (see _atomic_id). 0th keeps the bare section_id.
+        atomic_idx = 0
         # F-41 T1 W1: pre-pass — assign flat suggestion_ids to all
         # create_atomic_note actions before the main loop processes
         # update_daily.  This makes log_link.source_section resolution
@@ -1757,20 +2044,23 @@ def main() -> int:
             kind = action.get("kind")
             # W1/W2 (F-55): create_atomic_note and create_moc need the
             # profile-resolved moc_suffix, so they are dispatched explicitly.
-            # Every other kind flows through the uniform (action, stem) RENDERERS
-            # map; unknown kinds are skipped.
+            # Every other kind flows through the uniform
+            # (action, stem, source_link) RENDERERS map; unknown kinds are
+            # skipped.
             if kind == "create_atomic_note":
                 if action.get("suppressed"):
                     # #88: sub-0.5 atomic — render a light "kept in inbox" block
                     # instead of the full atomic-note proposal.
-                    rendered = render_suppressed_atomic(action, stem)
+                    rendered = render_suppressed_atomic(action, stem, source_link)
                 else:
                     # #71 gate backstop: demote structural-heading tier-1 anchors
                     # in place BEFORE render + persist (both read candidate_mocs).
                     structural_demotions += demote_structural_anchors(action, stem)
-                    rendered = render_create_atomic_note(action, stem, moc_suffix)
+                    rendered = render_create_atomic_note(
+                        action, stem, moc_suffix, source_link
+                    )
             elif kind == "create_moc":
-                rendered = render_create_moc(action, stem, moc_suffix)
+                rendered = render_create_moc(action, stem, moc_suffix, source_link)
             elif kind == "update_daily":
                 # Do NOT render the per-item `**Daily update:**` /
                 # `**Decision (daily update):**` block — the aggregated
@@ -1803,6 +2093,7 @@ def main() -> int:
                                 "value": u.get("value"),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
+                                "source_item_key": item_key,
                                 "source_section": section_id,
                             })
                         elif ukind == "log_entry":
@@ -1813,6 +2104,7 @@ def main() -> int:
                                 "content": u.get("content", ""),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
+                                "source_item_key": item_key,
                                 "source_section": section_id,
                             })
                         elif ukind == "log_link":
@@ -1832,6 +2124,7 @@ def main() -> int:
                                 "position": u.get("position"),
                                 "reason": u.get("reason", ""),
                                 "source_stem": stem,
+                                "source_item_key": item_key,
                                 "source_section": log_link_source_section,
                             })
                             # Record for per-item Material für mirror
@@ -1844,7 +2137,7 @@ def main() -> int:
                 renderer = RENDERERS.get(kind)
                 if not renderer:
                     continue
-                rendered = renderer(action, stem)
+                rendered = renderer(action, stem, source_link)
             if rendered is not None:
                 rendered_action: dict = {"kind": kind, "rendered_md": rendered}
                 # F-41 T1: assign a flat global suggestion_id to each rendered
@@ -1927,11 +2220,12 @@ def main() -> int:
         # (create_atomic_note, etc.) still get a per-item section; the
         # atomic decision lives there, the daily decision stays at the top.
         if had_update_daily and not rendered_actions:
-            daily_only_stems.add(stem)
+            daily_only_keys.add(item_key)
         if rendered_actions:
             sections.append({
                 "id": section_id,
                 "stem": stem,
+                "item_key": item_key,
                 "actions": rendered_actions,
             })
 
@@ -1955,22 +2249,24 @@ def main() -> int:
     _enrich_proposed_mocs(proposed_mocs, section_titles, moc_suffix)
 
     needs_attention: list[dict] = []
-    for stem, entry in failed_entries:
+    for stem, item_key, entry in failed_entries:
         err = entry.get("error") or {}
         needs_attention.append({
             "stem": stem,
+            "item_key": item_key,
             "error": f"{err.get('kind', 'unknown')}: {err.get('message', '')}".strip(": "),
+        })
+    for stem, item_key, reason in unreadable_results:
+        needs_attention.append({
+            "stem": stem,
+            "item_key": item_key,
+            "error": f"unreadable_result: {reason}",
         })
 
     # I38: flag groups whose daily note doesn't exist so Pass 1 surfaces it
-    # (not just the #58 Pass-2 backstop). On by default; --no-kado disables.
+    # (not just the #58 Pass-2 backstop). `kado_client` is opened above, before
+    # the render loop, because the T5.2 destination-clash check needs it there.
     # Fail-open — no Kado config / unreachable → all exists=True (prior behavior).
-    kado_client = None
-    if not args.no_kado and not args.fan_resolve:
-        try:
-            kado_client = KadoClient()
-        except Exception:  # noqa: BLE001 — no Kado config → fail-open
-            kado_client = None
     missing_daily = annotate_daily_note_existence(
         daily_groups, daily_path_by_stem, kado_client
     )
@@ -1978,7 +2274,9 @@ def main() -> int:
     daily_notes_updates = sorted(daily_groups.values(), key=lambda d: d["daily_note_stem"])
     daily_notes_updates_sorted = daily_notes_updates
     rendered_daily_updates_md = render_daily_notes_updates_block(
-        daily_notes_updates_sorted, daily_only_stems=daily_only_stems
+        daily_notes_updates_sorted,
+        daily_only_keys=daily_only_keys,
+        source_links=source_links,
     )
 
     # spec 024 T3.3: load tag-handler group-results (additive — missing dir = [])
@@ -2052,7 +2350,7 @@ def main() -> int:
             "moc_suffix": conventions.moc_suffix,
         },
         "doc_variant": doc_variant,  # XDD 012 — primary | fan-resolve
-        "source_items": len(done_stems) + len(failed_entries),
+        "source_items": len(done_items) + len(failed_entries),
         "sections": sections,
         "daily_notes_updates": daily_notes_updates,
         "rendered_daily_updates_md": rendered_daily_updates_md,
@@ -2060,6 +2358,12 @@ def main() -> int:
         "attachments_preamble": attachments_preamble,
         "proposed_mocs": proposed_mocs,
         "needs_attention": needs_attention,
+        # spec 034 T6.1: the destination-folder listings are a real per-run cost
+        # that scales with content, reported as its own line rather than folded
+        # into the base — a single number mixing a fixed pipeline cost with a
+        # content-scaling one tells a later reader nothing about either.
+        "folder_listing_calls": folder_listing_calls,
+        "distinct_destination_folders": len(_folder_cache),
     }
     # spec 024 T3.3: omit-when-empty — a no-groups run is byte-identical to pre-T3.3.
     # render.py reads rendered_tag_handler_updates_md via .get() so absent is fine.
@@ -2072,8 +2376,28 @@ def main() -> int:
         json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
+    # spec 034 T6.1: this process is the terminal deterministic step of the two
+    # actions that reach it (suggest, fan-resolve), so the run's cost-history
+    # entry is written HERE. It was briefly a step in each skill's markdown; no
+    # test can see whether an LLM ran a line of markdown, and the criterion is
+    # "a history accumulates without anyone remembering to record it".
+    # inbox-triage.py deliberately writes no entry for these two actions — the
+    # folder counts below do not exist when it finishes.
+    routing_plan_path = (
+        Path(args.routing_plan) if args.routing_plan
+        else out_path.parent / "routing-plan.json"
+    )
+    record_run(
+        run_id=args.run_id,
+        routing_plan_path=routing_plan_path,
+        folder_listing_calls=folder_listing_calls,
+        distinct_destination_folders=len(_folder_cache),
+        history_path=args.cost_history,
+    )
+
     print(
-        f"suggestions-reducer: done={len(done_stems)} failed={len(failed_entries)} "
+        f"suggestions-reducer: done={len(done_items)} failed={len(failed_entries)} "
+        f"unreadable_results={len(unreadable_results)} "
         f"sections={len(sections)} daily_notes_updates={len(daily_notes_updates)} "
         f"daily_notes_missing={missing_daily} "
         f"tag_handler_updates={len(tag_handler_updates)} "

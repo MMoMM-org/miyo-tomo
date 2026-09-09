@@ -22,11 +22,12 @@
       "description": "One entry per atomic note suggestion, keyed by its stable S## id. Carries the full editable per-note surface.",
       "items": {
         "type": "object",
-        "required": ["id", "stem", "title", "template", "location", "tags", "decision", "keep_source", "delete_source", "force_atomic", "suppressed", "candidate_mocs"],
+        "required": ["id", "stem", "item_key", "title", "template", "location", "tags", "decision", "keep_source", "delete_source", "force_atomic", "suppressed", "candidate_mocs"],
         "additionalProperties": false,
         "properties": {
           "id": {"type": "string", "pattern": "^S[0-9]{2,}(#[0-9]+)?$"},
           "stem": {"type": "string", "description": "Source note stem (read-only)."},
+          "item_key": {"type": "string", "minLength": 1, "description": "The item's identity: its vault-relative path, verbatim (e.g. '100 Inbox/Places/Dresden.md'). Used for joins, dict keys and set membership — unlike stem, it stays unique across subfolders."},
           "title": {"type": "string", "description": "Editable — the note name; the filename derives from it."},
           "summary": {"type": ["string", "null"], "description": "Read-only — one-sentence gist of the note's content (analyst-authored, display only). Lets the editor show what the note is about without opening it. Null/absent on legacy items."},
           "template": {"type": "string", "description": "Editable — template wikilink target."},

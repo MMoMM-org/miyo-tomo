@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_triage_fan_from_wire.py — ADR-026: fan-resolve triggers from an edited wire.
 
 Under JSON-only (Hashi edited the _suggestions.json), the markdown body is a minimal
@@ -8,7 +8,8 @@ Triage must read them from the wire (when edited) so determine_action routes to
 fan-resolve, exactly as the markdown flow does. Covers:
   - _load_edited_wire: edited (digest mismatch) → wire; unedited/absent/bad → None.
   - _extract_fan_items_from_wire: suppressed+force_atomic suggestions AND daily
-    force_atomic_note entries, deduplicated by stem.
+    force_atomic_note entries, deduplicated by the note path each resolves to
+    (spec 034 T4.1 — two same-stem notes in different subfolders are two items).
 """
 from __future__ import annotations
 
@@ -35,14 +36,25 @@ _render_md = _load("render_md_mod", "lib/render_md.py")
 compute_payload_digest = _render_md.compute_payload_digest
 
 
+INBOX = "100 Inbox/"
+
+# Sapporo is daily-only: no suggestion carries its item_key, so it resolves
+# through the run's inbox listing the way an attachment target does.
+INBOX_INDEX = {"Sapporo.md": [INBOX + "Sapporo.md"]}
+
+
 def _wire(**over) -> dict:
     w = {
         "schema_version": "1",
         "suggestions": [
-            {"id": "S01", "stem": "Asahikawa", "suppressed": True, "force_atomic": True},
-            {"id": "S02", "stem": "note-c", "suppressed": True, "force_atomic": True},
-            {"id": "S03", "stem": "zettelkasten", "suppressed": False, "force_atomic": False},
-            {"id": "S04", "stem": "quick", "suppressed": True, "force_atomic": False},
+            {"id": "S01", "stem": "Asahikawa", "item_key": INBOX + "Asahikawa.md",
+             "suppressed": True, "force_atomic": True},
+            {"id": "S02", "stem": "note-c", "item_key": INBOX + "note-c.md",
+             "suppressed": True, "force_atomic": True},
+            {"id": "S03", "stem": "zettelkasten", "item_key": INBOX + "zettelkasten.md",
+             "suppressed": False, "force_atomic": False},
+            {"id": "S04", "stem": "quick", "item_key": INBOX + "quick.md",
+             "suppressed": True, "force_atomic": False},
         ],
         "daily_updates": [
             {"date": "2026-04-17", "log_entries": [
@@ -67,12 +79,18 @@ def _sealed(wire: dict) -> dict:
 
 
 def test_extracts_suppressed_force_atomic_and_daily_deduped():
-    items = _triage._extract_fan_items_from_wire(_wire(), "100 Inbox/x_suggestions.md")
+    items = _triage._extract_fan_items_from_wire(
+        _wire(), "100 Inbox/x_suggestions.md", inbox_index=INBOX_INDEX,
+    )
     stems = [i["stem"] for i in items]
     # S01 Asahikawa, S02 note-c (suppressed+force_atomic) + Sapporo (daily). Asahikawa
     # appears in both suggestion and daily → deduped once. S03/S04/Furano excluded.
     assert stems == ["Asahikawa", "note-c", "Sapporo"], stems
     assert all(i["source_path"] == "100 Inbox/x_suggestions.md" for i in items)
+    # Each item names its OWN note, never the review document it was ticked in.
+    assert [i["item_key"] for i in items] == [
+        INBOX + "Asahikawa.md", INBOX + "note-c.md", INBOX + "Sapporo.md",
+    ]
 
 
 def test_no_force_atomic_yields_empty():

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.12.0
+# version: 0.19.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -48,6 +48,8 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
+
+from lib.item_key import derive as _item_key  # noqa: E402
 
 # tag-handler-group.py is a hyphenated top-level script; load it via importlib
 # for the stable group_id slug (spec 024 T4.1) — the SAME id the renderer keys
@@ -115,6 +117,95 @@ def _moc_stem(name: str | None) -> str:
     return _stem(name)
 
 
+def _key_segments(key: str) -> list[str]:
+    """Split an item_key into path segments, extension-stripped on the last
+    one only. The parser's current source_path is the bare wikilink stem
+    (no extension, e.g. "Dresden") while a rendered action's traceability
+    field carries the real filename (e.g. "100 Inbox/Dresden.md") — the two
+    conventions must still agree on the *last* segment. Directory segments
+    are left untouched: they carry the disambiguating information this
+    module needs (ADR-1), and a plain stem compare is exactly what
+    collapses two same-named items in different subfolders."""
+    parts = key.split("/")
+    last = parts[-1]
+    if last.endswith(".md"):
+        last = last[:-3]
+    parts[-1] = last
+    return parts
+
+
+def _keys_match(expected_key: str, actual_key: str) -> bool:
+    """True when `expected_key` (an item_key drawn straight from
+    confirmed_items, never inbox-prefixed) and `actual_key` (an item_key
+    drawn from a rendered action's traceability field) name the same item.
+
+    `render_actions._build_move_note_actions` only inbox-joins a bare
+    (single-segment) origin — a subfolder-qualified one is carried through
+    verbatim — so `actual_key` may carry one extra leading path segment that
+    `expected_key` does not. Comparing the trailing path segments lets the
+    two conventions agree without this module knowing the inbox path,
+    while still keeping two same-named items in different subfolders apart
+    (ADR-1) — the exact identity a bare-stem compare collapses."""
+    if not expected_key or not actual_key:
+        return False
+    if expected_key == actual_key:
+        return True
+    e_parts = _key_segments(expected_key)
+    a_parts = _key_segments(actual_key)
+    return len(e_parts) <= len(a_parts) and a_parts[-len(e_parts):] == e_parts
+
+
+def _confirmed_key(item: dict) -> str:
+    """Identity of a confirmed item for the coverage join (ADR-1).
+
+    Prefers the dedicated `item_key` — the item's vault-relative path,
+    verbatim — which both parser paths now mint: `build_from_wire` threads it
+    through from the wire, and the markdown path joins the suggestions doc on
+    the suggestion id. Falls back to `source_path`, the bare display stem, for
+    a document that carries no key — one produced before spec 034, or one whose
+    edited `Source:` line no longer matches its id, where the markdown join
+    refuses to guess. `_keys_match` tolerates both conventions, so the two paths
+    can converge independently; without the preference, two confirmed items
+    sharing a bare stem are indistinguishable here and a missing action for one
+    hides behind the other's presence.
+    """
+    return _item_key(item.get("item_key") or item.get("source_path") or "")
+
+
+def _daily_key(entry: dict) -> str:
+    """Identity of a daily-update entry for the delete-coverage join (ADR-1).
+
+    `_confirmed_key`'s counterpart on the daily side. `source_item_key` is the
+    entry's vault-relative path, restored on BOTH parser paths by
+    `suggestion-parser.enrich_daily_updates_with_item_keys`; `source_stem` is
+    display text (ADR-2) and is the fallback when the recovery found the
+    discriminator ambiguous and declined to guess.
+    """
+    return _item_key(entry.get("source_item_key") or entry.get("source_stem") or "")
+
+
+def _same_note_as_any(key: str, keys: list[str]) -> bool:
+    """True when `key` names the same inbox note as any member of `keys`.
+
+    SYMMETRIC — neither side is assumed to be the qualified one. Read it as
+    "same note as", not as a membership test, before adding a call site.
+
+    A plain `in` test against a set is wrong here even though both sides are
+    drawn from one document: a confirmed item may carry its full path while a
+    daily entry for that same note carries only the bare stem (or the reverse),
+    and the emitter resolves the bare one against the inbox root before
+    comparing — so the two DO name one note and it must not expect a deletion
+    for both. `_keys_match` is exactly that tolerance; it is applied in both
+    directions because either side may be the unqualified one, which the
+    move_note join it was written for never has to consider.
+
+    It stays tolerant only where the emitter's fallback could have produced the
+    difference: two qualified keys in different inbox subfolders share no path
+    suffix and remain distinct (ADR-1), which is the collapse this replaces.
+    """
+    return any(_keys_match(key, other) or _keys_match(other, key) for other in keys)
+
+
 def _parse_supporting_items(raw: str | list | None) -> list[str]:
     """Parse supporting_items — list (moc-proposal-parser) or str (SNN IDs)."""
     if not raw:
@@ -150,7 +241,8 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
         "counts": {kind: int},
         "by_item": {item_id: {"kind": "move_note"|"create_moc",
                               "title": str,
-                              "expected_links": [moc_stem, ...]}},
+                              "expected_links": [moc_stem, ...],
+                              "item_key": str}},
         "expected_daily_kinds": [{"kind", "date", "key", "source_stem"}],
         "expected_deletions": [source_path],
         "expected_skips": [source_path_or_None],
@@ -189,7 +281,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                 "kind": "create_moc",
                 "title": title,
                 "expected_links": parent_stems,
-                "source_path": item.get("source_path"),
+                "item_key": _confirmed_key(item),
                 "supporting_items": item.get("supporting_items"),
             }
         else:
@@ -198,7 +290,7 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                 "kind": "move_note",
                 "title": title,
                 "expected_links": parent_stems,
-                "source_path": item.get("source_path"),
+                "item_key": _confirmed_key(item),
             }
         counts["link_to_moc"] += len(parent_stems)
 
@@ -278,24 +370,40 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
     #      their inbox origin unless the user opted out via "Keep source files".
     #   4. tag-handler group sources: each APPROVED group (not "Keep source files")
     #      deletes every consolidated inbox source (instruction-render branch 4).
-    confirmed_stems = {_stem(it.get("source_path")) for it in confirmed if it.get("source_path")}
+    # The daily-only suppression joins daily entries against confirmed items,
+    # and both describe an inbox note that two notes can now share a filename
+    # with (recursive discovery, Phase 3). It therefore joins on the note's
+    # identity (ADR-1), matching the emitter, which keys this same suppression
+    # on the resolved vault-relative path. Membership is `_same_note_as_any`,
+    # not a set lookup: the mixed keyed/keyless input a set splits still names
+    # one note.
+    confirmed_keys = [_confirmed_key(it) for it in confirmed if it.get("source_path")]
     expected_deletions: list[str] = []
     for sk in skipped:
         if sk.get("disposition") == "delete_source":
             expected_deletions.append(_stem(sk.get("source_path")))
-    # Daily-only: accepted daily items whose source_stem isn't in confirmed
-    daily_only_seen: set[str] = set()
+    # Daily-only: accepted daily items naming no confirmed note. The appended
+    # VALUE stays the bare stem, as sources 1, 3 and 4 append theirs — the
+    # tag-handler dedup below reads these values as stems.
+    daily_only_keys: list[str] = []
     for day in daily_updates:
         for bucket in ("trackers", "log_entries", "log_links"):
             for entry in day.get(bucket) or []:
                 if not entry.get("accepted"):
                     continue
-                stem = _stem(entry.get("source_stem"))
-                if stem and stem not in confirmed_stems and stem not in daily_only_seen:
-                    daily_only_seen.add(stem)
-                    expected_deletions.append(stem)
+                key = _daily_key(entry)
+                if not key or _same_note_as_any(key, confirmed_keys):
+                    continue
+                if _same_note_as_any(key, daily_only_keys):
+                    continue
+                daily_only_keys.append(key)
+                expected_deletions.append(_stem(key))
     # Paired with move_note: every confirmed atomic note with a source_path
-    # AND keep_source=False expects a paired delete on its origin.
+    # AND keep_source=False expects a paired delete on its origin. Dedup on
+    # the item_key (the full source_path, ADR-1), not the bare stem — two
+    # confirmed items sharing a filename in different subfolders are two
+    # distinct origins, each owed its own paired delete; a stem-keyed dedup
+    # would drop the second one's expected deletion silently.
     paired_origins_seen: set[str] = set()
     audio_peers_seen: set[str] = set()
     for item in confirmed:
@@ -306,10 +414,10 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
         sp = item.get("source_path")
         if not sp:
             continue
-        stem = _stem(sp)
-        if stem not in paired_origins_seen:
-            paired_origins_seen.add(stem)
-            expected_deletions.append(stem)
+        key = _confirmed_key(item)
+        if key not in paired_origins_seen:
+            paired_origins_seen.add(key)
+            expected_deletions.append(_stem(sp))
         # Voice source set (spec 027 ADR-1): a confirmed non-kept item with an
         # audio_peer expects a SECOND paired delete for the audio file. The
         # renderer emits one audio delete_source per origin stem group; mirror it
@@ -381,7 +489,7 @@ def summarize_actual(instrs: dict) -> dict:
     for a in actions:
         counts[a["action"]] = counts.get(a["action"], 0) + 1
 
-    move_by_stem: dict[str, dict] = {}
+    move_by_key: dict[str, dict] = {}
     create_mocs: list[dict] = []
     links_by_source: dict[str, list[str]] = {}
     # link_to_moc COVERAGE is counted as (note, MOC) pairs, not raw actions: a
@@ -392,10 +500,15 @@ def summarize_actual(instrs: dict) -> dict:
     for a in actions:
         kind = a["action"]
         if kind == "move_note":
-            # Match by the stem of source_inbox_item (traceability field);
-            # falls back to the rendered_file stem if source wasn't captured.
-            stem = _stem(a.get("source_inbox_item")) or _stem(a.get("rendered_file"))
-            move_by_stem[stem] = a
+            # Match by the item_key of source_inbox_item (traceability field);
+            # falls back to rendered_file if source wasn't captured. Keying on
+            # the full path (not the bare stem) keeps two same-named items in
+            # different subfolders from collapsing onto one dict entry — see
+            # _keys_match for how this reconciles with a bare-name origin's
+            # inbox-joined prefix.
+            raw_origin = a.get("source_inbox_item") or a.get("rendered_file")
+            key = _item_key(raw_origin) if raw_origin else ""
+            move_by_key[key] = a
         elif kind == "create_moc":
             create_mocs.append(a)
         elif kind == "link_to_moc":
@@ -429,7 +542,7 @@ def summarize_actual(instrs: dict) -> dict:
 
     return {
         "counts": counts,
-        "move_by_stem": move_by_stem,
+        "move_by_key": move_by_key,
         "create_mocs": create_mocs,
         "links_by_source": links_by_source,
         "daily_by_kind": daily_by_kind,
@@ -476,13 +589,24 @@ def _is_garden_parsed(parsed: dict) -> bool:
     return bool(items) and all("garden_action" in i for i in items)
 
 
-def _garden_item_covered(item: dict, actions: list[dict]) -> bool:
+def _garden_item_covered(
+    item: dict, actions: list[dict], withheld_link_titles: set[str] | None = None,
+) -> bool:
     """True when every instruction kind this garden item owes exists with a
-    matching path anchor (mirrors build_garden_audit_actions field wiring)."""
+    matching path anchor (mirrors build_garden_audit_actions field wiring).
+
+    `withheld_link_titles` names the source notes whose `link_to_moc` the
+    renderer deliberately withheld (spec 034 T6.0d): a garden `file_note` whose
+    File-under value names a MOC Kado cannot confirm reaches the same guard the
+    suggestions path does, and an absent instruction there is the guard
+    working, not a coverage gap.
+    """
     ga = item.get("garden_action")
     path = item.get("path", "")
     stem = item.get("stem", "")
     for kind in _GARDEN_EXPECTED_KINDS.get(ga, ()):
+        if kind == "link_to_moc" and stem in (withheld_link_titles or set()):
+            continue
         if kind == "resolve_dead_link":
             ok = any(
                 a["action"] == kind and a.get("path") == path
@@ -521,9 +645,22 @@ def run_diff_garden(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
     confirmed = parsed.get("confirmed_items") or []
     actions = instrs.get("actions") or []
 
+    # The MOC links this run withheld because their target could not be
+    # confirmed. Garden `file_note` items flow through the same renderer and
+    # the same guard, so the same subtraction applies — see
+    # _subtract_unresolvable_links for why a raw [DIFF] is the wrong answer.
+    unresolvable_links = (instrs.get("tomo") or {}).get(
+        "unresolvable_moc_links") or []
+    withheld_link_titles = {
+        r.get("source_note_title") for r in unresolvable_links
+        if r.get("source_note_title")
+    }
+
     expected_counts: dict[str, int] = {k: 0 for k in GARDEN_ACTION_ORDER}
     for item in confirmed:
         for kind in _GARDEN_EXPECTED_KINDS.get(item.get("garden_action"), ()):
+            if kind == "link_to_moc" and item.get("stem") in withheld_link_titles:
+                continue
             expected_counts[kind] = expected_counts.get(kind, 0) + 1
 
     actual_counts: dict[str, int] = {}
@@ -572,7 +709,7 @@ def run_diff_garden(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
     lines.append("")
     lines.append("  per-item coverage (garden_action → instruction kinds):")
     for item in confirmed:
-        covered = _garden_item_covered(item, actions)
+        covered = _garden_item_covered(item, actions, withheld_link_titles)
         if not covered:
             hard_fail = True
         mark = "[OK]" if covered else "[MISSING]"
@@ -580,6 +717,11 @@ def run_diff_garden(parsed: dict, instrs: dict) -> tuple[int, list[str]]:
             f"    {item.get('id', '?'):<6s} {item.get('garden_action', '?'):<17s} "
             f"{(item.get('stem') or '')[:44]:<46s} {mark}"
         )
+
+    for note in _unresolvable_link_notes(unresolvable_links):
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
 
     lines.append("")
     lines.append("-" * 72)
@@ -621,6 +763,203 @@ def _subtract_skipped_daily(expected: dict, skipped_daily: list[dict]) -> int:
     return removed
 
 
+def _subtract_withheld_moves(expected: dict, withholdings: list[dict]) -> int:
+    """Remove guard-withheld moves and their paired deletes from expected.
+
+    Two Pass-2 post-passes withhold a move deliberately, and both report it in
+    this shape — a `dropped` list of moves and a `withdrawn_deletes` list of
+    paths:
+
+    - `render_actions.validate_destinations` (spec 034 T5.3) drops **both**
+      claimants when two approved items name one destination.
+    - `render_actions.suppress_moves_for_unfiled_attachments` (spec 034 T5.4,
+      ADR-6) drops the note whose attachment could not be filed, so the note
+      stays in the inbox with the file it embeds.
+
+    Either way the paired `delete_source` is withdrawn with the move — emitting
+    the delete without the move would remove an inbox note the run refused to
+    file. Those are deliberate withholdings, not coverage gaps, so they are
+    subtracted here the way `_subtract_skipped_daily` subtracts a missing daily
+    note. Without this the audit reports `RESULT: FAIL — count or coverage
+    mismatch` on a **correct** instruction set, and the conductor's STRICT stop
+    halts the run with a message that misdiagnoses the guard as drift — the
+    exact failure T5.0c was scheduled to fix one module over.
+
+    One function over both lists, not one per cause: the two passes share the
+    withdrawal mechanism in the emitter, and a second copy here is the drift
+    that produced T5.0c.
+
+    A withheld move also takes its `link_to_moc` bullets with it — a bullet
+    naming a note the run refused to file is an instruction to create a dead
+    link. Its expected links are therefore subtracted here, from the withheld
+    item's own `expected_links`, not from the emitter's report: the audit's
+    whole job is to derive what should have been emitted from the suggestions
+    document rather than to accept the emitter's account of itself.
+
+    That derivation also lands on the right count when a bullet is *shared*.
+    `_build_link_to_moc_actions` dedups by (target MOC, title) while
+    `derive_expected` counts one per item, so two same-titled items under one
+    MOC expect 2 and emit 1. Dropping one of them subtracts 1 and the emitted
+    bullet survives (the other item still authors it); dropping both subtracts
+    2 and the bullet is withdrawn. Either way both sides agree.
+
+    The move join is `_keys_match`, not set membership: a clash entry's
+    `source_inbox_item` is the inbox-joined path a rendered action carries,
+    while `by_item`'s key comes straight from `confirmed_items` and is never
+    inbox-prefixed. Deletions are matched by the raw path first (an audio peer
+    is expected under its full path) and by the bare stem second (an origin is
+    expected under its stem), mirroring how `derive_expected` appends each.
+
+    Returns the number of expected entries removed.
+    """
+    removed = 0
+    for clash in withholdings or []:
+        for dropped in clash.get("dropped") or []:
+            origin = dropped.get("source_inbox_item") or ""
+            if not origin:
+                continue
+            for item_id, info in list(expected["by_item"].items()):
+                if info.get("kind") != "move_note":
+                    continue
+                if _keys_match(info.get("item_key") or "", origin):
+                    del expected["by_item"][item_id]
+                    expected["counts"]["move_note"] -= 1
+                    expected["counts"]["link_to_moc"] -= len(
+                        info.get("expected_links") or []
+                    )
+                    removed += 1
+                    break
+        for path in clash.get("withdrawn_deletes") or []:
+            for candidate in (path, _stem(path)):
+                if candidate in expected["expected_deletions"]:
+                    expected["expected_deletions"].remove(candidate)
+                    expected["counts"]["delete_source"] -= 1
+                    removed += 1
+                    break
+    return removed
+
+
+def _subtract_skipped_assets(expected: dict, skipped_assets: list[dict]) -> int:
+    """Remove attachments the renderer could not file from expected move_asset.
+
+    `derive_expected` counts one `move_asset` per distinct attachment path on
+    the confirmed items. `_build_move_asset_actions` emits none for a path with
+    no basename or one whose destination is already claimed by a different
+    file, and records it in `tomo.skipped_assets` instead. Each such entry is
+    one path the renderer deliberately did not file — the same subtraction
+    `_subtract_skipped_daily` makes for a missing daily note.
+
+    Present since spec 031 and only reachable once discovery became recursive
+    (a flat inbox cannot hold two files with one basename), so this closes a
+    pre-existing FAIL rather than one T5.4 introduced — but T5.4 is the task
+    that makes the clash a normal outcome, and a guard whose own audit halts
+    the run is not shippable.
+
+    Returns the number of expected entries removed.
+    """
+    removed = 0
+    for _entry in skipped_assets or []:
+        if expected["counts"]["move_asset"] <= 0:
+            break
+        expected["counts"]["move_asset"] -= 1
+        removed += 1
+    return removed
+
+
+def _subtract_unresolvable_links(expected: dict, records: list[dict]) -> int:
+    """Remove MOC links the renderer withheld from the expected link tallies.
+
+    `filter_unresolvable_moc_links` withholds a `link_to_moc` whose target MOC
+    the run could not confirm exists (spec 034 T6.0d) and records it in
+    `instructions.tomo.unresolvable_moc_links`. `derive_expected` counts one
+    link per `parent_mocs` entry regardless of resolution, so without this the
+    audit reports `RESULT: FAIL` on a correct instruction set and the
+    conductor's STRICT stop halts the run misdiagnosing the guard as drift —
+    the same failure `_subtract_withheld_moves` exists to prevent.
+
+    Subtracted for ALL THREE causes. Not because the three are equivalent —
+    they are not, and the observation notes keep them apart — but because the
+    count table only answers "did the renderer emit what the document
+    promised", and the renderer withheld the link under every cause. Leaving
+    two of them unsubtracted turns a deliberate withholding into a hard fail,
+    which is the wrong answer for all of them.
+
+    One withheld action can cover several expected entries: the emitter dedups
+    by (target MOC, source title) while `derive_expected` counts one per item,
+    so two same-titled items under one MOC expect 2 and emit 1. Every matching
+    expectation is therefore subtracted, not just the first — the same
+    shared-bullet arithmetic `_subtract_withheld_moves` documents.
+
+    Returns the number of expected entries removed.
+    """
+    removed = 0
+    for record in records or []:
+        title = record.get("source_note_title") or ""
+        moc = _moc_stem(record.get("target_moc") or "")
+        if not title or not moc:
+            continue
+        for info in expected["by_item"].values():
+            if info.get("title") != title:
+                continue
+            links = info.get("expected_links") or []
+            if moc in links:
+                links.remove(moc)
+                expected["counts"]["link_to_moc"] -= 1
+                removed += 1
+    return removed
+
+
+def _unresolvable_link_notes(records: list[dict]) -> list[str]:
+    """One aggregated note per cause — never one per link.
+
+    `client is None` is a single condition set once for the whole run, so every
+    tier-2 miss in that run shares it: a run with Kado down would otherwise
+    emit a dozen near-identical lines and bury the one fact that matters. Every
+    other withholding note in this file aggregates a count plus a pointer to
+    the itemised detail in instructions.md; these follow that template.
+
+    The two "nothing was checked" causes keep their own notes. Merging them
+    with the confirmed-absent one would make an offline run indistinguishable
+    from one where Kado confirmed the MOC missing — the CON-2 conflation this
+    whole guard removes from the renderer, reintroduced one layer down.
+    """
+    by_cause: dict[str, int] = {}
+    for record in records or []:
+        by_cause[record.get("cause") or "unknown"] = (
+            by_cause.get(record.get("cause") or "unknown", 0) + 1
+        )
+    detail = 'see "MOC link not offered" in instructions.md'
+    wording = {
+        "absent": (
+            "target MOC confirmed absent by Kado; excluded from expected "
+            f"coverage — {detail}, create the MOC and re-run Pass 2"
+        ),
+        "unchecked": (
+            "target MOC could not be checked — Kado was not available for this "
+            f"run, so nothing was asked about it; {detail}, re-run with Kado "
+            "running"
+        ),
+        "probe-failed": (
+            "target MOC could not be checked — the Kado lookup failed; this is "
+            f"not evidence the MOC is missing; {detail}, re-run once Kado "
+            "answers"
+        ),
+    }
+    notes: list[str] = []
+    # Fixed order so a run's observations read the same way every time; any
+    # unrecognised cause is reported rather than silently dropped, because a
+    # withholding nobody can explain is worse than one nobody expected.
+    ordered = [c for c in ("absent", "unchecked", "probe-failed") if c in by_cause]
+    ordered += [c for c in by_cause if c not in wording]
+    for cause in ordered:
+        count = by_cause[cause]
+        why = wording.get(
+            cause, f"withheld for unrecognised cause {cause!r}; {detail}"
+        )
+        notes.append(f"{count} MOC link(s) withheld — {why}")
+    return notes
+
+
 def run_diff(
     parsed: dict, instrs: dict, tag_handler_groups: list[dict] | None = None
 ) -> tuple[int, list[str]]:
@@ -640,6 +979,22 @@ def run_diff(
     # target daily note) before comparing — see _subtract_skipped_daily.
     skipped_daily = (instrs.get("tomo") or {}).get("skipped_daily") or []
     n_daily_skipped = _subtract_skipped_daily(expected, skipped_daily)
+
+    # Reconcile the moves and paired deletes the two Pass-2 guards withheld,
+    # and the attachments the renderer could not file — see
+    # _subtract_withheld_moves and _subtract_skipped_assets.
+    tomo_block = instrs.get("tomo") or {}
+    destination_clashes = tomo_block.get("destination_clashes") or []
+    attachment_suppressions = tomo_block.get("attachment_suppressions") or []
+    skipped_assets = tomo_block.get("skipped_assets") or []
+    _subtract_withheld_moves(expected, destination_clashes)
+    _subtract_withheld_moves(expected, attachment_suppressions)
+    n_assets_skipped = _subtract_skipped_assets(expected, skipped_assets)
+
+    # Reconcile the MOC links withheld because their target could not be
+    # confirmed — see _subtract_unresolvable_links.
+    unresolvable_links = tomo_block.get("unresolvable_moc_links") or []
+    _subtract_unresolvable_links(expected, unresolvable_links)
 
     lines: list[str] = []
     observations: list[str] = []
@@ -687,7 +1042,11 @@ def run_diff(
         if info["kind"] == "create_moc":
             found = any(a.get("title") == info["title"] for a in actual["create_mocs"])
         else:
-            found = _stem(info.get("source_path")) in actual["move_by_stem"]
+            expected_key = info.get("item_key") or ""
+            found = bool(expected_key) and any(
+                _keys_match(expected_key, actual_key)
+                for actual_key in actual["move_by_key"]
+            )
         file_mark = "[OK]" if found else "[MISSING]"
         if not found:
             hard_fail = True
@@ -723,11 +1082,58 @@ def run_diff(
                 f"    {kind:<20s} expected={len(exp_items)} actual={len(act_items)} {mark}"
             )
 
+    if destination_clashes:
+        withheld = sum(len(c.get("dropped") or []) for c in destination_clashes)
+        # Count the withdrawn deletes rather than implying one per move: an
+        # item the user marked "Keep source files" has no paired delete to
+        # withdraw, and the note must not claim one was.
+        withdrawn = sum(
+            len(c.get("withdrawn_deletes") or []) for c in destination_clashes
+        )
+        note = (
+            f"{withheld} move(s) and {withdrawn} paired delete(s) withheld — "
+            f"{len(destination_clashes)} destination(s) claimed twice; see "
+            "\"Not filed\" in instructions.md, rename one and re-run Pass 2"
+        )
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
+
+    if attachment_suppressions:
+        withheld = sum(len(s.get("dropped") or []) for s in attachment_suppressions)
+        withdrawn = sum(
+            len(s.get("withdrawn_deletes") or []) for s in attachment_suppressions
+        )
+        note = (
+            f"{withheld} move(s) and {withdrawn} paired delete(s) withheld — "
+            f"{len(attachment_suppressions)} attachment(s) could not be filed; "
+            "see \"an attachment could not be filed\" in instructions.md, "
+            "rename the file and re-run Pass 2"
+        )
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
+
+    if n_assets_skipped:
+        note = (
+            f"{n_assets_skipped} attachment(s) not filed — no basename, or a "
+            "destination already claimed by a different file; excluded from "
+            "expected coverage"
+        )
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
+
     if n_daily_skipped:
         note = (
             f"{n_daily_skipped} daily-note update(s) skipped — target daily note "
             "missing (Hashi cannot create it); excluded from expected coverage"
         )
+        lines.append("")
+        lines.append(f"  note: {note}")
+        observations.append(note)
+
+    for note in _unresolvable_link_notes(unresolvable_links):
         lines.append("")
         lines.append(f"  note: {note}")
         observations.append(note)

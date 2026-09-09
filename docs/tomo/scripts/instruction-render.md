@@ -317,3 +317,185 @@ action's own value and then to the previous default — so an absent config
 yields actions byte-identical to those emitted before this existed. That
 property is asserted directly rather than left implicit, by comparing whole
 action dicts rather than selected fields.
+
+## The #116 Guard Now Has Three Outcomes, Not Two (spec 034 T5.0)
+
+WHY `filter_missing_source_notes` no longer keeps an item when Kado errors:
+the old fail-open treated "could not check" as "exists", which KEPT the item.
+It then reached the body read, got an empty string, and fabricated exactly the
+empty stub #116 exists to prevent. The guard failed in both directions at once
+— it dropped items whose notes existed (because it probed the wrong path) and
+admitted items whose notes it could not check.
+
+Not rendering an unverifiable item is recoverable: the source note is untouched
+in the inbox and the next run proposes it again. A fabricated stub is not — it
+lands in the vault as a real note with no content and a `link_to_moc` pointing
+at it. So the unverifiable case fails CLOSED, and is reported as unverifiable
+rather than as a deleted note, because "the note is gone" and "Kado did not
+answer" call for different actions from the user.
+
+`client is None` remains a fourth case and still keeps everything: that means no
+check was requested at all (offline/test mode), not that a check failed. The
+client's answer is coerced with `bool()` rather than compared to `True` by
+identity — a duck-typed client returning a truthy non-`bool` has answered, and
+reading that as a non-answer would drop every item under a test double.
+
+## A Dropped Item Has to Reach an Artefact
+
+WHY `dropped_missing_source` now flows into `tomo.dropped_sources` in
+`instructions.json` and a section in `instructions.md`: it previously reached
+`stderr` and nothing else, with the exit code staying `0` and no trace in the
+instruction set, `needs_attention`, or the rendered document. A user reading
+`/inbox` output saw nothing at all; a user reading the scrollback saw "source
+note missing", which misdiagnosed the common case — the note was not missing,
+it was one folder down and addressed at the root.
+
+The report is metadata only (Constitution L2): id, display name, `item_key`,
+the path actually probed, a stable `kind`, and prose `reason` — never note
+content. `kind` (`not-found` / `unverifiable`) is what renderers branch on; the
+`reason` is for a human and must never be parsed. An unrecognised `kind` gets no
+remedy at all rather than inheriting another one's — misdiagnosing the cause is
+the exact failure this section was rewritten to stop, so a third drop kind added
+later fails loudly instead of quietly reading as one of these two. It is nested
+under the permissive `tomo` block, which is documented as evolvable without a
+coordinated round-trip, so Hashi ignores it and the wire schema is untouched
+(CON-4). The rendered wording distinguishes the two causes, because a drop with
+a key means the note moved or was deleted, while a drop without one means only
+the inbox root was tried.
+
+## `item_key` on the Manifest Entry Is Tomo-Internal
+
+WHY the manifest entry carries `item_key` even though `manifest.json` is a
+backwards-compat artefact: `_build_move_note_actions` walks the manifest, not
+`confirmed`, so without it the move origin and the audio peer have nothing but
+a display stem to work from. It never reaches Hashi — the action builders copy
+named fields and never spread the manifest entry — which the shape comparison
+against the pre-change builder confirms.
+
+## The Destination Guard Runs Between Building and Resolving (spec 034 T5.3)
+
+`validate_destinations` is called immediately after the action list is built and
+**before** `resolve_target_moc_paths` / `resolve_section_names`, so a withheld
+move costs no Kado lookups.
+
+It runs for the garden-audit branch too. That branch emits no `move_note`, so
+the pass is a proven no-op there — which is a better guarantee than an untested
+exemption that would silently stop covering the branch if it ever emitted one.
+
+The report reaches two artefacts: `instructions.json` under the permissive
+`tomo` block (so Hashi ignores it and the wire schema is untouched, CON-4) and
+`instructions.md` as its leading section. The whole entry is passed through
+verbatim rather than projected field-by-field, because unlike `skipped_assets`
+every field on it has a consumer — `instructions-diff` joins on
+`dropped[].source_inbox_item` and `withdrawn_deletes` to reconcile the
+withholding, and the renderer uses the rest.
+
+Exit code is unchanged: a clash is a report, not an error, matching how the
+`#116` source drop is handled. The audit downstream is where a run stops.
+
+## Where the MOC-Bullet Qualification Sits in the Pipeline (spec 034 T5.5)
+
+Two calls, deliberately far apart, because they need opposite timings:
+
+- `contested_note_names(actions)` immediately after `build_actions` — the claim
+  set must include the moves the guards are about to withhold, since a withheld
+  claimant is exactly the note that returns after a rename.
+- `qualify_contested_moc_links(actions, contested_names)` after **both**
+  guards — the path written into the MOC must belong to a move that survived.
+
+It sits before `resolve_target_moc_paths` and, critically, before
+`_merge_new_section_links` / `_serialize_new_sections`: those rewrite
+`line_to_add` into a multi-bullet block with a `## heading` prefix, and this
+pass reads one bare bullet. See `docs/tomo/scripts/lib/render_actions.md`, "A
+MOC Bullet Outlives the Run That Wrote It", for why the split exists at all.
+
+## `merged_moc_proposals` Is Read AND Passed — Both, or It Is a No-Op (spec 034 T6.0c)
+
+WHY this one metadata field gets a note of its own: unlike `destination_clashes`
+and `attachment_suppressions`, which are computed inside this module, the merge
+record is born in `suggestion-parser.py` and survives a JSON round trip. That
+makes it the only entry in the metadata dict with **two** sites here rather than
+one:
+
+1. the read-back beside `confirmed_items` — which is **only a local variable**;
+2. the literal dict passed as `render_instructions_md`'s second argument.
+
+**(1) without (2) is a silent no-op.** `render_md.py` calls `metadata.get(...)`
+on that literal dict and never sees anything bound at the read-back site. An
+implementer who reads the record into a local and forgets the dict gets no
+exception, no failing renderer unit test, and no rendered section — the run
+simply goes on not telling the user what it merged, which is the exact defect
+the record exists to fix.
+
+This is why the T6.0c test drives `main()` over a real `suggestions.json` rather
+than calling `render_instructions_md()` with a hand-built metadata dict: a test
+that builds the dict itself proves the renderer and nothing about this wiring.
+A paired-consumer count in the same test file pins that both sites exist.
+
+### The Record Is Twin-Written, Like Every Sibling Withholding-Record
+
+WHY `merged_moc_proposals` lands in **both** artefacts: `destination_clashes`
+and `attachment_suppressions` are each written twice — into the `tomo` block of
+`instructions.json` and into the render metadata — because the markdown is not
+the only surface a reader works from. A workflow driven from the JSON would
+otherwise never learn that one MOC was created where two proposals were
+approved, which is precisely the CON-2 gap the record exists to close.
+
+The first cut of T6.0c took only the metadata path and shipped the record to one
+surface. The pattern it should have followed sat two lines from the edit.
+Guarded `if merged_moc_proposals:` like its siblings, so a run with no merges
+adds no key and a clean run's `instructions.json` is byte-unchanged.
+
+WHY it is **not** an audit input: `instructions-diff` already reconciles
+correctly after the merge — one proposal was approved as one Name, one
+`create_moc` was emitted, `expected=1 actual=1 [OK]`. The record is provenance
+for a reader. Feeding it into the audit's reconciliation is a different change
+with its own blast radius.
+
+## The Unresolvable-MOC-Link Withholding Crosses Three Sites Here (spec 034 T6.0d)
+
+`filter_unresolvable_moc_links` withholds a `link_to_moc` whose target MOC the
+run could not confirm. Three of the change's sites live in this file, and they
+are not interchangeable:
+
+1. **The call**, immediately after `resolve_target_moc_paths` — plus the stderr
+   report, per link, with its cause.
+2. **The `instructions.json` `tomo` block** (`unresolvable_moc_links`).
+3. **The `render_instructions_md` metadata dict**.
+
+WHY (2) is the one that is easy to skip and fatal to skip: `instructions-diff`
+reads `instructions.json`, **not** the dict handed to the renderer. A fix that
+does (1) and (3) produces a correct document and a wrong audit — the audit keeps
+counting a link the renderer deliberately did not emit, reports
+`RESULT: FAIL — count or coverage mismatch`, and `synthesis-conductor.md` halts
+the run blaming Tomo for its own guard. This is T6.0c's "(3) without (4)" no-op
+one level down, and it is why the T6.0d test drives `main()` and then feeds the
+**written** `instructions.json` to `run_diff` rather than asserting on the
+metadata dict.
+
+WHY the record is metadata only (Constitution L2): id, MOC stem, source note
+title, cause discriminator. Never the bullet text, never note content.
+
+WHY it is guarded `if unresolvable_links:` like every sibling record — a run
+that withholds nothing adds no key, so a clean run's `instructions.json` is
+byte-unchanged.
+
+## T6.4c — The Manifest Is Rewritten After the Guards
+
+`manifest.json` is written once inside the render loop and rewritten after
+`validate_destinations` and `suppress_moves_for_unfiled_attachments` if either
+withheld a move. A run that withheld nothing does not rewrite it, so the common
+path is byte-identical.
+
+**WHY here and not earlier or later**: these two guards are the last passes that
+can drop a `move_note` or `create_moc`. Everything after them drops only
+`link_to_moc`, daily-note and `add_relationship` actions, none of which claim a
+staging note. `filter_unappliable_relationships` is the last filter in the chain
+and touches `add_relationship` only.
+
+**WHY the manifest list itself is not mutated**: the run's closing log line
+reports `rendered=len(manifest)`, which is how many notes were rendered — the
+filtered file answers a different question, namely which of them `upload-rendered.py`
+should write. Keeping the two apart preserves both.
+
+Full rationale in `docs/tomo/scripts/lib/render_actions.md` (T6.4c).

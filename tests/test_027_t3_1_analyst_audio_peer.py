@@ -182,6 +182,7 @@ def _minimal_result(audio_peer=None) -> dict:
     return {
         "schema_version": "1",
         "stem": "2026-04-08-interview",
+        "item_key": "100 Inbox/2026-04-08-interview.md",
         "path": "100 Inbox/2026-04-08-interview.md",
         "type": "fleeting_note",
         "type_confidence": 0.7,

@@ -1,4 +1,4 @@
-# version: 0.8.2
+# version: 0.16.1
 """render_md.py — deterministic markdown rendering for the instruction set.
 
 Extracted from instruction-render.py (#42, D-07 Constitution L2 split). Turns the
@@ -16,6 +16,7 @@ import yaml
 
 from lib.doc_frontmatter import body_after_frontmatter, build_tomo_block
 from lib.render_helpers import _moc_stem, _stem
+from lib.source_link import colliding_names, qualified_target
 from lib.supporting_items import parse_supporting_items as _parse_supporting_items
 
 SECTION_TITLES = [
@@ -49,7 +50,22 @@ def _md_section_for(action: dict) -> str:
     return "new_files"
 
 
-def _render_action_md(action: dict, cfg: dict) -> str:
+def _source_wikilink(path: str, ambiguous: set[str] | None) -> str:
+    """The `[[…]]` for one inbox source note, path-qualified only on collision.
+
+    T5.1's form and T5.1's rule, at the instruction document's source-display
+    sites (spec 034 T5.5). `ambiguous` is the run's colliding filenames; a
+    caller that does not compute it renders exactly as it did before.
+    """
+    stem = _stem(path)
+    if ambiguous and stem in ambiguous:
+        return f"[[{qualified_target(path, stem)}]]"
+    return f"[[{stem}]]"
+
+
+def _render_action_md(
+    action: dict, cfg: dict, ambiguous_sources: set[str] | None = None
+) -> str:
     """Render a single action as an H3 block with a checkbox + structured fields."""
     aid = action["id"]
     kind = action["action"]
@@ -66,7 +82,8 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         if action.get("destination"):
             lines.append(f"- **To:** `{action['destination']}`")
         if action.get("source_inbox_item"):
-            lines.append(f"- **Source (reference):** [[{_stem(action['source_inbox_item'])}]]")
+            link = _source_wikilink(action["source_inbox_item"], ambiguous_sources)
+            lines.append(f"- **Source (reference):** {link}")
         lines.append("- **After moving:** run `Templater: Replace Templates in Active File` via Cmd+P")
         return "\n".join(lines)
 
@@ -183,9 +200,19 @@ def _render_action_md(action: dict, cfg: dict) -> str:
 
     if kind == "delete_source":
         src = action.get("source_path", "")
-        lines = [f"{heading_prefix}Delete source note (content captured in daily note)", "- [ ] Applied"]
+        # The heading names the note, not the cause. Five emission sites give
+        # `reason` five different causes, and a heading that states one of them
+        # contradicts the Action line beneath it for the other four — which is
+        # what the hardcoded "(content captured in daily note)" did. `reason`
+        # is the single statement of the cause; the heading is the index entry,
+        # in the same shape as `Move note: …` and `Move attachment: …`.
+        # The heading keeps the bare stem: it is an index entry, not a link, and
+        # a path in it would make the section unscannable. The `**Source:**`
+        # line below is the one the user clicks, so that is the one qualified.
+        subject = f": {_stem(src)}" if src else ""
+        lines = [f"{heading_prefix}Delete source note{subject}", "- [ ] Applied"]
         if src:
-            lines.append(f"- **Source:** [[{_stem(src)}]]")
+            lines.append(f"- **Source:** {_source_wikilink(src, ambiguous_sources)}")
         lines.append(f"- **Action:** Delete the note from the inbox — {action.get('reason', '')}")
         return "\n".join(lines)
 
@@ -193,7 +220,7 @@ def _render_action_md(action: dict, cfg: dict) -> str:
         src = action.get("source_path")
         lines = [f"{heading_prefix}Skip — {_stem(src) if src else 'unknown source'}", "- [ ] Applied"]
         if src:
-            lines.append(f"- **Source:** [[{_stem(src)}]]")
+            lines.append(f"- **Source:** {_source_wikilink(src, ambiguous_sources)}")
         lines.append(f"- **Reason:** {action.get('reason', 'Skipped by user.')}")
         return "\n".join(lines)
 
@@ -466,6 +493,60 @@ def _build_tomo_block_for_instructions(metadata: dict) -> dict | None:
     )
 
 
+_SOURCE_DISPLAY_FIELDS = {
+    "move_note": "source_inbox_item",
+    "delete_source": "source_path",
+    "skip": "source_path",
+}
+
+
+def _source_display_paths(
+    actions: list[dict], metadata: dict | None = None
+) -> list[tuple[str, str]]:
+    """Every `(filename, path)` this document shows for an inbox source note.
+
+    One per display site, not per note: `colliding_names` counts distinct
+    paths, so a note named twice — a `move_note`'s source reference and its own
+    `delete_source` — is correctly not a collision.
+
+    The withheld moves count too. They are gone from `actions` by the time
+    this runs, but the "Not filed" sections above still name them, and they are
+    exactly the notes that make a surviving namesake ambiguous: the reader sees
+    three Dresden notes in one document whether or not the run files all three.
+    """
+    out: list[tuple[str, str]] = []
+    for action in actions:
+        field = _SOURCE_DISPLAY_FIELDS.get(action.get("action") or "")
+        path = action.get(field) if field else None
+        if path:
+            out.append((_stem(path), path))
+    for key in ("destination_clashes", "attachment_suppressions"):
+        for withholding in (metadata or {}).get(key) or []:
+            for dropped in withholding.get("dropped") or []:
+                path = dropped.get("source_inbox_item")
+                if path:
+                    out.append((_stem(path), path))
+    return out
+
+
+def _withdrawn_links_note(withholdings: list[dict]) -> str:
+    """The sentence that accounts for MOC bullets withdrawn with a held move.
+
+    The user approved those bullets in Pass 1, so their absence from the
+    action list is a change to what was agreed and has to be stated. Count-
+    neutral, like the intro it appends to: a sentence that counted them would
+    contradict the bullets underneath it in whichever case it did not
+    describe. Empty when nothing was withdrawn — the reader is not told about
+    a consequence that did not happen.
+    """
+    if any(w.get("withdrawn_moc_links") for w in withholdings):
+        return (
+            " Any MOC link that would have pointed at one of them was "
+            "withdrawn with it."
+        )
+    return ""
+
+
 def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> str:
     """Produce the full human-readable instruction set markdown."""
     import yaml
@@ -498,6 +579,102 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         by_section.setdefault(_md_section_for(a), []).append(a)
 
     body_parts: list[str] = [fm, "", "# Instructions", ""]
+
+    # Which inbox filenames this document names more than one note by. Taken
+    # over every source-display site at once, because a name is ambiguous to
+    # the reader of the whole document, not of one section.
+    ambiguous_sources = colliding_names(_source_display_paths(actions, metadata))
+
+    # Destination clashes (spec 034 F7 / ADR-4) lead the document. Every other
+    # report in this file is a skip the user can act on later; this one is the
+    # only place where an item the user APPROVED was deliberately not filed, so
+    # it must be read before the action list rather than after it.
+    destination_clashes = metadata.get("destination_clashes") or []
+    if destination_clashes:
+        # Kind-neutral wording, deliberately. A run collision names two
+        # claimants and a vault collision names one, so a heading or intro
+        # that counted them would contradict the bullets underneath it in
+        # whichever case it did not describe. Each bullet's own reason says
+        # which kind it is. Under CON-2 the user approves on what this
+        # document says, so it must not miscount what it withheld.
+        body_parts.append("## Not filed — a destination is claimed twice")
+        body_parts.append("")
+        body_parts.append(
+            "**No move was emitted for the items below, deliberately.** Two "
+            "notes cannot share one path, and choosing between them would be "
+            "a guess. Give one of them a different name and re-run Pass 2 — "
+            "the run does not need restarting. Every source note below is "
+            "untouched in the inbox."
+            + _withdrawn_links_note(destination_clashes)
+        )
+        body_parts.append("")
+        for clash in destination_clashes:
+            body_parts.append(f"- `{clash.get('destination')}` — {clash.get('reason')}")
+            for d in clash.get("dropped") or []:
+                origin = d.get("source_inbox_item") or "?"
+                body_parts.append(
+                    f"    - `{d.get('id')}` **{d.get('title')}** "
+                    f"— source note `{origin}`"
+                )
+        body_parts.append("")
+
+    # Spec 034 T6.0c. Its own section, deliberately NOT under either "Not
+    # filed" heading: nothing was withheld here. The MOC IS created — once
+    # instead of twice, with every approved proposal's tags and supporting
+    # items combined. Describing a merge as a withholding is the exact class of
+    # defect T5.5 was written to remove. Placed before the action list for the
+    # same reason the clash section is: it changes what that list contains, and
+    # under CON-2 the user approves on what this document says.
+    merged_moc_proposals = metadata.get("merged_moc_proposals") or []
+    if merged_moc_proposals:
+        body_parts.append("## Merged — proposals resolving to one Name")
+        body_parts.append("")
+        body_parts.append(
+            "**One MOC was created for each group below, not one per approved "
+            "proposal.** Every proposal in a group resolved to the same Name, "
+            "so they were combined rather than emitted twice — each one's tags "
+            "and supporting items are in the MOC that was created. Nothing was "
+            "withheld and nothing needs re-running. If a group was meant to be "
+            "separate MOCs, give one of them a different Name and re-run Pass 2."
+        )
+        body_parts.append("")
+        for record in merged_moc_proposals:
+            body_parts.append(f"- `{record.get('name')}` — {record.get('reason')}")
+            for absorbed in record.get("absorbed") or []:
+                body_parts.append(f"    - also approved as **{absorbed}**")
+        body_parts.append("")
+
+    # Spec 034 T5.4 / ADR-6. Its own section, not a second bullet kind under
+    # the clash heading: the two withholdings have different remedies — rename
+    # a NOTE for a destination clash, rename a FILE here — and a reader who
+    # cannot tell them apart cannot act on either.
+    attachment_suppressions = metadata.get("attachment_suppressions") or []
+    if attachment_suppressions:
+        body_parts.append("## Not filed — an attachment could not be filed with it")
+        body_parts.append("")
+        body_parts.append(
+            # Kind-neutral, like the clash intro above and for the same
+            # reason: a collision is fixed by renaming a file, a malformed
+            # inbox path is not. Each bullet carries its own remedy.
+            "**No move was emitted for the notes below, deliberately.** Their "
+            "attachments stay in the inbox, and a note filed away from a file "
+            "it embeds would depend on that file indefinitely — nothing moves "
+            "it later. Each line below says what to fix; re-run Pass 2 "
+            "afterwards — the run does not need restarting. Every source note "
+            "below is untouched in the inbox."
+            + _withdrawn_links_note(attachment_suppressions)
+        )
+        body_parts.append("")
+        for s in attachment_suppressions:
+            body_parts.append(f"- {s.get('reason')}")
+            for d in s.get("dropped") or []:
+                origin = d.get("source_inbox_item") or "?"
+                body_parts.append(
+                    f"    - `{d.get('id')}` **{d.get('title')}** "
+                    f"— source note `{origin}`"
+                )
+        body_parts.append("")
+
     for key, title in SECTION_TITLES:
         bucket = by_section.get(key) or []
         if not bucket:
@@ -505,7 +682,7 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
         body_parts.append(f"## {title}")
         body_parts.append("")
         for a in bucket:
-            body_parts.append(_render_action_md(a, cfg))
+            body_parts.append(_render_action_md(a, cfg, ambiguous_sources))
             body_parts.append("")
 
     # Skipped daily-note actions (#37/I38): surfaced so the user knows a log
@@ -514,7 +691,10 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
     skipped_daily = metadata.get("skipped_daily") or []
     skipped_rel = metadata.get("skipped_rel") or []
     skipped_assets = metadata.get("skipped_assets") or []
-    if skipped_daily or skipped_rel or skipped_assets:
+    dropped_sources = metadata.get("dropped_sources") or []
+    unresolvable_links = metadata.get("unresolvable_moc_links") or []
+    if (skipped_daily or skipped_rel or skipped_assets or dropped_sources
+            or unresolvable_links):
         body_parts.append("## Skipped — un-appliable actions")
         body_parts.append("")
         if skipped_daily:
@@ -558,6 +738,85 @@ def render_instructions_md(actions: list[dict], metadata: dict, cfg: dict) -> st
                     # reason would quietly inherit the wrong instruction.
                     remedy = f"(no remedy defined for skip kind {kind!r} — check render_md.py)"
                 body_parts.append(f"- `move_asset` → `{source}` — {reason}. {remedy}.")
+            body_parts.append("")
+        if dropped_sources:
+            body_parts.append(
+                "**Source note not read** — no note was created for these items, "
+                "and no stub was fabricated. Their source notes are untouched in "
+                "the inbox and will be proposed again on the next `/inbox`:")
+            body_parts.append("")
+            for d in dropped_sources:
+                name = d.get("title") or d.get("source_path") or d.get("id") or "?"
+                probed = d.get("probed_path") or "?"
+                reason = d.get("reason") or "?"
+                kind = d.get("kind")
+                if kind == "unverifiable":
+                    remedy = (
+                        "Kado did not answer for this path — a connection or "
+                        "permission problem, not a missing note; re-run `/inbox` "
+                        "once Kado is reachable"
+                    )
+                elif kind == "not-found" and d.get("item_key"):
+                    remedy = "the note has moved or been deleted since Pass 1"
+                elif kind == "not-found":
+                    remedy = (
+                        "this document carries no path for the item, so only the "
+                        "inbox root was tried — a note in a subfolder is not found "
+                        "this way"
+                    )
+                else:
+                    # A missing or unrecognised kind must never inherit one of
+                    # the remedies above — misdiagnosing the cause is the whole
+                    # failure this section was rewritten to stop.
+                    remedy = f"(no remedy defined for drop kind {kind!r} — check render_md.py)"
+                body_parts.append(f"- {name} → probed `{probed}` — {reason}; {remedy}.")
+            body_parts.append("")
+        if unresolvable_links:
+            body_parts.append(
+                # Cause-neutral by construction: two of the three bullets
+                # below say the MOC's existence is UNKNOWN, so an intro that
+                # asserts absence — or that the instruction is impossible —
+                # contradicts a sibling two lines down. Each bullet carries
+                # its own claim; this sentence carries none.
+                "**MOC link not offered** — no instruction was emitted for the "
+                "links below: the run could not confirm the target MOC exists, "
+                "and a bullet is only ever written into a MOC the run has "
+                "located. Each line says what the run learned and what to do "
+                "about it — the reasons differ, and so do the remedies. The "
+                "source notes are filed as usual; only the bullet on the MOC "
+                "was not written:")
+            body_parts.append("")
+            for r in unresolvable_links:
+                moc = r.get("target_moc") or "?"
+                src = r.get("source_note_title") or "?"
+                cause = r.get("cause")
+                if cause == "absent":
+                    remedy = (
+                        "MOC not found — create it (or correct the name in the "
+                        "suggestions document) and re-run Pass 2"
+                    )
+                elif cause == "unchecked":
+                    remedy = (
+                        "MOC could not be checked: Kado was not available for "
+                        "this run, so nothing was asked about it — re-run "
+                        "`/inbox` with Kado running"
+                    )
+                elif cause == "probe-failed":
+                    remedy = (
+                        "MOC could not be checked: the Kado lookup failed — a "
+                        "connection or permission problem, not a missing MOC; "
+                        "re-run `/inbox` once Kado answers"
+                    )
+                else:
+                    # A missing or unrecognised cause must never inherit one of
+                    # the sentences above: telling the user a MOC is gone when
+                    # nothing was checked is the conflation this section exists
+                    # to prevent.
+                    remedy = (
+                        f"(no remedy defined for cause {cause!r} — check "
+                        "render_md.py)"
+                    )
+                body_parts.append(f"- [[{moc}]] ← [[{src}]] — {remedy}.")
             body_parts.append("")
     return "\n".join(body_parts).rstrip() + "\n"
 

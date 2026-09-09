@@ -232,6 +232,46 @@ def _voice_confirmed_item() -> dict:
 # T6.2 — instruction set (actions list) byte-identity
 # ---------------------------------------------------------------------------
 
+# Fields added to link_to_moc AFTER spec 031, each by a later spec with its own
+# reason. This guard asks "did spec 031 change anything for an attachment-free
+# item", so a field a later spec added deliberately is not the drift it hunts —
+# but dropping the comparison altogether would hollow it out. Each entry is
+# therefore asserted on its own terms below, and the REST of every action must
+# still be byte-identical to the pre-031 module.
+#
+#   source_note_stem — spec 034 T6.4b: the vault key the withholding passes
+#   join on, split out of source_note_title so that field can go back to being
+#   the display text the coverage audit joins on. Tomo-internal, stripped
+#   before the wire.
+_POST_031_LINK_FIELDS = {"source_note_stem"}
+
+
+def _assert_identical_but_for_later_fields(new_actions, old_actions):
+    """Byte-identity, allowing only the post-031 fields named above."""
+    from lib.obsidian_filename import sanitize_stem
+
+    assert len(new_actions) == len(old_actions), (
+        f"action count changed: {len(old_actions)} -> {len(new_actions)}"
+    )
+    for new, old in zip(new_actions, old_actions):
+        added = set(new) - set(old)
+        assert added <= _POST_031_LINK_FIELDS, (
+            f"{new.get('id')}: spec 031 must add no field to an "
+            f"attachment-free item; unexpected {added - _POST_031_LINK_FIELDS}"
+        )
+        assert set(old) - set(new) == set(), (
+            f"{new.get('id')}: a field was removed: {set(old) - set(new)}"
+        )
+        for key in set(new) & set(old):
+            assert new[key] == old[key], (
+                f"{new.get('id')}.{key}: {old[key]!r} -> {new[key]!r}"
+            )
+        if "source_note_stem" in added:
+            assert new["source_note_stem"] == sanitize_stem(
+                new.get("source_note_title") or ""
+            ), new
+
+
 class TestActionsListByteIdentical:
     def test_plain_atomic_note_no_attachments(self):
         manifest = [_plain_manifest_entry()]
@@ -241,7 +281,7 @@ class TestActionsListByteIdentical:
         new_actions, new_skipped_assets = new_build_actions(manifest, confirmed, [], [], CFG)
 
         assert new_skipped_assets == []
-        assert new_actions == old_actions
+        _assert_identical_but_for_later_fields(new_actions, old_actions)
         assert "move_asset" not in {a["action"] for a in new_actions}
 
     def test_voice_item_audio_peer_and_paired_delete_source_untouched(self):
@@ -255,7 +295,7 @@ class TestActionsListByteIdentical:
         new_actions, new_skipped_assets = new_build_actions(manifest, confirmed, [], [], CFG)
 
         assert new_skipped_assets == []
-        assert new_actions == old_actions
+        _assert_identical_but_for_later_fields(new_actions, old_actions)
 
         deletes = [a for a in new_actions if a["action"] == "delete_source"]
         deleted_paths = {d["source_path"] for d in deletes}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.45.0
+# version: 0.53.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -64,11 +64,18 @@ from lib.render_actions import (  # noqa: E402,F401
     _wikilink,
     build_actions,
     build_garden_audit_actions,
+    contested_note_names,
     emit_up_preservation_actions,
     extract_first_up_marker,
     group_id,
+    claimed_rendered_files,
+    make_folder_listing,
+    manifest_without_withheld_staging,
+    qualify_contested_moc_links,
+    suppress_moves_for_unfiled_attachments,
+    validate_destinations,
 )
-from lib.render_helpers import _moc_stem, _stem  # noqa: E402,F401
+from lib.render_helpers import _moc_stem, _stem, resolve_source_path  # noqa: E402,F401
 from lib.render_io import read_note_body, read_template  # noqa: E402,F401
 from lib.render_md import (  # noqa: E402,F401
     SECTION_TITLES,
@@ -90,8 +97,10 @@ from lib.render_resolve import (  # noqa: E402,F401
     filter_missing_daily_notes,
     filter_missing_source_notes,
     filter_unappliable_relationships,
+    filter_unresolvable_moc_links,
     resolve_section_names,
     resolve_target_moc_paths,
+    unresolvable_link_reports,
 )
 from lib.supporting_items import (  # noqa: E402
     parse_supporting_items as _parse_supporting_items,
@@ -285,6 +294,13 @@ def main() -> int:
     approved_tag_handler_group_ids = suggestions.get(
         "approved_tag_handler_group_ids", []
     )
+    # spec 034 T6.0c: the by-Name merge's own record, born in
+    # suggestion-parser.py and carried across the JSON round trip. Unlike
+    # destination_clashes and attachment_suppressions it is not computed here,
+    # so reading it is only half the wiring — it must also reach the metadata
+    # dict passed to render_instructions_md below, or it renders nothing and
+    # raises nothing.
+    merged_moc_proposals = suggestions.get("merged_moc_proposals", [])
     # Group ids the user opted out of source-deletion via "Keep source files".
     tag_handler_keep_source_group_ids = suggestions.get(
         "tag_handler_keep_source_group_ids", []
@@ -322,13 +338,16 @@ def main() -> int:
     )
     if dropped_missing_source:
         print(
-            f"  [skip] {len(dropped_missing_source)} confirmed item(s) skipped — "
-            "source note missing, not fabricating a stub:",
+            f"  [skip] {len(dropped_missing_source)} confirmed item(s) not rendered — "
+            "the source note could not be read at the path Tomo asked for, and a "
+            "stub is never fabricated in its place:",
             file=sys.stderr,
         )
-        for item in dropped_missing_source:
+        for record in dropped_missing_source:
+            addressed = "item_key" if record.get("item_key") else "display name only"
             print(
-                f"    • {item.get('id', '?')} → {item.get('source_path', '')}",
+                f"    • {record.get('id', '?')} → probed {record.get('probed_path', '')} "
+                f"({record.get('reason', '')}; addressed by {addressed})",
                 file=sys.stderr,
             )
 
@@ -354,6 +373,7 @@ def main() -> int:
             continue
         title = item.get("title") or item.get("source_path", "untitled")
         source_path = item.get("source_path", "")
+        item_key_value = item.get("item_key")
         audio_peer = item.get("audio_peer")
         template_ref = item.get("template", "")
         tags = item.get("tags", [])
@@ -376,12 +396,11 @@ def main() -> int:
             errors += 1
             continue
 
-        # 2. Read source note body (uses pre-loaded inbox_path from config)
+        # 2. Read source note body — addressed by item_key (spec 034 ADR-1),
+        #    falling back to the inbox-root reconstruction only when absent.
         body = ""
         if source_path:
-            full_path = source_path
-            if "/" not in full_path:
-                full_path = f"{inbox_path.rstrip('/')}/{full_path}"
+            full_path = resolve_source_path(item_key_value, source_path, inbox_path)
             if not full_path.endswith(".md"):
                 full_path += ".md"
             body = read_note_body(client, full_path)
@@ -468,6 +487,10 @@ def main() -> int:
             "action": item.get("action", "create_note"),
             "title": title,
             "source_path": source_path,
+            # Tomo-internal identity (ADR-1). The action builders address the
+            # origin note by this; `source_path` stays display text (ADR-2).
+            # Never emitted to Hashi — build_actions copies named fields only.
+            "item_key": item_key_value,
             "audio_peer": audio_peer,
             "template": template_ref,
             "rendered_file": filename,
@@ -522,6 +545,87 @@ def main() -> int:
             peer_marker=conventions.peer_marker,
         )
 
+    # The staging notes the action list claims before any guard runs. Paired
+    # with the post-guard set below to tell a withheld move apart from an
+    # action that was never built (spec 034 T6.4c).
+    claimed_staging = claimed_rendered_files(actions)
+
+    # The filenames this run claims twice, captured BEFORE the two guards
+    # withhold anything — a withheld claimant is exactly the note that comes
+    # back after a rename, and is what makes a surviving namesake's MOC bullet
+    # ambiguous later (spec 034 T5.5).
+    contested_names = contested_note_names(actions)
+
+    # ── Validate destinations (spec 034 T5.3, ADR-4) ─────────────────────
+    # The binding half of PRD Feature 7. Pass 1 proposes a distinct name on a
+    # clash and is advisory — the user edits the document afterwards — so this
+    # is the last point at which two notes claiming one path can be stopped.
+    # Both claimants are dropped; the report tells the user which two, and
+    # renaming one and re-running Pass 2 recovers without restarting the run.
+    # Runs for the garden-audit branch too: that branch emits no move_note, so
+    # the pass is a proven no-op there rather than an untested exemption.
+    actions, destination_clashes = validate_destinations(
+        actions, make_folder_listing(client) if client else None
+    )
+    if destination_clashes:
+        withheld = sum(len(c["dropped"]) for c in destination_clashes)
+        print(
+            f"  [clash] {withheld} move(s) withheld — destination claimed "
+            f"twice; see instructions.md",
+            file=sys.stderr,
+        )
+
+    # ── Keep a note with its unfiled attachment (spec 034 T5.4, ADR-6) ────
+    # A note filed away from a file it embeds depends on that file
+    # indefinitely — nothing moves an attachment that was not instructed. So
+    # a refused attachment keeps its own note in the inbox, and the note's
+    # paired delete_source goes with the move. Runs after the destination
+    # guard and over its output, so a move that guard already dropped is not
+    # withheld or reported a second time.
+    actions, attachment_suppressions = suppress_moves_for_unfiled_attachments(
+        actions, skipped_assets
+    )
+    if attachment_suppressions:
+        withheld = sum(len(s["dropped"]) for s in attachment_suppressions)
+        print(
+            f"  [attach] {withheld} move(s) withheld — attachment not filed; "
+            f"see instructions.md",
+            file=sys.stderr,
+        )
+
+    # ── Withhold the staging note of every withheld move (034 T6.4c) ─────
+    # The staging notes are uploaded by a separate step reading manifest.json,
+    # so a move the two guards above withheld leaves its rendered note in the
+    # inbox with nothing left to move it. Rewritten here, after the last pass
+    # that can drop a move_note or create_moc and before anything reads the
+    # file. A run that withheld nothing does not rewrite it at all.
+    staged_manifest, withheld_staging = manifest_without_withheld_staging(
+        manifest, actions, claimed_staging
+    )
+    if withheld_staging:
+        manifest_path.write_text(
+            json.dumps(staged_manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(
+            f"  [stage] {len(withheld_staging)} staging note(s) not uploaded — "
+            "the move that would have filed them was withheld",
+            file=sys.stderr,
+        )
+
+    # ── Name a contested note by path in its MOC bullet (spec 034 T5.5) ──
+    # The bullet outlives the run inside a MOC, so it must not resolve by a
+    # filename this run claims twice. Runs over the guards' output, so the path
+    # it writes belongs to the move that survived; before the #70 merge, while
+    # line_to_add is still one bare bullet.
+    qualified_links = qualify_contested_moc_links(actions, contested_names)
+    if qualified_links:
+        print(
+            f"  [render] {qualified_links} MOC bullet(s) named by path — the "
+            "run claims that filename more than once",
+            file=sys.stderr,
+        )
+
     # ── Resolve target_moc_path on link_to_moc actions via Kado ─────────
     # Best-effort; actions stay with `target_moc_path: null` if Kado is
     # unavailable or no match is found.
@@ -529,6 +633,30 @@ def main() -> int:
     if resolved_paths:
         print(f"  [resolve] target_moc_path populated for {resolved_paths} link_to_moc action(s)",
               file=sys.stderr)
+
+    # ── Withhold links into a MOC the run could not confirm (034 T6.0d) ──
+    # A null target_moc_path is a legal schema value, so such an action passes
+    # validation, the dryrun and the audit and reaches the user as an ordinary
+    # `- [ ] Applied` checkbox telling them to open a MOC that will never
+    # exist. Filtered HERE rather than beside the other two filters below: the
+    # four passes in between (anchor resolution, same-section merge, heading
+    # rewrite, new-section serialization) all read link_to_moc, and a
+    # withheld action should not be merged into a surviving one or spend a
+    # Kado read on a MOC nobody is going to open.
+    actions, unresolvable_links = filter_unresolvable_moc_links(actions)
+    unresolvable_links = unresolvable_link_reports(unresolvable_links)
+    if unresolvable_links:
+        print(
+            f"  [skip] {len(unresolvable_links)} MOC link(s) withheld — the "
+            "target MOC could not be resolved (see instructions.md):",
+            file=sys.stderr,
+        )
+        for r in unresolvable_links:
+            print(
+                f"    • {r.get('id')} link_to_moc → {r.get('target_moc')} "
+                f"[{r.get('cause')}]",
+                file=sys.stderr,
+            )
 
     # ── Resolve anchor.value by reading each target MOC ─────────────────
     # For each link_to_moc with a resolved target_moc_path, open the MOC via
@@ -699,6 +827,74 @@ def main() -> int:
             }
             for s in skipped_assets
         ]
+    # Record the destination clashes that withheld a move, so the drop reaches
+    # the JSON as well as the markdown and instructions-diff can see which
+    # moves were deliberately withheld rather than lost. Metadata only:
+    # ids, titles, paths and the reason — never note content.
+    if destination_clashes:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["destination_clashes"] = destination_clashes
+
+    # Record the moves withheld because an attachment could not be filed, in
+    # their own key: the remedy differs from a destination clash (rename a
+    # file, not a note) and instructions-diff subtracts them separately.
+    if attachment_suppressions:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["attachment_suppressions"] = attachment_suppressions
+
+    # Record what the by-Name merge absorbed (spec 034 T6.0c), so the run's
+    # provenance reaches the JSON as well as the markdown. Twin-written like
+    # the two withholdings above and for the same reason: a reader driven from
+    # instructions.json would otherwise never learn that one MOC was created
+    # where two proposals were approved. NOT an audit input — instructions-diff
+    # already reconciles correctly after the merge (one approved, one emitted).
+    # Metadata only: the surviving Name, the absorbed spellings, and the reason.
+    if merged_moc_proposals:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["merged_moc_proposals"] = merged_moc_proposals
+
+    # Record the MOC links withheld because their target could not be
+    # confirmed (spec 034 T6.0d). This is the site that makes the audit agree:
+    # instructions-diff reads instructions.json, NOT the dict handed to the
+    # renderer, so a fix that only reaches the markdown leaves the audit
+    # counting a link the renderer deliberately did not emit. Metadata only:
+    # id, MOC stem, source title and the cause discriminator.
+    if unresolvable_links:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["unresolvable_moc_links"] = unresolvable_links
+
+    # Record confirmed items the #116 guard withheld, so the drop reaches an
+    # artefact instead of scrolling past on stderr. Metadata only: id, the path
+    # probed, and why — never note content. Nested under the permissive `tomo`
+    # block, so Hashi ignores it and the wire schema is untouched (CON-4).
+    if dropped_missing_source:
+        tomo_block = instructions_doc.get("tomo")
+        if tomo_block is None:
+            tomo_block = {}
+            instructions_doc["tomo"] = tomo_block
+        tomo_block["dropped_sources"] = [
+            {
+                "id": d.get("id"),
+                "source_path": d.get("source_path"),
+                "item_key": d.get("item_key"),
+                "probed_path": d.get("probed_path"),
+                "kind": d.get("kind"),
+                "reason": d.get("reason"),
+            }
+            for d in dropped_missing_source
+        ]
     instructions_json_path = out_dir / "instructions.json"
     instructions_json_path.write_text(
         json.dumps(instructions_doc, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -719,6 +915,11 @@ def main() -> int:
             "skipped_daily": skipped_daily,
             "skipped_rel": skipped_rel,
             "skipped_assets": skipped_assets,
+            "dropped_sources": dropped_missing_source,
+            "destination_clashes": destination_clashes,
+            "attachment_suppressions": attachment_suppressions,
+            "merged_moc_proposals": merged_moc_proposals,
+            "unresolvable_moc_links": unresolvable_links,
         },
         cfg,
     )

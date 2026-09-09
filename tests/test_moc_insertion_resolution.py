@@ -82,6 +82,7 @@ def _make_result_with_candidate(candidate_moc: dict) -> dict:
     return {
         "schema_version": "1",
         "stem": "first-principles-thinking",
+        "item_key": "100 Inbox/first-principles-thinking.md",
         "path": "100 Inbox/first-principles-thinking.md",
         "type": "atomic",
         "type_confidence": 0.9,
@@ -104,6 +105,7 @@ def _make_result_no_candidates() -> dict:
     return {
         "schema_version": "1",
         "stem": "philosophy-note",
+        "item_key": "100 Inbox/philosophy-note.md",
         "path": "100 Inbox/philosophy-note.md",
         "type": "atomic",
         "type_confidence": 0.85,

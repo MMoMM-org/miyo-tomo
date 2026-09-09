@@ -564,3 +564,351 @@ Action for anyone shipping this: say so in the release note — *"the first audi
 ask you to refresh the index before it offers broken-parent fixes; run `/explore-vault` once and the
 fixes come back, now with the right one offered for each situation."* One refresh clears it
 permanently.
+
+### `link_to_moc` per-item coverage is title-keyed (spec 034 residual)
+
+Found during spec 034 T2.7 review, 2026-09-06. `instructions-diff.py`'s `run_diff` uses
+`source_key = info["title"]` (~`:752`) to look up `actual["links_by_source"]` for the
+`link_to_moc` per-item coverage row. `title` falls back to the bare stem
+(`:225,255,268`), so two confirmed items that both default their title to the same
+filename merge in that coverage row — structurally identical to the `move_note` /
+`delete_source` collapse that spec 034 T2.7 fixed, but for `link_to_moc`.
+
+Not fixable within spec 034: `render_actions._build_link_to_moc_actions` (`:758-761`)
+emits only `source_note_title` and carries no `source_path` or `item_key` traceability
+field, so `instructions-diff.py` has nothing to key on. Closing it needs a renderer
+schema change to add that field, plus title disambiguation on collision.
+
+Narrower blast radius than the fixed case: needs two items sharing a filename *and*
+neither title user-edited.
+
+### `inbox_state.last_state_per_item_key` drops a key-less line silently (spec 034 residual)
+
+Flagged by T2.5's review, 2026-09-06. `tomo/scripts/lib/inbox_state.py` fails open: an
+unparseable or `item_key`-less line in `inbox-state.jsonl` is passed over rather than
+aborting the run. An entry missing `item_key` therefore never reaches `done_keys`, is
+never counted in the `declined` tally, and produces no per-item diagnostic — only the
+generic "no done items to mark" if it was the sole entry.
+
+Not reachable from a well-formed log: `item_key` is `required` + `minLength: 1` in
+`state-entry.schema.json`, and `state-update.py` takes `--item-key` as a mandatory CLI
+argument with no default. The fail-open is deliberate and inherited from the reducer's
+prior tolerance.
+
+Worth closing anyway on the same principle as T2.3's "a vanished item is now audible":
+a truncated final line (disk full mid-write) is a real corruption shape, and the helper
+should count skipped lines and let callers report them rather than swallowing them.
+Small: a counter plus a stderr line in each of the two callers.
+
+### Three more `listDir` consumers carry their own `type == "file"` check (spec 034 residual)
+
+Found by T3.1, 2026-09-06, while unifying the two filters ADR-3 needs. Outside that ADR's
+stated two-consumer scope, so deliberately left alone:
+
+- `tomo/scripts/voice-precheck.py:52`
+- `tomo/scripts/garden-audit.py:381`
+- `tomo/scripts/shared-ctx-builder.py:204`
+- `tomo/scripts/moc-discovery.py:422` (`_is_md_file`) — added by T3.1's reviewer
+- `tomo/scripts/vault-scan.py:259` (root-scan folder check) — added by T3.1's reviewer
+
+Each classifies Kado `listDir` entries independently. `tomo/scripts/lib/attachment_index.py`
+now exposes `is_file_entry(item)` — case-insensitive, None-safe, non-dict-safe — which is what
+`discover_files` and `build_inbox_index` share. The three above could route through it too.
+
+Worth doing because T3.1 found the divergence was not merely cosmetic: the old
+`discover_files` predicate **crashed** with `AttributeError` on a non-dict entry where
+`build_inbox_index` returned `False`. Any consumer still on a hand-rolled check carries that
+same latent fragility. Not urgent — Kado emits lowercase literals and well-formed dicts today.
+
+Note on scope: all five consume **different** `listDir` calls, not the inbox listing ADR-3
+shares, so none belonged in T3.1. T3.1 reported three; its reviewer found two more, so the
+"grepped, zero remaining" framing was correct for the two named call sites but not literally
+repo-exhaustive. Whoever picks this up should re-grep rather than work from this list.
+
+### `test_mark_captured.py` shadows the real `lib.doc_frontmatter` for the whole process
+
+Found 2026-09-06 during spec 034's inbox-state hardening; pre-existing, not introduced by it.
+Confirmed by `git stash` before any edit.
+
+`tests/test_mark_captured.py` registers a fake `lib.doc_frontmatter` module via
+`sys.modules.setdefault(...)`. That fake is missing `body_after_frontmatter`. Because
+`sys.modules` is process-global, the fake shadows the real module for anything that imports
+it transitively **later in the same pytest process**.
+
+The file fails when run in isolation. It only passes in the full suite because some earlier
+test happens to import the real module first — so the suite's health depends on collection
+order, and a future reordering or a new `-k` selection can surface it without warning.
+
+Fix shape: register the fake with the real module's full surface, or scope it with a fixture
+that restores `sys.modules` on teardown, rather than a process-global `setdefault`.
+
+Worth doing because the failure mode is invisible: the suite stays green while a real module
+is silently replaced for every later importer in that process.
+
+### Dead shell tests still assert the retired `inbox-orchestrator` exists
+
+Traced 2026-09-06 while closing spec 034's voice-path recursion. `inbox-orchestrator` was
+deleted under spec 018 (agent-architecture-cleanup), retired in favour of
+`suggestion-conductor` + `synthesis-conductor`. Three stale references survive:
+
+- `tests/test-phase3.sh:141-144` — `check_file` asserts the file **exists**, then greps it for
+  S-section format, the Classification Guard and the anti-parrot rule. Guaranteed to fail.
+- `tests/test-004-phase3.sh:193,219` — feeds the missing path to a Python check and greps it
+  for `mcp__kado__kado-write`. Guaranteed to fail.
+- `tomo/dot_claude/agents/voice-transcriber.md:261` — a boundary line reading "You do NOT
+  invoke `inbox-orchestrator`, `inbox-analyst`, or any other agent". Harmless but it is an
+  LLM-loaded runtime file naming an agent that does not exist, which is exactly the noise CON-5
+  exists to keep out. One-word removal; the sentence stays sound without it.
+
+These two `.sh` scripts are not pytest-collected, which is why they have been failing silently
+for some time — spec 034 repeatedly confirmed them as "pre-existing, unrelated" via `git stash`
+without anyone identifying the cause. This is that cause.
+
+Fix shape: either retarget the assertions at the agents that replaced it, or delete the dead
+blocks. Deleting is likely right — the format rules those greps guard moved with the agent.
+
+`docs/XDD/specs/005-daily-note-workflow/solution.md:12` also names it; that is a historical
+spec and should be left as written.
+
+### The Hashi wire-hygiene test skips silently when offline
+
+Observed 2026-09-06 during spec 034: `tests/test_instruction_render_wire_hygiene.py:317`
+skips with "upstream Hashi schema unreachable — offline". Across three consecutive full-suite
+runs on a quiet tree it skipped once and ran twice — a transient network hiccup is enough.
+
+Why it matters more than a typical skip: this test guards a **cross-repo contract**. CON-4 of
+spec 034 states that what Hashi receives must not change, and Hashi is a separate repository —
+so this is one of the few tests standing between a wire-shape change here and a break there.
+A contract test that quietly opts out on a network blip can pass a drift through on exactly
+the run where nobody is watching, and the suite still reports green.
+
+The skip itself is reasonable (the alternative is a hard failure on every offline run). The
+problem is that it is **invisible**: `pytest -q` reports only a count, so the difference
+between "3435 passed, 1 skipped" and "3434 passed, 2 skipped" is easy to read past.
+
+Fix shape, cheapest first: vendor a pinned copy of the upstream schema and test against that,
+refreshing it deliberately — turning a network dependency into a reviewable diff. Failing that,
+make the skip loud (a warning summary that names the contract left unverified), or gate it so
+CI treats an offline skip as a failure while local runs stay tolerant.
+
+### The clash surface has outgrown two files — `suggestions-reducer.py` and `render_actions.py`
+
+Observed 2026-09-07 during spec 034 T5.2, raised by that task's code-quality review and
+deliberately declined at the time.
+
+The file is now 2388 lines. The MiYo Constitution's L2 code-quality rule says files of dense
+logic should be refactored along their natural seams beyond roughly 300-500 LOC, so this is
+not a near miss — and T5.2 added about 195 lines to it.
+
+The seam is already visible. `resolve_destination_clashes` and `_clash_reason` are
+self-contained pure functions whose only outside dependency is `_dest_join`, which is itself
+imported from `lib/render_actions.py`. They would move into a `lib/` module without dragging
+reducer-internal state behind them, and the move would put the Pass-1 proposal logic beside
+the Pass-2 guard logic that T5.3 is about to write against the same `_dest_join`.
+
+Why it was declined rather than done: T5.3 builds directly beside this code, so extracting it
+mid-phase moves ground the next task is standing on. A refactor folded into a task about
+destination clashes is also precisely the scope creep the review gates exist to catch — the
+right call is to do it deliberately, as its own change, not as a rider.
+
+Best done after Phase 5 closes, when T5.2, T5.3 and T5.4 have all landed and the final shape
+of the clash logic is known. Doing it before then means refactoring code that is still moving.
+
+**Updated 2026-09-07 after T5.3.** The entry above was written during T5.2 and named only
+`suggestions-reducer.py`. T5.3 grew `tomo/scripts/lib/render_actions.py` from 1659 to 1854
+lines, and T5.4 took it to 2046 — equally past the Constitution's L2 ~300-500 guidance, and from the same task family.
+Naming it explicitly matters: a deferral that covers a second file only by inference from
+"the whole clash surface" is a deferral someone will read as not covering it.
+
+Two concrete seams now, not one:
+
+- `resolve_destination_clashes` / `_clash_reason` in `suggestions-reducer.py` (Pass 1).
+- `validate_destinations` in `render_actions.py` (Pass 2) — about 90 lines doing several
+  jobs: grouping claims by folded destination, consulting the vault, building the clash
+  record, computing drop and withdraw bookkeeping, and filtering the action list. Well
+  documented and thoroughly tested, so this is legibility rather than correctness, but it
+  splits cleanly along those named concerns.
+
+And one duplication that should collapse when they move: `make_folder_listing`
+(`render_actions.py`) is a near-verbatim copy of `_vault_folder_notes`
+(`suggestions-reducer.py`), including identical comments. Both cache one
+`list_dir(folder, depth=1)` per normalised destination folder, both deliberately avoid a
+per-name probe because CON-7 forbids measuring Kado's case semantics. Two copies of a
+decision is exactly the drift shape this spec hit in T5.0c, where an emitter moved and its
+paired consumer did not. The shared module is the fix, and Pass 1 and Pass 2 already share
+ground via `lib/` — `_dest_join` is imported across that boundary today.
+
+**Condition met 2026-09-08 — Phase 5 is closed.** T5.4 was the last task moving this code,
+and T5.5 added `lib/source_link.py`, which is the first piece of the shared ground this
+extraction would land in. The blocker was never the work; it was that the code kept
+moving underneath it. It has stopped.
+
+### `state-update.py --stem` is unvalidated, and an LLM writes it
+
+Found 2026-09-07 during spec 034 T5.0c, as the assumption that task's implementer could not
+verify from its own diff.
+
+`lib/inbox_state.display_stem` returns `entry["stem"]` verbatim when present — its basename
+fallback only guards a *malformed* entry. So everything rests on what writes that field, and
+there are two writers with different guarantees:
+
+- `inbox-triage.py:659,772` writes `Path(note_path).stem`, which can never contain a slash.
+- `state-update.py:93` writes `args.stem`, a `required=True` CLI argument with **no
+  validation**, documented as "display only; not used for lookups".
+
+That documentation was true until T5.0c widened a comparison. `_same_note_as_any` in
+`instructions-diff.py` applies `_keys_match` in both directions, so a multi-segment
+`source_stem` like `Places/Dresden` would collapse against `100 Inbox/Places/Dresden` — two
+notes the emitter keeps distinct. The state-entry schema permits it: `stem` is
+`{"type": "string", "minLength": 1}` with no pattern.
+
+What makes it reachable rather than theoretical: `state-update.py`'s callers are
+`tomo/dot_claude/agents/inbox-analyst.md` (four sites), an LLM-loaded runtime file where the
+model substitutes `<stem>` itself, with no instruction that it must be a bare filename. And
+recursion is what put subfolder notes in front of that agent — handling
+`100 Inbox/Places/Dresden.md`, writing `Places/Dresden` is a plausible thing for a model to do.
+
+Cheapest fix is a guard at the CLI boundary, where it is deterministic: reject a `/` in
+`--stem`, or take its basename. A schema `pattern` would catch it a layer later. Worth doing
+before the next live run over a subfolder-heavy inbox, since that is the first time the
+analyst meets these paths at scale.
+
+## Cross-run document join — a stale structured doc can bind a wrong anchor
+
+**Found 2026-09-08** by T6.4a's implementer, as the assumption its diff could not verify.
+
+`suggestion-parser.py` resolves both `_own_doc_path` and the companion `_resolve_doc` by falling
+back to a **single cwd-relative filename** (`tomo-tmp/suggestions-doc.json`,
+`tomo-tmp/suggestions-fan-doc.json`). Nothing checks that the `run_id` in the markdown being
+parsed matches the `run_id` of the document it binds against.
+
+**Reachable**: `suggest-handling/SKILL.md:30` clears only `tomo-tmp/items` and
+`tomo-tmp/inbox-state.jsonl`. The structured documents are never cleared — a live instance was
+observed holding `tomo-tmp/*.json` files from June and July.
+
+**Consequence, and why it is asymmetric**: the *identity* join degrades safely, because
+`bind_section_item_key`'s stem cross-check (`:1913`) rejects a mismatched entry and leaves the key
+unset. The *anchor* join has **no such cross-check**, so a stale document with an overlapping
+section id binds a **wrong placement anchor** silently — a MOC bullet lands under a heading from
+another run.
+
+**The naive fix is wrong.** A companion merge legitimately pairs two documents with *different*
+`run_id`s — the primary from one run, the fan from the next (observed live:
+`2026-09-08T17-07-05Z-807b53` and `...T18-06-09Z-afc46b`). Any check must be **pairwise** — each
+markdown against its own structured doc — never equality across the pair.
+
+Not caused by spec 034, but 034 introduced the doc-join mechanism that makes it reachable. Left
+out of T6.4a deliberately: it is a distinct defect with its own fix, and T6.4a's scope was already
+widened once.
+
+## `suggestion-parser.py` loads its own structured doc four times
+
+**Found 2026-09-08** by T6.4a's code-quality review.
+
+T6.4a's companion path loads `_resolve_doc` once and reuses it for the item-key map, the anchor
+map and the topic members. The **pre-existing primary path was not retrofitted**: `_own_doc_path`
+is read from disk four separate times — inside `load_doc_anchor_map`, then `_load_json_doc` at
+`:2278`, `:2383` and `:2421`. The `docs/tomo` mirror's claim that "the document is read once
+instead of three times" is true only of the new half.
+
+No correctness impact — small JSON, single-process invocation. But the two paths now do the
+identical shape (resolve doc → key map → anchor map → member map) with separate variable names
+and no shared helper. A `_load_doc_bundle(path) -> (item_keys, anchor_map, members)` would
+collapse the duplication **and** the redundant reads in one move, and is a net LOC reduction in a
+file the constitution already flags as too large.
+
+Deliberately not done in T6.4a: it refactors a path that task did not break, on a task whose scope
+had already widened once, while a live validation run was waiting on it.
+
+## ~~A destination clash leaves orphaned `pending-move` staging notes~~ — FIXED
+
+**Found 2026-09-08** in the T6.4 live run. **Fixed 2026-09-09** as spec 034 T6.4c.
+
+The fix rewrites `manifest.json` after both guards, so `upload-rendered.py` never writes a
+staging note whose move was withheld. Both premises below turned out wrong in a way that
+mattered: Pass 2 does **not** render into the inbox — it renders locally and a separate
+process uploads from the manifest — and the residue also occurs for
+`suppress_moves_for_unfiled_attachments`, not only for the destination clash. The live case on
+2026-09-09 was in fact the attachment one. Neither of the two "possible closes" below was
+taken; see `docs/tomo/scripts/lib/render_actions.md` (T6.4c) for why.
+
+Pass 2 renders each approved atomic into the inbox as a staging note
+(`doc_type: rendered-note`, `state: pending-move`) **before** `validate_destinations` runs. When
+the clash guard then withholds both claimants (T5.3), their staged files are already written and
+stay in the inbox waiting for a move that will never be emitted.
+
+Observed: two `2026-09-08_1813_elbe-schifffahrt-...` files, one per withheld claimant.
+
+`pending-move` is excluded from fresh-source discovery, so they are not re-ingested — no loop, no
+data loss. But nothing detects or removes them either: `detect_orphaned_state` covers *captured
+source items whose downstream docs vanished*, a different case. The instruction set tells the user
+to rename one item and re-run Pass 2, and that re-run renders a **new** pair, leaving the old pair
+behind indefinitely.
+
+Correctness is unaffected — the guard's own promise ("every source note below is untouched in the
+inbox") holds. This is residue the user has to clear by hand, and it accumulates once per clash
+per re-run.
+
+Two possible closes: render after validation rather than before, or have the clash record carry
+its withheld staging paths so something can clean or reuse them. The first is the larger change
+and would also stop paying Kado writes for notes that are then withheld.
+
+## OPEN — spec 034's per-item token cost was never measured
+
+**Recorded 2026-09-09** at spec 034's close-out (T6.5).
+
+The SDD's Quality Requirements table carries a row `≤ $0.65 subagent, ≤ $0.70 total`, to be
+measured against the 21-item baseline via `measure-f47-token-cost.py --session-latest`. It was
+not measured for this spec: the tool keys on a `lifecycle.discovery` marker that the runs
+exercising these paths do not all carry, and none of the six live runs was a 21-item run made
+under the tool.
+
+Not a blocker for 034 and not a regression: the cost claim 034 itself makes is the **base Kado
+call count** (F9/ADR-3, 3 → 2), measured seven times over and recorded in
+`docs/evolution/inbox-cost-log.md`. The dollar figure is a standing budget inherited from F-47.
+
+What closing this needs: either a run instrumented so the tool can key on it, or an honest
+decision that the budget row belongs to F-47's own validation rather than to every spec that
+touches the pipeline.
+
+## ~~Link coverage fails for any title containing a sanitised character~~ — FIXED
+
+**Fixed 2026-09-09** as spec 034 T6.4b: the field was split into `source_note_title`
+(raw display text, on the wire) and `source_note_stem` (the vault key, Tomo-internal,
+stripped before the wire). The same defect had a second victim —
+`_subtract_unresolvable_links` joins the same two forms — now covered too. Kept below
+for the diagnosis, in particular the entity theory that was wrong.
+
+**Found 2026-09-08** in the T6.4 live run, by reading the container's own session transcript —
+the instruction document alone did not show it.
+
+`instructions-diff.py`'s link coverage matches exactly (`:634`,
+`a.get("source_note_title") == stem`). The **emitter** puts the *sanitised* title into
+`link_to_moc.source_note_title`, while `derive_expected` puts the *raw* title in. Any title
+containing a character `sanitize_stem` replaces — `\ / : * ? " < > |` — therefore never matches,
+and the audit hard-fails a run whose instruction set is correct.
+
+Observed live:
+
+| | value |
+|---|---|
+| emitted (`I07`) | `Elbe-Schifffahrt**-** Tschechischer Pegel bei Usti nad Labem …` |
+| expected (`S01`) | `Elbe-Schifffahrt**:** Tschechischer Pegel bei Usti nad Labem …` |
+
+The link itself was emitted correctly and points at the right MOC — only the audit's join fails.
+Two sibling items in the same run passed solely because their titles carry no forbidden character.
+**A colon in a title is not exotic**: the analyst produced this one unprompted, so this fires on
+ordinary content.
+
+**The likely correct fix is at the emitter, not the audit.** Under ADR-2 `source_note_title` is a
+**display** field; carrying a sanitised *filename* in it is the category error. Making the audit
+compare sanitised forms on both sides would hide that rather than fix it, and would also make the
+field's meaning depend on who reads it.
+
+Same class as T6.0d: an audit that hard-fails a correct run, so the user reads it as Tomo drifting
+from its own instruction set.
+
+**Note for whoever picks this up**: the container's orchestrator diagnosed this as an HTML-entity
+mismatch (`&amp;` vs `&`) after seeing the MOC name `Elbsandstein & Tschechien 2026 (MOC)` in the
+failure line. That was a rendering artefact of its own terminal — no `&amp;` exists anywhere in
+the artefacts or the vault. Reproducing the audit directly is what showed the real cause.

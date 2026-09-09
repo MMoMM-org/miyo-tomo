@@ -29,6 +29,7 @@
 | 2026-09-09 | **The consumer is consulted on the mechanism before it is picked** | Hashi vendors our schema and enforces it with `additionalProperties: false`. Any scheme that assumes they can read a field before they have re-vendored it is a scheme that breaks them again. The handoff of 2026-09-09 asks for their opinion rather than announcing a decision. |
 | 2026-09-09 | **One strict wire, no compatibility window — Hashi's call, accepted** | Offered the optional-field route, Hashi declined it and vendored `item_key` as **required**. Their reasoning: two compatible schemas is a slower version of the same bug, and half-opening a document whose join key is missing reinstates the ambiguity `item_key` exists to remove. This retires question 3 (compatibility window) as a design option and turns question 2 (lead time) into the only lever left. |
 | 2026-09-09 | **The daily-side `item_key` goes on the wire; the markdown recovery is retired with it** | `suggestion-parser._restore_daily_item_keys` keeps `source_item_key` off the wire *specifically* because widening a `additionalProperties: false` contract is a coordinated cross-repo change. Hashi has now asked for exactly that change, so the blocker its docstring names is gone. The recovery is lossy by design — it declines to guess on an ambiguous discriminator — so the wire field is strictly better than the mechanism it replaces, independently of Hashi. |
+| 2026-09-09 | **Spec 036's route 2 rides this spec's bump — two wire changes, one re-vendor** | 036 chose route 1 (Tomo-side guard, ships independently) plus route 2 (make a `delete_source` name the action that justifies it — a wire change). Batching it with the daily-side `item_key` means Hashi vendors once and re-runs their QA once. It also makes this spec's mechanism carry two unrelated changes on its first outing, which is the honest test of it: a changed-fields list that cannot describe two changes at once is not a mechanism. |
 | 2026-09-09 | **Every wire change ships the schema as a file plus a changed-fields list** | Hashi asked for both. The file removes the retyping step that already made them diff the wrong one of our two instruction schemas; the changed-fields list is the part a `schema_version` bump alone does not carry. This is the concrete candidate answer to question 5 — the enforceable artifact, not a rule. |
 
 ## Context
@@ -139,6 +140,10 @@ the re-vendor**, so the incident is closed and only the mechanism is left.
 The daily-side `item_key` widening is **in** scope for this spec — Hashi asked for it to ride the
 versioning change rather than land as another silent field, and it is the first change the
 mechanism has to carry.
+
+Spec 036's route-2 field on `delete_source` is **also** in scope for the same reason, decided
+2026-09-09. Two changes, one bump, one schema file, one changed-fields list, one re-vendor. The
+guard half of 036 (route 1) is independent of this spec and does not wait on it.
 
 ### Prior art in this repo
 

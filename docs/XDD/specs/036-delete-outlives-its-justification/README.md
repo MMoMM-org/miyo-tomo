@@ -27,6 +27,7 @@
 |------|----------|-----------|
 | 2026-09-09 | **Successor to spec 034's T6.0b, which was never accepted and is now measured as data loss** | 034 is `Implemented`; an unaccepted task cannot be reopened there. T6.0b was written as a missing comparison between two action kinds. Following the chain to its end shows it terminates in a deleted source note, which is a different severity and deserves its own spec. |
 | 2026-09-09 | **Scoped as "a delete must not outlive the action that justified it", not as "move_note carries its delete"** | Coupling the delete to `move_note` closes one of four emission sites. Two of the other three have the same shape with different partners — see the table below. Scoping to the shape covers all of them and does not need revisiting when a fifth partner appears. |
+| 2026-09-09 | **Route 1 now, route 2 with spec 035 — routes chosen** | Route 1 is a one-line change to `validate_destinations`' claimant filter (`render_actions.py:989`): `create_moc` carries the same `destination` field as `move_note`, and `_paired_delete_candidates` returns `[]` for a claimant with no `source_inbox_item`, so the existing withdrawal machinery applies unmodified. It closes the data-loss path with no cross-repo dependency, which a data-loss path should not wait on. Route 2 generalises to sites 2 and 4 and is a wire change, so it rides spec 035's single `schema_version` bump alongside the daily-side `item_key` — one re-vendor for Hashi instead of two. Route 3 is not rejected: route 2 supplies the data their `buildDependencies` would need, so it becomes their natural follow-on rather than a competing option. |
 | 2026-09-09 | **The Hashi handoff is written after the route is chosen, not before** | Whether Hashi needs a dependency edge at all depends on which side we close the gap on. Asking them now would be asking them to hold an opinion on a design that does not exist yet. |
 
 ## Context
@@ -92,7 +93,7 @@ thing that replaces it exists" is already the rule — it is just evaluated at *
 actions Tomo intends to emit, rather than at **apply** time, over actions that actually succeeded.
 Same for T5.3's withdrawal. Both are correct and both stop at the wire.
 
-### Three routes, to be weighed in the SDD — not decided here
+### Three routes — decided 2026-09-09: 1 now, 2 with spec 035
 
 1. **Close it at the source (Tomo).** Group `create_moc` alongside `move_note` in
    `validate_destinations`, dropping both claimants per T5.3's precedent, which inherits the paired
@@ -106,10 +107,27 @@ Same for T5.3's withdrawal. Both are correct and both stop at the wire.
    depth at the right place, but Tomo would still be emitting two claims on one path, and the user
    would still lose the run.
 
-They are not exclusive. 1 and 3 together would be belt and braces for this instance; 2 is the one
-that generalises. The plan's original note that "closing it cascades" was written on 2026-09-08,
-before T6.0d shipped `filter_unresolvable_moc_links` — the cascade machinery now exists, so route
-1 is smaller than it was when the task was proposed.
+They are not exclusive. The plan's original note that "closing it cascades" was written on
+2026-09-08, before T6.0d shipped `filter_unresolvable_moc_links` — the cascade machinery now
+exists, so route 1 is smaller than it was when the task was proposed.
+
+**Decision: 1 first, then 2 with spec 035.** Verified before choosing, not assumed:
+
+- `create_moc` actions carry `destination` under the same key `move_note` does
+  (`_build_create_moc_actions`, `render_actions.py:585`), so the grouping loop needs only its
+  claimant filter widened.
+- `_paired_delete_candidates` (`:830`) reads `source_inbox_item` and `audio_peer` via `.get`;
+  `create_moc` has neither, so a MOC claimant contributes no withdrawal and cannot break the pass.
+- The withdrawal the fix depends on is the *move* claimant's, and that is unchanged — dropping
+  both claimants withdraws the move, which withdraws its paired delete. That is the chain that
+  currently ends in a deleted note.
+- Route 2's wire cost is one new field on `delete_source`, which today carries only `action`,
+  `applied`, `id`, `reason` and `source_path` (`hashi-instructions.schema.json`) — nothing on it
+  names the action that justifies it.
+
+Route 3 is deferred rather than declined: once route 2 puts the dependency on the wire, Hashi's
+`buildDependencies` has something to consume, so the edge follows from the data instead of needing
+to be specified separately.
 
 ### Also in scope — same boundary, found in the same live run
 
@@ -134,10 +152,12 @@ be nothing:
 
 ### The Hashi handoff
 
-Written once a route is chosen, and describing that route. If route 3 or route 2 is taken it is a
-request; if route 1 alone is taken it is a notification plus the offer of the edge as defence in
-depth. Either way it should carry the measured chain above — Hashi's own guards are correct and
-did their job; what is missing is one edge that nobody had a reason to add.
+The route is now chosen, so the handoff is unblocked. It carries the measured chain above —
+Hashi's own guards are correct and did their job; what is missing is one edge nobody had a reason
+to add — and it is written **once route 2's wire shape is settled in spec 035's PRD**, so it can
+ship as one schema file with one changed-fields list covering both the daily-side `item_key` and
+the delete's new dependency field. Sending it before that shape exists would ask Hashi to vendor
+twice, which is the outcome the batching decision exists to avoid.
 
 ### Refs
 

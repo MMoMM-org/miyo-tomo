@@ -27,6 +27,9 @@
 |------|----------|-----------|
 | 2026-09-09 | **Scoped as a versioning mechanism, not as a one-off schema fix** | Re-vendoring the two drifted fields closes the incident; it does not stop the third one. Two specs walked past the version gate without noticing, and the mechanism that should have caught them exists and is correct on the consumer's side. The spec is about when `schema_version` moves and how the consumer learns of it. |
 | 2026-09-09 | **The consumer is consulted on the mechanism before it is picked** | Hashi vendors our schema and enforces it with `additionalProperties: false`. Any scheme that assumes they can read a field before they have re-vendored it is a scheme that breaks them again. The handoff of 2026-09-09 asks for their opinion rather than announcing a decision. |
+| 2026-09-09 | **One strict wire, no compatibility window — Hashi's call, accepted** | Offered the optional-field route, Hashi declined it and vendored `item_key` as **required**. Their reasoning: two compatible schemas is a slower version of the same bug, and half-opening a document whose join key is missing reinstates the ambiguity `item_key` exists to remove. This retires question 3 (compatibility window) as a design option and turns question 2 (lead time) into the only lever left. |
+| 2026-09-09 | **The daily-side `item_key` goes on the wire; the markdown recovery is retired with it** | `suggestion-parser._restore_daily_item_keys` keeps `source_item_key` off the wire *specifically* because widening a `additionalProperties: false` contract is a coordinated cross-repo change. Hashi has now asked for exactly that change, so the blocker its docstring names is gone. The recovery is lossy by design — it declines to guess on an ambiguous discriminator — so the wire field is strictly better than the mechanism it replaces, independently of Hashi. |
+| 2026-09-09 | **Every wire change ships the schema as a file plus a changed-fields list** | Hashi asked for both. The file removes the retyping step that already made them diff the wrong one of our two instruction schemas; the changed-fields list is the part a `schema_version` bump alone does not carry. This is the concrete candidate answer to question 5 — the enforceable artifact, not a rule. |
 
 ## Context
 
@@ -81,11 +84,61 @@ Under `additionalProperties: false`, **an added field is not additive for the co
 Question 5 is the one that decides whether this spec is worth building. A rule nobody enforces is
 what we already had.
 
+### Hashi's reply (2026-09-09)
+
+`_inbox/from-hashi/2026-09-09_hashi-to-tomo_wire-drift-fixed-and-the-rename-is-wrong.md`.
+All five measured claims reproduced on their side. Verified here against their source rather than
+taken on report:
+
+| Their claim | Verified how |
+|---|---|
+| `item_key` + `attachments` vendored, `item_key` **required** | `origin/fix/suggestions-wire-item-key-attachments` commit `01921c6`; their `suggestions[].required` now carries `item_key`, `attachments` optional — matches ours field for field |
+| The unknown-property notice now names the key, in all three validators | Read in the branch diff; `suggestions-validator.ts`, `validator.ts`, `garden-audit-validator.ts` |
+| The `forceAtomicSync` namesake join is real | `src/suggestions/transforms/forceAtomicSync.ts` — `suggestion.stem === stem` and `entry.source_stem === stem`, both fanning out over every match |
+| **Our §6 rename request was wrong** | `src/commands/registerCommands.ts:367-371` — ADR-6, the command id is unchanged and the label was changed *to* "Open Tomo editor" because it suffix-dispatches to **both** editors. `dispatchOpenSuggestionsEditor` routes on the active file: `_garden-audit.json` → Garden-Audit, `_suggestions.json` → Suggestions, neither → a merged picker. Renaming it to "Open suggestions editor" would misname it for every garden-audit run. **Withdrawn.** |
+
+**Schema sync re-measured after their fix**: a structural diff of their branch copy against
+`tomo/schemas/suggestions-wire.schema.json` — property set, `required` list and
+`additionalProperties` at every nesting level — is identical. The drift is closed, measured rather
+than assumed.
+
+Their consumption constraint on the daily side: `item_key` **required** there too, and
+`source_stem` stays as display text.
+
+### The daily-side ask is three sites, not two
+
+Hashi named `daily_updates[].log_entries[]` and `tracker_updates[]`. There is no top-level
+`tracker_updates` on the wire; the array they mean is `daily_updates[].trackers[]`. And a third
+bucket they did not name carries the same identity problem:
+
+| Wire bucket | Source identity today | `source_item_key` in the doc schema |
+|---|---|---|
+| `daily_updates[].trackers[]` | `source_stem` (display text) | yes |
+| `daily_updates[].log_entries[]` | `source_stem` (display text) | yes |
+| `daily_updates[].log_links[]` | **none** — the wire carries `target_stem` only | yes |
+
+`log_links[]` is the sharper case: the wire has no source field at all, so a consumer cannot join
+it to its originating note by any means, ambiguous or otherwise. `instructions-diff.py:363` reads
+`ll.get("source_stem", "")` and gets the empty string on the wire path.
+
+Tomo already computes `source_item_key` for all three buckets. `suggestions-doc.schema.json`
+declares it on `daily_notes_updates[].{trackers,log_entries,log_links}[]`, and
+`suggestion-parser.enrich_daily_updates_with_item_keys` recovers it after the markdown round trip
+by matching on `(daily-note stem, bucket, discriminating field)` — `_DAILY_DISCRIMINATOR` covers
+all three. The recovery **declines to guess** when a discriminator maps to more than one key, so
+an ambiguous entry silently keeps only its display stem. That lossiness is the Tomo-side cost of
+the wire not carrying the field.
+
 ### Scope boundary
 
 This spec does **not** re-vendor Hashi's schema — that is Hashi's file and their release. The
 handoff `_outbox/for-hashi/2026-09-09_tomo-to-hashi_suggestions-wire-schema-two-specs-behind.md`
-asks for it and offers to hold the wire steady until this spec lands.
+asked for it and offered to hold the wire steady until this spec lands; **Hashi has since shipped
+the re-vendor**, so the incident is closed and only the mechanism is left.
+
+The daily-side `item_key` widening is **in** scope for this spec — Hashi asked for it to ride the
+versioning change rather than land as another silent field, and it is the first change the
+mechanism has to carry.
 
 ### Prior art in this repo
 

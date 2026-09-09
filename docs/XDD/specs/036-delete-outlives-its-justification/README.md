@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-09 |
-| **Current Phase** | Initialization |
+| **Current Phase** | PRD |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
 | **Last Updated** | 2026-09-09 |
 
@@ -13,7 +13,7 @@
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | pending | |
+| requirements.md | completed | 7 features, 25 Gherkin criteria, 4 open questions |
 | solution.md | pending | |
 | plan/ | pending | |
 
@@ -27,6 +27,10 @@
 |------|----------|-----------|
 | 2026-09-09 | **Successor to spec 034's T6.0b, which was never accepted and is now measured as data loss** | 034 is `Implemented`; an unaccepted task cannot be reopened there. T6.0b was written as a missing comparison between two action kinds. Following the chain to its end shows it terminates in a deleted source note, which is a different severity and deserves its own spec. |
 | 2026-09-09 | **Scoped as "a delete must not outlive the action that justified it", not as "move_note carries its delete"** | Coupling the delete to `move_note` closes one of four emission sites. Two of the other three have the same shape with different partners — see the table below. Scoping to the shape covers all of them and does not need revisiting when a fifth partner appears. |
+| 2026-09-09 | **Consent is in scope, not only emission** | The site-4 group whose target cannot be resolved renders its Approve box **pre-checked** — `annotate_tag_handler_group_guards` returns early on a null target before it can set the guard that would suppress it. Owner decision: approval collected under a false premise is the same failure as the emission it authorises, so both are fixed here. The through-line is justification — a delete must have a live one, and the user's approval of one must be informed. |
+| 2026-09-09 | **Tomo must never consume the executor's results** | Owner constraint, and it eliminated a feature that was about to be written. Reading applied-flags back is the only reliable way to detect a staging note stranded by a failed action, and it makes Tomo depend on Hashi — abandoning the user who applies the markdown by hand. The residue item is dropped from this spec with the rejected design recorded, so it is not re-proposed. |
+| 2026-09-09 | **The wire dependency is not a generalisation of the guards — it is the only cover for TOCTOU** | Owner observation: a user can create a note at a claimed destination *between* generation and application. That clash does not exist when Tomo looks, so no build-time guard reaches it at any price. Route 1 covers what Tomo can see; route 2 covers what only the executor can see. This re-weights route 2 from optional generalisation to load-bearing. |
+| 2026-09-09 | **One phase — the guards and the wire field ship together** | Owner decision, against the recommendation to ship guards first. The guards are prerequisites for the wire field rather than companions to it: a guard that drops a partner without amending the deletes naming it produces a dangling dependency id, and the executor cannot detect one — its failure list only ever holds ids that actually ran. Shipping them apart would ship the dangling-id window. |
 | 2026-09-09 | **Route 1 now, route 2 with spec 035 — routes chosen** | Route 1 is a one-line change to `validate_destinations`' claimant filter (`render_actions.py:989`): `create_moc` carries the same `destination` field as `move_note`, and `_paired_delete_candidates` returns `[]` for a claimant with no `source_inbox_item`, so the existing withdrawal machinery applies unmodified. It closes the data-loss path with no cross-repo dependency, which a data-loss path should not wait on. Route 2 generalises to sites 2 and 4 and is a wire change, so it rides spec 035's release alongside the daily-side `item_key` — one re-vendor for Hashi instead of two. (Corrected 2026-09-09: this is two bumps on two documents, not one — the suggestions and instructions wires carry independent counters. One release, one changed-fields list; not one bump.) Route 3 is not rejected: route 2 supplies the data their `buildDependencies` would need, so it becomes their natural follow-on rather than a competing option. |
 | 2026-09-09 | **The Hashi handoff is written after the route is chosen, not before** | Whether Hashi needs a dependency edge at all depends on which side we close the gap on. Asking them now would be asking them to hold an opinion on a design that does not exist yet. |
 

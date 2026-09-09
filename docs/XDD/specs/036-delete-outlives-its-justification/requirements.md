@@ -275,9 +275,10 @@ rather than an omission.
 **Edge Cases:**
 - Scenario 1: A partner action is withheld by a Tomo guard after the delete was built → Expected:
   the delete is withdrawn, not left naming an id that is no longer present.
-- Scenario 2: A delete names an id that is absent from the set → Expected: caught before the set
-  ships, because the executor cannot detect it — its failure list only ever contains ids that
-  actually ran.
+- Scenario 2: A delete names an id that is absent from the set → Expected: caught by our audit
+  before the set ships. If one ships anyway, the executor skips the delete rather than performing
+  it — confirmed by the consumer, who checks the dependency list against the action list at plan
+  time. The failure list cannot catch this case, but plan-time validation can and does.
 - Scenario 3: An origin consumed by three atomics where one move fails → Expected: the delete is
   skipped; the two successful moves stand.
 - Scenario 4: A voice note whose transcript and audio are both deleted → Expected: both deletes
@@ -331,6 +332,9 @@ project's audit-log rule.
   design cannot assume deletions are recoverable.
 - Project governance requires every vault-mutating path to carry tests for both the permitted and
   the refused case, and requires implementation to trace to an approved spec.
+- The consumer's derived dependency edges and our declared ones **union**; a declared edge never
+  retires a derived one. Declaring an edge adds knowledge they cannot derive, and is never evidence
+  that an edge they did derive is wrong.
 - The system is near MVP; changes should be additive and must not break paths that currently work.
 
 ### Assumptions
@@ -339,9 +343,10 @@ project's audit-log rule.
   confirmed item and whose daily note is absent at build time. The emission was measured from a
   hand-built input; the upstream reachability was not established. If an upstream invariant forbids
   it, P2 narrows to a race between generation and application, which Feature 5 covers regardless.
-- **The consuming repository will accept the dependency field as required rather than optional.**
-  This is extrapolated from their stated position on a different field, not from anything they have
-  said about this one. They have not been asked.
+- ~~The consuming repository will accept the dependency field as required.~~ **No longer an
+  assumption — asked and answered on 2026-09-09.** Required with an explicit empty list, field name
+  `depends_on` in snake case, and their edge sets union with ours rather than being overridden by
+  them. They will additionally read the field on *any* action kind, not only `delete_source`.
 - **The executor's dependency-skip mechanism behaves as its source indicates.** It was read, not
   executed, from this side.
 - **Staging residue occurs.** Every link of the chain was measured separately; the combined outcome
@@ -352,7 +357,7 @@ project's audit-log rule.
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| A delete names a partner id that a later guard removed; the executor cannot detect it and performs the delete | High | Medium | Features 1–3 are prerequisites, not companions — they remove the guards that drop partners silently. Add an emitted-set audit asserting every named id is present. |
+| A delete names a partner id that a later guard removed | Low | Medium | **Corrected 2026-09-09 by the consumer.** The original entry assumed the executor would perform such a delete; it will not. They check at plan time that every named id appears in the action list and **skip** the delete when one is missing — a malformed set fails closed. Our audit remains the thing that stops a dangling id shipping; theirs is what happens on the day one does. Features 1–3 remain prerequisites regardless. |
 | The consuming repo declines the field as required, or wants a different shape | Medium | Medium | Ask before implementing rather than after. The question is a handoff, not an announcement. |
 | The empty dependency list is treated as "unknown" rather than "unconditional" by a future consumer | High | Low | Make it required with an explicit empty value so absence is never valid, and state the semantics in the contract. |
 | Fixing P3's consent step suppresses approval controls that legitimately should render | Medium | Low | Pair every suppression criterion with a criterion asserting the healthy case renders unchanged. |
@@ -361,11 +366,16 @@ project's audit-log rule.
 
 ## Open Questions
 
-- [ ] Does the consuming repo want the dependency field required with an explicit empty value, or
-      optional? Their answer changes the emission contract, and they have not been asked.
+- [x] ~~Does the consuming repo want the dependency field required or optional?~~ **Answered
+      2026-09-09: required, with an explicit empty list.** Their reasoning sharpens ours — for a
+      join key, absence degrades a feature; for a delete gate, absence is indistinguishable between
+      "nothing justifies this" and "everything does", and those have opposite correct behaviours.
+- [x] ~~Should an already-applied partner from a partial re-run count as satisfied?~~ **Answered
+      2026-09-09: yes, and the mechanism is better than the filter we found.** Their dependency
+      builder reads the *unfiltered* action list, so the edge to an applied action is built; it
+      simply never resolves, because only ids that ran and failed enter the failure set. Intended
+      behaviour for a partial re-run, and we may rely on it.
 - [ ] Can a real triage run produce P2's input shape, or does an upstream invariant forbid it?
-- [ ] Should an already-applied partner from a partial re-run count as satisfied? Rule 5 assumes
-      yes; this has not been confirmed against the executor's filtering behaviour.
 - [ ] Does the suggestions wire need a corresponding change so the user can see the dependency
       before approving, or is emission-time enforcement sufficient?
 

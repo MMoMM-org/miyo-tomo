@@ -156,12 +156,28 @@ be nothing:
 
 ### The Hashi handoff
 
-The route is now chosen, so the handoff is unblocked. It carries the measured chain above —
-Hashi's own guards are correct and did their job; what is missing is one edge nobody had a reason
-to add — and it is written **once route 2's wire shape is settled in spec 035's PRD**, so it can
-ship as one schema file with one changed-fields list covering both the daily-side `item_key` and
-the delete's new dependency field. Sending it before that shape exists would ask Hashi to vendor
-twice, which is the outcome the batching decision exists to avoid.
+**Sent 2026-09-09** as a *question*, not the finished design:
+`_outbox/for-hashi/2026-09-09_tomo-to-hashi_delete-source-depends-on-your-call-on-required.md`.
+
+The earlier plan was to write this only once route 2's wire shape was settled. That was inverted
+deliberately: the PRD's one blocking open question is whether `depends_on` should be required with
+an explicit `[]` or optional, and that is Hashi's contract to decide, not ours to settle and then
+announce. Building the emission rule first and asking afterwards would have made the answer
+expensive. The handoff asks five questions and commits to nothing.
+
+Verified in Hashi's source before sending, so the ask is grounded rather than inferred:
+
+| Claim | Evidence |
+|---|---|
+| The skip mechanism exists and runs before every action | `InstructionExecutor.ts:394-400` — step 8b, `findDependencyFailure`, sets `{kind: "skipped-dependency", dependsOn}` |
+| It already handles a **list** of dependencies | `:688-698` iterates `dependsOnIds`; `depMap` is `Map<string, string[]>` (`:677-686`) — a list-shaped field needs **no shape change** on their side |
+| `skipped-dependency` is fully wired end to end | `state.ts:29`, `runLog.ts:276`, `outcomeSource.ts:308-309`, `sections.ts:72`, own tally bucket |
+| A failure does not halt the run | every failure path ends in `continue` — `:403-410`, `:414-420`, `:445-451`, `:453-458`; only cancellation breaks (`:385-392`) |
+| Only the *input* is missing | `buildDependencies` (`planner.ts:208-245`) **derives** edges structurally from `create_moc.destination`; it has never read a dependency off the wire |
+| An already-applied partner is safe | `buildFileRecords` filters `a.applied !== true` (`:178-180`), so it never runs, never enters `failedIds`, and the delete proceeds — the wanted behaviour for a partial re-run, confirmed as a question rather than assumed |
+
+The finished 036 handoff — schema files plus changed-fields list — still waits until the shape is
+settled, and ships with spec 035's release.
 
 ### Refs
 

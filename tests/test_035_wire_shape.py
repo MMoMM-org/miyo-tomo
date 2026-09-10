@@ -340,6 +340,24 @@ def test_enum_values_sorted_with_a_type_tolerant_total_order():
     assert result[""]["values"]["mixed"] == [None, True, 1, 2, "a", "b"]
 
 
+def test_enum_and_const_together_records_enum_alone_deliberately():
+    # No published wire declares both today. JSON Schema treats enum and
+    # const as independent assertions that both apply — the genuinely
+    # correct record would be their intersection — but this pins a
+    # deliberate, scoped choice (enum alone; see wire_shape.md) rather than
+    # leaving the precedence to fall out of code order unnoticed.
+    schema = {
+        "type": "object",
+        "properties": {
+            "both": {"enum": ["a", "b"], "const": "a"},
+        },
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["values"]["both"] == ["a", "b"]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # code-quality fix 3 — local $ref resolved for type (and enum/const)
 # ──────────────────────────────────────────────────────────────────────────────

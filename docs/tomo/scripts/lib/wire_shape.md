@@ -147,6 +147,25 @@ empty list) is the more common case for most properties and would double
 the field's footprint in every manifest for no gain — there is nothing to
 diff about a property that never had one.
 
+**A property declaring BOTH `enum` and `const` records `enum` alone — a
+deliberate, scoped choice, not an oversight.** JSON Schema treats `enum`
+and `const` as independent assertions that both apply when both are
+present, so the genuinely correct record would be their *intersection*
+(and if `const`'s value is not itself a member of `enum`, the truly
+correct record is an unsatisfiable, empty valid set). No published wire
+declares both on any property today, so `_property_values` takes `enum`
+alone — it is the more common and more informative of the two when only
+one can be chosen, and implementing set intersection (with its
+unsatisfiable-schema edge case) to serve a scenario that occurs zero times
+would be exactly the kind of complexity this codebase's YAGNI standard
+rules out. `test_enum_and_const_together_records_enum_alone_deliberately`
+pins this precedence — verified to fail if the priority in
+`_property_values` is swapped, so it is a real regression guard, not a
+tautology. **A future reader who actually encounters a wire declaring
+both should implement the intersection rather than assume this choice
+was made on the merits of that case** — it was not; it was made on the
+merits of the case that actually exists.
+
 ## WHY Enum/Const Values Are Sorted With a Type-Tolerant Key, Not `sorted()`
 
 `required` is sorted so a reordering can never show up as a diff; the same

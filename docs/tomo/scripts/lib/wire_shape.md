@@ -815,3 +815,29 @@ NOT a function in `wire_shape.py`: Phase 2 builds the real drift gate
 and `build_manifest`, and that gate's shape isn't decided yet. Adding a
 "does the manifest exist" check to the production module now would be
 guessing at Phase 2's interface before Phase 2 exists to say what it needs.
+
+## WHY the T2.3 Gate Lives in `tests/test_035_wire_gate.py`, Not Here
+
+Phase 2's real drift gate — `gate_one_wire`, `run_wire_gate`,
+`render_wire_gate_report`, and the `ACTION_*` constants — is implemented
+inside `tests/test_035_wire_gate.py` itself, not as a fourth export from
+this module. That is a deliberate reading of the T2.3 plan's module-split
+seam, not an oversight: the plan says the trigger for splitting
+`wire_shape.py` is not its line count but whether gate-or-CLI logic lands
+*inside* it — if it does, `classify` + `CHANGE_KINDS` must be peeled out
+into their own module at that same moment, because the file stops being
+"one data model and three pure views of it" and becomes "the data model
+plus the thing that drives it". Putting the gate beside the module instead
+— its own file, T2.3 plan step 3 — sidesteps that split entirely for this
+task. `describe_shape`, `diff_shapes`, and `classify` stay exactly what
+they were: pure functions with no knowledge of the filesystem, the three
+wires, or what a maintainer is told to do next.
+
+This leaves an open question for T4.1 (the `scripts/wire-shape.py` CLI,
+not yet built): its `--obligations` flag is meant to reuse the gate's
+structured result rather than re-deriving it, which means either T4.1
+imports `gate_one_wire`/`run_wire_gate` out of a test module (unusual, but
+Python does not forbid it), or T4.1 is the point at which the gate
+actually does move into its own `tomo/scripts/lib/` module, alongside or
+instead of `wire_shape.py`. T2.3 does not resolve that question — it only
+avoids answering it inside `wire_shape.py` itself, per the seam above.

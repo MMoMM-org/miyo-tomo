@@ -101,18 +101,41 @@ exactly as real as one under `allOf`. The regression test
 fixture is what let the gap through code review undetected the first time —
 only reading the actual shipped schema surfaced it.
 
-The honest boundary, stated plainly rather than asserted-then-found-wrong:
-the walk covers every JSON-Schema keyword that (a) introduces a subschema
-which is itself evaluated as an object schema, AND (b) appears in at least
-one of the three published wires or their internal `$defs`. It does
-**not** cover `not` (introduces a subschema, but negation — a node found
-only under `not` describes what must NOT match, which is a different
-question than "what does the consumer accept"), `patternProperties` /
-`propertyNames` (no wire uses them), or `prefixItems` (2020-12 tuple typing;
-this repo's wires use `items` uniformly). Should a wire ever add one of
-those, the fix belongs here — in the walk's keyword set — not in a
-workaround at the call site, for the same reason `if`/`then`/`else` did:
-`describe_shape` is the only place that gets to claim full depth.
+The `if`/`then`/`else` fix was found empirically false a second way once
+checked again: the previous wording of this boundary tied the walked set to
+"appears in at least one of the three published wires or their internal
+`$defs`" — and `contains` and `else` are both walked while neither appears
+in any of the three wires today. That is not a bug in the walk; the walk
+walking a keyword nothing currently uses costs nothing. It is a bug in
+**this doc**, and a repeat of the same mistake with a narrower target: a
+claim that ties the walked set to what the wires happen to contain, stated
+as if it were a property of the design, goes stale the moment a schema
+changes and gets believed anyway because it is written down. Twice was the
+signal to stop writing that *class* of claim rather than a third, tighter
+version of it.
+
+**The walked set is chosen by what JSON Schema can put an object node
+behind, forward-compatibly — not by what today's three wires happen to
+use.** `items`/`contains` and `if`/`then`/`else` are each walked as a
+**complete keyword pair**, on purpose, even though only `items` and `if`
+are exercised by a wire today (an observation about the schemas as they
+stand on 2026-09-10, not a property of the design, and not a boundary of
+the walk): the cost of walking a branch nothing currently populates is
+zero, and the cost of missing one — the entire subject of this spec — is a
+node nobody can see and a drift nobody catches.
+
+Genuinely and deliberately **outside** the walked set: `not` (introduces a
+subschema, but negation — a node found only under `not` describes what
+must NOT match, a different question than "what does the consumer
+accept"), `patternProperties`, `propertyNames`, `prefixItems` (2020-12
+tuple typing), `dependentSchemas`, and a schema-valued
+`additionalProperties` (today's is always a bare `true`/`false`/absent,
+read directly by `closed` — never itself walked as a subschema). If a wire
+ever starts using one of these, the node it introduces goes unrecorded and
+that drift becomes exactly as invisible as `if` was before this fix — and
+adding the keyword to the walk, here, is the required response, not a
+workaround at the call site. `describe_shape` is the only place that gets
+to claim full depth.
 
 ## WHY `enum`/`const` Are Recorded in a Fourth `values` Field (ADR-2 extended)
 

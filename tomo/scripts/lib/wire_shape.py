@@ -1,17 +1,24 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.3.0
+# version: 0.4.0
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
 PUBLISHED_WIRES, build_manifest and serialize_manifest (T1.2) wrap that node
-map in the committed manifest-file shape. diff_shapes and classify are Phase
-2 and are not implemented yet — do not stub them.
+map in the committed manifest-file shape. diff_shapes (T2.1) names what moved
+between two node maps. classify is Phase 2's next task (T2.2) and is not
+implemented yet — do not stub it.
 """
 from __future__ import annotations
 
 import json
 
-__all__ = ["describe_shape", "PUBLISHED_WIRES", "build_manifest", "serialize_manifest"]
+__all__ = [
+    "describe_shape",
+    "PUBLISHED_WIRES",
+    "build_manifest",
+    "serialize_manifest",
+    "diff_shapes",
+]
 
 # The three published wires (SDD/Data Storage Changes) — the single source of
 # truth for which schemas get a manifest. Generation and every test read this
@@ -206,6 +213,108 @@ def build_manifest(schema: dict, source: str) -> dict:
         "source": source,
         "nodes": describe_shape(schema),
     }
+
+
+def _change(pointer: str, kind: str, detail: str) -> dict:
+    """One `ShapeChange`. `consumer_affecting` is always `False` here — T2.2's
+    `classify(change, observed)` decides that field; `diff_shapes` never
+    pre-judges it. See docs/tomo/scripts/lib/wire_shape.md for why.
+    """
+    return {"pointer": pointer, "kind": kind, "detail": detail, "consumer_affecting": False}
+
+
+def _diff_node(pointer: str, old: dict, new: dict) -> list:
+    """Field-by-field diff of two `NodeShape`s known to exist on both sides.
+    Never called for a pointer that is wholly added or removed — see
+    `diff_shapes`, which branches on node presence before this runs.
+    """
+    changes: list[dict] = []
+
+    old_properties = old.get("properties") or {}
+    new_properties = new.get("properties") or {}
+    for name in sorted(set(new_properties) - set(old_properties)):
+        changes.append(_change(pointer, "added_property", f"added property: {name}"))
+    for name in sorted(set(old_properties) - set(new_properties)):
+        changes.append(_change(pointer, "removed_property", f"removed property: {name}"))
+    for name in sorted(set(old_properties) & set(new_properties)):
+        if old_properties[name] != new_properties[name]:
+            changes.append(_change(
+                pointer, "type_changed",
+                f"{name}: {old_properties[name]} -> {new_properties[name]}",
+            ))
+
+    old_required = old.get("required") or []
+    new_required = new.get("required") or []
+    if old_required != new_required:
+        changes.append(_change(
+            pointer, "required_changed", f"required: {old_required} -> {new_required}",
+        ))
+
+    old_closed = bool(old.get("closed"))
+    new_closed = bool(new.get("closed"))
+    if old_closed != new_closed:
+        changes.append(_change(
+            pointer, "openness_changed", f"closed: {old_closed} -> {new_closed}",
+        ))
+
+    old_values = old.get("values") or {}
+    new_values = new.get("values") or {}
+    for name in sorted(set(old_values) | set(new_values)):
+        old_set = set(old_values.get(name, []))
+        new_set = set(new_values.get(name, []))
+        for value in sorted(new_set - old_set, key=_value_sort_key):
+            changes.append(_change(
+                pointer, "added_enum_value", f"{name}: added value {value!r}",
+            ))
+        for value in sorted(old_set - new_set, key=_value_sort_key):
+            changes.append(_change(
+                pointer, "removed_enum_value", f"{name}: removed value {value!r}",
+            ))
+
+    return changes
+
+
+def diff_shapes(recorded: dict, observed: dict) -> list:
+    """What moved between two `describe_shape` node maps, as `ShapeChange`
+    dicts (`pointer`, `kind`, `detail`, `consumer_affecting`).
+
+    `recorded` is the committed manifest's `nodes` — the baseline. `observed`
+    is a fresh `describe_shape` of the live schema. "Added" means present in
+    `observed`, absent from `recorded`; the argument order and the names are
+    the direction, so do not swap them at a call site.
+
+    A pointer present in only one map is `node_added` or `node_removed`,
+    reported ONCE — never decomposed into per-property changes for that
+    pointer, because a wholesale node addition is one fact, not N. Only a
+    pointer present in BOTH maps is diffed field-by-field (`_diff_node`) for
+    added/removed properties, a type change, a `required` change, an
+    openness change, and added/removed enum values.
+
+    `consumer_affecting` is always `False` on every returned change — that
+    field belongs to T2.2's `classify(change, observed)`, not to this
+    function. See docs/tomo/scripts/lib/wire_shape.md for why deciding it
+    here would be a second rule table.
+
+    Pure: no I/O. Deterministic: the returned list is sorted by
+    `(pointer, kind, detail)` — same reasoning as `required`/`values` being
+    sorted in `describe_shape` itself, so a change list never differs
+    between two runs over the same two inputs and a real drift's failure
+    message reads the same way every time.
+    """
+    changes: list[dict] = []
+    recorded_pointers = set(recorded)
+    observed_pointers = set(observed)
+
+    for pointer in observed_pointers - recorded_pointers:
+        changes.append(_change(pointer, "node_added", f"node added: {pointer}"))
+    for pointer in recorded_pointers - observed_pointers:
+        changes.append(_change(pointer, "node_removed", f"node removed: {pointer}"))
+
+    for pointer in recorded_pointers & observed_pointers:
+        changes.extend(_diff_node(pointer, recorded[pointer], observed[pointer]))
+
+    changes.sort(key=lambda change: (change["pointer"], change["kind"], change["detail"]))
+    return changes
 
 
 def serialize_manifest(manifest: dict) -> str:

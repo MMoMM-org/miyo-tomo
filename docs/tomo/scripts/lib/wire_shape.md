@@ -314,14 +314,126 @@ a schema loaded from disk, a scratch dict built for a test (as in the
 counterfactual pre-032 garden-audit walkthrough in solution.md), or a
 consumer's vendored copy, without needing to know which.
 
-## WHY `diff_shapes` and `classify` Are Not Here Yet
+## WHY `diff_shapes` Takes Two Node Maps, Not Two Manifests (T2.1)
 
-They are Phase 2 (T2.x). This module currently exposes `describe_shape`,
-`PUBLISHED_WIRES`, `build_manifest` and `serialize_manifest` in `__all__`;
-a reader who finds the module's surface partial should not read that as an
-oversight — the plan sequences shape description before shape comparison
-so each has its own RED-GREEN cycle against its own acceptance criteria
-(F1 here, F2 in Phase 2).
+`diff_shapes(recorded, observed)` receives `dict[pointer, NodeShape]` on
+both sides — never the `{schema_version, source, nodes}` wrapper
+`build_manifest` produces. The function has nothing useful to do with
+`schema_version` or `source`: it compares shapes, not files, and PRD F1-AC1
+(the failure must name the document) is deliberately NOT this function's
+job — see below. Taking the wrapper would tempt a future edit to reach into
+`manifest["nodes"]` internally, which just re-adds a parameter the caller
+already had to unwrap; taking the node map directly keeps `diff_shapes` as
+ignorant of the manifest file format as `describe_shape` already is of
+where a schema lives on disk.
+
+## WHY the Document Name Is Out of Scope for `diff_shapes` (deferred to T2.3)
+
+`diff_shapes` never learns which file `recorded`/`observed` came from — it
+receives two node maps and returns pointer+kind+detail, nothing else. PRD
+F1-AC1 requires a failure that names the document, but that is discharged
+by T2.3, which iterates `PUBLISHED_WIRES` and therefore knows the filename
+at the point it calls `diff_shapes` once per wire. Adding a `document`
+parameter here to shortcut that would duplicate a fact the caller already
+has, for no benefit to this function's own purity.
+
+## WHY `node_added`/`node_removed` Are Reported Once, Never Decomposed (T2.1)
+
+A pointer present in only one of the two node maps is emitted as exactly
+one `node_added` or `node_removed` change and is **never** also walked for
+`added_property`/`removed_property` on its own fields. The alternative —
+treating a brand-new node as "N new properties" — would make the gate's
+failure message for a genuinely new wire section list every one of its
+fields as a separate line of drift, drowning the one fact that actually
+matters ("this whole node is new") in noise that looks like N unrelated
+facts. `diff_shapes` computes `observed_pointers - recorded_pointers` (and
+the reverse) BEFORE ever calling `_diff_node`, and `_diff_node` is only
+ever invoked on the intersection — so there is no code path that could
+produce both a `node_added` and an `added_property` for the same pointer.
+`test_node_added_wholesale_is_reported_once_not_as_n_property_changes` (and
+its removal counterpart) pin both halves of this: the count AND the
+absence of property-level entries under the new node's own pointer, because
+the count alone goes hollow the moment the fixture's field count changes.
+
+## WHY Enum Diffing Compares VALUE SETS, Not Value Lists (T2.1)
+
+`_diff_node` reads `values[name]` (already sorted by `describe_shape`) and
+diffs it as `set(...) - set(...)` rather than a positional list comparison.
+A `values` list is semantically a SET — JSON Schema's `enum` has no
+ordering — so two describe_shape() outputs of the same enum are already
+guaranteed to agree on order (both sorted by `_value_sort_key`), but
+`diff_shapes` is also exercised directly against hand-built node maps in
+its own tests (T2.1's fixtures never go through `describe_shape`), where
+nothing guarantees the input lists arrive pre-sorted. Set-difference makes
+`diff_shapes` correct regardless of the caller's list order, and reusing
+`_value_sort_key` (already defined for exactly this "mixed JSON scalar
+types" problem) to order the OUTPUT keeps that determinism promise intact
+without inventing a second sort key.
+
+This is also what makes the const-widened-to-enum case (PRD F2-AC3, see
+above) fall out for free rather than needing a special rule: Phase 1
+records `const: "open"` as `["open"]`, so widening to
+`enum: ["open", "closed"]` is `{"open"} → {"open", "closed"}` — a
+one-element set difference, reported as a single `added_enum_value` for
+`"closed"` and nothing else, because `"open"` is in both sets and never
+enters either diff branch.
+
+## WHY `added_enum_value`/`removed_enum_value` Are Per-Value, Not Per-Property (T2.1)
+
+A property that gains two new enum members produces two `ShapeChange`
+entries, not one entry listing both values. `detail` is meant to read as a
+single human-legible fact in the gate's failure message ("status: added
+value 'closed'"), and a property that gained N values in one edit is still
+N independently-actionable facts for whoever reads the failure — bundling
+them into one string would mean T2.2's `classify` (or a future consumer of
+the change list) either re-parses a packed string or loses the ability to
+reason about one value at a time. Sorting them individually via
+`_value_sort_key` before appending keeps the output list's ordering
+guarantee whole even when a single property is the source of several
+entries.
+
+## WHY `consumer_affecting` Is Always `False` Here — Not T2.1's Decision to Make
+
+Every `ShapeChange` `diff_shapes` returns carries `consumer_affecting:
+False`, unconditionally, via the shared `_change()` constructor. This is a
+placeholder, not a judgment: T2.2's `classify(change, observed)` is the
+single place that decides the field, reading a node's `closed` flag off
+the `observed` manifest (ADR-4 — classification is read from the manifest,
+not maintained as a second rule table). If `diff_shapes` pre-judged even
+the "obvious" cases here — an enum value added is always affecting, a
+required field's disappearance sometimes is — that judgment would live in
+two places that could drift apart the moment one of them changes and the
+other doesn't get the matching edit. `_change()` being the only place that
+sets the field means there is exactly one line to change if the default
+placeholder value itself ever needs to move, and nowhere else the field
+could silently diverge from it.
+
+## WHY the Output Is Sorted by `(pointer, kind, detail)` (T2.1)
+
+Two independent runs of `diff_shapes` over the same two inputs must
+produce byte-identical output, because the drift gate's failure message
+(T2.3/T2.4) is built directly from this list — an unstable order would
+make two CI runs against unchanged inputs print their failure in a
+different sequence, which reads as noise the moment a real reviewer is
+trying to tell "did this change" from "did the order change." Sorting by
+the full `(pointer, kind, detail)` tuple (rather than pointer alone) also
+gives a stable order WITHIN one pointer that has several kinds of change at
+once — same reasoning as `required` and `values` being sorted inside
+`describe_shape` itself; this is that same anti-churn discipline applied
+one layer up, to the list `diff_shapes` returns rather than the node map
+`describe_shape` returns.
+
+## WHY `diff_shapes` and `classify` Were Not Here Yet, Historically
+
+`diff_shapes` is now implemented (T2.1, this section's siblings above).
+`classify` is still Phase 2's next task (T2.2) and is not implemented yet.
+This module currently exposes `describe_shape`, `PUBLISHED_WIRES`,
+`build_manifest`, `serialize_manifest` and `diff_shapes` in `__all__`; a
+reader who finds `classify` absent should not read that as an oversight —
+the plan sequences shape description, then shape comparison, then
+classification, so each has its own RED-GREEN cycle against its own
+acceptance criteria (F1 in Phase 1, F2 split across T2.1's diff mechanism
+and T2.2's classification rule).
 
 ## WHY `PUBLISHED_WIRES` Lives in `wire_shape.py`, Not in the Generator or the Tests (T1.2)
 

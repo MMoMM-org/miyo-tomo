@@ -5,9 +5,9 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-09 |
-| **Current Phase** | SDD |
-| **Decomposition tier** | {{DECOMPOSITION_TIER}} |
-| **Last Updated** | 2026-09-09 |
+| **Current Phase** | PLAN |
+| **Decomposition tier** | Incremental |
+| **Last Updated** | 2026-09-10 |
 
 ## Documents
 
@@ -15,7 +15,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 7 features, 25 Gherkin criteria, 4 open questions |
 | solution.md | completed | 6 ADRs confirmed, 16 EARS criteria, responsibility matrix run |
-| plan/ | pending | |
+| plan/ | completed | Incremental — 4 phases, 17 tasks, 75 spec refs |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -29,6 +29,9 @@
 | 2026-09-09 | **Scoped as "a delete must not outlive the action that justified it", not as "move_note carries its delete"** | Coupling the delete to `move_note` closes one of four emission sites. Two of the other three have the same shape with different partners — see the table below. Scoping to the shape covers all of them and does not need revisiting when a fifth partner appears. |
 | 2026-09-09 | **A dangling `depends_on` id fails closed at the executor too — our claim that it could not was wrong** | We told Hashi a dangling id was structurally undetectable on their side. True of `failedIds`, which only ever holds ids that ran and failed; **not** true of them — the whole set is in hand at plan time. They will check it and **skip** the delete. Their argument, adopted: *a guard that opens when it cannot read its own precondition is not a guard.* The producer invariant stays ours and the audit still gets built; theirs is what happens on the day one ships. Same error shape as the withdrawn rename — reasoning outward from one mechanism to a whole system's capability. |
 | 2026-09-09 | **`depends_on` contract settled by the consumer: required with explicit `[]`, snake case, union semantics** | Asked rather than assumed. Their sharpening of the required-vs-optional argument replaces ours as the recorded rationale: for a join key absence degrades a feature; for a delete gate absence is indistinguishable between "nothing justifies this" and "everything does", which have opposite correct behaviours. Union over override was decided by the F-43 case — a `depends_on` on an `add_relationship` would, under override, silently retire their collision-guard edge without anyone revoking it. They will read the field on any action kind, not only `delete_source`. |
+| 2026-09-10 | **Four phases: Declare → Collect → Unreachable cases → Contract** | Phase 1 emits `depends_on` and changes no behaviour, so the data is independently testable before anything consumes it; Phase 2 is then a pure behaviour change and is where P1 and Bug A stop happening. Phase 3 is **independent** of 1 and 2 — the tag-handler defects share no code with the `depends_on` machinery — and its two tasks are the plan's only genuine parallel opportunity. Phase 4 carries the wire, the audit, reporting and the integration proof. The guards-before-wire constraint binds the **release**, not the phase order: under ADR-1 a guard cannot drop a partner without amending the deletes naming it, because the withdrawal *is* the amendment. |
+| 2026-09-10 | **23 of 25 PRD criteria map to tasks; the other 2 are a recorded decision** | F7 (destructive actions read as destructive) is `Could Have` and deliberately not designed — a pure rendering change with no interaction with the withdrawal mechanism. Written into the plan's coverage table as a decision rather than left as an apparent gap, so a reviewer does not read it as an oversight. |
+| 2026-09-10 | **Decomposition tier: Incremental** | Classifier recommended Incremental and it was accepted. Signals read from the two documents: `change_type=fix`, `feature_count=5` (Must-Have F1–F5), `ac_count=25`, `component_count=2` (new surface only — `withdraw_unjustified_deletes`, `assert_no_dangling_dependencies`), `parallel_markers=false`. Rule 1 fires on both its clauses and precedes rule 2, so breadth vetoes the `change_type=fix` escape that would otherwise have routed this to Direct. Noted for accuracy: `tag_handler_group_is_appliable` is a third new function but appears only in an implementation example, not the Building Block View, so the mechanical count is 2. |
 | 2026-09-09 | **ADR-1: one id-keyed withdrawal pass — the guard and the wire field are one mechanism** | Every conditional delete declares its partner ids at build time; a single post-pass drops any delete whose declaration no longer resolves. Chosen over extending the existing path-keyed join, which would build the same relation twice with nothing keeping the halves in step — the cost that helper's own docstring records from T5.0c. The dangling-id invariant then holds **by construction**: the pass cannot leave a delete naming an absent id, because that is exactly what it removes. Same rule Hashi runs at plan time, so both sides evaluate one contract at two moments. |
 | 2026-09-09 | **The pass covers P1 and Bug A but NOT Bug B — stated, not papered over** | It handles a partner that was emitted and later dropped. Bug B's `insert_under_marker` is **never built** (`render_actions.py:1836-1839` skips a null target), so no id exists for the delete to name. Bug B therefore needs the two loops to share one appliability predicate (ADR-5). A design claiming to subsume all three would have left Bug B open while looking complete. |
 | 2026-09-09 | **There are five action-dropping guards, not three** | Found while placing the pass: `validate_destinations` (`:567`), `suppress_moves_for_unfiled_attachments` (`:585`), `filter_unresolvable_moc_links` (`:646`), `filter_missing_daily_notes` (`:713`) and `filter_unappliable_relationships` (`:728`, defined in `render_resolve.py:829`). They are split across two modules, which is why the fifth went unnoticed. The pass runs after all five; anywhere earlier is a latent instance of the bug being fixed. |

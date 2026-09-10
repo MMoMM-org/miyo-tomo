@@ -67,7 +67,7 @@ Turns the recorded shape into a gate.
      - [x] An unchanged pair produces nothing `[ref: PRD/F1-AC5]`
      - [x] Enum value additions and removals are reported as distinct kinds `[ref: SDD/Application Data Models; ShapeChange]`
 
-- [ ] **T2.2 `classify` decides whether the consumer is obliged** `[activity: domain-modeling]`
+- [x] **T2.2 `classify` decides whether the consumer is obliged** `[activity: domain-modeling]`
 
   The rule was measured against the consumer's own validator across eight change classes. Encode
   what was measured, not what versioning theory suggests.
@@ -146,14 +146,14 @@ Turns the recorded shape into a gate.
   3. Implement: `classify(change, observed) -> bool`, reading `closed` from the manifest.
   4. Validate: unit tests pass; ruff clean.
   5. Success:
-     - [ ] Closed-node addition is affecting `[ref: PRD/F2-AC1]`
-     - [ ] Open-node addition is not `[ref: PRD/F2-AC2]`
-     - [ ] Enum addition is affecting `[ref: PRD/F2-AC3]`
-     - [ ] Required removal is affecting; optional removal is not `[ref: PRD/F2-AC4]`
-     - [ ] Closing a node is affecting; opening one is not `[ref: PRD/Business Rules; Rule 8]`
-     - [ ] A wholesale node addition is affecting `[ref: PRD/Business Rules; Rule 9]`
-     - [ ] Every kind `diff_shapes` emits has a rule, asserted exhaustively over `CHANGE_KINDS`
-     - [ ] A field joining `required` is not affecting `[ref: SDD/Application Data Models]`
+     - [x] Closed-node addition is affecting `[ref: PRD/F2-AC1]`
+     - [x] Open-node addition is not `[ref: PRD/F2-AC2]`
+     - [x] Enum addition is affecting `[ref: PRD/F2-AC3]`
+     - [x] Required removal is affecting; optional removal is not `[ref: PRD/F2-AC4]`
+     - [x] Closing a node is affecting; opening one is not `[ref: PRD/Business Rules; Rule 8]`
+     - [x] A wholesale node addition is affecting `[ref: PRD/Business Rules; Rule 9]`
+     - [x] Every kind `diff_shapes` emits has a rule, asserted exhaustively over `CHANGE_KINDS`
+     - [x] A field joining `required` is not affecting `[ref: SDD/Application Data Models]`
 
 - [ ] **T2.3 The gate, and a message that says what to do** `[activity: backend-api]`
 

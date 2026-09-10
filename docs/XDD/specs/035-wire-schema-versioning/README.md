@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-09 |
-| **Current Phase** | SDD |
-| **Decomposition tier** | {{DECOMPOSITION_TIER}} |
+| **Current Phase** | PLAN |
+| **Decomposition tier** | Incremental |
 | **Last Updated** | 2026-09-10 |
 
 ## Documents
@@ -15,7 +15,7 @@
 |----------|--------|-------|
 | requirements.md | completed | 8 features, 28 criteria, 4 open questions |
 | solution.md | completed | 7 ADRs confirmed, 14 EARS criteria, all 8 features owned |
-| plan/ | pending | |
+| plan/ | completed | Incremental — 4 phases, 16 tasks, 28/28 criteria referenced |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
 
@@ -25,6 +25,9 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-09-10 | **Four phases; the last one cannot be completed in-session** | Phase 1 records the shape, Phase 2 turns it into a gate, Phase 3 (independent, verified by file overlap rather than asserted) removes two ways the mechanism could be defeated from underneath, Phase 4 makes it usable and closes the live drift. **T4.3 ends by writing a handoff and stopping**; T4.4 is blocked on the owner returning with the consumer's confirmation. The spec does not reach `Implemented` until they have — that is the WAIT rule applied to a plan rather than to a message. |
+| 2026-09-10 | **The manifest and the vendored copy answer different questions — stated in the plan because conflating them is the likeliest misimplementation** | The manifest asks *did **we** change since last recorded* and correctly bakes our current state as baseline; the vendored copy asks *does the **consumer** accept what we emit*. The garden-audit drift is visible only to the second: our schema declares eight properties on `findings[].detail`, theirs declares six — measured on both sides. A reader who expects the manifest to surface that drift will conclude the mechanism is broken when it is working as designed. |
+| 2026-09-10 | **Decomposition tier: Incremental** | Classifier recommended Incremental and it was accepted. Signals: `change_type=feature`, `feature_count=6`, `ac_count=28`, `component_count=2` (new code surface — the `wire_shape` library and the user-invoked CLI; the manifests are data, not components), `parallel_markers=false`. The word "parallel" does occur in `solution.md:210` but as *"a parallel list of rules that could drift"* — prose, not a work-stream marker. Recorded as false deliberately: a signal taken from a substring match rather than its meaning is the by-eye counting that went wrong twice in spec 036. Rule 1 fires on both clauses; `change_type=feature` means rule 2's escape never applied. |
 | 2026-09-10 | **ADR-1: a committed shape manifest per wire is the baseline — detection and the obligation table are one mechanism** | The report must name document, pointer and property, which rules out a hash. It must work on a schema with no `$defs`, which is exactly the document that drifted. It must work offline, because the consumer's copy is deliberately stale during a wait. A structural manifest satisfies all three — and the diff printed when it is regenerated **is** the obligation table's raw material, so F1's detection and F4's handover cannot disagree with each other. |
 | 2026-09-10 | **ADR-2: the manifest records types as well as names, `required` and openness — but never prose** | The first draft excluded types on churn grounds. Corrected before confirmation: the eight-class matrix measured a **type change as consumer-affecting** — emitting `null` where `string` is declared errors in Hashi's validator — so excluding types would have left a real breaking change invisible to the detector. Descriptions stay out, because that is where the churn actually is. The line is drawn where the noise is, not where the recording is cheapest. |
 | 2026-09-10 | **ADR-5: renderers read `schema_version` from their own schema instead of declaring it** | Makes the divergence F3 describes **impossible** rather than merely detected. Feasible because schemas ship to the instance (`install-tomo.sh:1262-1264`) and `garden-audit-configure.py:49` is the existing precedent for a runtime script resolving one. The F3 assertion stays as a regression guard even though it becomes vacuous. |

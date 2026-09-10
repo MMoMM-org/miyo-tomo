@@ -295,8 +295,13 @@ dereferenced, and nothing more — which finds the trigger that already
 happened, not the ones that have not yet been observed. The fix this
 round instead enumerates every dereference `gate_one_wire`'s downstream
 code performs on manifest-sourced (i.e. UNTRUSTED — read from a file)
-data, and validates exactly that set, so a fourth round should not be
-needed for the same reason.
+data, and validates exactly that set. **The forward-looking guarantee
+this method offers is about the METHOD, not a claim that this round's
+OUTCOME is final** — re-derive from `_diff_node`'s actual dereferences,
+verified by direct testing per field, whenever that function changes;
+see the correction and the fourth round documented further down this
+file, which is exactly what happens when that discipline is applied
+carelessly rather than what happens when it is skipped.
 
 **The trace.** `manifest["nodes"]` is handed to `wire_shape.py`'s
 `diff_shapes(recorded, observed)` as `recorded`. For every pointer present
@@ -310,19 +315,21 @@ both guarded the manifest's TOP-LEVEL keys (`nodes`, `schema_version`)
 existing and having the right type, never the VALUES living inside
 `nodes`.
 
-**Below that level, `_diff_node` mostly self-protects — verified by
-direct testing, not assumed:**
+**Below that level, `_diff_node` mostly self-protects for the cases
+actually tested this round — verified by direct testing, not assumed, but
+see the correction after this section for exactly which cases that was:**
 
 ```
 old.get("required") or []      # a str is falsy-or-truthy but never crashes
-                                # downstream; a wrong-typed required DEGRADES
+                                # downstream; a STRING-typed required DEGRADES
                                 # (iterates characters) rather than raising —
                                 # confirmed: diff_shapes({"/x": node(required="oops")},
                                 # {"/x": node(required=["a"])}) returns a
                                 # (wrong but non-crashing) required_added/
                                 # required_removed list, no exception
-old.get("properties") or {}    # same shape, same result: confirmed non-crashing
-                                # for a string `properties`
+old.get("properties") or {}    # confirmed non-crashing for a STRING `properties`
+                                # whose characters do not overlap the other
+                                # side's real property names
 bool(old.get("closed"))        # bool(...) never raises for ANY input type
 ```
 
@@ -365,6 +372,43 @@ and `test_manifest_node_values_field_not_a_dict_fails_as_malformed` are
 the regression guards for the two derived checks; the first also proves
 the loop-continuation half in the same call, mirroring
 `test_one_broken_manifest_does_not_abort_gating_the_other_wires`.
+
+**Correction (code review, 2026-09-10, re-review): the "verified by
+direct testing" claim above was true for `required` and false for
+`properties`, and the sentence did not distinguish them.** A verification
+pass fuzzed 15 corruption cases against the real committed manifests and
+found zero loop aborts, and that result was reported as confirming this
+section's derivation. It was a false negative. `_diff_node` only
+evaluates `old_properties[name]` for `name` in `set(old_properties) &
+set(new_properties)` — a SUBSCRIPT gated by an intersection. The fuzz
+run's corrupt `properties` values did not happen to share any names with
+the real schema's properties, so that line never executed; a corrupt
+value that DOES overlap (e.g., a list containing the node's own real
+property names) reaches the subscript and raises `TypeError` immediately.
+**A conditional dereference is invisible to fuzzing unless the corrupt
+input is adversarial with respect to the OTHER side of the comparison.**
+`.get(...)` calls are unconditional and turn up in any fuzz run;
+subscripts guarded by a set intersection only fire on overlapping data,
+and only reading `_diff_node` top to bottom — tracing what CAN happen,
+not sampling what DID happen in N trials — reliably finds them.
+
+The `required` half of the same sentence had the opposite problem:
+tested, but only for one input shape. `old.get("required") or []` is only
+ever passed to `set(...)`, never subscripted — but `set(...)` itself
+raises `TypeError` for a non-iterable TRUTHY value (an int, a bool, a
+float), a case the string-only test never exercised. `required` therefore
+needed a type check too, alongside `properties`, both added the same
+round the `properties` gap surfaced. See
+`_validate_manifest_shape`'s current docstring for the corrected,
+per-field account of exactly what was traced and what direct testing
+confirmed for each — dict for `properties`/`values`, list for `required`,
+no check for `closed`.
+`test_manifest_node_properties_field_wrong_type_fails_as_malformed_adversarially`
+and its loop-continuation sibling build the corrupt value adversarially
+(the node's own real property names) specifically so the test cannot pass
+by the same accident the fuzz run did;
+`test_manifest_node_required_field_non_iterable_fails_as_malformed`
+covers the non-iterable case the string-only verification missed.
 
 ## WHY the Renderer Names an Instruction on Every Failure Branch, Error Branches Included (code review, 2026-09-10)
 

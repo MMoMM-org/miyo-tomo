@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """wire_gate.py — The drift gate for a published wire: diff + classify +
 version-check, and a message that says what to do (spec 035 T2.3).
 
@@ -138,39 +138,76 @@ def _validate_schema_shape(schema) -> str | None:
 def _validate_manifest_shape(manifest) -> str | None:
     """Every fragment `gate_one_wire`'s downstream code dereferences from a
     parsed manifest, and NOTHING deeper than that — derived from tracing
-    every access, not from patching whatever crash was last observed (code
-    review, 2026-09-10; this is the third round on that exact distinction,
-    see wire_gate.md's "WHY the Validation Set Is Derived From
-    Dereferences").
+    every operation `wire_shape.py`'s `_diff_node(pointer, old, new)`
+    performs on `old` (the manifest-sourced side; `new`, from `observed`,
+    is always well-formed by construction and never validated — see
+    below), field by field, THEN VERIFIED BY DIRECT TESTING per field —
+    not asserted from reading the code alone, and not stopped at the first
+    field that happened to crash. This function has been revised three
+    times (code review, 2026-09-10) on exactly the gap between "read the
+    code and reason about it" and "actually run it": see wire_gate.md's
+    "WHY the Validation Set Is Derived From Dereferences" for the full
+    history, including a verification that reported this closed when a
+    subscript conditional on overlapping data meant the fuzz run used to
+    check it never actually exercised the crash.
 
-    `manifest["nodes"]` is passed to `diff_shapes`, which hands each
-    pointer's value in it to `wire_shape.py`'s `_diff_node(pointer, old,
-    new)` as `old`. `_diff_node` calls `.get("properties")`,
-    `.get("required")`, `.get("closed")`, and `.get("values")` on `old` —
-    so every value in `nodes` must itself support `.get(...)`, i.e. be a
-    dict. Below that, `_diff_node` uses `or {}`/`or []`/`bool(...)`
-    fallbacks that tolerate a WRONG type for `properties`/`required`/
-    `closed` (verified directly: a string `required` degrades to a
-    character-by-character diff rather than raising; `bool(...)` never
-    raises for any type) — so those three are not validated further, per
-    the "no more than necessary" rule this function follows.
+    `manifest["nodes"]` is passed to `diff_shapes` as `recorded`; for
+    every pointer, `_diff_node(pointer, recorded[pointer],
+    observed[pointer])` receives `recorded[pointer]` as `old`. So `old`
+    itself must be a dict (checked below, per-node) and, per field:
 
-    `values` is the ONE exception below the top level: `_diff_node`'s enum
-    diff calls `old_values.get(name, [])` a SECOND time, inside the loop —
-    a fallback (`or {}`) only reached when the raw value is falsy, so a
-    truthy non-dict `values` (a non-empty list or string) reaches that
-    second `.get` and raises `AttributeError`, exactly as `old`/`new`
-    themselves would if not a dict. `values` therefore needs the same
-    dict-or-absent check as the node itself; `properties`/`required`/
-    `closed` do not.
+    - `properties`: `old.get("properties") or {}`, then BOTH `set(...)`
+      (three times, for added/removed/type-changed) AND, for any NAME
+      present in both sides, `old_properties[name]` (a SUBSCRIPT, not a
+      `.get`). Confirmed by direct testing to crash two DIFFERENT ways: a
+      non-iterable truthy value (`5`, `True`) raises `TypeError` at the
+      `set(...)` call regardless of overlap; a non-dict but ITERABLE value
+      (a list or string) raises `TypeError` at the subscript ONLY when a
+      name it happens to contain overlaps the other side's real property
+      names — a conditional dereference invisible to a fuzz run that
+      never tries an adversarial (overlapping) value. Either way, `dict`
+      is the only type that survives both operations for every input, so
+      `properties` needs the unconditional dict check.
+    - `required`: `set(old.get("required") or [])` — ONLY ever passed to
+      `set(...)`, never subscripted afterward. Confirmed by direct testing
+      that a STRING value degrades (iterates characters, wrong-but-non-
+      crashing) rather than raising — but a NON-ITERABLE truthy value
+      (`5`, `True`, `1.5`) raises `TypeError` at that same `set(...)`
+      call, the same failure mode `properties` hits at its own `set(...)`
+      calls. A prior revision of this docstring claimed `required` was
+      "verified directly" as safe based ONLY on the string case — that
+      claim was false; the non-iterable case was not tested. `required`
+      therefore needs a type check too — `list`, matching what
+      `describe_shape` actually emits, which closes every non-iterable
+      case cleanly.
+    - `closed`: `bool(old.get("closed"))` — confirmed to never raise for
+      any input type. No check needed.
+    - `values`: `old.get("values") or {}`, then `set(...)` AND a SECOND
+      `.get(name, [])` call per name — the same two-dereference shape as
+      `properties`, but the second dereference needs `.get` specifically
+      (not a subscript), so only a genuine dict survives it. Confirmed by
+      direct testing: a non-empty list or string raises `AttributeError`.
+
+    The result: `properties`, `required`, and `values` each need an
+    unconditional type check when present as a key — dict, list, dict
+    respectively — regardless of whether a given wrong-typed value happens
+    to be falsy enough to survive `_diff_node`'s own `or {}`/`or []`
+    fallback today. That breadth is deliberate, not an inconsistency with
+    "no more than necessary": a value that would degrade gracefully today
+    (say, `properties: []`, absorbed by `or {}`) is still not what the
+    manifest format actually allows, and a single "must be the right type
+    when present" rule is simpler to hold and re-verify than tracking
+    which specific falsy shapes each field's fallback happens to tolerate.
+    `closed` gets no check — genuinely unconditional in `bool(...)`, the
+    one field this reasoning does not apply to.
 
     `observed` (the OTHER node map `diff_shapes` reads) is never validated
-    here because it never needs to be: it comes from `describe_shape`,
-    which always builds it well-formed, and `classify` never receives
-    `recorded` at all (see its own docstring) — so `manifest["nodes"]` is
-    the ENTIRE untrusted-data surface this module's downstream code
-    dereferences unsafely. `schema_version` is compared with `!=` only,
-    never dereferenced, so no type check applies to it.
+    here: it comes from `describe_shape`, which always builds it
+    well-formed, and `classify` never receives `recorded` at all (see its
+    own docstring) — so `manifest["nodes"]` is the ENTIRE untrusted-data
+    surface this module's downstream code dereferences. `schema_version`
+    is compared with `!=` only, never dereferenced, so no type check
+    applies to it.
     """
     if not isinstance(manifest, dict):
         return "manifest is not a JSON object"
@@ -182,6 +219,10 @@ def _validate_manifest_shape(manifest) -> str | None:
     for pointer, node in nodes.items():
         if not isinstance(node, dict):
             return f"manifest node {pointer!r} is not a JSON object"
+        if not isinstance(node.get("properties", {}), dict):
+            return f"manifest node {pointer!r} has a non-object 'properties' field"
+        if not isinstance(node.get("required", []), list):
+            return f"manifest node {pointer!r} has a non-array 'required' field"
         if not isinstance(node.get("values", {}), dict):
             return f"manifest node {pointer!r} has a non-object 'values' field"
     return None
@@ -298,12 +339,13 @@ def gate_one_wire(document: str, schema_path: Path, manifest_path: Path) -> dict
       maintainer who forgot to commit a manifest needs to be told to
       create one, not to regenerate a file that does not exist).
     - manifest unreadable (OSError / invalid JSON) or malformed (valid
-      JSON, but missing `nodes`/`schema_version`, or a node in `nodes`
-      that is not an object, or a node whose `values` field is not an
-      object — every dereference `diff_shapes`/`_diff_node` make on
-      manifest-sourced data, derived by tracing them rather than by
-      patching each crash as it was found; see `_validate_manifest_shape`
-      and wire_gate.md) — both instruct "regenerate the manifest".
+      JSON, but missing `nodes`/`schema_version`, a node in `nodes` that
+      is not an object, or a node whose `properties`/`required`/`values`
+      field is not the right type — every dereference `diff_shapes`/
+      `_diff_node` make on manifest-sourced data, derived by tracing them
+      AND verified by direct testing per field, not by patching each
+      crash as it was found; see `_validate_manifest_shape` and
+      wire_gate.md) — both instruct "regenerate the manifest".
 
     ALL FOUR matter more than they look, for the same reason: an uncaught
     exception here does not just fail this wire badly — it propagates out

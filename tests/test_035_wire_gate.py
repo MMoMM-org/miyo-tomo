@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """test_035_wire_gate.py — Behavioural tests for lib.wire_gate: diff +
 classify + version-check, per published wire (spec 035 T2.3).
 
@@ -77,11 +77,25 @@ Tests cover:
 - a THIRD loop-abort trigger (code review, 2026-09-10, after the missing-
   file and missing-top-level-key triggers already closed): valid JSON,
   valid top-level keys, but one node's VALUE inside `nodes` is not a dict,
-  or a node's `values` field specifically is a non-dict truthy value —
-  each fails as ERROR_MANIFEST_MALFORMED and does not abort gating the
-  other wires. The validation set was DERIVED by tracing every
-  `manifest`-sourced dereference in wire_shape.py's `_diff_node`, not by
-  patching the crash last observed — see wire_gate.md
+  or a node's `values` field specifically is not a dict — each fails as
+  ERROR_MANIFEST_MALFORMED and does not abort gating the other wires
+- a FOURTH loop-abort trigger (code review, 2026-09-10, re-review): a
+  node's `properties` field that is a non-dict but ITERABLE value (a list
+  or string) crashes `_diff_node`'s subscript ONLY when the corrupt value
+  happens to overlap the other side's real property names — a
+  conditional dereference a non-adversarial fuzz run can miss entirely.
+  The regression test here is deliberately ADVERSARIAL: the corrupt
+  `properties` value is a list of the node's OWN real property names, so
+  the overlap — and the crash — is guaranteed. Also found independently
+  while re-verifying: `required`, passed only to `set(...)` and never
+  subscripted, still crashes on a non-iterable TRUTHY value (an int, a
+  bool) even though a STRING value degrades safely — a prior version of
+  this claim was verified for strings only and wrongly generalized to
+  "required is safe". The validation set is DERIVED by tracing every
+  `manifest`-sourced dereference in wire_shape.py's `_diff_node`, AND
+  verified per field by direct testing — not by patching the crash last
+  observed, and not by asserting a verification that was not actually
+  performed for every field it claimed to cover. See wire_gate.md
 - two wires mutated in one edit -> both reported in one `run_wire_gate`
   call, each against its own independent result — the third, untouched wire
   still passes in the same run
@@ -688,6 +702,107 @@ def test_manifest_node_values_field_not_a_dict_fails_as_malformed(tmp_path):
     assert result["error"] is not None
     assert result["error_kind"] == ERROR_MANIFEST_MALFORMED
     assert "values" in result["error"].lower()
+    assert result["affecting"] is None
+    assert result["changes"] == []
+    assert result["actions"] == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CRITICAL, fourth round (code review, 2026-09-10): a `properties` field
+# that is not a dict. `_diff_node` subscripts `old_properties[name]` for
+# any NAME present on both sides — a CONDITIONAL dereference that only
+# fires when the corrupt value happens to overlap the other side's real
+# property names. A non-adversarial test (a corrupt value sharing no names
+# with the real properties) passes against the UNFIXED code, which is
+# exactly how a prior fuzz-based verification missed this and reported the
+# derivation complete. This test is deliberately adversarial: the corrupt
+# `properties` value is a list of the node's OWN real property names, so
+# the intersection is guaranteed non-empty and the subscript genuinely
+# fires.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_manifest_node_properties_field_wrong_type_fails_as_malformed_adversarially(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+    document = "instructions.schema.json"
+
+    def corrupt(manifest):
+        real_property_names = list(manifest["nodes"][""]["properties"])
+        assert real_property_names, "fixture sanity: the root node must have real properties"
+        # A list, not a dict — but containing the SAME names the live
+        # schema's root node actually declares, so `set(...)` succeeds
+        # (a list is iterable) and the later `old_properties[name]`
+        # subscript is reached for a genuinely overlapping name.
+        manifest["nodes"][""]["properties"] = real_property_names
+
+    _rewrite_json(shapes_dir / manifest_filename(document), corrupt)
+
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
+
+    assert result["passed"] is False
+    assert result["error"] is not None
+    assert result["error_kind"] == ERROR_MANIFEST_MALFORMED
+    assert "properties" in result["error"].lower()
+    assert result["affecting"] is None
+    assert result["changes"] == []
+    assert result["actions"] == []
+
+
+def test_manifest_node_properties_field_wrong_type_does_not_abort_gating_the_other_wires(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+
+    suggestions = "suggestions-wire.schema.json"
+    garden_audit = "garden-audit-wire.schema.json"
+    instructions = "instructions.schema.json"
+
+    def corrupt(manifest):
+        real_property_names = list(manifest["nodes"][""]["properties"])
+        assert real_property_names
+        manifest["nodes"][""]["properties"] = real_property_names
+
+    _rewrite_json(shapes_dir / manifest_filename(suggestions), corrupt)
+    # garden_audit and instructions are left untouched.
+
+    results = run_wire_gate(schemas_dir, shapes_dir)
+    by_document = {result["document"]: result for result in results}
+
+    assert set(by_document) == {suggestions, garden_audit, instructions}
+
+    assert by_document[suggestions]["passed"] is False
+    assert by_document[suggestions]["error_kind"] == ERROR_MANIFEST_MALFORMED
+
+    assert by_document[garden_audit]["passed"] is True
+    assert by_document[garden_audit]["changes"] == []
+    assert by_document[instructions]["passed"] is True
+    assert by_document[instructions]["changes"] == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Found independently while re-verifying the team-lead's "required degrades
+# rather than crashes" claim (code review, 2026-09-10): that claim was
+# tested only against a STRING value. `required` is passed to
+# `set(old.get("required") or [])` — a non-iterable TRUTHY value (an int,
+# a bool, a float) is not absorbed by `or []` and raises `TypeError` at
+# that `set(...)` call, the same failure class `properties` hits, just
+# without needing an adversarial overlap (no subscript ever happens for
+# `required`). Reported alongside the properties fix rather than left
+# for a fifth round.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_manifest_node_required_field_non_iterable_fails_as_malformed(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+    document = "instructions.schema.json"
+
+    _rewrite_json(
+        shapes_dir / manifest_filename(document),
+        lambda manifest: manifest["nodes"][""].__setitem__("required", 5),
+    )
+
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
+
+    assert result["passed"] is False
+    assert result["error"] is not None
+    assert result["error_kind"] == ERROR_MANIFEST_MALFORMED
+    assert "required" in result["error"].lower()
     assert result["affecting"] is None
     assert result["changes"] == []
     assert result["actions"] == []

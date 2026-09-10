@@ -229,24 +229,36 @@ Turns the recorded shape into a gate.
      test still skips offline.
   3. Implement: swap the comparison surface for `describe_shape` + `diff_shapes`.
 
-     **The exemption registry cannot survive a full-depth walk unchanged.** Corrected 2026-09-10 by
-     validation: `SNAPSHOT_AHEAD_OF_UPSTREAM`'s three entries also appear in the snapshot's root
-     `properties/actions/items/oneOf`, and a full-depth walk reaches those pointers. Keyed by
-     def-name, the registry cannot filter them — so the pre-existing tests this task names as its
-     gate **would fail**. Two ways out, and the task must pick one explicitly rather than discover
-     this at implementation:
-     a. **Make this comparison a report too**, consistent with ADR-7 — the upstream check then stops
-        being a gate and the exemption question dissolves. Preferred: it is the same reasoning ADR-7
-        already applied to the vendored copies, and applying it in one place and not the other is
-        the inconsistency that would need explaining later.
-     b. Key the exemption by JSON pointer prefix instead of def-name, so an ahead-action's `oneOf`
-        branch is excluded alongside its `$def`. Keeps the gate, costs a registry redesign — the
-        redesign 036's validation already flagged as pending.
+     **DECIDED 2026-09-10: this comparison becomes a REPORT, not a gate.** Owner decision.
+
+     ~~The exemption registry cannot survive a full-depth walk unchanged.~~ **That claim was wrong
+     and is withdrawn.** It asserted that `SNAPSHOT_AHEAD_OF_UPSTREAM`'s three entries "also appear
+     in the snapshot's root `properties/actions/items/oneOf`", so a def-name-keyed registry could not
+     filter them. Measured instead: each ahead-action appears at exactly **one** pointer, its own
+     `/$defs/<name>`. All 16 `oneOf` branches are pure `$ref` objects declaring no `properties`, and
+     `describe_shape` only records a node where `properties` exists — so a `$ref` branch is never a
+     recorded pointer. The registry would have survived a full-depth walk untouched. Noting this
+     because the false claim was itself labelled "corrected by validation", which is how a wrong fact
+     acquires the authority of a checked one.
+
+     The decision therefore rests on principle rather than cost, where it always should have:
+
+     - **ADR-7 already ruled that a vendored consumer copy is a report, never a gate**, because it is
+       *supposed* to lag ours between handoff and confirmation. This snapshot is exactly such a copy.
+     - `SNAPSHOT_AHEAD_OF_UPSTREAM` exists **only because we were gating something that should not be
+       gated**. Its three entries are each a pending handoff where we are deliberately ahead. As a
+       report, the registry is not redesigned — it is deleted.
+     - It was already effectively a report: the test fetches over the network and **skips offline**,
+       which it is doing in this environment right now. A gate that cannot run is not a gate.
+     - Applying ADR-7 to two vendored copies (T4.2) and not this third one is the inconsistency
+       someone would have to explain later.
   4. Validate: **full suite green** — the gate for this task is the pre-existing tests.
   5. Success:
      - [ ] Root-level differences are detected `[ref: PRD/F1-AC1]`
      - [ ] A `$defs`-free schema is compared non-vacuously `[ref: PRD/F1-AC3]`
      - [ ] Existing wire-hygiene and parity tests unchanged `[ref: SDD/Implementation Boundaries]`
+     - [ ] The upstream comparison reports a delta and never fails on one `[ref: SDD/Architecture Decisions; ADR-7]`
+     - [ ] `SNAPSHOT_AHEAD_OF_UPSTREAM` is removed, not re-keyed — a report needs no exemptions
 
 - [ ] **T2.5 Phase Validation** `[activity: validate]`
 

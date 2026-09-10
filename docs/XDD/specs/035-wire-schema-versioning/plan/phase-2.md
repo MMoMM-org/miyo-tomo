@@ -178,9 +178,36 @@ Turns the recorded shape into a gate.
        **not** demand a version move;
      - no change → pass silently;
      - unparseable schema → fail, never treated as "no change";
-     - two wires changed in one edit → both reported, each against its own counter.
-  3. Implement: the check in `tests/test_035_wire_shape.py`, iterating the three published wires.
-  4. Validate: unit tests pass; ruff clean.
+     - two wires changed in one edit → both reported, each against its own counter. **The gate
+       iterates all three wires and reports every failure together; it must not stop at the first.**
+       Stopping early would hide a second wire's obligation behind the first one's, and CON-4 exists
+       precisely because the counters are independent;
+     - **the non-affecting message must NOT demand a version move** — assert its absence, not merely
+       the presence of the regeneration instruction `[ref: PRD/F7-AC2]`. A message that asks for both
+       satisfies a presence-only test while telling the maintainer to do something the rule says is
+       unnecessary, which is how a detector starts crying wolf.
+
+     **Separate the decision from the rendering.** Four of this task's criteria are about what the
+     failure *says*, and there are two bad ways to test that: assert exact prose (brittle — any
+     rewording breaks the suite) or assert nothing (the message rots while the tests stay green).
+     Neither is necessary. Have the gate produce a **structured result** — per wire: the document,
+     the changes with their pointers and properties, whether any is affecting, the version
+     transition, and which actions are demanded — and render the human message from it. Tests then
+     assert against the structure, with one or two covering the rendering itself.
+
+     This is the same rule already settled for `detail`, applied one level up: **a human-readable
+     string is for humans and nothing may parse it.** It also pays forward — T4.1's `--obligations`
+     needs one row per changed field, and a structured result means the CLI reuses the gate's output
+     instead of scraping its message.
+  3. Implement: the check iterating the three published wires. **Put it in its own file** —
+     `tests/test_035_wire_gate.py` — consistent with the one-file-per-concern split the other 035
+     test modules already follow, and it keeps the gate out of `wire_shape.py` as the module-split
+     note above requires.
+  4. Validate: unit tests pass; ruff clean. **The gate must be GREEN on the repository as it
+     stands** — the committed manifests match the live schemas, so the honest answer today is "no
+     change". That is also the trap: a gate that unconditionally passes is equally green right now,
+     so every failure case has to be proven against a mutated scratch copy rather than against the
+     real tree. **Never mutate a committed schema or manifest in place.**
   5. Success:
      - [ ] Affecting + unmoved version fails; moved passes `[ref: PRD/F2-AC5]`
      - [ ] The failure names the **document**, the location and the property `[ref: PRD/F1-AC1]`

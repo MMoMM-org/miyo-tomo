@@ -5,15 +5,15 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-09 |
-| **Current Phase** | Initialization |
+| **Current Phase** | PRD |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
-| **Last Updated** | 2026-09-09 |
+| **Last Updated** | 2026-09-10 |
 
 ## Documents
 
 | Document | Status | Notes |
 |----------|--------|-------|
-| requirements.md | pending | |
+| requirements.md | completed | 8 features, 28 criteria, 4 open questions |
 | solution.md | pending | |
 | plan/ | pending | |
 
@@ -25,6 +25,13 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-09-10 | **The existing drift check cannot catch this class of change — it passes vacuously** | Measured, not inferred. `test_snapshot_matches_upstream_hashi` builds its comparison surface from `$defs` entries carrying an `action` property. `suggestions-wire.schema.json` has **zero `$defs`** — every object is inline — so the diff loop runs **zero iterations** and the test passes while the schema is drifted. Pointing it at the drifted document would have changed nothing. Even on the instructions wire it compares no root-level fields: root parity today is coincidence, not enforcement. This retires the cheap version of this spec ("extend the existing test") before it was proposed. |
+| 2026-09-10 | **Three published wires, not two — and a THIRD drift is live right now** | The garden-audit wire is vendored and compiled by Hashi (`garden-audit-validator.ts:12`), so it is a contract. `up_source` and `up_value` were added to `findings[].detail` by specs 032/033 (`33fb7d8`, `2111772`), never announced, never vendored, both sides still pinned at `"1"`. Verified against **every Hashi remote branch and `origin/main`** — not a working-tree artefact. It is non-breaking **only** because `findings[].detail` is the single open node in that document; root and `findings[]` are both closed. The pattern recurred while the spec about it was being written. |
+| 2026-09-10 | **The bump rule is "is the node closed", not "did the shape change" — the README's own assumption was falsified** | Run against Hashi's compiled ajv and Hashi's own fixtures across eight change classes. Consumer-affecting: add to a closed node, remove a *required* field, **add an enum value** (counter-intuitive), widen a type. Not consumer-affecting: add to an open node, remove an *optional* field, start emitting a declared optional, prose. The live garden-audit drift is the standing proof that "any shape change" would cry wolf on exactly the case that is fine. Closed-node counts: suggestions 10/10, garden-audit 6/7, instructions 18/21. |
+| 2026-09-10 | **No new handoff protocol — the round trip through the owner IS the lead time** | Owner instruction, overriding a researched proposal. Research had designed a two-phase commit over the protocol's `pending → in-progress → done` flow; the owner's correction: *"we don't need a new handoff protocol… when you need cross repo interaction you need to do the handoff and WAIT."* He carries material between sessions himself. F4-AC4 (do not emit the new version until the consumer confirms) is that rule applied to emission, not a construct. **No shared protocol document is edited by this spec.** |
+| 2026-09-10 | **The changed-fields list is an obligation table, not a diff** | Hashi's own structural diff recomputes property sets, `required` and `additionalProperties` from the file — so enumerating changed fields adds nothing. What their diff **deliberately ignores is prose**, which carries every semantic. The list's value is meaning, which of their files must move, and breaking-ness. The decisive case: `depends_on` rejects every set immediately, while `source_item_key` rejects **nothing today** — all current runs have empty daily buckets — so an un-vendored consumer breaks silently on the first run with daily content. That is not derivable from the schema; it needs producer data. |
+| 2026-09-10 | **Two adjacent defects pulled into scope: the `$id` collision and the free-floating version literals** | Both instruction schemas declare `$id` `https://miyo.tomo/schemas/instructions.schema.json` with identical title and description while differing structurally (the contract carries a `replace_section` def the producer copy lacks) — the mechanical cause of Hashi diffing the wrong file and reporting phantom drift. Separately, `schema_version` is a free-standing literal in three renderers (`suggestions-render.py:402`, `instruction-render.py:778`, `garden-audit-render.py:1283`) asserted against nothing, so a bump can land in the schema and not the emitter. Both would defeat the mechanism this spec builds; neither is worth a spec of its own. |
+| 2026-09-10 | **Fifteen internal schemas stay out of scope** | `tomo/schemas/` holds ~18 files; exactly three are vendored by Hashi. The rest were grepped for across Kado, Kokoro, Seigyo, Tsukai and Hakobi — zero external references. Bringing them under the rule would fill the report with changes nobody can be broken by, and a detector whose report is never empty is one nobody reads. |
 | 2026-09-09 | **Scoped as a versioning mechanism, not as a one-off schema fix** | Re-vendoring the two drifted fields closes the incident; it does not stop the third one. Two specs walked past the version gate without noticing, and the mechanism that should have caught them exists and is correct on the consumer's side. The spec is about when `schema_version` moves and how the consumer learns of it. |
 | 2026-09-09 | **The consumer is consulted on the mechanism before it is picked** | Hashi vendors our schema and enforces it with `additionalProperties: false`. Any scheme that assumes they can read a field before they have re-vendored it is a scheme that breaks them again. The handoff of 2026-09-09 asks for their opinion rather than announcing a decision. |
 | 2026-09-09 | **One strict wire, no compatibility window — Hashi's call, accepted** | Offered the optional-field route, Hashi declined it and vendored `item_key` as **required**. Their reasoning: two compatible schemas is a slower version of the same bug, and half-opening a document whose join key is missing reinstates the ambiguity `item_key` exists to remove. This retires question 3 (compatibility window) as a design option and turns question 2 (lead time) into the only lever left. |

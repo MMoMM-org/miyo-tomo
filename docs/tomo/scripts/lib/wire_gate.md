@@ -264,6 +264,108 @@ are the regression guards — the last one mirrors
 this trigger specifically, breaking two wires' shapes (not files) in one
 run and asserting the third still gates normally.
 
+**Correction (code review, 2026-09-10, re-review): this section's framing
+was itself the next mistake.** It presented the fix above as closing "the"
+gap, past tense, complete. It was not: a THIRD trigger remained open — a
+manifest with valid JSON and valid top-level keys, but one NODE VALUE
+inside `nodes` not itself a dict — and it reproduced the identical
+loop-abort consequence (`AttributeError` this time, not `KeyError`,
+propagating out of `run_wire_gate`'s loop the same way). Each of the first
+two fixes validated precisely what the PREVIOUSLY OBSERVED crash
+dereferenced — reactive, not derived — which is exactly why a third round
+was needed at all, and why a fourth was plausible. See the next section
+for the fix that replaced "validate what last crashed" with "validate
+every dereference, derived by tracing the code, once." Read this
+section's claims as historically accurate about what `a072800` did, not
+as a current statement that the guard is complete — the next section is
+that statement.
+
+## WHY the Validation Set Is Derived From Dereferences, Not From Observed Crashes (code review, 2026-09-10, third round)
+
+The pattern across three review rounds:
+
+```
+1. manifest file missing                                       -> fixed in b29a9ac
+2. valid JSON, missing a required top-level key                 -> fixed in a072800
+3. valid JSON, valid top-level keys, one node's VALUE wrong type -> fixed here
+```
+
+Each prior fix validated exactly what the crash it was responding to
+dereferenced, and nothing more — which finds the trigger that already
+happened, not the ones that have not yet been observed. The fix this
+round instead enumerates every dereference `gate_one_wire`'s downstream
+code performs on manifest-sourced (i.e. UNTRUSTED — read from a file)
+data, and validates exactly that set, so a fourth round should not be
+needed for the same reason.
+
+**The trace.** `manifest["nodes"]` is handed to `wire_shape.py`'s
+`diff_shapes(recorded, observed)` as `recorded`. For every pointer present
+in both `recorded` and `observed`, `diff_shapes` calls
+`_diff_node(pointer, recorded[pointer], observed[pointer])`, which reads
+`old`/`new` (i.e., each `nodes` VALUE) via `old.get("properties")`,
+`old.get("required")`, `old.get("closed")`, `old.get("values")`. Every
+value in `nodes` must therefore itself support `.get(...)` — be a dict.
+That is the check `b29a9ac`'s AND `a072800`'s fixes both stopped short of:
+both guarded the manifest's TOP-LEVEL keys (`nodes`, `schema_version`)
+existing and having the right type, never the VALUES living inside
+`nodes`.
+
+**Below that level, `_diff_node` mostly self-protects — verified by
+direct testing, not assumed:**
+
+```
+old.get("required") or []      # a str is falsy-or-truthy but never crashes
+                                # downstream; a wrong-typed required DEGRADES
+                                # (iterates characters) rather than raising —
+                                # confirmed: diff_shapes({"/x": node(required="oops")},
+                                # {"/x": node(required=["a"])}) returns a
+                                # (wrong but non-crashing) required_added/
+                                # required_removed list, no exception
+old.get("properties") or {}    # same shape, same result: confirmed non-crashing
+                                # for a string `properties`
+bool(old.get("closed"))        # bool(...) never raises for ANY input type
+```
+
+**`values` is the one exception, and it is NOT visible from the top-level
+check alone.** `_diff_node`'s enum diff does `old_values = old.get("values")
+or {}`, then — inside the loop over enum names — `old_values.get(name,
+[])`: a SECOND `.get` call, on the value the FIRST line produced. The `or
+{}` fallback only fires when the raw `values` is falsy (`None`, `{}`,
+`[]`, `""`); a TRUTHY non-dict `values` (a non-empty list or string) sails
+past it and reaches the second `.get`, which raises `AttributeError` for
+the same reason a non-dict node itself does. Confirmed directly:
+`diff_shapes({"/x": node(values=["a","b"])}, {"/x": node(values={"status":
+["open"]})})` raises `AttributeError: 'list' object has no attribute
+'get'`; the equivalent test with `values="oops"` (a string) raises the
+same way. So `values`, specifically, needs the identical dict-or-absent
+check the node itself needs — `properties`/`required`/`closed` do not,
+because nothing downstream calls a second method on them.
+
+**The trust boundary, confirmed rather than assumed.** `diff_shapes`
+takes two node maps: `recorded` (manifest-sourced, the ENTIRE untrusted
+surface) and `observed` (built by `describe_shape` from the schema,
+always well-formed BY CONSTRUCTION — every node it emits carries
+`closed`/`required`/`properties`/`values` with the exact types
+`_diff_node` expects, because `describe_shape` builds the dict itself
+rather than parsing one off disk). `classify`, the other consumer of
+manifest-shaped data, never receives `recorded` at all — its signature is
+`classify(change, observed)`, `observed` only, by SDD design (see
+`wire_shape.md`). So the complete untrusted-data surface this module's
+downstream code dereferences unsafely is exactly: `manifest["nodes"]`
+(each value must be a dict) and, within each node, its `values` field
+(must be a dict when present). Nothing else in the pipeline reads
+file-sourced data without going through `describe_shape` first.
+
+`_validate_manifest_shape`'s docstring carries this same trace inline, so
+a future change to `_diff_node` that reads a NEW field is the trigger to
+re-run this derivation, not to wait for a fourth crash report.
+
+`test_manifest_node_value_not_a_dict_does_not_abort_gating_the_other_wires`
+and `test_manifest_node_values_field_not_a_dict_fails_as_malformed` are
+the regression guards for the two derived checks; the first also proves
+the loop-continuation half in the same call, mirroring
+`test_one_broken_manifest_does_not_abort_gating_the_other_wires`.
+
 ## WHY the Renderer Names an Instruction on Every Failure Branch, Error Branches Included (code review, 2026-09-10)
 
 The module docstring has always promised "a message that says what to
@@ -306,6 +408,32 @@ same mechanism applied to the error branches, for the same reason.
 `test_render_wire_gate_report_raises_on_an_unregistered_error_kind` are
 the regression guards, mirroring `wire_shape.py`'s
 `test_classify_raises_on_an_unregistered_kind`.
+
+**This was still only half of `CHANGE_KINDS`'s mechanism (code review,
+2026-09-10, re-review).** `wire_shape.py` has FOUR parts: the tuples, a
+raise at render/classify time, iterating tests, AND a raise at
+CONSTRUCTION time (`_change` validates `kind` against `CHANGE_KINDS`
+before building a `ShapeChange` at all — see `wire_shape.md`'s note on
+why `_change` checks it, not just `classify`). `_render_action`/
+`_render_error` gave this module the first three parts but not the
+fourth: `_result`/`_error_result` accepted `actions`/`error_kind`
+unchecked, so an unregistered value only ever raised if something
+happened to RENDER the result — a caller reading `error_kind` by identity
+without ever calling `render_wire_gate_report` (T4.1's CLI branching on
+exit codes is the obvious future example) would see a bad value sail
+through unnoticed.
+
+`_result` now validates both — `actions` against `ACTIONS`, `error_kind`
+against `ERROR_KINDS` — before building the dict, matching `_change`'s
+placement exactly: at the one function every `WireGateResult` passes
+through, not at the one function that happens to print it.
+`test_result_raises_at_construction_for_an_unregistered_action` and
+`test_result_raises_at_construction_for_an_unregistered_error_kind` are
+the regression guards for this half specifically — they call `_result`
+directly (via `import lib.wire_gate as wire_gate`, the same pattern
+`test_035_wire_classify.py` uses to reach `wire_shape.py`'s private
+`_change`) and never touch `render_wire_gate_report`, so they cannot pass
+by accident of the renderer catching the bad value first.
 
 ## WHY `error_kind` Exists Beside the Human `error` String (code review, 2026-09-10)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """wire_gate.py — The drift gate for a published wire: diff + classify +
 version-check, and a message that says what to do (spec 035 T2.3).
 
@@ -136,19 +136,54 @@ def _validate_schema_shape(schema) -> str | None:
 
 
 def _validate_manifest_shape(manifest) -> str | None:
-    """The two fragments gate_one_wire needs from a parsed manifest:
-    `nodes` and `schema_version`. Same contract as
-    `_validate_schema_shape` — checked explicitly before either key is
-    accessed, so a manifest that is valid JSON but missing one (an empty
-    stub, another wire's manifest copy-pasted) fails as a gate result
-    instead of an uncaught KeyError aborting the run.
+    """Every fragment `gate_one_wire`'s downstream code dereferences from a
+    parsed manifest, and NOTHING deeper than that — derived from tracing
+    every access, not from patching whatever crash was last observed (code
+    review, 2026-09-10; this is the third round on that exact distinction,
+    see wire_gate.md's "WHY the Validation Set Is Derived From
+    Dereferences").
+
+    `manifest["nodes"]` is passed to `diff_shapes`, which hands each
+    pointer's value in it to `wire_shape.py`'s `_diff_node(pointer, old,
+    new)` as `old`. `_diff_node` calls `.get("properties")`,
+    `.get("required")`, `.get("closed")`, and `.get("values")` on `old` —
+    so every value in `nodes` must itself support `.get(...)`, i.e. be a
+    dict. Below that, `_diff_node` uses `or {}`/`or []`/`bool(...)`
+    fallbacks that tolerate a WRONG type for `properties`/`required`/
+    `closed` (verified directly: a string `required` degrades to a
+    character-by-character diff rather than raising; `bool(...)` never
+    raises for any type) — so those three are not validated further, per
+    the "no more than necessary" rule this function follows.
+
+    `values` is the ONE exception below the top level: `_diff_node`'s enum
+    diff calls `old_values.get(name, [])` a SECOND time, inside the loop —
+    a fallback (`or {}`) only reached when the raw value is falsy, so a
+    truthy non-dict `values` (a non-empty list or string) reaches that
+    second `.get` and raises `AttributeError`, exactly as `old`/`new`
+    themselves would if not a dict. `values` therefore needs the same
+    dict-or-absent check as the node itself; `properties`/`required`/
+    `closed` do not.
+
+    `observed` (the OTHER node map `diff_shapes` reads) is never validated
+    here because it never needs to be: it comes from `describe_shape`,
+    which always builds it well-formed, and `classify` never receives
+    `recorded` at all (see its own docstring) — so `manifest["nodes"]` is
+    the ENTIRE untrusted-data surface this module's downstream code
+    dereferences unsafely. `schema_version` is compared with `!=` only,
+    never dereferenced, so no type check applies to it.
     """
     if not isinstance(manifest, dict):
         return "manifest is not a JSON object"
-    if not isinstance(manifest.get("nodes"), dict):
+    nodes = manifest.get("nodes")
+    if not isinstance(nodes, dict):
         return "manifest is missing required key 'nodes'"
     if "schema_version" not in manifest:
         return "manifest is missing required key 'schema_version'"
+    for pointer, node in nodes.items():
+        if not isinstance(node, dict):
+            return f"manifest node {pointer!r} is not a JSON object"
+        if not isinstance(node.get("values", {}), dict):
+            return f"manifest node {pointer!r} has a non-object 'values' field"
     return None
 
 
@@ -172,7 +207,31 @@ def _result(
     caller passes only the fields that differ from the all-`None`/empty
     default, which IS the error-result shape: `_result(document,
     passed=False, error=..., error_kind=...)` needs nothing else.
+
+    Validates `actions` against `ACTIONS` and `error_kind` against
+    `ERROR_KINDS` before constructing anything — the SAME mechanism
+    `wire_shape.py`'s `_change` applies to `kind`/`CHANGE_KINDS` (code
+    review, 2026-09-10). `_render_action`/`_render_error` already raise on
+    an unregistered value, but only when something actually renders the
+    result — a caller (T4.1's CLI) that branches on `error_kind` identity
+    without ever calling `render_wire_gate_report` would see the bad value
+    sail through unnoticed. Checking it HERE, at the one place every
+    `WireGateResult` is built, closes that gap the same way `_change`
+    closes it for `ShapeChange`.
     """
+    for action in actions or []:
+        if action not in ACTIONS:
+            raise ValueError(
+                f"_result: {action!r} is not a member of ACTIONS. If this is a legitimate "
+                "new action, add it to ACTIONS and ACTION_INSTRUCTIONS before emitting it "
+                "from here.",
+            )
+    if error_kind is not None and error_kind not in ERROR_KINDS:
+        raise ValueError(
+            f"_result: {error_kind!r} is not a member of ERROR_KINDS. If this is a "
+            "legitimate new error kind, add it to ERROR_KINDS and ERROR_INSTRUCTIONS "
+            "before emitting it from here.",
+        )
     return {
         "document": document,
         "passed": passed,
@@ -239,9 +298,12 @@ def gate_one_wire(document: str, schema_path: Path, manifest_path: Path) -> dict
       maintainer who forgot to commit a manifest needs to be told to
       create one, not to regenerate a file that does not exist).
     - manifest unreadable (OSError / invalid JSON) or malformed (valid
-      JSON, missing `nodes` or `schema_version`, via
-      `_validate_manifest_shape`) — both instruct "regenerate the
-      manifest".
+      JSON, but missing `nodes`/`schema_version`, or a node in `nodes`
+      that is not an object, or a node whose `values` field is not an
+      object — every dereference `diff_shapes`/`_diff_node` make on
+      manifest-sourced data, derived by tracing them rather than by
+      patching each crash as it was found; see `_validate_manifest_shape`
+      and wire_gate.md) — both instruct "regenerate the manifest".
 
     ALL FOUR matter more than they look, for the same reason: an uncaught
     exception here does not just fail this wire badly — it propagates out

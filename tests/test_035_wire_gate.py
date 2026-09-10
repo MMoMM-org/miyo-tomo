@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.4.0
+# version: 0.5.0
 """test_035_wire_gate.py — Behavioural tests for lib.wire_gate: diff +
 classify + version-check, per published wire (spec 035 T2.3).
 
@@ -70,6 +70,18 @@ Tests cover:
   instruction for, rather than silently rendering nothing or inferring one
   by absence — the same exhaustiveness discipline CHANGE_KINDS/classify
   already enforce in wire_shape.py, applied here to ACTIONS/ERROR_KINDS
+- `_result` ALSO raises at CONSTRUCTION time for an unregistered action or
+  error_kind, independent of whether anything ever renders the result —
+  closing the half `_render_action`/`_render_error` cannot reach on their
+  own (code review, 2026-09-10)
+- a THIRD loop-abort trigger (code review, 2026-09-10, after the missing-
+  file and missing-top-level-key triggers already closed): valid JSON,
+  valid top-level keys, but one node's VALUE inside `nodes` is not a dict,
+  or a node's `values` field specifically is a non-dict truthy value —
+  each fails as ERROR_MANIFEST_MALFORMED and does not abort gating the
+  other wires. The validation set was DERIVED by tracing every
+  `manifest`-sourced dereference in wire_shape.py's `_diff_node`, not by
+  patching the crash last observed — see wire_gate.md
 - two wires mutated in one edit -> both reported in one `run_wire_gate`
   call, each against its own independent result — the third, untouched wire
   still passes in the same run
@@ -605,6 +617,83 @@ def test_wrong_shape_manifest_and_schema_do_not_abort_gating_the_other_wires(tmp
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# CRITICAL, third round (code review, 2026-09-10): the same loop-abort defect
+# at a THIRD trigger — valid JSON, valid top-level keys, but one node's
+# VALUE inside `nodes` is not a dict. `manifest["nodes"][pointer]` flows
+# into wire_shape.py's `_diff_node` as `old`, which calls `.get(...)` on it
+# directly — a non-dict node value raised an uncaught AttributeError,
+# aborting run_wire_gate's loop exactly like the first two triggers did.
+# Derived (not observed-and-patched) alongside it: a node's `values` field
+# specifically needs the SAME check, because `_diff_node`'s enum diff calls
+# `.get(name, [])` on it a SECOND time — see wire_gate.md's "WHY the
+# Validation Set Is Derived From Dereferences" for the full trace and why
+# `properties`/`required`/`closed` do NOT need the same treatment.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_manifest_node_value_not_a_dict_does_not_abort_gating_the_other_wires(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+
+    suggestions = "suggestions-wire.schema.json"
+    garden_audit = "garden-audit-wire.schema.json"
+    instructions = "instructions.schema.json"
+
+    # Corrupt ONE EXISTING node's VALUE (not a top-level manifest key) —
+    # the root pointer "" always exists in every published wire's manifest.
+    _rewrite_json(
+        shapes_dir / manifest_filename(suggestions),
+        lambda manifest: manifest["nodes"].__setitem__("", "not-a-dict"),
+    )
+    # garden_audit and instructions are left untouched — both should still
+    # be gated normally in the same run.
+
+    results = run_wire_gate(schemas_dir, shapes_dir)
+    by_document = {result["document"]: result for result in results}
+
+    # The whole point: a result exists for EVERY wire, including the
+    # corrupted one — the loop did not abort partway through.
+    assert set(by_document) == {suggestions, garden_audit, instructions}
+
+    assert by_document[suggestions]["passed"] is False
+    assert by_document[suggestions]["error"] is not None
+    assert by_document[suggestions]["error_kind"] == ERROR_MANIFEST_MALFORMED
+    assert "not a json object" in by_document[suggestions]["error"].lower()
+    assert by_document[suggestions]["affecting"] is None
+    assert by_document[suggestions]["changes"] == []
+    assert by_document[suggestions]["actions"] == []
+
+    # The other two wires were never touched, so they gate normally —
+    # proving the corrupted node did not suppress them.
+    assert by_document[garden_audit]["passed"] is True
+    assert by_document[garden_audit]["changes"] == []
+    assert by_document[instructions]["passed"] is True
+    assert by_document[instructions]["changes"] == []
+
+
+def test_manifest_node_values_field_not_a_dict_fails_as_malformed(tmp_path):
+    # The SECOND-LEVEL dereference _diff_node makes, distinct from the
+    # node-itself check above: a node whose `values` field is a non-empty
+    # list (truthy, but has no `.get`) crashes one call deeper inside the
+    # enum diff, even though the node ITSELF is a well-formed dict.
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+    document = "instructions.schema.json"
+
+    _rewrite_json(
+        shapes_dir / manifest_filename(document),
+        lambda manifest: manifest["nodes"][""].__setitem__("values", ["not", "a", "dict"]),
+    )
+
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
+
+    assert result["passed"] is False
+    assert result["error"] is not None
+    assert result["error_kind"] == ERROR_MANIFEST_MALFORMED
+    assert "values" in result["error"].lower()
+    assert result["affecting"] is None
+    assert result["changes"] == []
+    assert result["actions"] == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # ACTIONS/ERROR_KINDS exhaustiveness — same discipline CHANGE_KINDS/classify
 # already enforce in wire_shape.py, applied here (code review, 2026-09-10):
 # an unrecognised action used to be rendered by ABSENCE-of-move_version
@@ -664,3 +753,33 @@ def test_render_wire_gate_report_raises_on_an_unregistered_error_kind():
     }
     with pytest.raises(ValueError):
         render_wire_gate_report([fake_result])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# The construction-site half of the SAME exhaustiveness mechanism (code
+# review, 2026-09-10): `_render_action`/`_render_error` above only raise
+# when something actually RENDERS a result. A caller that reads
+# `actions`/`error_kind` directly (T4.1's CLI, potentially, branching on
+# `error_kind` identity without ever calling render_wire_gate_report) would
+# see an unregistered value sail through unnoticed. `_result` validates at
+# the moment every WireGateResult is BUILT — the same moment
+# wire_shape.py's `_change` validates `kind` against `CHANGE_KINDS`.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_result_raises_at_construction_for_an_unregistered_action():
+    import lib.wire_gate as wire_gate
+
+    with pytest.raises(ValueError):
+        wire_gate._result("fake-wire.schema.json", passed=False, actions=["moved_to_a_new_planet"])
+
+
+def test_result_raises_at_construction_for_an_unregistered_error_kind():
+    import lib.wire_gate as wire_gate
+
+    with pytest.raises(ValueError):
+        wire_gate._result(
+            "fake-wire.schema.json",
+            passed=False,
+            error="fake error for this test",
+            error_kind="moved_to_a_new_planet",
+        )

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# version: 0.1.0
-"""test_035_wire_gate.py — The gate: diff + classify + version-check, per
-published wire (spec 035 T2.3).
+# version: 0.2.0
+"""test_035_wire_gate.py — Behavioural tests for lib.wire_gate: diff +
+classify + version-check, per published wire (spec 035 T2.3).
 
 Separate from test_035_wire_{shape,diff,classify}.py on purpose, same split
 rationale as the rest of the 035 suite: those exercise the pure building
@@ -9,12 +9,13 @@ blocks (describe_shape / diff_shapes / classify) in isolation; this file
 exercises the thing that DRIVES them — reading a schema and a manifest off
 disk, running the SDD/Complex Logic algorithm, and deciding pass or fail.
 
-**Module-split note (docs/tomo/scripts/lib/wire_shape.md has the full WHY):**
-the gate function, action-name constants, and message renderer live HERE,
-not in `wire_shape.py`. The plan's module-split seam is explicit: if gate or
-CLI logic lands inside `wire_shape.py`, `classify` + `CHANGE_KINDS` must be
-split out of it at that moment. Keeping the gate beside the module — in its
-own file, per the T2.3 plan step 3 — avoids ever reaching that seam.
+**Production code moved to tomo/scripts/lib/wire_gate.py (code review,
+2026-09-10).** It started here, matching the T2.3 plan's literal "put it in
+its own file — tests/test_035_wire_gate.py" instruction, but T4.1's CLI
+needs the same gate to avoid production code importing from a test module
+or reimplementing a second, potentially-drifting drift detector. See
+docs/tomo/scripts/lib/wire_gate.md for the full module-split reasoning; this
+file now holds only the scratch-copy fixtures and the tests themselves.
 
 **The trap this file exists to not fall into:** the committed manifests
 match the live schemas today, so "no change -> pass silently" is the
@@ -23,16 +24,6 @@ EQUALLY green against that same real tree. Every failure case below is
 therefore proven against a scratch copy built by `_make_scratch_wires`,
 mutated in memory and written to a pytest tmp_path — never against a
 committed schema or manifest file in place.
-
-**The gate's own contract (ADR-3): any shape change fails.** Passing
-requires `diff_shapes` to return an empty list. The pass half of "affecting
-+ version moved" is realized the way it happens for real: the maintainer
-bumps `schema_version` AND regenerates the manifest against the new schema,
-so the two sides are byte-identical again and there is nothing left to
-diff. A partially-updated pair (version bumped, manifest not regenerated)
-still has a diff — the version bump itself shows up as an enum-value change
-on the `schema_version` property, per `describe_shape`'s `values` field —
-and still fails, per ADR-3.
 
 Tests cover:
 - affecting change + version unmoved -> fail, naming the document, the
@@ -66,173 +57,16 @@ SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
 SHAPES_DIR = SCHEMAS_DIR / "shapes"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.wire_shape import (  # noqa: E402
-    PUBLISHED_WIRES,
-    classify,
-    describe_shape,
-    diff_shapes,
+from lib.wire_gate import (  # noqa: E402
+    ACTION_HANDOVER,
+    ACTION_MOVE_VERSION,
+    ACTION_REGENERATE_MANIFEST,
+    gate_one_wire,
+    manifest_filename,
+    render_wire_gate_report,
+    run_wire_gate,
 )
-
-# ──────────────────────────────────────────────────────────────────────────────
-# The gate — SDD/Complex Logic, one wire at a time
-# ──────────────────────────────────────────────────────────────────────────────
-
-# The only two demands the gate ever makes of a maintainer (SDD/Error
-# Handling). Named constants, not bare strings at each call/assert site, for
-# the same reason CHANGE_KINDS is named in wire_shape.py: a test asserting
-# absence needs to check against the SAME token the gate emits.
-ACTION_MOVE_VERSION = "move_version"
-ACTION_HANDOVER = "handover"
-ACTION_REGENERATE_MANIFEST = "regenerate_manifest"
-
-
-def _manifest_filename(schema_filename: str) -> str:
-    stem = schema_filename[: -len(".schema.json")]
-    return f"{stem}.shape.json"
-
-
-def gate_one_wire(document: str, schema_path: Path, manifest_path: Path) -> dict:
-    """Gate a single published wire: read its live schema and its committed
-    manifest off disk, diff, classify, and decide.
-
-    Returns a structured `WireGateResult` dict, never a rendered string —
-    `render_wire_gate_report` below is the only thing that turns this into
-    human text, per the plan's "separate the decision from the rendering"
-    instruction. Every field here is what a test (or a future `--obligations`
-    caller) can assert against without parsing prose:
-
-    - `document`: the schema filename this result is about.
-    - `passed`: bool.
-    - `error`: set only when the schema could not even be parsed — a
-      DIFFERENT failure mode than a real shape diff, so it is never left to
-      masquerade as `changes == []` (which means "no change").
-    - `changes`: the `ShapeChange` list from `diff_shapes`, each with
-      `consumer_affecting` resolved by `classify` (unlike `diff_shapes`'s own
-      return value, which always carries `False` there — see
-      `wire_shape.py`'s `_change` docstring).
-    - `affecting`: `any(...)` over the resolved changes; `None` when `error`
-      is set, since there is nothing to classify.
-    - `schema_version` / `manifest_version` / `version_moved`.
-    - `actions`: the demands this failure makes — `[]` when passed.
-
-    A schema that fails to parse fails LOUD (SDD/Error Handling: "Schema
-    unreadable / invalid JSON -> fail loudly; do not treat as 'no change'")
-    — caught narrowly (`OSError`, `json.JSONDecodeError`) so a real bug
-    inside `describe_shape`/`diff_shapes`/`classify` still raises and fails
-    the test run, rather than being swallowed into a gate failure result.
-    """
-    try:
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return {
-            "document": document,
-            "passed": False,
-            "error": f"schema unreadable: {exc}",
-            "changes": [],
-            "affecting": None,
-            "schema_version": None,
-            "manifest_version": None,
-            "version_moved": None,
-            "actions": [],
-        }
-
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    recorded = manifest["nodes"]
-    observed = describe_shape(schema)
-    changes = diff_shapes(recorded, observed)
-
-    schema_version = schema["properties"]["schema_version"]["const"]
-    manifest_version = manifest["schema_version"]
-    version_moved = schema_version != manifest_version
-
-    if not changes:
-        # SDD/Complex Logic step 5: no diff, no failure. This is the ONLY
-        # path to passed=True — see the module docstring's ADR-3 note.
-        return {
-            "document": document,
-            "passed": True,
-            "error": None,
-            "changes": [],
-            "affecting": False,
-            "schema_version": schema_version,
-            "manifest_version": manifest_version,
-            "version_moved": version_moved,
-            "actions": [],
-        }
-
-    resolved_changes = [dict(change, consumer_affecting=classify(change, observed)) for change in changes]
-    affecting = any(change["consumer_affecting"] for change in resolved_changes)
-
-    if affecting and not version_moved:
-        # SDD/Complex Logic step 7-8: consumer-affecting and the version
-        # never moved to signal it — both a version move AND a handover
-        # are demanded.
-        actions = [ACTION_MOVE_VERSION, ACTION_HANDOVER]
-    else:
-        # Step 9-10's ELSE covers TWO cases on purpose: a non-affecting
-        # change (nothing to hand over, just regenerate), and an affecting
-        # change whose version already moved but whose manifest is still
-        # stale (the version demand is already satisfied — only
-        # regeneration is left). Either way the maintainer's one remaining
-        # action is the same.
-        actions = [ACTION_REGENERATE_MANIFEST]
-
-    return {
-        "document": document,
-        "passed": False,
-        "error": None,
-        "changes": resolved_changes,
-        "affecting": affecting,
-        "schema_version": schema_version,
-        "manifest_version": manifest_version,
-        "version_moved": version_moved,
-        "actions": actions,
-    }
-
-
-def run_wire_gate(schemas_dir: Path, shapes_dir: Path, wires=PUBLISHED_WIRES) -> list:
-    """Gate every published wire, independently. Never stops at the first
-    failure (SDD/Complex Logic step 1's FOR, plan T2.3's CON-4 note) — each
-    wire's result is computed from its own schema/manifest pair only, so one
-    wire's failure cannot suppress or alter another's.
-    """
-    results = []
-    for document in wires:
-        schema_path = schemas_dir / document
-        manifest_path = shapes_dir / _manifest_filename(document)
-        results.append(gate_one_wire(document, schema_path, manifest_path))
-    return results
-
-
-def render_wire_gate_report(results: list) -> str:
-    """Human text for a `run_wire_gate` result list. Display-only, same
-    contract as `detail` in `wire_shape.py` — nothing parses this back;
-    assert against the structured result instead, and reserve this renderer
-    for the one or two tests that cover the message itself.
-
-    Passing wires contribute nothing: an all-green run renders to `""`, the
-    literal "pass silently" the plan asks for.
-    """
-    lines = []
-    for result in results:
-        if result["passed"]:
-            continue
-        if result["error"]:
-            lines.append(f"{result['document']}: {result['error']}")
-            continue
-        lines.append(
-            f"{result['document']}: shape changed "
-            f"({result['schema_version']!r} vs manifest {result['manifest_version']!r})",
-        )
-        for change in result["changes"]:
-            marker = "affecting" if change["consumer_affecting"] else "not affecting"
-            lines.append(f"  {change['pointer']} {change['kind']} ({marker}): {change['detail']}")
-        if ACTION_MOVE_VERSION in result["actions"]:
-            lines.append("  -> move schema_version and hand over the obligation to the consumer")
-        else:
-            lines.append("  -> regenerate the manifest")
-    return "\n".join(lines)
-
+from lib.wire_shape import PUBLISHED_WIRES  # noqa: E402
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Scratch-copy fixtures — NEVER mutate a committed schema or manifest in place
@@ -249,7 +83,7 @@ def _make_scratch_wires(tmp_path: Path) -> tuple[Path, Path]:
     shapes_dir.mkdir(parents=True)
     for document in PUBLISHED_WIRES:
         shutil.copy(SCHEMAS_DIR / document, schemas_dir / document)
-        manifest_name = _manifest_filename(document)
+        manifest_name = manifest_filename(document)
         shutil.copy(SHAPES_DIR / manifest_name, shapes_dir / manifest_name)
     return schemas_dir, shapes_dir
 
@@ -303,7 +137,7 @@ def test_affecting_change_with_version_unmoved_fails_and_demands_both_actions(tm
         ),
     )
 
-    result = gate_one_wire(document, schemas_dir / document, shapes_dir / _manifest_filename(document))
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
 
     assert result["passed"] is False
     assert result["error"] is None
@@ -340,7 +174,7 @@ def test_counterfactual_item_key_missing_from_manifest_fails_as_affecting(tmp_pa
     pointer = "/properties/suggestions/items"
 
     _rewrite_json(
-        shapes_dir / _manifest_filename(document),
+        shapes_dir / manifest_filename(document),
         lambda manifest: (
             manifest["nodes"][pointer]["properties"].pop("item_key"),
             manifest["nodes"][pointer].__setitem__(
@@ -350,7 +184,7 @@ def test_counterfactual_item_key_missing_from_manifest_fails_as_affecting(tmp_pa
         ),
     )
 
-    result = gate_one_wire(document, schemas_dir / document, shapes_dir / _manifest_filename(document))
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
 
     assert result["passed"] is False
     assert result["affecting"] is True
@@ -385,7 +219,7 @@ def test_affecting_change_with_version_moved_and_manifest_regenerated_passes(tmp
     # The maintainer's full procedure: bump the version, THEN regenerate the
     # manifest against the now-current schema. After that, the two sides
     # are identical again and diff_shapes has nothing left to report.
-    manifest_path = shapes_dir / _manifest_filename(document)
+    manifest_path = shapes_dir / manifest_filename(document)
     manifest_path.write_text(
         serialize_manifest(build_manifest(schema, source=f"tomo/schemas/{document}")),
         encoding="utf-8",
@@ -421,7 +255,7 @@ def test_non_affecting_change_fails_and_demands_regeneration_only(tmp_path):
         ].__setitem__("scratch_gate_probe", {"type": "string"}),
     )
 
-    result = gate_one_wire(document, schemas_dir / document, shapes_dir / _manifest_filename(document))
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
 
     assert result["passed"] is False
     assert result["affecting"] is False
@@ -449,7 +283,7 @@ def test_unparseable_schema_fails_and_is_never_treated_as_no_change(tmp_path):
 
     (schemas_dir / document).write_text("{ this is not valid json", encoding="utf-8")
 
-    result = gate_one_wire(document, schemas_dir / document, shapes_dir / _manifest_filename(document))
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
 
     assert result["passed"] is False
     assert result["error"] is not None

@@ -41,12 +41,27 @@ Makes the contract real, proves the producer invariant, and validates the whole 
 
 - [ ] **T4.1 The wire contract** `[activity: data-architecture]`
 
+  **SEQUENCING GATE — T4.5's handoff goes out and Hashi vendors BEFORE this task lands.** Corrected
+  2026-09-10 by validation. `tests/test_instruction_render_wire_hygiene.py::test_snapshot_matches_upstream_hashi`
+  (`:282`) fetches Hashi's live `instructions.schema.json` and compares `required` **and** property
+  names per action `$def` (`:345-352`). Adding `depends_on` to our mirror before they ship it fails
+  both comparisons, and the escape hatch `SNAPSHOT_AHEAD_OF_UPSTREAM` (`:75`) is keyed by **action
+  name, not property** — so `delete_source` cannot be exempted without silencing drift detection for
+  the very action this spec is about. A property-level registry was considered and rejected: that
+  hatch exists for actions Hashi has agreed to implement *later*, the opposite of this case, and
+  under our own release rule (they vendor first or simultaneously, never after) the window it would
+  cover is zero-length. Sequencing costs nothing and adds no permanent silencing mechanism.
+
   1. Prime: read both instruction schemas and confirm which is the vendored contract
-     `[ref: SDD/Cross-Component Boundaries]`. `tests/test_tomo_schema_parity.py` enforces that
-     `hashi-instructions.schema.json` mirrors Hashi's verbatim.
+     `[ref: SDD/Cross-Component Boundaries]`. **Two different tests, two different jobs**:
+     `tests/test_tomo_schema_parity.py` compares Tomo's **two local** schemas only — its docstring
+     says "no network, no local Hashi checkout required" (`:8-9, 94-95`), so it proves the producer
+     copy and the mirror agree, nothing about Hashi. The upstream enforcer is
+     `test_snapshot_matches_upstream_hashi`, which fetches their live schema and skips offline.
   2. Test: a rendered set validates against the updated contract schema; a set whose `delete_source`
-     lacks `depends_on` **fails** validation; the parity test still passes; `schema_version` reads
-     `"3"`.
+     lacks `depends_on` **fails** validation; the local parity test still passes; the upstream drift
+     test passes **green on its own terms** once Hashi has vendored — not by exemption;
+     `schema_version` reads `"3"`.
   3. Implement: add `depends_on` (array of string, `required`) to `delete_source` in **both**
      schemas; bump the instruction wire `schema_version` to `"3"`.
   4. Validate: schema tests pass; parity test passes; ruff clean.
@@ -54,6 +69,7 @@ Makes the contract real, proves the producer invariant, and validates the whole 
      - [ ] `depends_on` is required in the contract schema `[ref: PRD/F5-AC1]`
      - [ ] An omitted field fails validation rather than defaulting `[ref: SDD/Error Handling]`
      - [ ] The producer copy and the contract copy agree `[ref: SDD/Cross-Component Boundaries]`
+     - [ ] The upstream drift test passes without an exemption entry `[ref: SDD/CON-2]`
 
 - [ ] **T4.2 The dangling-id audit** `[activity: backend-api]`
 
@@ -123,6 +139,10 @@ Makes the contract real, proves the producer invariant, and validates the whole 
   this handoff. Recorded here as a named ownership boundary rather than left unmapped: the PRD's own
   Assumptions section already states that every claim about the executor is read, not executed, from
   this side `[ref: PRD/Assumptions]`.
+
+  **Runs BEFORE T4.1.** The mirror schema edit cannot land until Hashi has vendored, or the upstream
+  drift test fails with no property-level exemption available. This task is therefore the *first*
+  thing in Phase 4 chronologically, despite its number.
 
   **Blocked on**: spec 035's `source_item_key` widening must be committed before this handoff can
   carry one changed-fields list covering both documents. 035 is at `Initialization` as of

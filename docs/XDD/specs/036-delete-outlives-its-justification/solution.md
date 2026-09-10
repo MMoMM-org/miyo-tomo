@@ -83,9 +83,10 @@ version: "1.0"
 
 - file: tomo/scripts/lib/render_resolve.py
   relevance: CRITICAL
-  why: "Owns two of the five drop sites — filter_missing_daily_notes (Bug A) and
-        filter_unappliable_relationships. The split across two modules is why the fifth
-        site went unnoticed"
+  why: "Owns THREE of the five drop sites — filter_unresolvable_moc_links (:639),
+        filter_missing_daily_notes (:696, P2) and filter_unappliable_relationships (:829).
+        The split is 2/3, not 4/1: the majority of drop sites live in the module nobody
+        was reading, which is why the fifth went unnoticed"
 
 - file: tomo/scripts/suggestions-reducer.py
   relevance: HIGH
@@ -419,7 +420,7 @@ The unconditional case, which must **not** be withdrawn:
 if not target_path:
     continue          # no action built -> NO ID EXISTS
 
-# _build_delete_source_actions, site 4, render_actions.py:1735-1745
+# _build_delete_source_actions, site 4, render_actions.py:1728-1744
 target = group.get("target_path") or ""       # read only for the reason string
 out.append({... "reason": f"Source consolidated into {target} by ..."})
 ```
@@ -474,8 +475,9 @@ sequenceDiagram
   shipping nothing.
 - **A delete lacks `depends_on` entirely** → same abort. Absence is never valid; `[]` is the way to
   say "unconditional".
-- **Hashi receives a dangling id anyway** (e.g. hand-edited set) → their plan-time check skips the
-  delete. Fail-closed on both sides.
+- **Hashi receives a dangling id anyway** (e.g. hand-edited set) → their plan-time check will skip
+  the delete. Fail-closed on both sides. **Agreed, not yet built** — that check ships with their
+  vendoring of `depends_on`, which does not exist in their repo today.
 
 ### Complex Logic
 
@@ -558,9 +560,10 @@ OUTPUT: instruction set in which every delete's justification is present
       `filter_unappliable_relationships` and before `_validate_action_paths`.
   - Rationale: there are **five** action-dropping guards, not three — `validate_destinations`
     (`:567`), `suppress_moves_for_unfiled_attachments` (`:585`), `filter_unresolvable_moc_links`
-    (`:646`), `filter_missing_daily_notes` (`:713`) and `filter_unappliable_relationships` (`:728`,
-    defined in `render_resolve.py:829` — the drop sites are split across two modules, which is part
-    of why the fifth one went unnoticed until this design).
+    (`:646`), `filter_missing_daily_notes` (`:713`) and `filter_unappliable_relationships` (`:728`).
+    The last three are all **defined in `render_resolve.py`** (`:639`, `:696`, `:829`) and merely
+    *called* from `instruction-render.py`. The split is 2/3, not 4/1 — the majority of drop sites
+    live in the module nobody was reading, which is why the fifth went unnoticed until this design.
     A pass placed anywhere earlier is a latent instance of the bug being fixed. One pass suffices
     because no action declares a dependency on a delete, so withdrawal cannot cascade.
   - Trade-offs: the withdrawal report is assembled after the pass rather than inside each guard, so
@@ -695,9 +698,10 @@ ships it ships as an independent change to `render_md.py`. Stated rather than si
 
 - Two withdrawal mechanisms exist today (path-keyed for deletes, title-keyed for links). ADR-4
   removes one; the title-keyed one remains and is genuinely different in kind.
-- `parse_daily_updates` renders a `- [ ] Delete [[X]]` checkbox that nothing parses
-  (`suggestion-parser.py:1732-1900` has no delete handling). The control is decorative and the
-  delete fires on `accepted` alone. Out of scope here; belongs with the daily-side UX.
+- `render_daily_notes_updates_block` (`suggestions-reducer.py:839`) renders a `- [ ] Delete [[X]]`
+  checkbox that nothing parses — `parse_daily_updates` (`suggestion-parser.py:1732-1900`) has no
+  delete handling at all. The control is decorative and the delete fires on `accepted` alone. Out of
+  scope here; belongs with the daily-side UX.
 
 ### Implementation Gotchas
 
@@ -705,7 +709,9 @@ ships it ships as an independent change to `render_md.py`. Stated rather than si
   reintroduces exactly the ordering bug being fixed.
 - **Sites 2 and 4 do not have partner ids today.** `_build_delete_source_actions` receives the
   *suggestion entries*, not the emitted daily actions. The id maps must be returned by the builders
-  and threaded through `build_actions` — one signature change each.
+  and threaded through `build_actions`. Site 4 is one signature change; **site 2 is two** —
+  `_build_daily_update_actions(daily_updates, cfg, counter)` also needs an `inbox_path` parameter,
+  because the origin key is computed with `resolve_source_path`, which it cannot currently call.
 - **The audio-peer delete must name the same ids as its origin delete.** They are separate actions
   hanging off the same move set; naming only one leaves the other unguarded.
 - **Do not confuse the two instruction schemas.** `hashi-instructions.schema.json` is the contract;

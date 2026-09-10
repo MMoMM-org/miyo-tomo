@@ -71,7 +71,10 @@ Establishes the dependency relation as data: every conditional delete knows what
      folders do not cross-contaminate.
   3. Implement: return `{origin_key: [action_id]}` from `_build_daily_update_actions`, keyed with
      the same `_origin_key(resolve_source_path(...))` the delete site already computes; thread it
-     through `build_actions` into `_build_delete_source_actions`.
+     through `build_actions` into `_build_delete_source_actions`. **Two signature changes, not one**:
+     `_build_daily_update_actions(daily_updates, cfg, counter)` also needs `inbox_path`, because it
+     cannot call `resolve_source_path` without it. Derive it from `cfg["concepts.inbox"]` at the
+     call site, as `build_actions` already does.
   4. Validate: unit tests pass; ruff clean; no change to emitted action *counts* in any existing test.
   5. Success:
      - [ ] Site 2 deletes carry the ids of every daily action for that origin `[ref: PRD/F2-AC2]`
@@ -80,8 +83,11 @@ Establishes the dependency relation as data: every conditional delete knows what
 
 - [ ] **T1.3 Site 4 receives the insert action id** `[activity: backend-api]`
 
-  A cheaper version of T1.2: both loops already iterate the same groups under the same approval
-  filter, so the map is a return-shape change rather than a re-plumb.
+  A cheaper version of T1.2: both loops iterate the same groups, so the map is a return-shape change
+  rather than a re-plumb. Note the filters are **not** identical — site 4 applies approval **and**
+  `keep_source_group_ids`, the insert builder applies approval only. The conclusion still holds
+  (every delete site 4 emits has a corresponding insert), but do not assume the two filters can be
+  merged.
 
   1. Prime: read `_build_insert_under_marker_actions` and site 4 `[ref: SDD/Complex Logic]`.
   2. Test: an approved group with a resolvable target emits deletes naming the insert's id; a group

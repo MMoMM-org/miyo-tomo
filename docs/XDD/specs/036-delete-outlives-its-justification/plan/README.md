@@ -126,9 +126,18 @@ graph LR
     T31[T3.1<br/>appliability predicate] --> T13[T1.3<br/>site 4 gets insert id]
     T13 --> P2[Phase 2<br/>Collect]
     P1o[T1.1, T1.2] --> P2
-    P2 --> P4[Phase 4<br/>Contract + integration]
-    T32[T3.2<br/>consent fix] --> P4
+    P2 --> T45[T4.5<br/>handoff: Hashi vendors]
+    T32[T3.2<br/>consent fix] --> T45
+    T45 --> T41[T4.1<br/>mirror schema edit]
+    T41 --> P4rest[T4.2 audit, T4.3 report,<br/>T4.4 integration]
 ```
+
+**Note the intra-phase ordering**: T4.5 runs **first** in Phase 4 despite its number. The upstream
+drift test fetches Hashi's live schema and compares per-action property names, and its exemption
+hatch is keyed by action name rather than property — so editing our mirror before they vendor would
+fail the test with no way to exempt `delete_source` alone. Under the release rule (they vendor first
+or simultaneously) the window that would need exempting is zero-length, so sequencing costs nothing
+and avoids adding a permanent silencing mechanism.
 
 **Corrected 2026-09-10.** The first version called Phase 3 independent of Phases 1 and 2. It is not:
 **T3.1 must precede T1.3.** Both modify `_build_insert_under_marker_actions` and site 4 of

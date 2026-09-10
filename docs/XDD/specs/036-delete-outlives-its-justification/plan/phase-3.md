@@ -79,8 +79,22 @@ Closes the third data-loss path and the consent defect that makes it dangerous.
      - a group whose target resolves **and** whose marker is present renders its Approve control
        byte-identically to today;
      - the reason is visible in the group itself, not only in a summary elsewhere.
-  3. Implement: set the guard before returning; leave the existing suppression path to consume it.
-  4. Validate: unit tests pass; ruff clean; existing reducer tests unchanged.
+  3. Implement — **the existing suppression path will NOT consume a new value as-is.** Corrected
+     2026-09-10 by validation: `suggestions-reducer.py:973-988` branches on exactly two string
+     literals, `target_missing` and `marker_missing`; **any third value falls through to
+     `lines.append("- [x] Approve")` at `:1000`** and the group still renders pre-checked. Reusing
+     `target_missing` is not the escape — it renders *"Target note doesn't exist — [[]] is not in
+     the vault"* with an empty link, because `link` is `""` when `target_path` is null.
+     a. Set `guard = "target_unresolved"` before the early return.
+     b. Add a **third branch** to the suppression path with its own message, matching the
+        `*(unresolved — check handler config)*` target line already rendered at `:945`.
+     c. Register the value in the tally dict at `:1569` — it is literal-initialised and read by
+        three f-string keys at `:2405-2407`, so an unregistered value survives `tally.get` but never
+        prints.
+     Nothing else needs registering: no schema types the `guard` field, and Hashi has no reference
+     to it at all.
+  4. Validate: unit tests pass, including a new third case in
+     `tests/test_tag_handler_group_guards.py`; ruff clean; existing reducer tests unchanged.
   5. Success:
      - [ ] An unresolvable group carries a guard and is not pre-selected `[ref: PRD/F4-AC1]`
      - [ ] A healthy group renders unchanged `[ref: PRD/F4-AC2]`

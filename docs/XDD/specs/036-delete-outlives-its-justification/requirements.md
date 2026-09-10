@@ -351,6 +351,12 @@ project's audit-log rule.
   executed, from this side.
 - **Staging residue occurs.** Every link of the chain was measured separately; the combined outcome
   has never been observed, because the live run applied cleanly.
+- **The three measurement runs are not reproducible from the repository.** Flagged 2026-09-10 by
+  validation: every mechanism P1, P2 and P3 describe is live in `main` exactly as stated, and each
+  was verified independently against source — but no artifact from those runs (the emitted action
+  lists, the `destination_clashes: 0` figure) is committed anywhere. A reader cannot re-derive the
+  numbers without re-running the probes. The claims are evidence-backed; their provenance is not
+  archived. T4.4's end-to-end tests become that archive.
 - The single user's vault is the target environment; no multi-user or concurrent-apply case exists.
 
 ## Risks and Mitigations

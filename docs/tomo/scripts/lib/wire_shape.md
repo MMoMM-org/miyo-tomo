@@ -50,6 +50,39 @@ manifest diff between "this property has never had a type" and "this
 property's type keyword was just deleted" look identical — both would show
 up as a missing dict key rather than as two distinct, nameable states.
 
+## WHY Pointers Carry a `properties` Segment (deviation from the SDD's illustrative code)
+
+The first cut walked `f"{pointer}/{name}"` for a property child — a bare
+name appended directly, with no `properties` segment — matching the code
+block in solution.md's Implementation Examples verbatim. That code block is
+illustrative, not authoritative, and the bare form turned out to be wrong:
+a schema with a property literally named `items` (or `contains`, `$defs`,
+`definitions`, `allOf`, `anyOf`, `oneOf`) collides with the sibling
+structural keyword of the same name, because both paths append that literal
+segment to the same parent pointer. Measured directly: a schema with a
+property `items` alongside a real array `items` keyword produced 2 nodes
+where 3 were expected — the second overwrote the first in the `nodes` dict.
+That is the precise failure class this spec exists to eliminate ("a walk
+that visited too little"), just relocated from missing branches to
+colliding pointers.
+
+Real RFC 6901 pointers — `f"{pointer}/properties/{name}"` — are collision-free
+because `properties` is never itself a valid property *name* collision
+target in the same way: the segment sequence `.../properties/items` cannot
+be produced by the structural-keyword branches (`items`, `$defs/…`, etc.),
+which append `items`, `$defs/<name>`, `allOf/<i>`, and so on directly. This
+also matches T1.3's own validation gate, which names
+`/properties/suggestions/items` literally, and the SDD's own walkthrough
+table (`/properties/findings/items/properties/detail`), which already used
+the mid-path `properties` segment the illustrative code block omitted. See
+the plan's Deviation Log (`plan/README.md`) for the approval record.
+
+If a later reader is tempted to "simplify" the pointer back to the bare
+form for readability: don't — that is exactly the change that reintroduces
+silent node loss, and the regression test
+(`test_property_named_items_does_not_collide_with_items_keyword`) exists to
+catch it.
+
 ## WHY the Walk Covers `items`/`contains`, `$defs`/`definitions`, and
 `allOf`/`anyOf`/`oneOf` — and Nothing Else
 

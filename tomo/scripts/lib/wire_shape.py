@@ -49,7 +49,12 @@ def describe_shape(schema: dict) -> dict:
                 },
             }
             for name, child in props.items():
-                walk(child, f"{pointer}/{name}")
+                # Real RFC 6901 pointer, with the `properties` segment kept in.
+                # Dropping it collapses a property literally named `items` (or
+                # `contains`/`$defs`/`definitions`/`allOf`/`anyOf`/`oneOf`) onto
+                # the sibling structural keyword of the same name — see
+                # docs/tomo/scripts/lib/wire_shape.md.
+                walk(child, f"{pointer}/properties/{name}")
         for key in ("items", "contains"):
             if key in node:
                 walk(node[key], f"{pointer}/{key}")

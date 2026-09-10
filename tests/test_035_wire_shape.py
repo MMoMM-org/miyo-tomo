@@ -16,10 +16,13 @@ Tests cover:
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
-SCRIPTS_DIR = Path(__file__).parent.parent / "tomo" / "scripts"
+REPO_ROOT = Path(__file__).parent.parent
+SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
+SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.wire_shape import describe_shape  # noqa: E402
@@ -49,8 +52,8 @@ def test_no_defs_schema_yields_nodes_for_inline_objects():
     assert "" in result
     assert result[""]["closed"] is True
     assert result[""]["required"] == ["id"]
-    assert "/detail" in result
-    assert result["/detail"]["properties"] == {"note": "string"}
+    assert "/properties/detail" in result
+    assert result["/properties/detail"]["properties"] == {"note": "string"}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -83,12 +86,14 @@ def test_nested_objects_under_items_reached_at_every_depth():
     result = describe_shape(schema)
 
     # array-of-object
-    assert "/rows/items" in result
-    assert result["/rows/items"]["properties"] == {"children": "array"}
+    assert "/properties/rows/items" in result
+    assert result["/properties/rows/items"]["properties"] == {"children": "array"}
     # array-of-object-of-array-of-object
-    assert "/rows/items/children/items" in result
-    assert result["/rows/items/children/items"]["closed"] is True
-    assert result["/rows/items/children/items"]["properties"] == {"leaf": "string"}
+    assert "/properties/rows/items/properties/children/items" in result
+    assert result["/properties/rows/items/properties/children/items"]["closed"] is True
+    assert result["/properties/rows/items/properties/children/items"]["properties"] == {
+        "leaf": "string",
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -176,9 +181,9 @@ def test_closed_recorded_effectively_not_literally():
 
     result = describe_shape(schema)
 
-    assert result["/explicitly_closed"]["closed"] is True
-    assert result["/explicitly_open"]["closed"] is False
-    assert result["/silently_open"]["closed"] is False
+    assert result["/properties/explicitly_closed"]["closed"] is True
+    assert result["/properties/explicitly_open"]["closed"] is False
+    assert result["/properties/silently_open"]["closed"] is False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -224,3 +229,47 @@ def test_description_only_difference_is_manifest_identical():
     }
 
     assert describe_shape(schema_a) == describe_shape(schema_b)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# regression — a property named after a structural keyword must not collide
+# with that keyword's own node (bare pointers collapsed /items onto /items)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_property_named_items_does_not_collide_with_items_keyword():
+    schema = {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+            },
+        },
+        "items": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"b": {"type": "string"}},
+        },
+    }
+
+    result = describe_shape(schema)
+
+    assert set(result.keys()) == {"", "/properties/items", "/items"}
+    assert result[""]["properties"] == {"items": "object"}
+    assert result["/properties/items"]["closed"] is False
+    assert result["/properties/items"]["properties"] == {"a": "string"}
+    assert result["/items"]["closed"] is True
+    assert result["/items"]["properties"] == {"b": "string"}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# T1.3's own validation gate — the real suggestions-wire manifest must carry
+# this exact pointer, not the bare form
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_real_suggestions_wire_contains_the_gated_pointer():
+    schema = json.loads((SCHEMAS_DIR / "suggestions-wire.schema.json").read_text())
+
+    result = describe_shape(schema)
+
+    assert "/properties/suggestions/items" in result

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_035_wire_gate.py — Behavioural tests for lib.wire_gate: diff +
 classify + version-check, per published wire (spec 035 T2.3).
 
@@ -38,20 +38,38 @@ Tests cover:
 - no change, run against the REAL committed tree -> pass silently for all
   three wires (this doubles as the T2.3 brief's mandatory today-is-green
   sanity check)
-- an unparseable schema file -> fail with a distinct error marker, never
-  collapsed into "no changes therefore pass"
-- a MISSING manifest -> fail with a distinct error marker naming it as
-  missing, not merely "unreadable" (code review, 2026-09-10: this closes
-  T1.2's CON-5 refused-path obligation, which test_035_wire_manifests.py
-  explicitly deferred to "Phase 2's T2.3")
-- a CORRUPT manifest -> fail with a distinct error marker, same shape as
-  the unparseable-schema case
-- one wire's manifest broken -> `run_wire_gate` still returns a result for
-  ALL wires, the other two gated normally. This is the load-bearing half:
-  an uncaught exception from one wire's read would abort the whole loop
-  and silently suppress the other wires' obligations — exactly what design
-  decision #2 (iterate all, report together, never stop at the first) and
-  CON-4's independent counters exist to prevent
+- an unparseable schema file -> fail with `error_kind ==
+  ERROR_SCHEMA_UNREADABLE`, pinned by identity — never collapsed into "no
+  changes therefore pass", and never confused with a MALFORMED (valid
+  JSON, wrong shape) schema, which is a different kind entirely
+- a MISSING manifest -> fail with `error_kind == ERROR_MANIFEST_MISSING`
+  and an instruction to generate and commit one, not merely "unreadable"
+  (code review, 2026-09-10: this closes T1.2's CON-5 refused-path
+  obligation, which test_035_wire_manifests.py explicitly deferred to
+  "Phase 2's T2.3")
+- a CORRUPT (invalid JSON) manifest -> fail with `error_kind ==
+  ERROR_MANIFEST_UNREADABLE` and an instruction to regenerate it
+- a manifest that IS valid JSON but missing `nodes` or `schema_version`,
+  and a schema that IS valid JSON but missing `properties.schema_version.
+  const` -> each fails as a distinct MALFORMED error_kind, never an
+  uncaught KeyError (code review, 2026-09-10: the exact bug `b29a9ac`
+  fixed for a missing/unreadable manifest, recurring at the "valid JSON,
+  wrong shape" trigger the first fix did not cover)
+- one wire's manifest broken, of EITHER kind (missing-file or wrong-shape)
+  -> `run_wire_gate` still returns a result for ALL wires, the other two
+  gated normally. This is the load-bearing half: an uncaught exception
+  from one wire's read would abort the whole loop and silently suppress
+  the other wires' obligations — exactly what design decision #2 (iterate
+  all, report together, never stop at the first) and CON-4's independent
+  counters exist to prevent
+- every failure branch's RENDERED message ends in an actual instruction
+  line, error branches included — not just a diagnosis (code review,
+  2026-09-10: "a message that says what to do" was true on the shape-diff
+  branches and false on the error branches)
+- render_wire_gate_report RAISES on an action or an error_kind it has no
+  instruction for, rather than silently rendering nothing or inferring one
+  by absence — the same exhaustiveness discipline CHANGE_KINDS/classify
+  already enforce in wire_shape.py, applied here to ACTIONS/ERROR_KINDS
 - two wires mutated in one edit -> both reported in one `run_wire_gate`
   call, each against its own independent result — the third, untouched wire
   still passes in the same run
@@ -63,6 +81,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).parent.parent
 SCRIPTS_DIR = REPO_ROOT / "tomo" / "scripts"
 SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
@@ -73,6 +93,13 @@ from lib.wire_gate import (  # noqa: E402
     ACTION_HANDOVER,
     ACTION_MOVE_VERSION,
     ACTION_REGENERATE_MANIFEST,
+    ACTIONS,
+    ERROR_KINDS,
+    ERROR_MANIFEST_MALFORMED,
+    ERROR_MANIFEST_MISSING,
+    ERROR_MANIFEST_UNREADABLE,
+    ERROR_SCHEMA_MALFORMED,
+    ERROR_SCHEMA_UNREADABLE,
     gate_one_wire,
     manifest_filename,
     render_wire_gate_report,
@@ -299,6 +326,10 @@ def test_unparseable_schema_fails_and_is_never_treated_as_no_change(tmp_path):
 
     assert result["passed"] is False
     assert result["error"] is not None
+    # Pinned by IDENTITY, not by substring — this is specifically the
+    # schema-unreadable kind, never confused with a malformed schema (valid
+    # JSON, wrong shape) or any of the manifest error kinds.
+    assert result["error_kind"] == ERROR_SCHEMA_UNREADABLE
     # Structurally distinct from the "no change" pass shape: a pass ALWAYS
     # carries affecting=False; this carries affecting=None, so the two
     # cannot be confused by a caller checking `affecting is False`.
@@ -308,7 +339,9 @@ def test_unparseable_schema_fails_and_is_never_treated_as_no_change(tmp_path):
 
     message = render_wire_gate_report([result])
     assert document in message
-    assert message != ""
+    # An actual instruction, not just a diagnosis — the renderer's promise
+    # applies to error branches too.
+    assert "fix" in message.lower()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -330,6 +363,7 @@ def test_missing_manifest_fails_with_a_distinct_error_marker(tmp_path):
     assert result["passed"] is False
     assert result["error"] is not None
     assert "missing" in result["error"].lower()
+    assert result["error_kind"] == ERROR_MANIFEST_MISSING
     # Same structural shape as the unparseable-schema case, so a caller
     # branching on `affecting is False` never mistakes this for a pass.
     assert result["affecting"] is None
@@ -339,6 +373,11 @@ def test_missing_manifest_fails_with_a_distinct_error_marker(tmp_path):
     message = render_wire_gate_report([result])
     assert document in message
     assert "missing" in message.lower()
+    # The instruction for a MISSING manifest is distinct from the
+    # instruction for an unreadable/malformed one — "generate and commit",
+    # not "regenerate" a file that does not exist yet.
+    assert "generate" in message.lower()
+    assert "commit" in message.lower()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -358,9 +397,15 @@ def test_corrupt_manifest_fails_with_a_distinct_error_marker(tmp_path):
     assert result["error"] is not None
     assert "manifest" in result["error"].lower()
     assert "missing" not in result["error"].lower()  # distinct from the missing-file case above
+    assert result["error_kind"] == ERROR_MANIFEST_UNREADABLE
+    assert result["error_kind"] != ERROR_MANIFEST_MISSING  # distinct kind, not just distinct prose
     assert result["affecting"] is None
     assert result["changes"] == []
     assert result["actions"] == []
+
+    message = render_wire_gate_report([result])
+    assert "regenerate" in message.lower()
+    assert "commit" not in message.lower()  # the missing-manifest instruction, not this one
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -393,6 +438,7 @@ def test_one_broken_manifest_does_not_abort_gating_the_other_wires(tmp_path):
     assert by_document[suggestions]["passed"] is False
     assert by_document[suggestions]["error"] is not None
     assert "missing" in by_document[suggestions]["error"].lower()
+    assert by_document[suggestions]["error_kind"] == ERROR_MANIFEST_MISSING
 
     # The other two wires were never touched, so they gate normally —
     # proving the broken wire did not suppress them.
@@ -466,3 +512,155 @@ def test_two_wires_changed_in_one_edit_are_both_reported_independently(tmp_path)
     # instructions is the bare document name of an untouched, passing wire —
     # it must not appear as a reported failure line.
     assert f"{instructions}:" not in message
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CRITICAL (code review, 2026-09-10): the same loop-abort bug b29a9ac fixed
+# for a missing/unreadable manifest, recurring at a trigger that fix did not
+# cover — valid JSON, WRONG SHAPE. `manifest["nodes"]`,
+# `manifest["schema_version"]`, and `schema["properties"]["schema_version"]
+# ["const"]` were all unguarded; an empty stub, another wire's manifest
+# copy-pasted, or a hand-edit that drops a key raised an uncaught KeyError
+# from inside gate_one_wire, which — same mechanism as the missing-file
+# case — aborted run_wire_gate's loop and silently suppressed the other two
+# wires' results. Fixed by explicit shape validation BEFORE
+# describe_shape/diff_shapes/classify ever run, never by a blanket
+# `except KeyError` (which would also swallow a genuine bug from inside
+# those pure functions).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_manifest_missing_nodes_key_fails_as_malformed_not_an_uncaught_error(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+    document = "instructions.schema.json"
+
+    _rewrite_json(shapes_dir / manifest_filename(document), lambda manifest: manifest.pop("nodes"))
+
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
+
+    assert result["passed"] is False
+    assert result["error"] is not None
+    assert "nodes" in result["error"].lower()
+    assert result["error_kind"] == ERROR_MANIFEST_MALFORMED
+    assert result["affecting"] is None
+    assert result["changes"] == []
+    assert result["actions"] == []
+
+    message = render_wire_gate_report([result])
+    assert "regenerate" in message.lower()
+
+
+def test_schema_missing_properties_key_fails_as_malformed_not_an_uncaught_error(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+    document = "instructions.schema.json"
+
+    _rewrite_json(schemas_dir / document, lambda schema: schema.pop("properties"))
+
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
+
+    assert result["passed"] is False
+    assert result["error"] is not None
+    assert "properties" in result["error"].lower()
+    assert result["error_kind"] == ERROR_SCHEMA_MALFORMED
+    assert result["error_kind"] != ERROR_SCHEMA_UNREADABLE  # valid JSON — a DIFFERENT kind
+    assert result["affecting"] is None
+    assert result["changes"] == []
+    assert result["actions"] == []
+
+    message = render_wire_gate_report([result])
+    assert "fix" in message.lower()
+
+
+def test_wrong_shape_manifest_and_schema_do_not_abort_gating_the_other_wires(tmp_path):
+    # Mirrors test_one_broken_manifest_does_not_abort_gating_the_other_wires,
+    # but for the "valid JSON, wrong shape" trigger rather than a missing
+    # file — the trigger the first fix (b29a9ac) did not cover. Breaks TWO
+    # wires, each a different malformed-shape flavor, in one run.
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+
+    suggestions = "suggestions-wire.schema.json"
+    garden_audit = "garden-audit-wire.schema.json"
+    instructions = "instructions.schema.json"
+
+    _rewrite_json(shapes_dir / manifest_filename(suggestions), lambda manifest: manifest.pop("nodes"))
+    _rewrite_json(schemas_dir / garden_audit, lambda schema: schema.pop("properties"))
+    # instructions is left untouched — it should still be gated normally.
+
+    results = run_wire_gate(schemas_dir, shapes_dir)
+    by_document = {result["document"]: result for result in results}
+
+    # The whole point: a result exists for EVERY wire, including both
+    # broken ones — the loop did not abort partway through either trigger.
+    assert set(by_document) == {suggestions, garden_audit, instructions}
+
+    assert by_document[suggestions]["passed"] is False
+    assert by_document[suggestions]["error_kind"] == ERROR_MANIFEST_MALFORMED
+
+    assert by_document[garden_audit]["passed"] is False
+    assert by_document[garden_audit]["error_kind"] == ERROR_SCHEMA_MALFORMED
+
+    # Untouched, so it gates normally — proving neither broken wire
+    # suppressed it.
+    assert by_document[instructions]["passed"] is True
+    assert by_document[instructions]["changes"] == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ACTIONS/ERROR_KINDS exhaustiveness — same discipline CHANGE_KINDS/classify
+# already enforce in wire_shape.py, applied here (code review, 2026-09-10):
+# an unrecognised action used to be rendered by ABSENCE-of-move_version
+# inference rather than raising, which a review found the more fragile
+# shape than wire_shape.py's raise-on-unknown-kind mechanism.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_actions_has_exactly_the_three_documented_actions():
+    assert set(ACTIONS) == {ACTION_MOVE_VERSION, ACTION_HANDOVER, ACTION_REGENERATE_MANIFEST}
+    assert len(ACTIONS) == len(set(ACTIONS)), "ACTIONS has a duplicate"
+
+
+def test_error_kinds_has_exactly_the_five_documented_kinds():
+    assert set(ERROR_KINDS) == {
+        ERROR_SCHEMA_UNREADABLE,
+        ERROR_SCHEMA_MALFORMED,
+        ERROR_MANIFEST_MISSING,
+        ERROR_MANIFEST_UNREADABLE,
+        ERROR_MANIFEST_MALFORMED,
+    }
+    assert len(ERROR_KINDS) == len(set(ERROR_KINDS)), "ERROR_KINDS has a duplicate"
+
+
+def test_render_wire_gate_report_raises_on_an_unregistered_action():
+    # A hand-built result standing in for a future bug: an action added to
+    # a wire's `actions` list without a matching ACTION_INSTRUCTIONS entry.
+    # Never reachable through gate_one_wire itself today — this is the
+    # exhaustiveness guard for if that ever drifts.
+    fake_result = {
+        "document": "fake-wire.schema.json",
+        "passed": False,
+        "error": None,
+        "error_kind": None,
+        "changes": [],
+        "affecting": True,
+        "schema_version": "1",
+        "manifest_version": "1",
+        "version_moved": False,
+        "actions": ["moved_to_a_new_planet"],
+    }
+    with pytest.raises(ValueError):
+        render_wire_gate_report([fake_result])
+
+
+def test_render_wire_gate_report_raises_on_an_unregistered_error_kind():
+    fake_result = {
+        "document": "fake-wire.schema.json",
+        "passed": False,
+        "error": "fake error for this test",
+        "error_kind": "moved_to_a_new_planet",
+        "changes": [],
+        "affecting": None,
+        "schema_version": None,
+        "manifest_version": None,
+        "version_moved": None,
+        "actions": [],
+    }
+    with pytest.raises(ValueError):
+        render_wire_gate_report([fake_result])

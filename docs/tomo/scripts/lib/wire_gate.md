@@ -197,12 +197,18 @@ specifically, independent of the error-message assertions in the
 missing/corrupt tests beside it.
 
 `FileNotFoundError` is caught ahead of the broader `OSError` (its parent
-class) so "missing" and "unreadable" produce distinguishable messages: a
-maintainer who forgot to commit a manifest for a new wire needs a
-different instruction (commit one) from a maintainer whose committed
-manifest got corrupted (regenerate it) — conflating the two would send
-the first maintainer looking for a file-permissions bug that does not
-exist.
+class) so "missing" and "unreadable" carry a distinguishable
+`error_kind` (`ERROR_MANIFEST_MISSING` vs `ERROR_MANIFEST_UNREADABLE`) —
+conflating the two would send a maintainer who forgot to commit a
+manifest for a new wire looking for a file-permissions bug that does not
+exist. **Correction (code review, 2026-09-10):** this paragraph originally
+claimed the split alone produced "a different instruction (commit one)
+vs (regenerate it)" — at the time that was an overclaim: only the `error`
+STRING's wording differed; nothing emitted an actual instruction on the
+error path. `render_wire_gate_report` now genuinely does, via
+`error_kind` and `ERROR_INSTRUCTIONS` — see "WHY the Renderer Names an
+Instruction on Every Failure Branch" below, which is where that claim
+became true rather than where it was made.
 
 This also closes T1.2's CON-5 refused-path obligation for real.
 `tests/test_035_wire_manifests.py`'s
@@ -213,3 +219,121 @@ requires... arrives with Phase 2's T2.3."
 `test_missing_manifest_fails_with_a_distinct_error_marker` and
 `test_one_broken_manifest_does_not_abort_gating_the_other_wires` are
 where that promise is actually kept.
+
+## CRITICAL — the Manifest Guard Above Caught Invalid JSON, Not Valid-JSON-Wrong-Shape (code review, 2026-09-10)
+
+`b29a9ac`'s guard caught the manifest FILE failing to read or parse as
+JSON. It did not, and could not, catch a manifest that parsed
+successfully but lacked the shape this module needs: `manifest["nodes"]`
+and `manifest["schema_version"]` were both accessed unguarded immediately
+after that `try` block, and `schema["properties"]["schema_version"]
+["const"]` was accessed unguarded further down. An empty stub committed
+by mistake, another wire's manifest copy-pasted over this one, or a
+hand-edit that drops a key — each at least as likely as a truncated file
+— raised an uncaught `KeyError` from inside `gate_one_wire`, which
+propagates out of `run_wire_gate`'s loop exactly like the missing-file
+case did: the SAME defect, at a trigger the first fix did not cover, with
+the SAME consequence — the other two wires' results never computed.
+
+The fix is `_validate_schema_shape`/`_validate_manifest_shape`: explicit
+checks for the required keys, run immediately after each successful
+`json.loads` and BEFORE `describe_shape`/`diff_shapes`/either dict access
+that used to be unguarded. A malformed manifest or schema now returns an
+`_error_result` (`error_kind` `ERROR_MANIFEST_MALFORMED` /
+`ERROR_SCHEMA_MALFORMED`) instead of raising.
+
+This is deliberately validation, not `try: ... except KeyError:` wrapped
+around the processing block. A blanket `except KeyError` there would also
+swallow a genuine `KeyError` bug surfacing from inside `describe_shape`,
+`diff_shapes`, or `classify` — turning an actual regression in the pure
+data-model functions into a quiet "manifest malformed" gate result instead
+of letting it raise and fail the test run loudly, which is this module's
+own stated contract for the OTHER guards (see "WHY `OSError`/
+`json.JSONDecodeError` Are Caught Narrowly" above). The distinction that
+matters: malformed *input* is a gate result; a broken *algorithm* is a
+crash. Validating the specific keys this module reads, rather than
+catching whatever exception type happens to result from reading them, is
+what keeps that distinction real instead of accidental.
+
+`test_manifest_missing_nodes_key_fails_as_malformed_not_an_uncaught_error`,
+`test_schema_missing_properties_key_fails_as_malformed_not_an_uncaught_error`,
+and
+`test_wrong_shape_manifest_and_schema_do_not_abort_gating_the_other_wires`
+are the regression guards — the last one mirrors
+`test_one_broken_manifest_does_not_abort_gating_the_other_wires` but for
+this trigger specifically, breaking two wires' shapes (not files) in one
+run and asserting the third still gates normally.
+
+## WHY the Renderer Names an Instruction on Every Failure Branch, Error Branches Included (code review, 2026-09-10)
+
+The module docstring has always promised "a message that says what to
+do". Before this fix that promise held only for the shape-diff branches —
+`ACTION_MOVE_VERSION`/`ACTION_HANDOVER`/`ACTION_REGENERATE_MANIFEST` each
+render into an imperative line. The three (now five) error branches ended
+with the diagnosis and nothing else:
+`instructions.schema.json: manifest missing: /path/...`, full stop.
+Diagnosable, not instructional — the same gap between "detected" and
+"actionable" this whole spec exists to close, recurring one field over.
+
+`render_wire_gate_report` now appends a second line for every error
+result, looked up from `ERROR_INSTRUCTIONS` by `error_kind`: a missing
+manifest says to generate and commit one; an unreadable or malformed
+manifest says to regenerate it; an unreadable or malformed schema says to
+fix the file. The missing-vs-other split matters specifically because
+"regenerate" implies a starting point that a genuinely missing manifest
+does not have — telling a maintainer who forgot to commit a manifest to
+"regenerate" it points them at a file that does not exist yet.
+
+## WHY `ACTIONS`/`ERROR_KINDS` Get the Same Treatment `CHANGE_KINDS` Got in `wire_shape.py` (code review, 2026-09-10)
+
+Before this fix, `ACTION_MOVE_VERSION`/`ACTION_HANDOVER`/
+`ACTION_REGENERATE_MANIFEST` were three bare constants with no collecting
+tuple, and the renderer inferred `regenerate_manifest` by the ABSENCE of
+`move_version` in `result["actions"]` rather than by checking what was
+actually there. Code review named this the more fragile shape than
+`wire_shape.py`'s `CHANGE_KINDS` + `classify`-raises-on-unknown mechanism:
+an action added to `actions` that the renderer had no branch for would
+silently fall into the `else` and render the WRONG instruction, never
+signalling anything went wrong.
+
+`ACTIONS` (a tuple) and `ACTION_INSTRUCTIONS` (a dict keyed by the same
+constants) now give the renderer something to check identity against:
+`_render_action` looks up each action in `result["actions"]` and raises
+`ValueError` for one it has no instruction for, rather than defaulting to
+the wrong line. `ERROR_KINDS`/`ERROR_INSTRUCTIONS`/`_render_error` are the
+same mechanism applied to the error branches, for the same reason.
+`test_render_wire_gate_report_raises_on_an_unregistered_action` and
+`test_render_wire_gate_report_raises_on_an_unregistered_error_kind` are
+the regression guards, mirroring `wire_shape.py`'s
+`test_classify_raises_on_an_unregistered_kind`.
+
+## WHY `error_kind` Exists Beside the Human `error` String (code review, 2026-09-10)
+
+Before this fix, `manifest missing` vs `manifest unreadable` vs `schema
+unreadable` were distinguishable only by substring-matching the `error`
+sentence — and the tests already did exactly that
+(`"missing" in result["error"].lower()`). Nothing in production branched
+on it yet, but that is precisely the situation ADR-2 already ruled out for
+`detail`: a human-readable string is for humans, and the trap is adding
+the FIRST piece of code that parses it back, because after that the
+string is load-bearing and can no longer be reworded freely. T4.1's CLI
+is the obvious near-term consumer — distinct exit codes per failure kind —
+so `error_kind` (one of `ERROR_KINDS`) was added now, while the shape is
+still cheap to change, rather than after a consumer already depends on
+prefix-matching `error`. Tests were updated to assert `error_kind` by
+identity as the primary check, keeping the substring assertions only as a
+secondary check that the human text still mentions the right word.
+
+## WHY the Three Result-Building Call Sites Collapsed Into `_result`
+
+`gate_one_wire` used to list the same nine keys (ten, after `error_kind`)
+independently at three call sites: the error branch, the pass branch, and
+the fail-with-changes branch. Nothing enforced that the three agreed on
+the field set — a key added to one and forgotten in another would only
+surface as a `KeyError` in whatever test happened to read the missing
+field, not as an obvious defect at the point of the omission. `_result`
+is the one place the `WireGateResult` shape is written down; every
+return site now calls it with only the fields that differ from the
+all-`None`/empty default, which happens to make the error-result shape
+`_error_result` builds nearly free (`_result(document, passed=False,
+error=..., error_kind=...)` — everything else defaults correctly).

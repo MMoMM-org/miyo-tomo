@@ -111,11 +111,38 @@ Turns the recorded shape into a gate.
        else** because its parent declares no `properties` and is not a recorded node. That is the
        shape of a new action kind on the instructions wire.
 
+     - **a field joining `required` → NOT affecting** `[ref: SDD/Application Data Models]`. We now
+       always emit something their older copy has declared and accepts. Stated because it is easy to
+       get backwards: this wire runs producer → consumer, so the consumer never *sends* anything
+       that could be missing a newly-required field. They only receive what we emit and validate it.
+       A review has already reasoned the wrong way round on this exact question — derive direction
+       from who emits and who validates, not from what "required" sounds like;
+     - **a declared-optional field starting to be emitted** is **not classifiable here, by
+       construction.** It is an emission-pattern change, not a schema change, so `describe_shape`
+       sees nothing move, `diff_shapes` returns an empty list, and `classify` is never called. The
+       measured class is still satisfied at the system level — the gate's `any(classify(c) for c in
+       [])` is `False`, the correct answer — but there is no `ShapeChange` to hand it. Do not
+       manufacture one to make the class look covered; record it as discharged by absence;
+     - **prose changed** resolves the same way: T1.1 excludes descriptions from the record, so a
+       prose-only edit produces no change and `classify` is never reached. Test it at the
+       `diff_shapes` layer (empty list), never by hand-building a change.
+
      **Every kind `diff_shapes` can emit must have a rule.** There are ten. A kind with no branch
      falls through to whatever the default is, and a default that returns `False` means the detector
      stays silent on a change it detected — the failure this spec exists to eliminate, one layer
-     further in. Assert the exhaustiveness directly: enumerate the kinds and fail if any is
-     unhandled, so adding an eleventh kind later breaks a test instead of going quietly unclassified.
+     further in. Assert the exhaustiveness directly. **Mechanism, so it is not left to invention:**
+
+     a. Export a single `CHANGE_KINDS` constant from `wire_shape.py` — the vocabulary in one place,
+        the same single-source rule `PUBLISHED_WIRES` follows. A test enumerating the ten kinds
+        itself duplicates the vocabulary and can drift from the module's, leaving the exhaustiveness
+        check passing against a list that no longer matches reality.
+     b. `classify` **raises** on a kind it has no rule for. Silently returning `False` is the exact
+        failure being guarded — the detector staying quiet about a change it successfully detected.
+     c. One test iterates `CHANGE_KINDS` and asserts `classify` returns a bool for each. Adding an
+        eleventh kind to the constant without writing its rule then fails this test.
+     d. `_change` validates its `kind` argument against `CHANGE_KINDS`. This closes the direction the
+        other three miss: a kind emitted by `diff_shapes` but never added to the constant would
+        otherwise slip past (c) entirely, since (c) only ever sees what the constant lists.
   3. Implement: `classify(change, observed) -> bool`, reading `closed` from the manifest.
   4. Validate: unit tests pass; ruff clean.
   5. Success:
@@ -125,7 +152,8 @@ Turns the recorded shape into a gate.
      - [ ] Required removal is affecting; optional removal is not `[ref: PRD/F2-AC4]`
      - [ ] Closing a node is affecting; opening one is not `[ref: PRD/Business Rules; Rule 8]`
      - [ ] A wholesale node addition is affecting `[ref: PRD/Business Rules; Rule 9]`
-     - [ ] Every kind `diff_shapes` emits has a rule, asserted exhaustively
+     - [ ] Every kind `diff_shapes` emits has a rule, asserted exhaustively over `CHANGE_KINDS`
+     - [ ] A field joining `required` is not affecting `[ref: SDD/Application Data Models]`
 
 - [ ] **T2.3 The gate, and a message that says what to do** `[activity: backend-api]`
 

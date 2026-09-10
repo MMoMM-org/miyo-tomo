@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_035_wire_gate.py — Behavioural tests for lib.wire_gate: diff +
 classify + version-check, per published wire (spec 035 T2.3).
 
@@ -40,6 +40,18 @@ Tests cover:
   sanity check)
 - an unparseable schema file -> fail with a distinct error marker, never
   collapsed into "no changes therefore pass"
+- a MISSING manifest -> fail with a distinct error marker naming it as
+  missing, not merely "unreadable" (code review, 2026-09-10: this closes
+  T1.2's CON-5 refused-path obligation, which test_035_wire_manifests.py
+  explicitly deferred to "Phase 2's T2.3")
+- a CORRUPT manifest -> fail with a distinct error marker, same shape as
+  the unparseable-schema case
+- one wire's manifest broken -> `run_wire_gate` still returns a result for
+  ALL wires, the other two gated normally. This is the load-bearing half:
+  an uncaught exception from one wire's read would abort the whole loop
+  and silently suppress the other wires' obligations — exactly what design
+  decision #2 (iterate all, report together, never stop at the first) and
+  CON-4's independent counters exist to prevent
 - two wires mutated in one edit -> both reported in one `run_wire_gate`
   call, each against its own independent result — the third, untouched wire
   still passes in the same run
@@ -297,6 +309,97 @@ def test_unparseable_schema_fails_and_is_never_treated_as_no_change(tmp_path):
     message = render_wire_gate_report([result])
     assert document in message
     assert message != ""
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# missing manifest -> fail with a distinct error marker (SDD/Error Handling:
+# "Manifest missing for a published wire -> fail... silence would reproduce
+# it"). This closes T1.2's CON-5 refused-path obligation, which
+# test_035_wire_manifests.py deliberately left as intent-documentation for
+# "Phase 2's T2.3" to carry (code review, 2026-09-10).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_missing_manifest_fails_with_a_distinct_error_marker(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+    document = "instructions.schema.json"
+
+    (shapes_dir / manifest_filename(document)).unlink()
+
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
+
+    assert result["passed"] is False
+    assert result["error"] is not None
+    assert "missing" in result["error"].lower()
+    # Same structural shape as the unparseable-schema case, so a caller
+    # branching on `affecting is False` never mistakes this for a pass.
+    assert result["affecting"] is None
+    assert result["changes"] == []
+    assert result["actions"] == []
+
+    message = render_wire_gate_report([result])
+    assert document in message
+    assert "missing" in message.lower()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# corrupt manifest -> fail with a distinct error marker, same shape as the
+# unparseable-schema case but naming the manifest, not the schema.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_corrupt_manifest_fails_with_a_distinct_error_marker(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+    document = "instructions.schema.json"
+
+    (shapes_dir / manifest_filename(document)).write_text("{ this is not valid json", encoding="utf-8")
+
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
+
+    assert result["passed"] is False
+    assert result["error"] is not None
+    assert "manifest" in result["error"].lower()
+    assert "missing" not in result["error"].lower()  # distinct from the missing-file case above
+    assert result["affecting"] is None
+    assert result["changes"] == []
+    assert result["actions"] == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# The load-bearing half (code review, 2026-09-10): a broken manifest must
+# NOT abort run_wire_gate's loop. Before this guard, an uncaught exception
+# reading one wire's manifest propagated out of the loop and silently
+# suppressed the other two wires' results entirely — the opposite of design
+# decision #2 (iterate all, report every failure together, never stop at
+# the first) and CON-4's independent-counters requirement.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_one_broken_manifest_does_not_abort_gating_the_other_wires(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+
+    suggestions = "suggestions-wire.schema.json"
+    garden_audit = "garden-audit-wire.schema.json"
+    instructions = "instructions.schema.json"
+
+    (shapes_dir / manifest_filename(suggestions)).unlink()
+    # garden_audit and instructions are left untouched — both should still
+    # be gated normally in the same run.
+
+    results = run_wire_gate(schemas_dir, shapes_dir)
+    by_document = {result["document"]: result for result in results}
+
+    # The whole point: a result exists for EVERY wire, including the broken
+    # one — the loop did not abort partway through.
+    assert set(by_document) == {suggestions, garden_audit, instructions}
+
+    assert by_document[suggestions]["passed"] is False
+    assert by_document[suggestions]["error"] is not None
+    assert "missing" in by_document[suggestions]["error"].lower()
+
+    # The other two wires were never touched, so they gate normally —
+    # proving the broken wire did not suppress them.
+    assert by_document[garden_audit]["passed"] is True
+    assert by_document[garden_audit]["changes"] == []
+    assert by_document[instructions]["passed"] is True
+    assert by_document[instructions]["changes"] == []
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -153,12 +153,63 @@ even ran.
 
 ## WHY `OSError`/`json.JSONDecodeError` Are Caught Narrowly, Not a Bare `except`
 
-`gate_one_wire`'s parse-failure branch catches exactly the two exception
-types a malformed or missing schema FILE can raise. A bare `except` would
+`gate_one_wire`'s parse-failure branches catch exactly the exception types
+a malformed, missing, or unreadable FILE can raise. A bare `except` would
 also swallow a real bug surfacing from inside `describe_shape`,
 `diff_shapes`, or `classify` — turning an actual regression in the drift
-detector into a quiet "schema unreadable" gate failure instead of letting
-it raise and fail the test run loudly, which is the same "fail loud, never
+detector into a quiet "unreadable" gate failure instead of letting it
+raise and fail the test run loudly, which is the same "fail loud, never
 silently" principle the rest of this spec is built on (see
 `wire_shape.md`'s notes on `classify` and `_change` raising rather than
 guessing).
+
+## WHY the Manifest Guard Matters More Than It Looks (code review, 2026-09-10)
+
+The first cut of this module guarded the schema read (`try`/`except`
+around `json.loads(schema_path.read_text(...))`) but left the manifest
+read bare — `json.loads(manifest_path.read_text(...))` sat outside any
+`try` block at all. Both a missing manifest (`FileNotFoundError`) and a
+corrupt one (`json.JSONDecodeError`) went uncaught. This looked
+asymmetric on the surface — one guard written, a near-identical one
+skipped — but the actual defect was not primarily about the missing
+structured result. It was about the loop.
+
+`run_wire_gate` calls `gate_one_wire` once per wire, in order, and
+appends each result to a list. An uncaught exception from ANY call does
+not become that wire's result — it propagates straight out of the loop
+and aborts the whole function. So a schema-read failure fails gracefully
+(the guard catches it, returns an error result, the loop continues), but
+a manifest-read failure — missing OR corrupt — killed `run_wire_gate`
+outright, and the other two wires' results were never computed at all.
+
+That is precisely the failure this spec's design decision #2 exists to
+prevent: iterate every published wire, report every failure together,
+never stop at the first, because CON-4's counters are independent. A
+wire added without a manifest is, per the SDD's Error Handling table,
+"exactly the gap this spec closes" — and until this guard existed, hitting
+that exact gap silently closed the gate on the OTHER two wires too, on its
+way past. The structured `error` result the fix now returns is the
+visible half of the fix; the loop continuing to gate every other wire in
+the same run is the half that was actually load-bearing —
+`test_one_broken_manifest_does_not_abort_gating_the_other_wires` in
+`tests/test_035_wire_gate.py` is the regression guard for that half
+specifically, independent of the error-message assertions in the
+missing/corrupt tests beside it.
+
+`FileNotFoundError` is caught ahead of the broader `OSError` (its parent
+class) so "missing" and "unreadable" produce distinguishable messages: a
+maintainer who forgot to commit a manifest for a new wire needs a
+different instruction (commit one) from a maintainer whose committed
+manifest got corrupted (regenerate it) — conflating the two would send
+the first maintainer looking for a file-permissions bug that does not
+exist.
+
+This also closes T1.2's CON-5 refused-path obligation for real.
+`tests/test_035_wire_manifests.py`'s
+`test_missing_manifest_fails_the_existence_check` says explicitly that it
+only proves `Path.is_file()` and a bare `assert` behave the way the
+standard library guarantees, and that "the REAL refused case CON-5
+requires... arrives with Phase 2's T2.3."
+`test_missing_manifest_fails_with_a_distinct_error_marker` and
+`test_one_broken_manifest_does_not_abort_gating_the_other_wires` are
+where that promise is actually kept.

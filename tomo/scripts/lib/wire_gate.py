@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """wire_gate.py — The drift gate for a published wire: diff + classify +
 version-check, and a message that says what to do (spec 035 T2.3).
 
@@ -49,6 +49,26 @@ def manifest_filename(schema_filename: str) -> str:
     return f"{stem}.shape.json"
 
 
+def _error_result(document: str, error: str) -> dict:
+    """A WireGateResult for a wire that could not even be read — a schema
+    that fails to parse, or a manifest that is missing or corrupt.
+    `affecting` is `None` here, never `False`: `False` means "a real diff
+    was classified and found non-affecting", which never happened for this
+    result — there was nothing to classify. See gate_one_wire's docstring.
+    """
+    return {
+        "document": document,
+        "passed": False,
+        "error": error,
+        "changes": [],
+        "affecting": None,
+        "schema_version": None,
+        "manifest_version": None,
+        "version_moved": None,
+        "actions": [],
+    }
+
+
 def gate_one_wire(document: str, schema_path: Path, manifest_path: Path) -> dict:
     """Gate a single published wire: read its live schema and its committed
     manifest off disk, diff, classify, and decide.
@@ -57,9 +77,9 @@ def gate_one_wire(document: str, schema_path: Path, manifest_path: Path) -> dict
 
     - `document`: the schema filename this result is about.
     - `passed`: bool.
-    - `error`: set only when the schema could not even be parsed — a
-      DIFFERENT failure mode than a real shape diff, so it is never left to
-      masquerade as `changes == []` (which means "no change").
+    - `error`: set only when the schema or manifest could not even be read
+      — a DIFFERENT failure mode than a real shape diff, so it is never
+      left to masquerade as `changes == []` (which means "no change").
     - `changes`: the ShapeChange list from diff_shapes, each with
       `consumer_affecting` RESOLVED by classify (unlike diff_shapes's own
       return value, which always carries False there — see wire_shape.py's
@@ -74,23 +94,30 @@ def gate_one_wire(document: str, schema_path: Path, manifest_path: Path) -> dict
     — caught narrowly (OSError, json.JSONDecodeError) so a real bug inside
     describe_shape/diff_shapes/classify still raises and fails the run,
     rather than being swallowed into a gate failure result.
+
+    A MISSING or CORRUPT manifest fails the same way (SDD/Error Handling:
+    "Manifest missing for a published wire -> fail. A wire added without a
+    manifest is exactly the gap this spec closes; silence would reproduce
+    it.") — and it matters MORE than the schema guard above: an uncaught
+    exception here would propagate out of run_wire_gate's loop and abort
+    gating the other published wires entirely, silently suppressing their
+    obligations too. `FileNotFoundError` is caught separately from the
+    broader `OSError`/`json.JSONDecodeError` pair so the message tells a
+    maintainer who forgot to commit a manifest something different from one
+    whose manifest got corrupted — see wire_gate.md.
     """
     try:
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return {
-            "document": document,
-            "passed": False,
-            "error": f"schema unreadable: {exc}",
-            "changes": [],
-            "affecting": None,
-            "schema_version": None,
-            "manifest_version": None,
-            "version_moved": None,
-            "actions": [],
-        }
+        return _error_result(document, f"schema unreadable: {exc}")
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return _error_result(document, f"manifest missing: {manifest_path}")
+    except (OSError, json.JSONDecodeError) as exc:
+        return _error_result(document, f"manifest unreadable: {exc}")
+
     recorded = manifest["nodes"]
     observed = describe_shape(schema)
     changes = diff_shapes(recorded, observed)

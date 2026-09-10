@@ -58,6 +58,25 @@ from day one.
      - [ ] `--obligations` output is the handoff's raw material `[ref: PRD/F4-AC2]`
      - [ ] Output carries no prose and no content `[ref: SDD/System-Wide Patterns]`
 
+  **Carried forward from T1.2's code-quality review (2026-09-10)** — three items deliberately
+  deferred to this task rather than fixed early, because each only becomes real once a CLI feeds
+  `build_manifest` something other than the three known-good schemas:
+
+  a. **`build_manifest` raises a bare `KeyError` on malformed input.** It reads
+     `schema["properties"]["schema_version"]["const"]` directly, so a schema missing that path — or
+     declaring the version as an `enum` rather than a `const` — fails with `KeyError('const')` and no
+     mention of which document caused it. Harmless while the only callers are the three published
+     wires; illegible the moment this command accepts a path from a person. Raise a `ValueError`
+     naming the source and the missing key, and test the message.
+  b. **Write with `encoding="utf-8"`.** `serialize_manifest` uses `ensure_ascii=False`, and the
+     round-trip test reads with an explicit UTF-8 encoding. Nothing yet pins the *write* side,
+     because generation was ad hoc. If a property name or enum value ever goes non-ASCII, a
+     regeneration that writes in the platform default would stop matching the committed bytes and
+     the byte-for-byte contract would break for a reason nobody would look for.
+  c. **Promote the manifest-path derivation.** The `X.schema.json` -> `X.shape.json` convention lives
+     only in the test helper `_manifest_path`. One place is not duplication, but this command needs
+     the same convention — move it into `wire_shape.py` rather than writing it a second time.
+
 - [ ] **T4.2 All three consumer copies are vendored, and reported against** `[activity: data-architecture]`
 
   1. Prime: read ADR-7, and note **why this is a report**: a vendored copy lags ours by design between

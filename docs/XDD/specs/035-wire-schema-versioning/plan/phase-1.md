@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Describe — the manifest and its generator"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 1
 ---
@@ -57,7 +57,7 @@ Establishes the baseline: a committed, machine-checkable record of each publishe
      - [x] Types are recorded; prose is not `[ref: SDD/Architecture Decisions; ADR-2]`
      - [x] Two schemas differing only in prose describe identically `[ref: PRD/F1-AC4]`
 
-- [ ] **T1.2 The three manifests are generated and committed** `[activity: data-architecture]`
+- [x] **T1.2 The three manifests are generated and committed** `[activity: data-architecture]`
 
   1. Prime: confirm which three documents are published wires and which fifteen are internal
      `[ref: SDD/Constraints; CON-4]`.
@@ -69,16 +69,16 @@ Establishes the baseline: a committed, machine-checkable record of each publishe
      declares.
   4. Validate: unit tests pass; ruff clean; the three files are committed, not generated at test time.
   5. Success:
-     - [ ] Exactly three manifests exist, one per published wire `[ref: SDD/Data Storage Changes]`
-     - [ ] A published wire without a manifest fails `[ref: PRD/F1-AC1]`
-     - [ ] Regenerating produces identical content on an unchanged schema `[ref: PRD/F1-AC5]`
+     - [x] Exactly three manifests exist, one per published wire `[ref: SDD/Data Storage Changes]`
+     - [x] A published wire without a manifest fails `[ref: PRD/F1-AC1]`
+     - [x] Regenerating produces identical content on an unchanged schema `[ref: PRD/F1-AC5]`
 
   **Note on the garden-audit manifest**: our schema already declares `up_source` and `up_value`, so
   the manifest records eight properties on `findings[].detail` and that is **correct**. The drift
   against the consumer's six is not this mechanism's job — it belongs to the vendored-copy report in
   Phase 4. Baking our current state as the baseline is what a manifest is for.
 
-- [ ] **T1.3 Phase Validation** `[activity: validate]`
+- [x] **T1.3 Phase Validation** `[activity: validate]`
 
   - Full suite green, ruff clean.
   - Confirm by inspection that the suggestions-wire manifest contains a node for

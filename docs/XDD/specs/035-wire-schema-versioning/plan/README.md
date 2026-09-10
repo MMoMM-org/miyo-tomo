@@ -118,7 +118,7 @@ context), **Test** (red), **Implement** (green), **Validate** (refactor + verify
 > **Tracking Principle**: Track logical units that produce verifiable outcomes. The TDD cycle is the
 > method, not separate tracked items.
 
-- [ ] [Phase 1: Describe — the manifest and its generator](phase-1.md)
+- [x] [Phase 1: Describe — the manifest and its generator](phase-1.md)
 - [ ] [Phase 2: Detect — diff, classify, and the gate](phase-2.md)
 - [ ] [Phase 3: Version integrity and document identity](phase-3.md)
 - [ ] [Phase 4: The CLI, the consumer copies, and closing the live drift](phase-4.md)

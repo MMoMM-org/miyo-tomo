@@ -1,12 +1,13 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.6.0
+# version: 0.7.0
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
 PUBLISHED_WIRES, build_manifest and serialize_manifest (T1.2) wrap that node
 map in the committed manifest-file shape. diff_shapes (T2.1) names what moved
-between two node maps. classify is Phase 2's next task (T2.2) and is not
-implemented yet — do not stub it.
+between two node maps. classify (T2.2) decides which of those moves oblige
+the consumer to act. T2.3's gate is the next task and is not implemented
+here — do not stub it.
 """
 from __future__ import annotations
 
@@ -18,7 +19,40 @@ __all__ = [
     "build_manifest",
     "serialize_manifest",
     "diff_shapes",
+    "CHANGE_KINDS",
+    "classify",
 ]
+
+# The ten ShapeChange kinds `diff_shapes` can emit — the single vocabulary
+# `_change` validates against and `classify` must have a rule for every
+# member of, the same single-source rule `PUBLISHED_WIRES` follows above.
+# Named constants (not bare strings at each call site) so a kind used by
+# `_diff_node`/`diff_shapes` and a kind checked by `classify` are the SAME
+# Python object, not two independently-typed strings that could drift.
+# See docs/tomo/scripts/lib/wire_shape.md, "WHY CHANGE_KINDS Is One Constant".
+ADDED_PROPERTY = "added_property"
+REMOVED_PROPERTY = "removed_property"
+TYPE_CHANGED = "type_changed"
+REQUIRED_ADDED = "required_added"
+REQUIRED_REMOVED = "required_removed"
+OPENNESS_CHANGED = "openness_changed"
+ADDED_ENUM_VALUE = "added_enum_value"
+REMOVED_ENUM_VALUE = "removed_enum_value"
+NODE_ADDED = "node_added"
+NODE_REMOVED = "node_removed"
+
+CHANGE_KINDS = (
+    ADDED_PROPERTY,
+    REMOVED_PROPERTY,
+    TYPE_CHANGED,
+    REQUIRED_ADDED,
+    REQUIRED_REMOVED,
+    OPENNESS_CHANGED,
+    ADDED_ENUM_VALUE,
+    REMOVED_ENUM_VALUE,
+    NODE_ADDED,
+    NODE_REMOVED,
+)
 
 # The three published wires (SDD/Data Storage Changes) — the single source of
 # truth for which schemas get a manifest. Generation and every test read this
@@ -219,7 +253,18 @@ def _change(pointer: str, kind: str, detail: str) -> dict:
     """One `ShapeChange`. `consumer_affecting` is always `False` here — T2.2's
     `classify(change, observed)` decides that field; `diff_shapes` never
     pre-judges it. See docs/tomo/scripts/lib/wire_shape.md for why.
+
+    Validates `kind` against `CHANGE_KINDS` before constructing anything.
+    This is the exhaustiveness mechanism's other half: a test can assert
+    `classify` handles every kind `CHANGE_KINDS` lists, but that only ever
+    sees what the constant lists — a kind `diff_shapes` emits WITHOUT ever
+    being added to `CHANGE_KINDS` would slip past that test entirely and
+    reach `classify` unclassified. Catching it here, at the one place every
+    `ShapeChange` is built, means the vocabulary cannot drift out from under
+    itself. See docs/tomo/scripts/lib/wire_shape.md.
     """
+    if kind not in CHANGE_KINDS:
+        raise ValueError(f"_change: {kind!r} is not a member of CHANGE_KINDS")
     return {"pointer": pointer, "kind": kind, "detail": detail, "consumer_affecting": False}
 
 
@@ -233,13 +278,13 @@ def _diff_node(pointer: str, old: dict, new: dict) -> list:
     old_properties = old.get("properties") or {}
     new_properties = new.get("properties") or {}
     for name in sorted(set(new_properties) - set(old_properties)):
-        changes.append(_change(pointer, "added_property", f"added property: {name}"))
+        changes.append(_change(pointer, ADDED_PROPERTY, f"added property: {name}"))
     for name in sorted(set(old_properties) - set(new_properties)):
-        changes.append(_change(pointer, "removed_property", f"removed property: {name}"))
+        changes.append(_change(pointer, REMOVED_PROPERTY, f"removed property: {name}"))
     for name in sorted(set(old_properties) & set(new_properties)):
         if old_properties[name] != new_properties[name]:
             changes.append(_change(
-                pointer, "type_changed",
+                pointer, TYPE_CHANGED,
                 f"{name}: {old_properties[name]} -> {new_properties[name]}",
             ))
 
@@ -255,15 +300,15 @@ def _diff_node(pointer: str, old: dict, new: dict) -> list:
     old_required = set(old.get("required") or [])
     new_required = set(new.get("required") or [])
     for name in sorted(new_required - old_required):
-        changes.append(_change(pointer, "required_added", f"required gained: {name}"))
+        changes.append(_change(pointer, REQUIRED_ADDED, f"required gained: {name}"))
     for name in sorted(old_required - new_required):
-        changes.append(_change(pointer, "required_removed", f"required lost: {name}"))
+        changes.append(_change(pointer, REQUIRED_REMOVED, f"required lost: {name}"))
 
     old_closed = bool(old.get("closed"))
     new_closed = bool(new.get("closed"))
     if old_closed != new_closed:
         changes.append(_change(
-            pointer, "openness_changed", f"closed: {old_closed} -> {new_closed}",
+            pointer, OPENNESS_CHANGED, f"closed: {old_closed} -> {new_closed}",
         ))
 
     old_values = old.get("values") or {}
@@ -281,11 +326,11 @@ def _diff_node(pointer: str, old: dict, new: dict) -> list:
         new_by_key = {_value_sort_key(v): v for v in new_values.get(name, [])}
         for key in sorted(set(new_by_key) - set(old_by_key)):
             changes.append(_change(
-                pointer, "added_enum_value", f"{name}: added value {new_by_key[key]!r}",
+                pointer, ADDED_ENUM_VALUE, f"{name}: added value {new_by_key[key]!r}",
             ))
         for key in sorted(set(old_by_key) - set(new_by_key)):
             changes.append(_change(
-                pointer, "removed_enum_value", f"{name}: removed value {old_by_key[key]!r}",
+                pointer, REMOVED_ENUM_VALUE, f"{name}: removed value {old_by_key[key]!r}",
             ))
 
     return changes
@@ -331,9 +376,9 @@ def diff_shapes(recorded: dict, observed: dict) -> list:
     observed_pointers = set(observed)
 
     for pointer in observed_pointers - recorded_pointers:
-        changes.append(_change(pointer, "node_added", f"node added: {pointer}"))
+        changes.append(_change(pointer, NODE_ADDED, f"node added: {pointer}"))
     for pointer in recorded_pointers - observed_pointers:
-        changes.append(_change(pointer, "node_removed", f"node removed: {pointer}"))
+        changes.append(_change(pointer, NODE_REMOVED, f"node removed: {pointer}"))
 
     for pointer in recorded_pointers & observed_pointers:
         changes.extend(_diff_node(pointer, recorded[pointer], observed[pointer]))
@@ -357,3 +402,115 @@ def serialize_manifest(manifest: dict) -> str:
     committed JSON file in this repo.
     """
     return json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def classify(change: dict, observed: dict) -> bool:
+    """Does this single `ShapeChange` oblige the consumer to act?
+
+    Reads only `change` (`pointer`, `kind`) and `observed` — the freshly
+    described node map — NEVER `recorded`. The direction of every kind is
+    already decided by `_diff_node`/`diff_shapes` at the point the kind is
+    chosen (see `_change`'s docstring and `wire_shape.md`'s "WHY
+    `required_added`/`required_removed` Are Two Kinds"); `classify` has
+    nothing left to re-derive from a before/after comparison, only a rule
+    to apply. Wanting `recorded` here is the signal of having reasoned
+    about a kind backwards — see the rule-by-rule notes below and
+    docs/tomo/scripts/lib/wire_shape.md.
+
+    This wire runs producer (Tomo) -> consumer (Hashi, vendoring a schema
+    copy and validating against it with `additionalProperties: false` on
+    almost every node). Every rule below falls out of that direction:
+    - We ADD something their older copy does not permit -> they reject ->
+      affecting.
+    - We STOP emitting something their older copy REQUIRES -> they reject
+      -> affecting.
+    - We emit a SUBSET of what they already accept -> fine -> not
+      affecting.
+
+    Rules, measured against the consumer's own validator (PRD/Detailed
+    Feature Specifications; Business Rules 1-9):
+
+    - `added_property`: affecting only if the node is closed (Rules 1-2,
+      PRD F2-AC1/F2-AC2) — an added field on an open node is a subset of
+      what they already accept.
+    - `removed_property`: NEVER affecting on its own. Whether losing a
+      property matters depends entirely on whether it was required, and
+      that fact is carried by a SEPARATE `required_removed` change on the
+      same pointer when it applies (Rule 4) — see `diff_shapes`, which
+      emits both `removed_property` AND `required_removed` for a required
+      field's removal, and `removed_property` alone for an optional one.
+      The gate's `any(classify(c, observed) for c in changes)` is what
+      recombines them; this function must not (and structurally cannot,
+      without `recorded`) re-derive required-ness from a lone
+      `removed_property`.
+    - `type_changed`: always affecting (Rule/class 6), independent of
+      openness — an empty value where a consumer's validator expects a
+      declared type errors regardless of which node it lives on.
+    - `required_added`: NEVER affecting. This wire runs producer ->
+      consumer; the consumer never SENDS a document that could be missing
+      a newly-required field. We now always emit something their older
+      copy already declared and accepted as optional — a subset of what
+      validates, not a superset.
+    - `required_removed`: always affecting (Rule 4/class 4) — we may now
+      omit a field their vendored copy still requires.
+    - `openness_changed`: direction read from `observed[pointer]["closed"]`
+      — never from `detail`, which is display-only by contract (see
+      `wire_shape.md`, "WHY `detail` Is Display-Only"). `closed=True` means
+      the node just became closed (affecting — a document valid under the
+      open version may now be rejected); `closed=False` means it just
+      opened (not affecting — Rule 8).
+    - `added_enum_value` / `removed_enum_value`: opposite of what "additive"
+      suggests. Adding a value is affecting (Rule 3/class 5) — a consumer
+      validating against the older, smaller set rejects the new value.
+      Removing a value is not affecting — we now emit a subset of their
+      already-accepted set. (Their handling code may still switch on a
+      value that stopped arriving; that is a prose obligation for the
+      handover table, not something this validator-measured rule sees —
+      the same boundary ADR-2 draws for descriptions.)
+    - `node_added` / `node_removed`: always affecting (Rule 9) — most new
+      nodes arrive with an `added_property` on their parent that already
+      carries the obligation, but a new `oneOf` branch (e.g. a new
+      instructions action kind) emits ONLY a `node_added`, because its
+      parent declares no `properties` and is not itself a recorded node.
+
+    A declared-optional field starting to be emitted, and a prose-only
+    edit, are NOT branches here — `describe_shape` records neither, so
+    `diff_shapes` never produces a `ShapeChange` for them and `classify`
+    is never called. `any(classify(c, observed) for c in [])` is `False`,
+    the correct answer, discharged by absence rather than by a rule.
+
+    Raises `ValueError` on a `kind` this function has no rule for, rather
+    than defaulting to `False` — a silent `False` on an unrecognised kind
+    is the exact failure this spec exists to eliminate, one layer past
+    `diff_shapes` naming the change at all. See docs/tomo/scripts/lib/wire_shape.md.
+    """
+    kind = change["kind"]
+    if kind not in CHANGE_KINDS:
+        raise ValueError(f"classify: no rule for change kind {kind!r}")
+
+    if kind == ADDED_PROPERTY:
+        return bool((observed.get(change["pointer"]) or {}).get("closed"))
+    if kind == REMOVED_PROPERTY:
+        return False
+    if kind == TYPE_CHANGED:
+        return True
+    if kind == REQUIRED_ADDED:
+        return False
+    if kind == REQUIRED_REMOVED:
+        return True
+    if kind == OPENNESS_CHANGED:
+        return bool((observed.get(change["pointer"]) or {}).get("closed"))
+    if kind == ADDED_ENUM_VALUE:
+        return True
+    if kind == REMOVED_ENUM_VALUE:
+        return False
+    if kind == NODE_ADDED:
+        return True
+    if kind == NODE_REMOVED:
+        return True
+
+    # Unreachable: every member of CHANGE_KINDS is handled above. If this
+    # ever fires, a kind was added to CHANGE_KINDS without a branch here —
+    # raise rather than fall through to an implicit `None`/`False`, for the
+    # same reason the unknown-kind check above raises instead of guessing.
+    raise AssertionError(f"classify: {kind!r} is in CHANGE_KINDS but has no branch")

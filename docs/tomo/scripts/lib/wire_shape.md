@@ -559,15 +559,148 @@ thing being tested.
 
 ## WHY `diff_shapes` and `classify` Were Not Here Yet, Historically
 
-`diff_shapes` is now implemented (T2.1, this section's siblings above).
-`classify` is still Phase 2's next task (T2.2) and is not implemented yet.
-This module currently exposes `describe_shape`, `PUBLISHED_WIRES`,
-`build_manifest`, `serialize_manifest` and `diff_shapes` in `__all__`; a
-reader who finds `classify` absent should not read that as an oversight —
-the plan sequences shape description, then shape comparison, then
-classification, so each has its own RED-GREEN cycle against its own
-acceptance criteria (F1 in Phase 1, F2 split across T2.1's diff mechanism
-and T2.2's classification rule).
+`diff_shapes` (T2.1) and `classify` (T2.2) are both implemented now. This
+module currently exposes `describe_shape`, `PUBLISHED_WIRES`,
+`build_manifest`, `serialize_manifest`, `diff_shapes`, `CHANGE_KINDS` and
+`classify` in `__all__`. The plan sequenced shape description, then shape
+comparison, then classification, so each had its own RED-GREEN cycle
+against its own acceptance criteria (F1 in Phase 1, F2 split across T2.1's
+diff mechanism and T2.2's classification rule). T2.3 (the gate that turns
+`classify` into a pass/fail CI check) is next and is not built yet — a
+reader who finds no gate function here should not read that as an
+oversight, for the same reason `classify`'s prior absence wasn't one.
+
+## WHY `classify` Reasons Producer -> Consumer, Not "Is This Additive" (T2.2)
+
+The wire this spec governs has a fixed direction: Tomo produces, Hashi
+consumes and validates with a vendored, largely-closed schema copy. Every
+rule `classify` encodes falls out of that direction, not out of
+versioning theory in general — reasoning about a change as "additive" or
+"subtractive" in the abstract gets two of the ten kinds backwards:
+
+- **`required_added` is NOT affecting**, even though a field becoming
+  required "sounds like" it should tighten something. A schema-registry
+  mental model (where a *consumer* might send a document missing a new
+  required field) does not apply here: only the producer sends documents
+  on this wire, so "we now always emit a field their older copy already
+  declared and accepted as optional" is a strict subset of what already
+  validates. A code review got exactly this backwards before T2.2 was
+  written, imagining the consumer as a sender — see the task brief's
+  explicit warning, preserved here because the same misreading is easy to
+  repeat from the word "required" alone.
+- **`added_enum_value` IS affecting**, even though "added" reads as purely
+  additive. The producer is adding a value to what IT emits, and the
+  consumer's older, smaller accepted set does not include it — their
+  validator rejects the new value on sight. This is the mirror image of
+  the `required_added` mistake: here the surface-level reading ("added" =
+  "safe") is wrong in the other direction.
+
+The general test for a rule that feels ambiguous, stated once so it does
+not need re-deriving per kind: **who emits this fact, and who validates
+against it?** If the producer is now emitting something the consumer's
+older, vendored copy does not permit or does not have, it is affecting.
+If the producer is emitting a subset of what the consumer's copy already
+accepts, it is not — regardless of whether the change reads as an
+addition or a removal in the schema diff.
+
+## WHY `classify(change, observed)` Never Takes `recorded` (T2.2, SDD signature)
+
+The direction of every `ShapeChange` kind is decided once, at the point
+`_diff_node`/`diff_shapes` chooses which kind to emit — see
+`required_added`/`required_removed` above, and the equivalent reasoning
+for `added_enum_value`/`removed_enum_value`. By the time `classify` sees a
+change, there is nothing left to re-derive from a before/after
+comparison: the kind alone already encodes which way the fact moved.
+Handing `classify` `recorded` as well as `observed` would tempt a rule
+that reasons about the transition directly — and that temptation is a
+trap specifically because a single hand-built `ShapeChange`, taken outside
+`diff_shapes`, cannot distinguish "this property was required and got
+removed" from "this property was optional and got removed": both produce
+an identical lone `removed_property`. An implementer who feeds `classify`
+one hand-built change, gets the "wrong" answer, and "fixes" it by adding
+`recorded` to the signature has solved a problem that doesn't exist at the
+system level — `diff_shapes` already emits a *second*, distinguishing
+change (`required_removed`) for the required case, and the gate's
+`any(classify(c, observed) for c in changes)` is what recombines them. The
+fix for the apparent ambiguity is the test method (drive every removal
+through `diff_shapes`, never hand-build one `ShapeChange`), not a wider
+signature. `test_a_hand_built_lone_removed_property_classifies_the_same_in_both_cases`
+in `tests/test_035_wire_classify.py` pins this directly: a lone
+`removed_property`, however constructed, always classifies as `False`,
+which is only the wrong answer if you expect this one function to answer
+a question it structurally cannot see — the question belongs to the
+change *set*, not to any single change in it.
+
+## WHY `openness_changed`'s Direction Is Read From `observed`, Never From `detail` (T2.2, Rule 8)
+
+Unlike `required`/enum changes, openness needs no kind split: `closed` is
+a single boolean, so if it changed at all, its NEW value already tells you
+the direction — no second change needed to carry "which way." `classify`
+reads `observed[pointer]["closed"]` directly. It deliberately does not
+parse `_diff_node`'s `detail` string (`f"closed: {old_closed} ->
+{new_closed}"`) to recover the same fact, even though the string
+technically contains it — `detail` is display-only by contract (see "WHY
+`detail` Is Display-Only" above, T2.1): nothing in this pipeline parses it
+back into structured data, and `classify` staying off that string is what
+keeps the contract true rather than merely stated. Reading structured data
+from a display string is also the same shape of mistake as inferring
+"required" direction from a `required_changed` kind name that was never
+built — a compact-looking shortcut that quietly depends on prose wording
+staying stable forever.
+
+## WHY `classify` Raises on an Unregistered Kind, and Why `_change` Also Checks `CHANGE_KINDS` (T2.2, exhaustiveness)
+
+A `classify` that returns `False` for a kind it doesn't recognise is the
+exact failure this spec exists to eliminate, one layer further in: the
+detector (`diff_shapes`) successfully saw the change and named its kind,
+and the classifier silently declined to have an opinion, so the gate
+built on top of it (T2.3) reports "not affecting" for a change nobody
+actually evaluated. `classify` raises `ValueError` instead, for any kind
+outside `CHANGE_KINDS`, and `AssertionError` in the (structurally
+unreachable, by construction of the if-chain covering every `CHANGE_KINDS`
+member) case where a kind is registered in the constant but has no branch
+— the second guard exists so that if a kind is EVER added to
+`CHANGE_KINDS` without a matching `if kind == ...` branch, the failure is
+loud immediately rather than silently falling through.
+
+That alone is not sufficient, though — it only protects against a kind
+`classify` doesn't know how to handle. It does nothing about a kind
+`diff_shapes` could emit that was never added to `CHANGE_KINDS` in the
+first place, because a test that iterates `CHANGE_KINDS` (the exhaustiveness
+test, part (c) of the mechanism) can only ever see what the constant
+lists — a kind absent from the constant is invisible to that test by
+definition, no matter how thoroughly it iterates. `_change`, the single
+constructor every `ShapeChange` passes through, closes exactly that gap:
+it validates its own `kind` argument against `CHANGE_KINDS` and raises
+`ValueError` if it isn't a member. This is the fourth part of the
+mechanism (part (d) in the task brief) and the one most easily skipped,
+because parts (a)-(c) alone *look* complete — a constant, a rule that
+raises, and a test that iterates the constant reads like a closed loop
+until you ask "what enforces that the constant itself stays in sync with
+what `diff_shapes` actually emits?" Nothing does, without (d).
+`test_change_constructor_rejects_a_kind_not_in_change_kinds` in
+`tests/test_035_wire_classify.py` proves this is live on the real
+construction path (via `diff_shapes`, not a direct unit test of `_change`
+in isolation) by monkeypatching `ADDED_PROPERTY` to an unregistered string
+and confirming `diff_shapes` itself raises.
+
+## WHY `CHANGE_KINDS` Is Named Constants, Not Ten Bare Strings Repeated at Each Call Site (T2.2)
+
+`_diff_node`/`diff_shapes` (T2.1) and `classify` (T2.2) need to agree on
+the exact same ten kind strings. Repeating the literal `"added_property"`
+at every call site — once in `_diff_node`, once in each of `classify`'s
+branches — reintroduces exactly the kind of two-places-that-must-agree
+drift `PUBLISHED_WIRES` was already built to avoid (see "WHY
+`PUBLISHED_WIRES` Lives in `wire_shape.py`" below): a typo in one copy of
+`"added_property"` would silently create a twin kind that `_change`'s
+`CHANGE_KINDS` membership check cannot catch, because `CHANGE_KINDS`
+itself would only contain whichever spelling was typed into it. Defining
+`ADDED_PROPERTY = "added_property"` (and its nine siblings) once, and
+having both `_diff_node` and `classify` reference the same Python name,
+makes them the same object — a typo becomes a `NameError` at import time
+instead of a silent semantic split at runtime. `CHANGE_KINDS` is then
+literally a tuple of those ten names, so the vocabulary has exactly one
+place it is spelled out as a string.
 
 ## WHY `PUBLISHED_WIRES` Lives in `wire_shape.py`, Not in the Generator or the Tests (T1.2)
 

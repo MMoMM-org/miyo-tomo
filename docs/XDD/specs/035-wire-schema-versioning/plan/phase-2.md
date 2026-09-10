@@ -35,7 +35,7 @@ phase: 2
 
 Turns the recorded shape into a gate.
 
-- [ ] **T2.1 `diff_shapes` names what moved** `[activity: domain-modeling]`
+- [x] **T2.1 `diff_shapes` names what moved** `[activity: domain-modeling]`
 
   1. Prime: read the two traced walkthroughs — the 034 drift and the live garden-audit drift
      `[ref: SDD/Implementation Examples]`.
@@ -58,14 +58,14 @@ Turns the recorded shape into a gate.
   3. Implement: `diff_shapes(recorded, observed) -> list[ShapeChange]` in `wire_shape.py`. Pure.
   4. Validate: unit tests pass; ruff clean.
   5. Success:
-     - [ ] A change is named by pointer and property — **the document name is not in scope at
+     - [x] A change is named by pointer and property — **the document name is not in scope at
        this layer**. `diff_shapes` receives two node maps and never learns which file they came
        from, so F1-AC1's "names the document" half is discharged by T2.3, which iterates the
        wires and knows the filename. Do not add a `document` parameter here to satisfy a
        criterion that belongs to the caller `[ref: PRD/F1-AC1 — pointer and property half]`
-     - [ ] `required` and `additionalProperties` changes are detected `[ref: PRD/F1-AC2]`
-     - [ ] An unchanged pair produces nothing `[ref: PRD/F1-AC5]`
-     - [ ] Enum value additions and removals are reported as distinct kinds `[ref: SDD/Application Data Models; ShapeChange]`
+     - [x] `required` and `additionalProperties` changes are detected `[ref: PRD/F1-AC2]`
+     - [x] An unchanged pair produces nothing `[ref: PRD/F1-AC5]`
+     - [x] Enum value additions and removals are reported as distinct kinds `[ref: SDD/Application Data Models; ShapeChange]`
 
 - [ ] **T2.2 `classify` decides whether the consumer is obliged** `[activity: domain-modeling]`
 

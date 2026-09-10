@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Created** | 2026-09-09 |
-| **Current Phase** | PRD |
+| **Current Phase** | SDD |
 | **Decomposition tier** | {{DECOMPOSITION_TIER}} |
 | **Last Updated** | 2026-09-10 |
 
@@ -14,7 +14,7 @@
 | Document | Status | Notes |
 |----------|--------|-------|
 | requirements.md | completed | 8 features, 28 criteria, 4 open questions |
-| solution.md | pending | |
+| solution.md | completed | 7 ADRs confirmed, 14 EARS criteria, all 8 features owned |
 | plan/ | pending | |
 
 **Status values**: `pending` | `in_progress` | `completed` | `skipped`
@@ -25,6 +25,10 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-09-10 | **ADR-1: a committed shape manifest per wire is the baseline — detection and the obligation table are one mechanism** | The report must name document, pointer and property, which rules out a hash. It must work on a schema with no `$defs`, which is exactly the document that drifted. It must work offline, because the consumer's copy is deliberately stale during a wait. A structural manifest satisfies all three — and the diff printed when it is regenerated **is** the obligation table's raw material, so F1's detection and F4's handover cannot disagree with each other. |
+| 2026-09-10 | **ADR-2: the manifest records types as well as names, `required` and openness — but never prose** | The first draft excluded types on churn grounds. Corrected before confirmation: the eight-class matrix measured a **type change as consumer-affecting** — emitting `null` where `string` is declared errors in Hashi's validator — so excluding types would have left a real breaking change invisible to the detector. Descriptions stay out, because that is where the churn actually is. The line is drawn where the noise is, not where the recording is cheapest. |
+| 2026-09-10 | **ADR-5: renderers read `schema_version` from their own schema instead of declaring it** | Makes the divergence F3 describes **impossible** rather than merely detected. Feasible because schemas ship to the instance (`install-tomo.sh:1262-1264`) and `garden-audit-configure.py:49` is the existing precedent for a runtime script resolving one. The F3 assertion stays as a regression guard even though it becomes vacuous. |
+| 2026-09-10 | **ADR-7: all three consumer copies are vendored, as a REPORT rather than a gate** | Owner decision, against the drafted recommendation to leave two wires uncovered. The consequence shaped the design: a vendored copy is *supposed* to lag ours during a wait, and the instructions wire handles that today with `SNAPSHOT_AHEAD_OF_UPSTREAM`, which is **keyed by action name** and therefore unusable for two schemas containing no actions. Rather than rebuild that registry pointer-by-pointer, the copies answer "what does the consumer accept right now" and the delta is reported, never failed. The gate stays the manifest, which describes our own schema and needs no wait-window exemption. |
 | 2026-09-10 | **The existing drift check cannot catch this class of change — it passes vacuously** | Measured, not inferred. `test_snapshot_matches_upstream_hashi` builds its comparison surface from `$defs` entries carrying an `action` property. `suggestions-wire.schema.json` has **zero `$defs`** — every object is inline — so the diff loop runs **zero iterations** and the test passes while the schema is drifted. Pointing it at the drifted document would have changed nothing. Even on the instructions wire it compares no root-level fields: root parity today is coincidence, not enforcement. This retires the cheap version of this spec ("extend the existing test") before it was proposed. |
 | 2026-09-10 | **Three published wires, not two — and a THIRD drift is live right now** | The garden-audit wire is vendored and compiled by Hashi (`garden-audit-validator.ts:12`), so it is a contract. `up_source` and `up_value` were added to `findings[].detail` by specs 032/033 (`33fb7d8`, `2111772`), never announced, never vendored, both sides still pinned at `"1"`. Verified against **every Hashi remote branch and `origin/main`** — not a working-tree artefact. It is non-breaking **only** because `findings[].detail` is the single open node in that document; root and `findings[]` are both closed. The pattern recurred while the spec about it was being written. |
 | 2026-09-10 | **The bump rule is "is the node closed", not "did the shape change" — the README's own assumption was falsified** | Run against Hashi's compiled ajv and Hashi's own fixtures across eight change classes. Consumer-affecting: add to a closed node, remove a *required* field, **add an enum value** (counter-intuitive), widen a type. Not consumer-affecting: add to an open node, remove an *optional* field, start emitting a declared optional, prose. The live garden-audit drift is the standing proof that "any shape change" would cry wolf on exactly the case that is fine. Closed-node counts: suggestions 10/10, garden-audit 6/7, instructions 18/21. |

@@ -33,7 +33,7 @@ phase: 1
 
 Establishes the baseline: a committed, machine-checkable record of each published wire's shape.
 
-- [ ] **T1.1 `describe_shape` walks a schema to full depth** `[activity: domain-modeling]`
+- [x] **T1.1 `describe_shape` walks a schema to full depth** `[activity: domain-modeling]`
 
   1. Prime: read the walk example and the note on effective vs literal openness
      `[ref: SDD/Implementation Examples]`.
@@ -52,10 +52,10 @@ Establishes the baseline: a committed, machine-checkable record of each publishe
      `tomo/scripts/lib/wire_shape.py`. Pure — no I/O, no network.
   4. Validate: `./venv/bin/python -m pytest tests/test_035_wire_shape.py -x`; ruff clean.
   5. Success:
-     - [ ] A `$defs`-free schema is fully described `[ref: PRD/F1-AC3]`
-     - [ ] Openness is recorded effectively, not literally `[ref: SDD/Implementation Gotchas]`
-     - [ ] Types are recorded; prose is not `[ref: SDD/Architecture Decisions; ADR-2]`
-     - [ ] Two schemas differing only in prose describe identically `[ref: PRD/F1-AC4]`
+     - [x] A `$defs`-free schema is fully described `[ref: PRD/F1-AC3]`
+     - [x] Openness is recorded effectively, not literally `[ref: SDD/Implementation Gotchas]`
+     - [x] Types are recorded; prose is not `[ref: SDD/Architecture Decisions; ADR-2]`
+     - [x] Two schemas differing only in prose describe identically `[ref: PRD/F1-AC4]`
 
 - [ ] **T1.2 The three manifests are generated and committed** `[activity: data-architecture]`
 

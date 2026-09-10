@@ -1,5 +1,5 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.7.1
+# version: 0.8.0
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
@@ -184,6 +184,20 @@ def describe_shape(schema: dict) -> dict:
             properties: dict[str, object] = {}
             values: dict[str, list] = {}
             for name, child in sorted(props.items()):
+                if child and not isinstance(child, dict):
+                    # Malformed: JSON Schema requires an object (or a
+                    # falsy value — None/{}/[]/""/0 — meaning "no
+                    # constraint") here. `child or {}` below only guards
+                    # FALSY wrong types; a TRUTHY one (a string, a
+                    # non-zero number, a non-empty list) would otherwise
+                    # reach `_property_type`/`_property_values` and raise
+                    # from inside them. Skip the property rather than
+                    # dereference it — describe_shape already declares
+                    # this tolerance at the top of `walk` for a
+                    # malformed NODE; this is that same contract applied
+                    # to a malformed property CHILD. See
+                    # docs/tomo/scripts/lib/wire_shape.md.
+                    continue
                 child = child or {}
                 raw_type = _property_type(child, schema)
                 # `type` is semantically an unordered SET when it is a list
@@ -223,11 +237,33 @@ def describe_shape(schema: dict) -> dict:
             if key in node:
                 walk(node[key], f"{pointer}/{key}")
         for key in ("$defs", "definitions"):
-            for name, child in (node.get(key) or {}).items():
-                walk(child, f"{pointer}/{key}/{name}")
+            # `isinstance` check, not `node.get(key) or {}).items()` — the
+            # `or {}` only guards a FALSY wrong type (None, {}); a TRUTHY
+            # one (a string, a list, a number, True) is not a dict and has
+            # no `.items()`, so it used to raise `AttributeError` straight
+            # out of describe_shape. Same trap as the properties-child fix
+            # above, same fix shape: skip a malformed section rather than
+            # dereference it. See docs/tomo/scripts/lib/wire_shape.md.
+            section = node.get(key)
+            if isinstance(section, dict):
+                for name, child in section.items():
+                    walk(child, f"{pointer}/{key}/{name}")
         for key in ("allOf", "anyOf", "oneOf"):
-            for i, child in enumerate(node.get(key) or []):
-                walk(child, f"{pointer}/{key}/{i}")
+            # Same reasoning, `list` instead of `dict`: JSON Schema
+            # requires an array here. `node.get(key) or []` only guards a
+            # falsy wrong type; a truthy non-iterable one (a number, True)
+            # is not iterable at all and `enumerate(...)` raised
+            # `TypeError`. A truthy but ITERABLE wrong type (a string, a
+            # dict) happened not to crash — each "child" it produced was
+            # never a dict, so the recursive `walk` call's own
+            # `isinstance` guard silently no-opped — but it is still not
+            # what the schema format allows here, so the explicit `list`
+            # check is the correct rule regardless of whether a given
+            # wrong type happened to survive by accident.
+            section = node.get(key)
+            if isinstance(section, list):
+                for i, child in enumerate(section):
+                    walk(child, f"{pointer}/{key}/{i}")
 
     walk(schema, "")
     return nodes

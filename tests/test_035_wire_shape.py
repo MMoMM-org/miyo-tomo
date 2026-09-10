@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_035_wire_shape.py — Behavioural tests for lib.wire_shape.describe_shape (spec 035 T1.1).
 
 Tests cover:
@@ -22,6 +22,12 @@ Tests cover:
   non-local or cyclic `$ref` records `"any"` and terminates
 - list-valued `type` is sorted (an unordered set, so reordering is a no-op) AND
   copied, never aliasing the input schema's own list
+- a malformed SCHEMA (code review, 2026-09-10, sixth loop-abort trigger) does
+  not crash describe_shape: `$defs`/`definitions`/`allOf`/`anyOf`/`oneOf` each
+  set to a truthy wrong type, and a `properties` CHILD that is a truthy
+  non-dict, are each skipped rather than dereferenced. A `properties` child
+  that is `null` (legitimate JSON Schema, not malformed) is still recorded as
+  an unconstrained ("any") property, unaffected by the new check
 """
 from __future__ import annotations
 
@@ -494,3 +500,127 @@ def test_list_valued_type_is_a_copy_not_an_alias():
 
     assert result[""]["properties"]["maybe_null"] is not original
     assert result[""]["properties"]["maybe_null"] == sorted(original)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CRITICAL, sixth trigger (code review, 2026-09-10): a malformed SCHEMA
+# crashes describe_shape the same way a malformed MANIFEST crashed the gate
+# — the `X or {}`/`X or []` idiom only absorbs a FALSY wrong type; a TRUTHY
+# one reaches `.items()`/`enumerate(...)`/`_property_type` unguarded and
+# raises. Fixed inside describe_shape itself (not the gate) by applying the
+# SAME `isinstance` pattern the function already uses for `properties`
+# uniformly to every traversal key, per describe_shape's own stated
+# contract at the top of `walk`: `if not isinstance(node, dict): return`.
+# A malformed region is SKIPPED, not fatal — the resulting shape then
+# genuinely differs from a manifest recorded before the corruption, which
+# is what lets the gate report it as a loud, structured shape change
+# instead of aborting. Each test below covers one traversal key against a
+# TRUTHY wrong type — the case that crashed before this fix; falsy wrong
+# types (None, {}, [], "", 0) were never the trigger and are not retested
+# here.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_defs_with_wrong_type_is_skipped_not_fatal():
+    schema = {
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "$defs": "not-a-dict",
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"] == {"id": "string"}
+    assert not any(pointer.startswith("/$defs/") for pointer in result)
+
+
+def test_definitions_with_wrong_type_is_skipped_not_fatal():
+    schema = {
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "definitions": ["not", "a", "dict"],
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"] == {"id": "string"}
+    assert not any(pointer.startswith("/definitions/") for pointer in result)
+
+
+def test_allof_with_wrong_type_is_skipped_not_fatal():
+    schema = {
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "allOf": 5,
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"] == {"id": "string"}
+    assert not any(pointer.startswith("/allOf/") for pointer in result)
+
+
+def test_anyof_with_wrong_type_is_skipped_not_fatal():
+    schema = {
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "anyOf": True,
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"] == {"id": "string"}
+    assert not any(pointer.startswith("/anyOf/") for pointer in result)
+
+
+def test_oneof_with_wrong_type_is_skipped_not_fatal():
+    schema = {
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "oneOf": 1.5,
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"] == {"id": "string"}
+    assert not any(pointer.startswith("/oneOf/") for pointer in result)
+
+
+def test_property_child_with_wrong_type_is_skipped_not_dereferenced():
+    # Distinct from the traversal-key tests above: `properties` itself IS
+    # a well-formed dict here (already guarded by the pre-existing
+    # `isinstance(props, dict)` check) — the malformed value is one
+    # PROPERTY'S value inside it, which used to reach
+    # `_property_type`/`_property_values` unguarded.
+    schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "weird": "not-a-dict",
+        },
+    }
+
+    result = describe_shape(schema)
+
+    # "weird" is skipped entirely — absent from both properties and
+    # values, not recorded with a placeholder type. A manifest recorded
+    # before this corruption still lists "weird", so this produces a real
+    # `removed_property` diff rather than silently matching.
+    assert result[""]["properties"] == {"id": "string"}
+    assert "weird" not in result[""]["values"]
+
+
+def test_property_child_null_is_still_treated_as_no_constraint():
+    # The FALSY case must keep working exactly as before: `"weird": null`
+    # is legitimate JSON Schema (an unconstrained subschema), not
+    # malformed, and must NOT be skipped by the new truthy-only check.
+    schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "weird": None,
+        },
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"] == {"id": "string", "weird": "any"}

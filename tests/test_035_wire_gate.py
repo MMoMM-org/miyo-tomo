@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.7.0
 """test_035_wire_gate.py — Behavioural tests for lib.wire_gate: diff +
 classify + version-check, per published wire (spec 035 T2.3).
 
@@ -96,6 +96,20 @@ Tests cover:
   verified per field by direct testing — not by patching the crash last
   observed, and not by asserting a verification that was not actually
   performed for every field it claimed to cover. See wire_gate.md
+- a SIXTH loop-abort trigger (code review, 2026-09-10, final hardening
+  round): the manifest side was swept exhaustively and closed (40 cases,
+  zero aborts) — the last gap was the SCHEMA side, which nobody had swept.
+  `describe_shape` itself crashed on a malformed `$defs`/`definitions`/
+  `allOf`/`anyOf`/`oneOf`/property-child, the same `X or {}`-guards-
+  falsy-not-truthy trap `_diff_node` already had. Fixed IN describe_shape
+  (wire_shape.py), not in the gate, per team direction: a malformed region
+  is now skipped, not fatal, so the observed shape genuinely differs from
+  the manifest and the gate reports an ordinary structured shape change —
+  never an uncaught exception.
+  `test_malformed_schema_defs_produces_a_shape_change_not_an_abort` and
+  its loop-continuation sibling are the gate-level proof; the per-field
+  crash-site tests live in test_035_wire_shape.py, next to describe_shape
+  itself
 - two wires mutated in one edit -> both reported in one `run_wire_gate`
   call, each against its own independent result — the third, untouched wire
   still passes in the same run
@@ -806,6 +820,73 @@ def test_manifest_node_required_field_non_iterable_fails_as_malformed(tmp_path):
     assert result["affecting"] is None
     assert result["changes"] == []
     assert result["actions"] == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sixth loop-abort trigger, at the GATE level (code review, 2026-09-10): a
+# malformed SCHEMA, not a malformed manifest. Fixed inside describe_shape
+# itself (wire_shape.py), not here — this is the gate-level proof that the
+# fix actually reaches the gate: a corrupted `$defs` no longer raises out
+# of describe_shape, so `gate_one_wire` never even reaches its `error`
+# branch. Instead the malformed region is SKIPPED, `observed` genuinely
+# differs from the committed manifest (every real `$defs` entry now reads
+# as removed), and the gate reports it as an ordinary, structured shape
+# change — loud and actionable, never an uncaught exception, never a
+# silent pass.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_malformed_schema_defs_produces_a_shape_change_not_an_abort(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+    document = "instructions.schema.json"
+
+    # instructions.schema.json has 18 real $defs entries — corrupting
+    # $defs to a truthy non-dict makes describe_shape skip the section
+    # entirely (per the sixth-round fix), so all 18 show up as node_removed.
+    real_defs = json.loads((schemas_dir / document).read_text())["$defs"]
+    assert real_defs, "fixture sanity: instructions.schema.json must have real $defs"
+
+    _rewrite_json(schemas_dir / document, lambda schema: schema.__setitem__("$defs", "not-a-dict"))
+
+    result = gate_one_wire(document, schemas_dir / document, shapes_dir / manifest_filename(document))
+
+    # NOT an error result — the schema parsed and validated fine; only its
+    # $defs SECTION was malformed, and describe_shape skipped it rather
+    # than raising.
+    assert result["error"] is None
+    assert result["error_kind"] is None
+
+    # A genuine, structured shape change instead: every real $defs pointer
+    # now reads as removed, which classify() always treats as affecting
+    # (Rule 9) — so this fails loud, not silently.
+    assert result["passed"] is False
+    assert result["affecting"] is True
+    node_removed_pointers = {c["pointer"] for c in result["changes"] if c["kind"] == "node_removed"}
+    assert any(pointer.startswith("/$defs/") for pointer in node_removed_pointers)
+
+
+def test_malformed_schema_defs_does_not_abort_gating_the_other_wires(tmp_path):
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+
+    suggestions = "suggestions-wire.schema.json"
+    garden_audit = "garden-audit-wire.schema.json"
+    instructions = "instructions.schema.json"
+
+    _rewrite_json(schemas_dir / instructions, lambda schema: schema.__setitem__("$defs", "not-a-dict"))
+    # suggestions and garden_audit are left untouched.
+
+    results = run_wire_gate(schemas_dir, shapes_dir)
+    by_document = {result["document"]: result for result in results}
+
+    assert set(by_document) == {suggestions, garden_audit, instructions}
+
+    assert by_document[instructions]["error"] is None
+    assert by_document[instructions]["passed"] is False
+    assert by_document[instructions]["affecting"] is True
+
+    assert by_document[suggestions]["passed"] is True
+    assert by_document[suggestions]["changes"] == []
+    assert by_document[garden_audit]["passed"] is True
+    assert by_document[garden_audit]["changes"] == []
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -827,3 +827,80 @@ sibling module satisfies the seam without stranding production code inside
 a test file. Full reasoning, including the code-review correction that
 moved the gate out of `tests/test_035_wire_gate.py` where T2.3 first put
 it, lives in `docs/tomo/scripts/lib/wire_gate.md`.
+
+## WHY `describe_shape` Now Skips a Malformed Region Instead of Crashing (code review, 2026-09-10, sixth loop-abort trigger)
+
+`wire_gate.md` documents five rounds of the same defect class inside
+`gate_one_wire`/`_diff_node`: a manifest-sourced value reached via
+`X.get(key) or DEFAULT` crashes when the raw value is a TRUTHY wrong
+type, because `or DEFAULT` only ever substitutes for a FALSY one. That
+review swept the manifest side of the gate exhaustively (every field
+`_diff_node` reads: `properties`, `required`, `closed`, `values`) and
+closed it. Nobody had swept the SCHEMA side — `describe_shape` itself —
+until this round, and it turned out to have the identical idiom, five
+more times:
+
+```
+(node.get(key) or {}).items()      # $defs / definitions
+enumerate(node.get(key) or [])     # allOf / anyOf / oneOf
+child = child or {}                # a properties CHILD, before this fix
+```
+
+A truthy non-dict `$defs`/`definitions` (a string, list, number, bool)
+raises `AttributeError` at `.items()`; a truthy non-iterable
+`allOf`/`anyOf`/`oneOf` (a number, bool) raises `TypeError` at
+`enumerate(...)`; a truthy non-dict property CHILD reaches
+`_property_type`/`_property_values` and raises inside `_effective`
+(`AttributeError` on `.get("$ref")`, or `TypeError` from the `in`
+operator on a non-container). Confirmed for all five sites by direct
+testing, not assumed from reading the idiom once and generalizing — the
+`wire_gate.md` lineage is explicit about why that generalization is the
+trap, not the fix.
+
+**Fixed inside `describe_shape`, not inside the gate — a deliberate
+placement, not the path of least resistance.** `describe_shape`'s `walk`
+already opens with `if not isinstance(node, dict): return` — the function
+already DECLARES that it tolerates a malformed node by skipping it, and
+already applies that declared tolerance correctly for `properties`
+(`if isinstance(props, dict):` gates the whole block). The five crash
+sites above were places that same contract was not yet applied — an
+incomplete application of an existing rule, not a new validation layer
+bolted on. Fixing it here also fixes every OTHER caller of
+`describe_shape` at once (`build_manifest`, and T4.1's CLI once it
+exists), and spares the gate from re-validating a schema it would
+otherwise have to walk a second time just to decide whether the first
+walk is safe to attempt.
+
+**A malformed region is skipped, not fatal — and that is the right
+outcome, not a compromise.** `describe_shape` stays PURE and TOTAL (never
+raises for a JSON value, only ever returns a node map — same guarantee
+the module docstring already claims for a cyclic `$ref`). A schema with a
+corrupted `$defs` section now produces a node map simply MISSING those
+`$defs` pointers, which — critically — genuinely DIFFERS from a manifest
+recorded before the corruption. `diff_shapes` sees real `node_removed`
+changes, `classify` marks them affecting (Rule 9), and the gate reports
+an ordinary, loud, structured shape change. The corruption is caught by
+the SAME mechanism that catches any other undeclared shape change, not by
+a special case — "malformed schema" collapses into "shape changed",
+which is exactly the category this whole module exists to detect.
+
+**The one behavior that must NOT change: a `null` property child.**
+`"weird": null` is legitimate JSON Schema (an unconstrained subschema),
+not malformed, and the existing `child = child or {}` fallback already
+handled it correctly — `None` is falsy, so it was never the trigger. The
+new check (`if child and not isinstance(child, dict): continue`) is
+gated on truthiness specifically so it activates ONLY for the wrong-type
+case and leaves every existing falsy-child behavior (`None`, `{}`, `[]`,
+`""`, `0`) exactly as it was.
+`test_property_child_null_is_still_treated_as_no_constraint` in
+`tests/test_035_wire_shape.py` is the regression guard for this
+distinction specifically.
+
+**Verified the three committed manifests still round-trip
+byte-identically** (`tests/test_035_wire_manifests.py`) — this change
+touches the function that generates them, so an unchanged manifest is the
+proof nothing legitimate moved; per-field crash-site tests live in
+`tests/test_035_wire_shape.py`, and the gate-level proof that the fix
+actually reaches `run_wire_gate` (a malformed schema produces a shape
+change, not an abort, and the other wires still gate normally in the same
+call) lives in `tests/test_035_wire_gate.py`.

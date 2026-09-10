@@ -215,7 +215,7 @@ Turns the recorded shape into a gate.
      - [x] The failure names the expected next steps `[ref: PRD/F7-AC1]`
      - [x] A non-affecting change does not demand a version move `[ref: PRD/F7-AC2]`
 
-- [ ] **T2.4 Replace the vacuous comparison in the existing wire-hygiene test** `[activity: backend-api]`
+- [x] **T2.4 Replace the vacuous comparison in the existing wire-hygiene test** `[activity: backend-api]`
 
   The existing upstream check builds its surface from `$defs` entries carrying an `action` property
   and iterates their intersection. On the instructions wire that is 18 real comparisons; on a
@@ -290,11 +290,11 @@ Turns the recorded shape into a gate.
      a **structured delta** plus a renderer that turns it into human text. `wire_gate.py` already
      has that shape, and reusing it keeps one reporting idiom in the spec rather than two.
   5. Success:
-     - [ ] Root-level differences are detected `[ref: PRD/F1-AC1]`
-     - [ ] A `$defs`-free schema is compared non-vacuously `[ref: PRD/F1-AC3]`
-     - [ ] Existing wire-hygiene and parity tests unchanged `[ref: SDD/Implementation Boundaries]`
-     - [ ] The upstream comparison reports a delta and never fails on one `[ref: SDD/Architecture Decisions; ADR-7]`
-     - [ ] `SNAPSHOT_AHEAD_OF_UPSTREAM` is removed, not re-keyed — a report needs no exemptions
+     - [x] Root-level differences are detected `[ref: PRD/F1-AC1]`
+     - [x] A `$defs`-free schema is compared non-vacuously `[ref: PRD/F1-AC3]`
+     - [x] Existing wire-hygiene and parity tests unchanged `[ref: SDD/Implementation Boundaries]`
+     - [x] The upstream comparison reports a delta and never fails on one `[ref: SDD/Architecture Decisions; ADR-7]`
+     - [x] `SNAPSHOT_AHEAD_OF_UPSTREAM` is removed, not re-keyed — a report needs no exemptions
 
 - [ ] **T2.5 Phase Validation** `[activity: validate]`
 

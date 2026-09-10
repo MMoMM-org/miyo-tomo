@@ -79,6 +79,36 @@ from day one.
 
 - [ ] **T4.2 All three consumer copies are vendored, and reported against** `[activity: data-architecture]`
 
+  **Carried forward from T2.4's code-quality review (2026-09-10) — do this BEFORE wiring the second
+  and third copies, not after.**
+
+  T2.4 built the snapshot-vs-upstream report as two helpers, `_snapshot_parity_delta` and
+  `_render_snapshot_parity_report`, **inside `tests/test_instruction_render_wire_hygiene.py`**. That
+  was correct for T2.4, which has exactly one caller and one document — extracting a module for a
+  single caller is speculation. **This task is where it stops being correct**: three documents, three
+  callers, and production code that must never import from a test module. T2.3 already walked this
+  path — its gate was built in a test file and moved to `tomo/scripts/lib/wire_gate.py` once T4.1's
+  CLI needed it. Move these two the same way before adding callers, rather than duplicating them
+  twice and consolidating later.
+
+  Two shape changes fall out of the move, both known now:
+
+  a. **`_render_snapshot_parity_report(document, changes)` is single-document.** `wire_gate.py`'s
+     `render_wire_gate_report(results)` iterates many, each carrying its own `document`. Generalise
+     to the multi-document form on the way across, so the spec keeps one reporting signature instead
+     of two that differ only in arity.
+  b. **The delta is deliberately unclassified.** `_snapshot_parity_delta` never calls `classify`, so
+     every change carries `consumer_affecting: False` and the rendered line has no
+     affecting/not-affecting marker. That is right for a vendored-copy report — a lagging copy
+     obliges nobody, and ADR-7 is the reason this is a report at all. Keep it unclassified when you
+     move it, and say so in the docstring, or the next reader will "fix" the missing marker and
+     quietly reintroduce a gate's semantics into a report.
+
+  Cosmetic, inherited from the shared renderer rather than introduced here, worth fixing while the
+  rendering is being touched: a root-level change (pointer `""`) renders as bare leading whitespace
+  with no marker, and `detail` restates `kind` (`node_removed: node removed: /$defs/x`). Neither is a
+  defect; both make a report meant for human eyes slightly harder to read than it needs to be.
+
   1. Prime: read ADR-7, and note **why this is a report**: a vendored copy lags ours by design between
      handoff and confirmation, so a gate here would fail during correct operation.
   2. Test:

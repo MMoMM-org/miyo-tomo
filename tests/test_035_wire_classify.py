@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_035_wire_classify.py — Behavioural tests for lib.wire_shape.classify (spec 035 T2.2).
 
 Separate from test_035_wire_diff.py on purpose: that file exercises
@@ -317,6 +317,32 @@ def test_new_oneof_branch_emits_only_node_added_and_it_is_affecting():
     assert len(changes) == 1
     assert changes[0]["kind"] == "node_added"
     assert classify(changes[0], observed) is True
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# A pointer absent from `observed` must fail loud, not guess "not affecting".
+# `added_property` and `openness_changed` are the only two branches that
+# look the pointer up in `observed` at all — code review found both used
+# `.get(...) or {}`, which degrades a missing pointer to an empty node
+# (`closed` reads as falsy) instead of refusing to answer. Every OTHER
+# unanswerable question in this module already raises (an unregistered
+# kind, in both classify() and _change()) — a silent False here was the
+# one path left inconsistent with that convention, and the dangerous
+# direction: it reports "not affecting" for a change classify cannot
+# actually evaluate, the same shape of failure as a silently-False unknown
+# kind, just keyed on the pointer instead of the kind.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_classify_raises_when_pointer_missing_for_added_property():
+    change = {"pointer": "/nonexistent", "kind": "added_property", "detail": "fixture"}
+    with pytest.raises(ValueError):
+        classify(change, {"/x": _node()})
+
+
+def test_classify_raises_when_pointer_missing_for_openness_changed():
+    change = {"pointer": "/nonexistent", "kind": "openness_changed", "detail": "fixture"}
+    with pytest.raises(ValueError):
+        classify(change, {"/x": _node()})
 
 
 # ──────────────────────────────────────────────────────────────────────────────

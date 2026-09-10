@@ -684,6 +684,44 @@ construction path (via `diff_shapes`, not a direct unit test of `_change`
 in isolation) by monkeypatching `ADDED_PROPERTY` to an unregistered string
 and confirming `diff_shapes` itself raises.
 
+## WHY `_require_node` Raises Instead of `.get(pointer) or {}` (T2.2, code review)
+
+Code review found the module was inconsistent with its own stated rule. The
+docstring for `classify` says a silent `False` on an unrecognised KIND is
+"the exact failure this spec exists to eliminate" — and both `classify`
+and `_change` back that with a real `raise ValueError`. But the two
+branches that look a POINTER up in `observed` (`added_property` and
+`openness_changed`) used `(observed.get(change["pointer"]) or {}).get("closed")`
+— a pointer absent from `observed` silently degraded to an empty node,
+which reads as `closed=False`, which classifies as **not affecting**. That
+is the same shape of failure the kind-level guard was built to prevent,
+just keyed on the pointer instead of the kind, and in the more dangerous
+direction: it answers a question `classify` cannot actually evaluate, and
+it answers "safe to ship" rather than "loudly unsure."
+
+`diff_shapes` cannot produce this today — every change it emits carries a
+pointer that exists in `observed` by construction (`_diff_node` is only
+ever called on the pointer intersection; `node_removed`'s pointer is
+absent from `observed` by definition, but nothing in `classify`'s
+`NODE_REMOVED`/`NODE_ADDED` branches reads `observed` at all, so that case
+never reaches this code). That made the gap safe **today** and irrelevant
+to why it needed closing: `classify` is `__all__`-exported, and its next
+two callers — T2.3's gate and T4.1's CLI — are exactly the kind of caller
+that can hand it a mismatched `change`/`observed` pair (a stale
+`observed`, or a change paired with the wrong manifest). A defect that is
+merely latent against today's one caller and live against tomorrow's is
+still a defect; "nothing has broken yet" was never the bar this spec set.
+
+`_require_node(observed, pointer)` is the fix: both branches call it
+instead of inlining the `.get(...) or {}` fallback, and it raises
+`ValueError` naming the missing pointer and the two most likely causes
+(stale `observed`, or a change from a different diff) rather than
+guessing. **Do not reintroduce the `.get(...) or {}` form as a
+"robustness" improvement** — that fallback IS the bug this section
+documents, not a safety net for one. If a future reader finds
+`_require_node` too strict for some new caller, the fix is to make that
+caller pass the right `observed`, not to make `classify` guess again.
+
 ## WHY `CHANGE_KINDS` Is Named Constants, Not Ten Bare Strings Repeated at Each Call Site (T2.2)
 
 `_diff_node`/`diff_shapes` (T2.1) and `classify` (T2.2) need to agree on

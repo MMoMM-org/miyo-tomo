@@ -1,5 +1,5 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.7.0
+# version: 0.7.1
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
@@ -264,7 +264,11 @@ def _change(pointer: str, kind: str, detail: str) -> dict:
     itself. See docs/tomo/scripts/lib/wire_shape.md.
     """
     if kind not in CHANGE_KINDS:
-        raise ValueError(f"_change: {kind!r} is not a member of CHANGE_KINDS")
+        raise ValueError(
+            f"_change: {kind!r} is not a member of CHANGE_KINDS. If this is "
+            "a legitimate new kind, add it to CHANGE_KINDS and give it a "
+            "branch in classify() before emitting it from here.",
+        )
     return {"pointer": pointer, "kind": kind, "detail": detail, "consumer_affecting": False}
 
 
@@ -404,6 +408,36 @@ def serialize_manifest(manifest: dict) -> str:
     return json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
+def _require_node(observed: dict, pointer: str) -> dict:
+    """The `NodeShape` at `pointer` in `observed`, or a loud `ValueError` —
+    never a silent empty-dict fallback.
+
+    `added_property` and `openness_changed` are the only two `classify`
+    branches that look a pointer up in `observed` at all, and both need
+    it: an added property's obligation depends on whether the node is
+    closed, and an openness change's direction is read from `observed`
+    directly (never parsed out of `detail` — see `classify`'s docstring).
+    A `.get(pointer) or {}` fallback would degrade "this pointer is not in
+    the manifest I was handed" into "this node happens to have no
+    properties and reads as open", which is a GUESS, and the dangerous
+    one: it reports "not affecting" for a change `classify` cannot
+    actually evaluate. Every other unanswerable question in this module
+    already raises rather than guesses (an unregistered kind, in both
+    `classify` and `_change`); this closes the one path that used to
+    guess instead, and does so in the direction that would have let a
+    real change ship unannounced. See docs/tomo/scripts/lib/wire_shape.md.
+    """
+    if pointer not in observed:
+        raise ValueError(
+            f"classify: pointer {pointer!r} is not in the observed node map. "
+            "This usually means the change was paired with a manifest it "
+            "did not come from, or `observed` is stale — call classify "
+            "with the SAME `observed` that diff_shapes(recorded, observed) "
+            "was called with to produce this change.",
+        )
+    return observed[pointer]
+
+
 def classify(change: dict, observed: dict) -> bool:
     """Does this single `ShapeChange` oblige the consumer to act?
 
@@ -486,10 +520,15 @@ def classify(change: dict, observed: dict) -> bool:
     """
     kind = change["kind"]
     if kind not in CHANGE_KINDS:
-        raise ValueError(f"classify: no rule for change kind {kind!r}")
+        raise ValueError(
+            f"classify: no rule for change kind {kind!r}. If this is a "
+            "legitimate new kind, add it to CHANGE_KINDS and give it a "
+            "branch in classify() — do not let it fall through to a "
+            "default.",
+        )
 
     if kind == ADDED_PROPERTY:
-        return bool((observed.get(change["pointer"]) or {}).get("closed"))
+        return bool(_require_node(observed, change["pointer"]).get("closed"))
     if kind == REMOVED_PROPERTY:
         return False
     if kind == TYPE_CHANGED:
@@ -499,7 +538,7 @@ def classify(change: dict, observed: dict) -> bool:
     if kind == REQUIRED_REMOVED:
         return True
     if kind == OPENNESS_CHANGED:
-        return bool((observed.get(change["pointer"]) or {}).get("closed"))
+        return bool(_require_node(observed, change["pointer"]).get("closed"))
     if kind == ADDED_ENUM_VALUE:
         return True
     if kind == REMOVED_ENUM_VALUE:

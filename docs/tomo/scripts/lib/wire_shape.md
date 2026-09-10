@@ -218,6 +218,16 @@ normalisation rather than assume it was weighed against that case; it was
 weighed only against the case that exists today (2026-09-10 observation,
 not a property of the design).
 
+This section describes what `_value_sort_key` guarantees for `describe_shape`'s
+output ORDERING. It says nothing here about `bool`/`int` MEMBERSHIP
+comparison in `diff_shapes` — that is a separate guarantee, added later and
+for a different reason (a real bug, not a design choice); see "WHY the
+Enum Set Diff Is Keyed on `_value_sort_key`, Not Raw Python Equality"
+below. Do not read `bool`/`int` being distinguished here as evidence that
+every consumer of `_value_sort_key` handles them correctly — it was true
+for ordering from the start and untrue for `diff_shapes`'s set membership
+until that fix.
+
 ## WHY Local `$ref` Is Resolved for `type`/`enum`/`const`
 
 `(child or {}).get("type", "any")` recorded `"any"` for every property that
@@ -358,17 +368,14 @@ the count alone goes hollow the moment the fixture's field count changes.
 ## WHY Enum Diffing Compares VALUE SETS, Not Value Lists (T2.1)
 
 `_diff_node` reads `values[name]` (already sorted by `describe_shape`) and
-diffs it as `set(...) - set(...)` rather than a positional list comparison.
-A `values` list is semantically a SET — JSON Schema's `enum` has no
-ordering — so two describe_shape() outputs of the same enum are already
-guaranteed to agree on order (both sorted by `_value_sort_key`), but
-`diff_shapes` is also exercised directly against hand-built node maps in
-its own tests (T2.1's fixtures never go through `describe_shape`), where
-nothing guarantees the input lists arrive pre-sorted. Set-difference makes
-`diff_shapes` correct regardless of the caller's list order, and reusing
-`_value_sort_key` (already defined for exactly this "mixed JSON scalar
-types" problem) to order the OUTPUT keeps that determinism promise intact
-without inventing a second sort key.
+diffs it as a SET difference rather than a positional list comparison. A
+`values` list is semantically a SET — JSON Schema's `enum` has no ordering
+— so two describe_shape() outputs of the same enum are already guaranteed
+to agree on order (both sorted by `_value_sort_key`), but `diff_shapes` is
+also exercised directly against hand-built node maps in its own tests
+(T2.1's fixtures never go through `describe_shape`), where nothing
+guarantees the input lists arrive pre-sorted. Set-difference makes
+`diff_shapes` correct regardless of the caller's list order.
 
 This is also what makes the const-widened-to-enum case (PRD F2-AC3, see
 above) fall out for free rather than needing a special rule: Phase 1
@@ -377,6 +384,64 @@ records `const: "open"` as `["open"]`, so widening to
 one-element set difference, reported as a single `added_enum_value` for
 `"closed"` and nothing else, because `"open"` is in both sets and never
 enters either diff branch.
+
+**The set is keyed on `_value_sort_key(value)`, not on the raw value — see
+the next section.** The first cut of this diff built `set(old_values.get(name,
+[]))` / `set(new_values.get(name, []))` directly from the raw JSON values,
+which is wrong for a reason distinct from ordering; read on.
+
+## WHY the Enum Set Diff Is Keyed on `_value_sort_key`, Not Raw Python Equality (T2.1, code review)
+
+Code review found that a bare `set(old_values.get(name, [])) -
+set(new_values.get(name, []))` reports **no change** when an enum member
+flips between the JSON number `1` and the JSON boolean `true` (or `0` and
+`false`). Reproduced directly: `values={"code": [1, 2]}` diffed against
+`values={"code": [True, 2]}` returned an empty list. The cause is Python
+equality, not JSON Schema semantics: `1 == True` and `hash(1) ==
+hash(True)` because `bool` is a subtype of `int` in Python, so `{1, 2}` and
+`{True, 2}` are the *same set* as far as `set.__sub__` is concerned, even
+though `1` and `true` are different, non-interchangeable values under
+JSON Schema's `enum`. This is the exact vacuous-pass failure this whole
+spec exists to eliminate, reproduced a second time inside the mechanism
+built to catch it — and the part that should sting is that the fix was
+already sitting in this same file: `_value_sort_key` (see "WHY Enum/Const
+Values Are Sorted With a Type-Tolerant Key" above, Phase 1) already groups
+by `type(value).__name__` before anything else, specifically so `bool` and
+`int` land in different buckets — but Phase 1 used it only for *ordering*
+output, never for *membership* comparison, so the type-tolerant key it
+defined did not protect the set-difference that needed it most.
+
+The fix builds a `{key: original_value}` dict on each side —
+`{_value_sort_key(v): v for v in values}` — and diffs the KEY sets, then
+reads the original value back out by key for `detail`. `bool` and `int`
+now land in different keys (`("bool", "true")` vs `("int", "1")`), so the
+flip correctly produces one `added_enum_value` and one `removed_enum_value`
+rather than nothing. `test_bool_and_int_enum_values_do_not_collide_as_equal`
+and `test_zero_and_false_enum_values_do_not_collide_as_equal` pin this,
+verified RED against the unfixed raw-`set()` code (both returned `[]`)
+before the fix, GREEN after.
+
+**This means the Phase-1 scoping note above — "the guarantee is scoped to
+distinct JSON types, not distinct numeric representations of the same
+number" — was, before this fix, true for `describe_shape`'s output
+ORDERING but silently untrue for `diff_shapes`'s MEMBERSHIP comparison.**
+A reader who saw `bool`/`int` called out as handled in that section, with
+nothing said about the diff mechanism built on top of it, could reasonably
+have assumed both were covered; they were not, until this fix. Read that
+section together with this one now: `_value_sort_key` distinguishes
+`bool`/`int` (and every other distinct JSON type) for BOTH purposes it is
+used for — sorting `diff_shapes`'s output, and now determining
+`diff_shapes`'s set membership — and continues to treat `1`/`1.0` as
+distinct (the float-normalisation gap Phase 1 already scoped out
+deliberately, still not built, still YAGNI until a wire actually needs it).
+
+Checked and confirmed scoped to this one spot: every OTHER set/equality
+comparison in `_diff_node` operates on property or required-field NAMES
+(always JSON strings, e.g. `set(new_properties) - set(old_properties)`),
+or on a direct `!=` between two `type` keyword strings (`type_changed`),
+never on raw enum/const VALUES — so the `bool`/`int` collision has no other
+foothold in this function. If a future field is added to `NodeShape` that
+diffs raw JSON scalar values the way `values` does, key it the same way.
 
 ## WHY `required_added`/`required_removed` Are Two Kinds, Not One `required_changed` (T2.1, revised)
 

@@ -1,5 +1,5 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.5.0
+# version: 0.6.0
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
@@ -269,15 +269,23 @@ def _diff_node(pointer: str, old: dict, new: dict) -> list:
     old_values = old.get("values") or {}
     new_values = new.get("values") or {}
     for name in sorted(set(old_values) | set(new_values)):
-        old_set = set(old_values.get(name, []))
-        new_set = set(new_values.get(name, []))
-        for value in sorted(new_set - old_set, key=_value_sort_key):
+        # Keyed on _value_sort_key, NOT on the raw values themselves. A
+        # bare `set(values)` uses Python equality/hash, where `1 == True`
+        # and `hash(1) == hash(True)` (bool is an int subtype) — an enum
+        # member flipping from the JSON number 1 to the JSON boolean true
+        # would then diff to nothing. _value_sort_key already separates
+        # them by `type(value).__name__`; reusing it here for MEMBERSHIP,
+        # not just the ordering it was built for, is what closes that gap.
+        # See docs/tomo/scripts/lib/wire_shape.md.
+        old_by_key = {_value_sort_key(v): v for v in old_values.get(name, [])}
+        new_by_key = {_value_sort_key(v): v for v in new_values.get(name, [])}
+        for key in sorted(set(new_by_key) - set(old_by_key)):
             changes.append(_change(
-                pointer, "added_enum_value", f"{name}: added value {value!r}",
+                pointer, "added_enum_value", f"{name}: added value {new_by_key[key]!r}",
             ))
-        for value in sorted(old_set - new_set, key=_value_sort_key):
+        for key in sorted(set(old_by_key) - set(new_by_key)):
             changes.append(_change(
-                pointer, "removed_enum_value", f"{name}: removed value {value!r}",
+                pointer, "removed_enum_value", f"{name}: removed value {old_by_key[key]!r}",
             ))
 
     return changes

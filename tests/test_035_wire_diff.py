@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_035_wire_diff.py — Behavioural tests for lib.wire_shape.diff_shapes (spec 035 T2.1).
 
 Separate from test_035_wire_shape.py on purpose: that file exercises the
@@ -29,8 +29,16 @@ Tests cover:
 - an enum value added to a property is reported as added_enum_value with
   its pointer, the property name and the value; a value removed is
   removed_enum_value; a property gaining an enum where it had none is
-  reported; a const widened to an enum containing it reports the added
-  values and nothing else (Phase 1 records `const: X` as `[X]`)
+  reported, and losing one entirely is too (the mirror case — shrinking to
+  zero, not just shrinking); a const widened to an enum containing it
+  reports the added values and nothing else (Phase 1 records `const: X`
+  as `[X]`)
+- enum-value membership is compared by JSON type+value, not raw Python
+  equality: `1`/`True` and `0`/`False` are distinct enum members and both
+  directions of that flip are reported (code review found the raw-`set()`
+  diff silently missed this — bool is an int subtype in Python)
+- a NodeShape missing the `values` key entirely (not just an empty dict)
+  degrades correctly rather than raising
 - diff_shapes(nodes, nodes) is empty for each of the three real committed
   manifests (the sanity check the task brief asks for, pinned as a test)
 - the output is sorted by (pointer, kind, detail) — pinned with an EXACT
@@ -308,6 +316,76 @@ def test_removed_enum_value_reported():
 def test_property_gaining_enum_where_it_had_none_is_reported():
     recorded = {"": _node(properties={"status": "string"})}  # no `values` entry at all
     observed = {"": _node(properties={"status": "string"}, values={"status": ["open"]})}
+
+    changes = diff_shapes(recorded, observed)
+
+    assert len(changes) == 1
+    assert changes[0]["kind"] == "added_enum_value"
+    assert "open" in changes[0]["detail"]
+
+
+def test_property_losing_its_entire_enum_is_reported():
+    # Mirror of test_property_gaining_enum_where_it_had_none_is_reported:
+    # `new_values.get(name, [])` (the empty-set fallback) is only actually
+    # exercised when a property's enum entry disappears outright, not when
+    # it merely shrinks — the existing removed-value test only shrinks one.
+    recorded = {"": _node(properties={"status": "string"}, values={"status": ["open"]})}
+    observed = {"": _node(properties={"status": "string"})}  # no `values` entry at all
+
+    changes = diff_shapes(recorded, observed)
+
+    assert len(changes) == 1
+    assert changes[0]["kind"] == "removed_enum_value"
+    assert "open" in changes[0]["detail"]
+
+
+def test_bool_and_int_enum_values_do_not_collide_as_equal():
+    # Python's `1 == True` and `hash(1) == hash(True)` (bool is a subtype
+    # of int), so a bare `set(...) - set(...)` treats an enum member that
+    # flips from the JSON number 1 to the JSON boolean true as NO CHANGE —
+    # exactly the vacuous-pass failure this spec exists to eliminate,
+    # reproduced inside diff_shapes itself. _value_sort_key already
+    # distinguishes them by `type(value).__name__` for ordering; the same
+    # distinction must hold for membership.
+    recorded = {"": _node(properties={"code": "integer"}, values={"code": [1, 2]})}
+    observed = {"": _node(properties={"code": "integer"}, values={"code": [True, 2]})}
+
+    changes = diff_shapes(recorded, observed)
+
+    kinds_and_details = [(c["kind"], c["detail"]) for c in changes]
+    assert ("added_enum_value", "code: added value True") in kinds_and_details
+    assert ("removed_enum_value", "code: removed value 1") in kinds_and_details
+    assert len(changes) == 2
+
+
+def test_zero_and_false_enum_values_do_not_collide_as_equal():
+    recorded = {"": _node(properties={"flag": "integer"}, values={"flag": [0]})}
+    observed = {"": _node(properties={"flag": "integer"}, values={"flag": [False]})}
+
+    changes = diff_shapes(recorded, observed)
+
+    kinds_and_details = [(c["kind"], c["detail"]) for c in changes]
+    assert ("added_enum_value", "flag: added value False") in kinds_and_details
+    assert ("removed_enum_value", "flag: removed value 0") in kinds_and_details
+    assert len(changes) == 2
+
+
+def test_node_missing_values_key_entirely_degrades_correctly():
+    # Every other test builds nodes through _node(), which always
+    # populates all four NodeShape keys. A committed manifest generated
+    # before `values` existed (or any future format extension) would put a
+    # raw dict WITHOUT "values" through _diff_node — this bypasses the
+    # helper on purpose to prove the `.get("values") or {}` degrade holds,
+    # rather than a future `.get()` -> `[...]` edit breaking silently.
+    recorded = {"": {"closed": True, "required": [], "properties": {"status": "string"}}}
+    observed = {
+        "": {
+            "closed": True,
+            "required": [],
+            "properties": {"status": "string"},
+            "values": {"status": ["open"]},
+        },
+    }
 
     changes = diff_shapes(recorded, observed)
 

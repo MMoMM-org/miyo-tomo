@@ -467,6 +467,31 @@ once — same reasoning as `required` and `values` being sorted inside
 one layer up, to the list `diff_shapes` returns rather than the node map
 `describe_shape` returns.
 
+`(pointer, kind)` alone is not always unique — a property can gain several
+enum values in one edit, each its own `added_enum_value` change on the same
+pointer and kind — so a third key is needed to make the sort total.
+`detail` is used **only because it is stable, not because it is
+meaningful**: it is display prose (see "WHY `detail` Is Display-Only"
+above), and nothing about its wording is a contract beyond "the same two
+inputs always produce the same string in the same position." Do not read
+the choice of `detail` as the tiebreaker as evidence that its shape is
+significant — a future reader who wants a semantically meaningful
+tiebreaker (say, the enum value alone, without the surrounding prose)
+should add a dedicated field for it rather than infer one by parsing
+`detail`.
+
+**Pinned by `test_output_is_sorted_by_pointer_then_kind_then_detail`**,
+which asserts an EXACT sequence (not a set) over a fixture built so the
+sort is load-bearing: pointer `/a` carries both a `type_changed` and an
+`openness_changed` change, and `_diff_node` APPENDS them in that order
+(the properties loop runs before the closed-comparison) — the opposite of
+their alphabetical order. Removing `changes.sort(...)` was verified,
+directly, to turn this test red (`type_changed` then `openness_changed`,
+contradicting the pinned sequence) before the sort was restored; a set-
+based assertion (`{(c["pointer"], c["kind"]) for c in changes} == {...}`)
+would NOT have caught that regression, because a set discards the very
+thing being tested.
+
 ## WHY `diff_shapes` and `classify` Were Not Here Yet, Historically
 
 `diff_shapes` is now implemented (T2.1, this section's siblings above).

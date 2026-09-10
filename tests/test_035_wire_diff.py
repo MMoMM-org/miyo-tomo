@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_035_wire_diff.py — Behavioural tests for lib.wire_shape.diff_shapes (spec 035 T2.1).
 
 Separate from test_035_wire_shape.py on purpose: that file exercises the
@@ -33,6 +33,9 @@ Tests cover:
   values and nothing else (Phase 1 records `const: X` as `[X]`)
 - diff_shapes(nodes, nodes) is empty for each of the three real committed
   manifests (the sanity check the task brief asks for, pinned as a test)
+- the output is sorted by (pointer, kind, detail) — pinned with an EXACT
+  sequence assertion (not a set) over several changes spanning two pointers
+  and two kinds, chosen so removing the sort changes the result
 """
 from __future__ import annotations
 
@@ -328,6 +331,38 @@ def test_const_widened_to_enum_reports_only_the_added_values():
     assert len(changes) == 1
     assert changes[0]["kind"] == "added_enum_value"
     assert "closed" in changes[0]["detail"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Output ordering is pinned, not incidental — T2.3's gate message and
+# T4.1's obligation table are built directly off this list.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_output_is_sorted_by_pointer_then_kind_then_detail():
+    # `/a` carries a type_changed AND an openness_changed change. `_diff_node`
+    # APPENDS type_changed before openness_changed (the properties loop runs
+    # before the closed-comparison), but alphabetically "openness_changed"
+    # sorts before "type_changed" — so the two are in opposite order before
+    # and after sorting. That flip is what makes this test fail if the sort
+    # is ever dropped, regardless of how pointer `/a` vs `/b` happen to
+    # iterate without it (set iteration order is not otherwise guaranteed).
+    recorded = {
+        "/a": _node(closed=False, properties={"x": "string"}),
+        "/b": _node(closed=True, properties={"y": "string"}),
+    }
+    observed = {
+        "/a": _node(closed=True, properties={"x": "integer"}),
+        "/b": _node(closed=True, properties={"y": "string", "z": "string"}),
+    }
+
+    changes = diff_shapes(recorded, observed)
+
+    # Exact sequence, not a set — a set assertion cannot catch reordering.
+    assert [(c["pointer"], c["kind"]) for c in changes] == [
+        ("/a", "openness_changed"),
+        ("/a", "type_changed"),
+        ("/b", "added_property"),
+    ]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -204,6 +204,20 @@ exists because nothing in JSON Schema promises they will stay that way, and
 a manifest generator that can only handle today's enums is exactly the kind
 of "too little" this spec exists to close off.
 
+**The guarantee is scoped to distinct JSON *types*, not distinct numeric
+*representations* of the same number.** `1` and `1.0` are the same number
+under JSON Schema's `enum` equality, but `_value_sort_key` groups by
+`type(value).__name__`, and Python's `int` and `float` are different types
+— so rewriting an enum member's literal form from `1` to `1.0` would show
+up in `diff_shapes` as a spurious added-value-plus-removed-value pair,
+never as the no-op it actually is. Normalising numeric representation
+before comparing is the correct fix for that case and is deliberately not
+built here — the same YAGNI call as the enum+const precedence below. A
+future reader who meets a float-typed wire enum should add that
+normalisation rather than assume it was weighed against that case; it was
+weighed only against the case that exists today (2026-09-10 observation,
+not a property of the design).
+
 ## WHY Local `$ref` Is Resolved for `type`/`enum`/`const`
 
 `(child or {}).get("type", "any")` recorded `"any"` for every property that
@@ -232,6 +246,36 @@ constraints, both load-bearing:
   a *recorded node* — it has no `properties` — which is exactly why
   resolution, not cross-referencing an already-walked node, is the
   mechanism: there may be nothing in `nodes` to cross-reference against.
+
+Two further guarantees are pinned by test, not merely true by inspection,
+because both are the kind a routine-looking refactor could undo without
+any existing test noticing: each keyword is resolved **independently** —
+`_effective` is called once per keyword (`type`, `enum`, `const`), so a
+property overriding `type` inline still resolves `enum`/`const` from its
+`$ref` target rather than the override suppressing lookup of every other
+keyword
+(`test_inline_override_of_one_keyword_does_not_suppress_ref_resolution_of_another`)
+— and `seen` is a **fresh local** on every `_effective` call, so the same
+`$ref` target resolves correctly at every site that shares it within one
+`describe_shape()` call, not only the first
+(`test_same_ref_target_resolves_at_many_independent_sites_in_one_call`,
+run against the real `instructions.schema.json`, where `#/$defs/action_id`
+is the `id` property's `$ref` on every action shape). A refactor that
+hoisted a single resolved node per property, or hoisted `seen` to module
+scope or a mutable default argument, would silently under-record most of
+the instructions wire — and, verified directly, both regressions make
+these two tests fail while leaving every other test in this file green.
+
+**`closed` and `required` are read directly off a node with `.get()` and
+do NOT chase a `$ref`, unlike `type`/`enum`/`const` — a deliberate, scoped
+omission, the same shape of choice as the enum+const precedence below.** A
+node composed as `{"$ref": "#/$defs/Base", "properties": {...}}`, where
+`Base` itself declares `additionalProperties: false` or `required`, would
+not inherit either through this mechanism. No wire is composed that way as
+of 2026-09-10 — an observation about current content, not a boundary the
+design commits to. A future reader who meets one should extend resolution
+to `closed`/`required` rather than assume the gap was weighed against that
+specific case; it was weighed only against the case that exists today.
 
 ## WHY List-Valued `type` Is Sorted, and Why That Also Fixes the Aliasing
 

@@ -386,6 +386,56 @@ def test_inline_type_wins_over_ref_sibling():
     assert result[""]["properties"]["overridden"] == "integer"
 
 
+def test_inline_override_of_one_keyword_does_not_suppress_ref_resolution_of_another():
+    # A property overriding `type` inline still resolves `enum` from its
+    # $ref target — each keyword is looked up independently (_effective is
+    # called once per keyword). A refactor that hoisted a single resolved
+    # node per property (inline child if it declares ANYTHING, else the ref
+    # target) would suppress this: type would stay "string" but values
+    # would go missing, because the ref would never be consulted at all.
+    schema = {
+        "type": "object",
+        "properties": {
+            "status": {"$ref": "#/$defs/Status", "type": "string"},
+        },
+        "$defs": {
+            "Status": {"type": "integer", "enum": ["active", "archived"]},
+        },
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"]["status"] == "string"  # inline wins
+    assert result[""]["values"]["status"] == ["active", "archived"]  # still resolved
+
+
+def test_same_ref_target_resolves_at_many_independent_sites_in_one_call():
+    # `seen` in _effective is created fresh on every call. If a future edit
+    # hoisted it to module scope, or made it a mutable default argument
+    # (the classic Python footgun), the second-and-later use of a shared
+    # $ref within one describe_shape() call would find it already in
+    # `seen` and short-circuit to "any" — most of the instructions wire
+    # would silently under-record, since action_id is shared by every
+    # action shape. Real schema, not synthetic: a synthetic fixture is not
+    # what would catch a module-scope `seen` — only a wire that actually
+    # references the same target many times over one call would.
+    schema = json.loads((SCHEMAS_DIR / "instructions.schema.json").read_text())
+
+    result = describe_shape(schema)
+
+    sites = [
+        "/$defs/move_note",
+        "/$defs/move_asset",
+        "/$defs/link_to_moc",
+        "/$defs/add_relationship",
+        "/$defs/update_tracker",
+        "/$defs/edit_frontmatter",
+        "/$defs/resolve_dead_link",
+    ]
+    for pointer in sites:
+        assert result[pointer]["properties"]["id"] == "string", pointer
+
+
 def test_non_local_ref_records_any():
     schema = {
         "type": "object",

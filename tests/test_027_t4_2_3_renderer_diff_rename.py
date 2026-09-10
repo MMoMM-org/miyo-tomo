@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_027_t4_2_3_renderer_diff_rename.py — TDD for T4.2 (renderer) + T4.3 (diff).
 
 T4.2: instruction-render.py emits source_inbox_item (not origin_inbox_item) in
@@ -120,22 +120,25 @@ class TestRendererMoveNoteKeyRename:
 
 
 class TestRendererSchemaVersionBump:
-    """The instructions doc header must emit schema_version:'2' (not '1')."""
+    """The instructions doc header must emit schema_version:'2' (not '1').
+
+    Spec 035 T3.1 / ADR-5: instruction-render.py no longer declares
+    schema_version as a free string literal — it reads
+    lib.wire_version.wire_schema_version("instructions.schema.json"), which
+    resolves instructions.schema.json's own declared const. This test's
+    original mechanism (grepping the source for a literal `"2"`) stopped
+    being meaningful the moment that literal was removed by design (see
+    tests/test_035_wire_shape.py::test_no_renderer_hardcodes_schema_version,
+    which now guards against that literal's reintroduction); this test keeps
+    T4.2's original functional claim — the emitted value is "2" — by calling
+    the same helper the renderer calls, against the real committed schema.
+    """
 
     def test_schema_version_const_is_2_in_source(self):
-        """Source code contract: instructions_doc uses schema_version:'2' (not '1').
-
-        Reads the renderer source to guard against regression. RED = source still
-        has '1'; GREEN = source updated to '2'.
-        """
-        source = (SCRIPTS_DIR / "instruction-render.py").read_text(encoding="utf-8")
-        # The instructions_doc dict is built in main(); find the emitted constant.
-        assert '"schema_version": "2"' in source, (
+        """instructions_doc emits schema_version:'2', read from the schema."""
+        assert ir.wire_schema_version("instructions.schema.json") == "2", (
             "instructions_doc must emit schema_version:'2' (T4.2 bump)"
         )
-        # And confirm '1' is gone from the emit site (not the schema itself)
-        # We check that the old emit '1' is absent from the instructions_doc block.
-        # NOTE: the schema files themselves no longer contain const "1" either.
 
 
 class TestRendererDisplayRename:

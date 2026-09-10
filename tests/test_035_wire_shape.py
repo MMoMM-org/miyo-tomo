@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_035_wire_shape.py — Behavioural tests for lib.wire_shape.describe_shape (spec 035 T1.1).
 
 Tests cover:
@@ -624,3 +624,40 @@ def test_property_child_null_is_still_treated_as_no_constraint():
     result = describe_shape(schema)
 
     assert result[""]["properties"] == {"id": "string", "weird": "any"}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# spec 035 T3.1 / ADR-5 — no renderer hardcodes schema_version (regression GUARD,
+# not coverage; see docstring below)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_no_renderer_hardcodes_schema_version():
+    """Vacuous-by-design regression guard, not coverage, per ADR-5.
+
+    Once a renderer's emission site reads wire_schema_version() instead of
+    declaring a free string literal, "the renderer's emitted value tracks its
+    schema" is no longer something this assertion can falsify — there is no
+    literal left for renderer code to drift out of step with its schema. What
+    it still catches is someone reintroducing that literal later; reinstating
+    `"schema_version": "2"` at instruction-render.py's emission site (or the
+    equivalent in the other two) must fail this test. The real coverage —
+    schema bumped, renderer code untouched, emitted value follows — is
+    tests/test_035_wire_version.py's per-renderer scratch-schema tests, not
+    this one.
+    """
+    import re
+
+    renderer_paths = [
+        REPO_ROOT / "tomo" / "scripts" / "suggestions-render.py",
+        REPO_ROOT / "tomo" / "scripts" / "instruction-render.py",
+        REPO_ROOT / "tomo" / "scripts" / "garden-audit-render.py",
+    ]
+    literal_pattern = re.compile(r'"schema_version"\s*:\s*"[^"]*"')
+
+    for path in renderer_paths:
+        text = path.read_text(encoding="utf-8")
+        matches = literal_pattern.findall(text)
+        assert matches == [], (
+            f"{path.name} hardcodes schema_version at its emission site "
+            f"{matches} instead of calling wire_schema_version() (ADR-5)"
+        )

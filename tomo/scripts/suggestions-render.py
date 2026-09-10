@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.18.0
+# version: 0.19.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -25,6 +25,7 @@ import yaml
 from lib.doc_frontmatter import build_tomo_block
 from lib.profile_conventions import ensure_suffix
 from lib.render_md import compute_payload_digest
+from lib.wire_version import wire_schema_version
 
 
 def render_frontmatter(d: dict) -> list[str]:
@@ -399,7 +400,7 @@ def build_wire_payload(d: dict) -> dict:
         })
 
     payload = {
-        "schema_version": "1",
+        "schema_version": wire_schema_version("suggestions-wire.schema.json"),
         "generated": d["generated"],
         "run_id": d["run_id"],
         "profile": d["profile"],

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.53.0
+# version: 0.54.0
 """instruction-render.py — Deterministic Pass-2 rendering.
 
 Reads parsed suggestions (from suggestion-parser.py) and produces three outputs
@@ -77,6 +77,7 @@ from lib.render_actions import (  # noqa: E402,F401
 )
 from lib.render_helpers import _moc_stem, _stem, resolve_source_path  # noqa: E402,F401
 from lib.render_io import read_note_body, read_template  # noqa: E402,F401
+from lib.wire_version import wire_schema_version  # noqa: E402
 from lib.render_md import (  # noqa: E402,F401
     SECTION_TITLES,
     _UPSTREAM_TYPES,
@@ -775,7 +776,7 @@ def main() -> int:
         "run_id": args.run_id,
     })
     instructions_doc = {
-        "schema_version": "2",
+        "schema_version": wire_schema_version("instructions.schema.json"),
         "type": "tomo-instructions",
         "source_suggestions": source_suggestions,
         "generated": generated_iso,

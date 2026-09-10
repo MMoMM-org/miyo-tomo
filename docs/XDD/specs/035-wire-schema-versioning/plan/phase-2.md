@@ -40,7 +40,9 @@ Turns the recorded shape into a gate.
   1. Prime: read the two traced walkthroughs — the 034 drift and the live garden-audit drift
      `[ref: SDD/Implementation Examples]`.
   2. Test: an added property is reported with its pointer and name; a removed property likewise; a
-     `required` change is reported distinctly from a property change; an openness change is its own
+     a `required` change is reported distinctly from a property change **and distinctly by
+     direction** — `required_added` when a field joins the list, `required_removed` when one
+     leaves; an openness change is its own
      kind; a **type change** is its own kind; a node added or removed wholesale is reported once, not
      as N property changes; identical manifests produce an empty list.
 
@@ -79,6 +81,16 @@ Turns the recorded shape into a gate.
        getting it wrong makes the detector cry wolf on the one drift that is fine)*;
      - **required** field removed → affecting;
      - **optional** field removed → not affecting;
+
+       **Write these two through `diff_shapes`, never by hand-building a `ShapeChange`.**
+       Removing a required property yields TWO changes (`removed_property` **and**
+       `required_removed`); removing an optional one yields a single `removed_property`. So
+       the distinction lives in the change *set*, and the gate's `any(classify(c) ...)` is
+       what separates them — a lone `removed_property` classifies identically in both cases
+       and always will. An implementer who hand-builds one change, sees the 'wrong' answer
+       and 'fixes' `classify` by giving it the recorded manifest has broken the SDD's
+       signature to solve a problem that does not exist. Driving every test through
+       `diff_shapes` also removes the hand-built-fixture vacuity this spec keeps finding;
      - **enum value added** → affecting *(counter-intuitive; a consumer validating the old set
        rejects the new value)*;
      - **enum value removed** → **not** affecting — the mirror of the above, and the reason the two

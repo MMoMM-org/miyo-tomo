@@ -327,7 +327,7 @@ ENTITY: ShapeManifest (NEW)
 
 ENTITY: ShapeChange (NEW)
   pointer: str
-  kind: added_property | removed_property | type_changed | required_changed | openness_changed
+  kind: added_property | removed_property | type_changed | required_added | required_removed | openness_changed
       | added_enum_value | removed_enum_value | node_added | node_removed
       # The two enum kinds were added 2026-09-10 with ADR-2's extension. They are separate
       # kinds rather than one `values_changed` because they classify OPPOSITELY, mirroring
@@ -335,6 +335,12 @@ ENTITY: ShapeChange (NEW)
       # consumer's vendored set rejects (affecting); removing one means we emit a subset of
       # what they already accept (not affecting). Collapsing them into one kind would force
       # classify to re-derive the direction it was just told.
+      # `required_changed` was split the same way and for the same reason, also 2026-09-10:
+      # a field LEAVING required means we may stop emitting something the consumer's copy
+      # still requires (affecting); a field JOINING required means we now always emit
+      # something they already accept (not affecting). classify() receives only the observed
+      # manifest, never the recorded one, so it cannot see which way the list moved — the
+      # direction has to be decided by diff_shapes, which is the only place both sides exist.
   detail: str
   consumer_affecting: bool
 

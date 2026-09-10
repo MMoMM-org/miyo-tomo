@@ -155,7 +155,7 @@ Turns the recorded shape into a gate.
      - [x] Every kind `diff_shapes` emits has a rule, asserted exhaustively over `CHANGE_KINDS`
      - [x] A field joining `required` is not affecting `[ref: SDD/Application Data Models]`
 
-- [ ] **T2.3 The gate, and a message that says what to do** `[activity: backend-api]`
+- [x] **T2.3 The gate, and a message that says what to do** `[activity: backend-api]`
 
   **Module-split seam, decided at T2.2's code review (2026-09-10).** `wire_shape.py` is now 516
   lines and holds the walk, the manifest builder, the serializer, the registry, the diff, the kind
@@ -209,11 +209,11 @@ Turns the recorded shape into a gate.
      so every failure case has to be proven against a mutated scratch copy rather than against the
      real tree. **Never mutate a committed schema or manifest in place.**
   5. Success:
-     - [ ] Affecting + unmoved version fails; moved passes `[ref: PRD/F2-AC5]`
-     - [ ] The failure names the **document**, the location and the property `[ref: PRD/F1-AC1]`
+     - [x] Affecting + unmoved version fails; moved passes `[ref: PRD/F2-AC5]`
+     - [x] The failure names the **document**, the location and the property `[ref: PRD/F1-AC1]`
            — the half T2.1 structurally cannot deliver
-     - [ ] The failure names the expected next steps `[ref: PRD/F7-AC1]`
-     - [ ] A non-affecting change does not demand a version move `[ref: PRD/F7-AC2]`
+     - [x] The failure names the expected next steps `[ref: PRD/F7-AC1]`
+     - [x] A non-affecting change does not demand a version move `[ref: PRD/F7-AC2]`
 
 - [ ] **T2.4 Replace the vacuous comparison in the existing wire-hygiene test** `[activity: backend-api]`
 

@@ -290,7 +290,10 @@ File: tomo/schemas/shapes/<wire>.shape.json   (NEW, one per published wire)
     "<pointer>":
       closed: bool                # rejects unknown properties?
       required: [string]          # sorted
-      properties: {name: type}    # sorted by name; type keyword only, never prose
+      properties: {name: type}    # sorted by name; type keyword only, never prose.
+                                  # A local $ref is resolved to its target's type.
+      values: {name: [value]}     # enum/const values, sorted. Only for properties
+                                  # that declare one; never an empty list.
     ...
 
 File: tomo/schemas/instructions.schema.json        MODIFY $id (producer copy)
@@ -310,8 +313,12 @@ where the churn is, not where the recording is cheapest.
 ```pseudocode
 ENTITY: NodeShape (NEW)
   closed: bool
-  required: list[str]
-  properties: dict[str, str]      # name -> type keyword
+  required: list[str]                     # sorted
+  properties: dict[str, str | list[str]]  # name -> type keyword; a list when the
+                                          # schema declares a union, sorted. A local
+                                          # $ref resolves to its target's type.
+  values: dict[str, list]                 # name -> sorted enum/const values, for the
+                                          # properties that declare them
 
 ENTITY: ShapeManifest (NEW)
   schema_version: str
@@ -602,6 +609,23 @@ it had it been run against a complete requirement set.
     invisible. That is what the obligation table carries, and why the table is prose rather than a
     generated diff.
   - User confirmed: **Yes, 2026-09-10**
+  - **Amended 2026-09-10, during T1.1, owner-approved.** The recorded set gains **enumerated values**
+    (`enum`, and `const` recorded as a one-value enum), and a property's `type` is now resolved
+    through a local `$ref` instead of collapsing to `any`. Both follow ADR-2's own line rather than
+    crossing it — the rule is *record what the consumer's validator enforces, exclude what it
+    ignores*, and their validator enforces both. Neither is prose.
+    - **Enum was not optional.** PRD F2-AC3 requires an added enum value to classify as
+      consumer-affecting, but `classify` reads a `ShapeChange` and `diff_shapes` reads the manifest.
+      With no enum data recorded, `diff_shapes` could never emit an enum change and F2-AC3 was
+      structurally unreachable — satisfiable only by hand-building a `ShapeChange`, which is a test
+      that passes while the mechanism is blind. That is the vacuous-pass pattern this spec exists to
+      eliminate, reproduced one layer down. 18 `enum` and 21 `const` declarations across the three
+      wires were invisible.
+    - **`$ref` resolution**: `id` and `applied` on ~15 instruction actions recorded `any` rather than
+      `string`/`boolean`, so a type change to a shared `$defs` entry was invisible everywhere it was
+      used. Local refs only, cycle-guarded; the function stays pure.
+    - Trade-off: the manifest is larger and an enum reorder must be normalised away (values are
+      sorted under a mixed-type-safe key, as `required` already is).
 
 - [x] **ADR-3 A stale manifest fails; regeneration is always explicit**
   - Rationale: auto-regenerating would satisfy the check while defeating it, exactly as automated

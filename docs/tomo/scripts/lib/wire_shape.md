@@ -316,8 +316,85 @@ consumer's vendored copy, without needing to know which.
 
 ## WHY `diff_shapes` and `classify` Are Not Here Yet
 
-They are Phase 2 (T2.x). This module currently exposes only
-`describe_shape` in `__all__`; a reader who finds the module's surface
-partial should not read that as an oversight — the plan sequences shape
-description before shape comparison so each has its own RED-GREEN cycle
-against its own acceptance criteria (F1 here, F2 in Phase 2).
+They are Phase 2 (T2.x). This module currently exposes `describe_shape`,
+`PUBLISHED_WIRES`, `build_manifest` and `serialize_manifest` in `__all__`;
+a reader who finds the module's surface partial should not read that as an
+oversight — the plan sequences shape description before shape comparison
+so each has its own RED-GREEN cycle against its own acceptance criteria
+(F1 here, F2 in Phase 2).
+
+## WHY `PUBLISHED_WIRES` Lives in `wire_shape.py`, Not in the Generator or the Tests (T1.2)
+
+The task brief's own framing is the reason: writing the list of published
+wires twice — once for generation, once for the "no manifest on an
+internal schema" test — means a fourth published wire added later needs
+two coordinated edits to stay covered, and a spec whose entire point is
+"nothing escapes" cannot tolerate a registry that itself can silently
+drift. Putting `PUBLISHED_WIRES` in `wire_shape.py` (not in
+`tests/test_035_wire_manifests.py`, not in the one-off generation script)
+makes it importable by both without either depending on the other, and a
+tuple of three filenames is data, not behaviour — it does not compromise
+`describe_shape`'s purity to sit alongside it. The "no manifest on an
+internal schema" test derives its target list as `tomo/schemas/*.schema.json`
+minus this tuple rather than enumerating the current 15 by name, for the
+same reason: a schema added tomorrow is covered by construction, not by
+someone remembering to update a second list.
+
+`hashi-instructions.schema.json` is deliberately absent from the tuple. It
+is a vendored mirror of `instructions.schema.json` living in the consumer's
+own repo copy (Phase 4's drift report reads it, this mechanism does not) —
+not a schema Tomo publishes, so it gets no manifest and falls into the
+"internal" bucket the derived test walks.
+
+## WHY `build_manifest` Reads `schema_version` From the Schema, Not From a Caller-Supplied Value
+
+The plan text says a manifest's `schema_version` is "the value its schema
+currently declares" — `build_manifest(schema, source)` therefore reads
+`schema["properties"]["schema_version"]["const"]` itself rather than
+accepting a `schema_version` argument. A caller-supplied version could
+drift from what the schema file actually says the moment someone edits one
+without the other; reading it off the schema makes that drift structurally
+impossible. `source` stays a caller-supplied string because it names a
+*file path*, which is a fact about where the schema lives on disk, not a
+fact `describe_shape`'s pure walk of the schema *content* could derive —
+keeping `build_manifest` free of path conventions is what lets the same
+function manifest a schema loaded from any location a caller chooses.
+
+## WHY `serialize_manifest` Exists, and Why the Round-Trip Test Loads From Disk
+
+"Byte-for-byte" (PRD/F1-AC5) is only a checkable claim if exactly one
+function turns a manifest dict into text, used on both sides of the
+comparison — one path to write the committed files, the same path to
+regenerate content for the test. Two independently-written encoders (even
+both calling `json.dumps` with slightly different kwargs) would drift on
+whitespace or key order alone, producing a false failure that has nothing
+to do with the recorded shape. `serialize_manifest` fixes the encoding
+once: 2-space indent, `sort_keys=True` (so `describe_shape`'s dict-insertion
+order is never itself diff noise), `ensure_ascii=False` (a manifest holds
+no prose to escape), one trailing newline.
+
+The round-trip test loads the manifest from the COMMITTED FILE ON DISK
+and compares a fresh `build_manifest` + `serialize_manifest` against that
+text — never two in-memory generations compared to each other. A
+self-comparing test (`describe_shape(schema) == describe_shape(schema)`)
+passes against any implementation whatsoever, including one that records
+nothing, and proves only that Python is deterministic. The three files
+under `tomo/schemas/shapes/` are the actual baseline every later phase's
+drift check compares against; a test that never opens one of them would
+give false confidence in the one artifact this entire spec rests on.
+
+## WHY the Missing-Manifest Check Lives in the Test Suite, Not in `wire_shape.py`
+
+The plan asks for "a published wire with a missing manifest fails rather
+than passing silently" but does not say where that check lives. T1.2
+builds it as a test-suite helper (`_assert_manifest_exists` in
+`tests/test_035_wire_manifests.py`) exercised twice — once over the three
+real, committed manifests (the permitted case) and once against a
+fabricated filename that is deliberately absent from both
+`PUBLISHED_WIRES` and disk (the refused case, `pytest.raises(AssertionError)`)
+per MiYo Constitution L1's requirement to prove both. It is deliberately
+NOT a function in `wire_shape.py`: Phase 2 builds the real drift gate
+(the thing that runs in CI and blocks a merge) on top of `describe_shape`
+and `build_manifest`, and that gate's shape isn't decided yet. Adding a
+"does the manifest exist" check to the production module now would be
+guessing at Phase 2's interface before Phase 2 exists to say what it needs.

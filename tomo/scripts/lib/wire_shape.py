@@ -1,16 +1,29 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.2.0
+# version: 0.3.0
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
-diff_shapes and classify are Phase 2 and are not implemented yet — do not stub
-them.
+PUBLISHED_WIRES, build_manifest and serialize_manifest (T1.2) wrap that node
+map in the committed manifest-file shape. diff_shapes and classify are Phase
+2 and are not implemented yet — do not stub them.
 """
 from __future__ import annotations
 
 import json
 
-__all__ = ["describe_shape"]
+__all__ = ["describe_shape", "PUBLISHED_WIRES", "build_manifest", "serialize_manifest"]
+
+# The three published wires (SDD/Data Storage Changes) — the single source of
+# truth for which schemas get a manifest. Generation and every test read this
+# tuple; the internal-schema-has-no-manifest check derives its list as
+# everything in tomo/schemas/ NOT named here, so a fourth published wire is
+# covered by adding one line, not by updating a registry and a test in
+# lockstep. See docs/tomo/scripts/lib/wire_shape.md.
+PUBLISHED_WIRES = (
+    "suggestions-wire.schema.json",
+    "instructions.schema.json",
+    "garden-audit-wire.schema.json",
+)
 
 # Sentinel distinct from a legitimate JSON value (including `null`, `False`,
 # `0`, `""`) that a schema keyword can hold. `dict.get(key, default)` cannot
@@ -177,3 +190,36 @@ def describe_shape(schema: dict) -> dict:
 
     walk(schema, "")
     return nodes
+
+
+def build_manifest(schema: dict, source: str) -> dict:
+    """Wrap `describe_shape`'s node map in the committed manifest-file shape
+    (SDD/Data Storage Changes): `schema_version` (the value the schema itself
+    currently declares at `properties.schema_version.const` — never a value
+    supplied by the caller, so the manifest cannot silently drift from what
+    the schema actually says), `source` (the schema file this describes,
+    caller-supplied so this function stays free of path conventions), `nodes`
+    (`describe_shape`'s output, verbatim).
+    """
+    return {
+        "schema_version": schema["properties"]["schema_version"]["const"],
+        "source": source,
+        "nodes": describe_shape(schema),
+    }
+
+
+def serialize_manifest(manifest: dict) -> str:
+    """The ONE encoding used both to write a committed manifest file and to
+    regenerate content for the round-trip test's comparison — the SAME
+    serializer on both sides is what makes "byte-for-byte" (PRD F1-AC5)
+    checkable at all; two independently-chosen encoders would drift on
+    whitespace alone regardless of whether the recorded shape agrees.
+
+    2-space indent; `sort_keys=True` so dict-insertion order (an accident of
+    how `describe_shape` built the node) is never itself a source of diff
+    noise; `ensure_ascii=False` since a manifest holds structural data, not
+    prose, so there is nothing to escape and every reviewer sees the same
+    bytes as this function; one trailing newline, matching every other
+    committed JSON file in this repo.
+    """
+    return json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n"

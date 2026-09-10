@@ -1,0 +1,154 @@
+{
+  "nodes": {
+    "": {
+      "closed": true,
+      "properties": {
+        "approved": "boolean",
+        "emit_digest": "string",
+        "findings": "array",
+        "generated": "string",
+        "profile": [
+          "null",
+          "string"
+        ],
+        "run_id": "string",
+        "schema_version": "any",
+        "suggest_pending": "boolean"
+      },
+      "required": [
+        "emit_digest",
+        "findings",
+        "generated",
+        "profile",
+        "run_id",
+        "schema_version"
+      ],
+      "values": {
+        "schema_version": [
+          "1"
+        ]
+      }
+    },
+    "/properties/findings/items": {
+      "closed": true,
+      "properties": {
+        "check": "string",
+        "decision": "object",
+        "detail": "object",
+        "fixable": "boolean",
+        "id": "string",
+        "target": "object",
+        "tier": "string"
+      },
+      "required": [
+        "check",
+        "detail",
+        "fixable",
+        "id",
+        "target",
+        "tier"
+      ],
+      "values": {
+        "check": [
+          "broken_up",
+          "dead_link",
+          "duplicate_stem",
+          "orphan",
+          "parent_not_moc",
+          "stale_moc",
+          "unparented"
+        ],
+        "tier": [
+          "advisory",
+          "integrity",
+          "structure"
+        ]
+      }
+    },
+    "/properties/findings/items/properties/decision": {
+      "closed": true,
+      "properties": {
+        "action": [
+          "null",
+          "string"
+        ],
+        "candidates": "array",
+        "file_under": "string",
+        "replace": "string",
+        "repoint": "string",
+        "selected": "boolean",
+        "suggest_requested": "boolean",
+        "suggested": "boolean"
+      },
+      "required": [
+        "action",
+        "selected"
+      ],
+      "values": {}
+    },
+    "/properties/findings/items/properties/decision/properties/candidates/items": {
+      "closed": true,
+      "properties": {
+        "score": "number",
+        "stem": "string"
+      },
+      "required": [
+        "score",
+        "stem"
+      ],
+      "values": {}
+    },
+    "/properties/findings/items/properties/detail": {
+      "closed": false,
+      "properties": {
+        "candidate_mocs": "array",
+        "count": "integer",
+        "dead_target": "string",
+        "dupes": "array",
+        "mtime": "string",
+        "up_source": "any",
+        "up_target": [
+          "null",
+          "string"
+        ],
+        "up_value": "any"
+      },
+      "required": [],
+      "values": {
+        "up_source": [
+          null,
+          "frontmatter",
+          "inline"
+        ]
+      }
+    },
+    "/properties/findings/items/properties/detail/properties/candidate_mocs/items": {
+      "closed": true,
+      "properties": {
+        "score": "number",
+        "target_moc": "string"
+      },
+      "required": [
+        "score",
+        "target_moc"
+      ],
+      "values": {}
+    },
+    "/properties/findings/items/properties/target": {
+      "closed": true,
+      "properties": {
+        "path": "string",
+        "stem": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "path"
+      ],
+      "values": {}
+    }
+  },
+  "schema_version": "1",
+  "source": "tomo/schemas/garden-audit-wire.schema.json"
+}

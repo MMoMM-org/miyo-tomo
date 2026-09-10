@@ -1,0 +1,289 @@
+{
+  "nodes": {
+    "": {
+      "closed": true,
+      "properties": {
+        "daily_updates": "array",
+        "emit_digest": "string",
+        "generated": "string",
+        "profile": "string",
+        "proposed_mocs": "array",
+        "run_id": "string",
+        "schema_version": "any",
+        "source_items": "integer",
+        "suggestions": "array",
+        "tag_handler_groups": "array"
+      },
+      "required": [
+        "daily_updates",
+        "emit_digest",
+        "generated",
+        "profile",
+        "proposed_mocs",
+        "run_id",
+        "schema_version",
+        "source_items",
+        "suggestions",
+        "tag_handler_groups"
+      ],
+      "values": {
+        "schema_version": [
+          "1"
+        ]
+      }
+    },
+    "/properties/daily_updates/items": {
+      "closed": true,
+      "properties": {
+        "date": "string",
+        "log_entries": "array",
+        "log_links": "array",
+        "trackers": "array"
+      },
+      "required": [
+        "date",
+        "log_entries",
+        "log_links",
+        "trackers"
+      ],
+      "values": {}
+    },
+    "/properties/daily_updates/items/properties/log_entries/items": {
+      "closed": true,
+      "properties": {
+        "accepted": "boolean",
+        "content": "string",
+        "force_atomic_note": "boolean",
+        "position": "string",
+        "reason": "string",
+        "source_stem": "string",
+        "time": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "accepted",
+        "content",
+        "force_atomic_note",
+        "position",
+        "reason",
+        "source_stem",
+        "time"
+      ],
+      "values": {
+        "position": [
+          "after_last_line",
+          "at_time",
+          "before_first_line"
+        ]
+      }
+    },
+    "/properties/daily_updates/items/properties/log_links/items": {
+      "closed": true,
+      "properties": {
+        "accepted": "boolean",
+        "position": "string",
+        "reason": "string",
+        "target_stem": "string",
+        "time": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "accepted",
+        "position",
+        "reason",
+        "target_stem",
+        "time"
+      ],
+      "values": {
+        "position": [
+          "after_last_line",
+          "at_time",
+          "before_first_line"
+        ]
+      }
+    },
+    "/properties/daily_updates/items/properties/trackers/items": {
+      "closed": true,
+      "properties": {
+        "accepted": "boolean",
+        "field": "string",
+        "reason": "string",
+        "source_stem": "string",
+        "value": "string"
+      },
+      "required": [
+        "accepted",
+        "field",
+        "reason",
+        "source_stem",
+        "value"
+      ],
+      "values": {}
+    },
+    "/properties/proposed_mocs/items": {
+      "closed": true,
+      "properties": {
+        "decision": "string",
+        "id": "string",
+        "member_ids": "array",
+        "name": "string",
+        "parent": "string",
+        "reason": "string",
+        "tags": "array",
+        "topic": "string"
+      },
+      "required": [
+        "decision",
+        "id",
+        "member_ids",
+        "name",
+        "parent",
+        "topic"
+      ],
+      "values": {
+        "decision": [
+          "approve",
+          "skip"
+        ]
+      }
+    },
+    "/properties/suggestions/items": {
+      "closed": true,
+      "properties": {
+        "attachments": "array",
+        "audio_peer": [
+          "null",
+          "string"
+        ],
+        "candidate_mocs": "array",
+        "decision": "string",
+        "delete_source": "boolean",
+        "force_atomic": "boolean",
+        "id": "string",
+        "item_key": "string",
+        "keep_source": "boolean",
+        "location": "string",
+        "stem": "string",
+        "summary": [
+          "null",
+          "string"
+        ],
+        "suppressed": "boolean",
+        "tags": "array",
+        "template": "string",
+        "title": "string",
+        "worthiness": [
+          "null",
+          "number"
+        ]
+      },
+      "required": [
+        "candidate_mocs",
+        "decision",
+        "delete_source",
+        "force_atomic",
+        "id",
+        "item_key",
+        "keep_source",
+        "location",
+        "stem",
+        "suppressed",
+        "tags",
+        "template",
+        "title"
+      ],
+      "values": {
+        "decision": [
+          "approve",
+          "skip"
+        ]
+      }
+    },
+    "/properties/suggestions/items/properties/candidate_mocs/items": {
+      "closed": true,
+      "properties": {
+        "anchor": [
+          "null",
+          "object"
+        ],
+        "path": "string",
+        "selected": "boolean",
+        "source": "string"
+      },
+      "required": [
+        "path",
+        "selected"
+      ],
+      "values": {
+        "source": [
+          "tomo",
+          "user"
+        ]
+      }
+    },
+    "/properties/suggestions/items/properties/candidate_mocs/items/properties/anchor": {
+      "closed": true,
+      "properties": {
+        "alt_headings": "array",
+        "fit_confidence": [
+          "null",
+          "number"
+        ],
+        "new_section": [
+          "null",
+          "string"
+        ],
+        "placement": "string",
+        "type": "string",
+        "value": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "placement",
+        "type"
+      ],
+      "values": {
+        "placement": [
+          "after",
+          "before",
+          "inside"
+        ],
+        "type": [
+          "callout",
+          "heading",
+          "line"
+        ]
+      }
+    },
+    "/properties/tag_handler_groups/items": {
+      "closed": true,
+      "properties": {
+        "approved": "boolean",
+        "group_id": "string",
+        "handler": "string",
+        "keep_source": "boolean",
+        "marker": "string",
+        "preview": "string",
+        "source_paths": "array",
+        "target_path": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "approved",
+        "group_id",
+        "keep_source"
+      ],
+      "values": {}
+    }
+  },
+  "schema_version": "1",
+  "source": "tomo/schemas/suggestions-wire.schema.json"
+}

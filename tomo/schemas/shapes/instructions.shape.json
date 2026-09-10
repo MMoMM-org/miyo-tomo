@@ -1,0 +1,592 @@
+{
+  "nodes": {
+    "": {
+      "closed": true,
+      "properties": {
+        "action_count": "integer",
+        "actions": "array",
+        "generated": "string",
+        "md_peer": "string",
+        "profile": [
+          "null",
+          "string"
+        ],
+        "schema_version": "any",
+        "source_suggestions": [
+          "null",
+          "string"
+        ],
+        "tomo": "object",
+        "tomo_version": [
+          "null",
+          "string"
+        ],
+        "type": "any"
+      },
+      "required": [
+        "actions",
+        "generated",
+        "profile",
+        "schema_version",
+        "type"
+      ],
+      "values": {
+        "schema_version": [
+          "2"
+        ],
+        "type": [
+          "tomo-instructions"
+        ]
+      }
+    },
+    "/$defs/add_relationship": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "id": "string",
+        "line": "string",
+        "marker": "string",
+        "source_note_title": [
+          "null",
+          "string"
+        ],
+        "target_moc": [
+          "null",
+          "string"
+        ],
+        "target_moc_path": "string"
+      },
+      "required": [
+        "action",
+        "id",
+        "line",
+        "marker",
+        "target_moc_path"
+      ],
+      "values": {
+        "action": [
+          "add_relationship"
+        ]
+      }
+    },
+    "/$defs/anchor": {
+      "closed": true,
+      "properties": {
+        "type": "string",
+        "value": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "type",
+        "value"
+      ],
+      "values": {
+        "type": [
+          "block",
+          "callout",
+          "heading",
+          "line"
+        ]
+      }
+    },
+    "/$defs/create_moc": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "destination": "string",
+        "id": "string",
+        "parent_moc": [
+          "null",
+          "string"
+        ],
+        "rendered_file": "string",
+        "source": "string",
+        "supporting_items": "any",
+        "tags": "array",
+        "template": [
+          "null",
+          "string"
+        ],
+        "title": "string"
+      },
+      "required": [
+        "action",
+        "destination",
+        "id",
+        "source",
+        "title"
+      ],
+      "values": {
+        "action": [
+          "create_moc"
+        ]
+      }
+    },
+    "/$defs/delete_source": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "id": "string",
+        "reason": "string",
+        "source_path": "string"
+      },
+      "required": [
+        "action",
+        "id",
+        "reason",
+        "source_path"
+      ],
+      "values": {
+        "action": [
+          "delete_source"
+        ]
+      }
+    },
+    "/$defs/edit_frontmatter": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "expected": "any",
+        "expected_absent": "any",
+        "id": "string",
+        "operation": "any",
+        "path": "string",
+        "property": "string",
+        "value": "any"
+      },
+      "required": [
+        "action",
+        "id",
+        "operation",
+        "path",
+        "property"
+      ],
+      "values": {
+        "action": [
+          "edit_frontmatter"
+        ],
+        "expected_absent": [
+          true
+        ],
+        "operation": [
+          "remove",
+          "set"
+        ]
+      }
+    },
+    "/$defs/edit_frontmatter/allOf/0/if": {
+      "closed": false,
+      "properties": {
+        "operation": "any"
+      },
+      "required": [
+        "operation"
+      ],
+      "values": {
+        "operation": [
+          "set"
+        ]
+      }
+    },
+    "/$defs/edit_note_text": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "id": "string",
+        "match": "string",
+        "occurrence": "string",
+        "path": "string",
+        "replace": "string"
+      },
+      "required": [
+        "action",
+        "id",
+        "match",
+        "path",
+        "replace"
+      ],
+      "values": {
+        "action": [
+          "edit_note_text"
+        ],
+        "occurrence": [
+          "all",
+          "first"
+        ]
+      }
+    },
+    "/$defs/insert_under_marker": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "anchor": "object",
+        "applied": "boolean",
+        "content": "string",
+        "id": "string",
+        "placement": "string",
+        "target_path": "string"
+      },
+      "required": [
+        "action",
+        "anchor",
+        "content",
+        "id",
+        "placement",
+        "target_path"
+      ],
+      "values": {
+        "action": [
+          "insert_under_marker"
+        ],
+        "placement": [
+          "after",
+          "before",
+          "inside"
+        ]
+      }
+    },
+    "/$defs/link_to_moc": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "anchor": "object",
+        "applied": "boolean",
+        "id": "string",
+        "line_to_add": "string",
+        "placement": "string",
+        "source_note_title": [
+          "null",
+          "string"
+        ],
+        "target_moc": "string",
+        "target_moc_path": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "action",
+        "anchor",
+        "id",
+        "line_to_add",
+        "placement",
+        "target_moc"
+      ],
+      "values": {
+        "action": [
+          "link_to_moc"
+        ],
+        "placement": [
+          "after",
+          "before",
+          "inside"
+        ]
+      }
+    },
+    "/$defs/move_asset": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "destination": "string",
+        "id": "string",
+        "source": "string"
+      },
+      "required": [
+        "action",
+        "destination",
+        "id",
+        "source"
+      ],
+      "values": {
+        "action": [
+          "move_asset"
+        ]
+      }
+    },
+    "/$defs/move_note": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "destination": "string",
+        "id": "string",
+        "parent_mocs": "array",
+        "rendered_file": "string",
+        "source": "string",
+        "source_inbox_item": [
+          "null",
+          "string"
+        ],
+        "tags": "array",
+        "title": "string"
+      },
+      "required": [
+        "action",
+        "destination",
+        "id",
+        "source",
+        "title"
+      ],
+      "values": {
+        "action": [
+          "move_note"
+        ]
+      }
+    },
+    "/$defs/remove_up_link": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "id": "string",
+        "link": "string",
+        "path": "string"
+      },
+      "required": [
+        "action",
+        "id",
+        "link",
+        "path"
+      ],
+      "values": {
+        "action": [
+          "remove_up_link"
+        ]
+      }
+    },
+    "/$defs/resolve_dead_link": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "id": "string",
+        "path": "string",
+        "replace": "string",
+        "target": "string"
+      },
+      "required": [
+        "action",
+        "id",
+        "path",
+        "replace",
+        "target"
+      ],
+      "values": {
+        "action": [
+          "resolve_dead_link"
+        ]
+      }
+    },
+    "/$defs/skip": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "id": "string",
+        "reason": [
+          "null",
+          "string"
+        ],
+        "source_path": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "action",
+        "id",
+        "source_path"
+      ],
+      "values": {
+        "action": [
+          "skip"
+        ]
+      }
+    },
+    "/$defs/update_log_entry": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "content": "string",
+        "daily_note_path": "string",
+        "date": "string",
+        "heading_level": "integer",
+        "id": "string",
+        "position": "string",
+        "reason": [
+          "null",
+          "string"
+        ],
+        "section": "string",
+        "source_stem": [
+          "null",
+          "string"
+        ],
+        "time": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "action",
+        "content",
+        "daily_note_path",
+        "date",
+        "id",
+        "position",
+        "section"
+      ],
+      "values": {
+        "action": [
+          "update_log_entry"
+        ],
+        "position": [
+          "after_last_line",
+          "at_time",
+          "before_first_line"
+        ]
+      }
+    },
+    "/$defs/update_log_link": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "daily_note_path": "string",
+        "date": "string",
+        "heading_level": "integer",
+        "id": "string",
+        "position": "string",
+        "reason": [
+          "null",
+          "string"
+        ],
+        "section": "string",
+        "target_stem": "string",
+        "time": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [
+        "action",
+        "daily_note_path",
+        "date",
+        "id",
+        "position",
+        "section",
+        "target_stem"
+      ],
+      "values": {
+        "action": [
+          "update_log_link"
+        ],
+        "position": [
+          "after_last_line",
+          "at_time",
+          "before_first_line"
+        ]
+      }
+    },
+    "/$defs/update_tracker": {
+      "closed": true,
+      "properties": {
+        "action": "any",
+        "applied": "boolean",
+        "daily_note_path": "string",
+        "date": "string",
+        "field": "string",
+        "id": "string",
+        "reason": [
+          "null",
+          "string"
+        ],
+        "section": [
+          "null",
+          "string"
+        ],
+        "source_stem": [
+          "null",
+          "string"
+        ],
+        "syntax": "string",
+        "value": [
+          "boolean",
+          "number",
+          "string"
+        ]
+      },
+      "required": [
+        "action",
+        "daily_note_path",
+        "date",
+        "field",
+        "id",
+        "syntax",
+        "value"
+      ],
+      "values": {
+        "action": [
+          "update_tracker"
+        ],
+        "syntax": [
+          "callout_body",
+          "checkbox",
+          "inline_field"
+        ]
+      }
+    },
+    "/properties/tomo": {
+      "closed": false,
+      "properties": {
+        "doc_type": "string",
+        "run_id": [
+          "null",
+          "string"
+        ],
+        "skipped_daily": "array",
+        "sources": "array",
+        "state": "string",
+        "updated_at": "string"
+      },
+      "required": [],
+      "values": {}
+    },
+    "/properties/tomo/properties/skipped_daily/items": {
+      "closed": false,
+      "properties": {
+        "action": "string",
+        "daily_note_path": [
+          "null",
+          "string"
+        ],
+        "date": [
+          "null",
+          "string"
+        ]
+      },
+      "required": [],
+      "values": {}
+    },
+    "/properties/tomo/properties/sources/items": {
+      "closed": false,
+      "properties": {
+        "checksum": "string",
+        "path": "string"
+      },
+      "required": [],
+      "values": {}
+    }
+  },
+  "schema_version": "2",
+  "source": "tomo/schemas/instructions.schema.json"
+}

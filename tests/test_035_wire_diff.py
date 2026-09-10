@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_035_wire_diff.py — Behavioural tests for lib.wire_shape.diff_shapes (spec 035 T2.1).
 
 Separate from test_035_wire_shape.py on purpose: that file exercises the
@@ -12,8 +12,12 @@ dicts).
 Tests cover:
 - an added property is reported with its pointer and name (added_property)
 - a removed property likewise (removed_property)
-- a required change is reported distinctly from a property change
-  (required_changed, not folded into added_property/removed_property)
+- a field joining `required` is reported distinctly from a property change
+  (required_added, not folded into added_property/removed_property); a
+  field leaving `required` is its own opposite kind (required_removed) —
+  not one `required_changed`, because the two directions classify
+  oppositely against the consumer's validator; both kinds fire together,
+  never collapsed into one entry, when one edit does both on the same node
 - an openness change is its own kind (openness_changed)
 - a type change is its own kind (type_changed)
 - a node added or removed wholesale is reported ONCE, not as N property
@@ -84,10 +88,12 @@ def test_removed_property_reported_with_pointer_and_name():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# required_changed is distinct from a property change
+# required_added / required_removed are distinct from a property change,
+# AND from each other — the two directions classify oppositely against the
+# consumer's validator, the same reason the enum kinds are split in two.
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_required_change_reported_distinctly_from_property_change():
+def test_required_added_reported_when_a_field_joins_required():
     # item_key exists as a property on both sides already (so no
     # added_property fires) — only `required` gained it. This is the shape
     # of the spec-034 drift: the property was already there, `required`
@@ -100,8 +106,47 @@ def test_required_change_reported_distinctly_from_property_change():
     changes = diff_shapes({"/x": recorded}, {"/x": observed})
 
     assert len(changes) == 1
-    assert changes[0]["kind"] == "required_changed"
+    assert changes[0]["kind"] == "required_added"
     assert changes[0]["pointer"] == "/x"
+    assert "item_key" in changes[0]["detail"]
+
+
+def test_required_removed_reported_when_a_field_leaves_required():
+    # item_key stays a property on both sides — it becomes optional, it
+    # does not disappear. No added_property/removed_property should fire.
+    recorded = _node(required=["id", "item_key"], properties={"id": "string", "item_key": "string"})
+    observed = _node(required=["id"], properties={"id": "string", "item_key": "string"})
+
+    changes = diff_shapes({"/x": recorded}, {"/x": observed})
+
+    assert len(changes) == 1
+    assert changes[0]["kind"] == "required_removed"
+    assert changes[0]["pointer"] == "/x"
+    assert "item_key" in changes[0]["detail"]
+
+
+def test_required_added_and_removed_in_one_edit_emit_both_kinds_not_one():
+    # `a` leaves required, `c` joins it, `b` is unchanged — both directions
+    # move on the same node in the same edit. Both kinds must be present,
+    # never collapsed into a single entry.
+    recorded = _node(
+        required=["a", "b"],
+        properties={"a": "string", "b": "string", "c": "string"},
+    )
+    observed = _node(
+        required=["b", "c"],
+        properties={"a": "string", "b": "string", "c": "string"},
+    )
+
+    changes = diff_shapes({"/x": recorded}, {"/x": observed})
+
+    assert len(changes) == 2
+    kinds = {c["kind"] for c in changes}
+    assert kinds == {"required_added", "required_removed"}
+    added = next(c for c in changes if c["kind"] == "required_added")
+    removed = next(c for c in changes if c["kind"] == "required_removed")
+    assert "c" in added["detail"]
+    assert "a" in removed["detail"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

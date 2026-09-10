@@ -1,5 +1,5 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.4.0
+# version: 0.5.0
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
@@ -243,12 +243,21 @@ def _diff_node(pointer: str, old: dict, new: dict) -> list:
                 f"{name}: {old_properties[name]} -> {new_properties[name]}",
             ))
 
-    old_required = old.get("required") or []
-    new_required = new.get("required") or []
-    if old_required != new_required:
-        changes.append(_change(
-            pointer, "required_changed", f"required: {old_required} -> {new_required}",
-        ))
+    # Two kinds, not one `required_changed` — a field LEAVING `required` and
+    # a field JOINING it classify OPPOSITELY against the consumer's
+    # validator (same reasoning as added_enum_value/removed_enum_value
+    # below): leaving means we may stop emitting a field they still
+    # require (affecting); joining means we now always emit a field they
+    # already accepted as optional (not affecting). `classify` sees only
+    # `observed`, never `recorded`, so it cannot re-derive which way the
+    # list moved — the direction has to be decided here, where both sides
+    # still exist. See docs/tomo/scripts/lib/wire_shape.md.
+    old_required = set(old.get("required") or [])
+    new_required = set(new.get("required") or [])
+    for name in sorted(new_required - old_required):
+        changes.append(_change(pointer, "required_added", f"required gained: {name}"))
+    for name in sorted(old_required - new_required):
+        changes.append(_change(pointer, "required_removed", f"required lost: {name}"))
 
     old_closed = bool(old.get("closed"))
     new_closed = bool(new.get("closed"))
@@ -287,13 +296,21 @@ def diff_shapes(recorded: dict, observed: dict) -> list:
     reported ONCE — never decomposed into per-property changes for that
     pointer, because a wholesale node addition is one fact, not N. Only a
     pointer present in BOTH maps is diffed field-by-field (`_diff_node`) for
-    added/removed properties, a type change, a `required` change, an
+    added/removed properties, a type change, a field joining or leaving
+    `required` (`required_added`/`required_removed` — two kinds, not one,
+    because the two directions classify oppositely; see `_diff_node`), an
     openness change, and added/removed enum values.
 
     `consumer_affecting` is always `False` on every returned change — that
     field belongs to T2.2's `classify(change, observed)`, not to this
     function. See docs/tomo/scripts/lib/wire_shape.md for why deciding it
     here would be a second rule table.
+
+    `detail` is display-only: T2.3's gate message and T4.1's obligation
+    table print it verbatim, and nothing parses it back to recover a
+    property/field/value name — `pointer` and `kind` are the machine-keyed
+    facts. Do not start extracting data out of `detail` in a later task;
+    change the ShapeChange shape instead if a caller needs it structured.
 
     Pure: no I/O. Deterministic: the returned list is sorted by
     `(pointer, kind, detail)` — same reasoning as `required`/`values` being

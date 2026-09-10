@@ -378,6 +378,35 @@ one-element set difference, reported as a single `added_enum_value` for
 `"closed"` and nothing else, because `"open"` is in both sets and never
 enters either diff branch.
 
+## WHY `required_added`/`required_removed` Are Two Kinds, Not One `required_changed` (T2.1, revised)
+
+The first cut of `diff_shapes` compared `old.required != new.required` as a
+single boolean and emitted one `required_changed` kind for either
+direction. Code review found this was the same defect the enum kinds were
+already split to avoid: a field LEAVING `required` and a field JOINING it
+classify OPPOSITELY against the consumer's validator — leaving means we may
+stop emitting a field their vendored copy still requires (consumer-
+affecting), joining means we now always emit a field they already accepted
+as optional (not affecting). `classify(change, observed)` (T2.2) receives
+only the `observed` manifest, never `recorded`, so it has no way to
+re-derive which way the list moved from a collapsed `required_changed`
+entry — the direction has to be decided here, in `_diff_node`, where both
+`old` and `new` still exist side by side. Same reasoning, same fix, applied
+a second time to the same shape of bug: `required_added` and
+`required_removed` are computed as `set` differences of the two `required`
+lists, exactly like `added_enum_value`/`removed_enum_value` below, and
+sorted per-field for the same reason those are sorted per-value — a
+`detail` naming one moved field is more legible in a failure message than
+one string reciting two whole before/after lists.
+
+Both kinds can fire on the same pointer in the same `diff_shapes` call, and
+must: an edit that both drops a field from `required` and adds a different
+one is two independent facts, not one. `test_required_added_and_removed_in_one_edit_emit_both_kinds_not_one`
+pins this — asserting the kind SET is exactly `{required_added,
+required_removed}`, not that a bare count of 2 happened to come out right,
+so the test still catches a regression that emitted two `required_added`
+entries by accident.
+
 ## WHY `added_enum_value`/`removed_enum_value` Are Per-Value, Not Per-Property (T2.1)
 
 A property that gains two new enum members produces two `ShapeChange`
@@ -407,6 +436,21 @@ other doesn't get the matching edit. `_change()` being the only place that
 sets the field means there is exactly one line to change if the default
 placeholder value itself ever needs to move, and nowhere else the field
 could silently diverge from it.
+
+## WHY `detail` Is Display-Only — a Contract, Not an Observation (T2.1)
+
+`detail` is a human-readable string naming what moved (a property, a
+required field, an enum value), built by plain string interpolation in
+`_change()`/`_diff_node()` with no fixed grammar. This is deliberate and is
+now a confirmed contract, not merely today's implementation: `classify`
+(T2.2) keys on `pointer` and `kind` alone; T2.3's gate failure message and
+T4.1's obligation table print `detail` verbatim for a human reader, and
+nothing in the pipeline parses it back out to recover a property, field or
+enum-value name programmatically. A later task that needs one of those
+names in a structured form should add a field to `ShapeChange` for it, not
+regex the wording out of `detail` — the moment something depends on the
+exact phrasing, `detail` stops being free to reword and starts being load-
+bearing wire format for a value that was never designed to hold one.
 
 ## WHY the Output Is Sorted by `(pointer, kind, detail)` (T2.1)
 

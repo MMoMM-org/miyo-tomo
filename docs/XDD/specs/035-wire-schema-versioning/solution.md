@@ -383,7 +383,12 @@ def describe_shape(schema: dict) -> dict:
                 },
             }
             for name, child in props.items():
-                walk(child, f"{pointer}/{name}")
+                # RFC 6901: the `properties` segment is part of the pointer.
+                # Omitting it collapses a property literally named `items` onto
+                # the array's own `items` node and silently erases one of them
+                # from the manifest -- the very "walk that visited too little"
+                # this spec exists to eliminate. Measured, not theorised.
+                walk(child, f"{pointer}/properties/{name}")
         for key in ("items", "contains"):
             if key in node:
                 walk(node[key], f"{pointer}/{key}")

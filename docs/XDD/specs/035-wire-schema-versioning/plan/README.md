@@ -46,7 +46,11 @@ version: "1.0"
 3. Update the SDD when the deviation improves the design.
 4. Record all deviations here for traceability.
 
-**Deviations recorded so far**: none.
+**Deviations recorded so far**:
+
+| Date | Task | Deviation | Rationale | Approved |
+|---|---|---|---|---|
+| 2026-09-10 | T1.1 | Pointers are real RFC 6901 and carry a `properties` segment (`/properties/suggestions/items`), not the SDD reference code's bare form (`/suggestions/items`). The SDD code block was amended to match. | The reference code was illustrative and three things outrank it. (1) T1.3, this phase's own validation gate, names `/properties/suggestions/items` literally — the bare form fails Phase 1's gate. (2) The SDD walkthrough table uses `/properties/findings/items/properties/detail`, a *mid-path* `properties` segment, which is a literal pointer and not shorthand. (3) **Measured**: the bare form silently erases nodes. A schema with a property named `items` alongside a sibling array `items` keyword collapses both onto `/items` and one overwrites the other — 3 expected nodes, 2 produced. That is the exact failure this spec exists to eliminate ("a walk that visited too little"). No published wire collides today; the exposure is any future field named `items`, `contains`, `allOf`, `anyOf`, `oneOf` or `definitions`. A regression test for the collision was added alongside the fix. | Owner, 2026-09-10 |
 
 ## Metadata Reference
 

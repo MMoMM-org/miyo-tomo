@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Detect — diff, classify, and the gate"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 2
 ---
@@ -43,12 +43,23 @@ Turns the recorded shape into a gate.
      `required` change is reported distinctly from a property change; an openness change is its own
      kind; a **type change** is its own kind; a node added or removed wholesale is reported once, not
      as N property changes; identical manifests produce an empty list.
+
+     **Enum values are diffed too** `[ref: SDD/Application Data Models; ShapeChange]`. Added
+     2026-09-10 with ADR-2's extension, and not optional: Phase 1 records `values` per property, but
+     if nothing diffs them then `classify` never sees an enum change and **PRD F2-AC3 remains
+     unreachable** — the criterion would be satisfiable only by hand-building a `ShapeChange`, which
+     is the vacuous-pass pattern this spec exists to eliminate. Test: a value added to a property's
+     enum is reported as `added_enum_value` with its pointer, the property name and the value; a
+     value removed is reported as `removed_enum_value`; a property gaining an enum where it had none
+     is reported; a `const` widened to an `enum` containing it reports the added values and nothing
+     else, because Phase 1 records `const: X` as `[X]`.
   3. Implement: `diff_shapes(recorded, observed) -> list[ShapeChange]` in `wire_shape.py`. Pure.
   4. Validate: unit tests pass; ruff clean.
   5. Success:
      - [ ] A change is named by document, pointer and property `[ref: PRD/F1-AC1]`
      - [ ] `required` and `additionalProperties` changes are detected `[ref: PRD/F1-AC2]`
      - [ ] An unchanged pair produces nothing `[ref: PRD/F1-AC5]`
+     - [ ] Enum value additions and removals are reported as distinct kinds `[ref: SDD/Application Data Models; ShapeChange]`
 
 - [ ] **T2.2 `classify` decides whether the consumer is obliged** `[activity: domain-modeling]`
 
@@ -66,6 +77,12 @@ Turns the recorded shape into a gate.
      - **optional** field removed → not affecting;
      - **enum value added** → affecting *(counter-intuitive; a consumer validating the old set
        rejects the new value)*;
+     - **enum value removed** → **not** affecting — the mirror of the above, and the reason the two
+       are separate kinds. We then emit a subset of what their vendored set already accepts, so
+       their validator does not reject. Note the limit honestly: their *handling* code may still
+       switch on a value that stopped arriving. That is a prose obligation for the handover table,
+       not something the validator-measured rule can see — the same boundary ADR-2 draws for
+       descriptions;
      - type changed → affecting, **regardless of the node's openness**;
      - a declared-optional field starting to be emitted → not affecting;
      - prose changed → not affecting (and produces no change at all, per T1.1).

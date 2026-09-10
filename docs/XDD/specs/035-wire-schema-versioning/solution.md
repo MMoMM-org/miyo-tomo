@@ -327,7 +327,14 @@ ENTITY: ShapeManifest (NEW)
 
 ENTITY: ShapeChange (NEW)
   pointer: str
-  kind: added_property | removed_property | type_changed | required_changed | openness_changed | node_added | node_removed
+  kind: added_property | removed_property | type_changed | required_changed | openness_changed
+      | added_enum_value | removed_enum_value | node_added | node_removed
+      # The two enum kinds were added 2026-09-10 with ADR-2's extension. They are separate
+      # kinds rather than one `values_changed` because they classify OPPOSITELY, mirroring
+      # added_property / removed_property: adding a value means we may emit something the
+      # consumer's vendored set rejects (affecting); removing one means we emit a subset of
+      # what they already accept (not affecting). Collapsing them into one kind would force
+      # classify to re-derive the direction it was just told.
   detail: str
   consumer_affecting: bool
 

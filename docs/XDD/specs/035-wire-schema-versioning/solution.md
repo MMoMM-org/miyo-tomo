@@ -352,13 +352,14 @@ def describe_shape(schema: dict) -> dict:
     """Every object node in a schema, by JSON pointer, with the three facts that
     decide whether a consumer breaks.
 
-    `closed` is the discriminator: it was measured against the consumer's own
-    validator across eight change classes, and it is the only property that
-    separates "add a field and break them" from "add a field and do not".
+    `closed` is the discriminator for an ADDED property: measured against the
+    consumer's own validator across eight change classes, it is what separates
+    "add a field and break them" from "add a field and do not".
 
-    Types and descriptions are deliberately absent. The consumer's validator
-    ignores prose, so recording it would fail the check on edits that oblige
-    nobody — and a detector whose report is never empty is one nobody reads.
+    Descriptions are deliberately absent — the consumer's validator ignores
+    prose, and recording it would fail the check on edits that oblige nobody,
+    which is how a detector becomes one nobody reads. Types ARE recorded: a type
+    change is consumer-affecting in its own right, independent of openness.
     """
     nodes: dict[str, dict] = {}
 
@@ -410,7 +411,11 @@ added `item_key`:
 
 The existing check, on the same input, visits this pointer zero times.
 
-**And the case that must *not* fail — the live garden-audit drift:**
+**And the case that must *not* fail — the live garden-audit drift.** This walkthrough is
+**counterfactual**: it shows what the classifier would decide *if* the manifest predated the
+addition. In reality our schema already declares both fields, so the committed manifest records them
+and `diff_shapes` yields nothing. The classification is what matters here, and reproducing it in a
+test requires a scratch manifest built from the pre-032 schema:
 
 | Stage | `/properties/findings/items/properties/detail` | Outcome |
 |---|---|---|
@@ -561,10 +566,13 @@ OUTPUT: pass, or a failure naming what to do
 | F6 | Known live drift closed | `garden-audit-wire.schema.json` version move + handoff | detection reports clean |
 | F7 | Report says what to do | the check's failure message | assertion on message content |
 | F8 | Consumer's copy compared automatically | three vendored copies + the network test (ADR-7) | skip-not-fail; **reports**, never gates |
+| F9 | Daily side gains a source identity | `suggestions-wire.schema.json` + the parser's retired recovery | the gate itself — this change is the mechanism's first real customer |
 
 **Exclusivity holds** — no two components own the same requirement; `diff_shapes` detects and
 `classify` judges, which are distinct responsibilities over the same data.
-**Exhaustiveness holds** — all eight PRD features have an owner.
+**Exhaustiveness holds** — all nine PRD features have an owner. F9 was added on 2026-09-10 after
+validation found it missing from the PRD entirely; the matrix is the artifact that would have caught
+it had it been run against a complete requirement set.
 
 ## Architecture Decisions
 
@@ -688,9 +696,12 @@ OUTPUT: pass, or a failure naming what to do
 
 ### Known Technical Issues
 
-- The garden-audit wire is drifted in `main` today; the detection will report it on its first run.
-  F6 closes it — but only after a handoff and a wait, so there is a window where the report is
-  knowingly non-empty. That window must be recorded, or the first reader learns to ignore the report.
+- The garden-audit wire is drifted against the consumer's copy in `main` today. **The manifest will
+  NOT report it** — our schema already declares `up_source` and `up_value`, so the manifest records
+  them as the baseline, which is correct for the question a manifest answers. The drift is visible
+  only to the **vendored-copy report**, which does not exist until T4.2. F6 closes it, but only after
+  a handoff and a wait, so there is a window where that report is knowingly non-empty. The window
+  must be recorded, or the first reader learns to ignore it.
 - The existing drift check passes vacuously on a `$defs`-free schema and compares no root fields even
   where it does apply. It is replaced, not extended.
 

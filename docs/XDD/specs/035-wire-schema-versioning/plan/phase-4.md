@@ -78,11 +78,48 @@ from day one.
      - [ ] Unreachable upstream skips rather than fails `[ref: PRD/F8-AC2]`
      - [ ] The known garden-audit delta is reported `[ref: PRD/F8-AC1]`
 
-- [ ] **T4.3 Move the garden-audit version, write the handoff — then STOP** `[activity: validate]`
+- [ ] **T4.2b The daily side gains its source identity** `[activity: data-architecture]`
+
+  The change this spec promised the consumer on 2026-09-09 and then lost when the PRD was drafted.
+  It is a wire change like any other, so it goes through the mechanism the earlier phases built —
+  which is the honest test of whether that mechanism is usable.
+
+  1. Prime: read `[ref: PRD/Feature 9]` and the consumer's own request. Note the third bucket is the
+     sharper case: it carries **no** source identity today, so a consumer cannot join it back to its
+     origin ambiguously or otherwise.
+  2. Test:
+     - all three daily buckets declare the identity field, **required** on each;
+     - the existing display-text field is untouched;
+     - the gate (Phase 2) classifies this as consumer-affecting — the buckets are closed nodes — and
+       demands the version move;
+     - with the version moved, the gate passes;
+     - the lossy round-trip recovery is no longer exercised, and its removal breaks no test that was
+       passing before.
+  3. Implement: widen the suggestions wire; move its `schema_version`; regenerate its manifest and
+     capture the printed diff; retire the recovery path.
+  4. Validate: unit tests pass; ruff clean; full suite green.
+  5. Success:
+     - [ ] All three buckets carry a required source identity `[ref: PRD/F9-AC1]`
+     - [ ] The bucket that had none now has one `[ref: PRD/F9-AC2]`
+     - [ ] The display field is unchanged `[ref: PRD/F9-AC3]`
+     - [ ] The lossy recovery is retired `[ref: PRD/F9-AC4]`
+
+- [ ] **T4.3 One handoff for the whole release — then STOP** `[activity: validate]`
+
+  **This handoff carries the entire release, not just the garden-audit half.** The consumer asked
+  for one changed-fields list and one vendoring pass; three separate handoffs for one release is the
+  outcome that request exists to prevent. Three documents move together:
+
+  | Document | Change | Source |
+  |---|---|---|
+  | garden-audit wire | disclose `up_source` / `up_value`, already emitted | this spec, F6 |
+  | suggestions wire | daily-side source identity on three buckets | this spec, F9 (T4.2b) |
+  | instructions wire | `delete_source` gains its dependency field | **spec 036**, whose T4.5 supplies the half rather than sending its own handoff |
 
   1. Prime: re-read what is actually drifted — our schema declares `up_source` and `up_value` on
      `findings[].detail`; the consumer's declares neither. It is benign **only** because that node is
-     open on both sides `[ref: PRD/Problem Statement]`.
+     open on both sides `[ref: PRD/Problem Statement]`. Then confirm 036's instruction-wire half is
+     ready to travel; if it is not, say so and send the two documents this spec owns.
   2. Test: after the version move, the gate passes for the garden-audit wire; the manifest records
      the new version; the emitted document carries it (via T3.1, without a code edit).
   3. Implement:
@@ -101,6 +138,7 @@ from day one.
      - [ ] The schema is attached, not described `[ref: PRD/F4-AC1]`
      - [ ] Breaking-when is stated explicitly rather than left derivable `[ref: PRD/F4-AC3]`
      - [ ] Emission of the new version waits for confirmation `[ref: PRD/F4-AC4]`
+     - [ ] One handover, one obligation table, covering every document in the release `[ref: PRD/F9-AC5]`
 
   **Worth raising in the same handoff, unprompted**: the consumer's own analysis of their namesake
   bug names two `source_stem` join sites; there is a third at `SuggestionsTab.ts:180-181`

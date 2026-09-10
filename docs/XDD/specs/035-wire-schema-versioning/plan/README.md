@@ -159,10 +159,14 @@ adjusting the number by hand.
 | F6 Known live drift closed | 3 | T4.3, T4.4 |
 | F7 Report says what to do | 2 | T2.3 |
 | F8 Consumer's copy compared | 2 | T4.2 |
+| F9 Daily side gains a source identity | 5 | T4.2b, T4.3 |
 
-**28 of 28 referenced — full coverage, no deferrals.** Verified by extracting every
-`[ref: PRD/FN-ACn]` from the four phase files and diffing against the PRD's 28 labelled criteria:
-zero criteria without a task, zero refs pointing at a label that does not exist.
+**33 of 33 referenced — full coverage, no deferrals.** Corrected 2026-09-10 after validation: the
+first count of 28/28 was arithmetically right and substantively wrong, because the PRD it was
+counted against was itself missing a feature. F9 — the daily-side source identity, decided on
+2026-09-09 and already promised to the consumer — was dropped when the PRD was drafted from the
+research findings. A complete-looking traceability matrix over an incomplete requirement set is
+exactly the failure this check exists to catch, and counting mechanically did not prevent it.
 
 Two of the 28 are satisfied by the **consumer** rather than by Tomo — F6-AC2 (their copy declares the
 fields) and F4-AC5 (the new version is emitted only after their confirmation). Both are owned by

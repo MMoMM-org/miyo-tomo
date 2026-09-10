@@ -131,6 +131,12 @@ Makes the contract real, proves the producer invariant, and validates the whole 
   Not a code task. The wire cannot ship one-sided: the consumer rejects unknown fields, so they
   vendor **first or simultaneously, never after** `[ref: SDD/Deployment View]`.
 
+  **Corrected 2026-09-10: this task supplies its half to spec 035's handoff rather than sending one
+  of its own.** Three documents move in this release — 035's garden-audit disclosure, 035's
+  daily-side identity, and this spec's `depends_on`. The consumer asked for one obligation table
+  and one vendoring pass; three separate handoffs is precisely the outcome that request exists to
+  prevent. 035's T4.3 owns the handoff and this task hands it the instruction-wire row.
+
   **This task also carries the two consumer-owned criteria.** `[ref: PRD/F5-AC5]` (the executor
   skips a delete whose named dependency failed) and `[ref: PRD/F5-AC6]` (a destination taken between
   generation and application leaves the original intact) describe **the consumer's** behaviour. Tomo
@@ -145,27 +151,27 @@ Makes the contract real, proves the producer invariant, and validates the whole 
   thing in Phase 4 chronologically, despite its number.
 
   **Blocked on**: spec 035's `source_item_key` widening must be committed before this handoff can
-  carry one changed-fields list covering both documents. 035 is at `Initialization` as of
+  carry one obligation table covering both documents. 035 is at `Initialization` as of
   2026-09-10 — if it has not landed, send the instruction-wire half alone and say so, rather than
   holding a data-loss fix behind a versioning spec.
 
   1. Prime: re-read the agreed release practice `[ref: SDD/Cross-Component Boundaries]` — schema
-     **file**, plus a changed-fields list, per document.
+     **file**, plus a obligation table, per document.
   2. Test: run the structural diff **before** attaching — every object's property set, `required`
      list and `additionalProperties` value, recursively, against the consumer's vendored copy. The
      expected result here is a **difference** (they have not vendored `depends_on` yet); the check
-     proves the diff harness works and names exactly the fields the changed-fields list must carry.
+     proves the diff harness works and names exactly the fields the obligation table must carry.
      A diff reporting anything beyond the intended change means the schema drifted elsewhere and the
      handoff is wrong before it is sent.
   3. Implement: write the handoff to `_outbox/for-hashi/` carrying both schema files as attachments
-     and one changed-fields list covering both documents — the instruction wire `"2" → "3"` for
+     and one obligation table covering both documents — the instruction wire `"2" → "3"` for
      `depends_on`, and spec 035's suggestions wire `"1" → "2"` for the daily-side `source_item_key`.
   4. Validate: the attached schema files are byte-identical to the repository's; the changed-fields
      list names every field the diff reported and no others.
   5. Success:
      - [ ] One handoff, two documents, two counters, one release `[ref: SDD/CON-3]`
      - [ ] Schema files attached rather than described `[ref: SDD/Cross-Component Boundaries]`
-     - [ ] The changed-fields list matches the measured diff exactly `[ref: SDD/CON-2]`
+     - [ ] The obligation table matches the measured diff exactly `[ref: SDD/CON-2]`
      - [ ] The consumer confirms F5-AC5 and F5-AC6 against their own suite `[ref: PRD/F5-AC5]` `[ref: PRD/F5-AC6]`
 
 - [ ] **T4.6 Phase Validation** `[activity: validate]`

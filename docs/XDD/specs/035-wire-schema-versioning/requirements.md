@@ -139,8 +139,10 @@ than after a user reports it.
 
 ### Error / Recovery Journey: A drift is discovered that predates the mechanism
 
-1. **Awareness:** The detection lands and immediately reports a shape difference nobody announced —
-   as it does today for the garden-audit wire.
+1. **Awareness:** The comparison against the consumer's copy lands and immediately reports a
+   difference nobody announced — as it does today for the garden-audit wire. Note this is the
+   consumer-copy comparison, **not** the shape manifest: the manifest records our own schema, which
+   already declares the fields, so it correctly reports nothing.
 2. **Consideration:** The maintainer establishes whether it is consumer-affecting. For the live case
    it is not, because the node is open.
 3. **Adoption:** The change is announced to the consumer as though it were new, and the version is
@@ -215,6 +217,22 @@ than after a user reports it.
   - [ ] **F6-AC2** — Given the consumer has vendored them, When the detection runs, Then it reports no difference for that document
   - [ ] **F6-AC3** — Given the detection is run across all three wires after this spec completes, Then it reports nothing at all
 
+#### Feature 9: The daily side gains a source identity
+
+*Numbered out of sequence deliberately. This feature was dropped when the PRD was drafted from the
+research findings, losing a decision recorded on 2026-09-09 and already promised to the consumer.
+It is appended as F9 rather than inserted, because renumbering would invalidate every reference in
+the plan — the cost of the mistake should not be paid by the documents that got it right.*
+
+- **User Story:** As the consumer, I want every daily-side entry to carry the identity of the note it
+  came from, so that two notes sharing a display name cannot be confused for one another.
+- **Acceptance Criteria (Gherkin Format):**
+  - [ ] **F9-AC1** — Given a daily-side entry in any of the three buckets, When it is emitted, Then it carries the source note's identity as a required field
+  - [ ] **F9-AC2** — Given the bucket that has never carried any source identity, When an entry is emitted, Then it carries one — this is the bucket a consumer could not join back to its origin by any means
+  - [ ] **F9-AC3** — Given the existing display-text field, When the identity is added, Then the display field is unchanged
+  - [ ] **F9-AC4** — Given the identity now travels on the wire, When the document is parsed, Then the lossy recovery that reconstructed it after a round trip is no longer used
+  - [ ] **F9-AC5** — Given this change and the garden-audit disclosure, When they are handed over, Then they travel in **one** handover with one obligation table, not two
+
 ### Should Have Features
 
 #### Feature 7: The report says what to do, not only what changed
@@ -237,6 +255,9 @@ than after a user reports it.
 
 ### Won't Have (This Phase)
 
+- **Renumbering the features so F9 sits with the other Must Haves.** F9 was omitted from the first
+  draft and appended; renumbering would break every plan reference for cosmetic gain. The
+  out-of-sequence number is the honest record of the mistake.
 - **A change to the cross-repo handoff protocol.** Considered and rejected on the owner's
   instruction: the existing flow is sufficient, because the round trip through the owner *is* the
   lead time. F4-AC4's "wait for confirmation" is that rule applied to emission, not a new construct.

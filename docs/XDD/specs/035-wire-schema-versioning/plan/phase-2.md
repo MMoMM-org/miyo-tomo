@@ -122,4 +122,7 @@ Turns the recorded shape into a gate.
     the gate **fails**. That is the drift that cost two specs; the mechanism is only worth having if
     it catches it.
   - Prove the inverse: the live garden-audit `detail` additions classify as **not** affecting, so the
-    detector does not demand a version move for a change that obliges nobody.
+    detector does not demand a version move for a change that obliges nobody. **Both proofs need a
+    scratch manifest** built from the pre-change schema — the committed manifests already record the
+    current state, so neither drift is reproducible against them. That is the manifest working as
+    designed, not a gap.

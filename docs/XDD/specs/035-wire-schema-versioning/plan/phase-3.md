@@ -52,7 +52,10 @@ Removes two ways the mechanism could be defeated from underneath.
        a literal were reintroduced.
   3. Implement: a shared helper reading the declared `const`; call it from all three renderers.
   4. Validate: unit tests pass; ruff clean; the three emitted documents are byte-identical to before
-     apart from nothing — the values do not change, only their source does.
+     — the values do not change, only their source does. **The regression assertion lives in
+     `tests/test_035_wire_shape.py`, not in `test_instruction_render_wire_hygiene.py`** — T2.4
+     rewrites that file, and two phases editing one file is how the independence claim would stop
+     being true.
   5. Success:
      - [ ] Each renderer emits its schema's declared version `[ref: PRD/F3-AC1]`
      - [ ] Every producer agrees with its schema `[ref: PRD/F3-AC2]`

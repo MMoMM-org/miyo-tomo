@@ -132,6 +132,17 @@ def test_internal_schema_has_no_manifest():
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_missing_manifest_fails_the_existence_check():
+    # Documents intended contract, not a regression guard: as written this
+    # only proves that Path.is_file() returns False for a nonexistent path
+    # and that a bare `assert` raises AssertionError — both guaranteed by
+    # the standard library, true of any implementation. There is no
+    # production code path for this test to protect yet, because the
+    # missing-manifest check lives here in the test suite by design (T1.2
+    # plan step 3), not in wire_shape.py. The REAL refused case CON-5
+    # requires — a wire whose recorded shape has drifted, causing the gate
+    # to actually fail closed — arrives with Phase 2's T2.3; that is where
+    # this mechanism discharges the refused-path obligation for real.
+    #
     # A name deliberately absent from PUBLISHED_WIRES and from disk — never
     # a real committed file, so nothing is deleted or touched as a side
     # effect of this test.

@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """test_instruction_render_wire_hygiene.py — apply-blocker fixes (#68/#69/#70/#64).
 
 Covers the producer-side hygiene that makes a Tomo instruction set appliable by
@@ -19,6 +19,19 @@ must match Hashi's schema (MiYo Constitution L2 — coordinated public interface
 
 test_snapshot_matches_upstream_hashi requires network access — it skips
 automatically when the upstream GitHub URL is unreachable (offline runs).
+
+**Spec 035 T2.4**: that test's comparison surface used to iterate `$defs`
+entries carrying an `action` property — 18 real comparisons on the
+instructions wire, but ZERO on a `$defs`-free schema (measured), and it never
+compared root-level fields on either document. It is now `describe_shape` +
+`diff_shapes` to full depth (`_snapshot_parity_delta`), and — per ADR-7, which
+already ruled a vendored consumer copy is a report, never a gate, because it
+is *supposed* to lag ours between a cross-repo handoff and confirmation — it
+never fails on a delta; it reports one. `SNAPSHOT_AHEAD_OF_UPSTREAM` is
+deleted, not re-keyed: a report needs no exemptions. TestSnapshotParityReport
+below carries the offline fixture tests that are the actual evidence for this
+— see its docstring for why the obvious "existing tests still pass" evidence
+does not prove anything here.
 """
 from __future__ import annotations
 
@@ -50,6 +63,8 @@ assert _ir_spec.loader is not None
 sys.modules["instruction_render"] = _ir
 _ir_spec.loader.exec_module(_ir)
 
+from lib.wire_shape import describe_shape, diff_shapes  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS_DIR = REPO_ROOT / "tomo" / "schemas"
 # Committed verbatim copy of Hashi's instructions.schema.json. The parity test
@@ -66,31 +81,48 @@ _HASHI_UPSTREAM_URL = (
     "src/schema/instructions.schema.json"
 )
 
-# Actions that Tomo's snapshot intentionally carries ahead of the live upstream Hashi
-# schema. Each entry is a pending cross-repo handoff — the action is example-driven:
-# Tomo emits it now; Hashi implements against our wire example in the Phase 6 handoff.
-# Remove an action from this set once the upstream Hashi schema ships the definition.
-#
-# Format: action-def-name → reason string (cited in assertion message).
-SNAPSHOT_AHEAD_OF_UPSTREAM: dict[str, str] = {
-    "edit_note_text": (
-        "ADR-3 (spec 030-garden-audit): generic text-edit surface Tomo carries for "
-        "Hashi to implement. No longer garden-emitted — resolve_dead_link and "
-        "remove_up_link superseded it for the dead-link / up:: paths. Remove once "
-        "miyo-tomo-hashi ships the def."
-    ),
-    "resolve_dead_link": (
-        "spec 030-garden-audit: alias/embed-aware dead-link fix (unlink or repoint). "
-        "Pending handoff _outbox/for-hashi/2026-07-24_...resolve-dead-link-alias-aware. "
-        "Remove once miyo-tomo-hashi ships the def."
-    ),
-    "remove_up_link": (
-        "spec 030-garden-audit: broken-up link-only removal — drops the dead link, "
-        "keeps the up:: field. Pending handoff "
-        "_outbox/for-hashi/2026-07-23_...remove-up-link-shipped. "
-        "Remove once miyo-tomo-hashi ships the def."
-    ),
-}
+# Spec 035 T2.4: the report used to carry SNAPSHOT_AHEAD_OF_UPSTREAM here — a
+# def-name-keyed exemption registry for the three actions Tomo's snapshot
+# carries ahead of live upstream Hashi (edit_note_text, resolve_dead_link,
+# remove_up_link). Deleted, not re-keyed: ADR-7 rules a vendored consumer
+# copy is a REPORT, never a gate, because it is *supposed* to lag ours
+# between a cross-repo handoff and Hashi's confirmation — and a report needs
+# no exemptions, only a delta. See docs/tomo/scripts/lib/wire_gate.md.
+
+
+def _snapshot_parity_delta(recorded_schema: dict, observed_schema: dict) -> list:
+    """The full-depth structural delta between two schema documents, via
+    `describe_shape` + `diff_shapes` (spec 035 T2.4) — replaces the old
+    `$defs`-entries-with-an-`action`-property intersection, which reported
+    NOTHING on a `$defs`-free schema (measured: suggestions-wire and
+    garden-audit-wire both have zero `$defs`) and never compared root-level
+    fields on either document.
+
+    `recorded_schema` / `observed_schema` follow `diff_shapes`'s own
+    direction convention (the module docstring above): "recorded" is the
+    baseline (here, the committed Hashi snapshot — what WE carry), "observed"
+    is the schema being compared against it (here, live upstream Hashi, or a
+    scratch copy standing in for it). A pointer only in `recorded` is
+    `node_removed` — read as "upstream does not have this yet", exactly what
+    SNAPSHOT_AHEAD_OF_UPSTREAM used to encode by hand.
+    """
+    return diff_shapes(describe_shape(recorded_schema), describe_shape(observed_schema))
+
+
+def _render_snapshot_parity_report(document: str, changes: list) -> str:
+    """Human text for a `_snapshot_parity_delta` result — a REPORT, never a
+    gate (ADR-7): the caller never fails on this, so it follows the same
+    display-only contract `wire_gate.py`'s `render_wire_gate_report` and
+    `wire_shape.py`'s `detail` field already carry — nothing parses this
+    back. Returns `""` for an empty delta, so a caller can skip printing
+    anything on the common case (no drift today).
+    """
+    if not changes:
+        return ""
+    lines = [f"{document}: snapshot vs upstream delta ({len(changes)} change(s), report only — ADR-7)"]
+    for change in changes:
+        lines.append(f"  {change['pointer']} {change['kind']}: {change['detail']}")
+    return "\n".join(lines)
 
 
 @pytest.fixture(scope="module")
@@ -280,16 +312,22 @@ class TestHashiSchemaParity:
         assert "tomo" in instructions_schema["properties"]
 
     def test_snapshot_matches_upstream_hashi(self, hashi_snapshot):
-        """Network drift guard: the committed snapshot must match the live Hashi
-        schema published on GitHub for every action $def (not just link_to_moc/
-        move_note — catches insert_under_marker-style whole-action drift too).
+        """Upstream drift REPORT (spec 035 T2.4, ADR-7) — NOT a gate: a
+        vendored consumer copy is *supposed* to lag ours between a
+        cross-repo handoff and Hashi's confirmation, so this test never
+        fails on a delta. It fetches Hashi's live instructions.schema.json,
+        computes the full-depth structural delta against the committed
+        snapshot (`_snapshot_parity_delta`, `describe_shape` + `diff_shapes`
+        — not the old `$defs`-entries-with-an-`action`-property
+        intersection, which reported nothing on a `$defs`-free schema and
+        never compared root-level fields), and prints it.
 
-        Skips automatically when the upstream URL is unreachable so offline runs
-        and CI without network still pass. When network is available this test RUNS
-        and verifies no action def has drifted required fields or property names.
-
-        A failure here means the snapshot is stale — refresh
-        tomo/schemas/hashi-instructions.schema.json from upstream Hashi.
+        Skips automatically when the upstream URL is unreachable so offline
+        runs and CI without network still pass — this environment is
+        offline right now. The real evidence that the replacement is not
+        vacuous the same way lives in TestSnapshotParityReport's offline
+        fixture tests below, not in this method actually running its
+        comparison in CI.
         """
         try:
             req = urllib.request.Request(
@@ -316,56 +354,12 @@ class TestHashiSchemaParity:
         ):
             pytest.skip("upstream Hashi schema unreachable — offline")
 
-        # Compare every action def's required fields and property names.
-        def _action_defs(schema: dict) -> set[str]:
-            return {
-                name
-                for name, defn in schema.get("$defs", {}).items()
-                if "properties" in defn and "action" in defn["properties"]
-            }
-
-        snap_defs = _action_defs(hashi_snapshot)
-        live_defs = _action_defs(live)
-        # Strip intentional pending-handoff actions before comparing action sets.
-        # These are example-driven: Tomo carries them in the snapshot ahead of Hashi;
-        # Hashi will implement against Tomo's wire example in the Phase 6 handoff.
-        # Entries are documented in SNAPSHOT_AHEAD_OF_UPSTREAM above.
-        known_ahead = set(SNAPSHOT_AHEAD_OF_UPSTREAM)
-        only_in_snap = (snap_defs - live_defs) - known_ahead
-        only_in_live = live_defs - snap_defs
-
-        assert not only_in_snap and not only_in_live, (
-            "Action set differs between snapshot and upstream Hashi.\n"
-            f"  Only in snapshot (unexpected): {sorted(only_in_snap)}\n"
-            f"  Only in upstream:              {sorted(only_in_live)}\n"
-            "Fix: refresh tomo/schemas/hashi-instructions.schema.json from upstream Hashi,\n"
-            "or add to SNAPSHOT_AHEAD_OF_UPSTREAM if this is an intentional pending handoff."
-        )
-
-        mismatches: list[str] = []
-        for defname in sorted(snap_defs & live_defs):
-            snap_req = frozenset(hashi_snapshot["$defs"][defname].get("required", []))
-            live_req = frozenset(live["$defs"][defname].get("required", []))
-            snap_props = _props(hashi_snapshot, defname)
-            live_props = _props(live, defname)
-            if snap_req != live_req:
-                mismatches.append(
-                    f"  {defname}: required mismatch\n"
-                    f"    snap only:  {sorted(snap_req - live_req)}\n"
-                    f"    live only:  {sorted(live_req - snap_req)}"
-                )
-            if snap_props != live_props:
-                mismatches.append(
-                    f"  {defname}: property-name mismatch\n"
-                    f"    snap only:  {sorted(snap_props - live_props)}\n"
-                    f"    live only:  {sorted(live_props - snap_props)}"
-                )
-
-        assert not mismatches, (
-            "Action $def structure drifted from upstream Hashi:\n"
-            + "\n".join(mismatches)
-            + "\nFix: refresh tomo/schemas/hashi-instructions.schema.json from upstream Hashi."
-        )
+        # REPORT, never a gate (ADR-7): no assertion on `changes` — producing
+        # and rendering the delta must never raise or fail on its own.
+        changes = _snapshot_parity_delta(hashi_snapshot, live)
+        message = _render_snapshot_parity_report(HASHI_SCHEMA_SNAPSHOT.name, changes)
+        if message:
+            print(f"\n{message}")
 
     def test_incomplete_read_during_fetch_skips_not_fails(self, hashi_snapshot, monkeypatch):
         """A partial network read (http.client.IncompleteRead, raised by
@@ -392,6 +386,142 @@ class TestHashiSchemaParity:
 
         with pytest.raises(pytest.skip.Exception):
             self.test_snapshot_matches_upstream_hashi(hashi_snapshot)
+
+
+# ── Spec 035 T2.4 — offline fixture tests for the parity REPORT ─────────────
+#
+# These are the REAL gate for T2.4, not the tests above. test_snapshot_
+# matches_upstream_hashi skips offline in this environment, so "every
+# existing test still passes" / "full suite green" are satisfied by never
+# running the changed comparison code at all — and converting the check from
+# a gate to a report removes its failure mode entirely, so "nothing failed"
+# is now the expected outcome on every path, including the one where the
+# comparison silently does nothing. Every test below runs offline, against
+# SCRATCH COPIES only — a committed schema file is never mutated in place.
+
+
+class TestSnapshotParityReport:
+    def test_defs_free_schema_is_compared_non_vacuously(self):
+        """[ref: PRD/F1-AC3] suggestions-wire.schema.json has ZERO `$defs`
+        (measured, phase-2.md) — the OLD `$defs`-entries-with-an-`action`-
+        property surface iterated an empty intersection here and reported
+        NOTHING, which is exactly why it could never have caught the drift
+        spec 035 exists to prevent. `describe_shape` + `diff_shapes` walk
+        every object node regardless of `$defs`, so an added property is
+        reported."""
+        path = SCHEMAS_DIR / "suggestions-wire.schema.json"
+        original = json.loads(path.read_text(encoding="utf-8"))
+        assert not original.get("$defs"), (
+            "fixture sanity: suggestions-wire.schema.json must have zero "
+            "$defs for this test to prove anything about the $defs-free case"
+        )
+        mutated = json.loads(path.read_text(encoding="utf-8"))  # independent copy
+        mutated["properties"]["suggestions"]["items"]["properties"]["scratch_parity_probe"] = {
+            "type": "string",
+        }
+
+        changes = _snapshot_parity_delta(original, mutated)
+
+        matches = [c for c in changes if "scratch_parity_probe" in c["detail"]]
+        assert matches, "an added property on a $defs-free schema must be reported"
+        assert matches[0]["kind"] == "added_property"
+
+    def test_root_level_differences_are_detected(self):
+        """[ref: PRD/F1-AC1] The old comparison never looked at root-level
+        fields at all on either document — today's root parity is
+        coincidence, not something it checked. Mutate a root-level property
+        and assert it appears in the delta."""
+        original = json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
+        mutated = json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
+        mutated["properties"]["scratch_root_probe"] = {"type": "string"}
+
+        changes = _snapshot_parity_delta(original, mutated)
+
+        root_matches = [
+            c for c in changes if c["pointer"] == "" and "scratch_root_probe" in c["detail"]
+        ]
+        assert root_matches, "a root-level property addition must be reported at pointer ''"
+        assert root_matches[0]["kind"] == "added_property"
+
+    def test_known_ahead_actions_report_exactly_and_only_themselves(self):
+        """The strongest available test (T2.4 plan step c). Deleting
+        SNAPSHOT_AHEAD_OF_UPSTREAM means its three actions (edit_note_text,
+        resolve_dead_link, remove_up_link) now surface in the delta instead
+        of being silenced — they are in our snapshot and, by construction
+        here, absent from the synthesised 'upstream', which is precisely why
+        they were exempted before. Synthesise that 'upstream' offline by
+        removing those three $defs entries from a COPY of the committed
+        snapshot, and assert the report names EXACTLY those three pointers
+        and nothing else.
+
+        Each appears at exactly one pointer, its own `/$defs/<name>`
+        (measured 2026-09-10, phase-2.md): every property inside these three
+        defs is either a plain scalar or a `$ref` to a def (action_id,
+        applied_field) that is NOT being removed here, and every `oneOf`
+        branch that references one of these three is a pure `{"$ref": ...}`
+        object with no `properties` of its own, so it is never itself a
+        recorded node. Removing the def is therefore the ONLY structural
+        change, not the first of several.
+        """
+        snapshot = json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
+        synthetic_upstream = json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
+        removed_actions = {"edit_note_text", "resolve_dead_link", "remove_up_link"}
+        for action in removed_actions:
+            assert action in synthetic_upstream["$defs"], (
+                f"fixture sanity: {action!r} must exist in the committed snapshot"
+            )
+            del synthetic_upstream["$defs"][action]
+
+        changes = _snapshot_parity_delta(snapshot, synthetic_upstream)
+
+        node_removed_pointers = {c["pointer"] for c in changes if c["kind"] == "node_removed"}
+        assert node_removed_pointers == {f"/$defs/{name}" for name in removed_actions}
+        # Nothing else moved: no other pointer or change kind appears at all.
+        assert len(changes) == len(removed_actions)
+
+    def test_report_is_produced_and_never_raises_or_fails(self, monkeypatch, capsys):
+        """[ref: SDD/Architecture Decisions; ADR-7] Both halves, not just
+        one: a delta IS produced (this is not a no-op wearing a report's
+        name), AND producing/rendering it — through the ACTUAL test method,
+        not a reimplementation — raises nothing and fails nothing, even
+        though the simulated 'live' schema genuinely drifted (missing all
+        three SNAPSHOT_AHEAD_OF_UPSTREAM actions, plus a root-level probe).
+        A function that fails on drift is still a gate; asserting only that
+        no exception occurred would pass for a function with no body, so
+        this also pins the printed report's content.
+        """
+        real_snapshot = json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
+        drifted_live = json.loads(HASHI_SCHEMA_SNAPSHOT.read_text(encoding="utf-8"))
+        for action in ("edit_note_text", "resolve_dead_link", "remove_up_link"):
+            del drifted_live["$defs"][action]
+        drifted_live["properties"]["scratch_root_probe"] = {"type": "string"}
+
+        class _FakeResponse:
+            status = 200
+
+            def read(self):
+                return json.dumps(drifted_live).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+        monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: _FakeResponse())
+
+        # Calling the production test method directly (same pattern
+        # test_incomplete_read_during_fetch_skips_not_fails already uses) —
+        # a bare call with no pytest.raises around it IS the "raises
+        # nothing" half. If test_snapshot_matches_upstream_hashi still
+        # asserted mismatches, this call would raise AssertionError here.
+        TestHashiSchemaParity().test_snapshot_matches_upstream_hashi(real_snapshot)
+
+        printed = capsys.readouterr().out
+        assert "edit_note_text" in printed
+        assert "resolve_dead_link" in printed
+        assert "remove_up_link" in printed
+        assert "scratch_root_probe" in printed
 
 
 # ── #69 — filename sanitisation + resolvable references ─────────────────────

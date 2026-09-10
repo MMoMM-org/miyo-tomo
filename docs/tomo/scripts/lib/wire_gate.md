@@ -509,3 +509,39 @@ return site now calls it with only the fields that differ from the
 all-`None`/empty default, which happens to make the error-result shape
 `_error_result` builds nearly free (`_result(document, passed=False,
 error=..., error_kind=...)` — everything else defaults correctly).
+
+## WHY the Upstream-Hashi Snapshot Check Became a Report, Not This Module's Gate (spec 035 T2.4)
+
+`tests/test_instruction_render_wire_hygiene.py::test_snapshot_matches_upstream_hashi`
+is a third, older drift check that predates `wire_gate.py` — it compares
+Tomo's committed `tomo/schemas/hashi-instructions.schema.json` snapshot
+against Hashi's LIVE schema fetched from GitHub, not against one of our own
+manifests. T2.4 rewrote its comparison surface to reuse this module's
+building blocks (`describe_shape` + `diff_shapes`, imported from
+`wire_shape.py`) instead of the old `$defs`-entries-carrying-an-`action`-
+property intersection, which was measurably vacuous: zero `$defs` on
+`suggestions-wire.schema.json` / `garden-audit-wire.schema.json` meant zero
+comparisons, and it never looked at root-level fields on either document at
+all.
+
+The result is deliberately **not** wired into `gate_one_wire`/`run_wire_gate`
+above, and deliberately never fails on a delta — it prints one
+(`_snapshot_parity_delta` + `_render_snapshot_parity_report`, both local to
+the test file). This is ADR-7, not an oversight: ADR-7 already ruled that a
+*vendored consumer copy* — which is what this snapshot is — is a report,
+never a gate, because it is *supposed* to lag ours between a cross-repo
+handoff going out and Hashi confirming it. The registry that used to carry
+this exemption by hand, `SNAPSHOT_AHEAD_OF_UPSTREAM` (three action names:
+`edit_note_text`, `resolve_dead_link`, `remove_up_link`), is deleted rather
+than re-keyed to the new comparison surface — a report needs no exemptions,
+only a delta, and keeping an exemption registry beside a mechanism that
+never fails would be dead weight with nothing left to exempt.
+
+This module's own gate (`gate_one_wire`/`run_wire_gate`) is unaffected and
+keeps its ADR-3 contract (any shape change fails) — it describes OUR OWN
+schema against OUR OWN committed manifest, which carries no wait-window: we
+are both producer and the party responsible for regenerating it. The
+snapshot check compares against a THIRD PARTY's live copy over the network,
+which is exactly the situation ADR-7 draws the report/gate line at. The two
+should not be confused, and a future task extending `ACTIONS`/`ERROR_KINDS`
+here must not assume it also covers the snapshot check's shape.

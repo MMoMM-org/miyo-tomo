@@ -224,9 +224,38 @@ Turns the recorded shape into a gate.
 
   1. Prime: read the current comparison and confirm the vacuity for yourself before changing it —
      the claim is measured, but an implementer who has not seen it will not trust the replacement.
-  2. Test: the replacement compares structurally to full depth; a root-level property difference is
-     now detected (it is not today); **every existing test in the file still passes**; the network
-     test still skips offline.
+  2. Test — **and read this first, because the obvious gate for this task does not work.**
+
+     The task's natural evidence is "every existing test still passes" and "full suite green". Both
+     are satisfied by *not running the changed code at all*: `test_snapshot_matches_upstream_hashi`
+     fetches over the network and **skips offline**, which it is doing in this environment right now.
+     A replacement validated that way is indistinguishable from no replacement. Worse, converting the
+     check to a report **removes its failure mode entirely** — after this change "nothing failed" is
+     the expected outcome in every case, including the case where the comparison silently does
+     nothing. That is the exact shape of the vacuous pass this spec exists to eliminate, so the
+     evidence has to come from somewhere else.
+
+     **The real gate is a set of offline fixture tests. Build these first:**
+
+     a. **Non-vacuous on a `$defs`-free document.** Take `suggestions-wire.schema.json` (zero `$defs`
+        — measured), copy it, add a property to a node, and assert the comparison reports it. The old
+        `$defs`-keyed surface reports **nothing** here, which is why it could never have caught the
+        drift that started this spec. `[ref: PRD/F1-AC3]`
+     b. **Root-level differences are detected.** The old comparison never looked at root fields at
+        all — root parity today is coincidence. Mutate a root-level property and assert it appears.
+        `[ref: PRD/F1-AC1]`
+     c. **The report's content today is known, so assert it exactly.** Deleting
+        `SNAPSHOT_AHEAD_OF_UPSTREAM` means its three actions now show up in the delta — they are in
+        our snapshot and not upstream, which is the whole reason they were exempted. Synthesise an
+        "upstream" offline by copying `hashi-instructions.schema.json` and removing
+        `edit_note_text`, `resolve_dead_link` and `remove_up_link`, then assert the report contains
+        **exactly those three** and nothing else. This is the strongest available test: it runs
+        offline, uses the real document's shape, and pins content rather than mere non-emptiness.
+     d. **The report is a report.** Assert that a delta is produced AND that producing one raises
+        nothing and fails nothing. Both halves — a function that fails on drift is still a gate, and
+        one that never produces a delta is a no-op wearing a report's name.
+     e. Every existing test in the file still passes, and the network test still **skips** offline
+        rather than failing. Necessary, but explicitly not sufficient — see above.
   3. Implement: swap the comparison surface for `describe_shape` + `diff_shapes`.
 
      **DECIDED 2026-09-10: this comparison becomes a REPORT, not a gate.** Owner decision.
@@ -252,7 +281,14 @@ Turns the recorded shape into a gate.
        which it is doing in this environment right now. A gate that cannot run is not a gate.
      - Applying ADR-7 to two vendored copies (T4.2) and not this third one is the inconsistency
        someone would have to explain later.
-  4. Validate: **full suite green** — the gate for this task is the pre-existing tests.
+  4. Validate: full suite green **and** the offline fixture tests above. **Before deleting
+     `SNAPSHOT_AHEAD_OF_UPSTREAM`, grep the repository for it and for its three action names** and
+     confirm nothing else depends on the registry or on those actions being exempt — a second
+     consumer would turn a deletion into a silent behaviour change somewhere unrelated.
+
+     Define what "report" means in code rather than leaving it to taste: follow T2.3's precedent —
+     a **structured delta** plus a renderer that turns it into human text. `wire_gate.py` already
+     has that shape, and reusing it keeps one reporting idiom in the spec rather than two.
   5. Success:
      - [ ] Root-level differences are detected `[ref: PRD/F1-AC1]`
      - [ ] A `$defs`-free schema is compared non-vacuously `[ref: PRD/F1-AC3]`

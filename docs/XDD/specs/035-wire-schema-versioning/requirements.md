@@ -176,7 +176,7 @@ than after a user reports it.
   - [ ] **F2-AC2** — Given a property added to a node that permits unknown properties, When the change is classified, Then it is not consumer-affecting and the version does not move
   - [ ] **F2-AC3** — Given a value added to an enumerated set, When the change is classified, Then it is consumer-affecting — a consumer validating against the old set rejects the new value
   - [ ] **F2-AC4** — Given a field that stops being emitted, When the change is classified, Then it is consumer-affecting if the field was required and not otherwise
-  - [ ] **F2-AC5** — Given a consumer-affecting change, When the version has not moved, Then the suite fails; and given the same change with the version moved, Then it passes
+  - [ ] **F2-AC5** — Given a consumer-affecting change, When the version has not moved, Then the suite fails demanding **both** a version move and a handover; and given the same change once the version has moved, Then the version demand is dropped and only manifest regeneration is asked for, the suite passing once that regeneration has happened. *(Wording corrected 2026-09-10 during T2.3. The original said the moved case "passes", which ADR-3 makes impossible while the manifest is stale — a stale manifest always fails, and regeneration is always an explicit act. The behaviour that matters, and is now tested, is that the version demand disappears once the version has moved.)*
 
 #### Feature 3: The emitted version cannot diverge from the declared version
 

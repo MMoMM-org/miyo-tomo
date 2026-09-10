@@ -16,7 +16,7 @@ phase: 4
 - `[ref: SDD/Architecture Decisions; ADR-6]` — abort on a dangling id
 - `[ref: SDD/Cross-Component Boundaries]` — the release is joint, never one-sided
 - `[ref: SDD/Deployment View]` — Hashi vendors first or simultaneously, never after
-- `[ref: PRD/Feature 5]`, `[ref: PRD/Feature 6]`, `[ref: PRD/Error Handling Criteria]`
+- `[ref: PRD/Feature 5]`, `[ref: PRD/Feature 6]`, `[ref: SDD/Error Handling Criteria]`
 - `tomo/schemas/hashi-instructions.schema.json` — **the contract**
 - `tomo/schemas/instructions.schema.json` — the producer copy; do not confuse the two
 
@@ -52,7 +52,7 @@ Makes the contract real, proves the producer invariant, and validates the whole 
   4. Validate: schema tests pass; parity test passes; ruff clean.
   5. Success:
      - [ ] `depends_on` is required in the contract schema `[ref: PRD/F5-AC1]`
-     - [ ] An omitted field fails validation rather than defaulting `[ref: PRD/Error Handling]`
+     - [ ] An omitted field fails validation rather than defaulting `[ref: SDD/Error Handling]`
      - [ ] The producer copy and the contract copy agree `[ref: SDD/Cross-Component Boundaries]`
 
 - [ ] **T4.2 The dangling-id audit** `[activity: backend-api]`
@@ -68,21 +68,24 @@ Makes the contract real, proves the producer invariant, and validates the whole 
   4. Validate: unit tests pass; the no-file-written assertion is explicit, not implied.
   5. Success:
      - [ ] Every id in every `depends_on` exists in the same set `[ref: PRD/F5-AC4]`
-     - [ ] A violation aborts with exit 2 and writes nothing `[ref: PRD/Error Handling Criteria]`
-     - [ ] A missing field aborts identically to a dangling id `[ref: PRD/Error Handling Criteria]`
+     - [ ] A violation aborts with exit 2 and writes nothing `[ref: SDD/Error Handling Criteria]`
+     - [ ] A missing field aborts identically to a dangling id `[ref: SDD/Error Handling Criteria]`
 
 - [ ] **T4.3 Report withdrawals where the user reads them** `[activity: frontend-ui]`
 
   1. Prime: read how existing guards report — stderr summary plus the `tomo` block — and how
      `render_md.py` surfaces the skipped-actions section `[ref: SDD/Quality Requirements]`.
   2. Test: a run with a withdrawal reports it with the missing id **and** the guard that caused it,
-     in both the stderr summary and the rendered markdown; a run with no withdrawal emits no
-     withdrawal section at all; report contents carry ids, kinds, counts and vault-relative paths
-     and **never note content**.
+     in both the stderr summary and the rendered markdown; the withheld action and the delete it
+     withdrew are **cross-referenced on the missing id** so the markdown reader can see they belong
+     together `[ref: PRD/F2-AC4]`; a run with no withdrawal emits no withdrawal section at all;
+     report contents carry ids, kinds, counts and vault-relative paths and **never note content**.
   3. Implement: thread the withdrawal records into the existing report surfaces.
   4. Validate: unit tests pass; ruff clean.
   5. Success:
      - [ ] A withdrawal is reported with its cause in both surfaces `[ref: PRD/F6-AC1]`
+     - [ ] A withheld guard drop and the delete it withdrew are joined on the missing id and
+           presented adjacently, not in unrelated sections `[ref: PRD/F2-AC4]`
      - [ ] No withdrawal produces no section `[ref: PRD/F6-AC2]`
      - [ ] Reports are metadata only `[ref: SDD/System-Wide Patterns; Constitution L1]`
 
@@ -95,8 +98,8 @@ Makes the contract real, proves the producer invariant, and validates the whole 
   2. Test — end to end, real builder, real guards, only the Kado seams stubbed:
      - **P1**: `create_moc` + `move_note` contest → no delete emitted, origin survives, staging note
        not uploaded;
-     - **Bug A**: daily note absent → daily action dropped, no delete emitted;
-     - **Bug B**: unresolvable tag-handler target → no insert, no delete, Approve unticked;
+     - **P2** (Bug A): daily note absent → daily action dropped, no delete emitted;
+     - **P3** (Bug B): unresolvable tag-handler target → no insert, no delete, Approve unticked;
      - **the permitted case**: a healthy run emits the same action set as before this spec, plus
        `depends_on` on each delete, and withdraws nothing;
      - a full-suite run with `-m integration` against the test vault.
@@ -104,13 +107,27 @@ Makes the contract real, proves the producer invariant, and validates the whole 
   4. Validate: full suite green including integration; ruff clean.
   5. Success:
      - [ ] All three data-loss paths emit no delete `[ref: PRD/Problem Statement]`
-     - [ ] A healthy run is unchanged apart from the new field `[ref: PRD/Edge Case Criteria]`
+     - [ ] A healthy run is unchanged apart from the new field `[ref: SDD/Edge Case Criteria]`
      - [ ] Every vault-mutating path has both a permitted and a refused test `[ref: SDD/CON-5]`
 
 - [ ] **T4.5 Release handoff to the consumer** `[activity: validate]`
 
   Not a code task. The wire cannot ship one-sided: the consumer rejects unknown fields, so they
   vendor **first or simultaneously, never after** `[ref: SDD/Deployment View]`.
+
+  **This task also carries the two consumer-owned criteria.** `[ref: PRD/F5-AC5]` (the executor
+  skips a delete whose named dependency failed) and `[ref: PRD/F5-AC6]` (a destination taken between
+  generation and application leaves the original intact) describe **the consumer's** behaviour. Tomo
+  cannot test them — it does not execute the set, and by CON-4 it may never read execution results
+  back. They are verified by the consumer against their own suite and reported in their reply to
+  this handoff. Recorded here as a named ownership boundary rather than left unmapped: the PRD's own
+  Assumptions section already states that every claim about the executor is read, not executed, from
+  this side `[ref: PRD/Assumptions]`.
+
+  **Blocked on**: spec 035's `source_item_key` widening must be committed before this handoff can
+  carry one changed-fields list covering both documents. 035 is at `Initialization` as of
+  2026-09-10 — if it has not landed, send the instruction-wire half alone and say so, rather than
+  holding a data-loss fix behind a versioning spec.
 
   1. Prime: re-read the agreed release practice `[ref: SDD/Cross-Component Boundaries]` — schema
      **file**, plus a changed-fields list, per document.
@@ -129,6 +146,7 @@ Makes the contract real, proves the producer invariant, and validates the whole 
      - [ ] One handoff, two documents, two counters, one release `[ref: SDD/CON-3]`
      - [ ] Schema files attached rather than described `[ref: SDD/Cross-Component Boundaries]`
      - [ ] The changed-fields list matches the measured diff exactly `[ref: SDD/CON-2]`
+     - [ ] The consumer confirms F5-AC5 and F5-AC6 against their own suite `[ref: PRD/F5-AC5]` `[ref: PRD/F5-AC6]`
 
 - [ ] **T4.6 Phase Validation** `[activity: validate]`
 

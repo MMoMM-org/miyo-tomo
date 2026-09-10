@@ -563,8 +563,14 @@ OUTPUT: instruction set in which every delete's justification is present
     of why the fifth one went unnoticed until this design).
     A pass placed anywhere earlier is a latent instance of the bug being fixed. One pass suffices
     because no action declares a dependency on a delete, so withdrawal cannot cascade.
-  - Trade-offs: the withdrawal report is produced late, so per-guard reports cannot name their own
-    withdrawals inline; they are reported as one section keyed by the missing id.
+  - Trade-offs: the withdrawal report is assembled after the pass rather than inside each guard, so
+    a guard's own section cannot name its withdrawals **inline**. It does not follow that the two
+    cannot be presented together: the withdrawal record carries `missing_dependencies` and each drop
+    site already reports what it dropped, so the render step joins them on that id — adjacent and
+    cross-referenced, not inline. **Corrected 2026-09-10**: as first written this trade-off read as
+    "cannot be reported together", which contradicted `[ref: PRD/F2-AC4]`. That criterion is
+    load-bearing for the manual-markdown persona, whose only signal that an omission was deliberate
+    is the document itself; report assembly is a rendering step, not an architectural limit.
   - User confirmed: **Yes, 2026-09-09**
 
 - [x] **ADR-3 `create_moc` becomes a claimant in `validate_destinations`** — the grouping filter
@@ -725,7 +731,7 @@ ships it ships as an independent change to `render_md.py`. Stated rather than si
 
 | Term | Definition | Context |
 |------|------------|---------|
-| Drop site | A post-pass that removes actions after `build_actions` | There are five |
+| Drop site | A post-pass that removes actions after `build_actions` | There are five. **"Guard" is not a synonym** — it is reserved for the reducer's group annotations |
 | Withdrawal | Removing a delete because its justification is gone | ADR-1's single pass |
 | OQ6 gate | Defers a delete until every expected atomic is present | Emission-time, unchanged |
 | Wire | The JSON contract between Tomo and Hashi | Two documents, independent counters |

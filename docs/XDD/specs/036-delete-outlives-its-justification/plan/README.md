@@ -49,6 +49,16 @@ When implementation requires changes from the specification:
 
 **Deviations recorded so far**: none.
 
+**Cross-spec dependency**: T4.5 (release handoff) wants spec 035's `source_item_key` widening
+committed so one changed-fields list can cover both wire documents. 035 sits at `Initialization` as
+of 2026-09-10. If it has not landed when Phase 4 completes, send the instruction-wire half alone and
+say so — a data-loss fix does not wait behind a versioning spec.
+
+**Terminology, fixed by validation**: "drop site" means one of the five action-removing passes;
+"guard" is reserved for the reducer's group annotations. The three data-loss paths are **P1, P2, P3**
+throughout; "Bug A" and "Bug B" appear only as parenthetical aliases where the research history
+matters.
+
 ## Metadata Reference
 
 - `[parallel: true]` — tasks that can run concurrently
@@ -113,14 +123,22 @@ context), **Test** (red), **Implement** (green), **Validate** (refactor + verify
 
 ```mermaid
 graph LR
-    P1[Phase 1<br/>Declare] --> P2[Phase 2<br/>Collect]
+    T31[T3.1<br/>appliability predicate] --> T13[T1.3<br/>site 4 gets insert id]
+    T13 --> P2[Phase 2<br/>Collect]
+    P1o[T1.1, T1.2] --> P2
     P2 --> P4[Phase 4<br/>Contract + integration]
-    P3[Phase 3<br/>Unreachable cases] --> P4
-    P1 -.no dependency.-> P3
+    T32[T3.2<br/>consent fix] --> P4
 ```
 
-Phase 3 is **independent of Phases 1 and 2** — the tag-handler defects share no code with the
-`depends_on` machinery. It may run concurrently with them or before them. Phase 4 requires both.
+**Corrected 2026-09-10.** The first version called Phase 3 independent of Phases 1 and 2. It is not:
+**T3.1 must precede T1.3.** Both modify `_build_insert_under_marker_actions` and site 4 of
+`_build_delete_source_actions`, so concurrent dispatch collides — and the semantic trap is worse
+than the collision. T1.3 alone would give the unresolvable-group delete `depends_on: []`, which the
+SDD defines as *"nothing conditions this delete; perform it"*. Phase 4's audit would then certify a
+**data-loss delete as valid**. Running T3.1 first makes an empty list on that path unreachable.
+
+**T3.2 (the consent fix) is genuinely independent** — it touches only `suggestions-reducer.py` — and
+is the plan's one real parallel opportunity. Phase 4 requires everything.
 
 ### Ordering constraint that is not a phase boundary
 
@@ -133,20 +151,38 @@ constraint therefore binds the release, not the phase order.
 
 ## Acceptance-criteria coverage
 
-| PRD Feature | ACs | Covered by |
-|---|---|---|
-| F1 Contested destination | 5 | T2.2, T2.3 |
-| F2 Withheld daily action | 4 | T1.2, T2.1 |
-| F3 Tag-handler emits no delete | 3 | T3.1 |
-| F4 Not pre-approved | 3 | T3.2 |
-| F5 Every delete names its justification | 6 | T1.1, T1.2, T1.3, T4.2 |
-| F6 Document explains a withdrawal | 2 | T4.3 |
-| F7 Destructive reads as destructive | 2 | **not covered — see below** |
+Corrected 2026-09-10 after independent validation. The first version of this table claimed 23 of 25
+and was wrong — it counted three criteria as covered that had no task at all, while carefully
+documenting the two it had deliberately deferred. The gap that was written down was the cosmetic
+one; the gaps that were silent were load-bearing.
 
-**23 of 25 criteria map to tasks.** The two uncovered belong to F7, which is `Could Have` and
-explicitly **not designed** in the SDD: a pure rendering change with no interaction with the
-withdrawal mechanism. It stays in the PRD at `Could Have`; if it ships it ships as an independent
-change. Stated here so the gap is a decision rather than an oversight.
+| PRD Feature | ACs | Covered by | Notes |
+|---|---|---|---|
+| F1 Contested destination | 5 | T2.2, T2.3 | |
+| F2 Withheld daily action | 4 | T1.2, T2.1, **T4.3** | AC4 (report together) added to T4.3 |
+| F3 Tag-handler emits no delete | 3 | T3.1 | |
+| F4 Not pre-approved | 3 | T3.2 | |
+| F5 Every delete names its justification | 6 | T1.1, T1.2, T1.3, T4.1, T4.2, **T4.5** | AC5/AC6 are consumer-owned |
+| F6 Document explains a withdrawal | 2 | T4.3 | |
+| F7 Destructive reads as destructive | 2 | — | deferred by decision; `Could Have`, not designed |
+
+**23 of 25 criteria carry a plan reference. All 25 are accounted for:**
+
+- **23 referenced** — F1 through F6 complete, every criterion named by at least one task.
+  - Of these, **21 are implemented and verified inside this repo**.
+  - **2 (F5-AC5, F5-AC6) are consumer-verified**, not Tomo-implemented. They describe the
+    executor's behaviour — skipping a delete whose dependency failed, and the TOCTOU case. Tomo
+    cannot test them: it does not execute the set, and CON-4 forbids it from ever reading execution
+    results back. T4.5 owns them and the consumer confirms them against their own suite. A boundary,
+    not a gap — but previously neither mapped nor stated, which is exactly how it read as one.
+- **2 (F7) deferred by decision** — a pure rendering change with no interaction with the withdrawal
+  mechanism, kept at `Could Have`.
+
+Both earlier versions of this count were produced by eye and both were wrong — the first claimed
+23/25 while three criteria had no task, and the correction then double-counted the consumer-owned
+pair. This one was produced by extracting every `[ref: PRD/FN-ACn]` from the phase files and
+diffing against the PRD's criteria mechanically. Any future edit to the criteria or the tasks
+should re-run that extraction rather than adjust the number by hand.
 
 ---
 
@@ -156,7 +192,7 @@ change. Stated here so the gap is a decision rather than an oversight.
 |-----------|--------|
 | A developer can follow this plan without additional clarification | ✅ |
 | Every task produces a verifiable deliverable | ✅ |
-| All PRD acceptance criteria map to specific tasks | ✅ 23/25; 2 deferred by decision (F7) |
+| All PRD acceptance criteria map to specific tasks | ✅ 23/25 referenced (21 Tomo-implemented + 2 consumer-verified); 2 deferred (F7). Counted mechanically. |
 | All SDD components have implementation tasks | ✅ |
 | Dependencies are explicit with no circular references | ✅ |
 | Parallel opportunities are marked with `[parallel: true]` | ✅ |

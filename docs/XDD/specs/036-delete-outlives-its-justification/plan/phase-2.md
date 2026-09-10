@@ -60,7 +60,7 @@ Turns the relation from Phase 1 into enforcement.
      - [ ] A withheld daily action's delete is withdrawn `[ref: PRD/F2-AC1]`
      - [ ] A multi-bucket origin withdraws when any one action is dropped `[ref: PRD/F2-AC2]`
      - [ ] An origin whose daily actions all survive keeps its delete `[ref: PRD/F2-AC3]`
-     - [ ] An empty `depends_on` is never withdrawn `[ref: PRD/Edge Case Criteria]`
+     - [ ] An empty `depends_on` is never withdrawn `[ref: SDD/Edge Case Criteria]`
 
 - [ ] **T2.2 `create_moc` becomes a claimant** `[activity: backend-api]`
 
@@ -90,9 +90,14 @@ Turns the relation from Phase 1 into enforcement.
      pre-change behaviour for the delete half — same deletes withdrawn, same report contents; the
      `link_to_moc` withdrawal is **unchanged** and its tests still pass untouched; the audio-peer
      delete is still withdrawn; the T6.4c staging-note manifest rewrite is unaffected.
-  3. Implement: call `withdraw_unjustified_deletes` in `instruction-render.py` after
-     `filter_unappliable_relationships` and before `_validate_action_paths`; remove the delete half
-     of the path join and its now-unused helpers.
+  3. Implement, **in this order** — the repo rule is strip-first destroys institutional knowledge
+     (`CLAUDE.md`, the `docs/tomo/` WHY-persistence rule):
+     a. **First** write the WHY into `docs/tomo/scripts/lib/render_actions.md`: why the path-keyed
+        delete withdrawal existed, the T5.0c drift its docstring recorded, and why an id-keyed pass
+        supersedes it. The docstring being removed is the only place that history currently lives.
+     b. Then call `withdraw_unjustified_deletes` in `instruction-render.py` after
+        `filter_unappliable_relationships` and before `_validate_action_paths`.
+     c. Then remove the delete half of the path join and its now-unused helpers.
   4. Validate: **full suite green** — this task's real gate is the pre-existing tests, not the new
      ones. Ruff clean.
   5. Success:
@@ -101,6 +106,7 @@ Turns the relation from Phase 1 into enforcement.
      - [ ] A withheld clash still does not upload its staging note `[ref: PRD/F1-AC5]`
      - [ ] `link_to_moc` orphan withdrawal is untouched `[ref: SDD/Implementation Boundaries]`
      - [ ] Exactly one delete-withdrawal mechanism remains in the module `[ref: SDD/ADR-4]`
+     - [ ] The T5.0c rationale survives in `docs/tomo/` before the docstring is removed `[ref: SDD/Directory Map]`
 
 - [ ] **T2.4 Phase Validation** `[activity: validate]`
 

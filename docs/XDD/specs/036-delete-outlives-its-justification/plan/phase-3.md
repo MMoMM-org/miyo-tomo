@@ -28,8 +28,13 @@ phase: 3
   false premise belongs with the emission it authorises.
 
 **Dependencies**:
-- **None.** This phase shares no code with the `depends_on` machinery and may run before,
-  after, or concurrently with Phases 1 and 2.
+- **T3.1 must precede T1.3.** Corrected 2026-09-10 by validation: both touch
+  `_build_insert_under_marker_actions` and site 4 of `_build_delete_source_actions`, so they collide
+  on concurrent dispatch — and worse, T1.3 alone would give the unresolvable-group delete
+  `depends_on: []`, which means "perform it", so Phase 4's audit would certify a data-loss delete as
+  valid. Running T3.1 first makes an empty list on that path unreachable.
+- **T3.2 is genuinely independent** of Phases 1 and 2 — it touches only `suggestions-reducer.py`.
+- Phase 3 as a whole does not depend on Phase 2.
 
 ---
 
@@ -37,7 +42,7 @@ phase: 3
 
 Closes the third data-loss path and the consent defect that makes it dangerous.
 
-- [ ] **T3.1 One appliability predicate, two call sites** `[parallel: true]` `[activity: domain-modeling]`
+- [ ] **T3.1 One appliability predicate, two call sites** `[activity: domain-modeling]`
 
   Today `_build_insert_under_marker_actions` skips a group whose `target_path` is falsy, while the
   site-4 delete loop reads `target` only to interpolate a reason string and never skips. The result

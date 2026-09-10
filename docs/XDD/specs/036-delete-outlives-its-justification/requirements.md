@@ -153,11 +153,11 @@ executor can see the problem.
 - **User Story:** As a vault owner, I want two actions that claim the same destination to both be
   refused, so that neither can half-succeed and strand the delete that depended on it.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] Given a run in which a `create_moc` and a `move_note` resolve to the same destination path, When the instruction set is built, Then neither action is emitted, And the `delete_source` paired with that move is not emitted, And the clash is reported with both claimants named
-  - [ ] Given a run in which the destination differs only by letter case between the two claimants, When the instruction set is built, Then the two are still treated as one contested destination
-  - [ ] Given a run in which a `create_moc` claims a destination no other action claims, When the instruction set is built, Then it is emitted unchanged and no delete is withdrawn
-  - [ ] Given a contested destination whose move carries an audio peer, When both claimants are dropped, Then the audio peer's `delete_source` is withdrawn as well as the origin's
-  - [ ] Given a contested destination, When both claimants are dropped, Then any staging note that only the dropped move would have filed is not uploaded to the vault
+  - [ ] **F1-AC1** — Given a run in which a `create_moc` and a `move_note` resolve to the same destination path, When the instruction set is built, Then neither action is emitted, And the `delete_source` paired with that move is not emitted, And the clash is reported with both claimants named
+  - [ ] **F1-AC2** — Given a run in which the destination differs only by letter case between the two claimants, When the instruction set is built, Then the two are still treated as one contested destination
+  - [ ] **F1-AC3** — Given a run in which a `create_moc` claims a destination no other action claims, When the instruction set is built, Then it is emitted unchanged and no delete is withdrawn
+  - [ ] **F1-AC4** — Given a contested destination whose move carries an audio peer, When both claimants are dropped, Then the audio peer's `delete_source` is withdrawn as well as the origin's
+  - [ ] **F1-AC5** — Given a contested destination, When both claimants are dropped, Then any staging note that only the dropped move would have filed is not uploaded to the vault
 
 #### Feature 2: A withheld daily action withdraws the delete it justified
 
@@ -165,10 +165,10 @@ executor can see the problem.
   when Tomo withholds that write, so that content is never removed from the inbox before it has
   been recorded anywhere.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] Given an accepted daily entry whose origin has no confirmed item, And the target daily note does not exist so the daily action is withheld, When the instruction set is built, Then the `delete_source` for that origin is not emitted
-  - [ ] Given an origin with accepted daily entries across several buckets or several days, When any one of those daily actions is withheld, Then the origin's `delete_source` is not emitted
-  - [ ] Given an origin whose daily actions are all emitted, When the instruction set is built, Then its `delete_source` is emitted unchanged
-  - [ ] Given a run in which a daily action is withheld, When the user reads the instruction document, Then the withheld action and the withdrawn delete are reported together rather than in unrelated sections
+  - [ ] **F2-AC1** — Given an accepted daily entry whose origin has no confirmed item, And the target daily note does not exist so the daily action is withheld, When the instruction set is built, Then the `delete_source` for that origin is not emitted
+  - [ ] **F2-AC2** — Given an origin with accepted daily entries across several buckets or several days, When any one of those daily actions is withheld, Then the origin's `delete_source` is not emitted
+  - [ ] **F2-AC3** — Given an origin whose daily actions are all emitted, When the instruction set is built, Then its `delete_source` is emitted unchanged
+  - [ ] **F2-AC4** — Given a run in which a daily action is withheld, When the user reads the instruction document, Then the withheld action and the withdrawn delete are reported together rather than in unrelated sections
 
 #### Feature 3: A tag-handler group with no resolvable target emits no delete
 
@@ -176,9 +176,9 @@ executor can see the problem.
   nothing, so that an unresolved handler configuration costs me a no-op instead of every note in
   the group.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] Given an approved tag-handler group whose `target_path` is absent, When the instruction set is built, Then no `delete_source` is emitted for any source in that group, And no `insert_under_marker` is emitted
-  - [ ] Given an approved tag-handler group with a resolvable target, When the instruction set is built, Then one `insert_under_marker` and one `delete_source` per source are emitted as today
-  - [ ] Given a group of three sources whose target is absent, When the instruction set is built, Then the count of emitted `delete_source` actions attributable to that group is zero, not one or two
+  - [ ] **F3-AC1** — Given an approved tag-handler group whose `target_path` is absent, When the instruction set is built, Then no `delete_source` is emitted for any source in that group, And no `insert_under_marker` is emitted
+  - [ ] **F3-AC2** — Given an approved tag-handler group with a resolvable target, When the instruction set is built, Then one `insert_under_marker` and one `delete_source` per source are emitted as today
+  - [ ] **F3-AC3** — Given a group of three sources whose target is absent, When the instruction set is built, Then the count of emitted `delete_source` actions attributable to that group is zero, not one or two
 
 #### Feature 4: An unresolvable group is never presented as pre-approved
 
@@ -186,21 +186,21 @@ executor can see the problem.
   unticked and marked, so that my approval is never collected for something the system already
   knows it cannot do.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] Given a tag-handler group whose target cannot be resolved, When the suggestions document is rendered, Then the group carries a guard marking the reason, And its Approve control is not pre-selected
-  - [ ] Given a tag-handler group whose target resolves and whose marker is present, When the suggestions document is rendered, Then its Approve control renders exactly as it does today
-  - [ ] Given a group with an unresolved target, When the user reads the group, Then the stated reason for it being unapprovable is visible in the group itself
+  - [ ] **F4-AC1** — Given a tag-handler group whose target cannot be resolved, When the suggestions document is rendered, Then the group carries a guard marking the reason, And its Approve control is not pre-selected
+  - [ ] **F4-AC2** — Given a tag-handler group whose target resolves and whose marker is present, When the suggestions document is rendered, Then its Approve control renders exactly as it does today
+  - [ ] **F4-AC3** — Given a group with an unresolved target, When the user reads the group, Then the stated reason for it being unapprovable is visible in the group itself
 
 #### Feature 5: Every delete names the actions that justify it, and the executor honours that
 
 - **User Story:** As a vault owner, I want a delete to carry the identity of the actions it depends
   on, so that a failure the system could not predict still cannot cost me the original.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] Given any emitted `delete_source`, When the instruction set is inspected, Then it carries a dependency field naming the ids of the actions that justify it
-  - [ ] Given a delete that no other action justifies — the user asked for the deletion itself — When the instruction set is inspected, Then its dependency field is present and explicitly empty rather than absent
-  - [ ] Given an origin consumed by three atomics, When the delete is emitted, Then its dependency field names all three move ids, not one
-  - [ ] Given an emitted instruction set, When every id in every dependency field is checked, Then each one is present in the same set's action list
-  - [ ] Given an applied run in which a named dependency failed, When execution reaches the dependent delete, Then the delete is not performed and is recorded as skipped due to that dependency
-  - [ ] Given an applied run in which a destination was occupied after generation but before application, When the move fails, Then the paired delete is skipped and the original note still exists afterwards
+  - [ ] **F5-AC1** — Given any emitted `delete_source`, When the instruction set is inspected, Then it carries a dependency field naming the ids of the actions that justify it
+  - [ ] **F5-AC2** — Given a delete that no other action justifies — the user asked for the deletion itself — When the instruction set is inspected, Then its dependency field is present and explicitly empty rather than absent
+  - [ ] **F5-AC3** — Given an origin consumed by three atomics, When the delete is emitted, Then its dependency field names all three move ids, not one
+  - [ ] **F5-AC4** — Given an emitted instruction set, When every id in every dependency field is checked, Then each one is present in the same set's action list
+  - [ ] **F5-AC5** — Given an applied run in which a named dependency failed, When execution reaches the dependent delete, Then the delete is not performed and is recorded as skipped due to that dependency
+  - [ ] **F5-AC6** — Given an applied run in which a destination was occupied after generation but before application, When the move fails, Then the paired delete is skipped and the original note still exists afterwards
 
 ### Should Have Features
 
@@ -209,8 +209,8 @@ executor can see the problem.
 - **User Story:** As a vault owner reviewing a run, I want a withdrawn delete explained next to the
   action that caused the withdrawal, so that I can tell a deliberate omission from a bug.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] Given a run in which any guard withdrew a delete, When the instruction document is rendered, Then the withdrawal and its cause appear together
-  - [ ] Given a run in which no delete was withdrawn, When the instruction document is rendered, Then no withdrawal reporting appears
+  - [ ] **F6-AC1** — Given a run in which any guard withdrew a delete, When the instruction document is rendered, Then the withdrawal and its cause appear together
+  - [ ] **F6-AC2** — Given a run in which no delete was withdrawn, When the instruction document is rendered, Then no withdrawal reporting appears
 
 ### Could Have Features
 
@@ -219,8 +219,8 @@ executor can see the problem.
 - **User Story:** As a vault owner skimming a long instruction set, I want deletions to be
   distinguishable from ordinary actions at a glance, so that review effort lands where the risk is.
 - **Acceptance Criteria (Gherkin Format):**
-  - [ ] Given an instruction document containing at least one `delete_source`, When it is rendered, Then those entries are visually distinguishable from non-destructive entries
-  - [ ] Given an instruction document containing no `delete_source`, When it is rendered, Then its appearance is unchanged from today
+  - [ ] **F7-AC1** — Given an instruction document containing at least one `delete_source`, When it is rendered, Then those entries are visually distinguishable from non-destructive entries
+  - [ ] **F7-AC2** — Given an instruction document containing no `delete_source`, When it is rendered, Then its appearance is unchanged from today
 
 ### Won't Have (This Phase)
 
@@ -376,8 +376,12 @@ project's audit-log rule.
       simply never resolves, because only ids that ran and failed enter the failure set. Intended
       behaviour for a partial re-run, and we may rely on it.
 - [ ] Can a real triage run produce P2's input shape, or does an upstream invariant forbid it?
-- [ ] Does the suggestions wire need a corresponding change so the user can see the dependency
-      before approving, or is emission-time enforcement sufficient?
+- [x] ~~Does the suggestions wire need a corresponding change so the user can see the dependency
+      before approving?~~ **Answered 2026-09-10: no.** The SDD scopes the change to the instruction
+      wire alone and lists `suggestions-wire.schema.json` under Must Not Touch. The dependency is a
+      Pass-2 emission property; at Pass-1 approval time the actions it would name do not exist yet,
+      so there is nothing for the user to see. Recorded here rather than left as an open question
+      the design had already closed by fiat.
 
 ---
 

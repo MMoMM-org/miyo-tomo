@@ -94,8 +94,15 @@ Establishes the dependency relation as data: every conditional delete knows what
      - [ ] Every site-4 delete names its group's insert id `[ref: PRD/F5-AC1]`
      - [ ] One insert id is shared by every delete in the group `[ref: SDD/Complex Logic]`
 
+  **ORDERING GATE — T3.1 must land before this task.** Both modify
+  `_build_insert_under_marker_actions` and site 4, so they collide on dispatch. The semantic trap is
+  worse than the collision: with T1.3 alone, the unresolvable-group delete is still emitted and
+  receives `depends_on: []`, which `[ref: SDD/Complex Logic]` defines as *"nothing conditions this
+  delete; perform it"*. Phase 4's audit would then certify the data-loss delete as **valid**. T3.1
+  removes that delete at the source; only then is an empty list on this path unreachable.
+
   **Note**: the unresolvable-target case is **not** handled here — no insert is built, so no id
-  exists to name. That is Phase 3, and it is a design boundary rather than an omission
+  exists to name. That is T3.1, and it is a design boundary rather than an omission
   `[ref: SDD/The boundary this design does NOT cross]`.
 
 - [ ] **T1.4 Phase Validation** `[activity: validate]`

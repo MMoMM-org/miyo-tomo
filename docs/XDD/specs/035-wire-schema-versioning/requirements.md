@@ -298,6 +298,20 @@ fixtures, not by reasoning about versioning in general.
 - Rule 5: Prose changes are never consumer-affecting.
 - Rule 6: Each published wire carries its own version. One document's move never implies another's.
 - Rule 7: A consumer-affecting change is not emitted until the consumer confirms.
+- Rule 8: A node that starts rejecting unknown properties is consumer-affecting; one that stops is
+  not. Closing a node invalidates documents that were valid under the open version — the consumer's
+  own vault may still hold one. Opening a node only widens what validates. *(Added 2026-09-10; this
+  was already implied by Edge Case Scenario 2 but never stated as a rule, so the detector had no
+  instruction for the kind.)*
+- Rule 9: A node added or removed wholesale is consumer-affecting. *(Added 2026-09-10, owner
+  decision.)* Most new nodes arrive with an `added_property` on their parent that already carries
+  the obligation — but not all: **a new `oneOf` branch emits a node addition and nothing else**,
+  because its parent declares no `properties` and is therefore not a recorded node. On the
+  instructions wire that is precisely the shape of adding a new action kind, and the consumer's
+  compiled `oneOf` rejects it. The known cost is a false demand when a `$defs` entry is added
+  without yet being referenced; that costs one version move and one line in the handover, whereas
+  the miss costs a consumer that rejects a live instruction set. Consistent with Scenario 6, which
+  already holds that a field nothing populates yet is affecting when the node is closed.
 
 **Edge Cases:**
 - Scenario 1: A field is added to an open node nested inside a closed one → Expected: not

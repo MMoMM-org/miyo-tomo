@@ -101,7 +101,21 @@ Turns the recorded shape into a gate.
        descriptions;
      - type changed → affecting, **regardless of the node's openness**;
      - a declared-optional field starting to be emitted → not affecting;
-     - prose changed → not affecting (and produces no change at all, per T1.1).
+     - prose changed → not affecting (and produces no change at all, per T1.1);
+     - **a node that becomes closed → affecting; one that becomes open → not** `[ref: PRD/Business
+       Rules; Rule 8]`. Direction is derivable here without splitting the kind, unlike `required` and
+       `enum`: openness is a boolean, so if it changed and `observed` says closed, it was open.
+       Read it from `observed`, never infer it from the `detail` string;
+     - **a node added or removed wholesale → affecting** `[ref: PRD/Business Rules; Rule 9]`. Test
+       the case that motivates it: a new `oneOf` branch, which emits a node addition **and nothing
+       else** because its parent declares no `properties` and is not a recorded node. That is the
+       shape of a new action kind on the instructions wire.
+
+     **Every kind `diff_shapes` can emit must have a rule.** There are ten. A kind with no branch
+     falls through to whatever the default is, and a default that returns `False` means the detector
+     stays silent on a change it detected — the failure this spec exists to eliminate, one layer
+     further in. Assert the exhaustiveness directly: enumerate the kinds and fail if any is
+     unhandled, so adding an eleventh kind later breaks a test instead of going quietly unclassified.
   3. Implement: `classify(change, observed) -> bool`, reading `closed` from the manifest.
   4. Validate: unit tests pass; ruff clean.
   5. Success:
@@ -109,6 +123,9 @@ Turns the recorded shape into a gate.
      - [ ] Open-node addition is not `[ref: PRD/F2-AC2]`
      - [ ] Enum addition is affecting `[ref: PRD/F2-AC3]`
      - [ ] Required removal is affecting; optional removal is not `[ref: PRD/F2-AC4]`
+     - [ ] Closing a node is affecting; opening one is not `[ref: PRD/Business Rules; Rule 8]`
+     - [ ] A wholesale node addition is affecting `[ref: PRD/Business Rules; Rule 9]`
+     - [ ] Every kind `diff_shapes` emits has a rule, asserted exhaustively
 
 - [ ] **T2.3 The gate, and a message that says what to do** `[activity: backend-api]`
 

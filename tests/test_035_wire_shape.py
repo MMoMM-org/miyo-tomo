@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_035_wire_shape.py — Behavioural tests for lib.wire_shape.describe_shape (spec 035 T1.1).
 
 Tests cover:
@@ -7,12 +7,21 @@ Tests cover:
   existing drift check misses entirely)
 - nested objects under `items` are reached, including array-of-object-of-array
 - `$defs` / `definitions` entries are reached
-- `allOf` / `anyOf` / `oneOf` branches are reached
+- `allOf` / `anyOf` / `oneOf` branches are reached, and so are `if` / `then` / `else`
+  (the real `edit_frontmatter` shape)
 - `closed` is recorded effectively (False/True/False for absent/False/True
   `additionalProperties`), never literally
 - each property records its declared type; an undeclared type gets a defined
   placeholder rather than being omitted
 - a description-only difference produces an identical manifest (anti-churn, PRD/F1-AC4)
+- a property named after a structural keyword does not collide with that keyword's
+  own node
+- `enum`/`const` values are recorded in a `values` field (PRD F2-AC3), sorted with a
+  type-tolerant key, `const: X` recorded as `[X]`
+- local `$ref` is resolved for type/enum/const, inline wins over a `$ref` sibling, a
+  non-local or cyclic `$ref` records `"any"` and terminates
+- list-valued `type` is sorted (an unordered set, so reordering is a no-op) AND
+  copied, never aliasing the input schema's own list
 """
 from __future__ import annotations
 
@@ -273,3 +282,147 @@ def test_real_suggestions_wire_contains_the_gated_pointer():
     result = describe_shape(schema)
 
     assert "/properties/suggestions/items" in result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# code-quality fix 1 — if/then/else are walked, on the REAL edit_frontmatter
+# shape (docs/XDD/specs/035-wire-schema-versioning) where `if` is a genuine
+# object node with its own properties and required
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_if_branch_of_real_edit_frontmatter_is_walked():
+    schema = json.loads((SCHEMAS_DIR / "instructions.schema.json").read_text())
+
+    result = describe_shape(schema)
+
+    pointer = "/$defs/edit_frontmatter/allOf/0/if"
+    assert pointer in result
+    assert result[pointer]["required"] == ["operation"]
+    # operation's own subschema is {"const": "set"} — no "type" keyword, so
+    # the type placeholder applies, and the const surfaces in "values".
+    assert result[pointer]["properties"] == {"operation": "any"}
+    assert result[pointer]["values"] == {"operation": ["set"]}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# code-quality fix 2 (PRD F2-AC3) — enum/const values recorded in `values`,
+# always present as a dict, an entry only where declared
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_enum_and_const_recorded_in_values_field():
+    schema = {
+        "type": "object",
+        "properties": {
+            "op": {"type": "string", "enum": ["set", "remove"]},
+            "flag": {"const": True},
+            "plain": {"type": "string"},
+        },
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["values"] == {"op": ["remove", "set"], "flag": [True]}
+    assert "plain" not in result[""]["values"]
+
+
+def test_enum_values_sorted_with_a_type_tolerant_total_order():
+    schema = {
+        "type": "object",
+        "properties": {
+            "mixed": {"enum": ["b", 2, None, 1, "a", True]},
+        },
+    }
+
+    result = describe_shape(schema)
+
+    # Grouped by type name (NoneType < bool < int < str), then by value
+    # within each group. A bare sorted() on this list raises TypeError.
+    assert result[""]["values"]["mixed"] == [None, True, 1, 2, "a", "b"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# code-quality fix 3 — local $ref resolved for type (and enum/const)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_local_ref_resolved_for_type_on_real_instructions_schema():
+    schema = json.loads((SCHEMAS_DIR / "instructions.schema.json").read_text())
+
+    result = describe_shape(schema)
+
+    move_note = result["/$defs/move_note"]
+    assert move_note["properties"]["id"] == "string"
+    assert move_note["properties"]["applied"] == "boolean"
+
+
+def test_inline_type_wins_over_ref_sibling():
+    schema = {
+        "type": "object",
+        "properties": {
+            "overridden": {"$ref": "#/$defs/Thing", "type": "integer"},
+        },
+        "$defs": {"Thing": {"type": "string"}},
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"]["overridden"] == "integer"
+
+
+def test_non_local_ref_records_any():
+    schema = {
+        "type": "object",
+        "properties": {
+            "external": {"$ref": "https://example.com/other.schema.json#/$defs/Foo"},
+        },
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"]["external"] == "any"
+
+
+def test_cyclic_ref_terminates_and_records_any():
+    schema = {
+        "type": "object",
+        "properties": {
+            "cyclic": {"$ref": "#/$defs/A"},
+        },
+        "$defs": {
+            "A": {"$ref": "#/$defs/B"},
+            "B": {"$ref": "#/$defs/A"},
+        },
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"]["cyclic"] == "any"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# code-quality fixes 4/5 — list-valued type is sorted AND copied, not aliased
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_list_valued_type_is_sorted():
+    schema = {
+        "type": "object",
+        "properties": {
+            "maybe_null": {"type": ["string", "null"]},
+        },
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"]["maybe_null"] == ["null", "string"]
+
+
+def test_list_valued_type_is_a_copy_not_an_alias():
+    original = ["string", "null"]
+    schema = {
+        "type": "object",
+        "properties": {"maybe_null": {"type": original}},
+    }
+
+    result = describe_shape(schema)
+
+    assert result[""]["properties"]["maybe_null"] is not original
+    assert result[""]["properties"]["maybe_null"] == sorted(original)

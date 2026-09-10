@@ -157,6 +157,17 @@ Turns the recorded shape into a gate.
 
 - [ ] **T2.3 The gate, and a message that says what to do** `[activity: backend-api]`
 
+  **Module-split seam, decided at T2.2's code review (2026-09-10).** `wire_shape.py` is now 516
+  lines and holds the walk, the manifest builder, the serializer, the registry, the diff, the kind
+  vocabulary and the classifier. Reviewed twice for splitting and declined twice, because raw LOC is
+  a poor proxy here — `classify`'s docstring alone is ~80 lines of rule-table prose, the branching
+  logic is small, and everything shares one `NodeShape`/`ShapeChange` data model. **The trigger is
+  not line count: it is whether this task's gate logic lands inside `wire_shape.py` or beside it.**
+  Put the gate in the test module or its own file. If gate or CLI logic goes *into* `wire_shape.py`,
+  split `classify` + `CHANGE_KINDS` + the kind constants out at that moment — the file stops being
+  "one data model and three views of it" and becomes "the data model plus the thing that drives it",
+  which is the seam. Same instruction applies to T4.1.
+
   1. Prime: read the gate algorithm `[ref: SDD/Complex Logic]` and the error-handling table
      `[ref: SDD/Error Handling]`.
   2. Test:

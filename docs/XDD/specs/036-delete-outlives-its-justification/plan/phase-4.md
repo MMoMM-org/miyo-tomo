@@ -41,16 +41,35 @@ Makes the contract real, proves the producer invariant, and validates the whole 
 
 - [ ] **T4.1 The wire contract** `[activity: data-architecture]`
 
-  **SEQUENCING GATE — T4.5's handoff goes out and Hashi vendors BEFORE this task lands.** Corrected
-  2026-09-10 by validation. `tests/test_instruction_render_wire_hygiene.py::test_snapshot_matches_upstream_hashi`
-  (`:282`) fetches Hashi's live `instructions.schema.json` and compares `required` **and** property
-  names per action `$def` (`:345-352`). Adding `depends_on` to our mirror before they ship it fails
-  both comparisons, and the escape hatch `SNAPSHOT_AHEAD_OF_UPSTREAM` (`:75`) is keyed by **action
-  name, not property** — so `delete_source` cannot be exempted without silencing drift detection for
-  the very action this spec is about. A property-level registry was considered and rejected: that
-  hatch exists for actions Hashi has agreed to implement *later*, the opposite of this case, and
-  under our own release rule (they vendor first or simultaneously, never after) the window it would
-  cover is zero-length. Sequencing costs nothing and adds no permanent silencing mechanism.
+  **SEQUENCING GATE — T4.5's handoff goes out and Hashi vendors BEFORE this task lands.**
+
+  > **Rationale replaced 2026-09-10 — the gate stands, its justification does not.** The original
+  > reasoning was mechanical: `test_snapshot_matches_upstream_hashi` fetches Hashi's live schema and
+  > **fails** if our mirror is ahead, and `SNAPSHOT_AHEAD_OF_UPSTREAM` is keyed by action name so
+  > `delete_source` could not be exempted without silencing drift detection for the very action this
+  > spec is about.
+  >
+  > **Spec 035's T2.4 invalidated all of that.** That check is now a **report**, not a gate — it
+  > names a delta and never fails on one, per ADR-7's ruling that a vendored consumer copy is
+  > *supposed* to lag ours during a cross-repo wait. `SNAPSHOT_AHEAD_OF_UPSTREAM` was deleted rather
+  > than re-keyed, because a report needs no exemptions. So adding `depends_on` to our mirror ahead
+  > of Hashi now **fails nothing**; it appears in the report as one more thing we carry ahead, which
+  > is exactly what the report is for.
+  >
+  > This is recorded rather than quietly rewritten because the old rationale was itself labelled
+  > "corrected by validation", and an implementer who tests a stale mechanical claim, finds nothing
+  > fails, and concludes the sequencing is unnecessary would be reasoning correctly from a false
+  > premise.
+
+  **The gate survives on the release rule, which was always the stronger half of the argument.**
+  Hashi vendors first or simultaneously, never after — so the window a property-level exemption
+  would have covered is zero-length, and sequencing costs nothing. What changed is that this is now
+  the *whole* reason rather than a supporting one: **nothing in the test suite enforces it.** Order
+  it because the release rule says so, not because a red test will stop you.
+
+  Note the local parity check is unaffected: `tests/test_tomo_schema_parity.py` compares Tomo's
+  **two local** schemas and still gates. Adding `depends_on` to one and not the other fails it — an
+  internal-consistency constraint, not an upstream-timing one. Do not conflate the two.
 
   1. Prime: read both instruction schemas and confirm which is the vendored contract
      `[ref: SDD/Cross-Component Boundaries]`. **Two different tests, two different jobs**:

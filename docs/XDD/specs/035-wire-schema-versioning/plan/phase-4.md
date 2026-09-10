@@ -123,7 +123,10 @@ from day one.
   2. Test: after the version move, the gate passes for the garden-audit wire; the manifest records
      the new version; the emitted document carries it (via T3.1, without a code edit).
   3. Implement:
-     a. Move the garden-audit wire's `schema_version`.
+     a. Move the garden-audit wire's `schema_version` — **and its `description`**, which currently
+        reads "always '1'". ADR-2 excludes prose from the manifest, so nothing will flag the
+        contradiction; a schema whose own text denies its version is worse than one that never
+        moved.
      b. Regenerate its manifest and capture the printed diff.
      c. Write the handoff to `_outbox/for-hashi/`: the schema **file** attached, plus the obligation
         table stating that these fields have been emitted since an earlier spec, that they are
@@ -140,9 +143,11 @@ from day one.
      - [ ] Emission of the new version waits for confirmation `[ref: PRD/F4-AC4]`
      - [ ] One handover, one obligation table, covering every document in the release `[ref: PRD/F9-AC5]`
 
-  **Worth raising in the same handoff, unprompted**: the consumer's own analysis of their namesake
-  bug names two `source_stem` join sites; there is a third at `SuggestionsTab.ts:180-181`
-  (`collectDailyLogStems`), same key and same fan-out. Found while researching this spec.
+  **Worth raising in the same handoff, unprompted**: the consumer's analysis of their namesake bug
+  cites `forceAtomicSync.ts:31` and `:47` — of which only `:47` is a `source_stem` join (`:31` joins
+  on `suggestion.stem`). There is a **further** `source_stem` join they have not named, at
+  `SuggestionsTab.ts:180-181` (`collectDailyLogStems`), with the same key and the same fan-out.
+  Found while researching this spec.
 
 - [ ] **T4.4 After confirmation: refresh, prove clean, integrate** `[activity: validate]`
 

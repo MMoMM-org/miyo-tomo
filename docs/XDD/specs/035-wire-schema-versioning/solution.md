@@ -106,7 +106,7 @@ version: "1.0"
   network test's skip-offline behaviour.
 - **Can Modify** — the drift check's comparison surface; the three renderers' `schema_version`
   emission; both instruction schemas' `$id`.
-- **Must Not Touch** — Hashi's repository. The fifteen internal schemas. The handoff protocol
+- **Must Not Touch** — Hashi's repository. The fourteen internal schemas (18 total, minus the three published wires and minus `hashi-instructions.schema.json`, which is the vendored consumer mirror rather than an internal schema). The handoff protocol
   document in `~/Kouzou`.
 
 ### External Interfaces

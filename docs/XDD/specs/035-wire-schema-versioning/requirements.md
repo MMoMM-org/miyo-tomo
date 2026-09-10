@@ -262,7 +262,7 @@ the plan — the cost of the mistake should not be paid by the documents that go
   instruction: the existing flow is sufficient, because the round trip through the owner *is* the
   lead time. F4-AC4's "wait for confirmation" is that rule applied to emission, not a new construct.
   No shared protocol document is edited by this spec.
-- **Versioning the fifteen internal schemas.** They have no consumer outside Tomo — verified by
+- **Versioning the fourteen internal schemas.** They have no consumer outside Tomo — verified by
   searching every sibling repository. Bringing them under the rule would make the report noisy with
   changes nobody can be broken by.
 - **Closing the one open node** in the garden-audit wire. It is the consumer's schema and their
@@ -366,6 +366,9 @@ project's audit-log rule.
 - **The consumer will accept being told which of their own areas must change.** The obligation was
   inferred from reading their code; they have not been asked whether they want it. It is offered in
   the handover, not imposed.
+- **The eight-class measurement is not reproducible from the repository.** Every class is stated
+  above and the rule is independently checkable, but no fixture or result artifact was committed.
+  Flagged by validation 2026-09-10; the classification tests are what will archive it.
 - **The three vendored documents are the complete set of external contracts.** Verified by searching
   every sibling repository for references; a future consumer would have to be added deliberately.
 - The consumer's published copy reflects what they have released — checked against their default
@@ -415,8 +418,30 @@ Three findings shaped this document, all measured rather than reasoned:
 - A second undeclared drift is live right now in a third document, found while researching this spec
   and benign only because of one permissive node.
 - Whether a change is consumer-affecting is decided by whether the node is closed — established by
-  running the consumer's own validator against their own fixtures across eight classes of change,
-  which falsified this spec's original assumption that any shape change is breaking.
+  running the consumer's own compiled validator against their own committed fixtures across the
+  eight change classes below, which falsified this spec's original assumption that any shape change
+  is breaking.
+
+| # | Change class | Validator result | Consumer-affecting? |
+|---|---|---|---|
+| 1 | Property added to a node that rejects unknown properties | rejected | **yes** |
+| 2 | Property added to a node that permits them | accepted | no |
+| 3 | Field that was **optional** stops being emitted | accepted | no |
+| 4 | Field that was **required** stops being emitted | rejected | **yes** |
+| 5 | Value added to an enumerated set | rejected | **yes** — counter-intuitive |
+| 6 | Type widened, emitting an empty value where a string was declared | rejected | **yes** |
+| 7 | Already-declared optional field starts being emitted | accepted | no |
+| 8 | Description or title text only | accepted (ignored entirely) | no |
+
+Classes 3 and 4 collapse into one business rule conditioned on whether the field was required, which
+is why seven rules cover eight classes.
+
+**Provenance gap, recorded rather than implied.** No artifact of that run is committed anywhere —
+no fixture copy, no result table, no handoff. The classes above are transcribed from the research
+report, not from a re-runnable harness, so a reader cannot reproduce the results without repeating
+the work. The rule they produced is separately checkable against each schema's own declarations,
+which is what the implementation actually relies on; but the *measurement* is not archived. The
+tests written for the classification in the implementation phase become that archive.
 
 The owner supplied the decisive scoping constraint directly: no new handoff protocol is needed,
 because the round trip through the owner is itself the lead time. That removed a proposed

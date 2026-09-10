@@ -16,7 +16,7 @@ phase: 2
 - `[ref: SDD/Implementation Examples]` — both traced walkthroughs
 - `[ref: SDD/Architecture Decisions; ADR-3, ADR-4]`
 - `[ref: PRD/Feature 1]`, `[ref: PRD/Feature 2]`, `[ref: PRD/Feature 7]`
-- `tests/test_instruction_render_wire_hygiene.py` — the vacuous check being replaced
+- `tests/test_instruction_render_wire_hygiene.py` — the check being replaced. It is **vacuous on the suggestions wire** (zero `$defs` → zero iterations); on the instructions wire it does iterate 18 shared defs, but compares no root-level fields
 
 **Key Decisions**:
 - **ADR-4** — classification is **read from the manifest**, never kept as a parallel rule table.
@@ -55,7 +55,9 @@ Turns the recorded shape into a gate.
   The rule was measured against the consumer's own validator across eight change classes. Encode
   what was measured, not what versioning theory suggests.
 
-  1. Prime: read the eight-class matrix `[ref: PRD/Supporting Research]` and ADR-4.
+  1. Prime: read the classification rules `[ref: PRD/Detailed Feature Specifications; Business Rules]`
+     — seven rules covering the measured change classes — and ADR-4. (`PRD/Supporting Research`
+     mentions the matrix but does not tabulate it.)
   2. Test — one per measured class:
      - property added to a **closed** node → affecting;
      - property added to an **open** node → **not** affecting *(this is the live garden-audit case;
@@ -98,17 +100,30 @@ Turns the recorded shape into a gate.
 - [ ] **T2.4 Replace the vacuous comparison in the existing wire-hygiene test** `[activity: backend-api]`
 
   The existing upstream check builds its surface from `$defs` entries carrying an `action` property
-  and iterates their intersection. On a `$defs`-free schema that is zero iterations — it passes while
-  the schema is drifted.
+  and iterates their intersection. On the instructions wire that is 18 real comparisons; on a
+  `$defs`-free schema it is zero, so the check passes while the schema is drifted. It also compares
+  no root-level fields on either document — root parity today is coincidence.
 
   1. Prime: read the current comparison and confirm the vacuity for yourself before changing it —
      the claim is measured, but an implementer who has not seen it will not trust the replacement.
   2. Test: the replacement compares structurally to full depth; a root-level property difference is
      now detected (it is not today); **every existing test in the file still passes**; the network
      test still skips offline.
-  3. Implement: swap the comparison surface for `describe_shape` + `diff_shapes`. Leave
-     `SNAPSHOT_AHEAD_OF_UPSTREAM` in place — ADR-7 makes the vendored copies a report, so it needs no
-     extension.
+  3. Implement: swap the comparison surface for `describe_shape` + `diff_shapes`.
+
+     **The exemption registry cannot survive a full-depth walk unchanged.** Corrected 2026-09-10 by
+     validation: `SNAPSHOT_AHEAD_OF_UPSTREAM`'s three entries also appear in the snapshot's root
+     `properties/actions/items/oneOf`, and a full-depth walk reaches those pointers. Keyed by
+     def-name, the registry cannot filter them — so the pre-existing tests this task names as its
+     gate **would fail**. Two ways out, and the task must pick one explicitly rather than discover
+     this at implementation:
+     a. **Make this comparison a report too**, consistent with ADR-7 — the upstream check then stops
+        being a gate and the exemption question dissolves. Preferred: it is the same reasoning ADR-7
+        already applied to the vendored copies, and applying it in one place and not the other is
+        the inconsistency that would need explaining later.
+     b. Key the exemption by JSON pointer prefix instead of def-name, so an ahead-action's `oneOf`
+        branch is excluded alongside its `$def`. Keeps the gate, costs a registry redesign — the
+        redesign 036's validation already flagged as pending.
   4. Validate: **full suite green** — the gate for this task is the pre-existing tests.
   5. Success:
      - [ ] Root-level differences are detected `[ref: PRD/F1-AC1]`

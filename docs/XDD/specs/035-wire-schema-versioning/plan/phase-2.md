@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Detect — diff, classify, and the gate"
-status: in_progress
+status: completed
 version: "1.0"
 phase: 2
 ---
@@ -296,7 +296,7 @@ Turns the recorded shape into a gate.
      - [x] The upstream comparison reports a delta and never fails on one `[ref: SDD/Architecture Decisions; ADR-7]`
      - [x] `SNAPSHOT_AHEAD_OF_UPSTREAM` is removed, not re-keyed — a report needs no exemptions
 
-- [ ] **T2.5 Phase Validation** `[activity: validate]`
+- [x] **T2.5 Phase Validation** `[activity: validate]`
 
   - Full suite green, ruff clean.
   - Prove the counterfactual: add `item_key` to a copy of the pre-034 suggestions wire and confirm

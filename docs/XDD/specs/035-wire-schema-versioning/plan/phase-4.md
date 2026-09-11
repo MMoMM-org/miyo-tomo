@@ -162,6 +162,7 @@ from day one.
   | Document | Change | Source |
   |---|---|---|
   | garden-audit wire | disclose `up_source` / `up_value`, already emitted | this spec, F6 |
+  | garden-audit wire | disclose `parent_not_moc`, already emitted — **breaks them**, unlike the row above | found 2026-09-11 during T4.2 |
   | suggestions wire | daily-side source identity on three buckets | this spec, F9 (T4.2b) |
   | instructions wire | `delete_source` gains its dependency field | **spec 036**, whose T4.5 supplies the half rather than sending its own handoff |
 
@@ -197,6 +198,44 @@ from day one.
   on `suggestion.stem`). There is a **further** `source_stem` join they have not named, at
   `SuggestionsTab.ts:180-181` (`collectDailyLogStems`), with the same key and the same fan-out.
   Found while researching this spec.
+
+  **A second garden-audit change, and this one is not benign — found 2026-09-11 during T4.2.**
+  Our `findings[].check` enum carries seven values; the consumer's vendored copy carries six. Ours
+  only: `parent_not_moc`.
+
+  This does **not** behave like `up_source`/`up_value`. Those are safe because `findings[].detail` is
+  an open node on both sides, and an open node ignores what it does not declare. **An enum is not
+  protected by openness** — a validator rejects a value outside the declared set regardless of
+  `additionalProperties`, which is why this spec's own measurement classes an added enum value as
+  consumer-affecting. So the moment a run produces a `parent_not_moc` finding, the document we emit
+  is one their validator refuses.
+
+  Tomo emits it today: it is a shipped feature with its own rendering, grouping and severity mapping
+  (`garden-audit-render.py:70,227-249`, `garden-audit-stats.py:51,59,69`).
+
+  **It came from `2111772` — the same commit this spec's decision log already cites** for
+  `up_source`/`up_value`. The pre-implementation research found two of that commit's three wire
+  changes and stopped at `findings[].detail`. The spec written about an unannounced schema change
+  missed part of the very change it was written about; only running the finished detector over real
+  consumer data surfaced it. That is the strongest available argument for the mechanism, and it
+  belongs in the record rather than being quietly folded in.
+
+  The handoff must state the distinction plainly: one disclosure is benign and the other is not, and
+  a reader who treats both rows the same will deprioritise the one that matters.
+
+  **The obligation table must name a new property's accepted values by hand.** A `classify` fix on
+  2026-09-11 stopped `diff_shapes` from decomposing a newly-added property into one
+  `added_enum_value` per value — correct, because the consumer cannot violate an enum on a property
+  it does not declare, and the old behaviour over-reported the live garden-audit delta 4:1. The
+  deliberate cost: the report now says *`added property: up_source`* and no longer says which values
+  it carries. For the gate that is right — "must you act" is fully answered by `added_property`. For
+  **this handoff** it is not enough: the consumer has to build a validator branch, and for that they
+  need the value set. `up_source` accepts `frontmatter`, `inline` and `null`.
+
+  F4-AC1 covers the general case — the schema file travels with the handoff, so the values are always
+  reachable. But the obligation table is the layer that carries *meaning*, and a table that names a
+  field without naming what it emits makes the reader open the attachment to learn the one thing the
+  table existed to tell them.
 
   **Carry-forward from T3.2 — the producer copy's `$id` moved.** Phase 3 gave
   `tomo/schemas/instructions.schema.json` a distinct `$id`

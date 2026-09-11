@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.3.0
+# version: 0.4.0
 """test_035_wire_shape_cli.py — Behavioural tests for scripts/wire-shape.py,
 the maintainer's CLI wrapping describe_shape/diff_shapes/classify via
 lib.wire_gate (spec 035 T4.1).
@@ -259,6 +259,16 @@ def test_obligations_row_names_the_actual_pointer_kind_verdict_and_version(tmp_p
     _rewrite_json(schemas_dir / SUGGESTIONS_WIRE, _add_property_to_suggestions_items)
     _rewrite_json(schemas_dir / GARDEN_AUDIT_WIRE, _add_property_to_garden_audit_detail)
 
+    # `_add_property_to_suggestions_items` never touches schema_version, and
+    # `_make_scratch_wires` copies the LIVE committed schema+manifest (already
+    # in sync) — so the transition is the live version, unmoved, on both
+    # sides. Derived from the scratch copy rather than hardcoded, so this
+    # does not go stale the next time suggestions-wire's version moves
+    # (spec 035 F9 already moved it once, from '1' to '2').
+    live_version = json.loads((schemas_dir / SUGGESTIONS_WIRE).read_text(encoding="utf-8"))[
+        "properties"
+    ]["schema_version"]["const"]
+
     rc, out = _run(["--obligations", "--schemas-dir", str(schemas_dir), "--shapes-dir", str(shapes_dir)], capsys)
 
     assert rc == 0
@@ -268,7 +278,7 @@ def test_obligations_row_names_the_actual_pointer_kind_verdict_and_version(tmp_p
     assert affecting_lines, "no row named the affecting pointer at all"
     assert any("added_property" in line and "not affecting" not in line and "affecting" in line
                for line in affecting_lines)
-    assert any("'1' -> '1'" in line for line in affecting_lines), affecting_lines
+    assert any(f"'{live_version}' -> '{live_version}'" in line for line in affecting_lines), affecting_lines
 
     not_affecting_lines = [line for line in lines if NOT_AFFECTING_POINTER in line]
     assert not_affecting_lines, "no row named the not-affecting pointer at all"
@@ -431,7 +441,12 @@ def test_regenerate_round_trips_a_non_ascii_property_name_byte_identically(tmp_p
     assert non_ascii_name.encode("utf-8") in written_bytes
     assert b"\\u00e9" not in written_bytes
 
-    expected = serialize_manifest(build_manifest(mutated, source=SUGGESTIONS_WIRE)).encode("utf-8")
+    # source names the schema's repo-relative path — the CLI's own
+    # convention (fixed alongside spec 035 T4.2b, which found `source=
+    # document` dropping this prefix on the first real --regenerate run).
+    expected = serialize_manifest(
+        build_manifest(mutated, source=f"tomo/schemas/{SUGGESTIONS_WIRE}")
+    ).encode("utf-8")
     assert written_bytes == expected
 
 

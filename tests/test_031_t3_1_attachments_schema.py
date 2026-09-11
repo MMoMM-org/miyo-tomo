@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_031_t3_1_attachments_schema.py — attachments field on the three review schemas.
 
 Covers T3.1 (spec 031 Phase 3): item-result.schema.json, suggestions-doc.schema.json,
@@ -188,7 +188,7 @@ def _make_wire_suggestion(**overrides) -> dict:
 
 def _make_wire(suggestion: dict) -> dict:
     return {
-        "schema_version": "1",
+        "schema_version": "2",
         "generated": "2026-09-05T10:00:00Z",
         "run_id": "2026-09-05-1000-attach",
         "profile": "miyo",

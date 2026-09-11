@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t1_2_schemas_item_key.py — JSON Schema validation tests for item_key on the
 five item-identity schemas.
 
@@ -115,7 +115,7 @@ def _suggestions_doc_needs_attention_doc() -> dict:
 
 def _suggestions_wire_doc() -> dict:
     return {
-        "schema_version": "1",
+        "schema_version": "2",
         "generated": "2026-09-06T00:00:00Z",
         "run_id": "run-1",
         "profile": "miyo",

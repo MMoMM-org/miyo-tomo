@@ -1,4 +1,4 @@
-# version: 0.1.0
+# version: 0.2.0
 """test_wire_snapshot_parity.py — cross-repo wire-schema parity against
 Hashi's vendored copies (spec 035 T2.4/T4.2, ADR-7; Constitution L2).
 
@@ -660,15 +660,17 @@ class TestVendoredCopies:
 
     def test_suggestions_comparison_a_reports_measured_delta_offline(self):
         """[ref: PRD/F8-AC1] Offline, hermetic: OUR suggestions-wire.schema.json
-        against the COMMITTED vendored copy. Measured 2026-09-11 against the
-        vendored copy this task commits: the shapes are structurally
-        identical (zero changes) — asserting the actual measured delta
-        rather than assuming one exists, per the T4.2 handoff's
-        instruction not to hardcode an expectation before looking. If a
-        future re-vendor introduces a real delta here, this test is
-        EXPECTED to start failing — that failure is the signal to update
-        this assertion to the newly measured delta, not evidence of a
-        defect in `snapshot_parity_delta` itself.
+        against the COMMITTED vendored copy. Re-measured 2026-09-11 after
+        spec 035 F9 (T4.2b): the vendored copy still pins schema_version
+        "1" and all three daily buckets closed, while ours moved to "2"
+        and gained `source_item_key` on each — exactly the drift this
+        test exists to surface, per its own instruction the last time it
+        was measured (then: zero changes) to update the assertion to the
+        newly measured delta rather than treat the failure as a defect in
+        `snapshot_parity_delta`. The delta stays UNTIL Hashi re-vendors —
+        the owner's explicit decision (docs/XDD/specs/035-.../requirements.md
+        F9 note) was to land this now and suspend /inbox runs until they
+        confirm, not to make this comparison quietly agree in the meantime.
         """
         recorded = json.loads(HASHI_SUGGESTIONS_SNAPSHOT.read_text(encoding="utf-8"))
         observed = json.loads(
@@ -677,7 +679,37 @@ class TestVendoredCopies:
 
         changes = snapshot_parity_delta(recorded, observed)
 
-        assert changes == []
-        assert render_snapshot_parity_report(
+        assert all(c["consumer_affecting"] is False for c in changes), (
+            "the vendored-copy comparison is deliberately unclassified "
+            "(ADR-7 carry-forward b) — nothing here may claim a change "
+            "obliges the consumer"
+        )
+
+        schema_version_changes = {
+            (c["kind"], c["detail"]) for c in changes if c["pointer"] == ""
+        }
+        assert schema_version_changes == {
+            ("added_enum_value", "schema_version: added value '2'"),
+            ("removed_enum_value", "schema_version: removed value '1'"),
+        }
+
+        daily_bucket_changes = {
+            (c["pointer"], c["kind"])
+            for c in changes if c["pointer"].startswith("/properties/daily_updates/")
+        }
+        assert daily_bucket_changes == {
+            (f"/properties/daily_updates/items/properties/{bucket}/items", kind)
+            for bucket in ("trackers", "log_entries", "log_links")
+            for kind in ("added_property", "required_added")
+        }
+        assert all(
+            "source_item_key" in c["detail"]
+            for c in changes if c["pointer"].startswith("/properties/daily_updates/")
+        )
+        assert len(changes) == 8
+
+        message = render_snapshot_parity_report(
             [{"document": HASHI_SUGGESTIONS_SNAPSHOT.name, "changes": changes}]
-        ) == ""
+        )
+        assert "source_item_key" in message
+        assert "/properties/daily_updates/items/properties/log_links/items" in message

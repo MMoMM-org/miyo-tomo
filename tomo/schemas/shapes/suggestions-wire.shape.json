@@ -28,7 +28,7 @@
       ],
       "values": {
         "schema_version": [
-          "1"
+          "2"
         ]
       }
     },
@@ -56,6 +56,7 @@
         "force_atomic_note": "boolean",
         "position": "string",
         "reason": "string",
+        "source_item_key": "string",
         "source_stem": "string",
         "time": [
           "null",
@@ -68,6 +69,7 @@
         "force_atomic_note",
         "position",
         "reason",
+        "source_item_key",
         "source_stem",
         "time"
       ],
@@ -85,6 +87,7 @@
         "accepted": "boolean",
         "position": "string",
         "reason": "string",
+        "source_item_key": "string",
         "target_stem": "string",
         "time": [
           "null",
@@ -95,6 +98,7 @@
         "accepted",
         "position",
         "reason",
+        "source_item_key",
         "target_stem",
         "time"
       ],
@@ -112,6 +116,7 @@
         "accepted": "boolean",
         "field": "string",
         "reason": "string",
+        "source_item_key": "string",
         "source_stem": "string",
         "value": "string"
       },
@@ -119,6 +124,7 @@
         "accepted",
         "field",
         "reason",
+        "source_item_key",
         "source_stem",
         "value"
       ],
@@ -284,6 +290,6 @@
       "values": {}
     }
   },
-  "schema_version": "1",
+  "schema_version": "2",
   "source": "tomo/schemas/suggestions-wire.schema.json"
 }

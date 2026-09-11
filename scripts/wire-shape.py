@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # wire-shape.py — The maintainer's CLI for the wire-shape manifests (spec 035 T4.1).
-# version: 0.4.0
+# version: 0.4.1
 """Check, regenerate, or explain the shape manifests under tomo/schemas/shapes/
 — the committed baseline `pytest` gates every published wire schema against
 (lib/wire_gate.py). Wraps describe_shape / diff_shapes / classify
@@ -179,7 +179,12 @@ def cmd_regenerate(schemas_dir: Path, shapes_dir: Path) -> int:
         manifest_path = shapes_dir / manifest_filename(document)
 
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
-        new_manifest = build_manifest(schema, source=document)
+        # source names the schema's repo-relative path (tomo/schemas/<document>),
+        # matching how every committed manifest's `source` field already reads —
+        # a bare filename here would silently drop that prefix on the next
+        # wire this command regenerates (found the hard way: spec 035 T4.2b's
+        # regeneration of suggestions-wire.shape.json did exactly that).
+        new_manifest = build_manifest(schema, source=f"tomo/schemas/{document}")
 
         old_manifest = _read_manifest(manifest_path)
         old_nodes = old_manifest["nodes"] if old_manifest else {}

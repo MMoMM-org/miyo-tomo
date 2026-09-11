@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.19.0
+# version: 0.20.0
 """Render tomo-tmp/suggestions-doc.json to final suggestions markdown.
 
 Deterministic markdown renderer — no LLM involved. The orchestrator runs
@@ -318,6 +318,47 @@ def _wire_note(section: dict, action: dict) -> dict:
     }
 
 
+_DAILY_BUCKETS = ("trackers", "log_entries", "log_links")
+
+
+def _join_daily_source_item_keys(daily_updates: list[dict], structured: list[dict]) -> None:
+    """Attach `source_item_key` to each parsed daily entry, by construction (F9).
+
+    `daily_updates` is parsed from our OWN freshly-rendered markdown (parity —
+    see `_parser_mod`), which never carries `source_item_key`: the rendered
+    text names only a display stem/link. `structured` — `d["daily_notes_updates"]`,
+    the block the markdown was rendered FROM — already carries it per entry
+    (reducer, since 2026-09-06): the item's own item_key, not a guess from
+    matching content.
+
+    Joined POSITIONALLY, not by matching a discriminating field (tracker name /
+    log content / link target) — the old recovery's approach, and the reason it
+    had to decline ambiguous matches. `render_daily_notes_updates_block` renders
+    every entry of every bucket, for every day, in list order, dropping none;
+    `parse_daily_updates` recovers the same entries in the same order from that
+    text. So two entries sharing identical content in the same bucket on the
+    same day — the exact case the discriminator match refused to resolve —
+    still join correctly here, because position, not content, is compared.
+
+    Mutates `daily_updates` in place. A day or bucket absent from `structured`
+    (e.g. a suggestions-doc.json predating this field) leaves those entries'
+    `source_item_key` at whatever `structured` provided — including `None` —
+    rather than inventing one; the wire schema's `required`/`minLength` then
+    surfaces that gap instead of silently guessing a key.
+    """
+    by_stem = {
+        day.get("daily_note_stem"): day
+        for day in (structured or [])
+        if day.get("daily_note_stem")
+    }
+    for day in daily_updates:
+        source_day = by_stem.get(day.get("date")) or {}
+        for bucket in _DAILY_BUCKETS:
+            source_entries = source_day.get(bucket) or []
+            for entry, source_entry in zip(day.get(bucket) or [], source_entries):
+                entry["source_item_key"] = source_entry.get("source_item_key")
+
+
 def build_wire_payload(d: dict) -> dict:
     """Project suggestions-doc.json to the full-mirror suggestions-wire + emit_digest.
 
@@ -377,6 +418,9 @@ def build_wire_payload(d: dict) -> dict:
     # rendered markdown, so build_from_wire reproduces them verbatim (parity).
     pm = _parser_mod()
     daily_updates = pm.parse_daily_updates(d.get("rendered_daily_updates_md") or "")
+    # F9: source_item_key travels by construction, from the structured block
+    # the markdown was rendered from — see _join_daily_source_item_keys.
+    _join_daily_source_item_keys(daily_updates, d.get("daily_notes_updates") or [])
     # Tag-handler: decisions (approved/keep_source) come from parsing our own
     # rendered markdown; descriptive context (Hashi flag 3) is joined from the
     # doc's tag_handler_updates by the stable group_id so the editor card can

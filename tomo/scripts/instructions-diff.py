@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.19.0
+# version: 0.19.1
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -176,10 +176,12 @@ def _daily_key(entry: dict) -> str:
     """Identity of a daily-update entry for the delete-coverage join (ADR-1).
 
     `_confirmed_key`'s counterpart on the daily side. `source_item_key` is the
-    entry's vault-relative path, restored on BOTH parser paths by
+    entry's vault-relative path: on the wire path it travels on the wire
+    itself (spec 035 F9), on the markdown path it is restored by
     `suggestion-parser.enrich_daily_updates_with_item_keys`; `source_stem` is
-    display text (ADR-2) and is the fallback when the recovery found the
-    discriminator ambiguous and declined to guess.
+    display text (ADR-2) and is the fallback when no key is available — on
+    the markdown path specifically, when the recovery found the discriminator
+    ambiguous and declined to guess.
     """
     return _item_key(entry.get("source_item_key") or entry.get("source_stem") or "")
 

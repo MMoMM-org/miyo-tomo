@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_034_t5_0b_delete_bookkeeping_item_key.py — the delete bookkeeping
 joins on item_key, not on the bare filename stem.
 
@@ -30,7 +30,6 @@ AC:   OQ6 (source-deletion completion gate)
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
 from pathlib import Path
 
@@ -154,9 +153,10 @@ def _markdown(entries: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _wire(entries: list[str]) -> dict:
-    """An edited wire (ADR-026). Its daily entries carry the parser's own shape
-    but NOT `source_item_key` — the wire schema is additionalProperties:false."""
+def _wire(entries: list[tuple[str, str, str]]) -> dict:
+    """An edited wire (ADR-026). F9 (spec 035): daily entries now carry
+    `source_item_key` directly — populated by construction at render time,
+    exactly like the real wire suggestions-render.py emits."""
     return {
         "suggestions": [],
         "daily_updates": [_daily_day([
@@ -166,10 +166,11 @@ def _wire(entries: list[str]) -> dict:
                 "content": content,
                 "reason": "worthiness 0.2",
                 "source_stem": "Dresden",
+                "source_item_key": key,
                 "accepted": True,
                 "force_atomic_note": False,
             }
-            for content in entries
+            for content, key, _section in entries
         ])],
     }
 
@@ -178,19 +179,20 @@ def _daily_updates_via_path(path: str, entries: list[tuple[str, str, str]],
                             tmp_path: Path) -> list[dict]:
     """Produce the `daily_updates` the renderer receives, on either parser path.
 
-    Both paths recover identity from the same Tomo-owned suggestions doc; only
-    the route into `enrich_daily_updates_with_item_keys` differs.
+    F9 (spec 035): the two paths now diverge in MECHANISM. Markdown still
+    recovers identity from the Tomo-owned suggestions doc via
+    `enrich_daily_updates_with_item_keys` (discriminator match — markdown text
+    itself cannot carry the key). Wire carries `source_item_key` directly;
+    `build_from_wire`'s verbatim passthrough reproduces it with no restore
+    step (`_restore_daily_item_keys` was retired).
     """
-    doc = _doc(entries)
-    contents = [content for content, _key, _section in entries]
     if path == "markdown":
+        doc = _doc(entries)
+        contents = [content for content, _key, _section in entries]
         parsed = sp.parse_daily_updates(_markdown(contents))
         sp.enrich_daily_updates_with_item_keys(parsed, doc)
         return parsed
-    doc_path = tmp_path / "suggestions-doc.json"
-    doc_path.write_text(json.dumps(doc), encoding="utf-8")
-    built = sp.build_from_wire(_wire(contents), "")
-    sp._restore_daily_item_keys(built, str(doc_path), "")
+    built = sp.build_from_wire(_wire(entries), "")
     return built["daily_updates"]
 
 

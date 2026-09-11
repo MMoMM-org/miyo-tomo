@@ -138,7 +138,9 @@ def _doc_with_sections() -> dict:
     daily = [{
         "daily_note_stem": "2026-07-04", "exists": True,
         "trackers": [{"field": "Sport", "value": True, "reason": "ran 5k",
-                      "source_stem": "first-principles", "source_section": "S01"}],
+                      "source_stem": "first-principles",
+                      "source_item_key": "100 Inbox/first-principles.md",
+                      "source_section": "S01"}],
         "log_entries": [], "log_links": [],
     }]
     doc["daily_notes_updates"] = daily

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.35.0
+# version: 0.37.0
 """
 suggestion-parser.py — Parse an approved Tomo suggestions document.
 
@@ -34,6 +34,7 @@ from lib.supporting_items import (  # noqa: E402
 )
 from lib.item_key import derive as derive_item_key  # noqa: E402
 from lib.render_md import compute_payload_digest  # noqa: E402
+from lib.wire_version import wire_schema_version  # noqa: E402
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -217,10 +218,18 @@ def _bind_candidate_anchor(
 # markdown path is used byte-for-byte (Tomo never assumes Hashi is installed).
 
 def load_changed_wire(path: str | None) -> dict | None:
-    """Return the wire payload iff present, parseable, v1, AND edited.
+    """Return the wire payload iff present, parseable, the CURRENT schema
+    version, AND edited.
 
     Edited = the recomputed digest differs from the embedded emit_digest.
     Returns None otherwise, so the caller falls back to the markdown parse.
+
+    The accepted version is read from the schema itself
+    (`wire_schema_version`, ADR-5) — never a literal here — so a
+    schema_version bump on the producer side (suggestions-render.py) and
+    the version this consumer-side gate accepts cannot drift apart. Spec
+    035 F9 found this literal still hardcoded to "1" after T3.1 moved every
+    EMITTER off a literal; this ACCEPTOR needed the same fix.
     """
     if not path:
         return None
@@ -235,11 +244,12 @@ def load_changed_wire(path: str | None) -> dict | None:
         return None
     if not isinstance(wire, dict):
         return None
+    current_version = wire_schema_version("suggestions-wire.schema.json")
     version = wire.get("schema_version")
-    if version != "1":
+    if version != current_version:
         print(
-            f"warning: suggestions-json schema_version {version} != 1 — "
-            "ignored, using markdown",
+            f"warning: suggestions-json schema_version {version} != "
+            f"{current_version} — ignored, using markdown",
             file=sys.stderr,
         )
         return None
@@ -1705,6 +1715,11 @@ def parse_moc_proposal_doc(
 RE_DAILY_DATE_HEADER = re.compile(r"^###\s+\[\[([^\]]+)\]\]")
 RE_DAILY_TRACKER_LINE = re.compile(r"^\s*-\s+\*\*([^*]+)\*\*\s*→\s*`?([^`\n]+)`?")
 RE_DAILY_LOG_LINE = re.compile(r"^\s*-\s+(.+?)\s+—\s+(.*)")
+# A log-link entry's own line is a bare wikilink — `render_daily_notes_updates_block`
+# emits `- [[{target_stem}]]` with its time/position on a separate "- Position:"
+# sub-field line, unlike a log-entry's single `- {time} — {content}` line. Matching
+# RE_DAILY_LOG_LINE here would never fire (no em dash on this line at all).
+RE_DAILY_LOG_LINK_LINE = re.compile(r"^\s*-\s+\[\[[^\]]+\]\]\s*$")
 RE_TIME_HH_MM = re.compile(r"^\d{1,2}:\d{2}$")
 
 POSITION_TOKENS = {"after_last_line", "before_first_line"}
@@ -1735,6 +1750,13 @@ def parse_daily_updates(text: str) -> list[dict]:
     Returns a list of daily update entries:
     [{date, trackers: [{field, value, reason, source_stem, accepted}],
       log_entries: [{time, content, reason, source_stem, accepted}]}]
+
+    F9 (spec 035) fix: log_links entries were previously never recovered —
+    their own line is a bare wikilink (`- [[target]]`, no em dash), so
+    matching them against RE_DAILY_LOG_LINE (built for the `- time — content`
+    shape log_entries and trackers use) never fired, and the block's
+    "- Position:" sub-field line had no handler either. See
+    RE_DAILY_LOG_LINK_LINE.
     """
     lines = text.splitlines()
     in_section = False
@@ -1839,6 +1861,12 @@ def parse_daily_updates(text: str) -> list[dict]:
         if stripped.startswith("- Time:") and pending_item:
             pending_item["time"] = stripped.split(":", 1)[1].strip()
             continue
+        # log_links carry their time/position on their own sub-field line
+        # (the entry line itself is a bare wikilink) — see RE_DAILY_LOG_LINK_LINE.
+        if stripped.startswith("- Position:") and pending_item and block_type == "log_links":
+            raw_pos = stripped.split(":", 1)[1].strip()
+            pending_item["time"], pending_item["position"] = _parse_time_position(raw_pos)
+            continue
 
         # Tracker line: - **Sport** → `true`
         if block_type == "trackers":
@@ -1855,33 +1883,39 @@ def parse_daily_updates(text: str) -> list[dict]:
                 continue
 
         # Log entry line: - after_last_line — content  OR  - 10:00 — content
-        if block_type in ("log_entries", "log_links"):
+        if block_type == "log_entries":
             lm = RE_DAILY_LOG_LINE.match(stripped)
             if lm:
                 _flush_pending()
                 raw_time = lm.group(1).strip()
                 time_val, position_val = _parse_time_position(raw_time)
-                if block_type == "log_entries":
-                    pending_item = {
-                        "time": time_val,
-                        "position": position_val,
-                        "content": lm.group(2).strip(),
-                        "reason": "",
-                        "source_stem": "",
-                        "accepted": False,
-                        # Populated when the user ticks the per-entry
-                        # "Force Atomic Note" checkbox — default off.
-                        "force_atomic_note": False,
-                    }
-                elif block_type == "log_links":
-                    wl = _extract_wikilink(stripped)
-                    pending_item = {
-                        "target_stem": wl or raw_time,
-                        "time": time_val,
-                        "position": position_val,
-                        "reason": "",
-                        "accepted": False,
-                    }
+                pending_item = {
+                    "time": time_val,
+                    "position": position_val,
+                    "content": lm.group(2).strip(),
+                    "reason": "",
+                    "source_stem": "",
+                    "accepted": False,
+                    # Populated when the user ticks the per-entry
+                    # "Force Atomic Note" checkbox — default off.
+                    "force_atomic_note": False,
+                }
+                continue
+
+        # Log link line: - [[target_stem]] — a bare wikilink, no em dash (see
+        # RE_DAILY_LOG_LINK_LINE); time/position arrive on the "- Position:"
+        # sub-field line that follows and default here until that line lands.
+        if block_type == "log_links":
+            lm = RE_DAILY_LOG_LINK_LINE.match(stripped)
+            if lm:
+                _flush_pending()
+                pending_item = {
+                    "target_stem": _extract_wikilink(stripped) or "",
+                    "time": None,
+                    "position": "after_last_line",
+                    "reason": "",
+                    "accepted": False,
+                }
                 continue
 
     _flush_pending()
@@ -1988,6 +2022,14 @@ def enrich_daily_updates_with_item_keys(entries: list[dict], doc: dict) -> None:
     wrong one names the wrong note.
 
     Mutates `entries` in place. A document without the field is untouched.
+
+    F9 (spec 035): the WIRE path no longer needs this — `source_item_key`
+    travels on the wire itself now (by construction, positionally, never
+    ambiguous — see suggestions-render.py's `_join_daily_source_item_keys`).
+    This function's only remaining caller is the plain-markdown parse path
+    (`main()` below), whose rendered text still cannot carry the field, so
+    the discriminator-match recovery — and its documented ambiguity gap —
+    stays live there.
     """
     if not entries or not isinstance(doc, dict):
         return
@@ -2016,25 +2058,16 @@ def enrich_daily_updates_with_item_keys(entries: list[dict], doc: dict) -> None:
                     entry["source_item_key"] = key
 
 
-def _restore_daily_item_keys(
-    parsed: dict,
-    suggestions_doc: str | None,
-    markdown_path: str,
-    doc_text: str = "",
-) -> None:
-    """Re-attach daily-entry item keys to a wire-built output (ADR-026 path).
-
-    The wire deliberately does NOT carry `source_item_key`: its schema is
-    `additionalProperties: false` and it is the Hashi Suggestions Editor's
-    contract, so widening it is a coordinated cross-repo change. The key is
-    instead recovered here from the Tomo-owned suggestions doc — the same
-    source the markdown path uses — which keeps both parser paths on one
-    recovery mechanism and leaves the wire untouched.
-    """
-    doc_path = suggestions_doc or _default_doc_path(markdown_path, doc_text)
-    enrich_daily_updates_with_item_keys(
-        parsed.get("daily_updates") or [], _load_json_doc(doc_path)
-    )
+# `_restore_daily_item_keys` (the wire-built-output recovery that used to sit
+# here) was retired by spec 035 F9: the wire now carries `source_item_key` on
+# every daily entry directly (populated by construction in
+# suggestions-render.py, from the structured `daily_notes_updates` block —
+# never a guess), so `build_from_wire`'s verbatim passthrough already
+# reproduces it and there is nothing left to restore after the fact. Its
+# absence is checked by name in the F9 tests as a cheap tripwire; the real
+# guard against a re-derived key sneaking back in under a different name is
+# the ambiguous-discriminator fixture those same tests exercise against
+# `build_wire_payload` — see `enrich_daily_updates_with_item_keys`'s docstring.
 
 
 def _walk_tag_handler_decisions(text: str) -> list[tuple[str, bool, bool]]:
@@ -2235,8 +2268,10 @@ def main() -> int:
         # Primary flow (no companion): edited primary wire → JSON-only.
         _wire = load_changed_wire(args.suggestions_json)
         if _wire is not None:
+            # F9: the wire carries source_item_key on every daily entry
+            # directly — build_from_wire's verbatim passthrough already
+            # reproduces it, no post-hoc restore needed (spec 035).
             _out = build_from_wire(_wire, _load_moc_template())
-            _restore_daily_item_keys(_out, args.suggestions_doc, filename, text)
             print(json.dumps(_out, indent=2, ensure_ascii=False))
             print(
                 "suggestions-json: edited wire is authoritative (JSON-only path)",
@@ -2250,8 +2285,8 @@ def main() -> int:
         _p = load_changed_wire(args.suggestions_json)
         _f = load_changed_wire(args.fan_resolve_json)
         if _p is not None and _f is not None:
+            # F9: same passthrough as the primary flow above — no restore.
             _out = build_from_wire_companion(_p, _f, _load_moc_template())
-            _restore_daily_item_keys(_out, args.suggestions_doc, filename, text)
             print(json.dumps(_out, indent=2, ensure_ascii=False))
             print(
                 "companion: both wires edited — JSON-only merge (build_from_wire_companion)",

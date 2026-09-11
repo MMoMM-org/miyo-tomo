@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.7.0
+# version: 0.7.1
 """test_035_wire_gate.py — Behavioural tests for lib.wire_gate: diff +
 classify + version-check, per published wire (spec 035 T2.3).
 
@@ -915,7 +915,7 @@ def test_error_kinds_has_exactly_the_five_documented_kinds():
 
 def test_render_wire_gate_report_raises_on_an_unregistered_action():
     # A hand-built result standing in for a future bug: an action added to
-    # a wire's `actions` list without a matching ACTION_INSTRUCTIONS entry.
+    # a wire's `actions` list without a matching _ACTION_INSTRUCTIONS entry.
     # Never reachable through gate_one_wire itself today — this is the
     # exhaustiveness guard for if that ever drifts.
     fake_result = {

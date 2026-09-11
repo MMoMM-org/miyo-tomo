@@ -510,6 +510,23 @@ all-`None`/empty default, which happens to make the error-result shape
 `_error_result` builds nearly free (`_result(document, passed=False,
 error=..., error_kind=...)` — everything else defaults correctly).
 
+## WHY `ACTION_INSTRUCTIONS`/`ERROR_INSTRUCTIONS` Are Underscore-Prefixed (T4.1, code-quality review)
+
+Both dicts back `_render_action`/`_render_error` — the instruction line
+each renders for one `ACTIONS`/`ERROR_KINDS` member. They used to be
+module-level names with no underscore, same as `ACTIONS`/`ERROR_KINDS`
+themselves, but this module's `__all__` (added T4.1, alongside the
+`manifest_filename` re-export below) only ever listed `ACTIONS`/
+`ERROR_KINDS` — the two constants a caller needs to reason about the
+vocabulary, never the instruction TEXT for each member, which nothing
+outside `_render_action`/`_render_error` reads. An un-prefixed name absent
+from `__all__` is exactly the inconsistency `__all__` exists to prevent:
+it either means the module's public surface, or it doesn't say anything.
+Renamed to `_ACTION_INSTRUCTIONS`/`_ERROR_INSTRUCTIONS` rather than added
+to `__all__`, because nothing needs to import the instruction strings
+directly — a caller that wants to know whether an action exists checks
+`ACTIONS`; the rendered sentence is `render_wire_gate_report`'s job alone.
+
 ## WHY `manifest_filename` Moved to `wire_shape.py`, and Why This Module Still Exports It (T4.1)
 
 This module used to define `manifest_filename` itself. T4.1's code-quality

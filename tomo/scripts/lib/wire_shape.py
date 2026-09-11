@@ -1,5 +1,5 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.9.0
+# version: 0.9.1
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
@@ -287,9 +287,18 @@ def build_manifest(schema: dict, source: str) -> dict:
     `const`. Harmless while the only callers are the three published wires,
     which all declare it correctly; load-bearing the moment a CLI (T4.1)
     feeds this function a path a person typed, where a bare `KeyError('const')`
-    naming no document is illegible. Message shape matches
-    `wire_version.wire_schema_version`'s treatment of the identical failure
-    — see docs/tomo/scripts/lib/wire_shape.md.
+    naming no document is illegible.
+
+    The MESSAGE WORDING deliberately matches
+    `wire_version.wire_schema_version`'s treatment of the identical missing
+    key ("has no properties.schema_version.const to read") — the exception
+    TYPE does not: that function raises `KeyError`, this one raises
+    `ValueError` (per plan T4.1's explicit instruction). Do not read "same
+    wording" as "same type" — `scripts/wire-shape.py`'s top-level handler
+    catches `ValueError` specifically because this function raises one; a
+    caller relying on the docstring alone to assume `KeyError` here would
+    write a `try`/`except` that never fires. See
+    docs/tomo/scripts/lib/wire_shape.md.
     """
     try:
         schema_version = schema["properties"]["schema_version"]["const"]

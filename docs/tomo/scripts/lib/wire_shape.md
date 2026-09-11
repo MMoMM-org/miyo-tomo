@@ -840,7 +840,14 @@ receives a caller-supplied `source` string, not a resolved path, so its
 message names the source and nothing more. The `enum`-instead-of-`const`
 case needs no separate branch: `schema["properties"]["schema_version"]`
 still lacks a `"const"` key either way, so the same `except KeyError` covers
-both — the two failing schemas in
+both. **Only the wording matches — the exception TYPE deliberately does
+not**: `wire_version.wire_schema_version` raises `KeyError` for this exact
+fact; `build_manifest` raises `ValueError`, per plan T4.1's explicit
+instruction. `scripts/wire-shape.py`'s top-level handler catches
+`ValueError` specifically because this function raises one — a reader who
+generalised "matches wire_version's treatment" into "therefore also raises
+KeyError" would write a `try`/`except` that never fires. The two failing
+schemas in
 `tests/test_035_wire_shape_cli.py::test_build_manifest_raises_value_error_naming_source_when_const_missing`
 and `..._when_version_is_enum_not_const` exercise the same code path on
 purpose, and the second test exists to PROVE that, not because the

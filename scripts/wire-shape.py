@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # wire-shape.py — The maintainer's CLI for the wire-shape manifests (spec 035 T4.1).
-# version: 0.3.0
+# version: 0.4.0
 """Check, regenerate, or explain the shape manifests under tomo/schemas/shapes/
 — the committed baseline `pytest` gates every published wire schema against
 (lib/wire_gate.py). Wraps describe_shape / diff_shapes / classify
@@ -100,19 +100,36 @@ def _read_manifest(manifest_path: Path) -> dict | None:
         return None
 
 
-def _render_change_row(document: str, change: dict, observed_nodes: dict, transition: str) -> str:
-    """One line: document, pointer, change kind, whether it obliges the
-    consumer, the change detail, and the version transition — the four
-    facts plan T4.1 asks `--obligations`' rows to carry. `detail` is
-    display-only structural text (a property/type/enum-value name — see
-    wire_shape.py's `_change` docstring); it never carries schema prose.
+def _format_change_row(document: str, change: dict, marker: str, transition: str) -> str:
+    """One line: document, pointer, change kind, the already-resolved
+    affecting/not-affecting marker, the change detail, and the version
+    transition — the single row shape both `--regenerate`'s printed diff
+    and `--obligations`' preview use (plan T4.1: "one row per changed
+    field"). `detail` is display-only structural text (a property/type/
+    enum-value name — see wire_shape.py's `_change` docstring); it never
+    carries schema prose.
+
+    Takes `marker` pre-resolved rather than resolving it itself, so this is
+    the ONE place the row format is written down — `_render_change_row`
+    (which classifies fresh) and `cmd_obligations` (which reuses
+    `gate_one_wire`'s already-resolved verdict) both format through this,
+    instead of each hand-writing the same f-string.
     """
-    affecting = classify(change, observed_nodes)
-    marker = "affecting" if affecting else "not affecting"
     return (
         f"{document}: {change['pointer']} {change['kind']} ({marker}): "
         f"{change['detail']} [version {transition}]"
     )
+
+
+def _render_change_row(document: str, change: dict, observed_nodes: dict, transition: str) -> str:
+    """`_format_change_row`, with the marker resolved via `classify()`
+    against a freshly-built node map. `--regenerate` has no `gate_one_wire`
+    result to reuse — it diffs against its own just-built `new_manifest`
+    directly — so this is where it classifies before formatting.
+    """
+    affecting = classify(change, observed_nodes)
+    marker = "affecting" if affecting else "not affecting"
+    return _format_change_row(document, change, marker, transition)
 
 
 def cmd_check(schemas_dir: Path, shapes_dir: Path) -> int:
@@ -136,6 +153,18 @@ def cmd_regenerate(schemas_dir: Path, shapes_dir: Path) -> int:
     unchanged — and contributes nothing to the printed output. If nothing
     anywhere changed, says so explicitly rather than exiting silent, so a
     maintainer who ran this reflexively still sees that it did nothing.
+
+    Prints EACH wire's diff before writing that wire's manifest, never
+    after. Nothing about the diff depends on the write having happened —
+    `document`, `changes`, `transition` and `new_manifest["nodes"]` are all
+    known beforehand — so there is no ordering reason to write first. The
+    reverse order (write, then print) leaves a rewritten baseline with no
+    printed record if the print step fails for ANY reason after the write
+    — a broken pipe, a full disk on redirected stdout, a future formatting
+    bug — which is exactly the "silent rewrite" ADR-3 exists to prevent,
+    just moved from "the write is skipped" to "the write already landed
+    and nothing says so." Print-first means that failure mode aborts the
+    command having changed nothing for that wire instead.
     """
     touched: list[str] = []
 
@@ -154,14 +183,14 @@ def cmd_regenerate(schemas_dir: Path, shapes_dir: Path) -> int:
         if not changes:
             continue
 
-        shapes_dir.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(serialize_manifest(new_manifest), encoding="utf-8")
-        touched.append(document)
-
         transition = f"{old_version!r} -> {new_manifest['schema_version']!r}"
         print(f"{document}: manifest regenerated ({transition})")
         for change in changes:
             print("  " + _render_change_row(document, change, new_manifest["nodes"], transition))
+
+        shapes_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(serialize_manifest(new_manifest), encoding="utf-8")
+        touched.append(document)
 
     if not touched:
         print("wire-shape --regenerate: no shape drift against any committed manifest; nothing written.")
@@ -189,13 +218,13 @@ def cmd_obligations(schemas_dir: Path, shapes_dir: Path) -> int:
         printed = True
         transition = f"{result['manifest_version']!r} -> {result['schema_version']!r}"
         # gate_one_wire already resolved consumer_affecting via classify();
-        # reuse that instead of a second describe_shape pass here.
+        # format through the SAME row-builder --regenerate uses
+        # (_format_change_row) instead of a second hand-written f-string,
+        # rather than re-running classify() on data that's already
+        # classified.
         for change in result["changes"]:
             marker = "affecting" if change["consumer_affecting"] else "not affecting"
-            print(
-                f"{result['document']}: {change['pointer']} {change['kind']} "
-                f"({marker}): {change['detail']} [version {transition}]"
-            )
+            print(_format_change_row(result["document"], change, marker, transition))
 
     if not printed:
         print("wire-shape --obligations: no shape drift against any committed manifest.")
@@ -203,16 +232,27 @@ def cmd_obligations(schemas_dir: Path, shapes_dir: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # A regeneration diff can legitimately name a non-ASCII property or
-    # enum-value name (the manifest FILE write is already pinned to UTF-8 —
-    # see build_manifest/serialize_manifest). Without this, sys.stdout/
+    # Any of the three subcommands can print a non-ASCII property/type/
+    # enum-value name — `detail` is schema-derived, not just --regenerate's
+    # diff — so this applies to all three, not only the write path (the
+    # manifest FILE write is already pinned to UTF-8 separately — see
+    # build_manifest/serialize_manifest). Without this, sys.stdout/
     # sys.stderr encode with the platform default, which is not UTF-8
     # everywhere (LC_ALL=C and friends) — found the hard way: under that
-    # locale, printing such a name after the file was ALREADY written
-    # raised UnicodeEncodeError mid-print, breaking ADR-3's "regeneration
-    # always prints the diff" precisely in the one locale where the write
-    # side's own UTF-8 pin mattered. Reconfigure explicitly rather than
-    # trust the process locale to already be UTF-8.
+    # locale, printing such a name after --regenerate had ALREADY written
+    # the manifest raised UnicodeEncodeError mid-print, breaking ADR-3's
+    # "regeneration always prints the diff" precisely in the one locale
+    # where the write side's own UTF-8 pin mattered.
+    #
+    # Deliberately global (mutates sys.stdout/sys.stderr for the calling
+    # process, not just this function's own output), not scoped narrower —
+    # weighed and kept: this script's only in-process caller is its own
+    # test suite (`wire_shape_cli.main(argv)`); every real invocation runs
+    # as a subprocess, where "the calling process" IS this script, so there
+    # is nothing else to leak into. Reconfiguring to UTF-8 is also
+    # idempotent and one-directional (widens acceptance, narrows nothing),
+    # so even the in-process test-suite case has no observed downside — the
+    # full suite passes with it applied on every main() call.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.6.0
+# version: 0.7.0
 """wire_gate.py — The drift gate for a published wire: diff + classify +
 version-check, and a message that says what to do (spec 035 T2.3).
 
@@ -87,7 +87,7 @@ ACTIONS = (ACTION_MOVE_VERSION, ACTION_HANDOVER, ACTION_REGENERATE_MANIFEST)
 # actually prints. Keyed by the SAME constants gate_one_wire assigns into
 # `actions`, so a typo or a renamed constant fails loudly (KeyError) rather
 # than rendering nothing for a real action.
-ACTION_INSTRUCTIONS = {
+_ACTION_INSTRUCTIONS = {
     ACTION_MOVE_VERSION: "move schema_version to a new value",
     ACTION_HANDOVER: "hand over the schema and the obligation table to the consumer",
     ACTION_REGENERATE_MANIFEST: "regenerate the manifest against the current schema",
@@ -119,7 +119,7 @@ ERROR_KINDS = (
 # review, 2026-09-10): a maintainer who forgot to commit a manifest for a
 # new wire needs to be told to create one, not to "regenerate" a file that
 # does not exist yet.
-ERROR_INSTRUCTIONS = {
+_ERROR_INSTRUCTIONS = {
     ERROR_SCHEMA_UNREADABLE: "fix the schema file so it parses as JSON",
     ERROR_SCHEMA_MALFORMED: "fix the schema file — it is missing a required key",
     ERROR_MANIFEST_MISSING: "generate and commit a manifest for this wire",
@@ -286,13 +286,13 @@ def _result(
         if action not in ACTIONS:
             raise ValueError(
                 f"_result: {action!r} is not a member of ACTIONS. If this is a legitimate "
-                "new action, add it to ACTIONS and ACTION_INSTRUCTIONS before emitting it "
+                "new action, add it to ACTIONS and _ACTION_INSTRUCTIONS before emitting it "
                 "from here.",
             )
     if error_kind is not None and error_kind not in ERROR_KINDS:
         raise ValueError(
             f"_result: {error_kind!r} is not a member of ERROR_KINDS. If this is a "
-            "legitimate new error kind, add it to ERROR_KINDS and ERROR_INSTRUCTIONS "
+            "legitimate new error kind, add it to ERROR_KINDS and _ERROR_INSTRUCTIONS "
             "before emitting it from here.",
         )
     return {
@@ -461,33 +461,33 @@ def run_wire_gate(schemas_dir: Path, shapes_dir: Path, wires=PUBLISHED_WIRES) ->
 
 def _render_action(action: str) -> str:
     """One rendered instruction line for one action. Raises on an action
-    not in `ACTION_INSTRUCTIONS` rather than silently rendering nothing or
+    not in `_ACTION_INSTRUCTIONS` rather than silently rendering nothing or
     the wrong line — the same exhaustiveness discipline `classify` applies
     to `CHANGE_KINDS` in wire_shape.py, applied here to `ACTIONS`. A
     review already found the alternative (inferring `regenerate_manifest`
     by ABSENCE of `move_version`) the more fragile shape.
     """
-    if action not in ACTION_INSTRUCTIONS:
+    if action not in _ACTION_INSTRUCTIONS:
         raise ValueError(
             f"render_wire_gate_report: no instruction for action {action!r}. If this is a "
-            "legitimate new action, add it to ACTIONS and ACTION_INSTRUCTIONS — do not let "
+            "legitimate new action, add it to ACTIONS and _ACTION_INSTRUCTIONS — do not let "
             "it fall through to a default.",
         )
-    return f"  -> {ACTION_INSTRUCTIONS[action]}"
+    return f"  -> {_ACTION_INSTRUCTIONS[action]}"
 
 
 def _render_error(error_kind: str) -> str:
     """One rendered instruction line for one error kind. Same
     exhaustiveness discipline as `_render_action`: raises rather than
     rendering nothing for an `error_kind` that was added to `ERROR_KINDS`
-    without a matching entry in `ERROR_INSTRUCTIONS`.
+    without a matching entry in `_ERROR_INSTRUCTIONS`.
     """
-    if error_kind not in ERROR_INSTRUCTIONS:
+    if error_kind not in _ERROR_INSTRUCTIONS:
         raise ValueError(
             f"render_wire_gate_report: no instruction for error_kind {error_kind!r}. If this "
-            "is a legitimate new error kind, add it to ERROR_KINDS and ERROR_INSTRUCTIONS.",
+            "is a legitimate new error kind, add it to ERROR_KINDS and _ERROR_INSTRUCTIONS.",
         )
-    return f"  -> {ERROR_INSTRUCTIONS[error_kind]}"
+    return f"  -> {_ERROR_INSTRUCTIONS[error_kind]}"
 
 
 def render_wire_gate_report(results: list) -> str:

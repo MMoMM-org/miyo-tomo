@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.2.0
+# version: 0.3.0
 """test_035_wire_shape_cli.py — Behavioural tests for scripts/wire-shape.py,
 the maintainer's CLI wrapping describe_shape/diff_shapes/classify via
 lib.wire_gate (spec 035 T4.1).
@@ -28,9 +28,11 @@ not open to revisit here):**
    `_all_description_strings()` walks all three published schemas at test
    time and collects every `description` value that exists anywhere in
    them; `test_no_schema_description_leaks_into_any_cli_output` asserts
-   none of them appears in any `--check`/`--regenerate`/`--obligations`
-   output collected across this file's other tests. A sample would pass
-   while the thing it guards is broken; the derived set cannot go stale.
+   none of them appears in the output of its OWN `--check`/`--obligations`/
+   `--regenerate` run against its own scratch tree with real drift — fully
+   self-contained, so running it alone, sharded, or reordered gives the
+   same result. A sample would pass while the thing it guards is broken;
+   the derived set cannot go stale.
 
 Two published wires anchor every scratch mutation:
 - `/properties/suggestions/items` on suggestions-wire.schema.json is
@@ -153,17 +155,10 @@ def _all_description_strings() -> set[str]:
     return found
 
 
-_captured_outputs: list[str] = []
-
-
 def _run(argv: list[str], capsys) -> tuple[int, str]:
-    """Invoke the CLI's main() with argv, capturing stdout — and stash the
-    output for test_no_schema_description_leaks_into_any_cli_output, which
-    checks every output any OTHER test in this file produced.
-    """
+    """Invoke the CLI's main() with argv, returning (exit code, stdout)."""
     rc = wire_shape_cli.main(argv)
     out = capsys.readouterr().out
-    _captured_outputs.append(out)
     return rc, out
 
 
@@ -299,20 +294,39 @@ def test_obligations_prints_nothing_extra_on_an_unchanged_tree(tmp_path, capsys)
 # Metadata-only, by ENUMERATION (plan decision 4)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_no_schema_description_leaks_into_any_cli_output():
-    """Runs LAST alphabetically only by accident of pytest's default
-    collection order being irrelevant here — this checks every output
-    `_run` captured from every OTHER test in this module, not just its own.
-    A hand-picked "this one description string is absent" assertion would
-    pass while a different description leaked; the derived set (plan
-    decision 4) cannot go stale and cannot be dodged by picking the wrong
-    sample.
+def test_no_schema_description_leaks_into_any_cli_output(tmp_path, capsys):
+    """Self-contained: drives the CLI itself, against its OWN scratch tree
+    with real drift, and checks only the output THIS test produced. Running
+    it alone (`-k`), sharded (`pytest-xdist`), reordered
+    (`pytest-randomly`), or bisected all give the identical result — nothing
+    here depends on any other test in this module having run first, or on
+    pytest's default collection order.
+
+    Still an ENUMERATION, not a hand-picked sample (plan T4.1 decision 4):
+    every `description` value anywhere in the three published schemas is
+    collected by walking the parsed JSON at test time, so the forbidden set
+    cannot go stale and cannot be dodged by picking the wrong sample.
     """
+    schemas_dir, shapes_dir = _make_scratch_wires(tmp_path)
+    _rewrite_json(schemas_dir / SUGGESTIONS_WIRE, _add_property_to_suggestions_items)
+    _rewrite_json(schemas_dir / GARDEN_AUDIT_WIRE, _add_property_to_garden_audit_detail)
+
+    # Same drifted tree, all three subcommands, in an order where none of
+    # the read-only ones disturbs what the next one sees: --check and
+    # --obligations never write; --regenerate runs last and clears the
+    # drift by writing, but its own printed diff is captured before that
+    # matters.
+    outputs = []
+    for mode in ("--check", "--obligations", "--regenerate"):
+        wire_shape_cli.main([mode, "--schemas-dir", str(schemas_dir), "--shapes-dir", str(shapes_dir)])
+        outputs.append(capsys.readouterr().out)
+
     forbidden = _all_description_strings()
     assert forbidden, "the enumeration itself found nothing — the guard would be vacuous"
-    assert _captured_outputs, "no CLI output was captured — run the other tests in this module first"
 
-    combined = "\n".join(_captured_outputs)
+    combined = "\n".join(outputs)
+    assert combined.strip(), "this test's own drift produced no output at all — nothing was actually checked"
+
     leaked = [description for description in forbidden if description in combined]
     assert leaked == [], f"schema prose leaked into CLI output: {leaked!r}"
 

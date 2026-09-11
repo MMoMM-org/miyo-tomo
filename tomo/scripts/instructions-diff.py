@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.20.0
+# version: 0.21.0
 """instructions-diff.py — Reconcile parsed-suggestions.json with instructions.json.
 
 Pass-2 coverage audit: every approved suggestion should produce a
@@ -246,18 +246,20 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
                               "expected_links": [moc_stem, ...],
                               "item_key": str}},
         "expected_daily_kinds": [
-            {"kind": "update_tracker", "date", "key", "value", "source_stem"},
+            {"kind": "update_tracker", "date", "value", "source_stem"},
             {"kind": "update_log_entry", "date", "source_stem"},
-            {"kind": "update_log_link", "date", "key", "source_stem"},
+            {"kind": "update_log_link", "date", "source_stem"},
         ],
-        # "key" is a tracker FIELD NAME (update_tracker) or a note STEM
-        # (update_log_link) — both metadata, never read back (matching below
-        # is by "kind" alone; see _subtract_skipped_daily), kept only as a
-        # human-legible label. update_log_entry carried a 40-char slice of
-        # the note's own CONTENT under the same "key" name until 2026-09-11:
-        # unread, zero benefit, and note text in a data structure one debug
-        # dump away from a log (MiYo Constitution L2, Privacy & Security) —
-        # removed rather than kept for symmetry.
+        # No "key" on any of the three (removed 2026-09-11): matching below
+        # is by "kind" alone (_subtract_skipped_daily) — "key"'s value was
+        # never read on any of them, whether it held a tracker field name
+        # (update_tracker), a note stem (update_log_link), or 40 characters
+        # of the note's own content (update_log_entry — the one with an
+        # actual privacy concern, MiYo Constitution L2). Removed uniformly
+        # rather than only the risky one: leaving two "key"s present and one
+        # absent would be an inconsistently populated structure with no
+        # reason a future reader could reconstruct, for a field that carried
+        # zero benefit in any of the three cases.
         "expected_deletions": [source_path],
         "expected_skips": [source_path_or_None],
       }
@@ -352,7 +354,6 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
             expected_daily.append({
                 "kind": "update_tracker",
                 "date": date,
-                "key": t.get("field"),
                 "value": t.get("value"),
                 "source_stem": _stem(t.get("source_stem")),
             })
@@ -360,11 +361,9 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
             if not le.get("accepted"):
                 continue
             counts["update_log_entry"] += 1
-            # No "key" here (unlike the two sibling appends below/above):
-            # matching is by "kind" alone (_subtract_skipped_daily), so a
-            # 40-char slice of the note's own content bought nothing but
-            # putting note text into a data structure one debug dump away
-            # from a log (MiYo Constitution L2). Removed 2026-09-11.
+            # No "key" on this or its two sibling appends — see derive_expected's
+            # docstring ("expected_daily_kinds"): unread on all three, and this
+            # one held the note's own content (MiYo Constitution L2).
             expected_daily.append({
                 "kind": "update_log_entry",
                 "date": date,
@@ -377,7 +376,6 @@ def derive_expected(parsed: dict, tag_handler_groups: list[dict] | None = None) 
             expected_daily.append({
                 "kind": "update_log_link",
                 "date": date,
-                "key": _stem(ll.get("target_stem")),
                 "source_stem": _stem(ll.get("source_stem", "")),
             })
 

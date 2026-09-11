@@ -8,8 +8,8 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "1",
-      "description": "Schema version — always '1'. All Tomo-Editor fields (decision.file_under, decision.candidates, decision.suggest_requested, decision.suggested, top-level approved, top-level suggest_pending) are additive."
+      "const": "2",
+      "description": "Schema version — moved to '2' (spec 035 T4.3, 2026-09-11) to disclose two fields already being emitted without ever being announced: decision.detail.up_source / up_value (since specs 032/033) and the 'parent_not_moc' check enum value (since commit 2111772). Both are read-only detail; nothing about the wire's shape or the producer's behaviour changed at the move — only the version now matches what was already on the wire. Everything from schema_version '1' (decision.file_under, decision.candidates, decision.suggest_requested, decision.suggested, top-level approved, top-level suggest_pending) remains additive."
     },
     "approved": {
       "type": "boolean",

@@ -81,7 +81,7 @@ def _minimal_doc(findings: list[dict]) -> dict:
 
 def _minimal_wire(findings: list[dict]) -> dict:
     return {
-        "schema_version": "1",
+        "schema_version": "2",
         "generated": "2026-09-03T12:00:00Z",
         "run_id": "run-registration-001",
         "profile": "miyo",

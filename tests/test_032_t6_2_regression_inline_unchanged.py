@@ -426,7 +426,23 @@ class TestReportByteIdenticalCon7:
         # build_wire_payload is untouched by this spec (0-line diff at
         # 781aaf2..HEAD) — confirm the two artifacts stay in lockstep for an
         # all-inline doc, the same way the report does.
+        #
+        # ONE declared exception, added by spec 035 (not 032/033, and not a
+        # regression in either module): schema_version. old_gar is frozen at
+        # 781aaf2 and hard-codes "1"; new_gar reads wire_schema_version() off
+        # the LIVE schema on disk (spec 035 ADR-5) and now gets "2" (spec 035
+        # T4.3's version move). Both modules are behaving exactly as designed
+        # for their era — the divergence is real and permanent from here on,
+        # not something a future schema_version move should have to revisit
+        # in this file again, so it's isolated the same way the four report
+        # exceptions above are.
         doc = _make_doc(_all_inline_findings())
         old_wire = old_gar.build_wire_payload(doc)
         new_wire = new_gar.build_wire_payload(doc)
-        assert new_wire == old_wire
+
+        assert old_wire["schema_version"] == "1"
+        assert new_wire["schema_version"] == "2"
+
+        old_wire_without_version = {k: v for k, v in old_wire.items() if k != "schema_version"}
+        new_wire_without_version = {k: v for k, v in new_wire.items() if k != "schema_version"}
+        assert new_wire_without_version == old_wire_without_version

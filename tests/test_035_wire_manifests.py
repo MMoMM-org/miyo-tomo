@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.1.0
+# version: 0.2.0
 """test_035_wire_manifests.py — Behavioural tests for the committed manifest
 files under tomo/schemas/shapes/ (spec 035 T1.2).
 
@@ -44,13 +44,18 @@ from lib.wire_shape import (  # noqa: E402
     PUBLISHED_WIRES,
     build_manifest,
     describe_shape,
+    manifest_filename,
     serialize_manifest,
 )
 
 
 def _manifest_path(wire_schema_filename: str) -> Path:
-    stem = wire_schema_filename[: -len(".schema.json")]
-    return SHAPES_DIR / f"{stem}.shape.json"
+    # The `X.schema.json` -> `X.shape.json` naming convention lives ONLY in
+    # `manifest_filename` (T4.1) now — this used to reimplement the same
+    # stem-slicing by hand, a second copy of a convention wire_gate.py also
+    # had a third copy of independently. See
+    # docs/tomo/scripts/lib/wire_shape.md.
+    return SHAPES_DIR / manifest_filename(wire_schema_filename)
 
 
 def _assert_manifest_exists(wire_schema_filename: str) -> Path:

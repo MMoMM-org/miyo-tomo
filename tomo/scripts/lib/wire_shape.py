@@ -1,13 +1,15 @@
 # wire_shape.py — Shape manifest for a wire schema: describe / diff / classify (spec 035).
-# version: 0.8.0
+# version: 0.9.0
 """Pure schema-shape helpers shared by the wire-shape CLI and its tests.
 
 describe_shape(schema) -> dict[pointer, NodeShape] is implemented here (T1.1).
 PUBLISHED_WIRES, build_manifest and serialize_manifest (T1.2) wrap that node
 map in the committed manifest-file shape. diff_shapes (T2.1) names what moved
 between two node maps. classify (T2.2) decides which of those moves oblige
-the consumer to act. T2.3's gate is the next task and is not implemented
-here — do not stub it.
+the consumer to act. manifest_filename (T4.1) is the one place the
+`X.schema.json` -> `X.shape.json` naming convention is written down — see
+docs/tomo/scripts/lib/wire_shape.md. wire_gate.py's gate and T2.3's drift
+check are the next layer up and are not implemented here — do not stub them.
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ __all__ = [
     "PUBLISHED_WIRES",
     "build_manifest",
     "serialize_manifest",
+    "manifest_filename",
     "diff_shapes",
     "CHANGE_KINDS",
     "classify",
@@ -277,12 +280,43 @@ def build_manifest(schema: dict, source: str) -> dict:
     the schema actually says), `source` (the schema file this describes,
     caller-supplied so this function stays free of path conventions), `nodes`
     (`describe_shape`'s output, verbatim).
+
+    Raises `ValueError` naming `source` when `properties.schema_version.const`
+    is missing — either because the path isn't there at all, or because the
+    version is declared as an `enum` (or anything else) rather than a
+    `const`. Harmless while the only callers are the three published wires,
+    which all declare it correctly; load-bearing the moment a CLI (T4.1)
+    feeds this function a path a person typed, where a bare `KeyError('const')`
+    naming no document is illegible. Message shape matches
+    `wire_version.wire_schema_version`'s treatment of the identical failure
+    — see docs/tomo/scripts/lib/wire_shape.md.
     """
+    try:
+        schema_version = schema["properties"]["schema_version"]["const"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            f"{source}: has no properties.schema_version.const to read"
+        ) from exc
     return {
-        "schema_version": schema["properties"]["schema_version"]["const"],
+        "schema_version": schema_version,
         "source": source,
         "nodes": describe_shape(schema),
     }
+
+
+def manifest_filename(schema_filename: str) -> str:
+    """The committed manifest's filename for a published wire's schema
+    filename — `<stem>.shape.json` alongside `<stem>.schema.json`, matching
+    the layout `tomo/schemas/shapes/` already uses (T1.2).
+
+    The single place this naming convention is written down. Previously
+    duplicated once in `wire_gate.py` and a second time (by hand, as inline
+    string-slicing) in `tests/test_035_wire_manifests.py`'s `_manifest_path`
+    — both now call this function instead. See
+    docs/tomo/scripts/lib/wire_shape.md.
+    """
+    stem = schema_filename[: -len(".schema.json")]
+    return f"{stem}.shape.json"
 
 
 def _change(pointer: str, kind: str, detail: str) -> dict:

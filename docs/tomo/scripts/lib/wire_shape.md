@@ -816,6 +816,63 @@ and `build_manifest`, and that gate's shape isn't decided yet. Adding a
 "does the manifest exist" check to the production module now would be
 guessing at Phase 2's interface before Phase 2 exists to say what it needs.
 
+## WHY `build_manifest` Raises `ValueError` Naming the Source, Not a Bare `KeyError` (T4.1, carried forward from T1.2's code-quality review)
+
+`build_manifest(schema, source)` used to read
+`schema["properties"]["schema_version"]["const"]` directly. Against any of
+the three published wires that never mattered — all three always declare
+the path correctly — but T4.1's CLI (`scripts/wire-shape.py`) is the first
+caller that can hand this function a schema loaded from a path a PERSON
+typed. A schema missing that path entirely, or one that declares the
+version as an `enum` rather than a `const` (both are legal-looking mistakes
+a maintainer could make while editing a schema by hand), used to fail with
+a bare `KeyError('const')` that names no document — illegible the moment
+the input isn't one of the three known-good files.
+
+The fix wraps the same three-level access in `try`/`except (KeyError,
+TypeError)` and re-raises `ValueError(f"{source}: has no
+properties.schema_version.const to read")`. This deliberately matches the
+message SHAPE `wire_version.wire_schema_version` already uses for the
+identical failure (`"{schema_filename} at {schema_path} has no
+properties.schema_version.const to read"`, see wire_version.md) rather than
+inventing a second style for the same fact — `build_manifest` only ever
+receives a caller-supplied `source` string, not a resolved path, so its
+message names the source and nothing more. The `enum`-instead-of-`const`
+case needs no separate branch: `schema["properties"]["schema_version"]`
+still lacks a `"const"` key either way, so the same `except KeyError` covers
+both — the two failing schemas in
+`tests/test_035_wire_shape_cli.py::test_build_manifest_raises_value_error_naming_source_when_const_missing`
+and `..._when_version_is_enum_not_const` exercise the same code path on
+purpose, and the second test exists to PROVE that, not because the
+implementation branches on it.
+
+## WHY `manifest_filename` Lives Here, Not in `wire_gate.py` or a Test Helper (T4.1, carried forward from T1.2's code-quality review)
+
+The `X.schema.json` -> `X.shape.json` naming convention had grown THREE
+independent copies by the time T4.1 started: `wire_gate.py`'s own
+`manifest_filename` (added during T2.3, unaware of this deferred T1.2 item),
+and `tests/test_035_wire_manifests.py`'s `_manifest_path`, which reimplemented
+the identical stem-slicing by hand rather than importing either. Exactly the
+"grep the shape, not the site the plan names" trap: the plan's carried-forward
+note (written when only `wire_shape.py` existed) said the convention lived
+"only in the test helper", which was true in Phase 1 and had quietly become
+false by Phase 4.
+
+`manifest_filename` now lives in `wire_shape.py`, alongside `PUBLISHED_WIRES`
+— both are pure string-level facts about the manifest-file convention, no I/O,
+so keeping them together doesn't compromise `wire_shape.py`'s purity the way
+adding a filesystem-touching function would. `wire_gate.py` imports it and
+re-exports it (`from lib.wire_shape import ..., manifest_filename` plus a
+matching `__all__` entry) rather than deleting it outright, so every existing
+`from lib.wire_gate import manifest_filename` call site — `tests/
+test_035_wire_gate.py` included — keeps working unchanged; only the function
+BODY moved. `tests/test_035_wire_manifests.py::_manifest_path` now calls it
+instead of re-slicing the string a third time.
+`tests/test_035_wire_shape_cli.py::test_manifest_filename_is_importable_from_wire_shape_and_reexported_by_wire_gate`
+pins the re-export by IDENTITY (`gate_manifest_filename is shape_manifest_filename`),
+not merely by behavioural equivalence — the whole point is that there is
+exactly one function object, not two that happen to agree today.
+
 ## WHY the T2.3 Gate Is a Sibling Module, Not a Fourth Export Here
 
 Phase 2's real drift gate — `gate_one_wire`, `run_wire_gate`,

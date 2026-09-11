@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version: 0.5.0
+# version: 0.6.0
 """wire_gate.py — The drift gate for a published wire: diff + classify +
 version-check, and a message that says what to do (spec 035 T2.3).
 
@@ -45,7 +45,30 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lib.wire_shape import PUBLISHED_WIRES, classify, describe_shape, diff_shapes
+from lib.wire_shape import (
+    PUBLISHED_WIRES,
+    classify,
+    describe_shape,
+    diff_shapes,
+    manifest_filename,
+)
+
+__all__ = [
+    "ACTION_MOVE_VERSION",
+    "ACTION_HANDOVER",
+    "ACTION_REGENERATE_MANIFEST",
+    "ACTIONS",
+    "ERROR_SCHEMA_UNREADABLE",
+    "ERROR_SCHEMA_MALFORMED",
+    "ERROR_MANIFEST_MISSING",
+    "ERROR_MANIFEST_UNREADABLE",
+    "ERROR_MANIFEST_MALFORMED",
+    "ERROR_KINDS",
+    "manifest_filename",
+    "gate_one_wire",
+    "run_wire_gate",
+    "render_wire_gate_report",
+]
 
 # The only three demands the gate ever makes of a maintainer on a real
 # shape diff (SDD/Error Handling). A collecting tuple plus an
@@ -105,13 +128,12 @@ ERROR_INSTRUCTIONS = {
 }
 
 
-def manifest_filename(schema_filename: str) -> str:
-    """The committed manifest's filename for a published wire's schema
-    filename — `<stem>.shape.json` alongside `<stem>.schema.json`, matching
-    the layout `tomo/schemas/shapes/` already uses (T1.2).
-    """
-    stem = schema_filename[: -len(".schema.json")]
-    return f"{stem}.shape.json"
+# `manifest_filename` moved to wire_shape.py (T4.1) — imported above and
+# re-exported here so every existing `from lib.wire_gate import
+# manifest_filename` call site keeps working unchanged. It used to be
+# defined a second time, independently, right here; a third independent
+# copy had also grown inside tests/test_035_wire_manifests.py's
+# `_manifest_path`. See docs/tomo/scripts/lib/wire_shape.md.
 
 
 def _validate_schema_shape(schema) -> str | None:

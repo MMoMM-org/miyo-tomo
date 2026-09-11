@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: The CLI, the consumer copies, and closing the live drift"
-status: pending
+status: in_progress
 version: "1.0"
 phase: 4
 ---
@@ -37,7 +37,7 @@ T4.4 can only run once the consumer has vendored and the owner has returned with
 Makes the mechanism usable by a person, and closes the drift that would otherwise sit in its report
 from day one.
 
-- [ ] **T4.1 The `wire-shape` command** `[activity: backend-api]`
+- [x] **T4.1 The `wire-shape` command** `[activity: backend-api]`
 
   Lives in `scripts/` rather than `tomo/scripts/` — the boundary in this repo is by invocation, and
   this one is invoked by a person, not by a runtime agent.
@@ -54,9 +54,9 @@ from day one.
   3. Implement: `scripts/wire-shape.py` wrapping `describe_shape` / `diff_shapes` / `classify`.
   4. Validate: unit tests pass; ruff clean.
   5. Success:
-     - [ ] Regeneration prints the diff it applied `[ref: SDD/Architecture Decisions; ADR-3]`
-     - [ ] `--obligations` output is the handoff's raw material `[ref: PRD/F4-AC2]`
-     - [ ] Output carries no prose and no content `[ref: SDD/System-Wide Patterns]`
+     - [x] Regeneration prints the diff it applied `[ref: SDD/Architecture Decisions; ADR-3]`
+     - [x] `--obligations` output is the handoff's raw material `[ref: PRD/F4-AC2]`
+     - [x] Output carries no prose and no content `[ref: SDD/System-Wide Patterns]`
 
   **Carried forward from T1.2's code-quality review (2026-09-10)** — three items deliberately
   deferred to this task rather than fixed early, because each only becomes real once a CLI feeds

@@ -510,6 +510,26 @@ all-`None`/empty default, which happens to make the error-result shape
 `_error_result` builds nearly free (`_result(document, passed=False,
 error=..., error_kind=...)` — everything else defaults correctly).
 
+## WHY `manifest_filename` Moved to `wire_shape.py`, and Why This Module Still Exports It (T4.1)
+
+This module used to define `manifest_filename` itself. T4.1's code-quality
+carry-forward found it had grown a SECOND independent copy in
+`tests/test_035_wire_manifests.py`'s `_manifest_path` (hand-written
+stem-slicing, not an import) — the exact naming convention this module
+already owned, duplicated a second time without either copy knowing about
+the other. The function body moved to `wire_shape.py`, next to
+`PUBLISHED_WIRES` (both are pure data about the manifest-file convention,
+no filesystem access), and this module now does `from lib.wire_shape
+import ..., manifest_filename` and re-exports the same name via `__all__`
+— so `gate_one_wire`/`run_wire_gate` (which call it to resolve
+`shapes_dir`/manifest paths) and every existing `from lib.wire_gate import
+manifest_filename` call site keep working with zero changes. See
+`docs/tomo/scripts/lib/wire_shape.md`'s "WHY `manifest_filename` Lives
+Here" for the full history. `scripts/wire-shape.py` (T4.1) is the newest
+consumer, importing it from `lib.wire_gate` alongside `run_wire_gate` and
+`render_wire_gate_report` — the CLI never re-derives the naming convention
+independently either.
+
 ## WHY the Upstream-Hashi Snapshot Check Became a Report, Not This Module's Gate (spec 035 T2.4)
 
 `tests/test_instruction_render_wire_hygiene.py::test_snapshot_matches_upstream_hashi`

@@ -206,7 +206,7 @@ claimed the split alone produced "a different instruction (commit one)
 vs (regenerate it)" — at the time that was an overclaim: only the `error`
 STRING's wording differed; nothing emitted an actual instruction on the
 error path. `render_wire_gate_report` now genuinely does, via
-`error_kind` and `ERROR_INSTRUCTIONS` — see "WHY the Renderer Names an
+`error_kind` and `_ERROR_INSTRUCTIONS` — see "WHY the Renderer Names an
 Instruction on Every Failure Branch" below, which is where that claim
 became true rather than where it was made.
 
@@ -422,7 +422,7 @@ Diagnosable, not instructional — the same gap between "detected" and
 "actionable" this whole spec exists to close, recurring one field over.
 
 `render_wire_gate_report` now appends a second line for every error
-result, looked up from `ERROR_INSTRUCTIONS` by `error_kind`: a missing
+result, looked up from `_ERROR_INSTRUCTIONS` by `error_kind`: a missing
 manifest says to generate and commit one; an unreadable or malformed
 manifest says to regenerate it; an unreadable or malformed schema says to
 fix the file. The missing-vs-other split matters specifically because
@@ -442,11 +442,11 @@ an action added to `actions` that the renderer had no branch for would
 silently fall into the `else` and render the WRONG instruction, never
 signalling anything went wrong.
 
-`ACTIONS` (a tuple) and `ACTION_INSTRUCTIONS` (a dict keyed by the same
+`ACTIONS` (a tuple) and `_ACTION_INSTRUCTIONS` (a dict keyed by the same
 constants) now give the renderer something to check identity against:
 `_render_action` looks up each action in `result["actions"]` and raises
 `ValueError` for one it has no instruction for, rather than defaulting to
-the wrong line. `ERROR_KINDS`/`ERROR_INSTRUCTIONS`/`_render_error` are the
+the wrong line. `ERROR_KINDS`/`_ERROR_INSTRUCTIONS`/`_render_error` are the
 same mechanism applied to the error branches, for the same reason.
 `test_render_wire_gate_report_raises_on_an_unregistered_action` and
 `test_render_wire_gate_report_raises_on_an_unregistered_error_kind` are
